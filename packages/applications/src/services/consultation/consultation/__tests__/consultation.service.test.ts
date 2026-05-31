@@ -1443,4 +1443,179 @@ describe('ConsultationService', () => {
             });
         });
     });
+
+    // ============================================================
+    // TASK-321 — Consultation lifecycle (close / reopen / update)
+    //
+    // The Consultation model has no dedicated open/closed column, so
+    // lifecycle status lives in `metadata.status` (OPEN | CLOSED;
+    // absent ⇒ OPEN). close/reopen are idempotent (no write/event when
+    // already in the target state). PATCH updates safely-mutable fields
+    // only (appointmentDate / departmentId / metadata-merge / status).
+    // ============================================================
+    describe('TASK-321 — lifecycle (close / reopen / update)', () => {
+        describe('closeConsultation', () => {
+            it('transitions OPEN → CLOSED, persists, emits ResourceUpdated, returns status CLOSED', async () => {
+                const entity = createMockConsultationEntity({ id: 'c-1', metadata: null });
+                mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+                mockConsultationRepository.update.mockResolvedValue(entity);
+
+                const result = await service.closeConsultation('c-1');
+
+                expect(result.status).toBe('CLOSED');
+                expect(mockConsultationRepository.update).toHaveBeenCalledTimes(1);
+                const [updateId, updatedEntity] = mockConsultationRepository.update.mock.calls[0];
+                expect(updateId).toBe('c-1');
+                expect((updatedEntity.metadata as Record<string, unknown>).status).toBe('CLOSED');
+                expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                    SysEventType.ResourceUpdated,
+                    expect.objectContaining({
+                        resourceId: 'c-1',
+                        data: expect.objectContaining({ action: 'closeConsultation', status: 'CLOSED' }),
+                    }),
+                );
+            });
+
+            it('is idempotent when already CLOSED (no update, no event)', async () => {
+                const entity = createMockConsultationEntity({ id: 'c-1', metadata: { status: 'CLOSED' } });
+                mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+
+                const result = await service.closeConsultation('c-1');
+
+                expect(result.status).toBe('CLOSED');
+                expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+
+            it('throws NotFoundException when consultation not found', async () => {
+                mockConsultationRepository.findWithRelations.mockResolvedValue(null);
+
+                await expect(service.closeConsultation('missing')).rejects.toThrow(NotFoundException);
+                expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+            });
+
+            it('throws BadRequestException when tenantId is missing', async () => {
+                mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'u' } : null));
+
+                await expect(service.closeConsultation('c-1')).rejects.toThrow(BadRequestException);
+            });
+
+            it('throws NotFoundException (generic) for a cross-tenant consultation', async () => {
+                const foreign = createMockConsultationEntity({ id: 'c-x', tenantId: 'tenant-OTHER' });
+                mockConsultationRepository.findWithRelations.mockResolvedValue(foreign);
+
+                await expect(service.closeConsultation('c-x')).rejects.toThrow(NotFoundException);
+                expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('reopenConsultation', () => {
+            it('transitions CLOSED → OPEN, persists, emits ResourceUpdated, returns status OPEN', async () => {
+                const entity = createMockConsultationEntity({ id: 'c-1', metadata: { status: 'CLOSED' } });
+                mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+                mockConsultationRepository.update.mockResolvedValue(entity);
+
+                const result = await service.reopenConsultation('c-1');
+
+                expect(result.status).toBe('OPEN');
+                expect(mockConsultationRepository.update).toHaveBeenCalledTimes(1);
+                const [, updatedEntity] = mockConsultationRepository.update.mock.calls[0];
+                expect((updatedEntity.metadata as Record<string, unknown>).status).toBe('OPEN');
+                expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                    SysEventType.ResourceUpdated,
+                    expect.objectContaining({
+                        resourceId: 'c-1',
+                        data: expect.objectContaining({ action: 'reopenConsultation', status: 'OPEN' }),
+                    }),
+                );
+            });
+
+            it('is idempotent when status is absent (treated as already OPEN)', async () => {
+                const entity = createMockConsultationEntity({ id: 'c-1', metadata: null });
+                mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+
+                const result = await service.reopenConsultation('c-1');
+
+                expect(result.status).toBe('OPEN');
+                expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+
+            it('throws NotFoundException when consultation not found', async () => {
+                mockConsultationRepository.findWithRelations.mockResolvedValue(null);
+
+                await expect(service.reopenConsultation('missing')).rejects.toThrow(NotFoundException);
+            });
+        });
+
+        describe('updateConsultation', () => {
+            it('updates departmentId (tenant-checked) and shallow-merges metadata; emits ResourceUpdated', async () => {
+                const entity = createMockConsultationEntity({ id: 'c-1', metadata: { existing: 'keep' } });
+                mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+                mockConsultationRepository.update.mockResolvedValue(entity);
+
+                const result = await service.updateConsultation('c-1', { departmentId: 'dept-1', metadata: { note: 'x' } });
+
+                expect(mockDepartmentRepository.findById).toHaveBeenCalledWith('dept-1');
+                const [updateId, updated] = mockConsultationRepository.update.mock.calls[0];
+                expect(updateId).toBe('c-1');
+                expect(updated.departmentId).toBe('dept-1');
+                expect(updated.metadata).toEqual({ existing: 'keep', note: 'x' });
+                expect(result.departmentId).toBe('dept-1');
+                expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                    SysEventType.ResourceUpdated,
+                    expect.objectContaining({
+                        resourceId: 'c-1',
+                        data: expect.objectContaining({ action: 'updateConsultation' }),
+                    }),
+                );
+            });
+
+            it('writes status into metadata.status and surfaces it on the response', async () => {
+                const entity = createMockConsultationEntity({ id: 'c-1', metadata: null });
+                mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+                mockConsultationRepository.update.mockResolvedValue(entity);
+
+                const result = await service.updateConsultation('c-1', { status: 'CLOSED' });
+
+                expect(result.status).toBe('CLOSED');
+                const [, updated] = mockConsultationRepository.update.mock.calls[0];
+                expect((updated.metadata as Record<string, unknown>).status).toBe('CLOSED');
+            });
+
+            it('updates appointmentDate', async () => {
+                const entity = createMockConsultationEntity({ id: 'c-1' });
+                mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+                mockConsultationRepository.update.mockResolvedValue(entity);
+
+                const result = await service.updateConsultation('c-1', { appointmentDate: '2026-04-01' });
+
+                const [, updated] = mockConsultationRepository.update.mock.calls[0];
+                expect(updated.appointmentDate).toEqual(new Date('2026-04-01'));
+                expect(result.appointmentDate).toBe('2026-04-01');
+            });
+
+            it('throws NotFoundException when consultation not found', async () => {
+                mockConsultationRepository.findWithRelations.mockResolvedValue(null);
+
+                await expect(service.updateConsultation('missing', { status: 'CLOSED' })).rejects.toThrow(NotFoundException);
+            });
+
+            it('throws BadRequestException when tenantId is missing', async () => {
+                mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'u' } : null));
+
+                await expect(service.updateConsultation('c-1', {})).rejects.toThrow(BadRequestException);
+            });
+
+            it('throws NotFoundException when departmentId belongs to another tenant', async () => {
+                const entity = createMockConsultationEntity({ id: 'c-1' });
+                mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+                mockDepartmentRepository.findById.mockResolvedValue({ id: 'dept-other', tenantId: 'tenant-OTHER' });
+
+                await expect(service.updateConsultation('c-1', { departmentId: 'dept-other' })).rejects.toThrow(NotFoundException);
+                expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+            });
+        });
+    });
 });

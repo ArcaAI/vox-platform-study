@@ -36,6 +36,9 @@ function createMockConsultationService() {
         getByPatientAndDate: vi.fn(),
         getConsultationChain: vi.fn(),
         doctorHasPatientRelationship: vi.fn(),
+        closeConsultation: vi.fn(),
+        reopenConsultation: vi.fn(),
+        updateConsultation: vi.fn(),
     };
 }
 
@@ -731,6 +734,76 @@ describe('ConsultationController', () => {
 
         it('approveSummary should enforce ownership', async () => {
             await expect(controller.approveSummary(CONSULTATION_OWN, 'ctx-1')).rejects.toThrow(ForbiddenException);
+        });
+
+        // TASK-321 — lifecycle write endpoints
+        it('close should enforce ownership', async () => {
+            await expect(controller.close(CONSULTATION_OWN)).rejects.toThrow(ForbiddenException);
+        });
+
+        it('reopen should enforce ownership', async () => {
+            await expect(controller.reopen(CONSULTATION_OWN)).rejects.toThrow(ForbiddenException);
+        });
+
+        it('update should enforce ownership', async () => {
+            await expect(controller.update(CONSULTATION_OWN, {} as any)).rejects.toThrow(ForbiddenException);
+        });
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // TASK-321 — lifecycle endpoints (close / reopen / update) wiring
+    // ═══════════════════════════════════════════════════════════════════════
+
+    describe('TASK-321 lifecycle endpoints', () => {
+        it('close delegates to service and returns the updated consultation (owner)', async () => {
+            const { controller, consultationService } = buildController();
+            consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
+            const closed = makeConsultation({ status: 'CLOSED' });
+            consultationService.closeConsultation.mockResolvedValue(closed);
+
+            const result = await controller.close(CONSULTATION_OWN);
+
+            expect(consultationService.closeConsultation).toHaveBeenCalledWith(CONSULTATION_OWN);
+            expect(result).toEqual(closed);
+        });
+
+        it('reopen delegates to service and returns the updated consultation (owner)', async () => {
+            const { controller, consultationService } = buildController();
+            consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
+            const reopened = makeConsultation({ status: 'OPEN' });
+            consultationService.reopenConsultation.mockResolvedValue(reopened);
+
+            const result = await controller.reopen(CONSULTATION_OWN);
+
+            expect(consultationService.reopenConsultation).toHaveBeenCalledWith(CONSULTATION_OWN);
+            expect(result).toEqual(reopened);
+        });
+
+        it('update delegates to service with the request body and returns the result (owner)', async () => {
+            const { controller, consultationService } = buildController();
+            consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
+            const updated = makeConsultation({ departmentId: 'dept-1' });
+            consultationService.updateConsultation.mockResolvedValue(updated);
+
+            const body = { departmentId: 'dept-1', metadata: { note: 'x' } };
+            const result = await controller.update(CONSULTATION_OWN, body as any);
+
+            expect(consultationService.updateConsultation).toHaveBeenCalledWith(CONSULTATION_OWN, body);
+            expect(result).toEqual(updated);
+        });
+
+        it('admin/dept-head with CASL manage can close a consultation they do not own', async () => {
+            const { controller, consultationService } = buildController({
+                userId: DOCTOR_B,
+                policyCanManage: true,
+            });
+            consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
+            const closed = makeConsultation({ status: 'CLOSED' });
+            consultationService.closeConsultation.mockResolvedValue(closed);
+
+            const result = await controller.close(CONSULTATION_OWN);
+
+            expect(result).toEqual(closed);
         });
     });
 

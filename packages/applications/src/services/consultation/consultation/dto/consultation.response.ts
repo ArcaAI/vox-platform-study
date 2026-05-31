@@ -62,6 +62,13 @@ export class ConsultationResponse {
   @ApiPropertyOptional({ description: 'Parent consultation ID (for re-visits/referrals)' })
   parentConsultationId?: string;
 
+  @ApiPropertyOptional({
+    description: 'Lifecycle status (derived from metadata.status; defaults to OPEN). TASK-321.',
+    enum: ['OPEN', 'CLOSED'],
+    example: 'OPEN',
+  })
+  status?: string;
+
   @ApiPropertyOptional({ description: 'Additional metadata' })
   metadata?: Record<string, unknown>;
 
