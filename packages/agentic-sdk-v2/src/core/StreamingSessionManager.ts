@@ -158,6 +158,17 @@ export class StreamingSessionManager {
     if (this.sessionResponse.ticket) {
       params.set('ticket', this.sessionResponse.ticket);
     }
+    // TASK-320 B5: carry the active tenant id so the WS client's now-default-on
+    // tenant-claim guard (`requireTenantClaim` defaults to true) can resolve a
+    // claim from the URL. This is the single chokepoint for the SDK's own
+    // streaming flow — `@arcaai/stt`'s StreamingBackendSTTProvider connects
+    // with `connect(url)` (no options), so the claim MUST live in the URL.
+    // When no tenant is set (e.g. an unscoped super-admin), nothing is appended
+    // and the guard fails closed, which is the intended TASK-317 AC-10 posture.
+    const tenantId = this.apiClient.getTenantId();
+    if (tenantId) {
+      params.set('tenantId', tenantId);
+    }
 
     return `${wsOrigin}${wsPath}?${params.toString()}`;
   }

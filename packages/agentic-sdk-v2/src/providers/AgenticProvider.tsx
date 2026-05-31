@@ -21,6 +21,7 @@
 
 import React, { useEffect, createContext, useContext, useMemo, useRef } from 'react';
 import type { AgenticConfig } from '../types';
+import type { RefreshTokenResponse } from '../types/auth';
 import { AgenticClient } from '../core/AgenticClient';
 import { PluginManager } from '../core/PluginManager';
 import { PersonalizationManager } from '../core/PersonalizationManager';
@@ -643,6 +644,56 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     })();
     // eslint-disable-next-line -- store actions are stable (per-provider instance); rerun only on user identity change.
   }, [effectiveUserId, effectiveTenantId, effectiveDepartmentId]);
+
+  // ---------------------------------------------------------------------------
+  // TASK-320 B2 — auto-wire the 401→refresh single-flight handler.
+  //
+  // `AgenticClient` already implements a 401→refresh-once mutex
+  // (`deduplicatedRefresh`/`setOnUnauthorized`), but it only fires when a
+  // handler is registered — and nothing in the SDK ever registered one, so
+  // auto-refresh was inert. We register it HERE so token refresh works out of
+  // the box. The backend `/auth/refresh` is BODY-based (see
+  // apps/api auth.controller `refresh()`), so the handler POSTs the in-memory
+  // refresh token captured at login (AgenticClient WeakMap), applies the
+  // rotated access + refresh tokens, and returns true so the original request
+  // is retried once.
+  //
+  // Registered in a guarded effect keyed on the client instance so it runs
+  // ONCE per AgenticClient (not on every render). `/auth/refresh` is in
+  // `AgenticClient.REFRESH_SKIP_ENDPOINTS`, so the refresh POST itself can't
+  // recurse into another refresh. We skip refresh while impersonating: the
+  // active token is the short-lived impersonation JWT and the stored refresh
+  // token belongs to the admin's own session — refreshing here would mint an
+  // admin access token and silently clobber the impersonation token/state, so
+  // we return false and let the 401 propagate (mirrors the `if (!isImpersonating)`
+  // access-token special-casing in the sync block below).
+  // ---------------------------------------------------------------------------
+  const refreshWiredForClientRef = useRef<AgenticClient | null>(null);
+  useEffect(() => {
+    const apiClient = store.apiClient;
+    if (!apiClient) return;
+    if (refreshWiredForClientRef.current === apiClient) return;
+    refreshWiredForClientRef.current = apiClient;
+
+    apiClient.setOnUnauthorized(async (): Promise<boolean> => {
+      if (apiClient.isImpersonating()) return false;
+      const refreshToken = apiClient.getRefreshToken();
+      if (!refreshToken) return false;
+      try {
+        const data = await apiClient.post<RefreshTokenResponse>(AUTH_ENDPOINTS.REFRESH, { refreshToken });
+        if (!data?.token) return false;
+        apiClient.updateAccessToken(data.token);
+        // Rotate the in-memory refresh token (backend refresh tokens are
+        // single-use — TASK-307 W1.3) so the next 401 can refresh again.
+        if (data.refreshToken) {
+          apiClient.setRefreshToken(data.refreshToken);
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  }, [store.apiClient]);
 
   // Synchronously sync auth/tenant config to the existing AgenticClient on every
   // render, BEFORE children mount or their effects fire.

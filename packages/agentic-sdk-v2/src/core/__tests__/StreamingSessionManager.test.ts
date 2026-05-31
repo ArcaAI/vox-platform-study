@@ -296,6 +296,48 @@ describe('StreamingSessionManager', () => {
       expect(wsUrl).not.toContain('secret-jwt-token');
       expect(wsUrl).not.toContain('token=');
     });
+
+    // -------------------------------------------------------------------
+    // TASK-320 B5 — the WS client's tenant-claim guard is now ON BY DEFAULT
+    // (`requireTenantClaim` defaults to true). `getWebSocketUrl` is the single
+    // chokepoint for the SDK's own streaming flow (the STT provider connects
+    // with `connect(url)` and no options), so the active tenant id MUST ride
+    // in the URL for that flow to keep working.
+    // -------------------------------------------------------------------
+    describe('TASK-320 B5 — tenant claim in the URL', () => {
+      it('appends the active tenantId so the default-on WS guard can resolve a claim', async () => {
+        apiClient.updateTenantId('tenant-xyz');
+        mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
+        await manager.createSession({ pipelineId: 'default' });
+
+        const wsUrl = manager.getWebSocketUrl('token');
+
+        expect(wsUrl).toContain('tenantId=tenant-xyz');
+        expect(wsUrl).toContain('sessionId=session-ws-test');
+      });
+
+      it('URL-encodes a tenantId that contains special characters', async () => {
+        apiClient.updateTenantId('tenant/with space');
+        mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
+        await manager.createSession({ pipelineId: 'default' });
+
+        const wsUrl = manager.getWebSocketUrl('token');
+
+        // URLSearchParams encodes '/' and ' ' — the raw form must not leak.
+        expect(wsUrl).toContain('tenantId=tenant%2Fwith+space');
+        expect(wsUrl).not.toContain('tenant/with space');
+      });
+
+      it('omits tenantId when no tenant is set (guard then fails closed, per AC-10)', async () => {
+        // apiClient has no tenantId (constructor config omits it).
+        mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
+        await manager.createSession({ pipelineId: 'default' });
+
+        const wsUrl = manager.getWebSocketUrl('token');
+
+        expect(wsUrl).not.toContain('tenantId=');
+      });
+    });
   });
 
   // ===========================================================================
