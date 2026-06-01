@@ -77,12 +77,14 @@ function captureExtensionConfig(opts: {
 // ---------------------------------------------------------------------------
 
 describe('TENANT_SCOPED_MODELS allow-list', () => {
-  it('contains the 27 tenant-scoped models currently defined in db_main/*.prisma', () => {
+  it('contains the 28 tenant-scoped models currently defined in db_main/*.prisma', () => {
     // The audit (`docs/multi-tenancy-audit/02-prisma-schema-review.md` §A)
     // lists 30 models, but 4 User* tables and DnaRegenerationSettings
     // do not yet carry a tenantId column — they are added in TASK-305
     // Phase A. The allow-list tracks the SCHEMA TRUTH, not the future plan.
-    expect(TENANT_SCOPED_MODELS.size).toBe(27);
+    // TASK-318 added TenantStorageConfig (tenant-scoped storage settings)
+    // to the schema and the allow-list, bringing the count to 28.
+    expect(TENANT_SCOPED_MODELS.size).toBe(28);
   });
 
   it('includes every PHI-bearing model', () => {

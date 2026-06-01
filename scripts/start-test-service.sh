@@ -106,6 +106,25 @@ load_env_test() {
     set +a
 }
 
+# Fail fast with an actionable message when the service port is already bound.
+# dev:api and test:api:up share port 8868 (and the Node inspector on 9229), so a
+# running dev API — or a stale prior test:api:up — otherwise surfaces as an
+# unhandled EADDRINUSE crash deep in the Nest bootstrap.
+check_port_available() {
+    local port="$1"
+    local pids
+    if ! command -v lsof >/dev/null 2>&1; then
+        return 0
+    fi
+    pids="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)"
+    if [ -n "$pids" ]; then
+        echo -e "${RED}Error: port $port is already in use (PID(s): $(echo "$pids" | tr '\n' ' ')).${NC}"
+        echo "The test API shares port $port with 'pnpm dev:api'. Stop the conflicting"
+        echo "process first, e.g.:  kill $(echo "$pids" | tr '\n' ' ')"
+        exit 1
+    fi
+}
+
 print_service_header() {
     local service_name="$1"
     local service_url="$2"
