@@ -6,7 +6,7 @@ import {
   useUpdateTenantConfigs,
   useMyTenantConfigs,
   useUpdateMyTenantConfigs,
-  useTenants,
+  useAdminTenants,
   useTenant,
   useTenantUsage,
   useTenantsInfinite,
@@ -90,14 +90,14 @@ describe('Tenant API hooks', () => {
   });
 
   // -----------------------------------------------------------------------
-  // useTenants
+  // useAdminTenants
   // -----------------------------------------------------------------------
-  describe('useTenants', () => {
+  describe('useAdminTenants', () => {
     it('should call GET /admin/tenants', async () => {
       const tenants = [makeTenant()];
       mockGet.mockResolvedValueOnce(paginatedResponse(tenants));
 
-      const { result } = renderHook(() => useTenants(), { wrapper: createWrapper() });
+      const { result } = renderHook(() => useAdminTenants(), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(mockGet).toHaveBeenCalledWith('/admin/tenants');
@@ -108,7 +108,7 @@ describe('Tenant API hooks', () => {
       mockGet.mockResolvedValueOnce(paginatedResponse([]));
 
       const { result } = renderHook(
-        () => useTenants({ page: 2, limit: 10 }),
+        () => useAdminTenants({ page: 2, limit: 10 }),
         { wrapper: createWrapper() },
       );
 
@@ -138,6 +138,27 @@ describe('Tenant API hooks', () => {
       const calledUrl = mockGet.mock.calls[0][0] as string;
       expect(calledUrl).toContain('page=1');
       expect(calledUrl).toContain('limit=25');
+    });
+
+    // D3 (TASK-323): the admin pagination envelope uses `count` (not `total`).
+    // These lock the field the infinite query reads to advance pages — they
+    // would fail if the reader were switched to `total`.
+    it('advances pagination based on the admin `count` field', async () => {
+      mockGet.mockResolvedValueOnce(paginatedResponse([makeTenant()], 50));
+
+      const { result } = renderHook(() => useTenantsInfinite(25), { wrapper: createWrapper() });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(result.current.hasNextPage).toBe(true);
+    });
+
+    it('stops paginating once `count` is reached', async () => {
+      mockGet.mockResolvedValueOnce(paginatedResponse([makeTenant()], 10));
+
+      const { result } = renderHook(() => useTenantsInfinite(25), { wrapper: createWrapper() });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(result.current.hasNextPage).toBe(false);
     });
   });
 
