@@ -27,6 +27,8 @@ handle_build_flag "$@"
 cd "$PROJECT_ROOT"
 load_env_test
 
+check_port_available "$PORT"
+
 print_service_header "API Gateway" "http://localhost:$PORT"
 
 exec npx dotenv -o -e .env.test -- pnpm --filter @arcaai/api dev

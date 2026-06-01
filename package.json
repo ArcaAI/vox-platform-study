@@ -69,6 +69,7 @@
         "gen:token": "pnpm --filter @arcaai/tools gen-dev-token",
         "gen:api-key": "pnpm --filter @arcaai/tools gen-api-key",
         "------------ DEV SERVERS (TEST ENV) ------------": "",
+        "test:setup": "./scripts/test-setup.sh",
         "test:api:up": "./scripts/start-test-api.sh",
         "test:stt-v2:up": "./scripts/start-test-stt-v2.sh",
         "test:smr-v2:up": "./scripts/start-test-smr-v2.sh",

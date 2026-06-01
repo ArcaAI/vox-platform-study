@@ -118,13 +118,13 @@ describe('TenantBucket Domain Layer', () => {
             expect(entity.bucketType).toBe(TenantBucketType.CUSTOM);
         });
 
-        it('should create default system bucket for a tenant', async () => {
+        it('should create default system buckets for a tenant', async () => {
             const { TenantBucketFactory } = await import('../factories/generated/core/TenantBucketFactory');
             const { TenantBucketType } = await import('../enums');
 
             const buckets = TenantBucketFactory.CreateDefaultSystemBuckets('tenant-1', 'arcaai');
 
-            expect(buckets).toHaveLength(2);
+            expect(buckets).toHaveLength(3);
 
             const audioBucket = buckets[0];
             expect(audioBucket.slug).toBe('audio');
@@ -135,6 +135,11 @@ describe('TenantBucket Domain Layer', () => {
             expect(attachmentsBucket.slug).toBe('attachments');
             expect(attachmentsBucket.name).toBe('hope-attachments-arcaai');
             expect(attachmentsBucket.bucketType).toBe(TenantBucketType.SYSTEM);
+
+            const miscBucket = buckets[2];
+            expect(miscBucket.slug).toBe('misc');
+            expect(miscBucket.name).toBe('hope-misc-arcaai');
+            expect(miscBucket.bucketType).toBe(TenantBucketType.SYSTEM);
         });
 
         it('should sanitize tenant key in bucket name', async () => {
