@@ -62,7 +62,7 @@ import {
   useAssignUserRole,
   useRemoveUserRole,
 } from '../api/users';
-import { useTenants } from '../api/tenants';
+import { useAdminTenants } from '../api/tenants';
 import { useRoles } from '../api/roles';
 
 // ---------------------------------------------------------------------------
@@ -187,7 +187,7 @@ function UserFormDialog({
   const [step, setStep] = useState<'form' | 'role'>('form');
 
   const { data: rolesData, isLoading: rolesLoading } = useRoles({ page: 1, limit: 100 }, { enabled: !isEdit });
-  const { data: tenantsData } = useTenants({ page: 1, limit: 100 }, { enabled: !isEdit });
+  const { data: tenantsData } = useAdminTenants({ page: 1, limit: 100 }, { enabled: !isEdit });
   const assignRole = useAssignUserRole();
   const [selectedRoleId, setSelectedRoleId] = useState('');
   const [selectedTenantId, setSelectedTenantId] = useState('');
@@ -515,7 +515,7 @@ function ApiKeyCard({ apiKey, onRevoke, isRevoking }: { apiKey: UserApiKey; onRe
 
 function RoleAssignmentSection({ user }: { user: AdminUser }) {
   const { data: rolesData, isLoading: rolesLoading } = useRoles({ page: 1, limit: 100 });
-  const { data: tenantsData } = useTenants({ page: 1, limit: 100 });
+  const { data: tenantsData } = useAdminTenants({ page: 1, limit: 100 });
   const [showAssign, setShowAssign] = useState(false);
   const [selectedRoleId, setSelectedRoleId] = useState('');
   const [selectedTenantId, setSelectedTenantId] = useState('');

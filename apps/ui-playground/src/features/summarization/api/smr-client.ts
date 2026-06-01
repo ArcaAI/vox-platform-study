@@ -18,6 +18,15 @@ function getEffectiveToken(): string {
   return isImpersonating && impersonationToken ? impersonationToken : accessToken;
 }
 
+/**
+ * TASK-323 D2 — SMR requests must carry the *effective* (impersonated) tenant
+ * and token, exactly like `adminClient.getHeaders`. While impersonating, the
+ * auth store holds the impersonated user's tenant in `tenantId` (set by
+ * `startImpersonation`, restored by `endImpersonation`) and the impersonation
+ * bearer in `impersonationToken` (resolved via `getEffectiveToken`). Reading
+ * the effective tenant + token here keeps summarization in the impersonated
+ * tenant instead of leaking into the admin's own tenant.
+ */
 function getHeaders(): HeadersInit {
   const { apiKey, authMethod, tenantId } = useAuthStore.getState();
   const headers: Record<string, string> = {
@@ -33,8 +42,9 @@ function getHeaders(): HeadersInit {
     headers['X-API-Key'] = apiKey;
   }
 
-  if (tenantId) {
-    headers['X-Tenant-Id'] = tenantId;
+  const effectiveTenant = tenantId;
+  if (effectiveTenant) {
+    headers['X-Tenant-Id'] = effectiveTenant;
   }
 
   return headers;
@@ -209,4 +219,6 @@ export const smrClient = {
   delete: <T>(path: string) => request<T>('DELETE', path),
   sse: requestSSE,
   postSSE: requestPostSSE,
+  /** Exposed for tests + parity with `adminClient`: the effective (impersonation-aware) request headers. */
+  getHeaders,
 };

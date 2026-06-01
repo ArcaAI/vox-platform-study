@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
-import { adminClient } from './admin-client';
+import { adminClient, type PaginatedResponse } from './admin-client';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -80,13 +80,6 @@ export interface UpdateTenantConfigsInput {
   configs: UpdateTenantConfigItem[];
 }
 
-interface PaginatedResponse<T> {
-  data: T[];
-  count: number;
-  limit: number;
-  page: number;
-}
-
 interface PaginationParams {
   page?: number;
   limit?: number;
@@ -117,7 +110,15 @@ function qs(params?: PaginationParams): string {
 // Query hooks
 // ---------------------------------------------------------------------------
 
-export function useTenants(params?: PaginationParams, options?: Omit<UseQueryOptions<PaginatedResponse<Tenant>>, 'queryKey' | 'queryFn'>) {
+/**
+ * Local admin-plane tenant list hook (`GET /admin/tenants`).
+ *
+ * TASK-323 D7 — renamed from `useTenants` to disambiguate it from the SDK's
+ * `useTenants` (`@arcaai/vox`), which is a different hook with a different
+ * response shape. Import this one for admin pages; import the SDK hook for the
+ * playground tenant selector.
+ */
+export function useAdminTenants(params?: PaginationParams, options?: Omit<UseQueryOptions<PaginatedResponse<Tenant>>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.list(params),
     queryFn: () => adminClient.get<PaginatedResponse<Tenant>>(`/admin/tenants${qs(params)}`),

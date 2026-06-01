@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { Main } from '@/components/layout/main';
 import { useAuthStore } from '@/store/auth-store';
-import { useTenants, useTenant } from '../api/tenants';
+import { useAdminTenants, useTenant } from '../api/tenants';
 import { useAdminUsers } from '../api/users';
 import { StatusBadge } from '../components';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/card';
@@ -30,7 +30,7 @@ export default function AdminOverviewPage() {
     enabled: !!tenantId,
   });
 
-  const { data: tenantsData, isLoading: tenantsLoading } = useTenants({ page: 1, limit: 1 }, { enabled: isSuper });
+  const { data: tenantsData, isLoading: tenantsLoading } = useAdminTenants({ page: 1, limit: 1 }, { enabled: isSuper });
 
   const { data: usersData, isLoading: usersLoading } = useAdminUsers({ page: 1, limit: 1 }, { enabled: isSuper });
 

@@ -26,6 +26,25 @@ export interface RequestOptions {
   ifMatch?: string;
 }
 
+/**
+ * Standard pagination envelope returned by the **admin** API plane
+ * (`/admin/*`, `/tenant/me/config`). The admin endpoints report the total
+ * matching-row count in `count` — deliberately distinct from the SDK's
+ * consultation / transcription list shape and the audio-pipelines module,
+ * which use `total`. Readers of an admin response MUST use `count`; readers
+ * of an SDK / pipelines response MUST use `total`.
+ *
+ * TASK-323 D3 — a single shared definition (instead of one re-declared per
+ * admin module) keeps the field name unambiguous and consistent across the
+ * admin api layer. Non-behavioral: the wire shape is unchanged.
+ */
+export interface PaginatedResponse<T> {
+  data: T[];
+  count: number;
+  limit: number;
+  page: number;
+}
+
 function getEffectiveToken(): string {
   const { accessToken, isImpersonating, impersonationToken } = useAuthStore.getState();
   return isImpersonating && impersonationToken ? impersonationToken : accessToken;
