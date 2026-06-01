@@ -557,6 +557,130 @@ export const AUDIT_LOG_ENDPOINTS = {
     `/admin/audit-logs/resource/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}`,
   BY_USER: (userId: string) => `/admin/audit-logs/user/${encodeURIComponent(userId)}`,
 } as const;
+
+// =============================================================================
+// TASK-323 Phase 0 — admin / storage / SMR endpoint bindings
+//
+// Tail of TASK-320 A1 (admin consultation / transcription-job planes) and
+// TASK-318 R9 (per-tenant storage buckets / keys / config). Paths omit the
+// `/api/v1` prefix (the AgenticClient baseUrl carries it). Every path below is
+// source-verified against its API controller (cited per group).
+// =============================================================================
+
+/**
+ * Admin consultation endpoints (TASK-319 F1 / TASK-320 A1).
+ *
+ * Tenant-wide consultation supervision — class-level `@CanManage('Consultation')`
+ * (TENANT_ADMIN / SUPER_ADMIN). A plain DOCTOR is denied (403).
+ * Controller: `apps/api/src/modules/consultation/admin-consultation.controller.ts`
+ * (`@Controller('admin/consultations')`).
+ */
+export const ADMIN_CONSULTATION_ENDPOINTS = {
+  /** List ALL consultations in the tenant (paginated; page/limit + patientId/doctorId/departmentId filters) */
+  LIST: '/admin/consultations',
+  /** Get a single consultation by ID (tenant-scoped) */
+  GET: (id: string) => `/admin/consultations/${encodeURIComponent(id)}`,
+} as const;
+
+/**
+ * Admin transcription-job endpoints (TASK-319 F3 / TASK-320 A1).
+ *
+ * Tenant-wide transcription-job supervision — class-level `@CanManage('Tenant')`.
+ * Distinct from the owner-scoped end-user `STT_V2_ENDPOINTS.*` reads.
+ * Controller: `apps/api/src/modules/streaming/admin-transcription-job.controller.ts`
+ * (`@Controller('admin/audio/transcription-jobs')`).
+ */
+export const ADMIN_TRANSCRIPTION_JOB_ENDPOINTS = {
+  /** List ALL transcription jobs in the tenant (paginated) */
+  LIST: '/admin/audio/transcription-jobs',
+  /** Tenant-wide job status counts */
+  STATS: '/admin/audio/transcription-jobs/stats',
+  /** Tenant-wide jobs filtered by status */
+  BY_STATUS: (status: string) => `/admin/audio/transcription-jobs/status/${encodeURIComponent(status)}`,
+} as const;
+
+/**
+ * Tenant storage bucket endpoints (TASK-318 / R9).
+ *
+ * Controller: `apps/api/src/modules/tenant-bucket/tenant-bucket.controller.ts`
+ * (`@Controller('admin/tenants/storage/buckets')`, class-level `@CanManage('Tenant')`).
+ * `DEFAULTS` is shared by GET (read defaults) and PUT (set defaults).
+ */
+export const TENANT_BUCKET_ENDPOINTS = {
+  /** List all buckets for the current tenant */
+  LIST: '/admin/tenants/storage/buckets',
+  /** Default bucket per purpose — GET reads, PUT sets (same path) */
+  DEFAULTS: '/admin/tenants/storage/buckets/defaults',
+  /** Get a bucket by ID */
+  GET: (id: string) => `/admin/tenants/storage/buckets/${encodeURIComponent(id)}`,
+  /** Folder/file tree for a bucket (optional `?prefix=`) */
+  TREE: (id: string) => `/admin/tenants/storage/buckets/${encodeURIComponent(id)}/tree`,
+  /** Presigned download URL for a file in a bucket (required `?key=`) */
+  PRESIGNED_URL: (id: string) => `/admin/tenants/storage/buckets/${encodeURIComponent(id)}/presigned-url`,
+  /** Create a custom bucket */
+  CREATE: '/admin/tenants/storage/buckets',
+  /** Delete a custom bucket */
+  DELETE: (id: string) => `/admin/tenants/storage/buckets/${encodeURIComponent(id)}`,
+  /** Provision system buckets for a tenant */
+  PROVISION: (tenantId: string) => `/admin/tenants/storage/buckets/provision/${encodeURIComponent(tenantId)}`,
+} as const;
+
+/**
+ * Tenant storage access-key endpoints (TASK-318 / R9).
+ *
+ * Controller: `apps/api/src/modules/storage-access-key/storage-access-key.controller.ts`
+ * (`@Controller('admin/tenants/storage/keys')`, class-level `@CanManage('Tenant')`).
+ * The CREATE response includes the secret exactly once.
+ */
+export const STORAGE_KEY_ENDPOINTS = {
+  /** List access keys (secrets NOT included) */
+  LIST: '/admin/tenants/storage/keys',
+  /** Generate a new access key (secret shown once; same path as LIST) */
+  CREATE: '/admin/tenants/storage/keys',
+  /** Revoke an access key */
+  DELETE: (id: string) => `/admin/tenants/storage/keys/${encodeURIComponent(id)}`,
+} as const;
+
+/**
+ * Tenant storage config endpoints (TASK-318 / R9).
+ *
+ * Controller: `apps/api/src/modules/tenant-storage-config/tenant-storage-config-admin.controller.ts`
+ * (`@Controller('admin/tenants/storage/config')`, class-level `@CanManage('Tenant')`).
+ * `UPSERT` is a PUT to the same path as `LIST`.
+ */
+export const TENANT_STORAGE_CONFIG_ENDPOINTS = {
+  /** List storage configs (optional `?includeDisabled=true`) */
+  LIST: '/admin/tenants/storage/config',
+  /** Resolve the effective config for a bucket (optional `?bucketId=`) */
+  EFFECTIVE: '/admin/tenants/storage/config/effective',
+  /** Create or update a storage config (PUT, same path as LIST) */
+  UPSERT: '/admin/tenants/storage/config',
+  /** Delete a storage config */
+  DELETE: (id: string) => `/admin/tenants/storage/config/${encodeURIComponent(id)}`,
+} as const;
+
+/**
+ * SMR text-generation proxy endpoints (TASK-318 W3-D).
+ *
+ * Controller: `apps/api/src/modules/streaming/smr-proxy.controller.ts`
+ * (`@Controller('text')`). `GENERATE_ASSEMBLED` runs server-side prompt
+ * assembly (DNA-styled + attachment-aware); `GENERATE` is the raw passthrough.
+ */
+export const SMR_ENDPOINTS = {
+  /** Generate text (raw passthrough; sync or streaming) */
+  GENERATE: '/text/generate',
+  /** Generate text with server-side prompt assembly */
+  GENERATE_ASSEMBLED: '/text/generate/assembled',
+  /** List configured LLM providers */
+  PROVIDERS: '/text/providers',
+  /** Get an SMR task's status */
+  TASK: (id: string) => `/text/tasks/${encodeURIComponent(id)}`,
+  /** Cancel a running SMR task */
+  TASK_CANCEL: (id: string) => `/text/tasks/${encodeURIComponent(id)}/cancel`,
+  /** Stream an SMR task's chunks via SSE */
+  TASK_STREAM: (id: string) => `/text/tasks/${encodeURIComponent(id)}/stream`,
+} as const;
+
 // =============================================================================
 // Plugin Defaults
 // =============================================================================

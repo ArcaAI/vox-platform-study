@@ -12,7 +12,7 @@
 
 import { useMemo, useCallback, useEffect, useRef } from 'react';
 import { useAgenticStore } from '../store';
-import type { Consultation, OpenSessionInput, SessionState, SessionActions, AddContextInput, ContextItem, SummaryResponse } from '../types';
+import type { Consultation, OpenSessionInput, SessionState, SessionActions, AddContextInput, ContextItem, SummaryResponse, UpdateConsultationInput } from '../types';
 import { CONSULTATION_ENDPOINTS, CONTEXT_ENDPOINTS, SUMMARY_ENDPOINTS } from '../core/constants';
 import { SimpleCrossTabSync, createCrossTabSync } from '../core/SimpleCrossTabSync';
 import type { ISDKLogger } from '../core/logger';
@@ -213,6 +213,34 @@ export function useArcaSession(): UseArcaSessionReturn {
   );
 
   /**
+   * Update the current consultation (department / status / metadata) (SES-02).
+   */
+  const update = useCallback(
+    async (input: UpdateConsultationInput): Promise<Consultation> => {
+      const { apiClient, consultation } = store;
+      const logger = getLogger();
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No consultation open. Call open() first.');
+
+      const timer = logger?.startOperation('update', {
+        component: 'useArcaSession',
+        sdk: { consultationId: consultation.id },
+      });
+
+      try {
+        const updated = await apiClient.patch<Consultation>(CONSULTATION_ENDPOINTS.UPDATE(consultation.id), input);
+        store.setConsultation(updated);
+        timer?.end(true);
+        return updated;
+      } catch (error) {
+        timer?.error(error as Error);
+        throw error;
+      }
+    },
+    [store, getLogger],
+  );
+
+  /**
    * Close the current consultation (transition status to CLOSED).
    */
   const close = useCallback(async (): Promise<Consultation> => {
@@ -314,6 +342,7 @@ export function useArcaSession(): UseArcaSessionReturn {
       getPatientHistory,
       loadConsultation,
       loadSummaries,
+      update,
       close,
       reopen,
     }),
@@ -328,6 +357,7 @@ export function useArcaSession(): UseArcaSessionReturn {
       getPatientHistory,
       loadConsultation,
       loadSummaries,
+      update,
       close,
       reopen,
     ],

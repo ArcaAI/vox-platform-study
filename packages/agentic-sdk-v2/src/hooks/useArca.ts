@@ -16,6 +16,7 @@ import {
 import type {
   Consultation,
   OpenSessionInput,
+  UpdateConsultationInput,
   ContextItem,
   ContextFilters,
   MedicalEntity,
@@ -82,6 +83,8 @@ export interface UseArcaSession {
   open: (input: OpenSessionInput) => Promise<Consultation>;
   /** Load a specific consultation by ID */
   load: (id: string) => Promise<Consultation>;
+  /** Update the current consultation (department/status/metadata) (SES-02) */
+  update: (input: UpdateConsultationInput) => Promise<Consultation>;
   /** Find consultations by patient and date */
   findByPatientDate: (patientId: string, date: string) => Promise<Consultation[]>;
   /** Get patient consultation history (SES-06: accepts optional pagination) */
@@ -313,6 +316,34 @@ export function useArca(): UseArcaReturn {
       const { apiClient } = store;
       if (!apiClient) throw new Error('SDK not initialized');
       return loadConsultationOperation(apiClient, store, getLogger(), id);
+    },
+    [store, getLogger],
+  );
+
+  /**
+   * Update the current consultation (department / status / metadata) (SES-02).
+   */
+  const updateConsultation = useCallback(
+    async (input: UpdateConsultationInput): Promise<Consultation> => {
+      const { apiClient, consultation } = store;
+      const logger = getLogger();
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
+
+      const timer = logger?.startOperation('update', {
+        component: 'useArca',
+        sdk: { consultationId: consultation.id },
+      });
+
+      try {
+        const updated = await apiClient.patch<Consultation>(CONSULTATION_ENDPOINTS.UPDATE(consultation.id), input);
+        store.setConsultation(updated);
+        timer?.end(true);
+        return updated;
+      } catch (error) {
+        timer?.error(error as Error);
+        throw error;
+      }
     },
     [store, getLogger],
   );
@@ -1325,6 +1356,7 @@ export function useArca(): UseArcaReturn {
       error: store.sessionError,
       open: openSession,
       load: loadConsultation,
+      update: updateConsultation,
       findByPatientDate,
       getPatientHistory,
       getTimeline,
@@ -1337,6 +1369,7 @@ export function useArca(): UseArcaReturn {
       store.sessionError,
       openSession,
       loadConsultation,
+      updateConsultation,
       findByPatientDate,
       getPatientHistory,
       getTimeline,
