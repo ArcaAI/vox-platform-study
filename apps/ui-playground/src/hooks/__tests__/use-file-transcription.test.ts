@@ -9,7 +9,7 @@ vi.mock('@arcaai/vox', async (importOriginal) => {
         ...actual,
         useArcaStore: vi.fn(),
         FileTranscriptionService: vi.fn().mockImplementation(() => ({
-            uploadAndTranscribe: vi.fn(),
+            uploadAndTranscribeWithProgress: vi.fn(),
             buildJobStreamUrl: vi.fn().mockReturnValue('http://localhost:8868/api/v1/audio/transcription-jobs/job-1/stream'),
             dispose: vi.fn(),
         })),
@@ -44,6 +44,10 @@ let mockStoreState: { apiClient: typeof mockApiClient | null; logger: typeof moc
 
 beforeEach(() => {
     vi.clearAllMocks();
+    // The hook persists in-flight jobs to localStorage (hope:batch-job) and
+    // auto-reconnects on mount. Clear it so a job saved by one test does not
+    // trigger reconnection (and block upload via isReconnecting) in the next.
+    localStorage.clear();
     mockStoreState = {
         apiClient: mockApiClient,
         logger: mockLogger,
@@ -105,7 +109,7 @@ describe('useFileTranscription', () => {
 
         (FileTranscriptionService as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(function () {
             return {
-            uploadAndTranscribe: vi.fn().mockResolvedValue({ id: 'job-fallback-1', status: 'QUEUED' }),
+            uploadAndTranscribeWithProgress: vi.fn().mockResolvedValue({ id: 'job-fallback-1', status: 'QUEUED' }),
             buildJobStreamUrl,
             dispose: vi.fn(),
             };
@@ -137,7 +141,7 @@ describe('useFileTranscription', () => {
     it('should error when upload response is missing job id', async () => {
         (FileTranscriptionService as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(function () {
             return {
-            uploadAndTranscribe: vi.fn().mockRejectedValue(new Error('Invalid transcription response: missing job id')),
+            uploadAndTranscribeWithProgress: vi.fn().mockRejectedValue(new Error('Invalid transcription response: missing job id')),
             buildJobStreamUrl: vi.fn(),
             dispose: vi.fn(),
             };

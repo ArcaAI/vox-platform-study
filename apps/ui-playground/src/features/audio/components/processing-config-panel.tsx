@@ -217,7 +217,12 @@ export function ProcessingConfigPanel() {
                   <SelectContent>
                     {pipelines.map((pipeline) => (
                       <SelectItem key={pipeline.id} value={pipeline.id} className="text-xs">
-                        <span className="block w-full truncate">{pipeline.name}</span>
+                        <span className="flex w-full items-center gap-2">
+                          <span className="truncate">{pipeline.name}</span>
+                          {pipeline.description && (
+                            <span className="text-muted-foreground shrink-0 text-[10px]">({pipeline.description})</span>
+                          )}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -244,7 +249,10 @@ export function ProcessingConfigPanel() {
                 <SelectContent>
                   {asrModelOptions.map((model) => (
                     <SelectItem key={model.id} value={model.id} className="text-xs">
-                      <span className="block w-full truncate">{model.name}</span>
+                      <span className="flex w-full items-center justify-between gap-2">
+                        <span className="truncate">{model.name}</span>
+                        {model.size && <span className="text-muted-foreground shrink-0 text-[10px]">({model.size})</span>}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>

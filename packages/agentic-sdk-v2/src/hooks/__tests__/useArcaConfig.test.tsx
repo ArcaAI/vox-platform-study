@@ -53,11 +53,17 @@ describe('useArcaConfig', () => {
             personalizationManager: mockPersonalizationManager,
             modelRegistry: mockModelRegistry,
             logger: mockLogger,
+            // TASK-297 DEF-C6 — mutations are gated on configReady.
+            configReady: true,
             updatePreferences: vi.fn(),
             setPreferences: vi.fn(),
+            incrementModelRegistryVersion: vi.fn(),
         };
 
-        (useAgenticStore as any).mockReturnValue(mockStore);
+        // TASK-297 DEF-H3 — the hook reads via discrete selectors
+        // (useAgenticStore(selectX)), so apply the selector to the backing
+        // store rather than returning the whole store for every call.
+        (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));
     });
 
     afterEach(() => {
@@ -82,7 +88,7 @@ describe('useArcaConfig', () => {
 
         it('should return empty models when registry not available', () => {
             mockStore.modelRegistry = null;
-            (useAgenticStore as any).mockReturnValue(mockStore);
+            (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));
 
             const { result } = renderHook(() => useArcaConfig());
 
@@ -116,7 +122,7 @@ describe('useArcaConfig', () => {
 
         it('should fallback to local update when manager not available', async () => {
             mockStore.personalizationManager = null;
-            (useAgenticStore as any).mockReturnValue(mockStore);
+            (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));
 
             const { result } = renderHook(() => useArcaConfig());
 
@@ -142,7 +148,7 @@ describe('useArcaConfig', () => {
 
         it('should do nothing when manager not available', async () => {
             mockStore.personalizationManager = null;
-            (useAgenticStore as any).mockReturnValue(mockStore);
+            (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));
 
             const { result } = renderHook(() => useArcaConfig());
 
@@ -167,7 +173,7 @@ describe('useArcaConfig', () => {
 
         it('should do nothing when registry not available', () => {
             mockStore.modelRegistry = null;
-            (useAgenticStore as any).mockReturnValue(mockStore);
+            (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));
 
             const { result } = renderHook(() => useArcaConfig());
 
