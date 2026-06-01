@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
-import { adminClient } from './admin-client';
+import { adminClient, type PaginatedResponse } from './admin-client';
 
 // ---------------------------------------------------------------------------
 // Types — aligned with backend AuditLogResponse
@@ -31,13 +31,6 @@ export interface AuditLogParams {
   search?: string;
   filters?: string;
   sort?: string;
-}
-
-interface PaginatedResponse<T> {
-  data: T[];
-  count: number;
-  limit: number;
-  page: number;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
-import { adminClient } from './admin-client';
+import { adminClient, type PaginatedResponse } from './admin-client';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -86,13 +86,6 @@ export interface AssignDepartmentPromptInput {
   departmentId: string;
   promptTemplateId: string;
   field: DepartmentPromptField;
-}
-
-interface PaginatedResponse<T> {
-  data: T[];
-  count: number;
-  limit: number;
-  page: number;
 }
 
 interface PromptListParams {
