@@ -215,6 +215,8 @@ export interface SessionActions {
   getPatientHistory: (patientId: string) => Promise<Consultation[]>;
   /** Load a specific consultation (for viewing history) */
   loadConsultation: (consultationId: string) => Promise<Consultation>;
+  /** Update the current consultation (department/status/metadata) (SES-02) */
+  update: (input: UpdateConsultationInput) => Promise<Consultation>;
   /** Close the current consultation (sets status to CLOSED) */
   close: () => Promise<Consultation>;
   /** Reopen a previously closed consultation (sets status to OPEN) */

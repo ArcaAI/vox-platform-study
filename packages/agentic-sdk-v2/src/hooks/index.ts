@@ -91,6 +91,32 @@ export type { Policy, CreatePolicyInput, UpdatePolicyInput } from './usePolicies
 export { useAuditLog, type UseAuditLogReturn } from './useAuditLog';
 export type { AuditLogEntry } from './useAuditLog';
 
+// Admin consultation supervision hook (TASK-323 Phase 0 / TASK-320 A1)
+export { useAdminConsultations, type UseAdminConsultationsReturn } from './useAdminConsultations';
+export type { AdminConsultation, AdminConsultationListParams } from './useAdminConsultations';
+
+// Admin transcription-job supervision hook (TASK-323 Phase 0 / TASK-320 A1)
+export { useAdminTranscriptionJobs, type UseAdminTranscriptionJobsReturn } from './useAdminTranscriptionJobs';
+export type { AdminTranscriptionJob, AdminTranscriptionJobStats } from './useAdminTranscriptionJobs';
+
+// Tenant storage bucket management hook (TASK-323 Phase 0 / TASK-318 R9)
+export { useTenantBuckets, type UseTenantBucketsReturn } from './useTenantBuckets';
+export type {
+  TenantBucket,
+  TenantBucketTree,
+  TenantBucketDefaults,
+  CreateTenantBucketInput,
+  SetTenantBucketDefaultsInput,
+} from './useTenantBuckets';
+
+// Tenant storage access-key management hook (TASK-323 Phase 0 / TASK-318 R9)
+export { useStorageKeys, type UseStorageKeysReturn } from './useStorageKeys';
+export type { StorageKey, StorageKeyWithSecret, CreateStorageKeyInput } from './useStorageKeys';
+
+// Tenant storage config management hook (TASK-323 Phase 0 / TASK-318 R9)
+export { useTenantStorageConfig, type UseTenantStorageConfigReturn } from './useTenantStorageConfig';
+export type { TenantStorageConfig, ListTenantStorageConfigParams, UpsertTenantStorageConfigInput } from './useTenantStorageConfig';
+
 // Shared connection management (multi-tab)
 export {
   useSharedConnection,
