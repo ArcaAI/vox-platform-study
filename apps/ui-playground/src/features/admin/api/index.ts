@@ -6,7 +6,7 @@ export {
   useDeleteTenant,
   useTenant,
   useTenantConfigs,
-  useTenants,
+  useAdminTenants,
   useTenantsInfinite,
   useTenantUsage,
   useToggleTenantStatus,

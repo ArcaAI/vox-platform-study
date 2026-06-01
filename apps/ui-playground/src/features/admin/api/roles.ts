@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
-import { adminClient } from './admin-client';
+import { adminClient, type PaginatedResponse } from './admin-client';
 
 // ---------------------------------------------------------------------------
 // Types — aligned with backend RoleResponse / RolesController
@@ -50,13 +50,6 @@ export interface CreateUserRoleAssignmentInput {
   userId: string;
   roleId: string;
   tenantId?: string;
-}
-
-interface PaginatedResponse<T> {
-  data: T[];
-  count: number;
-  limit: number;
-  page: number;
 }
 
 interface PaginationParams {

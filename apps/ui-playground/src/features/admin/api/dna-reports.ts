@@ -3,15 +3,8 @@ import { useCallback } from 'react';
 
 import type { DnaReport, DnaReportData, DnaStyleVersion } from '@/features/dna-writing-style/api/dna-writing-styles';
 
-import { adminClient } from './admin-client';
+import { adminClient, type PaginatedResponse } from './admin-client';
 import type { AdminUser } from './users';
-
-interface PaginatedResponse<T> {
-  data: T[];
-  count: number;
-  limit: number;
-  page: number;
-}
 
 export interface TenantDnaReportData {
   users: AdminUser[];
