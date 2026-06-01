@@ -11,7 +11,7 @@ import { Key, Building2 } from 'lucide-react';
 
 const apiKeySchema = z.object({
   apiKey: z.string().min(1, 'API key is required'),
-  tenantId: z.string().min(1, 'Tenant ID is required'),
+  tenantId: z.string().uuid('Must be a valid tenant UUID'),
 });
 
 type ApiKeyFormValues = z.infer<typeof apiKeySchema>;

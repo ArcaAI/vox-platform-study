@@ -92,7 +92,7 @@ variables:
   # ── Manual skip controls ────────────────────────────────────────────────────
   # Set any of these to "true" when running a pipeline to skip stages:
   #   SKIP_TESTS       — skip ALL test jobs
-  #   SKIP_TESTS_TS    — skip TypeScript test jobs (test-api, test-packages, test-sdk)
+  #   SKIP_TESTS_TS    — skip TypeScript test jobs (test-api, test-packages, test-sdk, test-apps, test-ui-ct)
   #   SKIP_TESTS_PY    — skip Python test jobs (test-stt-v2, test-smr, test-nlp)
   #
   # Usage:

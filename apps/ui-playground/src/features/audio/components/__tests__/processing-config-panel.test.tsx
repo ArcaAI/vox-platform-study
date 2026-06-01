@@ -184,7 +184,7 @@ const defaultStoreState = {
     diarizationEnabled: false,
     codeSwitchingEnabled: false,
     whisperModel: 'whisper-tiny',
-    availableAudioModels: [
+    availableAsrModels: [
         { id: 'whisper-tiny', name: 'Whisper Tiny', size: '~75 MB' },
         { id: 'whisper-base', name: 'Whisper Base', size: '~150 MB' },
         { id: 'whisper-small', name: 'Whisper Small', size: '~500 MB' },
@@ -469,24 +469,21 @@ describe('ProcessingConfigPanel', () => {
             renderPanel({ processingMethod: 'local_ai' });
 
             expect(screen.getByText('English')).toBeInTheDocument();
+            expect(screen.getByText('Vietnamese')).toBeInTheDocument();
+            expect(screen.getByText('Malayalam')).toBeInTheDocument();
             expect(screen.getByText('Hindi')).toBeInTheDocument();
             expect(screen.getByText('Tamil')).toBeInTheDocument();
-            expect(screen.getByText('Malayalam')).toBeInTheDocument();
-            expect(screen.getByText('Spanish')).toBeInTheDocument();
-            expect(screen.getByText('French')).toBeInTheDocument();
-            expect(screen.getByText('German')).toBeInTheDocument();
-            expect(screen.getByText('Thai')).toBeInTheDocument();
         });
 
         it('should call setUserPreference and setLanguage on language change', () => {
             renderPanel({ processingMethod: 'local_ai' });
 
             const languageCard = screen.getByText('Language').closest<HTMLElement>('[data-testid="card"]')!;
-            const frenchItem = within(languageCard).getByText('French');
-            fireEvent.click(frenchItem);
+            const vietnameseItem = within(languageCard).getByText('Vietnamese');
+            fireEvent.click(vietnameseItem);
 
-            expect(mockSetUserPreference).toHaveBeenCalledWith('stt.language', 'fr');
-            expect(mockSetLanguage).toHaveBeenCalledWith('fr');
+            expect(mockSetUserPreference).toHaveBeenCalledWith('stt.language', 'vi');
+            expect(mockSetLanguage).toHaveBeenCalledWith('vi');
         });
 
         it('should NOT call setLanguage when setUserPreference returns false', () => {
@@ -494,10 +491,10 @@ describe('ProcessingConfigPanel', () => {
             renderPanel({ processingMethod: 'local_ai' });
 
             const languageCard = screen.getByText('Language').closest<HTMLElement>('[data-testid="card"]')!;
-            const frenchItem = within(languageCard).getByText('French');
-            fireEvent.click(frenchItem);
+            const vietnameseItem = within(languageCard).getByText('Vietnamese');
+            fireEvent.click(vietnameseItem);
 
-            expect(mockSetUserPreference).toHaveBeenCalledWith('stt.language', 'fr');
+            expect(mockSetUserPreference).toHaveBeenCalledWith('stt.language', 'vi');
             expect(mockSetLanguage).not.toHaveBeenCalled();
         });
     });
@@ -840,7 +837,8 @@ describe('ProcessingConfigPanel', () => {
             renderPanel({ processingMethod: 'local_ai' });
 
             expect(screen.queryByText('Audio Pipeline')).not.toBeInTheDocument();
-            expect(screen.queryByTestId('select-root')).not.toBeInTheDocument();
+            // The pipeline select is gone in local_ai mode; only the model + language selects remain.
+            expect(screen.getAllByTestId('select-root')).toHaveLength(2);
         });
 
         it('should disable pipeline select when isCapturing is true', () => {

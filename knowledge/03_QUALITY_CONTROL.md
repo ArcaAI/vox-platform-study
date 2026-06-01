@@ -222,7 +222,7 @@ packages/agentic-sdk-v2/
 │   │   └── AgenticProvider.test.tsx  # Initialization, context provision
 │   └── store/__tests__/              # State management tests
 │       └── agenticStore.test.ts      # Zustand store actions and selectors
-└── vitest.config.mts                 # SDK-specific Vitest config
+└── vitest.config.ts                  # SDK-specific Vitest config
 ```
 
 ### Test Categories
@@ -256,9 +256,9 @@ Shared utilities in `src/__tests__/setup.ts`:
 
 ```bash
 cd packages/agentic-sdk-v2
-pnpm vitest run --config vitest.config.mts            # All tests
-pnpm vitest --config vitest.config.mts                # Watch mode
-pnpm vitest run --config vitest.config.mts --coverage  # With coverage
+pnpm test            # All tests (vitest run, vitest.config.ts)
+pnpm test:watch      # Watch mode
+pnpm vitest run --coverage  # With coverage
 ```
 
 ---

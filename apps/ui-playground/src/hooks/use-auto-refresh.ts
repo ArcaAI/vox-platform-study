@@ -74,9 +74,13 @@ export function useAutoRefresh(): void {
       useAuthStore.getState().startImpersonation(impersonatedUser, data.token, tenantId);
       return true;
     } catch {
+      // Re-impersonation failed: end impersonation and continue as the base
+      // admin (whose token was just refreshed). This is a successful recovery
+      // — the original request should be retried with the admin token — so
+      // return true rather than forcing a logout.
       useAuthStore.getState().endImpersonation();
       client.updateAccessToken(freshAdminToken);
-      return false;
+      return true;
     }
   }, []);
 

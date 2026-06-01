@@ -21,7 +21,7 @@
 
 # ── Skip controls ────────────────────────────────────────────────────────────
 # Set SKIP_TESTS=true to skip ALL test jobs, or use the granular variants:
-#   SKIP_TESTS_TS — skip TypeScript tests (test-api, test-packages, test-sdk)
+#   SKIP_TESTS_TS — skip TypeScript tests (test-api, test-packages, test-sdk, test-apps, test-ui-ct)
 #   SKIP_TESTS_PY — skip Python tests (test-stt-v2, test-smr, test-nlp)
 #
 # Usage:
@@ -120,7 +120,11 @@ test-packages:
     # `updateWithVersion.postgres.test.ts` file exercises a live Postgres and
     # asserts the `_version` predicate is emitted verbatim by the driver
     # (defense against Prisma #10207 / #28840 on a future driver migration).
-    - pnpm turbo test --filter=@arcaai/logger --filter=@arcaai/utils --filter=@arcaai/pipeline --filter=@arcaai/domains
+    # TASK-324 — `@arcaai/applications` (180 unit specs, mocked repositories) is
+    # included so the application-service layer is exercised in CI, matching the
+    # local `pnpm test` (turbo) fan-out. Its workspace deps (exceptions/logger/
+    # domains) are built above.
+    - pnpm turbo test --filter=@arcaai/logger --filter=@arcaai/utils --filter=@arcaai/pipeline --filter=@arcaai/domains --filter=@arcaai/applications
   rules:
     - if: $SKIP_TESTS == "true"
       when: never
@@ -185,6 +189,92 @@ test-sdk:
         - packages/noise-filter/**/*
         - packages/agentic-sdk-v2/**/*
         - packages/med-ner/**/*
+
+# ── App tests (ui-playground — Vitest / jsdom) ──────────────────────────────
+#
+# TASK-324 — apps/ui-playground (61 files / 687 Vitest specs) previously ran in
+# neither the root config nor CI. It now runs via the turbo fan-out so the local
+# `pnpm test` set matches CI. The SDK/UI workspace deps it imports are built by
+# turbo (the `test` task dependsOn `build`); no browser or external infra needed.
+
+test-apps:
+  stage: test
+  extends: .test-node-base
+  needs:
+    - job: install-node
+      optional: true
+    - job: lint-ts
+      optional: true
+      artifacts: false
+  variables:
+    <<: *test-env-vars
+  script:
+    - pnpm turbo test --filter=@arcaai/ui-playground
+  rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_TS == "true"
+      when: never
+    - !reference [.rules-ui-playground, rules]
+
+# ── UI component tests (Playwright Component Testing) ───────────────────────
+#
+# TASK-324 — @arcaai/ui ships 84 Playwright-CT specs (1729 cases) that mount
+# components in a real browser. They need the Playwright browser image, so this
+# job is gated on packages/ui changes and kept NON-BLOCKING (`allow_failure`)
+# initially to avoid blocking MRs on browser-runner cost/flakiness. Flip
+# `allow_failure` to false once it has proven stable on the integration branches.
+# In CI the CT config runs Chromium + Firefox + WebKit (all preinstalled in the
+# image) for cross-browser coverage.
+
+test-ui-ct:
+  stage: test
+  image: mcr.microsoft.com/playwright:v1.58.0-noble
+  tags: [test]
+  allow_failure: true
+  cache:
+    - key:
+        files:
+          - pnpm-lock.yaml
+      paths:
+        - node_modules/
+        - apps/*/node_modules/
+        - packages/*/node_modules/
+      policy: pull
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@latest --activate
+    - pnpm config set store-dir /pnpm-store
+    - pnpm install --frozen-lockfile --prefer-offline
+  needs:
+    - job: install-node
+      optional: true
+    - job: lint-ts
+      optional: true
+      artifacts: false
+  script:
+    - pnpm --filter @arcaai/ui test:ct
+  artifacts:
+    when: on_failure
+    paths:
+      - packages/ui/test-results/
+    expire_in: 30 days
+  rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_TS == "true"
+      when: never
+    - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - packages/ui/**/*
+        compare_to: refs/heads/main
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
+      changes:
+        - packages/ui/**/*
 
 # ── STT-v2 tests (pytest) ───────────────────────────────────────────────────
 

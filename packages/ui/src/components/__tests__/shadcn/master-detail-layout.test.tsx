@@ -13,6 +13,10 @@ import {
   type MasterDetailColumnDefinition,
   type MasterDetailColumnState,
 } from '../../shadcn/master-detail-layout'
+import {
+  FruitMasterDetail,
+  InteractiveFruitMasterDetail,
+} from '../fixtures/shadcn/master-detail-layout-fixtures'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -254,19 +258,7 @@ test.describe('MasterDetailLayout', () => {
   })
 
   test('renders items in list column', async ({ mount, page }) => {
-    const columns: MasterDetailColumnDefinition<FruitItem>[] = [fruitColumn]
-    const states: MasterDetailColumnState<FruitItem>[] = [
-      {
-        data: fruits,
-        isLoading: false,
-        selectedId: null,
-        onSelect: () => {},
-      },
-    ]
-
-    await mount(
-      <MasterDetailLayout columns={columns} states={states} />
-    )
+    await mount(<FruitMasterDetail />)
 
     const items = page.locator('[data-slot="master-detail-item"]')
     await expect(items).toHaveCount(3)
@@ -348,19 +340,7 @@ test.describe('MasterDetailLayout', () => {
   })
 
   test('marks selected item with data-selected', async ({ mount, page }) => {
-    const columns: MasterDetailColumnDefinition<FruitItem>[] = [fruitColumn]
-    const states: MasterDetailColumnState<FruitItem>[] = [
-      {
-        data: fruits,
-        isLoading: false,
-        selectedId: 'banana',
-        onSelect: () => {},
-      },
-    ]
-
-    await mount(
-      <MasterDetailLayout columns={columns} states={states} />
-    )
+    await mount(<FruitMasterDetail selectedId="banana" />)
 
     const selected = page.locator(
       '[data-slot="master-detail-item"][data-selected="true"]'
@@ -370,25 +350,12 @@ test.describe('MasterDetailLayout', () => {
   })
 
   test('calls onSelect when item is clicked', async ({ mount, page }) => {
-    let selectedId = ''
-    const columns: MasterDetailColumnDefinition<FruitItem>[] = [fruitColumn]
-    const states: MasterDetailColumnState<FruitItem>[] = [
-      {
-        data: fruits,
-        isLoading: false,
-        selectedId: null,
-        onSelect: (id) => {
-          selectedId = id
-        },
-      },
-    ]
-
-    await mount(
-      <MasterDetailLayout columns={columns} states={states} />
-    )
+    await mount(<InteractiveFruitMasterDetail />)
 
     await page.locator('[data-testid="fruits-item-cherry"]').click()
-    expect(selectedId).toBe('cherry')
+    await expect(page.locator('[data-testid="selected-fruit"]')).toHaveText(
+      'cherry'
+    )
   })
 
   test('renders column headers with title and description', async ({

@@ -73,6 +73,68 @@ vi.mock('@arcaai/ui/skeleton', () => ({
 vi.mock('@arcaai/ui/separator', () => ({
   Separator: (props: any) => <hr {...props} />,
 }))
+vi.mock('@arcaai/ui/switch', () => ({
+  Switch: ({ checked, onCheckedChange, size, ...props }: any) => (
+    <button type="button" data-testid="switch" {...props} />
+  ),
+}))
+
+// The ui-playground vitest config stubs every @arcaai/ui/* import, so the
+// MultiColumnLayout primitive must be mocked here. This lightweight mock
+// drives the same callbacks/render-props the real component exposes and emits
+// the data-testids these tests assert on (`<id>-column`, `report-item-*`,
+// `version-item-*`, `detail-column`).
+vi.mock('@arcaai/ui/multi-column-layout', () => {
+  const renderColumn = (col: any, state: any, itemTestIdPrefix: string) => {
+    let body: any
+    if (state.isLoading) {
+      body = Array.from({ length: col.skeletonCount ?? 3 }).map((_, i) => <div key={`sk-${i}`} data-testid="skeleton" />)
+    } else if (state.enabled === false || (state.data?.length ?? 0) === 0) {
+      body = (
+        <div>
+          <p>{col.emptyTitle}</p>
+          <p>{col.emptyDescription}</p>
+        </div>
+      )
+    } else {
+      body = state.data.map((item: any) => {
+        const key = col.keyExtractor(item)
+        return (
+          <div
+            key={key}
+            data-testid={`${itemTestIdPrefix}-${key}`}
+            className={state.selectedId === key ? 'bg-accent' : ''}
+            onClick={() => state.onSelect?.(key)}
+          >
+            {col.renderItem(item)}
+          </div>
+        )
+      })
+    }
+    return (
+      <div data-testid={`${col.id}-column`}>{body}</div>
+    )
+  }
+
+  return {
+    MultiColumnLayout: ({ columns, columnStates, detailColumn, detailState }: any) => (
+      <div data-testid="multi-column-layout">
+        {renderColumn(columns[0], columnStates[0], 'report-item')}
+        {renderColumn(columns[1], columnStates[1], 'version-item')}
+        <div data-testid="detail-column">
+          {detailState?.hasSelection ? (
+            detailState.content
+          ) : (
+            <div>
+              <p>{detailColumn?.emptyTitle}</p>
+              <p>{detailColumn?.emptyDescription}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    ),
+  }
+})
 
 describe('AllReportsPanel', () => {
   describe('Column 1 — Reports List', () => {

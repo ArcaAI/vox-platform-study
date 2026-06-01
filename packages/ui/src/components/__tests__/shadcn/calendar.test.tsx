@@ -112,9 +112,11 @@ test.describe('Calendar', () => {
       page,
     }) => {
       await mount(<Calendar showOutsideDays={false} />)
-      const outsideDays = page.locator('.rdp-outside')
-      const count = await outsideDays.count()
-      expect(count).toBe(0)
+      // react-day-picker v9 keeps outside-day cells in the DOM but applies the
+      // `hidden` modifier (mapped to Tailwind `invisible`), so assert none are
+      // actually visible rather than absent from the DOM.
+      const visibleOutsideDays = page.locator('.rdp-outside:visible')
+      await expect(visibleOutsideDays).toHaveCount(0)
     })
   })
 
