@@ -15,6 +15,8 @@ import { ChevronRight } from 'lucide-react';
 import { Link, useLocation, useMatchRoute } from '@tanstack/react-router';
 
 export interface NavItem {
+  /** Stable identity used for persisted menu ordering (TASK-327). */
+  id?: string;
   title: string;
   url: string;
   icon?: React.ComponentType<{ className?: string }>;

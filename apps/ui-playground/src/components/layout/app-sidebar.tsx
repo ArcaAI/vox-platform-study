@@ -1,27 +1,10 @@
+import { useAdminPreferences } from '@/features/admin/hooks/use-admin-preferences';
 import { useAuthStore } from '@/store/auth-store';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail } from '@arcaai/ui/sidebar';
-import {
-  BookOpen,
-  Brain,
-  Building2,
-  Database,
-  Dna,
-  Download,
-  FileText,
-  Fingerprint,
-  HardDrive,
-  Headphones,
-  Hospital,
-  LayoutDashboard,
-  MessageSquare,
-  ScrollText,
-  Settings,
-  Settings2,
-  Users,
-  Workflow,
-  Zap,
-} from 'lucide-react';
+import { BookOpen, Brain, Dna, Download, FileText, Fingerprint, Headphones, LayoutDashboard, MessageSquare, Zap } from 'lucide-react';
 import { useMemo } from 'react';
+import { buildAdminNavItems } from './admin-nav-items';
+import { DraggableNavGroup } from './draggable-nav-group';
 import { NavGroup, type NavItem } from './nav-group';
 import { NavUser } from './nav-user';
 
@@ -89,91 +72,18 @@ const playgroundItems: NavItem[] = [
 ];
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
-  const isSuperAdmin = useAuthStore((s) => s.user?.roles?.includes('SUPER_ADMIN') ?? false);
-  const canAccessDnaReports = useAuthStore((s) => {
+  // TASK-327 T5 — scope, not visibility. Any admin (SA/GA/TA) sees the full
+  // admin menu; per-tenant data scoping is enforced server-side via
+  // X-Tenant-Id. Prisma Studio remains global-scope only.
+  const isAdmin = useAuthStore((s) => {
     const roles = s.user?.roles;
     if (!roles) return false;
     return roles.includes('SUPER_ADMIN') || roles.includes('GLOBAL_ADMIN') || roles.includes('TENANT_ADMIN');
   });
+  const isGlobalScope = useAuthStore((s) => s.isGlobalScope());
+  const { order, reorder } = useAdminPreferences();
 
-  const adminItems = useMemo<NavItem[]>(() => {
-    const items: NavItem[] = [
-      {
-        title: 'Overview',
-        url: '/',
-        icon: Settings,
-      },
-    ];
-
-    if (canAccessDnaReports) {
-      items.push({
-        title: 'DNA Reports',
-        url: '/admin/dna-reports',
-        icon: Dna,
-        badge: 'NEW',
-      });
-    }
-
-    if (isSuperAdmin) {
-      items.push(
-        {
-          title: 'Tenants',
-          url: '/admin/tenants',
-          icon: Building2,
-        },
-        {
-          title: 'Users',
-          url: '/admin/users',
-          icon: Users,
-        },
-        {
-          title: 'Prompts',
-          url: '/admin/prompts',
-          icon: FileText,
-          badge: 'NEW',
-        },
-        {
-          title: 'Departments',
-          url: '/admin/departments',
-          icon: Hospital,
-          badge: 'NEW',
-        },
-        {
-          title: 'Audio Pipelines',
-          url: '/admin/audio-pipelines',
-          icon: Workflow,
-          badge: 'NEW',
-        },
-        {
-          title: 'Prisma Studio',
-          url: '/admin/studio',
-          icon: Database,
-        },
-      );
-    }
-
-    if (canAccessDnaReports) {
-      items.push(
-        {
-          title: 'Storage',
-          url: '/admin/storage',
-          icon: HardDrive,
-        },
-        {
-          title: 'Configurations',
-          url: '/admin/configurations',
-          icon: Settings2,
-        },
-        {
-          title: 'Audit Logs',
-          url: '/admin/audit-logs',
-          icon: ScrollText,
-        },
-      );
-    }
-
-    return items;
-  }, [canAccessDnaReports, isSuperAdmin]);
+  const adminItems = useMemo(() => buildAdminNavItems({ isAdmin, isGlobalScope, order }), [isAdmin, isGlobalScope, order]);
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -189,7 +99,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <NavGroup label="Administration" items={adminItems} />
+        <DraggableNavGroup label="Administration" items={adminItems} onReorder={reorder} />
         <NavGroup label="Playground" items={playgroundItems} />
         <NavGroup label="Documents" items={documentItems} />
       </SidebarContent>

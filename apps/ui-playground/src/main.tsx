@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client';
 import { ErrorBoundary } from './components/error-boundary';
 import './index.css';
 import { createAppQueryClient } from './lib/query-client';
+import { ScopeSyncInit } from './providers/scope-sync';
 import { SDKProvider } from './providers/sdk-provider';
 import { ThemeProvider } from './providers/theme-provider';
 import { routeTree } from './routeTree.gen';
@@ -60,6 +61,7 @@ function App() {
       <ErrorBoundary>
         <ThemeProvider>
           <QueryClientProvider client={queryClient}>
+            <ScopeSyncInit />
             <SDKProvider>
               <Suspense fallback={<AppSkeleton />}>
                 <InnerApp />
