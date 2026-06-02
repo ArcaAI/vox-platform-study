@@ -166,7 +166,13 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       await this.updateEntity(report, { resourceStatus: dto.resourceStatus });
     }
 
-    const updated = await this.dnaReportRepository.update(reportId, report);
+    // TASK-326 X7 / D-2 — final write is a Compare-And-Set against the report
+    // row's `_version` OCC column. `dto.expectedVersion` (folded from the
+    // admin route's required `If-Match` header) is the CAS predicate input;
+    // on version drift the repository throws `OptimisticConcurrencyException`
+    // → HTTP 412. This `_version` token is DISTINCT from the DNA domain's
+    // `currentVersionNumber` / `DnaVersion` history bumped above.
+    const updated = await this.dnaReportRepository.updateWithVersion(reportId, report, dto.expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: reportId,

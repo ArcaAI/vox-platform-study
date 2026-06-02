@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { JobQueue, ResourceStatusType } from '@arcaai/domains';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { DnaWritingStyleService } from '../dna-writing-style.service';
 
 // ─── Mock Factories ─────────────────────────────────────────────────
@@ -38,6 +39,10 @@ const createMockDnaReportRepository = () => ({
     findAll: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    // TASK-326 X7 / D-2 — `updateDnaReport` now writes via Compare-And-Set
+    // (`updateWithVersion`). Legacy `.update` stays on the mock for assertions
+    // that confirm it is NOT called.
+    updateWithVersion: vi.fn(),
     $: vi.fn(),
 });
 
@@ -311,10 +316,59 @@ describe('DnaWritingStyleService', () => {
     // ─── updateDnaReport ────────────────────────────────────────
 
     describe('updateDnaReport', () => {
+        // ─── TASK-326 X7 / D-2 — optimistic concurrency control ──────────
+        // The final persistence write is a Compare-And-Set against the row's
+        // `_version` OCC token (DISTINCT from `currentVersionNumber` / the
+        // DnaVersion history). The admin PATCH route folds the `If-Match`
+        // header onto `dto.expectedVersion`, which is the CAS predicate input.
+        it('writes via Compare-And-Set (updateWithVersion) carrying the DTO expectedVersion (TASK-326 X7 / D-2)', async () => {
+            const existing = createMockReportEntity({ currentVersionNumber: 1 });
+            mockReportRepo.findById.mockResolvedValue(existing);
+            mockReportRepo.updateWithVersion.mockResolvedValue(
+                createMockReportEntity({ currentVersionNumber: 2, styleText: 'Updated' }),
+            );
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 2 }));
+
+            await service.updateDnaReport('report-id-1', {
+                styleText: 'Updated style',
+                changeReason: 'Refined analysis',
+                expectedVersion: 7,
+            });
+
+            expect(mockReportRepo.updateWithVersion).toHaveBeenCalledWith('report-id-1', existing, 7);
+            // CAS-only — the legacy non-versioned write MUST NOT fire.
+            expect(mockReportRepo.update).not.toHaveBeenCalled();
+        });
+
+        it('propagates OptimisticConcurrencyException from the repository CAS write (TASK-326 X7 / D-2)', async () => {
+            // On version drift the repository CAS predicate matches 0 rows and
+            // throws; the service must surface it unwrapped so the API layer
+            // maps it to 412 Precondition Failed. No ResourceUpdated SysEvent
+            // may fire for a write that never landed.
+            const existing = createMockReportEntity({ currentVersionNumber: 1 });
+            mockReportRepo.findById.mockResolvedValue(existing);
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 2 }));
+            mockReportRepo.updateWithVersion.mockRejectedValue(
+                new OptimisticConcurrencyException('DnaWritingStyleReport', 'report-id-1', {
+                    expectedVersion: 7,
+                    currentVersion: 8,
+                }),
+            );
+
+            await expect(
+                service.updateDnaReport('report-id-1', { styleText: 'Stale write', expectedVersion: 7 }),
+            ).rejects.toThrow(OptimisticConcurrencyException);
+
+            expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+                'SysEvent.ResourceUpdated',
+                expect.anything(),
+            );
+        });
+
         it('should create version snapshot and increment version', async () => {
             const existing = createMockReportEntity({ currentVersionNumber: 1 });
             mockReportRepo.findById.mockResolvedValue(existing);
-            mockReportRepo.update.mockResolvedValue(
+            mockReportRepo.updateWithVersion.mockResolvedValue(
                 createMockReportEntity({ currentVersionNumber: 2, styleText: 'Updated' }),
             );
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 2 }));
@@ -391,7 +445,7 @@ describe('DnaWritingStyleService', () => {
                 doctorId: 'user-id-1',
             });
             mockReportRepo.findById.mockResolvedValue(ownReport);
-            mockReportRepo.update.mockResolvedValue(ownReport);
+            mockReportRepo.updateWithVersion.mockResolvedValue(ownReport);
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
 
             const result = await service.updateDnaReport('report-mine', { styleText: 'Updated' });
@@ -406,7 +460,7 @@ describe('DnaWritingStyleService', () => {
                 doctorId: 'other-doctor-id',
             });
             mockReportRepo.findById.mockResolvedValue(otherDoctorReport);
-            mockReportRepo.update.mockResolvedValue(otherDoctorReport);
+            mockReportRepo.updateWithVersion.mockResolvedValue(otherDoctorReport);
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
 
             const result = await service.updateDnaReport(
@@ -449,7 +503,7 @@ describe('DnaWritingStyleService', () => {
                 styleText: 'Original style',
             });
             mockReportRepo.findById.mockResolvedValue(existing);
-            mockReportRepo.update.mockResolvedValue(existing);
+            mockReportRepo.updateWithVersion.mockResolvedValue(existing);
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
 
             await service.updateDnaReport('report-id-1', {});
@@ -464,7 +518,7 @@ describe('DnaWritingStyleService', () => {
                 styleText: 'Original',
             });
             mockReportRepo.findById.mockResolvedValue(existing);
-            mockReportRepo.update.mockResolvedValue(
+            mockReportRepo.updateWithVersion.mockResolvedValue(
                 createMockReportEntity({
                     reportData: { formality: 'low', tone: 'casual' },
                     styleText: 'Updated style',
@@ -489,7 +543,7 @@ describe('DnaWritingStyleService', () => {
                 styleText: 'Original style',
             });
             mockReportRepo.findById.mockResolvedValue(existing);
-            mockReportRepo.update.mockResolvedValue(existing);
+            mockReportRepo.updateWithVersion.mockResolvedValue(existing);
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
 
             await service.updateDnaReport('report-id-1', { styleText: 'New style' });
@@ -504,7 +558,7 @@ describe('DnaWritingStyleService', () => {
                 styleText: 'Original style',
             });
             mockReportRepo.findById.mockResolvedValue(existing);
-            mockReportRepo.update.mockResolvedValue(existing);
+            mockReportRepo.updateWithVersion.mockResolvedValue(existing);
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
 
             await service.updateDnaReport('report-id-1', {
@@ -518,7 +572,7 @@ describe('DnaWritingStyleService', () => {
         it('should increment version from null to 1', async () => {
             const existing = createMockReportEntity({ currentVersionNumber: null });
             mockReportRepo.findById.mockResolvedValue(existing);
-            mockReportRepo.update.mockResolvedValue(
+            mockReportRepo.updateWithVersion.mockResolvedValue(
                 createMockReportEntity({ currentVersionNumber: 1 }),
             );
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 1 }));
@@ -532,7 +586,7 @@ describe('DnaWritingStyleService', () => {
 
         it('should broadcast ResourceUpdated event', async () => {
             mockReportRepo.findById.mockResolvedValue(createMockReportEntity());
-            mockReportRepo.update.mockResolvedValue(createMockReportEntity());
+            mockReportRepo.updateWithVersion.mockResolvedValue(createMockReportEntity());
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
 
             await service.updateDnaReport('report-id-1', {
@@ -557,7 +611,7 @@ describe('DnaWritingStyleService', () => {
                 currentVersionNumber: 3,
             });
             mockReportRepo.findById.mockResolvedValue(existing);
-            mockReportRepo.update.mockResolvedValue(
+            mockReportRepo.updateWithVersion.mockResolvedValue(
                 createMockReportEntity({ ...existing, resourceStatus: 'DISABLED' }),
             );
 
@@ -578,7 +632,7 @@ describe('DnaWritingStyleService', () => {
                 currentVersionNumber: 2,
             });
             mockReportRepo.findById.mockResolvedValue(existing);
-            mockReportRepo.update.mockResolvedValue(
+            mockReportRepo.updateWithVersion.mockResolvedValue(
                 createMockReportEntity({ ...existing, resourceStatus: 'ENABLED' }),
             );
 
@@ -598,7 +652,7 @@ describe('DnaWritingStyleService', () => {
                 currentVersionNumber: 1,
             });
             mockReportRepo.findById.mockResolvedValue(existing);
-            mockReportRepo.update.mockResolvedValue(
+            mockReportRepo.updateWithVersion.mockResolvedValue(
                 createMockReportEntity({ currentVersionNumber: 2, resourceStatus: 'DISABLED' }),
             );
             mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 2 }));
@@ -619,7 +673,7 @@ describe('DnaWritingStyleService', () => {
                 resourceStatus: 'ENABLED',
             });
             mockReportRepo.findById.mockResolvedValue(otherDoctorReport);
-            mockReportRepo.update.mockResolvedValue(
+            mockReportRepo.updateWithVersion.mockResolvedValue(
                 createMockReportEntity({ ...otherDoctorReport, resourceStatus: 'DISABLED' }),
             );
 
@@ -1133,7 +1187,7 @@ describe('DnaWritingStyleService', () => {
                 await expect(
                     service.updateDnaReport('report-foreign', { styleText: 'cross-tenant' }),
                 ).rejects.toThrow(NotFoundException);
-                expect(mockReportRepo.update).not.toHaveBeenCalled();
+                expect(mockReportRepo.updateWithVersion).not.toHaveBeenCalled();
             });
 
             it('does NOT bypass tenant guard even with bypassOwnershipCheck=true', async () => {
@@ -1151,7 +1205,7 @@ describe('DnaWritingStyleService', () => {
                         { bypassOwnershipCheck: true },
                     ),
                 ).rejects.toThrow(NotFoundException);
-                expect(mockReportRepo.update).not.toHaveBeenCalled();
+                expect(mockReportRepo.updateWithVersion).not.toHaveBeenCalled();
             });
 
             it('does NOT bypass tenant guard for SUPER_ADMIN (PHI guard)', async () => {

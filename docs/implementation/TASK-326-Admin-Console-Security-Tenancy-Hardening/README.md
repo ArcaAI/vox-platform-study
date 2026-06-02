@@ -26,7 +26,7 @@ Eliminate cross-tenant data exposure and unaudited privileged access before the 
 - [x] **X5** — `GET /admin/departments` and `GET /admin/audit-logs` (`fetchAll`) carry a controller-layer tenant-context guard mirroring `AuditLogController.fetchByUser`; audit rows remain service-scoped via `buildTenantWhere`.
 - [~] **X6** — **Deferred to TASK-305 Phase A** (decision 2026-06-02). Overlaps the existing A.10/A.11 `User*` schema-hardening design; `User` is intentionally multi-tenant with global unique constraints, so DB-level `tenantId` is handled there, not here. **No schema change in this ticket.**
 - [x] **X1 / Q4** — every Prisma Studio `query`/`sequence` writes an `AuditLog` via `recordSystemAction` (`eventType: 'PRISMA_STUDIO'`, `action: READ|UPDATE`, `resourceType: AuditLog`); Studio remains `@CanManage('all')` (super-admin only). Reused existing enum → **no migration**.
-- [x] **X7** — DNA admin authz narrowed `manage:all` → `manage:DnaWritingStyleReport` on `DnaWritingStyleAdminController` + matching tenant-scoped seed policy rule; service PHI/tenant guard still applies. **OCC (`@RequiresIfMatch`) deferred** (cross-cutting; no native repo support yet).
+- [x] **X7** — DNA admin authz narrowed `manage:all` → `manage:DnaWritingStyleReport` on `DnaWritingStyleAdminController` + matching tenant-scoped seed policy rule; service PHI/tenant guard still applies. **OCC (`@RequiresIfMatch`) — closed via D-2 (2026-06-02):** the admin PATCH now requires `If-Match` and runs a Compare-And-Set through `dnaReportRepository.updateWithVersion` (`412` on drift, `428` when the header is missing). See §5.1.
 - [~] **X9** — DNA generation **request** now emits `SysEventType.ResourceCreated` (report is produced async by the BullMQ worker); pipeline delete already emits `ResourceDeleted`. Broader tenant-config/storage sweep tracked with their surfaces in TASK-327/329.
 - [x] **Soft-delete** — `PipelineService.delete` normalized to `pipelineRepository.softDelete()` (OCC-consistent); no hard deletes introduced.
 - [x] Gates green (§4) — build + unit + lint local; e2e in CI.
@@ -77,7 +77,7 @@ Capture actual output as evidence (rule `verification-before-completion`).
 | **X2** — `/admin/users` cross-tenant | **Fixed.** `UserController.fetchAll` routes non-super-admins through `userService.fetchAllByTenantId(cls.tenantId)` and returns `403` when a non-super-admin lacks tenant context; `SUPER_ADMIN` retains the cross-tenant operator view. |
 | **X5** — `/admin/departments`, `/admin/audit-logs` | **Fixed.** Controller-layer tenant-context guard on both `fetchAll` handlers (mirrors `AuditLogController.fetchByUser`); audit rows stay service-scoped via `buildTenantWhere`. |
 | **X1 / Q4** — Prisma Studio audit | **Fixed.** New `IAuditLogService.recordSystemAction()` — a direct, best-effort write (never throws; falls back to `SYSTEM_TENANT_ID`) — invoked by `PrismaStudioController` before each `query` (READ) / `sequence` (UPDATE), tagged `eventType: 'PRISMA_STUDIO'`. Studio stays `@CanManage('all')`. Reused `ResourceType.AuditLog` → no migration. |
-| **X7** — DNA admin authz | **Fixed (variant).** `DnaWritingStyleAdminController` `@Authorize` narrowed `manage:all` → `manage:DnaWritingStyleReport`; matching tenant-scoped rule added to the `tenant-full-access` seed policy. Service PHI/tenant guard unchanged. **OCC deferred.** |
+| **X7** — DNA admin authz | **Fixed (variant).** `DnaWritingStyleAdminController` `@Authorize` narrowed `manage:all` → `manage:DnaWritingStyleReport`; matching tenant-scoped rule added to the `tenant-full-access` seed policy. Service PHI/tenant guard unchanged. **OCC closed (D-2, 2026-06-02) — see §5.1.** |
 | **X9** — SysEvent coverage | **Partial.** DNA generation request emits `ResourceCreated`; pipeline delete already emits `ResourceDeleted`. Remaining surfaces tracked in TASK-327/329. |
 | **Soft-delete** | **Normalized.** `PipelineService.delete` → `pipelineRepository.softDelete()` (OCC-consistent). |
 | **X6** — `User*` DB tenant-scoping | **Deferred to TASK-305 Phase A** (overlaps A.10/A.11; `User` is multi-tenant by design). |
@@ -95,9 +95,24 @@ Capture actual output as evidence (rule `verification-before-completion`).
 - Lint → clean on all edited files.
 - e2e → committed; executes in CI.
 
+### 5.1 D-2 follow-up — DNA admin OCC (closed 2026-06-02)
+Closes the X7 OCC deferral above. The admin DNA-report PATCH now enforces optimistic concurrency, mirroring `PromptManagementController` / `UserDepartmentsController`:
+
+- **DTO** (`update-dna-report.request.ts`) — added an optional `expectedVersion?: number` (`@IsInt` / `@Min(1)`). Optional because the same DTO is shared by the non-OCC doctor route (`DnaWritingStyleController`).
+- **Controller** (`dna-writing-style-admin.controller.ts`) — `@RequiresIfMatch()` + `@ExpectedVersion()` on `update`; the `If-Match` header value is folded onto `expectedVersion` (header wins over body) and `bypassOwnershipCheck: true` is preserved. Swagger documents the required `If-Match` header + `412`/`428` responses.
+- **Service** (`dna-writing-style.service.ts`) — final write switched from `repo.update(...)` to `repo.updateWithVersion(reportId, report, dto.expectedVersion)`; ownership/tenant guard, `DnaVersion` snapshot, and `SysEvent` broadcast all unchanged.
+- **Mapper** (`DnaWritingStyleReportEntityMapper.ts`) — defense-in-depth: `FIELDS_NOT_WRITABLE = ['version']` stripped in `toPersistence` / `toPersistenceChanges` (the `_version` OCC column is DB-owned), matching the `Department` / `PromptTemplate` mappers.
+
+> **Correction to the Wave-1 deferral rationale:** the row `_version` column already exists (via `BaseEntity`) and `Repository.updateWithVersion` was already available — so **no migration** and no new repo primitive were needed. The OCC `_version` token is DISTINCT from `currentVersionNumber` / the `DnaVersion` history counter; do not conflate them.
+
+**D-2 gate evidence** (worktree branch `task-326/x7-dna-occ`, base `4c231595`):
+- Build — `turbo run build --filter=@arcaai/api` → **8/8 successful** (full type-check domains→applications→api).
+- Unit (targeted, TDD) — domains DNA **23/23**; applications `src/services/dna-writing-style` **153/153** (incl. 2 new OCC cases: `updateWithVersion` called with the expected version, and `OptimisticConcurrencyException` propagation); api `src/modules/dna-writing-style` **46/46** (admin 28 + doctor 18).
+- Lint — all changed lines clean. One **pre-existing** prettier error remains at `dna-writing-style-admin.controller.ts:52` (TASK-328 A5 `getDashboard` `@ApiQuery`, byte-identical in base) — left untouched to keep the diff surgical.
+
 ### Deviations from plan
 - **X6 deferred** to TASK-305 Phase A (no DB migration here).
-- **X7** delivered via authz-narrowing + seed policy rather than a second controller; **OCC (`@RequiresIfMatch`) deferred** (no native repo support).
+- **X7** delivered via authz-narrowing + seed policy rather than a second controller; **OCC (`@RequiresIfMatch`) initially deferred, now closed by D-2 (§5.1)** — the "no native repo support" premise was inaccurate: `Repository.updateWithVersion` and the row `_version` column (via `BaseEntity`) already existed, so no migration/new primitive was needed.
 - Prisma Studio audit reuses `ResourceType.AuditLog` (no `PrismaStudio` enum value → avoids a Wave-1 migration).
 
 ---
@@ -107,3 +122,4 @@ Capture actual output as evidence (rule `verification-before-completion`).
 |---|---|---|
 | 2026-06-02 | Sub-ticket created from TASK-325 §3.7 (Phase 0). Scope = X1/X2/X5/X6/X7/X9 + soft-delete; Q2 (fix in-ticket) + Q4 (Studio super-admin-only). Status `Pending`. | this README |
 | 2026-06-02 | **Implemented & shipped to `fix/2605-review`.** X2/X5 (controller scope+guard), X1 (Prisma Studio audit via `recordSystemAction`), X7 (DNA authz narrow + policy), X9 (DNA generate event), soft-delete (pipeline). **X6 deferred to TASK-305 Phase A**; X7 OCC deferred. Gates: build 8/8, unit 4507+1447, lint clean; e2e committed for CI. Status → `Completed`. | `user/department/audit-log/pstudio/dna-writing-style-admin` controllers (+tests), `auditLog`/`dna-writing-style`/`pipeline` services (+tests), `01-policy.ts`, new e2e spec |
+| 2026-06-02 | **D-2 closed — DNA admin OCC** (§5.1). Admin DNA PATCH now requires `If-Match` (`@RequiresIfMatch` + `@ExpectedVersion`, header overrides body); service writes via `dnaReportRepository.updateWithVersion` → `412` on drift / `428` on missing header; DTO gains optional `expectedVersion?`; mapper strips DB-owned `version`. **No migration** (column already on `BaseEntity`; `updateWithVersion` already existed — Wave-1 deferral premise was inaccurate). TDD; targeted gates green (build 8/8; domains 23; applications-DNA 153 incl. 2 new OCC cases; api-DNA 46). Delivered on isolated branch `task-326/x7-dna-occ` (not merged/pushed — parent handles the sequential merge). | `dna-writing-style-admin.controller.ts` (+test), `dna-writing-style.service.ts` (+test), `dto/update-dna-report.request.ts`, `DnaWritingStyleReportEntityMapper.ts` |
