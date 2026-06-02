@@ -81,6 +81,7 @@ export type {
   CreateTenantBucketInput,
   CreateTenantInput,
   CreateUserInput,
+  DeleteTenantBucketObjectResult,
   ListTenantStorageConfigParams,
   Policy,
   Role,
