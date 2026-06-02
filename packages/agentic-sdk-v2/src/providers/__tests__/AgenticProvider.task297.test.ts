@@ -80,8 +80,8 @@ afterEach(() => {
 });
 
 async function renderProvider(configOverride: Record<string, unknown> = {}) {
-  const { AgenticProvider } = await import('../AgenticProvider');
-  const { useStoreApi } = await import('../../store/agenticStore');
+  const { AgenticProvider } = await import('../AgenticProvider.js');
+  const { useStoreApi } = await import('../../store/agenticStore.js');
 
   // TASK-317 W4.2/W4.3 (AC-12) — the provider owns a per-instance store (fresh
   // `createAgenticStore()` at the initial state), so no pre-render reset is
@@ -104,7 +104,7 @@ async function renderProvider(configOverride: Record<string, unknown> = {}) {
       },
       children: React.createElement(Capture),
     } as never,
-  );
+  ) as React.ReactElement;
   render(element);
   if (!captured.api) throw new Error('AgenticProvider store API was not captured');
   return captured.api;

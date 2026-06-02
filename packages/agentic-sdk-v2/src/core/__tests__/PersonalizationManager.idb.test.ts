@@ -120,7 +120,7 @@ describe('PersonalizationManager · IDB cache (Wave 2D)', () => {
   });
 
   it('hydrate() recovers from IDB read failures by keeping the in-memory defaults', async () => {
-    const cfgDB = await import('../configDB');
+    const cfgDB = await import('../configDB.js');
     vi.mocked(cfgDB.configDBGet).mockRejectedValueOnce(new Error('IDB closed'));
 
     const manager = new PersonalizationManager(
@@ -138,7 +138,7 @@ describe('PersonalizationManager · IDB cache (Wave 2D)', () => {
   });
 
   it('updatePreferences() does NOT throw when the IDB write fails (best-effort cache)', async () => {
-    const cfgDB = await import('../configDB');
+    const cfgDB = await import('../configDB.js');
     vi.mocked(cfgDB.configDBSet).mockRejectedValueOnce(new Error('quota exceeded'));
 
     const manager = new PersonalizationManager(
