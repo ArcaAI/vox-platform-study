@@ -36,7 +36,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import type { AssembledGenerateRequest, SmrGenerateResponse } from '../api';
 import { smrClient, useGeneratePreSummary } from '../api';
-import { ImpersonationGuard, ProviderModelSelect, ResultCard } from '../components';
+import { ImpersonationGuard, ProviderModelSelect, ResultCard, SavedSummariesPanel } from '../components';
 import { SmrStatusBadge } from '../components/smr-status-badge';
 import { addToHistory } from '../history';
 import { useDoctorContext } from '../hooks/use-doctor-context';
@@ -1369,6 +1369,9 @@ export default function PreSummaryPage() {
                     ))}
                   </div>
                 )}
+
+                {/* TASK-329 (P6) — persisted summary management: list, versions, diff, tags, edit */}
+                <SavedSummariesPanel />
               </div>
 
               <div className="flex flex-col gap-4 lg:col-span-2">

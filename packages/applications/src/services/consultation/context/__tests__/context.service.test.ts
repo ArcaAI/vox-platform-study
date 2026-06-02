@@ -1157,6 +1157,34 @@ describe('ContextService', () => {
                 })
             );
         });
+
+        // TASK-329 (P6) — cacheHit/qualityScore must thread through to the persisted SummaryMeta
+        it('should persist cacheHit and qualityScore on the summary metadata', async () => {
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
+            const newSummary = createMockContextItemEntity({
+                id: 'new-summary-id',
+                type: ContextItemType.RAW_SUMMARY,
+                source: ContextItemSource.AI,
+                isSummary: true,
+            });
+            mockContextItemRepository.create.mockResolvedValue(newSummary);
+            mockSummaryMetaRepository.create.mockResolvedValue({});
+            mockContextItemRepository.findWithSummaryMeta.mockResolvedValue({
+                ...newSummary,
+                SummaryMeta: createMockSummaryMetaEntity(),
+            });
+
+            await service.addRawSummary('consultation-1', {
+                content: 'AI generated summary',
+                aiModelId: 'gpt-4',
+                cacheHit: true,
+                qualityScore: 0.91,
+            });
+
+            expect(mockSummaryMetaRepository.create).toHaveBeenCalledWith(
+                expect.objectContaining({ cacheHit: true, qualityScore: 0.91 })
+            );
+        });
     });
 
     // ============================================

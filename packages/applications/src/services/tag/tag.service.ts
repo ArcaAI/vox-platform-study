@@ -41,6 +41,31 @@ export class TagService extends BaseService implements ITagService {
     return tag;
   }
 
+  /**
+   * Fetch all (non-deleted) tags attached to a specific resource
+   * (e.g. resourceTypeName='ContextItem', resourceId=<summary context item id>),
+   * scoped to the caller's tenant.
+   */
+  async fetchByResource(resourceTypeName: string, resourceId: string): Promise<TagEntity[]> {
+    const tags = await this.tagRepository.findAll({
+      where: {
+        resourceTypeName,
+        resourceId,
+        ...(this.tenantId ? { tenantId: this.tenantId } : {}),
+      },
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: {
+        resourceTypeName,
+        resourceId,
+        items: tags.map((tag: TagEntity) => tag.id),
+      },
+    });
+
+    return tags;
+  }
+
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<TagEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { limit, page, search } = props;

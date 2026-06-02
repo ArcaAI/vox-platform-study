@@ -16,6 +16,9 @@ import type {
   UpdateSummaryOptions,
   SummaryVersionEntry,
   DiffResult,
+  SummaryTag,
+  CreateSummaryTagInput,
+  VersionDiff,
 } from '../types';
 import type { SummaryApprovalResponse } from '../types/summary';
 import type { SummaryGenerationOptions, ComprehensiveSummaryGenerationOptions } from '../types/summary';
@@ -335,6 +338,58 @@ export function useArcaSummary() {
     [store, getLogger],
   );
 
+  /**
+   * TASK-329 (P6) — diff two summary versions via the backend `/diff`
+   * endpoint. Returns the `from`/`to` snapshots ready for `VersionDiffPanel`.
+   */
+  const diffSummaryVersions = useCallback(
+    async (contextItemId: string, from: number, to: number): Promise<VersionDiff> => {
+      const { apiClient, consultation } = store;
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
+
+      const url = `${SUMMARY_ENDPOINTS.DIFF(consultation.id, contextItemId)}?from=${from}&to=${to}`;
+      return apiClient.get<VersionDiff>(url);
+    },
+    [store],
+  );
+
+  /** TASK-329 (P6) — list the tags attached to a summary. */
+  const getSummaryTags = useCallback(
+    async (contextItemId: string): Promise<SummaryTag[]> => {
+      const { apiClient, consultation } = store;
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
+
+      return apiClient.get<SummaryTag[]>(SUMMARY_ENDPOINTS.TAGS(consultation.id, contextItemId));
+    },
+    [store],
+  );
+
+  /** TASK-329 (P6) — attach a tag to a summary. */
+  const tagSummary = useCallback(
+    async (contextItemId: string, input: CreateSummaryTagInput): Promise<SummaryTag> => {
+      const { apiClient, consultation } = store;
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
+
+      return apiClient.post<SummaryTag>(SUMMARY_ENDPOINTS.TAGS(consultation.id, contextItemId), input);
+    },
+    [store],
+  );
+
+  /** TASK-329 (P6) — remove a tag from a summary. */
+  const deleteSummaryTag = useCallback(
+    async (contextItemId: string, tagId: string): Promise<void> => {
+      const { apiClient, consultation } = store;
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
+
+      await apiClient.delete(SUMMARY_ENDPOINTS.TAG(consultation.id, contextItemId, tagId));
+    },
+    [store],
+  );
+
   const latestSummary = store.summaries.find((s) => s.type === 'summary') ?? null;
   const latestPreSummary = store.summaries.find((s) => s.type === 'pre_summary') ?? null;
 
@@ -358,6 +413,10 @@ export function useArcaSummary() {
       getSummaryHistory,
       compareSummaryVersions,
       approveSummary,
+      diffSummaryVersions,
+      getSummaryTags,
+      tagSummary,
+      deleteSummaryTag,
     }),
     [
       latestPreSummary,
@@ -378,6 +437,10 @@ export function useArcaSummary() {
       getSummaryHistory,
       compareSummaryVersions,
       approveSummary,
+      diffSummaryVersions,
+      getSummaryTags,
+      tagSummary,
+      deleteSummaryTag,
     ],
   );
 }

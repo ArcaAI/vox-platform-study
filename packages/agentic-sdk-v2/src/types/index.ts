@@ -131,6 +131,8 @@ export type {
   ComprehensiveSummaryOptions,
   // SUM-02: Comprehensive summary types
   ComprehensiveSummaryResponse,
+  // TASK-329 P6: summary tagging input
+  CreateSummaryTagInput,
   DNAStyle,
   DNAStyleData,
   NEREntity,
@@ -143,9 +145,13 @@ export type {
   SummaryOptions,
   SummaryResponse,
   SummaryState,
+  // TASK-329 P6: summary tag
+  SummaryTag,
   SummaryVersionEntry,
   // WS-3: Summary versioning types
   UpdateSummaryOptions,
+  // TASK-329 P6: version diff result
+  VersionDiff,
 } from './summary';
 
 export type { SummaryApprovalResponse, SummaryApprovalStatus } from './summary';
