@@ -37,6 +37,12 @@ const PROCESSING_METHODS: { value: ProcessingMethod; label: string; icon: typeof
   },
 ];
 
+// TASK-329 P3 — Whisper task/capability the selected local model runs.
+const STT_TASKS: { value: 'transcribe' | 'translate'; label: string }[] = [
+  { value: 'transcribe', label: 'Transcribe' },
+  { value: 'translate', label: 'Translate' },
+];
+
 const CONFIG_PATHS = {
   language: 'stt.language',
   noiseSuppression: 'audio.noiseSuppression',
@@ -73,6 +79,7 @@ export function ProcessingConfigPanel() {
     codeSwitchingEnabled,
     whisperModel,
     availableAsrModels,
+    sttTask,
     language,
     isCapturing,
     configReady,
@@ -84,10 +91,11 @@ export function ProcessingConfigPanel() {
     toggleDiarization,
     toggleCodeSwitching,
     setWhisperModel,
+    setSttTask,
     setLanguage,
     setSelectedPipelineId,
   } = useAudioStore();
-  const { isLocked, setUserPreference } = useArcaConfig();
+  const { isLocked, setUserPreference, selectModel, selectSttTask } = useArcaConfig();
   const { pipelines, isLoading: pipelinesLoading, error: pipelinesError, list: listPipelines } = usePipelines();
   const controlsDisabled = isCapturing || !configReady;
 
@@ -152,6 +160,18 @@ export function ProcessingConfigPanel() {
     if (setUserPreference(CONFIG_PATHS.codeSwitching, next)) {
       toggleCodeSwitching();
     }
+  };
+  // TASK-329 P3 — the local model + task are user prefs persisted by the SDK
+  // model registry (tenant/user-namespaced), and mirrored into runtime state so
+  // the active engine picks them up. `stt.defaultModel` stays the tenant
+  // (admin-locked) fallback; the registry holds the per-user override.
+  const handleModelChange = (modelId: string) => {
+    selectModel('stt', modelId);
+    setWhisperModel(modelId);
+  };
+  const handleTaskChange = (task: 'transcribe' | 'translate') => {
+    selectSttTask(task);
+    setSttTask(task);
   };
   const asrModelOptions = availableAsrModels.length > 0 ? availableAsrModels : FALLBACK_ASR_MODELS;
   const selectedAsrModel = asrModelOptions.find((model) => model.id === whisperModel);
@@ -242,7 +262,7 @@ export function ProcessingConfigPanel() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Select value={whisperModel} onValueChange={setWhisperModel} disabled={controlsDisabled || locked.defaultModel}>
+              <Select value={whisperModel} onValueChange={handleModelChange} disabled={controlsDisabled || locked.defaultModel}>
                 <SelectTrigger className="h-8 w-full min-w-0 text-xs">
                   <SelectValue className="truncate" />
                 </SelectTrigger>
@@ -258,6 +278,32 @@ export function ProcessingConfigPanel() {
                 </SelectContent>
               </Select>
               <p className="text-muted-foreground truncate text-[10px]">{selectedAsrModel?.name ?? 'Select model'}</p>
+              <div className="space-y-1.5">
+                <Label className="text-[10px]">Task</Label>
+                <div className="flex gap-1.5">
+                  {STT_TASKS.map((task) => (
+                    <Badge
+                      key={task.value}
+                      variant={sttTask === task.value ? 'default' : 'outline'}
+                      className="cursor-pointer text-[10px]"
+                      onClick={() => !controlsDisabled && handleTaskChange(task.value)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e: React.KeyboardEvent) => {
+                        if ((e.key === 'Enter' || e.key === ' ') && !controlsDisabled) {
+                          e.preventDefault();
+                          handleTaskChange(task.value);
+                        }
+                      }}
+                    >
+                      {task.label}
+                    </Badge>
+                  ))}
+                </div>
+                <p className="text-muted-foreground text-[10px]">
+                  {sttTask === 'translate' ? 'Translates speech to English text.' : 'Transcribes speech in the source language.'}
+                </p>
+              </div>
             </CardContent>
           </Card>
         )}

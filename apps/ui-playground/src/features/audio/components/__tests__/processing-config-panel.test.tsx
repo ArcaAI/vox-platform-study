@@ -128,6 +128,9 @@ vi.mock('lucide-react', async (importOriginal) => {
 
 const mockIsLocked = vi.fn<(path: string) => boolean>().mockReturnValue(false);
 const mockSetUserPreference = vi.fn<(path: string, value: unknown) => boolean>().mockReturnValue(true);
+// TASK-329 P3 — registry-backed selection (model + task) persistence.
+const mockSelectModel = vi.fn<(type: string, modelId: string) => void>();
+const mockSelectSttTask = vi.fn<(task: string) => void>();
 
 const mockListPipelines = vi.fn<() => Promise<any[]>>().mockResolvedValue([]);
 const mockUsePipelinesReturn = {
@@ -155,6 +158,9 @@ vi.mock('@arcaai/vox', () => ({
     useArcaConfig: () => ({
         isLocked: mockIsLocked,
         setUserPreference: mockSetUserPreference,
+        selectModel: mockSelectModel,
+        selectSttTask: mockSelectSttTask,
+        models: { stt: [], vad: [], ner: [], selected: {} },
     }),
     usePipelines: () => ({ ...mockUsePipelinesReturn, ...pipelinesOverrides }),
 }));
@@ -171,6 +177,7 @@ const mockToggleCodeSwitching = vi.fn();
 const mockSetWhisperModel = vi.fn();
 const mockSetLanguage = vi.fn();
 const mockSetSelectedPipelineId = vi.fn();
+const mockSetSttTask = vi.fn();
 
 const defaultStoreState = {
     // TASK-321 F — annotate with the store's union types (not `as const`) so
@@ -189,6 +196,7 @@ const defaultStoreState = {
         { id: 'whisper-base', name: 'Whisper Base', size: '~150 MB' },
         { id: 'whisper-small', name: 'Whisper Small', size: '~500 MB' },
     ],
+    sttTask: 'transcribe' as 'transcribe' | 'translate',
     language: 'en',
     isCapturing: false,
     configReady: true,
@@ -203,6 +211,7 @@ const defaultStoreState = {
     setWhisperModel: mockSetWhisperModel,
     setLanguage: mockSetLanguage,
     setSelectedPipelineId: mockSetSelectedPipelineId,
+    setSttTask: mockSetSttTask,
 };
 
 let storeOverrides: Partial<typeof defaultStoreState> = {};
@@ -909,6 +918,67 @@ describe('ProcessingConfigPanel', () => {
             renderPanel();
 
             expect(mockListPipelines).toHaveBeenCalled();
+        });
+    });
+
+    // ── 12. TASK-329 P3 — local model + task selection ────────────────
+
+    describe('local model + task selection (TASK-329 P3)', () => {
+        it('persists the model via the SDK registry AND updates runtime state on model change', () => {
+            renderPanel({ processingMethod: 'local_ai' });
+
+            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
+            const baseItem = within(modelCard).getByText('Whisper Base').closest<HTMLElement>('[data-testid="select-item"]')!;
+            fireEvent.click(baseItem);
+
+            expect(mockSelectModel).toHaveBeenCalledWith('stt', 'whisper-base');
+            expect(mockSetWhisperModel).toHaveBeenCalledWith('whisper-base');
+        });
+
+        it('renders Transcribe and Translate task options in the Local AI Model card', () => {
+            renderPanel({ processingMethod: 'local_ai' });
+
+            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
+            expect(within(modelCard).getByText('Transcribe')).toBeInTheDocument();
+            expect(within(modelCard).getByText('Translate')).toBeInTheDocument();
+        });
+
+        it('persists the task via the SDK registry AND updates runtime state on task change', () => {
+            renderPanel({ processingMethod: 'local_ai', sttTask: 'transcribe' });
+
+            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
+            fireEvent.click(within(modelCard).getByText('Translate'));
+
+            expect(mockSelectSttTask).toHaveBeenCalledWith('translate');
+            expect(mockSetSttTask).toHaveBeenCalledWith('translate');
+        });
+
+        it('marks the active task badge with the default variant', () => {
+            renderPanel({ processingMethod: 'local_ai', sttTask: 'translate' });
+
+            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
+            const translateBadge = within(modelCard).getByText('Translate').closest<HTMLElement>('[data-testid="badge"]')!;
+            expect(translateBadge.dataset.variant).toBe('default');
+
+            const transcribeBadge = within(modelCard).getByText('Transcribe').closest<HTMLElement>('[data-testid="badge"]')!;
+            expect(transcribeBadge.dataset.variant).toBe('outline');
+        });
+
+        it('does not change the task when isCapturing is true', () => {
+            renderPanel({ processingMethod: 'local_ai', sttTask: 'transcribe', isCapturing: true });
+
+            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
+            fireEvent.click(within(modelCard).getByText('Translate'));
+
+            expect(mockSelectSttTask).not.toHaveBeenCalled();
+            expect(mockSetSttTask).not.toHaveBeenCalled();
+        });
+
+        it('keeps exactly two Select controls in local AI mode (task is a badge group, not a Select)', () => {
+            renderPanel({ processingMethod: 'local_ai' });
+
+            // model Select + language Select; the task control is a badge group
+            expect(screen.getAllByTestId('select-root')).toHaveLength(2);
         });
     });
 });
