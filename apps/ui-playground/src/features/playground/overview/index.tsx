@@ -1,8 +1,9 @@
 import { PlaygroundLayout } from '@/components/layout/playground-layout';
+import { ServiceStatusGrid } from '@/features/introduction/components/service-status-grid';
 import { useAuthStore } from '@/store/auth-store';
 import { Badge } from '@arcaai/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/card';
-import { Building2, Headphones, MessageSquare, TestTube, Users, Zap } from 'lucide-react';
+import { Activity, Building2, Headphones, MessageSquare, TestTube, Users, Zap } from 'lucide-react';
 import { UserList } from './components/user-list';
 
 export default function OverviewPage() {
@@ -74,6 +75,18 @@ export default function OverviewPage() {
               </div>
             </div>
           </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Activity className="size-5" />
+            <CardTitle className="text-base">Service Health</CardTitle>
+          </div>
+          <CardDescription>Live status of the ArcaVox backend services</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ServiceStatusGrid />
         </CardContent>
       </Card>
       <UserList />
