@@ -638,6 +638,9 @@ importers:
       '@arcaai/vad':
         specifier: workspace:*
         version: link:../vad
+      '@huggingface/transformers':
+        specifier: ^3.8.1
+        version: 3.8.1
       '@ricky0123/vad-web':
         specifier: ^0.0.30
         version: 0.0.30
