@@ -76,6 +76,26 @@ export class AuthController {
     @Inject(IRefreshTokenService) private readonly refreshTokenService: IRefreshTokenService,
   ) {}
 
+  /**
+   * Resolve the JWT signing secret for the mint paths (login / impersonate
+   * / refresh). Reads the boot-warmed sync cache first (the common case),
+   * then falls back to an async provider fetch when that entry has aged out.
+   *
+   * `SecretsService.getSecretSync` is cache-only by design (no lazy re-fetch
+   * on the sync hot path). The boot warmup seeds JWT_SECRET_KEY under the
+   * default SECRETS_TTL_SEC (300s); once that window lapses the sync read
+   * returns undefined and every sign-path 401s with "Authentication system
+   * not configured" — even though JwtStrategy keeps verifying tokens fine
+   * because it captured the secret once at construction. The async fallback
+   * re-fetches from the provider (and refills the LRU), so the mint paths
+   * survive TTL expiry without widening the secret's in-memory lifetime by
+   * inflating the TTL. Returns undefined only when the provider genuinely
+   * cannot supply the secret, preserving the fail-closed 401.
+   */
+  private async resolveJwtSecretKey(): Promise<string | undefined> {
+    return this.secretsService.getSecretSync('JWT_SECRET_KEY') ?? (await this.secretsService.getSecretOptional('JWT_SECRET_KEY'));
+  }
+
   @Post('login')
   // TASK-308 AC-5 — 5 req/min: tight bound vs credential stuffing.
   @Throttle({ default: { limit: 5, ttl: 60000 } })
@@ -161,7 +181,7 @@ export class AuthController {
       // JwtStrategy.verify-path so the two cannot diverge.
       // JWT_EXPIRES_IN stays on AppSettings (it's a tunable, not a
       // secret — same rationale as oidc.strategy.ts:82-83).
-      const jwtSecretKey = this.secretsService.getSecretSync('JWT_SECRET_KEY');
+      const jwtSecretKey = await this.resolveJwtSecretKey();
       if (!jwtSecretKey) {
         throw new UnauthorizedException('Authentication system not configured');
       }
@@ -458,7 +478,7 @@ export class AuthController {
     }
 
     // TASK-307 W2.3 (closes audit C-6) — see login() for rationale.
-    const jwtSecretKey = this.secretsService.getSecretSync('JWT_SECRET_KEY');
+    const jwtSecretKey = await this.resolveJwtSecretKey();
     if (!jwtSecretKey) {
       throw new UnauthorizedException('Authentication system not configured');
     }
@@ -546,7 +566,7 @@ export class AuthController {
     const permissions = await this.getUserPermissions(userRoles);
 
     // TASK-307 W2.3 (closes audit C-6) — see login() for rationale.
-    const jwtSecretKey = this.secretsService.getSecretSync('JWT_SECRET_KEY');
+    const jwtSecretKey = await this.resolveJwtSecretKey();
     if (!jwtSecretKey) {
       throw new UnauthorizedException('Authentication system not configured');
     }

@@ -143,6 +143,35 @@ const createMockSecretsService = (secret = REAL_SECRET) => {
     };
 };
 
+/**
+ * Mock SecretsService modelling an EXPIRED boot-warmed LRU entry: the
+ * cache-only `getSecretSync` read misses (returns undefined), but the
+ * async provider can still supply the secret (and would refill the LRU).
+ *
+ * This is the production scenario behind "Authentication system not
+ * configured": ~SECRETS_TTL_SEC (default 300s) after boot the warmed
+ * JWT_SECRET_KEY ages out of the cache, so the per-request sign-path
+ * `getSecretSync` returns undefined while JwtStrategy (which captured the
+ * secret at construction) keeps verifying tokens fine.
+ */
+const createMockSecretsServiceColdSync = (secret = REAL_SECRET) => {
+    const syncCalls: string[] = [];
+    const asyncCalls: string[] = [];
+    return {
+        syncCalls,
+        asyncCalls,
+        getSecretSync: vi.fn((key: string) => {
+            syncCalls.push(key);
+            return undefined;
+        }),
+        getSecretOptional: vi.fn(async (key: string) => {
+            asyncCalls.push(key);
+            if (key === 'JWT_SECRET_KEY') return secret;
+            return undefined;
+        }),
+    };
+};
+
 const createMockRequest = () => ({ ip: '127.0.0.1', headers: { 'user-agent': 'test-agent' } });
 
 const createRole = (name: string, permissions: string[] = ['read:consultation']) => ({
@@ -327,5 +356,112 @@ describe('TASK-307 W2.3 — auth.controller uses SecretsService only', () => {
                 2,
             );
         });
+    });
+});
+
+/**
+ * Regression — the JWT mint paths must survive the boot-warmed
+ * JWT_SECRET_KEY ageing out of the SecretsService LRU cache.
+ *
+ * Bug: login / impersonate / refresh read the secret with the cache-only
+ * `getSecretSync`. ~SECRETS_TTL_SEC (default 300s) after boot that entry
+ * expires, so every sign-path 401s with "Authentication system not
+ * configured" — while JwtStrategy keeps verifying tokens (it captured the
+ * secret at construction). Symptom: impersonation from ui-playground fails
+ * a few minutes after the API starts, even though the admin is still
+ * "logged in".
+ *
+ * Fix: on a sync-cache miss the controller falls back to the async
+ * `getSecretOptional`, which re-fetches from the provider and refills the
+ * LRU. The 401 is preserved only when the provider genuinely cannot supply
+ * the secret.
+ */
+describe('auth.controller — sign-path survives SecretsService TTL expiry (getSecretSync miss)', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('impersonate falls back to async getSecretOptional and still mints a token', async () => {
+        const appSettings = createMockAppSettingsService();
+        const secrets = createMockSecretsServiceColdSync();
+        const adminUser = { id: 'admin-001', tenantId: 'tenant-001' };
+        const target = createUser({ id: 'doctor-001', username: 'dr_smith' });
+        const users = new Map([[target.id, target]]);
+
+        const uraService = {
+            findActiveRolesForUser: vi.fn(async (userId: string) => {
+                if (userId === 'admin-001') return [createRole('SUPER_ADMIN', [])];
+                if (userId === 'doctor-001') return [createRole('doctor', [])];
+                return [];
+            }),
+            findActiveTenantIdsForUser: vi.fn(async () => ['tenant-001']),
+            findActiveAssignmentForUserInTenant: vi.fn(async () => ({ id: 'ura-1' })),
+        };
+
+        const controller = new AuthController(
+            createMockUserService() as any,
+            createMockAuthService() as any,
+            appSettings as any,
+            uraService as any,
+            createMockUserRepository(users) as any,
+            {} as any,
+            {} as any,
+            createMockTenantRepository() as any,
+            createMockClsService(adminUser) as any,
+            { issueTicket: vi.fn(), consumeTicket: vi.fn() } as any,
+            { revoke: vi.fn(), isRevoked: vi.fn().mockResolvedValue(false) } as any,
+            secrets as any,
+            createMockRefreshTokenService() as any,
+        );
+
+        const res = await controller.impersonate(
+            { targetUserId: 'doctor-001' } as any,
+            createMockRequest() as any,
+        );
+
+        expect(res.token).toBeTruthy();
+        // sync read was attempted (fast path) and missed → async fallback fired.
+        expect(secrets.getSecretSync).toHaveBeenCalledWith('JWT_SECRET_KEY');
+        expect(secrets.asyncCalls).toContain('JWT_SECRET_KEY');
+    });
+
+    it('login falls back to async getSecretOptional when the sync cache has expired', async () => {
+        const appSettings = createMockAppSettingsService();
+        const secrets = createMockSecretsServiceColdSync();
+        const hashed = await bcrypt.hash('pass123', 10);
+        const user = createUser({ password: hashed });
+
+        const controller = buildController({
+            appSettingsService: appSettings,
+            secretsService: secrets as any,
+            users: new Map([[user.id, user]]),
+            roleAssignments: [{ Role: createRole('doctor') }],
+        });
+
+        const res = await controller.login(
+            { username: 'dr_smith', password: 'pass123', tenantKey: 'acme-hospital' },
+            createMockRequest() as any,
+        );
+
+        expect(res.token).toBeTruthy();
+        expect(secrets.asyncCalls).toContain('JWT_SECRET_KEY');
+    });
+
+    it('refresh falls back to async getSecretOptional when the sync cache has expired', async () => {
+        const appSettings = createMockAppSettingsService();
+        const secrets = createMockSecretsServiceColdSync();
+        const user = createUser({ id: 'user-123' });
+
+        const controller = buildController({
+            appSettingsService: appSettings,
+            secretsService: secrets as any,
+            users: new Map([[user.id, user]]),
+            roleAssignments: [{ Role: createRole('doctor') }],
+        });
+
+        const res = await controller.refresh({
+            refreshToken: 'refresh_user-123_1700000000_' + 'a'.repeat(64),
+        });
+
+        expect(res.token).toBeTruthy();
+        expect(secrets.asyncCalls).toContain('JWT_SECRET_KEY');
     });
 });
