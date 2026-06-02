@@ -187,7 +187,7 @@ The spec requires a live snippet reflecting the impersonated user's prefs. Today
 | X3 | High | Summarization | Non-debug path posts raw DNA text → bypasses cross-doctor ownership guard | Route via `/text/generate/assembled` with `dna_writing_style_id` + `prompt_template_id` |
 | X4 | High | Audio pipeline | Frontend pipeline config missing across DB/API/UI | Add `TenantFrontendConfig` + API + tab |
 | X5 | High | Audit log | `fetchAll` lacks a controller-layer tenant guard | Add explicit scope check (as `fetchByUser`) |
-| X6 | High | Multi-tenancy | `User*` / `UserVoiceProfile` not tenant-scoped at DB | Phase-A schema hardening + tenant-leading composite indexes — **fixed here in Phase 0 / TASK-326 (Q2)**; cross-ref TASK-305 |
+| X6 | High | Multi-tenancy | `User*` / `UserVoiceProfile` not tenant-scoped at DB | Phase-A schema hardening + tenant-leading composite indexes — **deferred to TASK-305 Phase A (decision 2026-06-02)**: overlaps the existing A.10/A.11 `User*` schema design and `User` is multi-tenant by nature. Controller/service scope (X2/X5) still fixed in TASK-326 |
 | X7 | High | DNA admin | `@Authorize(['manage','all'])` blocks tenant admins required by spec | Split global vs tenant-admin DNA controllers |
 | X8 | Med | Consultation | Single `mediaId` — no RAW+PROCESSED dual capture | Add `rawMediaId`/`processedMediaId` + pipeline save |
 | X9 | Med | Admin mutations | Missing `SysEvent`/`AuditLog` broadcasts on several updates | Add `broadcastSysEvent` after each mutation |
@@ -216,7 +216,7 @@ Sequenced so security lands before tenant admins get access, the shell/scope lan
 ### 3.1 Phase 0 — Security & tenancy hardening (**do first; gating**)
 - **0.1** Tenant-scope `fetchAll` for users (X2), departments, and audit logs (X5) for non-super-admins; add a regression test proving cross-tenant isolation.
 - **0.2** Prisma Studio (X1): write an `AuditLog` entry for every `query`/`sequence`. **Keep super-admin-only (Q4)** — no tenant-admin mode.
-- **0.3** Multi-tenant schema hardening for `User*` models (X6) + tenant-leading composite indexes — **fixed completely within this ticket (Q2)**; cross-reference TASK-305 for prior context, do not defer.
+- **0.3** Multi-tenant schema hardening for `User*` models (X6) + tenant-leading composite indexes — **deferred to TASK-305 Phase A (decision 2026-06-02)**; it overlaps the existing A.10/A.11 design and `User` is intentionally multi-tenant. Controller/service-level tenant scope (X2/X5) is still fixed here in TASK-326.
 - **0.4** Add `broadcastSysEvent`/audit on admin mutations (X9); verify soft-delete on all `delete` paths (A1/A3/A6).
 - **Verify:** `pnpm --filter @arcaai/applications test`, `pnpm test:e2e` cross-tenant guards green; `ReadLints` clean.
 
@@ -262,7 +262,7 @@ Sequenced so security lands before tenant admins get access, the shell/scope lan
 | # | Decision | Resolution |
 |---|---|---|
 | Q1 | Ticket size | **Umbrella + per-phase sub-tickets.** TASK-325 = umbrella; phases = TASK-326–329 (§3.7), Phase 0 first. |
-| Q2 | Tenant-scoping (X2/X5/X6) | **Fix completely & properly within this ticket** (Phase 0 / TASK-326). Cross-reference TASK-305 for context; do not defer. |
+| Q2 | Tenant-scoping (X2/X5/X6) | **Controller/service scope (X2/X5) fixed completely in TASK-326.** **X6 (DB-level `User*` `tenantId`) deferred to TASK-305 Phase A (decision 2026-06-02)** — overlaps A.10/A.11; `User` is multi-tenant by design. |
 | Q3 | SDK-first | **Yes.** New admin/storage surfaces consume `@arcaai/vox` hooks; extend the SDK first where a hook is missing (continuing TASK-323). |
 | Q4 | Prisma Studio | **Super-admin only.** No tenant-admin mode; remaining work = audit every query/sequence to `AuditLog`. |
 | Q5 | Frontend pipeline storage | **Typed JSON** (`TenantFrontendConfig`), consumed directly by the browser SDK. |
@@ -273,7 +273,7 @@ TASK-325 is the **umbrella**. Each phase is an independently shippable sub-ticke
 
 | Sub-ticket | Phase | Scope | Depends on | Status |
 |---|---|---|---|---|
-| **TASK-326** | Phase 0 | Security & tenancy hardening — X1/X2/X5/X6/X7/X9 + soft-delete verification | — (do first) | `Pending` |
+| **TASK-326** | Phase 0 | Security & tenancy hardening — X1/X2/X5/X7/X9 + soft-delete (**X6 deferred → TASK-305 Phase A**) | — (do first) | `Completed` (2026-06-02) |
 | **TASK-327** | Phase 1 | Console shell & scope — `ScopeSwitcher`, scope-not-visibility nav, persisted re-orderable menus, impersonation tenant-gate | TASK-326 | `Pending` |
 | **TASK-328** | Phase 2 | Administration completeness — A4–A8 (frontend pipeline, prompt testing, DNA dashboards, storage, audit) + A1–A3 tenant-detail completeness | TASK-326, TASK-327 | `Pending` |
 | **TASK-329** | Phase 3 | Developer-playground completeness — P2–P6 + `LiveCodePanel` | TASK-326, TASK-327 | `Pending` |
@@ -315,3 +315,4 @@ Per phase: run the touched suite (RED→GREEN) + `ReadLints` before proceeding. 
 |---|---|---|
 | 2026-06-02 | Ticket created. Five parallel full-stack exploration agents reviewed `apps/ui-playground` ↔ `apps/api` ↔ `packages/database` ↔ `@arcaai/vox` against the Admin-Console + Developer-Playground spec. Verified the 2 Critical defects (`user.controller.ts:61-66`, `pstudio.controller.ts:56-69`), the sidebar scope gating (`app-sidebar.tsx:92-176`), and design-system component availability. Produced the gap matrix (A1–A9, P1–P6), a severity-ranked cross-cutting defect list (X1–X10), a 4-phase implementation plan, and a UX/UI playbook. Companion interactive review canvas created. Status `Pending` — awaiting §3.6 decisions. | this README; `canvases/admin-console-review.canvas.tsx` |
 | 2026-06-02 | Decisions resolved (Q1–Q5, §3.6): umbrella + per-phase sub-tickets; tenant-scoping fixed in-ticket; SDK-first; Prisma Studio super-admin-only; frontend config typed JSON. Created sub-tickets **TASK-326** (Phase 0), **TASK-327** (Phase 1), **TASK-328** (Phase 2), **TASK-329** (Phase 3). Adjusted A6/A9 criteria + A9/X1/X6 fixes + Phase 0 plan accordingly. | this README; TASK-326–329 READMEs |
+| 2026-06-02 | **Wave 1 shipped — TASK-326 `Completed`** and merged to `fix/2605-review`. Delivered X1/X2/X5/X7/X9 + pipeline soft-delete; gates build 8/8, unit 4507+1447, lint clean (e2e committed for CI). **Decision: X6 deferred to TASK-305 Phase A** (overlaps A.10/A.11; `User` multi-tenant) and X7 OCC deferred. Wave 2 = TASK-327 next (plan-gate). | TASK-326 README + code |
