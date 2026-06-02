@@ -1,4 +1,11 @@
-import { AsrPipelineFactory, AsrPipelineRepository, ResourceType, SysEventType } from '@arcaai/domains';
+import {
+  AsrPipelineFactory,
+  AsrPipelineRepository,
+  AsrPipelineVersionFactory,
+  AsrPipelineVersionRepository,
+  ResourceType,
+  SysEventType,
+} from '@arcaai/domains';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
@@ -6,7 +13,7 @@ import { parse } from 'yaml';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { IPipelineService } from './IPipelineService';
-import { CreatePipelineRequest, PaginatedPipelineResponse, PipelineResponse, UpdatePipelineRequest } from './dto';
+import { CreatePipelineRequest, PaginatedPipelineResponse, PipelineResponse, PipelineVersionResponse, UpdatePipelineRequest } from './dto';
 import { PipelineDtoMapper } from './pipeline.dto.mapper';
 
 @Injectable()
@@ -15,6 +22,8 @@ export class PipelineService extends BaseService implements IPipelineService {
     private readonly pipelineRepository: AsrPipelineRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-328 A6 — version snapshots written on config-YAML changes.
+    private readonly versionRepository: AsrPipelineVersionRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.AsrPipeline);
   }
@@ -99,6 +108,11 @@ export class PipelineService extends BaseService implements IPipelineService {
       }
     }
 
+    // TASK-328 A6 — detect a config change BEFORE we mutate the entity, so we
+    // can snapshot a version only when the YAML actually changed (name/slug/tag
+    // edits don't create versions).
+    const configChanged = dto.configYaml !== undefined && dto.configYaml !== existing.configYaml;
+
     if (dto.name !== undefined) existing.name = dto.name;
     if (dto.slug !== undefined) existing.slug = dto.slug;
     if (dto.description !== undefined) existing.description = dto.description;
@@ -112,6 +126,13 @@ export class PipelineService extends BaseService implements IPipelineService {
 
     const updated = await this.pipelineRepository.updateWithVersion(id, existing, dto.expectedVersion);
 
+    // TASK-328 A6 — after a successful CAS write, snapshot the new YAML config
+    // as the next AsrPipelineVersion (monotonic versionNumber), capturing the
+    // change reason + author. Only on actual config changes.
+    if (configChanged) {
+      await this.snapshotVersion(updated, dto.changeReason, userId ?? undefined);
+    }
+
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
       data: {
@@ -119,10 +140,143 @@ export class PipelineService extends BaseService implements IPipelineService {
         name: updated.name,
         previousVersion,
         newVersion: updated.version,
+        configChanged,
       },
     });
 
     return PipelineDtoMapper.toResponse(updated);
+  }
+
+  /**
+   * TASK-328 A6 — Persist a config-YAML snapshot as the next AsrPipelineVersion.
+   */
+  private async snapshotVersion(pipeline: { id: string; name: string; description?: string | null; configYaml: string; tenantId?: string | null }, changeReason?: string, changedBy?: string): Promise<void> {
+    const versionNumber = await this.versionRepository.getNextVersionNumber(pipeline.id);
+    const version = AsrPipelineVersionFactory.CreateAsrPipelineVersion({
+      asrPipelineId: pipeline.id,
+      versionNumber,
+      configYaml: pipeline.configYaml,
+      name: pipeline.name,
+      description: pipeline.description ?? null,
+      changeReason: changeReason ?? null,
+      changedBy: changedBy ?? null,
+      tenantId: (pipeline.tenantId as string) ?? this.tenantId ?? '',
+      createdBy: changedBy ?? undefined,
+    });
+    await this.versionRepository.create(version);
+  }
+
+  /**
+   * TASK-328 A6 — Mark a pipeline as the tenant default.
+   *
+   * Delegates the multi-row flip to the repository transaction
+   * (`setDefaultForTenant`) so the "exactly one default per tenant"
+   * invariant is enforced atomically. This is a tenant-scoped flag flip, not
+   * a content edit, so it is intentionally NOT OCC/If-Match guarded.
+   */
+  async setDefault(id: string): Promise<PipelineResponse> {
+    const tenantId = this.tenantId;
+    const userId = this.requestUserId;
+
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const existing = await this.pipelineRepository.findById(id);
+    // Cross-tenant / missing both surface as 404 so we never leak existence.
+    if (!existing || existing.tenantId !== tenantId) {
+      throw new NotFoundException(`Pipeline ${id} not found`);
+    }
+
+    await this.pipelineRepository.setDefaultForTenant(tenantId, id, userId ?? undefined);
+
+    const updated = await this.pipelineRepository.findById(id);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: id,
+      data: { isDefault: true, slug: existing.slug },
+    });
+
+    return PipelineDtoMapper.toResponse(updated ?? existing);
+  }
+
+  /**
+   * TASK-328 A6 — Enable/disable a pipeline by flipping its resourceStatus.
+   * OCC-guarded: `expectedVersion` (the controller's If-Match) is the CAS
+   * predicate; drift raises OptimisticConcurrencyException → 412.
+   */
+  async toggle(id: string, enabled: boolean, expectedVersion?: number): Promise<PipelineResponse> {
+    const tenantId = this.tenantId;
+    const userId = this.requestUserId;
+
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const existing = await this.pipelineRepository.findById(id);
+    if (!existing || existing.tenantId !== tenantId) {
+      throw new NotFoundException(`Pipeline ${id} not found`);
+    }
+
+    if (enabled) {
+      existing.enable(userId ?? undefined);
+    } else {
+      existing.disable(userId ?? undefined);
+    }
+
+    const previousVersion = existing.version;
+    const updated = await this.pipelineRepository.updateWithVersion(id, existing, expectedVersion ?? existing.version);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: id,
+      data: {
+        slug: updated.slug,
+        resourceStatus: updated.resourceStatus,
+        previousVersion,
+        newVersion: updated.version,
+      },
+    });
+
+    return PipelineDtoMapper.toResponse(updated);
+  }
+
+  /**
+   * TASK-328 A6 — List config-version snapshots for a pipeline (newest first).
+   * Tenant-scoped: a foreign/missing pipeline yields an empty list (no leak).
+   */
+  async listVersions(id: string): Promise<PipelineVersionResponse[]> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const pipeline = await this.pipelineRepository.findById(id);
+    if (!pipeline || pipeline.tenantId !== tenantId) {
+      return [];
+    }
+
+    const versions = await this.versionRepository.findByPipeline(id);
+    return versions.map(PipelineDtoMapper.toVersionResponse);
+  }
+
+  /**
+   * TASK-328 A6 — Fetch one config-version snapshot by version number.
+   * Tenant-scoped; returns null when the pipeline or version is absent.
+   */
+  async getVersion(id: string, versionNumber: number): Promise<PipelineVersionResponse | null> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const pipeline = await this.pipelineRepository.findById(id);
+    if (!pipeline || pipeline.tenantId !== tenantId) {
+      return null;
+    }
+
+    const versions = await this.versionRepository.findByPipeline(id);
+    const match = versions.find((v) => v.versionNumber === versionNumber);
+    return match ? PipelineDtoMapper.toVersionResponse(match) : null;
   }
 
   /**

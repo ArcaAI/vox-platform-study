@@ -58,6 +58,7 @@ export {
   useStorage,
   useStorageKeys,
   useTenantBuckets,
+  useTenantFrontendConfig,
   useTenants,
   useTenantStorageConfig,
   useUsers,
@@ -82,6 +83,8 @@ export type {
   CreateTenantInput,
   CreateUserInput,
   ListTenantStorageConfigParams,
+  Pipeline,
+  PipelineVersion,
   Policy,
   Role,
   SetTenantBucketDefaultsInput,
@@ -127,6 +130,7 @@ export type {
   UseStorageKeysReturn,
   UseStorageReturn,
   UseTenantBucketsReturn,
+  UseTenantFrontendConfigReturn,
   UseTenantsReturn,
   UseTenantStorageConfigReturn,
   UseUserSettingsReturn,
@@ -348,6 +352,13 @@ export type {
 } from './types';
 export { ConfigConflictError } from './types';
 
+// Frontend pipeline config types (TASK-328 A6)
+export type {
+  FrontendPipelineConfigJson,
+  TenantFrontendConfig,
+  UpsertTenantFrontendConfigInput,
+} from './types';
+
 // =============================================================================
 // Constants - Endpoint Definitions
 // =============================================================================
@@ -383,6 +394,7 @@ export {
   SUMMARY_ENDPOINTS,
   TENANT_BUCKET_ENDPOINTS,
   TENANT_ENDPOINTS,
+  TENANT_FRONTEND_CONFIG_ENDPOINTS,
   TENANT_STORAGE_CONFIG_ENDPOINTS,
   USER_ENDPOINTS,
   USER_SETTINGS_ENDPOINTS,

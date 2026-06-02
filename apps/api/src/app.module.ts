@@ -50,6 +50,7 @@ import { StorageAccessKeyModule } from './modules/storage-access-key/storage-acc
 import { StorageModule } from './modules/storage/storage.module';
 import { StreamingModule } from './modules/streaming/streaming.module';
 import { TenantBucketModule } from './modules/tenant-bucket/tenant-bucket.module';
+import { TenantFrontendConfigModule } from './modules/tenant-frontend-config/tenant-frontend-config.module';
 import { TenantStorageConfigModule } from './modules/tenant-storage-config/tenant-storage-config.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { UserModule } from './modules/user/user.module';
@@ -236,6 +237,7 @@ const featureModules: any[] = [
   TenantModule,
   TenantBucketModule,
   TenantStorageConfigModule,
+  TenantFrontendConfigModule,
   UserModule,
   VoiceProfileModule,
 ];

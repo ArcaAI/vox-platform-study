@@ -20,6 +20,11 @@ export class PipelineResponse {
   @ApiProperty({ description: 'Resource status', enum: ResourceStatusType })
   resourceStatus: ResourceStatusType;
 
+  // TASK-328 A6 — whether this pipeline is the tenant's default. Exactly one
+  // pipeline per tenant carries `isDefault: true`.
+  @ApiProperty({ description: "Whether this pipeline is the tenant's default", example: false })
+  isDefault: boolean;
+
   @ApiProperty({ description: 'Tags', type: [String] })
   tags: string[];
 

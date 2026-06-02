@@ -1,0 +1,51 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { TenantFrontendConfigAdminController } from '../tenant-frontend-config-admin.controller';
+
+const mockService = {
+  getByTenant: vi.fn(),
+  upsert: vi.fn(),
+};
+
+describe('TenantFrontendConfigAdminController', () => {
+  let controller: TenantFrontendConfigAdminController;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    controller = new TenantFrontendConfigAdminController(mockService as any);
+  });
+
+  describe('get', () => {
+    it('forwards no tenantId for a tenant admin (CLS-scoped)', async () => {
+      mockService.getByTenant.mockResolvedValue(null);
+      const result = await controller.get();
+      expect(result).toBeNull();
+      expect(mockService.getByTenant).toHaveBeenCalledWith(undefined);
+    });
+
+    it('forwards the tenantId query param for a global admin', async () => {
+      mockService.getByTenant.mockResolvedValue({ id: 'c1', tenantId: 't-2' });
+      await controller.get('t-2');
+      expect(mockService.getByTenant).toHaveBeenCalledWith('t-2');
+    });
+  });
+
+  describe('upsert', () => {
+    it('delegates the body unchanged when no If-Match header is present (create path)', async () => {
+      const body = { asrModel: 'whisper-large-v3', noiseCancel: true };
+      mockService.upsert.mockResolvedValue({ id: 'c1', ...body, version: 1 });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await controller.upsert(body as any, undefined, undefined);
+      expect(result).toMatchObject({ id: 'c1' });
+      expect(mockService.upsert).toHaveBeenCalledWith(body, undefined);
+    });
+
+    it('folds the If-Match version into expectedVersion (update path), header wins over body', async () => {
+      const body = { vad: false, expectedVersion: 1 };
+      mockService.upsert.mockResolvedValue({ id: 'c1', version: 8 });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await controller.upsert(body as any, 7, 't-2');
+      expect(mockService.upsert).toHaveBeenCalledWith({ vad: false, expectedVersion: 7 }, 't-2');
+    });
+  });
+});

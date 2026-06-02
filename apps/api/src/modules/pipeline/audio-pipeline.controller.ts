@@ -4,9 +4,11 @@ import {
   PaginatedPipelineResponse,
   PipelineResponse,
   PipelineService,
+  PipelineVersionResponse,
+  TogglePipelineRequest,
   UpdatePipelineRequest,
 } from '@arcaai/applications';
-import { BadRequestException, Body, Controller, HttpCode, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 import { AssignTenantRequest, AssignTenantResponse, ValidateYamlRequest, ValidateYamlResponse, resolveYaml } from './dto';
@@ -165,5 +167,84 @@ export class AudioPipelineController {
       pipelineId: id,
       tenantId: body.tenantId,
     };
+  }
+
+  // ============================================================
+  // TASK-328 A6 — default / toggle / versioning
+  // ============================================================
+
+  /**
+   * Mark a pipeline as the tenant default (unsets the previous default
+   * atomically). This is a tenant-scoped flag flip — NOT a content edit — so
+   * it deliberately does not require `If-Match`.
+   */
+  @Post(':id/set-default')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Set a pipeline as the tenant default (TASK-328 A6)' })
+  @ApiParam({ name: 'id', description: 'Pipeline ID', type: String })
+  @ApiResponse({ status: 200, description: 'Pipeline marked as default', type: PipelineResponse })
+  @ApiResponse({ status: 404, description: 'Pipeline not found' })
+  async setDefault(@Param('id') id: string): Promise<PipelineResponse> {
+    return this.pipelineService.setDefault(id);
+  }
+
+  /**
+   * Enable/disable a pipeline (flips `resourceStatus`). OCC-guarded: the
+   * `If-Match` header is REQUIRED and folds into the CAS predicate.
+   */
+  @Patch(':id/toggle')
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Enable/disable a pipeline (TASK-328 A6)',
+    description:
+      'Flips the pipeline `resourceStatus` (ENABLED ⇄ DISABLED). Optimistic ' +
+      'concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED ' +
+      'and runs a Compare-And-Set against the row `_version`. Drift → `412`, ' +
+      'missing header → `428`.',
+  })
+  @ApiHeader({ name: 'If-Match', description: 'RFC 7232 strong validator carrying the row version (e.g. `"7"`).', required: true, example: '"7"' })
+  @ApiParam({ name: 'id', description: 'Pipeline ID', type: String })
+  @ApiResponse({ status: 200, description: 'Pipeline status updated', type: PipelineResponse })
+  @ApiResponse({ status: 404, description: 'Pipeline not found' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async toggle(
+    @Param('id') id: string,
+    @Body() body: TogglePipelineRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<PipelineResponse> {
+    return this.pipelineService.toggle(id, body.enabled, expectedFromHeader);
+  }
+
+  /**
+   * List config-version snapshots for a pipeline (newest first).
+   */
+  @Get(':id/versions')
+  @ApiOperation({ summary: 'List config-version snapshots for a pipeline (TASK-328 A6)' })
+  @ApiParam({ name: 'id', description: 'Pipeline ID', type: String })
+  @ApiResponse({ status: 200, description: 'Version snapshots (newest first)', type: PipelineVersionResponse, isArray: true })
+  async listVersions(@Param('id') id: string): Promise<PipelineVersionResponse[]> {
+    return this.pipelineService.listVersions(id);
+  }
+
+  /**
+   * Fetch a single config-version snapshot by version number.
+   */
+  @Get(':id/versions/:versionNumber')
+  @ApiOperation({ summary: 'Get one config-version snapshot by version number (TASK-328 A6)' })
+  @ApiParam({ name: 'id', description: 'Pipeline ID', type: String })
+  @ApiParam({ name: 'versionNumber', description: 'Version number (1-based)', type: Number })
+  @ApiResponse({ status: 200, description: 'Version snapshot', type: PipelineVersionResponse })
+  @ApiResponse({ status: 404, description: 'Version not found' })
+  async getVersion(@Param('id') id: string, @Param('versionNumber') versionNumber: string): Promise<PipelineVersionResponse> {
+    const parsed = Number.parseInt(versionNumber, 10);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      throw new BadRequestException('versionNumber must be a positive integer');
+    }
+    const version = await this.pipelineService.getVersion(id, parsed);
+    if (!version) {
+      throw new NotFoundException(`Version ${parsed} not found for pipeline ${id}`);
+    }
+    return version;
   }
 }

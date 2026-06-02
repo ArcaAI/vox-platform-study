@@ -333,6 +333,14 @@ export const PIPELINE_ENDPOINTS = {
   ASSIGN_TENANT: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/assign-tenant`,
   /** Assign a pipeline to a user */
   ASSIGN_USER: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/assign-user`,
+  /** TASK-328 A6 — mark a pipeline as the tenant default (POST) */
+  SET_DEFAULT: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/set-default`,
+  /** TASK-328 A6 — enable/disable a pipeline (PATCH, OCC via If-Match) */
+  TOGGLE: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/toggle`,
+  /** TASK-328 A6 — list config-version snapshots (newest first) */
+  VERSIONS: (pipelineId: string) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/versions`,
+  /** TASK-328 A6 — get one config-version snapshot by version number */
+  VERSION: (pipelineId: string, versionNumber: number) => `/admin/audio/pipelines/${encodeURIComponent(pipelineId)}/versions/${versionNumber}`,
 } as const;
 
 // =============================================================================
@@ -674,6 +682,21 @@ export const TENANT_STORAGE_CONFIG_ENDPOINTS = {
   UPSERT: '/admin/tenants/storage/config',
   /** Delete a storage config */
   DELETE: (id: string) => `/admin/tenants/storage/config/${encodeURIComponent(id)}`,
+} as const;
+
+/**
+ * Tenant FRONTEND pipeline-config endpoints (TASK-328 A6).
+ *
+ * Controller: `apps/api/src/modules/tenant-frontend-config/tenant-frontend-config-admin.controller.ts`
+ * (`@Controller('admin/tenant-frontend-config')`, class-level `@CanManage('Tenant')`).
+ * One row per tenant: `GET` reads (null when unset), `UPSERT` is a PUT to the
+ * same path. A global admin may target a tenant via `?tenantId=`.
+ */
+export const TENANT_FRONTEND_CONFIG_ENDPOINTS = {
+  /** Read the tenant frontend pipeline config (null when not yet configured) */
+  GET: '/admin/tenant-frontend-config',
+  /** Create or update the tenant frontend pipeline config (PUT, same path as GET) */
+  UPSERT: '/admin/tenant-frontend-config',
 } as const;
 
 /**

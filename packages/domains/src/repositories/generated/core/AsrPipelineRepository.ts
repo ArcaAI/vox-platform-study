@@ -115,4 +115,37 @@ export class AsrPipelineRepository extends Repository<AsrPipelineEntity, AsrPipe
 
     return models.map((model: AsrPipeline) => (this as any)._mapper.toDomainEntity(model));
   }
+
+  /**
+   * TASK-328 A6 — The tenant's current default pipeline, if any.
+   */
+  async findDefault(tenantId: string): Promise<AsrPipelineEntity | null> {
+    try {
+      return await this.findFirst({ filters: { tenantId, isDefault: true } as any });
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * TASK-328 A6 — Atomically mark `pipelineId` as the tenant default and
+   * unset any previous default, scoped to `tenantId`. Runs inside a single
+   * Prisma transaction so the "exactly one default" invariant can never be
+   * observed half-applied (two defaults, or zero) under concurrency.
+   *
+   * `isDefault` is NOT version-guarded (it is a tenant-scoped flag flip, not
+   * a content edit), so this deliberately bypasses the OCC `_version` CAS.
+   */
+  async setDefaultForTenant(tenantId: string, pipelineId: string, updatedBy?: string): Promise<void> {
+    await this.unitOfWorkService.runInTransaction(async (tx) => {
+      await (tx as any).asrPipeline.updateMany({
+        where: { tenantId, isDefault: true, id: { not: pipelineId } },
+        data: { isDefault: false, updatedBy: updatedBy ?? null },
+      });
+      await (tx as any).asrPipeline.update({
+        where: { id: pipelineId },
+        data: { isDefault: true, updatedBy: updatedBy ?? null },
+      });
+    });
+  }
 }

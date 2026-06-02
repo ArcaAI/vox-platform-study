@@ -31,6 +31,8 @@ export interface Pipeline {
   configYaml?: string;
   tags?: string[];
   resourceStatus?: string;
+  /** TASK-328 A6 — whether this pipeline is the tenant's default. */
+  isDefault?: boolean;
   /**
    * Row's optimistic-concurrency version (TASK-302 Stream D Phase E.4) —
    * `_version` in the database. Echo back via the `If-Match` header (or
@@ -39,6 +41,22 @@ export interface Pipeline {
    */
   version?: number;
   [key: string]: unknown;
+}
+
+/**
+ * TASK-328 A6 — a single config-version snapshot of a pipeline. Written on
+ * every YAML config change; surfaced for the versions list + diff/view UI.
+ */
+export interface PipelineVersion {
+  id: string;
+  asrPipelineId: string;
+  versionNumber: number;
+  configYaml: string;
+  name?: string | null;
+  description?: string | null;
+  changeReason?: string | null;
+  changedBy?: string | null;
+  createdAt: string;
 }
 
 export interface CreatePipelineInput {
@@ -89,6 +107,18 @@ export interface UsePipelinesReturn {
   deletePipeline: (id: string) => Promise<void>;
   validateConfig: (configYaml: string) => Promise<PipelineValidationResult>;
   assignToTenant: (pipelineId: string, tenantId: string) => Promise<{ message: string }>;
+  /** TASK-328 A6 — mark a pipeline as the tenant default (unsets the previous). */
+  setDefault: (pipelineId: string) => Promise<Pipeline>;
+  /**
+   * TASK-328 A6 — enable/disable a pipeline. OCC-guarded: pass the `version`
+   * read from `list`/`get`; it is replayed as the `If-Match` header so the
+   * server can run a Compare-And-Set (stale version → 412).
+   */
+  toggle: (pipelineId: string, enabled: boolean, expectedVersion: number) => Promise<Pipeline>;
+  /** TASK-328 A6 — list config-version snapshots (newest first). */
+  listVersions: (pipelineId: string) => Promise<PipelineVersion[]>;
+  /** TASK-328 A6 — get one config-version snapshot by version number. */
+  getVersion: (pipelineId: string, versionNumber: number) => Promise<PipelineVersion>;
 }
 
 export function usePipelines(): UsePipelinesReturn {
@@ -183,6 +213,45 @@ export function usePipelines(): UsePipelinesReturn {
     [execute],
   );
 
+  // TASK-328 A6 — mark a pipeline as the tenant default; reflect the flipped
+  // `isDefault` flags locally (the newly-default one true, all others false).
+  const setDefault = useCallback(
+    (pipelineId: string) =>
+      execute<Pipeline>('setDefault', async (client) => {
+        const updated = await client.post<Pipeline>(PIPELINE_ENDPOINTS.SET_DEFAULT(pipelineId), {});
+        setPipelines((prev) => prev.map((p) => (p.id === pipelineId ? { ...p, ...updated, isDefault: true } : { ...p, isDefault: false })));
+        return updated;
+      }),
+    [execute],
+  );
+
+  // TASK-328 A6 — enable/disable. OCC: replay the row version as `If-Match`
+  // (RFC 7232 strong validator) so the server runs a Compare-And-Set.
+  const toggle = useCallback(
+    (pipelineId: string, enabled: boolean, expectedVersion: number) =>
+      execute<Pipeline>('toggle', async (client) => {
+        const updated = await client.patchWithIfMatch<Pipeline>(PIPELINE_ENDPOINTS.TOGGLE(pipelineId), { enabled }, `"${expectedVersion}"`);
+        setPipelines((prev) => prev.map((p) => (p.id === pipelineId ? updated : p)));
+        return updated;
+      }),
+    [execute],
+  );
+
+  const listVersions = useCallback(
+    (pipelineId: string) =>
+      execute<PipelineVersion[]>('listVersions', async (client) => {
+        const raw = await client.get(PIPELINE_ENDPOINTS.VERSIONS(pipelineId));
+        return extractArray<PipelineVersion>(raw);
+      }),
+    [execute],
+  );
+
+  const getVersion = useCallback(
+    (pipelineId: string, versionNumber: number) =>
+      execute<PipelineVersion>('getVersion', (client) => client.get<PipelineVersion>(PIPELINE_ENDPOINTS.VERSION(pipelineId, versionNumber))),
+    [execute],
+  );
+
   return {
     pipelines,
     selectedPipeline,
@@ -197,5 +266,9 @@ export function usePipelines(): UsePipelinesReturn {
     deletePipeline,
     validateConfig,
     assignToTenant,
+    setDefault,
+    toggle,
+    listVersions,
+    getVersion,
   };
 }
