@@ -82,6 +82,16 @@ export {
   type VoiceEnrollmentChecker,
 } from './useVoiceEnrollmentStatus';
 
+// LOCAL in-browser voice-embedding provider (TASK-329 P4) — sits alongside the
+// backend `useVoiceEmbedding`; extracts a WavLM speaker embedding client-side.
+export { useLocalVoiceEmbedding } from './useLocalVoiceEmbedding';
+export type {
+  UseLocalVoiceEmbeddingReturn,
+  UseLocalVoiceEmbeddingOptions,
+  LocalVoiceEmbeddingRecord,
+  LocalVoiceStatus,
+} from './useLocalVoiceEmbedding';
+
 // Tenant management hook (TASK-218)
 export { useTenants, type UseTenantsReturn } from './useTenants';
 export type { Tenant, CreateTenantInput, UpdateTenantInput } from './useTenants';

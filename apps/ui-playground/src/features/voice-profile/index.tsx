@@ -1,6 +1,6 @@
 import { Main } from '@/components/layout/main';
+import { ImpersonationGuard } from '@/components/impersonation-guard';
 import { AdminDataTable, ConfirmDialog } from '@/features/admin/components';
-import { ImpersonationGuard } from '@/features/summarization/components/impersonation-guard';
 import { useDoctorContext } from '@/features/summarization/hooks/use-doctor-context';
 import { useAuthStore } from '@/store/auth-store';
 import { Badge } from '@arcaai/ui/badge';
@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arca
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@arcaai/ui/dropdown-menu';
 import { Input } from '@arcaai/ui/input';
 import { Label } from '@arcaai/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/tabs';
+import { isLocalVoiceEmbeddingSupported, resolveVoiceEnrollmentProvider, type VoiceEnrollmentProvider } from '@arcaai/vox';
 import { Link } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 import {
@@ -26,7 +28,7 @@ import {
   UserCog,
   XCircle,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   type VoiceProfile,
@@ -37,6 +39,7 @@ import {
   useVoiceProfiles,
 } from './api/voice-profiles';
 import { type AudioSample, MAX_SAMPLES, MAX_SAMPLE_DURATION, formatDuration, getAudioDuration, toWavFile } from './audio-utils';
+import { LocalEnrollCard, QuickTestCard } from './local-voice';
 
 // ---------------------------------------------------------------------------
 // Enroll Card
@@ -483,13 +486,51 @@ function ProfileTable() {
 }
 
 // ---------------------------------------------------------------------------
+// Workspace — provider selection (backend vs local) + profile table
+// ---------------------------------------------------------------------------
+
+function VoiceProfileWorkspace() {
+  const localSupported = useMemo(() => isLocalVoiceEmbeddingSupported(), []);
+  // Showcase the LOCAL provider when the browser supports it; otherwise the
+  // server provider (always available) is the safe default.
+  const [provider, setProvider] = useState<VoiceEnrollmentProvider>(() =>
+    resolveVoiceEnrollmentProvider({ preferred: 'local', localSupported }),
+  );
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Tabs value={provider} onValueChange={(v: string) => setProvider(v as VoiceEnrollmentProvider)}>
+        <TabsList>
+          <TabsTrigger value="backend" className="gap-1.5">
+            <Building2 className="size-3.5" />
+            Server (backend)
+          </TabsTrigger>
+          <TabsTrigger value="local" className="gap-1.5" disabled={!localSupported}>
+            <Fingerprint className="size-3.5" />
+            In-browser (local)
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="backend" className="mt-4">
+          <EnrollCard />
+        </TabsContent>
+        <TabsContent value="local" className="mt-4 flex flex-col gap-6">
+          <LocalEnrollCard />
+          <QuickTestCard />
+        </TabsContent>
+      </Tabs>
+      <ProfileTable />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export default function VoiceProfilePage() {
   const tenantId = useAuthStore((s) => s.tenantId);
   const hasTenant = !!tenantId;
-  const { requiresImpersonation, isImpersonated, roles } = useDoctorContext();
+  const { requiresImpersonation, isImpersonated } = useDoctorContext();
 
   const canAccess = hasTenant && !requiresImpersonation;
 
@@ -545,19 +586,14 @@ export default function VoiceProfilePage() {
                 </CardContent>
               </Card>
             </div>
-          ) : /* Guard: impersonation required */
-          requiresImpersonation ? (
+          ) : (
+            /* Guard: impersonation required (shared guard renders children when satisfied) */
             <ImpersonationGuard
-              roles={roles}
               featureName="voice profile"
               featureDescription="Voice profiles are user-scoped and require impersonation to manage."
-            />
-          ) : (
-            /* Content: full access */
-            <div className="flex flex-col gap-6">
-              <EnrollCard />
-              <ProfileTable />
-            </div>
+            >
+              <VoiceProfileWorkspace />
+            </ImpersonationGuard>
           )}
         </div>
       </div>
