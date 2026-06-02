@@ -1,4 +1,4 @@
-import { Building2, Database, Dna, FileText, HardDrive, Hospital, ScrollText, Settings, Settings2, Users, Workflow } from 'lucide-react';
+import { Building2, Database, Dna, FileText, HardDrive, Hospital, ScrollText, Server, Settings, Settings2, SlidersHorizontal, Users, Workflow } from 'lucide-react';
 import { orderItemsById } from '@/features/admin/hooks/use-admin-preferences';
 import type { DraggableNavItem } from './draggable-nav-group';
 
@@ -28,6 +28,8 @@ export function buildAdminNavItems(opts: { isAdmin: boolean; isGlobalScope: bool
       { id: 'prompts', title: 'Prompts', url: '/admin/prompts', icon: FileText, badge: 'NEW' },
       { id: 'departments', title: 'Departments', url: '/admin/departments', icon: Hospital, badge: 'NEW' },
       { id: 'audio-pipelines', title: 'Audio Pipelines', url: '/admin/audio-pipelines', icon: Workflow, badge: 'NEW' },
+      { id: 'frontend-pipeline', title: 'Frontend Pipeline', url: '/admin/frontend-pipeline', icon: SlidersHorizontal, badge: 'NEW' },
+      { id: 'backend-pipeline', title: 'Backend Pipeline', url: '/admin/backend-pipeline', icon: Server, badge: 'NEW' },
       { id: 'storage', title: 'Storage', url: '/admin/storage', icon: HardDrive },
       { id: 'configurations', title: 'Configurations', url: '/admin/configurations', icon: Settings2 },
       { id: 'audit-logs', title: 'Audit Logs', url: '/admin/audit-logs', icon: ScrollText },
