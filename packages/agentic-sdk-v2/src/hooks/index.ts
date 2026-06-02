@@ -30,6 +30,10 @@ export { usePrompts, type UsePromptsReturn } from './usePrompts';
 // Department management hook (SDK-207 WS-5)
 export { useDepartments, type UseDepartmentsReturn } from './useDepartments';
 
+// User ↔ department assignment hook (TASK-328 A1)
+export { useUserDepartments, type UseUserDepartmentsReturn } from './useUserDepartments';
+export type { UserDepartmentAssignment, AssignUserDepartmentInput } from './useUserDepartments';
+
 // User management hook (TASK-032 WS-G)
 export { useUsers, type UseUsersReturn } from './useUsers';
 export type { User, CreateUserInput, UpdateUserInput } from './useUsers';

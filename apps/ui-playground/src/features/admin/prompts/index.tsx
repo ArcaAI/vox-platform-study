@@ -788,12 +788,21 @@ function PromptDetailDialog({
 // Main Page
 // ---------------------------------------------------------------------------
 
-export default function PromptManagementPage() {
+/**
+ * @param scopedTenantId  TASK-328 A2 — when provided (tenant-detail tab), the
+ *   page is locked to this tenant: the tenant picker column is hidden and the
+ *   tenant fetch is disabled. Composes the same view without forking it.
+ * @param embedded  Render bare (no `<Main>` / page header) for use inside a tab.
+ */
+export default function PromptManagementPage({ scopedTenantId, embedded }: { scopedTenantId?: string; embedded?: boolean } = {}) {
   // ---- Tenant context for super admins ------------------------------------
 
   const tenantKey = useAuthStore((s) => s.tenantKey);
   const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
   const setTenantKey = useAuthStore((s) => s.setTenantKey);
+
+  // When locked to a tenant (embedded tab), never show the tenant picker.
+  const showTenantsColumn = !scopedTenantId && isSuperAdmin();
 
   const [selectedTenantId, setSelectedTenantId] = useState(tenantKey || '');
 
@@ -804,10 +813,10 @@ export default function PromptManagementPage() {
     isFetchingNextPage: tenantsLoadingMore,
     isRefetching: tenantsRefreshing,
     refetch: refetchTenants,
-  } = useTenantsInfinite(25, { enabled: isSuperAdmin() });
+  } = useTenantsInfinite(25, { enabled: showTenantsColumn });
   const tenants = useMemo(() => tenantsPages?.pages.flatMap((p) => p.data) ?? [], [tenantsPages]);
 
-  const effectiveTenantId = tenantKey || selectedTenantId;
+  const effectiveTenantId = scopedTenantId ?? (tenantKey || selectedTenantId);
   const hasTenantContext = !!effectiveTenantId;
 
   useEffect(() => {
@@ -1090,7 +1099,7 @@ export default function PromptManagementPage() {
 
   const tenantsState: MultiColumnState<Tenant> = {
     data: tenants,
-    isLoading: !tenants.length && isSuperAdmin(),
+    isLoading: !tenants.length && showTenantsColumn,
     selectedId: effectiveTenantId || null,
     onSelect: handleTenantSelect,
     hasMore: !!tenantsHasMore,
@@ -1344,17 +1353,12 @@ export default function PromptManagementPage() {
 
   // ---- Render -------------------------------------------------------------
 
-  return (
-    <Main>
-      <div className="mb-4">
-        <h2 className="text-2xl font-bold tracking-tight">Prompt Templates</h2>
-        <p className="text-muted-foreground mt-1">Create, edit, and manage prompt templates used for AI generation across departments.</p>
-      </div>
-
+  const body = (
+    <>
       <MultiColumnLayout
-        columns={[...(isSuperAdmin() ? [tenantsColumn] : []), promptsColumn, versionsColumn, detailColumn]}
-        columnStates={[...(isSuperAdmin() ? [tenantsState] : []), promptsState, versionsState, detailState]}
-        height="calc(100vh - 12rem)"
+        columns={[...(showTenantsColumn ? [tenantsColumn] : []), promptsColumn, versionsColumn, detailColumn]}
+        columnStates={[...(showTenantsColumn ? [tenantsState] : []), promptsState, versionsState, detailState]}
+        height={embedded ? 'calc(100vh - 20rem)' : 'calc(100vh - 12rem)'}
       />
 
       <CreatePromptDialog open={createOpen} onOpenChange={setCreateOpen} isPending={createMutation.isPending} onSubmit={handleCreate} />
@@ -1372,6 +1376,20 @@ export default function PromptManagementPage() {
         onConfirm={handleDelete}
         isLoading={deleteMutation.isPending}
       />
+    </>
+  );
+
+  // TASK-328 A2 — embedded inside the tenant-detail "Prompts" tab: render bare.
+  if (embedded) return body;
+
+  return (
+    <Main>
+      <div className="mb-4">
+        <h2 className="text-2xl font-bold tracking-tight">Prompt Templates</h2>
+        <p className="text-muted-foreground mt-1">Create, edit, and manage prompt templates used for AI generation across departments.</p>
+      </div>
+
+      {body}
     </Main>
   );
 }

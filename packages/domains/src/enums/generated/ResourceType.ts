@@ -38,4 +38,5 @@ export enum ResourceType {
   TenantFrontendConfig = 'TenantFrontendConfig',
   AsrPipelineVersion = 'AsrPipelineVersion',
   UserVoiceProfile = 'UserVoiceProfile',
+  UserDepartment = 'UserDepartment',
 }
