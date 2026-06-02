@@ -1,7 +1,9 @@
+import { LiveCodePanel } from '@/components/live-code-panel';
 import { Main } from '@/components/layout/main';
 import { ImpersonationGuard } from '@/components/impersonation-guard';
 import { AdminDataTable, ConfirmDialog } from '@/features/admin/components';
 import { useDoctorContext } from '@/features/summarization/hooks/use-doctor-context';
+import { buildVoiceSnippet } from '@/lib/playground-snippets';
 import { useAuthStore } from '@/store/auth-store';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
@@ -490,12 +492,14 @@ function ProfileTable() {
 // ---------------------------------------------------------------------------
 
 function VoiceProfileWorkspace() {
+  const tenantId = useAuthStore((s) => s.tenantId);
   const localSupported = useMemo(() => isLocalVoiceEmbeddingSupported(), []);
   // Showcase the LOCAL provider when the browser supports it; otherwise the
   // server provider (always available) is the safe default.
   const [provider, setProvider] = useState<VoiceEnrollmentProvider>(() =>
     resolveVoiceEnrollmentProvider({ preferred: 'local', localSupported }),
   );
+  const voiceCode = useMemo(() => buildVoiceSnippet({ tenantId, provider }), [tenantId, provider]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -519,6 +523,7 @@ function VoiceProfileWorkspace() {
         </TabsContent>
       </Tabs>
       <ProfileTable />
+      <LiveCodePanel code={voiceCode} title="Voice Profile — SDK sample" filename="voice-enrollment.ts" />
     </div>
   );
 }

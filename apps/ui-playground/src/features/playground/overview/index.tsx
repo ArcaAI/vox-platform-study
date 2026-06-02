@@ -1,14 +1,18 @@
+import { LiveCodePanel } from '@/components/live-code-panel';
 import { PlaygroundLayout } from '@/components/layout/playground-layout';
 import { ServiceStatusGrid } from '@/features/introduction/components/service-status-grid';
+import { buildOverviewSnippet } from '@/lib/playground-snippets';
 import { useAuthStore } from '@/store/auth-store';
 import { Badge } from '@arcaai/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/card';
 import { Activity, Building2, Headphones, MessageSquare, TestTube, Users, Zap } from 'lucide-react';
+import { useMemo } from 'react';
 import { UserList } from './components/user-list';
 
 export default function OverviewPage() {
   const { tenantId, user } = useAuthStore();
   const isSuperAdmin = user?.roles?.includes('SUPER_ADMIN') ?? false;
+  const overviewCode = useMemo(() => buildOverviewSnippet({ tenantId, isSuperAdmin }), [tenantId, isSuperAdmin]);
 
   return (
     <PlaygroundLayout title="Overview" description="Configure your testing environment and explore SDK capabilities.">
@@ -90,6 +94,7 @@ export default function OverviewPage() {
         </CardContent>
       </Card>
       <UserList />
+      <LiveCodePanel code={overviewCode} title="Overview — SDK connection sample" filename="connection-status.tsx" />
     </PlaygroundLayout>
   );
 }

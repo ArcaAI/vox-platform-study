@@ -2,6 +2,20 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
 
+// TASK-329 — the prompt-kit code-block behind LiveCodePanel pulls in Shiki + async
+// highlighting, which is heavy and unnecessary under jsdom. Provide a lightweight
+// passthrough (rendering the snippet text) so every component and page test that
+// mounts a LiveCodePanel stays fast and assertable.
+vi.mock('@arcaai/ui/components/registries/prompt-kit/code-block', async () => {
+    const React = await import('react');
+    type Props = { children?: React.ReactNode; code?: string };
+    return {
+        CodeBlock: ({ children }: Props) => React.createElement('div', { 'data-testid': 'code-block' }, children),
+        CodeBlockCode: ({ code }: Props) => React.createElement('pre', null, code ?? ''),
+        CodeBlockGroup: ({ children }: Props) => React.createElement('div', null, children),
+    };
+});
+
 afterEach(() => {
     cleanup();
 });

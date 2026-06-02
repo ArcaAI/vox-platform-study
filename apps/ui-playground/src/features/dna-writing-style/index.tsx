@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -26,9 +26,11 @@ import {
   Wand2,
 } from 'lucide-react';
 
+import { LiveCodePanel } from '@/components/live-code-panel';
 import { Main } from '@/components/layout/main';
 import { ImpersonationGuard } from '@/components/impersonation-guard';
 import { zodResolver } from '@/lib/zod-resolver';
+import { buildDnaSnippet } from '@/lib/playground-snippets';
 import { useDoctorContext } from '@/features/summarization/hooks/use-doctor-context';
 import {
   streamDnaJob,
@@ -505,6 +507,16 @@ export default function DnaWritingStylePage() {
   const fromHistoryMutation = useGenerateDnaReport();
   const setDefaultMutation = useSetDefaultDnaReport();
 
+  const dnaCode = useMemo(
+    () =>
+      buildDnaSnippet({
+        reportId: myStyle?.id ?? null,
+        version: myStyle?.currentVersionNumber ?? null,
+        tone: myStyle?.reportData?.tone ?? null,
+      }),
+    [myStyle?.id, myStyle?.currentVersionNumber, myStyle?.reportData?.tone],
+  );
+
   useEffect(() => {
     if (versions.length === 0) {
       setSelectedVersionId(null);
@@ -685,6 +697,10 @@ export default function DnaWritingStylePage() {
                 />
               </div>
             )}
+
+            <div className="mt-6">
+              <LiveCodePanel code={dnaCode} title="DNA Writing Style — SDK sample" filename="generate-style.ts" />
+            </div>
           </ImpersonationGuard>
 
           {/* Dialogs */}
