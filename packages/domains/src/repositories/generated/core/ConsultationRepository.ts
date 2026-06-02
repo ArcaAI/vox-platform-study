@@ -147,25 +147,59 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
   }
 
   /**
-   * Find consultation chain (parent + all children) for context sharing
+   * Find the full consultation chain (structural root + every descendant, multi-hop)
+   * for context sharing. Walks the entire `parentConsultationId` tree rather than a
+   * single level, and is guarded against cycles. Only ENABLED nodes are returned.
    */
   async findConsultationChain(consultationId: string): Promise<ConsultationEntity[]> {
     try {
-      const consultation = await this.findById(consultationId);
-      if (!consultation) return [];
+      const start: Consultation | null = await (this as any).db.findFirst({ where: { id: consultationId } });
+      if (!start) return [];
 
-      // Find the root (new-visit)
-      const rootId = consultation.parentConsultationId || consultation.id;
+      // 1. Climb to the structural root via parentConsultationId (cycle-guarded).
+      const climbVisited = new Set<string>();
+      let root: Consultation = start;
+      while (root.parentConsultationId && !climbVisited.has(root.id)) {
+        climbVisited.add(root.id);
+        const parent: Consultation | null = await (this as any).db.findFirst({
+          where: { id: root.parentConsultationId },
+        });
+        if (!parent) break;
+        root = parent;
+      }
 
-      // Get all consultations in the chain using OR condition
-      const models = await (this as any).db.findMany({
-        where: {
-          OR: [{ id: rootId }, { parentConsultationId: rootId }],
-          resourceStatus: ResourceStatusType.ENABLED,
-        },
-        orderBy: { createdAt: 'asc' },
+      // 2. Breadth-first collect every ENABLED descendant across all hops (cycle-guarded).
+      const collected = new Map<string, Consultation>();
+      const visited = new Set<string>([root.id]);
+
+      const rootModel: Consultation | null = await (this as any).db.findFirst({
+        where: { id: root.id, resourceStatus: ResourceStatusType.ENABLED },
       });
+      if (rootModel) collected.set(rootModel.id, rootModel);
 
+      let frontier: string[] = [root.id];
+      while (frontier.length > 0) {
+        const children: Consultation[] = await (this as any).db.findMany({
+          where: {
+            parentConsultationId: { in: frontier },
+            resourceStatus: ResourceStatusType.ENABLED,
+          },
+        });
+        const next: string[] = [];
+        for (const child of children) {
+          if (!visited.has(child.id)) {
+            visited.add(child.id);
+            collected.set(child.id, child);
+            next.push(child.id);
+          }
+        }
+        frontier = next;
+      }
+
+      // 3. Order by createdAt ascending and map to domain entities.
+      const models = Array.from(collected.values()).sort(
+        (a, b) => new Date(a.createdAt as unknown as string).getTime() - new Date(b.createdAt as unknown as string).getTime(),
+      );
       return models.map((model: Consultation) => (this as any)._mapper.toDomainEntity(model));
     } catch {
       return [];

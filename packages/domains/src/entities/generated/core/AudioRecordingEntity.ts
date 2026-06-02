@@ -9,6 +9,8 @@ import * as Entities from '../../../entities';
 export interface IAudioRecordingEntity extends IBaseTenantEntity {
   contextItemId: string;
   mediaId: string;
+  rawMediaId?: string | null;
+  processedMediaId?: string | null;
   duration?: number | null;
   format?: string | null;
   sampleRate?: number | null;
@@ -23,6 +25,8 @@ export interface IAudioRecordingEntity extends IBaseTenantEntity {
 export class AudioRecordingEntity extends BaseTenantEntity {
   private _contextItemId: IAudioRecordingEntity['contextItemId'];
   private _mediaId: IAudioRecordingEntity['mediaId'];
+  private _rawMediaId?: IAudioRecordingEntity['rawMediaId'];
+  private _processedMediaId?: IAudioRecordingEntity['processedMediaId'];
   private _duration?: IAudioRecordingEntity['duration'];
   private _format?: IAudioRecordingEntity['format'];
   private _sampleRate?: IAudioRecordingEntity['sampleRate'];
@@ -37,6 +41,8 @@ export class AudioRecordingEntity extends BaseTenantEntity {
     super(init);
     this._contextItemId = init.contextItemId;
     this._mediaId = init.mediaId;
+    this._rawMediaId = init.rawMediaId;
+    this._processedMediaId = init.processedMediaId;
     this._duration = init.duration;
     this._format = init.format;
     this._sampleRate = init.sampleRate;
@@ -62,6 +68,22 @@ export class AudioRecordingEntity extends BaseTenantEntity {
 
   set mediaId(value: IAudioRecordingEntity['mediaId']) {
     this.setProperty('mediaId', value);
+  }
+
+  get rawMediaId(): IAudioRecordingEntity['rawMediaId'] {
+    return this._rawMediaId;
+  }
+
+  set rawMediaId(value: IAudioRecordingEntity['rawMediaId']) {
+    this.setProperty('rawMediaId', value);
+  }
+
+  get processedMediaId(): IAudioRecordingEntity['processedMediaId'] {
+    return this._processedMediaId;
+  }
+
+  set processedMediaId(value: IAudioRecordingEntity['processedMediaId']) {
+    this.setProperty('processedMediaId', value);
   }
 
   get duration(): IAudioRecordingEntity['duration'] {

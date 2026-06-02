@@ -61,6 +61,12 @@ export { useAuth, type UseAuthReturn } from './useAuth';
 // Consultation job hook (TASK-032 WS-A)
 export { useConsultationJob, type UseConsultationJobReturn } from './useConsultationJob';
 
+// Consultation chain hook (TASK-329 P2) — full multi-hop parent/child tree
+export { useConsultationChain, type UseConsultationChainReturn } from './useConsultationChain';
+
+// Audio recordings hook (TASK-329 P2 — dual-capture X8)
+export { useAudioRecordings, type UseAudioRecordingsReturn } from './useAudioRecordings';
+
 // Pipeline management hook (TASK-032 WS-B; TASK-328 A6 default/toggle/versions)
 export { usePipelines, type UsePipelinesReturn } from './usePipelines';
 export type { Pipeline, CreatePipelineInput, UpdatePipelineInput, PipelineValidationResult, PipelineVersion } from './usePipelines';

@@ -18,7 +18,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { DepartmentRepository, DepartmentEntity } from '@arcaai/domains';
+import { DepartmentRepository, DepartmentEntity, PromptTemplateRepository } from '@arcaai/domains';
 
 // ============================================================================
 // Types
@@ -47,10 +47,12 @@ export interface ResolvedPromptConfig {
 }
 
 /** Which tier of the fallback chain was used */
-export type PromptResolutionTier = 'department' | 'default';
+export type PromptResolutionTier = 'preferred' | 'department' | 'default';
 
 /** Trace of what each tier contributed */
 export interface PromptResolutionTrace {
+  /** The doctor's preferred prompt template id, when it resolved (TASK-329 P2 Tier-0) */
+  preferredPromptId?: string | null;
   departmentTemplate?: string | null;
   departmentPromptId?: string | null;
   usedDefaults: string[];
@@ -69,6 +71,12 @@ export interface PromptResolutionParams {
 
   /** Explicit template override from the request */
   explicitTemplate?: string;
+
+  /**
+   * The requesting doctor's preferred prompt template id (TASK-329 P2 Tier-0).
+   * When set and the template exists, it wins over the department/default tiers.
+   */
+  preferredPromptTemplateId?: string | null;
 }
 
 // ============================================================================
@@ -89,7 +97,10 @@ export const SYSTEM_DEFAULTS = {
 export class PromptResolutionService {
   private readonly logger = new Logger(PromptResolutionService.name);
 
-  constructor(private readonly departmentRepository: DepartmentRepository) {}
+  constructor(
+    private readonly departmentRepository: DepartmentRepository,
+    private readonly promptTemplateRepository: PromptTemplateRepository,
+  ) {}
 
   /**
    * Resolve prompt configuration using the Department → Default chain.
@@ -103,6 +114,12 @@ export class PromptResolutionService {
     const trace: PromptResolutionTrace = {
       usedDefaults: [],
     };
+
+    // Tier-0 (TASK-329 P2): the doctor's preferred prompt template, when it exists,
+    // wins over the department/default tiers. Resolved up-front so its id can override
+    // the promptId computed below while still keeping department context variables.
+    const preferredPromptId = await this.resolvePreferredPromptId(params.preferredPromptTemplateId);
+    trace.preferredPromptId = preferredPromptId;
 
     // If explicit template is provided, use it and skip department lookup for template
     const department = await this.resolveDepartment(params.departmentId);
@@ -154,13 +171,22 @@ export class PromptResolutionService {
       trace.usedDefaults.push('promptId');
     }
 
+    // Tier-0 override: the preferred template id supersedes department/default promptId.
+    if (preferredPromptId) {
+      promptId = preferredPromptId;
+    }
+
     // --- contextVariables ---
     const contextVariables = this.extractContextVariables(department);
     if (!department?.promptConfig) {
       trace.usedDefaults.push('contextVariables');
     }
 
-    const resolvedFrom: PromptResolutionTier = department && trace.usedDefaults.length < 3 ? 'department' : 'default';
+    const resolvedFrom: PromptResolutionTier = preferredPromptId
+      ? 'preferred'
+      : department && trace.usedDefaults.length < 3
+        ? 'department'
+        : 'default';
 
     this.logger.debug({
       message: 'Prompt config resolved',
@@ -184,6 +210,26 @@ export class PromptResolutionService {
   // =========================================================================
   // Private Resolution Methods
   // =========================================================================
+
+  /**
+   * Tier-0: verify the doctor's preferred prompt template exists.
+   * Returns the template id when it resolves, else null (falls through to lower tiers).
+   */
+  private async resolvePreferredPromptId(preferredPromptTemplateId?: string | null): Promise<string | null> {
+    if (!preferredPromptTemplateId) return null;
+
+    try {
+      const template = await this.promptTemplateRepository.findById(preferredPromptTemplateId);
+      return template?.id ?? null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to resolve preferred prompt template — skipping preferred tier',
+        preferredPromptTemplateId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
 
   /**
    * Look up the department entity with prompt config fields.
