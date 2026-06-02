@@ -11,4 +11,27 @@ export class AsrPipelineVersionRepository extends Repository<AsrPipelineVersionE
   constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
     super(unitOfWorkService, 'asrPipelineVersion', AsrPipelineVersionEntityMapper.getInstance());
   }
+
+  /**
+   * TASK-328 A6 — All snapshots for a pipeline, newest version first.
+   */
+  async findByPipeline(asrPipelineId: string): Promise<AsrPipelineVersionEntity[]> {
+    return this.findAll({
+      filters: { asrPipelineId } as any,
+      sort: [{ versionNumber: 'desc' }],
+    });
+  }
+
+  /**
+   * TASK-328 A6 — The next monotonically-increasing version number for a
+   * pipeline (1 when no snapshots exist yet).
+   */
+  async getNextVersionNumber(asrPipelineId: string): Promise<number> {
+    const latest = await (this as any).db.findFirst({
+      where: { asrPipelineId },
+      orderBy: { versionNumber: 'desc' },
+      select: { versionNumber: true },
+    });
+    return (latest?.versionNumber ?? 0) + 1;
+  }
 }

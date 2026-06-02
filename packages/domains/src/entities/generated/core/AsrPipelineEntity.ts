@@ -12,6 +12,9 @@ export interface IAsrPipelineEntity extends IBaseTaggedEntity {
   slug: string;
   description?: string | null;
   configYaml: string;
+  // TASK-328 A6 — frozen-schema `isDefault` column. Optional on the
+  // interface so the factory (create path) can omit it (DB default = false).
+  isDefault?: boolean;
   TranscriptionJobs?: Entities.TranscriptionJobEntity[] | null;
 }
 
@@ -20,6 +23,7 @@ export class AsrPipelineEntity extends BaseTaggedEntity {
   private _slug: IAsrPipelineEntity['slug'];
   private _description?: IAsrPipelineEntity['description'];
   private _configYaml: IAsrPipelineEntity['configYaml'];
+  private _isDefault: boolean;
   private _TranscriptionJobs?: IAsrPipelineEntity['TranscriptionJobs'];
 
   constructor(init: IAsrPipelineEntity) {
@@ -28,6 +32,7 @@ export class AsrPipelineEntity extends BaseTaggedEntity {
     this._slug = init.slug;
     this._description = init.description;
     this._configYaml = init.configYaml;
+    this._isDefault = init.isDefault ?? false;
     this._TranscriptionJobs = init.TranscriptionJobs;
   }
 
@@ -61,6 +66,14 @@ export class AsrPipelineEntity extends BaseTaggedEntity {
 
   set configYaml(value: IAsrPipelineEntity['configYaml']) {
     this.setProperty('configYaml', value);
+  }
+
+  get isDefault(): boolean {
+    return this._isDefault;
+  }
+
+  set isDefault(value: boolean) {
+    this.setProperty('isDefault', value);
   }
 
   get TranscriptionJobs(): IAsrPipelineEntity['TranscriptionJobs'] {
