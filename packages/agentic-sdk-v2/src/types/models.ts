@@ -26,12 +26,28 @@ export interface ModelRegistryState {
 }
 
 /**
- * Selected models by type
+ * Whisper inference task for local STT.
+ *
+ * - `'transcribe'` — output text in the source language (default).
+ * - `'translate'` — translate the source audio to English (multilingual
+ *   checkpoints only; English-only `.en` models reject this upstream).
+ *
+ * @see TASK-329 P3
+ */
+export type SttTask = 'transcribe' | 'translate';
+
+/**
+ * Selected models by type.
+ *
+ * TASK-329 P3 — `sttTask` persists the user's chosen Whisper task alongside the
+ * selected STT model in the SAME tenant/user-namespaced row, so a user's local
+ * transcribe/translate choice survives reload.
  */
 export interface SelectedModels {
   stt?: string;
   vad?: string;
   ner?: string;
+  sttTask?: SttTask;
 }
 
 /**
@@ -113,15 +129,42 @@ export const DEFAULT_STT_MODELS: ModelDefinition[] = [
     size: 'medium',
     description: 'Better accuracy, moderate speed (~244M params)',
   },
-  {
-    id: 'whisper-medium',
-    name: 'Whisper Medium',
-    type: 'stt',
-    source: 'huggingface',
-    size: 'large',
-    description: 'High accuracy, slower processing (~769M params)',
-  },
 ];
+
+/**
+ * TASK-329 P3 — display metadata for the browser-viable STT models. Co-located
+ * with `DEFAULT_STT_MODELS` so the presented list and the loadable list share
+ * one source of truth (the previous drift advertised `whisper-medium` in the
+ * registry while the config default only ever offered tiny/base/small).
+ */
+const STT_MODEL_SIZE_LABELS: Record<string, string> = {
+  'whisper-tiny': '~75 MB',
+  'whisper-base': '~150 MB',
+  'whisper-small': '~500 MB',
+};
+
+/**
+ * A locally-selectable STT model as presented in the UI (id + display name +
+ * optional human-readable download size).
+ */
+export interface AvailableSttModel {
+  id: string;
+  name: string;
+  size?: string;
+}
+
+/**
+ * The default presented STT model list, DERIVED from `DEFAULT_STT_MODELS`.
+ *
+ * `ConfigSchema.SttConfigSchema.availableModels` defaults to this so the
+ * "presented" set can never drift from the registry-"selectable/loadable" set
+ * again (TASK-329 P3 single-source-of-truth fix).
+ */
+export const DEFAULT_AVAILABLE_STT_MODELS: AvailableSttModel[] = DEFAULT_STT_MODELS.map((model) => ({
+  id: model.id,
+  name: model.name,
+  ...(STT_MODEL_SIZE_LABELS[model.id] ? { size: STT_MODEL_SIZE_LABELS[model.id] } : {}),
+}));
 
 /**
  * Default VAD models

@@ -206,6 +206,7 @@ export { AgenticError, DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from './common';
 
 // Model registry types
 export type {
+  AvailableSttModel,
   ModelLoadingStates,
   ModelLoadOptions,
   ModelLoadProgress,
@@ -213,9 +214,10 @@ export type {
   ModelRegistryActions,
   ModelRegistryState,
   SelectedModels,
+  SttTask,
 } from './models';
 
-export { DEFAULT_MODELS, DEFAULT_STT_MODELS, DEFAULT_VAD_MODELS } from './models';
+export { DEFAULT_AVAILABLE_STT_MODELS, DEFAULT_MODELS, DEFAULT_STT_MODELS, DEFAULT_VAD_MODELS } from './models';
 
 // Pipeline types
 export type {
