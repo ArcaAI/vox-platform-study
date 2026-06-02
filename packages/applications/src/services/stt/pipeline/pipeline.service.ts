@@ -235,8 +235,12 @@ export class PipelineService extends BaseService implements IPipelineService {
       throw new NotFoundException(`Pipeline ${id} not found`);
     }
 
-    existing.delete(userId ?? undefined);
-    await this.pipelineRepository.update(id, existing);
+    // TASK-326 (soft-delete consistency): use the repository's dedicated
+    // `softDelete` so the OCC version bump + DELETED status are applied the same
+    // way as every other module. The prior `entity.delete()` + `update()` path
+    // set the status but skipped the CAS version bump in `softDelete`, so a
+    // concurrent delete could silently double-apply instead of failing OCC.
+    await this.pipelineRepository.softDelete(id, userId ?? undefined);
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
       resourceId: id,

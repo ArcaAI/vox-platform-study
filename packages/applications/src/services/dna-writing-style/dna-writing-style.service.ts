@@ -82,6 +82,14 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       jobId,
     });
 
+    // TASK-326 X9 — audit the generation REQUEST. The report row itself is
+    // created asynchronously by the worker, but the privileged act of triggering
+    // DNA (PHI-derived) generation for a doctor must appear on the audit trail.
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: doctorId,
+      data: { jobId, doctorId, kind: 'dna-generation-requested' },
+    });
+
     return { jobId, status: 'PENDING' };
   }
 

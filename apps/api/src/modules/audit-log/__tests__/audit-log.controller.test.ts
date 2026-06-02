@@ -85,3 +85,45 @@ describe('TASK-307 W5.7 — AuditLogController.fetchByUser tenant scoping (AC-21
         );
     });
 });
+
+// -----------------------------------------------------------------------------
+// TASK-326 X5 — AuditLogController.fetchAll tenant scoping.
+// The unscoped `fetchAll` list route is the cross-tenant enumeration surface
+// (audit X5). The service already scopes via `buildTenantWhere`, but we mirror
+// the `fetchByUser` controller guard so the rule is observable at the request
+// entry point and a non-super-admin with no tenant cannot reach the service.
+// -----------------------------------------------------------------------------
+describe('TASK-326 X5 — AuditLogController.fetchAll tenant scoping', () => {
+    let svc: ReturnType<typeof createMockAuditLogService>;
+
+    beforeEach(() => {
+        svc = createMockAuditLogService();
+        svc.fetchAll.mockResolvedValue({ data: [], count: 0, limit: 10, page: 1 });
+    });
+
+    it('rejects a non-super-admin with NO tenant context (ForbiddenException, service untouched)', async () => {
+        const cls = createMockCls({ id: 'u-1', tenantId: null, roles: ['DOCTOR'] }, null);
+        const controller = new AuditLogController(svc as never, cls as never);
+
+        await expect(controller.fetchAll({} as never)).rejects.toBeInstanceOf(ForbiddenException);
+        expect(svc.fetchAll).not.toHaveBeenCalled();
+    });
+
+    it('allows a non-super-admin WITH a tenant context (service-layer buildTenantWhere scopes it)', async () => {
+        const cls = createMockCls({ id: 'u-1', tenantId: 't-OWN', roles: ['DOCTOR'] }, 't-OWN');
+        const controller = new AuditLogController(svc as never, cls as never);
+
+        await controller.fetchAll({ page: 1, pageSize: 10 } as never);
+
+        expect(svc.fetchAll).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows a SUPER_ADMIN with no tenant context (operator cross-tenant audit reads)', async () => {
+        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+        const controller = new AuditLogController(svc as never, cls as never);
+
+        await controller.fetchAll({} as never);
+
+        expect(svc.fetchAll).toHaveBeenCalledTimes(1);
+    });
+});

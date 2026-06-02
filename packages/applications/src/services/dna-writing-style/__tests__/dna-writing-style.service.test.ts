@@ -168,6 +168,18 @@ describe('DnaWritingStyleService', () => {
             expect(mockQueue.add).toHaveBeenCalledTimes(1);
         });
 
+        it('audits the generation REQUEST via a ResourceCreated SysEvent (TASK-326 X9)', async () => {
+            await service.generateDnaReport('doctor-id-1', {});
+
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                'SysEvent.ResourceCreated',
+                expect.objectContaining({
+                    resourceId: 'doctor-id-1',
+                    data: expect.objectContaining({ kind: 'dna-generation-requested', doctorId: 'doctor-id-1' }),
+                }),
+            );
+        });
+
         it('should include doctorId, tenantId, userId in job payload', async () => {
             await service.generateDnaReport('doctor-id-1', {
                 textSamples: ['sample1'],

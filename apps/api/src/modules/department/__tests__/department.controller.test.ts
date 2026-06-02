@@ -1,5 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ForbiddenException } from '@nestjs/common';
 import { DepartmentController } from '../department.controller';
+
+// TASK-326 X5 — CLS mock so the controller can read the caller's `user`/
+// `tenantId` for the defence-in-depth tenant guard on the list route.
+function createMockCls(user: { id?: string; tenantId?: string | null; roles?: string[] } | null, tenantId?: string | null) {
+    return {
+        get: vi.fn((key: string) => {
+            if (key === 'user') return user;
+            if (key === 'tenantId') return tenantId ?? user?.tenantId ?? undefined;
+            return undefined;
+        }),
+    };
+}
 
 const createMockDepartmentEntity = (overrides: Record<string, unknown> = {}) => ({
     id: overrides.id ?? 'dept-1',
@@ -33,7 +46,11 @@ describe('DepartmentController', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockService = createMockService();
-        controller = new DepartmentController(mockService as any);
+        // Default to a tenant-scoped (non-super-admin) caller so the generic
+        // CRUD specs below pass the X5 list guard. Scoping specs build their
+        // own per-case CLS mock.
+        const cls = createMockCls({ id: 'u-1', tenantId: 'tenant-1', roles: ['DEPARTMENT_ADMIN'] }, 'tenant-1');
+        controller = new DepartmentController(mockService as any, cls as any);
     });
 
     describe('GET /admin/departments (fetchAll)', () => {
@@ -110,6 +127,43 @@ describe('DepartmentController', () => {
             const result = await controller.fetchAll('true');
 
             expect(result).toEqual([]);
+        });
+    });
+
+    // -------------------------------------------------------------------------
+    // TASK-326 X5 — GET /admin/departments tenant scoping.
+    // `DepartmentService.getAll` already requires `this.tenantId` server-side,
+    // but we mirror the AuditLogController guard so a non-super-admin with no
+    // tenant context is rejected at the request entry point and never reaches
+    // the service. SUPER_ADMIN bypasses the controller guard.
+    // -------------------------------------------------------------------------
+    describe('TASK-326 X5 — GET /admin/departments tenant scoping', () => {
+        const buildController = (cls: ReturnType<typeof createMockCls>) =>
+            new DepartmentController(mockService as any, cls as any);
+
+        it('rejects a non-super-admin with NO tenant context (ForbiddenException, service untouched)', async () => {
+            const cls = createMockCls({ id: 'u-1', tenantId: null, roles: ['DEPARTMENT_ADMIN'] }, null);
+
+            await expect(buildController(cls).fetchAll('true')).rejects.toBeInstanceOf(ForbiddenException);
+            expect(mockService.getAll).not.toHaveBeenCalled();
+        });
+
+        it('allows a non-super-admin WITH a tenant context (service.getAll scopes to that tenant)', async () => {
+            mockService.getAll.mockResolvedValue([]);
+            const cls = createMockCls({ id: 'u-1', tenantId: 't-OWN', roles: ['DEPARTMENT_ADMIN'] }, 't-OWN');
+
+            await buildController(cls).fetchAll('true');
+
+            expect(mockService.getAll).toHaveBeenCalledWith({ includeDisabled: true });
+        });
+
+        it('allows a SUPER_ADMIN (operator; service still applies its own tenant rule)', async () => {
+            mockService.getAll.mockResolvedValue([]);
+            const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+
+            await buildController(cls).fetchAll('false');
+
+            expect(mockService.getAll).toHaveBeenCalledTimes(1);
         });
     });
 
