@@ -277,12 +277,13 @@ describe('WS-4 endpoint constants', () => {
   // ===========================================================================
 
   describe('structural completeness', () => {
-    it('DNA_STYLE_ENDPOINTS should have exactly 12 keys', () => {
+    it('DNA_STYLE_ENDPOINTS should have exactly 14 keys', () => {
+      // TASK-329 P5 added MINE + SET_DEFAULT (12 -> 14) for the playground.
       const keys = Object.keys(DNA_STYLE_ENDPOINTS);
-      expect(keys).toHaveLength(12);
+      expect(keys).toHaveLength(14);
       expect(keys).toEqual(expect.arrayContaining([
-        'GENERATE', 'GENERATE_FOR_DOCTOR', 'JOB_STATUS', 'JOB_STREAM', 'MY_STYLE', 'UPDATE',
-        'VERSIONS', 'ADMIN_LIST', 'ADMIN_JOB_STATUS', 'ADMIN_JOB_STREAM', 'ADMIN_DASHBOARD', 'BY_DOCTOR',
+        'GENERATE', 'GENERATE_FOR_DOCTOR', 'JOB_STATUS', 'JOB_STREAM', 'MY_STYLE', 'MINE', 'UPDATE',
+        'SET_DEFAULT', 'VERSIONS', 'ADMIN_LIST', 'ADMIN_JOB_STATUS', 'ADMIN_JOB_STREAM', 'ADMIN_DASHBOARD', 'BY_DOCTOR',
       ]));
     });
 
