@@ -11,6 +11,10 @@ export interface IUserProfileService extends IBaseService {
   fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<UserProfileEntity>>;
   fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<UserProfileEntity>>;
   fetchById(id: EntityId): Promise<UserProfileEntity>;
+  /** Fetch the profile row for a user, or null when none exists yet. */
+  getByUserId(userId: string): Promise<UserProfileEntity | null>;
+  /** Create-or-update the profile keyed by userId (TASK-328 A1–A3). */
+  upsertByUserId(userId: string, request: UpdateUserProfileRequest): Promise<UserProfileEntity>;
   update(id: EntityId, request: UpdateUserProfileRequest): Promise<UserProfileEntity>;
   deleteById(id: EntityId): Promise<UserProfileEntity>;
 }

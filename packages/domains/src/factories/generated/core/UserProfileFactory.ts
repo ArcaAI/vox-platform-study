@@ -13,6 +13,7 @@ export interface CreateUserProfileProps extends BaseEntityFactoryCreateProps {
   email?: IUserProfileEntity['email'];
   phone?: IUserProfileEntity['phone'];
   avatarId?: IUserProfileEntity['avatarId'];
+  preferredPromptTemplateId?: IUserProfileEntity['preferredPromptTemplateId'];
   userId: IUserProfileEntity['userId'];
   User?: IUserProfileEntity['User'];
 
@@ -40,6 +41,7 @@ export class UserProfileFactory {
       email: props.email ?? '',
       phone: props.phone ?? '',
       avatarId: props.avatarId ?? '',
+      preferredPromptTemplateId: props.preferredPromptTemplateId ?? null,
       userId: props.userId,
       User: props.User ?? null,
     });

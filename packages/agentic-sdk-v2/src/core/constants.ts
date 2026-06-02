@@ -579,6 +579,33 @@ export const ADMIN_USER_ROLES_ENDPOINTS = {
 } as const;
 
 /**
+ * Admin user ↔ department assignment endpoints (TASK-328 A1).
+ *
+ * Targets `apps/api/.../controllers/user-departments.controller.ts` at
+ * `/admin/users/:id/departments[/:assignmentId]`. Tenant-scoped via the active
+ * tenant context (global admins pass `X-Tenant-Id`).
+ */
+export const ADMIN_USER_DEPARTMENTS_ENDPOINTS = {
+  LIST: (userId: string) => `/admin/users/${encodeURIComponent(userId)}/departments`,
+  ASSIGN: (userId: string) => `/admin/users/${encodeURIComponent(userId)}/departments`,
+  UPDATE: (userId: string, assignmentId: string) =>
+    `/admin/users/${encodeURIComponent(userId)}/departments/${encodeURIComponent(assignmentId)}`,
+  REMOVE: (userId: string, assignmentId: string) =>
+    `/admin/users/${encodeURIComponent(userId)}/departments/${encodeURIComponent(assignmentId)}`,
+} as const;
+
+/**
+ * Admin user profile endpoints (TASK-328 A1–A3).
+ *
+ * Targets `apps/api/.../user.controller.ts` at `/admin/users/:id/profile`.
+ * Exposes `preferredPromptTemplateId` through the GET/PATCH profile path.
+ */
+export const ADMIN_USER_PROFILE_ENDPOINTS = {
+  GET: (userId: string) => `/admin/users/${encodeURIComponent(userId)}/profile`,
+  UPDATE: (userId: string) => `/admin/users/${encodeURIComponent(userId)}/profile`,
+} as const;
+
+/**
  * Audit log endpoints (QA-003)
  */
 export const AUDIT_LOG_ENDPOINTS = {

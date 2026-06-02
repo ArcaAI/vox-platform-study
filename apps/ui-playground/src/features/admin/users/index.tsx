@@ -17,14 +17,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@arcaai/ui/form';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@arcaai/ui/dropdown-menu';
 import {
+  Building2,
   Calendar,
   Clock,
   Copy,
   Eye,
+  FileText,
   Globe,
   Key,
   Loader2,
   Mail,
+  Mic,
   MoreHorizontal,
   Pencil,
   Phone,
@@ -34,6 +37,8 @@ import {
   Settings,
   Shield,
   ShieldAlert,
+  Sparkles,
+  Star,
   Trash2,
   User as UserIcon,
 } from 'lucide-react';
@@ -48,6 +53,7 @@ import {
   type AdminUser,
   type UserApiKey,
   type UserSetting,
+  type UserDepartmentAssignment,
   useAdminUser,
   useAdminUsers,
   useAdminUserSettings,
@@ -61,9 +67,19 @@ import {
   useRevokeApiKey,
   useAssignUserRole,
   useRemoveUserRole,
+  useAdminUserProfile,
+  useUpdateAdminUserProfile,
+  useAdminUserVoiceProfiles,
+  useAdminUserDepartments,
+  useAssignUserDepartment,
+  useUpdateUserDepartment,
+  useUnassignUserDepartment,
 } from '../api/users';
 import { useAdminTenants } from '../api/tenants';
 import { useRoles } from '../api/roles';
+import { usePromptTemplates } from '../api/prompts';
+import { useTenantDepartments } from '../api/departments';
+import { useTenantDnaReportData } from '../api/dna-reports';
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -830,7 +846,7 @@ function UserPreferencesSection({ userId }: { userId: string }) {
       <div className="mb-3 flex items-center justify-between">
         <h4 className="flex items-center gap-2 text-sm font-medium">
           <Settings className="size-4" />
-          SDK Preferences
+          Personalized Settings
           {sdkSettings.length > 0 && (
             <Badge variant="secondary" className="ml-1 text-xs">
               {sdkSettings.length}
@@ -904,6 +920,295 @@ function UserPreferencesSection({ userId }: { userId: string }) {
         <div className="bg-muted/20 flex flex-col items-center justify-center rounded-lg border border-dashed py-8">
           <Settings className="text-muted-foreground/50 mb-2 size-8" />
           <p className="text-muted-foreground text-sm">No SDK preferences found for this user.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TASK-328 A1–A3 — Preferred prompt template (editable)
+// ---------------------------------------------------------------------------
+
+const NO_TEMPLATE = '_none';
+
+function PreferredPromptTemplateSection({ userId, tenantId }: { userId: string; tenantId: string }) {
+  const { data: profile, isLoading: profileLoading } = useAdminUserProfile(userId);
+  const { data: templatesData, isLoading: templatesLoading } = usePromptTemplates(tenantId, { includeDisabled: true }, { enabled: !!tenantId });
+  const updateProfile = useUpdateAdminUserProfile();
+
+  const templates = templatesData?.data ?? [];
+  const current = profile?.preferredPromptTemplateId || NO_TEMPLATE;
+
+  const handleChange = (value: string) => {
+    updateProfile.mutate(
+      { userId, preferredPromptTemplateId: value === NO_TEMPLATE ? '' : value },
+      {
+        onSuccess: () => toast.success('Preferred prompt template updated'),
+        onError: (err) => toast.error(err.message),
+      },
+    );
+  };
+
+  return (
+    <div>
+      <h4 className="mb-3 flex items-center gap-2 text-sm font-medium">
+        <FileText className="size-4" />
+        Preferred Prompt Template
+      </h4>
+      {profileLoading || templatesLoading ? (
+        <Skeleton className="h-9 w-full rounded-md" />
+      ) : !tenantId ? (
+        <p className="text-muted-foreground text-sm">No tenant context for this user.</p>
+      ) : (
+        <Select value={current} onValueChange={handleChange} disabled={updateProfile.isPending}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select a default prompt template" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_TEMPLATE}>None (use tenant/department default)</SelectItem>
+            {templates.map((t) => (
+              <SelectItem key={t.id} value={t.id}>
+                {t.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+      <p className="text-muted-foreground mt-1.5 text-xs">Backend summarization falls back to this template when no department override applies.</p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TASK-328 A1 — Department assignments (editable)
+// ---------------------------------------------------------------------------
+
+function DepartmentAssignmentsSection({ userId, tenantId }: { userId: string; tenantId: string }) {
+  const { data: assignments, isLoading } = useAdminUserDepartments(userId);
+  const { data: departments } = useTenantDepartments(tenantId, { enabled: !!tenantId });
+  const assignMut = useAssignUserDepartment(userId);
+  const updateMut = useUpdateUserDepartment(userId);
+  const unassignMut = useUnassignUserDepartment(userId);
+  const [pendingDept, setPendingDept] = useState<string>('');
+
+  const deptName = useCallback(
+    (id: string) => departments?.find((d) => d.id === id)?.name ?? id,
+    [departments],
+  );
+
+  const assignedIds = new Set((assignments ?? []).map((a) => a.departmentId));
+  const available = (departments ?? []).filter((d) => !assignedIds.has(d.id));
+
+  const handleAssign = () => {
+    if (!pendingDept) return;
+    assignMut.mutate(
+      { departmentId: pendingDept, isPrimary: (assignments ?? []).length === 0 },
+      {
+        onSuccess: () => {
+          toast.success(`Assigned to ${deptName(pendingDept)}`);
+          setPendingDept('');
+        },
+        onError: (err) => toast.error(err.message),
+      },
+    );
+  };
+
+  const handleSetPrimary = (a: UserDepartmentAssignment) => {
+    if (a.isPrimary) return;
+    updateMut.mutate(
+      { assignmentId: a.id, isPrimary: true, expectedVersion: a.version },
+      {
+        onSuccess: () => toast.success(`${deptName(a.departmentId)} is now primary`),
+        onError: (err) => toast.error(err.message),
+      },
+    );
+  };
+
+  const handleUnassign = (a: UserDepartmentAssignment) => {
+    unassignMut.mutate(a.id, {
+      onSuccess: () => toast.success(`Removed from ${deptName(a.departmentId)}`),
+      onError: (err) => toast.error(err.message),
+    });
+  };
+
+  return (
+    <div>
+      <h4 className="mb-3 flex items-center gap-2 text-sm font-medium">
+        <Building2 className="size-4" />
+        Department Assignments
+        {assignments && assignments.length > 0 && (
+          <Badge variant="secondary" className="ml-1 text-xs">
+            {assignments.length}
+          </Badge>
+        )}
+      </h4>
+
+      {isLoading ? (
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-10 w-full rounded-lg" />
+          <Skeleton className="h-10 w-full rounded-lg" />
+        </div>
+      ) : assignments && assignments.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          {assignments.map((a) => (
+            <div key={a.id} className="bg-muted/20 flex items-center justify-between gap-2 rounded-lg border p-2.5">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-sm font-medium">{deptName(a.departmentId)}</span>
+                {a.isPrimary && (
+                  <Badge variant="outline" className="gap-1 text-[10px] text-amber-600">
+                    <Star className="size-3 fill-amber-500 text-amber-500" />
+                    Primary
+                  </Badge>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                {!a.isPrimary && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => handleSetPrimary(a)}
+                    disabled={updateMut.isPending}
+                  >
+                    <Star className="mr-1 size-3" />
+                    Set primary
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive size-7"
+                  onClick={() => handleUnassign(a)}
+                  disabled={unassignMut.isPending}
+                  aria-label="Remove assignment"
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-muted/20 flex flex-col items-center justify-center rounded-lg border border-dashed py-6">
+          <Building2 className="text-muted-foreground/50 mb-2 size-7" />
+          <p className="text-muted-foreground text-sm">No department assignments.</p>
+        </div>
+      )}
+
+      <div className="mt-3 flex items-center gap-2">
+        <Select value={pendingDept} onValueChange={setPendingDept} disabled={!tenantId || available.length === 0}>
+          <SelectTrigger className="h-8 flex-1 text-xs">
+            <SelectValue placeholder={available.length === 0 ? 'No more departments' : 'Assign to department…'} />
+          </SelectTrigger>
+          <SelectContent>
+            {available.map((d) => (
+              <SelectItem key={d.id} value={d.id}>
+                {d.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button size="sm" className="h-8 gap-1 text-xs" onClick={handleAssign} disabled={!pendingDept || assignMut.isPending}>
+          <Plus className="size-3.5" />
+          Assign
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TASK-328 A3 — Enrolled voice profiles (read-only)
+// ---------------------------------------------------------------------------
+
+function VoiceProfilesSection({ userId }: { userId: string }) {
+  const { data: profiles, isLoading } = useAdminUserVoiceProfiles(userId);
+
+  return (
+    <div>
+      <h4 className="mb-3 flex items-center gap-2 text-sm font-medium">
+        <Mic className="size-4" />
+        Enrolled Voice Profiles
+        {profiles && profiles.length > 0 && (
+          <Badge variant="secondary" className="ml-1 text-xs">
+            {profiles.length}
+          </Badge>
+        )}
+      </h4>
+      {isLoading ? (
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-12 w-full rounded-lg" />
+          <Skeleton className="h-12 w-full rounded-lg" />
+        </div>
+      ) : profiles && profiles.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          {profiles.map((p) => (
+            <div key={p.id} className="bg-muted/20 flex items-center justify-between gap-2 rounded-lg border p-2.5">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{p.label || '(unlabeled profile)'}</p>
+                <p className="text-muted-foreground text-xs">Enrolled {relativeTime(p.createdAt)}</p>
+              </div>
+              <Badge variant={p.isActive ? 'secondary' : 'outline'} className="text-[10px]">
+                {p.isActive ? 'Active' : 'Inactive'}
+              </Badge>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-muted/20 flex flex-col items-center justify-center rounded-lg border border-dashed py-6">
+          <Mic className="text-muted-foreground/50 mb-2 size-7" />
+          <p className="text-muted-foreground text-sm">No voice profiles enrolled.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TASK-328 A3 — DNA writing-style history (read-only)
+// ---------------------------------------------------------------------------
+
+function DnaHistorySection({ userId, tenantId }: { userId: string; tenantId: string }) {
+  const { data, isLoading } = useTenantDnaReportData(tenantId);
+  const reports = (data?.reports ?? []).filter((r) => r.doctorId === userId);
+
+  return (
+    <div>
+      <h4 className="mb-3 flex items-center gap-2 text-sm font-medium">
+        <Sparkles className="size-4" />
+        DNA Writing-Style History
+        {reports.length > 0 && (
+          <Badge variant="secondary" className="ml-1 text-xs">
+            {reports.length}
+          </Badge>
+        )}
+      </h4>
+      {!tenantId ? (
+        <p className="text-muted-foreground text-sm">No tenant context for this user.</p>
+      ) : isLoading ? (
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-12 w-full rounded-lg" />
+          <Skeleton className="h-12 w-full rounded-lg" />
+        </div>
+      ) : reports.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          {reports.map((r) => (
+            <div key={r.id} className="bg-muted/20 flex items-center justify-between gap-2 rounded-lg border p-2.5">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Writing-style profile</p>
+                <p className="text-muted-foreground text-xs">
+                  v{r.currentVersionNumber} · updated {relativeTime(r.updatedAt)}
+                </p>
+              </div>
+              <StatusBadge status={String(r.resourceStatus ?? 'ENABLED')} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-muted/20 flex flex-col items-center justify-center rounded-lg border border-dashed py-6">
+          <Sparkles className="text-muted-foreground/50 mb-2 size-7" />
+          <p className="text-muted-foreground text-sm">No DNA writing-style profiles yet.</p>
         </div>
       )}
     </div>
@@ -1052,8 +1357,28 @@ function UserDetailDialog({
 
               <Separator />
 
-              {/* TASK-245: SDK Preferences */}
+              {/* TASK-245: Personalized settings (frontend + backend pipeline prefs) */}
               <UserPreferencesSection userId={user.id} />
+
+              <Separator />
+
+              {/* TASK-328 A1–A3: Preferred prompt template (editable) */}
+              <PreferredPromptTemplateSection userId={user.id} tenantId={String(user.tenantId ?? '')} />
+
+              <Separator />
+
+              {/* TASK-328 A1: Department assignments */}
+              <DepartmentAssignmentsSection userId={user.id} tenantId={String(user.tenantId ?? '')} />
+
+              <Separator />
+
+              {/* TASK-328 A3: Enrolled voice profiles (read-only) */}
+              <VoiceProfilesSection userId={user.id} />
+
+              <Separator />
+
+              {/* TASK-328 A3: DNA writing-style history (read-only) */}
+              <DnaHistorySection userId={user.id} tenantId={String(user.tenantId ?? '')} />
             </div>
           </ScrollArea>
         ) : (

@@ -15,6 +15,7 @@ import {
   HardDrive,
   Layers,
   Loader2,
+  LogIn,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -35,10 +36,16 @@ import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
+import { useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
+
 import { DEFAULT_PAGE_SIZE } from '@arcaai/vox';
 
 import { Main } from '@/components/layout/main';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/auth-store';
+import PromptManagementPage from '@/features/admin/prompts';
+import StorageManagementPage from '@/features/admin/storage';
 
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
@@ -2315,6 +2322,15 @@ function TenantDetailView({ tenantId, onDeleted, refreshSignal }: { tenantId: st
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const lastHandledRefreshSignalRef = useRef<number>(refreshSignal);
 
+  // TASK-328 A2/A4 — "Manage as tenant": global-scope admins can pivot into the
+  // tenant-scoped admin views. Reuses the Wave-2 scope mechanism (`setTenant`),
+  // whose change is observed by `ScopeSyncInit` to invalidate the query cache;
+  // we also invalidate explicitly so the pivot is self-contained.
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const isGlobalScope = useAuthStore((s) => s.isGlobalScope());
+  const setTenant = useAuthStore((s) => s.setTenant);
+
   const { data: tenant, isLoading, refetch: refetchTenant } = useTenant(tenantId);
   const { data: usage, isLoading: usageLoading, refetch: refetchTenantUsage } = useTenantUsage(tenantId);
   const { data: tenantUsersData, refetch: refetchTenantUsers } = useAdminUsersByTenant(tenantId, {
@@ -2360,6 +2376,14 @@ function TenantDetailView({ tenantId, onDeleted, refreshSignal }: { tenantId: st
         onError: (err) => toast.error(err.message),
       },
     );
+  };
+
+  const handleManageAsTenant = () => {
+    if (!tenant) return;
+    setTenant(tenant.id, tenant.name);
+    void queryClient.invalidateQueries();
+    toast.success(`Now managing as ${tenant.name}`);
+    void navigate({ to: '/admin/configurations' });
   };
 
   useEffect(() => {
@@ -2418,6 +2442,12 @@ function TenantDetailView({ tenantId, onDeleted, refreshSignal }: { tenantId: st
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {isGlobalScope && (
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleManageAsTenant}>
+              <LogIn className="mr-1 size-3" />
+              Manage as tenant
+            </Button>
+          )}
           <Switch checked={isEnabled} onCheckedChange={handleToggleStatus} disabled={toggleStatus.isPending} size="sm" />
           <Button
             variant="outline"
@@ -2498,6 +2528,14 @@ function TenantDetailView({ tenantId, onDeleted, refreshSignal }: { tenantId: st
             <Building2 className="size-3.5" />
             Department Assignments
           </TabsTrigger>
+          <TabsTrigger value="prompts" className="gap-1.5">
+            <FileText className="size-3.5" />
+            Prompts
+          </TabsTrigger>
+          <TabsTrigger value="storage" className="gap-1.5">
+            <HardDrive className="size-3.5" />
+            Storage
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="mt-4">
@@ -2505,6 +2543,14 @@ function TenantDetailView({ tenantId, onDeleted, refreshSignal }: { tenantId: st
         </TabsContent>
         <TabsContent value="departments" className="mt-4">
           <DepartmentsTab tenantId={tenantId} refreshSignal={refreshSignal} />
+        </TabsContent>
+        {/* TASK-328 A2 — reuse the Prompts/Storage admin pages, locked to this
+            tenant via `scopedTenantId` + `embedded` (composition, not a fork). */}
+        <TabsContent value="prompts" className="mt-4">
+          <PromptManagementPage scopedTenantId={tenantId} embedded />
+        </TabsContent>
+        <TabsContent value="storage" className="mt-4">
+          <StorageManagementPage scopedTenantId={tenantId} embedded />
         </TabsContent>
       </Tabs>
 

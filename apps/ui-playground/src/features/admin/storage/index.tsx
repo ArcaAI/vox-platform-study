@@ -43,11 +43,20 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 ** idx).toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
 }
 
-export default function StorageManagementPage() {
+/**
+ * @param scopedTenantId  TASK-328 A2 — when provided (tenant-detail tab), the
+ *   page is locked to this tenant: the tenant picker column is hidden and the
+ *   tenant fetch is disabled. Composes the same view without forking it.
+ * @param embedded  Render bare (no `<Main>` / page title) for use inside a tab.
+ */
+export default function StorageManagementPage({ scopedTenantId, embedded }: { scopedTenantId?: string; embedded?: boolean } = {}) {
   const roles = useAuthStore((s: { user?: { roles?: string[] } | null }) => s.user?.roles ?? []);
   const tenantId = useAuthStore((s: { tenantId: string }) => s.tenantId);
   const tenantName = useAuthStore((s: { tenantName: string }) => s.tenantName);
   const isSuperOrGlobalAdmin = roles.includes('SUPER_ADMIN') || roles.includes('GLOBAL_ADMIN');
+
+  // When locked to a tenant (embedded tab), never show the tenant picker.
+  const showTenantsColumn = !scopedTenantId;
 
   const [tenantSearch, setTenantSearch] = useState('');
   const [selectedTenantId, setSelectedTenantId] = useState<string>(tenantId || '');
@@ -80,7 +89,7 @@ export default function StorageManagementPage() {
     isFetchingNextPage: tenantsLoadingMore,
     refetch: refetchTenants,
   } = useTenantsInfinite(25, {
-    enabled: isSuperOrGlobalAdmin,
+    enabled: isSuperOrGlobalAdmin && showTenantsColumn,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
@@ -107,7 +116,7 @@ export default function StorageManagementPage() {
     [tenantList, tenantSearch],
   );
 
-  const effectiveTenantId = isSuperOrGlobalAdmin ? selectedTenantId : tenantId;
+  const effectiveTenantId = scopedTenantId ?? (isSuperOrGlobalAdmin ? selectedTenantId : tenantId);
   const {
     data: bucketsData = [],
     isLoading: bucketsLoading,
@@ -593,30 +602,21 @@ export default function StorageManagementPage() {
     enabled: !!selectedBucket,
   };
 
-  return (
-    <Main>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Storage Management</h2>
-          <p className="text-muted-foreground mt-1">Manage tenant buckets, folder tree, and blob objects via admin APIs.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setProviderConfigOpen(true)} disabled={!effectiveTenantId}>
-            <Settings2 data-icon="inline-start" />
-            Provider Config
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setAccessKeysOpen(true)} disabled={!effectiveTenantId}>
-            <KeyRound data-icon="inline-start" />
-            Access Keys
-          </Button>
-        </div>
-      </div>
-      <MultiColumnLayout
-        columns={[tenantsColumn, bucketsColumn, objectsColumn]}
-        columnStates={[tenantsState, bucketsState, objectsState]}
-        height="calc(100vh - 12rem)"
-      />
+  const storageActions = (
+    <div className="flex items-center gap-2">
+      <Button variant="outline" size="sm" onClick={() => setProviderConfigOpen(true)} disabled={!effectiveTenantId}>
+        <Settings2 data-icon="inline-start" />
+        Provider Config
+      </Button>
+      <Button variant="outline" size="sm" onClick={() => setAccessKeysOpen(true)} disabled={!effectiveTenantId}>
+        <KeyRound data-icon="inline-start" />
+        Access Keys
+      </Button>
+    </div>
+  );
 
+  const dialogs = (
+    <>
       <Dialog open={createBucketOpen} onOpenChange={setCreateBucketOpen}>
         <DialogContent>
           <DialogHeader>
@@ -708,6 +708,39 @@ export default function StorageManagementPage() {
         isLoading={deleteBucket.isPending}
         onConfirm={handleDeleteBucket}
       />
+    </>
+  );
+
+  const layout = (
+    <MultiColumnLayout
+      columns={[...(showTenantsColumn ? [tenantsColumn] : []), bucketsColumn, objectsColumn]}
+      columnStates={[...(showTenantsColumn ? [tenantsState] : []), bucketsState, objectsState]}
+      height={embedded ? 'calc(100vh - 20rem)' : 'calc(100vh - 12rem)'}
+    />
+  );
+
+  // TASK-328 A2 — embedded inside the tenant-detail "Storage" tab: render bare.
+  if (embedded) {
+    return (
+      <div className="space-y-3">
+        <div className="flex justify-end">{storageActions}</div>
+        {layout}
+        {dialogs}
+      </div>
+    );
+  }
+
+  return (
+    <Main>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Storage Management</h2>
+          <p className="text-muted-foreground mt-1">Manage tenant buckets, folder tree, and blob objects via admin APIs.</p>
+        </div>
+        {storageActions}
+      </div>
+      {layout}
+      {dialogs}
     </Main>
   );
 }
