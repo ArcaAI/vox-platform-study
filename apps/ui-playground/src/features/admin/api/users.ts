@@ -112,6 +112,10 @@ const keys = {
   byTenant: (tenantId: string, params?: PaginationParams) => [...keys.all, 'tenant', tenantId, params] as const,
   apiKeys: (userId: string, params?: PaginationParams) => [...keys.all, 'api-keys', userId, params] as const,
   settings: (userId: string) => [...keys.all, 'settings', userId] as const,
+  // TASK-328 A1–A3
+  profile: (userId: string) => [...keys.all, 'profile', userId] as const,
+  voiceProfiles: (userId: string) => [...keys.all, 'voice-profiles', userId] as const,
+  departments: (userId: string) => [...keys.all, 'departments', userId] as const,
 };
 
 function qs(params?: PaginationParams): string {
@@ -309,6 +313,140 @@ export function useRemoveUserRole() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all });
       qc.invalidateQueries({ queryKey: keys.detail(variables.userId) });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// TASK-328 A1–A3: User profile (incl. preferredPromptTemplateId)
+// ---------------------------------------------------------------------------
+
+export interface AdminUserProfile {
+  id: string;
+  userId: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  avatarId?: string | null;
+  preferredPromptTemplateId?: string | null;
+  [k: string]: unknown;
+}
+
+export interface UpdateUserProfileInput {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  preferredPromptTemplateId?: string;
+}
+
+/** GET /admin/users/:id/profile — resolves to `null` when no profile row exists yet. */
+export function useAdminUserProfile(userId: string, options?: Omit<UseQueryOptions<AdminUserProfile | null>, 'queryKey' | 'queryFn'>) {
+  return useQuery({
+    queryKey: keys.profile(userId),
+    queryFn: () => adminClient.get<AdminUserProfile | null>(`/admin/users/${userId}/profile`),
+    enabled: !!userId,
+    ...options,
+  });
+}
+
+export function useUpdateAdminUserProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, ...input }: UpdateUserProfileInput & { userId: string }) =>
+      adminClient.patch<AdminUserProfile>(`/admin/users/${userId}/profile`, input),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: keys.profile(variables.userId) });
+      qc.invalidateQueries({ queryKey: keys.detail(variables.userId) });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// TASK-328 A1–A3: Enrolled voice profiles (read-only)
+// ---------------------------------------------------------------------------
+
+export interface AdminVoiceProfile {
+  id: string;
+  userId: string;
+  isActive: boolean;
+  label: string | null;
+  modelId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function useAdminUserVoiceProfiles(userId: string, options?: Omit<UseQueryOptions<AdminVoiceProfile[]>, 'queryKey' | 'queryFn'>) {
+  return useQuery({
+    queryKey: keys.voiceProfiles(userId),
+    queryFn: () => adminClient.get<AdminVoiceProfile[]>(`/admin/users/${userId}/voice-profiles`),
+    enabled: !!userId,
+    ...options,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// TASK-328 A1: User ↔ department assignments (CRUD, OCC on update)
+// ---------------------------------------------------------------------------
+
+export interface UserDepartmentAssignment {
+  id: string;
+  userId: string;
+  departmentId: string;
+  isPrimary: boolean;
+  tenantId: string;
+  resourceStatus?: string;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}
+
+export function useAdminUserDepartments(userId: string, options?: Omit<UseQueryOptions<UserDepartmentAssignment[]>, 'queryKey' | 'queryFn'>) {
+  return useQuery({
+    queryKey: keys.departments(userId),
+    queryFn: () => adminClient.get<UserDepartmentAssignment[]>(`/admin/users/${userId}/departments`),
+    enabled: !!userId,
+    ...options,
+  });
+}
+
+export function useAssignUserDepartment(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { departmentId: string; isPrimary?: boolean }) =>
+      adminClient.post<UserDepartmentAssignment>(`/admin/users/${userId}/departments`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.departments(userId) });
+      qc.invalidateQueries({ queryKey: keys.detail(userId) });
+    },
+  });
+}
+
+/** PATCH a single assignment (e.g. promote to primary). Sends `If-Match` to satisfy OCC. */
+export function useUpdateUserDepartment(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ assignmentId, isPrimary, expectedVersion }: { assignmentId: string; isPrimary?: boolean; expectedVersion: number }) =>
+      adminClient.patch<UserDepartmentAssignment>(
+        `/admin/users/${userId}/departments/${assignmentId}`,
+        { isPrimary, expectedVersion },
+        { ifMatch: `"${expectedVersion}"` },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.departments(userId) });
+      qc.invalidateQueries({ queryKey: keys.detail(userId) });
+    },
+  });
+}
+
+export function useUnassignUserDepartment(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (assignmentId: string) => adminClient.delete<void>(`/admin/users/${userId}/departments/${assignmentId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.departments(userId) });
+      qc.invalidateQueries({ queryKey: keys.detail(userId) });
     },
   });
 }

@@ -153,4 +153,34 @@ describe('UserProfileEntity.validate()', () => {
       );
     });
   });
+
+  // TASK-328 A1–A3 — backend preferred prompt template soft reference.
+  describe('preferredPromptTemplateId', () => {
+    it('should carry preferredPromptTemplateId through the constructor', () => {
+      const entity = new UserProfileEntity(
+        createValidInit({ preferredPromptTemplateId: 'tpl-123' }),
+      );
+
+      expect(entity.preferredPromptTemplateId).toBe('tpl-123');
+    });
+
+    it('should record a tracked change when reassigned via the setter', () => {
+      const entity = new UserProfileEntity(createValidInit());
+
+      entity.preferredPromptTemplateId = 'tpl-new';
+
+      expect(entity.preferredPromptTemplateId).toBe('tpl-new');
+      expect(entity.changes).toMatchObject({ preferredPromptTemplateId: 'tpl-new' });
+    });
+
+    it('should throw when preferredPromptTemplateId exceeds 255 characters', () => {
+      const entity = new UserProfileEntity(
+        createValidInit({ preferredPromptTemplateId: 'x'.repeat(256) }),
+      );
+
+      expect(() => entity.validate()).toThrow(
+        'User profile preferredPromptTemplateId must not exceed 255 characters',
+      );
+    });
+  });
 });
