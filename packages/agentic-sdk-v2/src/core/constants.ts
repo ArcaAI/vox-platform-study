@@ -141,6 +141,10 @@ export const DNA_STYLE_ENDPOINTS = {
   ADMIN_LIST: '/admin/dna-writing-styles',
   ADMIN_JOB_STATUS: (jobId: string) => `/admin/dna-writing-styles/jobs/${encodeURIComponent(jobId)}`,
   ADMIN_JOB_STREAM: (jobId: string) => `/admin/dna-writing-styles/jobs/${encodeURIComponent(jobId)}/stream`,
+  // TASK-328 A5 — aggregate dashboard. `tenantId` is global-admin-only; the
+  // backend ignores it for tenant admins (CLS tenant wins).
+  ADMIN_DASHBOARD: (tenantId?: string) =>
+    tenantId ? `/admin/dna-writing-styles/dashboard?tenantId=${encodeURIComponent(tenantId)}` : '/admin/dna-writing-styles/dashboard',
   BY_DOCTOR: (doctorId: string) => `/dna-writing-styles/doctor/${encodeURIComponent(doctorId)}`,
 } as const;
 

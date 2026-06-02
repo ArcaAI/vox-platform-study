@@ -12,6 +12,29 @@ const fakeReportEntity = {
     updatedAt: '2025-12-15T00:00:00.000Z',
 };
 
+const fakeDashboard = {
+    usersWithStyle: 3,
+    avgVersions: 2.5,
+    recentActivity: {
+        dailyCounts: [
+            { date: '2026-02-17', count: 1 },
+            { date: '2026-02-18', count: 4 },
+        ],
+        latest: [
+            {
+                id: 'usage-1',
+                doctorId: 'doctor-1',
+                dnaReportId: 'report-1',
+                dnaVersionNumber: 2,
+                consultationId: 'consult-1',
+                createdAt: '2026-02-18T10:00:00.000Z',
+            },
+        ],
+        total: 5,
+        windowDays: 30,
+    },
+};
+
 const createMockDnaService = () => ({
     generateDnaReport: vi.fn(),
     getDnaReport: vi.fn(),
@@ -19,6 +42,7 @@ const createMockDnaService = () => ({
     getVersions: vi.fn(),
     getVersionsForDoctor: vi.fn(),
     listReports: vi.fn(),
+    getDashboard: vi.fn(),
 });
 
 const createMockDnaQueue = () => ({
@@ -269,6 +293,38 @@ describe('DnaWritingStyleAdminController', () => {
 
             expect(mockDnaService.getVersions).toHaveBeenCalledWith('report-1');
             expect(mockDnaService.getVersionsForDoctor).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('GET /admin/dna-writing-styles/dashboard (TASK-328 A5)', () => {
+        it('passes the tenantId query param through to the service and returns the DTO', async () => {
+            mockDnaService.getDashboard.mockResolvedValue(fakeDashboard);
+
+            const result = await controller.getDashboard('tenant-7');
+
+            expect(mockDnaService.getDashboard).toHaveBeenCalledWith('tenant-7');
+            expect(result).toBe(fakeDashboard);
+        });
+
+        it('passes undefined to the service when no tenantId is provided (tenant admin / all-tenants)', async () => {
+            mockDnaService.getDashboard.mockResolvedValue(fakeDashboard);
+
+            await controller.getDashboard(undefined);
+
+            expect(mockDnaService.getDashboard).toHaveBeenCalledWith(undefined);
+        });
+
+        it('returns the typed aggregate shape (usersWithStyle, avgVersions, recentActivity)', async () => {
+            mockDnaService.getDashboard.mockResolvedValue(fakeDashboard);
+
+            const result = await controller.getDashboard('tenant-7');
+
+            expect(result.usersWithStyle).toBe(3);
+            expect(result.avgVersions).toBe(2.5);
+            expect(result.recentActivity.total).toBe(5);
+            expect(result.recentActivity.windowDays).toBe(30);
+            expect(result.recentActivity.dailyCounts).toHaveLength(2);
+            expect(result.recentActivity.latest[0].id).toBe('usage-1');
         });
     });
 

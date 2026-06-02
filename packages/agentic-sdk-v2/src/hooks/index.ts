@@ -21,6 +21,9 @@ export { useArcaConfig, type UseArcaConfigReturn } from './useArcaConfig';
 // DNA Writing Style hook (SDK-207 WS-5)
 export { useDnaStyle, type UseDnaStyleReturn } from './useDnaStyle';
 
+// DNA aggregate dashboard hook (TASK-328 A5)
+export { useDnaDashboard, type UseDnaDashboardReturn } from './useDnaDashboard';
+
 // Prompt Template management hook (SDK-207 WS-5)
 export { usePrompts, type UsePromptsReturn } from './usePrompts';
 

@@ -1,6 +1,7 @@
-import { DnaWritingStyleReportEntity, DnaWritingStyleVersionEntity } from '@arcaai/domains';
+import { DnaWritingStyleReportEntity, DnaWritingStyleVersionEntity, DnaUsageRecordEntity } from '@arcaai/domains';
 import { DnaReportResponse } from './dto/dna-report.response';
 import { DnaVersionResponse } from './dto/dna-version.response';
+import { DnaDashboardUsageEntry } from './dto/dna-dashboard.response';
 
 export class DnaWritingStyleDtoMapper {
   static toReportResponse(entity: DnaWritingStyleReportEntity): DnaReportResponse {
@@ -26,6 +27,18 @@ export class DnaWritingStyleDtoMapper {
       styleText: entity.styleText ?? undefined,
       changeReason: entity.changeReason ?? undefined,
       changedBy: entity.changedBy ?? undefined,
+      createdAt: entity.createdAt.toISOString(),
+    };
+  }
+
+  /** TASK-328 A5 — usage record → dashboard recent-activity entry. */
+  static toUsageEntry(entity: DnaUsageRecordEntity): DnaDashboardUsageEntry {
+    return {
+      id: entity.id,
+      doctorId: entity.doctorId ?? '',
+      dnaReportId: entity.dnaReportId ?? '',
+      dnaVersionNumber: entity.dnaVersionNumber ?? undefined,
+      consultationId: entity.consultationId ?? undefined,
       createdAt: entity.createdAt.toISOString(),
     };
   }

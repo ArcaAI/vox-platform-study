@@ -7,6 +7,7 @@ import { uuidv7 } from 'uuidv7';
 import {
   DnaWritingStyleReportRepository,
   DnaWritingStyleVersionRepository,
+  DnaUsageRecordRepository,
   DnaWritingStyleReportEntityMapper,
   DnaWritingStyleVersionFactory,
   JobQueue,
@@ -16,7 +17,7 @@ import {
   UserRoleAssignmentRepository,
 } from '@arcaai/domains';
 import { IDnaWritingStyleService, DnaJobResponse } from './IDnaWritingStyleService';
-import { DnaReportResponse, DnaVersionResponse, GenerateDnaReportRequest, UpdateDnaReportRequest } from './dto';
+import { DnaReportResponse, DnaVersionResponse, GenerateDnaReportRequest, UpdateDnaReportRequest, DnaDashboardResponse } from './dto';
 import { DnaWritingStyleDtoMapper } from './dna-writing-style.dto.mapper';
 import { BaseService } from '../../common';
 import { assertUserBelongsToTenant } from '../../common/tenant-guards';
@@ -41,6 +42,8 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   constructor(
     private readonly dnaReportRepository: DnaWritingStyleReportRepository,
     private readonly dnaVersionRepository: DnaWritingStyleVersionRepository,
+    // TASK-328 A5 — source for the aggregate dashboard's recent-activity feed.
+    private readonly dnaUsageRecordRepository: DnaUsageRecordRepository,
     // TASK-305 D.5.3 (audit C-9) — needed by `assertUserBelongsToTenant` to
     // verify a `doctorId` is a member of the caller's tenant before any
     // DNA-style operation runs against PHI-derived artifacts.
@@ -241,4 +244,58 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     const reports = models.map((m) => mapper.toDomainEntity(m));
     return reports.map(DnaWritingStyleDtoMapper.toReportResponse);
   }
+
+  /**
+   * TASK-328 A5 — Aggregate DNA dashboard.
+   *
+   * Tenant scoping mirrors `listReports`: a global admin
+   * (SUPER_ADMIN/GLOBAL_ADMIN) may target a specific tenant via `tenantId`, or
+   * omit it for an all-tenants roll-up. A tenant admin is always pinned to
+   * their CLS tenant — any `tenantId` argument is ignored so they cannot read
+   * another tenant's PHI-derived activity.
+   */
+  async getDashboard(tenantId?: string): Promise<DnaDashboardResponse> {
+    const scopeTenantId = this.resolveDashboardScope(tenantId);
+
+    const windowDays = DnaWritingStyleService.DASHBOARD_WINDOW_DAYS;
+    const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+
+    const [usersWithStyle, avgRaw, total, dailyCounts, latestRecords] = await Promise.all([
+      this.dnaReportRepository.countDoctorsWithLatestReport(scopeTenantId),
+      this.dnaReportRepository.averageCurrentVersion(scopeTenantId),
+      this.dnaUsageRecordRepository.countSince(since, scopeTenantId),
+      this.dnaUsageRecordRepository.getDailyUsageCounts(since, scopeTenantId),
+      this.dnaUsageRecordRepository.findRecent(DnaWritingStyleService.DASHBOARD_LATEST_LIMIT, scopeTenantId),
+    ]);
+
+    return {
+      usersWithStyle,
+      avgVersions: Math.round(avgRaw * 100) / 100,
+      recentActivity: {
+        dailyCounts,
+        latest: latestRecords.map(DnaWritingStyleDtoMapper.toUsageEntry),
+        total,
+        windowDays,
+      },
+    };
+  }
+
+  /**
+   * Resolve the tenant a dashboard request runs against. Global admins keep the
+   * caller-supplied `tenantId` (possibly `undefined` ⇒ all tenants); tenant
+   * admins are forced onto their CLS tenant and require one to be present.
+   */
+  private resolveDashboardScope(requestedTenantId?: string): string | undefined {
+    if (this.isGlobalRole()) {
+      return requestedTenantId ?? undefined;
+    }
+    const ctxTenant = this.tenantId;
+    if (!ctxTenant) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+    return ctxTenant;
+  }
+
+  private static readonly DASHBOARD_WINDOW_DAYS = 30;
+  private static readonly DASHBOARD_LATEST_LIMIT = 5;
 }
