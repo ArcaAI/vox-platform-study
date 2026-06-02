@@ -88,6 +88,12 @@ export class SummaryMetaResponse {
   @ApiPropertyOptional({ description: 'When the summary was generated' })
   generatedAt?: string;
 
+  @ApiPropertyOptional({ description: 'Whether this summary was served from cache' })
+  cacheHit?: boolean;
+
+  @ApiPropertyOptional({ description: 'Quality/score of the generated summary (0.0 - 1.0)' })
+  qualityScore?: number;
+
   @ApiProperty()
   createdAt: string;
 }

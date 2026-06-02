@@ -12,6 +12,7 @@ import {
   UpdateContextRequest,
   ContextItemResponse,
   ContextItemVersionResponse,
+  VersionDiffResponse,
   ComprehensiveSummaryResponse as ComprehensiveSummaryResponseDto,
   GenerateSummaryRequest,
   GeneratePreSummaryRequest,
@@ -23,6 +24,10 @@ import {
   HttpMethod,
   PolicyEngine,
   AppAbility,
+  ITagService,
+  CreateTagRequest,
+  TagResponse,
+  TagDtoMapper,
 } from '@arcaai/applications';
 import { Controller, Body, Param, Inject, Query, ForbiddenException, NotFoundException, UnauthorizedException, Logger } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery, ApiResponse } from '@nestjs/swagger';
@@ -31,7 +36,7 @@ import { ClsService } from 'nestjs-cls';
 import type { IActiveUserContext } from '@arcaai/applications';
 import { ChainSummaryService } from '@arcaai/applications';
 import { IConsultationJobService } from '@arcaai/applications';
-import { GlobalSettingRepository } from '@arcaai/domains';
+import { GlobalSettingRepository, ResourceType } from '@arcaai/domains';
 
 class AsyncJobResponseDto {
   @ApiProperty({ description: 'Async job ID' })
@@ -125,6 +130,8 @@ export class ConsultationController {
     private readonly cls: ClsService<IActiveUserContext>,
     private readonly policyEngine: PolicyEngine,
     private readonly globalSettingRepository: GlobalSettingRepository,
+    @Inject(ITagService)
+    private readonly tagService: ITagService,
   ) {}
 
   private getDoctorId(): string {
@@ -607,6 +614,98 @@ export class ConsultationController {
   async getSummaryVersions(@Param('id') id: string, @Param('contextItemId') contextItemId: string): Promise<ContextItemVersionResponse[]> {
     await this.verifyConsultationAccess(id);
     return this.contextService.getVersionHistory(contextItemId);
+  }
+
+  // TASK-329 (P6) — diff two summary versions; the UI version-diff-panel renders the result
+  @ApiEndpoint({
+    returnedModel: VersionDiffResponse,
+    path: ':id/summary/:contextItemId/diff',
+    by: ['id', 'contextItemId'],
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiParam({ name: 'contextItemId', description: 'Summary Context Item ID' })
+  @ApiQuery({ name: 'from', description: 'Earlier version number', type: Number })
+  @ApiQuery({ name: 'to', description: 'Later version number', type: Number })
+  async diffSummaryVersions(
+    @Param('id') id: string,
+    @Param('contextItemId') contextItemId: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ): Promise<VersionDiffResponse> {
+    await this.verifyConsultationAccess(id);
+    return this.contextService.diffVersions(contextItemId, Number(from), Number(to));
+  }
+
+  // ─── Summary Tags (TASK-329) ─────────────────────────────────────
+
+  @ApiEndpoint({
+    returnedModel: TagResponse,
+    multi: true,
+    path: ':id/summary/:contextItemId/tags',
+    by: ['id', 'contextItemId'],
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiParam({ name: 'contextItemId', description: 'Summary Context Item ID' })
+  async getSummaryTags(@Param('id') id: string, @Param('contextItemId') contextItemId: string): Promise<TagResponse[]> {
+    await this.verifyConsultationAccess(id);
+    const tags = await this.tagService.fetchByResource(ResourceType.ContextItem, contextItemId);
+    return tags.map((tag) => TagDtoMapper.ToResponse(tag));
+  }
+
+  @ApiEndpoint({
+    returnedModel: TagResponse,
+    method: HttpMethod.POST,
+    path: ':id/summary/:contextItemId/tags',
+    by: ['id', 'contextItemId'],
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiParam({ name: 'contextItemId', description: 'Summary Context Item ID' })
+  async tagSummary(
+    @Param('id') id: string,
+    @Param('contextItemId') contextItemId: string,
+    @Body() body: CreateTagRequest,
+  ): Promise<TagResponse> {
+    await this.verifyConsultationOwnership(id);
+    // Server controls the polymorphic target + tenant; client-supplied values are ignored.
+    const created = await this.tagService.create({
+      ...body,
+      resourceTypeName: ResourceType.ContextItem,
+      resourceId: contextItemId,
+      tenantId: this.cls.get('tenantId') ?? undefined,
+    });
+    return TagDtoMapper.ToResponse(created);
+  }
+
+  @ApiEndpoint({
+    returnedModel: OkResponseDto,
+    method: HttpMethod.DELETE,
+    path: ':id/summary/:contextItemId/tags/:tagId',
+    by: ['id', 'contextItemId', 'tagId'],
+    additionalData: {
+      schema: {
+        type: 'object',
+        properties: {
+          ok: { type: 'boolean' },
+        },
+      },
+    },
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiParam({ name: 'contextItemId', description: 'Summary Context Item ID' })
+  @ApiParam({ name: 'tagId', description: 'Tag ID' })
+  async deleteSummaryTag(
+    @Param('id') id: string,
+    @Param('contextItemId') contextItemId: string,
+    @Param('tagId') tagId: string,
+  ): Promise<OkResponseDto> {
+    await this.verifyConsultationOwnership(id);
+    // Ensure the tag actually belongs to this summary before deleting (tenant-scoped fetch).
+    const tag = await this.tagService.fetchById(tagId);
+    if (tag.resourceId !== contextItemId) {
+      throw new NotFoundException('Tag not found for this summary');
+    }
+    await this.tagService.deleteById(tagId);
+    return new OkResponseDto();
   }
 
   @ApiEndpoint({

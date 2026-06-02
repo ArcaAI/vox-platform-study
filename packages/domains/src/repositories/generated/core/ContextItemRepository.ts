@@ -71,6 +71,7 @@ export class ContextItemRepository extends Repository<ContextItemEntity, Context
         resourceStatus: ResourceStatusType.ENABLED,
       },
       orderBy: { createdAt: 'desc' },
+      include: { SummaryMeta: true },
     });
 
     return models.map((model: ContextItem) => (this as any)._mapper.toDomainEntity(model));

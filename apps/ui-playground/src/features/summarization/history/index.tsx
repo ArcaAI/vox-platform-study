@@ -1,4 +1,5 @@
 import { Main } from '@/components/layout/main';
+import { useAuthStore } from '@/store/auth-store';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/card';
 import { Button } from '@arcaai/ui/button';
 import { Badge } from '@arcaai/ui/badge';
@@ -8,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@arcaai/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@arcaai/ui/tooltip';
 import { ScrollArea } from '@arcaai/ui/scroll-area';
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Clock, Copy, Download, Eye, Filter, History, Search, Sparkles, Trash2, X } from 'lucide-react';
 import { SmrStatusBadge } from '../components/smr-status-badge';
@@ -28,11 +29,32 @@ interface StoredResult {
   createdAt: string;
 }
 
-const STORAGE_KEY = 'arcaai-summarization-history';
+/**
+ * TASK-329 X10 — base key for the summarization generation history.
+ *
+ * History is namespaced per `${tenantId}::${effectiveUserId}` so that
+ * impersonation and tenant switching never leak one doctor's generations
+ * into another's view. Mirrors the SDK `ModelRegistry` namespacing scheme
+ * (`arcaai-selected-models/${tenantId}::${userId}`, TASK-317 W1.5).
+ */
+const HISTORY_BASE_KEY = 'arcaai-summarization-history';
 
-function loadHistory(): StoredResult[] {
+/**
+ * Resolve the tenant + effective-user scope from the auth store. The
+ * `effectiveUserId` is the IMPERSONATED user when impersonating, otherwise
+ * the logged-in user — so an admin browsing as Dr. A and then Dr. B sees two
+ * isolated buckets, and neither sees the admin's own history.
+ */
+export function historyStorageKey(): string {
+  const { tenantId, user, impersonatedUser, isImpersonating } = useAuthStore.getState();
+  const scopeTenant = tenantId || 'no-tenant';
+  const scopeUser = (isImpersonating ? impersonatedUser?.id : user?.id) || 'anon';
+  return `${HISTORY_BASE_KEY}::${scopeTenant}::${scopeUser}`;
+}
+
+export function loadHistory(): StoredResult[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(historyStorageKey());
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -40,7 +62,7 @@ function loadHistory(): StoredResult[] {
 }
 
 function saveHistory(items: StoredResult[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  localStorage.setItem(historyStorageKey(), JSON.stringify(items));
 }
 
 export function addToHistory(entry: StoredResult) {
@@ -51,11 +73,24 @@ export function addToHistory(entry: StoredResult) {
 }
 
 export default function HistoryPage() {
+  // TASK-329 X10 — re-key the view when the tenant or effective user changes
+  // (login, impersonation start/stop, tenant switch) so the table never shows
+  // another scope's history.
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const userId = useAuthStore((s) => s.user?.id);
+  const impersonatedUserId = useAuthStore((s) => s.impersonatedUser?.id);
+  const isImpersonating = useAuthStore((s) => s.isImpersonating);
+
   const [history, setHistory] = useState<StoredResult[]>(loadHistory);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('_all');
   const [selectedEntry, setSelectedEntry] = useState<StoredResult | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+
+  // TASK-329 X10 — reload from the now-active scope key whenever identity changes.
+  useEffect(() => {
+    setHistory(loadHistory());
+  }, [tenantId, userId, impersonatedUserId, isImpersonating]);
 
   const filteredHistory = useMemo(() => {
     let result = history;

@@ -235,6 +235,8 @@ export type {
   ComprehensiveSummaryGenerationOptions,
   ComprehensiveSummaryOptions,
   ComprehensiveSummaryResponse,
+  // TASK-329 P6 — summary tagging input.
+  CreateSummaryTagInput,
   DNAStyle,
   DNAStyleData,
   NEREntity,
@@ -250,9 +252,13 @@ export type {
   SummaryOptions,
   SummaryResponse,
   SummaryState,
+  // TASK-329 P6 — summary tag.
+  SummaryTag,
   SummaryVersionEntry,
   // WS-3: Summary versioning
   UpdateSummaryOptions,
+  // TASK-329 P6 — version diff result.
+  VersionDiff,
 } from './types';
 
 // =============================================================================

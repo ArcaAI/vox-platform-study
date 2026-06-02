@@ -22,6 +22,8 @@ export class SummaryResponse {
     inputTokens?: number;
     outputTokens?: number;
     entities?: Record<string, unknown>[];
+    cacheHit?: boolean;
+    qualityScore?: number;
   };
 
   @ApiProperty()

@@ -7,6 +7,7 @@ import { CreateTagRequest, UpdateTagRequest } from './dto';
 
 export interface ITagService extends IBaseService {
   create(request: CreateTagRequest): Promise<TagEntity>;
+  fetchByResource(resourceTypeName: string, resourceId: string): Promise<TagEntity[]>;
   fetchAll(props: PaginatedQuery): Promise<FetchResponse<TagEntity>>;
   fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<TagEntity>>;
   fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<TagEntity>>;
