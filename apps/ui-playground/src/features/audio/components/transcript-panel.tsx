@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { DEFAULT_TRANSCRIPTION_PIPELINE_ID } from '../constants';
 import { AudioTranscriptItem } from './audio-transcript-item';
+import { DiarizationSeedingIndicator } from './diarization-seeding-indicator';
 import { LiveSpectrogram } from './live-spectrogram';
 
 type ExtendedTranscriptionResult = TranscriptionResult & {
@@ -524,6 +525,7 @@ function BackendSocketTranscript() {
         <div className="flex flex-wrap items-center gap-2">
           <WsStatusBadge status={realtime.status} />
           {realtime.sessionId && <code className="bg-muted rounded px-1.5 text-[10px]">{realtime.sessionId.slice(0, 16)}</code>}
+          <DiarizationSeedingIndicator seeded={realtime.voiceProfileSeeded} />
           <span className="text-muted-foreground text-[10px]">
             {formatBytes(realtime.bytesSent)} sent | {finalCount} segments | {wordCount} words
           </span>
