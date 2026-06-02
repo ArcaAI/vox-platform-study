@@ -74,12 +74,10 @@ const playgroundItems: NavItem[] = [
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   // TASK-327 T5 — scope, not visibility. Any admin (SA/GA/TA) sees the full
   // admin menu; per-tenant data scoping is enforced server-side via
-  // X-Tenant-Id. Prisma Studio remains global-scope only.
-  const isAdmin = useAuthStore((s) => {
-    const roles = s.user?.roles;
-    if (!roles) return false;
-    return roles.includes('SUPER_ADMIN') || roles.includes('GLOBAL_ADMIN') || roles.includes('TENANT_ADMIN');
-  });
+  // X-Tenant-Id. Prisma Studio remains global-scope only. Both predicates are
+  // sourced from the auth store so the nav and the route guards
+  // (`RequireAdmin` / `RequireGlobalScope`) share one definition.
+  const isAdmin = useAuthStore((s) => s.isAdmin());
   const isGlobalScope = useAuthStore((s) => s.isGlobalScope());
   const { order, reorder } = useAdminPreferences();
 
