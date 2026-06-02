@@ -1,12 +1,15 @@
+import { LiveCodePanel } from '@/components/live-code-panel';
 import { Main } from '@/components/layout/main';
 import { ImpersonationGuard } from '@/features/summarization/components/impersonation-guard';
 import { useDoctorContext } from '@/features/summarization/hooks/use-doctor-context';
+import { buildConsultationSnippet } from '@/lib/playground-snippets';
 import { useAuthStore } from '@/store/auth-store';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/card';
 import { Link } from '@tanstack/react-router';
 import { Building2, UserCheck, UserCog } from 'lucide-react';
+import { useMemo } from 'react';
 import { ConsultationWorkspace } from './components/consultation-workspace';
 
 export default function ConsultationPage() {
@@ -15,6 +18,7 @@ export default function ConsultationPage() {
   const { requiresImpersonation, isImpersonated, roles } = useDoctorContext();
 
   const canAccess = hasTenant && !requiresImpersonation;
+  const consultationCode = useMemo(() => buildConsultationSnippet({ tenantId }), [tenantId]);
 
   return (
     <Main>
@@ -79,6 +83,7 @@ export default function ConsultationPage() {
             /* Content: full access */
             <div data-doc="consultation-workspace">
               <ConsultationWorkspace />
+              <LiveCodePanel className="mt-6" code={consultationCode} title="Consultation — SDK sample" filename="consultation-context.tsx" />
             </div>
           )}
         </div>

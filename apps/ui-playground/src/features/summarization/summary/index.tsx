@@ -1,4 +1,6 @@
 import { Main } from '@/components/layout/main';
+import { LiveCodePanel } from '@/components/live-code-panel';
+import { buildSummarizationSnippet } from '@/lib/playground-snippets';
 import { useAuthStore } from '@/store/auth-store';
 import { usePlaygroundStore } from '@/store/playground-store';
 import { Badge } from '@arcaai/ui/badge';
@@ -803,6 +805,22 @@ export default function SummaryPage() {
   ]);
 
   const isGenerating = generateMutation.isPending || isStreaming;
+
+  const summarizationCode = useMemo(
+    () =>
+      buildSummarizationSnippet({
+        tenantId,
+        provider,
+        model,
+        promptTemplateId: selectedTemplateId || null,
+        dnaStyleId: selectedDnaStyleId || null,
+        temperature,
+        maxTokens,
+        includeNER,
+        streaming: useStreaming,
+      }),
+    [tenantId, provider, model, selectedTemplateId, selectedDnaStyleId, temperature, maxTokens, includeNER, useStreaming],
+  );
 
   return (
     <Main>
@@ -1713,6 +1731,10 @@ export default function SummaryPage() {
               </div>
             </div>
           )}
+
+          <div className="mt-6 pb-4">
+            <LiveCodePanel code={summarizationCode} title="Summary Generation — SDK sample" filename="smr-request.ts" />
+          </div>
         </div>
       </div>
     </Main>

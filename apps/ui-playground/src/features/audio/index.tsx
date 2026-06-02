@@ -1,10 +1,12 @@
+import { LiveCodePanel } from '@/components/live-code-panel';
 import { PlaygroundLayout } from '@/components/layout/playground-layout';
 import { ImpersonationGuard } from '@/features/summarization/components/impersonation-guard';
 import { useDoctorContext } from '@/features/summarization/hooks/use-doctor-context';
+import { buildAudioSnippet } from '@/lib/playground-snippets';
 import { useAudioStore } from '@/store/audio-store';
 import { useAuthStore } from '@/store/auth-store';
 import { useArcaConfig, useAuth } from '@arcaai/vox';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import { AudioImpersonationBanner, AudioPageHeaderAction } from './components/audio-page-chrome';
 import { AudioWorkspace } from './components/audio-workspace';
@@ -94,6 +96,18 @@ export default function AudioPage() {
 
   const activeUser = isImpersonating ? impersonatedUser : localUser;
 
+  const audioCode = useMemo(
+    () =>
+      buildAudioSnippet({
+        tenantId,
+        userLabel: activeUser?.username ?? null,
+        modelId: persistedModelId,
+        task: persistedSttTask,
+        language: tenantConfig?.defaultLanguage ?? null,
+      }),
+    [tenantId, activeUser?.username, persistedModelId, persistedSttTask, tenantConfig?.defaultLanguage],
+  );
+
   const handleReset = () => {
     tenantConfigSignatureRef.current = null;
     reset();
@@ -134,6 +148,8 @@ export default function AudioPage() {
       ) : (
         <AudioWorkspace />
       )}
+
+      {tenantId && !requiresImpersonation && <LiveCodePanel code={audioCode} title="Live Transcription — SDK sample" filename="live-caption.tsx" />}
     </PlaygroundLayout>
   );
 }
