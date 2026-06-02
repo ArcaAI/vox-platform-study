@@ -46,6 +46,13 @@ const createMockDnaVersionRepository = () => ({
     create: vi.fn(),
 });
 
+// TASK-328 A5 — usage-record source for the aggregate dashboard.
+const createMockDnaUsageRecordRepository = () => ({
+    countSince: vi.fn().mockResolvedValue(0),
+    getDailyUsageCounts: vi.fn().mockResolvedValue([]),
+    findRecent: vi.fn().mockResolvedValue([]),
+});
+
 // TASK-305 D.5.3 — required for the `assertUserBelongsToTenant` guard run
 // during `generateDnaReport` and `getDnaReport`.
 const createMockUserRoleAssignmentRepository = () => ({
@@ -111,6 +118,7 @@ describe('DnaWritingStyleService', () => {
     let service: DnaWritingStyleService;
     let mockReportRepo: ReturnType<typeof createMockDnaReportRepository>;
     let mockVersionRepo: ReturnType<typeof createMockDnaVersionRepository>;
+    let mockUsageRepo: ReturnType<typeof createMockDnaUsageRecordRepository>;
     let mockUserRoleAssignmentRepo: ReturnType<typeof createMockUserRoleAssignmentRepository>;
     let mockQueue: ReturnType<typeof createMockQueue>;
     let mockClsService: ReturnType<typeof createMockClsService>;
@@ -121,6 +129,7 @@ describe('DnaWritingStyleService', () => {
 
         mockReportRepo = createMockDnaReportRepository();
         mockVersionRepo = createMockDnaVersionRepository();
+        mockUsageRepo = createMockDnaUsageRecordRepository();
         mockUserRoleAssignmentRepo = createMockUserRoleAssignmentRepository();
         mockQueue = createMockQueue();
         mockClsService = createMockClsService();
@@ -150,6 +159,7 @@ describe('DnaWritingStyleService', () => {
         service = new DnaWritingStyleService(
             mockReportRepo as never,
             mockVersionRepo as never,
+            mockUsageRepo as never,
             mockUserRoleAssignmentRepo as never,
             mockQueue as never,
             mockEventEmitter as never,
@@ -243,6 +253,7 @@ describe('DnaWritingStyleService', () => {
             const freshService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUsageRepo as never,
                 mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
@@ -359,6 +370,7 @@ describe('DnaWritingStyleService', () => {
             const freshService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUsageRepo as never,
                 mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
@@ -830,6 +842,7 @@ describe('DnaWritingStyleService', () => {
             const freshService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUsageRepo as never,
                 mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
@@ -847,6 +860,7 @@ describe('DnaWritingStyleService', () => {
             const freshService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUsageRepo as never,
                 mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
@@ -866,6 +880,7 @@ describe('DnaWritingStyleService', () => {
             const superAdminService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUsageRepo as never,
                 mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
@@ -896,6 +911,7 @@ describe('DnaWritingStyleService', () => {
             const globalAdminService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUsageRepo as never,
                 mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
@@ -924,6 +940,7 @@ describe('DnaWritingStyleService', () => {
             const scopedSuperAdmin = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUsageRepo as never,
                 mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
@@ -949,6 +966,7 @@ describe('DnaWritingStyleService', () => {
             const doctorService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUsageRepo as never,
                 mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
@@ -968,6 +986,7 @@ describe('DnaWritingStyleService', () => {
             const tenantAdminService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUsageRepo as never,
                 mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
@@ -997,6 +1016,7 @@ describe('DnaWritingStyleService', () => {
             const tenantBService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUsageRepo as never,
                 mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
@@ -1023,6 +1043,7 @@ describe('DnaWritingStyleService', () => {
             const tenantCService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
+                mockUsageRepo as never,
                 mockUserRoleAssignmentRepo as never,
                 mockQueue as never,
                 mockEventEmitter as never,
@@ -1076,6 +1097,7 @@ describe('DnaWritingStyleService', () => {
                 const superSvc = new DnaWritingStyleService(
                     mockReportRepo as never,
                     mockVersionRepo as never,
+                    mockUsageRepo as never,
                     mockUserRoleAssignmentRepo as never,
                     mockQueue as never,
                     mockEventEmitter as never,
@@ -1141,6 +1163,7 @@ describe('DnaWritingStyleService', () => {
                 const superSvc = new DnaWritingStyleService(
                     mockReportRepo as never,
                     mockVersionRepo as never,
+                    mockUsageRepo as never,
                     mockUserRoleAssignmentRepo as never,
                     mockQueue as never,
                     mockEventEmitter as never,

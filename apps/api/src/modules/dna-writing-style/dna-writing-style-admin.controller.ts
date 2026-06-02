@@ -2,6 +2,7 @@ import {
   IDnaWritingStyleService,
   DnaReportResponse,
   DnaVersionResponse,
+  DnaDashboardResponse,
   GenerateDnaReportRequest,
   UpdateDnaReportRequest,
   PaginatedQuery,
@@ -37,6 +38,20 @@ export class DnaWritingStyleAdminController {
     @InjectQueue(JobQueue.GenerateDnaReport)
     private readonly dnaQueue: Queue,
   ) {}
+
+  // TASK-328 A5 — DNA aggregate dashboard. Declared before the param-less list
+  // route's siblings; `dashboard` is a literal segment so it never collides
+  // with `:reportId`-style routes. Tenant scoping is enforced in the service:
+  // a global admin may target a tenant via `?tenantId=` (or omit it for an
+  // all-tenants roll-up); a tenant admin is pinned to their CLS tenant and any
+  // supplied `tenantId` is ignored.
+  @Get('dashboard')
+  @ApiOperation({ summary: 'DNA aggregate dashboard (users with a style, avg versions, recent usage activity)' })
+  @ApiQuery({ name: 'tenantId', required: false, type: String, description: 'Global-admin only: scope the aggregate to a tenant. Ignored for tenant admins.' })
+  @ApiResponse({ status: 200, description: 'DNA aggregate dashboard', type: DnaDashboardResponse })
+  async getDashboard(@Query('tenantId') tenantId?: string): Promise<DnaDashboardResponse> {
+    return this.dnaService.getDashboard(tenantId);
+  }
 
   @ApiEndpoint({
     returnedModel: DnaReportResponse,

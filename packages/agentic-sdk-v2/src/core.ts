@@ -46,6 +46,7 @@ export {
   useAuth,
   useConsultationJob,
   useDepartments,
+  useDnaDashboard,
   useDnaStyle,
   useGlobalSettings,
   useHealthCheck,
@@ -112,6 +113,7 @@ export type {
   UseAuthReturn,
   UseConsultationJobReturn,
   UseDepartmentsReturn,
+  UseDnaDashboardReturn,
   UseDnaStyleReturn,
   UseGlobalSettingsReturn,
   UseHealthCheckReturn,
@@ -258,6 +260,9 @@ export type {
 // =============================================================================
 
 export type { DnaGenerateInput, DnaJobResult, DnaJobStatus, DnaReport, DnaReportData, DnaReportWithFallback, DnaStyleVersion, DnaUpdateInput } from './types';
+
+// TASK-328 A5 — DNA aggregate dashboard types
+export type { DnaDashboard, DnaDashboardDailyCount, DnaDashboardRecentActivity, DnaDashboardUsageEntry } from './types';
 
 // =============================================================================
 // Types - Prompt Template (SDK-207 WS-4)
