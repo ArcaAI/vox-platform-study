@@ -40,6 +40,7 @@ interface AuthActions {
   endImpersonation: () => void;
   logout: () => void;
   isSuperAdmin: () => boolean;
+  isGlobalScope: () => boolean;
 }
 
 const initialState: AuthState = {
@@ -128,6 +129,17 @@ export const useAuthStore = create<AuthState & AuthActions>()(
         // implicit-any into every `useAuthStore((s) => …)` selector across the app.
         const state = get();
         return state.user?.roles?.includes('SUPER_ADMIN') ?? false;
+      },
+
+      // TASK-327 D1 — SUPER_ADMIN and GLOBAL_ADMIN are the SAME "global
+      // scope": both may operate across tenants and must explicitly pick a
+      // tenant before tenant-scoped views/impersonation. `isSuperAdmin()`
+      // stays strict (SUPER_ADMIN only) because a few surfaces — notably
+      // Prisma Studio (TASK-326 Q4) — remain super-admin-only.
+      isGlobalScope: () => {
+        const roles = get().user?.roles;
+        if (!roles) return false;
+        return roles.includes('SUPER_ADMIN') || roles.includes('GLOBAL_ADMIN');
       },
     }),
     {

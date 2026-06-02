@@ -7,7 +7,7 @@
 | Parent | **TASK-325** (Admin Console Transformation — umbrella) |
 | Created | 2026-06-02 |
 | Updated | 2026-06-02 |
-| Status | `Pending` |
+| Status | `Completed` (2026-06-02) — type-check 0, tests 731/731 |
 | Type | feature (shell / IA / scope) |
 | Scope | `apps/ui-playground/` (primary); `@arcaai/vox` + `apps/api` only if a settings hook/endpoint is missing |
 | Depends on | **TASK-326** (security scoping must land first) |
@@ -59,7 +59,32 @@ pnpm --filter @arcaai/ui-playground test          # no NEW failures vs baseline
 ---
 
 ## 5. Implementation Summary
-> Not started.
+
+**Completed 2026-06-02.** All five plan items shipped; gates green (independently verified): `type-check` = **0 errors**, `test` = **731 passed / 0 failed** (69 files; +8 new test files, zero new failures), `@arcaai/ui build` success, lint clean.
+
+### Decisions applied
+- **D1** — `SUPER_ADMIN` ≡ `GLOBAL_ADMIN` = "global scope"; both must select a tenant for tenant-scoped views & impersonation. `TENANT_ADMIN` is locked to its own tenant.
+- **D2** — drag-reorder reuses `@arcaai/ui` diceui `Sortable*` via a new `@arcaai/ui/sortable` re-export (no `@dnd-kit` added to ui-playground; resolves through the package's `"./*": "./src/*.tsx"` wildcard).
+- **D3** — live-tenant was **already** wired in the SDK (`AgenticProvider` → `client.updateTenantId`), so `@arcaai/vox` was **not** modified; only React Query cache invalidation on tenant change was added.
+
+### What shipped
+| Item | Outcome |
+|---|---|
+| T1 Scope foundation | `auth-store.isGlobalScope()` (SA∪GA); `ScopeSyncInit` invalidates the React Query cache on tenant change (mounted inside `QueryClientProvider`) |
+| T2 `useAdminPreferences` | Resolves menu order **USER → TENANT(`getByTenant`) → DEFAULT**; persists via `useUserSettings.updateByKey('arcaai-admin','menuOrder',…)`; optimistic + revert + toast; JSON-string/array tolerant |
+| T3 `DraggableNavGroup` | `@arcaai/ui` Sortable; drag handle (focus-visible, aria-label); persists order on drop; plain `NavGroup` when sidebar collapsed |
+| T4 `ScopeSwitcher` (header) | Global scope → `Popover`+`Command` searchable tenant picker (cached `useAdminTenants`, Skeleton while loading); `TENANT_ADMIN` → locked `Badge` + tooltip |
+| T5 Nav refactor | `buildAdminNavItems` renders the full admin set for any admin (Overview, DNA Reports, Tenants, Users, Prompts, Departments, Audio Pipelines, Storage, Configurations, Audit Logs); **Prisma Studio stays global-scope only** (TASK-326 Q4); order from preferences |
+| T6 Impersonation gate + Overview | Global-scope impersonation disabled with "Select a tenant first" tooltip + defensive re-check; `ServiceStatusGrid` mounted on `/playground/overview` |
+
+### Files
+- **New:** `packages/ui/src/sortable.tsx`; `apps/ui-playground/src/providers/scope-sync.tsx`; `components/layout/{scope-switcher,draggable-nav-group,admin-nav-items}.tsx`; `features/admin/hooks/use-admin-preferences.ts` (+ 8 new `__tests__` files).
+- **Modified:** `store/auth-store.ts`, `main.tsx`, `components/layout/{app-sidebar,header,nav-group}.tsx`, `features/playground/overview/{index.tsx,components/user-list.tsx}`.
+- **No DB migration; `@arcaai/vox` untouched.**
+
+### Notes / deviations
+- Tenant admins now see 10 admin menus (everything except Prisma Studio) — data-scoped server-side by `X-Tenant-Id`, satisfying "scope-not-visibility."
+- The TASK-321 "92 pre-existing test failures" did not reproduce on this branch's worktree (clean 0-fail baseline); the bar held as "zero new failures."
 
 ---
 
@@ -67,3 +92,4 @@ pnpm --filter @arcaai/ui-playground test          # no NEW failures vs baseline
 | Date | Change | Files |
 |---|---|---|
 | 2026-06-02 | Sub-ticket created from TASK-325 §3.7 (Phase 1). Scope = ScopeSwitcher, scope-not-visibility nav, persisted re-orderable menus, impersonation gate; Q3 SDK-first. Status `Pending`. | this README |
+| 2026-06-02 | **Implemented & shipped to `fix/2605-review`.** T1–T6 complete (decisions D1 SA≡GA / D2 reuse @arcaai/ui Sortable / D3 SDK already live — vox untouched). Gates: type-check 0, tests 731/731, @arcaai/ui build ok, lint clean. Status → `Completed`. | auth-store, main, scope-sync, app-sidebar/header/nav-group, scope-switcher, draggable-nav-group, admin-nav-items, use-admin-preferences, user-list, overview, packages/ui/sortable + 8 test files |

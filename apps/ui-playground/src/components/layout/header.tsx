@@ -1,5 +1,6 @@
 import { DebugToggle } from '@/components/debug-toggle';
 import { ThemeSwitch } from '@/components/theme-switch';
+import { ScopeSwitcher } from '@/components/layout/scope-switcher';
 import { useTenant } from '@/features/admin/api/tenants';
 import { DocToggleButton } from '@/features/doc-panel';
 import { cn } from '@/lib/utils';
@@ -8,10 +9,9 @@ import { Badge } from '@arcaai/ui/badge';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@arcaai/ui/breadcrumb';
 import { Separator } from '@arcaai/ui/separator';
 import { SidebarTrigger } from '@arcaai/ui/sidebar';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@arcaai/ui/tooltip';
 import { useAuth } from '@arcaai/vox';
 import { Link, useMatches } from '@tanstack/react-router';
-import { Building2, UserCheck } from 'lucide-react';
+import { UserCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 const routeMeta: Record<string, { label: string; parent?: { label: string; path: string } }> = {
@@ -115,7 +115,6 @@ export function Header({ className, fixed, ...props }: HeaderProps) {
   const impersonatedUser = sdkAuth?.impersonatedUser ?? persistedImpersonatedUser;
 
   const tenantId = useAuthStore((s) => s.tenantId);
-  const tenantKey = useAuthStore((s) => s.tenantKey);
   const tenantName = useAuthStore((s) => s.tenantName);
   const setTenant = useAuthStore((s) => s.setTenant);
   const matches = useMatches();
@@ -188,41 +187,7 @@ export function Header({ className, fixed, ...props }: HeaderProps) {
         </Breadcrumb>
 
         <div className="ms-auto flex shrink-0 items-center gap-3">
-          {tenantId &&
-            (() => {
-              const displayName = tenantName || tenantKey || tenantData?.key || tenantId.slice(0, 8) + '\u2026';
-              const resolvedKey = tenantKey || tenantData?.key;
-              return (
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Badge variant="outline" className="cursor-default gap-1.5">
-                        <Building2 className="size-3.5" />
-                        {displayName}
-                      </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" align="end">
-                      <div className="flex flex-col gap-1 text-xs">
-                        {tenantName && (
-                          <>
-                            <span className="text-muted-foreground">Name</span>
-                            <span className="font-medium">{tenantName}</span>
-                          </>
-                        )}
-                        {resolvedKey && (
-                          <>
-                            <span className="text-muted-foreground mt-1">Key</span>
-                            <span className="font-mono">{resolvedKey}</span>
-                          </>
-                        )}
-                        <span className="text-muted-foreground mt-1">ID</span>
-                        <span className="font-mono">{tenantId}</span>
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              );
-            })()}
+          <ScopeSwitcher />
           {isImpersonating && (
             <Badge variant="destructive" className="gap-1.5">
               <UserCheck className="size-3.5" />

@@ -10,6 +10,7 @@ import { Input } from '@arcaai/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
 import { Skeleton } from '@arcaai/ui/skeleton';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@arcaai/ui/table';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@arcaai/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search, UserCheck, UserX, Filter } from 'lucide-react';
 import { toast } from 'sonner';
@@ -37,6 +38,14 @@ export function UserList() {
   const isImpersonating = sdkImpersonating || persistedImpersonating;
   const impersonatedUser = sdkImpersonatedUser ?? persistedImpersonatedUser ?? null;
   const canImpersonate = localUser?.roles?.some((r) => ['SUPER_ADMIN', 'TENANT_ADMIN'].includes(r)) ?? false;
+
+  // TASK-327 T6 — a global-scope operator (SUPER_ADMIN / GLOBAL_ADMIN) has no
+  // implicit tenant, so impersonation is ambiguous until they pick one. Tenant
+  // admins are locked to their own tenant and are never blocked.
+  const isGlobalScope = useAuthStore((s) => s.isGlobalScope());
+  const activeTenantId = useAuthStore((s) => s.tenantId);
+  const impersonateBlockReason = isGlobalScope && !activeTenantId ? 'Select a tenant first' : null;
+  const needsTenant = impersonateBlockReason !== null;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -179,6 +188,12 @@ export function UserList() {
   const adminPrefsSnapshot = useRef<DeepPartial<AppConfig> | null>(null);
 
   const handleImpersonate = async () => {
+    // Defensive re-check against the live store (the button is also disabled).
+    const store = useAuthStore.getState();
+    if (store.isGlobalScope() && !store.tenantId) {
+      toast.error('Select a tenant first');
+      return;
+    }
     if (!selectedUserId) {
       toast.error('Please select a user to impersonate');
       return;
@@ -282,6 +297,20 @@ export function UserList() {
                 <UserX className="mr-1.5 size-4" />
                 {isActionLoading ? 'Stopping...' : 'Stop Impersonation'}
               </Button>
+            ) : needsTenant ? (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="cursor-not-allowed">
+                      <Button size="sm" disabled className="pointer-events-none">
+                        <UserCheck className="mr-1.5 size-4" />
+                        Start Impersonation
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{impersonateBlockReason}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             ) : (
               <Button size="sm" onClick={handleImpersonate} disabled={!canImpersonate || !selectedUserId || isActionLoading}>
                 <UserCheck className="mr-1.5 size-4" />
