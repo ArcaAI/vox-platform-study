@@ -13,11 +13,13 @@ import { DnaJobResponseDto, DnaJobStatusResponseDto } from './dna-writing-style.
 import { PaginatedDnaReportResponse } from './dto';
 import { JobQueue } from '@arcaai/domains';
 import { Controller, Body, Param, Inject, Get, Query, Sse, type MessageEvent } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Observable } from 'rxjs';
-import { ApiEndpoint, Authorize } from '../../decorators';
+// TASK-326 X7 / D-2 — `@RequiresIfMatch()` + `@ExpectedVersion()` gate the
+// OCC-enforced PATCH route below (mirrors PromptManagementController).
+import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion } from '../../decorators';
 import { getDnaJobStatus, streamDnaJobStatus } from './dna-writing-style-job-stream';
 
 @ApiBearerAuth()
@@ -83,10 +85,39 @@ export class DnaWritingStyleAdminController {
     path: ':reportId',
     by: ['reportId'],
   })
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Update a DNA writing-style report (admin)',
+    description:
+      'Updates one DNA writing-style report row. Optimistic concurrency is ' +
+      'enforced (TASK-326 X7 / D-2): the `If-Match` header (RFC 7232) is REQUIRED ' +
+      "and the server runs a Compare-And-Set against the row's `_version` column " +
+      '(DISTINCT from `currentVersionNumber`, the DnaVersion history counter). When ' +
+      'the header is present, its value overrides the body-field `expectedVersion`. ' +
+      'On version drift the response is `412 Precondition Failed`; a missing header ' +
+      'is `428 Precondition Required`.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the row version the client read (e.g. `"1"`).',
+    required: true,
+    example: '"1"',
+  })
   @ApiParam({ name: 'reportId', description: 'Report ID', type: String })
   @ApiResponse({ status: 404, description: 'Report not found' })
-  async update(@Param('reportId') reportId: string, @Body() dto: UpdateDnaReportRequest): Promise<DnaReportResponse> {
-    return this.dnaService.updateDnaReport(reportId, dto, { bypassOwnershipCheck: true });
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async update(
+    @Param('reportId') reportId: string,
+    @Body() dto: UpdateDnaReportRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<DnaReportResponse> {
+    // TASK-326 X7 / D-2 — header takes precedence over body when both are
+    // present. On this `@RequiresIfMatch()` route the param decorator already
+    // fired 428 if the header was missing. The admin ownership escape
+    // (`bypassOwnershipCheck`) is preserved.
+    const effectiveDto: UpdateDnaReportRequest = expectedFromHeader !== undefined ? { ...dto, expectedVersion: expectedFromHeader } : dto;
+    return this.dnaService.updateDnaReport(reportId, effectiveDto, { bypassOwnershipCheck: true });
   }
 
   @ApiEndpoint({
