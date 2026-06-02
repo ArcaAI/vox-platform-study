@@ -110,6 +110,7 @@ export type {
   TenantBucketDefaults,
   CreateTenantBucketInput,
   SetTenantBucketDefaultsInput,
+  DeleteTenantBucketObjectResult,
 } from './useTenantBuckets';
 
 // Tenant storage access-key management hook (TASK-323 Phase 0 / TASK-318 R9)
