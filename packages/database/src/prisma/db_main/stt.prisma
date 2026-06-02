@@ -27,6 +27,9 @@ model AsrPipeline {
     // Contains model references by slug: models.asr, models.vad, models.denoise
     configYaml String @db.Text
 
+    // Per-tenant default backend pipeline assignment (TASK-328 A6)
+    isDefault Boolean @default(false)
+
     // Resource status + Audit
     resourceStatus          ResourceStatusType @default(ENABLED)
     resourceStatusUpdatedAt DateTime?
@@ -41,11 +44,52 @@ model AsrPipeline {
 
     // Relations (only TranscriptionJob references pipeline)
     TranscriptionJobs TranscriptionJob[]
+    Versions          AsrPipelineVersion[]
 
     // Indexes
     @@unique([tenantId, slug], name: "AsrPipeline_tenant_slug_unique")
     @@index([tenantId], name: "AsrPipeline_tenantId_idx")
     @@index([resourceStatus], name: "AsrPipeline_status_idx")
+    @@schema("core")
+}
+
+// =============================================================================
+// ASR PIPELINE VERSION (TASK-328 A6)
+// Immutable history of an AsrPipeline's configYaml for rollback/diff.
+// =============================================================================
+
+model AsrPipelineVersion {
+    // Meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String
+
+    // Parent pipeline
+    asrPipelineId String
+    AsrPipeline   AsrPipeline @relation(fields: [asrPipelineId], references: [id])
+
+    // Version snapshot
+    versionNumber Int
+    configYaml    String  @db.Text
+    name          String?
+    description   String?
+
+    // Change tracking
+    changeReason String?
+    changedBy    String?
+
+    // Timestamps
+    createdAt DateTime @default(now())
+
+    // Constraints
+    @@unique([asrPipelineId, versionNumber])
+
+    // Indexes
+    @@index([tenantId], name: "AsrPipelineVersion_tenantId_idx")
+    @@index([asrPipelineId], name: "AsrPipelineVersion_asrPipelineId_idx")
     @@schema("core")
 }
 

@@ -40,6 +40,7 @@ model Department {
     // Relations
     Consultations   Consultation[]
     PromptTemplates PromptTemplate[]
+    UserDepartments UserDepartment[]
 
     // Constraints
     @@unique([tenantId, code])

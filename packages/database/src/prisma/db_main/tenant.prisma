@@ -27,3 +27,42 @@ model Tenant {
     @@unique([name, key], name: "Tenant_name_key_unique")
     @@schema("core")
 }
+
+// ============================================================================
+// Tenant Frontend Pipeline Config (TASK-328 A6, Q5)
+// One row per tenant — default frontend audio-processing pipeline for all of a
+// tenant's users. Convenience boolean columns mirror the typed `configJson`.
+// ============================================================================
+
+model TenantFrontendConfig {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // multi tenant fields (one config per tenant)
+    tenantId String @unique
+
+    // core fields — frontend audio pipeline defaults
+    asrModel        String?
+    noiseCancel     Boolean @default(false)
+    vad             Boolean @default(false)
+    voiceEnrollment Boolean @default(false)
+    diarization     Boolean @default(false)
+    configJson      Json?   @db.JsonB
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // indexing
+    @@index([tenantId], name: "TenantFrontendConfig_tenantId_idx")
+    @@schema("core")
+}
