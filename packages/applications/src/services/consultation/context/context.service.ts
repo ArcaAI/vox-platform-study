@@ -17,7 +17,7 @@ import {
   SummaryMetaRepository,
   SysEventType,
 } from '@arcaai/domains';
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { BaseService, assertParentInScope } from '../../../common';
@@ -40,6 +40,7 @@ import {
   PaginatedContextItemResponse,
   SummaryMetaResponse,
   UpdateContextRequest,
+  VersionDiffResponse,
 } from './dto';
 
 @Injectable()
@@ -303,6 +304,12 @@ export class ContextService extends BaseService implements IContextService {
     }
     if (request.promptVersion) {
       summaryMeta.promptVersion = request.promptVersion;
+    }
+    if (request.cacheHit !== undefined) {
+      summaryMeta.cacheHit = request.cacheHit;
+    }
+    if (request.qualityScore !== undefined) {
+      summaryMeta.qualityScore = request.qualityScore;
     }
 
     await this.summaryMetaRepository.create(summaryMeta);
@@ -578,6 +585,46 @@ export class ContextService extends BaseService implements IContextService {
   async getVersion(contextItemId: string, versionNumber: number): Promise<ContextItemVersionResponse | null> {
     const version = await this.contextItemVersionRepository.getVersion(contextItemId, versionNumber);
     return version ? ContextDtoMapper.toVersionResponse(version) : null;
+  }
+
+  /**
+   * Diff two versions of a context item (summary). Returns both version
+   * snapshots so the caller (UI `version-diff-panel`) can render the diff.
+   *
+   * TASK-329 (P6) — the parent context item is asserted to live in the
+   * caller's tenant before any version content is returned; a missing or
+   * cross-tenant item — or a missing version number — surfaces as NotFound.
+   */
+  async diffVersions(contextItemId: string, fromVersion: number, toVersion: number): Promise<VersionDiffResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    await assertParentInScope(this.contextItemRepository, contextItemId, tenantId);
+
+    const [from, to] = await Promise.all([
+      this.contextItemVersionRepository.getVersion(contextItemId, fromVersion),
+      this.contextItemVersionRepository.getVersion(contextItemId, toVersion),
+    ]);
+
+    if (!from) {
+      throw new NotFoundException(`Version ${fromVersion} not found for context item ${contextItemId}`);
+    }
+    if (!to) {
+      throw new NotFoundException(`Version ${toVersion} not found for context item ${contextItemId}`);
+    }
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      resourceId: contextItemId,
+      data: { contextItemId, fromVersion, toVersion },
+    });
+
+    return {
+      contextItemId,
+      from: ContextDtoMapper.toVersionResponse(from),
+      to: ContextDtoMapper.toVersionResponse(to),
+    };
   }
 
   // ============================================

@@ -12,6 +12,7 @@ import {
   ContextFiltersDto,
   PaginatedContextItemResponse,
   AggregateNerResponse,
+  VersionDiffResponse,
 } from './dto';
 
 export abstract class IContextService {
@@ -36,6 +37,7 @@ export abstract class IContextService {
   // Version History
   abstract getVersionHistory(contextItemId: string): Promise<ContextItemVersionResponse[]>;
   abstract getVersion(contextItemId: string, versionNumber: number): Promise<ContextItemVersionResponse | null>;
+  abstract diffVersions(contextItemId: string, fromVersion: number, toVersion: number): Promise<VersionDiffResponse>;
 
   // Query Methods
   abstract getContextItems(consultationId: string, filters?: ContextFiltersDto): Promise<ContextItemResponse[]>;

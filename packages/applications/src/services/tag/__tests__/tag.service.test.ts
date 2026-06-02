@@ -386,6 +386,39 @@ describe('TagService', () => {
         });
     });
 
+    // TASK-329 (P6) — resource-scoped tag lookup used for summary tagging
+    describe('fetchByResource', () => {
+        it('returns tags for a specific resource scoped to the tenant', async () => {
+            const tags = [
+                createMockTagEntity({ id: 'tag-1', resourceTypeName: 'ContextItem', resourceId: 'ctx-1', tagValue: 'reviewed' }),
+            ];
+            mockTagRepository.findAll.mockResolvedValue(tags);
+
+            const result = await service.fetchByResource('ContextItem', 'ctx-1');
+
+            expect(result).toHaveLength(1);
+            expect(result[0].resourceId).toBe('ctx-1');
+            expect(mockTagRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    where: { resourceTypeName: 'ContextItem', resourceId: 'ctx-1', tenantId: 'tenant-1' },
+                })
+            );
+        });
+
+        it('emits a ResourceViewed event with the resource + tag ids', async () => {
+            mockTagRepository.findAll.mockResolvedValue([createMockTagEntity({ id: 'tag-1' })]);
+
+            await service.fetchByResource('ContextItem', 'ctx-1');
+
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceViewed,
+                expect.objectContaining({
+                    data: { resourceTypeName: 'ContextItem', resourceId: 'ctx-1', items: ['tag-1'] },
+                })
+            );
+        });
+    });
+
     describe('fetchAllCreatedByUser', () => {
         it('should return tags created by specific user', async () => {
             const tags = [createMockTagEntity({ id: 'tag-1', createdBy: 'creator-id' })];

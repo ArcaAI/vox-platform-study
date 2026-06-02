@@ -6,6 +6,7 @@ import {
   SummaryServiceModule,
   TimelineServiceModule,
   ChainSummaryServiceModule,
+  TagServiceModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { ConsultationController } from './consultation.controller';
@@ -20,6 +21,7 @@ import { ConsultationJobController } from './consultation-job.controller';
     SummaryServiceModule,
     TimelineServiceModule,
     ChainSummaryServiceModule,
+    TagServiceModule,
     CoreDatabaseModule,
   ],
   controllers: [ConsultationController, AdminConsultationController, ConsultationJobController],

@@ -90,6 +90,8 @@ export class ContextDtoMapper {
       previousSummaryIds: entity.previousSummaryIds.length > 0 ? entity.previousSummaryIds : undefined,
       hasAnyContext: entity.hasAnyContext,
       generatedAt: entity.generatedAt?.toISOString(),
+      cacheHit: entity.cacheHit ?? undefined,
+      qualityScore: entity.qualityScore ?? undefined,
       createdAt: entity.createdAt.toISOString(),
     };
   }

@@ -909,6 +909,30 @@ describe('SummaryService', () => {
             );
         });
 
+        // TASK-329 (P6) — editing must bump currentVersionNumber on the persisted item (no in-place overwrite)
+        it('should persist the bumped currentVersionNumber on the edited summary', async () => {
+            const mockItem = createMockContextItem({
+                id: 'ctx-bump-329',
+                content: 'Original',
+                currentVersionNumber: 2,
+            });
+            mockContextItemRepository.findById.mockResolvedValue(mockItem);
+            mockContextItemVersionRepository.create.mockResolvedValue({ id: 'v-3' });
+            mockContextItemRepository.update.mockImplementation((_id: string, item: { currentVersionNumber?: number }) => Promise.resolve({
+                ...item,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            }));
+
+            await service.updateSummary('ctx-bump-329', { content: 'Edited content' });
+
+            expect(mockedFactory.CreateFromContextItem).toHaveBeenCalledWith(mockItem, 3, 'Manual edit', 'user-1', 'doctor_edit', undefined);
+            expect(mockContextItemRepository.update).toHaveBeenCalledWith(
+                'ctx-bump-329',
+                expect.objectContaining({ currentVersionNumber: 3 }),
+            );
+        });
+
         it('should use changeReason from request when provided', async () => {
             const mockItem = createMockContextItem({ id: 'ctx-s-2', content: 'Old content' });
             mockContextItemRepository.findById.mockResolvedValue(mockItem);

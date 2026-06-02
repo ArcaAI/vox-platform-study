@@ -17,6 +17,8 @@ export interface ISummaryMetaEntity extends IBaseTenantEntity {
   preSummaryIds: string[];
   previousSummaryIds: string[];
   generatedAt?: Date | null;
+  cacheHit?: boolean | null;
+  qualityScore?: number | null;
   ContextItem?: Entities.ContextItemEntity | null;
 }
 
@@ -32,6 +34,8 @@ export class SummaryMetaEntity extends BaseTenantEntity {
   private _preSummaryIds: ISummaryMetaEntity['preSummaryIds'];
   private _previousSummaryIds: ISummaryMetaEntity['previousSummaryIds'];
   private _generatedAt?: ISummaryMetaEntity['generatedAt'];
+  private _cacheHit?: ISummaryMetaEntity['cacheHit'];
+  private _qualityScore?: ISummaryMetaEntity['qualityScore'];
   private _ContextItem?: ISummaryMetaEntity['ContextItem'];
 
   constructor(init: ISummaryMetaEntity) {
@@ -47,6 +51,8 @@ export class SummaryMetaEntity extends BaseTenantEntity {
     this._preSummaryIds = init.preSummaryIds ?? [];
     this._previousSummaryIds = init.previousSummaryIds ?? [];
     this._generatedAt = init.generatedAt;
+    this._cacheHit = init.cacheHit;
+    this._qualityScore = init.qualityScore;
     this._ContextItem = init.ContextItem;
   }
 
@@ -136,6 +142,22 @@ export class SummaryMetaEntity extends BaseTenantEntity {
 
   set generatedAt(value: ISummaryMetaEntity['generatedAt']) {
     this.setProperty('generatedAt', value);
+  }
+
+  get cacheHit(): ISummaryMetaEntity['cacheHit'] {
+    return this._cacheHit;
+  }
+
+  set cacheHit(value: ISummaryMetaEntity['cacheHit']) {
+    this.setProperty('cacheHit', value);
+  }
+
+  get qualityScore(): ISummaryMetaEntity['qualityScore'] {
+    return this._qualityScore;
+  }
+
+  set qualityScore(value: ISummaryMetaEntity['qualityScore']) {
+    this.setProperty('qualityScore', value);
   }
 
   get ContextItem(): ISummaryMetaEntity['ContextItem'] {

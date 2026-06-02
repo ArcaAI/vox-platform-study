@@ -11,6 +11,8 @@ export class SummaryDtoMapper {
           processingTimeMs: summaryMeta.processingTimeMs ?? undefined,
           inputTokens: summaryMeta.inputTokens ?? undefined,
           outputTokens: summaryMeta.outputTokens ?? undefined,
+          cacheHit: summaryMeta.cacheHit ?? undefined,
+          qualityScore: summaryMeta.qualityScore ?? undefined,
         }
       : undefined;
 
