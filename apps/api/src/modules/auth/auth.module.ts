@@ -1,4 +1,4 @@
-import { AuthServiceModule, UserRoleAssignmentServiceModule, UserServiceModule } from '@arcaai/applications';
+import { AuthServiceModule, UserDepartmentServiceModule, UserRoleAssignmentServiceModule, UserServiceModule } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
 import { AuthController } from './auth.controller';
@@ -23,7 +23,7 @@ import { StreamTicketModule } from './stream-ticket.module';
  * UnifiedAuthGuard can resolve it across all feature modules.
  */
 @Module({
-  imports: [AuthServiceModule, UserServiceModule, UserRoleAssignmentServiceModule, CoreDatabaseModule, StreamTicketModule],
+  imports: [AuthServiceModule, UserServiceModule, UserRoleAssignmentServiceModule, UserDepartmentServiceModule, CoreDatabaseModule, StreamTicketModule],
   controllers: [AuthController],
 })
 export class AuthModule {}

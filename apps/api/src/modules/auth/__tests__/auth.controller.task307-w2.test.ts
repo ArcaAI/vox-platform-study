@@ -213,6 +213,8 @@ function buildController(opts: {
         { revoke: vi.fn(), isRevoked: vi.fn().mockResolvedValue(false) } as any,
         opts.secretsService as any,
         createMockRefreshTokenService() as any,
+        // TASK-305 Phase F — login now also resolves the department half of membership.
+        { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
     );
 }
 
@@ -302,6 +304,7 @@ describe('TASK-307 W2.3 — auth.controller uses SecretsService only', () => {
                 { revoke: vi.fn(), isRevoked: vi.fn().mockResolvedValue(false) } as any,
                 secrets as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await controller.impersonate(
@@ -410,6 +413,7 @@ describe('auth.controller — sign-path survives SecretsService TTL expiry (getS
             { revoke: vi.fn(), isRevoked: vi.fn().mockResolvedValue(false) } as any,
             secrets as any,
             createMockRefreshTokenService() as any,
+            { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
         );
 
         const res = await controller.impersonate(

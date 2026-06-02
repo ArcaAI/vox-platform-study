@@ -4,8 +4,8 @@
 |---|---|
 | **Ticket** | TASK-305-Multi-Tenancy-Hardening |
 | **Created** | 2026-05-26 |
-| **Updated** | 2026-05-27 |
-| **Status** | `Completed` (Phases A, B, D, E) — Phase C (RLS) deferred to TASK-302 |
+| **Updated** | 2026-06-02 |
+| **Status** | `In Progress` — Phase F (User↔Tenant membership: role + department) added 2026-06-02. Phases A, B, D, E `Completed`; Phase C (RLS) deferred to TASK-302 |
 | **Classification** | Refactor + bugfix (security/compliance) |
 | **Priority** | High — HIPAA §164.312(a)(1), GDPR Art.32, SOC2 CC6.1 gap |
 | **Prior context** | `docs/multi-tenancy-audit/01..05` (5 review docs, 2026-05-25) |
@@ -56,7 +56,7 @@ The 5-doc audit verdict: **tenant isolation at the data layer is NOT reliable**.
 | `StorageAccessKey.accessKeyId @unique` | **Keep global** | Used as S3-SDK identifier; naturally global |
 | `StorageAccessKey.bucketIds String[]` (C3) | **Out of scope** | Independent refactor; not a multi-tenancy fix |
 | `User.password / secret1 / secret2` naming (C4/C5) | **Out of scope** | Separate security review |
-| `User` model split into `User` + `TenantUser` (B6) | **Out of scope** | Architectural decision; tracked separately |
+| `User` model split into `User` + `TenantUser` (B6) | **Resolved — Phase F (2026-06-02)** | No split, no `User.tenantId`. `User` stays a global multi-tenant identity; tenant membership is modeled by `UserRoleAssignment` (role) + `UserDepartment` (department), both tenant-scoped. Phase F *enforces* this membership. |
 | Drop `MODELS_WITHOUT_SOFT_DELETE` extras / soft-delete contract changes | **Out of scope** | Independent contract |
 
 ---
@@ -243,6 +243,37 @@ If TASK-302 milestones slip, Phase C lands as a follow-up; Phases A/B/D are inde
 
 ---
 
+### Phase F — User↔Tenant membership (role + department)
+
+**Added 2026-06-02.** Folds in the previously-deferred **B6** (this ticket), **D-1 / X6** (TASK-325), and **H-4** (TASK-306) items and *resolves* them.
+
+**The earlier deferral notes were wrong on two points** and are corrected here:
+1. They proposed adding a `tenantId` column to `User*` / `UserVoiceProfile`. That contradicts the confirmed design (§1.5): `User` is a **global, multi-tenant identity** — login selects the active tenant via `tenantKey`, a user holds per-tenant `UserRoleAssignment`s, and impersonation resolves the tenant from those assignments. A single `User.tenantId` would break all of that.
+2. They claimed the work "overlaps TASK-305 Phase A (A.10/A.11)". **A.10/A.11 are factory-codegen tasks** (drop the `?? ''` fallback; regenerate the domain layer) — unrelated to user-tenant membership.
+
+**Decision (2026-06-02):** tenant membership is modeled by two tenant-scoped join tables — `UserRoleAssignment` (role) and `UserDepartment` (department) — and the invariant **"a non-exempt user must belong to a tenant with an active role AND an active department"** is *enforced* across the three layers. **Exempt:** `SUPER_ADMIN` (global, tenant-optional) and service accounts (`isServiceAccount = true`).
+
+Why it was a real gap before Phase F: the **role** half was enforced (login requires an enabled `UserRoleAssignment` in the resolved tenant; `assertUserBelongsToTenant` checks it), but the **department** half was never required at login, never required by the membership guard, and `UserDepartment` was excluded from the tenant-scope extension allow-list; `UserDepartmentService.assign` also trusted `departmentId` without checking it belonged to the caller's tenant.
+
+| # | Task | Verify | Size |
+|---|------|--------|------|
+| F.1 | Add `UserDepartment` to `TENANT_SCOPED_MODELS` (tenant-scope extension); correct the stale "Phase A will add `tenantId` to `User*`" comment in `tenant-scope.ts` and the "intentionally OUTSIDE the allow-list" note in `user-department.service.ts` | extension test enumerates `UserDepartment`; `@arcaai/database` unit suite green | S |
+| F.2 | Extend `assertUserBelongsToTenant` → require an enabled `UserRoleAssignment` **and** an enabled `UserDepartment`; service-account exemption via injected `UserRepository`; `NotFoundException` on incomplete membership (no existence leak) | `tenant-guards.test.ts`: regular role-only → NotFound; service-account role-only → pass; role+dept → pass | M |
+| F.3 | Thread `UserDepartmentRepository` + `UserRepository` into the 4 membership-guard call sites (`consultation`, `apiKey`, `dna-writing-style`, `notification`); update their unit tests + the coverage aggregator | service suites green; aggregator green | M |
+| F.4 | `UserDepartmentService.assign`: load the `Department` (tenant-scoped repo) and `assertEqualTenants` so a department assignment cannot reference a foreign-tenant department | service test: cross-tenant `departmentId` → NotFound | S |
+| F.5 | Login (`auth.controller`): non-exempt users must have an active department in the resolved tenant (mirrors the existing role check); add `UserDepartmentService.findActiveDepartmentForUserInTenant` (pre-auth `baseClient` bypass) | login test: regular role-but-no-dept → 401; service account → ok | M |
+| F.6 | Idempotent backfill migration: for every `(userId, tenantId)` with an enabled `UserRoleAssignment` but no enabled `UserDepartment`, ensure a `GEN` department exists for that tenant (find-or-create) and create a **primary** `UserDepartment` | migration is idempotent; post-migration zero non-exempt role-only memberships remain | M |
+| F.7 | Seed (`91-user.ts`): assign each seeded user a primary department so dev/test data satisfies the invariant | `pnpm db:seed` → users have departments; login works | S |
+
+**Phase-F gate:**
+- [ ] `assertUserBelongsToTenant` requires role + department (service-account exemption tested RED→GREEN)
+- [ ] Login blocks a non-exempt role-only user; allows service accounts + super admins
+- [ ] `UserDepartmentService.assign` rejects a foreign-tenant department
+- [ ] Backfill is idempotent; zero non-exempt role-only memberships remain after it
+- [ ] `@arcaai/database`, `@arcaai/applications`, `apps/api` build + unit suites green; no new lint errors
+
+---
+
 ## 4. Testing strategy
 
 ### 4.1 Test types and ownership
@@ -362,7 +393,7 @@ packages/database/README.md
 | Audit item | Status | Where it goes |
 |---|----|---|
 | B2 — FK from tenant-scoped tables → `Tenant` (`@relation`) | **Excluded per user directive** | n/a — not pursued |
-| B6 — User model split (`User` + `TenantUser`) | Deferred | Separate architectural ticket |
+| B6 — User model split (`User` + `TenantUser`) | **Resolved — Phase F** | Membership modeled by `UserRoleAssignment` + `UserDepartment` join tables — no `User` split, no `User.tenantId`. See §3 Phase F. |
 | C3 — `StorageAccessKey.bucketIds String[]` array → m:n join | Deferred | Independent refactor ticket |
 | C4 / C5 — `User.password`, `User.secret1`, `User.secret2` naming + encryption | Deferred | Security review ticket |
 | C9 — `TranscriptionJob.consultationId/contextItemId/mediaId` plain-string FKs | Deferred (user directive applies — no FK transformation) | Service-level cross-tenant assert in Phase D covers the read-side risk |
@@ -550,3 +581,4 @@ don't get lost:
 | 2026-05-27 | Wave 3 partial — W3.1 (D.2/D.3/D.4 consultation+context+summary), W3.3 (D.9 4 of 6 processors), D.9 follow-up (AuditLogProcessor + ConsultationEventHandler) merged. W3.2 (D.5 notification/apikey/dna) implemented + reviewer in flight. Phase A follow-up (2 latent typecheck fixes) merged. | `packages/applications/src/services/consultation/`, `packages/applications/src/services/auditLog/auditLog.processor.ts`, `packages/applications/src/services/resourceSubscription/resourceSubscription.service.ts`, see §6 W3 table |
 | 2026-05-27 | Wave 3 complete — W3.2 (D.5) merged. All §D.* service-layer cross-tenant guards in place; §D.9 6/6 queue/event handlers rebound. Phase C (RLS) deferred — depends on TASK-302 (PgBouncer/Vault). Plan ready for Wave 4 (Phase E: test suite + final docs). | `packages/applications/src/services/{notification,apiKey,dna-writing-style}/`, `docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md` |
 | 2026-05-27 | Wave 4 (Phase E) merged — E.1 fixture scaffold, E.2/E.3 coverage aggregator (114 inline cross-tenant tests pinned), E.5 database README tenant-scoping section, E.6 technical-architecture-overview.md multi-tenancy chapter (new doc), E.7 `06-implementation-summary.md` (audit findings table + per-merge SHA log), E.8 plan README §5 close-out. Status flipped to **Completed (A, B, D, E)** / Phase C deferred. | `tests/cross-tenant/`, `packages/applications/src/__tests__/cross-tenant-coverage.test.ts`, `packages/database/README.md`, `docs/technical-architecture-overview.md`, `docs/multi-tenancy-audit/{01-05}.md` headers, `docs/multi-tenancy-audit/06-implementation-summary.md`, this README |
+| 2026-06-02 | **Phase F opened** — User↔Tenant membership (role + department). Status flipped `Completed` → `In Progress`. Reconciles & resolves the previously-deferred **B6** (here), **D-1/X6** (TASK-325), **H-4** (TASK-306): `User` stays global multi-tenant; membership is modeled by `UserRoleAssignment` + `UserDepartment` (no `User.tenantId`). Corrected the wrong "overlaps A.10/A.11" pointer (those are codegen tasks). Phase F plan (F.1–F.7) added to §3. | this README; TASK-325 + TASK-306 READMEs; `docs/multi-tenancy-audit/02`, `07` |

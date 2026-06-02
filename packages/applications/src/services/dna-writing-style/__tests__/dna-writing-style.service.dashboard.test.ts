@@ -34,6 +34,9 @@ const createMockDnaUsageRecordRepository = () => ({
 });
 
 const createMockUserRoleAssignmentRepository = () => ({ findFirst: vi.fn() });
+// TASK-305 Phase F — membership guard also reads UserDepartment + User.
+const createMockUserDepartmentRepository = () => ({ findFirst: vi.fn() });
+const createMockUserRepository = () => ({ findFirst: vi.fn() });
 const createMockQueue = () => ({ add: vi.fn() });
 
 const createMockUsageEntity = (overrides: Record<string, unknown> = {}) => ({
@@ -52,6 +55,8 @@ describe('DnaWritingStyleService.getDashboard (TASK-328 A5)', () => {
     let mockVersionRepo: ReturnType<typeof createMockDnaVersionRepository>;
     let mockUsageRepo: ReturnType<typeof createMockDnaUsageRecordRepository>;
     let mockUserRoleAssignmentRepo: ReturnType<typeof createMockUserRoleAssignmentRepository>;
+    let mockUserDepartmentRepo: ReturnType<typeof createMockUserDepartmentRepository>;
+    let mockUserRepo: ReturnType<typeof createMockUserRepository>;
     let mockQueue: ReturnType<typeof createMockQueue>;
     let mockClsService: ReturnType<typeof createMockClsService>;
     let mockEventEmitter: ReturnType<typeof createMockEventEmitter>;
@@ -61,7 +66,7 @@ describe('DnaWritingStyleService.getDashboard (TASK-328 A5)', () => {
             mockReportRepo as never,
             mockVersionRepo as never,
             mockUsageRepo as never,
-            mockUserRoleAssignmentRepo as never,
+            mockUserRoleAssignmentRepo as never, mockUserDepartmentRepo as never, mockUserRepo as never,
             mockQueue as never,
             mockEventEmitter as never,
             mockClsService as never,
@@ -87,6 +92,8 @@ describe('DnaWritingStyleService.getDashboard (TASK-328 A5)', () => {
         mockVersionRepo = createMockDnaVersionRepository();
         mockUsageRepo = createMockDnaUsageRecordRepository();
         mockUserRoleAssignmentRepo = createMockUserRoleAssignmentRepository();
+        mockUserDepartmentRepo = createMockUserDepartmentRepository();
+        mockUserRepo = createMockUserRepository();
         mockQueue = createMockQueue();
         mockClsService = createMockClsService();
         mockEventEmitter = createMockEventEmitter();

@@ -49,6 +49,16 @@ const mockUserRoleAssignmentRepository = {
     findFirst: vi.fn(),
 };
 
+// TASK-305 Phase F — membership guard now also reads the UserDepartment join
+// table and the User table (service-account exemption).
+const mockUserDepartmentRepository = {
+    findFirst: vi.fn(),
+};
+
+const mockUserRepository = {
+    findFirst: vi.fn(),
+};
+
 // Helper to create mock consultation entity
 const createMockConsultationEntity = (overrides: Partial<{
     id: string;
@@ -135,6 +145,16 @@ describe('ConsultationService', () => {
             tenantId: 'tenant-1',
             resourceStatus: ResourceStatusType.ENABLED,
         });
+        // TASK-305 Phase F — default to a present in-tenant department so the
+        // role+department membership guard passes for the happy path. Negative
+        // tests override the role repo to null (short-circuits before this).
+        mockUserDepartmentRepository.findFirst.mockResolvedValue({
+            id: 'ud-1',
+            userId: 'doctor-1',
+            tenantId: 'tenant-1',
+            resourceStatus: ResourceStatusType.ENABLED,
+        });
+        mockUserRepository.findFirst.mockResolvedValue({ id: 'doctor-1', isServiceAccount: false });
         mockDepartmentRepository.findById.mockResolvedValue({
             id: 'dept-1',
             tenantId: 'tenant-1',
@@ -145,6 +165,8 @@ describe('ConsultationService', () => {
             mockConsultationRepository as any,
             mockDepartmentRepository as any,
             mockUserRoleAssignmentRepository as any,
+            mockUserDepartmentRepository as any,
+            mockUserRepository as any,
             mockEventEmitter as any,
             mockClsService as any,
         );

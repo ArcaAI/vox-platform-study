@@ -77,14 +77,15 @@ function captureExtensionConfig(opts: {
 // ---------------------------------------------------------------------------
 
 describe('TENANT_SCOPED_MODELS allow-list', () => {
-  it('contains the 28 tenant-scoped models currently defined in db_main/*.prisma', () => {
-    // The audit (`docs/multi-tenancy-audit/02-prisma-schema-review.md` §A)
-    // lists 30 models, but 4 User* tables and DnaRegenerationSettings
-    // do not yet carry a tenantId column — they are added in TASK-305
-    // Phase A. The allow-list tracks the SCHEMA TRUTH, not the future plan.
-    // TASK-318 added TenantStorageConfig (tenant-scoped storage settings)
-    // to the schema and the allow-list, bringing the count to 28.
-    expect(TENANT_SCOPED_MODELS.size).toBe(28);
+  it('contains the 29 tenant-scoped models currently defined in db_main/*.prisma', () => {
+    // The allow-list tracks SCHEMA TRUTH (every model here has a tenantId
+    // scalar), not the audit's 30-name wish-list. The User* identity tables
+    // are intentionally excluded — `User` is global by design (§B6 /
+    // TASK-305 Phase F); tenant membership lives in the UserRoleAssignment
+    // (role) + UserDepartment (department) join tables.
+    // TASK-318 added TenantStorageConfig → 28. TASK-305 Phase F added
+    // UserDepartment → 29.
+    expect(TENANT_SCOPED_MODELS.size).toBe(29);
   });
 
   it('includes every PHI-bearing model', () => {
@@ -100,6 +101,12 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     for (const global of ['Tenant', 'User', 'Role', 'Policy', 'RolePolicy']) {
       expect(TENANT_SCOPED_MODELS.has(global)).toBe(false);
     }
+  });
+
+  it('includes the user↔tenant membership join tables (TASK-305 Phase F)', () => {
+    expect(TENANT_SCOPED_MODELS.has('UserRoleAssignment')).toBe(true);
+    expect(TENANT_SCOPED_MODELS.has('UserDepartment')).toBe(true);
+    expect(isTenantScopedModel('userDepartment')).toBe(true);
   });
 
   it('isTenantScopedModel accepts camelCase and PascalCase', () => {

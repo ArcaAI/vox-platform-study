@@ -188,6 +188,8 @@ function buildController(overrides: any = {}) {
         (overrides.jwtRevocationService ?? createMockJwtRevocationService()) as any,
         (overrides.secretsService ?? createMockSecretsService()) as any,
         (overrides.refreshTokenService ?? createMockRefreshTokenService()) as any,
+        // TASK-305 Phase F — login now also resolves the department half of membership.
+        { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
     );
 }
 

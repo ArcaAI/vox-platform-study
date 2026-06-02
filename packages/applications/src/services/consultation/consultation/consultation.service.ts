@@ -7,6 +7,8 @@ import {
   DepartmentRepository,
   ResourceType,
   SysEventType,
+  UserDepartmentRepository,
+  UserRepository,
   UserRoleAssignmentRepository,
 } from '@arcaai/domains';
 import { IConsultationService } from './IConsultationService';
@@ -33,6 +35,10 @@ export class ConsultationService extends BaseService implements IConsultationSer
     private readonly consultationRepository: ConsultationRepository,
     private readonly departmentRepository: DepartmentRepository,
     private readonly userRoleAssignmentRepository: UserRoleAssignmentRepository,
+    // TASK-305 Phase F — membership is role + department; the guard needs the
+    // department join table and the User table (service-account exemption).
+    private readonly userDepartmentRepository: UserDepartmentRepository,
+    private readonly userRepository: UserRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
   ) {
@@ -65,7 +71,13 @@ export class ConsultationService extends BaseService implements IConsultationSer
       parentConsultationId?: string | null;
     },
   ): Promise<void> {
-    await assertUserBelongsToTenant(this.userRoleAssignmentRepository, refs.doctorId, tenantId);
+    await assertUserBelongsToTenant(
+      this.userRoleAssignmentRepository,
+      this.userDepartmentRepository,
+      this.userRepository,
+      refs.doctorId,
+      tenantId,
+    );
 
     if (refs.departmentId) {
       await assertParentInScope(this.departmentRepository, refs.departmentId, tenantId);

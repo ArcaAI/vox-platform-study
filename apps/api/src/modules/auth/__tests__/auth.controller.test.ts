@@ -61,6 +61,13 @@ const createMockUserRoleAssignmentService = (
     };
 };
 
+// TASK-305 Phase F — login now also requires an active department (full
+// membership = role + department). Default to a present assignment so legacy
+// login tests keep passing; the negative test passes `null`.
+const createMockUserDepartmentService = (departmentAssignment: any = { id: 'ud-1' }) => ({
+    findActiveDepartmentForUserInTenant: vi.fn(async () => departmentAssignment),
+});
+
 const createMockAuthService = () => ({
     trackAuthentication: vi.fn(),
     revokeToken: vi.fn(),
@@ -157,6 +164,7 @@ function buildController(overrides: {
     jwtRevocationService?: any;
     secretsService?: any;
     refreshTokenService?: any;
+    userDepartmentService?: any;
 } = {}) {
     return new AuthController(
         (overrides.userService ?? createMockUserService()) as any,
@@ -172,6 +180,7 @@ function buildController(overrides: {
         (overrides.jwtRevocationService ?? { revoke: vi.fn(), isRevoked: vi.fn().mockResolvedValue(false) }) as any,
         (overrides.secretsService ?? createMockSecretsService()) as any,
         (overrides.refreshTokenService ?? createMockRefreshTokenService()) as any,
+        (overrides.userDepartmentService ?? createMockUserDepartmentService()) as any,
     );
 }
 
@@ -470,6 +479,73 @@ describe('AuthController', () => {
                     createMockRequest(),
                 ),
             ).rejects.toThrow(UnauthorizedException);
+        });
+
+        // TASK-305 Phase F — full membership = role AND department.
+        it('should reject when user has a role but NO active department in the tenant', async () => {
+            const hashedPassword = await bcrypt.hash('pass123', 10);
+            const user = createUser({ password: hashedPassword });
+            const users = new Map([[user.id, user]]);
+
+            controller = buildController({
+                userRepository: createMockUserRepository(users),
+                tenantRepository: createMockTenantRepository(tenantMap),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]),
+                // role present (default tenant assignment), but department absent
+                userDepartmentService: createMockUserDepartmentService(null),
+            });
+
+            await expect(
+                controller.login(
+                    { username: 'dr_smith', password: 'pass123', tenantKey: 'acme-hospital' },
+                    createMockRequest(),
+                ),
+            ).rejects.toThrow(UnauthorizedException);
+        });
+
+        it('should allow login when the user has BOTH a role and a department', async () => {
+            const hashedPassword = await bcrypt.hash('pass123', 10);
+            const user = createUser({ password: hashedPassword });
+            const users = new Map([[user.id, user]]);
+            const deptService = createMockUserDepartmentService({ id: 'ud-1' });
+
+            controller = buildController({
+                userRepository: createMockUserRepository(users),
+                tenantRepository: createMockTenantRepository(tenantMap),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]),
+                userDepartmentService: deptService,
+            });
+
+            const result = await controller.login(
+                { username: 'dr_smith', password: 'pass123', tenantKey: 'acme-hospital' },
+                createMockRequest(),
+            );
+
+            expect(result.user).toBeDefined();
+            expect(deptService.findActiveDepartmentForUserInTenant).toHaveBeenCalledWith(user.id, 'tenant-001');
+        });
+
+        it('should EXEMPT a service account from the department requirement (role-only)', async () => {
+            const hashedPassword = await bcrypt.hash('pass123', 10);
+            const user = createUser({ password: hashedPassword, isServiceAccount: true });
+            const users = new Map([[user.id, user]]);
+            const deptService = createMockUserDepartmentService(null); // no department
+
+            controller = buildController({
+                userRepository: createMockUserRepository(users),
+                tenantRepository: createMockTenantRepository(tenantMap),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('doctor') }]),
+                userDepartmentService: deptService,
+            });
+
+            const result = await controller.login(
+                { username: 'dr_smith', password: 'pass123', tenantKey: 'acme-hospital' },
+                createMockRequest(),
+            );
+
+            expect(result.user).toBeDefined();
+            // Exempt: the department lookup must be skipped entirely.
+            expect(deptService.findActiveDepartmentForUserInTenant).not.toHaveBeenCalled();
         });
 
         it('should allow SUPER_ADMIN to login without tenantKey (global access)', async () => {

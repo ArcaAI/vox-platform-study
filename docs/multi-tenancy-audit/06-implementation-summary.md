@@ -68,7 +68,7 @@ exist in the audit; that prefix in the Phase E spec was a misnomer.
 | B3 | BLOCKER | `'50000000-…'` sentinel default on 27 models | **CLOSED** | W2.A `fb05891` | All 27 defaults removed in Phase A migration; `BaseTenantEntity.validate()` now throws on empty `tenantId`. |
 | B4 | HIGH | `tenantId` nullable on 13 models | **CLOSED** | W2.A `fb05891` | 11 models flipped to NOT NULL with back-fill to the reserved `system` Tenant. `User`/`UserMedia`/`UserProfile`/`UserSettings`/`UserVoiceProfile` remain non-tenant-scoped by design (B6). |
 | B5 | HIGH | Global uniques that should be tenant-scoped | **PARTIALLY CLOSED** | W2.A `fb05891` | `Webhook(tenantId, name)` and `Tag(tenantId, resourceTypeName, resourceId, tagKey)` scoped. `TenantBucket.name`, `StorageAccessKey.accessKeyId`, `User.externalId`, `User.username` kept global per plan §1.5 (S3 / SSO / identity conventions). |
-| B6 | HIGH | `User` model has no tenantId — users global by design | **OUT-OF-SCOPE** | — | Plan §1.5: architectural decision deferred to a separate ticket. The User-membership invariant is enforced by `assertUserBelongsToTenant` at every PHI-bearing create. Follow-up #1 tracks the `BaseGlobalEntity` extraction. |
+| B6 | HIGH | `User` model has no tenantId — users global by design | **RESOLVED — TASK-305 Phase F (2026-06-02)** | — | No `User` split, no `User.tenantId`. `User` stays a global multi-tenant identity; tenant membership is modeled + enforced via `UserRoleAssignment` (role) + `UserDepartment` (department) — at login, at `UserDepartmentService.assign` (department ∈ tenant), and in `assertUserBelongsToTenant` (now role + department, with `SUPER_ADMIN`/service-account exemption). |
 | B7 | HIGH | No tenant-aware Prisma extension | **CLOSED** | W2.B `a839fb8` | `applyTenantScopeExtension` ships; composed on top of soft-delete; CLS-driven; bidirectional mismatch detection. |
 | B8 | HIGH | Raw `getPrismaClient()` reachable from app code | **CLOSED** | W2.B `a839fb8` | Renamed to `getPlatformAdminPrismaClient_Unscoped`; ESLint `no-restricted-imports` rule with 8-site allow-list (`packages/config-eslint/base.js`). |
 | B9 | HIGH | Child rows' `tenantId` never cross-checked vs. parent | **CLOSED** | W3.1 `9d1921d`, W3.2 `9028759` | `assertEqualTenants` + `assertParentInScope` invoked at every cross-aggregate write site (`Consultation`, `Context`, `Summary`, `Chain`, `Notification`, `ApiKey`, `DnaWritingStyle`). |
@@ -114,9 +114,9 @@ exist in the audit; that prefix in the Phase E spec was a misnomer.
 
 | Status | Count | Notes |
 |---|---|---|
-| **CLOSED** | **12** | B3, B4, B5 (partial), B7, B8, B9, B10, B12, C1, C6, C8, D8. (W1.1 = B12; not counted twice.) |
+| **CLOSED** | **13** | B3, B4, B5 (partial), B6 (→ TASK-305 Phase F, 2026-06-02), B7, B8, B9, B10, B12, C1, C6, C8, D8. (W1.1 = B12; not counted twice.) |
 | **DEFERRED** | **4** | B1 (RLS), C2 (AuditLog lockdown), C10 (Tenant deactivation), D9 (vault NOBYPASSRLS) — all converge on Phase C / TASK-302. |
-| **OUT-OF-SCOPE** | **20** | User-directive items (B2), separate-review items (B6, B11), hygiene items (C3, C4, C5, C7, C9, C11, C12, D1-D7, D10-D12). |
+| **OUT-OF-SCOPE** | **19** | User-directive items (B2), separate-review items (B11), hygiene items (C3, C4, C5, C7, C9, C11, C12, D1-D7, D10-D12). _(B6 moved to CLOSED — resolved via TASK-305 Phase F.)_ |
 
 (B5 is counted once under CLOSED because the scoped half shipped; the
 kept-global half was a user decision, not a deferral.)
@@ -316,7 +316,7 @@ follow-up tickets.
 | **F-7** | Drop redundant single-column `@@index([tenantId])` (TASK-305 §6.7 #3) | Write-throughput micro-opt — composite `[tenantId, X]` indexes cover the same workloads |
 | **F-8** | `CoreDataModel` wildcard re-export removal (TASK-305 §6.7 #5) | Latent footgun, zero current consumers — ESLint `importNames` doesn't follow wildcard re-exports |
 | **L-3** | JWT revocation Redis key not tenant-prefixed | Backlog only — `jti` is globally unique so no practical collision risk |
-| **H-4** | `User` / `UserMedia` blindly findById cross-tenant | Architectural — needs `BaseGlobalEntity` design (also tracked as TASK-305 §6.7 #1) |
+| **H-4** | `User` / `UserMedia` blindly findById cross-tenant | **Resolved — TASK-305 Phase F**: `User` is global by design; tenant binding enforced by `assertUserBelongsToTenant` (role + department) |
 
 #### 6.4.2 Review-time minor nits (306-Fx)
 

@@ -9,6 +9,8 @@ import {
   NotificationFactory,
   NotificationRepository,
   ResourceSubscriptionRepository,
+  UserDepartmentRepository,
+  UserRepository,
   UserRoleAssignmentRepository,
 } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException } from '@arcaai/exceptions';
@@ -24,6 +26,10 @@ export class NotificationService extends BaseService implements INotificationSer
   constructor(
     private readonly notificationRepository: NotificationRepository,
     private readonly userRoleAssignmentRepository: UserRoleAssignmentRepository,
+    // TASK-305 Phase F — membership is role + department; the guard needs the
+    // department join table and the User table (service-account exemption).
+    private readonly userDepartmentRepository: UserDepartmentRepository,
+    private readonly userRepository: UserRepository,
     private readonly resourceSubscriptionRepository: ResourceSubscriptionRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
@@ -52,7 +58,13 @@ export class NotificationService extends BaseService implements INotificationSer
   async create(request: CreateNotificationRequest): Promise<NotificationEntity> {
     const effectiveTenantId = this.resolveEffectiveTenantId(request.tenantId);
 
-    await assertUserBelongsToTenant(this.userRoleAssignmentRepository, request.targetUserId, effectiveTenantId);
+    await assertUserBelongsToTenant(
+      this.userRoleAssignmentRepository,
+      this.userDepartmentRepository,
+      this.userRepository,
+      request.targetUserId,
+      effectiveTenantId,
+    );
 
     if (request.resourceSubscriptionId) {
       await assertParentInScope(this.resourceSubscriptionRepository, request.resourceSubscriptionId, effectiveTenantId);

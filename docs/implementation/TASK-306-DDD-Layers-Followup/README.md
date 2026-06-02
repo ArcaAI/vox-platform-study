@@ -89,7 +89,7 @@ TASK-305 shipped 12 audit-CLOSED findings, 4 DEFERRED-to-Phase-C, and 20 OUT-OF-
 | H-1 | HIGH | **OPEN** — `fetchTenantConfigs` accepts any tenantId | **YES** (P2.2 / AC-4) |
 | H-2 | HIGH | CLOSED (W3.1) | — |
 | H-3 | HIGH | **OPEN** — `TenantService.fetchById` open | **YES** (P1.3 / AC-3) |
-| H-4 | HIGH | DEFERRED — needs `BaseGlobalEntity` design (TASK-305 §6.7 #1) | F-1 only |
+| H-4 | HIGH | **RESOLVED — TASK-305 Phase F** — `User` is global by design; tenant binding enforced by `assertUserBelongsToTenant` (role + department) | — |
 | H-5/H-6 | HIGH | CLOSED (Prisma extension) | — |
 | H-7 | HIGH | CLOSED (W3.3 + follow-up) | — |
 | H-8 | HIGH | **PARTIAL** — reads scoped (W1.4); writes use caller-supplied tenantId | **YES** (P1.2 / AC-2) |
@@ -303,7 +303,7 @@ Each of NEW-1..NEW-4 + NEW-6 is closed by this ticket. NEW-5 is deferred to F-2 
 - 306-F12 — `BaseEntity.equals` strict-class check — architectural design decision
 - §8 F-2 / NEW-5 — `DnaWritingStyleService.listReports` GLOBAL_ADMIN bypass — product decision
 - §8 F-3 — `NotificationService` SUPER_ADMIN posture — product decision
-- §8 H-4 — `BaseGlobalEntity` architecture — separate architectural ticket
+- §8 H-4 — `User`/`UserMedia` cross-tenant findById — **resolved by TASK-305 Phase F** (`User` is global; tenant membership = role + department, enforced by `assertUserBelongsToTenant`)
 - §8 F-1 — PostgreSQL RLS — TASK-302 Phase 2
 - §8 L-3 — JWT revocation Redis key tenant prefix — backlog
 
@@ -461,7 +461,7 @@ packages/domains/src/common/baseEntity/__tests__/base.entity.test.ts
 
 | Audit item / new finding | Status | Where it goes |
 |---|---|---|
-| H-4 — `User`/`UserMedia` blindly findById cross-tenant | Deferred — needs `BaseGlobalEntity` design (F-1) | Separate ticket — architectural decision (TASK-305 §6.7 #1) |
+| H-4 — `User`/`UserMedia` blindly findById cross-tenant | **Resolved — TASK-305 Phase F** | `User` is a global identity (findById is by-design global); tenant binding is enforced by `assertUserBelongsToTenant` (now requires role + department). No `BaseGlobalEntity` split is required for the isolation guarantee. |
 | NEW-5 — `DnaWritingStyleService.listReports` global-role bypass | Deferred — product decision (F-2) | Separate ticket — is `GLOBAL_ADMIN` deliberately cross-tenant? |
 | NEW-7 — aggregator FS-introspection | **MOVED IN-SCOPE** — folded into W5.5.6 per user direction | n/a (was F-4) |
 | NotificationService SUPER_ADMIN posture inconsistency (TASK-305 §6.7 #7) | Deferred — product decision (F-3) | Separate ticket — tighten or audit-log |
@@ -542,7 +542,8 @@ Answer: we should ship W5.1-W5.5 as 5 separate PRs (clean reviewable units).
 | **CLOSED (W5.5)** | M-5, M-6, M-8, L-4, NEW-7/F-4 | Merge `ec67a0d4` |
 | **CLOSED via W5.5.7 (deferred folds)** | 306-F9, 306-F10 | Aggregator cosmetic + marker tightening |
 | **DOCUMENTED (W5.6)** | AC-15 — audit + summary + architecture docs cross-walked; canonical closure record at `07-ddd-layers-followup-closure.md` | Merge `<pending>` |
-| **DEFERRED (TASK-306 plan §8)** | F-1..F-3, F-5..F-8, H-4, L-3, NEW-5/F-2 | Each tracked as a follow-up ticket — see §8 |
+| **DEFERRED (TASK-306 plan §8)** | F-1..F-3, F-5..F-8, L-3, NEW-5/F-2 | Each tracked as a follow-up ticket — see §8 |
+| **RESOLVED (TASK-305 Phase F)** | H-4 | `User`/`UserMedia` cross-tenant findById — `User` global + membership (role + department) enforced by `assertUserBelongsToTenant`; no `BaseGlobalEntity` split needed |
 | **DEFERRED (review-time minor nits)** | 306-F1..306-F8, 306-F11..306-F15 | 13 minor nits captured across W5.1-W5.6 code reviews — see the "TASK-306 follow-ups" table in §5 below. None blocking; all minor |
 
 ### TASK-306 follow-ups (deferred minor nits)

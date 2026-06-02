@@ -8,6 +8,8 @@ import {
   EntityId,
   ResourceType,
   SysEventType,
+  UserDepartmentRepository,
+  UserRepository,
   UserRoleAssignmentRepository,
 } from '@arcaai/domains';
 import { ArgumentInvalidException, InternalServerErrorException } from '@arcaai/exceptions';
@@ -74,6 +76,12 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     // the user the key is being issued for actually has a role-assignment in
     // the effective tenant.
     private readonly userRoleAssignmentRepository: UserRoleAssignmentRepository,
+    // TASK-305 Phase F — membership is role + department; the guard needs the
+    // department join table and the User table. Service-account API keys
+    // (`ApiKeyType.SERVICE_ACCOUNT`) are issued to service-account users, which
+    // are exempt from the department half via the User lookup.
+    private readonly userDepartmentRepository: UserDepartmentRepository,
+    private readonly userRepository: UserRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
     // TASK-302 Phase 3 Task 3.3 — API_KEY_PEPPER now arrives via the
@@ -229,7 +237,13 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     // is rarely a member of every tenant they administer). SERVICE_ACCOUNT
     // keys skip the check because they may have no associated user at all.
     if (userId && effectiveTenantId && keyType !== ApiKeyType.SERVICE_ACCOUNT && !this.isSuperAdmin()) {
-      await assertUserBelongsToTenant(this.userRoleAssignmentRepository, userId, effectiveTenantId);
+      await assertUserBelongsToTenant(
+        this.userRoleAssignmentRepository,
+        this.userDepartmentRepository,
+        this.userRepository,
+        userId,
+        effectiveTenantId,
+      );
     }
 
     // eslint-disable-next-line turbo/no-undeclared-env-vars

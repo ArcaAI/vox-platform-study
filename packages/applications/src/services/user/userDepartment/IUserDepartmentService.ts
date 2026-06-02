@@ -13,6 +13,15 @@ export interface IUserDepartmentService extends IBaseService {
   update(id: string, dto: UpdateUserDepartmentRequest): Promise<UserDepartmentResponse>;
   /** Soft-delete an assignment. */
   unassign(id: string): Promise<UserDepartmentResponse>;
+
+  /**
+   * TASK-305 Phase F — pre-auth (baseClient) membership lookup used by the
+   * login flow BEFORE any tenant context exists in CLS: does `userId` have an
+   * ENABLED `UserDepartment` in `tenantId`? Bypasses the tenant-scope extension
+   * (the explicit `tenantId` predicate is the boundary), mirroring
+   * `IUserRoleAssignmentService.findActiveAssignmentForUserInTenant`.
+   */
+  findActiveDepartmentForUserInTenant(userId: string, tenantId: string): Promise<{ id: string } | null>;
 }
 
 export const IUserDepartmentService = Symbol('IUserDepartmentService');

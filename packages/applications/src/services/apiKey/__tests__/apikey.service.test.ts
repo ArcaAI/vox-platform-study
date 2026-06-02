@@ -53,6 +53,16 @@ const mockUserRoleAssignmentRepository = {
     findFirst: vi.fn(),
 };
 
+// TASK-305 Phase F — membership guard now also reads the UserDepartment join
+// table and the User table (service-account exemption).
+const mockUserDepartmentRepository = {
+    findFirst: vi.fn(),
+};
+
+const mockUserRepository = {
+    findFirst: vi.fn(),
+};
+
 // Helper to create mock API key entity
 const createMockApiKeyEntity = (overrides: Partial<{
     id: string;
@@ -153,11 +163,20 @@ describe('ApiKeyService', () => {
             tenantId: 'tenant-1',
             resourceStatus: ResourceStatusType.ENABLED,
         });
+        // TASK-305 Phase F — default to a present in-tenant department so the
+        // role+department membership guard passes for the happy path.
+        mockUserDepartmentRepository.findFirst.mockResolvedValue({
+            id: 'ud-1',
+            userId: 'current-user-id',
+            tenantId: 'tenant-1',
+            resourceStatus: ResourceStatusType.ENABLED,
+        });
+        mockUserRepository.findFirst.mockResolvedValue({ id: 'current-user-id', isServiceAccount: false });
 
         // Create service instance with mocks
         service = new ApiKeyService(
             mockApiKeyRepository as any,
-            mockUserRoleAssignmentRepository as any,
+            mockUserRoleAssignmentRepository as any, mockUserDepartmentRepository as any, mockUserRepository as any,
             mockEventEmitter as any,
             mockClsService as any,
         );
@@ -441,7 +460,7 @@ describe('ApiKeyService', () => {
 
             const svc = new ApiKeyService(
                 mockApiKeyRepository as any,
-                mockUserRoleAssignmentRepository as any,
+                mockUserRoleAssignmentRepository as any, mockUserDepartmentRepository as any, mockUserRepository as any,
                 mockEventEmitter as any,
                 mockClsService as any,
             );
@@ -464,7 +483,7 @@ describe('ApiKeyService', () => {
 
             const svc = new ApiKeyService(
                 mockApiKeyRepository as any,
-                mockUserRoleAssignmentRepository as any,
+                mockUserRoleAssignmentRepository as any, mockUserDepartmentRepository as any, mockUserRepository as any,
                 mockEventEmitter as any,
                 mockClsService as any,
             );
@@ -487,7 +506,7 @@ describe('ApiKeyService', () => {
 
             const svc = new ApiKeyService(
                 mockApiKeyRepository as any,
-                mockUserRoleAssignmentRepository as any,
+                mockUserRoleAssignmentRepository as any, mockUserDepartmentRepository as any, mockUserRepository as any,
                 mockEventEmitter as any,
                 mockClsService as any,
             );
@@ -531,7 +550,7 @@ describe('ApiKeyService', () => {
 
             const svc = new ApiKeyService(
                 mockApiKeyRepository as any,
-                mockUserRoleAssignmentRepository as any,
+                mockUserRoleAssignmentRepository as any, mockUserDepartmentRepository as any, mockUserRepository as any,
                 mockEventEmitter as any,
                 mockClsService as any,
             );
@@ -554,7 +573,7 @@ describe('ApiKeyService', () => {
 
             const svc = new ApiKeyService(
                 mockApiKeyRepository as any,
-                mockUserRoleAssignmentRepository as any,
+                mockUserRoleAssignmentRepository as any, mockUserDepartmentRepository as any, mockUserRepository as any,
                 mockEventEmitter as any,
                 mockClsService as any,
             );
@@ -1709,7 +1728,7 @@ describe('ApiKeyService', () => {
                 });
                 const svc = new ApiKeyService(
                     mockApiKeyRepository as any,
-                    mockUserRoleAssignmentRepository as any,
+                    mockUserRoleAssignmentRepository as any, mockUserDepartmentRepository as any, mockUserRepository as any,
                     mockEventEmitter as any,
                     mockClsService as any,
                 );
@@ -1733,7 +1752,7 @@ describe('ApiKeyService', () => {
                 });
                 const svc = new ApiKeyService(
                     mockApiKeyRepository as any,
-                    mockUserRoleAssignmentRepository as any,
+                    mockUserRoleAssignmentRepository as any, mockUserDepartmentRepository as any, mockUserRepository as any,
                     mockEventEmitter as any,
                     mockClsService as any,
                 );
