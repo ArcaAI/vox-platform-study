@@ -1,5 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ForbiddenException } from '@nestjs/common';
 import { UserController } from '../user.controller';
+
+// TASK-326 X2 — mirror of the AuditLogController CLS mock so the
+// controller can read the caller's `user`/`tenantId` for tenant scoping.
+function createMockCls(user: { id?: string; tenantId?: string | null; roles?: string[] } | null, tenantId?: string | null) {
+    return {
+        get: vi.fn((key: string) => {
+            if (key === 'user') return user;
+            if (key === 'tenantId') return tenantId ?? user?.tenantId ?? undefined;
+            return undefined;
+        }),
+    };
+}
 
 const createMockUserService = () => ({
     create: vi.fn(),
@@ -106,11 +119,16 @@ describe('UserController', () => {
         mockApiKeyService = createMockApiKeyService();
         mockUserSettingsService = createMockUserSettingsService();
         mockUserRoleAssignmentService = createMockUserRoleAssignmentService();
+        // Default to a SUPER_ADMIN context so the generic CRUD specs below
+        // exercise the cross-tenant operator path (fetchAll). Tenant-scoping
+        // specs construct their own per-case CLS mock.
+        const mockCls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
         controller = new UserController(
             mockUserService as any,
             mockApiKeyService as any,
             mockUserSettingsService as any,
             mockUserRoleAssignmentService as any,
+            mockCls as any,
         );
     });
 
@@ -153,6 +171,54 @@ describe('UserController', () => {
 
             expect(result).toBeDefined();
             expect(result.data).toBeDefined();
+        });
+    });
+
+    // -------------------------------------------------------------------------
+    // TASK-326 X2 — GET /admin/users tenant scoping (Critical defect).
+    // Pre-fix `fetchAll` applied NO tenant scope, so a TENANT_ADMIN with
+    // `manage:User` could enumerate users platform-wide. Non-super-admins must
+    // be routed to the by-tenant service path; SUPER_ADMIN keeps cross-tenant.
+    // -------------------------------------------------------------------------
+    describe('TASK-326 X2 — GET /admin/users tenant scoping', () => {
+        const buildController = (cls: ReturnType<typeof createMockCls>) =>
+            new UserController(
+                mockUserService as any,
+                mockApiKeyService as any,
+                mockUserSettingsService as any,
+                mockUserRoleAssignmentService as any,
+                cls as any,
+            );
+
+        it('routes a non-super-admin to fetchAllByTenantId scoped to the caller tenant', async () => {
+            mockUserService.fetchAllByTenantId.mockResolvedValue(fakeFetchResponse);
+            const cls = createMockCls({ id: 'u-1', tenantId: 't-OWN', roles: ['TENANT_ADMIN'] }, 't-OWN');
+
+            await buildController(cls).fetchAll({ page: 1, pageSize: 10 } as any);
+
+            expect(mockUserService.fetchAllByTenantId).toHaveBeenCalledWith(
+                expect.objectContaining({ tenantId: 't-OWN', page: 1, pageSize: 10 }),
+            );
+            expect(mockUserService.fetchAll).not.toHaveBeenCalled();
+        });
+
+        it('rejects a non-super-admin with NO tenant context (ForbiddenException, no enumeration)', async () => {
+            const cls = createMockCls({ id: 'u-1', tenantId: null, roles: ['TENANT_ADMIN'] }, null);
+
+            await expect(buildController(cls).fetchAll({} as any)).rejects.toBeInstanceOf(ForbiddenException);
+
+            expect(mockUserService.fetchAll).not.toHaveBeenCalled();
+            expect(mockUserService.fetchAllByTenantId).not.toHaveBeenCalled();
+        });
+
+        it('lets a SUPER_ADMIN read cross-tenant via the unscoped fetchAll path', async () => {
+            mockUserService.fetchAll.mockResolvedValue(fakeFetchResponse);
+            const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+
+            await buildController(cls).fetchAll({ page: 1, pageSize: 10 } as any);
+
+            expect(mockUserService.fetchAll).toHaveBeenCalledTimes(1);
+            expect(mockUserService.fetchAllByTenantId).not.toHaveBeenCalled();
         });
     });
 

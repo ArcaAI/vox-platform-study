@@ -1204,4 +1204,66 @@ describe('AuditLogService', () => {
             expect(result.data.every(log => log.resourceId === 'cons-123')).toBe(true);
         });
     });
+
+    // -------------------------------------------------------------------------
+    // TASK-326 X1 — recordSystemAction: privileged/system action direct-write.
+    // Used by the Prisma Studio BFF (raw SQL, untenanted) so every query is on
+    // the audit trail. Mirrors the auth direct-write: UNSCOPED baseClient +
+    // system-tenant fallback + best-effort (never throws).
+    // -------------------------------------------------------------------------
+    describe('recordSystemAction (TASK-326 X1)', () => {
+        it('writes a privileged-action audit row via the UNSCOPED baseClient', async () => {
+            await service.recordSystemAction({
+                action: AuditAction.READ,
+                eventType: 'PRISMA_STUDIO',
+                resourceType: ResourceType.AuditLog,
+                data: { kind: 'query' },
+            });
+
+            // Direct write bypasses the tenant-scope extension (the operator may
+            // be tenant-less), so it MUST go through baseClient — never client.
+            expect(mockDatabaseService.baseClient.auditLog.create).toHaveBeenCalledTimes(1);
+            expect(mockDatabaseService.client.auditLog.create).not.toHaveBeenCalled();
+
+            const [{ data }] = mockDatabaseService.baseClient.auditLog.create.mock.calls[0];
+            expect(data).toEqual(
+                expect.objectContaining({
+                    action: AuditAction.READ,
+                    eventType: 'PRISMA_STUDIO',
+                    resourceType: ResourceType.AuditLog,
+                    responsibleUserId: 'current-user-id',
+                    tenantId: 'tenant-1',
+                }),
+            );
+        });
+
+        it('falls back to the system tenant when the operator has no CLS tenant (super-admin)', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'user') return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
+                if (key === 'requestIp') return '10.0.0.1';
+                return null; // no tenantId
+            });
+
+            await service.recordSystemAction({
+                action: AuditAction.UPDATE,
+                eventType: 'PRISMA_STUDIO',
+                resourceType: ResourceType.AuditLog,
+            });
+
+            const [{ data }] = mockDatabaseService.baseClient.auditLog.create.mock.calls[0];
+            expect(data.tenantId).toBe('00000000-0000-0000-0000-000000000000');
+        });
+
+        it('never throws when the audit write fails (best-effort)', async () => {
+            mockDatabaseService.baseClient.auditLog.create.mockRejectedValueOnce(new Error('db down'));
+
+            await expect(
+                service.recordSystemAction({
+                    action: AuditAction.READ,
+                    eventType: 'PRISMA_STUDIO',
+                    resourceType: ResourceType.AuditLog,
+                }),
+            ).resolves.toBeUndefined();
+        });
+    });
 });

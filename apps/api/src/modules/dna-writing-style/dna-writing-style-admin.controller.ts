@@ -22,7 +22,14 @@ import { getDnaJobStatus, streamDnaJobStatus } from './dna-writing-style-job-str
 @ApiBearerAuth()
 @ApiTags('admin-dna-writing-styles')
 @Controller('admin/dna-writing-styles')
-@Authorize(['manage', 'all'])
+// TASK-326 X7 — narrowed from `manage:all` (super-admin-only) to
+// `manage:DnaWritingStyleReport` so a TENANT_ADMIN can administer their own
+// tenant's writing-style reports (mirrors the TASK-298 AudioPipelineController
+// narrowing). Tenant isolation is still enforced in the service layer
+// (`assertReportInScope`) and `DnaWritingStyleReport` is tenant-scoped, so this
+// only widens WHO may call — never the data each caller may see. The
+// `tenant-full-access` policy grants the matching ability (seed 01-policy.ts).
+@Authorize(['manage', 'DnaWritingStyleReport'])
 export class DnaWritingStyleAdminController {
   constructor(
     @Inject(IDnaWritingStyleService)

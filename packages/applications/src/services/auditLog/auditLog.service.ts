@@ -371,4 +371,55 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       });
     }
   }
+
+  /**
+   * TASK-326 X1 — record a privileged/system action audit entry synchronously.
+   *
+   * Mirrors `handleUserAuthenticatedEvent`'s sanctioned direct-write path: the
+   * row is built via the factory and persisted through the UNSCOPED `baseClient`
+   * (so a tenant-less super-admin operator's row is still written — `AuditLog`
+   * is tenant-scoped, and the scoped client would reject a null/foreign tenant).
+   *
+   * Best-effort by contract: all errors are caught and logged so the privileged
+   * caller (e.g. the Prisma Studio BFF) is never blocked by an audit failure.
+   */
+  public async recordSystemAction(params: {
+    action: AuditAction;
+    eventType: string;
+    resourceType: ResourceType;
+    resourceId?: string | null;
+    data?: Record<string, unknown>;
+    success?: boolean;
+  }): Promise<void> {
+    try {
+      const auditLog = AuditLogFactory.CreateAuditLog({
+        action: params.action,
+        eventType: params.eventType,
+        success: params.success ?? true,
+        responsibleUserId: this.requestUser?.id ?? null,
+        responsibleIp: this.requestIp,
+        resourceId: params.resourceId ?? null,
+        resourceType: params.resourceType,
+        // The factory's `data` is a Prisma JsonValue; the public param keeps the
+        // ergonomic Record<string, unknown> shape, so narrow it here.
+        data: (params.data ?? {}) as unknown as AuditLogEntity['data'],
+        previousData: {},
+        metadata: null,
+        createdBy: this.requestUser?.id ?? null,
+        tenantId: this.tenantId ?? '00000000-0000-0000-0000-000000000000',
+      });
+
+      const persistence = AuditLogEntityMapper.getInstance().toPersistence(auditLog) as unknown as Record<string, unknown>;
+      const data = Object.fromEntries(Object.entries(persistence).filter(([, value]) => value !== null));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await this.databaseService.baseClient.auditLog.create({ data: data as any });
+    } catch (error: unknown) {
+      this.logger.error({
+        message: 'Error recording system action audit',
+        eventType: params.eventType,
+        action: params.action,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
 }

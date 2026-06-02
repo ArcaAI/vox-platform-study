@@ -19,9 +19,12 @@ import {
   UserRoleAssignmentDtoMapper,
   CreateUserRoleAssignmentRequest,
   PaginatedUserRoleAssignmentResponse,
+  isSuperAdmin,
+  IActiveUserContext,
 } from '@arcaai/applications';
-import { Body, Controller, Delete, HttpCode, HttpStatus, Inject, Param, Post, Query, Get, Patch } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, HttpCode, HttpStatus, Inject, Param, Post, Query, Get, Patch } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
+import { ClsService } from 'nestjs-cls';
 import { ApiEndpoint, CanManage } from '../../decorators';
 import { UpdateUserStatusRequest, BulkDeleteUsersRequest, BulkDeleteUsersResponse, BulkDeleteUserFailure } from './dto';
 
@@ -40,6 +43,7 @@ export class UserController {
     private readonly userSettingsService: IUserSettingsService,
     @Inject(IUserRoleAssignmentService)
     private readonly userRoleAssignmentService: IUserRoleAssignmentService,
+    private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
   @ApiEndpoint({
@@ -59,6 +63,24 @@ export class UserController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   async fetchAll(@Query() queryParams: PaginatedQuery): Promise<PaginatedUserResponse> {
+    // TASK-326 X2 (audit X2, Critical): pre-fix `fetchAll` applied NO tenant
+    // scope, so any caller with `manage:User` (e.g. a TENANT_ADMIN) could
+    // enumerate users platform-wide. Mirror the AuditLogController guard:
+    // non-super-admins are routed to the by-tenant service path scoped to
+    // their effective CLS tenant; SUPER_ADMIN keeps the cross-tenant read.
+    const user = this.cls.get('user');
+    const callerTenantId = this.cls.get('tenantId');
+    if (!isSuperAdmin(user)) {
+      if (!callerTenantId) {
+        throw new ForbiddenException('Tenant context required to list users');
+      }
+      const scoped = await this.userService.fetchAllByTenantId({
+        ...queryParams,
+        tenantId: callerTenantId,
+      });
+      return UserDtoMapper.ToPaginatedResponse(scoped);
+    }
+
     const result = await this.userService.fetchAll({
       ...queryParams,
     });
