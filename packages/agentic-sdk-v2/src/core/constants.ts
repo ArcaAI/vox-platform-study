@@ -168,6 +168,10 @@ export const PROMPT_TEMPLATE_ENDPOINTS = {
   USAGE: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}/usage`,
   /** Activate (rollback to) a specific version */
   ACTIVATE_VERSION: (id: string, versionNumber: number) => `/admin/prompt-templates/${encodeURIComponent(id)}/versions/${versionNumber}/activate`,
+  /** Run a quality/score test against the SMR/text-generation service (TASK-328 A4) */
+  TEST: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}/test`,
+  /** Usage analytics grouped by department / doctor / day (TASK-328 A4) */
+  USAGE_ANALYTICS: '/admin/prompt-templates/analytics/usage',
 } as const;
 
 /**

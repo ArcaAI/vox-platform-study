@@ -80,4 +80,36 @@ export class PromptTemplateRepository extends Repository<PromptTemplateEntity, P
       sort: [{ name: 'asc' }],
     });
   }
+
+  /**
+   * TASK-328 A4 — repository-level pagination for the admin list.
+   *
+   * Returns both the page slice and the total matching count in one call so
+   * the controller no longer materializes the full tenant result set just to
+   * slice it in memory. Mirrors the `ConsultationRepository.findPaginated*`
+   * precedent (`db.findMany` + `db.count` against the same extended client, so
+   * soft-delete semantics match the query-builder list path).
+   */
+  async findPaginated(
+    where: Record<string, unknown>,
+    page: number,
+    limit: number,
+  ): Promise<{ data: PromptTemplateEntity[]; count: number }> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = (this as any).db;
+    const [models, count] = await Promise.all([
+      db.findMany({
+        where,
+        orderBy: [{ name: 'asc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      db.count({ where }),
+    ]);
+
+    return {
+      data: models.map((model: PromptTemplate) => (this as any)._mapper.toDomainEntity(model)),
+      count,
+    };
+  }
 }

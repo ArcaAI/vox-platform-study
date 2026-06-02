@@ -5,6 +5,9 @@ import {
   CreatePromptTemplateRequest,
   UpdatePromptTemplateRequest,
   AssignDepartmentPromptRequest,
+  TestPromptTemplateRequest,
+  PromptTestResultResponse,
+  PromptUsageAnalyticsResponse,
   DepartmentResponse,
   HttpMethod,
 } from '@arcaai/applications';
@@ -52,24 +55,27 @@ export class PromptManagementController {
   async list(
     @Query() queryParams: { category?: string; departmentId?: string; search?: string; includeDisabled?: string; page?: number; limit?: number },
   ): Promise<PaginatedPromptTemplateResponse> {
-    const templates = await this.promptService.listPromptTemplates({
+    // TASK-328 A4 — pagination is pushed down to the repository
+    // (`findPaginated` → `db.findMany` + `db.count`) instead of materializing
+    // the full tenant result set and slicing it in memory.
+    return this.promptService.listPromptTemplatesPaginated({
       category: queryParams.category,
       departmentId: queryParams.departmentId,
       search: queryParams.search,
       includeDisabled: queryParams.includeDisabled === 'true',
+      page: Number(queryParams.page) || 1,
+      limit: Number(queryParams.limit) || 50,
     });
+  }
 
-    const page = Number(queryParams.page) || 1;
-    const limit = Number(queryParams.limit) || 50;
-    const start = (page - 1) * limit;
-    const paginated = templates.slice(start, start + limit);
-
-    return {
-      data: paginated,
-      count: templates.length,
-      limit,
-      page,
-    };
+  // TASK-328 A4 — declared BEFORE the `:id` / `:id/usage` param routes so the
+  // static `analytics/usage` path is not shadowed by `:id/usage`.
+  @Get('analytics/usage')
+  @ApiOperation({ summary: 'Usage analytics grouped by department / doctor / day (TASK-328 A4)' })
+  @ApiQuery({ name: 'promptTemplateId', required: false, type: String, description: 'Narrow analytics to a single template' })
+  @ApiResponse({ status: 200, description: 'Usage analytics aggregates', type: PromptUsageAnalyticsResponse })
+  async getUsageAnalytics(@Query() queryParams: { promptTemplateId?: string }): Promise<PromptUsageAnalyticsResponse> {
+    return this.promptService.getUsageAnalytics({ promptTemplateId: queryParams.promptTemplateId });
   }
 
   @ApiEndpoint({
@@ -175,6 +181,47 @@ export class PromptManagementController {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const svc = this.promptService as any;
     return svc.getUsageStats(id);
+  }
+
+  // ─── TASK-328 A4: prompt quality/score test run ──────────────────────
+
+  @ApiEndpoint({
+    returnedModel: PromptTestResultResponse,
+    method: HttpMethod.POST,
+    path: ':id/test',
+    by: ['id'],
+  })
+  @Authorize(['update', 'PromptTemplate'])
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Run a prompt template against the SMR/text-generation service',
+    description:
+      'Generates an output + numeric score for the template and persists ' +
+      '`lastTestScore/lastTestOutput/lastTestAt`. This is an optimistic-' +
+      'concurrency write (parity with PATCH): the `If-Match` header is REQUIRED ' +
+      'and folds over any body-supplied `expectedVersion`. Version drift → 412.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the row version the client read (e.g. `"7"`).',
+    required: true,
+    example: '"7"',
+  })
+  @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })
+  @ApiResponse({ status: 404, description: 'Template not found' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async testTemplate(
+    @Param('id') id: string,
+    @Body() request: TestPromptTemplateRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<PromptTestResultResponse> {
+    // TASK-328 A4 — header takes precedence over body when both are present
+    // (mirrors `update`); on a `@RequiresIfMatch()` route the param decorator
+    // already fired 428 if the header was missing.
+    const effectiveRequest: TestPromptTemplateRequest =
+      expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
+    return this.promptService.testPromptTemplate(id, effectiveRequest);
   }
 
   @ApiEndpoint({

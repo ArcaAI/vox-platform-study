@@ -158,7 +158,7 @@ export type { DnaGenerateInput, DnaJobResult, DnaJobStatus, DnaReport, DnaReport
 // DNA aggregate dashboard types (TASK-328 A5)
 export type { DnaDashboard, DnaDashboardDailyCount, DnaDashboardRecentActivity, DnaDashboardUsageEntry } from './dna';
 
-// Prompt Template types (SDK-207 WS-4)
+// Prompt Template types (SDK-207 WS-4; TASK-328 A4)
 export type {
   AssignDepartmentPromptInput,
   CreatePromptInput,
@@ -170,6 +170,13 @@ export type {
   PromptVariable,
   PromptVersion,
   UpdatePromptInput,
+  // TASK-328 A4 — quality/score testing + usage analytics
+  TestPromptInput,
+  PromptTestResult,
+  PromptUsageByDepartment,
+  PromptUsageByDoctor,
+  PromptUsageByDay,
+  PromptUsageAnalytics,
 } from './prompt';
 
 // Diff types (SDK-207 WS-4)
