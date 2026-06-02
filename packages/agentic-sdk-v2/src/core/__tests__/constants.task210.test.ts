@@ -698,8 +698,12 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       ]));
     });
 
-    it('PIPELINE_ENDPOINTS should have exactly 9 keys', () => {
-      expect(Object.keys(PIPELINE_ENDPOINTS)).toHaveLength(9);
+    it('PIPELINE_ENDPOINTS should have exactly 13 keys', () => {
+      // TASK-328 A6 added SET_DEFAULT, TOGGLE, VERSIONS, VERSION (9 -> 13).
+      expect(Object.keys(PIPELINE_ENDPOINTS)).toHaveLength(13);
+      expect(Object.keys(PIPELINE_ENDPOINTS)).toEqual(
+        expect.arrayContaining(['SET_DEFAULT', 'TOGGLE', 'VERSIONS', 'VERSION']),
+      );
     });
 
     it('GLOBAL_SETTINGS_ENDPOINTS should have exactly 7 keys', () => {

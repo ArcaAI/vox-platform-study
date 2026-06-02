@@ -26,7 +26,7 @@ describe('usePipelines', () => {
         mockGet.mockReset();
 
         mockStore = {
-            apiClient: { get: mockGet, post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+            apiClient: { get: mockGet, post: vi.fn(), patch: vi.fn(), patchWithIfMatch: vi.fn(), delete: vi.fn() },
             logger: mockLogger,
         };
         (useAgenticStore as any).mockReturnValue(mockStore);
@@ -358,6 +358,91 @@ describe('usePipelines', () => {
                 PIPELINE_ENDPOINTS.ASSIGN_TENANT('p-1'),
                 { tenantId: '' },
             );
+        });
+    });
+
+    /* ------------------------------------------------------------------ */
+    /*  TASK-328 A6: setDefault / toggle / listVersions / getVersion       */
+    /* ------------------------------------------------------------------ */
+
+    describe('setDefault (TASK-328 A6)', () => {
+        it('POSTs to SET_DEFAULT(id) and flips isDefault locally (one default per tenant)', async () => {
+            const mockPost = mockStore.apiClient.post;
+            const initial = [
+                { id: 'p-1', name: 'A', slug: 'a', isDefault: true },
+                { id: 'p-2', name: 'B', slug: 'b', isDefault: false },
+            ];
+            mockGet.mockResolvedValue(initial);
+            mockPost.mockResolvedValue({ id: 'p-2', name: 'B', slug: 'b', isDefault: true });
+            const { result } = renderHook(() => usePipelines());
+
+            await act(async () => { await result.current.list(); });
+            await act(async () => { await result.current.setDefault('p-2'); });
+
+            expect(mockPost).toHaveBeenCalledWith(PIPELINE_ENDPOINTS.SET_DEFAULT('p-2'), {});
+            expect(result.current.pipelines.find((p) => p.id === 'p-2')?.isDefault).toBe(true);
+            expect(result.current.pipelines.find((p) => p.id === 'p-1')?.isDefault).toBe(false);
+        });
+    });
+
+    describe('toggle (TASK-328 A6)', () => {
+        it('uses patchWithIfMatch with the version as an RFC7232 strong validator', async () => {
+            const mockPatchIfMatch = mockStore.apiClient.patchWithIfMatch;
+            mockPatchIfMatch.mockResolvedValue({ id: 'p-1', resourceStatus: 'DISABLED', version: 6 });
+            const { result } = renderHook(() => usePipelines());
+
+            let resp: unknown;
+            await act(async () => { resp = await result.current.toggle('p-1', false, 5); });
+
+            expect(mockPatchIfMatch).toHaveBeenCalledWith(PIPELINE_ENDPOINTS.TOGGLE('p-1'), { enabled: false }, '"5"');
+            expect((resp as { resourceStatus: string }).resourceStatus).toBe('DISABLED');
+        });
+
+        it('updates the toggled pipeline in the local array', async () => {
+            const mockPatchIfMatch = mockStore.apiClient.patchWithIfMatch;
+            mockGet.mockResolvedValue([{ id: 'p-1', name: 'A', slug: 'a', resourceStatus: 'ENABLED', version: 1 }]);
+            mockPatchIfMatch.mockResolvedValue({ id: 'p-1', name: 'A', slug: 'a', resourceStatus: 'DISABLED', version: 2 });
+            const { result } = renderHook(() => usePipelines());
+
+            await act(async () => { await result.current.list(); });
+            await act(async () => { await result.current.toggle('p-1', false, 1); });
+
+            expect(result.current.pipelines[0].resourceStatus).toBe('DISABLED');
+        });
+    });
+
+    describe('listVersions / getVersion (TASK-328 A6)', () => {
+        it('GETs the versions list and extracts the array', async () => {
+            mockGet.mockResolvedValue([{ versionNumber: 2 }, { versionNumber: 1 }]);
+            const { result } = renderHook(() => usePipelines());
+
+            let resp: any;
+            await act(async () => { resp = await result.current.listVersions('p-1'); });
+
+            expect(mockGet).toHaveBeenCalledWith(PIPELINE_ENDPOINTS.VERSIONS('p-1'));
+            expect(resp).toHaveLength(2);
+            expect(resp[0].versionNumber).toBe(2);
+        });
+
+        it('unwraps a paginated versions response', async () => {
+            mockGet.mockResolvedValue({ data: [{ versionNumber: 1 }], count: 1 });
+            const { result } = renderHook(() => usePipelines());
+
+            let resp: any;
+            await act(async () => { resp = await result.current.listVersions('p-1'); });
+            expect(Array.isArray(resp)).toBe(true);
+            expect(resp).toHaveLength(1);
+        });
+
+        it('GETs a single version by number', async () => {
+            mockGet.mockResolvedValue({ versionNumber: 3, configYaml: 'models:\n  asr: x' });
+            const { result } = renderHook(() => usePipelines());
+
+            let resp: any;
+            await act(async () => { resp = await result.current.getVersion('p-1', 3); });
+
+            expect(mockGet).toHaveBeenCalledWith(PIPELINE_ENDPOINTS.VERSION('p-1', 3));
+            expect(resp.versionNumber).toBe(3);
         });
     });
 

@@ -57,9 +57,9 @@ export { useAuth, type UseAuthReturn } from './useAuth';
 // Consultation job hook (TASK-032 WS-A)
 export { useConsultationJob, type UseConsultationJobReturn } from './useConsultationJob';
 
-// Pipeline management hook (TASK-032 WS-B)
+// Pipeline management hook (TASK-032 WS-B; TASK-328 A6 default/toggle/versions)
 export { usePipelines, type UsePipelinesReturn } from './usePipelines';
-export type { Pipeline, CreatePipelineInput, UpdatePipelineInput, PipelineValidationResult } from './usePipelines';
+export type { Pipeline, CreatePipelineInput, UpdatePipelineInput, PipelineValidationResult, PipelineVersion } from './usePipelines';
 
 // Health check hook (TASK-034 WS-H)
 export { useHealthCheck, type UseHealthCheckReturn } from './useHealthCheck';
@@ -120,6 +120,9 @@ export type { StorageKey, StorageKeyWithSecret, CreateStorageKeyInput } from './
 // Tenant storage config management hook (TASK-323 Phase 0 / TASK-318 R9)
 export { useTenantStorageConfig, type UseTenantStorageConfigReturn } from './useTenantStorageConfig';
 export type { TenantStorageConfig, ListTenantStorageConfigParams, UpsertTenantStorageConfigInput } from './useTenantStorageConfig';
+
+// Tenant FRONTEND pipeline config hook (TASK-328 A6)
+export { useTenantFrontendConfig, type UseTenantFrontendConfigReturn } from './useTenantFrontendConfig';
 
 // Shared connection management (multi-tab)
 export {
