@@ -64,7 +64,7 @@ function fakeEmbedder(): LocalVoiceEmbedder & {
     load: vi.fn(async () => {}),
     embed: vi.fn(async () => [1, 0, 0]),
     embedBlob: vi.fn(async () => [1, 0, 0]),
-    dispose: vi.fn(),
+    dispose: vi.fn(() => {}),
   };
 }
 

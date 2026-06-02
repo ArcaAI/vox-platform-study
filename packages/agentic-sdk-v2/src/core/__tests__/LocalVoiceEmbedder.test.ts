@@ -19,20 +19,20 @@ import {
 } from '../LocalVoiceEmbedder';
 
 function makeFakeTransformers(embedding: number[]) {
-  const processor = vi.fn(async (audio: Float32Array) => ({ input_values: audio }));
+  const processor = vi.fn(async (audio: unknown) => ({ input_values: audio }));
   const model = vi.fn(async () => ({
     embeddings: { data: Float32Array.from(embedding), dims: [1, embedding.length] },
   }));
   const env: Record<string, unknown> = {};
   const AutoProcessor = {
-    from_pretrained: vi.fn(async (_id: string, opts?: { progress_callback?: (p: unknown) => void }) => {
-      opts?.progress_callback?.({ status: 'progress', file: 'preprocessor_config.json', progress: 100 });
+    from_pretrained: vi.fn(async (_id: string, opts?: Record<string, unknown>) => {
+      (opts?.progress_callback as ((p: unknown) => void) | undefined)?.({ status: 'progress', file: 'preprocessor_config.json', progress: 100 });
       return processor;
     }),
   };
   const AutoModel = {
-    from_pretrained: vi.fn(async (_id: string, opts?: { progress_callback?: (p: unknown) => void }) => {
-      opts?.progress_callback?.({ status: 'progress', file: 'model.onnx', progress: 50, loaded: 5, total: 10 });
+    from_pretrained: vi.fn(async (_id: string, opts?: Record<string, unknown>) => {
+      (opts?.progress_callback as ((p: unknown) => void) | undefined)?.({ status: 'progress', file: 'model.onnx', progress: 50, loaded: 5, total: 10 });
       return model;
     }),
   };
@@ -153,7 +153,7 @@ describe('createLocalVoiceEmbedder', () => {
   });
 
   it('throws a clear error when the model returns no embeddings', async () => {
-    const processor = vi.fn(async (audio: Float32Array) => ({ input_values: audio }));
+    const processor = vi.fn(async (audio: unknown) => ({ input_values: audio }));
     const model = vi.fn(async () => ({})); // no `embeddings`
     const module = {
       AutoProcessor: { from_pretrained: vi.fn(async () => processor) },

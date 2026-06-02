@@ -69,6 +69,7 @@ describe('TASK-225 C1: LocalWorkflowConfig extension', () => {
       diarization: { enabled: false, autoEnroll: false },
       voiceEmbedding: { modelId: 'pyannote-embedding' },
       audioSilence: { modelId: '' },
+      voiceProfile: {},
     };
 
     expect(config.voiceEmbedding.modelId).toBe('pyannote-embedding');
@@ -83,6 +84,7 @@ describe('TASK-225 C1: LocalWorkflowConfig extension', () => {
       diarization: { enabled: false, autoEnroll: false },
       voiceEmbedding: { modelId: '' },
       audioSilence: { modelId: 'silero-vad-silence' },
+      voiceProfile: {},
     };
 
     expect(config.audioSilence.modelId).toBe('silero-vad-silence');

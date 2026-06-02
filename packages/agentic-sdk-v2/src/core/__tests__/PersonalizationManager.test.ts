@@ -896,7 +896,7 @@ describe('PersonalizationManager', () => {
 
     describe('edge cases', () => {
         it('should handle IDB hydrate failures gracefully and keep defaults', async () => {
-            const cfgDB = await import('../configDB');
+            const cfgDB = await import('../configDB.js');
             vi.mocked(cfgDB.configDBGet).mockRejectedValueOnce(new Error('IDB closed'));
 
             const manager = new PersonalizationManager(
