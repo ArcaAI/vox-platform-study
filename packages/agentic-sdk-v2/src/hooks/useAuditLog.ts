@@ -1,15 +1,23 @@
 /**
- * @arcaai/vox - useAuditLog Hook (QA-003)
+ * @arcaai/vox - useAuditLog Hook (QA-003, extended TASK-328 A8)
  *
- * Read-only audit log hook for admin compliance operations.
+ * Read-only audit log hook for admin compliance operations. TASK-328 A8 adds
+ * repository-pushed filters (date range / action / resourceType / userId), a
+ * single-entry `getById`, and a server-side CSV `exportCsv`.
  */
 
 import { useState, useCallback } from 'react';
 import { useApiOperation } from './useApiOperation';
 import { AUDIT_LOG_ENDPOINTS } from '../core/constants';
 import { extractArray } from '../utils/responseUtils';
-import { appendPagination } from '../utils/urlUtils';
+import { appendFilters, appendPagination } from '../utils/urlUtils';
 import type { PaginationParams } from '../types/common';
+
+export interface AuditLogResponsibleUser {
+  id: string;
+  displayName?: string | null;
+  email?: string | null;
+}
 
 export interface AuditLogEntry {
   id: string;
@@ -27,17 +35,44 @@ export interface AuditLogEntry {
   causationId?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  /** TASK-328 A8 — resolved acting user (display name/email) for the table. */
+  responsibleUser?: AuditLogResponsibleUser | null;
   [key: string]: unknown;
+}
+
+/**
+ * TASK-328 A8 — audit list/export filter params. Pagination is inherited;
+ * the rest are pushed to the server `where` clause. `from`/`to` are ISO-8601
+ * boundary strings.
+ */
+export interface AuditLogFilterParams extends PaginationParams {
+  from?: string;
+  to?: string;
+  action?: string;
+  resourceType?: string;
+  userId?: string;
 }
 
 export interface UseAuditLogReturn {
   entries: AuditLogEntry[];
   isLoading: boolean;
   error: Error | null;
-  list: (pagination?: PaginationParams) => Promise<AuditLogEntry[]>;
-  get: (id: string) => Promise<AuditLogEntry>;
+  list: (params?: AuditLogFilterParams) => Promise<AuditLogEntry[]>;
+  getById: (id: string) => Promise<AuditLogEntry>;
+  exportCsv: (filters?: AuditLogFilterParams) => Promise<string>;
   byResource: (resourceType: string, resourceId: string) => Promise<AuditLogEntry[]>;
   byUser: (userId: string) => Promise<AuditLogEntry[]>;
+}
+
+/** Extract only the server-side filter params (skip pagination keys). */
+function toFilterQuery(params?: AuditLogFilterParams): Record<string, string | undefined> {
+  return {
+    from: params?.from,
+    to: params?.to,
+    action: params?.action,
+    resourceType: params?.resourceType,
+    userId: params?.userId,
+  };
 }
 
 export function useAuditLog(): UseAuditLogReturn {
@@ -45,9 +80,14 @@ export function useAuditLog(): UseAuditLogReturn {
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
 
   const list = useCallback(
-    (pagination?: PaginationParams) =>
+    (params?: AuditLogFilterParams) =>
       execute<AuditLogEntry[]>('list', async (client) => {
-        const raw = await client.get(appendPagination(AUDIT_LOG_ENDPOINTS.LIST, pagination));
+        const pagination =
+          params && (params.page !== undefined || params.limit !== undefined)
+            ? { page: params.page, limit: params.limit }
+            : undefined;
+        const url = appendPagination(appendFilters(AUDIT_LOG_ENDPOINTS.LIST, toFilterQuery(params)), pagination);
+        const raw = await client.get(url);
         const result = extractArray<AuditLogEntry>(raw);
         setEntries(result);
         return result;
@@ -55,8 +95,17 @@ export function useAuditLog(): UseAuditLogReturn {
     [execute],
   );
 
-  const get = useCallback(
-    (id: string) => execute<AuditLogEntry>('get', (client) => client.get<AuditLogEntry>(AUDIT_LOG_ENDPOINTS.GET(id))),
+  const getById = useCallback(
+    (id: string) => execute<AuditLogEntry>('getById', (client) => client.get<AuditLogEntry>(AUDIT_LOG_ENDPOINTS.GET(id))),
+    [execute],
+  );
+
+  const exportCsv = useCallback(
+    (filters?: AuditLogFilterParams) =>
+      execute<string>('exportCsv', (client) => {
+        const url = appendFilters(AUDIT_LOG_ENDPOINTS.EXPORT, toFilterQuery(filters));
+        return client.getCsv(url);
+      }),
     [execute],
   );
 
@@ -78,5 +127,5 @@ export function useAuditLog(): UseAuditLogReturn {
     [execute],
   );
 
-  return { entries, isLoading, error, list, get, byResource, byUser };
+  return { entries, isLoading, error, list, getById, exportCsv, byResource, byUser };
 }

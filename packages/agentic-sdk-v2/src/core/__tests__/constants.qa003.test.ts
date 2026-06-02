@@ -14,6 +14,16 @@ describe('QA-003: RBAC Constants Enhancements', () => {
       expect(AUDIT_LOG_ENDPOINTS.LIST).toBe('/admin/audit-logs');
     });
 
+    it('should have EXPORT endpoint (TASK-328 A8)', () => {
+      expect(AUDIT_LOG_ENDPOINTS.EXPORT).toBe('/admin/audit-logs/export');
+    });
+
+    it('should expose exactly the expected endpoint keys (guard)', () => {
+      expect(Object.keys(AUDIT_LOG_ENDPOINTS).sort()).toEqual(
+        ['BY_RESOURCE', 'BY_USER', 'EXPORT', 'GET', 'LIST'].sort(),
+      );
+    });
+
     it('should have GET endpoint with id', () => {
       expect(AUDIT_LOG_ENDPOINTS.GET('log-123')).toBe('/admin/audit-logs/log-123');
     });

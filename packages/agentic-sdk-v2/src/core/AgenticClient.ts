@@ -478,6 +478,87 @@ export class AgenticClient {
   }
 
   /**
+   * TASK-328 A8 — GET a `text/csv` (or any text) body WITHOUT JSON parsing.
+   *
+   * The standard `get`/`request` path always calls `response.json()`, which
+   * corrupts a CSV export. This bespoke fetch (mirroring `postFormData`'s
+   * manual-fetch pattern) carries the same auth + correlation headers, asks
+   * for `text/csv`, and returns the raw text so the caller can Blob-download
+   * it. Deliberately small: no 401-refresh retry — a CSV export is a
+   * foreground admin action the operator can simply repeat after re-auth.
+   */
+  async getCsv(endpoint: string, options?: { signal?: AbortSignal }): Promise<string> {
+    this.checkRateLimit();
+
+    const requestId = `req_${++this.requestCount}_${Date.now()}`;
+    const url = `${this.baseUrl}${endpoint}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    if (options?.signal) {
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+      }
+    }
+
+    const headers: Record<string, string> = {
+      'X-Request-ID': requestId,
+      Accept: 'text/csv',
+    };
+    if (this.accessToken) {
+      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    }
+    if (this.apiKey) {
+      headers['X-API-Key'] = this.apiKey;
+    }
+    if (this.tenantId) {
+      headers['X-Tenant-ID'] = this.tenantId;
+    }
+    const correlationId = this.logger?.getCorrelationId();
+    if (correlationId) {
+      headers['X-Correlation-ID'] = correlationId;
+    }
+
+    try {
+      const response = await fetch(url, { method: 'GET', headers, signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorCode = classifyHttpError(response.status);
+        throw new AgenticError(errorCode, `HTTP ${response.status}: ${response.statusText}`, {
+          context: { status: response.status, endpoint, requestId },
+        });
+      }
+
+      return await response.text();
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof AgenticError) {
+        throw error;
+      }
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new AgenticError('NETWORK_ERROR', 'Request timeout', {
+          cause: error,
+          context: { timeout: this.timeout, endpoint, requestId },
+        });
+      }
+      if (error instanceof TypeError) {
+        throw new AgenticError('NETWORK_ERROR', 'Network error - check your connection', {
+          cause: error,
+          context: { endpoint, requestId },
+        });
+      }
+      throw new AgenticError('UNKNOWN_ERROR', 'An unexpected error occurred', {
+        cause: error as Error,
+        context: { endpoint, requestId },
+      });
+    }
+  }
+
+  /**
    * PATCH request that sends an `If-Match` header carrying a strong
    * validator — TASK-302 Stream D Phase D (D.4).
    *

@@ -47,6 +47,11 @@ const mockAuditLogRepository = {
     softDelete: vi.fn(),
 };
 
+// Mock UserRepository (dependency boundary) — TASK-328 A8 acting-user enrichment.
+const mockUserRepository = {
+    findAll: vi.fn().mockResolvedValue([]),
+};
+
 // Mock CoreDatabaseService (dependency boundary).
 // TASK-314 §7: the authentication-audit write must bypass the tenant-scope
 // `$extends`, so it goes through the UNSCOPED `baseClient` rather than the
@@ -186,6 +191,7 @@ describe('AuditLogService', () => {
             mockEventEmitter as any,
             mockClsService as any,
             mockDatabaseService as any,
+            mockUserRepository as any,
         );
     });
 
