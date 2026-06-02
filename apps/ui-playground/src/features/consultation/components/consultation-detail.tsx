@@ -1,4 +1,7 @@
 import { Main } from '@/components/layout/main';
+import { ImpersonationGuard } from '@/features/summarization/components/impersonation-guard';
+import { useDoctorContext } from '@/features/summarization/hooks/use-doctor-context';
+import { useAuthStore } from '@/store/auth-store';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Card, CardContent } from '@arcaai/ui/card';
@@ -9,10 +12,12 @@ import { useArca } from '@arcaai/vox';
 import type { Consultation } from '@arcaai/vox';
 import { useParams, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { ArrowLeft, ClipboardList, FileText, Sparkles, Calendar, User, Building2, RefreshCw, AlertCircle } from 'lucide-react';
+import { ArrowLeft, GitBranch, Sparkles, Calendar, User, Building2, RefreshCw, AlertCircle, Mic, ClipboardList } from 'lucide-react';
 import { ContextItemList } from './context-item-list';
 import { CaseNoteForm } from './case-note-form';
 import { SummaryPanel } from './summary-panel';
+import { ConsultationChainPanel } from './consultation-chain-panel';
+import { ConsultationRecordingPanel } from './consultation-recording-panel';
 import { toast } from 'sonner';
 
 const statusVariant: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
@@ -62,13 +67,15 @@ function getConsultationStatus(c: Consultation): string | undefined {
 export default function ConsultationDetail() {
   const { id } = useParams({ from: '/_authenticated/consultation/$id' });
   const navigate = useNavigate();
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const { requiresImpersonation, roles } = useDoctorContext();
   const { session } = useArca();
   const sessionRef = useRef(session);
   sessionRef.current = session;
   const [consultation, setConsultation] = useState<Consultation | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('context');
+  const [activeTab, setActiveTab] = useState('recording');
 
   const loadConsultation = useCallback(async () => {
     setIsLoading(true);
@@ -87,8 +94,41 @@ export default function ConsultationDetail() {
   }, [id]);
 
   useEffect(() => {
+    if (!tenantId || requiresImpersonation) return;
     loadConsultation();
-  }, [loadConsultation]);
+  }, [loadConsultation, tenantId, requiresImpersonation]);
+
+  if (!tenantId) {
+    return (
+      <Main>
+        <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/20">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Building2 className="mb-3 size-8 text-amber-600 dark:text-amber-400" />
+            <h3 className="mb-1 text-lg font-medium">Tenant Required</h3>
+            <p className="text-muted-foreground max-w-sm text-center text-sm">
+              Consultations are scoped to a tenant. Select a tenant (or impersonate a user) to view this consultation.
+            </p>
+            <Button variant="outline" size="sm" className="mt-4" onClick={() => navigate({ to: '/consultation' })}>
+              <ArrowLeft className="mr-1 size-4" />
+              Back to list
+            </Button>
+          </CardContent>
+        </Card>
+      </Main>
+    );
+  }
+
+  if (requiresImpersonation) {
+    return (
+      <Main>
+        <ImpersonationGuard
+          roles={roles}
+          featureName="consultation"
+          featureDescription="Consultations are doctor-scoped and require impersonation to view and manage."
+        />
+      </Main>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -197,38 +237,46 @@ export default function ConsultationDetail() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-none lg:flex">
-          <TabsTrigger value="context" className="gap-1.5">
-            <ClipboardList className="size-4" />
-            Context Items
+        <TabsList className="grid w-full grid-cols-2 lg:w-auto lg:grid-cols-none lg:flex">
+          <TabsTrigger value="recording" className="gap-1.5">
+            <Mic className="size-4" />
+            Recording
           </TabsTrigger>
-          <TabsTrigger value="add" className="gap-1.5">
-            <FileText className="size-4" />
-            Add Context
+          <TabsTrigger value="casenote" className="gap-1.5">
+            <ClipboardList className="size-4" />
+            Audio Case-Note
           </TabsTrigger>
           <TabsTrigger value="summary" className="gap-1.5">
             <Sparkles className="size-4" />
-            Summaries
+            Summary
+          </TabsTrigger>
+          <TabsTrigger value="chain" className="gap-1.5">
+            <GitBranch className="size-4" />
+            Chain
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="context">
-          <ContextItemList consultationId={id} />
+        <TabsContent value="recording">
+          <ConsultationRecordingPanel consultationId={id} />
         </TabsContent>
 
-        <TabsContent value="add">
+        <TabsContent value="casenote" className="space-y-4">
           <CaseNoteForm
             consultationId={id}
             onSuccess={() => {
               loadConsultation();
-              setActiveTab('context');
-              toast.success('Context added — switching to Context Items tab');
+              toast.success('Case note added');
             }}
           />
+          <ContextItemList consultationId={id} />
         </TabsContent>
 
         <TabsContent value="summary">
           <SummaryPanel consultationId={id} />
+        </TabsContent>
+
+        <TabsContent value="chain">
+          <ConsultationChainPanel consultationId={id} onOpen={(cid) => navigate({ to: '/consultation/$id', params: { id: cid } })} />
         </TabsContent>
       </Tabs>
     </Main>
