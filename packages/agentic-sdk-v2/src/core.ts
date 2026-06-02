@@ -466,6 +466,50 @@ export { ModelRegistry, type ModelLoadProgressCallback } from './core/ModelRegis
 export { PersonalizationManager, type PreferencesChangeCallback } from './core/PersonalizationManager';
 
 // =============================================================================
+// LOCAL Voice Embedding (TASK-329 P4)
+// =============================================================================
+//
+// In-browser speaker-embedding provider (Transformers.js WavLM `*-sv`) that
+// sits ALONGSIDE the backend `useVoiceEmbedding`. Persists via the existing
+// `/voice-profile/enroll` path; caches the local embedding tenant/user-scoped;
+// "quick test" = cosine similarity vs the enrolled embedding(s).
+
+export { useLocalVoiceEmbedding } from './hooks';
+export type {
+  UseLocalVoiceEmbeddingReturn,
+  UseLocalVoiceEmbeddingOptions,
+  LocalVoiceEmbeddingRecord,
+  LocalVoiceStatus,
+} from './hooks';
+
+export {
+  createLocalVoiceEmbedder,
+  isLocalVoiceEmbeddingSupported,
+  DEFAULT_LOCAL_VOICE_MODEL_ID,
+  LOCAL_VOICE_EMBEDDING_DIM,
+  LOCAL_VOICE_SAMPLE_RATE,
+} from './core/LocalVoiceEmbedder';
+export type {
+  LocalVoiceEmbedder,
+  CreateLocalVoiceEmbedderOptions,
+  LocalVoiceEmbedderProgress,
+  LocalVoiceProgressCallback,
+} from './core/LocalVoiceEmbedder';
+
+export {
+  cosineSimilarity,
+  l2Normalize,
+  averageEmbeddings,
+  bestMatch,
+  isVoiceEnrollmentProvider,
+  resolveVoiceEnrollmentProvider,
+  DEFAULT_VOICE_MATCH_THRESHOLD,
+  VOICE_ENROLLMENT_PROVIDERS,
+  DEFAULT_VOICE_ENROLLMENT_PROVIDER,
+} from './utils/voiceEmbedding';
+export type { VoiceEnrollmentProvider, EnrolledEmbeddingRef, VoiceMatchResult } from './utils/voiceEmbedding';
+
+// =============================================================================
 // STT-V2 Streaming Clients
 // =============================================================================
 
