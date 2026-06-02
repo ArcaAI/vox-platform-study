@@ -5,11 +5,12 @@ import {
   PaginatedAuditLogResponse,
   AuditLogDtoMapper,
   AuditLogResponse,
+  AuditLogQuery,
   isSuperAdmin,
   IActiveUserContext,
 } from '@arcaai/applications';
-import { Controller, ForbiddenException, Inject, Param, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Controller, ForbiddenException, Get, Header, Inject, Param, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiProduces, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { ApiEndpoint, CanRead, CanDelete } from '../../decorators';
 
@@ -50,12 +51,15 @@ export class AuditLogController {
   })
   @ApiOperation({
     summary: 'Fetch all audit logs',
-    description: 'Returns a paginated list of audit logs. Supports search filtering.',
+    description:
+      'Returns a paginated list of audit logs. Supports the TASK-328 A8 filters ' +
+      '(from/to date range, action, resourceType, userId) pushed to the database, ' +
+      'and enriches each row with the resolved responsible user.',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @CanRead('AuditLog')
-  async fetchAll(@Query() queryParams: PaginatedQuery): Promise<PaginatedAuditLogResponse> {
+  async fetchAll(@Query() queryParams: AuditLogQuery): Promise<PaginatedAuditLogResponse> {
     // TASK-326 X5 (audit X5): the unscoped list route is the cross-tenant
     // enumeration surface. The service `buildTenantWhere` already scopes
     // every query, but mirror the `fetchByUser` guard here so the rule is
@@ -68,11 +72,43 @@ export class AuditLogController {
       throw new ForbiddenException('Tenant context required to query audit logs');
     }
 
-    const result = await this.auditLogService.fetchAll({
+    // TASK-328 A8: filters are pushed to the repository where-clause and each
+    // row is enriched with its acting user (resolved in one batch).
+    const { result, responsibleUsers } = await this.auditLogService.fetchAllFiltered({
       ...queryParams,
       sort: queryParams.sort || 'createdAt:desc',
     });
-    return AuditLogDtoMapper.ToPaginatedResponse(result);
+    return AuditLogDtoMapper.ToPaginatedResponse(result, responsibleUsers);
+  }
+
+  /**
+   * TASK-328 A8 — export the CURRENT filtered result set as CSV.
+   *
+   * Declared BEFORE the `/:id` route so `GET /admin/audit-logs/export` is never
+   * captured as an id lookup. Honours the same filters + tenant scope as
+   * {@link fetchAll}; the service materialises the full (capped) filtered set
+   * server-side so the download always respects tenant boundaries.
+   */
+  @Get('export')
+  @ApiOperation({
+    summary: 'Export audit logs as CSV',
+    description: 'Streams the filtered, tenant-scoped audit logs as a text/csv attachment.',
+  })
+  @ApiProduces('text/csv')
+  @ApiOkResponse({ description: 'CSV export of the filtered audit logs.', schema: { type: 'string' } })
+  @ApiResponse({ status: 403, description: 'Tenant context required to export audit logs' })
+  @CanRead('AuditLog')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="audit-logs.csv"')
+  async exportCsv(@Query() queryParams: AuditLogQuery): Promise<string> {
+    const user = this.cls.get('user');
+    const callerTenantId = this.cls.get('tenantId');
+    if (!isSuperAdmin(user) && !callerTenantId) {
+      throw new ForbiddenException('Tenant context required to export audit logs');
+    }
+
+    const { rows, responsibleUsers } = await this.auditLogService.exportFiltered(queryParams);
+    return AuditLogDtoMapper.ToCsv(rows, responsibleUsers);
   }
 
   /**
