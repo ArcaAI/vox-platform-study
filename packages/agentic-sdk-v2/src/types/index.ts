@@ -85,6 +85,9 @@ export type {
 
 export { CONSULTATION_STATUS_ORDER, isNewVisit, isRevisit, normalizeConsultationStatus } from './consultation';
 
+// Audio recording types (TASK-329 P2 — dual-capture X8)
+export type { AudioRecording, AddAudioRecordingInput } from './recording';
+
 // Context types
 export type {
   AddContextInput,

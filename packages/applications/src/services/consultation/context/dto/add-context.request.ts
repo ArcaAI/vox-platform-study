@@ -43,6 +43,16 @@ export class AddAudioRecordingRequest {
   @IsString()
   mediaId: string;
 
+  @ApiPropertyOptional({ description: 'Media ID of the RAW (unprocessed) capture (TASK-329 X8 dual capture)' })
+  @IsOptional()
+  @IsString()
+  rawMediaId?: string;
+
+  @ApiPropertyOptional({ description: 'Media ID of the PROCESSED capture (TASK-329 X8 dual capture)' })
+  @IsOptional()
+  @IsString()
+  processedMediaId?: string;
+
   @ApiPropertyOptional({ description: 'Duration in milliseconds' })
   @IsOptional()
   duration?: number;

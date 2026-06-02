@@ -207,6 +207,8 @@ export class ContextService extends BaseService implements IContextService {
       audioContainer.id,
       request.mediaId,
       {
+        rawMediaId: request.rawMediaId,
+        processedMediaId: request.processedMediaId,
         duration: request.duration,
         format: request.format,
         sampleRate: request.sampleRate,
@@ -224,7 +226,13 @@ export class ContextService extends BaseService implements IContextService {
       resourceId: savedRecording.id,
       responsibleEntityId: userId ?? undefined,
       createdAt: savedRecording.createdAt,
-      data: { consultationId, type: 'AUDIO_RECORDING', mediaId: request.mediaId },
+      data: {
+        consultationId,
+        type: 'AUDIO_RECORDING',
+        mediaId: request.mediaId,
+        rawMediaId: request.rawMediaId,
+        processedMediaId: request.processedMediaId,
+      },
     });
 
     // Return container with recordings

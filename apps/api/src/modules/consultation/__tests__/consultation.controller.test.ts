@@ -45,6 +45,8 @@ function createMockConsultationService() {
 function createMockContextService() {
     return {
         addContext: vi.fn(),
+        addAudioRecording: vi.fn(),
+        getAudioRecordings: vi.fn(),
         getContextItems: vi.fn(),
         getSharedContext: vi.fn(),
         getTranscriptions: vi.fn(),
@@ -377,6 +379,29 @@ describe('ConsultationController', () => {
 
                 expect(result).toEqual({ id: 'ctx-1' });
             });
+
+            it('addRecording threads raw/processed media ids to the context service (TASK-329 X8)', async () => {
+                const { controller, consultationService, contextService } = buildController();
+                consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
+                contextService.addAudioRecording.mockResolvedValue({ id: 'ctx-audio-1' });
+
+                const request = { mediaId: 'm-primary', rawMediaId: 'm-raw', processedMediaId: 'm-processed' } as any;
+                const result = await controller.addRecording(CONSULTATION_OWN, request);
+
+                expect(result).toEqual({ id: 'ctx-audio-1' });
+                expect(contextService.addAudioRecording).toHaveBeenCalledWith(CONSULTATION_OWN, request);
+            });
+
+            it('getRecordings returns the recordings list for an authorized reader', async () => {
+                const { controller, consultationService, contextService } = buildController();
+                consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
+                contextService.getAudioRecordings.mockResolvedValue([{ id: 'ar-1' }, { id: 'ar-2' }]);
+
+                const result = await controller.getRecordings(CONSULTATION_OWN);
+
+                expect(result).toEqual([{ id: 'ar-1' }, { id: 'ar-2' }]);
+                expect(contextService.getAudioRecordings).toHaveBeenCalledWith(CONSULTATION_OWN);
+            });
         });
 
         describe('Layer 1b: CASL manage bypass', () => {
@@ -646,6 +671,10 @@ describe('ConsultationController', () => {
             await expect(controller.getCaseNotes(CONSULTATION_OWN)).rejects.toThrow(ForbiddenException);
         });
 
+        it('getRecordings should enforce read access', async () => {
+            await expect(controller.getRecordings(CONSULTATION_OWN)).rejects.toThrow(ForbiddenException);
+        });
+
         it('getContextVersions should enforce read access', async () => {
             await expect(controller.getContextVersions(CONSULTATION_OWN, 'ctx-1')).rejects.toThrow(ForbiddenException);
         });
@@ -694,6 +723,10 @@ describe('ConsultationController', () => {
 
         it('addContext should enforce ownership', async () => {
             await expect(controller.addContext(CONSULTATION_OWN, {} as any)).rejects.toThrow(ForbiddenException);
+        });
+
+        it('addRecording should enforce ownership', async () => {
+            await expect(controller.addRecording(CONSULTATION_OWN, {} as any)).rejects.toThrow(ForbiddenException);
         });
 
         it('updateContext should enforce ownership', async () => {

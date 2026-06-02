@@ -39,6 +39,17 @@ export const CONSULTATION_ENDPOINTS = {
 } as const;
 
 /**
+ * Audio recording endpoints (TASK-329 P2 — dual-capture X8).
+ * Persist/list raw + processed captures attached to a consultation.
+ */
+export const AUDIO_RECORDING_ENDPOINTS = {
+  /** Attach an audio recording (mediaId + optional rawMediaId/processedMediaId) */
+  ADD: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/recordings`,
+  /** List audio recordings for a consultation */
+  LIST: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/recordings`,
+} as const;
+
+/**
  * Context endpoints
  */
 export const CONTEXT_ENDPOINTS = {
