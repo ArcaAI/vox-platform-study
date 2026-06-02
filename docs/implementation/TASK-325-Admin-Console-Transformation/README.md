@@ -39,25 +39,25 @@ Each administration interface is **one menu** (sub-menus allowed). Menus are **r
 
 ### 1.3 Acceptance criteria (target end-state)
 
-Administration:
-- [ ] A1 Global admin: create/update/**soft-delete** tenants; "manage selected tenant as tenant admin" path. Tenant admin: name, buckets/folders, departments, users + assignments, prompt templates + default-by-department.
-- [ ] A2 Per-user (both scopes): profile, personalized settings (frontend + backend audio pipeline prefs), enrolled voice profiles, preferred prompt templates, DNA style + history — **tenant-scoped for tenant admins**.
-- [ ] A3 Department management + tenant assignment + user↔department assignments, both scopes.
-- [ ] A4 Prompt templates with versioning, usage stats, **quality/score testing**, and **version diff** (content + variables), both scopes.
-- [ ] A5 DNA **aggregate dashboards** (tenant-level + by-user activity), both scopes.
-- [ ] A6 **Frontend** pipeline config (ASR model, noise-cancel, VAD, voice enrollment, diarization — stored as **typed JSON**, Q5) **and** **backend** pipeline (YAML in DB) per tenant, both scopes.
-- [ ] A7 Storage/bucket/folder management incl. delete, access keys, provider config, both scopes.
-- [ ] A8 Audit log with date/action/resource filters, responsible-user, before/after drill-down, export — tenant-scoped for tenant admins.
-- [ ] A9 Embedded Prisma Studio — **super-admin only** (Q4); every query/sequence audited (no tenant-admin mode).
+Administration: *(delivered by TASK-328 — Phase 2; verified in the 2026-06-02 umbrella gate)*
+- [x] A1 Global admin: create/update/**soft-delete** tenants; "manage selected tenant as tenant admin" path. Tenant admin: name, buckets/folders, departments, users + assignments, prompt templates + default-by-department.
+- [x] A2 Per-user (both scopes): profile, personalized settings (frontend + backend audio pipeline prefs), enrolled voice profiles, preferred prompt templates, DNA style + history — **tenant-scoped for tenant admins**.
+- [x] A3 Department management + tenant assignment + user↔department assignments, both scopes.
+- [x] A4 Prompt templates with versioning, usage stats, **quality/score testing**, and **version diff** (content + variables), both scopes.
+- [x] A5 DNA **aggregate dashboards** (tenant-level + by-user activity), both scopes.
+- [x] A6 **Frontend** pipeline config (ASR model, noise-cancel, VAD, voice enrollment, diarization — stored as **typed JSON**, Q5) **and** **backend** pipeline (YAML in DB) per tenant, both scopes.
+- [x] A7 Storage/bucket/folder management incl. delete, access keys, provider config, both scopes.
+- [x] A8 Audit log with date/action/resource filters, responsible-user, before/after drill-down, export — tenant-scoped for tenant admins.
+- [x] A9 Embedded Prisma Studio — **super-admin only** (Q4); every query/sequence audited (no tenant-admin mode). — audit verified in `pstudio.controller.ts` (TASK-326 X1).
 
-Playgrounds:
-- [ ] P1 Overview + service status; impersonation with **global-admin-selects-tenant-first** gate.
-- [ ] P2 Consultation: new/resume (same-day revisit); inject text/file/image/audio (batch transcription + SSE); in-flow recording using impersonated prefs (realtime transcript); summary via preferred dept prompt **with fallback** (recorded as a context item); chain-of-consultation reference; **RAW + PROCESSED** dual capture to buckets.
-- [ ] P3 Live transcription: local (multi-model, task selection, user prefs) + remote (tenant pipeline).
-- [ ] P4 Voice enrollment: **local** (in-browser) + backend; embeddings on user profile + frontend cache; quick test (mic/upload); diarization seeding feedback.
-- [ ] P5 DNA: view/generate from **selected historical data**; **set-default**; **version diff**; impersonation-guarded.
-- [ ] P6 Summarization: backend list + versions; generate (prompt + context + DNA); **cache hit/rate**, **quality**, **version diff**, **edit→new version**, **tag**.
-- [ ] X Cross-cutting: header **scope switcher** (global→tenant), **re-orderable persisted menus**, **realtime code-sample panel**, all honoring rules `07/10/11`.
+Playgrounds: *(P1 + X by TASK-327; P2–P6 by TASK-329; verified in the 2026-06-02 umbrella gate)*
+- [x] P1 Overview + service status; impersonation with **global-admin-selects-tenant-first** gate.
+- [x] P2 Consultation: new/resume (same-day revisit); inject text/file/image/audio (batch transcription + SSE); in-flow recording using impersonated prefs (realtime transcript); summary via preferred dept prompt **with fallback** (recorded as a context item); chain-of-consultation reference; **RAW + PROCESSED** dual capture to buckets. — see TASK-329 §5.9 deviation (server-side `Media` creation; SDK ships the dual-capture toolkit).
+- [x] P3 Live transcription: local (multi-model, task selection, user prefs) + remote (tenant pipeline).
+- [~] P4 Voice enrollment: **local** (in-browser) + backend; embeddings on user profile + frontend cache; quick test (mic/upload); ~~diarization seeding feedback~~. — local+backend+quick-test delivered (TASK-329 §5.5); **`voiceProfileSeeded` diarization-seeding feedback + always-"Active" badge fix are DEFERRED and not yet tracked in a forward ticket** (see §3.8).
+- [x] P5 DNA: view/generate from **selected historical data**; **set-default**; **version diff**; impersonation-guarded.
+- [x] P6 Summarization: backend list + versions; generate (prompt + context + DNA); **cache hit/rate**, **quality**, **version diff**, **edit→new version**, **tag**.
+- [x] X Cross-cutting: header **scope switcher** (global→tenant), **re-orderable persisted menus**, **realtime code-sample panel**, all honoring rules `07/10/11`.
 
 ### 1.4 Non-goals
 
@@ -187,7 +187,7 @@ The spec requires a live snippet reflecting the impersonated user's prefs. Today
 | X3 | High | Summarization | Non-debug path posts raw DNA text → bypasses cross-doctor ownership guard | Route via `/text/generate/assembled` with `dna_writing_style_id` + `prompt_template_id` |
 | X4 | High | Audio pipeline | Frontend pipeline config missing across DB/API/UI | Add `TenantFrontendConfig` + API + tab |
 | X5 | High | Audit log | `fetchAll` lacks a controller-layer tenant guard | Add explicit scope check (as `fetchByUser`) |
-| X6 | High | Multi-tenancy | `User*` / `UserVoiceProfile` not tenant-scoped at DB | Phase-A schema hardening + tenant-leading composite indexes — **deferred to TASK-305 Phase A (decision 2026-06-02)**: overlaps the existing A.10/A.11 `User*` schema design and `User` is multi-tenant by nature. Controller/service scope (X2/X5) still fixed in TASK-326 |
+| X6 | High | Multi-tenancy | `User*` / `UserVoiceProfile` not tenant-scoped at DB | **Resolved via TASK-305 Phase F (2026-06-02)** — *not* by adding `User*` `tenantId` (that was the wrong call; `User` is a global multi-tenant identity by design). Tenant membership is modeled + enforced via `UserRoleAssignment` (role) + `UserDepartment` (department). Controller/service scope (X2/X5) shipped in TASK-326. |
 | X7 | High | DNA admin | `@Authorize(['manage','all'])` blocks tenant admins required by spec | Split global vs tenant-admin DNA controllers |
 | X8 | Med | Consultation | Single `mediaId` — no RAW+PROCESSED dual capture | Add `rawMediaId`/`processedMediaId` + pipeline save |
 | X9 | Med | Admin mutations | Missing `SysEvent`/`AuditLog` broadcasts on several updates | Add `broadcastSysEvent` after each mutation |
@@ -216,7 +216,7 @@ Sequenced so security lands before tenant admins get access, the shell/scope lan
 ### 3.1 Phase 0 — Security & tenancy hardening (**do first; gating**)
 - **0.1** Tenant-scope `fetchAll` for users (X2), departments, and audit logs (X5) for non-super-admins; add a regression test proving cross-tenant isolation.
 - **0.2** Prisma Studio (X1): write an `AuditLog` entry for every `query`/`sequence`. **Keep super-admin-only (Q4)** — no tenant-admin mode.
-- **0.3** Multi-tenant schema hardening for `User*` models (X6) + tenant-leading composite indexes — **deferred to TASK-305 Phase A (decision 2026-06-02)**; it overlaps the existing A.10/A.11 design and `User` is intentionally multi-tenant. Controller/service-level tenant scope (X2/X5) is still fixed here in TASK-326.
+- **0.3** Multi-tenant hardening for users (X6) — **resolved via TASK-305 Phase F (2026-06-02)**: `User` stays a global multi-tenant identity; tenant membership is modeled + enforced via `UserRoleAssignment` (role) + `UserDepartment` (department), not via a `User*` `tenantId` column. Controller/service-level tenant scope (X2/X5) was fixed here in TASK-326.
 - **0.4** Add `broadcastSysEvent`/audit on admin mutations (X9); verify soft-delete on all `delete` paths (A1/A3/A6).
 - **Verify:** `pnpm --filter @arcaai/applications test`, `pnpm test:e2e` cross-tenant guards green; `ReadLints` clean.
 
@@ -262,7 +262,7 @@ Sequenced so security lands before tenant admins get access, the shell/scope lan
 | # | Decision | Resolution |
 |---|---|---|
 | Q1 | Ticket size | **Umbrella + per-phase sub-tickets.** TASK-325 = umbrella; phases = TASK-326–329 (§3.7), Phase 0 first. |
-| Q2 | Tenant-scoping (X2/X5/X6) | **Controller/service scope (X2/X5) fixed completely in TASK-326.** **X6 (DB-level `User*` `tenantId`) deferred to TASK-305 Phase A (decision 2026-06-02)** — overlaps A.10/A.11; `User` is multi-tenant by design. |
+| Q2 | Tenant-scoping (X2/X5/X6) | **Controller/service scope (X2/X5) fixed completely in TASK-326.** **X6 resolved via TASK-305 Phase F (2026-06-02)** — `User` is global multi-tenant; tenant membership is enforced through `UserRoleAssignment` + `UserDepartment`, not a `User*` `tenantId` column. |
 | Q3 | SDK-first | **Yes.** New admin/storage surfaces consume `@arcaai/vox` hooks; extend the SDK first where a hook is missing (continuing TASK-323). |
 | Q4 | Prisma Studio | **Super-admin only.** No tenant-admin mode; remaining work = audit every query/sequence to `AuditLog`. |
 | Q5 | Frontend pipeline storage | **Typed JSON** (`TenantFrontendConfig`), consumed directly by the browser SDK. |
@@ -278,11 +278,23 @@ TASK-325 is the **umbrella**. Each phase is an independently shippable sub-ticke
 | **TASK-328** | Phase 2 | Administration completeness — A4–A8 (frontend pipeline, prompt testing, DNA dashboards, storage, audit) + A1–A3 tenant-detail completeness | TASK-326, TASK-327 | `Completed` (2026-06-02) |
 | **TASK-329** | Phase 3 | Developer-playground completeness — P2–P6 + `LiveCodePanel` | TASK-326, TASK-327 | `Completed` (2026-06-02) |
 
+### 3.8 Deferred items & forward tracking (open register)
+
+Surfaced by the 2026-06-02 gate review and actioned in the 2026-06-02 **close-out** (see §6). Disposition: **D-2 + D-3** being closed in code (isolated-worktree agents; merge + integration gate pending → flip to Closed on green gate); **D-4 + D-5** verified **CI-gated** (not code gaps — evidence below); **D-1** resolved by **TASK-305 Phase F** (membership model — role + department; `User` stays global, no `User.tenantId`). No item blocks the merge.
+
+| # | Item | Origin | Status | Tracking |
+|---|---|---|---|---|
+| D-1 | `User*` / `UserVoiceProfile` DB-level `tenantId` + tenant-leading composite indexes (X6) | §2.6 X6 | **Resolved — TASK-305 Phase F (2026-06-02)** — *not* by adding `User*` `tenantId`. `User` is a global multi-tenant identity; tenant membership is modeled + enforced via `UserRoleAssignment` (role) + `UserDepartment` (department). Controller/service scope (X2/X5) shipped in TASK-326. The earlier "overlaps A.10/A.11" note was wrong — those are factory-codegen tasks. | → **TASK-305 Phase F** |
+| D-2 | OCC (`@RequiresIfMatch`) on the DNA admin controller (X7) | TASK-326 §1.1 | **In progress (2026-06-02 close-out)** — adding OCC to `PATCH /admin/dna-writing-styles/:reportId` via `updateWithVersion`. The original "no native repo OCC support yet" note was **stale**: `@RequiresIfMatch`/`@ExpectedVersion` + `updateWithVersion` are used across 7+ controllers (tenant, department, prompts, pipeline, user-departments, frontend-config, my-tenant). Pure code change — no migration (`_version` exists on every model). → Closed on merge + green gate. | This close-out (§6) |
+| D-3 | **P4: `voiceProfileSeeded` diarization-seeding feedback + always-"Active" badge fix** | A.criteria P4 / §2.4 P4 / §2.6 (VoiceEmbeddingPanel) | **In progress (2026-06-02 close-out)** — `voice-embedding-panel.tsx` badge → reflect `profile.isActive`; `voiceProfileSeeded` diarization-seeding feedback surfaced in the playground (vox + ui-playground). → Closed on merge + green gate. | This close-out (§6) |
+| D-4 | API **e2e** (`pnpm test:e2e`) for the new admin/playground routes | all slices | **Verified CI-gated (accepted)** — specs exist and cover the new routes: `apps/api/tests/e2e/task-326-admin-fetchall-cross-tenant.spec.ts` proves X2/X5 tenant scope (SUPER_ADMIN cross-tenant ⟂ TENANT_ADMIN subset); `optimistic-locking.spec.ts` covers OCC. Local boot is blocked **by design** by the `jwt-secret-placeholder-audit` guard (`apps/api/src/bootstrap/`). | Runs in **CI** (`setup-test-env` provisions real secrets) |
+| D-5 | Live **SMR** prompt-quality scoring (A4) | TASK-328 §5 | **Verified CI-gated (accepted)** — code path exists + fully unit-tested with a mocked `HttpService`: `prompt-management.service.test.ts › testPromptTemplate (TASK-328 A4)` asserts full-score (≥50 words), short-score (0.1), SysEvent, `NotFoundException`, and `OptimisticConcurrencyException` on drift. `scoreOutput` is deterministic; the test run is an OCC write. Only the **live** SMR HTTP call defers to CI. | Runs in **CI** / live SMR env |
+
 ---
 
 ## 4. Implementation Summary
 
-> **Not started.** Awaiting plan approval (§3.6 decisions). No code written; this document is the analysis + plan only. Populate per phase as work lands (files changed, migrations, endpoints, deviations), mirroring TASK-323's Wave structure.
+> **Waves 1–3 shipped to `fix/2605-review`** (see §6 Change History for the per-wave file lists, migrations, endpoints, and deviations). Status `Review`. The 2026-06-02 gate (§6) verified all gates green after fixing one merge-integration regression; the only open items are the deferrals registered in §3.8 (D-3 is the sole untracked one).
 
 ---
 
@@ -318,4 +330,6 @@ Per phase: run the touched suite (RED→GREEN) + `ReadLints` before proceeding. 
 | 2026-06-02 | **Wave 1 shipped — TASK-326 `Completed`** and merged to `fix/2605-review`. Delivered X1/X2/X5/X7/X9 + pipeline soft-delete; gates build 8/8, unit 4507+1447, lint clean (e2e committed for CI). **Decision: X6 deferred to TASK-305 Phase A** (overlaps A.10/A.11; `User` multi-tenant) and X7 OCC deferred. Wave 2 = TASK-327 next (plan-gate). | TASK-326 README + code |
 | 2026-06-02 | **Wave 2 shipped — TASK-327 `Completed`** and merged to `fix/2605-review`. Console shell & scope model: `isGlobalScope` (SA≡GA, D1), header `ScopeSwitcher` (picker / locked badge), React Query invalidation on tenant change, scope-not-visibility nav with Prisma-Studio-global-only, persisted re-orderable menus (`useAdminPreferences`, USER→TENANT→DEFAULT) reusing `@arcaai/ui` Sortable (D2), impersonation tenant-gate + Overview service grid. `@arcaai/vox` untouched (D3 already live). Gates: type-check 0, tests 731/731, @arcaai/ui build ok, lint clean. Wave 3 = TASK-328 ∥ TASK-329 next (plan-gate). | TASK-327 README + code |
 | 2026-06-02 | **Wave 3 shipped — TASK-328 + TASK-329 `Completed`** and merged to `fix/2605-review`. Started with an additive schema-first sub-wave (3 models + 8 fields, offline-generated migration, no destructive ops). **TASK-328 (Phase 2):** A1–A3 tenant/user-detail completeness, A4 prompt testing/analytics/diff, A5 DNA aggregate dashboard, A6 frontend+backend pipeline config (+nav), A7 storage management, A8 audit filters/detail/export. **TASK-329 (Phase 3):** P2 consultation (X8 dual-capture, 3-tier prompt, recursive chain), P3 audio local-model task, P4 local in-browser voice embedding, P5 DNA playground, P6 summarization (+X3/X10), and the shared reactive **`LiveCodePanel`** across all 6 playgrounds. Per-slice gates all green; no `git push` / `prisma migrate` run. Umbrella status → `Review` pending `fix/2605-review` review/merge. | TASK-328 + TASK-329 READMEs + code |
+| 2026-06-02 | **D-1 / X6 cross-reference corrected & resolved.** Earlier close-out deferred X6 to "TASK-305 Phase A (A.10/A.11)"; that pointer was wrong (A.10/A.11 are factory-codegen tasks) and the proposed fix (add `User*` `tenantId`) contradicts the global-multi-tenant `User` design. Re-pointed to **TASK-305 Phase F**, which resolves it by *enforcing* the join-table membership model (`UserRoleAssignment` role + `UserDepartment` department). Updated X6, §0.3, Q2, and the D-1 register row. | this README; TASK-305 README |
+| 2026-06-02 | **Gate review (verification-before-completion).** Full evidence-based gate on `fix/2605-review`: `pnpm build` **19/19 turbo tasks** (exit 0); `turbo run test` (domains/applications/api/vox/ui-playground/stt) **22/22 tasks** — api **83 files**, applications **189**, vox **168**, domains **82**, ui-playground **90**, stt **25**; ui-playground `type-check` **0**; api lint clean. **Found + fixed 1 merge-integration regression:** `apps/api/.../user/__tests__/user.controller.test.ts` had **5 failing X2 tenant-scoping tests** — TASK-328 (A1–A3) added `IUserProfileService`+`IVoiceProfileService` to the `UserController` constructor (before the `cls` arg) but didn't update the test's 5-arg instantiation, so `this.cls` was `undefined` (`TypeError` at `user.controller.ts:81`). Slipped through because TASK-328's slice gate ran `build:api` (compile-only) **not** `api test`. Fix: thread the two missing service mocks into both instantiation sites (test-only; →47/47, full api 83/83). Reconciled stale acceptance-criteria checkboxes (A1–A9/P1–P6/X, TASK-327×6, TASK-329×1) to the verified-shipped reality; opened the §3.8 deferral register (**D-3 P4 `voiceProfileSeeded`/always-Active badge is the only UNTRACKED item**). | `user.controller.test.ts`; this README; TASK-327/328/329 READMEs |
 | 2026-06-02 | **Wave 3 schema-first foundation shipped** to `fix/2605-review` (de-risks parallel 328∥329: shared additive migration lands once, so feature slices do zero DB-migration ops). One additive migration `20260602000000_task_328_329_admin_playground_schema` (5 `ADD COLUMN` + 3 `CREATE TABLE` + 10 index + 3 FK; **no DROP** — generated offline via `migrate diff`, NOT applied to the dev DB). New models `TenantFrontendConfig` (A6/Q5), `AsrPipelineVersion` (A6), `UserDepartment` (A1–A3) + fields `PromptTemplate.lastTest*` (A4), `UserProfile.preferredPromptTemplateId` (A1–A3), `AudioRecording.raw/processedMediaId` (X8), `SummaryMeta.cacheHit/qualityScore` (P6), `AsrPipeline.isDefault` (A6). Domain layer scaffolded for the 3 new models (15 files + 5 barrels + CoreDatabaseModule). Gates: `@arcaai/domains` build 0 errors, tests 1091/1091. Field-threading on existing entities + services/controllers/SDK/UI deferred to the owning feature slices. | 6 `.prisma` + migration + 15 domain files + 6 registrations |

@@ -43,6 +43,18 @@ const createMockUserRoleAssignmentService = () => ({
     fetchAllByUserId: vi.fn(),
 });
 
+// TASK-328 A1–A3 added admin user-profile + voice-profile read surfaces to the
+// controller constructor (before the CLS arg). Mock them so the positional
+// construction below matches the real 7-arg constructor.
+const createMockUserProfileService = () => ({
+    getByUserId: vi.fn(),
+    upsertByUserId: vi.fn(),
+});
+
+const createMockVoiceProfileService = () => ({
+    listByUserId: vi.fn(),
+});
+
 const fakeUserEntity = {
     id: 'user-1',
     username: 'john_doe',
@@ -112,6 +124,8 @@ describe('UserController', () => {
     let mockApiKeyService: ReturnType<typeof createMockApiKeyService>;
     let mockUserSettingsService: ReturnType<typeof createMockUserSettingsService>;
     let mockUserRoleAssignmentService: ReturnType<typeof createMockUserRoleAssignmentService>;
+    let mockUserProfileService: ReturnType<typeof createMockUserProfileService>;
+    let mockVoiceProfileService: ReturnType<typeof createMockVoiceProfileService>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -119,6 +133,8 @@ describe('UserController', () => {
         mockApiKeyService = createMockApiKeyService();
         mockUserSettingsService = createMockUserSettingsService();
         mockUserRoleAssignmentService = createMockUserRoleAssignmentService();
+        mockUserProfileService = createMockUserProfileService();
+        mockVoiceProfileService = createMockVoiceProfileService();
         // Default to a SUPER_ADMIN context so the generic CRUD specs below
         // exercise the cross-tenant operator path (fetchAll). Tenant-scoping
         // specs construct their own per-case CLS mock.
@@ -128,6 +144,8 @@ describe('UserController', () => {
             mockApiKeyService as any,
             mockUserSettingsService as any,
             mockUserRoleAssignmentService as any,
+            mockUserProfileService as any,
+            mockVoiceProfileService as any,
             mockCls as any,
         );
     });
@@ -187,6 +205,8 @@ describe('UserController', () => {
                 mockApiKeyService as any,
                 mockUserSettingsService as any,
                 mockUserRoleAssignmentService as any,
+                mockUserProfileService as any,
+                mockVoiceProfileService as any,
                 cls as any,
             );
 

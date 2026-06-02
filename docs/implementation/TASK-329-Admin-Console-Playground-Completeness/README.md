@@ -25,7 +25,7 @@
 - [x] **P5 DNA** — generate from **selected historical data** (version picker → `sourceIds`); **set-default** (`PATCH /:reportId/default`); two-version **diff** (`version-diff-panel`); wrap page in `ImpersonationGuard`; fix the empty Edit dialog. ✅ delivered — see §5.3.
 - [x] **P6 Summarization** — backend summary **list + version browser**; `cacheHit`/`qualityScore` fields + endpoints; version **diff**; **tagging** (`Tag`); **edit→new version**; fix the raw-DNA ownership bypass via `/text/generate/assembled` (**X3**); namespace `localStorage` history by tenant/user (**X10**). ✅ delivered — see §5.1.
 - [x] **`LiveCodePanel`** — reactive Shiki snippet bound to each playground's store / impersonated prefs (wired into all 6 playgrounds).
-- [ ] Skeleton/empty/toast per rules `10`/`11`; gates green (§4).
+- [x] Skeleton/empty/toast per rules `10`/`11`; gates green (§4). — verified in the 2026-06-02 umbrella gate (ui-playground 90 files / 847 passed, type-check 0).
 
 ### 1.2 Non-goals
 - Administration features (TASK-328). Security scoping (TASK-326).
