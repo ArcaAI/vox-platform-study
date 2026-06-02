@@ -113,3 +113,48 @@ export interface DnaJobStatus {
 export interface DnaReportWithFallback extends DnaReport {
   fallbackSource: 'doctor' | 'department';
 }
+
+// =============================================================================
+// DNA Aggregate Dashboard (TASK-328 A5)
+// =============================================================================
+
+/** A single day bucket of DNA usage activity. */
+export interface DnaDashboardDailyCount {
+  /** Day bucket, `YYYY-MM-DD` (UTC). */
+  date: string;
+  count: number;
+}
+
+/** A recent DNA usage record surfaced on the dashboard. */
+export interface DnaDashboardUsageEntry {
+  id: string;
+  doctorId: string;
+  dnaReportId: string;
+  dnaVersionNumber?: number;
+  consultationId?: string;
+  createdAt: string;
+}
+
+/** Recent DNA usage activity aggregated from `DnaUsageRecord`. */
+export interface DnaDashboardRecentActivity {
+  /** Per-day usage counts over the window (oldest first). */
+  dailyCounts: DnaDashboardDailyCount[];
+  /** A few of the most recent usage entries (newest first). */
+  latest: DnaDashboardUsageEntry[];
+  /** Total usage records within the window. */
+  total: number;
+  /** Window length in days the activity covers. */
+  windowDays: number;
+}
+
+/**
+ * DNA aggregate dashboard payload returned by
+ * `GET /admin/dna-writing-styles/dashboard`.
+ */
+export interface DnaDashboard {
+  /** Count of distinct doctors that have a latest report. */
+  usersWithStyle: number;
+  /** Average current version number across latest reports. */
+  avgVersions: number;
+  recentActivity: DnaDashboardRecentActivity;
+}

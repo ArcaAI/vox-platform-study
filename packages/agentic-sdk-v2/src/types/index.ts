@@ -155,6 +155,9 @@ export { DEFAULT_SUMMARY_STATE } from './summary';
 // DNA Writing Style types (SDK-207 WS-4)
 export type { DnaGenerateInput, DnaJobResult, DnaJobStatus, DnaReport, DnaReportData, DnaReportWithFallback, DnaStyleVersion, DnaUpdateInput } from './dna';
 
+// DNA aggregate dashboard types (TASK-328 A5)
+export type { DnaDashboard, DnaDashboardDailyCount, DnaDashboardRecentActivity, DnaDashboardUsageEntry } from './dna';
+
 // Prompt Template types (SDK-207 WS-4)
 export type {
   AssignDepartmentPromptInput,
