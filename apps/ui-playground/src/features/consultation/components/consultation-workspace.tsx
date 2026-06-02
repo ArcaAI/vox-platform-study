@@ -9,8 +9,9 @@ import { useDoctorContext } from '@/features/summarization/hooks/use-doctor-cont
 import type { Consultation, ContextItem, ContextVersionEntry, SummaryVersionEntry } from '@arcaai/vox';
 import { DEFAULT_PAGE_SIZE, useArca } from '@arcaai/vox';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 import { format, formatDistanceToNow } from 'date-fns';
-import { Bot, ClipboardList, FileText, History, Mic, Paperclip, Plus, Search, StickyNote, Tags } from 'lucide-react';
+import { Bot, ClipboardList, ExternalLink, FileText, History, Mic, Paperclip, Plus, Search, StickyNote, Tags } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ElementType } from 'react';
 import { toast } from 'sonner';
 import { CaseNoteForm } from './case-note-form';
@@ -129,6 +130,7 @@ export function ConsultationWorkspace() {
   const { session, context, summary } = useArca();
   const { effectiveUserId } = useDoctorContext();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const sessionRef = useRef(session);
   const contextRef = useRef(context);
   const summaryRef = useRef(summary);
@@ -393,6 +395,19 @@ export function ConsultationWorkspace() {
                 {status}
               </Badge>
             )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ml-auto size-5 shrink-0"
+              title="Open full view"
+              data-doc="consultation-open-detail"
+              onClick={(e) => {
+                e.stopPropagation();
+                void navigate({ to: '/consultation/$id', params: { id: c.id } });
+              }}
+            >
+              <ExternalLink className="size-3" />
+            </Button>
           </div>
           <div className="text-muted-foreground flex items-center gap-2 text-xs">
             <span>{c.createdAt ? format(new Date(c.createdAt), 'MMM d, yyyy HH:mm') : 'Unknown'}</span>
