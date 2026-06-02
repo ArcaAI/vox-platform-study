@@ -31,6 +31,7 @@ class MockWebSocket {
   onmessage: ((ev: MessageEvent) => void) | null = null;
   onerror: ((ev: Event) => void) | null = null;
   binaryType: BinaryType = 'blob';
+  bufferedAmount = 0;
   sent: Array<string | ArrayBufferLike> = [];
 
   constructor(url: string) {
