@@ -27,6 +27,7 @@ const createMockDnaService = () => ({
     generateDnaReport: vi.fn(),
     getDnaReport: vi.fn(),
     updateDnaReport: vi.fn(),
+    setDefaultReport: vi.fn(),
     getVersions: vi.fn(),
     getVersionsForDoctor: vi.fn(),
     listReports: vi.fn(),
@@ -158,6 +159,39 @@ describe('DnaWritingStyleController', () => {
             const result = await controller.getVersions('report-1');
 
             expect(result).toEqual([]);
+        });
+    });
+
+    // ─── TASK-329 P5 — owner-scoped report history (GET mine) ───
+    describe('GET /dna-writing-styles/mine', () => {
+        it('should list the current doctor\'s own reports', async () => {
+            const reports = [fakeReportEntity, { ...fakeReportEntity, id: 'report-2', isLatest: false }];
+            mockDnaService.listReports.mockResolvedValue(reports);
+
+            const result = await controller.getMine();
+
+            expect(mockDnaService.listReports).toHaveBeenCalledWith({ doctorId: 'doctor-1' });
+            expect(result).toHaveLength(2);
+        });
+
+        it('should return an empty array when the doctor has no reports', async () => {
+            mockDnaService.listReports.mockResolvedValue([]);
+
+            const result = await controller.getMine();
+
+            expect(result).toEqual([]);
+        });
+    });
+
+    // ─── TASK-329 P5 — set-default (PATCH :reportId/default) ─────
+    describe('PATCH /dna-writing-styles/:reportId/default', () => {
+        it('should call service.setDefaultReport with the reportId', async () => {
+            mockDnaService.setDefaultReport.mockResolvedValue({ ...fakeReportEntity, isLatest: true });
+
+            const result = await controller.setDefault('report-1');
+
+            expect(mockDnaService.setDefaultReport).toHaveBeenCalledWith('report-1');
+            expect(result.isLatest).toBe(true);
         });
     });
 

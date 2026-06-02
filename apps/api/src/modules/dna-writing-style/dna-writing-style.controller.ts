@@ -74,6 +74,17 @@ export class DnaWritingStyleController {
     return report;
   }
 
+  // TASK-329 P5 — owner-scoped report history for the playground's report list
+  // and set-default picker. Tenant scope is enforced in the service.
+  @ApiEndpoint({
+    returnedModel: DnaReportResponse,
+    multi: true,
+    path: 'mine',
+  })
+  async getMine(): Promise<DnaReportResponse[]> {
+    return this.dnaService.listReports({ doctorId: this.getDoctorId() });
+  }
+
   @ApiEndpoint({
     returnedModel: DnaReportResponse,
     path: 'doctor/:doctorId',
@@ -104,6 +115,21 @@ export class DnaWritingStyleController {
   @ApiResponse({ status: 404, description: 'Report not found' })
   async update(@Param('reportId') reportId: string, @Body() dto: UpdateDnaReportRequest): Promise<DnaReportResponse> {
     return this.dnaService.updateDnaReport(reportId, dto);
+  }
+
+  // TASK-329 P5 — promote a report to the doctor's active/default. Owner +
+  // tenant scope enforced in the service.
+  @ApiEndpoint({
+    returnedModel: DnaReportResponse,
+    method: HttpMethod.PATCH,
+    path: ':reportId/default',
+    by: ['reportId'],
+  })
+  @ApiParam({ name: 'reportId', description: 'Report ID', type: String })
+  @ApiResponse({ status: 403, description: "Cannot set another doctor's report as default" })
+  @ApiResponse({ status: 404, description: 'Report not found' })
+  async setDefault(@Param('reportId') reportId: string): Promise<DnaReportResponse> {
+    return this.dnaService.setDefaultReport(reportId);
   }
 
   @ApiEndpoint({

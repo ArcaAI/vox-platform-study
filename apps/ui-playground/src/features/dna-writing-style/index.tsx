@@ -8,10 +8,7 @@ import { Button } from '@arcaai/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/card';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/dialog';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@arcaai/ui/form';
-import { Input } from '@arcaai/ui/input';
 import { Progress } from '@arcaai/ui/progress';
-import { ScrollArea } from '@arcaai/ui/scroll-area';
-import { Separator } from '@arcaai/ui/separator';
 import { Skeleton } from '@arcaai/ui/skeleton';
 import { Textarea } from '@arcaai/ui/textarea';
 import {
@@ -30,18 +27,26 @@ import {
 } from 'lucide-react';
 
 import { Main } from '@/components/layout/main';
+import { ImpersonationGuard } from '@/components/impersonation-guard';
 import { zodResolver } from '@/lib/zod-resolver';
+import { useDoctorContext } from '@/features/summarization/hooks/use-doctor-context';
 import {
   streamDnaJob,
   useDnaJobStatus,
   useDnaVersions,
   useGenerateDnaReport,
+  useMyDnaReports,
   useMyDnaStyle,
-  useUpdateDnaReport,
+  useSetDefaultDnaReport,
   type DnaReport,
-  type DnaReportData,
 } from './api/dna-writing-styles';
+import { EditDialog } from './components/edit-dialog';
+import { GenerateFromHistoryPanel } from './components/generate-from-history-panel';
+import { ReportsListPanel } from './components/reports-list-panel';
+import { VersionDiffSection } from './components/version-diff-section';
 import { VersionsPanel } from './components/versions-panel';
+import { useEditDialogController } from './hooks/use-edit-dialog-controller';
+import type { DnaStyleVersion } from './api/dna-writing-styles';
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -51,20 +56,7 @@ const generateSchema = z.object({
   textSamples: z.string().min(1, 'At least one text sample is required'),
 });
 
-const updateSchema = z.object({
-  styleText: z.string().optional(),
-  changeReason: z.string().min(1, 'Change reason is required'),
-  formality: z.string().optional(),
-  sentenceLength: z.string().optional(),
-  medicalTermUsage: z.string().optional(),
-  abbreviationStyle: z.string().optional(),
-  tone: z.string().optional(),
-  vocabulary: z.string().optional(),
-  structure: z.string().optional(),
-});
-
 type GenerateFormValues = z.infer<typeof generateSchema>;
-type UpdateFormValues = z.infer<typeof updateSchema>;
 type DeliveryMethod = 'sse' | 'polling';
 
 interface StreamingState {
@@ -401,169 +393,10 @@ function GenerateDialog({
 }
 
 // ---------------------------------------------------------------------------
-// EditDialog
-// ---------------------------------------------------------------------------
-
-function EditDialog({ open, onOpenChange, report }: { open: boolean; onOpenChange: (open: boolean) => void; report: DnaReport | null }) {
-  const updateMutation = useUpdateDnaReport();
-
-  const form = useForm<UpdateFormValues>({
-    resolver: zodResolver(updateSchema),
-    defaultValues: {
-      styleText: '',
-      changeReason: '',
-      formality: '',
-      sentenceLength: '',
-      medicalTermUsage: '',
-      abbreviationStyle: '',
-      tone: '',
-      vocabulary: '',
-      structure: '',
-    },
-  });
-
-  useEffect(() => {
-    if (open && report) {
-      form.reset({
-        styleText: report.styleText ?? '',
-        changeReason: '',
-        formality: report.reportData?.formality ?? '',
-        sentenceLength: report.reportData?.sentenceLength ?? '',
-        medicalTermUsage: report.reportData?.medicalTermUsage ?? '',
-        abbreviationStyle: report.reportData?.abbreviationStyle ?? '',
-        tone: report.reportData?.tone ?? '',
-        vocabulary: report.reportData?.vocabulary ?? '',
-        structure: report.reportData?.structure ?? '',
-      });
-    }
-  }, [open, report, form]);
-
-  const handleSubmit = useCallback(
-    (values: UpdateFormValues) => {
-      if (!report) return;
-      const reportData: Partial<DnaReportData> = {};
-      if (values.formality) reportData.formality = values.formality;
-      if (values.sentenceLength) reportData.sentenceLength = values.sentenceLength;
-      if (values.medicalTermUsage) reportData.medicalTermUsage = values.medicalTermUsage;
-      if (values.abbreviationStyle) reportData.abbreviationStyle = values.abbreviationStyle;
-      if (values.tone) reportData.tone = values.tone;
-      if (values.vocabulary) reportData.vocabulary = values.vocabulary;
-      if (values.structure) reportData.structure = values.structure;
-
-      updateMutation.mutate(
-        {
-          reportId: report.id,
-          styleText: values.styleText || undefined,
-          reportData: Object.keys(reportData).length > 0 ? reportData : undefined,
-          changeReason: values.changeReason,
-        },
-        {
-          onSuccess: () => {
-            toast.success('DNA report updated successfully');
-            onOpenChange(false);
-          },
-          onError: (err) => toast.error(`Failed to update report: ${err.message}`),
-        },
-      );
-    },
-    [report, updateMutation, onOpenChange],
-  );
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Pencil className="size-5" />
-            Edit DNA Writing Style
-          </DialogTitle>
-          <DialogDescription>Update the writing style attributes and provide a reason for the change.</DialogDescription>
-        </DialogHeader>
-
-        <ScrollArea className="flex-1 pr-4">
-          <Form {...form}>
-            <form id="edit-dna-form" onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="styleText"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                render={({ field }: { field: any }) => (
-                  <FormItem>
-                    <FormLabel>Style Text</FormLabel>
-                    <FormControl>
-                      <Textarea placeholder="Descriptive text about the writing style..." className="min-h-25" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <Separator />
-              <p className="text-sm font-medium">Style Attributes</p>
-
-              <div className="grid grid-cols-2 gap-4">
-                {(['tone', 'vocabulary', 'structure', 'formality', 'sentenceLength', 'medicalTermUsage', 'abbreviationStyle'] as const).map(
-                  (fieldName) => (
-                    <FormField
-                      key={fieldName}
-                      control={form.control}
-                      name={fieldName}
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      render={({ field }: { field: any }) => (
-                        <FormItem>
-                          <FormLabel className="capitalize">{fieldName.replace(/([A-Z])/g, ' $1').trim()}</FormLabel>
-                          <FormControl>
-                            <Input placeholder={`e.g., ${fieldName}`} {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  ),
-                )}
-              </div>
-
-              <Separator />
-
-              <FormField
-                control={form.control}
-                name="changeReason"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                render={({ field }: { field: any }) => (
-                  <FormItem>
-                    <FormLabel>Change Reason</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Why are you making this change?" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </form>
-          </Form>
-        </ScrollArea>
-
-        <DialogFooter className="pt-4 border-t">
-          <DialogClose asChild>
-            <Button type="button" variant="outline" disabled={updateMutation.isPending}>
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button type="submit" form="edit-dna-form" disabled={updateMutation.isPending}>
-            {updateMutation.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
-            Save Changes
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // MyStyleCard — Quick view of current user's DNA style
 // ---------------------------------------------------------------------------
 
-function MyStyleCard() {
+function MyStyleCard({ onEdit }: { onEdit?: (report: DnaReport) => void }) {
   const { data: myStyle, isLoading, error } = useMyDnaStyle();
 
   if (isLoading) {
@@ -608,7 +441,15 @@ function MyStyleCard() {
               Version {myStyle.currentVersionNumber} · Updated {relativeTime(myStyle.updatedAt)}
             </CardDescription>
           </div>
-          <Badge variant={myStyle.isLatest ? 'default' : 'secondary'}>{myStyle.isLatest ? 'Latest' : 'Outdated'}</Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant={myStyle.isLatest ? 'default' : 'secondary'}>{myStyle.isLatest ? 'Latest' : 'Outdated'}</Badge>
+            {onEdit && (
+              <Button variant="outline" size="sm" onClick={() => onEdit(myStyle)} data-testid="dna-edit-button">
+                <Pencil className="mr-1.5 size-3.5" />
+                Edit
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -636,22 +477,33 @@ function MyStyleCard() {
 
 export default function DnaWritingStylePage() {
   const [generateOpen, setGenerateOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [selectedReport, setSelectedReport] = useState<DnaReport | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+
+  // TASK-329 P5 — impersonation gate + edit-dialog wiring (the bug fix lives in
+  // the controller, which couples "select report" + "open" into `openFor`).
+  const { requiresImpersonation } = useDoctorContext();
+  const editCtrl = useEditDialogController();
 
   // Polling state
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [streamState, setStreamState] = useState<StreamingState>({ status: 'idle', progress: 0 });
   const abortRef = useRef<AbortController | null>(null);
 
-  // ---- Data (user-scoped only) --------------------------------------------
+  // ---- Data (user-scoped; skipped until a doctor context is active) -------
 
-  const { data: myStyle, refetch: refetchMyStyle } = useMyDnaStyle();
+  const { data: myStyle, refetch: refetchMyStyle } = useMyDnaStyle({ enabled: !requiresImpersonation });
 
   const reportId = myStyle?.id ?? '';
 
-  const { data: versions = [], isLoading: isLoadingVersions, refetch: refetchVersions } = useDnaVersions(reportId);
+  const { data: versions = [], isLoading: isLoadingVersions, refetch: refetchVersions } = useDnaVersions(reportId, {
+    enabled: !!reportId && !requiresImpersonation,
+  });
+
+  // TASK-329 P5 — the doctor's report history (set-default picker) + the
+  // generate-from-history mutation + the optimistic set-default mutation.
+  const { data: myReports = [], isLoading: isLoadingReports, refetch: refetchReports } = useMyDnaReports({ enabled: !requiresImpersonation });
+  const fromHistoryMutation = useGenerateDnaReport();
+  const setDefaultMutation = useSetDefaultDnaReport();
 
   useEffect(() => {
     if (versions.length === 0) {
@@ -674,11 +526,45 @@ export default function DnaWritingStylePage() {
     setActiveJobId(null);
     refetchMyStyle();
     refetchVersions();
-  }, [refetchMyStyle, refetchVersions]);
+    refetchReports();
+  }, [refetchMyStyle, refetchVersions, refetchReports]);
 
   const handleJobDismiss = useCallback(() => {
     setActiveJobId(null);
   }, []);
+
+  // ---- TASK-329 P5 handlers ----------------------------------------------
+
+  const handleSetDefault = useCallback(
+    (id: string) => {
+      setDefaultMutation.mutate(id, {
+        onSuccess: () => {
+          toast.success('Default writing style updated');
+          refetchMyStyle();
+        },
+        onError: (err) => toast.error(`Failed to set default: ${err.message}`),
+      });
+    },
+    [setDefaultMutation, refetchMyStyle],
+  );
+
+  const handleGenerateFromHistory = useCallback(
+    (selected: DnaStyleVersion[]) => {
+      const textSamples = selected.map((v) => v.styleText ?? '').filter(Boolean);
+      const sourceIds = selected.map((v) => v.id);
+      fromHistoryMutation.mutate(
+        { textSamples, sourceIds },
+        {
+          onSuccess: (data) => {
+            toast.success('Generation started from selected history — polling for status');
+            setActiveJobId(data.jobId);
+          },
+          onError: (err) => toast.error(`Failed to start generation: ${err.message}`),
+        },
+      );
+    },
+    [fromHistoryMutation],
+  );
 
   const handleStreamStarted = useCallback(
     (jobId: string) => {
@@ -748,43 +634,69 @@ export default function DnaWritingStylePage() {
             </Button>
           </div>
 
-          {/* Active generation banner */}
-          {(activeJobId || streamState.status !== 'idle') && (
-            <div className="mb-4 space-y-3">
-              {activeJobId && <JobPollingBanner jobId={activeJobId} onComplete={handleJobComplete} onDismiss={handleJobDismiss} />}
-              {streamState.status !== 'idle' && (
-                <StreamingJobBanner state={streamState} onCancel={handleStreamCancel} onDismiss={handleStreamDismiss} />
-              )}
+          {/* TASK-329 P5 — impersonation gate: this playground is per-doctor. */}
+          <ImpersonationGuard featureName="DNA writing style">
+            {/* Active generation banner */}
+            {(activeJobId || streamState.status !== 'idle') && (
+              <div className="mb-4 space-y-3">
+                {activeJobId && <JobPollingBanner jobId={activeJobId} onComplete={handleJobComplete} onDismiss={handleJobDismiss} />}
+                {streamState.status !== 'idle' && (
+                  <StreamingJobBanner state={streamState} onCancel={handleStreamCancel} onDismiss={handleStreamDismiss} />
+                )}
+              </div>
+            )}
+
+            <div data-doc="dna-report-detail">
+              <MyStyleCard onEdit={editCtrl.openFor} />
             </div>
-          )}
 
-          <div data-doc="dna-report-detail">
-            <MyStyleCard />
-          </div>
-
-          {myStyle && (
-            <div className="mt-6" data-doc="dna-reports-list">
-              <VersionsPanel
-                report={myStyle}
+            {/* TASK-329 P5 — generate-from-history + set-default report picker */}
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              <GenerateFromHistoryPanel
                 versions={versions}
-                isLoadingVersions={isLoadingVersions}
-                selectedVersionId={selectedVersionId}
-                onSelectVersion={setSelectedVersionId}
-                onRefreshVersions={() => void refetchVersions()}
+                isLoading={isLoadingVersions}
+                isGenerating={fromHistoryMutation.isPending}
+                onGenerate={handleGenerateFromHistory}
+              />
+              <ReportsListPanel
+                reports={myReports}
+                isLoading={isLoadingReports}
+                onSetDefault={handleSetDefault}
+                settingDefaultId={setDefaultMutation.isPending ? (setDefaultMutation.variables ?? null) : null}
               />
             </div>
-          )}
+
+            {/* TASK-329 P5 — version diff */}
+            {myStyle && (
+              <div className="mt-6">
+                <VersionDiffSection versions={versions} isLoading={isLoadingVersions} />
+              </div>
+            )}
+
+            {myStyle && (
+              <div className="mt-6" data-doc="dna-reports-list">
+                <VersionsPanel
+                  report={myStyle}
+                  versions={versions}
+                  isLoadingVersions={isLoadingVersions}
+                  selectedVersionId={selectedVersionId}
+                  onSelectVersion={setSelectedVersionId}
+                  onRefreshVersions={() => void refetchVersions()}
+                />
+              </div>
+            )}
+          </ImpersonationGuard>
 
           {/* Dialogs */}
           <GenerateDialog open={generateOpen} onOpenChange={setGenerateOpen} onJobStarted={handleJobStarted} onStreamStarted={handleStreamStarted} />
 
           <EditDialog
-            open={editOpen}
+            open={editCtrl.open}
             onOpenChange={(v) => {
-              setEditOpen(v);
-              if (!v) setSelectedReport(null);
+              if (v) editCtrl.setOpen(true);
+              else editCtrl.close();
             }}
-            report={selectedReport}
+            report={editCtrl.report}
           />
         </div>
       </div>

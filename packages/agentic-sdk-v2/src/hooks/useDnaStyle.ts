@@ -33,6 +33,8 @@ const DNA_TERMINAL = new Set(['completed', 'failed']);
 export interface UseDnaStyleReturn {
   style: DnaReport | null;
   versions: DnaStyleVersion[];
+  /** TASK-329 P5 — the doctor's own report history (populated by getMyReports). */
+  reports: DnaReport[];
   isLoading: boolean;
   error: Error | null;
   getMyStyle: () => Promise<DnaReport>;
@@ -42,8 +44,33 @@ export interface UseDnaStyleReturn {
    * the hook mint a UUID for you per call.
    */
   generate: (input?: DnaGenerateInput & { idempotencyKey?: string }) => Promise<{ jobId: string }>;
+  /**
+   * TASK-329 P5 — Generate a brand-new DNA report seeded from a selection of
+   * historical source items (prior report-version snapshots / context items).
+   * Thin wrapper over `generate` that attaches the selected `sourceIds`.
+   */
+  generateFromHistory: (
+    sourceIds: string[],
+    extra?: Omit<DnaGenerateInput, 'sourceIds'> & { idempotencyKey?: string },
+  ) => Promise<{ jobId: string }>;
   update: (reportId: string, input: DnaUpdateInput) => Promise<DnaReport>;
+  /**
+   * TASK-329 P5 — Promote a historical report to the doctor's active/default
+   * (`isLatest`) report. Owner + tenant scoped on the backend.
+   */
+  setDefault: (reportId: string) => Promise<DnaReport>;
+  /** TASK-329 P5 — Fetch the doctor's own report history (owner-scoped). */
+  getMyReports: () => Promise<DnaReport[]>;
   getVersions: (reportId: string) => Promise<DnaStyleVersion[]>;
+  /**
+   * TASK-329 P5 — Resolve two version snapshots of a report for a side-by-side
+   * diff. Reuses the versions endpoint and returns the matched `left`/`right`.
+   */
+  getVersionDiff: (
+    reportId: string,
+    fromVersionId: string,
+    toVersionId: string,
+  ) => Promise<{ left: DnaStyleVersion | null; right: DnaStyleVersion | null }>;
   getJobStatus: (jobId: string) => Promise<DnaJobStatus>;
   pollJobStatus: (jobId: string, options?: { intervalMs?: number; maxAttempts?: number }) => Promise<DnaReport>;
   /**
@@ -59,6 +86,7 @@ export function useDnaStyle(): UseDnaStyleReturn {
 
   const [style, setStyle] = useState<DnaReport | null>(null);
   const [versions, setVersions] = useState<DnaStyleVersion[]>([]);
+  const [reports, setReports] = useState<DnaReport[]>([]);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sseClientRef = useRef<SSEClient | null>(null);
 
@@ -85,10 +113,33 @@ export function useDnaStyle(): UseDnaStyleReturn {
     [execute],
   );
 
+  // TASK-329 P5 — generate seeded from a selection of historical source items.
+  const generateFromHistory = useCallback(
+    (sourceIds: string[], extra?: Omit<DnaGenerateInput, 'sourceIds'> & { idempotencyKey?: string }): Promise<{ jobId: string }> => {
+      const { idempotencyKey, ...rest } = (extra ?? {}) as Record<string, unknown> & { idempotencyKey?: string };
+      const body = withIdempotencyKey({ ...rest, sourceIds }, idempotencyKey);
+      return execute<{ jobId: string }>('generateFromHistory', (client) =>
+        client.post<{ jobId: string }>(DNA_STYLE_ENDPOINTS.GENERATE, body),
+      );
+    },
+    [execute],
+  );
+
   const update = useCallback(
     (reportId: string, input: DnaUpdateInput): Promise<DnaReport> =>
       execute<DnaReport>('update', async (client) => {
         const data = await client.patch<DnaReport>(DNA_STYLE_ENDPOINTS.UPDATE(reportId), input);
+        setStyle(data);
+        return data;
+      }),
+    [execute],
+  );
+
+  // TASK-329 P5 — promote a historical report to the doctor's active default.
+  const setDefault = useCallback(
+    (reportId: string): Promise<DnaReport> =>
+      execute<DnaReport>('setDefault', async (client) => {
+        const data = await client.patch<DnaReport>(DNA_STYLE_ENDPOINTS.SET_DEFAULT(reportId), {});
         setStyle(data);
         return data;
       }),
@@ -102,6 +153,33 @@ export function useDnaStyle(): UseDnaStyleReturn {
         const items = extractArray<DnaStyleVersion>(raw);
         setVersions(items);
         return items;
+      }),
+    [execute],
+  );
+
+  // TASK-329 P5 — the doctor's own report history (owner-scoped).
+  const getMyReports = useCallback(
+    (): Promise<DnaReport[]> =>
+      execute<DnaReport[]>('getMyReports', async (client) => {
+        const raw = await client.get(DNA_STYLE_ENDPOINTS.MINE);
+        const items = extractArray<DnaReport>(raw);
+        setReports(items);
+        return items;
+      }),
+    [execute],
+  );
+
+  // TASK-329 P5 — resolve two versions of a report for a side-by-side diff.
+  const getVersionDiff = useCallback(
+    (reportId: string, fromVersionId: string, toVersionId: string): Promise<{ left: DnaStyleVersion | null; right: DnaStyleVersion | null }> =>
+      execute<{ left: DnaStyleVersion | null; right: DnaStyleVersion | null }>('getVersionDiff', async (client) => {
+        const raw = await client.get(DNA_STYLE_ENDPOINTS.VERSIONS(reportId));
+        const items = extractArray<DnaStyleVersion>(raw);
+        setVersions(items);
+        return {
+          left: items.find((v) => v.id === fromVersionId) ?? null,
+          right: items.find((v) => v.id === toVersionId) ?? null,
+        };
       }),
     [execute],
   );
@@ -262,12 +340,17 @@ export function useDnaStyle(): UseDnaStyleReturn {
   return {
     style,
     versions,
+    reports,
     isLoading,
     error,
     getMyStyle,
     generate,
+    generateFromHistory,
     update,
+    setDefault,
+    getMyReports,
     getVersions,
+    getVersionDiff,
     getJobStatus,
     pollJobStatus,
     streamJobStatus,
