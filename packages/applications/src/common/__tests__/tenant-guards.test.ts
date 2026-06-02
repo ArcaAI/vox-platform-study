@@ -83,80 +83,113 @@ describe('tenant-guards', () => {
     });
   });
 
+  // TASK-305 Phase F — membership = enabled UserRoleAssignment (role) AND
+  // enabled UserDepartment (department); service accounts are exempt from the
+  // department half. Signature: (roleRepo, deptRepo, userRepo, userId, tenantId).
   describe('assertUserBelongsToTenant', () => {
-    const makeRepoMock = () => ({
-      findFirst: vi.fn(),
+    const ROLE_ROW = { id: 'ura-1', userId: 'user-a', tenantId: 'tenant-a', resourceStatus: ResourceStatusType.ENABLED };
+    const DEPT_ROW = { id: 'ud-1', userId: 'user-a', tenantId: 'tenant-a', resourceStatus: ResourceStatusType.ENABLED };
+
+    const makeMocks = () => ({
+      roleRepo: { findFirst: vi.fn() },
+      deptRepo: { findFirst: vi.fn() },
+      userRepo: { findFirst: vi.fn() },
     });
 
+    const call = (m: ReturnType<typeof makeMocks>, userId: string, tenantId: string) =>
+      assertUserBelongsToTenant(m.roleRepo as never, m.deptRepo as never, m.userRepo as never, userId, tenantId);
+
     it('throws BadRequestException when userId is empty', async () => {
-      const repo = makeRepoMock();
-      await expect(assertUserBelongsToTenant(repo as never, '', 'tenant-a')).rejects.toBeInstanceOf(BadRequestException);
-      expect(repo.findFirst).not.toHaveBeenCalled();
+      const m = makeMocks();
+      await expect(call(m, '', 'tenant-a')).rejects.toBeInstanceOf(BadRequestException);
+      expect(m.roleRepo.findFirst).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException when tenantId is empty', async () => {
-      const repo = makeRepoMock();
-      await expect(assertUserBelongsToTenant(repo as never, 'user-a', '')).rejects.toBeInstanceOf(BadRequestException);
-      expect(repo.findFirst).not.toHaveBeenCalled();
+      const m = makeMocks();
+      await expect(call(m, 'user-a', '')).rejects.toBeInstanceOf(BadRequestException);
+      expect(m.roleRepo.findFirst).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException when userId is null/undefined', async () => {
-      const repo = makeRepoMock();
-      await expect(assertUserBelongsToTenant(repo as never, null as unknown as string, 'tenant-a')).rejects.toBeInstanceOf(BadRequestException);
-      await expect(assertUserBelongsToTenant(repo as never, undefined as unknown as string, 'tenant-a')).rejects.toBeInstanceOf(BadRequestException);
-      expect(repo.findFirst).not.toHaveBeenCalled();
+      const m = makeMocks();
+      await expect(call(m, null as unknown as string, 'tenant-a')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(call(m, undefined as unknown as string, 'tenant-a')).rejects.toBeInstanceOf(BadRequestException);
+      expect(m.roleRepo.findFirst).not.toHaveBeenCalled();
     });
 
-    it('throws NotFoundException when repository.findFirst returns null', async () => {
-      const repo = makeRepoMock();
-      repo.findFirst.mockResolvedValue(null);
-      await expect(assertUserBelongsToTenant(repo as never, 'user-a', 'tenant-a')).rejects.toBeInstanceOf(NotFoundException);
+    it('throws NotFoundException when there is no role assignment (not a member at all)', async () => {
+      const m = makeMocks();
+      m.roleRepo.findFirst.mockResolvedValue(null);
+      await expect(call(m, 'user-a', 'tenant-a')).rejects.toBeInstanceOf(NotFoundException);
+      // Short-circuits before the department lookup.
+      expect(m.deptRepo.findFirst).not.toHaveBeenCalled();
     });
 
-    it('throws NotFoundException when repository.findFirst throws DataNotFoundException', async () => {
-      const repo = makeRepoMock();
-      repo.findFirst.mockRejectedValue(new DataNotFoundException('UserRoleAssignment', 'not-found'));
-      await expect(assertUserBelongsToTenant(repo as never, 'user-a', 'tenant-a')).rejects.toBeInstanceOf(NotFoundException);
+    it('throws NotFoundException when role lookup throws DataNotFoundException', async () => {
+      const m = makeMocks();
+      m.roleRepo.findFirst.mockRejectedValue(new DataNotFoundException('UserRoleAssignment', 'not-found'));
+      await expect(call(m, 'user-a', 'tenant-a')).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('returns void when an enabled assignment exists for (userId, tenantId)', async () => {
-      const repo = makeRepoMock();
-      repo.findFirst.mockResolvedValue({
-        id: 'ura-1',
-        userId: 'user-a',
-        tenantId: 'tenant-a',
-        resourceStatus: ResourceStatusType.ENABLED,
-      });
-
-      await expect(assertUserBelongsToTenant(repo as never, 'user-a', 'tenant-a')).resolves.toBeUndefined();
+    it('returns void when BOTH an enabled role AND an enabled department exist', async () => {
+      const m = makeMocks();
+      m.roleRepo.findFirst.mockResolvedValue(ROLE_ROW);
+      m.deptRepo.findFirst.mockResolvedValue(DEPT_ROW);
+      await expect(call(m, 'user-a', 'tenant-a')).resolves.toBeUndefined();
+      // Never needs to consult the User table when a department exists.
+      expect(m.userRepo.findFirst).not.toHaveBeenCalled();
     });
 
-    it('queries findFirst with where: { userId, tenantId, resourceStatus: ENABLED }', async () => {
-      const repo = makeRepoMock();
-      repo.findFirst.mockResolvedValue({
-        id: 'ura-1',
-        userId: 'user-a',
-        tenantId: 'tenant-a',
-        resourceStatus: ResourceStatusType.ENABLED,
-      });
-
-      await assertUserBelongsToTenant(repo as never, 'user-a', 'tenant-a');
-
-      expect(repo.findFirst).toHaveBeenCalledTimes(1);
-      expect(repo.findFirst).toHaveBeenCalledWith({
-        where: {
-          userId: 'user-a',
-          tenantId: 'tenant-a',
-          resourceStatus: ResourceStatusType.ENABLED,
-        },
-      });
+    it('throws NotFoundException for a regular user with a role but NO department', async () => {
+      const m = makeMocks();
+      m.roleRepo.findFirst.mockResolvedValue(ROLE_ROW);
+      m.deptRepo.findFirst.mockResolvedValue(null);
+      m.userRepo.findFirst.mockResolvedValue({ id: 'user-a', isServiceAccount: false });
+      await expect(call(m, 'user-a', 'tenant-a')).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('re-throws non-DataNotFound errors from the repository', async () => {
-      const repo = makeRepoMock();
+    it('EXEMPTS a service account: role but no department still passes', async () => {
+      const m = makeMocks();
+      m.roleRepo.findFirst.mockResolvedValue(ROLE_ROW);
+      m.deptRepo.findFirst.mockResolvedValue(null);
+      m.userRepo.findFirst.mockResolvedValue({ id: 'svc-1', isServiceAccount: true });
+      await expect(call(m, 'svc-1', 'tenant-a')).resolves.toBeUndefined();
+    });
+
+    it('throws NotFoundException when role exists, no department, and the user record is missing', async () => {
+      const m = makeMocks();
+      m.roleRepo.findFirst.mockResolvedValue(ROLE_ROW);
+      m.deptRepo.findFirst.mockResolvedValue(null);
+      m.userRepo.findFirst.mockResolvedValue(null);
+      await expect(call(m, 'user-a', 'tenant-a')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('treats a DataNotFoundException from the department lookup as "no department"', async () => {
+      const m = makeMocks();
+      m.roleRepo.findFirst.mockResolvedValue(ROLE_ROW);
+      m.deptRepo.findFirst.mockRejectedValue(new DataNotFoundException('UserDepartment', 'none'));
+      m.userRepo.findFirst.mockResolvedValue({ id: 'user-a', isServiceAccount: false });
+      await expect(call(m, 'user-a', 'tenant-a')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('queries role + department findFirst with where: { userId, tenantId, resourceStatus: ENABLED }', async () => {
+      const m = makeMocks();
+      m.roleRepo.findFirst.mockResolvedValue(ROLE_ROW);
+      m.deptRepo.findFirst.mockResolvedValue(DEPT_ROW);
+
+      await call(m, 'user-a', 'tenant-a');
+
+      const expectedWhere = { where: { userId: 'user-a', tenantId: 'tenant-a', resourceStatus: ResourceStatusType.ENABLED } };
+      expect(m.roleRepo.findFirst).toHaveBeenCalledWith(expectedWhere);
+      expect(m.deptRepo.findFirst).toHaveBeenCalledWith(expectedWhere);
+    });
+
+    it('re-throws non-DataNotFound errors from the role repository', async () => {
+      const m = makeMocks();
       const boom = new Error('DB connection lost');
-      repo.findFirst.mockRejectedValue(boom);
-      await expect(assertUserBelongsToTenant(repo as never, 'user-a', 'tenant-a')).rejects.toBe(boom);
+      m.roleRepo.findFirst.mockRejectedValue(boom);
+      await expect(call(m, 'user-a', 'tenant-a')).rejects.toBe(boom);
     });
   });
 

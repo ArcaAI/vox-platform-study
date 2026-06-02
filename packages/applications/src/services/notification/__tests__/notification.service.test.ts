@@ -41,6 +41,16 @@ const mockUserRoleAssignmentRepository = {
     findFirst: vi.fn(),
 };
 
+// TASK-305 Phase F — membership guard now also reads the UserDepartment join
+// table and the User table (service-account exemption).
+const mockUserDepartmentRepository = {
+    findFirst: vi.fn(),
+};
+
+const mockUserRepository = {
+    findFirst: vi.fn(),
+};
+
 const mockResourceSubscriptionRepository = {
     findById: vi.fn(),
 };
@@ -170,6 +180,15 @@ describe('NotificationService', () => {
             tenantId: 'tenant-1',
             resourceStatus: RST.ENABLED,
         });
+        // TASK-305 Phase F — default to a present in-tenant department so the
+        // role+department membership guard passes for the happy path.
+        mockUserDepartmentRepository.findFirst.mockResolvedValue({
+            id: 'ud-1',
+            userId: 'user-1',
+            tenantId: 'tenant-1',
+            resourceStatus: RST.ENABLED,
+        });
+        mockUserRepository.findFirst.mockResolvedValue({ id: 'user-1', isServiceAccount: false });
         mockResourceSubscriptionRepository.findById.mockResolvedValue({
             id: 'sub-123',
             tenantId: 'tenant-1',
@@ -178,7 +197,7 @@ describe('NotificationService', () => {
         // Create service instance with mocks
         service = new NotificationService(
             mockNotificationRepository as any,
-            mockUserRoleAssignmentRepository as any,
+            mockUserRoleAssignmentRepository as any, mockUserDepartmentRepository as any, mockUserRepository as any,
             mockResourceSubscriptionRepository as any,
             mockEventEmitter as any,
             mockClsService as any,
@@ -864,7 +883,7 @@ describe('NotificationService', () => {
                 });
                 const svc = new NotificationService(
                     mockNotificationRepository as any,
-                    mockUserRoleAssignmentRepository as any,
+                    mockUserRoleAssignmentRepository as any, mockUserDepartmentRepository as any, mockUserRepository as any,
                     mockResourceSubscriptionRepository as any,
                     mockEventEmitter as any,
                     mockClsService as any,
@@ -928,7 +947,7 @@ describe('NotificationService', () => {
                 });
                 const superSvc = new NotificationService(
                     mockNotificationRepository as any,
-                    mockUserRoleAssignmentRepository as any,
+                    mockUserRoleAssignmentRepository as any, mockUserDepartmentRepository as any, mockUserRepository as any,
                     mockResourceSubscriptionRepository as any,
                     mockEventEmitter as any,
                     mockClsService as any,
@@ -971,7 +990,7 @@ describe('NotificationService', () => {
                 });
                 const superSvc = new NotificationService(
                     mockNotificationRepository as any,
-                    mockUserRoleAssignmentRepository as any,
+                    mockUserRoleAssignmentRepository as any, mockUserDepartmentRepository as any, mockUserRepository as any,
                     mockResourceSubscriptionRepository as any,
                     mockEventEmitter as any,
                     mockClsService as any,

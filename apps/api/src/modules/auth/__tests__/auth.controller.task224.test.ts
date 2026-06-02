@@ -238,6 +238,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             const response = await controller.impersonate(
@@ -274,6 +275,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await expect(
@@ -312,6 +314,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await expect(
@@ -352,6 +355,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             const result = await controller.impersonate(
@@ -395,6 +399,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await expect(
@@ -434,6 +439,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await expect(
@@ -480,6 +486,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await controller.impersonate(
@@ -514,6 +521,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             expect(typeof (controller as any).revokeImpersonation).toBe('function');
@@ -545,6 +553,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             const result = await controller.revokeImpersonation(createMockRequest());
@@ -575,6 +584,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await controller.revokeImpersonation(createMockRequest());
@@ -606,6 +616,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await expect(
@@ -635,6 +646,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await expect(
@@ -666,6 +678,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 refreshTokenService as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await expect(
@@ -703,6 +716,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 refreshTokenService as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await expect(
@@ -744,6 +758,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 refreshTokenService as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             const result = await controller.refresh({ refreshToken: 'opaque-old-token' });
@@ -777,6 +792,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await expect(
@@ -799,6 +815,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await expect(
@@ -823,6 +840,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await expect(
@@ -857,6 +875,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             const result = await controller.login(
@@ -901,6 +920,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await controller.login(
@@ -940,6 +960,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await expect(
@@ -971,6 +992,7 @@ describe('AuthController — TASK-224 Security Tests', () => {
                 createMockJwtRevocationService() as any,
                 createMockSecretsService() as any,
                 createMockRefreshTokenService() as any,
+                { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
             );
 
             await expect(

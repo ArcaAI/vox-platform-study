@@ -33,6 +33,23 @@ const mockRepo = {
   restore: vi.fn(),
 };
 
+// TASK-305 Phase F — assign() must verify the target department belongs to the
+// caller's tenant (cross-tenant referential integrity), so the service now
+// depends on the DepartmentRepository.
+const mockDepartmentRepo = {
+  findById: vi.fn(),
+};
+
+// TASK-305 Phase F — `findActiveDepartmentForUserInTenant` reads via the
+// tenant-scope-bypassing baseClient (pre-auth login lookup).
+const mockDatabaseService = {
+  baseClient: {
+    userDepartment: {
+      findFirst: vi.fn(),
+    },
+  },
+};
+
 interface MockEntityOverrides {
   id?: string;
   userId?: string;
@@ -99,7 +116,17 @@ describe('UserDepartmentService', () => {
       }
     });
 
-    service = new UserDepartmentService(mockRepo as never, mockEventEmitter as never, mockClsService as never);
+    // TASK-305 Phase F — default to an in-tenant department so the integrity
+    // check passes for the happy-path tests. Cross-tenant tests override this.
+    mockDepartmentRepo.findById.mockResolvedValue({ id: 'dept-1', tenantId: 'tenant-1' });
+
+    service = new UserDepartmentService(
+      mockRepo as never,
+      mockDepartmentRepo as never,
+      mockEventEmitter as never,
+      mockClsService as never,
+      mockDatabaseService as never,
+    );
   });
 
   describe('assign', () => {
@@ -163,6 +190,33 @@ describe('UserDepartmentService', () => {
       mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? null : { id: 'current-user-id' }));
 
       await expect(service.assign('user-1', { departmentId: 'dept-1' })).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects a department that belongs to another tenant (NotFound, no create)', async () => {
+      // Department exists, but in tenant-2 while the caller is in tenant-1.
+      mockDepartmentRepo.findById.mockResolvedValue({ id: 'dept-foreign', tenantId: 'tenant-2' });
+
+      await expect(service.assign('user-1', { departmentId: 'dept-foreign' })).rejects.toThrow(NotFoundException);
+      expect(mockRepo.create).not.toHaveBeenCalled();
+      expect(mockRepo.findAll).not.toHaveBeenCalled();
+    });
+
+    it('rejects a missing department (NotFound, no create)', async () => {
+      mockDepartmentRepo.findById.mockResolvedValue(null);
+
+      await expect(service.assign('user-1', { departmentId: 'dept-missing' })).rejects.toThrow(NotFoundException);
+      expect(mockRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('verifies the department is in the caller tenant before assigning', async () => {
+      mockRepo.findAll
+        .mockResolvedValueOnce([]) // active duplicate check
+        .mockResolvedValueOnce([]); // soft-deleted duplicate check
+      mockRepo.create.mockResolvedValue(makeEntity({ id: 'ud-new', departmentId: 'dept-1' }));
+
+      await service.assign('user-1', { departmentId: 'dept-1' });
+
+      expect(mockDepartmentRepo.findById).toHaveBeenCalledWith('dept-1');
     });
   });
 
@@ -231,6 +285,37 @@ describe('UserDepartmentService', () => {
       mockRepo.findAll.mockResolvedValueOnce([]);
 
       await expect(service.unassign('ud-x')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // TASK-305 Phase F — pre-auth (baseClient) membership lookup for the login flow.
+  describe('findActiveDepartmentForUserInTenant', () => {
+    it('returns the row when an enabled department exists for (userId, tenantId)', async () => {
+      mockDatabaseService.baseClient.userDepartment.findFirst.mockResolvedValue({ id: 'ud-7' });
+
+      const result = await service.findActiveDepartmentForUserInTenant('user-1', 'tenant-1');
+
+      expect(result).toEqual({ id: 'ud-7' });
+    });
+
+    it('returns null when the user has no enabled department in the tenant', async () => {
+      mockDatabaseService.baseClient.userDepartment.findFirst.mockResolvedValue(null);
+
+      const result = await service.findActiveDepartmentForUserInTenant('user-1', 'tenant-1');
+
+      expect(result).toBeNull();
+    });
+
+    it('queries the baseClient (tenant-scope bypass) with userId + tenantId + ENABLED', async () => {
+      mockDatabaseService.baseClient.userDepartment.findFirst.mockResolvedValue({ id: 'ud-7' });
+
+      await service.findActiveDepartmentForUserInTenant('user-1', 'tenant-1');
+
+      expect(mockDatabaseService.baseClient.userDepartment.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 'user-1', tenantId: 'tenant-1', resourceStatus: ResourceStatusType.ENABLED },
+        }),
+      );
     });
   });
 });

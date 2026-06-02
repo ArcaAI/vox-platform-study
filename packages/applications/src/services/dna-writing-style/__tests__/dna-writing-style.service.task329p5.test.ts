@@ -32,6 +32,9 @@ const createMockDnaUsageRecordRepository = () => ({
     findRecent: vi.fn().mockResolvedValue([]),
 });
 const createMockUserRoleAssignmentRepository = () => ({ findFirst: vi.fn() });
+// TASK-305 Phase F — membership guard also reads UserDepartment + User.
+const createMockUserDepartmentRepository = () => ({ findFirst: vi.fn() });
+const createMockUserRepository = () => ({ findFirst: vi.fn() });
 const createMockQueue = () => ({ add: vi.fn().mockResolvedValue({ id: 'job-mock' }) });
 
 const createMockReportEntity = (overrides: Record<string, unknown> = {}) => ({
@@ -61,6 +64,8 @@ describe('DnaWritingStyleService — TASK-329 P5', () => {
     let mockVersionRepo: ReturnType<typeof createMockDnaVersionRepository>;
     let mockUsageRepo: ReturnType<typeof createMockDnaUsageRecordRepository>;
     let mockUserRoleAssignmentRepo: ReturnType<typeof createMockUserRoleAssignmentRepository>;
+    let mockUserDepartmentRepo: ReturnType<typeof createMockUserDepartmentRepository>;
+    let mockUserRepo: ReturnType<typeof createMockUserRepository>;
     let mockQueue: ReturnType<typeof createMockQueue>;
     let mockClsService: ReturnType<typeof createMockClsService>;
     let mockEventEmitter: ReturnType<typeof createMockEventEmitter>;
@@ -71,6 +76,8 @@ describe('DnaWritingStyleService — TASK-329 P5', () => {
         mockVersionRepo = createMockDnaVersionRepository();
         mockUsageRepo = createMockDnaUsageRecordRepository();
         mockUserRoleAssignmentRepo = createMockUserRoleAssignmentRepository();
+        mockUserDepartmentRepo = createMockUserDepartmentRepository();
+        mockUserRepo = createMockUserRepository();
         mockQueue = createMockQueue();
         mockClsService = createMockClsService();
         mockEventEmitter = createMockEventEmitter();
@@ -83,12 +90,17 @@ describe('DnaWritingStyleService — TASK-329 P5', () => {
         mockUserRoleAssignmentRepo.findFirst.mockResolvedValue({
             id: 'ura-1', userId: 'doctor-id-1', tenantId: 'tenant-1', resourceStatus: ResourceStatusType.ENABLED,
         });
+        // TASK-305 Phase F — present in-tenant department so the membership guard passes.
+        mockUserDepartmentRepo.findFirst.mockResolvedValue({
+            id: 'ud-1', userId: 'doctor-id-1', tenantId: 'tenant-1', resourceStatus: ResourceStatusType.ENABLED,
+        });
+        mockUserRepo.findFirst.mockResolvedValue({ id: 'doctor-id-1', isServiceAccount: false });
 
         service = new DnaWritingStyleService(
             mockReportRepo as never,
             mockVersionRepo as never,
             mockUsageRepo as never,
-            mockUserRoleAssignmentRepo as never,
+            mockUserRoleAssignmentRepo as never, mockUserDepartmentRepo as never, mockUserRepo as never,
             mockQueue as never,
             mockEventEmitter as never,
             mockClsService as never,

@@ -4,6 +4,7 @@ import {
   IAuthService,
   IJwtRevocationService,
   IRefreshTokenService,
+  IUserDepartmentService,
   IUserRoleAssignmentService,
   IUserService,
   SecretsService,
@@ -74,6 +75,9 @@ export class AuthController {
     @Inject(IJwtRevocationService) private readonly jwtRevocationService: IJwtRevocationService,
     @Inject(SecretsService) private readonly secretsService: SecretsService,
     @Inject(IRefreshTokenService) private readonly refreshTokenService: IRefreshTokenService,
+    // TASK-305 Phase F — login enforces full membership (role + department);
+    // this resolves the department half via a pre-auth baseClient lookup.
+    @Inject(IUserDepartmentService) private readonly userDepartmentService: IUserDepartmentService,
   ) {}
 
   /**
@@ -170,6 +174,19 @@ export class AuthController {
 
         if (!tenantRoleAssignment) {
           throw new UnauthorizedException('User does not have access to the specified tenant');
+        }
+
+        // TASK-305 Phase F — full tenant membership = an enabled role AND an
+        // enabled department. Service accounts (which authenticate via API
+        // keys, not this flow) are exempt from the department half. The 401
+        // message is intentionally identical to the role miss above so the
+        // response never reveals which half of the membership is incomplete.
+        if (!user.isServiceAccount) {
+          const tenantDepartment = await this.userDepartmentService.findActiveDepartmentForUserInTenant(user.id, resolvedTenantId);
+
+          if (!tenantDepartment) {
+            throw new UnauthorizedException('User does not have access to the specified tenant');
+          }
         }
       }
 

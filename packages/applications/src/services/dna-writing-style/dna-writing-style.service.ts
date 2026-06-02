@@ -14,6 +14,8 @@ import {
   ResourceType,
   ResourceStatusType,
   SysEventType,
+  UserDepartmentRepository,
+  UserRepository,
   UserRoleAssignmentRepository,
 } from '@arcaai/domains';
 import { IDnaWritingStyleService, DnaJobResponse } from './IDnaWritingStyleService';
@@ -50,6 +52,10 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     // verify a `doctorId` is a member of the caller's tenant before any
     // DNA-style operation runs against PHI-derived artifacts.
     private readonly userRoleAssignmentRepository: UserRoleAssignmentRepository,
+    // TASK-305 Phase F — membership is role + department; the guard needs the
+    // department join table and the User table (service-account exemption).
+    private readonly userDepartmentRepository: UserDepartmentRepository,
+    private readonly userRepository: UserRepository,
     @InjectQueue(JobQueue.GenerateDnaReport) private readonly dnaQueue: Queue,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
@@ -70,7 +76,13 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       throw new BadRequestException('Tenant ID is required');
     }
 
-    await assertUserBelongsToTenant(this.userRoleAssignmentRepository, doctorId, tenantId);
+    await assertUserBelongsToTenant(
+      this.userRoleAssignmentRepository,
+      this.userDepartmentRepository,
+      this.userRepository,
+      doctorId,
+      tenantId,
+    );
 
     const userId = this.requestUserId ?? '';
     const jobId = uuidv7();
@@ -111,7 +123,13 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
-    await assertUserBelongsToTenant(this.userRoleAssignmentRepository, doctorId, tenantId);
+    await assertUserBelongsToTenant(
+      this.userRoleAssignmentRepository,
+      this.userDepartmentRepository,
+      this.userRepository,
+      doctorId,
+      tenantId,
+    );
 
     const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
     if (!report) return null;

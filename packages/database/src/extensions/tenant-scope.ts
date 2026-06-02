@@ -33,18 +33,22 @@ import { PrismaClient } from '../generated/core-prisma-client/client.js';
 /**
  * Models that carry a `tenantId` column in `packages/database/src/prisma/db_main/*.prisma`.
  *
- * Derived from a manual sweep of the schema at the time of writing
- * (TASK-305 Phase B, 2026-05). The audit (`docs/multi-tenancy-audit/
- * 02-prisma-schema-review.md` §A) lists 30 model names; 4 of those
- * (`UserProfile`, `UserSettings`, `UserMedia`, `UserVoiceProfile`) and
- * `DnaRegenerationSettings` do NOT yet carry a `tenantId` column —
- * they will be added when Phase A's schema-hardening migration lands.
- * Until then this allow-list mirrors the schema reality (27 entries),
- * NOT the future plan; that way the extension never tries to inject
- * `tenantId` on a column that doesn't exist.
+ * This list mirrors SCHEMA REALITY — every model here has a `tenantId`
+ * scalar, so the extension only ever injects `tenantId` on a column that
+ * actually exists.
  *
- * When Phase A adds the missing columns, the allow-list MUST be
- * extended in the same commit (tracked by Phase A.10/A.11 codegen).
+ * The `User*` identity tables (`User`, `UserProfile`, `UserSettings`,
+ * `UserMedia`, `UserVoiceProfile`) are deliberately NOT here: `User` is a
+ * global, multi-tenant identity (audit §B6 / TASK-305 Phase F). A user's
+ * membership in a tenant is modeled by the two tenant-scoped JOIN tables —
+ * `UserRoleAssignment` (role) and `UserDepartment` (department) — both of
+ * which ARE in this list.
+ *
+ * History: an earlier revision predicted Phase A would add `tenantId` to
+ * the `User*` tables and that this list would grow with them. That never
+ * happened and was the wrong call (see TASK-305 Phase F). `UserDepartment`
+ * was added to this list by Phase F (2026-06-02) so its reads/writes are
+ * tenant-injected like every other tenant-scoped model.
  */
 export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // consultation.prisma (6)
@@ -73,8 +77,9 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'TranscriptionJob',
   // department.prisma (1)
   'Department',
-  // user.prisma (1)
+  // user.prisma (2)
   'UserRoleAssignment',
+  'UserDepartment',
   // dna-writing-style.prisma (4)
   'DnaWritingStyleReport',
   'DnaWritingStyleVersion',

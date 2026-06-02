@@ -106,7 +106,7 @@ each wave). Neither class is blocking.
 | **F-7** | Drop redundant single-column `@@index([tenantId])` (TASK-305 §6.7 #3) | Write-throughput micro-opt — composite `[tenantId, X]` indexes added in TASK-305 W2.A cover the same workloads | Separate ticket |
 | **F-8** | `CoreDataModel` wildcard re-export removal (TASK-305 §6.7 #5) | Latent footgun with zero current consumers — ESLint `importNames` does not follow wildcard re-exports, so the `core.database.types.ts` `export * as CoreDataModel` is a hole in the unscoped-client allow-list | Separate ticket |
 | **L-3** | JWT revocation Redis key not tenant-prefixed | Backlog only — `jti` is globally unique so there is no practical collision risk; tenant-prefixing is a nice-to-have for cross-tenant observability | Backlog |
-| **H-4** | `User` / `UserMedia` blindly findById cross-tenant | Architectural — needs `BaseGlobalEntity` design (also tracked as TASK-305 §6.7 #1). The `assertUserBelongsToTenant` guard at every PHI-bearing create provides the invariant equivalent today | Separate architectural ticket |
+| **H-4** | `User` / `UserMedia` blindly findById cross-tenant | `User` is global by design; tenant binding enforced by `assertUserBelongsToTenant` (now role + department) | **Resolved — TASK-305 Phase F (2026-06-02)** |
 
 `NEW-7 / F-4` was moved IN-SCOPE during plan approval and closed in
 W5.5.6 — see §1.1 above.

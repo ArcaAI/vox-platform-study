@@ -17,7 +17,12 @@
 
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DataNotFoundException } from '@arcaai/exceptions';
-import { ResourceStatusType, type UserRoleAssignmentRepository } from '@arcaai/domains';
+import {
+  ResourceStatusType,
+  type UserDepartmentRepository,
+  type UserRepository,
+  type UserRoleAssignmentRepository,
+} from '@arcaai/domains';
 
 /**
  * Role string for the operator with cross-tenant administrative rights.
@@ -101,31 +106,60 @@ export function assertEqualTenants(
 }
 
 /**
- * Assert that the given `userId` has an `ENABLED` UserRoleAssignment within
- * the given `tenantId`. Use BEFORE creating any tenant-scoped row that
- * references a `User` (e.g. `Consultation.doctorId`, `ApiKey.userId`,
- * `Notification.targetUserId`).
+ * Run a repository lookup and normalise its two failure shapes to `null`.
  *
- * Closes audit B10 ("Consultation.doctorId FK does not enforce that the
- * doctor has access to the consultation's tenant").
+ * `Repository.findFirst` throws `DataNotFoundException` on a miss in
+ * production, but tests across the codebase mock it as returning `null`, so
+ * both must be tolerated. Any OTHER error propagates unchanged.
+ */
+async function findFirstTolerant<T>(fn: () => Promise<T>): Promise<T | null> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof DataNotFoundException) return null;
+    throw err;
+  }
+}
+
+/**
+ * Assert that the given `userId` is a member of the given `tenantId`.
  *
- * Throws `NotFoundException` on missing assignment (no existence leak) and
- * tolerates the repository's two failure shapes (returns `null` *or* throws
- * `DataNotFoundException`) — `Repository.findFirst` throws today, but tests
- * across the codebase mock it as returning `null`, so we handle both.
+ * TASK-305 Phase F — a user's tenant membership is modeled by two
+ * tenant-scoped join tables and is only valid when BOTH halves are present:
+ *   - an `ENABLED` `UserRoleAssignment` (the **role** half), and
+ *   - an `ENABLED` `UserDepartment` (the **department** half).
+ *
+ * **Exemption:** service accounts (`User.isServiceAccount === true`) are
+ * exempt from the department half — a role assignment alone is sufficient.
+ * `SUPER_ADMIN`s are global (their assignments live under the SYSTEM tenant),
+ * so the role-half check already excludes them from a specific tenant; that
+ * is unchanged from the pre-Phase-F behaviour.
+ *
+ * Use BEFORE creating any tenant-scoped row that references a `User`
+ * (e.g. `Consultation.doctorId`, `ApiKey.userId`, `Notification.targetUserId`).
+ * Closes audit B10 + H-4 and enforces the Phase F membership invariant.
+ *
+ * Throws `NotFoundException` on incomplete/absent membership (NO existence
+ * leak) and tolerates each repository's two failure shapes (`null` OR
+ * `DataNotFoundException`).
  *
  * @example
  *   await assertUserBelongsToTenant(
  *     this.userRoleAssignmentRepository,
+ *     this.userDepartmentRepository,
+ *     this.userRepository,
  *     request.doctorId,
  *     this.tenantId,
  *   );
  *
  * @throws BadRequestException — `userId` or `tenantId` is null/undefined/empty
- * @throws NotFoundException — no enabled assignment exists (no leak)
+ * @throws NotFoundException — no enabled role assignment, or (for a non-exempt
+ *   user) no enabled department assignment (no leak)
  */
 export async function assertUserBelongsToTenant(
   userRoleAssignmentRepository: UserRoleAssignmentRepository,
+  userDepartmentRepository: UserDepartmentRepository,
+  userRepository: UserRepository,
   userId: string,
   tenantId: string,
 ): Promise<void> {
@@ -136,25 +170,35 @@ export async function assertUserBelongsToTenant(
     throw new BadRequestException('tenantId is required');
   }
 
-  let assignment: unknown;
-  try {
-    assignment = await userRoleAssignmentRepository.findFirst({
-      where: {
-        userId,
-        tenantId,
-        resourceStatus: ResourceStatusType.ENABLED,
-      },
-    });
-  } catch (err) {
-    if (err instanceof DataNotFoundException) {
-      throw new NotFoundException('Resource not found');
-    }
-    throw err;
-  }
-
-  if (assignment === null || assignment === undefined) {
+  // 1. Role half — an enabled UserRoleAssignment in this tenant. Its absence
+  //    means the user is not a member of this tenant at all (no leak).
+  const roleAssignment = await findFirstTolerant(() =>
+    userRoleAssignmentRepository.findFirst({
+      where: { userId, tenantId, resourceStatus: ResourceStatusType.ENABLED },
+    }),
+  );
+  if (roleAssignment === null || roleAssignment === undefined) {
     throw new NotFoundException('Resource not found');
   }
+
+  // 2. Department half — an enabled UserDepartment in this tenant.
+  const departmentAssignment = await findFirstTolerant(() =>
+    userDepartmentRepository.findFirst({
+      where: { userId, tenantId, resourceStatus: ResourceStatusType.ENABLED },
+    }),
+  );
+  if (departmentAssignment !== null && departmentAssignment !== undefined) {
+    return; // full member: role + department
+  }
+
+  // 3. No department — permitted ONLY for exempt users (service accounts).
+  const user = await findFirstTolerant(() => userRepository.findFirst({ where: { id: userId } }));
+  if (user && (user as { isServiceAccount?: boolean }).isServiceAccount === true) {
+    return; // exempt — department not required
+  }
+
+  // Regular user with a role but no department = incomplete membership.
+  throw new NotFoundException('Resource not found');
 }
 
 /**
