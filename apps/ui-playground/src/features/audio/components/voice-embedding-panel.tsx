@@ -147,8 +147,8 @@ export function VoiceEmbeddingPanel() {
                     <p className="truncate text-sm font-medium">{label}</p>
                     <p className="text-muted-foreground text-xs">ID: {profile.id}</p>
                   </div>
-                  <Badge variant="outline" className="text-[10px]">
-                    Active
+                  <Badge variant={profile.isActive ? 'default' : 'outline'} className="text-[10px]">
+                    {profile.isActive ? 'Active' : 'Inactive'}
                   </Badge>
                   <Button variant="ghost" size="sm" onClick={() => handleDeleteProfile(profile.id)} aria-label={`Delete voice profile ${profile.id}`}>
                     <Trash2 className="size-3.5" />

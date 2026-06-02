@@ -491,6 +491,25 @@ describe('StreamingSessionManager', () => {
       expect(state.status).toBe('idle');
       expect(state.maxConcurrent).toBeNull();
       expect(state.currentActive).toBeNull();
+      expect(state.voiceProfileSeeded).toBeNull();
+    });
+
+    // TASK-329 P4 / D-3: surface the backend preseed echo on the state
+    // snapshot so consumers can show diarization-seeding feedback.
+    it('should expose voiceProfileSeeded from the session response', async () => {
+      const mockSessionResponse: StreamingSessionResponse = {
+        sessionId: 'session-seeded',
+        status: 'active',
+        maxConcurrent: 10,
+        currentActive: 1,
+        wsUrl: '/ws/stt-v2/stream',
+        voiceProfileSeeded: true,
+      };
+      mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
+
+      await manager.createSession({ pipelineId: 'default' });
+
+      expect(manager.getState().voiceProfileSeeded).toBe(true);
     });
   });
 
