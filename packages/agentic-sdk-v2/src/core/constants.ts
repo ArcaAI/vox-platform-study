@@ -145,7 +145,13 @@ export const DNA_STYLE_ENDPOINTS = {
   JOB_STATUS: (jobId: string) => `/dna-writing-styles/jobs/${encodeURIComponent(jobId)}`,
   JOB_STREAM: (jobId: string) => `/dna-writing-styles/jobs/${encodeURIComponent(jobId)}/stream`,
   MY_STYLE: '/dna-writing-styles/my-style',
+  // TASK-329 P5 — owner-scoped report history (the doctor's own reports). Reuses
+  // the existing list service, filtered to the caller's doctorId + tenant.
+  MINE: '/dna-writing-styles/mine',
   UPDATE: (reportId: string) => `/dna-writing-styles/${encodeURIComponent(reportId)}`,
+  // TASK-329 P5 — promote a historical report to the doctor's active/default
+  // (`isLatest`) report. Owner + tenant scoped.
+  SET_DEFAULT: (reportId: string) => `/dna-writing-styles/${encodeURIComponent(reportId)}/default`,
   VERSIONS: (reportId: string) => `/dna-writing-styles/${encodeURIComponent(reportId)}/versions`,
   ADMIN_LIST: '/admin/dna-writing-styles',
   ADMIN_JOB_STATUS: (jobId: string) => `/admin/dna-writing-styles/jobs/${encodeURIComponent(jobId)}`,

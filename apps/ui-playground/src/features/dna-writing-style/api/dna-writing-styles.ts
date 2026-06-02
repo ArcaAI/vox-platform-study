@@ -46,6 +46,8 @@ export interface DnaStyleVersion {
 export interface DnaGenerateInput {
   textSamples?: string[];
   departmentId?: string;
+  // TASK-329 P5 — historical source item IDs selected to seed generation.
+  sourceIds?: string[];
 }
 
 export interface DnaUpdateInput {
@@ -84,9 +86,20 @@ const keys = {
   details: () => [...keys.all, 'detail'] as const,
   detail: (id: string) => [...keys.details(), id] as const,
   myStyle: () => [...keys.all, 'my-style'] as const,
+  // TASK-329 P5 — the doctor's own report history (set-default picker source).
+  mine: () => [...keys.all, 'mine'] as const,
   versions: (reportId: string) => [...keys.all, 'versions', reportId] as const,
   jobStatus: (jobId: string) => [...keys.all, 'job', jobId] as const,
 };
+
+/**
+ * TASK-329 P5 — Pure optimistic transform: promote `reportId` to the doctor's
+ * default (`isLatest`) and demote every other report, so the cached `/mine`
+ * list reflects the new default immediately (before the PATCH resolves).
+ */
+export function applyDefaultToReports(reports: DnaReport[], reportId: string): DnaReport[] {
+  return reports.map((r) => ({ ...r, isLatest: r.id === reportId }));
+}
 
 // ---------------------------------------------------------------------------
 // Query Hooks (user-scoped only)
@@ -109,6 +122,14 @@ export function useMyDnaStyle(options?: Omit<UseQueryOptions<DnaReport | null>, 
       if (error instanceof AdminApiError && error.status === 404) return false;
       return failureCount < 3;
     },
+    ...options,
+  });
+}
+
+export function useMyDnaReports(options?: Omit<UseQueryOptions<DnaReport[]>, 'queryKey' | 'queryFn'>) {
+  return useQuery({
+    queryKey: keys.mine(),
+    queryFn: () => adminClient.get<DnaReport[]>('/dna-writing-styles/mine'),
     ...options,
   });
 }
@@ -222,6 +243,35 @@ export function useUpdateDnaReport() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all });
       qc.invalidateQueries({ queryKey: keys.detail(variables.reportId) });
+    },
+  });
+}
+
+/**
+ * TASK-329 P5 — Promote a report to the doctor's default with an optimistic
+ * cache update + rollback. The cached `/mine` list flips immediately so the
+ * default badge moves without waiting for the round-trip; on error we restore
+ * the snapshot, and on settle we reconcile with the server.
+ */
+export function useSetDefaultDnaReport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (reportId: string) => adminClient.patch<DnaReport>(`/dna-writing-styles/${reportId}/default`, {}),
+    onMutate: async (reportId) => {
+      await qc.cancelQueries({ queryKey: keys.mine() });
+      const previous = qc.getQueryData<DnaReport[]>(keys.mine());
+      if (previous) {
+        qc.setQueryData<DnaReport[]>(keys.mine(), applyDefaultToReports(previous, reportId));
+      }
+      return { previous };
+    },
+    onError: (_err, _reportId, context) => {
+      if (context?.previous) {
+        qc.setQueryData(keys.mine(), context.previous);
+      }
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: keys.all });
     },
   });
 }

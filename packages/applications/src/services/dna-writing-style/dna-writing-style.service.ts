@@ -29,6 +29,8 @@ export interface GenerateDnaReportJobPayload {
   tenantId: string;
   userId: string;
   textSamples?: string[];
+  // TASK-329 P5 — historical source IDs the generation was seeded from.
+  sourceIds?: string[];
 }
 
 export interface DnaReportJobResult {
@@ -79,6 +81,9 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       tenantId,
       userId,
       textSamples: dto.textSamples,
+      // TASK-329 P5 — only carry sourceIds when the caller seeded from history;
+      // keeps the legacy payload shape unchanged for plain generations.
+      ...(dto.sourceIds && dto.sourceIds.length > 0 ? { sourceIds: dto.sourceIds } : {}),
     };
 
     await this.dnaQueue.add(JobQueue.GenerateDnaReport, payload, {
@@ -166,6 +171,46 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: reportId,
       data: { changeReason: dto.changeReason },
+    });
+
+    return DnaWritingStyleDtoMapper.toReportResponse(updated);
+  }
+
+  /**
+   * TASK-329 P5 — Promote a historical report to the caller's active/default
+   * (`isLatest`) report. The previous default is demoted so the doctor always
+   * has exactly one latest report. Tenant scope (PHI guard) + owner scope are
+   * both enforced; even an admin cannot set another doctor's default here (the
+   * playground runs in the doctor's own/impersonated context).
+   */
+  async setDefaultReport(reportId: string): Promise<DnaReportResponse> {
+    const userId = this.requestUserId;
+
+    const report = await this.dnaReportRepository.findById(reportId);
+    if (!report) throw new NotFoundException(`DNA report ${reportId} not found`);
+    this.assertReportInScope(report, reportId);
+
+    if (report.doctorId !== userId) {
+      throw new ForbiddenException("Cannot set another doctor's DNA report as default");
+    }
+
+    // Idempotent: already the default ⇒ nothing to flip.
+    if (report.isLatest) {
+      return DnaWritingStyleDtoMapper.toReportResponse(report);
+    }
+
+    const currentLatest = await this.dnaReportRepository.findLatestForDoctor(report.doctorId);
+    if (currentLatest && currentLatest.id !== reportId) {
+      currentLatest.unmarkAsLatest();
+      await this.dnaReportRepository.update(currentLatest.id, currentLatest);
+    }
+
+    report.markAsLatest();
+    const updated = await this.dnaReportRepository.update(reportId, report);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: reportId,
+      data: { kind: 'dna-default-set', doctorId: report.doctorId },
     });
 
     return DnaWritingStyleDtoMapper.toReportResponse(updated);
