@@ -1,4 +1,4 @@
-import { PrismaStudioServiceModule } from '@arcaai/applications';
+import { PrismaStudioServiceModule, AuditLogServiceModule } from '@arcaai/applications';
 import { Module } from '@nestjs/common';
 import { PrismaStudioController } from './pstudio.controller';
 
@@ -13,7 +13,9 @@ export function shouldEnablePrismaStudio(env: { NODE_ENV?: string; ENABLE_PRISMA
 }
 
 @Module({
-  imports: [PrismaStudioServiceModule],
+  // TASK-326 X1 — AuditLogServiceModule provides IAuditLogService so the BFF
+  // controller can audit every raw Studio query/sequence (it is not @Global).
+  imports: [PrismaStudioServiceModule, AuditLogServiceModule],
   controllers: [PrismaStudioController],
 })
 export class PrismaStudioModule {}

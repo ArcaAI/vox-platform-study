@@ -56,6 +56,18 @@ export class AuditLogController {
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @CanRead('AuditLog')
   async fetchAll(@Query() queryParams: PaginatedQuery): Promise<PaginatedAuditLogResponse> {
+    // TASK-326 X5 (audit X5): the unscoped list route is the cross-tenant
+    // enumeration surface. The service `buildTenantWhere` already scopes
+    // every query, but mirror the `fetchByUser` guard here so the rule is
+    // observable at the request entry point and a non-super-admin with no
+    // tenant context never reaches the service. SUPER_ADMIN keeps the
+    // cross-tenant read.
+    const user = this.cls.get('user');
+    const callerTenantId = this.cls.get('tenantId');
+    if (!isSuperAdmin(user) && !callerTenantId) {
+      throw new ForbiddenException('Tenant context required to query audit logs');
+    }
+
     const result = await this.auditLogService.fetchAll({
       ...queryParams,
       sort: queryParams.sort || 'createdAt:desc',

@@ -493,17 +493,19 @@ describe('PipelineService', () => {
     });
 
     describe('delete', () => {
-        it('should soft delete a pipeline and verify state changes', async () => {
+        it('should soft delete a pipeline via repository.softDelete (TASK-326 OCC consistency)', async () => {
             const pipeline = createBehavioralPipelineEntity({ id: 'pipeline-to-delete' });
             mockPipelineRepository.findById.mockResolvedValue(pipeline);
-            mockPipelineRepository.update.mockImplementation(async (_id: any, entity: any) => entity);
+            mockPipelineRepository.softDelete.mockResolvedValue(pipeline);
 
             await service.delete('pipeline-to-delete');
 
-            // BEHAVIORAL VERIFICATION
-            expect(pipeline.resourceStatus).toBe(ResourceStatusType.DELETED);
-            expect(pipeline.isDeleted).toBe(true);
-            expect(pipeline.isActive).toBe(false);
+            // TASK-326 — delete now routes through the repository's dedicated
+            // softDelete (which applies the OCC version bump) rather than the
+            // legacy entity.delete() + update() path. Assert the new call and
+            // that the plain update() is no longer used for deletion.
+            expect(mockPipelineRepository.softDelete).toHaveBeenCalledWith('pipeline-to-delete', 'current-user-id');
+            expect(mockPipelineRepository.update).not.toHaveBeenCalled();
 
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
                 SysEventType.ResourceDeleted,
@@ -618,8 +620,9 @@ models:
             expect(pipeline.hasChanges).toBe(true);
 
             // Delete
+            mockPipelineRepository.softDelete.mockResolvedValue(pipeline);
             await service.delete(pipeline.id);
-            expect(pipeline.isDeleted).toBe(true);
+            expect(mockPipelineRepository.softDelete).toHaveBeenCalledWith(pipeline.id, 'current-user-id');
         });
     });
 });

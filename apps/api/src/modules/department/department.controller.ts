@@ -5,9 +5,12 @@ import {
   UpdateDepartmentRequest,
   UpdateDepartmentPromptConfigRequest,
   HttpMethod,
+  isSuperAdmin,
+  IActiveUserContext,
 } from '@arcaai/applications';
-import { Controller, Body, Param, Inject, Query } from '@nestjs/common';
+import { Controller, Body, Param, Inject, Query, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
+import { ClsService } from 'nestjs-cls';
 // TASK-302 Stream D Phase E.2 — `@RequiresIfMatch()` + `@ExpectedVersion()`
 // gate the OCC-enforced PATCH routes on this controller.
 import { ApiEndpoint, Authorize, CanManage, RequiresIfMatch, ExpectedVersion } from '../../decorators';
@@ -21,6 +24,7 @@ export class DepartmentController {
   constructor(
     @Inject(IDepartmentService)
     private readonly departmentService: IDepartmentService,
+    private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
   @ApiEndpoint({
@@ -38,6 +42,17 @@ export class DepartmentController {
   })
   @ApiQuery({ name: 'includeDisabled', required: false, type: Boolean, description: 'Include disabled departments in results' })
   async fetchAll(@Query('includeDisabled') includeDisabled?: string): Promise<DepartmentResponse[]> {
+    // TASK-326 X5 (audit X5): `DepartmentService.getAll` already requires
+    // `this.tenantId`, but mirror the AuditLogController guard so a
+    // non-super-admin with no tenant context is rejected at the request
+    // entry point and never reaches the service. SUPER_ADMIN bypasses here
+    // (the service still enforces its own tenant rule for operators).
+    const user = this.cls.get('user');
+    const callerTenantId = this.cls.get('tenantId');
+    if (!isSuperAdmin(user) && !callerTenantId) {
+      throw new ForbiddenException('Tenant context required to list departments');
+    }
+
     return this.departmentService.getAll({
       includeDisabled: includeDisabled === 'true',
     });

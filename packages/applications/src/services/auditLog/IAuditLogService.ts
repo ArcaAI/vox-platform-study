@@ -1,4 +1,4 @@
-import { EntityId, AuditLogEntity } from '@arcaai/domains';
+import { EntityId, AuditLogEntity, AuditAction, ResourceType } from '@arcaai/domains';
 import { FetchResponse, PaginatedQuery } from '../../common';
 
 /**
@@ -61,6 +61,28 @@ export interface IAuditLogService {
   handleUserAuthenticatedEvent(
     event: { userId?: string; timestamp?: Date; ip?: string; userAgent?: string; method?: string } & Record<string, unknown>,
   ): Promise<void>;
+
+  /**
+   * TASK-326 X1 — synchronously record a privileged/system action audit entry
+   * via the direct-write path (bypassing the SysEvent → Redis queue pipeline).
+   *
+   * Intended for privileged surfaces that are NOT BaseService CRUD flows — e.g.
+   * the Prisma Studio raw-SQL BFF, which connects to the database outside the
+   * tenant-scope extension and therefore emits no `broadcastSysEvent`. The
+   * caller's actor/tenant are taken from CLS; tenant falls back to the system
+   * tenant for tenant-less operators (super-admin).
+   *
+   * Best-effort: never throws — failures are logged so an audit-write error can
+   * never block the privileged operation it is recording.
+   */
+  recordSystemAction(params: {
+    action: AuditAction;
+    eventType: string;
+    resourceType: ResourceType;
+    resourceId?: string | null;
+    data?: Record<string, unknown>;
+    success?: boolean;
+  }): Promise<void>;
 }
 
 /**
