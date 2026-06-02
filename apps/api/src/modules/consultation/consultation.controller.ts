@@ -9,6 +9,8 @@ import {
   ConsultationResponse,
   PaginatedConsultationResponse,
   AddContextRequest,
+  AddAudioRecordingRequest,
+  AudioRecordingResponse,
   UpdateContextRequest,
   ContextItemResponse,
   ContextItemVersionResponse,
@@ -477,6 +479,32 @@ export class ConsultationController {
   async getCaseNotes(@Param('id') id: string): Promise<ContextItemResponse[]> {
     await this.verifyConsultationAccess(id);
     return this.contextService.getContextItems(id, { type: 'CASE_NOTE' });
+  }
+
+  // ─── Audio Recordings (TASK-329 P2 — dual-capture X8) ────────────
+
+  @ApiEndpoint({
+    returnedModel: ContextItemResponse,
+    method: HttpMethod.POST,
+    path: ':id/recordings',
+    by: ['id'],
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async addRecording(@Param('id') id: string, @Body() request: AddAudioRecordingRequest): Promise<ContextItemResponse> {
+    await this.verifyConsultationOwnership(id);
+    return this.contextService.addAudioRecording(id, request);
+  }
+
+  @ApiEndpoint({
+    returnedModel: AudioRecordingResponse,
+    multi: true,
+    path: ':id/recordings',
+    by: ['id'],
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async getRecordings(@Param('id') id: string): Promise<AudioRecordingResponse[]> {
+    await this.verifyConsultationAccess(id);
+    return this.contextService.getAudioRecordings(id);
   }
 
   @ApiEndpoint({
