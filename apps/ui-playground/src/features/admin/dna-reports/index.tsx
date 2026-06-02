@@ -15,6 +15,7 @@ import { z } from 'zod';
 
 import { Main } from '@/components/layout/main';
 import { VersionDiffPanel } from '@/components/version-diff-panel';
+import { DnaDashboardSummary } from './dna-dashboard-summary';
 import type { DnaReport, DnaReportData, DnaStyleVersion } from '@/features/dna-writing-style/api/dna-writing-styles';
 import { zodResolver } from '@/lib/zod-resolver';
 import { useAuthStore } from '@/store/auth-store';
@@ -623,6 +624,8 @@ export default function DnaReportsAdminPage() {
           Review tenant-level DNA writing style reports, inspect versions, and compare two versions side-by-side.
         </p>
       </div>
+
+      <DnaDashboardSummary tenantId={effectiveTenantId || undefined} />
 
       <MultiColumnLayout
         columns={[tenantColumn, usersColumn, versionsColumn, detailColumn]}

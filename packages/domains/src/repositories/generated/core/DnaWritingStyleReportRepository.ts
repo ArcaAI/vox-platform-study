@@ -58,4 +58,48 @@ export class DnaWritingStyleReportRepository extends Repository<DnaWritingStyleR
       sort: [{ createdAt: 'desc' }],
     });
   }
+
+  // ============================================
+  // Aggregate Query Methods (TASK-328 A5 — DNA dashboard)
+  // ============================================
+
+  /**
+   * TASK-328 A5 — Count distinct doctors that have a current ("latest")
+   * writing-style report. Uses Prisma `groupBy(['doctorId'])` and returns the
+   * number of groups (mirrors the `groupBy` precedent in
+   * `TranscriptionJobRepository.countByStatus`). When `tenantId` is omitted the
+   * count spans every tenant (global-admin aggregate view).
+   */
+  async countDoctorsWithLatestReport(tenantId?: string): Promise<number> {
+    const where: Record<string, unknown> = {
+      isLatest: true,
+      resourceStatus: ResourceStatusType.ENABLED,
+    };
+    if (tenantId) where.tenantId = tenantId;
+
+    const groups = await (this as any).db.groupBy({
+      by: ['doctorId'],
+      where,
+    });
+    return groups.length;
+  }
+
+  /**
+   * TASK-328 A5 — Average `currentVersionNumber` across all latest reports
+   * (mirrors `SummaryMetaRepository.getAverageProcessingTime`'s `aggregate._avg`).
+   * Returns 0 when there are no matching rows. `tenantId` omitted ⇒ all tenants.
+   */
+  async averageCurrentVersion(tenantId?: string): Promise<number> {
+    const where: Record<string, unknown> = {
+      isLatest: true,
+      resourceStatus: ResourceStatusType.ENABLED,
+    };
+    if (tenantId) where.tenantId = tenantId;
+
+    const result = await (this as any).db.aggregate({
+      where,
+      _avg: { currentVersionNumber: true },
+    });
+    return result._avg.currentVersionNumber ?? 0;
+  }
 }
