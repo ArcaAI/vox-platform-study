@@ -165,6 +165,36 @@ describe('DnaWritingStyleAdminController', () => {
     });
 
     describe('PATCH /admin/dna-writing-styles/:reportId (update)', () => {
+        // ─── TASK-326 X7 / D-2 — If-Match → expectedVersion fold ─────────
+        // The route is `@RequiresIfMatch()`; the `@ExpectedVersion()` param
+        // decorator parses `If-Match` into a number (or 428s when missing).
+        // The controller folds that value onto the DTO's `expectedVersion`
+        // (header wins) while preserving the admin `bypassOwnershipCheck`.
+        it('folds the If-Match header into expectedVersion (header wins) and preserves bypassOwnershipCheck (TASK-326 X7 / D-2)', async () => {
+            mockDnaService.updateDnaReport.mockResolvedValue(fakeReportEntity);
+
+            await controller.update('report-1', { styleText: 'Updated', expectedVersion: 99 } as any, 7);
+
+            expect(mockDnaService.updateDnaReport).toHaveBeenCalledWith(
+                'report-1',
+                expect.objectContaining({ styleText: 'Updated', expectedVersion: 7 }),
+                { bypassOwnershipCheck: true },
+            );
+        });
+
+        it('forwards the body unchanged when no If-Match header resolved (expectedFromHeader undefined) (TASK-326 X7 / D-2)', async () => {
+            const body = { styleText: 'Updated', changeReason: 'Edit', expectedVersion: 5 };
+            mockDnaService.updateDnaReport.mockResolvedValue(fakeReportEntity);
+
+            await controller.update('report-1', body as any, undefined);
+
+            expect(mockDnaService.updateDnaReport).toHaveBeenCalledWith(
+                'report-1',
+                body,
+                { bypassOwnershipCheck: true },
+            );
+        });
+
         it('should call service.updateDnaReport with bypassOwnershipCheck: true', async () => {
             const updatedReport = { ...fakeReportEntity, resourceStatus: 'DISABLED' };
             mockDnaService.updateDnaReport.mockResolvedValue(updatedReport);
