@@ -22,12 +22,12 @@
 Today the sidebar is hardcoded and SUPER_ADMIN-centric — a tenant admin sees only 5 of 11 admin pages (TASK-325 §2.2, `app-sidebar.tsx:92-176`). This phase makes the console scope-aware: one menu set for everyone, scoped by a header tenant selector, with persisted, user-reorderable menus.
 
 ### 1.2 Acceptance criteria
-- [ ] Header **`ScopeSwitcher`**: GLOBAL admin picks a tenant via `Popover` + `Command`; TENANT admin shows a locked badge. The selection persists and is sent as `X-Tenant-Id` on every request (extract logic from `features/playground/overview/components/tenant-selector.tsx`).
-- [ ] Admin nav renders **all 9 menus for tenant admins** (data-scoped), not hidden — gating moves from `isSuperAdmin` to scope.
-- [ ] **Re-orderable persisted menus:** order stored in `UserSettings` (`namespace:'arcaai-admin'`, `key:'menuOrder'`, JSON); tenant default in `GlobalSetting`; resolution **user → tenant → hardcoded**; drag via `@dnd-kit/sortable`; optimistic Zustand update + persist on drop. (No DB migration — models already support this.)
-- [ ] GLOBAL-admin **impersonation requires selecting a tenant first** (P1 gate restored); `ServiceStatusGrid` shown on `/playground/overview`.
-- [ ] New/changed data access uses `@arcaai/vox` hooks (Q3); no new raw `fetch`.
-- [ ] Honors rules `07`/`10`/`11`; gates green (§4).
+- [x] Header **`ScopeSwitcher`**: GLOBAL admin picks a tenant via `Popover` + `Command`; TENANT admin shows a locked badge. The selection persists and is sent as `X-Tenant-Id` on every request (extract logic from `features/playground/overview/components/tenant-selector.tsx`). — T4 (§5)
+- [x] Admin nav renders **all 9 menus for tenant admins** (data-scoped), not hidden — gating moves from `isSuperAdmin` to scope. — T5 (Prisma Studio stays global-scope only, Q4)
+- [x] **Re-orderable persisted menus:** order stored in `UserSettings` (`namespace:'arcaai-admin'`, `key:'menuOrder'`, JSON); tenant default in `GlobalSetting`; resolution **user → tenant → hardcoded**; drag via `@dnd-kit/sortable`; optimistic Zustand update + persist on drop. (No DB migration — models already support this.) — T2/T3 (D2: reuses `@arcaai/ui` Sortable)
+- [x] GLOBAL-admin **impersonation requires selecting a tenant first** (P1 gate restored); `ServiceStatusGrid` shown on `/playground/overview`. — T6
+- [x] New/changed data access uses `@arcaai/vox` hooks (Q3); no new raw `fetch`. — D3 (vox already live; only RQ cache invalidation added)
+- [x] Honors rules `07`/`10`/`11`; gates green (§4). — verified in the 2026-06-02 umbrella gate (type-check 0, tests 731/731).
 
 ### 1.3 Non-goals
 - No new admin feature pages (Phase 2 / TASK-328). This is shell + scope + nav only.
