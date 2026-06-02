@@ -169,4 +169,43 @@ describe('PromptTemplateEntity', () => {
     expect(entity.hasChanges).toBe(true);
     expect(entity.changes.ownerUserId).toBe('user-99');
   });
+
+  // ─── TASK-328 A4: prompt quality/score test fields ────────────────────
+
+  it('should accept lastTestScore/lastTestOutput/lastTestAt in constructor', () => {
+    const testedAt = new Date('2026-06-01T09:00:00.000Z');
+    const entity = createEntity({ lastTestScore: 0.87, lastTestOutput: 'Generated text', lastTestAt: testedAt });
+    expect(entity.lastTestScore).toBe(0.87);
+    expect(entity.lastTestOutput).toBe('Generated text');
+    expect(entity.lastTestAt).toBe(testedAt);
+  });
+
+  it('should default the test fields to null when omitted', () => {
+    const entity = createEntity({ lastTestScore: undefined, lastTestOutput: undefined, lastTestAt: undefined });
+    expect(entity.lastTestScore ?? null).toBeNull();
+    expect(entity.lastTestOutput ?? null).toBeNull();
+    expect(entity.lastTestAt ?? null).toBeNull();
+  });
+
+  it('should track lastTestScore change via setter (setProperty)', () => {
+    const entity = createEntity();
+    entity.lastTestScore = 0.5;
+    expect(entity.hasChanges).toBe(true);
+    expect(entity.changes.lastTestScore).toBe(0.5);
+  });
+
+  it('should track lastTestOutput change via setter (setProperty)', () => {
+    const entity = createEntity();
+    entity.lastTestOutput = 'New output';
+    expect(entity.hasChanges).toBe(true);
+    expect(entity.changes.lastTestOutput).toBe('New output');
+  });
+
+  it('should track lastTestAt change via setter (setProperty)', () => {
+    const entity = createEntity();
+    const at = new Date('2026-06-02T00:00:00.000Z');
+    entity.lastTestAt = at;
+    expect(entity.hasChanges).toBe(true);
+    expect(entity.changes.lastTestAt).toBe(at);
+  });
 });

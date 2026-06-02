@@ -58,7 +58,17 @@ pnpm --filter @arcaai/ui-playground type-check && pnpm --filter @arcaai/ui-playg
 ---
 
 ## 5. Implementation Summary
-> Not started.
+
+### A4 — Prompt quality/score testing + analytics + diff + pagination (`wave3/a4-prompt-testing`)
+Schema was already migrated (frozen); this slice threaded the columns through the domain/app/SDK/UI layers only — **no `prisma migrate`/`db` and no `git`** were run.
+
+- **Domain** (`packages/domains`): added `lastTestScore`/`lastTestOutput`/`lastTestAt` to `PromptTemplateEntity` (interface + private field + getter/setter via `setProperty`), `PromptTemplateModel`, and `PromptTemplateFactory` (`?? null`); auto-mapper verified to carry the fields (round-trip test). Added `PromptUsageRecordRepository.groupByDepartment/groupByDoctor/groupByDay` (Prisma `groupBy`, day bucketed in-memory) and `PromptTemplateRepository.findPaginated(where,page,limit)`.
+- **Application** (`packages/applications`): `IPromptManagementService` + service gained `testPromptTemplate()` (interpolates variables → SMR `/generate` via injected `HttpService`/`ConfigService`/`SecretsService`, deterministic word-count score, OCC `updateWithVersion`, `broadcastSysEvent`), `getUsageAnalytics()`, and `listPromptTemplatesPaginated()`. New DTOs: `TestPromptTemplateRequest`, `PromptTestResultResponse`, `PromptUsageAnalyticsResponse` (+ `byDepartment/byDoctor/byDay`).
+- **API** (`apps/api`): `POST /admin/prompt-templates/:id/test` (`@RequiresIfMatch`/`@ExpectedVersion` OCC, tenant-scoped) + `GET /admin/prompt-templates/analytics/usage` (registered **before** `:id` routes); `list` now delegates pagination to the repository.
+- **SDK** (`@arcaai/vox`): `PROMPT_TEMPLATE_ENDPOINTS.TEST`/`USAGE_ANALYTICS`; `usePrompts().test()`/`.analytics()`; `compareVersions()` now diffs **content + variables (JSON)**; new types (`TestPromptInput`, `PromptTestResult`, `PromptUsageAnalytics`, …) exported via the types barrel.
+- **UI** (`apps/ui-playground` `/admin/prompts`): `PromptTestPanel` (run test → score badge + output, skeleton + toast), `PromptUsageAnalyticsPanel` (dept/doctor/day bars), variables wired into the `VersionDiffPanel`; admin-client hooks `useTestPrompt`/`usePromptUsageAnalytics`.
+- **`PRE_SUMMARY`**: **kept** — it is a live `PromptTemplateCategory` member consumed by the admin badge map + consultation/summary context-item types (not dead).
+- **Gates** (all green): domains 1102✓, applications 4518✓, vox 3111✓ (148 files), ui-playground 737✓ + type-check✓, `build:api`✓, lint clean. Live SMR scoring deferred to CI (unit-tested with a mocked SMR client).
 
 ---
 
@@ -66,3 +76,4 @@ pnpm --filter @arcaai/ui-playground type-check && pnpm --filter @arcaai/ui-playg
 | Date | Change | Files |
 |---|---|---|
 | 2026-06-02 | Sub-ticket created from TASK-325 §3.7 (Phase 2). Scope = A4–A8 + A1–A3 tenant-detail; Q3 SDK-first, Q5 typed-JSON frontend config. Status `Pending`. | this README |
+| 2026-06-02 | **A4 implemented** end-to-end (domain→service→controller→SDK→UI) on `wave3/a4-prompt-testing`. Test endpoint + usage analytics + repo pagination + variables-in-diff; `PRE_SUMMARY` kept (live). All gates green. | `packages/domains/src/{entities,models,factories}/generated/core/PromptTemplate*`, `…/repositories/generated/core/{PromptTemplate,PromptUsageRecord}Repository.ts`, `packages/applications/src/services/prompt-management/**`, `apps/api/src/modules/prompt-management/prompt-management.controller.ts`, `packages/agentic-sdk-v2/src/{core/constants.ts,types/prompt.ts,types/index.ts,hooks/usePrompts.ts}`, `apps/ui-playground/src/features/admin/{api/prompts.ts,prompts/index.tsx,prompts/prompt-test-panel.tsx,prompts/prompt-usage-analytics-panel.tsx}` |

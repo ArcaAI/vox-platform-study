@@ -124,4 +124,26 @@ describe('PromptTemplateFactory', () => {
     });
     expect(entity.scope).toBe('DEPARTMENT_DEFAULT');
   });
+
+  // ─── TASK-328 A4: prompt quality/score test fields ────────────────────
+
+  it('should default lastTestScore/lastTestOutput/lastTestAt to null', () => {
+    const entity = PromptTemplateFactory.CreatePromptTemplate({ tenantId: TEST_TENANT_ID });
+    expect(entity.lastTestScore).toBeNull();
+    expect(entity.lastTestOutput).toBeNull();
+    expect(entity.lastTestAt).toBeNull();
+  });
+
+  it('should honor explicit test fields', () => {
+    const at = new Date('2026-06-01T09:00:00.000Z');
+    const entity = PromptTemplateFactory.CreatePromptTemplate({
+      tenantId: TEST_TENANT_ID,
+      lastTestScore: 0.91,
+      lastTestOutput: 'sample',
+      lastTestAt: at,
+    });
+    expect(entity.lastTestScore).toBe(0.91);
+    expect(entity.lastTestOutput).toBe('sample');
+    expect(entity.lastTestAt).toBe(at);
+  });
 });

@@ -15,6 +15,9 @@ export interface CreatePromptTemplateProps extends BaseEntityFactoryCreateProps 
   departmentId?: string | null;
   scope?: PromptTemplateScope | null;
   ownerUserId?: string | null;
+  lastTestScore?: number | null;
+  lastTestOutput?: string | null;
+  lastTestAt?: Date | null;
   tags?: string[] | null;
   tenantId: string;
   createdAt?: Date;
@@ -43,6 +46,9 @@ export class PromptTemplateFactory {
       departmentId: props.departmentId ?? null,
       scope: props.scope ?? 'TENANT_DEFAULT',
       ownerUserId: props.ownerUserId ?? null,
+      lastTestScore: props.lastTestScore ?? null,
+      lastTestOutput: props.lastTestOutput ?? null,
+      lastTestAt: props.lastTestAt ?? null,
       tags: props.tags ?? [],
     });
   }
