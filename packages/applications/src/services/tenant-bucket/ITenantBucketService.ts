@@ -1,6 +1,7 @@
 import { TenantBucketPurpose } from '@arcaai/domains';
 import {
   CreateTenantBucketRequest,
+  DeleteTenantBucketObjectResponse,
   SetTenantBucketDefaultsRequest,
   TenantBucketDefaultsResponse,
   TenantBucketResponse,
@@ -18,6 +19,8 @@ export abstract class ITenantBucketService {
   abstract createCustomBucket(dto: CreateTenantBucketRequest): Promise<TenantBucketResponse>;
   abstract registerBucket(name: string, description?: string): Promise<TenantBucketResponse | null>;
   abstract deleteBucket(id: string): Promise<TenantBucketResponse>;
+  /** Remove a single object from a tenant bucket via the storage provider. */
+  abstract deleteObject(bucketId: string, fileKey: string): Promise<DeleteTenantBucketObjectResponse>;
   abstract provisionSystemBuckets(tenantId: string): Promise<TenantBucketResponse[]>;
   abstract getPresignedUrl(bucketId: string, fileKey: string): Promise<{ url: string }>;
   /** Read the tenant's current default bucket per purpose. */

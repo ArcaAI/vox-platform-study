@@ -1,5 +1,6 @@
 import {
   CreateTenantBucketRequest,
+  DeleteTenantBucketObjectResponse,
   ITenantBucketService,
   SetTenantBucketDefaultsRequest,
   TenantBucketDefaultsResponse,
@@ -89,6 +90,17 @@ export class TenantBucketController {
   @CanDelete('Storage')
   async deleteBucket(@Param('id') id: string): Promise<TenantBucketResponse> {
     return this.tenantBucketService.deleteBucket(id);
+  }
+
+  @Delete(':id/objects')
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
+  @ApiOperation({ summary: 'Delete a single object from a tenant bucket (storage-provider operation)' })
+  @ApiParam({ name: 'id', description: 'Bucket ID' })
+  @ApiQuery({ name: 'key', description: 'Object key/path to delete (e.g. 2026/04/08/streaming/file.wav)', required: true })
+  @ApiResponse({ status: 200, description: 'Object deleted', type: DeleteTenantBucketObjectResponse })
+  @CanDelete('Storage')
+  async deleteObject(@Param('id') id: string, @Query('key') key: string): Promise<DeleteTenantBucketObjectResponse> {
+    return this.tenantBucketService.deleteObject(id, key);
   }
 
   @Post('provision/:tenantId')

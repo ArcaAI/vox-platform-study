@@ -33,6 +33,7 @@ const mockTenantRepository = {
 const mockBlobStorage = {
     createBucket: vi.fn(),
     deleteBucket: vi.fn(),
+    deleteObject: vi.fn(),
     listObjects: vi.fn(),
     presignGet: vi.fn(),
 };
@@ -331,6 +332,88 @@ describe('TenantBucketService', () => {
                     resourceId: 'custom-1',
                 }),
             );
+        });
+
+        it('should remove the physical bucket via the storage provider before soft-deleting the row', async () => {
+            const customBucket = createMockBucketEntity({
+                id: 'custom-1',
+                name: 'hope-reports-arcaai',
+                bucketType: BUCKET_TYPE_CUSTOM,
+                isSystemBucket: false,
+            });
+            mockTenantBucketRepository.findById.mockResolvedValue(customBucket);
+            mockTenantBucketRepository.softDelete.mockResolvedValue(customBucket);
+            mockBlobStorage.deleteBucket.mockResolvedValue(undefined);
+
+            await service.deleteBucket('custom-1');
+
+            expect(mockBlobStorage.deleteBucket).toHaveBeenCalledWith('hope-reports-arcaai');
+            expect(mockTenantBucketRepository.softDelete).toHaveBeenCalledWith('custom-1');
+        });
+
+        it('should still soft-delete the row when the provider bucket removal fails', async () => {
+            const customBucket = createMockBucketEntity({
+                id: 'custom-1',
+                name: 'hope-reports-arcaai',
+                bucketType: BUCKET_TYPE_CUSTOM,
+                isSystemBucket: false,
+            });
+            mockTenantBucketRepository.findById.mockResolvedValue(customBucket);
+            mockTenantBucketRepository.softDelete.mockResolvedValue(customBucket);
+            mockBlobStorage.deleteBucket.mockRejectedValue(new Error('provider unavailable'));
+
+            const result = await service.deleteBucket('custom-1');
+
+            expect(result.id).toBe('custom-1');
+            expect(mockTenantBucketRepository.softDelete).toHaveBeenCalledWith('custom-1');
+        });
+    });
+
+    describe('deleteObject', () => {
+        it('should delete the object via the storage provider and broadcast ResourceDeleted', async () => {
+            const bucket = createMockBucketEntity({
+                id: 'bucket-1',
+                name: 'hope-audio-arcaai',
+            });
+            mockTenantBucketRepository.findById.mockResolvedValue(bucket);
+            mockBlobStorage.deleteObject.mockResolvedValue(undefined);
+
+            const result = await service.deleteObject('bucket-1', '2026/04/08/test.wav');
+
+            expect(result).toEqual({ key: '2026/04/08/test.wav', deleted: true });
+            expect(mockBlobStorage.deleteObject).toHaveBeenCalledWith({
+                bucket: 'hope-audio-arcaai',
+                key: '2026/04/08/test.wav',
+            });
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                'SysEvent.ResourceDeleted',
+                expect.objectContaining({ resourceId: 'bucket-1' }),
+            );
+        });
+
+        it('should throw NotFoundException when bucket not found', async () => {
+            mockTenantBucketRepository.findById.mockResolvedValue(null);
+
+            await expect(service.deleteObject('missing', 'file.wav'))
+                .rejects.toThrow(NotFoundException);
+        });
+
+        it('should throw ForbiddenException when bucket belongs to a different tenant', async () => {
+            const bucket = createMockBucketEntity({ tenantId: 'other-tenant' });
+            mockTenantBucketRepository.findById.mockResolvedValue(bucket);
+
+            await expect(service.deleteObject('bucket-1', 'file.wav'))
+                .rejects.toThrow(ForbiddenException);
+            expect(mockBlobStorage.deleteObject).not.toHaveBeenCalled();
+        });
+
+        it('should throw BadRequestException for a path-traversal key', async () => {
+            const bucket = createMockBucketEntity();
+            mockTenantBucketRepository.findById.mockResolvedValue(bucket);
+
+            await expect(service.deleteObject('bucket-1', '../../etc/passwd'))
+                .rejects.toThrow(BadRequestException);
+            expect(mockBlobStorage.deleteObject).not.toHaveBeenCalled();
         });
     });
 

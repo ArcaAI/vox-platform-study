@@ -56,7 +56,15 @@ export interface UseTenantBucketsReturn {
   setDefaults: (input: SetTenantBucketDefaultsInput) => Promise<TenantBucketDefaults>;
   create: (input: CreateTenantBucketInput) => Promise<TenantBucket>;
   remove: (id: string) => Promise<TenantBucket>;
+  /** Delete a single object from a bucket via the storage provider (TASK-328 A7). */
+  deleteObject: (id: string, key: string) => Promise<DeleteTenantBucketObjectResult>;
   provision: (tenantId: string) => Promise<TenantBucket[]>;
+}
+
+/** Result of removing a single object via {@link UseTenantBucketsReturn.deleteObject}. */
+export interface DeleteTenantBucketObjectResult {
+  key: string;
+  deleted: boolean;
 }
 
 export function useTenantBuckets(): UseTenantBucketsReturn {
@@ -123,11 +131,19 @@ export function useTenantBuckets(): UseTenantBucketsReturn {
     [execute],
   );
 
+  const deleteObject = useCallback(
+    (id: string, key: string) =>
+      execute<DeleteTenantBucketObjectResult>('deleteObject', (client) =>
+        client.delete<DeleteTenantBucketObjectResult>(appendFilters(TENANT_BUCKET_ENDPOINTS.DELETE_OBJECT(id), { key })),
+      ),
+    [execute],
+  );
+
   const provision = useCallback(
     (tenantId: string) =>
       execute<TenantBucket[]>('provision', (client) => client.post<TenantBucket[]>(TENANT_BUCKET_ENDPOINTS.PROVISION(tenantId), {})),
     [execute],
   );
 
-  return { buckets, isLoading, error, list, get, tree, presignedUrl, getDefaults, setDefaults, create, remove, provision };
+  return { buckets, isLoading, error, list, get, tree, presignedUrl, getDefaults, setDefaults, create, remove, deleteObject, provision };
 }

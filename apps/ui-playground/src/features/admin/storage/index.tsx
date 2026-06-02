@@ -9,21 +9,25 @@ import { type MultiColumnConfig, type MultiColumnContentConfig, MultiColumnLayou
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
 import { Separator } from '@arcaai/ui/separator';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Building2, FolderPlus, Grid3X3, List, Loader2, Plus, Upload } from 'lucide-react';
+import { Building2, FolderPlus, Grid3X3, KeyRound, List, Loader2, Plus, Settings2, Trash2, Upload } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   type TenantBucketObject,
   useCreateTenantBucket,
   useCreateTenantFolder,
+  useDeleteTenantBucket,
   useTenantBucketObjects,
   useTenantBuckets,
   useTenantBucketTree,
   useUploadTenantObject,
 } from '../api/tenant-storage';
 import { type Tenant, useTenantsInfinite } from '../api/tenants';
-import { AdminDataTable, StatusBadge } from '../components';
+import { AdminDataTable, ConfirmDialog, StatusBadge } from '../components';
 import { FolderTreeView } from '../components/folder-tree-view';
+import { AccessKeysPanel } from './access-keys-panel';
+import { ObjectActions } from './object-actions';
+import { ProviderConfigPanel } from './provider-config-panel';
 
 const PAGE_SIZE = 50;
 
@@ -61,6 +65,9 @@ export default function StorageManagementPage() {
   const [newFolderName, setNewFolderName] = useState('');
   const [visibleBucketCount, setVisibleBucketCount] = useState(PAGE_SIZE);
   const [visibleObjectCount, setVisibleObjectCount] = useState(PAGE_SIZE);
+  const [providerConfigOpen, setProviderConfigOpen] = useState(false);
+  const [accessKeysOpen, setAccessKeysOpen] = useState(false);
+  const [deleteBucketOpen, setDeleteBucketOpen] = useState(false);
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const uploadFolderInputRef = useRef<HTMLInputElement>(null);
@@ -113,6 +120,7 @@ export default function StorageManagementPage() {
   const createBucket = useCreateTenantBucket(effectiveTenantId || '');
   const createFolder = useCreateTenantFolder();
   const uploadObject = useUploadTenantObject();
+  const deleteBucket = useDeleteTenantBucket(effectiveTenantId || '');
 
   const selectedBucket = useMemo(() => bucketsData.find((bucket) => bucket.id === selectedBucketId), [bucketsData, selectedBucketId]);
 
@@ -184,8 +192,27 @@ export default function StorageManagementPage() {
         header: 'Updated',
         cell: ({ row }) => formatDate(row.original.lastModified),
       },
+      {
+        id: 'actions',
+        header: '',
+        cell: ({ row }) =>
+          effectiveTenantId && selectedBucket ? (
+            <ObjectActions
+              tenantId={effectiveTenantId}
+              bucketId={selectedBucket.id}
+              bucketName={selectedBucket.name}
+              objectKey={row.original.key}
+              prefix={selectedFolderPath}
+              compact
+              onDeleted={() => {
+                void refetchObjects();
+                void refetchBucketTree();
+              }}
+            />
+          ) : null,
+      },
     ],
-    [],
+    [effectiveTenantId, selectedBucket, selectedFolderPath, refetchObjects, refetchBucketTree],
   );
 
   const loadMoreOnScroll = (event: React.UIEvent<HTMLDivElement>, setCount: React.Dispatch<React.SetStateAction<number>>) => {
@@ -256,6 +283,20 @@ export default function StorageManagementPage() {
         void refetchObjects();
       })
       .catch((error: Error) => toast.error(error.message));
+  };
+
+  const handleDeleteBucket = () => {
+    if (!selectedBucket) return;
+    deleteBucket.mutate(selectedBucket.id, {
+      onSuccess: () => {
+        toast.success('Bucket deleted.');
+        setDeleteBucketOpen(false);
+        setSelectedBucketId('');
+        setSelectedFolderPath('');
+        void refetchBuckets();
+      },
+      onError: (error: Error) => toast.error(error.message),
+    });
   };
 
   const handleTenantSelect = useCallback(
@@ -466,6 +507,17 @@ export default function StorageManagementPage() {
             <Upload data-icon="inline-start" />
             Upload Folder
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setDeleteBucketOpen(true)}
+            disabled={!selectedBucket || selectedBucket.isSystemBucket || deleteBucket.isPending}
+            title={selectedBucket?.isSystemBucket ? 'System buckets cannot be deleted' : 'Delete bucket'}
+          >
+            <Trash2 data-icon="inline-start" />
+            Delete Bucket
+          </Button>
           <input
             ref={uploadInputRef}
             type="file"
@@ -506,10 +558,25 @@ export default function StorageManagementPage() {
             onScroll={(event: React.UIEvent<HTMLDivElement>) => loadMoreOnScroll(event, setVisibleObjectCount)}
           >
             {visibleObjects.map((item) => (
-              <div key={item.key} className="rounded-md border p-3">
+              <div key={item.key} className="flex flex-col gap-1 rounded-md border p-3">
                 <p className="truncate text-sm font-medium">{item.key}</p>
                 <p className="text-muted-foreground text-xs">{formatBytes(item.size ?? 0)}</p>
                 <p className="text-muted-foreground text-xs">{formatDate(item.lastModified)}</p>
+                {effectiveTenantId && selectedBucket && (
+                  <div className="mt-1 border-t pt-1">
+                    <ObjectActions
+                      tenantId={effectiveTenantId}
+                      bucketId={selectedBucket.id}
+                      bucketName={selectedBucket.name}
+                      objectKey={item.key}
+                      prefix={selectedFolderPath}
+                      onDeleted={() => {
+                        void refetchObjects();
+                        void refetchBucketTree();
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -528,9 +595,21 @@ export default function StorageManagementPage() {
 
   return (
     <Main>
-      <div className="mb-4">
-        <h2 className="text-2xl font-bold tracking-tight">Storage Management</h2>
-        <p className="text-muted-foreground mt-1">Manage tenant buckets, folder tree, and blob objects via admin APIs.</p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Storage Management</h2>
+          <p className="text-muted-foreground mt-1">Manage tenant buckets, folder tree, and blob objects via admin APIs.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setProviderConfigOpen(true)} disabled={!effectiveTenantId}>
+            <Settings2 data-icon="inline-start" />
+            Provider Config
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setAccessKeysOpen(true)} disabled={!effectiveTenantId}>
+            <KeyRound data-icon="inline-start" />
+            Access Keys
+          </Button>
+        </div>
       </div>
       <MultiColumnLayout
         columns={[tenantsColumn, bucketsColumn, objectsColumn]}
@@ -590,6 +669,45 @@ export default function StorageManagementPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={providerConfigOpen} onOpenChange={setProviderConfigOpen}>
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Storage Provider Configuration</DialogTitle>
+            <DialogDescription>Configure the storage backend and default buckets for this tenant.</DialogDescription>
+          </DialogHeader>
+          {effectiveTenantId ? (
+            <ProviderConfigPanel tenantId={effectiveTenantId} buckets={bucketsData} />
+          ) : (
+            <p className="text-muted-foreground text-sm">Select a tenant first.</p>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={accessKeysOpen} onOpenChange={setAccessKeysOpen}>
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Storage Access Keys</DialogTitle>
+            <DialogDescription>Manage programmatic access keys for this tenant&apos;s storage.</DialogDescription>
+          </DialogHeader>
+          {effectiveTenantId ? (
+            <AccessKeysPanel tenantId={effectiveTenantId} />
+          ) : (
+            <p className="text-muted-foreground text-sm">Select a tenant first.</p>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={deleteBucketOpen}
+        onOpenChange={setDeleteBucketOpen}
+        title="Delete bucket?"
+        description={`This permanently removes the bucket "${selectedBucket?.slug ?? ''}" and its storage container. This action cannot be undone.`}
+        confirmLabel="Delete bucket"
+        variant="destructive"
+        isLoading={deleteBucket.isPending}
+        onConfirm={handleDeleteBucket}
+      />
     </Main>
   );
 }

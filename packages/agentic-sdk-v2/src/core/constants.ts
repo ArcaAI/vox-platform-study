@@ -638,6 +638,8 @@ export const TENANT_BUCKET_ENDPOINTS = {
   CREATE: '/admin/tenants/storage/buckets',
   /** Delete a custom bucket */
   DELETE: (id: string) => `/admin/tenants/storage/buckets/${encodeURIComponent(id)}`,
+  /** Delete a single object in a bucket (storage-provider op; required `?key=`) (TASK-328 A7) */
+  DELETE_OBJECT: (id: string) => `/admin/tenants/storage/buckets/${encodeURIComponent(id)}/objects`,
   /** Provision system buckets for a tenant */
   PROVISION: (tenantId: string) => `/admin/tenants/storage/buckets/provision/${encodeURIComponent(tenantId)}`,
 } as const;
