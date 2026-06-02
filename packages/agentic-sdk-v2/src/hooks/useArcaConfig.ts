@@ -27,7 +27,7 @@ import {
   selectModelRegistryVersion,
   selectLogger,
 } from '../store';
-import type { UserPreferences, ModelDefinition, TenantAudioConfig } from '../types';
+import type { UserPreferences, ModelDefinition, TenantAudioConfig, SttTask } from '../types';
 import { AgenticError } from '../types';
 import type { AppConfig } from '../core/ConfigSchema';
 import type { ISDKLogger } from '../core/logger';
@@ -48,6 +48,8 @@ export interface UseArcaConfigReturn {
       stt?: string;
       vad?: string;
       ner?: string;
+      /** TASK-329 P3 — persisted local Whisper task (transcribe|translate). */
+      sttTask?: SttTask;
     };
   };
   /** Tenant-scoped audio/AI configuration (null until loaded) */
@@ -56,6 +58,8 @@ export interface UseArcaConfigReturn {
   update: (updates: Partial<UserPreferences>) => Promise<void>;
   /** Select a model for a capability */
   selectModel: (type: 'stt' | 'vad' | 'ner', modelId: string) => void;
+  /** TASK-329 P3 — persist the local STT task (transcribe|translate) */
+  selectSttTask: (task: SttTask) => void;
   /** Get a specific preference value */
   get: <K extends keyof UserPreferences>(key: K) => UserPreferences[K];
   /** Reset preferences to defaults */
@@ -191,6 +195,24 @@ export function useArcaConfig(): UseArcaConfigReturn {
     [modelRegistry, incrementModelRegistryVersion, getLogger, requireReady],
   );
 
+  const selectSttTask = useCallback(
+    (task: SttTask): void => {
+      requireReady('selectSttTask');
+      const logger = getLogger();
+      if (!modelRegistry) return;
+
+      logger?.debug('Selecting STT task', {
+        operation: 'selectSttTask',
+        component: 'useArcaConfig',
+        attributes: { task },
+      });
+
+      modelRegistry.selectSttTask(task);
+      incrementModelRegistryVersion();
+    },
+    [modelRegistry, incrementModelRegistryVersion, getLogger, requireReady],
+  );
+
   const isLocked = useCallback(
     (path: string): boolean => {
       if (!configManager) return true;
@@ -254,6 +276,7 @@ export function useArcaConfig(): UseArcaConfigReturn {
       tenantConfig,
       update,
       selectModel,
+      selectSttTask,
       get,
       reset,
       resolvedConfig,
@@ -268,6 +291,7 @@ export function useArcaConfig(): UseArcaConfigReturn {
       tenantConfig,
       update,
       selectModel,
+      selectSttTask,
       get,
       reset,
       resolvedConfig,

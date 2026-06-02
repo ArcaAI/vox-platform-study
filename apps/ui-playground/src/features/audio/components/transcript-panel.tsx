@@ -629,7 +629,7 @@ function useModelCacheStatus(modelId: string) {
 }
 
 function LocalAITranscriptInner({ onRetry }: { onRetry?: () => void }) {
-  const { language, whisperModel, sources, isMixing, noiseFilterEnabled, diarizationEnabled, vadEnabled, vadThreshold, codeSwitchingEnabled } =
+  const { language, whisperModel, sttTask, sources, isMixing, noiseFilterEnabled, diarizationEnabled, vadEnabled, vadThreshold, codeSwitchingEnabled } =
     useAudioStore();
   const debugMode = usePlaygroundStore((s) => s.debugMode);
   const [transcriptEntries, setTranscriptEntries] = useState<TranscriptEntry[]>([]);
@@ -766,6 +766,9 @@ function LocalAITranscriptInner({ onRetry }: { onRetry?: () => void }) {
         returnTimestamps: 'word' as const,
         codeSwitching: codeSwitchingEnabled,
         vadGate: vadGatedMode,
+        // TASK-329 P3 — drive the local Whisper task from the user's
+        // selection (transcribe in source language vs translate to English).
+        task: sttTask,
       },
       // TASK-304 Wave 3 hotfix: forward the enrolled voice profile so the
       // local diarizer pins its first allocated slot to a doctor-friendly id.
@@ -809,6 +812,7 @@ function LocalAITranscriptInner({ onRetry }: { onRetry?: () => void }) {
       track,
       resolvedLanguage,
       whisperModel,
+      sttTask,
       diarizationEnabled,
       codeSwitchingEnabled,
       vadGatedMode,

@@ -149,6 +149,35 @@ describe('useSTT hook integration', () => {
     });
   });
 
+  // TASK-329 P3 — switching the local Whisper task (transcribe<->translate)
+  // must rebuild the processor so the new task is baked into the (pooled) local
+  // provider; otherwise a translate request silently reuses a transcribe-warm
+  // provider. The task therefore belongs in the config fingerprint.
+  describe('Processor recreation on task change (TASK-329 P3)', () => {
+    it('recreates processor when features.task changes', async () => {
+      const { rerender } = renderHook(
+        ({ task }: { task: 'transcribe' | 'translate' }) =>
+          useSTT({
+            track: null,
+            autoAttach: false,
+            sttSocket: 'wss://test.example.com/ws/stt',
+            features: { provider: 'local', modelId: 'whisper-small', task },
+          }),
+        { initialProps: { task: 'transcribe' as 'transcribe' | 'translate' } },
+      );
+
+      await act(async () => { await Promise.resolve(); });
+      expect(processorInstances).toHaveLength(1);
+      const firstProcessor = processorInstances[0];
+
+      await act(async () => { rerender({ task: 'translate' }); });
+      await act(async () => { await Promise.resolve(); });
+
+      expect(processorInstances).toHaveLength(2);
+      expect(firstProcessor.destroy).toHaveBeenCalled();
+    });
+  });
+
   describe('Processor stability on irrelevant prop changes', () => {
     it('does NOT recreate processor when non-fingerprint props change', async () => {
       const onTranscription1 = vi.fn();
