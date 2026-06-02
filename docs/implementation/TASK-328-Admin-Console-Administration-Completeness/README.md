@@ -7,7 +7,7 @@
 | Parent | **TASK-325** (Admin Console Transformation — umbrella) |
 | Created | 2026-06-02 |
 | Updated | 2026-06-02 |
-| Status | `Pending` |
+| Status | `Completed` (2026-06-02) — A1–A8 shipped + merged to `fix/2605-review` |
 | Type | feature |
 | Scope | `apps/ui-playground/`, `apps/api/`, `packages/database/`, `packages/domains/`, `packages/applications/`, `@arcaai/vox` |
 | Depends on | **TASK-326** (security) + **TASK-327** (scope shell) |
@@ -19,13 +19,13 @@
 ## 1. Requirement Analysis
 
 ### 1.1 Acceptance criteria
-- [ ] **A6 (X4)** — **Frontend** pipeline config as typed JSON: `TenantFrontendConfig` model (`asrModel`, `noiseCancel`, `vad`, `voiceEnrollment`, `diarization`, `configJson`) + `GET/PUT /admin/tenant/frontend-config` + a "Frontend Pipeline" tab. **Backend** pipeline gains per-tenant **default** assignment + `AsrPipelineVersion` history + enable/disable toggle.
-- [ ] **A4** — Prompt **quality/score testing**: `lastTestScore/Output/At` fields + `POST /admin/prompt-templates/:id/test` (SMR-scored) + a Test panel; usage analytics grouped by dept/user/time (`GROUP BY` on `PromptUsageRecord`); diff includes `variables`; pagination pushed to the repository; remove dead `PRE_SUMMARY` client enum.
-- [ ] **A5** — DNA **aggregate dashboard**: `GET /admin/dna-writing-styles/dashboard?tenantId=` (`usersWithStyle`, `avgVersions`, `recentActivity` from `DnaUsageRecord`) → Stat strip + chart above the existing browser.
-- [ ] **A7** — Storage: wire delete file/bucket (with confirm dialogs); access-key UI (`StorageAccessKey`); provider/topology config UI (`tenant-storage-config-admin`); presigned download links.
-- [ ] **A8** — Audit: date-range/action/resource filters; responsible-user column; before/after `data` detail drawer; CSV export endpoint.
-- [ ] **A1–A3** — Tenant-detail completeness: Prompt-Templates + tenant-scoped Storage tabs; voice-profile + DNA + all-namespace settings sections in `UserDetailDialog`; `UserDepartment` join model + assignment endpoints; "manage selected tenant as tenant admin" CTA.
-- [ ] Skeleton/empty/toast per rules `10`/`11`; OCC (`If-Match`) on all mutations; gates green (§4).
+- [x] **A6 (X4)** — **Frontend** pipeline config as typed JSON: `TenantFrontendConfig` model (`asrModel`, `noiseCancel`, `vad`, `voiceEnrollment`, `diarization`, `configJson`) + `GET/PUT /admin/tenant/frontend-config` + a "Frontend Pipeline" tab. **Backend** pipeline gains per-tenant **default** assignment + `AsrPipelineVersion` history + enable/disable toggle.
+- [x] **A4** — Prompt **quality/score testing**: `lastTestScore/Output/At` fields + `POST /admin/prompt-templates/:id/test` (SMR-scored) + a Test panel; usage analytics grouped by dept/user/time (`GROUP BY` on `PromptUsageRecord`); diff includes `variables`; pagination pushed to the repository; remove dead `PRE_SUMMARY` client enum.
+- [x] **A5** — DNA **aggregate dashboard**: `GET /admin/dna-writing-styles/dashboard?tenantId=` (`usersWithStyle`, `avgVersions`, `recentActivity` from `DnaUsageRecord`) → Stat strip + chart above the existing browser.
+- [x] **A7** — Storage: wire delete file/bucket (with confirm dialogs); access-key UI (`StorageAccessKey`); provider/topology config UI (`tenant-storage-config-admin`); presigned download links.
+- [x] **A8** — Audit: date-range/action/resource filters; responsible-user column; before/after `data` detail drawer; CSV export endpoint.
+- [x] **A1–A3** — Tenant-detail completeness: Prompt-Templates + tenant-scoped Storage tabs; voice-profile + DNA + all-namespace settings sections in `UserDetailDialog`; `UserDepartment` join model + assignment endpoints; "manage selected tenant as tenant admin" CTA.
+- [x] Skeleton/empty/toast per rules `10`/`11`; OCC (`If-Match`) on all mutations; gates green (§4).
 
 ### 1.2 Non-goals
 - Developer playgrounds (TASK-329). Security scoping (TASK-326).
@@ -70,6 +70,18 @@ Schema was already migrated (frozen); this slice threaded the columns through th
 - **`PRE_SUMMARY`**: **kept** — it is a live `PromptTemplateCategory` member consumed by the admin badge map + consultation/summary context-item types (not dead).
 - **Gates** (all green): domains 1102✓, applications 4518✓, vox 3111✓ (148 files), ui-playground 737✓ + type-check✓, `build:api`✓, lint clean. Live SMR scoring deferred to CI (unit-tested with a mocked SMR client).
 
+### A5–A8 + A1–A3 — shipped slices (roll-up)
+
+Each slice was implemented end-to-end on its own `wave3/*` worktree behind a green gate (domain→app→SDK→API→UI, RED tests at service/controller, UI smoke) and merged to `fix/2605-review`; the per-slice file lists live in the cited merge commits. None ran `git push` or `prisma migrate` (the schema-first sub-wave landed all additive columns/models up front).
+
+| Slice | Scope | Commit |
+|---|---|---|
+| **A5** | DNA **aggregate dashboard** — `GET /admin/dna-writing-styles/dashboard` (usersWithStyle / avgVersions / recentActivity) + stat strip & chart above the browser | `17c527fc` |
+| **A6** | **Frontend** (typed-JSON `TenantFrontendConfig`) + **backend** pipeline config (`AsrPipelineVersion` history, per-tenant default, enable/disable) + admin nav wiring | `08dd869d`, `a9015d6d` |
+| **A7** | **Storage** management — delete file/bucket (confirm dialogs), access-key UI, provider/topology config, presigned downloads | `081c56d5` |
+| **A8** | **Audit** — date-range/action/resource filters, responsible-user column, before/after `data` detail drawer, CSV export | `a65fbe2a` |
+| **A1–A3** | **Tenant-detail** (Prompt-Templates + tenant-scoped Storage tabs) + `UserDetailDialog` (voice/DNA/all-namespace settings) + `UserDepartment` assignment + "manage selected tenant as tenant admin" CTA | `80e97afd` |
+
 ---
 
 ## 6. Change History
@@ -77,3 +89,8 @@ Schema was already migrated (frozen); this slice threaded the columns through th
 |---|---|---|
 | 2026-06-02 | Sub-ticket created from TASK-325 §3.7 (Phase 2). Scope = A4–A8 + A1–A3 tenant-detail; Q3 SDK-first, Q5 typed-JSON frontend config. Status `Pending`. | this README |
 | 2026-06-02 | **A4 implemented** end-to-end (domain→service→controller→SDK→UI) on `wave3/a4-prompt-testing`. Test endpoint + usage analytics + repo pagination + variables-in-diff; `PRE_SUMMARY` kept (live). All gates green. | `packages/domains/src/{entities,models,factories}/generated/core/PromptTemplate*`, `…/repositories/generated/core/{PromptTemplate,PromptUsageRecord}Repository.ts`, `packages/applications/src/services/prompt-management/**`, `apps/api/src/modules/prompt-management/prompt-management.controller.ts`, `packages/agentic-sdk-v2/src/{core/constants.ts,types/prompt.ts,types/index.ts,hooks/usePrompts.ts}`, `apps/ui-playground/src/features/admin/{api/prompts.ts,prompts/index.tsx,prompts/prompt-test-panel.tsx,prompts/prompt-usage-analytics-panel.tsx}` |
+| 2026-06-02 | **A5 shipped** — DNA aggregate dashboard endpoint + stat strip/chart. Gate green; merged to `fix/2605-review`. | commit `17c527fc` (see merge for file list) |
+| 2026-06-02 | **A6 shipped** — frontend (typed-JSON `TenantFrontendConfig`) + backend pipeline config (`AsrPipelineVersion`, per-tenant default, enable/disable) + admin nav. Gate green; merged. | commits `08dd869d`, `a9015d6d` |
+| 2026-06-02 | **A7 shipped** — storage management (delete file/bucket + confirm, access-key UI, provider/topology config, presigned downloads). Gate green; merged. | commit `081c56d5` |
+| 2026-06-02 | **A8 shipped** — audit filters (date-range/action/resource) + responsible-user column + before/after detail drawer + CSV export. Gate green; merged. | commit `a65fbe2a` |
+| 2026-06-02 | **A1–A3 shipped** — tenant-detail (Prompt-Templates + Storage tabs), `UserDetailDialog` (voice/DNA/settings), `UserDepartment` assignment, "manage as tenant admin" CTA. Gate green; merged. **TASK-328 → `Completed`.** | commit `80e97afd` |
