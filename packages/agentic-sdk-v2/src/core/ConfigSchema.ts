@@ -1,4 +1,5 @@
 import * as v from 'valibot';
+import { DEFAULT_AVAILABLE_STT_MODELS } from '../types/models';
 
 /**
  * TASK-297 DEF-C5 — added `'department'` tier so the 4-tier cascade
@@ -34,11 +35,9 @@ export const AudioConfigSchema = v.object({
 export const SttConfigSchema = v.object({
   provider: v.optional(v.picklist(['local', 'backend', 'auto']), 'local'),
   defaultModel: v.optional(v.string(), 'whisper-tiny'),
-  availableModels: v.optional(v.array(v.object({ id: v.string(), name: v.string(), size: v.optional(v.string()) })), [
-    { id: 'whisper-tiny', name: 'Whisper Tiny', size: '~75 MB' },
-    { id: 'whisper-base', name: 'Whisper Base', size: '~150 MB' },
-    { id: 'whisper-small', name: 'Whisper Small', size: '~500 MB' },
-  ]),
+  // TASK-329 P3 — default derived from DEFAULT_STT_MODELS (single source of
+  // truth) so the presented list can never drift from the registry-loadable set.
+  availableModels: v.optional(v.array(v.object({ id: v.string(), name: v.string(), size: v.optional(v.string()) })), [...DEFAULT_AVAILABLE_STT_MODELS]),
   language: v.optional(v.string(), 'en'),
 });
 

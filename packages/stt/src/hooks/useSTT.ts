@@ -192,6 +192,10 @@ export function useSTT(options: UseSTTOptions): UseSTTReturn {
         codeSwitching: sttOptions.features?.codeSwitching,
         vadGate: sttOptions.features?.vadGate,
         returnTimestamps: sttOptions.features?.returnTimestamps,
+        // TASK-329 P3: the Whisper task (transcribe|translate) is baked into the
+        // pooled local provider at init, so switching it must rebuild the
+        // processor — otherwise a translate request reuses a transcribe-warm one.
+        task: sttOptions.features?.task,
         // TASK-304 Wave 3 hotfix: include the voice-profile identity in the
         // fingerprint so a late-arriving `activeVoiceProfile` (e.g. backend
         // preferences resolving after the user already mounted the panel)
@@ -208,6 +212,7 @@ export function useSTT(options: UseSTTOptions): UseSTTReturn {
       sttOptions.features?.codeSwitching,
       sttOptions.features?.vadGate,
       sttOptions.features?.returnTimestamps,
+      sttOptions.features?.task,
       sttOptions.audio?.language,
       sttOptions.voiceProfile?.id,
       sttOptions.voiceProfile?.reservedSpeakerId,

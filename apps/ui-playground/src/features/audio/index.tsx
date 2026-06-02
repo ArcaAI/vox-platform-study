@@ -12,7 +12,7 @@ import { AudioWorkspace } from './components/audio-workspace';
 export default function AudioPage() {
   const { isImpersonating, impersonatedUser } = useAuth();
   const localUser = useAuthStore((s: { user: { username?: string } | null }) => s.user);
-  const { reset, applyTenantDefaults, applyResolvedConfig, setConfigReady } = useAudioStore();
+  const { reset, applyTenantDefaults, applyResolvedConfig, setConfigReady, applyPersistedSelection } = useAudioStore();
   const tenantId = useAuthStore((s) => s.tenantId);
   const { requiresImpersonation, roles } = useDoctorContext();
 
@@ -28,6 +28,11 @@ export default function AudioPage() {
   const resolvedConfig = arcaConfig?.resolvedConfig ?? null;
   const configReady = arcaConfig?.configReady ?? false;
   const tenantConfig = arcaConfig?.tenantConfig ?? null;
+  // TASK-329 P3 — the user's persisted local model + Whisper task live in the
+  // SDK model registry (tenant/user-namespaced localStorage). Read them here so
+  // we can layer the USER choice over the tenant/default already seeded below.
+  const persistedModelId = arcaConfig?.models?.selected?.stt ?? null;
+  const persistedSttTask = arcaConfig?.models?.selected?.sttTask ?? null;
 
   useEffect(() => {
     // Prefer SDK resolvedConfig when available and ready (TASK-244)
@@ -77,6 +82,15 @@ export default function AudioPage() {
       localAsrModels: tenantConfig.localAsrModels ? [...tenantConfig.localAsrModels].sort((a, b) => a.id.localeCompare(b.id)) : undefined,
     });
   }, [resolvedConfig, configReady, tenantConfig, applyTenantDefaults, applyResolvedConfig, setConfigReady]);
+
+  // TASK-329 P3 — once the tenant/default config has seeded the store (above),
+  // layer the USER's persisted model + task on top (USER → TENANT → DEFAULT).
+  // Runs after the config effect in the same flush, so `availableAsrModels` is
+  // already populated when `applyPersistedSelection` validates the user model.
+  useEffect(() => {
+    if (!configReady) return;
+    applyPersistedSelection({ userModelId: persistedModelId, userTask: persistedSttTask });
+  }, [configReady, persistedModelId, persistedSttTask, applyPersistedSelection]);
 
   const activeUser = isImpersonating ? impersonatedUser : localUser;
 

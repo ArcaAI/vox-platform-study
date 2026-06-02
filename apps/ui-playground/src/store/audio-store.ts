@@ -1,4 +1,4 @@
-import type { AppConfig } from '@arcaai/vox';
+import type { AppConfig, SttTask } from '@arcaai/vox';
 import { create } from 'zustand';
 
 const BROWSER_VIABLE_MODELS = new Set(['whisper-tiny', 'whisper-base', 'whisper-small']);
@@ -104,6 +104,8 @@ interface AudioState {
   codeSwitchingEnabled: boolean;
   whisperModel: string;
   availableAsrModels: LocalAsrModelOption[];
+  /** TASK-329 P3 — local Whisper task (transcribe|translate) for on-device STT. */
+  sttTask: SttTask;
   language: string;
   selectedPipelineId: string | null;
   configReady: boolean;
@@ -143,8 +145,18 @@ interface AudioActions {
   toggleDiarization: () => void;
   toggleCodeSwitching: () => void;
   setWhisperModel: (model: string) => void;
+  setSttTask: (task: SttTask) => void;
   setLanguage: (language: string) => void;
   setSelectedPipelineId: (id: string | null) => void;
+
+  /**
+   * TASK-329 P3 — layer the USER's persisted local-model + task choice on top of
+   * the tenant/default already seeded into the store (USER → TENANT → DEFAULT).
+   * A persisted model that is not in the browser-viable `availableAsrModels` set
+   * is ignored (keeps the tenant/default), and the task falls back to
+   * 'transcribe'.
+   */
+  applyPersistedSelection: (selection: { userModelId?: string | null; userTask?: SttTask | null }) => void;
 
   applyTenantDefaults: (config: {
     defaultLanguage?: string;
@@ -198,6 +210,7 @@ const initialState: AudioState = {
     { id: 'whisper-base', name: 'Whisper Base', size: '~150 MB' },
     { id: 'whisper-small', name: 'Whisper Small', size: '~500 MB' },
   ],
+  sttTask: 'transcribe',
   language: '',
   selectedPipelineId: null,
   configReady: false,
@@ -278,8 +291,30 @@ export const useAudioStore = create<AudioState & AudioActions>()((set, get) => (
   toggleDiarization: () => set((s) => ({ diarizationEnabled: !s.diarizationEnabled })),
   toggleCodeSwitching: () => set((s) => ({ codeSwitchingEnabled: !s.codeSwitchingEnabled })),
   setWhisperModel: (model) => set({ whisperModel: model }),
+  setSttTask: (task) => set({ sttTask: task }),
   setLanguage: (language) => set({ language }),
   setSelectedPipelineId: (id) => set({ selectedPipelineId: id }),
+
+  applyPersistedSelection: ({ userModelId, userTask }) => {
+    const current = get();
+    const updates: Partial<AudioState> = {};
+
+    // USER over the TENANT/DEFAULT already seeded into the store by
+    // apply*Config. A persisted user model that is not in the browser-viable
+    // `availableAsrModels` set is ignored (keeps the tenant/default).
+    const normalizedUser = userModelId ? normalizeModelId(userModelId) : undefined;
+    const userIsAvailable = normalizedUser != null && current.availableAsrModels.some((m) => m.id === normalizedUser);
+    if (userIsAvailable && normalizedUser !== current.whisperModel) {
+      updates.whisperModel = normalizedUser;
+    }
+
+    const resolvedTask: SttTask = userTask ?? 'transcribe';
+    if (resolvedTask !== current.sttTask) {
+      updates.sttTask = resolvedTask;
+    }
+
+    if (Object.keys(updates).length > 0) set(updates);
+  },
 
   applyTenantDefaults: (config) => {
     const current = get();

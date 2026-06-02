@@ -6,7 +6,7 @@
  */
 
 import * as v from 'valibot';
-import type { ModelDefinition, ModelRegistryConfig, ModelLoadProgress, SelectedModels, TenantAudioConfig } from '../types';
+import type { ModelDefinition, ModelRegistryConfig, ModelLoadProgress, SelectedModels, SttTask, TenantAudioConfig } from '../types';
 import { DEFAULT_MODELS, DEFAULT_TENANT_FEATURES, parseTenantConfig } from '../types';
 import { AgenticError } from '../types';
 import type { AgenticClient } from './AgenticClient';
@@ -28,6 +28,8 @@ const SELECTED_MODELS_SCHEMA = v.object({
   stt: v.optional(v.string()),
   vad: v.optional(v.string()),
   ner: v.optional(v.string()),
+  // TASK-329 P3 — persisted Whisper task (transcribe|translate) for local STT.
+  sttTask: v.optional(v.picklist(['transcribe', 'translate'])),
 });
 
 /**
@@ -237,6 +239,31 @@ export class ModelRegistry {
   }
 
   /**
+   * TASK-329 P3 — get the persisted local STT task (transcribe|translate).
+   */
+  getSttTask(): SttTask | undefined {
+    return this.selected.sttTask;
+  }
+
+  /**
+   * TASK-329 P3 — persist the local STT task alongside the selected model in
+   * the same tenant/user-namespaced row. Unlike the tenant-default auto-select
+   * in `loadTenantConfig`, this is an explicit user action, so it always
+   * persists (mirrors `selectModel`).
+   */
+  selectSttTask(task: SttTask): void {
+    const previousTask = this.selected.sttTask;
+    this.selected.sttTask = task;
+    this.saveSelectedToStorage();
+
+    this.logger?.info('STT task selected', {
+      operation: 'selectSttTask',
+      component: 'ModelRegistry',
+      attributes: { task, previousTask },
+    });
+  }
+
+  /**
    * Clear selection for a type
    */
   clearSelection(type: 'stt' | 'vad' | 'ner'): void {
@@ -397,7 +424,6 @@ export class ModelRegistry {
       'whisper-tiny': 'onnx-community/whisper-tiny',
       'whisper-base': 'onnx-community/whisper-base',
       'whisper-small': 'onnx-community/whisper-small',
-      'whisper-medium': 'onnx-community/whisper-medium',
       'silero-vad-v5': 'snakers4/silero-vad',
       'silero-vad-v4': 'snakers4/silero-vad',
     };

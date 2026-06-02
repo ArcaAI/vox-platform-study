@@ -7,7 +7,7 @@
 | Parent | **TASK-325** (Admin Console Transformation — umbrella) |
 | Created | 2026-06-02 |
 | Updated | 2026-06-02 |
-| Status | `In Progress` (P5 + P6 + X3 + X10 delivered; P2–P4 + LiveCodePanel pending) |
+| Status | `In Progress` (P3 + P5 + P6 + X3 + X10 delivered; P2 + P4 + LiveCodePanel pending) |
 | Type | feature |
 | Scope | `apps/ui-playground/`, `@arcaai/vox`, `packages/{stt,vad,noise-filter}`, `apps/api/`, `packages/database/` |
 | Depends on | **TASK-326** (security) + **TASK-327** (scope shell + impersonation gate) |
@@ -20,7 +20,7 @@
 
 ### 1.1 Acceptance criteria
 - [ ] **P2 Consultation** — in-flow mic recording using the impersonated user's pipeline prefs (realtime transcript); batch-transcription + SSE wired into the audio case-note tab (`useFileTranscription`); summary via preferred dept prompt **with fallback**; chain-of-consultation reference UI (`GET /:id/chain`); **RAW + PROCESSED** dual capture — add `rawMediaId`/`processedMediaId` to `AudioRecording` and save both streams (**X8**).
-- [ ] **P3 Audio** — local-model **task** selection (transcribe/translate); per-user prefs persisted via `PATCH /user/me/settings`; fix `localAsrModels`/`availableModels` mismatch.
+- [x] **P3 Audio** — local-model **task** selection (transcribe/translate); per-user prefs persisted **via the SDK `ModelRegistry` (tenant/user-namespaced `localStorage`, per rule 08)** — see §5.5 deviation note; fix `localAsrModels`/`availableModels` mismatch. ✅ delivered — see §5.5.
 - [ ] **P4 Voice** — **local** in-browser enrollment (new local embedding provider + `POST /voice-profile/enroll-embedding`); **quick test** (mic/upload match + `POST /voice-profile/test`); diarization seeding feedback (`voiceProfileSeeded`); fix the always-"Active" badge.
 - [x] **P5 DNA** — generate from **selected historical data** (version picker → `sourceIds`); **set-default** (`PATCH /:reportId/default`); two-version **diff** (`version-diff-panel`); wrap page in `ImpersonationGuard`; fix the empty Edit dialog. ✅ delivered — see §5.3.
 - [x] **P6 Summarization** — backend summary **list + version browser**; `cacheHit`/`qualityScore` fields + endpoints; version **diff**; **tagging** (`Tag`); **edit→new version**; fix the raw-DNA ownership bypass via `/text/generate/assembled` (**X3**); namespace `localStorage` history by tenant/user (**X10**). ✅ delivered — see §5.1.
@@ -169,9 +169,52 @@ Vertical slice on branch `wave3/p5-dna-playground`. **No schema change / no `pri
 
 ---
 
+### 5.5 P3 Audio & Transcription playground — local-model task selection — delivered 2026-06-02
+
+Vertical slice on branch `wave3/p3-audio-models`. **No schema change / no `prisma migrate` / no `git`** — model + task are browser-runtime selections persisted in namespaced `localStorage` via the SDK model registry (no DB column, no API endpoint).
+
+**BUG fix — `availableModels` mismatch (single source of truth).** *Root cause:* `DEFAULT_STT_MODELS` (the registry's selectable + loadable set, used by `ModelRegistry.getModelsByType('stt')` and `getModelUrl`) listed **four** models including `whisper-medium`, while the set *presented* to the user — the `SttConfigSchema.availableModels` default (surfaced as `SYSTEM_DEFAULTS.stt.availableModels`) and the playground's `BROWSER_VIABLE_MODELS` filter — only ever listed **tiny/base/small**. The registry therefore advertised `whisper-medium` as selectable/loadable (`getModelUrl('whisper-medium') → onnx-community/whisper-medium`) even though the UI never offered it, and there was no single declaration the two sides shared. *Fix:* trim `DEFAULT_STT_MODELS` to `tiny/base/small`, derive a new `DEFAULT_AVAILABLE_STT_MODELS` **from** `DEFAULT_STT_MODELS`, point `SttConfigSchema.availableModels`'s default at `DEFAULT_AVAILABLE_STT_MODELS`, and drop `whisper-medium` from the registry's HF-URL map — so *presented === selectable === loadable* by construction. *Regression test* (`core/__tests__/availableModels.task329.test.ts`): pins `SYSTEM_DEFAULTS.stt.availableModels` ids === `DEFAULT_STT_MODELS` ids, and presented ⊆ loadable (`getModelUrl`) ∧ selectable ⊆ presented — **fails RED** on the old 4-vs-3 drift.
+
+**Persistence key scheme (tenant/user-namespaced, rule 08).** The per-user local **model** and **Whisper task** persist through the SDK `ModelRegistry` into `localStorage` under `` `${STORAGE_KEYS.SELECTED_MODELS}/${namespace}` `` where `namespace = resolveNamespace()` (tenant/user-derived; `pre-login` before auth). The single `SelectedModels` row holds `{ stt, vad, ner, sttTask }`; `selectModel('stt', id)` and `selectSttTask(task)` write the same namespaced row, validated by `SELECTED_MODELS_SCHEMA` (valibot, `sttTask` ∈ `picklist(['transcribe','translate'])`). It survives reload and is isolated per tenant/user (covered by `ModelRegistry.task329.test.ts`). On next visit the audio page rehydrates via `useArcaConfig().models.selected` → `applyPersistedSelection`.
+
+> **Deviation from the §1.1 sketch (`PATCH /user/me/settings`).** Implemented via the namespaced `ModelRegistry` instead, matching the slice brief's explicit *"persist … via the SDK (tenant/user-namespaced, per rule 08)"*. Rationale: the local model + task are **browser-runtime** choices over the on-device-loadable set, and `stt.defaultModel` is **admin-locked** in the 3-tier config — so `setUserPreference`/a settings PATCH cannot hold a per-user model override. The **tenant default** still flows from config (`applyResolvedConfig`/`applyTenantDefaults`); the **user** override layers on top via the registry (USER → TENANT → DEFAULT).
+
+**SDK (`@arcaai/vox`)**
+- `types/models.ts` — new `SttTask = 'transcribe' | 'translate'`; `SelectedModels.sttTask?`; **trimmed `DEFAULT_STT_MODELS`** (removed `whisper-medium`); new `AvailableSttModel` + `DEFAULT_AVAILABLE_STT_MODELS` (derived from `DEFAULT_STT_MODELS`) as the single presented-set source.
+- `core/ConfigSchema.ts` — `SttConfigSchema.availableModels` default now spreads `DEFAULT_AVAILABLE_STT_MODELS` (was a hand-maintained literal).
+- `core/ModelRegistry.ts` — `SELECTED_MODELS_SCHEMA` + `sttTask`; new `getSttTask()` / `selectSttTask(task)` (persist into the namespaced `SelectedModels`); removed `whisper-medium` from `getHuggingFaceUrl`.
+- `hooks/useArcaConfig.ts` — `models.selected.sttTask` exposed; new `selectSttTask(task)` (delegates to the registry + bumps the memo version).
+- Barrels: `types/index.ts` + `core.ts` — export `AvailableSttModel`, `SttTask`, `DEFAULT_AVAILABLE_STT_MODELS` (re-exported through the main `index.ts` via `export *`).
+
+**STT (`@arcaai/stt`)**
+- `hooks/useSTT.ts` — added `features.task` to the processor **config fingerprint + deps**. The task is baked into the pooled local provider at `init`, so switching transcribe↔translate must rebuild the processor; otherwise a translate request silently reuses a transcribe-warm provider. (Engine/worker `task` plumbing already existed — TASK-300 L-2.)
+
+**UI playground (`apps/ui-playground`)** — all in the existing `local_ai` card, behind the page's `ImpersonationGuard`; skeleton/empty/toast unchanged:
+- `store/audio-store.ts` — `sttTask` state (+`setSttTask`); `applyPersistedSelection({ userModelId, userTask })` layers the USER choice over the tenant/default already seeded, accepting a model **only** if it is in the browser-viable `availableAsrModels` set (else keeps tenant/default); task falls back to `'transcribe'`. `@arcaai/vox` import kept **type-only** (the playground's vitest stubs vox at runtime).
+- `features/audio/components/processing-config-panel.tsx` — the model `Select` now persists via `selectModel('stt', id)` **and** mirrors runtime via `setWhisperModel`; new **Task** badge group (Transcribe / Translate) persisting via `selectSttTask` **and** `setSttTask`, with active-badge `default` variant and a `controlsDisabled` (capturing/not-ready) gate.
+- `features/audio/index.tsx` — reads `useArcaConfig().models.selected.{stt,sttTask}` and calls `applyPersistedSelection` once config is ready (runs after the config-seeding effect, so `availableAsrModels` is populated when the user model is validated).
+- `features/audio/components/transcript-panel.tsx` — threads `sttTask` into `useSTT` `features.task` (+ memo dep) so on-device transcription actually transcribes-in-source vs translates-to-English.
+
+**Tests added (RED-first).** SDK: `types/__tests__/models.task329.test.ts` (`DEFAULT_AVAILABLE_STT_MODELS` derivation), `core/__tests__/availableModels.task329.test.ts` (the single-source regression above), `core/__tests__/ModelRegistry.task329.test.ts` (`sttTask` persist round-trip + cross-namespace isolation), `hooks/__tests__/useArcaConfig.task329.test.tsx` (`selected.sttTask` + `selectSttTask` delegates + memo bust). STT: `hooks/__tests__/useSTT.test.ts` (+ "recreates processor when `features.task` changes"). UI: `store/__tests__/audio-store.task329.test.ts` (`sttTask` default/set/reset + `applyPersistedSelection`), `features/audio/components/__tests__/processing-config-panel.test.tsx` (+ "local model + task selection" — model persist, task render/persist/active-variant/`isCapturing` gate/exactly-2-Selects).
+
+### 5.6 P3 verification gates — final output
+| Gate | Result |
+|---|---|
+| `pnpm build:sdk` | **6/6 turbo tasks successful** |
+| `pnpm --filter @arcaai/vox test` | **158 files, 3172 passed** (task329 subset: 4 files / 10 passed) |
+| `pnpm --filter @arcaai/stt test` *(touched `useSTT`)* | **25 files, 378 passed** (task329 case in `useSTT.test.ts`) |
+| `pnpm --filter @arcaai/ui-playground type-check` | **clean** (after `build:sdk` rebuilt vox/stt/room dist) |
+| `pnpm --filter @arcaai/ui-playground test` | **83 files, 802 passed** (P3 subset: 2 files / 87 passed) |
+| IDE lint on every edited file | clean |
+
+**Not run (correctly):** `pnpm --filter @arcaai/applications …` and `pnpm build:api` — **no app/api or DB layer touched** (model + task persist client-side via the registry). **Deferred to CI:** API e2e (`pnpm test:e2e`) — N/A for this slice. **Confirmed not run:** `git`, `prisma migrate` / `db:migrate` / `prisma db` (schema frozen; no schema change needed). **Shared-barrel touches:** `@arcaai/vox` `types/index.ts` + `core.ts` (+`AvailableSttModel`, `SttTask`, `DEFAULT_AVAILABLE_STT_MODELS`); no endpoint key-count guard applies to the models barrel and the full vox suite is green. **`@arcaai/stt` `useSTT.ts`** is shared by the SDK — change is additive (one fingerprint field) and its full suite passes. No shared admin nav edited.
+
+---
+
 ## 6. Change History
 | Date | Change | Files |
 |---|---|---|
 | 2026-06-02 | Sub-ticket created from TASK-325 §3.7 (Phase 3). Scope = P2–P6 + LiveCodePanel; fixes X3/X8/X10; Q3 SDK-first. Status `Pending`. | this README |
 | 2026-06-02 | **P6 + X3 + X10 delivered** (slice `wave3/p6-summarization`): `cacheHit`/`qualityScore` threaded domain→app→SDK→UI; summary list/version/diff/tag(+edit→new-version) endpoints + SDK methods + `SavedSummariesPanel`; X3 context-item ownership guard on `/text/generate/assembled`; X10 tenant+user localStorage namespacing. All 5 gates green; no `git`/`prisma migrate`. | domains `SummaryMeta*` + `ContextItemRepository`; applications summary/context DTOs+mappers+services, `version-diff.response`, `tag.service`; api `consultation.controller`/`consultation.module`/`smr-proxy.controller`; `@arcaai/vox` `useArcaSummary`/`constants`/`types`; ui-playground `saved-summaries-panel`, `history`, summary/pre-summary pages; + RED tests |
+| 2026-06-02 | **P3 Audio delivered** (slice `wave3/p3-audio-models`): local-model **task** (transcribe/translate) selection in the Audio playground; per-user model+task persisted via the SDK `ModelRegistry` namespaced `localStorage` (rule 08; **deviation** from the `PATCH /user/me/settings` sketch — `stt.defaultModel` is admin-locked) and rehydrated via `applyPersistedSelection` (USER→TENANT→DEFAULT). **`availableModels` mismatch fixed** by a single source of truth: `DEFAULT_AVAILABLE_STT_MODELS` derived from a trimmed `DEFAULT_STT_MODELS` (dropped `whisper-medium`), consumed by `SttConfigSchema`; regression test pins presented===selectable===loadable. Task wired into local transcription via `useSTT` `features.task` (+ fingerprint). SDK/STT/ui-playground gates green; no `git`/`prisma migrate`; no app/api/DB touched. | sdk `types/models`/`core/ConfigSchema`/`core/ModelRegistry`/`hooks/useArcaConfig`/`types/index`/`core`; stt `hooks/useSTT`; ui-playground `store/audio-store`, `features/audio/{index,components/processing-config-panel,components/transcript-panel}`; + RED tests (`models`/`availableModels`/`ModelRegistry`/`useArcaConfig` task329, `useSTT` task case, `audio-store` task329, `processing-config-panel`) |
 | 2026-06-02 | **P5 DNA delivered** (slice `wave3/p5-dna-playground`): generate-from-history (`sourceIds`), set-default (`PATCH /:reportId/default`, reuses `isLatest`), `GET /mine` history, two-version diff, reusable `ImpersonationGuard`, and the **empty Edit-dialog fix** (`useEditDialogController.openFor` couples select+open; added Edit button). SDK `useDnaStyle` extended (+`MINE`/`SET_DEFAULT` endpoints, key-count guard 12→14); optimistic set-default in the UI cache. App/SDK/API/ui-playground gates green; no `git`/`prisma migrate`; e2e deferred to CI. | sdk `useDnaStyle`/`constants`/`types/dna`/`constants.ws4.test`; applications `generate-dna-report.request`/`dna-writing-style.service`/`IDnaWritingStyleService`/`dna-writing-style.processor`; api `dna-writing-style.controller`; ui-playground `components/impersonation-guard`, `features/dna-writing-style/{api,hooks,components,index}`; + RED tests |

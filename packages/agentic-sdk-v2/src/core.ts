@@ -409,6 +409,7 @@ export {
 // =============================================================================
 
 export type {
+  AvailableSttModel,
   ModelLoadingStates,
   ModelLoadOptions,
   ModelLoadProgress,
@@ -416,9 +417,10 @@ export type {
   ModelRegistryActions,
   ModelRegistryState,
   SelectedModels,
+  SttTask,
 } from './types';
 
-export { DEFAULT_MODELS, DEFAULT_STT_MODELS, DEFAULT_VAD_MODELS } from './types';
+export { DEFAULT_AVAILABLE_STT_MODELS, DEFAULT_MODELS, DEFAULT_STT_MODELS, DEFAULT_VAD_MODELS } from './types';
 
 // =============================================================================
 // Utilities
