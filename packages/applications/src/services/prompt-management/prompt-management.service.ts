@@ -1,4 +1,6 @@
-import { Injectable, Inject, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, Optional, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -14,15 +16,24 @@ import {
   ResourceStatusType,
   SysEventType,
 } from '@arcaai/domains';
-import { IPromptManagementService } from './IPromptManagementService';
+import {
+  IPromptManagementService,
+  ListPromptTemplatesFilters,
+  PaginatedPromptTemplates,
+} from './IPromptManagementService';
 import {
   PromptTemplateResponse,
   PromptVersionResponse,
   CreatePromptTemplateRequest,
   UpdatePromptTemplateRequest,
   AssignDepartmentPromptRequest,
+  TestPromptTemplateRequest,
+  PromptTestResultResponse,
+  PromptUsageAnalyticsResponse,
 } from './dto';
 import { PromptManagementDtoMapper } from './prompt-management.dto.mapper';
+import { mapSmrGenerateResponse } from '../consultation/summary/smr-v2-generate';
+import { SecretsService } from '../baseServices/_meta/secrets';
 import { IDepartmentService } from '../department/IDepartmentService';
 import { DepartmentResponse } from '../department/dto';
 import { BaseService } from '../../common';
@@ -31,8 +42,19 @@ import { IActiveUserContext } from '../../interfaces';
 const SCOPE_TENANT_DEFAULT = 'TENANT_DEFAULT';
 const SCOPE_USER_PERSONAL = 'USER_PERSONAL';
 
+// TASK-328 A4 — word count at which a generated test output earns the full
+// quality score. The score is a deterministic, testable proxy for "did the
+// template produce a substantive response", not a semantic judgement.
+const FULL_SCORE_WORD_COUNT = 50;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 @Injectable()
 export class PromptManagementService extends BaseService implements IPromptManagementService {
+  private readonly smrServiceUrl: string;
+
   constructor(
     private readonly promptTemplateRepository: PromptTemplateRepository,
     private readonly promptVersionRepository: PromptVersionRepository,
@@ -40,8 +62,16 @@ export class PromptManagementService extends BaseService implements IPromptManag
     @Inject(IDepartmentService) private readonly departmentService: IDepartmentService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-328 A4 — SMR/text-generation client (mirrors SummaryService). These
+    // are @Optional() so existing unit-test fixtures that construct the service
+    // directly without the SMR deps keep compiling; the live API always wires
+    // HttpModule + ConfigModule via PromptManagementServiceModule.
+    @Optional() private readonly httpService?: HttpService,
+    @Optional() private readonly configService?: ConfigService,
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.PromptTemplate);
+    this.smrServiceUrl = this.configService?.get<string>('SMR_URL') ?? 'http://localhost:8862';
   }
 
   async createPromptTemplate(dto: CreatePromptTemplateRequest): Promise<PromptTemplateResponse> {
@@ -224,12 +254,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     return PromptManagementDtoMapper.toTemplateResponse(template);
   }
 
-  async listPromptTemplates(filters?: {
-    category?: string;
-    departmentId?: string;
-    search?: string;
-    includeDisabled?: boolean;
-  }): Promise<PromptTemplateResponse[]> {
+  async listPromptTemplates(filters?: ListPromptTemplatesFilters): Promise<PromptTemplateResponse[]> {
     const tenantId = this.tenantId;
     if (!tenantId) throw new BadRequestException('Tenant ID is required');
 
@@ -245,6 +270,35 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const mapper = PromptTemplateEntityMapper.getInstance();
     const templates = models.map((m) => mapper.toDomainEntity(m));
     return templates.map(PromptManagementDtoMapper.toTemplateResponse);
+  }
+
+  /**
+   * TASK-328 A4 — repository-level pagination for the admin list.
+   *
+   * The filtered count and the page slice are resolved in the repository
+   * (`countWhere` + `findPaginated`) so we no longer materialize the full
+   * tenant result set in memory just to slice it at the controller.
+   */
+  async listPromptTemplatesPaginated(filters?: ListPromptTemplatesFilters): Promise<PaginatedPromptTemplates> {
+    const tenantId = this.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant ID is required');
+
+    const page = filters?.page && filters.page > 0 ? filters.page : 1;
+    const limit = filters?.limit && filters.limit > 0 ? filters.limit : 50;
+
+    const where: Record<string, unknown> = { tenantId };
+    if (!filters?.includeDisabled) where.resourceStatus = ResourceStatusType.ENABLED;
+    if (filters?.category) where.category = filters.category;
+    if (filters?.departmentId) where.departmentId = filters.departmentId;
+    if (filters?.search) where.name = { contains: filters.search, mode: 'insensitive' };
+
+    const { data, count } = await this.promptTemplateRepository.findPaginated(where, page, limit);
+    return {
+      data: data.map(PromptManagementDtoMapper.toTemplateResponse),
+      count,
+      page,
+      limit,
+    };
   }
 
   async listDefaultsForDepartment(departmentId: string): Promise<PromptTemplateResponse[]> {
@@ -291,6 +345,70 @@ export class PromptManagementService extends BaseService implements IPromptManag
     return { totalUsages, lastUsedAt };
   }
 
+  /**
+   * TASK-328 A4 — run a prompt template against the SMR/text-generation
+   * service, score the output, and persist `lastTestScore/lastTestOutput/
+   * lastTestAt` via a Compare-And-Set write (OCC parity with the PATCH route).
+   *
+   * The SMR call is an injected `HttpService` dependency so the path is
+   * unit-testable with a mock; the live SMR call is exercised in CI.
+   *
+   * @throws OptimisticConcurrencyException — version drift; HTTP 412.
+   */
+  async testPromptTemplate(id: string, dto: TestPromptTemplateRequest): Promise<PromptTestResultResponse> {
+    const template = await this.promptTemplateRepository.findById(id);
+    if (!template) throw new NotFoundException(`Prompt template ${id} not found`);
+
+    this.assertOwnedByTenant(template, id);
+    this.assertCanMutate(template);
+
+    const prompt = this.interpolateTemplate(template.content ?? '', dto.variables, dto.sampleInput);
+    const output = await this.callSmrGenerate(prompt);
+    const score = this.scoreOutput(output);
+    const testedAt = new Date();
+
+    template.lastTestScore = score;
+    template.lastTestOutput = output;
+    template.lastTestAt = testedAt;
+
+    // Compare-And-Set against the row `_version` (mirrors updatePromptTemplate).
+    const updated = await this.promptTemplateRepository.updateWithVersion(id, template, dto.expectedVersion);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: id,
+      data: { action: 'test', score },
+    });
+
+    return {
+      id: updated.id,
+      score,
+      output,
+      testedAt: testedAt.toISOString(),
+      version: updated.version,
+    };
+  }
+
+  /**
+   * TASK-328 A4 — tenant-scoped usage analytics for `PromptUsageRecord`,
+   * grouped by department, doctor, and UTC day. An optional `promptTemplateId`
+   * narrows the aggregation to a single template.
+   */
+  async getUsageAnalytics(filters?: { promptTemplateId?: string }): Promise<PromptUsageAnalyticsResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant ID is required');
+
+    const promptTemplateId = filters?.promptTemplateId;
+    const [byDepartment, byDoctor, byDay] = await Promise.all([
+      this.promptUsageRecordRepository.groupByDepartment(tenantId, promptTemplateId),
+      this.promptUsageRecordRepository.groupByDoctor(tenantId, promptTemplateId),
+      this.promptUsageRecordRepository.groupByDay(tenantId, promptTemplateId),
+    ]);
+
+    const totalUsages = byDoctor.reduce((sum, row) => sum + row.count, 0);
+
+    return { totalUsages, byDepartment, byDoctor, byDay };
+  }
+
   async softDeletePromptTemplate(id: string): Promise<PromptTemplateResponse> {
     const template = await this.promptTemplateRepository.findById(id);
     if (!template) throw new NotFoundException(`Prompt template ${id} not found`);
@@ -317,6 +435,60 @@ export class PromptManagementService extends BaseService implements IPromptManag
       revisitPromptId: dto.revisitPromptId,
       expectedVersion: dto.expectedVersion,
     });
+  }
+
+  // ─── TASK-328 A4 — prompt-test internals ─────────────────────────────
+
+  /**
+   * Substitute `{{var}}` placeholders in the template content with the
+   * supplied sample values, then append any free-text `sampleInput`. Unmatched
+   * placeholders are left intact so the operator can see what was missing.
+   */
+  private interpolateTemplate(content: string, variables?: Record<string, unknown>, sampleInput?: string): string {
+    let prompt = content;
+    if (variables) {
+      for (const [key, value] of Object.entries(variables)) {
+        prompt = prompt.replace(new RegExp(`\\{\\{\\s*${escapeRegExp(key)}\\s*\\}\\}`, 'g'), String(value));
+      }
+    }
+    if (sampleInput) {
+      prompt = `${prompt}\n\n${sampleInput}`;
+    }
+    return prompt;
+  }
+
+  /**
+   * Call the SMR/text-generation service `/api/v1/generate` endpoint and
+   * return the generated text. Reuses `mapSmrGenerateResponse` (the same
+   * response normalizer the summary path uses).
+   */
+  private async callSmrGenerate(prompt: string): Promise<string> {
+    if (!this.httpService) {
+      throw new BadRequestException('SMR/text-generation client is not configured');
+    }
+    try {
+      const token = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
+      const response = await this.httpService.axiosRef.post(
+        `${this.smrServiceUrl}/api/v1/generate`,
+        { prompt, stream: false },
+        { headers: { 'Content-Type': 'application/json', 'X-Service-Token': token } },
+      );
+      return mapSmrGenerateResponse(response.data).summary;
+    } catch (error) {
+      throw new BadRequestException(`Failed to call SMR service: ${error}`);
+    }
+  }
+
+  /**
+   * Deterministic quality score in [0, 1]. The output earns the full score
+   * once it reaches `FULL_SCORE_WORD_COUNT` words — a testable proxy for "the
+   * template produced a substantive response", NOT a semantic judgement.
+   * Rounded to 2 decimals.
+   */
+  private scoreOutput(output: string): number {
+    const words = output.trim().split(/\s+/).filter(Boolean).length;
+    const raw = Math.min(1, words / FULL_SCORE_WORD_COUNT);
+    return Math.round(raw * 100) / 100;
   }
 
   // ─── Internal authorization helpers (TASK-294 DEF-C2) ────────────────

@@ -227,6 +227,88 @@ describe('usePrompts', () => {
             expect((diff as any).changes).toBeDefined();
             expect((diff as any).stats).toBeDefined();
         });
+
+        // TASK-328 A4 — the version diff must also reflect `variables` (JSON)
+        // changes, not just content.
+        it('includes variables JSON changes in the diff even when content is identical', async () => {
+            mockGet
+                .mockResolvedValueOnce({ content: 'same content', variables: [{ name: 'topic', type: 'string', required: true }] })
+                .mockResolvedValueOnce({ content: 'same content', variables: [{ name: 'subject', type: 'string', required: true }] });
+            const { result } = renderHook(() => usePrompts());
+
+            let diff: any;
+            await act(async () => {
+                diff = await result.current.compareVersions('pt-1', 1, 2);
+            });
+
+            // content is identical, so any additions/deletions must come from
+            // the variables block.
+            expect(diff.stats.additions + diff.stats.deletions).toBeGreaterThan(0);
+            const combined = diff.changes.map((c: any) => c.value).join('');
+            expect(combined).toContain('topic');
+            expect(combined).toContain('subject');
+        });
+    });
+
+    // TASK-328 A4 — prompt quality/score test run
+    describe('test', () => {
+        it('should POST to PROMPT_TEMPLATE_ENDPOINTS.TEST(id) with the input body', async () => {
+            const testResult = { id: 'pt-1', score: 0.9, output: 'Generated text', testedAt: '2026-06-02T00:00:00.000Z', version: 6 };
+            mockPost.mockResolvedValue(testResult);
+            const { result } = renderHook(() => usePrompts());
+
+            let resp: unknown;
+            await act(async () => {
+                resp = await result.current.test('pt-1', { variables: { topic: 'asthma' }, expectedVersion: 5 });
+            });
+
+            expect(mockPost).toHaveBeenCalledWith(PROMPT_TEMPLATE_ENDPOINTS.TEST('pt-1'), { variables: { topic: 'asthma' }, expectedVersion: 5 });
+            expect(resp).toEqual(testResult);
+        });
+
+        it('should default to an empty body when no input is provided', async () => {
+            mockPost.mockResolvedValue({ id: 'pt-1', score: 0, output: '', testedAt: '', version: 2 });
+            const { result } = renderHook(() => usePrompts());
+
+            await act(async () => { await result.current.test('pt-1'); });
+
+            expect(mockPost).toHaveBeenCalledWith(PROMPT_TEMPLATE_ENDPOINTS.TEST('pt-1'), {});
+        });
+
+        it('should set error on failure', async () => {
+            mockPost.mockRejectedValue(new Error('Test failed'));
+            const { result } = renderHook(() => usePrompts());
+
+            await act(async () => {
+                try { await result.current.test('pt-1', { expectedVersion: 1 }); } catch { /* expected */ }
+            });
+
+            expect(result.current.error?.message).toBe('Test failed');
+        });
+    });
+
+    // TASK-328 A4 — usage analytics
+    describe('analytics', () => {
+        it('should GET from PROMPT_TEMPLATE_ENDPOINTS.USAGE_ANALYTICS', async () => {
+            const analytics = { totalUsages: 5, byDepartment: [], byDoctor: [], byDay: [] };
+            mockGet.mockResolvedValue(analytics);
+            const { result } = renderHook(() => usePrompts());
+
+            let resp: unknown;
+            await act(async () => { resp = await result.current.analytics(); });
+
+            expect(mockGet).toHaveBeenCalledWith(PROMPT_TEMPLATE_ENDPOINTS.USAGE_ANALYTICS);
+            expect(resp).toEqual(analytics);
+        });
+
+        it('should append promptTemplateId filter as a query param', async () => {
+            mockGet.mockResolvedValue({ totalUsages: 0, byDepartment: [], byDoctor: [], byDay: [] });
+            const { result } = renderHook(() => usePrompts());
+
+            await act(async () => { await result.current.analytics({ promptTemplateId: 'pt-9' }); });
+
+            expect(mockGet).toHaveBeenCalledWith(expect.stringContaining('promptTemplateId=pt-9'));
+        });
     });
 
     describe('list edge cases', () => {

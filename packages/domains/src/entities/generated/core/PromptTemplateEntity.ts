@@ -19,6 +19,9 @@ export interface IPromptTemplateEntity extends IBaseTaggedEntity {
   departmentId?: string | null;
   scope?: PromptTemplateScope | null;
   ownerUserId?: string | null;
+  lastTestScore?: number | null;
+  lastTestOutput?: string | null;
+  lastTestAt?: Date | null;
   Versions?: PromptVersionEntity[] | null;
   Department?: Entities.DepartmentEntity | null;
   Owner?: Entities.UserEntity | null;
@@ -34,6 +37,9 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
   private _departmentId?: IPromptTemplateEntity['departmentId'];
   private _scope?: IPromptTemplateEntity['scope'];
   private _ownerUserId?: IPromptTemplateEntity['ownerUserId'];
+  private _lastTestScore?: IPromptTemplateEntity['lastTestScore'];
+  private _lastTestOutput?: IPromptTemplateEntity['lastTestOutput'];
+  private _lastTestAt?: IPromptTemplateEntity['lastTestAt'];
   private _Versions?: IPromptTemplateEntity['Versions'];
   private _Department?: IPromptTemplateEntity['Department'];
   private _Owner?: IPromptTemplateEntity['Owner'];
@@ -49,6 +55,9 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
     this._departmentId = init.departmentId;
     this._scope = init.scope ?? 'TENANT_DEFAULT';
     this._ownerUserId = init.ownerUserId ?? null;
+    this._lastTestScore = init.lastTestScore;
+    this._lastTestOutput = init.lastTestOutput;
+    this._lastTestAt = init.lastTestAt;
     this._Versions = init.Versions;
     this._Department = init.Department;
     this._Owner = init.Owner ?? null;
@@ -124,6 +133,30 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
 
   set ownerUserId(value: IPromptTemplateEntity['ownerUserId']) {
     this.setProperty('ownerUserId', value);
+  }
+
+  get lastTestScore(): IPromptTemplateEntity['lastTestScore'] {
+    return this._lastTestScore ?? null;
+  }
+
+  set lastTestScore(value: IPromptTemplateEntity['lastTestScore']) {
+    this.setProperty('lastTestScore', value);
+  }
+
+  get lastTestOutput(): IPromptTemplateEntity['lastTestOutput'] {
+    return this._lastTestOutput ?? null;
+  }
+
+  set lastTestOutput(value: IPromptTemplateEntity['lastTestOutput']) {
+    this.setProperty('lastTestOutput', value);
+  }
+
+  get lastTestAt(): IPromptTemplateEntity['lastTestAt'] {
+    return this._lastTestAt ?? null;
+  }
+
+  set lastTestAt(value: IPromptTemplateEntity['lastTestAt']) {
+    this.setProperty('lastTestAt', value);
   }
 
   get Versions(): IPromptTemplateEntity['Versions'] {

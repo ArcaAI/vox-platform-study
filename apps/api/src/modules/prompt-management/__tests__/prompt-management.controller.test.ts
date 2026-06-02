@@ -35,11 +35,15 @@ const createMockService = () => ({
     updatePromptTemplate: vi.fn(),
     getPromptTemplate: vi.fn(),
     listPromptTemplates: vi.fn(),
+    listPromptTemplatesPaginated: vi.fn(),
     listDefaultsForDepartment: vi.fn(),
     listMyPersonalForDepartment: vi.fn(),
     getVersions: vi.fn(),
     getVersion: vi.fn(),
     getUsageStats: vi.fn(),
+    // TASK-328 A4
+    testPromptTemplate: vi.fn(),
+    getUsageAnalytics: vi.fn(),
     softDeletePromptTemplate: vi.fn(),
     assignToDepartment: vi.fn(),
 });
@@ -85,71 +89,91 @@ describe('PromptManagementController', () => {
     });
 
     describe('GET /prompt-templates (list)', () => {
-        it('should call service.listPromptTemplates with filters', async () => {
-            mockService.listPromptTemplates.mockResolvedValue([fakeTemplateEntity]);
+        // TASK-328 A4 — pagination is now resolved in the repository; the
+        // controller delegates to `listPromptTemplatesPaginated` and returns
+        // its `{data,count,page,limit}` shape unchanged.
+        const paginated = (data: unknown[], count = data.length, page = 1, limit = 50) => ({ data, count, page, limit });
+
+        it('should call service.listPromptTemplatesPaginated with filters + page/limit', async () => {
+            mockService.listPromptTemplatesPaginated.mockResolvedValue(paginated([fakeTemplateEntity]));
 
             await controller.list({ category: 'SUMMARY', search: 'soap' } as any);
 
-            expect(mockService.listPromptTemplates).toHaveBeenCalledWith({
+            expect(mockService.listPromptTemplatesPaginated).toHaveBeenCalledWith({
                 category: 'SUMMARY',
+                departmentId: undefined,
                 search: 'soap',
                 includeDisabled: false,
+                page: 1,
+                limit: 50,
             });
         });
 
         it('should pass includeDisabled: true when query param is "true"', async () => {
-            mockService.listPromptTemplates.mockResolvedValue([fakeTemplateEntity]);
+            mockService.listPromptTemplatesPaginated.mockResolvedValue(paginated([fakeTemplateEntity]));
 
             await controller.list({ includeDisabled: 'true' } as any);
 
-            expect(mockService.listPromptTemplates).toHaveBeenCalledWith(
+            expect(mockService.listPromptTemplatesPaginated).toHaveBeenCalledWith(
                 expect.objectContaining({ includeDisabled: true }),
             );
         });
 
         it('should pass includeDisabled: false when query param is absent', async () => {
-            mockService.listPromptTemplates.mockResolvedValue([fakeTemplateEntity]);
+            mockService.listPromptTemplatesPaginated.mockResolvedValue(paginated([fakeTemplateEntity]));
 
             await controller.list({} as any);
 
-            expect(mockService.listPromptTemplates).toHaveBeenCalledWith(
+            expect(mockService.listPromptTemplatesPaginated).toHaveBeenCalledWith(
                 expect.objectContaining({ includeDisabled: false }),
             );
         });
 
-        it('should return wrapped paginated response', async () => {
-            mockService.listPromptTemplates.mockResolvedValue([fakeTemplateEntity]);
+        it('should forward explicit page/limit query params', async () => {
+            mockService.listPromptTemplatesPaginated.mockResolvedValue(paginated([], 0, 3, 10));
+
+            await controller.list({ page: 3, limit: 10 } as any);
+
+            expect(mockService.listPromptTemplatesPaginated).toHaveBeenCalledWith(
+                expect.objectContaining({ page: 3, limit: 10 }),
+            );
+        });
+
+        it('should return the paginated response from the service', async () => {
+            mockService.listPromptTemplatesPaginated.mockResolvedValue(paginated([fakeTemplateEntity], 1));
 
             const result = await controller.list({} as any);
 
             expect(result).toBeDefined();
             expect(result.data).toHaveLength(1);
             expect(result.count).toBe(1);
+            expect(result.page).toBe(1);
+            expect(result.limit).toBe(50);
         });
 
         it('should pass includeDisabled: false when query param is "false" string', async () => {
-            mockService.listPromptTemplates.mockResolvedValue([]);
+            mockService.listPromptTemplatesPaginated.mockResolvedValue(paginated([]));
 
             await controller.list({ includeDisabled: 'false' } as any);
 
-            expect(mockService.listPromptTemplates).toHaveBeenCalledWith(
+            expect(mockService.listPromptTemplatesPaginated).toHaveBeenCalledWith(
                 expect.objectContaining({ includeDisabled: false }),
             );
         });
 
         it('should pass includeDisabled: false for non-boolean string values', async () => {
-            mockService.listPromptTemplates.mockResolvedValue([]);
+            mockService.listPromptTemplatesPaginated.mockResolvedValue(paginated([]));
 
             await controller.list({ includeDisabled: '1' } as any);
 
-            expect(mockService.listPromptTemplates).toHaveBeenCalledWith(
+            expect(mockService.listPromptTemplatesPaginated).toHaveBeenCalledWith(
                 expect.objectContaining({ includeDisabled: false }),
             );
         });
 
         it('should return mixed ENABLED and DISABLED templates when includeDisabled is true', async () => {
             const disabledTemplate = { ...fakeTemplateEntity, id: 'tpl-2', resourceStatus: 'DISABLED' };
-            mockService.listPromptTemplates.mockResolvedValue([fakeTemplateEntity, disabledTemplate]);
+            mockService.listPromptTemplatesPaginated.mockResolvedValue(paginated([fakeTemplateEntity, disabledTemplate], 2));
 
             const result = await controller.list({ includeDisabled: 'true' } as any);
 
@@ -277,6 +301,80 @@ describe('PromptManagementController', () => {
         });
     });
 
+    // ─── TASK-328 A4: prompt test run ────────────────────────────────────
+
+    describe('POST /prompt-templates/:id/test (testTemplate)', () => {
+        const fakeResult = { id: 'tpl-1', score: 0.92, output: 'Generated output', testedAt: '2026-06-02T00:00:00.000Z', version: 6 };
+
+        it('delegates to service.testPromptTemplate with id + body when no If-Match header', async () => {
+            mockService.testPromptTemplate.mockResolvedValue(fakeResult);
+            const body = { variables: { topic: 'asthma' }, expectedVersion: 5 };
+
+            await controller.testTemplate('tpl-1', body as any, undefined);
+
+            expect(mockService.testPromptTemplate).toHaveBeenCalledWith('tpl-1', body);
+        });
+
+        it('folds the If-Match header into expectedVersion (header wins) — OCC parity with update', async () => {
+            mockService.testPromptTemplate.mockResolvedValue(fakeResult);
+
+            await controller.testTemplate('tpl-1', { variables: {}, expectedVersion: 99 } as any, 7);
+
+            expect(mockService.testPromptTemplate).toHaveBeenCalledWith(
+                'tpl-1',
+                expect.objectContaining({ expectedVersion: 7 }),
+            );
+        });
+
+        it('returns the score + output result DTO from the service', async () => {
+            mockService.testPromptTemplate.mockResolvedValue(fakeResult);
+
+            const result = await controller.testTemplate('tpl-1', { expectedVersion: 1 } as any, undefined);
+
+            expect(result.score).toBe(0.92);
+            expect(result.output).toBe('Generated output');
+            expect(result.version).toBe(6);
+        });
+    });
+
+    // ─── TASK-328 A4: usage analytics ────────────────────────────────────
+
+    describe('GET /prompt-templates/analytics/usage (getUsageAnalytics)', () => {
+        const fakeAnalytics = {
+            totalUsages: 5,
+            byDepartment: [{ departmentId: 'dept-1', count: 5 }],
+            byDoctor: [{ doctorId: 'doc-1', count: 5 }],
+            byDay: [{ day: '2026-06-01', count: 5 }],
+        };
+
+        it('delegates to service.getUsageAnalytics with the promptTemplateId filter', async () => {
+            mockService.getUsageAnalytics.mockResolvedValue(fakeAnalytics);
+
+            await controller.getUsageAnalytics({ promptTemplateId: 'tpl-9' } as any);
+
+            expect(mockService.getUsageAnalytics).toHaveBeenCalledWith({ promptTemplateId: 'tpl-9' });
+        });
+
+        it('delegates with an empty filter when no query params are supplied', async () => {
+            mockService.getUsageAnalytics.mockResolvedValue(fakeAnalytics);
+
+            await controller.getUsageAnalytics({} as any);
+
+            expect(mockService.getUsageAnalytics).toHaveBeenCalledWith({ promptTemplateId: undefined });
+        });
+
+        it('returns the analytics aggregates from the service', async () => {
+            mockService.getUsageAnalytics.mockResolvedValue(fakeAnalytics);
+
+            const result = await controller.getUsageAnalytics({} as any);
+
+            expect(result.totalUsages).toBe(5);
+            expect(result.byDepartment).toHaveLength(1);
+            expect(result.byDoctor).toHaveLength(1);
+            expect(result.byDay).toHaveLength(1);
+        });
+    });
+
     describe('POST /prompt-templates/:id/versions/:versionNumber/activate (activateVersion)', () => {
         it('should get the version content and update the template, passing expectedVersion from the current template (TASK-302 Stream D Phase E.3)', async () => {
             // TASK-302 Stream D Phase E.3 — `activateVersion` is a
@@ -346,6 +444,12 @@ describe('PromptManagementController', () => {
 
         it('should require ["update","PromptTemplate"] on activateVersion (POST /prompt-templates/:id/versions/:n/activate)', () => {
             expect(getMethodMetadata('activateVersion')).toEqual([
+                { action: 'update', subject: 'PromptTemplate' },
+            ]);
+        });
+
+        it('should require ["update","PromptTemplate"] on testTemplate (POST /prompt-templates/:id/test) — TASK-328 A4', () => {
+            expect(getMethodMetadata('testTemplate')).toEqual([
                 { action: 'update', subject: 'PromptTemplate' },
             ]);
         });

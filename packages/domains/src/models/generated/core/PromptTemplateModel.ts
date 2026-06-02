@@ -16,6 +16,9 @@ export class PromptTemplate extends BaseTenantDataModel {
   public departmentId: string | null;
   public scope: string | null;
   public ownerUserId: string | null;
+  public lastTestScore: number | null;
+  public lastTestOutput: string | null;
+  public lastTestAt: Date | null;
   public tags: string[];
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
@@ -32,6 +35,9 @@ export class PromptTemplate extends BaseTenantDataModel {
     this.departmentId = data.departmentId;
     this.scope = data.scope;
     this.ownerUserId = data.ownerUserId;
+    this.lastTestScore = data.lastTestScore;
+    this.lastTestOutput = data.lastTestOutput;
+    this.lastTestAt = data.lastTestAt;
     this.tags = data.tags;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;

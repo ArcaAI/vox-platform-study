@@ -286,13 +286,22 @@ describe('WS-4 endpoint constants', () => {
       ]));
     });
 
-    it('PROMPT_TEMPLATE_ENDPOINTS should have exactly 10 keys', () => {
+    it('PROMPT_TEMPLATE_ENDPOINTS should have exactly 12 keys', () => {
       const keys = Object.keys(PROMPT_TEMPLATE_ENDPOINTS);
-      expect(keys).toHaveLength(10);
+      // TASK-328 A4 added TEST + USAGE_ANALYTICS (10 -> 12).
+      expect(keys).toHaveLength(12);
       expect(keys).toEqual(expect.arrayContaining([
         'CREATE', 'LIST', 'GET', 'UPDATE', 'DELETE', 'VERSIONS', 'VERSION',
-        'ASSIGN_DEPARTMENT', 'USAGE', 'ACTIVATE_VERSION',
+        'ASSIGN_DEPARTMENT', 'USAGE', 'ACTIVATE_VERSION', 'TEST', 'USAGE_ANALYTICS',
       ]));
+    });
+
+    it('should generate TEST endpoint (TASK-328 A4)', () => {
+      expect(PROMPT_TEMPLATE_ENDPOINTS.TEST('pt-1')).toBe('/admin/prompt-templates/pt-1/test');
+    });
+
+    it('should have USAGE_ANALYTICS endpoint (TASK-328 A4)', () => {
+      expect(PROMPT_TEMPLATE_ENDPOINTS.USAGE_ANALYTICS).toBe('/admin/prompt-templates/analytics/usage');
     });
 
     it('DEPARTMENT_ENDPOINTS should have exactly 9 keys', () => {
