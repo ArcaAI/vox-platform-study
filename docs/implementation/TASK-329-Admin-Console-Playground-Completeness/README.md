@@ -7,7 +7,7 @@
 | Parent | **TASK-325** (Admin Console Transformation — umbrella) |
 | Created | 2026-06-02 |
 | Updated | 2026-06-02 |
-| Status | `In Progress` (P5 + P6 + X3 + X10 delivered; P2–P4 + LiveCodePanel pending) |
+| Status | `In Progress` (P4 + P5 + P6 + X3 + X10 delivered; P2/P3 + LiveCodePanel pending) |
 | Type | feature |
 | Scope | `apps/ui-playground/`, `@arcaai/vox`, `packages/{stt,vad,noise-filter}`, `apps/api/`, `packages/database/` |
 | Depends on | **TASK-326** (security) + **TASK-327** (scope shell + impersonation gate) |
@@ -21,7 +21,7 @@
 ### 1.1 Acceptance criteria
 - [ ] **P2 Consultation** — in-flow mic recording using the impersonated user's pipeline prefs (realtime transcript); batch-transcription + SSE wired into the audio case-note tab (`useFileTranscription`); summary via preferred dept prompt **with fallback**; chain-of-consultation reference UI (`GET /:id/chain`); **RAW + PROCESSED** dual capture — add `rawMediaId`/`processedMediaId` to `AudioRecording` and save both streams (**X8**).
 - [ ] **P3 Audio** — local-model **task** selection (transcribe/translate); per-user prefs persisted via `PATCH /user/me/settings`; fix `localAsrModels`/`availableModels` mismatch.
-- [ ] **P4 Voice** — **local** in-browser enrollment (new local embedding provider + `POST /voice-profile/enroll-embedding`); **quick test** (mic/upload match + `POST /voice-profile/test`); diarization seeding feedback (`voiceProfileSeeded`); fix the always-"Active" badge.
+- [x] **P4 Voice** — **local** in-browser enrollment (new `local` embedding provider, Transformers.js/WavLM) + **quick test** (mic/upload cosine match). ✅ delivered — see §5.5. **Deviation (per slice brief):** schema FROZEN, so the local provider **reuses the existing `POST /voice-profile/enroll` path** instead of the originally-sketched `POST /voice-profile/enroll-embedding` / `POST /voice-profile/test`; quick-test runs fully client-side against the locally-cached embedding. Diarization-seeding feedback (`voiceProfileSeeded`) + the always-"Active" badge fix remain **out of this slice's scope** (deferred).
 - [x] **P5 DNA** — generate from **selected historical data** (version picker → `sourceIds`); **set-default** (`PATCH /:reportId/default`); two-version **diff** (`version-diff-panel`); wrap page in `ImpersonationGuard`; fix the empty Edit dialog. ✅ delivered — see §5.3.
 - [x] **P6 Summarization** — backend summary **list + version browser**; `cacheHit`/`qualityScore` fields + endpoints; version **diff**; **tagging** (`Tag`); **edit→new version**; fix the raw-DNA ownership bypass via `/text/generate/assembled` (**X3**); namespace `localStorage` history by tenant/user (**X10**). ✅ delivered — see §5.1.
 - [ ] **`LiveCodePanel`** — reactive Shiki snippet (`kibo-ui/code-block`) bound to each playground's store / impersonated prefs.
@@ -169,9 +169,57 @@ Vertical slice on branch `wave3/p5-dna-playground`. **No schema change / no `pri
 
 ---
 
+### 5.5 P4 Voice — LOCAL in-browser embedding + quick test — delivered 2026-06-02
+
+Vertical slice on branch `wave3/p4-voice-embedding`. **No schema change / no `prisma migrate` / no `git`.** The `UserVoiceProfile` model + `POST /voice-profile/enroll` path already existed; the LOCAL provider is a **client-side-only** addition that reuses that enroll endpoint verbatim for DB persistence. **No backend code was touched** (`apps/api` / `packages/applications` / `packages/domains` unchanged), so backend enrollment is provably intact.
+
+**Chosen model — `Xenova/wavlm-base-plus-sv`.** Microsoft **WavLM-Base-Plus** with an X-Vector speaker-verification head fine-tuned on VoxCeleb1, re-hosted with ONNX weights for Transformers.js. **License: MIT** (inherited from Microsoft WavLM) — safe to ship. *Why:* it's small, runs cleanly in `@huggingface/transformers` v3 via `AutoProcessor` + `AutoModel`, and emits a fixed **512-dim** speaker embedding whose pairwise **cosine similarity** is exactly the speaker-verification score we need for the quick test. Verified the v3 API surface (`AutoModel`/`AutoProcessor`/`from_pretrained`, `dtype`, `progress_callback`) before committing; `fp32` is the default dtype to preserve embedding fidelity for matching.
+
+**How Transformers.js loads/caches it (rule `08-vox-sdk.mdc`).** The heavy `@huggingface/transformers` module is **dynamically imported** (lazy chunk; mirrors `@arcaai/med-ner`). On load: `env.allowLocalModels = false`, `env.useBrowserCache = true` → the **public HF-hub weights** live in the **shared** `transformers-cache` Cache-Storage bucket (public weights are byte-identical across tenants, so they are NOT tenant-namespaced — only tenant-CUSTOM weights would be). The **extracted embeddings** *are* tenant/user-namespaced (see hook below).
+
+**SDK (`@arcaai/vox`) — NEW surface**
+- `src/utils/voiceEmbedding.ts` (**new**) — pure, deterministic math + provider selection (no ONNX, no network): `cosineSimilarity`, `l2Normalize`, `averageEmbeddings` (centroid of multiple samples), `bestMatch(candidate, refs, threshold)` → `{ profileId, score, isMatch, threshold, label? }`; `isVoiceEnrollmentProvider`, `resolveVoiceEnrollmentProvider({ preferred, localSupported })`; consts `DEFAULT_VOICE_MATCH_THRESHOLD` (0.75), `VOICE_ENROLLMENT_PROVIDERS` (`['backend','local']`), `DEFAULT_VOICE_ENROLLMENT_PROVIDER` (`'backend'`).
+- `src/core/LocalVoiceEmbedder.ts` (**new**) — `createLocalVoiceEmbedder()` wraps Transformers.js: `load`/`embed`/`embedBlob`/`dispose`, lazy idempotent load with streamed download progress, injectable `transformersLoader` + `decodeAudio` (16 kHz mono Web-Audio decode → OfflineAudioContext resample). `isLocalVoiceEmbeddingSupported()` (WebAssembly + (Offline)AudioContext). Consts `DEFAULT_LOCAL_VOICE_MODEL_ID`, `LOCAL_VOICE_EMBEDDING_DIM` (512), `LOCAL_VOICE_SAMPLE_RATE` (16000).
+- `src/hooks/useLocalVoiceEmbedding.ts` (**new**) — the provider hook. **Reuses the existing enroll path** by composing `useVoiceEmbedding().enroll` internally: `enroll(files,opts)` → (1) extract each clip locally + average to a centroid, (2) **persist via the existing `POST /voice-profile/enroll`** (audio → DB row + optional label, server computes its own embedding; schema untouched), (3) cache the LOCAL 512-dim embedding keyed to the returned `profile.id`. `quickTest(file)` extracts a fresh embedding and cosine-compares against the cached enrolled refs (`bestMatch`). Plus `preloadModel`, `clearLocal`, and live `status`/`progress`/`isBusy`/`error`/`supported`/`modelId`/`enrolled`. **Embedding cache is tenant/user-namespaced + encrypted** via `SecureStorage` (key `vox.localVoiceEmbeddings.${userId}.${tenantId}`, passphrase `vox-lve-${userId}-${tenantId}`), hydrated on mount — mirrors the existing `useVoiceEmbedding` convention, so quick-test works offline and never crosses tenant/user boundaries.
+
+**Quick-test similarity approach.** Embeddings are compared with **cosine similarity** (`bestMatch` picks the highest-scoring enrolled ref; `isMatch = score ≥ threshold`, default **0.75**). This is the same speaker-verification signal the diarizer/user-voice detection relies on. The backend's 256-dim pyannote embedding is intentionally NOT used for matching (different model/dim, and `VoiceProfileResponse` doesn't expose raw vectors) — the local provider self-contains its 512-dim WavLM embedding for the quick test.
+
+**How the heavy model is mocked in tests (no weights downloaded; deterministic).**
+- `voiceEmbedding.test.ts` — pure fixtures only (orthogonal/identical/scaled vectors); zero Transformers.js/network.
+- `LocalVoiceEmbedder.test.ts` — injects a fake `transformersLoader` (stub `AutoProcessor`/`AutoModel`/`env`) + fake `decodeAudio`; asserts load idempotency, progress plumbing, embedding extraction, error paths.
+- `useLocalVoiceEmbedding.test.ts` — `vi.mock('../useVoiceEmbedding')` for the enroll client + a fake injected embedder (`options.embedder`); verifies enroll persists via the mocked client, caches keyed to the returned id, averages multi-sample, and quick-test cosine matching — all with a mocked `useAgenticStore` for `userId`/`tenantId`.
+- ui-playground `local-voice.test.tsx` — mocks `@arcaai/vox` so `useLocalVoiceEmbedding` returns controllable state (**ONNX never loads**); renders the REAL shared `ImpersonationGuard` + REAL cards.
+
+**Provider barrels + pin test (shared-barrel touch).** Additive exports only, re-exported through the main `index.ts` (`export *`):
+- `src/utils/index.ts` — the `voiceEmbedding` math + provider helpers/types.
+- `src/hooks/index.ts` — `useLocalVoiceEmbedding` + its types.
+- `src/core.ts` — grouped TASK-329 P4 block (hook, `createLocalVoiceEmbedder`/`isLocalVoiceEmbeddingSupported` + consts, math/provider util + types).
+- `src/__tests__/exports.task329-p4.test.ts` (**new**) — pin test locking the whole new surface (mirrors the `exports.task279` precedent). **No existing key-count guard needed updating** — the slice adds no keys to any counted constant object (`VOICE_EMBEDDING_ENDPOINTS` is unchanged; local enroll reuses the existing endpoint).
+
+**UI playground (`apps/ui-playground`)** — all behind impersonation; data via `@arcaai/vox`; skeleton/empty/toast per rules 10/11:
+- `features/voice-profile/local-voice.tsx` (**new**) — `LocalEnrollCard` (mic/upload → on-device extract → persist via existing enroll → cache; live model-load/extraction `Progress`/`Skeleton`; model-id badge; invalidates the `['voice-profiles']` query on success so `ProfileTable` refreshes) + `QuickTestCard` (mic/upload → cosine match read-out: score %, Match/No-match badge, threshold, closest profile) + a shared `useMicRecorder`. Unsupported-environment notice when `supported` is false.
+- `features/voice-profile/index.tsx` — added a `VoiceProfileWorkspace` with a **provider `Tabs`** ("Server (backend)" vs "In-browser (local)", local tab disabled when unsupported; default chosen via `resolveVoiceEnrollmentProvider({ preferred:'local', localSupported })`); backend tab keeps the **unchanged** `EnrollCard`; local tab mounts the two new cards; `ProfileTable` stays visible in both. Swapped the page's guard to the **shared** `@/components/impersonation-guard` (children-wrapping) — the older summarization props-based guard is no longer used here.
+
+**New dependency.** `@arcaai/vox` now depends on **`@huggingface/transformers@^3.8.1`** (regular dependency) — *why:* the in-browser speaker-embedding runtime; version pinned to **match `@arcaai/med-ner`** (the existing Transformers.js consumer) for a single resolved version across the monorepo.
+
+### 5.6 P4 verification gates — final output
+| Gate | Result |
+|---|---|
+| `pnpm --filter @arcaai/domains …` / `@arcaai/applications …` | **not run — backend untouched** (no domain/app/api source changed) |
+| `pnpm build:sdk` `&& pnpm --filter @arcaai/vox test` | **build 6/6 turbo tasks**; tests **158 files, 3213 passed** (+78 from this slice's 4 new test files) |
+| `pnpm --filter @arcaai/ui-playground type-check` | **clean** (after building `@arcaai/ui` dist in the fresh worktree) |
+| `pnpm --filter @arcaai/ui-playground test` | **83 files, 797 passed** (+8 from `local-voice.test.tsx`) |
+| `pnpm build:api` | **not run — `apps/api` untouched** |
+| IDE lint on every edited file | clean |
+
+**Deferred to CI:** `pnpm test:e2e` (API e2e) — N/A, no backend change. **Confirmed not run:** `git`, `prisma migrate` / `db:migrate` / `prisma db` (schema FROZEN; local enroll reuses the existing path). **Backend enrollment intact:** zero backend files modified; the backend `EnrollCard` + `useVoiceEmbedding` provider are unchanged and remain the default-available provider. **Shared-barrel touch:** `@arcaai/vox` `src/core.ts` + `src/hooks/index.ts` + `src/utils/index.ts` (additive exports) + new `exports.task329-p4.test.ts`; **no** existing key-count guard required changes; **no** shared admin nav edited. **New dependency:** `@huggingface/transformers@^3.8.1` in `@arcaai/vox` (matches `@arcaai/med-ner`).
+
+---
+
 ## 6. Change History
 | Date | Change | Files |
 |---|---|---|
 | 2026-06-02 | Sub-ticket created from TASK-325 §3.7 (Phase 3). Scope = P2–P6 + LiveCodePanel; fixes X3/X8/X10; Q3 SDK-first. Status `Pending`. | this README |
 | 2026-06-02 | **P6 + X3 + X10 delivered** (slice `wave3/p6-summarization`): `cacheHit`/`qualityScore` threaded domain→app→SDK→UI; summary list/version/diff/tag(+edit→new-version) endpoints + SDK methods + `SavedSummariesPanel`; X3 context-item ownership guard on `/text/generate/assembled`; X10 tenant+user localStorage namespacing. All 5 gates green; no `git`/`prisma migrate`. | domains `SummaryMeta*` + `ContextItemRepository`; applications summary/context DTOs+mappers+services, `version-diff.response`, `tag.service`; api `consultation.controller`/`consultation.module`/`smr-proxy.controller`; `@arcaai/vox` `useArcaSummary`/`constants`/`types`; ui-playground `saved-summaries-panel`, `history`, summary/pre-summary pages; + RED tests |
 | 2026-06-02 | **P5 DNA delivered** (slice `wave3/p5-dna-playground`): generate-from-history (`sourceIds`), set-default (`PATCH /:reportId/default`, reuses `isLatest`), `GET /mine` history, two-version diff, reusable `ImpersonationGuard`, and the **empty Edit-dialog fix** (`useEditDialogController.openFor` couples select+open; added Edit button). SDK `useDnaStyle` extended (+`MINE`/`SET_DEFAULT` endpoints, key-count guard 12→14); optimistic set-default in the UI cache. App/SDK/API/ui-playground gates green; no `git`/`prisma migrate`; e2e deferred to CI. | sdk `useDnaStyle`/`constants`/`types/dna`/`constants.ws4.test`; applications `generate-dna-report.request`/`dna-writing-style.service`/`IDnaWritingStyleService`/`dna-writing-style.processor`; api `dna-writing-style.controller`; ui-playground `components/impersonation-guard`, `features/dna-writing-style/{api,hooks,components,index}`; + RED tests |
+| 2026-06-02 | **P4 Voice delivered** (slice `wave3/p4-voice-embedding`): NEW **`local` in-browser embedding provider** (Transformers.js / `Xenova/wavlm-base-plus-sv`, MIT, 512-dim) alongside the unchanged backend provider — extract on-device, **persist via the existing `POST /voice-profile/enroll`**, cache the embedding tenant/user-namespaced (`SecureStorage`); **quick test** = client-side cosine match. Provider `Tabs` in the playground behind the shared `ImpersonationGuard`. **Deviation:** schema FROZEN → reused the existing enroll path instead of the originally-sketched `enroll-embedding`/`test` endpoints; `voiceProfileSeeded` + always-"Active" badge deferred. **No backend change**, no `git`/`prisma migrate`. New dep `@huggingface/transformers@^3.8.1` (matches `med-ner`). SDK (3213) + ui-playground (797) gates green. | sdk `utils/voiceEmbedding`, `core/LocalVoiceEmbedder`, `hooks/useLocalVoiceEmbedding`, barrels `core.ts`/`hooks/index.ts`/`utils/index.ts`, `package.json`, `exports.task329-p4.test`; ui-playground `features/voice-profile/local-voice.tsx` + `index.tsx`; + RED tests (4 sdk + 1 ui) |

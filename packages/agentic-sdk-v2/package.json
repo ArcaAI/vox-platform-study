@@ -60,6 +60,7 @@
     "@arcaai/room": "workspace:*",
     "@arcaai/stt": "workspace:*",
     "@arcaai/vad": "workspace:*",
+    "@huggingface/transformers": "^3.8.1",
     "@ricky0123/vad-web": "^0.0.30",
     "deepmerge-ts": "^7.1.5",
     "diff": "^8.0.4",
