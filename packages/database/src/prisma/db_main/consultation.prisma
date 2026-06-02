@@ -147,6 +147,12 @@ model AudioRecording {
     // Reference to Media table (stores actual file info)
     mediaId String
 
+    // Dual capture (TASK-329 X8) — soft references to the raw vs processed
+    // (noise-cancelled / VAD-trimmed / resampled) media. Nullable + additive;
+    // `mediaId` above is retained as the primary/back-compat reference.
+    rawMediaId       String?
+    processedMediaId String?
+
     // Audio-specific metadata
     duration   Int?    // Duration in milliseconds
     format     String? // e.g., "wav", "mp3", "webm"
@@ -202,6 +208,10 @@ model SummaryMeta {
     // Token usage (for analytics)
     inputTokens  Int? // Tokens used for input
     outputTokens Int? // Tokens generated
+
+    // Cache + quality analytics (TASK-329 P6)
+    cacheHit     Boolean? // Whether this summary was served from cache
+    qualityScore Float?   // Quality/score of the generated summary (0.0 - 1.0)
 
     // Context used for generation (IDs of related items)
     caseNoteIds        String[] @default([]) // IDs of case notes used as context
