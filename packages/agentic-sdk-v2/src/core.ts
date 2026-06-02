@@ -74,6 +74,8 @@ export type {
   ApiKeyUsage,
   ApiKeyWithRawKey,
   AuditLogEntry,
+  AuditLogFilterParams,
+  AuditLogResponsibleUser,
   Bucket,
   CreateApiKeyInput,
   CreatePolicyInput,

@@ -1,5 +1,37 @@
 import { EntityId, AuditLogEntity, AuditAction, ResourceType } from '@arcaai/domains';
 import { FetchResponse, PaginatedQuery } from '../../common';
+import { ResponsibleUserResponse } from './dto';
+
+/**
+ * TASK-328 A8 — repository-pushed audit filters. Every field is optional;
+ * the service translates present fields into a Prisma `where` fragment
+ * (date range → `createdAt` gte/lte; the rest → equality).
+ */
+export interface AuditLogFilters {
+  from?: string | null;
+  to?: string | null;
+  action?: AuditAction | null;
+  resourceType?: ResourceType | null;
+  userId?: string | null;
+}
+
+/**
+ * Map of `responsibleUserId` → resolved acting-user label. Built once per
+ * page so the controller can enrich each row without an N+1 lookup.
+ */
+export type ResponsibleUserMap = Record<string, ResponsibleUserResponse>;
+
+/** TASK-328 A8 — a filtered page plus its resolved acting users. */
+export interface FilteredAuditLogResult {
+  result: FetchResponse<AuditLogEntity>;
+  responsibleUsers: ResponsibleUserMap;
+}
+
+/** TASK-328 A8 — the full filtered set (no pagination) for CSV export. */
+export interface AuditLogExportResult {
+  rows: AuditLogEntity[];
+  responsibleUsers: ResponsibleUserMap;
+}
 
 /**
  * Interface for the Audit Log Service, defining the methods for managing audit logs.
@@ -22,6 +54,27 @@ export interface IAuditLogService {
    * @returns A promise that resolves to a FetchResponse containing the audit logs.
    */
   fetchAll(props: PaginatedQuery): Promise<FetchResponse<AuditLogEntity>>;
+
+  /**
+   * TASK-328 A8 — fetch a paginated, filtered page of audit logs and resolve
+   * the acting user for each row. Filters (`from`/`to`/`action`/`resourceType`/
+   * `userId`) are pushed to the repository `where` clause; tenant scoping is
+   * applied exactly like {@link fetchAll} (CLS tenant, SUPER_ADMIN bypass).
+   *
+   * @param props - Pagination + audit filters.
+   * @returns The page plus a `responsibleUserId` → label map.
+   */
+  fetchAllFiltered(props: PaginatedQuery & AuditLogFilters): Promise<FilteredAuditLogResult>;
+
+  /**
+   * TASK-328 A8 — load the ENTIRE filtered, tenant-scoped result set (capped)
+   * for CSV export. Same `where`/tenant semantics as
+   * {@link fetchAllFiltered}, but without page windowing.
+   *
+   * @param filters - Audit filters (no pagination).
+   * @returns Every matching row plus a `responsibleUserId` → label map.
+   */
+  exportFiltered(filters: AuditLogFilters): Promise<AuditLogExportResult>;
 
   /**
    * Fetch all audit logs related to a specific resource.

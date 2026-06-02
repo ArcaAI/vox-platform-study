@@ -683,4 +683,97 @@ describe('AuditLogDtoMapper', () => {
             });
         });
     });
+
+    describe('responsibleUser enrichment (TASK-328 A8)', () => {
+        it('attaches the resolved responsible user when a map is provided', () => {
+            const entity = createMockAuditLogEntity({ responsibleUserId: 'user-123' });
+            const responsibleUsers = {
+                'user-123': { id: 'user-123', displayName: 'Alice Nguyen', email: 'alice@example.com' },
+            } as any;
+
+            const result = AuditLogDtoMapper.ToResponse(entity as any, responsibleUsers);
+
+            expect(result.responsibleUser).toEqual({
+                id: 'user-123',
+                displayName: 'Alice Nguyen',
+                email: 'alice@example.com',
+            });
+        });
+
+        it('sets responsibleUser to null when no map is provided', () => {
+            const entity = createMockAuditLogEntity({ responsibleUserId: 'user-123' });
+            const result = AuditLogDtoMapper.ToResponse(entity as any);
+            expect(result.responsibleUser).toBeNull();
+        });
+
+        it('sets responsibleUser to null when the id is missing from the map', () => {
+            const entity = createMockAuditLogEntity({ responsibleUserId: 'user-999' });
+            const responsibleUsers = {
+                'user-123': { id: 'user-123', displayName: 'Alice', email: null },
+            } as any;
+            const result = AuditLogDtoMapper.ToResponse(entity as any, responsibleUsers);
+            expect(result.responsibleUser).toBeNull();
+        });
+
+        it('enriches every row in a paginated response', () => {
+            const entities = [
+                createMockAuditLogEntity({ id: 'a1', responsibleUserId: 'u1' }),
+                createMockAuditLogEntity({ id: 'a2', responsibleUserId: 'u2' }),
+            ];
+            const fetchResponse = new FetchResponse({ data: entities as any, count: 2, limit: 10, page: 1 });
+            const responsibleUsers = {
+                u1: { id: 'u1', displayName: 'User One', email: 'one@x.io' },
+                u2: { id: 'u2', displayName: 'User Two', email: null },
+            } as any;
+
+            const result = AuditLogDtoMapper.ToPaginatedResponse(fetchResponse, responsibleUsers);
+
+            expect(result.data[0].responsibleUser?.displayName).toBe('User One');
+            expect(result.data[1].responsibleUser?.email).toBeNull();
+        });
+    });
+
+    describe('ToCsv (TASK-328 A8 export)', () => {
+        it('emits a header row followed by one row per entity', () => {
+            const rows = [
+                createMockAuditLogEntity({ id: 'a1', responsibleUserId: 'u1', action: AuditAction.CREATE }),
+                createMockAuditLogEntity({ id: 'a2', responsibleUserId: 'u2', action: AuditAction.UPDATE }),
+            ];
+            const responsibleUsers = {
+                u1: { id: 'u1', displayName: 'Alice Nguyen', email: 'alice@example.com' },
+                u2: { id: 'u2', displayName: 'Bob', email: null },
+            } as any;
+
+            const csv = AuditLogDtoMapper.ToCsv(rows as any, responsibleUsers);
+            const lines = csv.split('\n');
+
+            expect(lines[0]).toBe(
+                'id,createdAt,action,resourceType,resourceId,responsibleUserId,responsibleUserName,responsibleUserEmail,responsibleIp,eventType,success,data',
+            );
+            expect(lines).toHaveLength(3);
+            expect(lines[1]).toContain('a1');
+            expect(lines[1]).toContain('Alice Nguyen');
+            expect(lines[1]).toContain('alice@example.com');
+            expect(lines[2]).toContain('a2');
+            expect(lines[2]).toContain('Bob');
+        });
+
+        it('serialises the data JSON into a single escaped cell', () => {
+            const data = { message: 'has, comma and "quote"' };
+            const rows = [createMockAuditLogEntity({ id: 'a1', responsibleUserId: null, data })];
+
+            const csv = AuditLogDtoMapper.ToCsv(rows as any, {});
+            const dataLine = csv.split('\n')[1];
+
+            // RFC-4180: a cell containing commas/quotes is wrapped in quotes with
+            // every embedded quote doubled. Compute the expectation to stay robust.
+            const expectedCell = `"${JSON.stringify(data).replace(/"/g, '""')}"`;
+            expect(dataLine).toContain(expectedCell);
+        });
+
+        it('renders an empty body (header only) for an empty set', () => {
+            const csv = AuditLogDtoMapper.ToCsv([], {});
+            expect(csv.split('\n')).toHaveLength(1);
+        });
+    });
 });

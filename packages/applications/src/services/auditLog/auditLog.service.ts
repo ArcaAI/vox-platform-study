@@ -1,13 +1,27 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { IAuditLogService } from './IAuditLogService';
-import { AuditLogRepository, AuditLogEntityMapper, CoreDatabaseService } from '@arcaai/domains';
+import {
+  IAuditLogService,
+  AuditLogFilters,
+  FilteredAuditLogResult,
+  AuditLogExportResult,
+  ResponsibleUserMap,
+} from './IAuditLogService';
+import { ResponsibleUserResponse } from './dto';
+import { AuditLogRepository, AuditLogEntityMapper, CoreDatabaseService, UserRepository, UserEntity } from '@arcaai/domains';
 import { EventTypes, AuditAction, AuditLogEntity, ResourceType, AuditLogFactory, SysEventType } from '@arcaai/domains';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { SUPER_ADMIN_ROLE } from '../tenant/constants';
+
+/**
+ * TASK-328 A8 — hard cap on rows materialised for a single CSV export so a
+ * wide (or unfiltered) range can never stream an unbounded result set into
+ * memory. Tune alongside the UI page sizes if exports start truncating.
+ */
+const AUDIT_LOG_EXPORT_MAX = 10000;
 
 /**
  * Service for managing audit logs.
@@ -51,6 +65,10 @@ export class AuditLogService extends BaseService implements IAuditLogService {
     // Same sanctioned escape hatch UserRoleAssignmentService uses for the
     // pre-auth identity reads.
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
+    // TASK-328 A8 — resolves responsibleUserId → display name/email for the
+    // admin table. User is a global model (no tenantId column) so a tenant
+    // admin can safely label rows authored by cross-tenant/system actors.
+    private readonly userRepository: UserRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.AuditLog);
   }
@@ -96,6 +114,143 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       limit,
       page,
     });
+  }
+
+  /**
+   * TASK-328 A8 — paginated, filtered audit-log list with acting-user
+   * enrichment.
+   *
+   * The `from`/`to`/`action`/`resourceType`/`userId` filters are translated to
+   * a Prisma `where` fragment and merged with the tenant scope, so filtering
+   * happens IN THE DATABASE (never in-memory). After the page loads we resolve
+   * each distinct `responsibleUserId` to a display label in a single batch
+   * query — avoiding an N+1 per row.
+   */
+  async fetchAllFiltered(props: PaginatedQuery & AuditLogFilters): Promise<FilteredAuditLogResult> {
+    const { limit, page } = props;
+
+    const whereClause = this.buildTenantWhere(this.buildAuditFilterWhere(props));
+
+    const [auditLogs, count] = await Promise.all([
+      this.auditLogRepository.findAll({
+        ...withFormattedPaginatedProps(props),
+        where: whereClause,
+      }),
+      this.auditLogRepository.count({
+        ...withFormattedCountProps(props),
+        where: whereClause,
+      }),
+    ]);
+
+    const responsibleUsers = await this.resolveResponsibleUsers(auditLogs.map((log) => log.responsibleUserId));
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: {
+        items: auditLogs.map((auditLog: AuditLogEntity) => auditLog.id),
+      },
+    });
+
+    return {
+      result: new FetchResponse<AuditLogEntity>({ data: auditLogs, count, limit, page }),
+      responsibleUsers,
+    };
+  }
+
+  /**
+   * TASK-328 A8 — materialise the ENTIRE filtered, tenant-scoped result set
+   * (capped at {@link AUDIT_LOG_EXPORT_MAX}) for CSV export. Reuses the same
+   * `where` builder + tenant scope as {@link fetchAllFiltered} so an export
+   * always matches what the operator sees in the table, ordered newest-first.
+   */
+  async exportFiltered(filters: AuditLogFilters): Promise<AuditLogExportResult> {
+    const whereClause = this.buildTenantWhere(this.buildAuditFilterWhere(filters));
+
+    const rows = await this.auditLogRepository.findAll({
+      where: whereClause,
+      page: 1,
+      limit: AUDIT_LOG_EXPORT_MAX,
+      sort: [{ createdAt: 'desc' }],
+    });
+
+    const responsibleUsers = await this.resolveResponsibleUsers(rows.map((row) => row.responsibleUserId));
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: {
+        export: true,
+        items: rows.map((row) => row.id),
+      },
+    });
+
+    return { rows, responsibleUsers };
+  }
+
+  /**
+   * Translate the optional audit filters into a Prisma `where` fragment.
+   * Only fields that are actually present are emitted, so an empty filter
+   * set degrades to "match everything (within tenant scope)".
+   *
+   * `from`/`to` map to an inclusive `createdAt` `gte`/`lte` range; the UI is
+   * responsible for sending start-of-day / end-of-day boundaries.
+   */
+  private buildAuditFilterWhere(filters: AuditLogFilters): {
+    createdAt?: { gte?: Date; lte?: Date };
+    action?: AuditAction;
+    resourceType?: ResourceType;
+    responsibleUserId?: string;
+  } {
+    const where: {
+      createdAt?: { gte?: Date; lte?: Date };
+      action?: AuditAction;
+      resourceType?: ResourceType;
+      responsibleUserId?: string;
+    } = {};
+
+    const createdAt: { gte?: Date; lte?: Date } = {};
+    if (filters.from) createdAt.gte = new Date(filters.from);
+    if (filters.to) createdAt.lte = new Date(filters.to);
+    if (createdAt.gte || createdAt.lte) where.createdAt = createdAt;
+
+    if (filters.action) where.action = filters.action;
+    if (filters.resourceType) where.resourceType = filters.resourceType;
+    if (filters.userId) where.responsibleUserId = filters.userId;
+
+    return where;
+  }
+
+  /**
+   * Resolve a set of (possibly null/duplicated) `responsibleUserId`s to a
+   * `id → label` map in ONE query. Display name prefers the user's profile
+   * name, then username; email comes from the profile when present.
+   */
+  private async resolveResponsibleUsers(userIds: Array<string | null | undefined>): Promise<ResponsibleUserMap> {
+    const ids = Array.from(new Set(userIds.filter((id): id is string => Boolean(id))));
+    if (ids.length === 0) return {};
+
+    const users = await this.userRepository.findAll({
+      where: { id: { in: ids } },
+      page: 1,
+      limit: ids.length,
+    });
+
+    const map: ResponsibleUserMap = {};
+    for (const user of users) {
+      map[user.id] = new ResponsibleUserResponse({
+        id: user.id,
+        displayName: this.resolveDisplayName(user),
+        email: user.UserProfile?.email ?? null,
+      });
+    }
+    return map;
+  }
+
+  /**
+   * Best-effort human label for an acting user: "First Last" from the
+   * profile, falling back to username, then null.
+   */
+  private resolveDisplayName(user: UserEntity): string | null {
+    const profile = user.UserProfile;
+    const fullName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ').trim();
+    return fullName || user.username || null;
   }
 
   /**

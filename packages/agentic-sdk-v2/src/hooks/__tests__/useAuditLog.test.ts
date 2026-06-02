@@ -20,13 +20,15 @@ describe('useAuditLog', () => {
     let mockLogger: ReturnType<typeof createMockLogger>;
     let mockStore: any;
     const mockGet = vi.fn();
+    const mockGetCsv = vi.fn();
 
     beforeEach(() => {
         mockLogger = createMockLogger();
         mockGet.mockReset();
+        mockGetCsv.mockReset();
 
         mockStore = {
-            apiClient: { get: mockGet, post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+            apiClient: { get: mockGet, getCsv: mockGetCsv, post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
             logger: mockLogger,
         };
         (useAgenticStore as any).mockReturnValue(mockStore);
@@ -71,6 +73,33 @@ describe('useAuditLog', () => {
             expect(mockGet).toHaveBeenCalledWith(`${AUDIT_LOG_ENDPOINTS.LIST}?page=2&limit=20`);
         });
 
+        it('should push from/to/action/resourceType/userId filters into the query (TASK-328 A8)', async () => {
+            mockGet.mockResolvedValue([]);
+            const { result } = renderHook(() => useAuditLog());
+
+            await act(async () => {
+                await result.current.list({
+                    page: 1,
+                    limit: 10,
+                    from: '2026-01-01T00:00:00.000Z',
+                    to: '2026-01-31T23:59:59.999Z',
+                    action: 'UPDATE',
+                    resourceType: 'Consultation',
+                    userId: 'user-xyz',
+                });
+            });
+
+            const calledUrl = mockGet.mock.calls[0][0] as string;
+            expect(calledUrl.startsWith(`${AUDIT_LOG_ENDPOINTS.LIST}?`)).toBe(true);
+            expect(calledUrl).toContain('from=2026-01-01T00%3A00%3A00.000Z');
+            expect(calledUrl).toContain('to=2026-01-31T23%3A59%3A59.999Z');
+            expect(calledUrl).toContain('action=UPDATE');
+            expect(calledUrl).toContain('resourceType=Consultation');
+            expect(calledUrl).toContain('userId=user-xyz');
+            expect(calledUrl).toContain('page=1');
+            expect(calledUrl).toContain('limit=10');
+        });
+
         it('should extract array from paginated wrapper response', async () => {
             const entries = [{ id: 'al-1', resourceType: 'Role', action: 'CREATE' }];
             mockGet.mockResolvedValue({ data: entries, total: 1 });
@@ -102,17 +131,43 @@ describe('useAuditLog', () => {
         });
     });
 
-    describe('get', () => {
+    describe('getById', () => {
         it('should GET from AUDIT_LOG_ENDPOINTS.GET(id)', async () => {
             const entry = { id: 'al-1', resourceType: 'Role', action: 'CREATE', data: { name: 'Admin' } };
             mockGet.mockResolvedValue(entry);
             const { result } = renderHook(() => useAuditLog());
 
             let resp: unknown;
-            await act(async () => { resp = await result.current.get('al-1'); });
+            await act(async () => { resp = await result.current.getById('al-1'); });
 
             expect(mockGet).toHaveBeenCalledWith(AUDIT_LOG_ENDPOINTS.GET('al-1'));
             expect(resp).toEqual(entry);
+        });
+    });
+
+    describe('exportCsv (TASK-328 A8)', () => {
+        it('should call getCsv on the EXPORT endpoint and return the CSV text', async () => {
+            const csv = 'id,createdAt,action\nal-1,2026-02-01T10:00:00.000Z,CREATE';
+            mockGetCsv.mockResolvedValue(csv);
+            const { result } = renderHook(() => useAuditLog());
+
+            let resp: unknown;
+            await act(async () => { resp = await result.current.exportCsv({ action: 'CREATE' }); });
+
+            expect(mockGetCsv).toHaveBeenCalledTimes(1);
+            const calledUrl = mockGetCsv.mock.calls[0][0] as string;
+            expect(calledUrl.startsWith(`${AUDIT_LOG_ENDPOINTS.EXPORT}?`)).toBe(true);
+            expect(calledUrl).toContain('action=CREATE');
+            expect(resp).toBe(csv);
+        });
+
+        it('should hit the bare EXPORT endpoint when no filters are given', async () => {
+            mockGetCsv.mockResolvedValue('id\n');
+            const { result } = renderHook(() => useAuditLog());
+
+            await act(async () => { await result.current.exportCsv(); });
+
+            expect(mockGetCsv).toHaveBeenCalledWith(AUDIT_LOG_ENDPOINTS.EXPORT);
         });
     });
 
