@@ -27,6 +27,10 @@ const mockDepartmentRepository = {
     findById: vi.fn(),
 };
 
+const mockPromptTemplateRepository = {
+    findById: vi.fn(),
+};
+
 /**
  * Helper: create a mock DepartmentEntity with prompt config fields.
  */
@@ -66,6 +70,7 @@ describe('PromptResolutionService', () => {
 
         service = new PromptResolutionService(
             mockDepartmentRepository as never,
+            mockPromptTemplateRepository as never,
         );
     });
 
@@ -293,6 +298,64 @@ describe('PromptResolutionService', () => {
             expect(result.resolutionTrace).not.toHaveProperty('departmentDnaStyleId');
             expect(result.resolutionTrace.departmentTemplate).toBe('SOAP');
             expect(result.resolutionTrace.departmentPromptId).toBe('prompt_new');
+        });
+    });
+
+    // =========================================================================
+    // Tier-0 — Preferred Prompt Template (TASK-329 P2)
+    // =========================================================================
+
+    describe('resolve — preferred prompt template (Tier-0)', () => {
+        it('uses the preferred template id over the department/default promptId', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(
+                createMockDepartment({ defaultSummaryTemplate: 'SOAP', newPatientPromptId: 'dept-prompt' }),
+            );
+            mockPromptTemplateRepository.findById.mockResolvedValue({ id: 'preferred-tpl', name: 'My SOAP' });
+
+            const result = await service.resolve({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                preferredPromptTemplateId: 'preferred-tpl',
+            });
+
+            expect(result.promptId).toBe('preferred-tpl');
+            expect(result.resolvedFrom).toBe('preferred');
+            expect(result.resolutionTrace.preferredPromptId).toBe('preferred-tpl');
+            expect(mockPromptTemplateRepository.findById).toHaveBeenCalledWith('preferred-tpl');
+        });
+
+        it('falls back to the department/default tiers when the preferred template does not exist', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(
+                createMockDepartment({ defaultSummaryTemplate: 'SOAP', newPatientPromptId: 'dept-prompt' }),
+            );
+            mockPromptTemplateRepository.findById.mockResolvedValue(null);
+
+            const result = await service.resolve({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                preferredPromptTemplateId: 'missing-tpl',
+            });
+
+            expect(result.promptId).toBe('dept-prompt');
+            expect(result.resolvedFrom).toBe('department');
+            expect(result.resolutionTrace.preferredPromptId).toBeNull();
+        });
+
+        it('does not query the template repo when no preferred id is supplied', async () => {
+            const result = await service.resolve({});
+
+            expect(mockPromptTemplateRepository.findById).not.toHaveBeenCalled();
+            expect(result.resolvedFrom).toBe('default');
+            expect(result.resolutionTrace.preferredPromptId).toBeNull();
+        });
+
+        it('falls through to default when the preferred lookup throws', async () => {
+            mockPromptTemplateRepository.findById.mockRejectedValue(new Error('db-down'));
+
+            const result = await service.resolve({ preferredPromptTemplateId: 'preferred-tpl' });
+
+            expect(result.promptId).toBe(SYSTEM_DEFAULTS.promptId);
+            expect(result.resolvedFrom).toBe('default');
         });
     });
 });
