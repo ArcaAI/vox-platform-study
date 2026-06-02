@@ -78,4 +78,39 @@ describe('auth-store scope predicates (TASK-327 T1)', () => {
       expect(useAuthStore.getState().isSuperAdmin()).toBe(false);
     });
   });
+
+  // `isAdmin` is the role-level gate for *any* admin surface — the same
+  // predicate the sidebar/nav use (TASK-327 "scope, not visibility"). It is
+  // deliberately broader than `isGlobalScope`: a TENANT_ADMIN is an admin
+  // (data is tenant-scoped server-side) but is NOT global scope.
+  describe('isAdmin (SUPER_ADMIN ∪ GLOBAL_ADMIN ∪ TENANT_ADMIN)', () => {
+    it('is true for SUPER_ADMIN', () => {
+      setRoles(['SUPER_ADMIN']);
+      expect(useAuthStore.getState().isAdmin()).toBe(true);
+    });
+
+    it('is true for GLOBAL_ADMIN', () => {
+      setRoles(['GLOBAL_ADMIN']);
+      expect(useAuthStore.getState().isAdmin()).toBe(true);
+    });
+
+    it('is true for TENANT_ADMIN', () => {
+      setRoles(['TENANT_ADMIN']);
+      expect(useAuthStore.getState().isAdmin()).toBe(true);
+    });
+
+    it('is false for a non-admin clinical role', () => {
+      setRoles(['DOCTOR']);
+      expect(useAuthStore.getState().isAdmin()).toBe(false);
+    });
+
+    it('is false when there is no user', () => {
+      expect(useAuthStore.getState().isAdmin()).toBe(false);
+    });
+
+    it('is false for an empty roles array', () => {
+      setRoles([]);
+      expect(useAuthStore.getState().isAdmin()).toBe(false);
+    });
+  });
 });

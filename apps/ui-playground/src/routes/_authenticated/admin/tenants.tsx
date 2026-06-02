@@ -1,15 +1,11 @@
 import TenantManagementPage from '@/features/admin/tenants';
-import { createFileRoute, Navigate } from '@tanstack/react-router';
-import { useAuthStore } from '@/store/auth-store';
-
-function GuardedTenantPage() {
-  const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
-  if (!isSuperAdmin()) {
-    return <Navigate to="/403" />;
-  }
-  return <TenantManagementPage />;
-}
+import { RequireAdmin } from '@/components/admin-route-guard';
+import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/_authenticated/admin/tenants')({
-  component: GuardedTenantPage,
+  component: () => (
+    <RequireAdmin>
+      <TenantManagementPage />
+    </RequireAdmin>
+  ),
 });

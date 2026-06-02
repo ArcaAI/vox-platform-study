@@ -1,15 +1,11 @@
 import DepartmentManagementPage from '@/features/admin/departments';
-import { createFileRoute, Navigate } from '@tanstack/react-router';
-import { useAuthStore } from '@/store/auth-store';
-
-function GuardedDepartmentPage() {
-  const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
-  if (!isSuperAdmin()) {
-    return <Navigate to="/403" />;
-  }
-  return <DepartmentManagementPage />;
-}
+import { RequireAdmin } from '@/components/admin-route-guard';
+import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/_authenticated/admin/departments')({
-  component: GuardedDepartmentPage,
+  component: () => (
+    <RequireAdmin>
+      <DepartmentManagementPage />
+    </RequireAdmin>
+  ),
 });
