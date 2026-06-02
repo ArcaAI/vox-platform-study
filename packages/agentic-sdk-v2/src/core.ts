@@ -42,8 +42,10 @@ export {
   useArcaSession,
   // TASK-299 D-13 — surface the dedicated summary hook from the core entry.
   useArcaSummary,
+  useAudioRecordings,
   useAuditLog,
   useAuth,
+  useConsultationChain,
   useConsultationJob,
   useDepartments,
   useDnaDashboard,
@@ -116,8 +118,10 @@ export type {
   UseArcaSession,
   UseArcaSessionReturn,
   UseArcaSummary,
+  UseAudioRecordingsReturn,
   UseAuditLogReturn,
   UseAuthReturn,
+  UseConsultationChainReturn,
   UseConsultationJobReturn,
   UseDepartmentsReturn,
   UseDnaDashboardReturn,
@@ -218,6 +222,9 @@ export type {
   MedicalEntityType,
   NERData,
 } from './types';
+
+// Audio recording types (TASK-329 P2 — dual-capture X8)
+export type { AudioRecording, AddAudioRecordingInput } from './types';
 
 // =============================================================================
 // Types - Audio
@@ -377,6 +384,7 @@ export {
   ADMIN_USER_PROFILE_ENDPOINTS,
   ADMIN_USER_ROLES_ENDPOINTS,
   API_KEY_ENDPOINTS,
+  AUDIO_RECORDING_ENDPOINTS,
   AUDIT_LOG_ENDPOINTS,
   AUTH_ENDPOINTS,
   CONSULTATION_ENDPOINTS,
@@ -523,6 +531,11 @@ export type { VoiceEnrollmentProvider, EnrolledEmbeddingRef, VoiceMatchResult } 
 
 export { FileTranscriptionService, type FileTranscribeOptions } from './core/FileTranscriptionService';
 export { SSEClient, type SSEConnectOptions } from './core/SSEClient';
+
+// Dual-stream recorder (TASK-329 P2 — dual-capture X8): records raw + processed
+// tracks in parallel via two MediaRecorders.
+export { DualStreamRecorder } from './core/DualStreamRecorder';
+export type { DualStreamRecorderOptions, DualStreamRecorderResult } from './core/DualStreamRecorder';
 export { StreamingSessionManager, type SessionManagerStatus } from './core/StreamingSessionManager';
 export { SttV2WebSocketClient, type WsConnectOptions, type WsReconnectOptions } from './core/SttV2WebSocketClient';
 

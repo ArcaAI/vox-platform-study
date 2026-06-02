@@ -518,6 +518,15 @@ export class TranscriptionPipeline {
   }
 
   /**
+   * Get the RAW input track (the unprocessed source track), independent of any
+   * enabled processing stages. Used by dual-capture (TASK-329 X8) to record the
+   * original microphone alongside the processed output from `getProcessedTrack()`.
+   */
+  getRawInputTrack(): MediaStreamTrack | null {
+    return this.currentInput?.track ?? null;
+  }
+
+  /**
    * Get the processed audio track (output of the last enabled stage).
    */
   getProcessedTrack(): MediaStreamTrack | null {
