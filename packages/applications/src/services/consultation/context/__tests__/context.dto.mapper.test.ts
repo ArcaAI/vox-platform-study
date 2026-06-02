@@ -87,6 +87,8 @@ const createMockContextItemEntity = (overrides: Partial<{
 const createMockAudioRecordingEntity = (overrides: Partial<{
     id: string;
     mediaId: string;
+    rawMediaId: string | null;
+    processedMediaId: string | null;
     duration: number | null;
     durationFormatted: string | null;
     format: string | null;
@@ -100,6 +102,8 @@ const createMockAudioRecordingEntity = (overrides: Partial<{
 }> = {}) => ({
     id: overrides.id ?? 'audio-recording-id-1',
     mediaId: overrides.mediaId ?? 'media-uuid-123',
+    rawMediaId: 'rawMediaId' in overrides ? overrides.rawMediaId : null,
+    processedMediaId: 'processedMediaId' in overrides ? overrides.processedMediaId : null,
     duration: 'duration' in overrides ? overrides.duration : 180000,
     durationFormatted: 'durationFormatted' in overrides ? overrides.durationFormatted : '03:00',
     format: 'format' in overrides ? overrides.format : 'mp3',
@@ -664,6 +668,18 @@ describe('ContextDtoMapper', () => {
             expect(result.sequenceNumber).toBe(1);
             expect(result.recordedAt).toBe('2026-01-29T09:00:00.000Z');
             expect(result.createdAt).toBe('2026-01-29T10:00:00.000Z');
+        });
+
+        it('maps rawMediaId/processedMediaId when present, and undefined when null (TASK-329 X8)', () => {
+            const withDual = ContextDtoMapper.toAudioRecordingResponse(
+                createMockAudioRecordingEntity({ rawMediaId: 'media-raw', processedMediaId: 'media-processed' }) as any,
+            );
+            expect(withDual.rawMediaId).toBe('media-raw');
+            expect(withDual.processedMediaId).toBe('media-processed');
+
+            const withoutDual = ContextDtoMapper.toAudioRecordingResponse(createMockAudioRecordingEntity() as any);
+            expect(withoutDual.rawMediaId).toBeUndefined();
+            expect(withoutDual.processedMediaId).toBeUndefined();
         });
 
         it('should handle null optional fields', () => {

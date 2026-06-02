@@ -58,6 +58,8 @@ export class ContextDtoMapper {
     return {
       id: entity.id,
       mediaId: entity.mediaId,
+      rawMediaId: entity.rawMediaId ?? undefined,
+      processedMediaId: entity.processedMediaId ?? undefined,
       duration: entity.duration ?? undefined,
       durationFormatted: entity.durationFormatted ?? undefined,
       format: entity.format ?? undefined,

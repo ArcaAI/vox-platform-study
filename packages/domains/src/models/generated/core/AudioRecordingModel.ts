@@ -8,6 +8,8 @@ import * as Models from './';
 export class AudioRecording extends BaseTenantDataModel {
   public contextItemId: string;
   public mediaId: string;
+  public rawMediaId: string | null;
+  public processedMediaId: string | null;
   public duration: number | null;
   public format: string | null;
   public sampleRate: number | null;
@@ -21,6 +23,8 @@ export class AudioRecording extends BaseTenantDataModel {
     super(data);
     this.contextItemId = data.contextItemId;
     this.mediaId = data.mediaId;
+    this.rawMediaId = data.rawMediaId;
+    this.processedMediaId = data.processedMediaId;
     this.duration = data.duration;
     this.format = data.format;
     this.sampleRate = data.sampleRate;

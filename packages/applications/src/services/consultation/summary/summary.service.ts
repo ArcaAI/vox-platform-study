@@ -9,6 +9,7 @@ import {
   ConsultationRepository,
   SummaryMetaRepository,
   NamedEntityRepository,
+  UserProfileRepository,
   ContextItemFactory,
   ContextItemVersionFactory,
   SummaryMetaFactory,
@@ -48,6 +49,11 @@ export class SummaryService extends BaseService implements ISummaryService {
     // mock. When unset we behave exactly like the pre-migration code
     // when env var SMR_SERVICE_TOKEN was unset: no X-Service-Token header.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-329 P2 (Tier-0 prompt resolution): load the consulting doctor's
+    // `UserProfile.preferredPromptTemplateId`. Optional + trailing so existing
+    // positional test fixtures keep compiling; production DI (CoreDatabaseModule)
+    // always supplies it.
+    @Optional() @Inject(UserProfileRepository) private readonly userProfileRepository?: UserProfileRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -89,6 +95,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       transcript: content,
       conversationLanguage: this.resolveConversationLanguage(request.options),
       dnaStyleId: request.dnaStyleId,
+      preferredPromptTemplateId: await this.resolvePreferredPromptTemplateId(consultation.doctorId),
     });
 
     // Call SMR service
@@ -179,6 +186,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       dnaStyleId: request.dnaStyleId,
       preSummaryText: latestPreSummary?.content ?? undefined,
       explicitTemplate: request.template,
+      preferredPromptTemplateId: await this.resolvePreferredPromptTemplateId(consultation.doctorId),
     });
 
     // Call SMR service
@@ -493,6 +501,28 @@ export class SummaryService extends BaseService implements ISummaryService {
     const candidate = options?.conversationLanguage ?? options?.language ?? options?.locale;
 
     return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : 'en';
+  }
+
+  /**
+   * TASK-329 P2 (Tier-0): resolve the consulting doctor's preferred prompt template id
+   * from their UserProfile. Returns null when the repo isn't wired (legacy fixtures),
+   * the doctor has no profile, or the lookup fails — letting prompt resolution fall
+   * through to the department/default tiers.
+   */
+  private async resolvePreferredPromptTemplateId(doctorId?: string | null): Promise<string | null> {
+    if (!doctorId || !this.userProfileRepository) return null;
+
+    try {
+      const profiles = await this.userProfileRepository.findAll({ where: { userId: doctorId } });
+      return profiles[0]?.preferredPromptTemplateId ?? null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to resolve preferred prompt template — falling back to department/default',
+        doctorId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 
   private async callNlpService(text: string): Promise<{

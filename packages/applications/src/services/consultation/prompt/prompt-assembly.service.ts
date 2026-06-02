@@ -35,6 +35,8 @@ export interface PromptAssemblyParams {
   preSummaryText?: string;
   sameDayPrequelSummary?: string;
   explicitTemplate?: string;
+  /** The requesting doctor's preferred prompt template id (TASK-329 P2 Tier-0). */
+  preferredPromptTemplateId?: string | null;
 }
 
 export interface AssembledPrompt {
@@ -64,6 +66,7 @@ export class PromptAssemblyService {
       departmentId: params.departmentId,
       promptType: params.promptType,
       explicitTemplate: params.explicitTemplate,
+      preferredPromptTemplateId: params.preferredPromptTemplateId,
     });
 
     const template = resolved.promptId ? await this.promptTemplateRepository.findById(resolved.promptId) : null;

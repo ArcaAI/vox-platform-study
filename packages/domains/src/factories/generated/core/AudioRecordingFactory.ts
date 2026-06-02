@@ -8,6 +8,8 @@ import { AudioRecordingEntity, IAudioRecordingEntity } from '../../../entities';
 export interface CreateAudioRecordingProps extends BaseEntityFactoryCreateProps {
   contextItemId: IAudioRecordingEntity['contextItemId'];
   mediaId: IAudioRecordingEntity['mediaId'];
+  rawMediaId?: IAudioRecordingEntity['rawMediaId'];
+  processedMediaId?: IAudioRecordingEntity['processedMediaId'];
   duration?: IAudioRecordingEntity['duration'];
   format?: IAudioRecordingEntity['format'];
   sampleRate?: IAudioRecordingEntity['sampleRate'];
@@ -39,6 +41,8 @@ export class AudioRecordingFactory {
 
       contextItemId: props.contextItemId,
       mediaId: props.mediaId,
+      rawMediaId: props.rawMediaId ?? null,
+      processedMediaId: props.processedMediaId ?? null,
       duration: props.duration ?? null,
       format: props.format ?? null,
       sampleRate: props.sampleRate ?? null,
@@ -59,6 +63,8 @@ export class AudioRecordingFactory {
     contextItemId: string,
     mediaId: string,
     metadata: {
+      rawMediaId?: string | null;
+      processedMediaId?: string | null;
       duration?: number;
       format?: string;
       sampleRate?: number;
@@ -73,6 +79,8 @@ export class AudioRecordingFactory {
       tenantId,
       contextItemId,
       mediaId,
+      rawMediaId: metadata.rawMediaId,
+      processedMediaId: metadata.processedMediaId,
       duration: metadata.duration,
       format: metadata.format,
       sampleRate: metadata.sampleRate,
