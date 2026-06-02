@@ -39,8 +39,8 @@ vi.mock('@arcaai/ui/button', () => ({
 }));
 
 vi.mock('@arcaai/ui/badge', () => ({
-    Badge: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-        <span data-testid="badge" {...props}>{children}</span>
+    Badge: ({ children, variant, ...props }: React.PropsWithChildren<{ variant?: string } & Record<string, unknown>>) => (
+        <span data-testid="badge" data-variant={variant} {...props}>{children}</span>
     ),
 }));
 
@@ -79,6 +79,7 @@ interface VoiceProfileForTest {
     id: string;
     label?: string;
     createdAt?: string;
+    isActive?: boolean;
 }
 
 const defaultVoxState = {
@@ -173,6 +174,28 @@ describe('VoiceEmbeddingPanel', () => {
         });
         expect(screen.getByText(/Profile One/i)).toBeInTheDocument();
         expect(screen.getByText(/Profile Two/i)).toBeInTheDocument();
+    });
+
+    // ── 4b. active/inactive status badge ───────────────────────────
+
+    it('renders an "Inactive" badge (neutral variant) for a profile whose isActive is false', () => {
+        renderPanel({
+            profiles: [{ id: 'p-dormant', label: 'Dormant', isActive: false }],
+        });
+        const badge = screen.getByText('Inactive');
+        expect(badge).toBeInTheDocument();
+        expect(badge).toHaveAttribute('data-variant', 'outline');
+        // The hardcoded "Active" badge must no longer appear for an inactive profile.
+        expect(screen.queryByText('Active')).not.toBeInTheDocument();
+    });
+
+    it('renders an "Active" badge (default variant) for a profile whose isActive is true', () => {
+        renderPanel({
+            profiles: [{ id: 'p-primary', label: 'Primary', isActive: true }],
+        });
+        const badge = screen.getByText('Active');
+        expect(badge).toBeInTheDocument();
+        expect(badge).toHaveAttribute('data-variant', 'default');
     });
 
     // ── 5. sample queue: add ───────────────────────────────────────
