@@ -41,6 +41,7 @@ interface AuthActions {
   logout: () => void;
   isSuperAdmin: () => boolean;
   isGlobalScope: () => boolean;
+  isAdmin: () => boolean;
 }
 
 const initialState: AuthState = {
@@ -140,6 +141,19 @@ export const useAuthStore = create<AuthState & AuthActions>()(
         const roles = get().user?.roles;
         if (!roles) return false;
         return roles.includes('SUPER_ADMIN') || roles.includes('GLOBAL_ADMIN');
+      },
+
+      // Role-level gate for *any* admin surface. Per TASK-327 ("scope, not
+      // visibility") every admin — SUPER_ADMIN, GLOBAL_ADMIN, or TENANT_ADMIN —
+      // may reach the full admin console; per-tenant/per-permission scoping is
+      // enforced server-side (X-Tenant-Id + CASL). Single source of truth
+      // shared by the sidebar nav (`app-sidebar`) and the admin route guards
+      // (`RequireAdmin`) so the two can't drift apart. The one global-scope-only
+      // surface (Prisma Studio) uses `isGlobalScope()` instead.
+      isAdmin: () => {
+        const roles = get().user?.roles;
+        if (!roles) return false;
+        return roles.includes('SUPER_ADMIN') || roles.includes('GLOBAL_ADMIN') || roles.includes('TENANT_ADMIN');
       },
     }),
     {
