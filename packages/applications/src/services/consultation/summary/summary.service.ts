@@ -19,7 +19,7 @@ import {
 import { ISummaryService } from './ISummaryService';
 import { GenerateSummaryRequest, GeneratePreSummaryRequest, UpdateSummaryRequest, SummaryResponse } from './dto';
 import { SummaryDtoMapper } from './summary.dto.mapper';
-import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './smr-v2-generate';
+import { buildSmrGeneratePayload, mapSmrGenerateResponse, type LegacySmrSummaryResponse } from './smr-v2-generate';
 import { BaseService, assertParentInScope } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
@@ -116,6 +116,8 @@ export class SummaryService extends BaseService implements ISummaryService {
       processingTimeMs: smrResponse.processingTimeMs,
       inputTokens: smrResponse.inputTokens,
       outputTokens: smrResponse.outputTokens,
+      cacheHit: smrResponse.cacheHit,
+      qualityScore: smrResponse.qualityScore,
     });
     await this.summaryMetaRepository.create(summaryMeta);
 
@@ -206,6 +208,8 @@ export class SummaryService extends BaseService implements ISummaryService {
       processingTimeMs: smrResponse.processingTimeMs,
       inputTokens: smrResponse.inputTokens,
       outputTokens: smrResponse.outputTokens,
+      cacheHit: smrResponse.cacheHit,
+      qualityScore: smrResponse.qualityScore,
     });
     await this.summaryMetaRepository.create(summaryMeta);
 
@@ -469,14 +473,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     };
     options?: Record<string, unknown>;
     context?: Record<string, unknown>;
-  }): Promise<{
-    summary: string;
-    llmProvider?: string;
-    modelName?: string;
-    processingTimeMs?: number;
-    inputTokens?: number;
-    outputTokens?: number;
-  }> {
+  }): Promise<LegacySmrSummaryResponse> {
     try {
       const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, payload.options, payload.context);
       const smrServiceToken = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';

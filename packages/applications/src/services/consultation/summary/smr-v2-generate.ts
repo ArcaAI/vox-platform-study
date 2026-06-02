@@ -7,6 +7,8 @@ export interface LegacySmrSummaryResponse {
   processingTimeMs?: number;
   inputTokens?: number;
   outputTokens?: number;
+  cacheHit?: boolean;
+  qualityScore?: number;
 }
 
 interface SmrGeneratePayload {
@@ -37,6 +39,11 @@ interface SmrGenerateResponse {
     prompt_tokens?: number;
     completion_tokens?: number;
   };
+  cacheHit?: boolean;
+  cache_hit?: boolean;
+  cached?: boolean;
+  qualityScore?: number;
+  quality_score?: number;
 }
 
 function pickNumber(source: Record<string, unknown> | undefined, ...keys: string[]): number | undefined {
@@ -115,5 +122,7 @@ export function mapSmrGenerateResponse(responseData: SmrGenerateResponse): Legac
     processingTimeMs: responseData.processingTimeMs ?? responseData.latency_ms,
     inputTokens: responseData.inputTokens ?? responseData.usage?.prompt_tokens,
     outputTokens: responseData.outputTokens ?? responseData.usage?.completion_tokens,
+    cacheHit: responseData.cacheHit ?? responseData.cache_hit ?? responseData.cached,
+    qualityScore: responseData.qualityScore ?? responseData.quality_score,
   };
 }

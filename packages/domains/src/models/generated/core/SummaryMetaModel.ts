@@ -17,6 +17,8 @@ export class SummaryMeta extends BaseTenantDataModel {
   public preSummaryIds: string[];
   public previousSummaryIds: string[];
   public generatedAt: Date | null;
+  public cacheHit: boolean | null;
+  public qualityScore: number | null;
 
   constructor(data: SummaryMeta & BaseTenantDataModel) {
     super(data);
@@ -31,5 +33,7 @@ export class SummaryMeta extends BaseTenantDataModel {
     this.preSummaryIds = data.preSummaryIds ?? [];
     this.previousSummaryIds = data.previousSummaryIds ?? [];
     this.generatedAt = data.generatedAt;
+    this.cacheHit = data.cacheHit;
+    this.qualityScore = data.qualityScore;
   }
 }

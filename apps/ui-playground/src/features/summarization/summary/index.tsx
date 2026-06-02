@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { toast } from 'sonner';
 import type { AssembledGenerateRequest, SmrGenerateRequest, SmrGenerateResponse } from '../api';
 import { smrClient, useGenerateSummary } from '../api';
-import { ImpersonationGuard, ProviderModelSelect, ResultCard } from '../components';
+import { ImpersonationGuard, ProviderModelSelect, ResultCard, SavedSummariesPanel } from '../components';
 import { SmrStatusBadge } from '../components/smr-status-badge';
 import { addToHistory } from '../history';
 import { useDoctorContext } from '../hooks/use-doctor-context';
@@ -1405,6 +1405,9 @@ export default function SummaryPage() {
                     ))}
                   </div>
                 )}
+
+                {/* TASK-329 (P6) — persisted summary management: list, versions, diff, tags, edit */}
+                <SavedSummariesPanel />
               </div>
 
               {/* Right column — configuration */}

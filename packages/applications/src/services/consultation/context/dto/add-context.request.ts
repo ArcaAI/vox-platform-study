@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsObject, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsEnum, IsBoolean, IsNumber } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ContextItemType, ContextItemSource } from '@arcaai/domains';
 
@@ -125,6 +125,16 @@ export class AddRawSummaryRequest {
   @ApiPropertyOptional({ description: 'IDs of previous consultation summaries used as context' })
   @IsOptional()
   previousSummaryIds?: string[];
+
+  @ApiPropertyOptional({ description: 'Whether this summary was served from cache' })
+  @IsOptional()
+  @IsBoolean()
+  cacheHit?: boolean;
+
+  @ApiPropertyOptional({ description: 'Quality/score of the generated summary (0.0 - 1.0)' })
+  @IsOptional()
+  @IsNumber()
+  qualityScore?: number;
 }
 
 /**

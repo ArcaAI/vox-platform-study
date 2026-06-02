@@ -597,12 +597,31 @@ export class SmrProxyController {
       // AUDIO_RECORDING: 'Audio',
     };
 
+    const callerTenantId = this.clsService.get('tenantId');
+
     let context: string;
     if (body.context_item_ids) {
       const contentBlocks: string[] = [];
       for (const id of body.context_item_ids) {
         const contextItem = await this.contextItemRepository.findById(id);
         if (!contextItem) {
+          throw new NotFoundException(`Context item ${id} not found`);
+        }
+        // TASK-329 X3 — cross-tenant context ownership check. The assembled
+        // generation path assembles prompts on behalf of the caller; without
+        // this guard a caller could reference another tenant's context items
+        // (raw DNA / transcripts / summaries) and exfiltrate their content
+        // through the generated summary. Mirror the tenant checks used in the
+        // application layer (assertParentInScope) and surface a 404 so the
+        // existence of cross-tenant resources is never leaked.
+        const itemTenant = (contextItem as { tenantId?: string | null }).tenantId ?? null;
+        if (callerTenantId && itemTenant !== null && itemTenant !== callerTenantId) {
+          this.logger.warn({
+            message: 'Cross-tenant context item usage rejected',
+            callerTenant: callerTenantId,
+            contextItemId: id,
+            itemTenant,
+          });
           throw new NotFoundException(`Context item ${id} not found`);
         }
         const label = TYPE_LABEL_MAP[contextItem.type] ?? 'Context';

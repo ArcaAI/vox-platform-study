@@ -96,6 +96,15 @@ export const SUMMARY_ENDPOINTS = {
   /** Approve and lock a summary (Story 148) */
   APPROVE: (consultationId: string, contextItemId: string) =>
     `/consultations/${encodeURIComponent(consultationId)}/summary/${encodeURIComponent(contextItemId)}/approve`,
+  /** Diff two versions of a summary — append `?from=&to=` (TASK-329 P6) */
+  DIFF: (consultationId: string, contextItemId: string) =>
+    `/consultations/${encodeURIComponent(consultationId)}/summary/${encodeURIComponent(contextItemId)}/diff`,
+  /** List / create tags on a summary (TASK-329 P6) */
+  TAGS: (consultationId: string, contextItemId: string) =>
+    `/consultations/${encodeURIComponent(consultationId)}/summary/${encodeURIComponent(contextItemId)}/tags`,
+  /** Delete a single tag from a summary (TASK-329 P6) */
+  TAG: (consultationId: string, contextItemId: string, tagId: string) =>
+    `/consultations/${encodeURIComponent(consultationId)}/summary/${encodeURIComponent(contextItemId)}/tags/${encodeURIComponent(tagId)}`,
 } as const;
 
 /**

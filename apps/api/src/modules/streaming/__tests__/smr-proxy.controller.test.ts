@@ -1220,6 +1220,51 @@ describe('SmrProxyController', () => {
         ).resolves.toBeDefined();
       });
     });
+
+    // TASK-329 X3 — raw context ownership bypass on the assembled-generation path.
+    // A caller could previously pass another tenant's context_item_ids and
+    // exfiltrate their content through the generated summary; the proxy must
+    // reject cross-tenant context items (surfaced as NotFound to avoid leaking
+    // their existence) before any prompt is assembled or sent to SMR.
+    describe('TASK-329 X3 — cross-tenant context item ownership', () => {
+      it('rejects a context item that belongs to a different tenant (NotFound, no leak)', async () => {
+        mockContextItemRepo.findById.mockResolvedValue({
+          id: 'ctx-foreign',
+          content: "Another tenant's confidential transcript",
+          type: 'TRANSCRIPT',
+          tenantId: 'tenant-other',
+        });
+
+        await expect(
+          controller.generateAssembled({
+            type: 'summary',
+            context_item_ids: ['ctx-foreign'],
+          }),
+        ).rejects.toThrow(NotFoundException);
+
+        expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
+      });
+
+      it('allows a context item that belongs to the caller tenant', async () => {
+        mockContextItemRepo.findById.mockResolvedValue({
+          id: 'ctx-own',
+          content: 'My own transcript',
+          type: 'TRANSCRIPT',
+          tenantId: 'tenant-1',
+        });
+        mockHttpService.axiosRef.post.mockResolvedValue({
+          data: { task_id: 'task-own', status: 'completed', content: 'Summary' },
+        });
+
+        const result = await controller.generateAssembled({
+          type: 'summary',
+          context_item_ids: ['ctx-own'],
+        });
+
+        expect(result.task_id).toBe('task-own');
+        expect(mockHttpService.axiosRef.post).toHaveBeenCalled();
+      });
+    });
   });
 });
 

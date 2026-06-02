@@ -46,6 +46,28 @@ export interface SummaryResponse {
   dnaStyleId?: string;
   /** Named entities extracted when includeNER was true */
   entities?: NEREntity[];
+  /**
+   * TASK-329 (P6) — summary metadata as returned by the backend
+   * `SummaryResponse.structuredData`. `cacheHit`/`qualityScore` are surfaced
+   * here so the version browser / list can badge cache and quality.
+   */
+  structuredData?: {
+    llmProvider?: string;
+    modelName?: string;
+    processingTimeMs?: number;
+    dnaStyleId?: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheHit?: boolean;
+    qualityScore?: number;
+    [key: string]: unknown;
+  };
+  /** TASK-329 (P6) — current version number for the version browser. */
+  versionNumber?: number;
+  /** TASK-329 (P6) — lifecycle status (DRAFT/APPROVED/LOCKED). */
+  status?: string;
+  /** Last-updated timestamp. */
+  updatedAt?: string;
   /** Creation timestamp */
   createdAt: string;
 }
@@ -281,6 +303,50 @@ export interface SummaryMeta {
   status: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// =============================================================================
+// Summary Tagging Types (TASK-329 P6)
+// =============================================================================
+
+/**
+ * A tag attached to a summary (polymorphic `Tag` row, resourceTypeName =
+ * `ContextItem`, resourceId = the summary's context-item id).
+ */
+export interface SummaryTag {
+  id: string;
+  resourceTypeName?: string;
+  resourceId?: string;
+  tagKey?: string;
+  tagValue: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * Input for tagging a summary. The server fixes `resourceTypeName`/`resourceId`
+ * and tenant; only the tag payload is accepted from the client.
+ */
+export interface CreateSummaryTagInput {
+  tagValue: string;
+  tagKey?: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+}
+
+/**
+ * Result of diffing two summary versions via the backend `/diff` endpoint.
+ * `from` is the earlier version, `to` the later one — feed both into the
+ * shared `VersionDiffPanel`.
+ */
+export interface VersionDiff {
+  contextItemId: string;
+  from: SummaryVersionEntry;
+  to: SummaryVersionEntry;
 }
 
 // =============================================================================
