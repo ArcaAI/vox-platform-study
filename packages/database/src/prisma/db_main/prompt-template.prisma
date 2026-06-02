@@ -36,6 +36,11 @@ model PromptTemplate {
     category    PromptTemplateCategory
     variables   Json?   @db.JsonB
 
+    // Quality/score testing (TASK-328 A4) — last SMR-scored test run
+    lastTestScore  Float?
+    lastTestOutput String?   @db.Text
+    lastTestAt     DateTime?
+
     // Version tracking
     currentVersionNumber Int @default(1)
 

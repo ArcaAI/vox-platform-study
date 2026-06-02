@@ -99,6 +99,7 @@ model User {
     ApiKeys               ApiKey[]                @relation("_User_ApiKeys")
     VoiceProfiles         UserVoiceProfile[]      @relation("_User_VoiceProfiles")
     OwnedPromptTemplates  PromptTemplate[]        @relation("_User_OwnedPromptTemplates")
+    UserDepartments       UserDepartment[]        @relation("_User_UserDepartments")
 
     // indexing
     @@index([username], name: "User_username_idx")
@@ -158,6 +159,9 @@ model UserProfile {
     email     String?
     phone     String?
     avatarId  String?
+
+    // Backend preferred prompt template (TASK-328 A1–A3) — soft reference
+    preferredPromptTemplateId String?
 
     // resource status fields
     resourceStatus          ResourceStatusType @default(ENABLED)
@@ -252,5 +256,48 @@ model UserVoiceProfile {
     // indexing
     @@index([userId, isActive], name: "UserVoiceProfile_userId_isActive_idx")
     @@index([resourceStatus], name: "UserVoiceProfile_status_idx")
+    @@schema("core")
+}
+
+// ============================================================================
+// User ↔ Department assignment (TASK-328 A1–A3)
+// Tenant-scoped join table linking users to the departments they belong to.
+// ============================================================================
+
+model UserDepartment {
+    // meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // multi tenant fields
+    tenantId String
+
+    // core fields
+    isPrimary Boolean @default(false)
+
+    // resource status fields
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+
+    // audit fields
+    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // relations
+    userId       String
+    User         User       @relation("_User_UserDepartments", fields: [userId], references: [id], onDelete: Cascade)
+    departmentId String
+    Department   Department @relation(fields: [departmentId], references: [id])
+
+    // indexing
+    @@unique([tenantId, userId, departmentId], name: "UserDepartment_tenant_user_department_unique")
+    @@index([tenantId], name: "UserDepartment_tenantId_idx")
+    @@index([userId], name: "UserDepartment_userId_idx")
+    @@index([departmentId], name: "UserDepartment_departmentId_idx")
+    @@index([tenantId, userId], name: "UserDepartment_tenant_user_idx")
     @@schema("core")
 }

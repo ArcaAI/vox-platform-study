@@ -6,6 +6,7 @@ import { CoreDatabaseService, VAULT_PRISMA_FACTORY, type VaultPrismaFactory } fr
 import { AiModelRepository } from '../../../repositories/generated/core/AiModelRepository';
 import { ApiKeyRepository } from '../../../repositories/generated/core/ApiKeyRepository';
 import { AsrPipelineRepository } from '../../../repositories/generated/core/AsrPipelineRepository';
+import { AsrPipelineVersionRepository } from '../../../repositories/generated/core/AsrPipelineVersionRepository';
 import { AudioRecordingRepository } from '../../../repositories/generated/core/AudioRecordingRepository';
 import { AuditLogRepository } from '../../../repositories/generated/core/AuditLogRepository';
 import { ConsultationRepository } from '../../../repositories/generated/core/ConsultationRepository';
@@ -30,9 +31,11 @@ import { StorageAccessKeyRepository } from '../../../repositories/generated/core
 import { SummaryMetaRepository } from '../../../repositories/generated/core/SummaryMetaRepository';
 import { TagRepository } from '../../../repositories/generated/core/TagRepository';
 import { TenantBucketRepository } from '../../../repositories/generated/core/TenantBucketRepository';
+import { TenantFrontendConfigRepository } from '../../../repositories/generated/core/TenantFrontendConfigRepository';
 import { TenantRepository } from '../../../repositories/generated/core/TenantRepository';
 import { TenantStorageConfigRepository } from '../../../repositories/generated/core/TenantStorageConfigRepository';
 import { TranscriptionJobRepository } from '../../../repositories/generated/core/TranscriptionJobRepository';
+import { UserDepartmentRepository } from '../../../repositories/generated/core/UserDepartmentRepository';
 import { UserMediaRepository } from '../../../repositories/generated/core/UserMediaRepository';
 import { UserProfileRepository } from '../../../repositories/generated/core/UserProfileRepository';
 import { UserRepository } from '../../../repositories/generated/core/UserRepository';
@@ -80,15 +83,18 @@ const repositories = [
   RoleRepository,
   TagRepository,
   TenantRepository,
+  TenantFrontendConfigRepository,
   UserMediaRepository,
   UserProfileRepository,
   UserRepository,
+  UserDepartmentRepository,
   UserRoleAssignmentRepository,
   UserSettingsRepository,
   WebhookRepository,
   WebhookRunHistoryRepository,
   // STT domain
   AsrPipelineRepository,
+  AsrPipelineVersionRepository,
   AiModelRepository,
   TranscriptionJobRepository,
   // Audit domain
