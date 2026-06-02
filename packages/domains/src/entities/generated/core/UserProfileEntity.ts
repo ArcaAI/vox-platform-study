@@ -14,6 +14,7 @@ export interface IUserProfileEntity extends Omit<IBaseEntity, 'tenantId'> {
   email?: string | null;
   phone?: string | null;
   avatarId?: string | null;
+  preferredPromptTemplateId?: string | null;
   userId: string;
   User: Entities.UserEntity | null;
 }
@@ -24,6 +25,7 @@ export class UserProfileEntity extends BaseEntity {
   private _email?: IUserProfileEntity['email'];
   private _phone?: IUserProfileEntity['phone'];
   private _avatarId?: IUserProfileEntity['avatarId'];
+  private _preferredPromptTemplateId?: IUserProfileEntity['preferredPromptTemplateId'];
   private _userId: IUserProfileEntity['userId'];
   private _User: IUserProfileEntity['User'];
 
@@ -34,6 +36,7 @@ export class UserProfileEntity extends BaseEntity {
     this._email = init.email;
     this._phone = init.phone;
     this._avatarId = init.avatarId;
+    this._preferredPromptTemplateId = init.preferredPromptTemplateId;
     this._userId = init.userId;
     this._User = init.User;
   }
@@ -78,6 +81,14 @@ export class UserProfileEntity extends BaseEntity {
     this.setProperty('avatarId', value);
   }
 
+  get preferredPromptTemplateId(): IUserProfileEntity['preferredPromptTemplateId'] {
+    return this._preferredPromptTemplateId;
+  }
+
+  set preferredPromptTemplateId(value: IUserProfileEntity['preferredPromptTemplateId']) {
+    this.setProperty('preferredPromptTemplateId', value);
+  }
+
   get userId(): IUserProfileEntity['userId'] {
     return this._userId;
   }
@@ -112,6 +123,9 @@ export class UserProfileEntity extends BaseEntity {
     }
     if (this._avatarId && this._avatarId.length > 255) {
       throw new BusinessException('User profile avatarId must not exceed 255 characters.');
+    }
+    if (this._preferredPromptTemplateId && this._preferredPromptTemplateId.length > 255) {
+      throw new BusinessException('User profile preferredPromptTemplateId must not exceed 255 characters.');
     }
   }
 }

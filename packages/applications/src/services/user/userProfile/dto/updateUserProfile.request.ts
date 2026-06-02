@@ -28,6 +28,11 @@ export class UpdateUserProfileRequest extends BaseRequest {
   @IsOptional()
   avatarId?: string;
 
+  @ApiProperty({ description: 'Preferred backend prompt template ID (TASK-328 A1–A3)', required: false })
+  @IsString()
+  @IsOptional()
+  preferredPromptTemplateId?: string;
+
   @ApiProperty({ description: 'ID of the associated user', required: false })
   @IsString()
   @IsOptional()

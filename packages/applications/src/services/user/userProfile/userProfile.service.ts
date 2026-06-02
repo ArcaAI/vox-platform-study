@@ -105,6 +105,63 @@ export class UserProfileService extends BaseService implements IUserProfileServi
     return userProfile;
   }
 
+  /**
+   * Fetch the profile row for a user (TASK-328 A1–A3). Returns null when the
+   * user has no profile yet so callers can render an empty/editable state.
+   */
+  async getByUserId(userId: string): Promise<UserProfileEntity | null> {
+    const [profile] = await this.userProfileRepository.findAll({
+      where: { userId },
+      page: 1,
+      limit: 1,
+    });
+
+    if (profile) {
+      this.broadcastSysEvent(SysEventType.ResourceViewed, {
+        resourceId: profile.id,
+        data: { userId },
+      });
+    }
+
+    return profile ?? null;
+  }
+
+  /**
+   * Create-or-update the profile keyed by userId (TASK-328 A1–A3). The
+   * user-detail dialog edits a profile by user, not by profile id, and a user
+   * may not have a profile row yet — so this upserts. Idempotent: a no-op
+   * update returns the existing row rather than throwing.
+   */
+  async upsertByUserId(userId: string, request: UpdateUserProfileRequest): Promise<UserProfileEntity> {
+    const [existing] = await this.userProfileRepository.findAll({
+      where: { userId },
+      page: 1,
+      limit: 1,
+    });
+
+    if (!existing) {
+      const created = await this.create({ ...request, userId });
+      return created;
+    }
+
+    const previousData = existing.toObject();
+    this.updateEntity(existing, request);
+
+    if (!existing.hasChanges) {
+      return existing;
+    }
+
+    const updated = await this.userProfileRepository.update(existing.id, existing);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: updated.id,
+      data: existing.changes,
+      previousData,
+    });
+
+    return updated;
+  }
+
   async update(id: EntityId, request: UpdateUserProfileRequest): Promise<UserProfileEntity> {
     const userProfile = await this.userProfileRepository.findById(id);
 

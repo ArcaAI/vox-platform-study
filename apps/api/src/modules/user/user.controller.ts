@@ -3,6 +3,11 @@ import {
   IApiKeyService,
   IUserSettingsService,
   IUserRoleAssignmentService,
+  IUserProfileService,
+  UpdateUserProfileRequest,
+  UserProfileResponse,
+  UserProfileDtoMapper,
+  IVoiceProfileService,
   PaginatedQuery,
   UserResponse,
   CreateUserRequest,
@@ -27,6 +32,7 @@ import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiOperation }
 import { ClsService } from 'nestjs-cls';
 import { ApiEndpoint, CanManage } from '../../decorators';
 import { UpdateUserStatusRequest, BulkDeleteUsersRequest, BulkDeleteUsersResponse, BulkDeleteUserFailure } from './dto';
+import { VoiceProfileResponse } from '../voice-profile/dto/voice-profile.response';
 
 @ApiBearerAuth()
 @ApiTags('admin-users')
@@ -43,6 +49,10 @@ export class UserController {
     private readonly userSettingsService: IUserSettingsService,
     @Inject(IUserRoleAssignmentService)
     private readonly userRoleAssignmentService: IUserRoleAssignmentService,
+    @Inject(IUserProfileService)
+    private readonly userProfileService: IUserProfileService,
+    @Inject(IVoiceProfileService)
+    private readonly voiceProfileService: IVoiceProfileService,
     private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
@@ -288,5 +298,36 @@ export class UserController {
   @ApiResponse({ status: 404, description: 'Assignment not found' })
   async removeRole(@Param('assignmentId') assignmentId: string): Promise<void> {
     await this.userRoleAssignmentService.deleteById(assignmentId);
+  }
+
+  // -------------------------------------------------------------------------
+  // TASK-328 A1–A3: Admin user profile (incl. preferredPromptTemplateId)
+  // -------------------------------------------------------------------------
+
+  @Get(':id/profile')
+  @ApiOperation({ summary: "Get a user's profile (admin)" })
+  @ApiParam({ name: 'id', description: 'User ID', type: String })
+  @ApiResponse({ status: 200, description: 'Profile retrieved (null when none exists)', type: UserProfileResponse })
+  async fetchUserProfile(@Param('id') id: string): Promise<UserProfileResponse | null> {
+    const profile = await this.userProfileService.getByUserId(id);
+    return profile ? UserProfileDtoMapper.ToResponse(profile) : null;
+  }
+
+  @Patch(':id/profile')
+  @ApiOperation({ summary: "Create or update a user's profile, incl. preferred prompt template (admin)" })
+  @ApiParam({ name: 'id', description: 'User ID', type: String })
+  @ApiResponse({ status: 200, description: 'Profile upserted', type: UserProfileResponse })
+  async updateUserProfile(@Param('id') id: string, @Body() request: UpdateUserProfileRequest): Promise<UserProfileResponse> {
+    const updated = await this.userProfileService.upsertByUserId(id, request);
+    return UserProfileDtoMapper.ToResponse(updated);
+  }
+
+  @Get(':id/voice-profiles')
+  @ApiOperation({ summary: "List a user's enrolled voice profiles (admin, read-only)" })
+  @ApiParam({ name: 'id', description: 'User ID', type: String })
+  @ApiResponse({ status: 200, description: 'Enrolled voice profiles', type: [VoiceProfileResponse] })
+  async fetchUserVoiceProfiles(@Param('id') id: string): Promise<VoiceProfileResponse[]> {
+    const profiles = await this.voiceProfileService.listByUserId(id);
+    return profiles.map(VoiceProfileResponse.fromEntity);
   }
 }
