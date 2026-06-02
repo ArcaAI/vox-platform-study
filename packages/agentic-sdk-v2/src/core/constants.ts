@@ -575,6 +575,8 @@ export const ADMIN_USER_ROLES_ENDPOINTS = {
  */
 export const AUDIT_LOG_ENDPOINTS = {
   LIST: '/admin/audit-logs',
+  // TASK-328 A8 — server-side CSV export; declared on the API BEFORE `/:id`.
+  EXPORT: '/admin/audit-logs/export',
   GET: (id: string) => `/admin/audit-logs/${encodeURIComponent(id)}`,
   BY_RESOURCE: (resourceType: string, resourceId: string) =>
     `/admin/audit-logs/resource/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}`,

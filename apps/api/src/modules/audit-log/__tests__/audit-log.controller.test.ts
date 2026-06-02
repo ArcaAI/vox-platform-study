@@ -19,6 +19,10 @@ import { AuditLogController } from '../audit-log.controller';
 function createMockAuditLogService() {
     return {
         fetchAll: vi.fn(),
+        fetchAllFiltered: vi
+            .fn()
+            .mockResolvedValue({ result: { data: [], count: 0, limit: 10, page: 1 }, responsibleUsers: {} }),
+        exportFiltered: vi.fn().mockResolvedValue({ rows: [], responsibleUsers: {} }),
         fetchById: vi.fn(),
         fetchAllByResource: vi.fn(),
         fetchAllCreatedByUser: vi.fn().mockResolvedValue({ data: [], count: 0, limit: 10, page: 1 }),
@@ -98,7 +102,6 @@ describe('TASK-326 X5 — AuditLogController.fetchAll tenant scoping', () => {
 
     beforeEach(() => {
         svc = createMockAuditLogService();
-        svc.fetchAll.mockResolvedValue({ data: [], count: 0, limit: 10, page: 1 });
     });
 
     it('rejects a non-super-admin with NO tenant context (ForbiddenException, service untouched)', async () => {
@@ -106,7 +109,7 @@ describe('TASK-326 X5 — AuditLogController.fetchAll tenant scoping', () => {
         const controller = new AuditLogController(svc as never, cls as never);
 
         await expect(controller.fetchAll({} as never)).rejects.toBeInstanceOf(ForbiddenException);
-        expect(svc.fetchAll).not.toHaveBeenCalled();
+        expect(svc.fetchAllFiltered).not.toHaveBeenCalled();
     });
 
     it('allows a non-super-admin WITH a tenant context (service-layer buildTenantWhere scopes it)', async () => {
@@ -115,7 +118,7 @@ describe('TASK-326 X5 — AuditLogController.fetchAll tenant scoping', () => {
 
         await controller.fetchAll({ page: 1, pageSize: 10 } as never);
 
-        expect(svc.fetchAll).toHaveBeenCalledTimes(1);
+        expect(svc.fetchAllFiltered).toHaveBeenCalledTimes(1);
     });
 
     it('allows a SUPER_ADMIN with no tenant context (operator cross-tenant audit reads)', async () => {
@@ -124,6 +127,102 @@ describe('TASK-326 X5 — AuditLogController.fetchAll tenant scoping', () => {
 
         await controller.fetchAll({} as never);
 
-        expect(svc.fetchAll).toHaveBeenCalledTimes(1);
+        expect(svc.fetchAllFiltered).toHaveBeenCalledTimes(1);
+    });
+});
+
+// -----------------------------------------------------------------------------
+// TASK-328 A8 — AuditLogController filters + CSV export.
+// fetchAll must forward the audit filters to the service (which pushes them to
+// the repository); the export route must respect the same tenant guard and
+// return a text/csv body produced by the DTO mapper.
+// -----------------------------------------------------------------------------
+describe('TASK-328 A8 — AuditLogController filters honoured', () => {
+    let svc: ReturnType<typeof createMockAuditLogService>;
+
+    beforeEach(() => {
+        svc = createMockAuditLogService();
+    });
+
+    it('forwards from/to/action/resourceType/userId to the filtered service method', async () => {
+        const cls = createMockCls({ id: 'u-1', tenantId: 't-OWN', roles: ['DOCTOR'] }, 't-OWN');
+        const controller = new AuditLogController(svc as never, cls as never);
+
+        await controller.fetchAll({
+            page: 1,
+            limit: 20,
+            from: '2026-01-01T00:00:00.000Z',
+            to: '2026-01-31T23:59:59.999Z',
+            action: 'UPDATE',
+            resourceType: 'Consultation',
+            userId: 'user-xyz',
+        } as never);
+
+        expect(svc.fetchAllFiltered).toHaveBeenCalledWith(
+            expect.objectContaining({
+                from: '2026-01-01T00:00:00.000Z',
+                to: '2026-01-31T23:59:59.999Z',
+                action: 'UPDATE',
+                resourceType: 'Consultation',
+                userId: 'user-xyz',
+                sort: 'createdAt:desc',
+            }),
+        );
+    });
+});
+
+describe('TASK-328 A8 — AuditLogController.exportCsv', () => {
+    let svc: ReturnType<typeof createMockAuditLogService>;
+
+    beforeEach(() => {
+        svc = createMockAuditLogService();
+    });
+
+    it('rejects a non-super-admin with NO tenant context (service untouched)', async () => {
+        const cls = createMockCls({ id: 'u-1', tenantId: null, roles: ['DOCTOR'] }, null);
+        const controller = new AuditLogController(svc as never, cls as never);
+
+        await expect(controller.exportCsv({} as never)).rejects.toBeInstanceOf(ForbiddenException);
+        expect(svc.exportFiltered).not.toHaveBeenCalled();
+    });
+
+    it('returns CSV text (header + one row) for the filtered set', async () => {
+        const cls = createMockCls({ id: 'u-1', tenantId: 't-OWN', roles: ['DOCTOR'] }, 't-OWN');
+        const controller = new AuditLogController(svc as never, cls as never);
+
+        svc.exportFiltered.mockResolvedValue({
+            rows: [
+                {
+                    id: 'audit-1',
+                    responsibleUserId: 'u1',
+                    responsibleIp: '10.0.0.1',
+                    resourceType: 'User',
+                    resourceId: 'res-1',
+                    action: 'CREATE',
+                    eventType: 'RESOURCE',
+                    success: true,
+                    data: { name: 'Test' },
+                    createdAt: new Date('2026-02-01T10:00:00.000Z'),
+                },
+            ],
+            responsibleUsers: { u1: { id: 'u1', displayName: 'Alice Nguyen', email: 'alice@example.com' } },
+        });
+
+        const csv = await controller.exportCsv({ action: 'CREATE' } as never);
+
+        expect(svc.exportFiltered).toHaveBeenCalledWith(expect.objectContaining({ action: 'CREATE' }));
+        const lines = csv.split('\n');
+        expect(lines[0]).toContain('id,createdAt,action,resourceType');
+        expect(lines).toHaveLength(2);
+        expect(lines[1]).toContain('audit-1');
+        expect(lines[1]).toContain('Alice Nguyen');
+    });
+
+    it('allows SUPER_ADMIN with no tenant context', async () => {
+        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+        const controller = new AuditLogController(svc as never, cls as never);
+
+        await controller.exportCsv({} as never);
+        expect(svc.exportFiltered).toHaveBeenCalledTimes(1);
     });
 });
