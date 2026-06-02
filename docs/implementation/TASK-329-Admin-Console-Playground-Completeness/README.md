@@ -7,7 +7,7 @@
 | Parent | **TASK-325** (Admin Console Transformation — umbrella) |
 | Created | 2026-06-02 |
 | Updated | 2026-06-02 |
-| Status | `In Progress` (P6 + X3 + X10 delivered; P2–P5 + LiveCodePanel pending) |
+| Status | `In Progress` (P5 + P6 + X3 + X10 delivered; P2–P4 + LiveCodePanel pending) |
 | Type | feature |
 | Scope | `apps/ui-playground/`, `@arcaai/vox`, `packages/{stt,vad,noise-filter}`, `apps/api/`, `packages/database/` |
 | Depends on | **TASK-326** (security) + **TASK-327** (scope shell + impersonation gate) |
@@ -22,7 +22,7 @@
 - [ ] **P2 Consultation** — in-flow mic recording using the impersonated user's pipeline prefs (realtime transcript); batch-transcription + SSE wired into the audio case-note tab (`useFileTranscription`); summary via preferred dept prompt **with fallback**; chain-of-consultation reference UI (`GET /:id/chain`); **RAW + PROCESSED** dual capture — add `rawMediaId`/`processedMediaId` to `AudioRecording` and save both streams (**X8**).
 - [ ] **P3 Audio** — local-model **task** selection (transcribe/translate); per-user prefs persisted via `PATCH /user/me/settings`; fix `localAsrModels`/`availableModels` mismatch.
 - [ ] **P4 Voice** — **local** in-browser enrollment (new local embedding provider + `POST /voice-profile/enroll-embedding`); **quick test** (mic/upload match + `POST /voice-profile/test`); diarization seeding feedback (`voiceProfileSeeded`); fix the always-"Active" badge.
-- [ ] **P5 DNA** — generate from **selected historical data** (context-item picker); **set-default** (`POST /:reportId/set-default`); two-version **diff** (`version-diff-panel`); wrap page in `ImpersonationGuard`; fix the empty Edit dialog.
+- [x] **P5 DNA** — generate from **selected historical data** (version picker → `sourceIds`); **set-default** (`PATCH /:reportId/default`); two-version **diff** (`version-diff-panel`); wrap page in `ImpersonationGuard`; fix the empty Edit dialog. ✅ delivered — see §5.3.
 - [x] **P6 Summarization** — backend summary **list + version browser**; `cacheHit`/`qualityScore` fields + endpoints; version **diff**; **tagging** (`Tag`); **edit→new version**; fix the raw-DNA ownership bypass via `/text/generate/assembled` (**X3**); namespace `localStorage` history by tenant/user (**X10**). ✅ delivered — see §5.1.
 - [ ] **`LiveCodePanel`** — reactive Shiki snippet (`kibo-ui/code-block`) bound to each playground's store / impersonated prefs.
 - [ ] Skeleton/empty/toast per rules `10`/`11`; gates green (§4).
@@ -116,8 +116,62 @@ Vertical slice on branch `wave3/p6-summarization`. **No schema change / no `pris
 
 ---
 
+### 5.3 P5 DNA writing-style playground completeness — delivered 2026-06-02
+
+Vertical slice on branch `wave3/p5-dna-playground`. **No schema change / no `prisma migrate` / no `git`** — "default" reuses the existing `DnaWritingStyleReport.isLatest` flag (no `isDefault` column); generate-from-history reuses the existing generate endpoint with an additive optional `sourceIds`.
+
+**SDK (`@arcaai/vox`)**
+- `core/constants.ts` — added `DNA_STYLE_ENDPOINTS.MINE` (`/dna-writing-styles/mine`, owner-scoped report history) + `SET_DEFAULT(reportId)` (`/dna-writing-styles/:reportId/default`). *(shared barrel — additions to the exported `DNA_STYLE_ENDPOINTS` object, re-exported via existing `export *`.)*
+- `types/dna.ts` — `DnaGenerateInput.sourceIds?: string[]` (historical source items the generation was seeded from).
+- `hooks/useDnaStyle.ts` — extended `UseDnaStyleReturn` with `reports`, `generateFromHistory(sourceIds, extra?)` (POSTs `GENERATE` with `sourceIds` + idempotencyKey), `setDefault(reportId)` (PATCH `SET_DEFAULT`, updates local `style`), `getMyReports()` (GET `MINE`), and `getVersionDiff(reportId, fromVersionId, toVersionId)` (resolves two snapshots from the versions endpoint).
+- **Key-count guard updated:** `core/__tests__/constants.ws4.test.ts` — `DNA_STYLE_ENDPOINTS` `12 → 14` keys (+ `MINE`, `SET_DEFAULT`).
+
+**Application services (`packages/applications`)**
+- `services/dna-writing-style/dto/generate-dna-report.request.ts` — `sourceIds?: string[]` (`@IsOptional/@IsArray/@IsString({each})`).
+- `services/dna-writing-style/dna-writing-style.service.ts` — `GenerateDnaReportJobPayload.sourceIds`; `generateDnaReport` threads `sourceIds` into the BullMQ payload; new **`setDefaultReport(reportId)`** (owner + tenant scoped: `assertReportInScope`, ownership check, idempotent if already latest, demotes the current `isLatest` via `unmarkAsLatest`, promotes target via `markAsLatest`, `broadcastSysEvent(ResourceUpdated)`); `IDnaWritingStyleService.setDefaultReport` abstract added.
+- `services/dna-writing-style/dna-writing-style.processor.ts` — seeded generation records `sourceContextItemIds = sourceIds` for explainability.
+
+**API (`apps/api`)** — owner-scoped endpoints on `DnaWritingStyleController` (tenant scope enforced in the service):
+| Verb | Path | Purpose |
+|---|---|---|
+| GET | `/dna-writing-styles/mine` | the doctor's own report history (set-default picker) → `listReports({ doctorId })` |
+| PATCH | `/dna-writing-styles/:reportId/default` | promote a report to the doctor's default → `setDefaultReport` (403 foreign owner / 404 missing) |
+
+**UI playground (`apps/ui-playground`)** — all behind the guard, data via `@arcaai/vox` + local query hooks; skeleton/empty/toast per rules 10/11:
+- `components/impersonation-guard.tsx` (**new, reusable**) — see below.
+- `features/dna-writing-style/api/dna-writing-styles.ts` — `DnaGenerateInput.sourceIds`; `keys.mine`; pure `applyDefaultToReports`; `useMyDnaReports` (GET `/mine`); `useSetDefaultDnaReport` (PATCH `/:id/default`, **optimistic** promote in the `/mine` cache, rollback on error, invalidate on settle).
+- `features/dna-writing-style/hooks/use-edit-dialog-controller.ts` (**new**) — `openFor(report)` / `close()` (the bug fix).
+- `features/dna-writing-style/components/edit-dialog.tsx` (**new, extracted**) — `buildEditFormValues` + `EditDialog` (seeds form via `form.reset` on open).
+- `features/dna-writing-style/components/reports-list-panel.tsx` (**new**) — report list + default badge + "Set as default".
+- `features/dna-writing-style/components/generate-from-history-panel.tsx` (**new**) — multi-select prior versions → generate (`sourceIds`).
+- `features/dna-writing-style/components/version-diff-section.tsx` (**new**) — two-version picker → shared `VersionDiffPanel`.
+- `features/dna-writing-style/index.tsx` — page wrapped in `ImpersonationGuard`; queries gated `enabled: !requiresImpersonation`; Edit wired via the controller (`MyStyleCard onEdit`); generate-from-history + set-default handlers with toasts.
+
+**BUG fix — empty Edit dialog.** *Root cause:* the page held `editOpen` and `selectedReport` as two **independent** `useState`s with **no trigger** that set them together (no Edit affordance existed), so the dialog only ever mounted with `report = null` → empty form. The dialog's own seeding (`useEffect` → `form.reset(buildEditFormValues(report))`) was correct but received `null`. *Fix:* `useEditDialogController.openFor(report)` couples *select + open* into one action, and `MyStyleCard` now renders an **Edit** button wired to `editCtrl.openFor(myStyle)` — so the report is always seeded before the dialog opens. *Regression test* (`__tests__/edit-dialog.test.tsx`): `buildEditFormValues` maps every field, and `openFor()` sets `report` **and** `open=true` such that the seeded report maps to a fully-prefilled form (RED before the controller/extraction existed).
+
+**ImpersonationGuard.** Reads `useDoctorContext().requiresImpersonation`. When `false` it renders `children`; when `true` it renders a gate `Card` ("Impersonation Required" + a "Go to User Impersonation" link + `featureName` messaging) and hides the protected UI. Because the page also gates its queries (`enabled: !requiresImpersonation`), **no** DNA calls fire until a doctor is impersonated.
+
+**Tests added (RED-first):** SDK `hooks/__tests__/useDnaStyle.p5.test.ts` (generateFromHistory/setDefault/getMyReports/getVersionDiff) + `core/__tests__/constants.task329p5.test.ts` (MINE/SET_DEFAULT paths); applications `__tests__/dna-writing-style.service.task329p5.test.ts` (sourceIds threading + setDefaultReport promote/demote/idempotent/forbidden); api `__tests__/dna-writing-style.controller.test.ts` (getMine + setDefault); ui-playground `components/__tests__/impersonation-guard.test.tsx`, `features/dna-writing-style/__tests__/edit-dialog.test.tsx` + `dna-writing-styles.api.test.tsx`.
+
+### 5.4 P5 verification gates — final output
+| Gate | Result |
+|---|---|
+| `pnpm --filter @arcaai/domains build && … test` | **not run — domains untouched** (no entity/factory/mapper/repo change) |
+| `pnpm --filter @arcaai/applications build && … test:unit` | build OK; **183 passed / 1 skipped (184 files)**, **4542 passed / 4 skipped (4546)** |
+| `pnpm build:sdk` (6/6 tasks) `&& pnpm --filter @arcaai/vox test` | **152 files, 3135 passed** (DNA-only subset: 4 files / 84 passed) |
+| `pnpm build:api` | **8/8 turbo tasks successful**; DNA controller test **18 passed** (e2e deferred to CI) |
+| `pnpm --filter @arcaai/ui-playground type-check && … test` | type-check **clean**; **76 files, 763 passed** (DNA+guard subset: 5 files / 40 passed) |
+| IDE lint on every edited file | clean |
+
+**Known pre-existing flake (not from this slice):** the full `@arcaai/vox` run reports **1 unhandled error** originating in `hooks/__tests__/useVoiceEnrollmentStatus.test.ts` (voice enrollment — unrelated to DNA); that file **passes 7/7 in isolation**, so it is a cross-test async leak surfaced only under the full parallel run. All 3135 tests pass.
+
+**Deferred to CI:** `pnpm test:e2e` (API e2e) per slice instructions. **Confirmed not run:** `git`, `prisma migrate` / `db:migrate` / `prisma db` (DNA models pre-existed; "default" reuses `isLatest`). **Shared-barrel touch:** `@arcaai/vox` `core/constants.ts` (`DNA_STYLE_ENDPOINTS` +2 keys) + its key-count guard `constants.ws4.test.ts` (12→14); no shared admin nav edited.
+
+---
+
 ## 6. Change History
 | Date | Change | Files |
 |---|---|---|
 | 2026-06-02 | Sub-ticket created from TASK-325 §3.7 (Phase 3). Scope = P2–P6 + LiveCodePanel; fixes X3/X8/X10; Q3 SDK-first. Status `Pending`. | this README |
 | 2026-06-02 | **P6 + X3 + X10 delivered** (slice `wave3/p6-summarization`): `cacheHit`/`qualityScore` threaded domain→app→SDK→UI; summary list/version/diff/tag(+edit→new-version) endpoints + SDK methods + `SavedSummariesPanel`; X3 context-item ownership guard on `/text/generate/assembled`; X10 tenant+user localStorage namespacing. All 5 gates green; no `git`/`prisma migrate`. | domains `SummaryMeta*` + `ContextItemRepository`; applications summary/context DTOs+mappers+services, `version-diff.response`, `tag.service`; api `consultation.controller`/`consultation.module`/`smr-proxy.controller`; `@arcaai/vox` `useArcaSummary`/`constants`/`types`; ui-playground `saved-summaries-panel`, `history`, summary/pre-summary pages; + RED tests |
+| 2026-06-02 | **P5 DNA delivered** (slice `wave3/p5-dna-playground`): generate-from-history (`sourceIds`), set-default (`PATCH /:reportId/default`, reuses `isLatest`), `GET /mine` history, two-version diff, reusable `ImpersonationGuard`, and the **empty Edit-dialog fix** (`useEditDialogController.openFor` couples select+open; added Edit button). SDK `useDnaStyle` extended (+`MINE`/`SET_DEFAULT` endpoints, key-count guard 12→14); optimistic set-default in the UI cache. App/SDK/API/ui-playground gates green; no `git`/`prisma migrate`; e2e deferred to CI. | sdk `useDnaStyle`/`constants`/`types/dna`/`constants.ws4.test`; applications `generate-dna-report.request`/`dna-writing-style.service`/`IDnaWritingStyleService`/`dna-writing-style.processor`; api `dna-writing-style.controller`; ui-playground `components/impersonation-guard`, `features/dna-writing-style/{api,hooks,components,index}`; + RED tests |

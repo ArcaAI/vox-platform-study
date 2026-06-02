@@ -72,6 +72,11 @@ export interface DnaStyleVersion {
 export interface DnaGenerateInput {
   textSamples?: string[];
   departmentId?: string;
+  /**
+   * TASK-329 P5 — IDs of historical source items (e.g. prior report-version
+   * snapshots or context items) the doctor selected to seed a fresh generation.
+   */
+  sourceIds?: string[];
 }
 
 /**

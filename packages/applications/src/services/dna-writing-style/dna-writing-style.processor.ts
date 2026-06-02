@@ -63,7 +63,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
   }
 
   private async processWithContext(job: Job<GenerateDnaReportJobPayload>): Promise<DnaReportJobResult> {
-    const { doctorId, tenantId, userId, textSamples } = job.data;
+    const { doctorId, tenantId, userId, textSamples, sourceIds } = job.data;
 
     this.clsService.set('tenantId', tenantId);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -84,6 +84,11 @@ export class DnaWritingStyleProcessor extends WorkerHost {
 
       if (textSamples && textSamples.length > 0) {
         samples = textSamples.join('\n\n---\n\n');
+        // TASK-329 P5 — generate-from-history passes samples directly plus the
+        // selected source IDs; record them so the report stays explainable.
+        if (sourceIds && sourceIds.length > 0) {
+          sourceContextItemIds = sourceIds;
+        }
       } else {
         const contextItems = await this.contextItemRepository.findAll({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
