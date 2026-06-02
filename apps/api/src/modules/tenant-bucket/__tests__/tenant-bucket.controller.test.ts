@@ -15,6 +15,7 @@ const mockTenantBucketService = {
     getBucketBySlug: vi.fn(),
     createCustomBucket: vi.fn(),
     deleteBucket: vi.fn(),
+    deleteObject: vi.fn(),
     provisionSystemBuckets: vi.fn(),
 };
 
@@ -135,6 +136,17 @@ describe('TenantBucketController', () => {
         });
     });
 
+    describe('deleteObject', () => {
+        it('should delete an object via the service with the bucket id and key', async () => {
+            mockTenantBucketService.deleteObject.mockResolvedValue({ key: '2026/04/08/test.wav', deleted: true });
+
+            const result = await controller.deleteObject('bucket-1', '2026/04/08/test.wav');
+
+            expect(result).toEqual({ key: '2026/04/08/test.wav', deleted: true });
+            expect(mockTenantBucketService.deleteObject).toHaveBeenCalledWith('bucket-1', '2026/04/08/test.wav');
+        });
+    });
+
     describe('provisionSystemBuckets', () => {
         it('should provision system buckets for tenant', async () => {
             const buckets = [
@@ -175,6 +187,10 @@ describe('TenantBucketController', () => {
 
         it('deleteBucket is annotated with modelName TenantBucket + paramName id', () => {
             expect(meta('deleteBucket')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
+        });
+
+        it('deleteObject is annotated with modelName TenantBucket + paramName id', () => {
+            expect(meta('deleteObject')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
         });
 
         it('listBuckets and createBucket and provisionSystemBuckets are NOT annotated (no :id route param)', () => {

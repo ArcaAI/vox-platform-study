@@ -69,11 +69,15 @@ describe('TASK-323 Phase 0 Endpoint Constants', () => {
         it('DELETE(id) is /admin/tenants/storage/buckets/:id', () => {
             expect(TENANT_BUCKET_ENDPOINTS.DELETE('b-1')).toBe('/admin/tenants/storage/buckets/b-1');
         });
+        it('DELETE_OBJECT(id) is /admin/tenants/storage/buckets/:id/objects (TASK-328 A7)', () => {
+            expect(TENANT_BUCKET_ENDPOINTS.DELETE_OBJECT('b-1')).toBe('/admin/tenants/storage/buckets/b-1/objects');
+        });
         it('PROVISION(tenantId) is /admin/tenants/storage/buckets/provision/:tenantId', () => {
             expect(TENANT_BUCKET_ENDPOINTS.PROVISION('t-1')).toBe('/admin/tenants/storage/buckets/provision/t-1');
         });
         it('encodes id/tenantId path params', () => {
             expect(TENANT_BUCKET_ENDPOINTS.TREE('a/b')).toBe(`/admin/tenants/storage/buckets/${encodeURIComponent('a/b')}/tree`);
+            expect(TENANT_BUCKET_ENDPOINTS.DELETE_OBJECT('a/b')).toBe(`/admin/tenants/storage/buckets/${encodeURIComponent('a/b')}/objects`);
             expect(TENANT_BUCKET_ENDPOINTS.PROVISION('a b')).toBe(`/admin/tenants/storage/buckets/provision/${encodeURIComponent('a b')}`);
         });
     });

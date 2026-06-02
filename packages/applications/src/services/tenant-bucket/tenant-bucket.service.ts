@@ -9,6 +9,7 @@ import { IS3Service } from '../baseServices/storage/s3/IS3Service';
 import { ITenantBucketService } from './ITenantBucketService';
 import {
   CreateTenantBucketRequest,
+  DeleteTenantBucketObjectResponse,
   SetTenantBucketDefaultsRequest,
   TenantBucketDefaultsResponse,
   TenantBucketResponse,
@@ -376,6 +377,20 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
       throw new ForbiddenException('System buckets cannot be deleted');
     }
 
+    // Remove the physical bucket/container via the tenant-resolved provider
+    // (S3/MinIO/Azure). Best-effort: a provider hiccup (bucket already gone,
+    // eventual consistency) must not strand the logical row — the soft-delete
+    // below still runs so the tenant stops seeing the bucket.
+    try {
+      await this.blobStorage.deleteBucket(bucket.name);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Provider bucket removal failed; continuing with soft-delete',
+        bucketName: bucket.name,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     const deleted = await this.tenantBucketRepository.softDelete(id);
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
@@ -384,6 +399,32 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     });
 
     return TenantBucketDtoMapper.toResponse(deleted);
+  }
+
+  async deleteObject(bucketId: string, fileKey: string): Promise<DeleteTenantBucketObjectResponse> {
+    const bucket = await this.tenantBucketRepository.findById(bucketId);
+    if (!bucket) {
+      throw new NotFoundException(`Bucket ${bucketId} not found`);
+    }
+
+    const tenantId = this.tenantId;
+    if (tenantId && bucket.tenantId !== tenantId) {
+      throw new ForbiddenException('You do not have access to this bucket');
+    }
+
+    if (/[.]{2}/.test(fileKey)) {
+      throw new BadRequestException('Invalid file key: path traversal not allowed');
+    }
+
+    // Provider-side object removal (NOT a SQL op — there is no per-object DB row).
+    await this.blobStorage.deleteObject({ bucket: bucket.name, key: fileKey });
+
+    this.broadcastSysEvent(SysEventType.ResourceDeleted, {
+      resourceId: bucket.id,
+      data: { fileKey },
+    });
+
+    return { key: fileKey, deleted: true };
   }
 
   async getPresignedUrl(bucketId: string, fileKey: string): Promise<{ url: string }> {

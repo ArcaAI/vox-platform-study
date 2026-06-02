@@ -175,6 +175,21 @@ describe('useTenantBuckets', () => {
         });
     });
 
+    describe('deleteObject', () => {
+        it('DELETEs DELETE_OBJECT(id) with required key query', async () => {
+            mockDelete.mockResolvedValue({ key: 'a/b.wav', deleted: true });
+            const { result } = renderHook(() => useTenantBuckets());
+
+            let resp: any;
+            await act(async () => { resp = await result.current.deleteObject('b-1', 'a/b.wav'); });
+
+            const url = mockDelete.mock.calls[0][0] as string;
+            expect(url).toContain(TENANT_BUCKET_ENDPOINTS.DELETE_OBJECT('b-1'));
+            expect(url).toContain(`key=${encodeURIComponent('a/b.wav')}`);
+            expect(resp).toEqual({ key: 'a/b.wav', deleted: true });
+        });
+    });
+
     describe('provision', () => {
         it('POSTs PROVISION(tenantId)', async () => {
             const provisioned = [{ id: 'b-1' }];

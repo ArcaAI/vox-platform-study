@@ -137,6 +137,77 @@ export function useDeleteTenantBucket(tenantId: string) {
   });
 }
 
+/**
+ * Delete a single object from a tenant bucket via the broadcasting admin
+ * endpoint (`DELETE /admin/tenants/storage/buckets/:id/objects?key=`, TASK-328
+ * A7). The server removes the object from the storage provider and emits a
+ * `ResourceDeleted` SysEvent. `bucketName`/`path` are carried only to scope the
+ * react-query invalidation back to the object list the user is viewing.
+ */
+export function useDeleteTenantBucketObject(tenantId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ bucketId, fileKey }: { bucketId: string; bucketName: string; fileKey: string; path?: string }) =>
+      adminClient.delete<{ key: string; deleted: boolean }>(
+        `/admin/tenants/storage/buckets/${bucketId}/objects?key=${encodeURIComponent(fileKey)}`,
+        { tenantId },
+      ),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({
+        queryKey: keys.objects(tenantId, variables.bucketName, normalizePrefix(variables.path)),
+      });
+      qc.invalidateQueries({ queryKey: [...keys.all, 'tree', tenantId] });
+    },
+  });
+}
+
+/**
+ * Fetch a presigned download URL for an object on demand (TASK-328 A7). Modeled
+ * as a mutation because it is triggered by an explicit user action ("Copy
+ * link") rather than auto-fetched. The server default expiry is 1 hour.
+ */
+export function useTenantBucketPresignedUrl(tenantId: string) {
+  return useMutation({
+    mutationFn: ({ bucketId, fileKey }: { bucketId: string; fileKey: string }) =>
+      adminClient.get<{ url: string }>(
+        `/admin/tenants/storage/buckets/${bucketId}/presigned-url?key=${encodeURIComponent(fileKey)}`,
+        { tenantId },
+      ),
+  });
+}
+
+export interface TenantBucketDefaults {
+  audio: TenantBucket | null;
+  attachments: TenantBucket | null;
+  misc: TenantBucket | null;
+}
+
+export interface SetTenantBucketDefaultsInput {
+  audioBucketId?: string;
+  attachmentsBucketId?: string;
+  miscBucketId?: string;
+}
+
+export function useTenantBucketDefaults(tenantId: string, options?: Omit<UseQueryOptions<TenantBucketDefaults>, 'queryKey' | 'queryFn'>) {
+  return useQuery({
+    queryKey: [...keys.all, 'defaults', tenantId] as const,
+    queryFn: () => adminClient.get<TenantBucketDefaults>('/admin/tenants/storage/buckets/defaults', { tenantId }),
+    enabled: !!tenantId,
+    ...options,
+  });
+}
+
+export function useSetTenantBucketDefaults(tenantId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SetTenantBucketDefaultsInput) =>
+      adminClient.put<TenantBucketDefaults>('/admin/tenants/storage/buckets/defaults', input, { tenantId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...keys.all, 'defaults', tenantId] });
+    },
+  });
+}
+
 export function useUploadTenantObject() {
   const qc = useQueryClient();
   return useMutation({
