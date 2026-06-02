@@ -51,6 +51,13 @@ export interface UseRealtimeTranscriptionReturn {
   status: RealtimeStatus;
   isStreaming: boolean;
   sessionId: string | null;
+  /**
+   * TASK-329 P4 / D-3: backend preseed echo for the active session. `true` when
+   * the caller's enrolled voice profile was used to seed diarization, `false`
+   * when diarization ran without personalization, and `null` before a session
+   * is created (or when an older API revision omits the field).
+   */
+  voiceProfileSeeded: boolean | null;
   transcripts: TranscriptEntry[];
   error: string | null;
   bytesSent: number;
@@ -68,6 +75,7 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
 
   const [status, setStatus] = useState<RealtimeStatus>('idle');
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [voiceProfileSeeded, setVoiceProfileSeeded] = useState<boolean | null>(null);
   const [transcripts, setTranscripts] = useState<TranscriptEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [bytesSent, setBytesSent] = useState(0);
@@ -132,6 +140,7 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
 
       try {
         setError(null);
+        setVoiceProfileSeeded(null);
         setStatus('creating_session');
 
         // TASK-321 — SDK ctors take `logger?: ISDKLogger` (undefined, not null).
@@ -147,6 +156,7 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
         });
 
         setSessionId(sessionResponse.sessionId);
+        setVoiceProfileSeeded(sessionResponse.voiceProfileSeeded ?? null);
         setStatus('connecting');
 
         const token = apiClient.getAccessToken?.() || apiClient.getApiKey?.() || '';
@@ -374,6 +384,7 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
     }
 
     setSessionId(null);
+    setVoiceProfileSeeded(null);
     setStatus('idle');
     setBytesSent(0);
     setReconnectAttempts(0);
@@ -389,6 +400,7 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
     status,
     isStreaming: status === 'streaming',
     sessionId,
+    voiceProfileSeeded,
     transcripts,
     error,
     bytesSent,

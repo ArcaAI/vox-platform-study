@@ -27,6 +27,13 @@ export interface SessionManagerState {
   status: SessionManagerStatus;
   maxConcurrent: number | null;
   currentActive: number | null;
+  /**
+   * TASK-329 P4 / D-3: the backend preseed echo (`voiceProfileSeeded`) from the
+   * streaming-session response, so consumers can surface diarization-seeding
+   * feedback without re-reading the raw response. `null` when no session exists
+   * or the field was omitted by an older API revision.
+   */
+  voiceProfileSeeded: boolean | null;
 }
 
 /**
@@ -283,6 +290,7 @@ export class StreamingSessionManager {
       status: this.status,
       maxConcurrent: this.sessionResponse?.maxConcurrent ?? null,
       currentActive: this.sessionResponse?.currentActive ?? null,
+      voiceProfileSeeded: this.sessionResponse?.voiceProfileSeeded ?? null,
     };
   }
 }
