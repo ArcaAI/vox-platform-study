@@ -19,6 +19,8 @@ import { BarChart3, Building2, Calendar, Clock, Eye, FileText, GitBranch, Histor
 
 import { Main } from '@/components/layout/main';
 import { VersionDiffPanel } from '@/components/version-diff-panel';
+import { PromptTestPanel } from './prompt-test-panel';
+import { PromptUsageAnalyticsPanel } from './prompt-usage-analytics-panel';
 import { cn } from '@/lib/utils';
 import { zodResolver } from '@/lib/zod-resolver';
 import { useAuthStore } from '@/store/auth-store';
@@ -104,6 +106,15 @@ const CATEGORY_COLORS: Record<PromptTemplateCategory, string> = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * TASK-328 A4 — stable JSON serialization of a version's `variables` so the
+ * version diff reflects variable-definition changes alongside content.
+ */
+function serializeVariablesForDiff(variables?: PromptVariable[]): string {
+  if (!variables || variables.length === 0) return '';
+  return JSON.stringify(variables, null, 2);
+}
 
 function relativeTime(dateStr?: string | null): string {
   if (!dateStr) return '—';
@@ -1289,6 +1300,12 @@ export default function PromptManagementPage() {
                 oldText: left.content || '',
                 newText: right.content || '',
               },
+              // TASK-328 A4 — diff variables (JSON) alongside content.
+              {
+                label: 'Variables',
+                oldText: serializeVariablesForDiff(left.variables),
+                newText: serializeVariablesForDiff(right.variables),
+              },
             ]}
             contentClassName="font-mono text-sm"
           />
@@ -1302,7 +1319,15 @@ export default function PromptManagementPage() {
       }
 
       if (selectedPrompt && !selectedVersionId) {
-        return <PromptDetailDialog open onOpenChange={() => {}} tenantId={effectiveTenantId} promptId={selectedPrompt.id} inline />;
+        return (
+          <ScrollArea className="h-full">
+            <div className="flex flex-col gap-4 p-1">
+              <PromptDetailDialog open onOpenChange={() => {}} tenantId={effectiveTenantId} promptId={selectedPrompt.id} inline />
+              <PromptTestPanel tenantId={effectiveTenantId} prompt={selectedPrompt} />
+              <PromptUsageAnalyticsPanel tenantId={effectiveTenantId} promptTemplateId={selectedPrompt.id} />
+            </div>
+          </ScrollArea>
+        );
       }
 
       return null;

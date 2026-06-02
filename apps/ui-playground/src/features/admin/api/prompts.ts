@@ -36,6 +36,10 @@ export interface PromptTemplate {
   // PromptVersion history counter. Echo this back via `If-Match` or
   // `expectedVersion` on the next PATCH.
   version?: number;
+  // TASK-328 A4 — last quality/score test run.
+  lastTestScore?: number | null;
+  lastTestOutput?: string | null;
+  lastTestAt?: string | null;
   [key: string]: unknown;
 }
 
@@ -53,6 +57,43 @@ export interface PromptVersion {
 export interface PromptUsageStats {
   totalUsages: number;
   lastUsedAt: string | null;
+}
+
+// TASK-328 A4 — prompt quality/score testing + usage analytics
+export interface TestPromptInput {
+  variables?: Record<string, unknown>;
+  sampleInput?: string;
+  expectedVersion?: number;
+}
+
+export interface PromptTestResult {
+  id: string;
+  score: number;
+  output: string;
+  testedAt: string;
+  version: number;
+}
+
+export interface PromptUsageByDepartment {
+  departmentId: string | null;
+  count: number;
+}
+
+export interface PromptUsageByDoctor {
+  doctorId: string | null;
+  count: number;
+}
+
+export interface PromptUsageByDay {
+  day: string;
+  count: number;
+}
+
+export interface PromptUsageAnalytics {
+  totalUsages: number;
+  byDepartment: PromptUsageByDepartment[];
+  byDoctor: PromptUsageByDoctor[];
+  byDay: PromptUsageByDay[];
 }
 
 export interface CreatePromptInput {
@@ -114,6 +155,7 @@ const keys = {
   versions: (tenantId: string | undefined, id: string) => [...keys.all(tenantId), 'versions', id] as const,
   version: (tenantId: string | undefined, id: string, v: number) => [...keys.all(tenantId), 'version', id, v] as const,
   usage: (tenantId: string | undefined, id: string) => [...keys.all(tenantId), 'usage', id] as const,
+  analytics: (tenantId: string | undefined, promptTemplateId?: string) => [...keys.all(tenantId), 'analytics', promptTemplateId ?? ''] as const,
 };
 
 function qs(params?: PromptListParams): string {
@@ -197,6 +239,26 @@ export function usePromptUsageStats(tenantId: string, templateId: string, option
   });
 }
 
+/**
+ * TASK-328 A4 — usage analytics grouped by department / doctor / day.
+ * Optionally scoped to a single template via `promptTemplateId`.
+ */
+export function usePromptUsageAnalytics(
+  tenantId: string,
+  promptTemplateId?: string,
+  options?: Omit<UseQueryOptions<PromptUsageAnalytics>, 'queryKey' | 'queryFn'>,
+) {
+  const query = promptTemplateId ? `?promptTemplateId=${encodeURIComponent(promptTemplateId)}` : '';
+  return useQuery({
+    queryKey: keys.analytics(tenantId, promptTemplateId),
+    queryFn: () => adminClient.get<PromptUsageAnalytics>(`/admin/prompt-templates/analytics/usage${query}`, { tenantId }),
+    enabled: !!tenantId,
+    staleTime: PROMPT_USAGE_STALE_TIME_MS,
+    gcTime: PROMPT_TEMPLATES_GC_TIME_MS,
+    ...options,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Mutation hooks — all accept tenantId
 // ---------------------------------------------------------------------------
@@ -266,6 +328,25 @@ export function useTogglePromptStatus(tenantId: string) {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all(tenantId) });
       qc.invalidateQueries({ queryKey: keys.detail(tenantId, variables.id) });
+    },
+  });
+}
+
+/**
+ * TASK-328 A4 — run a quality/score test against the SMR/text-generation
+ * service. Persists `lastTestScore/lastTestOutput/lastTestAt` via an OCC
+ * write, so callers pass `expectedVersion` (and, in production, `ifMatch`)
+ * exactly like `useUpdatePrompt`. Invalidates the template detail + list so
+ * the new score is reflected.
+ */
+export function useTestPrompt(tenantId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ifMatch, ...input }: TestPromptInput & { id: string; ifMatch?: string }) =>
+      adminClient.post<PromptTestResult>(`/admin/prompt-templates/${id}/test`, input, ifMatch ? { tenantId, ifMatch } : { tenantId }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: keys.detail(tenantId, variables.id) });
+      qc.invalidateQueries({ queryKey: keys.lists(tenantId) });
     },
   });
 }

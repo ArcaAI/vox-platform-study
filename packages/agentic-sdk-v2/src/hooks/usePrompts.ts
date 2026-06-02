@@ -18,7 +18,21 @@ import type {
   PromptListFilters,
   AssignDepartmentPromptInput,
   DiffResult,
+  TestPromptInput,
+  PromptTestResult,
+  PromptUsageAnalytics,
 } from '../types';
+
+/**
+ * TASK-328 A4 — serialize a version's content + variables (JSON) into a single
+ * text blob so the line diff reflects BOTH the prompt text and the variable
+ * definitions. When `variables` is absent the blob is just the content (so the
+ * existing content-only diff behaviour is preserved).
+ */
+function serializeVersionForDiff(content: string, variables?: unknown): string {
+  if (variables === undefined || variables === null) return content;
+  return `${content}\n\n--- variables ---\n${JSON.stringify(variables, null, 2)}`;
+}
 
 export interface PromptUsageStats {
   totalUsages: number;
@@ -41,6 +55,10 @@ export interface UsePromptsReturn {
   compareVersions: (id: string, v1: number, v2: number) => Promise<DiffResult>;
   /** Activate (rollback to) a specific version of a prompt template. */
   activateVersion: (promptId: string, versionNumber: number) => Promise<PromptTemplate>;
+  /** TASK-328 A4 — run a quality/score test against the SMR service. */
+  test: (id: string, input?: TestPromptInput) => Promise<PromptTestResult>;
+  /** TASK-328 A4 — usage analytics grouped by department / doctor / day. */
+  analytics: (filters?: { promptTemplateId?: string }) => Promise<PromptUsageAnalytics>;
 }
 
 export function usePrompts(): UsePromptsReturn {
@@ -135,7 +153,12 @@ export function usePrompts(): UsePromptsReturn {
           client.get<PromptVersion>(PROMPT_TEMPLATE_ENDPOINTS.VERSION(id, v1)),
           client.get<PromptVersion>(PROMPT_TEMPLATE_ENDPOINTS.VERSION(id, v2)),
         ]);
-        return computePromptDiff(ver1.content, ver2.content);
+        // TASK-328 A4 — diff content AND variables (JSON) so variable
+        // definition changes are visible in the version diff.
+        return computePromptDiff(
+          serializeVersionForDiff(ver1.content, ver1.variables),
+          serializeVersionForDiff(ver2.content, ver2.variables),
+        );
       }),
     [execute],
   );
@@ -147,6 +170,37 @@ export function usePrompts(): UsePromptsReturn {
         setPrompts((prev) => prev.map((p) => (p.id === promptId ? data : p)));
         setCurrentPrompt(data);
         return data;
+      }),
+    [execute],
+  );
+
+  const test = useCallback(
+    (id: string, input?: TestPromptInput) =>
+      execute<PromptTestResult>('test', async (client) => {
+        // OCC parity with update(): the server folds the `If-Match` header
+        // over the body `expectedVersion`, or uses the body value directly.
+        const data = await client.post<PromptTestResult>(PROMPT_TEMPLATE_ENDPOINTS.TEST(id), input ?? {});
+        // Reflect the new score/output/version onto cached state.
+        setPrompts((prev) =>
+          prev.map((p) =>
+            p.id === id ? { ...p, lastTestScore: data.score, lastTestOutput: data.output, lastTestAt: data.testedAt, version: data.version } : p,
+          ),
+        );
+        setCurrentPrompt((prev) =>
+          prev && prev.id === id ? { ...prev, lastTestScore: data.score, lastTestOutput: data.output, lastTestAt: data.testedAt, version: data.version } : prev,
+        );
+        return data;
+      }),
+    [execute],
+  );
+
+  const analytics = useCallback(
+    (filters?: { promptTemplateId?: string }) =>
+      execute<PromptUsageAnalytics>('analytics', (client) => {
+        const url = filters?.promptTemplateId
+          ? appendFilters(PROMPT_TEMPLATE_ENDPOINTS.USAGE_ANALYTICS, { promptTemplateId: filters.promptTemplateId })
+          : PROMPT_TEMPLATE_ENDPOINTS.USAGE_ANALYTICS;
+        return client.get<PromptUsageAnalytics>(url);
       }),
     [execute],
   );
@@ -166,5 +220,7 @@ export function usePrompts(): UsePromptsReturn {
     assignToDepartment,
     compareVersions,
     activateVersion,
+    test,
+    analytics,
   };
 }

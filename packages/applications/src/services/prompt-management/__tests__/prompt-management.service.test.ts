@@ -55,6 +55,7 @@ const createMockPromptTemplateRepository = () => ({
     findByCategory: vi.fn(),
     findMyPersonalForDepartment: vi.fn(),
     findAll: vi.fn(),
+    findPaginated: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     // TASK-302 Stream D Phase E.3 — `updatePromptTemplate` now writes via
@@ -74,7 +75,27 @@ const createMockPromptVersionRepository = () => ({
 const createMockPromptUsageRecordRepository = () => ({
     findByTemplate: vi.fn().mockResolvedValue([]),
     findByDepartment: vi.fn().mockResolvedValue([]),
+    // TASK-328 A4 — analytics groupBy aggregations
+    groupByDepartment: vi.fn().mockResolvedValue([]),
+    groupByDoctor: vi.fn().mockResolvedValue([]),
+    groupByDay: vi.fn().mockResolvedValue([]),
 });
+
+// TASK-328 A4 — SMR/text-generation client is an injected dependency
+// (HttpService) so the prompt-test path is unit-testable with a mock; the
+// live SMR call is verified in CI against the running Python service.
+const createMockHttpService = (responseData: Record<string, unknown>) => ({
+    axiosRef: {
+        post: vi.fn().mockResolvedValue({ data: responseData }),
+    },
+});
+
+const createMockConfigService = (smrUrl = 'http://smr.local:8862') => ({
+    get: vi.fn().mockReturnValue(smrUrl),
+});
+
+const wordsOfLength = (n: number): string =>
+    Array.from({ length: n }, (_, i) => `word${i}`).join(' ');
 
 // ─── Entity Helpers ─────────────────────────────────────────────────
 // Complete mock entities matching real entity structure for mapper compatibility.
@@ -1348,6 +1369,200 @@ describe('PromptManagementService', () => {
             await expect(
                 service.assignToDepartment({ departmentId: 'wrong', newPatientPromptId: 'np-1', expectedVersion: 1 } as never),
             ).rejects.toThrow(NotFoundException);
+        });
+    });
+
+    // ─── TASK-328 A4: prompt quality/score test run ──────────────────────
+
+    describe('testPromptTemplate (TASK-328 A4)', () => {
+        const buildSmrService = (responseData: Record<string, unknown>) => {
+            const httpMock = createMockHttpService(responseData);
+            const configMock = createMockConfigService();
+            const svc = new PromptManagementService(
+                mockTemplateRepo as never,
+                mockVersionRepo as never,
+                mockUsageRepo as never,
+                mockDepartmentService as never,
+                mockEventEmitter as never,
+                mockClsService as never,
+                httpMock as never,
+                configMock as never,
+                undefined,
+            );
+            return { svc, httpMock, configMock };
+        };
+
+        it('runs the template against SMR and persists lastTestScore/lastTestOutput/lastTestAt via OCC write', async () => {
+            const output = wordsOfLength(60); // ≥ 50 words → full score
+            const existing = createMockTemplateEntity({ id: 'tpl-1', version: 5, content: 'Summarize {{topic}}' });
+            mockTemplateRepo.findById.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(
+                createMockTemplateEntity({ id: 'tpl-1', version: 6 }),
+            );
+            const { svc, httpMock } = buildSmrService({ content: output });
+
+            const result = await svc.testPromptTemplate('tpl-1', { variables: { topic: 'asthma' }, expectedVersion: 5 } as never);
+
+            // SMR client was invoked with the interpolated prompt
+            expect(httpMock.axiosRef.post).toHaveBeenCalledTimes(1);
+            const [, payload] = httpMock.axiosRef.post.mock.calls[0];
+            expect((payload as { prompt: string }).prompt).toContain('asthma');
+
+            // Persisted via Compare-And-Set against the row `_version`
+            expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledWith('tpl-1', existing, 5);
+            expect(existing.lastTestScore).toBe(1);
+            expect(existing.lastTestOutput).toBe(output);
+            expect(existing.lastTestAt).toBeInstanceOf(Date);
+
+            // Result DTO surfaces the score/output + the new row version
+            expect(result.id).toBe('tpl-1');
+            expect(result.score).toBe(1);
+            expect(result.output).toBe(output);
+            expect(result.version).toBe(6);
+            expect(typeof result.testedAt).toBe('string');
+        });
+
+        it('scores a short SMR output below 1.0 (deterministic word-count heuristic)', async () => {
+            const output = wordsOfLength(5); // 5/50 → 0.1
+            const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+            mockTemplateRepo.findById.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
+            const { svc } = buildSmrService({ content: output });
+
+            const result = await svc.testPromptTemplate('tpl-1', { expectedVersion: 1 } as never);
+
+            expect(result.score).toBeCloseTo(0.1, 5);
+        });
+
+        it('broadcasts ResourceUpdated after a successful test run', async () => {
+            const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+            mockTemplateRepo.findById.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
+            const { svc } = buildSmrService({ content: wordsOfLength(80) });
+
+            await svc.testPromptTemplate('tpl-1', { expectedVersion: 1 } as never);
+
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceUpdated,
+                expect.objectContaining({ resourceId: 'tpl-1' }),
+            );
+        });
+
+        it('throws NotFoundException on a cross-tenant template (no SMR call, no write)', async () => {
+            const foreign = createMockTemplateEntity({ id: 'tpl-X', tenantId: 'tenant-OTHER', version: 1 });
+            mockTemplateRepo.findById.mockResolvedValue(foreign);
+            const { svc, httpMock } = buildSmrService({ content: wordsOfLength(80) });
+
+            await expect(
+                svc.testPromptTemplate('tpl-X', { expectedVersion: 1 } as never),
+            ).rejects.toThrow(NotFoundException);
+            expect(httpMock.axiosRef.post).not.toHaveBeenCalled();
+            expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
+        });
+
+        it('propagates OptimisticConcurrencyException from the CAS write', async () => {
+            const existing = createMockTemplateEntity({ id: 'tpl-1', version: 5 });
+            mockTemplateRepo.findById.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockRejectedValue(
+                new OptimisticConcurrencyException('PromptTemplate', 'tpl-1', { expectedVersion: 5, currentVersion: 6 }),
+            );
+            const { svc } = buildSmrService({ content: wordsOfLength(80) });
+
+            await expect(
+                svc.testPromptTemplate('tpl-1', { expectedVersion: 5 } as never),
+            ).rejects.toThrow(OptimisticConcurrencyException);
+        });
+    });
+
+    // ─── TASK-328 A4: repository-level pagination ────────────────────────
+
+    describe('listPromptTemplatesPaginated (TASK-328 A4)', () => {
+        it('delegates to repository.findPaginated and returns {data,count,page,limit}', async () => {
+            mockTemplateRepo.findPaginated.mockResolvedValue({
+                data: [createMockTemplateEntity({ id: 't1' }), createMockTemplateEntity({ id: 't2' })],
+                count: 7,
+            });
+
+            const result = await service.listPromptTemplatesPaginated({ page: 2, limit: 2 });
+
+            expect(mockTemplateRepo.findPaginated).toHaveBeenCalledWith(
+                expect.objectContaining({ tenantId: 'tenant-1', resourceStatus: ResourceStatusType.ENABLED }),
+                2,
+                2,
+            );
+            expect(result.count).toBe(7);
+            expect(result.page).toBe(2);
+            expect(result.limit).toBe(2);
+            expect(result.data).toHaveLength(2);
+        });
+
+        it('defaults to page 1 / limit 50 and applies filters into the where clause', async () => {
+            mockTemplateRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
+
+            await service.listPromptTemplatesPaginated({ category: 'SUMMARY', search: 'soap', includeDisabled: true });
+
+            const [where, page, limit] = mockTemplateRepo.findPaginated.mock.calls[0];
+            expect(page).toBe(1);
+            expect(limit).toBe(50);
+            expect(where).toMatchObject({ tenantId: 'tenant-1', category: 'SUMMARY', name: { contains: 'soap', mode: 'insensitive' } });
+            // includeDisabled drops the ENABLED-only constraint
+            expect(where).not.toHaveProperty('resourceStatus');
+        });
+
+        it('throws BadRequestException when tenantId is missing', async () => {
+            mockClsService.get.mockImplementation((key: string) => (key === 'user' ? defaultClsContext.user : null));
+
+            await expect(service.listPromptTemplatesPaginated()).rejects.toThrow(BadRequestException);
+        });
+    });
+
+    // ─── TASK-328 A4: usage analytics (groupBy dept / doctor / time) ─────
+
+    describe('getUsageAnalytics (TASK-328 A4)', () => {
+        it('returns aggregates grouped by department, doctor, and day', async () => {
+            mockUsageRepo.groupByDepartment.mockResolvedValue([
+                { departmentId: 'dept-1', count: 4 },
+                { departmentId: null, count: 1 },
+            ]);
+            mockUsageRepo.groupByDoctor.mockResolvedValue([{ doctorId: 'doc-1', count: 5 }]);
+            mockUsageRepo.groupByDay.mockResolvedValue([
+                { day: '2026-06-01', count: 2 },
+                { day: '2026-06-02', count: 3 },
+            ]);
+
+            const result = await service.getUsageAnalytics();
+
+            expect(mockUsageRepo.groupByDepartment).toHaveBeenCalledWith('tenant-1', undefined);
+            expect(mockUsageRepo.groupByDoctor).toHaveBeenCalledWith('tenant-1', undefined);
+            expect(mockUsageRepo.groupByDay).toHaveBeenCalledWith('tenant-1', undefined);
+            expect(result.totalUsages).toBe(5);
+            expect(result.byDepartment).toEqual([
+                { departmentId: 'dept-1', count: 4 },
+                { departmentId: null, count: 1 },
+            ]);
+            expect(result.byDoctor).toEqual([{ doctorId: 'doc-1', count: 5 }]);
+            expect(result.byDay).toEqual([
+                { day: '2026-06-01', count: 2 },
+                { day: '2026-06-02', count: 3 },
+            ]);
+        });
+
+        it('passes through an optional promptTemplateId filter to the repository', async () => {
+            mockUsageRepo.groupByDepartment.mockResolvedValue([]);
+            mockUsageRepo.groupByDoctor.mockResolvedValue([]);
+            mockUsageRepo.groupByDay.mockResolvedValue([]);
+
+            await service.getUsageAnalytics({ promptTemplateId: 'tpl-9' });
+
+            expect(mockUsageRepo.groupByDepartment).toHaveBeenCalledWith('tenant-1', 'tpl-9');
+            expect(mockUsageRepo.groupByDoctor).toHaveBeenCalledWith('tenant-1', 'tpl-9');
+            expect(mockUsageRepo.groupByDay).toHaveBeenCalledWith('tenant-1', 'tpl-9');
+        });
+
+        it('throws BadRequestException when tenantId is missing', async () => {
+            mockClsService.get.mockImplementation((key: string) => (key === 'user' ? defaultClsContext.user : null));
+
+            await expect(service.getUsageAnalytics()).rejects.toThrow(BadRequestException);
         });
     });
 });
