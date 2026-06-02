@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
-import { BadRequestException, RequestMethod } from '@nestjs/common';
+import { BadRequestException, NotFoundException, RequestMethod } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { AudioPipelineController } from '../audio-pipeline.controller';
@@ -169,5 +169,77 @@ describe('AudioPipelineController update — TASK-302 Stream D Phase E.4', () =>
     const result = await controller.update('p-1', { name: 'Updated', expectedVersion: 7 } as any, undefined);
 
     expect(result).toEqual(expect.objectContaining({ id: 'p-1', version: 8 }));
+  });
+});
+
+// =============================================================================
+// TASK-328 A6 — default / toggle / versioning endpoints
+// =============================================================================
+describe('AudioPipelineController — TASK-328 A6 default/toggle/versions', () => {
+  const buildController = () => {
+    const svc = {
+      setDefault: vi.fn(),
+      toggle: vi.fn(),
+      listVersions: vi.fn(),
+      getVersion: vi.fn(),
+    } as any;
+    return { controller: new AudioPipelineController(svc), svc };
+  };
+
+  it('exposes POST :id/set-default and delegates to the service', async () => {
+    const path = Reflect.getMetadata(PATH_METADATA, AudioPipelineController.prototype.setDefault);
+    const method = Reflect.getMetadata(METHOD_METADATA, AudioPipelineController.prototype.setDefault);
+    expect(path).toBe(':id/set-default');
+    expect(method).toBe(RequestMethod.POST);
+
+    const { controller, svc } = buildController();
+    svc.setDefault.mockResolvedValue({ id: 'p-1', isDefault: true });
+    const result = await controller.setDefault('p-1');
+    expect(svc.setDefault).toHaveBeenCalledWith('p-1');
+    expect(result).toEqual(expect.objectContaining({ isDefault: true }));
+  });
+
+  it('exposes PATCH :id/toggle and folds the If-Match version into the service call', async () => {
+    const path = Reflect.getMetadata(PATH_METADATA, AudioPipelineController.prototype.toggle);
+    const method = Reflect.getMetadata(METHOD_METADATA, AudioPipelineController.prototype.toggle);
+    expect(path).toBe(':id/toggle');
+    expect(method).toBe(RequestMethod.PATCH);
+
+    const { controller, svc } = buildController();
+    svc.toggle.mockResolvedValue({ id: 'p-1', resourceStatus: 'DISABLED', version: 6 });
+    await controller.toggle('p-1', { enabled: false }, 5);
+    expect(svc.toggle).toHaveBeenCalledWith('p-1', false, 5);
+  });
+
+  it('exposes GET :id/versions and returns the snapshot list', async () => {
+    const path = Reflect.getMetadata(PATH_METADATA, AudioPipelineController.prototype.listVersions);
+    const method = Reflect.getMetadata(METHOD_METADATA, AudioPipelineController.prototype.listVersions);
+    expect(path).toBe(':id/versions');
+    expect(method).toBe(RequestMethod.GET);
+
+    const { controller, svc } = buildController();
+    svc.listVersions.mockResolvedValue([{ versionNumber: 2 }, { versionNumber: 1 }]);
+    const result = await controller.listVersions('p-1');
+    expect(svc.listVersions).toHaveBeenCalledWith('p-1');
+    expect(result).toHaveLength(2);
+  });
+
+  it('GET :id/versions/:versionNumber parses the number and returns the snapshot', async () => {
+    const { controller, svc } = buildController();
+    svc.getVersion.mockResolvedValue({ versionNumber: 2 });
+    const result = await controller.getVersion('p-1', '2');
+    expect(svc.getVersion).toHaveBeenCalledWith('p-1', 2);
+    expect(result).toEqual(expect.objectContaining({ versionNumber: 2 }));
+  });
+
+  it('GET :id/versions/:versionNumber throws NotFound when the version is absent', async () => {
+    const { controller, svc } = buildController();
+    svc.getVersion.mockResolvedValue(null);
+    await expect(controller.getVersion('p-1', '99')).rejects.toThrow(NotFoundException);
+  });
+
+  it('GET :id/versions/:versionNumber throws BadRequest for a non-positive version', async () => {
+    const { controller } = buildController();
+    await expect(controller.getVersion('p-1', '0')).rejects.toThrow(BadRequestException);
   });
 });

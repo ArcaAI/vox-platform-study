@@ -35,5 +35,7 @@ export enum ResourceType {
   TenantBucket = 'TenantBucket',
   StorageAccessKey = 'StorageAccessKey',
   TenantStorageConfig = 'TenantStorageConfig',
+  TenantFrontendConfig = 'TenantFrontendConfig',
+  AsrPipelineVersion = 'AsrPipelineVersion',
   UserVoiceProfile = 'UserVoiceProfile',
 }

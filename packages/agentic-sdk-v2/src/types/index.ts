@@ -293,3 +293,10 @@ export type {
   UserSetting,
 } from './settings';
 export { ConfigConflictError } from './settings';
+
+// Frontend pipeline config types (TASK-328 A6)
+export type {
+  FrontendPipelineConfigJson,
+  TenantFrontendConfig,
+  UpsertTenantFrontendConfigInput,
+} from './frontend-pipeline-config';

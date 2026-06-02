@@ -192,6 +192,16 @@ const mockPipelineRepository = {
     updateWithVersion: vi.fn(),
     softDelete: vi.fn(),
     isSlugUnique: vi.fn(),
+    // TASK-328 A6 — default-pipeline + status toggle.
+    findDefault: vi.fn(),
+    setDefaultForTenant: vi.fn(),
+};
+
+// TASK-328 A6 — version-snapshot repository.
+const mockVersionRepository = {
+    getNextVersionNumber: vi.fn(),
+    create: vi.fn(),
+    findByPipeline: vi.fn(),
 };
 
 describe('PipelineService', () => {
@@ -213,6 +223,7 @@ describe('PipelineService', () => {
             mockPipelineRepository as any,
             mockEventEmitter as any,
             mockClsService as any,
+            mockVersionRepository as any,
         );
     });
 
