@@ -24,6 +24,8 @@ export const DEFAULT_ADMIN_MENU_ORDER: readonly string[] = [
   'prompts',
   'departments',
   'audio-pipelines',
+  'frontend-pipeline',
+  'backend-pipeline',
   'studio',
   'storage',
   'configurations',
