@@ -59,3 +59,74 @@ export const seedTenant = async (client: CorePrismaClient) => {
         throw error;
     }
 };
+
+// ============================================================================
+// Tenant Frontend Config (TASK-328 A6 Q5 / TASK-331 doc-03 F3)
+//
+// One row per tenant describing the DEFAULT frontend audio-processing pipeline
+// applied to all of a tenant's users. No seed previously created any rows, so
+// the SDK had no per-tenant frontend baseline. We seed conservative defaults
+// for the Global/SEED tenant and each customer tenant; `configJson` is left as
+// an empty object for admins to extend. Idempotent: upsert by the unique
+// `tenantId`.
+//
+// Exported for testing purposes.
+// ============================================================================
+
+export const TENANT_FRONTEND_CONFIGS = [
+    {
+        tenantId: SEED_TENANT_ID,
+        asrModel: null,
+        noiseCancel: false,
+        vad: true,
+        voiceEnrollment: false,
+        diarization: false,
+        configJson: {},
+    },
+    {
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        asrModel: null,
+        noiseCancel: false,
+        vad: true,
+        voiceEnrollment: false,
+        diarization: false,
+        configJson: {},
+    },
+    {
+        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        asrModel: null,
+        noiseCancel: false,
+        vad: true,
+        voiceEnrollment: false,
+        diarization: false,
+        configJson: {},
+    },
+    {
+        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+        asrModel: null,
+        noiseCancel: false,
+        vad: true,
+        voiceEnrollment: false,
+        diarization: false,
+        configJson: {},
+    },
+];
+
+export const seedTenantFrontendConfig = async (client: CorePrismaClient) => {
+    console.log('Seeding tenant frontend configs...');
+
+    try {
+        for (const cfg of TENANT_FRONTEND_CONFIGS) {
+            await client.tenantFrontendConfig.upsert({
+                where: { tenantId: cfg.tenantId },
+                update: cfg,
+                create: cfg,
+            });
+        }
+
+        console.log(`Seeded ${TENANT_FRONTEND_CONFIGS.length} tenant frontend configs`);
+    } catch (error) {
+        console.error('Error seeding tenant frontend configs:', error);
+        throw error;
+    }
+};

@@ -41,6 +41,7 @@ const mockAppSettingsService = {
 const mockAsrPipelineRepository = {
     findById: vi.fn(),
     findBySlug: vi.fn(),
+    findDefault: vi.fn(),
 };
 
 const mockVoiceProfileRepository = {
@@ -109,15 +110,20 @@ describe('UserPreferencesService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
 
-        mockClsService.get.mockReturnValue({
-            id: 'user-id-1',
-            tenantId: 'tenant-1',
+        // CLS serves both the user session ('user') and the active tenant
+        // ('tenantId'). BaseService.tenantId reads the 'tenantId' key, which the
+        // Q2 tenant-default resolution depends on.
+        mockClsService.get.mockImplementation((key: string) => {
+            if (key === 'user') return { id: 'user-id-1', tenantId: 'tenant-1' };
+            if (key === 'tenantId') return 'tenant-1';
+            return undefined;
         });
 
-        // Default: no admin pipeline override, no tenant default
+        // Default: no admin pipeline override, no tenant isDefault pipeline, no tenant default
         mockUserSettingsRepository.findByUserKeyNamespace.mockResolvedValue(null);
         mockAppSettingsService.getValueFromCache.mockReturnValue(null);
         mockAsrPipelineRepository.findById.mockResolvedValue(null);
+        mockAsrPipelineRepository.findDefault.mockResolvedValue(null);
         mockVoiceProfileRepository.findActiveByUserId.mockResolvedValue(null);
 
         service = new UserPreferencesService(
@@ -321,6 +327,99 @@ describe('UserPreferencesService', () => {
 
             expect(result.remoteConfig?.pipelineId).toBe('admin-pipeline');
             expect(result.remoteConfig?.assignedBy).toBe('admin');
+        });
+    });
+
+    // TASK-331 doc-03 Q2 — AsrPipeline.isDefault supersedes the GlobalSetting
+    // slug default; admins control the per-tenant backend default. Additive +
+    // backward-compatible: when a tenant has no isDefault pipeline we fall back
+    // to the existing GlobalSetting behaviour, and the per-user admin override
+    // still wins over everything.
+    describe('tenant isDefault pipeline reconciliation (Q2)', () => {
+        it('should prefer the tenant isDefault pipeline over the GlobalSetting default', async () => {
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([
+                createMockEntity({ key: 'workflowMode', value: 'remote' }),
+            ]);
+
+            // Tenant has an isDefault pipeline...
+            mockAsrPipelineRepository.findDefault.mockResolvedValue({
+                id: 'tenant-default-pipeline-id',
+                name: 'ArcaAI Production Pipeline',
+            });
+            // ...and a GlobalSetting default is ALSO configured (should be ignored).
+            mockAppSettingsService.getValueFromCache.mockReturnValue('global-setting-pipeline');
+
+            const result = await service.getPreferences();
+
+            expect(mockAsrPipelineRepository.findDefault).toHaveBeenCalledWith('tenant-1');
+            expect(result.remoteConfig).toEqual({
+                pipelineId: 'tenant-default-pipeline-id',
+                pipelineName: 'ArcaAI Production Pipeline',
+                assignedBy: 'tenant-default',
+            });
+        });
+
+        it('should fall back to the GlobalSetting default when no tenant isDefault pipeline exists', async () => {
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([
+                createMockEntity({ key: 'workflowMode', value: 'remote' }),
+            ]);
+
+            mockAsrPipelineRepository.findDefault.mockResolvedValue(null);
+            mockAppSettingsService.getValueFromCache.mockReturnValue('global-setting-pipeline');
+            mockAsrPipelineRepository.findById.mockResolvedValue({ name: 'Global Default Pipeline' });
+
+            const result = await service.getPreferences();
+
+            expect(result.remoteConfig).toEqual({
+                pipelineId: 'global-setting-pipeline',
+                pipelineName: 'Global Default Pipeline',
+                assignedBy: 'tenant-default',
+            });
+        });
+
+        it('should still honor the per-user admin override ahead of the tenant isDefault pipeline', async () => {
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
+            mockUserSettingsRepository.findByUserKeyNamespace.mockImplementation(
+                (_userId: string, key: string, namespace: string) => {
+                    if (namespace === 'arcaai-admin' && key === 'assigned-pipeline') {
+                        return Promise.resolve(
+                            createMockEntity({
+                                key: 'assigned-pipeline',
+                                value: 'admin-pipeline',
+                                namespace: 'arcaai-admin',
+                            }),
+                        );
+                    }
+                    return Promise.resolve(null);
+                },
+            );
+            mockAsrPipelineRepository.findById.mockResolvedValue({ name: 'Admin Pipeline' });
+            // A tenant isDefault pipeline also exists, but the admin override wins.
+            mockAsrPipelineRepository.findDefault.mockResolvedValue({
+                id: 'tenant-default-pipeline-id',
+                name: 'Tenant Default Pipeline',
+            });
+
+            const result = await service.getPreferences();
+
+            expect(result.remoteConfig?.pipelineId).toBe('admin-pipeline');
+            expect(result.remoteConfig?.assignedBy).toBe('admin');
+            expect(mockAsrPipelineRepository.findDefault).not.toHaveBeenCalled();
+        });
+
+        it('should swallow a tenant-default lookup failure and fall back to the GlobalSetting', async () => {
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
+            mockAsrPipelineRepository.findDefault.mockRejectedValue(new Error('DB error'));
+            mockAppSettingsService.getValueFromCache.mockReturnValue('global-setting-pipeline');
+            mockAsrPipelineRepository.findById.mockResolvedValue({ name: 'Global Default Pipeline' });
+
+            const result = await service.getPreferences();
+
+            expect(result.remoteConfig).toEqual({
+                pipelineId: 'global-setting-pipeline',
+                pipelineName: 'Global Default Pipeline',
+                assignedBy: 'tenant-default',
+            });
         });
     });
 

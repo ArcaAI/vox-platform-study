@@ -1,6 +1,6 @@
 import type { CorePrismaClient } from '../../../client';
 import { ValueType } from '../../../generated/core-prisma-client/client.js';
-import { SYSTEM_TENANT_ID } from './00-constants';
+import { SYSTEM_TENANT_ID, SEED_CUSTOMER_TENANT_IDS } from './00-constants';
 import { TEMPLATE_IDS } from './07-prompt-template';
 
 /**
@@ -1485,7 +1485,23 @@ diarization:
 `,
 };
 
-export const DEFAULT_ASR_PIPELINES = [
+/**
+ * Shape of an ASR pipeline seed row. `isDefault` is optional so most rows can
+ * omit it (DB default = false); exactly ONE row per owning tenant should set it
+ * `true` (TASK-331 doc-03 Q2 — per-tenant backend default, enforced by tests).
+ */
+interface AsrPipelineSeed {
+    id: string;
+    tenantId: string;
+    name: string;
+    slug: string;
+    description: string;
+    configYaml: string;
+    isDefault?: boolean;
+    tags: string[];
+}
+
+export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     {
         id: '81000000-0000-0000-0001-000000000001',
         tenantId: DEFAULT_TENANT_ID,
@@ -1493,6 +1509,11 @@ export const DEFAULT_ASR_PIPELINES = [
         slug: 'production-whisper-large-v3',
         description: 'High-quality production pipeline using Whisper Large V3 with VAD and noise reduction. Best for final transcriptions.',
         configYaml: PIPELINE_CONFIGS.production,
+        // TASK-331 doc-03 Q2 — make the system default agree with the
+        // GlobalSetting `default-stt-pipeline` (id 81000000-…0001) so there is
+        // a single source of truth. Happy path unchanged: Global-tenant users
+        // still resolve this pipeline via the GlobalSetting fallback.
+        isDefault: true,
         tags: ['production', 'high-quality', 'recommended'],
     },
     {
@@ -1581,6 +1602,91 @@ export const DEFAULT_ASR_PIPELINES = [
         description: 'Malayalam-only ASR pipeline template.',
         configYaml: PIPELINE_CONFIGS.asr_ml_template,
         tags: ['asr', 'malayalam'],
+    },
+];
+
+// =============================================================================
+// PER-CUSTOMER-TENANT ASR PIPELINES (TASK-331 doc-03 F3 / Q2)
+//
+// The DEFAULT_ASR_PIPELINES above are platform-wide system seeds owned by the
+// reserved system tenant. Each customer tenant (ArcaAI/4bits/Mumbai) was
+// previously left with ZERO pipelines; this gave admins nothing to manage and
+// no per-tenant default. Here we give every customer tenant a small, realistic
+// catalog (a production default + a turbo/streaming option) and mark EXACTLY
+// ONE as `isDefault: true`. The runtime (resolveRemoteConfig) honours that
+// per-tenant default ahead of the GlobalSetting slug default.
+//
+// ID scheme: kept inside the `81000000-…-0001-…` ASR-pipeline block; the LAST
+// UUID group encodes the tenant (1xx=ArcaAI, 2xx=4bits, 3xx=Mumbai) so the IDs
+// never collide with the system rows (01-07, 50-52). Slugs are reused per
+// tenant — safe under the `@@unique([tenantId, slug])` constraint.
+//
+// Exported for testing purposes.
+// =============================================================================
+
+export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
+    // --- ArcaAI ---
+    {
+        id: '81000000-0000-0000-0001-000000000101',
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        name: 'ArcaAI Production Pipeline (Whisper Large V3)',
+        slug: 'production-whisper-large-v3',
+        description: 'ArcaAI default production pipeline using Whisper Large V3 with VAD and noise reduction.',
+        configYaml: PIPELINE_CONFIGS.production,
+        isDefault: true,
+        tags: ['production', 'high-quality', 'recommended'],
+    },
+    {
+        id: '81000000-0000-0000-0001-000000000102',
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        name: 'ArcaAI Turbo Pipeline (Whisper Large V3 Turbo)',
+        slug: 'turbo-whisper-large-v3',
+        description: 'ArcaAI fast streaming pipeline using Whisper Large V3 Turbo for low-latency transcription.',
+        configYaml: PIPELINE_CONFIGS.turbo,
+        isDefault: false,
+        tags: ['streaming', 'real-time', 'fast'],
+    },
+    // --- 4bits ---
+    {
+        id: '81000000-0000-0000-0001-000000000201',
+        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        name: '4bits Production Pipeline (Whisper Large V3)',
+        slug: 'production-whisper-large-v3',
+        description: '4bits default production pipeline using Whisper Large V3 with VAD and noise reduction.',
+        configYaml: PIPELINE_CONFIGS.production,
+        isDefault: true,
+        tags: ['production', 'high-quality', 'recommended'],
+    },
+    {
+        id: '81000000-0000-0000-0001-000000000202',
+        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        name: '4bits Turbo Pipeline (Whisper Large V3 Turbo)',
+        slug: 'turbo-whisper-large-v3',
+        description: '4bits fast streaming pipeline using Whisper Large V3 Turbo for low-latency transcription.',
+        configYaml: PIPELINE_CONFIGS.turbo,
+        isDefault: false,
+        tags: ['streaming', 'real-time', 'fast'],
+    },
+    // --- Mumbai General Hospital ---
+    {
+        id: '81000000-0000-0000-0001-000000000301',
+        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+        name: 'Mumbai Production Pipeline (Whisper Large V3)',
+        slug: 'production-whisper-large-v3',
+        description: 'Mumbai General Hospital default production pipeline using Whisper Large V3 with VAD and noise reduction.',
+        configYaml: PIPELINE_CONFIGS.production,
+        isDefault: true,
+        tags: ['production', 'high-quality', 'recommended'],
+    },
+    {
+        id: '81000000-0000-0000-0001-000000000302',
+        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+        name: 'Mumbai Lightweight Pipeline (Whisper Small)',
+        slug: 'lightweight-whisper-small',
+        description: 'Mumbai General Hospital CPU-friendly fallback pipeline using Whisper Small for low-resource sites.',
+        configYaml: PIPELINE_CONFIGS.lightweight,
+        isDefault: false,
+        tags: ['cpu', 'lightweight', 'low-resource'],
     },
 ];
 
@@ -1884,7 +1990,10 @@ export const seedAiModels = async (client: CorePrismaClient) => {
 export const seedAsrPipelines = async (client: CorePrismaClient) => {
     console.log('Seeding ASR Pipelines...');
 
-    for (const pipelineData of DEFAULT_ASR_PIPELINES) {
+    // System (platform-wide) pipelines + per-customer-tenant pipelines.
+    const allPipelines = [...DEFAULT_ASR_PIPELINES, ...CUSTOMER_TENANT_ASR_PIPELINES];
+
+    for (const pipelineData of allPipelines) {
         const existing = await client.asrPipeline.findFirst({
             where: {
                 tenantId: pipelineData.tenantId,
@@ -1893,7 +2002,12 @@ export const seedAsrPipelines = async (client: CorePrismaClient) => {
         });
 
         if (existing) {
-            console.log(`  ASR Pipeline "${pipelineData.slug}" already exists, updating...`);
+            // Idempotent re-seed: refresh content but DO NOT clobber `isDefault`.
+            // The default flag is admin-controlled at runtime (per TASK-331
+            // doc-03 Q2); leaving it untouched on update both respects admin
+            // changes and keeps the "exactly one default per tenant" invariant
+            // intact (no new rows are created, so no second default can appear).
+            console.log(`  ASR Pipeline "${pipelineData.slug}" already exists for tenant ${pipelineData.tenantId}, updating...`);
             await client.asrPipeline.update({
                 where: { id: existing.id },
                 data: {
@@ -1904,15 +2018,15 @@ export const seedAsrPipelines = async (client: CorePrismaClient) => {
                 },
             });
         } else {
-            console.log(`  Creating ASR Pipeline "${pipelineData.slug}"...`);
+            console.log(`  Creating ASR Pipeline "${pipelineData.slug}" for tenant ${pipelineData.tenantId}...`);
             await client.asrPipeline.create({
                 data: pipelineData,
             });
         }
     }
 
-    console.log(`Seeded ${DEFAULT_ASR_PIPELINES.length} ASR Pipelines`);
-    return { success: true, count: DEFAULT_ASR_PIPELINES.length };
+    console.log(`Seeded ${allPipelines.length} ASR Pipelines`);
+    return { success: true, count: allPipelines.length };
 };
 
 export const seedSttSettings = async (client: CorePrismaClient) => {

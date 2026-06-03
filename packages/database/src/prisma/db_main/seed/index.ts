@@ -6,7 +6,7 @@ import { seedPolicy } from './01-policy';
 import { seedApiKey } from './02-apikey';
 import { seedRole } from './03-role';
 import { seedDepartment } from './04-department';
-import { seedTenant } from './05-tenant';
+import { seedTenant, seedTenantFrontendConfig } from './05-tenant';
 import { seedTenantBucket } from './05a-tenant-bucket';
 import { seedStt } from './06-stt';
 import { seedPromptTemplate } from './07-prompt-template';
@@ -67,6 +67,9 @@ export const seed = async () => {
         await seedPolicy(client);
         console.log('');
         await seedTenant(client);
+        console.log('');
+        // TASK-331 doc-03 F3 — per-tenant frontend pipeline defaults (needs tenants).
+        await seedTenantFrontendConfig(client);
         console.log('');
         await seedTenantBucket(client);
         console.log('');
