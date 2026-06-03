@@ -173,6 +173,18 @@ export const SEED_DEPARTMENT_IDS = {
     GEN_ARCAAI: '70000000-0000-0000-0001-000000000001',
     GEN_FOURBITS: '70000000-0000-0000-0002-000000000001',
     GEN_MUMBAI: '70000000-0000-0000-0003-000000000001',
+    // TASK-331 r2605 #6 — enrich each customer tenant with a small realistic
+    // specialty catalog (Cardiology + Emergency) alongside the existing GEN
+    // so cross-tenant demos look real. The 4th UUID group encodes the tenant
+    // (0001=ArcaAI, 0002=4bits, 0003=Mumbai); the trailing group encodes the
+    // department slot within that tenant (001=GEN, 002=CARD, 003=ER). Prompt
+    // IDs stay null on these rows (they reference Global-tenant templates).
+    CARD_ARCAAI: '70000000-0000-0000-0001-000000000002',
+    ER_ARCAAI: '70000000-0000-0000-0001-000000000003',
+    CARD_FOURBITS: '70000000-0000-0000-0002-000000000002',
+    ER_FOURBITS: '70000000-0000-0000-0002-000000000003',
+    CARD_MUMBAI: '70000000-0000-0000-0003-000000000002',
+    ER_MUMBAI: '70000000-0000-0000-0003-000000000003',
 } as const;
 
 // =============================================================================
