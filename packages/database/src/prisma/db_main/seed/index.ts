@@ -2,8 +2,9 @@
 // No need to import dotenv/config here as it would override test env vars
 // eslint-disable-next-line no-restricted-imports -- TASK-305 B.4 allow-list: seed scripts legitimately bypass tenant-scope
 import { getPlatformAdminPrismaClient_Unscoped } from '../../../client';
+import { getNodeEnv } from '../../../env';
 import { seedPolicy } from './01-policy';
-import { seedApiKey } from './02-apikey';
+import { seedApiKey, shouldSeedApiKeys } from './02-apikey';
 import { seedRole } from './03-role';
 import { seedDepartment } from './04-department';
 import { seedTenant, seedTenantFrontendConfig } from './05-tenant';
@@ -60,6 +61,13 @@ import { seedUser } from './91-user';
 export const seed = async () => {
     const client = getPlatformAdminPrismaClient_Unscoped();
 
+    // TASK-331 doc-08 F5 — single gate for demo/sensitive fixtures. Demo API
+    // keys embed raw secrets + ACTIVE, broadly-scoped keys, so they must never
+    // be seeded outside local dev/test. `shouldSeedApiKeys` (02-apikey) is the
+    // single source of truth, reused here and by that step's own guard.
+    const seedEnv = getNodeEnv();
+    const SEED_DEMO_DATA = shouldSeedApiKeys(seedEnv);
+
     try {
         console.log('Starting database seeding...\n');
 
@@ -89,7 +97,15 @@ export const seed = async () => {
         // Phase 4: Depends on Phase 3
         await seedUser(client);
         console.log('');
-        await seedApiKey(client);
+        // F5 — API-key fixtures embed raw demo secrets; only seed in dev/test.
+        if (SEED_DEMO_DATA) {
+            await seedApiKey(client);
+        } else {
+            console.warn(
+                `⚠️  Skipping API-key seeding: NODE_ENV="${seedEnv}" is not development/test. ` +
+                'Demo API-key fixtures contain raw secrets and are never seeded outside local dev/test.'
+            );
+        }
         console.log('');
         await seedGlobalSetting(client);
         console.log('');
