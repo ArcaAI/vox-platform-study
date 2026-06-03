@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { uuidv7 } from 'uuidv7';
 import { trace } from '@opentelemetry/api';
+import { resolveActiveTenant } from './resolve-active-tenant';
 
 @Injectable()
 export class ContextInterceptor implements NestInterceptor {
@@ -70,7 +71,7 @@ export class ContextInterceptor implements NestInterceptor {
     // so the caller cannot pretend they're in a different tenant.
     const tenantIdHeader = request.headers['x-tenant-id'];
     if (tenantIdHeader) {
-      const clsUser = this.tryClsGet('user') as { tenantId?: string | null } | undefined;
+      const clsUser = this.tryClsGet('user') as { id?: string; tenantId?: string | null; roles?: string[] | null } | undefined;
       const jwtTenantId = clsUser?.tenantId ?? undefined;
       if (jwtTenantId && tenantIdHeader !== jwtTenantId) {
         this.logger.warn({
@@ -79,6 +80,27 @@ export class ContextInterceptor implements NestInterceptor {
           jwtTenantId,
         });
         throw new BadRequestException('x-tenant-id header does not match the authenticated tenant');
+      }
+
+      // TASK-331 r2605 Finding #1: a super-admin authenticates with an EMPTY
+      // tenant, so the divergence guard above never fires for them. The
+      // console's "manage as tenant" selection arrives as `x-tenant-id`; for a
+      // super-admin with no tenant binding we elevate the CLS `tenantId` to it
+      // so downstream CLS-scoped services (Departments, Prompts, Storage, …)
+      // operate inside the chosen tenant. Gated to super-admins only and
+      // audited — anyone else falls through with their tenant unchanged.
+      const decision = resolveActiveTenant(clsUser, tenantIdHeader);
+      if (decision.type === 'invalid') {
+        throw new BadRequestException('Invalid x-tenant-id format');
+      }
+      if (decision.type === 'elevate') {
+        this.tryClsSet('tenantId', decision.tenantId);
+        this.logger.log({
+          message: 'super-admin elevated active tenant from x-tenant-id header',
+          superAdminId: clsUser?.id,
+          elevatedTenantId: decision.tenantId,
+          correlationId: request.requestId,
+        });
       }
     }
 
