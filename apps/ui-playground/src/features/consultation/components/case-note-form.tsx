@@ -81,7 +81,10 @@ export function CaseNoteForm({ consultationId, onSuccess }: CaseNoteFormProps) {
     const consultation = state.consultation;
     if (!apiClient) throw new Error('SDK not initialized');
     if (!consultation) throw new Error('No active consultation');
-    const item = await apiClient.post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), {
+    // TASK-331 doc-06 F7 — post against the consultationId *prop* (the rendered
+    // consultation), not the store's active session id, which can diverge when
+    // the rendered consultation isn't the last-loaded one (e.g. workspace dialog).
+    const item = await apiClient.post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultationId), {
       source: 'USER',
       ...input,
     });

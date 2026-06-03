@@ -14,6 +14,22 @@ interface SummaryPanelProps {
   consultationId: string;
 }
 
+// TASK-331 doc-06 F4-UI — the server's 3-tier prompt fallback
+// (preferred → department → default) is echoed on
+// `SummaryResponse.structuredData.promptResolvedFrom` (typed `unknown` via the
+// index signature). Narrow it to a human label, or `null` when absent/unknown
+// so nothing is rendered.
+const PROMPT_TIER_LABELS: Record<string, string> = {
+  preferred: 'Doctor preferred',
+  department: 'Department',
+  default: 'Default',
+};
+
+function resolvePromptTierLabel(structuredData: SummaryResponse['structuredData']): string | null {
+  const tier = structuredData?.promptResolvedFrom;
+  return typeof tier === 'string' ? (PROMPT_TIER_LABELS[tier] ?? null) : null;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function SummaryPanel({ consultationId }: SummaryPanelProps) {
   const { summary } = useArca();
@@ -144,6 +160,11 @@ export function SummaryPanel({ consultationId }: SummaryPanelProps) {
                   {s.llmProvider && s.modelName && (
                     <Badge variant="outline" className="text-xs">
                       {s.llmProvider}/{s.modelName}
+                    </Badge>
+                  )}
+                  {resolvePromptTierLabel(s.structuredData) && (
+                    <Badge variant="secondary" className="text-xs" data-doc="summary-prompt-tier">
+                      {resolvePromptTierLabel(s.structuredData)}
                     </Badge>
                   )}
                 </div>

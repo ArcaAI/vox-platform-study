@@ -44,9 +44,13 @@ export function UserList() {
   // TASK-327 T6 — a global-scope operator (SUPER_ADMIN) has no
   // implicit tenant, so impersonation is ambiguous until they pick one. Tenant
   // admins are locked to their own tenant and are never blocked.
+  // TASK-331 doc-06 F5 — point at the real control. Tenant selection moved to
+  // the header tenant switcher (the on-page tenant card was removed), so the
+  // old "Select a tenant first" tooltip pointed at a control that no longer
+  // exists on this page.
   const isGlobalScope = useAuthStore((s) => s.isGlobalScope());
   const activeTenantId = useAuthStore((s) => s.tenantId);
-  const impersonateBlockReason = isGlobalScope && !activeTenantId ? 'Select a tenant first' : null;
+  const impersonateBlockReason = isGlobalScope && !activeTenantId ? 'Choose a tenant in the header switcher to start impersonation' : null;
   const needsTenant = impersonateBlockReason !== null;
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -191,7 +195,7 @@ export function UserList() {
     // Defensive re-check against the live store (the button is also disabled).
     const store = useAuthStore.getState();
     if (store.isGlobalScope() && !store.tenantId) {
-      toast.error('Select a tenant first');
+      toast.error('Choose a tenant in the header switcher to start impersonation');
       return;
     }
     if (!selectedUserId) {
