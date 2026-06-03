@@ -36,11 +36,9 @@ import { Route as AuthenticatedAdminTenantsRouteImport } from './routes/_authent
 import { Route as AuthenticatedAdminStudioRouteImport } from './routes/_authenticated/admin/studio'
 import { Route as AuthenticatedAdminStorageRouteImport } from './routes/_authenticated/admin/storage'
 import { Route as AuthenticatedAdminPromptsRouteImport } from './routes/_authenticated/admin/prompts'
-import { Route as AuthenticatedAdminFrontendPipelineRouteImport } from './routes/_authenticated/admin/frontend-pipeline'
 import { Route as AuthenticatedAdminDnaReportsRouteImport } from './routes/_authenticated/admin/dna-reports'
 import { Route as AuthenticatedAdminDepartmentsRouteImport } from './routes/_authenticated/admin/departments'
 import { Route as AuthenticatedAdminConfigurationsRouteImport } from './routes/_authenticated/admin/configurations'
-import { Route as AuthenticatedAdminBackendPipelineRouteImport } from './routes/_authenticated/admin/backend-pipeline'
 import { Route as AuthenticatedAdminAuditLogsRouteImport } from './routes/_authenticated/admin/audit-logs'
 import { Route as AuthenticatedAdminAudioPipelinesRouteImport } from './routes/_authenticated/admin/audio-pipelines'
 
@@ -197,12 +195,6 @@ const AuthenticatedAdminPromptsRoute =
     path: '/admin/prompts',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedAdminFrontendPipelineRoute =
-  AuthenticatedAdminFrontendPipelineRouteImport.update({
-    id: '/admin/frontend-pipeline',
-    path: '/admin/frontend-pipeline',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
 const AuthenticatedAdminDnaReportsRoute =
   AuthenticatedAdminDnaReportsRouteImport.update({
     id: '/admin/dna-reports',
@@ -219,12 +211,6 @@ const AuthenticatedAdminConfigurationsRoute =
   AuthenticatedAdminConfigurationsRouteImport.update({
     id: '/admin/configurations',
     path: '/admin/configurations',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedAdminBackendPipelineRoute =
-  AuthenticatedAdminBackendPipelineRouteImport.update({
-    id: '/admin/backend-pipeline',
-    path: '/admin/backend-pipeline',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedAdminAuditLogsRoute =
@@ -250,11 +236,9 @@ export interface FileRoutesByFullPath {
   '/voice-profile': typeof AuthenticatedVoiceProfileRoute
   '/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
   '/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
-  '/admin/backend-pipeline': typeof AuthenticatedAdminBackendPipelineRoute
   '/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
   '/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
   '/admin/dna-reports': typeof AuthenticatedAdminDnaReportsRoute
-  '/admin/frontend-pipeline': typeof AuthenticatedAdminFrontendPipelineRoute
   '/admin/prompts': typeof AuthenticatedAdminPromptsRoute
   '/admin/storage': typeof AuthenticatedAdminStorageRoute
   '/admin/studio': typeof AuthenticatedAdminStudioRoute
@@ -285,11 +269,9 @@ export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
   '/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
   '/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
-  '/admin/backend-pipeline': typeof AuthenticatedAdminBackendPipelineRoute
   '/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
   '/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
   '/admin/dna-reports': typeof AuthenticatedAdminDnaReportsRoute
-  '/admin/frontend-pipeline': typeof AuthenticatedAdminFrontendPipelineRoute
   '/admin/prompts': typeof AuthenticatedAdminPromptsRoute
   '/admin/storage': typeof AuthenticatedAdminStorageRoute
   '/admin/studio': typeof AuthenticatedAdminStudioRoute
@@ -322,11 +304,9 @@ export interface FileRoutesById {
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
   '/_authenticated/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
-  '/_authenticated/admin/backend-pipeline': typeof AuthenticatedAdminBackendPipelineRoute
   '/_authenticated/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
   '/_authenticated/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
   '/_authenticated/admin/dna-reports': typeof AuthenticatedAdminDnaReportsRoute
-  '/_authenticated/admin/frontend-pipeline': typeof AuthenticatedAdminFrontendPipelineRoute
   '/_authenticated/admin/prompts': typeof AuthenticatedAdminPromptsRoute
   '/_authenticated/admin/storage': typeof AuthenticatedAdminStorageRoute
   '/_authenticated/admin/studio': typeof AuthenticatedAdminStudioRoute
@@ -359,11 +339,9 @@ export interface FileRouteTypes {
     | '/voice-profile'
     | '/admin/audio-pipelines'
     | '/admin/audit-logs'
-    | '/admin/backend-pipeline'
     | '/admin/configurations'
     | '/admin/departments'
     | '/admin/dna-reports'
-    | '/admin/frontend-pipeline'
     | '/admin/prompts'
     | '/admin/storage'
     | '/admin/studio'
@@ -394,11 +372,9 @@ export interface FileRouteTypes {
     | '/'
     | '/admin/audio-pipelines'
     | '/admin/audit-logs'
-    | '/admin/backend-pipeline'
     | '/admin/configurations'
     | '/admin/departments'
     | '/admin/dna-reports'
-    | '/admin/frontend-pipeline'
     | '/admin/prompts'
     | '/admin/storage'
     | '/admin/studio'
@@ -430,11 +406,9 @@ export interface FileRouteTypes {
     | '/_authenticated/'
     | '/_authenticated/admin/audio-pipelines'
     | '/_authenticated/admin/audit-logs'
-    | '/_authenticated/admin/backend-pipeline'
     | '/_authenticated/admin/configurations'
     | '/_authenticated/admin/departments'
     | '/_authenticated/admin/dna-reports'
-    | '/_authenticated/admin/frontend-pipeline'
     | '/_authenticated/admin/prompts'
     | '/_authenticated/admin/storage'
     | '/_authenticated/admin/studio'
@@ -656,13 +630,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminPromptsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/admin/frontend-pipeline': {
-      id: '/_authenticated/admin/frontend-pipeline'
-      path: '/admin/frontend-pipeline'
-      fullPath: '/admin/frontend-pipeline'
-      preLoaderRoute: typeof AuthenticatedAdminFrontendPipelineRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/admin/dna-reports': {
       id: '/_authenticated/admin/dna-reports'
       path: '/admin/dna-reports'
@@ -682,13 +649,6 @@ declare module '@tanstack/react-router' {
       path: '/admin/configurations'
       fullPath: '/admin/configurations'
       preLoaderRoute: typeof AuthenticatedAdminConfigurationsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/backend-pipeline': {
-      id: '/_authenticated/admin/backend-pipeline'
-      path: '/admin/backend-pipeline'
-      fullPath: '/admin/backend-pipeline'
-      preLoaderRoute: typeof AuthenticatedAdminBackendPipelineRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/admin/audit-logs': {
@@ -713,11 +673,9 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedAdminAudioPipelinesRoute: typeof AuthenticatedAdminAudioPipelinesRoute
   AuthenticatedAdminAuditLogsRoute: typeof AuthenticatedAdminAuditLogsRoute
-  AuthenticatedAdminBackendPipelineRoute: typeof AuthenticatedAdminBackendPipelineRoute
   AuthenticatedAdminConfigurationsRoute: typeof AuthenticatedAdminConfigurationsRoute
   AuthenticatedAdminDepartmentsRoute: typeof AuthenticatedAdminDepartmentsRoute
   AuthenticatedAdminDnaReportsRoute: typeof AuthenticatedAdminDnaReportsRoute
-  AuthenticatedAdminFrontendPipelineRoute: typeof AuthenticatedAdminFrontendPipelineRoute
   AuthenticatedAdminPromptsRoute: typeof AuthenticatedAdminPromptsRoute
   AuthenticatedAdminStorageRoute: typeof AuthenticatedAdminStorageRoute
   AuthenticatedAdminStudioRoute: typeof AuthenticatedAdminStudioRoute
@@ -744,13 +702,9 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedAdminAudioPipelinesRoute: AuthenticatedAdminAudioPipelinesRoute,
   AuthenticatedAdminAuditLogsRoute: AuthenticatedAdminAuditLogsRoute,
-  AuthenticatedAdminBackendPipelineRoute:
-    AuthenticatedAdminBackendPipelineRoute,
   AuthenticatedAdminConfigurationsRoute: AuthenticatedAdminConfigurationsRoute,
   AuthenticatedAdminDepartmentsRoute: AuthenticatedAdminDepartmentsRoute,
   AuthenticatedAdminDnaReportsRoute: AuthenticatedAdminDnaReportsRoute,
-  AuthenticatedAdminFrontendPipelineRoute:
-    AuthenticatedAdminFrontendPipelineRoute,
   AuthenticatedAdminPromptsRoute: AuthenticatedAdminPromptsRoute,
   AuthenticatedAdminStorageRoute: AuthenticatedAdminStorageRoute,
   AuthenticatedAdminStudioRoute: AuthenticatedAdminStudioRoute,

@@ -35,6 +35,16 @@ describe('buildAdminNavItems (TASK-327 T5)', () => {
     expect(got).not.toContain('studio');
   });
 
+  // TASK-331 doc-03 #2 — the three pipeline nav entries are consolidated into a
+  // single "Audio Pipelines" page; the standalone Frontend/Backend Pipeline
+  // entries are removed.
+  it('no longer lists the standalone Frontend/Backend Pipeline entries', () => {
+    const got = ids(buildAdminNavItems({ isAdmin: true, isGlobalScope: true, tenantSelected: true, order: DEFAULT_ADMIN_MENU_ORDER }));
+    expect(got).toContain('audio-pipelines');
+    expect(got).not.toContain('frontend-pipeline');
+    expect(got).not.toContain('backend-pipeline');
+  });
+
   it('global scope (SUPER_ADMIN) additionally sees Prisma Studio', () => {
     const got = ids(buildAdminNavItems({ isAdmin: true, isGlobalScope: true, tenantSelected: true, order: DEFAULT_ADMIN_MENU_ORDER }));
     expect(got).toContain('studio');
@@ -64,7 +74,7 @@ describe('buildAdminNavItems (TASK-327 T5)', () => {
     it('disables tenant-scoped pages for a global-scope admin with no tenant selected', () => {
       const items = buildAdminNavItems({ isAdmin: true, isGlobalScope: true, tenantSelected: false, order: DEFAULT_ADMIN_MENU_ORDER });
       expect(disabledIds(items).sort()).toEqual(
-        ['audio-pipelines', 'audit-logs', 'backend-pipeline', 'configurations', 'departments', 'dna-reports', 'frontend-pipeline', 'prompts', 'storage'].sort(),
+        ['audio-pipelines', 'audit-logs', 'configurations', 'departments', 'dna-reports', 'prompts', 'storage'].sort(),
       );
       // Overview / Tenants / Users / Prisma Studio remain reachable.
       for (const item of items) {
