@@ -55,22 +55,23 @@ export function useAutoRefresh(): void {
     client.updateAccessToken(freshAdminToken);
 
     try {
+      // TASK-331 doc-05 F-3 — forward the active tenant so a global admin's
+      // chosen tenant is honoured on re-impersonation (mirrors useAuth.impersonate).
+      const currentTenantId = useAuthStore.getState().tenantId || undefined;
       const data = await client.post<{
         user: { id: string; tenantId?: string };
         token: string;
         impersonatedBy: string;
-      }>(AUTH_IMPERSONATE_ENDPOINT, { targetUserId: impersonatedUser.id });
+      }>(AUTH_IMPERSONATE_ENDPOINT, {
+        targetUserId: impersonatedUser.id,
+        ...(currentTenantId ? { targetTenantId: currentTenantId } : {}),
+      });
 
       client.updateAccessToken(data.token);
-      let tenantId = data.user.tenantId;
-      if (!tenantId && data.token) {
-        try {
-          const payload = JSON.parse(atob(data.token.split('.')[1]));
-          if (payload.tenantId) tenantId = payload.tenantId;
-        } catch {
-          /* malformed JWT — skip */
-        }
-      }
+      // TASK-331 doc-05 F-10 — trust the server-provided tenantId. TASK-295 M-5
+      // removed the equivalent client-side `atob` JWT decode from user-list;
+      // mirror that here (the backend always populates `user.tenantId`).
+      const tenantId = data.user.tenantId;
       useAuthStore.getState().startImpersonation(impersonatedUser, data.token, tenantId);
       return true;
     } catch {

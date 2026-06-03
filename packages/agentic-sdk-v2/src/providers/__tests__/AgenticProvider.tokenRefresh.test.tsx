@@ -256,4 +256,42 @@ describe('AgenticProvider — TASK-320 B2 auto-wired token refresh', () => {
 
         expect(setOnUnauthorizedSpy).toHaveBeenCalledTimes(1);
     });
+
+    // TASK-331 doc-05 F-5 — a host that owns its own 401 handling (e.g. the
+    // ui-playground's impersonation-aware `useAutoRefresh`) can opt OUT of the
+    // provider's default auto-wire so the single-slot `setOnUnauthorized` has a
+    // deterministic owner. Default (undefined / true) preserves B2 behaviour.
+    it('does NOT auto-wire setOnUnauthorized when autoWireTokenRefresh is false (F-5)', async () => {
+        const setOnUnauthorizedSpy = vi.spyOn(AgenticClient.prototype, 'setOnUnauthorized');
+
+        render(
+            <AgenticProvider config={{ ...testConfig, autoWireTokenRefresh: false }}>
+                <StoreProbe />
+            </AgenticProvider>,
+        );
+
+        await waitFor(() => {
+            expect(capturedStore?.getState().apiClient).toBeDefined();
+        });
+        await new Promise((r) => setTimeout(r, 0));
+
+        expect(setOnUnauthorizedSpy).not.toHaveBeenCalled();
+    });
+
+    it('auto-wires setOnUnauthorized exactly once when autoWireTokenRefresh is explicitly true (F-5)', async () => {
+        const setOnUnauthorizedSpy = vi.spyOn(AgenticClient.prototype, 'setOnUnauthorized');
+
+        render(
+            <AgenticProvider config={{ ...testConfig, autoWireTokenRefresh: true }}>
+                <StoreProbe />
+            </AgenticProvider>,
+        );
+
+        await waitFor(() => {
+            expect(capturedStore?.getState().apiClient).toBeDefined();
+        });
+        await new Promise((r) => setTimeout(r, 0));
+
+        expect(setOnUnauthorizedSpy).toHaveBeenCalledTimes(1);
+    });
 });

@@ -5,14 +5,17 @@ import { useTenant } from '@/features/admin/api/tenants';
 import { DocToggleButton } from '@/features/doc-panel';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth-store';
+import { useEndImpersonation } from '@/hooks/use-end-impersonation';
 import { Badge } from '@arcaai/ui/badge';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@arcaai/ui/breadcrumb';
+import { Button } from '@arcaai/ui/button';
 import { Separator } from '@arcaai/ui/separator';
 import { SidebarTrigger } from '@arcaai/ui/sidebar';
 import { useAuth } from '@arcaai/vox';
 import { Link, useMatches } from '@tanstack/react-router';
-import { UserCheck } from 'lucide-react';
+import { UserCheck, UserX } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
 const routeMeta: Record<string, { label: string; parent?: { label: string; path: string } }> = {
   '/_authenticated/installation/': {
@@ -119,6 +122,43 @@ interface HeaderProps extends React.HTMLAttributes<HTMLElement> {
   fixed?: boolean;
 }
 
+/**
+ * TASK-331 doc-05 UX — the persistent impersonation indicator plus a co-located
+ * "Stop" affordance (the badge previously had no exit action; ending required
+ * navigating back to Overview). Isolated into its own component so the SDK hook
+ * (`useEndImpersonation`, which requires `<AgenticProvider>`) is only mounted
+ * while impersonating — preserving the Header's defensive render otherwise.
+ */
+function ImpersonationIndicator({ username }: { username: string }) {
+  const endImpersonation = useEndImpersonation();
+  const [stopping, setStopping] = useState(false);
+
+  const handleStop = async () => {
+    setStopping(true);
+    try {
+      await endImpersonation();
+      toast.success('Impersonation ended');
+    } catch {
+      toast.error('Failed to end impersonation');
+    } finally {
+      setStopping(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Badge variant="destructive" className="gap-1.5">
+        <UserCheck className="size-3.5" />
+        Impersonating: {username}
+      </Badge>
+      <Button variant="outline" size="sm" className="h-7 px-2" onClick={handleStop} disabled={stopping}>
+        <UserX className="size-3.5" />
+        {stopping ? 'Stopping…' : 'Stop'}
+      </Button>
+    </div>
+  );
+}
+
 export function Header({ className, fixed, ...props }: HeaderProps) {
   const [offset, setOffset] = useState(0);
 
@@ -208,12 +248,7 @@ export function Header({ className, fixed, ...props }: HeaderProps) {
 
         <div className="ms-auto flex shrink-0 items-center gap-3">
           <ScopeSwitcher />
-          {isImpersonating && (
-            <Badge variant="destructive" className="gap-1.5">
-              <UserCheck className="size-3.5" />
-              Impersonating: {impersonatedUser?.username || 'Unknown'}
-            </Badge>
-          )}
+          {isImpersonating && <ImpersonationIndicator username={impersonatedUser?.username || 'Unknown'} />}
           <DebugToggle />
           <DocToggleButton />
           <ThemeSwitch />

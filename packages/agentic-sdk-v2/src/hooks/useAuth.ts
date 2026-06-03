@@ -13,9 +13,10 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useAgenticStore } from '../store';
 import { AUTH_ENDPOINTS } from '../core/constants';
-import type { AuthUser, LoginResponse, ImpersonateResponse, RefreshTokenResponse } from '../types/auth';
+import type { AuthUser, LoginResponse, ImpersonateRequest, ImpersonateResponse, RefreshTokenResponse } from '../types/auth';
 
-const IMPERSONATION_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN'] as const;
+// TASK-331 doc-05 F-4 — GLOBAL_ADMIN is a full SUPER_ADMIN synonym.
+const IMPERSONATION_ROLES = ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'] as const;
 
 export interface UseAuthReturn {
   user: AuthUser | null;
@@ -29,7 +30,7 @@ export interface UseAuthReturn {
   logout: () => Promise<void>;
   getMe: () => Promise<AuthUser>;
   refreshToken: (refreshToken: string) => Promise<RefreshTokenResponse>;
-  impersonate: (targetUserId: string) => Promise<ImpersonateResponse>;
+  impersonate: (targetUserId: string, targetTenantId?: string) => Promise<ImpersonateResponse>;
   endImpersonation: () => Promise<void>;
   /**
    * Low-level escape hatch: stash an admin token explicitly. Most consumers
@@ -169,14 +170,19 @@ export function useAuth(): UseAuthReturn {
   );
 
   const impersonate = useCallback(
-    async (targetUserId: string): Promise<ImpersonateResponse> => {
+    async (targetUserId: string, targetTenantId?: string): Promise<ImpersonateResponse> => {
       if (!apiClient) throw new Error('SDK not initialized');
       setIsLoading(true);
       setError(null);
       const timer = logger?.startOperation('impersonate');
       try {
         const currentToken = apiClient.getAccessToken();
-        const data = await apiClient.post<ImpersonateResponse>(AUTH_ENDPOINTS.IMPERSONATE, { targetUserId });
+        // TASK-331 doc-05 F-3 — forward the caller's selected tenant so a global
+        // admin's chosen tenant is honoured; without it the backend falls back
+        // to the target's OLDEST assignment. Sent ONLY when provided.
+        const body: ImpersonateRequest = { targetUserId };
+        if (targetTenantId) body.targetTenantId = targetTenantId;
+        const data = await apiClient.post<ImpersonateResponse>(AUTH_ENDPOINTS.IMPERSONATE, body);
 
         // TASK-264 W0-3: stash admin token inside AgenticClient (WeakMap),
         // not in the Zustand store. Only stash when we have a non-empty

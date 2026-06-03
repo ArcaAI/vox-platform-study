@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useUsers, useAuth, useStoreApi, PAGE_SIZE_OPTIONS, DEFAULT_PAGE_SIZE, type User } from '@arcaai/vox';
 import type { DeepPartial, AppConfig } from '@arcaai/vox';
 import { useAuthStore } from '@/store/auth-store';
-import { adminClient } from '@/features/admin/api/admin-client';
+import { useEndImpersonation } from '@/hooks/use-end-impersonation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/card';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
@@ -30,14 +30,16 @@ function getRoles(user: User): string {
 
 export function UserList() {
   const { isLoading: usersLoading, listPaginated, search } = useUsers();
-  const { isImpersonating: sdkImpersonating, impersonatedUser: sdkImpersonatedUser, impersonate, endImpersonation } = useAuth();
+  const { isImpersonating: sdkImpersonating, impersonatedUser: sdkImpersonatedUser, impersonate } = useAuth();
   const storeApi = useStoreApi();
+  const endImpersonationRoutine = useEndImpersonation();
   const localUser = useAuthStore((s) => s.user);
   const persistedImpersonating = useAuthStore((s) => s.isImpersonating);
   const persistedImpersonatedUser = useAuthStore((s) => s.impersonatedUser);
   const isImpersonating = sdkImpersonating || persistedImpersonating;
   const impersonatedUser = sdkImpersonatedUser ?? persistedImpersonatedUser ?? null;
-  const canImpersonate = localUser?.roles?.some((r) => ['SUPER_ADMIN', 'TENANT_ADMIN'].includes(r)) ?? false;
+  // TASK-331 doc-05 F-4 — GLOBAL_ADMIN is a full SUPER_ADMIN synonym.
+  const canImpersonate = localUser?.roles?.some((r) => ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'].includes(r)) ?? false;
 
   // TASK-327 T6 — a global-scope operator (SUPER_ADMIN) has no
   // implicit tenant, so impersonation is ambiguous until they pick one. Tenant
@@ -185,8 +187,6 @@ export function UserList() {
     return ids.length > 0 ? ids[0] : null;
   }, [rowSelection]);
 
-  const adminPrefsSnapshot = useRef<DeepPartial<AppConfig> | null>(null);
-
   const handleImpersonate = async () => {
     // Defensive re-check against the live store (the button is also disabled).
     const store = useAuthStore.getState();
@@ -200,7 +200,11 @@ export function UserList() {
     }
     setIsActionLoading(true);
     try {
-      const result = await impersonate(selectedUserId);
+      // TASK-331 doc-05 F-3 — forward the active tenant so a global admin's
+      // selected tenant is honoured; without it the backend falls back to the
+      // target's oldest assignment. Only sent when truthy.
+      const targetTenantId = store.tenantId || undefined;
+      const result = await impersonate(selectedUserId, targetTenantId);
       // TASK-295 M-5: trust `result.user.tenantId` from the server response.
       // The previous `atob(token.split('.')[1])` fallback decoded the JWT
       // client-side, which is both a code smell (re-implementing JWT parsing
@@ -211,20 +215,28 @@ export function UserList() {
       const tenantId = result.user.tenantId;
       useAuthStore.getState().startImpersonation(result.user, result.token, tenantId);
 
-      // TASK-245: Isolate impersonated user's preferences
+      // TASK-331 doc-05 F-2 — load the impersonated user's REAL backend prefs as
+      // the SINGLE writer of the ConfigManager user-pref tier. The SDK apiClient
+      // now carries the impersonation (doctor) JWT, so GET /user/me/settings
+      // returns the impersonated user's OWN settings — unlike the admin-guarded
+      // /admin/users/:id/settings, which the doctor token cannot call. Read-only
+      // so nothing the admin does while impersonating persists (TASK-245). The
+      // provider's identity-change rehydrate skips the user-pref clear/load while
+      // impersonating, so this load is never raced/wiped, and reloads the admin's
+      // own namespace on exit (F-7 — no manual snapshot needed).
       const cm = storeApi.getState().configManager;
-      if (cm) {
-        adminPrefsSnapshot.current = cm.snapshotUserPreferences();
+      const apiClient = storeApi.getState().apiClient;
+      if (cm && apiClient) {
         cm.setReadOnly(true);
         try {
-          const settings = await adminClient.get<
+          const settings = await apiClient.get<
             Array<{
               key: string;
               value: string;
               dataType?: string;
               namespace?: string;
             }>
-          >(`/admin/users/${selectedUserId}/settings`);
+          >('/user/me/settings');
           const sdkSettings = settings.filter((s) => s.namespace === 'arcaai-sdk');
           const prefs: DeepPartial<AppConfig> = {};
           for (const s of sdkSettings) {
@@ -258,18 +270,10 @@ export function UserList() {
   const handleEndImpersonation = async () => {
     setIsActionLoading(true);
     try {
-      // TASK-245: Restore admin's original preferences
-      const cm = storeApi.getState().configManager;
-      if (cm) {
-        cm.setReadOnly(false);
-        if (adminPrefsSnapshot.current) {
-          cm.restoreUserPreferences(adminPrefsSnapshot.current);
-          adminPrefsSnapshot.current = null;
-        }
-      }
-
-      await endImpersonation();
-      useAuthStore.getState().endImpersonation();
+      // TASK-331 doc-05 F-2/F-7 — shared routine: clears ConfigManager read-only
+      // (the provider's rehydrate reloads the admin's own namespace on exit, so no
+      // component-scoped snapshot is needed) then restores the admin identity.
+      await endImpersonationRoutine();
       toast.success('Impersonation ended');
     } catch {
       toast.error('Failed to end impersonation');
@@ -321,11 +325,16 @@ export function UserList() {
         </div>
 
         {isImpersonating && (
-          <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-            <UserCheck className="size-4 text-amber-600" />
-            <span className="text-sm">
-              Currently impersonating <strong>{impersonatedUser?.username || 'a user'}</strong>
-            </span>
+          <div className="flex flex-col gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+            <div className="flex items-center gap-2">
+              <UserCheck className="size-4 text-amber-600" />
+              <span className="text-sm">
+                Currently impersonating <strong>{impersonatedUser?.username || 'a user'}</strong>
+              </span>
+            </div>
+            {/* TASK-331 doc-05 F-6 — impersonation is in-memory only (auth-store
+                partialize drops it), so a reload silently reverts to the admin. */}
+            <span className="text-muted-foreground pl-6 text-xs">Reloading the page will end impersonation.</span>
           </div>
         )}
 
