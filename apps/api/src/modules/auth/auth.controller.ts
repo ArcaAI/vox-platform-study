@@ -10,7 +10,7 @@ import {
   SecretsService,
   createJwt,
 } from '@arcaai/applications';
-import { ResourceStatusType, RoleRepository, TenantRepository, UserRepository, UserRoleAssignmentRepository } from '@arcaai/domains';
+import { EventTypes, ResourceStatusType, RoleRepository, TenantRepository, UserRepository, UserRoleAssignmentRepository } from '@arcaai/domains';
 import {
   BadRequestException,
   Body,
@@ -24,6 +24,7 @@ import {
   Request,
   UnauthorizedException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import * as bcrypt from 'bcryptjs';
@@ -78,6 +79,10 @@ export class AuthController {
     // TASK-305 Phase F — login enforces full membership (role + department);
     // this resolves the department half via a pre-auth baseClient lookup.
     @Inject(IUserDepartmentService) private readonly userDepartmentService: IUserDepartmentService,
+    // TASK-331 M-3 — emits the explicit impersonation start/stop audit bracket.
+    // EventEmitter2 is globally provided via EventEmitterModule (same source the
+    // ImpersonationAuditInterceptor uses for the per-request rows).
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -426,7 +431,11 @@ export class AuthController {
 
     const adminRoles = await this.getUserRoles(adminUser.id);
     const adminRoleNames = adminRoles.map((r) => r.name);
-    const isSuperAdmin = adminRoleNames.includes('SUPER_ADMIN');
+    // TASK-331 F-4 — GLOBAL_ADMIN is a SUPER_ADMIN synonym (unrestricted,
+    // cross-tenant), matching how the backend services already treat it
+    // (dna-writing-style, tenant-frontend-config, smr-proxy). This also grants
+    // GLOBAL_ADMIN the C-1 cross-tenant bypass below.
+    const isSuperAdmin = adminRoleNames.some((r) => ['SUPER_ADMIN', 'GLOBAL_ADMIN'].includes(r));
     const isTenantAdmin = adminRoleNames.some((r) => ['TENANT_ADMIN', 'admin', 'system-admin'].includes(r));
     if (!isSuperAdmin && !isTenantAdmin) {
       throw new UnauthorizedException('Only administrators can impersonate users');
@@ -447,7 +456,9 @@ export class AuthController {
 
     const targetRoles = await this.getUserRoles(targetUser.id);
     const targetRoleNames = targetRoles.map((r) => r.name);
-    const targetIsSuperAdmin = targetRoleNames.includes('SUPER_ADMIN');
+    // TASK-331 F-4 — a GLOBAL_ADMIN target is super-admin-tier and must be
+    // blocked from impersonation exactly like a SUPER_ADMIN target.
+    const targetIsSuperAdmin = targetRoleNames.some((r) => ['SUPER_ADMIN', 'GLOBAL_ADMIN'].includes(r));
     const targetIsTenantAdmin = targetRoleNames.some((r) => ['TENANT_ADMIN', 'admin', 'system-admin'].includes(r));
 
     if (targetIsSuperAdmin) {
@@ -509,7 +520,11 @@ export class AuthController {
       permissions: targetPermissions,
       tenantId: resolvedTenantId,
       impersonatedBy: adminUser.id,
-      jti: `impersonate-${adminUser.id}-${targetUser.id}-${Date.now()}`,
+      // TASK-331 F-8 — unpredictable jti (randomBytes(16).hex), same hygiene as
+      // login/refresh. The stable `impersonate-` prefix is retained so audit /
+      // log filtering on impersonation tokens still works; no admin/target id
+      // or timestamp is leaked into the claim anymore.
+      jti: `impersonate-${randomBytes(16).toString('hex')}`,
       jwtSecretKey,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expiresIn: jwtImpersonationExpiresIn as any,
@@ -524,6 +539,29 @@ export class AuthController {
       method: 'POST',
     });
 
+    // TASK-331 M-3 — explicit IMPERSONATION start bracket. The AuditAction enum
+    // is frozen (no migration in scope), so START reuses IMPERSONATED_ACTION +
+    // the IMPERSONATION eventType, discriminated by `phase` inside the row's
+    // data JSON (persisted by AuditLogService.handleUserAuthenticatedEvent).
+    // Fire-and-forget like the per-request interceptor — an audit failure must
+    // never break the impersonation mint.
+    this.eventEmitter?.emit(EventTypes.UserAuthenticated, {
+      userId: adminUser.id,
+      impersonatedUserId: targetUser.id,
+      phase: 'START',
+      endpoint: '/auth/impersonate',
+      method: 'POST',
+      ip: req.ip || '127.0.0.1',
+      userAgent: req.headers['user-agent'] || 'Unknown',
+      timestamp: new Date(),
+    });
+
+    // TASK-331 F-9 — resolve the target's PRIMARY department for the
+    // impersonation tenant so the SDK preference cascade keeps the impersonated
+    // doctor's department tier (without it, effectiveDepartmentId resolves to
+    // null during impersonation). Absent assignment ⇒ leave departmentId unset.
+    const targetPrimaryDepartment = await this.userDepartmentService.findActiveDepartmentForUserInTenant(targetUser.id, resolvedTenantId);
+
     const userResponse = new ImpersonateUserResponse({
       id: targetUser.id,
       username: targetUser.username,
@@ -531,6 +569,7 @@ export class AuthController {
       roles: targetRoleNames,
       permissions: targetPermissions,
       tenantId: resolvedTenantId || undefined,
+      departmentId: targetPrimaryDepartment?.id,
     });
 
     return {
@@ -689,6 +728,20 @@ export class AuthController {
       userAgent: req.headers['user-agent'] || 'Unknown',
       endpoint: '/auth/revoke-impersonation',
       method: 'POST',
+    });
+
+    // TASK-331 M-3 — explicit IMPERSONATION stop bracket (mirrors the START in
+    // impersonate()). `user.impersonatedBy` is guaranteed by the L-3 guard
+    // above. Fire-and-forget audit side-channel.
+    this.eventEmitter?.emit(EventTypes.UserAuthenticated, {
+      userId: user.impersonatedBy,
+      impersonatedUserId: user.id,
+      phase: 'STOP',
+      endpoint: '/auth/revoke-impersonation',
+      method: 'POST',
+      ip: req.ip || '127.0.0.1',
+      userAgent: req.headers['user-agent'] || 'Unknown',
+      timestamp: new Date(),
     });
     return { success: true };
   }

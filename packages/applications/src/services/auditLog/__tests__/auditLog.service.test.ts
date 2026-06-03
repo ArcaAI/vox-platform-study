@@ -778,6 +778,80 @@ describe('AuditLogService', () => {
                 });
             });
 
+            // TASK-331 M-3 — explicit impersonation start/stop bracket rows.
+            // The AuditAction enum is frozen (no DB migration in this scope), so
+            // START/STOP reuse the existing IMPERSONATED_ACTION + IMPERSONATION
+            // eventType and are distinguished by a `phase` discriminator persisted
+            // inside the row's `data` JSON.
+            describe('impersonation lifecycle bracket (TASK-331 M-3)', () => {
+                it('persists data.phase="START" while keeping action IMPERSONATED_ACTION when the event carries phase START', async () => {
+                    const event = {
+                        userId: 'admin-001',
+                        impersonatedUserId: 'doctor-001',
+                        phase: 'START',
+                        timestamp: new Date('2026-06-03T15:00:00Z'),
+                        ip: '10.0.0.1',
+                        userAgent: 'Mozilla/5.0',
+                        endpoint: '/auth/impersonate',
+                        method: 'POST',
+                    } as any;
+
+                    await service.handleUserAuthenticatedEvent(event);
+
+                    expect(mockDatabaseService.baseClient.auditLog.create).toHaveBeenCalledWith(
+                        expect.objectContaining({
+                            data: expect.objectContaining({
+                                action: AuditAction.IMPERSONATED_ACTION,
+                                eventType: 'IMPERSONATION',
+                                success: true,
+                                responsibleUserId: 'admin-001',
+                                resourceId: 'doctor-001',
+                                resourceType: ResourceType.User,
+                                data: expect.objectContaining({
+                                    endpoint: '/auth/impersonate',
+                                    httpMethod: 'POST',
+                                    impersonatedUserId: 'doctor-001',
+                                    phase: 'START',
+                                }),
+                            }),
+                        }),
+                    );
+                });
+
+                it('persists data.phase="STOP" while keeping action IMPERSONATED_ACTION when the event carries phase STOP', async () => {
+                    const event = {
+                        userId: 'admin-007',
+                        impersonatedUserId: 'doctor-001',
+                        phase: 'STOP',
+                        timestamp: new Date('2026-06-03T15:10:00Z'),
+                        endpoint: '/auth/revoke-impersonation',
+                        method: 'POST',
+                    } as any;
+
+                    await service.handleUserAuthenticatedEvent(event);
+
+                    const call = mockDatabaseService.baseClient.auditLog.create.mock.calls[0][0];
+                    expect(call.data.action).toBe(AuditAction.IMPERSONATED_ACTION);
+                    expect(call.data.eventType).toBe('IMPERSONATION');
+                    expect(call.data.data.phase).toBe('STOP');
+                });
+
+                it('persists phase=null for a per-request impersonated action (no phase) so existing behavior is preserved', async () => {
+                    const event = {
+                        userId: 'admin-001',
+                        impersonatedUserId: 'doctor-001',
+                        endpoint: '/api/v1/consultations',
+                        method: 'POST',
+                    } as any;
+
+                    await service.handleUserAuthenticatedEvent(event);
+
+                    const call = mockDatabaseService.baseClient.auditLog.create.mock.calls[0][0];
+                    expect(call.data.action).toBe(AuditAction.IMPERSONATED_ACTION);
+                    expect(call.data.data.phase).toBeNull();
+                });
+            });
+
             it('should include userAgent and timestamp in audit data', async () => {
                 const timestamp = new Date('2026-02-06T15:30:00Z');
                 const event = {

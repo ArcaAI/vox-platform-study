@@ -450,6 +450,10 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       method?: string;
       endpoint?: string;
       impersonatedUserId?: string;
+      // TASK-331 M-3 — impersonation lifecycle discriminator. Present on the
+      // explicit start/stop bracket rows emitted by AuthController; absent on
+      // the per-request IMPERSONATED_ACTION rows from the audit interceptor.
+      phase?: 'START' | 'STOP';
     } & Record<string, unknown>,
   ): Promise<void> {
     try {
@@ -477,6 +481,9 @@ export class AuditLogService extends BaseService implements IAuditLogService {
               impersonatedUserId,
               timestamp: timestamp.toISOString(),
               userAgent: event.userAgent || null,
+              // TASK-331 M-3 — START/STOP for the explicit lifecycle bracket;
+              // null for ordinary per-request impersonated actions.
+              phase: event.phase ?? null,
             }
           : {
               method: event.method || 'oauth',
