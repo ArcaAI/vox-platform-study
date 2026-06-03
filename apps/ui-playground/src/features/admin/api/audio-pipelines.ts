@@ -12,6 +12,11 @@ export interface AudioPipeline {
   description?: string | null;
   configYaml: string;
   resourceStatus: string;
+  // TASK-328 A6 / TASK-331 doc-03 — whether this pipeline is the tenant's
+  // default. Returned by `/admin/audio/pipelines` (PipelineResponse.isDefault);
+  // the consolidated Backend Pipelines tab uses it for the default badge +
+  // set-default gating.
+  isDefault?: boolean;
   tags: string[];
   tenantId: string;
   createdAt: string;

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useTenantFrontendConfig, type FrontendPipelineConfigJson, type UpsertTenantFrontendConfigInput } from '@arcaai/vox';
-import { Loader2, RefreshCw, Save, SlidersHorizontal } from 'lucide-react';
+import { Building2, Loader2, RefreshCw, Save, SlidersHorizontal } from 'lucide-react';
 
+import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/card';
 import { Input } from '@arcaai/ui/input';
@@ -11,17 +12,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@arcaai/ui/skeleton';
 import { Switch } from '@arcaai/ui/switch';
 
-import { Main } from '@/components/layout/main';
 import { useAuthStore } from '@/store/auth-store';
 
 /**
- * TASK-328 A6 — Frontend Pipeline admin page.
+ * TASK-331 doc-03 — Frontend Pipeline tab of the consolidated Audio Pipelines
+ * page.
  *
  * Per-tenant FRONTEND audio-capture defaults (applied to every user in the
  * tenant): an ASR model, four feature switches, and a typed advanced
  * `configJson`. Data flows through the `@arcaai/vox` `useTenantFrontendConfig`
- * hook (Q3). Tenant scoping is server-side: a global admin targets the
- * selected tenant via `tenantId`; a tenant admin's CLS tenant wins.
+ * hook.
+ *
+ * Finding #1 (Critical): the surface previously gated on `isSuperAdmin()` and
+ * derived the target tenant from the deprecated `tenantKey` (never written by
+ * the header ScopeSwitcher). It now gates on `isGlobalScope()` and targets the
+ * store's `tenantId` — the single value the ScopeSwitcher maintains. A
+ * global-scope admin with no tenant selected sees an explicit "Select a tenant"
+ * prompt and fires NO request (avoids the 400 the service returns when a global
+ * role omits `tenantId`). Tenant admins fall through to their CLS tenant
+ * (`undefined` → the server uses the request tenant).
  */
 
 // A small, curated set of ASR model ids the frontend can default to. Free-form
@@ -61,13 +70,18 @@ function toNum(raw: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-export default function FrontendPipelinePage() {
-  const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
-  const tenantKey = useAuthStore((s) => s.tenantKey);
+export function FrontendPipelineTab() {
+  const isGlobalScope = useAuthStore((s) => s.isGlobalScope());
+  const tenantId = useAuthStore((s) => s.tenantId);
+  const tenantName = useAuthStore((s) => s.tenantName);
 
-  // Global admins target the selected tenant; tenant admins fall through to
-  // their CLS tenant (undefined → server uses the request tenant).
-  const tenantId = isSuperAdmin() ? tenantKey || undefined : undefined;
+  // For API calls a global-scope admin targets the header-selected tenant via
+  // store `tenantId`; a tenant admin falls through to their CLS tenant
+  // (`undefined`). A global-scope admin with no tenant selected must NOT fire a
+  // request — the service rejects a global role without `tenantId` (400).
+  const targetTenantId = isGlobalScope ? tenantId || undefined : undefined;
+  const needsTenant = isGlobalScope && !tenantId;
+  const tenantLabel = tenantName || (tenantId ? `${tenantId.slice(0, 8)}\u2026` : '');
 
   const { config, isLoading, error, get, save } = useTenantFrontendConfig();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -75,10 +89,11 @@ export default function FrontendPipelinePage() {
   const [loadedOnce, setLoadedOnce] = useState(false);
 
   const load = useCallback(() => {
-    void get(tenantId)
+    if (needsTenant) return;
+    void get(targetTenantId)
       .catch(() => undefined)
       .finally(() => setLoadedOnce(true));
-  }, [get, tenantId]);
+  }, [get, targetTenantId, needsTenant]);
 
   useEffect(() => {
     load();
@@ -118,37 +133,52 @@ export default function FrontendPipelinePage() {
         // row has no version yet, so omit it.
         ...(config ? { expectedVersion: config.version } : {}),
       };
-      await save(input, tenantId);
+      await save(input, targetTenantId);
       toast.success('Frontend pipeline config saved');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save frontend pipeline config');
     } finally {
       setSaving(false);
     }
-  }, [form, config, save, tenantId]);
+  }, [form, config, save, targetTenantId]);
+
+  // Global scope with no tenant selected — explicit prompt, no request fired.
+  if (needsTenant) {
+    return (
+      <div
+        className="bg-muted/20 text-muted-foreground flex flex-col items-center gap-2 rounded-xl border border-dashed p-10 text-center text-sm"
+        data-testid="frontend-pipeline-select-tenant"
+      >
+        <Building2 className="size-8 opacity-60" />
+        <p className="text-foreground text-sm font-medium">Select a tenant</p>
+        <p>Pick a tenant from the switcher in the header to manage its frontend capture defaults.</p>
+      </div>
+    );
+  }
 
   return (
-    <Main>
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Frontend Pipeline</h2>
-          <p className="text-muted-foreground mt-1">Per-tenant capture defaults applied to every user in this tenant.</p>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Editing tenant:</span>
+          <Badge variant="outline" className="gap-1.5" data-testid="frontend-pipeline-tenant">
+            <Building2 className="size-3.5" />
+            {tenantLabel || 'Current tenant'}
+          </Badge>
         </div>
         <Button variant="outline" size="sm" onClick={load} disabled={isLoading} aria-label="Reload config">
           <RefreshCw data-icon="inline-start" className={isLoading ? 'animate-spin' : undefined} />
           Reload
         </Button>
       </div>
+      <p className="text-muted-foreground text-sm">Per-tenant capture defaults applied to every user in this tenant.</p>
 
       {isLoading && !loadedOnce ? (
         <FrontendPipelineSkeleton />
       ) : (
         <div className="flex flex-col gap-6" data-testid="frontend-pipeline-form">
           {!config && loadedOnce && (
-            <div
-              className="bg-muted/20 text-muted-foreground rounded-xl border border-dashed p-4 text-sm"
-              data-testid="frontend-pipeline-empty"
-            >
+            <div className="bg-muted/20 text-muted-foreground rounded-xl border border-dashed p-4 text-sm" data-testid="frontend-pipeline-empty">
               No frontend pipeline config yet for this tenant. Adjust the defaults below and save to create one.
             </div>
           )}
@@ -289,7 +319,7 @@ export default function FrontendPipelinePage() {
           </div>
         </div>
       )}
-    </Main>
+    </div>
   );
 }
 

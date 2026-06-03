@@ -1,10 +1,15 @@
 /**
- * FrontendPipelinePage smoke test (TASK-328 A6)
+ * FrontendPipelineTab (TASK-331 doc-03 #1, #12)
  *
- * Verifies skeleton/empty states, form hydration from the loaded config, and
- * that Save delegates to the `useTenantFrontendConfig` hook with the OCC
- * `expectedVersion`. `@arcaai/vox` and `@arcaai/ui/*` are stubbed by the
- * playground vitest config, so we provide explicit test doubles.
+ * The Frontend Pipeline surface, now a tab of the consolidated Audio Pipelines
+ * page. Covers the migrated behaviour (skeleton / empty / hydrate+save with OCC)
+ * AND the doc-03 #1 fix: gate on `isGlobalScope()` + store `tenantId`:
+ *   - tenant admin → request targets the CLS tenant (`undefined`);
+ *   - global scope + selected tenant → request carries that `tenantId`, saves;
+ *   - global scope + no tenant → "select a tenant" prompt, fires NO request.
+ *
+ * `@arcaai/vox` and `@arcaai/ui/*` are stubbed by the playground vitest config,
+ * so we provide explicit test doubles.
  */
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -14,23 +19,22 @@ const useTenantFrontendConfig = vi.fn();
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
 
+let mockIsGlobalScope = false;
+let mockTenantId = '';
+
 vi.mock('@arcaai/vox', () => ({
   useTenantFrontendConfig: () => useTenantFrontendConfig(),
 }));
 
 vi.mock('sonner', () => ({ toast: { success: (...a: unknown[]) => toastSuccess(...a), error: (...a: unknown[]) => toastError(...a) } }));
 
-vi.mock('@/components/layout/main', () => ({ Main: ({ children }: any) => <div>{children}</div> }));
-
 vi.mock('@/store/auth-store', () => ({
-  // Tenant admin by default → tenantId resolves to undefined (CLS tenant wins).
-  useAuthStore: (selector: any) => selector({ isSuperAdmin: () => false, tenantKey: '', user: { roles: ['TENANT_ADMIN'] } }),
+  useAuthStore: (selector: any) => selector({ isGlobalScope: () => mockIsGlobalScope, tenantId: mockTenantId, user: { roles: ['TENANT_ADMIN'] } }),
 }));
 
+vi.mock('@arcaai/ui/badge', () => ({ Badge: ({ children, variant, ...p }: any) => <span {...p}>{children}</span> }));
 vi.mock('@arcaai/ui/button', () => ({
-  Button: ({ children, variant, size, ...p }: any) => (
-    <button {...p}>{children}</button>
-  ),
+  Button: ({ children, variant, size, ...p }: any) => <button {...p}>{children}</button>,
 }));
 vi.mock('@arcaai/ui/card', () => ({
   Card: ({ children, ...p }: any) => <div {...p}>{children}</div>,
@@ -39,12 +43,14 @@ vi.mock('@arcaai/ui/card', () => ({
   CardDescription: ({ children, ...p }: any) => <div {...p}>{children}</div>,
   CardContent: ({ children, ...p }: any) => <div {...p}>{children}</div>,
 }));
-vi.mock('@arcaai/ui/input', () => ({
-  Input: ({ ...p }: any) => <input {...p} />,
-}));
+vi.mock('@arcaai/ui/input', () => ({ Input: ({ ...p }: any) => <input {...p} /> }));
 vi.mock('@arcaai/ui/label', () => ({ Label: ({ children, ...p }: any) => <label {...p}>{children}</label> }));
 vi.mock('@arcaai/ui/select', () => ({
-  Select: ({ children, value }: any) => <div data-testid="select" data-value={value}>{children}</div>,
+  Select: ({ children, value }: any) => (
+    <div data-testid="select" data-value={value}>
+      {children}
+    </div>
+  ),
   SelectTrigger: ({ children, ...p }: any) => <div {...p}>{children}</div>,
   SelectValue: ({ placeholder }: any) => <span>{placeholder}</span>,
   SelectContent: ({ children }: any) => <div>{children}</div>,
@@ -52,12 +58,10 @@ vi.mock('@arcaai/ui/select', () => ({
 }));
 vi.mock('@arcaai/ui/skeleton', () => ({ Skeleton: ({ ...p }: any) => <div {...p} /> }));
 vi.mock('@arcaai/ui/switch', () => ({
-  Switch: ({ checked, onCheckedChange, ...p }: any) => (
-    <button role="switch" aria-checked={!!checked} onClick={() => onCheckedChange?.(!checked)} {...p} />
-  ),
+  Switch: ({ checked, onCheckedChange, ...p }: any) => <button role="switch" aria-checked={!!checked} onClick={() => onCheckedChange?.(!checked)} {...p} />,
 }));
 
-import FrontendPipelinePage from '../index';
+import { FrontendPipelineTab } from '../frontend-pipeline-tab';
 
 const baseHook = () => ({
   config: null,
@@ -67,37 +71,43 @@ const baseHook = () => ({
   save: vi.fn().mockResolvedValue(null),
 });
 
-describe('FrontendPipelinePage (TASK-328 A6)', () => {
-  beforeEach(() => vi.clearAllMocks());
+describe('FrontendPipelineTab (TASK-331 doc-03 #1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsGlobalScope = false;
+    mockTenantId = '';
+  });
 
   it('shows a skeleton while the initial load is in flight', () => {
     useTenantFrontendConfig.mockReturnValue({
       ...baseHook(),
       isLoading: true,
-      get: vi.fn(() => new Promise<never>(() => undefined)), // never resolves
+      get: vi.fn(() => new Promise<never>(() => undefined)),
     });
 
-    render(<FrontendPipelinePage />);
+    render(<FrontendPipelineTab />);
 
     expect(screen.getByTestId('frontend-pipeline-skeleton')).toBeInTheDocument();
   });
 
-  it('renders an empty-state notice when no config exists yet', async () => {
+  it('a tenant admin loads the CLS tenant config (undefined target)', async () => {
     const hook = baseHook();
     useTenantFrontendConfig.mockReturnValue(hook);
 
-    render(<FrontendPipelinePage />);
+    render(<FrontendPipelineTab />);
 
     expect(await screen.findByTestId('frontend-pipeline-empty')).toBeInTheDocument();
     expect(hook.get).toHaveBeenCalledWith(undefined);
   });
 
-  it('hydrates the form from config and saves with the OCC expectedVersion', async () => {
+  it('a global-scope admin with a selected tenant issues the request with that tenantId and saves', async () => {
+    mockIsGlobalScope = true;
+    mockTenantId = 'tenant-xyz';
     const save = vi.fn().mockResolvedValue({ version: 6 });
-    useTenantFrontendConfig.mockReturnValue({
+    const hook = {
       ...baseHook(),
       config: {
-        tenantId: 't1',
+        tenantId: 'tenant-xyz',
         asrModel: 'whisper-small',
         noiseCancel: true,
         vad: false,
@@ -107,18 +117,35 @@ describe('FrontendPipelinePage (TASK-328 A6)', () => {
         version: 5,
       },
       save,
-    });
+    };
+    useTenantFrontendConfig.mockReturnValue(hook);
 
-    render(<FrontendPipelinePage />);
+    render(<FrontendPipelineTab />);
+
+    // The load targets the header-selected tenant.
+    await waitFor(() => expect(hook.get).toHaveBeenCalledWith('tenant-xyz'));
 
     fireEvent.click(await screen.findByTestId('frontend-pipeline-save'));
 
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({ asrModel: 'whisper-small', noiseCancel: true, diarization: true, expectedVersion: 5 }),
-      undefined,
+      'tenant-xyz',
     );
     expect(toastSuccess).toHaveBeenCalled();
+  });
+
+  it('a global-scope admin with NO tenant selected shows the select-tenant prompt and fires NO request', async () => {
+    mockIsGlobalScope = true;
+    mockTenantId = '';
+    const hook = baseHook();
+    useTenantFrontendConfig.mockReturnValue(hook);
+
+    render(<FrontendPipelineTab />);
+
+    expect(await screen.findByTestId('frontend-pipeline-select-tenant')).toBeInTheDocument();
+    expect(hook.get).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('frontend-pipeline-form')).not.toBeInTheDocument();
   });
 
   it('surfaces a toast when save fails', async () => {
@@ -129,7 +156,7 @@ describe('FrontendPipelinePage (TASK-328 A6)', () => {
       save,
     });
 
-    render(<FrontendPipelinePage />);
+    render(<FrontendPipelineTab />);
     fireEvent.click(await screen.findByTestId('frontend-pipeline-save'));
 
     await waitFor(() => expect(toastError).toHaveBeenCalledWith('conflict'));
