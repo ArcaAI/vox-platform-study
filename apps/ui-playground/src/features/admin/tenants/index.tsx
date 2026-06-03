@@ -9,8 +9,6 @@ import {
   ChevronRight,
   Eye,
   FileText,
-  FolderOpen,
-  FolderPlus,
   FolderTree,
   HardDrive,
   Layers,
@@ -27,7 +25,6 @@ import {
   Settings2,
   Shield,
   Trash2,
-  Upload,
   Users,
   X,
 } from 'lucide-react';
@@ -64,7 +61,7 @@ import { Textarea } from '@arcaai/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@arcaai/ui/tooltip';
 
 import { MultiColumnLayout, type MultiColumnConfig, type MultiColumnContentConfig, type MultiColumnState } from '@arcaai/ui/multi-column-layout';
-import { AdminDataTable, ConfirmDialog, ResourceCard, SearchFilterBar, StatusBadge } from '../components';
+import { AdminDataTable, ConfirmDialog, SearchFilterBar, StatusBadge } from '../components';
 
 import { useTenantAuditLogs, type AuditLog } from '../api/audit-logs';
 import {
@@ -76,7 +73,6 @@ import {
   type Department,
 } from '../api/departments';
 import { usePromptTemplates, type PromptTemplate } from '../api/prompts';
-import { useBucketFiles, useBuckets, useCreateBucket, useDeleteBucket, useDeleteFile, useUploadFile, type BucketFile } from '../api/storage';
 import {
   useCreateTenant,
   useDeleteTenant,
@@ -140,12 +136,6 @@ const createTenantSchema = z.object({
 
 type CreateTenantFormValues = z.infer<typeof createTenantSchema>;
 
-const createBucketSchema = z.object({
-  name: z.string().min(1, 'Bucket name is required'),
-});
-
-type CreateBucketFormValues = z.infer<typeof createBucketSchema>;
-
 const tenantUserSchema = z.object({
   username: z.string().min(1, 'Username is required').max(64),
   email: z.string().email('Invalid email').or(z.literal('')),
@@ -177,14 +167,6 @@ function formatDate(date?: string | Date | null) {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-function formatBytes(bytes?: number) {
-  if (!bytes || bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -846,280 +828,6 @@ function ConfigsTab({ tenantIdentifier }: { tenantIdentifier: string }) {
         emptyMessage="No configurations found."
         toolbar={<SearchFilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Search configurations…" />}
       />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Files Tab
-// ---------------------------------------------------------------------------
-
-function FilesTab() {
-  const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
-  const [bucketSearch, setBucketSearch] = useState('');
-  const [fileSearch, setFileSearch] = useState('');
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const [showCreateBucket, setShowCreateBucket] = useState(false);
-  const [deleteBucketName, setDeleteBucketName] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const { data: buckets, isLoading: bucketsLoading } = useBuckets();
-  const { data: files, isLoading: filesLoading } = useBucketFiles(selectedBucket || '');
-
-  const createBucket = useCreateBucket();
-  const deleteBucketMut = useDeleteBucket();
-  const uploadFile = useUploadFile();
-  const deleteFileMut = useDeleteFile();
-
-  const bucketForm = useForm<CreateBucketFormValues>({
-    resolver: zodResolver(createBucketSchema),
-    defaultValues: { name: '' },
-  });
-
-  const filteredBuckets = useMemo(
-    () => (buckets ?? []).filter((b) => b.name.toLowerCase().includes(bucketSearch.toLowerCase())),
-    [buckets, bucketSearch],
-  );
-
-  const filteredFiles = useMemo(() => {
-    if (!fileSearch) return files ?? [];
-    const q = fileSearch.toLowerCase();
-    return (files ?? []).filter((f) => f.key.toLowerCase().includes(q) || (f.contentType && f.contentType.toLowerCase().includes(q)));
-  }, [files, fileSearch]);
-
-  const handleCreateBucket = (values: CreateBucketFormValues) => {
-    createBucket.mutate(values, {
-      onSuccess: (b) => {
-        toast.success(`Bucket "${b.name}" created`);
-        bucketForm.reset();
-        setShowCreateBucket(false);
-        setSelectedBucket(b.name);
-      },
-      onError: (err) => toast.error(err.message),
-    });
-  };
-
-  const handleDeleteBucket = () => {
-    if (!deleteBucketName) return;
-    deleteBucketMut.mutate(deleteBucketName, {
-      onSuccess: () => {
-        toast.success('Bucket deleted');
-        if (selectedBucket === deleteBucketName) setSelectedBucket(null);
-        setDeleteBucketName(null);
-      },
-      onError: (err) => toast.error(err.message),
-    });
-  };
-
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !selectedBucket) return;
-    uploadFile.mutate(
-      { bucketName: selectedBucket, file },
-      {
-        onSuccess: () => toast.success('File uploaded'),
-        onError: (err) => toast.error(err.message),
-      },
-    );
-    e.target.value = '';
-  };
-
-  const handleDeleteSelected = () => {
-    if (!selectedBucket || !filteredFiles.length) return;
-    const selectedIndices = Object.keys(rowSelection).filter((k) => rowSelection[k]);
-    const selectedFiles = selectedIndices.map((idx) => filteredFiles[Number(idx)]).filter(Boolean);
-
-    Promise.all(
-      selectedFiles.map((f) =>
-        deleteFileMut.mutateAsync({
-          bucketName: selectedBucket,
-          fileKey: f.key,
-        }),
-      ),
-    )
-      .then(() => {
-        toast.success(`${selectedFiles.length} file(s) deleted`);
-        setRowSelection({});
-      })
-      .catch((err: Error) => toast.error(err.message));
-  };
-
-  const fileColumns = useMemo<ColumnDef<BucketFile, unknown>[]>(
-    () => [
-      {
-        accessorKey: 'key',
-        header: 'File',
-        cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            <FileText className="text-muted-foreground size-4 shrink-0" />
-            <span className="truncate text-sm">{row.original.key}</span>
-          </div>
-        ),
-      },
-      {
-        accessorKey: 'size',
-        header: 'Size',
-        size: 80,
-        cell: ({ row }) => <span className="text-muted-foreground text-xs">{formatBytes(row.original.size)}</span>,
-      },
-      {
-        accessorKey: 'contentType',
-        header: 'Type',
-        size: 120,
-        cell: ({ row }) => <span className="text-muted-foreground text-xs">{row.original.contentType || '—'}</span>,
-      },
-      {
-        id: 'modified',
-        header: 'Modified',
-        size: 150,
-        cell: ({ row }) => formatDate(row.original.lastModified),
-      },
-    ],
-    [],
-  );
-
-  const selectedCount = Object.values(rowSelection).filter(Boolean).length;
-
-  const leftPanel = (
-    <div className="flex flex-col gap-3 p-3">
-      <SearchFilterBar searchValue={bucketSearch} onSearchChange={setBucketSearch} searchPlaceholder="Search buckets…">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="outline" size="icon" className="size-9" onClick={() => setShowCreateBucket(true)}>
-              <FolderPlus className="size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Create bucket</TooltipContent>
-        </Tooltip>
-      </SearchFilterBar>
-
-      {bucketsLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-14 w-full rounded-lg" />
-          ))}
-        </div>
-      ) : filteredBuckets.length === 0 ? (
-        <p className="text-muted-foreground py-8 text-center text-sm">No buckets found.</p>
-      ) : (
-        filteredBuckets.map((b) => (
-          <ResourceCard
-            key={b.name}
-            name={b.name}
-            subtitle={formatDate(b.createdAt)}
-            isSelected={selectedBucket === b.name}
-            onClick={() => {
-              setSelectedBucket(b.name);
-              setRowSelection({});
-              setFileSearch('');
-            }}
-          />
-        ))
-      )}
-    </div>
-  );
-
-  const rightPanel = (
-    <div className="flex flex-col gap-4 p-4">
-      {!selectedBucket ? (
-        <div className="text-muted-foreground flex flex-col items-center justify-center gap-2 py-16">
-          <FolderOpen className="size-10 opacity-40" />
-          <p className="text-sm">Select a bucket to browse files</p>
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="mr-auto text-sm font-semibold">{selectedBucket}</h4>
-            <input ref={fileInputRef} type="file" className="hidden" aria-label="Upload file" onChange={handleUpload} />
-            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadFile.isPending}>
-              {uploadFile.isPending ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Upload className="mr-1 size-3.5" />}
-              Upload
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setDeleteBucketName(selectedBucket)}>
-              <Trash2 className="mr-1 size-3.5" />
-              Delete Bucket
-            </Button>
-            {selectedCount > 0 && (
-              <Button variant="destructive" size="sm" onClick={handleDeleteSelected} disabled={deleteFileMut.isPending}>
-                <Trash2 className="mr-1 size-3.5" />
-                Delete {selectedCount} file(s)
-              </Button>
-            )}
-          </div>
-          <AdminDataTable
-            data={filteredFiles}
-            columns={fileColumns}
-            isLoading={filesLoading}
-            enableRowSelection
-            rowSelection={rowSelection}
-            onRowSelectionChange={setRowSelection}
-            emptyMessage="This bucket is empty."
-            toolbar={<SearchFilterBar searchValue={fileSearch} onSearchChange={setFileSearch} searchPlaceholder="Search files…" />}
-          />
-        </>
-      )}
-
-      <Dialog open={showCreateBucket} onOpenChange={setShowCreateBucket}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Create Bucket</DialogTitle>
-            <DialogDescription>Enter a unique name for the new storage bucket.</DialogDescription>
-          </DialogHeader>
-          <Form {...bucketForm}>
-            <form onSubmit={bucketForm.handleSubmit(handleCreateBucket)} className="space-y-4">
-              <FormField
-                control={bucketForm.control}
-                name="name"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                render={({ field }: { field: any }) => (
-                  <FormItem>
-                    <FormLabel>Bucket Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="my-bucket" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setShowCreateBucket(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={createBucket.isPending}>
-                  {createBucket.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
-                  Create
-                </Button>
-              </div>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      <ConfirmDialog
-        open={!!deleteBucketName}
-        onOpenChange={(open: boolean) => {
-          if (!open) setDeleteBucketName(null);
-        }}
-        title="Delete Bucket"
-        description={`Are you sure you want to delete "${deleteBucketName}"? All files within will be permanently removed.`}
-        confirmLabel="Delete"
-        variant="destructive"
-        onConfirm={handleDeleteBucket}
-        isLoading={deleteBucketMut.isPending}
-      />
-    </div>
-  );
-
-  return (
-    <div className="space-y-3">
-      <div className="bg-muted/50 flex items-center gap-2 rounded-md border px-3 py-2 text-xs">
-        <HardDrive className="text-muted-foreground size-3.5 shrink-0" />
-        <span className="text-muted-foreground">Storage buckets are shared across all tenants (global S3/MinIO).</span>
-      </div>
-      <div className="flex min-h-100 gap-4">
-        <div className="w-64 shrink-0">{leftPanel}</div>
-        <div className="min-w-0 flex-1">{rightPanel}</div>
-      </div>
     </div>
   );
 }
@@ -2713,4 +2421,4 @@ export default function TenantManagementPage() {
   );
 }
 
-export { AuditLogsTab, ConfigsTab, FilesTab };
+export { AuditLogsTab, ConfigsTab };

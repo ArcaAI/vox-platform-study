@@ -4,11 +4,28 @@ import {
   ITenantBucketService,
   SetTenantBucketDefaultsRequest,
   TenantBucketDefaultsResponse,
+  TenantBucketObjectResponse,
   TenantBucketResponse,
   TenantBucketTreeResponse,
 } from '@arcaai/applications';
-import { Body, Controller, Delete, Get, Inject, Param, Post, Put, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Delete,
+  FileTypeValidator,
+  Get,
+  Inject,
+  MaxFileSizeValidator,
+  Param,
+  ParseFilePipe,
+  Post,
+  Put,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { TenantOwnedResource } from '../../common';
 import { CanCreate, CanDelete, CanManage, CanRead, CanUpdate } from '../../decorators';
 
@@ -90,6 +107,43 @@ export class TenantBucketController {
   @CanDelete('Storage')
   async deleteBucket(@Param('id') id: string): Promise<TenantBucketResponse> {
     return this.tenantBucketService.deleteBucket(id);
+  }
+
+  @Get(':id/objects')
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
+  @ApiOperation({ summary: 'List objects in a tenant bucket (storage-provider operation)' })
+  @ApiParam({ name: 'id', description: 'Bucket ID' })
+  @ApiQuery({ name: 'prefix', required: false, description: 'Restrict results to keys beginning with this prefix' })
+  @ApiResponse({ status: 200, description: 'Objects in the bucket', type: [TenantBucketObjectResponse] })
+  @CanRead('Storage')
+  async listObjects(@Param('id') id: string, @Query('prefix') prefix?: string): Promise<TenantBucketObjectResponse[]> {
+    return this.tenantBucketService.listObjects(id, prefix ?? '');
+  }
+
+  @Post(':id/objects')
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id' })
+  @ApiOperation({ summary: 'Upload a single object into a tenant bucket (storage-provider operation)' })
+  @ApiParam({ name: 'id', description: 'Bucket ID' })
+  @ApiQuery({ name: 'key', required: false, description: 'Target object key/path (defaults to the uploaded file name)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiResponse({ status: 201, description: 'Object uploaded', type: TenantBucketObjectResponse })
+  @UseInterceptors(FileInterceptor('file'))
+  @CanCreate('Storage')
+  async uploadObject(
+    @Param('id') id: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 100 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /^(audio|video|application|text|image)\// }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+    @Query('key') key?: string,
+  ): Promise<TenantBucketObjectResponse> {
+    const fileKey = key || file.originalname;
+    return this.tenantBucketService.uploadObject(id, fileKey, file.buffer, file.mimetype);
   }
 
   @Delete(':id/objects')
