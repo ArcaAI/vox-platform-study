@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { DepartmentController } from '../department.controller';
 
 // TASK-326 X5 — CLS mock so the controller can read the caller's `user`/
@@ -157,13 +157,31 @@ describe('DepartmentController', () => {
             expect(mockService.getAll).toHaveBeenCalledWith({ includeDisabled: true });
         });
 
-        it('allows a SUPER_ADMIN (operator; service still applies its own tenant rule)', async () => {
+        it('passes a SUPER_ADMIN WITH an elevated tenant context through to the service', async () => {
+            // TASK-331 r2605 #1 — after ContextInterceptor elevates the
+            // console-selected tenant into CLS, a super-admin reads INSIDE that
+            // tenant. The controller guard bypasses super-admins; the service
+            // then scopes to the elevated CLS tenant.
             mockService.getAll.mockResolvedValue([]);
-            const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+            const cls = createMockCls({ id: 'admin', tenantId: '', roles: ['SUPER_ADMIN'] }, 't-elevated');
 
             await buildController(cls).fetchAll('false');
 
-            expect(mockService.getAll).toHaveBeenCalledTimes(1);
+            expect(mockService.getAll).toHaveBeenCalledWith({ includeDisabled: false });
+        });
+
+        it('does NOT mask the service tenant rule for a SUPER_ADMIN with NO tenant context', async () => {
+            // TASK-331 r2605 #8 — the controller guard intentionally bypasses
+            // super-admins, so the call reaches the service. But the REAL
+            // `DepartmentService.getAll` requires `this.tenantId` and throws
+            // `BadRequestException('Tenant ID is required')` for a super-admin's
+            // empty tenant. The previous test mocked getAll → `[]` and asserted
+            // "allows SUPER_ADMIN through", masking Finding #1. Model the real
+            // rejection here (no DB wired).
+            mockService.getAll.mockRejectedValue(new BadRequestException('Tenant ID is required'));
+            const cls = createMockCls({ id: 'admin', tenantId: '', roles: ['SUPER_ADMIN'] }, null);
+
+            await expect(buildController(cls).fetchAll('false')).rejects.toBeInstanceOf(BadRequestException);
         });
     });
 
