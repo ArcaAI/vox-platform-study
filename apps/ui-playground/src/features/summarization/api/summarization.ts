@@ -1,6 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { smrClient } from './smr-client';
-import type { SmrGenerateRequest, SmrGenerateResponse, SmrStreamingResponse, SmrTaskResponse, SmrProvider, SmrHealthResponse } from './types';
+import type {
+  AssembledGenerateRequest,
+  SmrGenerateRequest,
+  SmrGenerateResponse,
+  SmrStreamingResponse,
+  SmrTaskResponse,
+  SmrProvider,
+  SmrHealthResponse,
+} from './types';
 
 const keys = {
   all: ['summarization'] as const,
@@ -177,6 +185,22 @@ export function useGenerateSummary() {
         { timeout: 120_000 },
       );
     },
+  });
+}
+
+/**
+ * TASK-331 doc-07 F2 (X3) — the DEFAULT summary generation path. Posts the
+ * ID-based assembled request to `/text/generate/assembled` so the backend
+ * resolves the prompt template, DNA writing style, and context items by ID
+ * (running its per-context-item cross-tenant + cross-doctor DNA ownership
+ * guards) instead of inlining raw DNA text / template / context content into
+ * the prompt. The raw `/text/generate` hooks above remain only for the
+ * explicit debug/raw path.
+ */
+export function useGenerateSummaryAssembled() {
+  return useMutation({
+    mutationFn: (req: AssembledGenerateRequest) =>
+      smrClient.post<SmrGenerateResponse>('/text/generate/assembled', { ...req, stream: false }, { timeout: 120_000 }),
   });
 }
 
