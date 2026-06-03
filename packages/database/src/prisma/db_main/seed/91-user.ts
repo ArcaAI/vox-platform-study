@@ -25,6 +25,42 @@ import {
  * - profile: User profile information
  */
 
+/**
+ * Primary department (by code) for each non-exempt seeded user.
+ *
+ * TASK-305 Phase F — a non-exempt user must belong to a tenant via both a role
+ * AND a department, so every seeded user that is not exempt is given a primary
+ * `UserDepartment` in its own tenant. Codes resolve to a `Department` row in the
+ * user's `tenantId` (the Global tenant for clinical users; the per-customer GEN
+ * departments for the tenant admins). Exempt users — service accounts and the
+ * platform `super_admin` (system tenant) — are intentionally omitted.
+ */
+const PRIMARY_DEPARTMENT_CODE_BY_USERNAME: Record<string, string> = {
+    tenant_admin: 'GEN',
+    doctor: 'GEN',
+    doctor2: 'CARD',
+    department_head: 'GEN',
+    nurse: 'GEN',
+    senior_nurse: 'GEN',
+    nurse_card: 'CARD',
+    nurse_med: 'MED',
+    doctor_surgery: 'SURG',
+    doctor_neuro: 'NEUR',
+    doctor_peds: 'PEDS',
+    doctor_er: 'ER',
+    doctor_bren: 'BREN',
+    doctor_rheum: 'RHEUM',
+    doctor_heme: 'HEME',
+    doctor_derm: 'DERM',
+    doctor_diet: 'DIET',
+    doctor_neph: 'NEPH',
+    doctor_sonc: 'SONC',
+    doctor_med: 'MED',
+    arcaai_admin: 'GEN',
+    fourbits_admin: 'GEN',
+    mumbai_admin: 'GEN',
+};
+
 export const seedUser = async (client: CorePrismaClient) => {
     console.log('Seeding users...');
 
@@ -595,6 +631,36 @@ export const seedUser = async (client: CorePrismaClient) => {
                     }
                 } else {
                     console.warn(`  Warning: Role "${roleName}" not found for user "${userData.username}"`);
+                }
+            }
+
+            // 4. Assign a primary department (TASK-305 Phase F — non-exempt users
+            //    must belong to a tenant via both a role AND a department).
+            //    Service accounts and platform/system-tenant users are exempt.
+            const isMembershipExempt =
+                userData.isServiceAccount || userData.tenantId === SYSTEM_TENANT_ID;
+            const departmentCode = PRIMARY_DEPARTMENT_CODE_BY_USERNAME[userData.username];
+            if (!isMembershipExempt && departmentCode) {
+                const department = await client.department.findFirst({
+                    where: { tenantId: userData.tenantId, code: departmentCode },
+                });
+                if (department) {
+                    const existingDepartment = await client.userDepartment.findFirst({
+                        where: { userId: user.id, tenantId: userData.tenantId },
+                    });
+                    if (!existingDepartment) {
+                        await client.userDepartment.create({
+                            data: {
+                                userId: user.id,
+                                departmentId: department.id,
+                                tenantId: userData.tenantId,
+                                isPrimary: true,
+                            },
+                        });
+                        console.log(`  Assigned primary department "${departmentCode}" to user "${userData.username}"`);
+                    }
+                } else {
+                    console.warn(`  Warning: Department "${departmentCode}" not found in tenant ${userData.tenantId} for user "${userData.username}"`);
                 }
             }
 
