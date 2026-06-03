@@ -60,6 +60,15 @@ export interface SummaryResponse {
     outputTokens?: number;
     cacheHit?: boolean;
     qualityScore?: number;
+    /**
+     * TASK-331 doc-06 F4 — which tier of the 3-tier prompt fallback produced
+     * this summary (server `PromptResolutionTier`). Surfaced so the UI can badge
+     * "Preferred prompt" / "Dept prompt" / "Default". The value already flows
+     * server→SMR; this just types it on the SDK boundary (no runtime change).
+     */
+    promptResolvedFrom?: 'preferred' | 'department' | 'default';
+    /** TASK-331 doc-06 F4 — id of the resolved department/preferred prompt template. */
+    resolvedPromptId?: string;
     [key: string]: unknown;
   };
   /** TASK-329 (P6) — current version number for the version browser. */

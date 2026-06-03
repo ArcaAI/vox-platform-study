@@ -5,13 +5,14 @@
  * Extracted from the useArca god hook for better performance and maintainability.
  */
 
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useRef } from 'react';
 import { useAgenticStore } from '../store';
 import type { ContextItem, TranscriptionResult } from '../types';
-import type { TranscriptSegment, AudioStartOptions } from '../types/audio';
+import type { TranscriptSegment, AudioStartOptions, DualCaptureResult } from '../types/audio';
 import { CONTEXT_ENDPOINTS } from '../core/constants';
 import type { ISDKLogger } from '../core/logger';
-import { AudioContextManager } from '@arcaai/room';
+import { AudioContextManager, AudioMixer } from '@arcaai/room';
+import { DualStreamRecorder } from '../core/DualStreamRecorder';
 
 // Re-export the interface from useArca.ts
 export type { UseArcaAudio } from './useArca';
@@ -45,6 +46,14 @@ export function useArcaAudio() {
   const getLogger = useCallback((): ISDKLogger | undefined => {
     return store.logger?.child('useArcaAudio');
   }, [store.logger]);
+
+  // TASK-331 doc-06 — capture-session resources that must survive between
+  // start() and stop(): the 2-mic mixer (+ its secondary stream) for F3, and
+  // the dual-capture recorder (+ its delivery callback) for F2.
+  const mixerRef = useRef<AudioMixer | null>(null);
+  const secondaryStreamRef = useRef<MediaStream | null>(null);
+  const dualRecorderRef = useRef<DualStreamRecorder | null>(null);
+  const onDualCaptureRef = useRef<((result: DualCaptureResult) => void) | undefined>(undefined);
 
   // ==========================================================================
   // Audio Actions
@@ -81,14 +90,41 @@ export function useArcaAudio() {
           operation: 'startAudio',
           component: 'useArcaAudio',
         });
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const track = stream.getAudioTracks()[0];
+        // TASK-331 doc-06 F3 — honor the selected primary microphone.
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: options?.deviceId ? { deviceId: { exact: options.deviceId } } : true,
+        });
 
         const ctxManager = AudioContextManager.getInstance({ sampleRate: 48000 });
         const audioContext = await ctxManager.acquire();
 
         store.setActiveStream(stream);
         store.setActiveAudioContext(audioContext);
+
+        // TASK-331 doc-06 F3 — when a second mic is selected, mix both inputs
+        // into one processed graph via @arcaai/room's AudioMixer, then feed the
+        // mixed track to the noise-filter/VAD/STT pipeline.
+        let track = stream.getAudioTracks()[0];
+        if (options?.secondaryDeviceId) {
+          const secondaryStream = await navigator.mediaDevices.getUserMedia({
+            audio: { deviceId: { exact: options.secondaryDeviceId } },
+          });
+          secondaryStreamRef.current = secondaryStream;
+
+          const mixer = new AudioMixer(audioContext);
+          mixer.addSource('primary', stream);
+          mixer.addSource('secondary', secondaryStream);
+          mixerRef.current = mixer;
+
+          const mixedTrack = mixer.getMixedTrack();
+          if (mixedTrack) track = mixedTrack;
+
+          logger?.debug('Mixed dual-microphone inputs', {
+            operation: 'startAudio',
+            component: 'useArcaAudio',
+            attributes: { primaryDeviceId: options.deviceId, secondaryDeviceId: options.secondaryDeviceId },
+          });
+        }
 
         // Set up plugin callbacks
         pluginManager.setCallbacks({
@@ -191,6 +227,33 @@ export function useArcaAudio() {
         store.setAudioPlugins(pluginManager.getStates());
         store.setAudioError(null);
 
+        // TASK-331 doc-06 F2 — dual capture (RAW + PROCESSED) for the LOCAL
+        // workflow. Record the pre-noise-filter input (getRawInputTrack) and the
+        // post-filter pipeline output (getProcessedTrack) in parallel; the blobs
+        // are delivered on stop() via the onDualCapture callback.
+        const workflowMode = store.preferences?.workflowMode ?? 'local';
+        if (options?.dualCaptureEnabled && workflowMode !== 'remote') {
+          const pipeline = pluginManager.getTranscriptionPipeline?.();
+          const rawTrack = pipeline?.getRawInputTrack?.();
+          const processedTrack = pipeline?.getProcessedTrack?.();
+          if (rawTrack && processedTrack) {
+            const recorder = new DualStreamRecorder(rawTrack, processedTrack);
+            recorder.start();
+            dualRecorderRef.current = recorder;
+            onDualCaptureRef.current = options.onDualCapture;
+            logger?.info('Dual capture started', {
+              operation: 'startAudio',
+              component: 'useArcaAudio',
+              sdk: { consultationId: consultation?.id },
+            });
+          } else {
+            logger?.warn('Dual capture requested but pipeline tracks unavailable', {
+              operation: 'startAudio',
+              component: 'useArcaAudio',
+            });
+          }
+        }
+
         timer?.end(true, {
           attributes: {
             sampleRate: audioContext.sampleRate,
@@ -213,6 +276,42 @@ export function useArcaAudio() {
     [store, getLogger],
   );
 
+  /**
+   * TASK-331 doc-06 F3/Q5 — start capture from the user's persisted preferences.
+   *
+   * Derives {@link AudioStartOptions} from `store.preferences` (already populated
+   * by PersonalizationManager / useArcaConfig — no new config plumbing):
+   *   - `language`            ← `preferences.language`
+   *   - STT provider          ← `preferences.workflowMode` ('remote' → backend,
+   *                             else local). For the backend workflow the
+   *                             admin-assigned `preferences.remoteConfig.pipelineId`
+   *                             is forwarded; local leaves `pipelineId` undefined
+   *                             so the SDK uses the local provider.
+   *   - `deviceId` / `secondaryDeviceId` / `dualCaptureEnabled`
+   *                           ← `preferences.custom` (the existing extensible bag).
+   */
+  const startFromPreferences = useCallback(async (): Promise<void> => {
+    const prefs = store.preferences ?? {};
+    const isRemote = prefs.workflowMode === 'remote';
+    const custom = (prefs.custom ?? {}) as Record<string, unknown>;
+
+    const options: AudioStartOptions = {
+      language: prefs.language,
+      pipelineId: isRemote ? prefs.remoteConfig?.pipelineId : undefined,
+      deviceId: typeof custom.deviceId === 'string' ? custom.deviceId : undefined,
+      secondaryDeviceId: typeof custom.secondaryDeviceId === 'string' ? custom.secondaryDeviceId : undefined,
+      dualCaptureEnabled: custom.dualCaptureEnabled === true,
+    };
+
+    getLogger()?.debug('Starting audio from preferences', {
+      operation: 'startFromPreferences',
+      component: 'useArcaAudio',
+      attributes: { workflowMode: prefs.workflowMode, language: options.language, hasPipeline: !!options.pipelineId },
+    });
+
+    return startAudio(options);
+  }, [store, getLogger, startAudio]);
+
   const stopAudio = useCallback(async (): Promise<void> => {
     const { pluginManager, consultation } = store;
     const logger = getLogger();
@@ -224,8 +323,33 @@ export function useArcaAudio() {
       sdk: { consultationId: consultation?.id },
     });
 
+    // TASK-331 doc-06 F2 — flush the dual-capture recorder BEFORE tearing down
+    // the pipeline (destroy ends the processed track), then deliver the blobs.
+    const recorder = dualRecorderRef.current;
+    if (recorder?.isRecording) {
+      try {
+        const result = await recorder.stop();
+        onDualCaptureRef.current?.(result);
+      } catch (error) {
+        logger?.warn('Dual capture stop failed', {
+          operation: 'stopAudio',
+          component: 'useArcaAudio',
+          error: error as Error,
+        });
+      }
+    }
+    dualRecorderRef.current = null;
+    onDualCaptureRef.current = undefined;
+
     await pluginManager.destroy();
     pluginManager.clearRuntimeOptions?.();
+
+    // TASK-331 doc-06 F3 — tear down the 2-mic mixer (stops both source streams).
+    if (mixerRef.current) {
+      mixerRef.current.dispose();
+      mixerRef.current = null;
+    }
+    secondaryStreamRef.current = null;
 
     const { activeStream } = store;
     if (activeStream) {
@@ -356,6 +480,7 @@ export function useArcaAudio() {
       plugins: store.audioPlugins,
       error: store.audioError,
       start: startAudio,
+      startFromPreferences,
       stop: stopAudio,
       mute: muteAudio,
       unmute: unmuteAudio,
@@ -374,6 +499,7 @@ export function useArcaAudio() {
       store.audioPlugins,
       store.audioError,
       startAudio,
+      startFromPreferences,
       stopAudio,
       muteAudio,
       unmuteAudio,
