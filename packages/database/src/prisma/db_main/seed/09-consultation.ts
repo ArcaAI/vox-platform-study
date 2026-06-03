@@ -1,6 +1,7 @@
 import type { CorePrismaClient } from '../../../client';
 import {
     SEED_TENANT_ID,
+    SEED_CUSTOMER_TENANT_IDS,
     SEED_USER_IDS,
     SEED_DEPARTMENT_IDS,
     SEED_CONSULTATION_IDS,
@@ -21,7 +22,9 @@ import {
  *
  * Seeded entities:
  *   10 Consultations        — full lifecycle coverage across 6 statuses and 6 departments
+ *   +6 Consultations        — customer-tenant (ArcaAI/4bits/Mumbai) NEW + REVISIT pairs (doc-08 F1)
  *   24 ContextItems          — transcripts, summaries, audio, worknotes, pre-summaries, case notes
+ *   +6 ContextItems          — one transcript per customer-tenant consultation (doc-08 F1)
  *   4  SummaryMetas          — AI generation metadata
  *   3  Media                 — dual-capture demo blobs (primary + raw + processed) for the GEN recording
  *   4  AudioRecordings       — linked to audio context items (GEN row carries raw+processed dual-capture ids)
@@ -48,7 +51,7 @@ const PATIENT_IDS = {
 // CONSULTATIONS (10)
 // =============================================================================
 
-const DEFAULT_CONSULTATIONS = [
+export const DEFAULT_CONSULTATIONS = [
     {
         id: SEED_CONSULTATION_IDS.GEN_COMPLETED,
         tenantId: SEED_TENANT_ID,
@@ -204,6 +207,196 @@ const DEFAULT_CONSULTATIONS = [
             referringDoctorId: SEED_USER_IDS.DOCTOR2,
         },
         createdBy: SEED_USER_IDS.DOCTOR2,
+    },
+];
+
+// =============================================================================
+// CUSTOMER-TENANT CONSULTATIONS (TASK-331 doc-08 F1)
+//
+// ArcaAI / 4bits / Mumbai seed clinicians (91-user.ts) but previously had ZERO
+// consultations, so admin clinical lists & analytics rendered empty for every
+// customer tenant. Each tenant now gets a NEW_PATIENT visit + a REVISIT
+// follow-up for the same patient, owned by that tenant's canonical DOCTOR
+// (SEED_USER_IDS) in that tenant's GEN department. IDs use the per-tenant
+// 4th-UUID-group convention (0001 ArcaAI, 0002 4bits, 0003 Mumbai); the NEW
+// row precedes the REVISIT so the parentConsultationId FK resolves in order.
+// =============================================================================
+export const CUSTOMER_TENANT_CONSULTATIONS = [
+    // ── ArcaAI ──────────────────────────────────────────────────────────
+    {
+        id: SEED_CONSULTATION_IDS.ARCAAI_GEN_NEW,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        patientId: 'PAT-20260221-101',
+        appointmentDate: new Date('2026-02-21'),
+        doctorId: SEED_USER_IDS.ARCAAI_DOCTOR,
+        departmentId: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
+        parentConsultationId: null,
+        metadata: {
+            visitType: 'NEW_PATIENT',
+            status: 'OPEN',
+            chiefComplaint: 'Sore throat and mild fever for 3 days',
+            language: 'en',
+        },
+        createdBy: SEED_USER_IDS.ARCAAI_DOCTOR,
+    },
+    {
+        id: SEED_CONSULTATION_IDS.ARCAAI_GEN_REVISIT,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        patientId: 'PAT-20260221-101',
+        appointmentDate: new Date('2026-02-28'),
+        doctorId: SEED_USER_IDS.ARCAAI_DOCTOR,
+        departmentId: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
+        parentConsultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_NEW,
+        metadata: {
+            visitType: 'REVISIT',
+            status: 'REVIEW',
+            chiefComplaint: 'Follow-up: persistent sore throat, review of throat swab results',
+            language: 'en',
+        },
+        createdBy: SEED_USER_IDS.ARCAAI_DOCTOR,
+    },
+    // ── 4bits ───────────────────────────────────────────────────────────
+    {
+        id: SEED_CONSULTATION_IDS.FOURBITS_GEN_NEW,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        patientId: 'PAT-20260222-201',
+        appointmentDate: new Date('2026-02-22'),
+        doctorId: SEED_USER_IDS.FOURBITS_DOCTOR,
+        departmentId: SEED_DEPARTMENT_IDS.GEN_FOURBITS,
+        parentConsultationId: null,
+        metadata: {
+            visitType: 'NEW_PATIENT',
+            status: 'OPEN',
+            chiefComplaint: 'Annual health screening and persistent fatigue',
+            language: 'en',
+        },
+        createdBy: SEED_USER_IDS.FOURBITS_DOCTOR,
+    },
+    {
+        id: SEED_CONSULTATION_IDS.FOURBITS_GEN_REVISIT,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        patientId: 'PAT-20260222-201',
+        appointmentDate: new Date('2026-03-01'),
+        doctorId: SEED_USER_IDS.FOURBITS_DOCTOR,
+        departmentId: SEED_DEPARTMENT_IDS.GEN_FOURBITS,
+        parentConsultationId: SEED_CONSULTATION_IDS.FOURBITS_GEN_NEW,
+        metadata: {
+            visitType: 'REVISIT',
+            status: 'REVIEW',
+            chiefComplaint: 'Follow-up: review of blood panel and fatigue management',
+            language: 'en',
+        },
+        createdBy: SEED_USER_IDS.FOURBITS_DOCTOR,
+    },
+    // ── Mumbai General Hospital ─────────────────────────────────────────
+    {
+        id: SEED_CONSULTATION_IDS.MUMBAI_GEN_NEW,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+        patientId: 'PAT-20260222-301',
+        appointmentDate: new Date('2026-02-22'),
+        doctorId: SEED_USER_IDS.MUMBAI_DOCTOR,
+        departmentId: SEED_DEPARTMENT_IDS.GEN_MUMBAI,
+        parentConsultationId: null,
+        metadata: {
+            visitType: 'NEW_PATIENT',
+            status: 'OPEN',
+            chiefComplaint: 'Productive cough and breathlessness on exertion',
+            language: 'en',
+        },
+        createdBy: SEED_USER_IDS.MUMBAI_DOCTOR,
+    },
+    {
+        id: SEED_CONSULTATION_IDS.MUMBAI_GEN_REVISIT,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+        patientId: 'PAT-20260222-301',
+        appointmentDate: new Date('2026-03-01'),
+        doctorId: SEED_USER_IDS.MUMBAI_DOCTOR,
+        departmentId: SEED_DEPARTMENT_IDS.GEN_MUMBAI,
+        parentConsultationId: SEED_CONSULTATION_IDS.MUMBAI_GEN_NEW,
+        metadata: {
+            visitType: 'REVISIT',
+            status: 'REVIEW',
+            chiefComplaint: 'Follow-up: chest X-ray review and inhaler titration',
+            language: 'en',
+        },
+        createdBy: SEED_USER_IDS.MUMBAI_DOCTOR,
+    },
+];
+
+// One transcript per customer-tenant consultation, mirroring the Global
+// TRANSCRIPT context-item shape so customer clinical views are not empty.
+export const CUSTOMER_TENANT_CONTEXT_ITEMS = [
+    {
+        id: SEED_CONTEXT_ITEM_IDS.ARCAAI_GEN_NEW_TRANSCRIPT,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        consultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_NEW,
+        type: 'TRANSCRIPT' as const,
+        source: 'TRANSCRIPTION' as const,
+        currentVersionNumber: 1,
+        content:
+            'Doctor: What brings you in today? Patient: Sore throat and a mild fever for about three days. Doctor: Any cough or difficulty swallowing? Patient: Some difficulty swallowing, no cough. Doctor: I will examine your throat and order a rapid swab.',
+        dnaWritingStyleId: null,
+        createdBy: SYSTEM_USER_ID,
+    },
+    {
+        id: SEED_CONTEXT_ITEM_IDS.ARCAAI_GEN_REVISIT_TRANSCRIPT,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        consultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_REVISIT,
+        type: 'TRANSCRIPT' as const,
+        source: 'TRANSCRIPTION' as const,
+        currentVersionNumber: 1,
+        content:
+            'Doctor: How is the throat now? Patient: A little better but still sore. Doctor: Your swab was positive for strep; we will continue the antibiotics and review in a week.',
+        dnaWritingStyleId: null,
+        createdBy: SYSTEM_USER_ID,
+    },
+    {
+        id: SEED_CONTEXT_ITEM_IDS.FOURBITS_GEN_NEW_TRANSCRIPT,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        consultationId: SEED_CONSULTATION_IDS.FOURBITS_GEN_NEW,
+        type: 'TRANSCRIPT' as const,
+        source: 'TRANSCRIPTION' as const,
+        currentVersionNumber: 1,
+        content:
+            'Doctor: You are here for a routine screening. Any concerns? Patient: I have been very tired lately. Doctor: We will run a full blood panel and check your thyroid and iron levels.',
+        dnaWritingStyleId: null,
+        createdBy: SYSTEM_USER_ID,
+    },
+    {
+        id: SEED_CONTEXT_ITEM_IDS.FOURBITS_GEN_REVISIT_TRANSCRIPT,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        consultationId: SEED_CONSULTATION_IDS.FOURBITS_GEN_REVISIT,
+        type: 'TRANSCRIPT' as const,
+        source: 'TRANSCRIPTION' as const,
+        currentVersionNumber: 1,
+        content:
+            'Doctor: Your blood panel shows mild iron-deficiency anaemia. Patient: That explains the fatigue. Doctor: Start the iron supplement and we will recheck in six weeks.',
+        dnaWritingStyleId: null,
+        createdBy: SYSTEM_USER_ID,
+    },
+    {
+        id: SEED_CONTEXT_ITEM_IDS.MUMBAI_GEN_NEW_TRANSCRIPT,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+        consultationId: SEED_CONSULTATION_IDS.MUMBAI_GEN_NEW,
+        type: 'TRANSCRIPT' as const,
+        source: 'TRANSCRIPTION' as const,
+        currentVersionNumber: 1,
+        content:
+            'Doctor: How long have you had the cough? Patient: About two weeks, with phlegm and breathlessness when I climb stairs. Doctor: We will get a chest X-ray and start a bronchodilator.',
+        dnaWritingStyleId: null,
+        createdBy: SYSTEM_USER_ID,
+    },
+    {
+        id: SEED_CONTEXT_ITEM_IDS.MUMBAI_GEN_REVISIT_TRANSCRIPT,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+        consultationId: SEED_CONSULTATION_IDS.MUMBAI_GEN_REVISIT,
+        type: 'TRANSCRIPT' as const,
+        source: 'TRANSCRIPTION' as const,
+        currentVersionNumber: 1,
+        content:
+            'Doctor: The X-ray shows no consolidation. Patient: The inhaler helps a little. Doctor: We will step up the inhaler dose and review your technique today.',
+        dnaWritingStyleId: null,
+        createdBy: SYSTEM_USER_ID,
     },
 ];
 
@@ -1134,23 +1327,27 @@ const DEFAULT_NAMED_ENTITIES = [
 export const seedConsultation = async (client: CorePrismaClient) => {
     console.log('Seeding consultations (e2e workflow data)...');
 
-    for (const consultation of DEFAULT_CONSULTATIONS) {
+    for (const consultation of [...DEFAULT_CONSULTATIONS, ...CUSTOMER_TENANT_CONSULTATIONS]) {
         await client.consultation.upsert({
             where: { id: consultation.id },
             update: consultation,
             create: consultation,
         });
     }
-    console.log(`  Seeded ${DEFAULT_CONSULTATIONS.length} consultations`);
+    console.log(
+        `  Seeded ${DEFAULT_CONSULTATIONS.length} consultations + ${CUSTOMER_TENANT_CONSULTATIONS.length} customer-tenant consultations`,
+    );
 
-    for (const item of DEFAULT_CONTEXT_ITEMS) {
+    for (const item of [...DEFAULT_CONTEXT_ITEMS, ...CUSTOMER_TENANT_CONTEXT_ITEMS]) {
         await client.contextItem.upsert({
             where: { id: item.id },
             update: item,
             create: item,
         });
     }
-    console.log(`  Seeded ${DEFAULT_CONTEXT_ITEMS.length} context items`);
+    console.log(
+        `  Seeded ${DEFAULT_CONTEXT_ITEMS.length} context items + ${CUSTOMER_TENANT_CONTEXT_ITEMS.length} customer-tenant context items`,
+    );
 
     for (const meta of DEFAULT_SUMMARY_METAS) {
         await client.summaryMeta.upsert({
