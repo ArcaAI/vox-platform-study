@@ -80,8 +80,15 @@ describe('TenantController', () => {
         });
     });
 
-    describe('Authorization metadata (@CanManage("Tenant"))', () => {
-        it('should declare manage:Tenant as the required class-level permission', () => {
+    // TASK-331 F2 — the class-level guard widened from @CanManage('Tenant')
+    // (mode AND) to @CanAny(['manage','Tenant'], ['update','Tenant']) (mode OR)
+    // so a TENANT_ADMIN (who holds tenant-scoped update:Tenant, not manage)
+    // clears the controller guard for self-service tenant config reads/updates.
+    // create()/delete() stay SUPER_ADMIN-only via method-level @CanManage('Tenant')
+    // — covered behaviorally by the W5.5 inline-guard block below and by the
+    // PolicyEngine TENANT_ADMIN regression in @arcaai/applications.
+    describe('Authorization metadata (@CanAny manage|update Tenant)', () => {
+        it('should declare BOTH manage:Tenant and update:Tenant as class-level permissions', () => {
             const required = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, TenantController);
 
             expect(required).toBeDefined();
@@ -89,13 +96,14 @@ describe('TenantController', () => {
             expect(required).toEqual(
                 expect.arrayContaining([
                     expect.objectContaining({ action: 'manage', subject: 'Tenant' }),
+                    expect.objectContaining({ action: 'update', subject: 'Tenant' }),
                 ]),
             );
         });
 
-        it('should use AND permission mode at the class level', () => {
+        it('should use OR permission mode at the class level (manage OR update)', () => {
             const mode = Reflect.getMetadata(PERMISSION_MODE_KEY, TenantController);
-            expect(mode).toBe('AND');
+            expect(mode).toBe('OR');
         });
     });
 

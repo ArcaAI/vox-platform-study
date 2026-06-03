@@ -31,6 +31,9 @@ const CORE_SUFFIXES = [
   'UX_LOCAL_NOISE_SUPPRESSION_MODELS',
   'UX_SMR_PROVIDER_MODELS',
   'LOCKED_CONFIG_PATHS',
+  // TASK-331 F4 — per-tenant admin-console menu order (`arcaai-admin`/`menuOrder`),
+  // suffix 051 alongside locked-config-paths (050). Seeded for every tenant.
+  'ADMIN_MENU_ORDER',
 ] as const;
 
 const PREFIXES_WITH_GENERAL = new Set(['FOURBITS', 'MUMBAI', 'GLOBAL']);
