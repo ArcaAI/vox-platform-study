@@ -45,6 +45,12 @@ export interface AssembledPrompt {
   hyperparameters: Record<string, number>;
   responseFormat: { type: string; json_schema: Record<string, unknown>; strict: boolean } | null;
   resolvedFrom: PromptResolutionTier;
+  /**
+   * The prompt registry id that was actually resolved/used (TASK-331 doc-06 F4).
+   * Optional so existing inline AssembledPrompt literals remain valid; the real
+   * PromptAssemblyService.assemble() always populates it from the resolver.
+   */
+  promptId?: string;
 }
 
 // ============================================================================
@@ -106,6 +112,7 @@ export class PromptAssemblyService {
       hyperparameters,
       responseFormat,
       resolvedFrom: resolved.resolvedFrom,
+      promptId: resolved.promptId,
     };
   }
 

@@ -19,6 +19,8 @@ export interface ISummaryMetaEntity extends IBaseTenantEntity {
   generatedAt?: Date | null;
   cacheHit?: boolean | null;
   qualityScore?: number | null;
+  promptResolvedFrom?: string | null;
+  resolvedPromptId?: string | null;
   ContextItem?: Entities.ContextItemEntity | null;
 }
 
@@ -36,6 +38,8 @@ export class SummaryMetaEntity extends BaseTenantEntity {
   private _generatedAt?: ISummaryMetaEntity['generatedAt'];
   private _cacheHit?: ISummaryMetaEntity['cacheHit'];
   private _qualityScore?: ISummaryMetaEntity['qualityScore'];
+  private _promptResolvedFrom?: ISummaryMetaEntity['promptResolvedFrom'];
+  private _resolvedPromptId?: ISummaryMetaEntity['resolvedPromptId'];
   private _ContextItem?: ISummaryMetaEntity['ContextItem'];
 
   constructor(init: ISummaryMetaEntity) {
@@ -53,6 +57,8 @@ export class SummaryMetaEntity extends BaseTenantEntity {
     this._generatedAt = init.generatedAt;
     this._cacheHit = init.cacheHit;
     this._qualityScore = init.qualityScore;
+    this._promptResolvedFrom = init.promptResolvedFrom;
+    this._resolvedPromptId = init.resolvedPromptId;
     this._ContextItem = init.ContextItem;
   }
 
@@ -158,6 +164,22 @@ export class SummaryMetaEntity extends BaseTenantEntity {
 
   set qualityScore(value: ISummaryMetaEntity['qualityScore']) {
     this.setProperty('qualityScore', value);
+  }
+
+  get promptResolvedFrom(): ISummaryMetaEntity['promptResolvedFrom'] {
+    return this._promptResolvedFrom;
+  }
+
+  set promptResolvedFrom(value: ISummaryMetaEntity['promptResolvedFrom']) {
+    this.setProperty('promptResolvedFrom', value);
+  }
+
+  get resolvedPromptId(): ISummaryMetaEntity['resolvedPromptId'] {
+    return this._resolvedPromptId;
+  }
+
+  set resolvedPromptId(value: ISummaryMetaEntity['resolvedPromptId']) {
+    this.setProperty('resolvedPromptId', value);
   }
 
   get ContextItem(): ISummaryMetaEntity['ContextItem'] {

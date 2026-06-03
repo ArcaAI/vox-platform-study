@@ -358,4 +358,44 @@ describe('PromptResolutionService', () => {
             expect(result.resolvedFrom).toBe('default');
         });
     });
+
+    // =========================================================================
+    // 3-tier resolvedFrom regression (TASK-331 doc-06 F9)
+    //
+    // The header JSDoc previously claimed a "two-tier" chain; the code resolves
+    // three tiers. This guards that `resolvedFrom` keeps returning the correct
+    // tier label for each of preferred / department / default.
+    // =========================================================================
+    describe('resolve — 3-tier resolvedFrom regression', () => {
+        it('reports "preferred" when the doctor preferred template resolves (Tier-0)', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(
+                createMockDepartment({ defaultSummaryTemplate: 'SOAP', newPatientPromptId: 'dept-prompt' }),
+            );
+            mockPromptTemplateRepository.findById.mockResolvedValue({ id: 'preferred-tpl' });
+
+            const result = await service.resolve({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                preferredPromptTemplateId: 'preferred-tpl',
+            });
+
+            expect(result.resolvedFrom).toBe('preferred');
+        });
+
+        it('reports "department" when only the department tier resolves (Tier-1)', async () => {
+            mockDepartmentRepository.findById.mockResolvedValue(
+                createMockDepartment({ defaultSummaryTemplate: 'SOAP', newPatientPromptId: 'dept-prompt' }),
+            );
+
+            const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+
+            expect(result.resolvedFrom).toBe('department');
+        });
+
+        it('reports "default" when neither preferred nor department resolve (Tier-2)', async () => {
+            const result = await service.resolve({});
+
+            expect(result.resolvedFrom).toBe('default');
+        });
+    });
 });

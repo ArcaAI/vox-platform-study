@@ -224,6 +224,8 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       tenantId: contextItem.tenantId || undefined,
       contextItemId: dto.contextItemId,
       mediaId: savedMedia.id,
+      rawMediaId: dto.rawMediaId,
+      processedMediaId: dto.processedMediaId,
       duration: dto.durationMs,
       format: extension,
       sampleRate: dto.sampleRate,
