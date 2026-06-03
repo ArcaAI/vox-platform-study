@@ -36,6 +36,13 @@ const mockUserRepository = {
     softDelete: vi.fn(),
 };
 
+// TASK-331 r2605 #3 — membership deps added to the UserService constructor.
+// These plain mocks satisfy DI for the existing (no-membership) create path;
+// the atomic create-with-membership flow is covered in user.service.task331.test.ts.
+const mockUserRoleAssignmentRepository = { create: vi.fn() };
+const mockUserDepartmentRepository = { create: vi.fn() };
+const mockDatabaseService = { baseClient: { $transaction: vi.fn() } };
+
 /**
  * Creates a complete mock user entity matching the real UserEntity structure.
  * This ensures tests don't pass due to incomplete mock data.
@@ -156,8 +163,11 @@ describe('UserService', () => {
         // Create service instance with mocks
         service = new UserService(
             mockUserRepository as any,
+            mockUserRoleAssignmentRepository as any,
+            mockUserDepartmentRepository as any,
             mockEventEmitter as any,
             mockClsService as any,
+            mockDatabaseService as any,
         );
     });
 
