@@ -640,10 +640,15 @@ export default function DnaWritingStylePage() {
               </h2>
               <p className="text-muted-foreground mt-1">View and manage your personal DNA writing style profile used for clinical documentation.</p>
             </div>
-            <Button onClick={() => setGenerateOpen(true)}>
-              <Sparkles className="mr-2 size-4" />
-              Generate Style
-            </Button>
+            {/* TASK-331 doc-07 F1 — the generate trigger is per-doctor; gate it
+                behind the SAME impersonation signal as the body so a
+                non-impersonating admin cannot self-generate a DNA style. */}
+            {!requiresImpersonation && (
+              <Button onClick={() => setGenerateOpen(true)}>
+                <Sparkles className="mr-2 size-4" />
+                Generate Style
+              </Button>
+            )}
           </div>
 
           {/* TASK-329 P5 — impersonation gate: this playground is per-doctor. */}
@@ -704,7 +709,17 @@ export default function DnaWritingStylePage() {
           </ImpersonationGuard>
 
           {/* Dialogs */}
-          <GenerateDialog open={generateOpen} onOpenChange={setGenerateOpen} onJobStarted={handleJobStarted} onStreamStarted={handleStreamStarted} />
+          {/* TASK-331 doc-07 F1 — keep the generate dialog behind the same gate
+              as its trigger (defense-in-depth: it can't be opened when an admin
+              isn't impersonating a doctor). */}
+          {!requiresImpersonation && (
+            <GenerateDialog
+              open={generateOpen}
+              onOpenChange={setGenerateOpen}
+              onJobStarted={handleJobStarted}
+              onStreamStarted={handleStreamStarted}
+            />
+          )}
 
           <EditDialog
             open={editCtrl.open}

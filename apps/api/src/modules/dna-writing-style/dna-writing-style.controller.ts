@@ -21,6 +21,13 @@ import {
   Sse,
   type MessageEvent,
 } from '@nestjs/common';
+
+// TASK-331 doc-07 F1 — admin vs. doctor role sets, mirroring the UI's
+// `useDoctorContext` gate. A "global"/tenant admin who is NOT also a clinical
+// user and is NOT impersonating one must not generate a DNA style (which would
+// be owned by their own account — a per-doctor isolation break).
+const DNA_ADMIN_ROLES = ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'];
+const DNA_DOCTOR_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -53,6 +60,28 @@ export class DnaWritingStyleController {
     return user.id;
   }
 
+  /**
+   * TASK-331 doc-07 F1 — defense-in-depth doctor-scope gate for `generate`.
+   *
+   * `generate` derives the owner from the caller (`getDoctorId()`), so a
+   * non-impersonating admin would create a DNA writing-style under their OWN
+   * account. Reject when the caller is an admin who is neither a clinical user
+   * nor actively impersonating a doctor (impersonation swaps the CLS user to the
+   * doctor and stamps `impersonatedBy`). Non-admin/doctor callers are unaffected.
+   */
+  private assertActingAsDoctor(): void {
+    const user = this.cls.get('user');
+    const roles = user?.roles ?? [];
+    const isAdmin = roles.some((r) => DNA_ADMIN_ROLES.includes(r));
+    const isDoctor = roles.some((r) => DNA_DOCTOR_ROLES.includes(r));
+    const isImpersonating = Boolean(user?.impersonatedBy);
+    if (isAdmin && !isDoctor && !isImpersonating) {
+      throw new ForbiddenException(
+        'DNA writing styles are personalized per doctor. Impersonate a doctor to generate a style; an admin cannot generate one under their own account.',
+      );
+    }
+  }
+
   @ApiEndpoint({
     returnedModel: DnaJobResponseDto,
     method: HttpMethod.POST,
@@ -60,6 +89,8 @@ export class DnaWritingStyleController {
   })
   @ApiResponse({ status: 400, description: 'Bad request — invalid input' })
   async generate(@Body() dto: GenerateDnaReportRequest): Promise<DnaJobResponse> {
+    // TASK-331 doc-07 F1 — block a non-impersonating admin from self-generating.
+    this.assertActingAsDoctor();
     return this.dnaService.generateDnaReport(this.getDoctorId(), dto);
   }
 
