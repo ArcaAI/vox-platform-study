@@ -609,8 +609,21 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
           store.setPreferences(personalizationManager.getPreferences());
         }
 
-        configManager.clearUserPreferences();
-        await configManager.loadUserPreferences();
+        // TASK-331 doc-05 F-2 — while impersonating, the playground is the SINGLE
+        // writer of the user-pref tier: it loads the impersonated user's REAL
+        // backend prefs (GET /user/me/settings via the doctor JWT) read-only.
+        // `loadUserPreferences()` is LOCAL-IDB-ONLY (the impersonated user has no
+        // namespace on the admin's machine) and `clearUserPreferences()` wipes the
+        // tier — running either here would race with / clobber those backend prefs
+        // (whichever async resolves last wins). Skip ONLY the user-pref clear/load
+        // while impersonating; the tenant-session reset, model-registry reload,
+        // tenant config and DEPARTMENT tier (F-9) above still run. On END
+        // impersonation `effectiveUserId` reverts to the admin and this effect
+        // re-runs (impersonated === null) to reload the admin's own namespace.
+        if (!impersonated) {
+          configManager.clearUserPreferences();
+          await configManager.loadUserPreferences();
+        }
 
         if (effectiveDepartmentId) {
           try {
@@ -672,6 +685,12 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
   useEffect(() => {
     const apiClient = store.apiClient;
     if (!apiClient) return;
+    // TASK-331 doc-05 F-5 — a host that owns its own 401 handling can opt out
+    // (e.g. ui-playground's impersonation-aware `useAutoRefresh`), leaving the
+    // single-slot `setOnUnauthorized` a single deterministic owner. Default
+    // (undefined / true) preserves the B2 auto-refresh. Read via `configRef`
+    // so this guarded, client-keyed effect doesn't re-run on config identity.
+    if (configRef.current.autoWireTokenRefresh === false) return;
     if (refreshWiredForClientRef.current === apiClient) return;
     refreshWiredForClientRef.current = apiClient;
 

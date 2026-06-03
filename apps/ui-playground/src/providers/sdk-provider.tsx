@@ -50,6 +50,11 @@ export function SDKProvider({ children }: { children: React.ReactNode }) {
     return {
       api,
       debug: debugMode,
+      // TASK-331 doc-05 F-5 — `useAutoRefresh` (mounted below) is the SOLE owner
+      // of the single-slot `setOnUnauthorized`; its impersonation-aware handler
+      // (refresh admin token → re-impersonate) must win. Opt out of the SDK's
+      // default auto-wire so the two registrants no longer race.
+      autoWireTokenRefresh: false,
     };
   }, [authMethod, apiKey, tenantId, accessToken, persistedImpersonating, impersonationToken, apiBaseUrl, debugMode]);
 
