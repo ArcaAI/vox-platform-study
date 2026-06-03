@@ -20,6 +20,12 @@ export class UpdatePromptTemplateRequest {
   @IsString()
   content?: string;
 
+  // TASK-331 doc-02 F5 — publication status; a status change is a mutating edit.
+  @ApiPropertyOptional({ description: 'Publication status', enum: ['DRAFT', 'PUBLISHED'] })
+  @IsOptional()
+  @IsIn(['DRAFT', 'PUBLISHED'])
+  status?: 'DRAFT' | 'PUBLISHED';
+
   @ApiPropertyOptional({ description: 'Template variable definitions (JSON)' })
   @IsOptional()
   variables?: Record<string, unknown>;

@@ -10,6 +10,8 @@ export class PromptManagementDtoMapper {
       description: entity.description ?? undefined,
       content: entity.content ?? '',
       category: entity.category ?? '',
+      // TASK-331 doc-02 F5 — surface the real status; pre-migration rows default DRAFT.
+      status: (entity.status as 'DRAFT' | 'PUBLISHED') ?? 'DRAFT',
       variables: entity.variables ?? undefined,
       currentVersionNumber: entity.currentVersionNumber ?? 1,
       departmentId: entity.departmentId ?? undefined,

@@ -66,12 +66,26 @@ export interface TestPromptInput {
   expectedVersion?: number;
 }
 
+// TASK-331 doc-02 F8 — per-dimension breakdown behind the composite score so
+// the panel can present an honest coverage/quality proxy. Null = not applicable.
+export interface PromptTestMetrics {
+  wordCount: number;
+  nonEmpty: boolean;
+  lengthScore: number;
+  jsonExpected: boolean;
+  jsonValid: boolean | null;
+  variablesDeclared: number;
+  variableCoverage: number | null;
+}
+
 export interface PromptTestResult {
   id: string;
   score: number;
   output: string;
   testedAt: string;
   version: number;
+  // TASK-331 doc-02 F8 — only present on a fresh run (not persisted).
+  metrics?: PromptTestMetrics;
 }
 
 export interface PromptUsageByDepartment {
@@ -133,6 +147,8 @@ interface PromptListParams {
   page?: number;
   limit?: number;
   category?: PromptTemplateCategory;
+  // TASK-331 doc-02 F5 — server-side Draft/Published filter (forwarded via `qs`).
+  status?: PromptTemplateStatus;
   search?: string;
   departmentId?: string;
   includeDisabled?: boolean;
@@ -194,7 +210,9 @@ export function usePromptTemplatesInfinite(
   return useInfiniteQuery({
     queryKey: [...keys.lists(tenantId), 'infinite', params, pageSize] as const,
     queryFn: ({ pageParam }) =>
-      adminClient.get<PaginatedResponse<PromptTemplate>>(`/admin/prompt-templates${qs({ ...params, page: pageParam, limit: pageSize })}`, { tenantId }),
+      adminClient.get<PaginatedResponse<PromptTemplate>>(`/admin/prompt-templates${qs({ ...params, page: pageParam, limit: pageSize })}`, {
+        tenantId,
+      }),
     initialPageParam: 1,
     getNextPageParam: (lastPage, _allPages, lastPageParam) => {
       const fetched = lastPageParam * pageSize;

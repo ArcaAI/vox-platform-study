@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { SysEventType, ResourceStatusType } from '@arcaai/domains';
+import { SysEventType, ResourceStatusType, PromptTemplateFactory } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { PromptManagementService } from '../prompt-management.service';
 
@@ -109,6 +109,7 @@ const createMockTemplateEntity = (overrides: Record<string, unknown> = {}) => {
         description: 'description' in overrides ? overrides.description : 'A test prompt template',
         content: overrides.content ?? 'You are a clinical assistant.',
         category: overrides.category ?? 'SYSTEM',
+        status: 'status' in overrides ? overrides.status : 'DRAFT',
         variables: 'variables' in overrides ? overrides.variables : null,
         currentVersionNumber: 'currentVersionNumber' in overrides ? overrides.currentVersionNumber : 1,
         departmentId: 'departmentId' in overrides ? overrides.departmentId : null,
@@ -132,7 +133,7 @@ const createMockTemplateEntity = (overrides: Record<string, unknown> = {}) => {
         disable: vi.fn().mockImplementation(() => { _changed = true; }),
         toObject: vi.fn().mockReturnValue(overrides),
     };
-    const trackedKeys = new Set(['name', 'description', 'content', 'variables', 'tags', 'resourceStatus', 'scope', 'ownerUserId']);
+    const trackedKeys = new Set(['name', 'description', 'content', 'status', 'variables', 'tags', 'resourceStatus', 'scope', 'ownerUserId']);
     return new Proxy(entity, {
         set(target, prop, value) {
             if (trackedKeys.has(prop as string)) _changed = true;
@@ -401,6 +402,42 @@ describe('PromptManagementService', () => {
                 }),
             );
         });
+
+        // TASK-331 doc-02 F5 — publication status threaded to the factory.
+        it('should pass the provided status to the factory', async () => {
+            mockTemplateRepo.findByName.mockResolvedValue(null);
+            mockTemplateRepo.create.mockResolvedValue(createMockTemplateEntity({ status: 'PUBLISHED' }));
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
+
+            const result = await service.createPromptTemplate({
+                name: 'Published Prompt',
+                content: 'x',
+                category: 'SYSTEM',
+                status: 'PUBLISHED',
+            } as never);
+
+            expect(PromptTemplateFactory.CreatePromptTemplate).toHaveBeenCalledWith(
+                expect.objectContaining({ status: 'PUBLISHED' }),
+            );
+            expect(result.status).toBe('PUBLISHED');
+        });
+
+        it('should default status to DRAFT when omitted', async () => {
+            mockTemplateRepo.findByName.mockResolvedValue(null);
+            mockTemplateRepo.create.mockResolvedValue(createMockTemplateEntity({ status: 'DRAFT' }));
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
+
+            const result = await service.createPromptTemplate({
+                name: 'Drafty',
+                content: 'x',
+                category: 'SYSTEM',
+            });
+
+            expect(PromptTemplateFactory.CreatePromptTemplate).toHaveBeenCalledWith(
+                expect.objectContaining({ status: 'DRAFT' }),
+            );
+            expect(result.status).toBe('DRAFT');
+        });
     });
 
     // ─── updatePromptTemplate ───────────────────────────────────
@@ -495,6 +532,28 @@ describe('PromptManagementService', () => {
             await service.updatePromptTemplate('template-id-1', { tags: ['new', 'tags'], expectedVersion: 1 } as never);
 
             expect(existing.tags).toEqual(['new', 'tags']);
+        });
+
+        // TASK-331 doc-02 F5 — a status-only change is a mutating edit (no new
+        // PromptVersion snapshot, but the OCC write still proceeds).
+        it('should apply a status change without creating a new version snapshot', async () => {
+            const existing = createMockTemplateEntity({ status: 'DRAFT', version: 3 });
+            mockTemplateRepo.findById.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(
+                createMockTemplateEntity({ status: 'PUBLISHED', version: 4 }),
+            );
+
+            const result = await service.updatePromptTemplate('template-id-1', {
+                status: 'PUBLISHED',
+                expectedVersion: 3,
+            } as never);
+
+            expect(existing.status).toBe('PUBLISHED');
+            // status-only edits don't spawn a PromptVersion row
+            expect(mockVersionRepo.create).not.toHaveBeenCalled();
+            // but the OCC write must still fire (status counts as a change)
+            expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledWith('template-id-1', existing, 3);
+            expect(result.status).toBe('PUBLISHED');
         });
 
         it('should increment version from null when currentVersionNumber is null', async () => {
@@ -675,6 +734,20 @@ describe('PromptManagementService', () => {
             const result = await service.listPromptTemplates({ departmentId: 'dept-1' });
 
             expect(mockQb.Where).toHaveBeenCalledWith({ departmentId: 'dept-1' });
+            expect(result).toHaveLength(1);
+        });
+
+        // TASK-331 doc-02 F5 — server-side status filter.
+        it('should filter by status when provided', async () => {
+            const mockQb = createMockQueryBuilder();
+            mockTemplateRepo.$.mockReturnValue(mockQb);
+            mockQb.ToList.mockResolvedValue([
+                createMockTemplateEntity({ id: 't1', status: 'PUBLISHED' }),
+            ]);
+
+            const result = await service.listPromptTemplates({ status: 'PUBLISHED' });
+
+            expect(mockQb.Where).toHaveBeenCalledWith({ status: 'PUBLISHED' });
             expect(result).toHaveLength(1);
         });
 
@@ -1472,6 +1545,72 @@ describe('PromptManagementService', () => {
                 svc.testPromptTemplate('tpl-1', { expectedVersion: 5 } as never),
             ).rejects.toThrow(OptimisticConcurrencyException);
         });
+
+        // ── TASK-331 doc-02 F8: deterministic composite rubric ──────────
+        describe('deterministic output rubric (TASK-331 doc-02 F8)', () => {
+            const runWith = async (entityOverrides: Record<string, unknown>, output: string) => {
+                const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, ...entityOverrides });
+                mockTemplateRepo.findById.mockResolvedValue(existing);
+                mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2, ...entityOverrides }));
+                const { svc } = buildSmrService({ content: output });
+                return svc.testPromptTemplate('tpl-1', { expectedVersion: 1 } as never);
+            };
+
+            it('scores an empty output as 0 (non-empty gate)', async () => {
+                const result = await runWith({ category: 'SYSTEM', content: 'Plain prompt', variables: null }, '   ');
+                expect(result.score).toBe(0);
+                expect(result.metrics?.nonEmpty).toBe(false);
+            });
+
+            it('scores a long plain output as full length (length-only dimension)', async () => {
+                const result = await runWith({ category: 'SYSTEM', content: 'Plain prompt', variables: null }, wordsOfLength(60));
+                expect(result.score).toBe(1);
+                expect(result.metrics?.jsonExpected).toBe(false);
+                expect(result.metrics?.variableCoverage).toBeNull();
+            });
+
+            it('rewards valid JSON for a JSON/DNA template', async () => {
+                const jsonOutput = JSON.stringify({ summary: wordsOfLength(60) });
+                const result = await runWith({ category: 'DNA_ANALYSIS', content: 'Return JSON', variables: null }, jsonOutput);
+                // dimensions: [length=1, json=1] → 1.0
+                expect(result.metrics?.jsonExpected).toBe(true);
+                expect(result.metrics?.jsonValid).toBe(true);
+                expect(result.score).toBe(1);
+            });
+
+            it('penalizes invalid JSON for a JSON/DNA template', async () => {
+                const result = await runWith({ category: 'DNA_ANALYSIS', content: 'Return JSON', variables: null }, wordsOfLength(60));
+                // dimensions: [length=1, json=0] → 0.5
+                expect(result.metrics?.jsonExpected).toBe(true);
+                expect(result.metrics?.jsonValid).toBe(false);
+                expect(result.score).toBe(0.5);
+            });
+
+            it('detects a JSON-enforcement cue in the content (no DNA category)', async () => {
+                const result = await runWith({ category: 'SYSTEM', content: 'Respond strictly in json', variables: null }, wordsOfLength(60));
+                expect(result.metrics?.jsonExpected).toBe(true);
+                expect(result.metrics?.jsonValid).toBe(false);
+                expect(result.score).toBe(0.5);
+            });
+
+            it('measures declared-variable coverage in the output', async () => {
+                const result = await runWith(
+                    { category: 'SYSTEM', content: 'Note about {{topic}} for {{patient}}', variables: [{ name: 'topic' }, { name: 'patient' }] },
+                    `topic ${wordsOfLength(60)}`,
+                );
+                // dimensions: [length=1, coverage=0.5] → 0.75
+                expect(result.metrics?.variablesDeclared).toBe(2);
+                expect(result.metrics?.variableCoverage).toBe(0.5);
+                expect(result.score).toBe(0.75);
+            });
+
+            it('surfaces the metrics breakdown on the result DTO', async () => {
+                const result = await runWith({ category: 'SYSTEM', content: 'Plain', variables: null }, wordsOfLength(60));
+                expect(result.metrics).toBeDefined();
+                expect(result.metrics?.wordCount).toBe(60);
+                expect(result.metrics?.lengthScore).toBe(1);
+            });
+        });
     });
 
     // ─── TASK-328 A4: repository-level pagination ────────────────────────
@@ -1507,6 +1646,25 @@ describe('PromptManagementService', () => {
             expect(where).toMatchObject({ tenantId: 'tenant-1', category: 'SUMMARY', name: { contains: 'soap', mode: 'insensitive' } });
             // includeDisabled drops the ENABLED-only constraint
             expect(where).not.toHaveProperty('resourceStatus');
+        });
+
+        // TASK-331 doc-02 F5 — server-side status filter folds into the where clause.
+        it('applies the status filter into the where clause', async () => {
+            mockTemplateRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
+
+            await service.listPromptTemplatesPaginated({ status: 'PUBLISHED' });
+
+            const [where] = mockTemplateRepo.findPaginated.mock.calls[0];
+            expect(where).toMatchObject({ tenantId: 'tenant-1', status: 'PUBLISHED' });
+        });
+
+        it('does not add a status constraint when status is omitted', async () => {
+            mockTemplateRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
+
+            await service.listPromptTemplatesPaginated({ category: 'SUMMARY' });
+
+            const [where] = mockTemplateRepo.findPaginated.mock.calls[0];
+            expect(where).not.toHaveProperty('status');
         });
 
         it('throws BadRequestException when tenantId is missing', async () => {

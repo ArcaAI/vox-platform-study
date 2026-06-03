@@ -3,13 +3,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { generateId } from '../../../utils';
 import { BaseEntityFactoryCreateProps } from '../../../common';
-import { PromptTemplateEntity, PromptTemplateScope } from '../../../entities/generated/core/PromptTemplateEntity';
+import { PromptTemplateEntity, PromptTemplateScope, PromptTemplateStatus } from '../../../entities/generated/core/PromptTemplateEntity';
 
 export interface CreatePromptTemplateProps extends BaseEntityFactoryCreateProps {
   name?: string | null;
   description?: string | null;
   content?: string | null;
   category?: string | null;
+  status?: PromptTemplateStatus | null;
   variables?: Record<string, unknown> | null;
   currentVersionNumber?: number | null;
   departmentId?: string | null;
@@ -41,6 +42,7 @@ export class PromptTemplateFactory {
       description: props.description ?? null,
       content: props.content ?? null,
       category: props.category ?? null,
+      status: props.status ?? 'DRAFT',
       variables: props.variables ?? null,
       currentVersionNumber: props.currentVersionNumber ?? 1,
       departmentId: props.departmentId ?? null,
