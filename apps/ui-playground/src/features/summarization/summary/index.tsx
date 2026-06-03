@@ -19,8 +19,8 @@ import { Textarea } from '@arcaai/ui/textarea';
 import { AlertCircle, Calendar, ChevronDown, Dna, FileText, Loader2, Mic, Radio, Search, Settings2, Sparkles, User, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { toast } from 'sonner';
-import type { AssembledGenerateRequest, SmrGenerateRequest, SmrGenerateResponse } from '../api';
-import { smrClient, useGenerateSummary } from '../api';
+import type { AssembledGenerateRequest, SmrGenerateResponse } from '../api';
+import { smrClient, useGenerateSummaryAssembled } from '../api';
 import { ImpersonationGuard, ProviderModelSelect, ResultCard, SavedSummariesPanel } from '../components';
 import { SmrStatusBadge } from '../components/smr-status-badge';
 import { addToHistory } from '../history';
@@ -120,7 +120,7 @@ export default function SummaryPage() {
   });
   const { data: myDnaStyle } = useMyDnaStyle({ enabled: debugMode && !ctx.requiresImpersonation });
 
-  const generateMutation = useGenerateSummary();
+  const generateAssembledMutation = useGenerateSummaryAssembled();
 
   const promptTemplates: PromptTemplate[] = useMemo(() => {
     const raw = promptTemplatesResponse;
@@ -394,26 +394,6 @@ export default function SummaryPage() {
     }
   }, [ctx.effectiveUserId, ctx.requiresImpersonation, contextSuggestionsLoaded, contextSuggestionsLoading, loadContextSuggestions]);
 
-  const buildPromptAndSystem = useCallback(
-    (contextMessage: string) => {
-      const templateContent = currentPromptText;
-      const dnaStyleText = currentDnaText;
-
-      let systemPrompt =
-        templateContent ||
-        'You are a medical documentation assistant. Generate a comprehensive clinical summary from the provided transcript and context.';
-      if (dnaStyleText) systemPrompt += `\n\nApply the following writing style:\n${dnaStyleText}`;
-      if (includeNER) systemPrompt += `\n\nAlso extract named medical entities (medications, conditions, procedures) and list them at the end.`;
-
-      let prompt = `Generate a clinical summary from the following transcript:\n\n${contextMessage}`;
-      if (preSummaryText) prompt += `\n\n--- Pre-Summary Context ---\n${preSummaryText}`;
-      if (additionalContext) prompt += `\n\n--- Additional Context ---\n${additionalContext}`;
-
-      return { prompt, systemPrompt };
-    },
-    [preSummaryText, additionalContext, currentPromptText, currentDnaText, includeNER],
-  );
-
   const handleStreamingGenerate = useCallback(async () => {
     if (!debugMode && !hasSelectedContextItems) {
       toast.error('Please select at least one context item');
@@ -537,31 +517,31 @@ export default function SummaryPage() {
           },
         );
       } else {
-        const nonDebugInputPayload = buildAssembledPayload({
-          inputMode: 'context_item',
-          selectedContextItemIds,
-          contextText: transcript,
-          selectedContextItems,
-          includeMessageForContextItems: true,
-        });
-
-        const contextMessage = nonDebugInputPayload.message ?? '';
-        if (!contextMessage.trim()) {
-          toast.error('None of the selected context items have content');
-          setIsStreaming(false);
-          return;
-        }
-
-        const { prompt, systemPrompt } = buildPromptAndSystem(contextMessage);
-        const body: SmrGenerateRequest = {
-          prompt,
-          system_prompt: systemPrompt,
-          provider: provider || 'ollama',
-          model: model || undefined,
-          temperature: temperature ?? 0.4,
-          max_tokens: maxTokens ?? 4096,
+        // TASK-331 doc-07 F2 (X3) — DEFAULT path streams via the ID-based assembled
+        // route so the backend resolves + ownership-checks the template / DNA style /
+        // context items by ID instead of inlining raw text. Raw `/text/generate`
+        // stays behind the debug branch above.
+        const dnaStyleId = selectedDnaStyleId || doctorDnaStyle?.id;
+        const body: AssembledGenerateRequest = {
+          type: 'summary',
           stream: true,
+          provider: provider || undefined,
+          model: model || undefined,
+          temperature,
+          max_tokens: maxTokens,
         };
+
+        Object.assign(
+          body,
+          buildAssembledPayload({
+            inputMode: 'context_item',
+            selectedContextItemIds,
+            contextText: transcript,
+          }),
+        );
+
+        if (selectedTemplateId) body.prompt_template_id = selectedTemplateId;
+        if (dnaStyleId) body.dna_writing_style_id = dnaStyleId;
 
         const taskRes = await smrClient.post<{
           task_id: string;
@@ -569,7 +549,7 @@ export default function SummaryPage() {
           stream_url?: string;
           content?: string;
           usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
-        }>('/text/generate', body);
+        }>('/text/generate/assembled', body);
 
         if (!taskRes.stream_url) {
           if (taskRes.content) {
@@ -631,7 +611,7 @@ export default function SummaryPage() {
                 model: result.model,
                 processingTimeMs: result.latency_ms,
                 tokenUsage: result.usage,
-                dnaStyle: doctorDnaStyle?.id,
+                dnaStyle: dnaStyleId,
                 template: selectedTemplateId,
                 createdAt: result.created_at,
               });
@@ -654,10 +634,8 @@ export default function SummaryPage() {
     hasSelectedContextItems,
     hasManualText,
     selectedContextItemIds,
-    selectedContextItems,
     transcript,
     debugMode,
-    buildPromptAndSystem,
     provider,
     model,
     temperature,
@@ -666,8 +644,6 @@ export default function SummaryPage() {
     selectedDnaStyleId,
     doctorDnaStyle?.id,
     visitType,
-    preSummaryText,
-    additionalContext,
   ]);
 
   const handleGenerate = useCallback(async () => {
@@ -731,35 +707,33 @@ export default function SummaryPage() {
       }
     } else {
       try {
-        const dnaStyleText = currentDnaText || undefined;
-        const templateContent = currentPromptText || undefined;
-
-        const nonDebugInputPayload = buildAssembledPayload({
-          inputMode: 'context_item',
-          selectedContextItemIds,
-          contextText: transcript,
-          selectedContextItems,
-          includeMessageForContextItems: true,
-        });
-
-        const contextMessage = nonDebugInputPayload.message ?? '';
-        if (!contextMessage.trim()) {
-          toast.error('None of the selected context items have content');
-          return;
-        }
-
-        const result = await generateMutation.mutateAsync({
-          transcript: contextMessage,
-          preSummaryText: preSummaryText || undefined,
-          additionalContext: additionalContext || undefined,
-          templateContent,
-          dnaStyleText,
-          includeNER,
-          provider,
+        // TASK-331 doc-07 F2 (X3) — DEFAULT path generates via the ID-based assembled
+        // route so the backend resolves + ownership-checks the template / DNA style /
+        // context items by ID instead of inlining raw DNA text + template + context
+        // content. Raw `/text/generate` stays behind the debug branch above.
+        const dnaStyleId = selectedDnaStyleId || doctorDnaStyle?.id;
+        const body: AssembledGenerateRequest = {
+          type: 'summary',
+          stream: false,
+          provider: provider || undefined,
           model: model || undefined,
           temperature,
-          maxTokens,
-        });
+          max_tokens: maxTokens,
+        };
+
+        Object.assign(
+          body,
+          buildAssembledPayload({
+            inputMode: 'context_item',
+            selectedContextItemIds,
+            contextText: transcript,
+          }),
+        );
+
+        if (selectedTemplateId) body.prompt_template_id = selectedTemplateId;
+        if (dnaStyleId) body.dna_writing_style_id = dnaStyleId;
+
+        const result = await generateAssembledMutation.mutateAsync(body);
 
         setResults((prev) => [result, ...prev]);
         addToHistory({
@@ -770,7 +744,7 @@ export default function SummaryPage() {
           model: result.model,
           processingTimeMs: result.latency_ms,
           tokenUsage: result.usage,
-          dnaStyle: doctorDnaStyle?.id,
+          dnaStyle: dnaStyleId,
           template: selectedTemplateId,
           createdAt: result.created_at,
         });
@@ -785,7 +759,6 @@ export default function SummaryPage() {
     hasSelectedContextItems,
     hasManualText,
     selectedContextItemIds,
-    selectedContextItems,
     transcript,
     debugMode,
     provider,
@@ -796,15 +769,10 @@ export default function SummaryPage() {
     selectedDnaStyleId,
     doctorDnaStyle?.id,
     visitType,
-    preSummaryText,
-    additionalContext,
-    currentPromptText,
-    currentDnaText,
-    includeNER,
-    generateMutation,
+    generateAssembledMutation,
   ]);
 
-  const isGenerating = generateMutation.isPending || isStreaming;
+  const isGenerating = generateAssembledMutation.isPending || isStreaming;
 
   const summarizationCode = useMemo(
     () =>
