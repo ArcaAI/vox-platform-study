@@ -23,7 +23,8 @@ import {
  *   10 Consultations        — full lifecycle coverage across 6 statuses and 6 departments
  *   24 ContextItems          — transcripts, summaries, audio, worknotes, pre-summaries, case notes
  *   4  SummaryMetas          — AI generation metadata
- *   4  AudioRecordings       — linked to audio context items
+ *   3  Media                 — dual-capture demo blobs (primary + raw + processed) for the GEN recording
+ *   4  AudioRecordings       — linked to audio context items (GEN row carries raw+processed dual-capture ids)
  *   18 ContextItemVersions   — content-at-version audit trail (v1 initials + multi-version edit history)
  *   8  NamedEntities         — NER results for medications, conditions, procedures, anatomy
  *
@@ -621,15 +622,94 @@ const DEFAULT_SUMMARY_METAS = [
 ];
 
 // =============================================================================
+// MEDIA (3) — dual-capture demo blobs for the GEN recording (TASK-331 doc-06 F2)
+//
+// `Media` is not seeded by any other seed file, so the dual-capture demo rows
+// live here, immediately before the AudioRecording rows that reference them.
+// AudioRecording.mediaId / rawMediaId / processedMediaId are plain soft string
+// references (no FK), so ordering is for readability, not referential integrity.
+// IDs use a dedicated 96000000-… block (90=consultation … 95=named-entity → 96=media).
+// =============================================================================
+
+export const SEED_MEDIA_IDS = {
+    GEN_AUDIO_PRIMARY: '96000000-0000-0000-0000-000000000001',
+    GEN_AUDIO_RAW: '96000000-0000-0000-0000-000000000002',
+    GEN_AUDIO_PROCESSED: '96000000-0000-0000-0000-000000000003',
+} as const;
+
+export const DEFAULT_MEDIA = [
+    {
+        // Primary recording — browser-captured WebM kept as the back-compat
+        // playback reference (matches AudioRecording.format = 'webm').
+        id: SEED_MEDIA_IDS.GEN_AUDIO_PRIMARY,
+        tenantId: SEED_TENANT_ID,
+        name: 'gen-consultation-recording.webm',
+        uri: `s3://hope-audio/${SEED_TENANT_ID}/2025/12/gen-consultation-recording.webm`,
+        extension: 'webm',
+        mimeType: 'audio/webm',
+        size: 2960000,
+        hash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        createdBy: SEED_USER_IDS.DOCTOR,
+    },
+    {
+        // RAW stream — unprocessed PCM captured BEFORE noise removal / VAD.
+        id: SEED_MEDIA_IDS.GEN_AUDIO_RAW,
+        tenantId: SEED_TENANT_ID,
+        name: 'gen-consultation-recording.raw.wav',
+        uri: `s3://hope-audio/${SEED_TENANT_ID}/2025/12/gen-consultation-recording.raw.wav`,
+        extension: 'wav',
+        mimeType: 'audio/wav',
+        size: 5920000,
+        hash: 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
+        createdBy: SEED_USER_IDS.DOCTOR,
+    },
+    {
+        // PROCESSED stream — denoised + VAD-trimmed + 16 kHz-resampled PCM fed
+        // to the ASR model (shorter than raw after silence trimming).
+        id: SEED_MEDIA_IDS.GEN_AUDIO_PROCESSED,
+        tenantId: SEED_TENANT_ID,
+        name: 'gen-consultation-recording.processed.wav',
+        uri: `s3://hope-audio/${SEED_TENANT_ID}/2025/12/gen-consultation-recording.processed.wav`,
+        extension: 'wav',
+        mimeType: 'audio/wav',
+        size: 5120000,
+        hash: 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
+        createdBy: SEED_USER_IDS.DOCTOR,
+    },
+];
+
+// =============================================================================
 // AUDIO RECORDINGS (4)
 // =============================================================================
 
-const DEFAULT_AUDIO_RECORDINGS = [
+interface AudioRecordingSeed {
+    id: string;
+    tenantId: string;
+    contextItemId: string;
+    mediaId: string;
+    // Dual capture (TASK-329 X8) — optional raw/processed media references.
+    rawMediaId?: string;
+    processedMediaId?: string;
+    duration: number | null;
+    format: string;
+    sampleRate: number;
+    channels: number;
+    bitrate: number;
+    language: string;
+    sequenceNumber: number;
+    recordedAt: Date;
+}
+
+export const DEFAULT_AUDIO_RECORDINGS: AudioRecordingSeed[] = [
     {
+        // TASK-331 doc-06 F2 — dual-capture demo: real primary media + raw and
+        // processed media ids so the playground's "Dual capture" badge renders.
         id: SEED_AUDIO_RECORDING_IDS.GEN_AUDIO,
         tenantId: SEED_TENANT_ID,
         contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_AUDIO,
-        mediaId: 'seed-media-placeholder-001',
+        mediaId: SEED_MEDIA_IDS.GEN_AUDIO_PRIMARY,
+        rawMediaId: SEED_MEDIA_IDS.GEN_AUDIO_RAW,
+        processedMediaId: SEED_MEDIA_IDS.GEN_AUDIO_PROCESSED,
         duration: 185000,
         format: 'webm',
         sampleRate: 48000,
@@ -1071,6 +1151,15 @@ export const seedConsultation = async (client: CorePrismaClient) => {
         });
     }
     console.log(`  Seeded ${DEFAULT_SUMMARY_METAS.length} summary metas`);
+
+    for (const media of DEFAULT_MEDIA) {
+        await client.media.upsert({
+            where: { id: media.id },
+            update: media,
+            create: media,
+        });
+    }
+    console.log(`  Seeded ${DEFAULT_MEDIA.length} media`);
 
     for (const audio of DEFAULT_AUDIO_RECORDINGS) {
         await client.audioRecording.upsert({

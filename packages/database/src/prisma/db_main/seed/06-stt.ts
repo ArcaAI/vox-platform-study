@@ -1058,6 +1058,12 @@ preprocessing:
   denoise:
     enabled: true
     strength: 0.7
+  # Dual capture (TASK-329 X8 / TASK-331 doc-06 F2): persist the pre-filter
+  # (raw) stream alongside the processed stream so the consultation playground
+  # can surface RAW+PROCESSED. Toggle per pipeline; enabled on the default.
+  dual_capture:
+    enabled: true
+    capture_raw: true       # capture audio BEFORE noise removal / VAD trimming
 
 inference:
   batch_size: 1
@@ -1073,6 +1079,9 @@ postprocessing:
     enabled: true
   remove_disfluencies: false
   lowercase: false
+  dual_capture:
+    enabled: true
+    capture_processed: true # capture audio AFTER all filters
 `,
 
     // Fast turbo pipeline for real-time (v1.1 — safetensor, MPS/CUDA/CPU auto)
