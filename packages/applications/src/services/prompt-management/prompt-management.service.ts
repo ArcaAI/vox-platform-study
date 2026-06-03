@@ -51,6 +51,67 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// TASK-331 doc-02 F8 — deterministic output-quality rubric helpers. Kept as
+// pure module functions so they are trivially unit-testable in isolation.
+
+/** Context the `scoreOutput` rubric branches on (a slice of the template). */
+interface PromptScoreContext {
+  category?: string | null;
+  content?: string | null;
+  variables?: Record<string, unknown> | null;
+}
+
+/** Per-dimension sub-scores surfaced to the UI for an honest breakdown. */
+interface PromptScoreMetrics {
+  wordCount: number;
+  nonEmpty: boolean;
+  lengthScore: number;
+  /** Whether the template declares JSON output (DNA_ANALYSIS / JSON cue). */
+  jsonExpected: boolean;
+  /** `null` when JSON output is not expected, else whether the output parsed. */
+  jsonValid: boolean | null;
+  variablesDeclared: number;
+  /** `null` when the template declares no variables, else [0,1] coverage. */
+  variableCoverage: number | null;
+}
+
+interface PromptScoreResult {
+  score: number;
+  metrics: PromptScoreMetrics;
+}
+
+/** True when the template is meant to emit JSON (category or content cue). */
+function templateExpectsJson(category?: string | null, content?: string | null): boolean {
+  if (category === 'DNA_ANALYSIS') return true;
+  if (!content) return false;
+  return /json/i.test(content);
+}
+
+function isValidJson(value: string): boolean {
+  if (!value) return false;
+  try {
+    JSON.parse(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Declared variable names for the coverage dimension. The admin UI persists
+ * `variables` as an array of `{ name, type, required, … }`; fall back to a
+ * plain `{ name: definition }` object whose keys are the variable names.
+ */
+function extractDeclaredVariableNames(variables?: Record<string, unknown> | null): string[] {
+  if (!variables) return [];
+  if (Array.isArray(variables)) {
+    return variables
+      .map((v) => (v && typeof v === 'object' ? (v as { name?: unknown }).name : undefined))
+      .filter((name): name is string => typeof name === 'string' && name.length > 0);
+  }
+  return Object.keys(variables);
+}
+
 @Injectable()
 export class PromptManagementService extends BaseService implements IPromptManagementService {
   private readonly smrServiceUrl: string;
@@ -91,6 +152,8 @@ export class PromptManagementService extends BaseService implements IPromptManag
       description: dto.description ?? null,
       content: dto.content,
       category: dto.category,
+      // TASK-331 doc-02 F5 — persist the publication status (defaults DRAFT).
+      status: dto.status ?? 'DRAFT',
       variables: dto.variables ?? null,
       departmentId: dto.departmentId ?? null,
       scope: SCOPE_TENANT_DEFAULT,
@@ -219,6 +282,13 @@ export class PromptManagementService extends BaseService implements IPromptManag
       }
     }
 
+    // TASK-331 doc-02 F5 — a publication-status change is a mutating edit (it does
+    // NOT spawn a new PromptVersion snapshot, but it marks the row dirty so the
+    // OCC write proceeds). Set it before the `hasChanges` gate below.
+    if (dto.status !== undefined) {
+      template.status = dto.status;
+    }
+
     if (!template.hasChanges) {
       throw new ArgumentInvalidException('No changes to write to.');
     }
@@ -264,6 +334,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       qb.Where({ resourceStatus: ResourceStatusType.ENABLED });
     }
     if (filters?.category) qb.Where({ category: filters.category });
+    if (filters?.status) qb.Where({ status: filters.status });
     if (filters?.departmentId) qb.Where({ departmentId: filters.departmentId });
     if (filters?.search) qb.Where({ name: { contains: filters.search, mode: 'insensitive' } });
     const models = await qb.ToList();
@@ -289,6 +360,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const where: Record<string, unknown> = { tenantId };
     if (!filters?.includeDisabled) where.resourceStatus = ResourceStatusType.ENABLED;
     if (filters?.category) where.category = filters.category;
+    if (filters?.status) where.status = filters.status;
     if (filters?.departmentId) where.departmentId = filters.departmentId;
     if (filters?.search) where.name = { contains: filters.search, mode: 'insensitive' };
 
@@ -364,7 +436,11 @@ export class PromptManagementService extends BaseService implements IPromptManag
 
     const prompt = this.interpolateTemplate(template.content ?? '', dto.variables, dto.sampleInput);
     const output = await this.callSmrGenerate(prompt);
-    const score = this.scoreOutput(output);
+    const { score, metrics } = this.scoreOutput(output, {
+      category: template.category,
+      content: template.content,
+      variables: template.variables,
+    });
     const testedAt = new Date();
 
     template.lastTestScore = score;
@@ -385,6 +461,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       output,
       testedAt: testedAt.toISOString(),
       version: updated.version,
+      metrics,
     };
   }
 
@@ -480,15 +557,63 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * Deterministic quality score in [0, 1]. The output earns the full score
-   * once it reaches `FULL_SCORE_WORD_COUNT` words — a testable proxy for "the
-   * template produced a substantive response", NOT a semantic judgement.
-   * Rounded to 2 decimals.
+   * TASK-331 doc-02 F8 — deterministic, testable output-quality proxy in
+   * [0, 1] for a prompt test run.
+   *
+   * This is **not** a semantic or clinical judgement. The previous heuristic
+   * (`min(1, words/50)`) let any ≥50-word output score 100%, which read as a
+   * clinical-looking quality %. This composite is a transparent rubric that
+   * answers "did the template produce a well-formed, substantive response?".
+   *
+   * The score is the unweighted mean of the *applicable* dimensions:
+   *  - **length** (always): word count vs `FULL_SCORE_WORD_COUNT`, capped at 1.
+   *  - **json** (only when the template declares JSON output — category
+   *    `DNA_ANALYSIS` or a JSON-enforcement cue in the content): 1 if the
+   *    output parses as JSON, else 0.
+   *  - **coverage** (only when the template declares `{{variables}}`): the
+   *    fraction of declared variable names that appear (case-insensitive) in
+   *    the output.
+   *
+   * An empty output short-circuits to 0. Rounded to 2 decimals. The
+   * per-dimension `metrics` are returned so the UI can present an honest
+   * breakdown rather than a single opaque percentage.
    */
-  private scoreOutput(output: string): number {
-    const words = output.trim().split(/\s+/).filter(Boolean).length;
-    const raw = Math.min(1, words / FULL_SCORE_WORD_COUNT);
-    return Math.round(raw * 100) / 100;
+  private scoreOutput(output: string, context?: PromptScoreContext): PromptScoreResult {
+    const trimmed = (output ?? '').trim();
+    const nonEmpty = trimmed.length > 0;
+    const wordCount = nonEmpty ? trimmed.split(/\s+/).filter(Boolean).length : 0;
+    const lengthScore = Math.min(1, wordCount / FULL_SCORE_WORD_COUNT);
+
+    const jsonExpected = templateExpectsJson(context?.category, context?.content);
+    const jsonValid = jsonExpected ? isValidJson(trimmed) : null;
+
+    const declaredVariables = extractDeclaredVariableNames(context?.variables);
+    const variablesDeclared = declaredVariables.length;
+    const variableCoverage =
+      variablesDeclared > 0
+        ? declaredVariables.filter((name) => trimmed.toLowerCase().includes(name.toLowerCase())).length / variablesDeclared
+        : null;
+
+    const metrics: PromptScoreMetrics = {
+      wordCount,
+      nonEmpty,
+      lengthScore: Math.round(lengthScore * 100) / 100,
+      jsonExpected,
+      jsonValid,
+      variablesDeclared,
+      variableCoverage: variableCoverage === null ? null : Math.round(variableCoverage * 100) / 100,
+    };
+
+    if (!nonEmpty) {
+      return { score: 0, metrics };
+    }
+
+    const dimensions: number[] = [lengthScore];
+    if (jsonValid !== null) dimensions.push(jsonValid ? 1 : 0);
+    if (variableCoverage !== null) dimensions.push(variableCoverage);
+
+    const raw = dimensions.reduce((sum, value) => sum + value, 0) / dimensions.length;
+    return { score: Math.round(raw * 100) / 100, metrics };
   }
 
   // ─── Internal authorization helpers (TASK-294 DEF-C2) ────────────────

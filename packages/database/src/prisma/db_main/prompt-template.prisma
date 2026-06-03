@@ -20,6 +20,13 @@ enum PromptTemplateScope {
     @@schema("core")
 }
 
+enum PromptTemplateStatus {
+    DRAFT
+    PUBLISHED
+
+    @@schema("core")
+}
+
 model PromptTemplate {
     // Meta fields
     metaData Json?  @map("_metadata") @db.JsonB
@@ -34,6 +41,7 @@ model PromptTemplate {
     description String?
     content     String  @db.Text
     category    PromptTemplateCategory
+    status      PromptTemplateStatus @default(DRAFT)
     variables   Json?   @db.JsonB
 
     // Quality/score testing (TASK-328 A4) — last SMR-scored test run

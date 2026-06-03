@@ -47,19 +47,23 @@ export class PromptManagementController {
     multi: true,
   })
   @ApiQuery({ name: 'category', required: false, type: String })
+  @ApiQuery({ name: 'status', required: false, enum: ['DRAFT', 'PUBLISHED'], description: 'Filter by publication status (TASK-331 doc-02 F5)' })
   @ApiQuery({ name: 'departmentId', required: false, type: String })
   @ApiQuery({ name: 'search', required: false, type: String })
   @ApiQuery({ name: 'includeDisabled', required: false, type: Boolean, description: 'Include disabled templates in results' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   async list(
-    @Query() queryParams: { category?: string; departmentId?: string; search?: string; includeDisabled?: string; page?: number; limit?: number },
+    @Query()
+    queryParams: { category?: string; status?: string; departmentId?: string; search?: string; includeDisabled?: string; page?: number; limit?: number },
   ): Promise<PaginatedPromptTemplateResponse> {
     // TASK-328 A4 — pagination is pushed down to the repository
     // (`findPaginated` → `db.findMany` + `db.count`) instead of materializing
     // the full tenant result set and slicing it in memory.
     return this.promptService.listPromptTemplatesPaginated({
       category: queryParams.category,
+      // TASK-331 doc-02 F5 — server-side Draft/Published filter.
+      status: queryParams.status,
       departmentId: queryParams.departmentId,
       search: queryParams.search,
       includeDisabled: queryParams.includeDisabled === 'true',

@@ -9,11 +9,14 @@ import type { PromptVersionEntity } from './PromptVersionEntity';
 
 export type PromptTemplateScope = 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USER_PERSONAL';
 
+export type PromptTemplateStatus = 'DRAFT' | 'PUBLISHED';
+
 export interface IPromptTemplateEntity extends IBaseTaggedEntity {
   name?: string | null;
   description?: string | null;
   content?: string | null;
   category?: string | null;
+  status?: PromptTemplateStatus | null;
   variables?: Record<string, unknown> | null;
   currentVersionNumber?: number | null;
   departmentId?: string | null;
@@ -32,6 +35,7 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
   private _description?: IPromptTemplateEntity['description'];
   private _content?: IPromptTemplateEntity['content'];
   private _category?: IPromptTemplateEntity['category'];
+  private _status?: IPromptTemplateEntity['status'];
   private _variables?: IPromptTemplateEntity['variables'];
   private _currentVersionNumber?: IPromptTemplateEntity['currentVersionNumber'];
   private _departmentId?: IPromptTemplateEntity['departmentId'];
@@ -50,6 +54,7 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
     this._description = init.description;
     this._content = init.content;
     this._category = init.category;
+    this._status = init.status ?? 'DRAFT';
     this._variables = init.variables;
     this._currentVersionNumber = init.currentVersionNumber;
     this._departmentId = init.departmentId;
@@ -93,6 +98,14 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
 
   set category(value: IPromptTemplateEntity['category']) {
     this.setProperty('category', value);
+  }
+
+  get status(): IPromptTemplateEntity['status'] {
+    return this._status ?? 'DRAFT';
+  }
+
+  set status(value: IPromptTemplateEntity['status']) {
+    this.setProperty('status', value);
   }
 
   get variables(): IPromptTemplateEntity['variables'] {
