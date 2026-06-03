@@ -540,6 +540,15 @@ export const SEED_GLOBAL_SETTING_IDS = {
     FOURBITS_LOCKED_CONFIG_PATHS: '85000000-0000-0000-0002-000000000050',
     MUMBAI_LOCKED_CONFIG_PATHS: '85000000-0000-0000-0003-000000000050',
 
+    // TASK-331 doc-04 F4 — per-tenant admin-console menu-order default
+    // (namespace `arcaai-admin`, key `menuOrder`). Seeds the TENANT tier of the
+    // resolver's USER → TENANT → DEFAULT precedence. Suffix `051` mirrors the
+    // `050` locked-config-paths numbering; the 4th UUID group encodes the tenant.
+    GLOBAL_ADMIN_MENU_ORDER: '85000000-0000-0000-0000-000000000051',
+    ARCAAI_ADMIN_MENU_ORDER: '85000000-0000-0000-0001-000000000051',
+    FOURBITS_ADMIN_MENU_ORDER: '85000000-0000-0000-0002-000000000051',
+    MUMBAI_ADMIN_MENU_ORDER: '85000000-0000-0000-0003-000000000051',
+
     // TASK-316 — DB-backed rate-limit config (platform tenant only; gateway-wide).
     RATE_LIMIT_ENABLED: '85000000-0000-0000-0000-000000000300',
     RATE_LIMIT_TIER_DEFAULT_LIMIT: '85000000-0000-0000-0000-000000000301',

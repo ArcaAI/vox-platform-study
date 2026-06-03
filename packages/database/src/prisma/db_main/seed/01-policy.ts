@@ -91,6 +91,11 @@ export const DEFAULT_POLICIES = [
             { action: 'manage', subject: 'Tag', conditions: { tenantId: '${context.tenantId}' } },
             // Storage management
             { action: 'manage', subject: 'Storage', conditions: { tenantId: '${context.tenantId}' } },
+            // Departments & ASR pipelines (TASK-331 doc-04 F1) — close the
+            // nav↔backend gap: tenant admins self-serve their own tenant's
+            // departments and audio (ASR) pipelines, both tenant-scoped.
+            { action: 'manage', subject: 'Department', conditions: { tenantId: '${context.tenantId}' } },
+            { action: 'manage', subject: 'AsrPipeline', conditions: { tenantId: '${context.tenantId}' } },
             // DNA writing-style management (TASK-326 X7) — tenant admins manage
             // their own tenant's doctor writing-style reports. The service still
             // enforces the PHI/tenant scope guard (`assertReportInScope`); even

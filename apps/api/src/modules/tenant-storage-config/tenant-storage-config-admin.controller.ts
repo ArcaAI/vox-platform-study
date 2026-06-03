@@ -2,7 +2,7 @@ import { ITenantStorageConfigService, TenantStorageConfigResponse, UpsertTenantS
 import { Body, Controller, Delete, Get, Inject, Param, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { TenantOwnedResource } from '../../common';
-import { CanDelete, CanManage, CanRead, CanUpdate } from '../../decorators';
+import { CanAny, CanDelete, CanRead, CanUpdate } from '../../decorators';
 
 /**
  * Admin API for per-tenant / per-bucket storage configuration (TASK-318 / R5).
@@ -12,14 +12,18 @@ import { CanDelete, CanManage, CanRead, CanUpdate } from '../../decorators';
  * for their tenant, optionally overriding per bucket. The active tenant is taken
  * from the request context; the service scopes every read/write to it.
  *
- * Mirrors `TenantBucketController`: class-level `@CanManage('Tenant')` gates the
- * surface, method-level `@Can*('Storage')` adds the specific operation, and
+ * Mirrors `TenantBucketController`: class-level
+ * `@CanAny(['manage','Tenant'],['update','Tenant'])` gates the surface
+ * (TASK-331 doc-04 F1 — tenant admins reach it via tenant-scoped
+ * `update:Tenant`; SUPER_ADMIN via `manage:all`), method-level
+ * `@Can*('Storage')` adds the specific operation (already granted to tenant
+ * admins by `tenant-full-access`'s `manage:Storage`), and
  * `@TenantOwnedResource` guards the per-record delete route.
  */
 @ApiBearerAuth()
 @ApiTags('admin-storage-config')
 @Controller('admin/tenants/storage/config')
-@CanManage('Tenant')
+@CanAny(['manage', 'Tenant'], ['update', 'Tenant'])
 export class TenantStorageConfigAdminController {
   constructor(
     @Inject(ITenantStorageConfigService)
