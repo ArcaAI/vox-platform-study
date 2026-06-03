@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TenantService } from '../tenant.service';
-import { SysEventType, ResourceStatusType } from '@arcaai/domains';
+import { SysEventType, ResourceStatusType, ResourceType } from '@arcaai/domains';
 
 // Mock ClsService - represents the request context
 const mockClsService = {
@@ -58,6 +58,7 @@ const mockGlobalSettingRepository = {
 const mockDepartmentRepository = {
     findAll: vi.fn(),
     count: vi.fn(),
+    create: vi.fn(),
 };
 
 // Mock PromptTemplateRepository
@@ -280,6 +281,11 @@ describe('TenantService', () => {
                     return null;
             }
         });
+
+        // TASK-331 r2605 #4 — default: echo the persisted department so
+        // create()'s post-provision broadcast can read `saved.id` /
+        // `saved.createdAt`. Individual tests override this as needed.
+        mockDepartmentRepository.create.mockImplementation(async (entity: any) => entity);
 
         // Create service instance with mocks
         service = new TenantService(
@@ -1494,6 +1500,67 @@ describe('TenantService', () => {
             await expect(
                 service.create({ key: 'NEW_TENANT', name: 'New Tenant' }),
             ).resolves.toEqual(expect.objectContaining({ id: 'new-tenant-id' }));
+        });
+    });
+
+    /**
+     * TASK-331 r2605 Finding #4 — A console-created tenant must own at least
+     * one ENABLED department so its first admin can satisfy the TASK-305
+     * Phase F login invariant (an ENABLED role AND an ENABLED department in
+     * the tenant). `create()` now provisions a default General Practice
+     * (`GEN`) department for the NEW tenant after config provisioning. The
+     * insert is non-fatal: a failure is logged and swallowed so it never
+     * aborts tenant creation (mirrors the bucket/config provisioning blocks).
+     */
+    describe('create — provisionDefaultDepartment (TASK-331 r2605 #4)', () => {
+        it('provisions a GEN department bound to the NEW tenant id (not the CLS tenant)', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id', key: 'NEW_TENANT' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+            mockTenantRepository.findFirst.mockResolvedValue(null);
+
+            await service.create({ key: 'NEW_TENANT', name: 'New Tenant' });
+
+            expect(mockDepartmentRepository.create).toHaveBeenCalledTimes(1);
+            const created = mockDepartmentRepository.create.mock.calls[0][0];
+            // CLS tenant is `tenant-1`; the department MUST be bound to the
+            // freshly created tenant, never the caller's CLS tenant.
+            expect(created.tenantId).toBe('new-tenant-id');
+            expect(created.code).toBe('GEN');
+            expect(created.name).toBe('General Practice');
+            expect(created.defaultSummaryTemplate).toBe('SOAP');
+            expect(created.preSummaryPromptId).toBeNull();
+            expect(created.newPatientPromptId).toBeNull();
+            expect(created.revisitPromptId).toBeNull();
+        });
+
+        it('broadcasts a ResourceCreated SysEvent for the provisioned department', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+            mockTenantRepository.findFirst.mockResolvedValue(null);
+
+            await service.create({ key: 'NEW_TENANT', name: 'New Tenant' });
+
+            const deptCreatedBroadcasts = mockEventEmitter.emit.mock.calls.filter(
+                ([eventName, payload]) =>
+                    eventName === SysEventType.ResourceCreated &&
+                    (payload as any).resourceType === ResourceType.Department,
+            );
+            expect(deptCreatedBroadcasts).toHaveLength(1);
+            const [, payload] = deptCreatedBroadcasts[0] as [string, any];
+            expect(payload.data).toEqual(
+                expect.objectContaining({ code: 'GEN', tenantId: 'new-tenant-id' }),
+            );
+        });
+
+        it('does not abort tenant creation when department provisioning fails (non-fatal)', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+            mockTenantRepository.findFirst.mockResolvedValue(null);
+            mockDepartmentRepository.create.mockRejectedValueOnce(new Error('dept insert failed'));
+
+            const result = await service.create({ key: 'NEW_TENANT', name: 'New Tenant' });
+
+            expect(result.id).toBe('new-tenant-id');
         });
     });
 
