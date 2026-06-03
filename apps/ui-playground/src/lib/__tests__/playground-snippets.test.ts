@@ -65,19 +65,28 @@ describe('playground-snippets', () => {
   });
 
   describe('audio', () => {
-    it('reflects the selected model / task / language', () => {
+    it('uses the REAL @arcaai/vox useArcaAudio hook (not the playground useRealtimeTranscription)', () => {
       const code = buildAudioSnippet({ modelId: 'whisper-large-v3', task: 'translate', language: 'vi' });
-      expect(code).toContain('useRealtimeTranscription');
-      expect(code).toContain("model: 'whisper-large-v3'");
-      expect(code).toContain("task: 'translate'");
-      expect(code).toContain("language: 'vi'");
+      // F8 — the real SDK audio hook is useArcaAudio; useRealtimeTranscription
+      // is a playground-only hook with a different option shape.
+      expect(code).toContain("import { useArcaAudio } from '@arcaai/vox'");
+      expect(code).not.toContain('useRealtimeTranscription');
+      expect(code).toContain('useArcaAudio()');
+      expect(code).toContain('startFromPreferences');
+      expect(code).toContain('isCapturing');
+      expect(code).toContain('currentTranscript');
+      // model / task / language reflect the current selection — surfaced in a
+      // comment because they come from resolved config, not start() args.
+      expect(code).toContain('whisper-large-v3');
+      expect(code).toContain('translate');
+      expect(code).toContain('vi');
     });
 
     it('defaults model/task/language when unset', () => {
       const code = buildAudioSnippet({});
-      expect(code).toContain("model: 'whisper-base'");
-      expect(code).toContain("task: 'transcribe'");
-      expect(code).toContain("language: 'auto'");
+      expect(code).toContain('whisper-base');
+      expect(code).toContain('transcribe');
+      expect(code).toContain('auto');
     });
   });
 
@@ -95,10 +104,14 @@ describe('playground-snippets', () => {
   });
 
   describe('dna', () => {
-    it('summarises the current style version + tone', () => {
+    it('uses the REAL @arcaai/vox useDnaStyle hook (not the app-internal api path)', () => {
       const code = buildDnaSnippet({ reportId: 'r1', version: 4, tone: 'concise' });
-      expect(code).toContain('useMyDnaStyle');
-      expect(code).toContain('useGenerateDnaReport');
+      // F8 — @arcaai/vox exports useDnaStyle; the snippet must not reference the
+      // app-internal `@/features/...` path (not a real SDK export).
+      expect(code).toContain("import { useDnaStyle } from '@arcaai/vox'");
+      expect(code).not.toContain('@/features/dna-writing-style');
+      expect(code).toContain('useDnaStyle()');
+      expect(code).toContain('generate');
       expect(code).toContain('// current style: v4 · concise');
     });
 
@@ -109,12 +122,13 @@ describe('playground-snippets', () => {
   });
 
   describe('summarization', () => {
-    it('mirrors the generation settings into a request payload', () => {
+    it('emits the assembled-route contract: snake_case ids + context_item_ids', () => {
       const code = buildSummarizationSnippet({
         provider: 'openai',
         model: 'gpt-4o',
         promptTemplateId: 'tpl-1',
         dnaStyleId: 'dna-1',
+        contextItemIds: ['ctx-1', 'ctx-2'],
         temperature: 0.7,
         maxTokens: 2048,
         includeNER: true,
@@ -122,18 +136,24 @@ describe('playground-snippets', () => {
       });
       expect(code).toContain("provider: 'openai'");
       expect(code).toContain("model: 'gpt-4o'");
-      expect(code).toContain("promptTemplateId: 'tpl-1'");
-      expect(code).toContain("dnaStyleId: 'dna-1'");
+      // F8 — the assembled route is ID-based + snake_case (matches pre-summary's
+      // POST /text/generate/assembled body), not camelCase raw-text fields.
+      expect(code).toContain("prompt_template_id: 'tpl-1'");
+      expect(code).toContain("dna_writing_style_id: 'dna-1'");
+      expect(code).toContain('context_item_ids:');
+      expect(code).toContain("'ctx-1'");
+      expect(code).toContain("'ctx-2'");
+      expect(code).not.toContain('promptTemplateId');
+      expect(code).not.toContain('dnaStyleId');
       expect(code).toContain('temperature: 0.7');
-      expect(code).toContain('maxTokens: 2048');
-      expect(code).toContain('includeNER: true');
       expect(code).toContain('stream: true');
     });
 
-    it('uses undefined for unset optional ids and defaults otherwise', () => {
+    it('uses undefined for unset optional ids, empty context_item_ids, and defaults otherwise', () => {
       const code = buildSummarizationSnippet({ provider: 'ollama' });
-      expect(code).toContain('promptTemplateId: undefined');
-      expect(code).toContain('dnaStyleId: undefined');
+      expect(code).toContain('prompt_template_id: undefined');
+      expect(code).toContain('dna_writing_style_id: undefined');
+      expect(code).toContain('context_item_ids: []');
       expect(code).toContain('temperature: 0.4');
       expect(code).toContain('maxTokens: 4096');
       expect(code).toContain('includeNER: false');
