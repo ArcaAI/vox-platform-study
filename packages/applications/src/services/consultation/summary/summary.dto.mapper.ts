@@ -13,6 +13,8 @@ export class SummaryDtoMapper {
           outputTokens: summaryMeta.outputTokens ?? undefined,
           cacheHit: summaryMeta.cacheHit ?? undefined,
           qualityScore: summaryMeta.qualityScore ?? undefined,
+          promptResolvedFrom: (summaryMeta.promptResolvedFrom as 'preferred' | 'department' | 'default' | null) ?? undefined,
+          resolvedPromptId: summaryMeta.resolvedPromptId ?? undefined,
         }
       : undefined;
 

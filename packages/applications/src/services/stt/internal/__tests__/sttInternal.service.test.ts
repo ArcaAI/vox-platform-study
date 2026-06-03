@@ -589,6 +589,59 @@ describe('SttInternalService', () => {
 
             expect(mockAudioRecordingRepository.getNextSequenceNumber).not.toHaveBeenCalled();
         });
+
+        // ---------------------------------------------------------------------
+        // TASK-331 doc-06 F2 — dual-capture media ids threaded through the writer
+        // ---------------------------------------------------------------------
+
+        it('threads rawMediaId/processedMediaId onto the AudioRecording when provided', async () => {
+            const contextItem = createMockContextItemEntity({ id: 'context-item-1' });
+            const media = createMockMediaEntity({ id: 'new-media-id' });
+            const audioRecording = createMockAudioRecordingEntity({ id: 'new-audio-recording-id' });
+
+            mockContextItemRepository.findById.mockResolvedValue(contextItem);
+            mockMediaRepository.create.mockResolvedValue(media);
+            mockAudioRecordingRepository.getNextSequenceNumber.mockResolvedValue(1);
+            mockAudioRecordingRepository.create.mockResolvedValue(audioRecording);
+
+            await service.createAudioRecord({
+                contextItemId: 'context-item-1',
+                storagePath: 'path',
+                filename: 'file.wav',
+                fileSizeBytes: 1000,
+                mimeType: 'audio/wav',
+                rawMediaId: 'raw-media-123',
+                processedMediaId: 'processed-media-456',
+            });
+
+            // The AudioRecording entity handed to the repository must carry both ids.
+            const createdRecording = mockAudioRecordingRepository.create.mock.calls[0][0];
+            expect(createdRecording.rawMediaId).toBe('raw-media-123');
+            expect(createdRecording.processedMediaId).toBe('processed-media-456');
+        });
+
+        it('leaves rawMediaId/processedMediaId null when not provided (regression)', async () => {
+            const contextItem = createMockContextItemEntity({ id: 'context-item-1' });
+            const media = createMockMediaEntity({ id: 'new-media-id' });
+            const audioRecording = createMockAudioRecordingEntity({ id: 'new-audio-recording-id' });
+
+            mockContextItemRepository.findById.mockResolvedValue(contextItem);
+            mockMediaRepository.create.mockResolvedValue(media);
+            mockAudioRecordingRepository.getNextSequenceNumber.mockResolvedValue(1);
+            mockAudioRecordingRepository.create.mockResolvedValue(audioRecording);
+
+            await service.createAudioRecord({
+                contextItemId: 'context-item-1',
+                storagePath: 'path',
+                filename: 'file.wav',
+                fileSizeBytes: 1000,
+                mimeType: 'audio/wav',
+            });
+
+            const createdRecording = mockAudioRecordingRepository.create.mock.calls[0][0];
+            expect(createdRecording.rawMediaId).toBeNull();
+            expect(createdRecording.processedMediaId).toBeNull();
+        });
     });
 
     // =========================================================================

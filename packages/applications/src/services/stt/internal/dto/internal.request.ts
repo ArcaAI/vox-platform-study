@@ -237,6 +237,24 @@ export class CreateAudioRecordRequest {
   @IsOptional()
   @IsUUID()
   jobId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Media ID for the raw (unprocessed) capture (dual-capture path)',
+    example: '01234567-89ab-cdef-0123-456789abcdef',
+  })
+  @IsString()
+  @IsOptional()
+  @IsUUID()
+  rawMediaId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Media ID for the processed (noise-filtered) capture (dual-capture path)',
+    example: '01234567-89ab-cdef-0123-456789abcdef',
+  })
+  @IsString()
+  @IsOptional()
+  @IsUUID()
+  processedMediaId?: string;
 }
 
 /**

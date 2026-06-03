@@ -100,6 +100,15 @@ export class SummaryMetaResponse {
   @ApiPropertyOptional({ description: 'Quality/score of the generated summary (0.0 - 1.0)' })
   qualityScore?: number;
 
+  @ApiPropertyOptional({
+    description: 'Prompt-resolution tier that produced the summary',
+    enum: ['preferred', 'department', 'default'],
+  })
+  promptResolvedFrom?: 'preferred' | 'department' | 'default';
+
+  @ApiPropertyOptional({ description: 'The prompt id actually used to generate the summary' })
+  resolvedPromptId?: string;
+
   @ApiProperty()
   createdAt: string;
 }
