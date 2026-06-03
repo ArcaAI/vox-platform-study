@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Reflector } from '@nestjs/core';
+import { REQUIRES_IF_MATCH_KEY } from '../../../decorators';
 import { DnaWritingStyleController } from '../dna-writing-style.controller';
 
 const fakeReportEntity = {
@@ -135,10 +137,41 @@ describe('DnaWritingStyleController', () => {
             const dto = { styleText: 'Updated style', changeReason: 'Refinement' };
             mockDnaService.updateDnaReport.mockResolvedValue({ ...fakeReportEntity, styleText: 'Updated style' });
 
-            const result = await controller.update('report-1', dto as any);
+            const result = await controller.update('report-1', dto as any, undefined);
 
             expect(mockDnaService.updateDnaReport).toHaveBeenCalledWith('report-1', dto);
             expect(result.styleText).toBe('Updated style');
+        });
+
+        // ─── TASK-331 doc-02 F12 — doctor self-edit OCC ──────────────────
+        // The doctor PATCH route now mirrors the admin route: `@RequiresIfMatch()`
+        // + `@ExpectedVersion()` so super/global admin (under a tenant), tenant
+        // admin, the doctor, and an admin-impersonated doctor all manage their
+        // DNA report under real optimistic concurrency control.
+        it('requires the If-Match header on the update route (@RequiresIfMatch metadata)', () => {
+            const reflector = new Reflector();
+            const flag = reflector.get(REQUIRES_IF_MATCH_KEY, DnaWritingStyleController.prototype.update);
+            expect(flag).toBe(true);
+        });
+
+        it('folds the If-Match header into expectedVersion (header wins)', async () => {
+            mockDnaService.updateDnaReport.mockResolvedValue(fakeReportEntity);
+
+            await controller.update('report-1', { styleText: 'Updated', expectedVersion: 99 } as any, 7);
+
+            expect(mockDnaService.updateDnaReport).toHaveBeenCalledWith(
+                'report-1',
+                expect.objectContaining({ styleText: 'Updated', expectedVersion: 7 }),
+            );
+        });
+
+        it('forwards the body unchanged when no If-Match header resolved (expectedFromHeader undefined)', async () => {
+            const body = { styleText: 'Updated', changeReason: 'Edit', expectedVersion: 5 };
+            mockDnaService.updateDnaReport.mockResolvedValue(fakeReportEntity);
+
+            await controller.update('report-1', body as any, undefined);
+
+            expect(mockDnaService.updateDnaReport).toHaveBeenCalledWith('report-1', body);
         });
     });
 

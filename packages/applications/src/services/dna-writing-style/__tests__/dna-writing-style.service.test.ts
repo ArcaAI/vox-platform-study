@@ -43,6 +43,8 @@ const createMockDnaReportRepository = () => ({
     // (`updateWithVersion`). Legacy `.update` stays on the mock for assertions
     // that confirm it is NOT called.
     updateWithVersion: vi.fn(),
+    // TASK-331 doc-02 F6 — repository-level pagination for the admin list.
+    findPaginated: vi.fn().mockResolvedValue({ data: [], count: 0 }),
     $: vi.fn(),
 });
 
@@ -1077,6 +1079,115 @@ describe('DnaWritingStyleService', () => {
             await tenantAdminService.listReports();
 
             expect(mockQb.Where).toHaveBeenCalledWith({ tenantId: 'tenant-admin-tenant' });
+        });
+    });
+
+    // ─── listReportsPaginated (TASK-331 doc-02 F6) ───────────────
+
+    describe('listReportsPaginated', () => {
+        const buildWith = (clsImpl: (key: string) => unknown) => {
+            mockClsService.get.mockImplementation(clsImpl);
+            return new DnaWritingStyleService(
+                mockReportRepo as never,
+                mockVersionRepo as never,
+                mockUsageRepo as never,
+                mockUserRoleAssignmentRepo as never, mockUserDepartmentRepo as never, mockUserRepo as never,
+                mockQueue as never,
+                mockEventEmitter as never,
+                mockClsService as never,
+            );
+        };
+
+        it('delegates to repository.findPaginated and returns {data,count,page,limit}', async () => {
+            mockReportRepo.findPaginated.mockResolvedValue({
+                data: [createMockReportEntity({ id: 'r1' }), createMockReportEntity({ id: 'r2' })],
+                count: 7,
+            });
+
+            const result = await service.listReportsPaginated({ page: 2, limit: 2 });
+
+            expect(mockReportRepo.findPaginated).toHaveBeenCalledWith(
+                expect.objectContaining({ tenantId: 'tenant-1', resourceStatus: ResourceStatusType.ENABLED }),
+                2,
+                2,
+            );
+            expect(result.count).toBe(7);
+            expect(result.page).toBe(2);
+            expect(result.limit).toBe(2);
+            expect(result.data).toHaveLength(2);
+        });
+
+        it('defaults to page 1 / limit 50 and folds doctorId into the where clause', async () => {
+            mockReportRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
+
+            await service.listReportsPaginated({ doctorId: 'doc-9' });
+
+            const [where, page, limit] = mockReportRepo.findPaginated.mock.calls[0];
+            expect(page).toBe(1);
+            expect(limit).toBe(50);
+            expect(where).toMatchObject({ tenantId: 'tenant-1', doctorId: 'doc-9', resourceStatus: ResourceStatusType.ENABLED });
+        });
+
+        it('drops the ENABLED-only constraint when includeDisabled is true', async () => {
+            mockReportRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
+
+            await service.listReportsPaginated({ includeDisabled: true });
+
+            const [where] = mockReportRepo.findPaginated.mock.calls[0];
+            expect(where).not.toHaveProperty('resourceStatus');
+            expect(where).toMatchObject({ tenantId: 'tenant-1' });
+        });
+
+        it('scopes a TENANT_ADMIN to their CLS tenant and ignores a requested tenantId override', async () => {
+            const tenantAdmin = buildWith((key: string) => {
+                if (key === 'user') return { id: 'tenant-admin-1', roles: ['TENANT_ADMIN'] };
+                if (key === 'tenantId') return 'tenant-1';
+                return null;
+            });
+            mockReportRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
+
+            await tenantAdmin.listReportsPaginated({ tenantId: 'tenant-OTHER' });
+
+            const [where] = mockReportRepo.findPaginated.mock.calls[0];
+            expect(where).toMatchObject({ tenantId: 'tenant-1' });
+        });
+
+        it('uses the requested tenantId for a global admin', async () => {
+            const globalAdmin = buildWith((key: string) => {
+                if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
+                if (key === 'tenantId') return null;
+                return null;
+            });
+            mockReportRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
+
+            await globalAdmin.listReportsPaginated({ tenantId: 'tenant-X' });
+
+            const [where] = mockReportRepo.findPaginated.mock.calls[0];
+            expect(where).toMatchObject({ tenantId: 'tenant-X' });
+        });
+
+        it('omits the tenantId filter for a global admin with no tenantId (all tenants)', async () => {
+            const globalAdmin = buildWith((key: string) => {
+                if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
+                if (key === 'tenantId') return null;
+                return null;
+            });
+            mockReportRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
+
+            await globalAdmin.listReportsPaginated();
+
+            const [where] = mockReportRepo.findPaginated.mock.calls[0];
+            expect(where).not.toHaveProperty('tenantId');
+        });
+
+        it('throws BadRequestException when a TENANT_ADMIN has no CLS tenant', async () => {
+            const tenantAdmin = buildWith((key: string) => {
+                if (key === 'user') return { id: 'tenant-admin-1', roles: ['TENANT_ADMIN'] };
+                if (key === 'tenantId') return null;
+                return null;
+            });
+
+            await expect(tenantAdmin.listReportsPaginated()).rejects.toThrow(BadRequestException);
         });
     });
 

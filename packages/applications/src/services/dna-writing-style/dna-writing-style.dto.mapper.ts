@@ -15,6 +15,10 @@ export class DnaWritingStyleDtoMapper {
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),
       resourceStatus: entity.resourceStatus ?? undefined,
+      // TASK-326 X7 / D-2 — surface `_version` (the OCC token, distinct from
+      // `currentVersionNumber`) so SDK clients can echo it back via
+      // `If-Match: "<version>"` on the next PATCH.
+      version: entity.version,
     };
   }
 
