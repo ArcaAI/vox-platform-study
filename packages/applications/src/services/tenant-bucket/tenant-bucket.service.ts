@@ -12,6 +12,7 @@ import {
   DeleteTenantBucketObjectResponse,
   SetTenantBucketDefaultsRequest,
   TenantBucketDefaultsResponse,
+  TenantBucketObjectResponse,
   TenantBucketResponse,
   TenantBucketTreeNodeResponse,
   TenantBucketTreeResponse,
@@ -399,6 +400,60 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     });
 
     return TenantBucketDtoMapper.toResponse(deleted);
+  }
+
+  async listObjects(bucketId: string, prefix = ''): Promise<TenantBucketObjectResponse[]> {
+    const bucket = await this.tenantBucketRepository.findById(bucketId);
+    if (!bucket) {
+      throw new NotFoundException(`Bucket ${bucketId} not found`);
+    }
+
+    const tenantId = this.tenantId;
+    if (tenantId && bucket.tenantId !== tenantId) {
+      throw new ForbiddenException('You do not have access to this bucket');
+    }
+
+    const normalizedPrefix = this.normalizePrefix(prefix);
+    const { objects } = await this.blobStorage.listObjects({ bucket: bucket.name, prefix: normalizedPrefix });
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      resourceId: bucket.id,
+      data: { prefix: normalizedPrefix, count: objects.length },
+    });
+
+    return objects.map((object) => ({
+      key: object.key,
+      size: object.size,
+      lastModified: object.lastModified ? new Date(object.lastModified).toISOString() : undefined,
+    }));
+  }
+
+  async uploadObject(bucketId: string, fileKey: string, body: Buffer, contentType?: string): Promise<TenantBucketObjectResponse> {
+    const bucket = await this.tenantBucketRepository.findById(bucketId);
+    if (!bucket) {
+      throw new NotFoundException(`Bucket ${bucketId} not found`);
+    }
+
+    const tenantId = this.tenantId;
+    if (tenantId && bucket.tenantId !== tenantId) {
+      throw new ForbiddenException('You do not have access to this bucket');
+    }
+
+    // Reject `..` traversal but allow `/` so nested folder keys (e.g.
+    // `patients/2026/file.wav`) upload correctly — mirrors deleteObject.
+    if (/[.]{2}/.test(fileKey)) {
+      throw new BadRequestException('Invalid file key: path traversal not allowed');
+    }
+
+    // Provider-side object write (NOT a SQL op — there is no per-object DB row).
+    await this.blobStorage.putObject({ bucket: bucket.name, key: fileKey, body, contentType });
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: bucket.id,
+      data: { fileKey },
+    });
+
+    return { key: fileKey, size: body.length, lastModified: new Date().toISOString() };
   }
 
   async deleteObject(bucketId: string, fileKey: string): Promise<DeleteTenantBucketObjectResponse> {

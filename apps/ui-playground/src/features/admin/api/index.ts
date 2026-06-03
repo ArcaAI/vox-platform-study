@@ -43,25 +43,10 @@ export {
 } from './users';
 
 export {
-  storageKeys,
-  useBucketFiles,
-  useBuckets,
-  useCreateBucket,
-  useDeleteBucket,
-  useDeleteFile,
-  useUploadFile,
-  type Bucket,
-  type BucketFile,
-  type CreateBucketInput,
-  type UploadFileInput,
-} from './storage';
-
-export {
   tenantStorageKeys,
   useCreateTenantBucket,
   useCreateTenantFolder,
   useDeleteTenantBucket,
-  useDeleteTenantObject,
   useTenantBucketObjects,
   useTenantBuckets,
   useTenantBucketTree,

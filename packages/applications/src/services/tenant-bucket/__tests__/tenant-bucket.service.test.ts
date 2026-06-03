@@ -33,6 +33,7 @@ const mockTenantRepository = {
 const mockBlobStorage = {
     createBucket: vi.fn(),
     deleteBucket: vi.fn(),
+    putObject: vi.fn(),
     deleteObject: vi.fn(),
     listObjects: vi.fn(),
     presignGet: vi.fn(),
@@ -414,6 +415,83 @@ describe('TenantBucketService', () => {
             await expect(service.deleteObject('bucket-1', '../../etc/passwd'))
                 .rejects.toThrow(BadRequestException);
             expect(mockBlobStorage.deleteObject).not.toHaveBeenCalled();
+        });
+    });
+
+    // TASK-331 doc-03 F7 — object LIST on the admin plane (by bucket id).
+    describe('listObjects', () => {
+        it('should list provider objects for a tenant-owned bucket', async () => {
+            const bucket = createMockBucketEntity({ id: 'bucket-1', name: 'hope-audio-arcaai' });
+            mockTenantBucketRepository.findById.mockResolvedValue(bucket);
+            mockBlobStorage.listObjects.mockResolvedValue({
+                objects: [{ key: 'patients/2026/report-1.txt', size: 1200, lastModified: new Date('2026-04-08') }],
+                isTruncated: false,
+            });
+
+            const result = await service.listObjects('bucket-1', 'patients/');
+
+            expect(mockBlobStorage.listObjects).toHaveBeenCalledWith({ bucket: 'hope-audio-arcaai', prefix: 'patients/' });
+            expect(result).toEqual([
+                { key: 'patients/2026/report-1.txt', size: 1200, lastModified: '2026-04-08T00:00:00.000Z' },
+            ]);
+        });
+
+        it('should throw NotFoundException when bucket not found', async () => {
+            mockTenantBucketRepository.findById.mockResolvedValue(null);
+
+            await expect(service.listObjects('missing')).rejects.toThrow(NotFoundException);
+        });
+
+        it('should throw ForbiddenException when bucket belongs to a different tenant', async () => {
+            mockTenantBucketRepository.findById.mockResolvedValue(createMockBucketEntity({ tenantId: 'other-tenant' }));
+
+            await expect(service.listObjects('bucket-1')).rejects.toThrow(ForbiddenException);
+            expect(mockBlobStorage.listObjects).not.toHaveBeenCalled();
+        });
+    });
+
+    // TASK-331 doc-03 F7 — object UPLOAD on the admin plane (by bucket id).
+    describe('uploadObject', () => {
+        it('should upload the object via the provider and broadcast ResourceCreated', async () => {
+            const bucket = createMockBucketEntity({ id: 'bucket-1', name: 'hope-audio-arcaai' });
+            mockTenantBucketRepository.findById.mockResolvedValue(bucket);
+            mockBlobStorage.putObject.mockResolvedValue(undefined);
+            const body = Buffer.from('hello world');
+
+            const result = await service.uploadObject('bucket-1', '2026/04/08/test.wav', body, 'audio/wav');
+
+            expect(mockBlobStorage.putObject).toHaveBeenCalledWith({
+                bucket: 'hope-audio-arcaai',
+                key: '2026/04/08/test.wav',
+                body,
+                contentType: 'audio/wav',
+            });
+            expect(result.key).toBe('2026/04/08/test.wav');
+            expect(result.size).toBe(body.length);
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                'SysEvent.ResourceCreated',
+                expect.objectContaining({ resourceId: 'bucket-1' }),
+            );
+        });
+
+        it('should throw NotFoundException when bucket not found', async () => {
+            mockTenantBucketRepository.findById.mockResolvedValue(null);
+
+            await expect(service.uploadObject('missing', 'file.wav', Buffer.from('x'))).rejects.toThrow(NotFoundException);
+        });
+
+        it('should throw ForbiddenException when bucket belongs to a different tenant', async () => {
+            mockTenantBucketRepository.findById.mockResolvedValue(createMockBucketEntity({ tenantId: 'other-tenant' }));
+
+            await expect(service.uploadObject('bucket-1', 'file.wav', Buffer.from('x'))).rejects.toThrow(ForbiddenException);
+            expect(mockBlobStorage.putObject).not.toHaveBeenCalled();
+        });
+
+        it('should throw BadRequestException for a path-traversal key', async () => {
+            mockTenantBucketRepository.findById.mockResolvedValue(createMockBucketEntity());
+
+            await expect(service.uploadObject('bucket-1', '../../etc/passwd', Buffer.from('x'))).rejects.toThrow(BadRequestException);
+            expect(mockBlobStorage.putObject).not.toHaveBeenCalled();
         });
     });
 

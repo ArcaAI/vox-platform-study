@@ -4,6 +4,7 @@ import {
   DeleteTenantBucketObjectResponse,
   SetTenantBucketDefaultsRequest,
   TenantBucketDefaultsResponse,
+  TenantBucketObjectResponse,
   TenantBucketResponse,
   TenantBucketTreeResponse,
 } from './dto';
@@ -19,6 +20,10 @@ export abstract class ITenantBucketService {
   abstract createCustomBucket(dto: CreateTenantBucketRequest): Promise<TenantBucketResponse>;
   abstract registerBucket(name: string, description?: string): Promise<TenantBucketResponse | null>;
   abstract deleteBucket(id: string): Promise<TenantBucketResponse>;
+  /** List objects in a tenant bucket via the storage provider (optionally under a prefix). */
+  abstract listObjects(bucketId: string, prefix?: string): Promise<TenantBucketObjectResponse[]>;
+  /** Upload a single object into a tenant bucket via the storage provider. */
+  abstract uploadObject(bucketId: string, fileKey: string, body: Buffer, contentType?: string): Promise<TenantBucketObjectResponse>;
   /** Remove a single object from a tenant bucket via the storage provider. */
   abstract deleteObject(bucketId: string, fileKey: string): Promise<DeleteTenantBucketObjectResponse>;
   abstract provisionSystemBuckets(tenantId: string): Promise<TenantBucketResponse[]>;
