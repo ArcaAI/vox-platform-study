@@ -588,7 +588,7 @@ const DEFAULT_CONTEXT_ITEMS = [
 // SUMMARY METAS (4)
 // =============================================================================
 
-const DEFAULT_SUMMARY_METAS = [
+export const DEFAULT_SUMMARY_METAS = [
     {
         id: SEED_SUMMARY_META_IDS.GEN_SUMMARY,
         tenantId: SEED_TENANT_ID,
@@ -599,6 +599,11 @@ const DEFAULT_SUMMARY_METAS = [
         processingTimeMs: 4200,
         inputTokens: 850,
         outputTokens: 420,
+        // TASK-331 doc-07 F4 — quality analytics so the SavedSummariesPanel
+        // QualityBadge renders on demo data. Freshly generated (not cached),
+        // high quality.
+        cacheHit: false,
+        qualityScore: 0.91,
         caseNoteIds: [SEED_CONTEXT_ITEM_IDS.GEN_CASE_NOTE],
         preSummaryIds: [SEED_CONTEXT_ITEM_IDS.GEN_PRE_SUMMARY],
         previousSummaryIds: [],
@@ -614,6 +619,10 @@ const DEFAULT_SUMMARY_METAS = [
         processingTimeMs: 3800,
         inputTokens: 720,
         outputTokens: 380,
+        // TASK-331 doc-07 F4 — served from cache; slightly lower quality so the
+        // QualityBadge demos the cached + lower-score state alongside GEN above.
+        cacheHit: true,
+        qualityScore: 0.84,
         caseNoteIds: [],
         preSummaryIds: [],
         previousSummaryIds: [],
