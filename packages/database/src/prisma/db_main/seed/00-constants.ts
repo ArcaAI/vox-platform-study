@@ -36,6 +36,8 @@
  *   93000000-xxxx  →  Audio Recordings
  *   94000000-xxxx  →  Context Item Versions
  *   95000000-xxxx  →  Named Entities
+ *   96000000-xxxx  →  Media (dual-capture demo blobs; defined in 09-consultation)
+ *   97000000-xxxx  →  User Voice Profiles (diarization enrollment)
  *   A0000000-xxxx  →  Audit Log Entries
  */
 
@@ -398,6 +400,25 @@ export const SEED_AUDIO_RECORDING_IDS = {
     SURG_AUDIO: '93000000-0000-0000-0000-000000000002',
     PEDS_AUDIO: '93000000-0000-0000-0000-000000000003',
     ER_AUDIO: '93000000-0000-0000-0000-000000000004',
+} as const;
+
+// =============================================================================
+// USER VOICE PROFILES (TASK-331 doc-07 F3)
+//
+// Deterministic voice-enrollment rows for the two primary seed doctors so the
+// Voice Profile playground, the active-profile diarization seeding, and the
+// `voiceProfileSeeded` indicator are demonstrable out-of-the-box. The embedding
+// column is pgvector `vector(256)` (Unsupported by the Prisma client), so the
+// rows are written with raw SQL in 91-user.ts. One ACTIVE + one inactive per
+// doctor — the DB enforces at most one active per user via a partial unique
+// index, so exactly one id per doctor carries `isActive: true`.
+// =============================================================================
+
+export const SEED_VOICE_PROFILE_IDS = {
+    DOCTOR_ACTIVE: '97000000-0000-0000-0000-000000000001',
+    DOCTOR_INACTIVE: '97000000-0000-0000-0000-000000000002',
+    DOCTOR2_ACTIVE: '97000000-0000-0000-0000-000000000003',
+    DOCTOR2_INACTIVE: '97000000-0000-0000-0000-000000000004',
 } as const;
 
 // =============================================================================

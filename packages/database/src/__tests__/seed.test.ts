@@ -59,12 +59,15 @@ import {
     SEED_TENANT_ID,
     SYSTEM_TENANT_ID,
     SYSTEM_USER_ID,
+    SEED_VOICE_PROFILE_IDS,
 } from '../prisma/db_main/seed/00-constants';
 import {
     DEFAULT_AUDIO_RECORDINGS,
     DEFAULT_MEDIA,
+    DEFAULT_SUMMARY_METAS,
     SEED_MEDIA_IDS,
 } from '../prisma/db_main/seed/09-consultation';
+import { SEED_VOICE_PROFILES, VOICE_EMBEDDING_DIM } from '../prisma/db_main/seed/91-user';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -2194,5 +2197,87 @@ describe('Dual-Capture Demo Media (TASK-331 doc-06 F2)', () => {
         Object.values(SEED_MEDIA_IDS).forEach((id) => {
             expect(ids.has(id)).toBe(true);
         });
+    });
+});
+
+// =============================================================================
+// SUMMARY-META QUALITY SEED — cacheHit + qualityScore (TASK-331 doc-07 F4)
+// =============================================================================
+
+describe('SummaryMeta Quality Seed (TASK-331 doc-07 F4)', () => {
+    it('should seed at least the two demo SummaryMeta rows', () => {
+        expect(DEFAULT_SUMMARY_METAS.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('should set cacheHit (boolean) on every SummaryMeta seed row', () => {
+        DEFAULT_SUMMARY_METAS.forEach((meta) => {
+            expect(typeof meta.cacheHit).toBe('boolean');
+        });
+    });
+
+    it('should set a realistic qualityScore in [0,1] on every SummaryMeta seed row', () => {
+        DEFAULT_SUMMARY_METAS.forEach((meta) => {
+            expect(typeof meta.qualityScore).toBe('number');
+            expect(meta.qualityScore).toBeGreaterThan(0);
+            expect(meta.qualityScore).toBeLessThanOrEqual(1);
+        });
+    });
+
+    it('should mix cacheHit true + false across the rows so the QualityBadge demos both states', () => {
+        const hits = DEFAULT_SUMMARY_METAS.map((m) => m.cacheHit);
+        expect(hits).toContain(true);
+        expect(hits).toContain(false);
+    });
+});
+
+// =============================================================================
+// USER VOICE PROFILE SEED (TASK-331 doc-07 F3)
+// =============================================================================
+
+describe('UserVoiceProfile Seed (TASK-331 doc-07 F3)', () => {
+    it('should seed voice profiles for both seed doctors (DOCTOR + DOCTOR2)', () => {
+        const userIds = new Set(SEED_VOICE_PROFILES.map((p) => p.userId));
+        expect(userIds.has(SEED_USER_IDS.DOCTOR)).toBe(true);
+        expect(userIds.has(SEED_USER_IDS.DOCTOR2)).toBe(true);
+    });
+
+    it('should include at least one active AND one inactive voice profile', () => {
+        expect(SEED_VOICE_PROFILES.some((p) => p.isActive === true)).toBe(true);
+        expect(SEED_VOICE_PROFILES.some((p) => p.isActive === false)).toBe(true);
+    });
+
+    it('should give each seed doctor exactly one active profile (drives voiceProfileSeeded + diarization)', () => {
+        [SEED_USER_IDS.DOCTOR, SEED_USER_IDS.DOCTOR2].forEach((userId) => {
+            const active = SEED_VOICE_PROFILES.filter((p) => p.userId === userId && p.isActive);
+            expect(active.length).toBe(1);
+        });
+    });
+
+    it('should never declare two active profiles for one user (partial-unique-index invariant)', () => {
+        const activeByUser = new Map<string, number>();
+        SEED_VOICE_PROFILES.filter((p) => p.isActive).forEach((p) => {
+            activeByUser.set(p.userId, (activeByUser.get(p.userId) ?? 0) + 1);
+        });
+        activeByUser.forEach((count) => expect(count).toBeLessThanOrEqual(1));
+    });
+
+    it('should carry a valid 256-d finite-number embedding on every voice profile', () => {
+        expect(VOICE_EMBEDDING_DIM).toBe(256);
+        SEED_VOICE_PROFILES.forEach((p) => {
+            expect(Array.isArray(p.embedding)).toBe(true);
+            expect(p.embedding.length).toBe(VOICE_EMBEDDING_DIM);
+            expect(p.embedding.every((n) => typeof n === 'number' && Number.isFinite(n))).toBe(true);
+        });
+    });
+
+    it('should have valid UUID + unique ids for every voice profile', () => {
+        SEED_VOICE_PROFILES.forEach((p) => expect(p.id).toMatch(UUID_REGEX));
+        const ids = SEED_VOICE_PROFILES.map((p) => p.id);
+        expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('should expose every SEED_VOICE_PROFILE_IDS value as a seeded profile', () => {
+        const ids = new Set(SEED_VOICE_PROFILES.map((p) => p.id));
+        Object.values(SEED_VOICE_PROFILE_IDS).forEach((id) => expect(ids.has(id)).toBe(true));
     });
 });
