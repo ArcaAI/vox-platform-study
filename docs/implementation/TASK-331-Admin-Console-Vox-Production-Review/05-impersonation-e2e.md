@@ -11,6 +11,8 @@
 
 > Read-only audit. Every claim verified against current code at file:line. TASK-245 (preference isolation) + TASK-295 (backend impersonation security) describe intent; drift is flagged inline. Legend: 🟢 ready · 🟡 ship-with-fixes · 🔴 not-ready.
 
+> **Update — 2026-06-04 (implementation).** All findings **F-1…F-10** and the deferred **M-3** are implemented and merged into `fix/2605-review`. Gate green: **11,067** unit tests pass (0 fail) across `@arcaai/{database,applications,api,vox,ui-playground}`, all affected packages build, and typecheck/lint are clean (0 errors). **No DB migration; no new endpoints.** §1–§8 below are the original as-reviewed snapshot; see **§9 Implementation Summary** and **§10 Change History** for what shipped.
+
 ---
 
 ## 1. Scope & Business Context
@@ -138,4 +140,61 @@ Answer: suggest the best practices as impersonation is designed for admins to pl
 4. **M-3 (deferred):** there are still no explicit `IMPERSONATION_STARTED`/`IMPERSONATION_STOPPED` audit rows — only per-request `IMPERSONATED_ACTION` rows. Confirm whether HIPAA review requires start/stop bracketing events.  
 Answer: need to have audit log when impersontating someone
 5. **Not executed:** per task constraints, no build/test/seed was run — all verdicts are from static reading at the cited file:line.
+
+---
+
+## 9. Implementation Summary (2026-06-04)
+
+All ten findings plus the deferred audit item shipped to `fix/2605-review` via three file-disjoint branches (backend / seed / frontend), each independently gated, then merged with `--no-ff`.
+
+### Findings resolved
+
+| #    | Resolution                                                                                                                                                                                                                                                                                                                                                  |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F-1  | Seeded ≥1 DOCTOR **and** ≥1 NURSE per customer tenant (ArcaAI / 4bits / Mumbai) — 6 new non-admin clinical users, each with a department membership (GEN dept of its tenant) satisfying the TASK-305 Phase-F role+department login invariant, plus minimal SDK prefs for the doctors. `users` array hoisted to `export const SEED_USERS`.                      |
+| F-2  | **Option 2 (single writer = playground).** `AgenticProvider` now **skips** the local-IDB user-pref clear/load while `impersonated` is set; `user-list` is the sole writer and fetches the impersonated user's *real* prefs through the SDK apiClient (impersonation JWT) via the doctor-allowed `GET /user/me/settings`. (Discovered: the old `/admin/users/:id/settings` fetch **403s** under the doctor token, so the prior flow never loaded real prefs.) Tenant reset, model-registry reload, and the F-9 department tier still run during impersonation. |
+| F-3  | `useAuth.impersonate(targetUserId, targetTenantId?)` forwards `targetTenantId` into the POST body (added to `ImpersonateRequest`); `user-list` passes `useAuthStore.tenantId`; `use-auto-refresh` forwards it on re-impersonation. The backend H-3 path is now reachable from the UI.                                                                          |
+| F-4  | **`GLOBAL_ADMIN` ≡ `SUPER_ADMIN`** (product decision, §8 Q1 — "no limits in any tenant"). Aligned across backend (`isSuperAdmin`/`targetIsSuperAdmin`), SDK (`IMPERSONATION_ROLES`), and playground (`canImpersonate`, `ADMIN_ROLES`, `isSuperAdmin`/`isGlobalScope`/`isAdmin`). Reverses doc-04's GLOBAL_ADMIN "dead-arm" treatment (tests inverted accordingly). |
+| F-5  | Added `AgenticConfig.autoWireTokenRefresh` (default `true`, preserves TASK-320 behaviour). The provider's `setOnUnauthorized` auto-wire early-returns when `false`; the playground sets it `false`, making `useAutoRefresh` the **sole** handler owner — deterministic 401→refresh→re-impersonate.                                                            |
+| F-6  | "Reloading the page will end impersonation" note added to the impersonation card.                                                                                                                                                                                                                                                                          |
+| F-7  | Removed the component-scoped `adminPrefsSnapshot` `useRef`. Exit now relies on the provider's identity-change rehydrate to reload the admin namespace, so ending impersonation is durable even if `UserList` has unmounted (e.g. via the new header Stop button).                                                                                            |
+| F-8  | Impersonation `jti` now uses `randomBytes(16).toString('hex')` (matches login/refresh hygiene); predictable `impersonate-${adminId}-${targetId}-${Date.now()}` removed.                                                                                                                                                                                     |
+| F-9  | Impersonate response returns `departmentId` (resolved via `userDepartmentService.findActiveDepartmentForUserInTenant`); SDK `AuthUser.departmentId` added so `effectiveDepartmentId` resolves the impersonated doctor's **department tier** instead of `clearDepartmentConfig()`.                                                                            |
+| F-10 | Dropped the `atob` client-side JWT decode in `use-auto-refresh`; trusts server `data.user.tenantId` (consistent with TASK-295 M-5).                                                                                                                                                                                                                         |
+| M-3  | **Explicit START/STOP audit, migration-free.** `auth.controller` emits `EventTypes.UserAuthenticated` with `phase:'START'` after a successful impersonation mint and `phase:'STOP'` after revocation; `AuditLogService` persists `phase` into the `IMPERSONATED_ACTION` row's `data` JSON. No new `AuditAction` enum value, **no Prisma migration**.        |
+
+**UX polish:** shared `use-end-impersonation` hook + a co-located **"Stop"** action on the header impersonation indicator (mounted only while impersonating, preserving the header's defensive `useAuth` resilience).
+
+### Files changed (25; `*` = new)
+
+**Seed (`@arcaai/database`)** — `prisma/db_main/seed/00-constants.ts` (6 new user UUIDs), `prisma/db_main/seed/91-user.ts` (`SEED_USERS` export + 6 users + dept mappings + doctor prefs), `src/__tests__/seed-impersonation-coverage.test.ts`\*.
+
+**Backend (`@arcaai/api` + `@arcaai/applications`)** — `auth/auth.controller.ts` (F-4/F-8/F-9/M-3), `auth/dto/impersonate.dto.ts` (F-9), `auth/__tests__/auth.controller.task295.test.ts`, `services/auditLog/auditLog.service.ts` (M-3 phase), `services/auditLog/__tests__/auditLog.service.test.ts`.
+
+**SDK (`@arcaai/vox`)** — `types/config.ts` (F-5), `types/auth.ts` (F-3/F-9), `hooks/useAuth.ts` (F-3/F-4), `providers/AgenticProvider.tsx` (F-2/F-5/F-7), `providers/__tests__/AgenticProvider.tokenRefresh.test.tsx`, `hooks/__tests__/useAuth.task331.test.ts`\*, `providers/__tests__/AgenticProvider.impersonationPrefs.task331.test.ts`\*.
+
+**Playground (`@arcaai/ui-playground`)** — `providers/sdk-provider.tsx` (F-5), `hooks/use-auto-refresh.ts` (F-3/F-10), `hooks/use-end-impersonation.ts`\* (UX), `store/auth-store.ts` (F-4), `features/summarization/hooks/use-doctor-context.ts` (F-4), `features/playground/overview/components/user-list.tsx` (F-2/3/4/6/7), `components/layout/header.tsx` (UX Stop), `store/__tests__/auth-store.scope.test.ts`, `components/__tests__/admin-route-guard.test.tsx`, `hooks/__tests__/use-auto-refresh.impersonation.test.ts`.
+
+### Verification evidence (merged `fix/2605-review`)
+
+- **Tests — 11,067 passed, 0 failed** (+12 skipped): `@arcaai/database` 673, `@arcaai/applications` 4665, `@arcaai/api` 1565, `@arcaai/vox` 3260, `@arcaai/ui-playground` 904.
+- **Builds:** 21 turbo `build`+`test` tasks successful (incl. `domains`/`applications`/`api`/`database` `tsc`/`nest build` — type-correctness covered).
+- **Typecheck:** `@arcaai/vox` + `@arcaai/ui-playground` `tsc --noEmit` clean.
+- **Lint:** 0 errors across changed files (pre-existing prettier *warnings* only; ran without `--fix` to avoid unrelated reformatting).
+
+### Deviations / decisions
+
+- **M-3 is migration-free** by design (phase marker in JSON, reusing `IMPERSONATED_ACTION`) — honours the no-DB-migration constraint. An initial attempt to add `IMPERSONATION_STARTED/STOPPED` enum values via a Prisma migration was reverted.
+- **F-2 = Option 2** (playground is the single pref writer) rather than provider-fetches-backend, because `ConfigManager.loadUserPreferences()` is local-IDB only and the impersonated user has no namespace on the admin's machine.
+- **F-4** resolves §8 Q1: `GLOBAL_ADMIN` is a full `SUPER_ADMIN` alias.
+- **Not changed (out of scope):** the two `ImpersonationGuard` components were left un-consolidated; the "Active" badge `variant` was left as the intentional amber impersonation theme.
+
+---
+
+## 10. Change History
+
+| Date       | Change                                                                                                                                                                                                                                                                                                                   | Files                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| 2026-06-03 | Initial read-only production review (§1–§8). Verdict **Ship-with-fixes**; 10 findings (F-1…F-10) + deferred M-3.                                                                                                                                                                                                          | doc-05                                                                |
+| 2026-06-04 | Implemented all findings + M-3 across 3 file-disjoint worktrees (backend `b54161cc`, seed `eb310b4f`, frontend `68b81ef6`), merged `--no-ff` into `fix/2605-review`. Deduped a redundant seed test (`seed/__tests__/impersonation-clinical-users.test.ts`, subset of `src/__tests__/seed-impersonation-coverage.test.ts`). Full gate green (11,067 tests, 0 fail). | 25 files (see §9) + 3 merge commits + 1 dedupe commit (`877a6540`)    |
 
