@@ -140,6 +140,16 @@ export const SEED_USER_IDS = {
     NURSE_CARD: '70000000-0000-0000-0000-000000000027',
     NURSE_MED: '70000000-0000-0000-0000-000000000028',
     SERVICE_ACCOUNT: '70000000-0000-0000-0000-000000000030',
+    // TASK-331 doc-05 F1 — one impersonatable DOCTOR + NURSE per customer tenant
+    // (ArcaAI/4bits/Mumbai). The ~17 clinical users above all live on the Global
+    // tenant; tenant admins are confined to their own tenant (backend C-1), so
+    // each customer tenant needs its own non-admin clinical users to impersonate.
+    ARCAAI_DOCTOR: '70000000-0000-0000-0000-000000000040',
+    ARCAAI_NURSE: '70000000-0000-0000-0000-000000000041',
+    FOURBITS_DOCTOR: '70000000-0000-0000-0000-000000000042',
+    FOURBITS_NURSE: '70000000-0000-0000-0000-000000000043',
+    MUMBAI_DOCTOR: '70000000-0000-0000-0000-000000000044',
+    MUMBAI_NURSE: '70000000-0000-0000-0000-000000000045',
 } as const;
 
 // =============================================================================
