@@ -59,41 +59,34 @@ const PRIMARY_DEPARTMENT_CODE_BY_USERNAME: Record<string, string> = {
     arcaai_admin: 'GEN',
     fourbits_admin: 'GEN',
     mumbai_admin: 'GEN',
+    // TASK-331 doc-05 F1 — per-customer-tenant impersonatable clinical users.
+    arcaai_doctor: 'GEN',
+    arcaai_nurse: 'GEN',
+    fourbits_doctor: 'GEN',
+    fourbits_nurse: 'GEN',
+    mumbai_doctor: 'GEN',
+    mumbai_nurse: 'GEN',
 };
 
-export const seedUser = async (client: CorePrismaClient) => {
-    console.log('Seeding users...');
-
-    // Get all roles
-    const roles = await client.role.findMany();
-    const roleMap = new Map<string, any>(
-      roles.map((r: any) => [r.name as string, r]),
-    );
-
-    // Function to hash passwords
-    const hashPassword = async (password: string): Promise<string> => {
-        const saltRounds = 10;
-        return bcryptjs.hash(password, saltRounds);
-    };
-
-    // Default password for all seeded users
-    const defaultPassword = await hashPassword('password123');
-
-    // =========================================================================
-    // Define users with their roles
-    // =========================================================================
-    // This seed creates users for the current healthcare-focused RBAC system.
-    // Available roles (7 total):
-    // - SUPER_ADMIN: Full system access (GLOBAL scope)
-    // - TENANT_ADMIN: Full tenant management
-    // - DOCTOR: Clinical role, owns consultations
-    // - NURSE: Read-only clinical support
-    // - SERVICE_ACCOUNT: API/integration access
-    // - DEPARTMENT_HEAD: Extends DOCTOR with delegation
-    // - SENIOR_NURSE: Extends NURSE with broader access
-    // =========================================================================
-
-    const users = [
+// =========================================================================
+// Define users with their roles
+// =========================================================================
+// This seed creates users for the current healthcare-focused RBAC system.
+// Available roles (7 total):
+// - SUPER_ADMIN: Full system access (GLOBAL scope)
+// - TENANT_ADMIN: Full tenant management
+// - DOCTOR: Clinical role, owns consultations
+// - NURSE: Read-only clinical support
+// - SERVICE_ACCOUNT: API/integration access
+// - DEPARTMENT_HEAD: Extends DOCTOR with delegation
+// - SENIOR_NURSE: Extends NURSE with broader access
+//
+// TASK-331 doc-05 F1: exported at module level (was local to seedUser) so the
+// impersonation seed invariant can be asserted in unit tests. `seedUser` still
+// iterates this list. Passwords are seeded via the upsert's `?? defaultPassword`
+// fallback below, so each entry carries `password: null`.
+// =========================================================================
+export const SEED_USERS = [
         // =================================================================
         // SYSTEM ACCOUNT
         // =================================================================
@@ -121,7 +114,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.SUPER_ADMIN,
             username: 'super_admin',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['SUPER_ADMIN'],
             tenantId: SYSTEM_TENANT_ID, // Platform-wide access (system tenant per TASK-305 A.2)
@@ -138,7 +131,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.TENANT_ADMIN,
             username: 'tenant_admin',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['TENANT_ADMIN'],
             tenantId: SEED_TENANT_ID,
@@ -159,7 +152,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.DOCTOR,
             username: 'doctor',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['DOCTOR'],
             tenantId: SEED_TENANT_ID,
@@ -176,7 +169,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.DOCTOR2,
             username: 'doctor2',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['DOCTOR'],
             tenantId: SEED_TENANT_ID,
@@ -193,7 +186,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.DEPT_HEAD,
             username: 'department_head',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['DEPARTMENT_HEAD'],
             tenantId: SEED_TENANT_ID,
@@ -210,7 +203,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.NURSE,
             username: 'nurse',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['NURSE'],
             tenantId: SEED_TENANT_ID,
@@ -227,7 +220,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.SENIOR_NURSE,
             username: 'senior_nurse',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['SENIOR_NURSE'],
             tenantId: SEED_TENANT_ID,
@@ -244,7 +237,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.NURSE_CARD,
             username: 'nurse_card',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['NURSE'],
             tenantId: SEED_TENANT_ID,
@@ -261,7 +254,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.NURSE_MED,
             username: 'nurse_med',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['NURSE'],
             tenantId: SEED_TENANT_ID,
@@ -282,7 +275,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.DOCTOR_SURGERY,
             username: 'doctor_surgery',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['DOCTOR'],
             tenantId: SEED_TENANT_ID,
@@ -299,7 +292,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.DOCTOR_NEURO,
             username: 'doctor_neuro',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['DOCTOR'],
             tenantId: SEED_TENANT_ID,
@@ -316,7 +309,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.DOCTOR_PEDS,
             username: 'doctor_peds',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['DOCTOR'],
             tenantId: SEED_TENANT_ID,
@@ -333,7 +326,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.DOCTOR_ER,
             username: 'doctor_er',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['DOCTOR'],
             tenantId: SEED_TENANT_ID,
@@ -350,7 +343,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.DOCTOR_BREN,
             username: 'doctor_bren',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['DOCTOR'],
             tenantId: SEED_TENANT_ID,
@@ -367,7 +360,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.DOCTOR_RHEUM,
             username: 'doctor_rheum',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['DOCTOR'],
             tenantId: SEED_TENANT_ID,
@@ -384,7 +377,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.DOCTOR_HEME,
             username: 'doctor_heme',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['DOCTOR'],
             tenantId: SEED_TENANT_ID,
@@ -401,7 +394,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.DOCTOR_DERM,
             username: 'doctor_derm',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['DOCTOR'],
             tenantId: SEED_TENANT_ID,
@@ -418,7 +411,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.DOCTOR_DIET,
             username: 'doctor_diet',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['DOCTOR'],
             tenantId: SEED_TENANT_ID,
@@ -435,7 +428,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.DOCTOR_NEPH,
             username: 'doctor_neph',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['DOCTOR'],
             tenantId: SEED_TENANT_ID,
@@ -452,7 +445,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.DOCTOR_SONC,
             username: 'doctor_sonc',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['DOCTOR'],
             tenantId: SEED_TENANT_ID,
@@ -469,7 +462,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.DOCTOR_MED,
             username: 'doctor_med',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['DOCTOR'],
             tenantId: SEED_TENANT_ID,
@@ -490,7 +483,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.ARCAAI_ADMIN,
             username: 'arcaai_admin',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['TENANT_ADMIN'],
             tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
@@ -507,7 +500,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.FOURBITS_ADMIN,
             username: 'fourbits_admin',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['TENANT_ADMIN'],
             tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
@@ -524,7 +517,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         {
             id: SEED_USER_IDS.MUMBAI_ADMIN,
             username: 'mumbai_admin',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: false,
             roleNames: ['TENANT_ADMIN'],
             tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
@@ -540,12 +533,123 @@ export const seedUser = async (client: CorePrismaClient) => {
         },
 
         // =================================================================
+        // CUSTOMER-TENANT CLINICAL USERS (TASK-331 doc-05 F1)
+        // =================================================================
+        // One impersonatable DOCTOR + NURSE per customer tenant so the tenant
+        // admin (confined to its own tenant by the backend C-1 cross-tenant
+        // block) has non-admin clinical users to impersonate. Each maps to its
+        // tenant's GEN department via PRIMARY_DEPARTMENT_CODE_BY_USERNAME.
+        // =================================================================
+        {
+            id: SEED_USER_IDS.ARCAAI_DOCTOR,
+            username: 'arcaai_doctor',
+            password: null,
+            isServiceAccount: false,
+            roleNames: ['DOCTOR'],
+            tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+            profile: {
+                firstName: 'Olivia',
+                lastName: 'Tan',
+                email: 'doctor.tan@arcaai.com',
+                phone: '+6591234601',
+            },
+            tags: ['clinical', 'doctor', 'arcaai'],
+            lastLoginAt: null,
+            lastActiveAt: null,
+        },
+        {
+            id: SEED_USER_IDS.ARCAAI_NURSE,
+            username: 'arcaai_nurse',
+            password: null,
+            isServiceAccount: false,
+            roleNames: ['NURSE'],
+            tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+            profile: {
+                firstName: 'Wei',
+                lastName: 'Lim',
+                email: 'nurse.lim@arcaai.com',
+                phone: '+6591234602',
+            },
+            tags: ['clinical', 'nurse', 'arcaai'],
+            lastLoginAt: null,
+            lastActiveAt: null,
+        },
+        {
+            id: SEED_USER_IDS.FOURBITS_DOCTOR,
+            username: 'fourbits_doctor',
+            password: null,
+            isServiceAccount: false,
+            roleNames: ['DOCTOR'],
+            tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+            profile: {
+                firstName: 'Arjun',
+                lastName: 'Mehta',
+                email: 'doctor.mehta@4bits.io',
+                phone: '+6581234601',
+            },
+            tags: ['clinical', 'doctor', 'fourbits'],
+            lastLoginAt: null,
+            lastActiveAt: null,
+        },
+        {
+            id: SEED_USER_IDS.FOURBITS_NURSE,
+            username: 'fourbits_nurse',
+            password: null,
+            isServiceAccount: false,
+            roleNames: ['NURSE'],
+            tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+            profile: {
+                firstName: 'Nadia',
+                lastName: 'Rahman',
+                email: 'nurse.rahman@4bits.io',
+                phone: '+6581234602',
+            },
+            tags: ['clinical', 'nurse', 'fourbits'],
+            lastLoginAt: null,
+            lastActiveAt: null,
+        },
+        {
+            id: SEED_USER_IDS.MUMBAI_DOCTOR,
+            username: 'mumbai_doctor',
+            password: null,
+            isServiceAccount: false,
+            roleNames: ['DOCTOR'],
+            tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+            profile: {
+                firstName: 'Rohan',
+                lastName: 'Iyer',
+                email: 'doctor.iyer@mumbaihospital.in',
+                phone: '+912212345601',
+            },
+            tags: ['clinical', 'doctor', 'mumbai'],
+            lastLoginAt: null,
+            lastActiveAt: null,
+        },
+        {
+            id: SEED_USER_IDS.MUMBAI_NURSE,
+            username: 'mumbai_nurse',
+            password: null,
+            isServiceAccount: false,
+            roleNames: ['NURSE'],
+            tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+            profile: {
+                firstName: 'Anjali',
+                lastName: 'Nair',
+                email: 'nurse.nair@mumbaihospital.in',
+                phone: '+912212345602',
+            },
+            tags: ['clinical', 'nurse', 'mumbai'],
+            lastLoginAt: null,
+            lastActiveAt: null,
+        },
+
+        // =================================================================
         // SERVICE ACCOUNTS
         // =================================================================
         {
             id: SEED_USER_IDS.SERVICE_ACCOUNT,
             username: 'service_account',
-            password: defaultPassword,
+            password: null,
             isServiceAccount: true,
             roleNames: ['SERVICE_ACCOUNT'],
             tenantId: SEED_TENANT_ID,
@@ -560,10 +664,28 @@ export const seedUser = async (client: CorePrismaClient) => {
             lastActiveAt: null,
         },
 
-    ];
+];
+
+export const seedUser = async (client: CorePrismaClient) => {
+    console.log('Seeding users...');
+
+    // Get all roles
+    const roles = await client.role.findMany();
+    const roleMap = new Map<string, any>(
+      roles.map((r: any) => [r.name as string, r]),
+    );
+
+    // Function to hash passwords
+    const hashPassword = async (password: string): Promise<string> => {
+        const saltRounds = 10;
+        return bcryptjs.hash(password, saltRounds);
+    };
+
+    // Default password for all seeded users
+    const defaultPassword = await hashPassword('password123');
 
     // Create users and related records
-    for (const userData of users) {
+    for (const userData of SEED_USERS) {
         try {
             // 1. Create User record
             const user = await client.user.upsert({
@@ -1263,6 +1385,67 @@ export const seedUser = async (client: CorePrismaClient) => {
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },
+
+        // =====================================================================
+        // TASK-331 doc-05 F1 — per-customer-tenant DOCTOR preferences.
+        // Minimal, distinct-per-tenant prefs so impersonation surfaces real
+        // (non-default) values: ArcaAI = local/en, 4bits = remote/th,
+        // Mumbai = local/hi.
+        // =====================================================================
+        {
+            id: '84000000-0000-0000-0000-000000000081',
+            userId: SEED_USER_IDS.ARCAAI_DOCTOR,
+            name: 'SDK Preference: workflowMode',
+            key: 'workflowMode',
+            value: 'local',
+            dataType: ValueType.String,
+            namespace: 'arcaai-sdk',
+        },
+        {
+            id: '84000000-0000-0000-0000-000000000082',
+            userId: SEED_USER_IDS.ARCAAI_DOCTOR,
+            name: 'SDK Preference: language',
+            key: 'language',
+            value: 'en',
+            dataType: ValueType.String,
+            namespace: 'arcaai-sdk',
+        },
+        {
+            id: '84000000-0000-0000-0000-000000000091',
+            userId: SEED_USER_IDS.FOURBITS_DOCTOR,
+            name: 'SDK Preference: workflowMode',
+            key: 'workflowMode',
+            value: 'remote',
+            dataType: ValueType.String,
+            namespace: 'arcaai-sdk',
+        },
+        {
+            id: '84000000-0000-0000-0000-000000000092',
+            userId: SEED_USER_IDS.FOURBITS_DOCTOR,
+            name: 'SDK Preference: language',
+            key: 'language',
+            value: 'th',
+            dataType: ValueType.String,
+            namespace: 'arcaai-sdk',
+        },
+        {
+            id: '84000000-0000-0000-0000-000000000101',
+            userId: SEED_USER_IDS.MUMBAI_DOCTOR,
+            name: 'SDK Preference: workflowMode',
+            key: 'workflowMode',
+            value: 'local',
+            dataType: ValueType.String,
+            namespace: 'arcaai-sdk',
+        },
+        {
+            id: '84000000-0000-0000-0000-000000000102',
+            userId: SEED_USER_IDS.MUMBAI_DOCTOR,
+            name: 'SDK Preference: language',
+            key: 'language',
+            value: 'hi',
+            dataType: ValueType.String,
+            namespace: 'arcaai-sdk',
+        },
     ];
 
     // Create SDK user preferences
@@ -1332,5 +1515,5 @@ export const seedUser = async (client: CorePrismaClient) => {
     console.log(`  Created ${adminPipelineAssignments.length} admin pipeline assignments`)
 
     console.log('User seeding completed successfully');
-    return { success: true, count: users.length };
+    return { success: true, count: SEED_USERS.length };
 };
