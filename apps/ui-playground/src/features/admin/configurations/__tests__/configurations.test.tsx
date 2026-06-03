@@ -535,8 +535,8 @@ describe('ConfigurationManagementPage', () => {
       expect(useTenantsInfinite).toHaveBeenCalledWith(25, { enabled: false });
     });
 
-    it('should use useTenantConfigs for GLOBAL_ADMIN', () => {
-      mockAuthState.user.roles = ['GLOBAL_ADMIN'];
+    it('should use useTenantConfigs for SUPER_ADMIN', () => {
+      mockAuthState.user.roles = ['SUPER_ADMIN'];
       renderPage();
       expect(useTenantConfigs).toHaveBeenCalledWith(
         expect.any(String),

@@ -79,9 +79,15 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   // (`RequireAdmin` / `RequireGlobalScope`) share one definition.
   const isAdmin = useAuthStore((s) => s.isAdmin());
   const isGlobalScope = useAuthStore((s) => s.isGlobalScope());
+  // TASK-331 #1 — gate tenant-scoped admin pages until a global-scope admin
+  // selects a tenant (header ScopeSwitcher → `setTenant`).
+  const tenantSelected = useAuthStore((s) => !!s.tenantId);
   const { order, reorder } = useAdminPreferences();
 
-  const adminItems = useMemo(() => buildAdminNavItems({ isAdmin, isGlobalScope, order }), [isAdmin, isGlobalScope, order]);
+  const adminItems = useMemo(
+    () => buildAdminNavItems({ isAdmin, isGlobalScope, tenantSelected, order }),
+    [isAdmin, isGlobalScope, tenantSelected, order],
+  );
 
   return (
     <Sidebar collapsible="icon" {...props}>

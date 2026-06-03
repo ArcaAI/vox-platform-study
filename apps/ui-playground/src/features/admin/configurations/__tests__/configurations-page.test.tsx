@@ -2,7 +2,7 @@
  * ConfigurationManagementPage Tests (TASK-244)
  *
  * Covers:
- * 1. Role-based access: SUPER_ADMIN/GLOBAL_ADMIN see tenant picker; TENANT_ADMIN sees own tenant only
+ * 1. Role-based access: SUPER_ADMIN sees the cross-tenant picker; TENANT_ADMIN sees own tenant only
  * 2. Config listing, searching, and filtering
  * 3. Config editing: type-aware editor (boolean select, JSON textarea, string input)
  * 4. Save flow with dirty state detection
@@ -226,8 +226,8 @@ describe('ConfigurationManagementPage', () => {
             expect(within(tenantColumn).getByText('Tenants')).toBeInTheDocument();
         });
 
-        it('GLOBAL_ADMIN should see the tenant picker column', () => {
-            mockRoles = ['GLOBAL_ADMIN'];
+        it('a non-super admin (TENANT_ADMIN) still sees the tenant picker column scoped to own tenant', () => {
+            mockRoles = ['TENANT_ADMIN'];
             renderPage();
 
             const tenantColumn = screen.getByTestId('column-config-tenants');

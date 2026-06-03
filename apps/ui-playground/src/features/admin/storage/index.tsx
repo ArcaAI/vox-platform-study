@@ -53,7 +53,7 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
   const roles = useAuthStore((s: { user?: { roles?: string[] } | null }) => s.user?.roles ?? []);
   const tenantId = useAuthStore((s: { tenantId: string }) => s.tenantId);
   const tenantName = useAuthStore((s: { tenantName: string }) => s.tenantName);
-  const isSuperOrGlobalAdmin = roles.includes('SUPER_ADMIN') || roles.includes('GLOBAL_ADMIN');
+  const isSuperAdmin = roles.includes('SUPER_ADMIN');
 
   // When locked to a tenant (embedded tab), never show the tenant picker.
   const showTenantsColumn = !scopedTenantId;
@@ -89,13 +89,13 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
     isFetchingNextPage: tenantsLoadingMore,
     refetch: refetchTenants,
   } = useTenantsInfinite(25, {
-    enabled: isSuperOrGlobalAdmin && showTenantsColumn,
+    enabled: isSuperAdmin && showTenantsColumn,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
 
   const tenantList = useMemo<Tenant[]>(() => {
-    if (!isSuperOrGlobalAdmin) {
+    if (!isSuperAdmin) {
       if (!tenantId) return [];
       return [
         {
@@ -109,14 +109,14 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
       ];
     }
     return tenantsPages?.pages.flatMap((page) => page.data) ?? [];
-  }, [isSuperOrGlobalAdmin, tenantId, tenantName, tenantsPages]);
+  }, [isSuperAdmin, tenantId, tenantName, tenantsPages]);
 
   const filteredTenants = useMemo(
     () => tenantList.filter((item) => `${item.name} ${item.key}`.toLowerCase().includes(tenantSearch.toLowerCase())),
     [tenantList, tenantSearch],
   );
 
-  const effectiveTenantId = scopedTenantId ?? (isSuperOrGlobalAdmin ? selectedTenantId : tenantId);
+  const effectiveTenantId = scopedTenantId ?? (isSuperAdmin ? selectedTenantId : tenantId);
   const {
     data: bucketsData = [],
     isLoading: bucketsLoading,
@@ -149,11 +149,11 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
   });
 
   useEffect(() => {
-    if (isSuperOrGlobalAdmin) return;
+    if (isSuperAdmin) return;
     if (tenantId && tenantId !== selectedTenantId) {
       setSelectedTenantId(tenantId);
     }
-  }, [isSuperOrGlobalAdmin, selectedTenantId, tenantId]);
+  }, [isSuperAdmin, selectedTenantId, tenantId]);
 
   const filteredBuckets = useMemo(() => {
     const rows = bucketsData.filter((bucket) => `${bucket.slug} ${bucket.name}`.toLowerCase().includes(bucketSearch.toLowerCase()));
@@ -310,13 +310,13 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
 
   const handleTenantSelect = useCallback(
     (id: string) => {
-      if (!isSuperOrGlobalAdmin) return;
+      if (!isSuperAdmin) return;
       if (id === selectedTenantId) return;
       setSelectedTenantId(id);
       setSelectedBucketId('');
       setSelectedFolderPath('');
     },
-    [isSuperOrGlobalAdmin, selectedTenantId],
+    [isSuperAdmin, selectedTenantId],
   );
 
   const handleBucketSelect = useCallback(
@@ -345,7 +345,7 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
     keyExtractor: (item: Tenant) => item.id,
     estimateItemSize: 62,
     onRefresh: () => {
-      if (!isSuperOrGlobalAdmin) return;
+      if (!isSuperAdmin) return;
       void refetchTenants();
     },
     headerControls: (
@@ -372,7 +372,7 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
   const tenantsState: MultiColumnState<Tenant> = {
     data: filteredTenants,
     isLoading: tenantsLoading,
-    selectedId: isSuperOrGlobalAdmin ? selectedTenantId : tenantId,
+    selectedId: isSuperAdmin ? selectedTenantId : tenantId,
     onSelect: handleTenantSelect,
     hasMore: !!tenantsHasMore,
     onLoadMore: () => fetchNextTenants(),

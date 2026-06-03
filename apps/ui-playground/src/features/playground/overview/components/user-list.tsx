@@ -39,7 +39,7 @@ export function UserList() {
   const impersonatedUser = sdkImpersonatedUser ?? persistedImpersonatedUser ?? null;
   const canImpersonate = localUser?.roles?.some((r) => ['SUPER_ADMIN', 'TENANT_ADMIN'].includes(r)) ?? false;
 
-  // TASK-327 T6 — a global-scope operator (SUPER_ADMIN / GLOBAL_ADMIN) has no
+  // TASK-327 T6 — a global-scope operator (SUPER_ADMIN) has no
   // implicit tenant, so impersonation is ambiguous until they pick one. Tenant
   // admins are locked to their own tenant and are never blocked.
   const isGlobalScope = useAuthStore((s) => s.isGlobalScope());
