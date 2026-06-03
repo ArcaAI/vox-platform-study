@@ -34,6 +34,7 @@ vi.mock('@arcaai/domains', async () => {
             // Updated to include new fields: eventType, success
             return new AuditLogResponse({
                 id: source.id,
+                tenantId: source.tenantId,
                 responsibleUserId: source.responsibleUserId,
                 responsibleIp: source.responsibleIp,
                 resourceType: source.resourceType,
@@ -59,6 +60,7 @@ vi.mock('@arcaai/domains', async () => {
  */
 const createMockAuditLogEntity = (overrides: Partial<{
     id: string;
+    tenantId: string;
     responsibleUserId: string | null;
     responsibleIp: string | null;
     resourceType: ResourceType;
@@ -76,6 +78,7 @@ const createMockAuditLogEntity = (overrides: Partial<{
     deletedBy: string | null;
 }> = {}) => ({
     id: 'id' in overrides ? overrides.id! : 'audit-log-id-1',
+    tenantId: 'tenantId' in overrides ? overrides.tenantId! : '50000000-0000-0000-0000-000000000000',
     responsibleUserId: 'responsibleUserId' in overrides ? overrides.responsibleUserId : 'user-123',
     responsibleIp: 'responsibleIp' in overrides ? overrides.responsibleIp : '192.168.1.1',
     resourceType: 'resourceType' in overrides ? overrides.resourceType! : ResourceType.User,
@@ -131,6 +134,20 @@ describe('AuditLogDtoMapper', () => {
             const result = AuditLogDtoMapper.ToResponse(entity as any);
 
             expect(result.previousData).toEqual({ oldKey: 'oldValue' });
+        });
+
+        // TASK-331 doc-03 F6 — tenantId must be carried onto the wire so the
+        // global-scope admin console can resolve & show a Tenant column. The
+        // AutoEntityMapper only copies fields declared on the target DTO, so
+        // this asserts AuditLogResponse declares + assigns tenantId.
+        it('should map tenantId field', () => {
+            const entity = createMockAuditLogEntity({
+                tenantId: '11111111-1111-1111-1111-111111111111',
+            });
+
+            const result = AuditLogDtoMapper.ToResponse(entity as any);
+
+            expect(result.tenantId).toBe('11111111-1111-1111-1111-111111111111');
         });
 
         it('should map metadata field', () => {
