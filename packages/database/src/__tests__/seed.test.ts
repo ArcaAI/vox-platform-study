@@ -21,7 +21,12 @@ import { describe, it, expect } from 'vitest';
 
 import { DEFAULT_POLICIES, PolicyScope } from '../prisma/db_main/seed/01-policy';
 import { SYSTEM_ROLES, TENANT_EXTENDABLE_ROLES, DEFAULT_ROLES } from '../prisma/db_main/seed/03-role';
-import { DEFAULT_DEPARTMENTS, DEFAULT_TENANT_ID } from '../prisma/db_main/seed/04-department';
+import {
+    DEFAULT_DEPARTMENTS,
+    DEFAULT_TENANT_ID,
+    CUSTOMER_TENANT_GEN_DEPARTMENTS,
+    CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS,
+} from '../prisma/db_main/seed/04-department';
 import {
     DEFAULT_AI_MODELS,
     DEFAULT_ASR_PIPELINES,
@@ -48,6 +53,7 @@ import {
     SEED_USER_IDS,
     SEED_POLICY_IDS,
     SEED_ROLE_IDS,
+    SEED_CUSTOMER_TENANT_IDS,
     SYSTEM_TENANT_ID,
     SYSTEM_USER_ID,
 } from '../prisma/db_main/seed/00-constants';
@@ -68,14 +74,23 @@ describe('Seed Constants (00-constants)', () => {
         expect(SEED_USER_IDS.SYSTEM).toBe(SYSTEM_USER_ID);
     });
 
-    it('should define 21 department IDs (18 Global-tenant + 3 per-customer-tenant GEN, TASK-305 Phase F)', () => {
-        expect(Object.keys(SEED_DEPARTMENT_IDS).length).toBe(21);
+    it('should define 27 department IDs (18 Global-tenant + 3 per-customer-tenant GEN + 6 per-customer-tenant specialty, TASK-305 Phase F / TASK-331 r2605 #6)', () => {
+        expect(Object.keys(SEED_DEPARTMENT_IDS).length).toBe(27);
     });
 
     it('should define a per-customer-tenant GEN department ID for each non-Global tenant (TASK-305 Phase F)', () => {
         expect(SEED_DEPARTMENT_IDS.GEN_ARCAAI).toBeDefined();
         expect(SEED_DEPARTMENT_IDS.GEN_FOURBITS).toBeDefined();
         expect(SEED_DEPARTMENT_IDS.GEN_MUMBAI).toBeDefined();
+    });
+
+    it('should define CARD + ER specialty department IDs for each non-Global tenant (TASK-331 r2605 #6)', () => {
+        expect(SEED_DEPARTMENT_IDS.CARD_ARCAAI).toBeDefined();
+        expect(SEED_DEPARTMENT_IDS.ER_ARCAAI).toBeDefined();
+        expect(SEED_DEPARTMENT_IDS.CARD_FOURBITS).toBeDefined();
+        expect(SEED_DEPARTMENT_IDS.ER_FOURBITS).toBeDefined();
+        expect(SEED_DEPARTMENT_IDS.CARD_MUMBAI).toBeDefined();
+        expect(SEED_DEPARTMENT_IDS.ER_MUMBAI).toBeDefined();
     });
 
     it('should include DIET, NEPH, SONC department IDs', () => {
@@ -473,6 +488,54 @@ describe('Department Seed Data', () => {
             requiredFields.forEach((field) => {
                 expect(dept).toHaveProperty(field);
             });
+        });
+    });
+});
+
+// =============================================================================
+// CUSTOMER-TENANT DEPARTMENT CATALOG (TASK-331 r2605 #6)
+// =============================================================================
+
+describe('Customer-Tenant Department Seed Data (TASK-331 r2605 #6)', () => {
+    const customerTenantIds = [
+        SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+    ];
+
+    it('should define 6 specialty rows (CARD + ER for each of the 3 customer tenants)', () => {
+        expect(CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS.length).toBe(6);
+    });
+
+    it('should add CARD and ER to every customer tenant alongside the existing GEN', () => {
+        customerTenantIds.forEach((tenantId) => {
+            const codes = CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS.filter((d) => d.tenantId === tenantId).map((d) => d.code);
+            expect(codes).toEqual(expect.arrayContaining(['CARD', 'ER']));
+        });
+    });
+
+    it('should keep prompt IDs null on customer-tenant departments (they reference Global templates)', () => {
+        [...CUSTOMER_TENANT_GEN_DEPARTMENTS, ...CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS].forEach((dept) => {
+            expect(dept.preSummaryPromptId).toBeNull();
+            expect(dept.newPatientPromptId).toBeNull();
+            expect(dept.revisitPromptId).toBeNull();
+        });
+    });
+
+    it('should have unique department IDs across all customer-tenant rows', () => {
+        const ids = [...CUSTOMER_TENANT_GEN_DEPARTMENTS, ...CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS].map((d) => d.id);
+        expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('should have valid UUID format for all customer-tenant department IDs', () => {
+        [...CUSTOMER_TENANT_GEN_DEPARTMENTS, ...CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS].forEach((dept) => {
+            expect(dept.id).toMatch(UUID_REGEX);
+        });
+    });
+
+    it('should bind every customer-tenant department to a known customer tenant id', () => {
+        [...CUSTOMER_TENANT_GEN_DEPARTMENTS, ...CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS].forEach((dept) => {
+            expect(customerTenantIds).toContain(dept.tenantId);
         });
     });
 });
