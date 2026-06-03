@@ -2,6 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
 import {
+  useAdminUpdateDnaReport,
   useDnaReportVersions,
   useTenantDnaReportData,
 } from '../dna-reports';
@@ -18,6 +19,7 @@ vi.mock('../admin-client', () => ({
 import { adminClient } from '../admin-client';
 
 const mockGet = adminClient.get as ReturnType<typeof vi.fn>;
+const mockPatch = adminClient.patch as ReturnType<typeof vi.fn>;
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -132,7 +134,7 @@ describe('DNA Reports Admin API hooks', () => {
         { tenantId: TENANT_ID },
       );
       expect(mockGet).toHaveBeenCalledWith(
-        '/admin/dna-writing-styles?page=1&limit=500&includeDisabled=true',
+        `/admin/dna-writing-styles?page=1&limit=500&includeDisabled=true&tenantId=${TENANT_ID}`,
         { tenantId: TENANT_ID },
       );
     });
@@ -145,6 +147,46 @@ describe('DNA Reports Admin API hooks', () => {
 
       await waitFor(() => expect(result.current.fetchStatus).toBe('idle'));
       expect(mockGet).not.toHaveBeenCalled();
+    });
+  });
+
+  // TASK-331 doc-02 F1 — admin DNA edit must satisfy the `@RequiresIfMatch()`
+  // route by forwarding the RFC 7232 `If-Match` header (CAS predicate).
+  describe('useAdminUpdateDnaReport', () => {
+    it('forwards ifMatch to adminClient.patch as a request option (not in the body)', async () => {
+      mockPatch.mockResolvedValueOnce({ id: REPORT_ID });
+
+      const { result } = renderHook(() => useAdminUpdateDnaReport(), { wrapper: createWrapper() });
+
+      result.current.mutate({
+        reportId: REPORT_ID,
+        tenantId: TENANT_ID,
+        styleText: 'Updated style',
+        changeReason: 'Refinement',
+        ifMatch: '"3"',
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockPatch).toHaveBeenCalledWith(
+        `/admin/dna-writing-styles/${REPORT_ID}`,
+        { styleText: 'Updated style', changeReason: 'Refinement' },
+        { tenantId: TENANT_ID, ifMatch: '"3"' },
+      );
+    });
+
+    it('omits ifMatch from the request options when not provided', async () => {
+      mockPatch.mockResolvedValueOnce({ id: REPORT_ID });
+
+      const { result } = renderHook(() => useAdminUpdateDnaReport(), { wrapper: createWrapper() });
+
+      result.current.mutate({ reportId: REPORT_ID, tenantId: TENANT_ID, styleText: 'No version' });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockPatch).toHaveBeenCalledWith(
+        `/admin/dna-writing-styles/${REPORT_ID}`,
+        { styleText: 'No version' },
+        { tenantId: TENANT_ID },
+      );
     });
   });
 });

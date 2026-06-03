@@ -1,9 +1,27 @@
 import { Chart, StatsDisplay, type StatsDisplayProps } from '@arcaai/ui';
+import { Skeleton } from '@arcaai/ui/skeleton';
 import { useDnaDashboard } from '@arcaai/vox';
 import { Activity } from 'lucide-react';
 import { useEffect } from 'react';
 
 type StatItem = StatsDisplayProps['stats'][number];
+
+/** Compact, locale-aware relative time for the recent-usage feed (e.g. "3h ago"). */
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const diffSec = Math.round((then - Date.now()) / 1000);
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ['day', 86400],
+    ['hour', 3600],
+    ['minute', 60],
+  ];
+  for (const [unit, secs] of units) {
+    if (Math.abs(diffSec) >= secs) return rtf.format(Math.round(diffSec / secs), unit);
+  }
+  return rtf.format(diffSec, 'second');
+}
 
 /**
  * TASK-328 A5 — DNA aggregate dashboard strip.
@@ -50,6 +68,7 @@ export function DnaDashboardSummary({ tenantId }: { tenantId?: string }) {
 
   // `MM-DD` keeps the x-axis readable; the full date stays in the tooltip key.
   const chartData = recentActivity.dailyCounts.map((point) => ({ date: point.date.slice(5), count: point.count }));
+  const recent = recentActivity.latest ?? [];
 
   return (
     <div className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]" data-testid="dna-dashboard">
@@ -67,15 +86,38 @@ export function DnaDashboardSummary({ tenantId }: { tenantId?: string }) {
       ) : (
         <DashboardNotice message="No usage in the recent window." />
       )}
+      {/* TASK-331 doc-02 F9 — compact "Recent usage" feed from `recentActivity.latest`. */}
+      {recent.length > 0 && (
+        <div className="lg:col-span-2" data-testid="dna-recent-usage">
+          <h3 className="text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase">Recent usage</h3>
+          <ul className="divide-border bg-card divide-y rounded-xl border">
+            {recent.map((entry) => (
+              <li key={entry.id} className="flex items-center gap-3 px-3 py-2 text-sm" data-testid="dna-recent-usage-item">
+                <span className="bg-muted text-muted-foreground inline-flex shrink-0 items-center rounded-full px-2 py-0.5 font-mono text-xs">
+                  v{entry.dnaVersionNumber ?? '—'}
+                </span>
+                <span className="text-foreground min-w-0 flex-1 truncate">
+                  {entry.consultationId ? `Consultation ${entry.consultationId}` : `Report ${entry.dnaReportId}`}
+                </span>
+                <time className="text-muted-foreground shrink-0 text-xs" dateTime={entry.createdAt}>
+                  {relativeTime(entry.createdAt)}
+                </time>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
 
 function DashboardSkeleton() {
+  // TASK-331 doc-02 F10 (rule 10) — mirror the loaded two-pane layout (stat strip
+  // + chart) with <Skeleton/> placeholders instead of raw `animate-pulse` divs.
   return (
     <div className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]" data-testid="dna-dashboard-skeleton">
-      <div className="bg-muted/40 h-36 animate-pulse rounded-xl border" />
-      <div className="bg-muted/40 h-36 animate-pulse rounded-xl border" />
+      <Skeleton className="h-36 rounded-xl" />
+      <Skeleton className="h-36 rounded-xl" />
     </div>
   );
 }

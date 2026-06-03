@@ -57,6 +57,20 @@ describe('DnaWritingStyleDtoMapper', () => {
             expect(result.currentVersionNumber).toBe(1);
         });
 
+        it('should surface the row _version OCC token (TASK-331 doc-02 F1)', () => {
+            const entity = {
+                id: 'report-occ',
+                doctorId: 'doc-1',
+                version: 7,
+                createdAt: new Date('2026-02-18T10:00:00Z'),
+                updatedAt: new Date('2026-02-18T10:00:00Z'),
+            };
+
+            const result = DnaWritingStyleDtoMapper.toReportResponse(entity as any);
+
+            expect(result.version).toBe(7);
+        });
+
         it('should convert date fields to ISO string', () => {
             const entity = {
                 id: 'report-3',

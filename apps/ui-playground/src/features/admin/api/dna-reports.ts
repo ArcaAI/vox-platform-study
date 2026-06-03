@@ -29,7 +29,13 @@ export function useTenantDnaReportData(tenantId: string) {
 
       const [usersResponse, reportsResponse] = await Promise.all([
         adminClient.get<PaginatedResponse<AdminUser>>(`/admin/users/tenant/${tenantId}?page=1&limit=100`, { tenantId }),
-        adminClient.get<PaginatedResponse<DnaReport>>('/admin/dna-writing-styles?page=1&limit=500&includeDisabled=true', { tenantId }),
+        // TASK-331 doc-02 F6 — also pass `tenantId` as a query param so a global
+        // admin's repo-paginated list is scoped server-side (the header already
+        // carries it; the query param keeps parity with the dashboard endpoint).
+        adminClient.get<PaginatedResponse<DnaReport>>(
+          `/admin/dna-writing-styles?page=1&limit=500&includeDisabled=true&tenantId=${encodeURIComponent(tenantId)}`,
+          { tenantId },
+        ),
       ]);
 
       return {
@@ -97,14 +103,18 @@ export interface AdminDnaUpdateInput {
   reportData?: Partial<DnaReportData>;
   styleText?: string;
   changeReason?: string;
+  // TASK-331 doc-02 F1 — RFC 7232 `If-Match: "<version>"` forwarded as a request
+  // header so the `@RequiresIfMatch()` admin PATCH route runs its compare-and-set
+  // (412 on drift, 428 when omitted). Echoed from the loaded report's `version`.
+  ifMatch?: string;
 }
 
 export function useAdminUpdateDnaReport() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ reportId, tenantId, ...body }: AdminDnaUpdateInput) =>
-      adminClient.patch<DnaReport>(`/admin/dna-writing-styles/${reportId}`, body, { tenantId }),
+    mutationFn: ({ reportId, tenantId, ifMatch, ...body }: AdminDnaUpdateInput) =>
+      adminClient.patch<DnaReport>(`/admin/dna-writing-styles/${reportId}`, body, ifMatch ? { tenantId, ifMatch } : { tenantId }),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
         queryKey: dnaReportsAdminKeys.tenantData(variables.tenantId),
