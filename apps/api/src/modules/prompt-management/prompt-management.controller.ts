@@ -55,7 +55,15 @@ export class PromptManagementController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   async list(
     @Query()
-    queryParams: { category?: string; status?: string; departmentId?: string; search?: string; includeDisabled?: string; page?: number; limit?: number },
+    queryParams: {
+      category?: string;
+      status?: string;
+      departmentId?: string;
+      search?: string;
+      includeDisabled?: string;
+      page?: number;
+      limit?: number;
+    },
   ): Promise<PaginatedPromptTemplateResponse> {
     // TASK-328 A4 — pagination is pushed down to the repository
     // (`findPaginated` → `db.findMany` + `db.count`) instead of materializing
