@@ -93,6 +93,26 @@ const routeMeta: Record<string, { label: string; parent?: { label: string; path:
     label: 'DNA Reports',
     parent: { label: 'Administration', path: '/' },
   },
+  '/_authenticated/admin/audio-pipelines': {
+    label: 'Audio Pipelines',
+    parent: { label: 'Administration', path: '/' },
+  },
+  '/_authenticated/admin/storage': {
+    label: 'Storage',
+    parent: { label: 'Administration', path: '/' },
+  },
+  '/_authenticated/admin/configurations': {
+    label: 'Configurations',
+    parent: { label: 'Administration', path: '/' },
+  },
+  '/_authenticated/admin/audit-logs': {
+    label: 'Audit Logs',
+    parent: { label: 'Administration', path: '/' },
+  },
+  '/_authenticated/admin/studio': {
+    label: 'Prisma Studio',
+    parent: { label: 'Administration', path: '/' },
+  },
 };
 
 interface HeaderProps extends React.HTMLAttributes<HTMLElement> {

@@ -24,10 +24,10 @@ export const DEFAULT_ADMIN_MENU_ORDER: readonly string[] = [
   'prompts',
   'departments',
   'audio-pipelines',
-  'studio',
   'storage',
   'configurations',
   'audit-logs',
+  'studio',
 ];
 
 type SettingLike = { key?: string; value?: unknown; namespace?: string; [k: string]: unknown };
