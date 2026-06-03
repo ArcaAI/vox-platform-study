@@ -147,4 +147,61 @@ This cluster is the **clinical-AI half of the `@arcaai/vox` SDK reference playgr
 4. **Preferences sync:** is client-only persistence the accepted design (TASK-329 documents it), or is server sync (`PATCH /user/me/settings`) still expected for production parity (Finding #5)?
 5. **TASK-245 read-only-during-impersonation:** the unit test asserts it but the provider doesn't wire it — is the test aspirational, or is the provider missing the call?
 
-*All claims above were verified by reading source at the cited `file:line` on `fix/2605-review` @ e91fc450; no files other than this document were created or modified.*
+*All claims in §1–§8 above were verified by reading source at the cited `file:line` on `fix/2605-review` @ e91fc450 during the audit; no files other than this document were created or modified at audit time.*
+
+---
+
+## 9. Implementation Summary
+
+**Status:** Completed · **Merged to** `fix/2605-review` @ `a32811b8` · 2026-06-04
+
+Work was executed by **four non-overlapping agents in isolated git worktrees** (branched from `fix/2605-review` @ `27759b42`, after doc-05 + doc-06 had merged). Each agent's scope was a **strictly file-disjoint** set; each gated green independently (TDD RED→GREEN), then all four merged clean into `fix/2605-review` (`ort` strategy, **0 conflicts** — confirmed disjoint). The §8 open questions were resolved per the audit's own recommendations and shaped the scope below.
+
+### Resolved open questions (decisions)
+- **Q1/F2 — default summary raw-text path:** treated as a regression → **route the default flow through `/text/generate/assembled`** (IDs), keep raw text only behind the existing debug toggle.
+- **Q2/F1 — server-side `generate` authorization:** **yes, defense-in-depth** → added a controller doctor-scope gate in addition to the UI guard.
+- **Q3/F3 — voice-profile seeding:** **seed it** (additive demonstrability; live enrollment still works) → `UserVoiceProfile` rows added.
+- **Q4/F5 — preferences sync:** **add server sync for production parity** → debounced `PATCH /user/me/settings` when not impersonating.
+- **Q5/F5b — TASK-245 read-only-during-impersonation:** **already wired by doc-05** (the production `user-list.tsx` calls `setReadOnly(true)` on impersonation start, `false` on end; `ConfigManager.persistUserPreferences()` short-circuits on `readOnly`). Verified — no longer aspirational. F5a (server sync) is gated by this same flag.
+
+### What was built (by finding)
+
+| # | Sev | Resolution | Key files |
+|---|---|---|---|
+| **F1** | High | UI: "Generate Style" button + `GenerateDialog` now render only `{!requiresImpersonation && …}` (inside the gate). Backend (defense-in-depth): `assertActingAsDoctor()` in the controller reads CLS user roles + `impersonatedBy` and throws `ForbiddenException` for an admin without doctor scope/active impersonation. | `dna-writing-style/index.tsx`, `dna-writing-style.controller.ts` (+ controller test, +`dna-impersonation-guard.test.tsx`) |
+| **F2** | Med | New `useGenerateSummaryAssembled()` → `/text/generate/assembled`; the summary page's **default** generate + stream now post `prompt_template_id`/`dna_writing_style_id`/`context_item_ids` (raw `buildPromptAndSystem` inlining removed); raw `/text/generate` no longer reachable from the summary page. | `summarization/api/summarization.ts`, `api/index.ts`, `summary/index.tsx` (+`summary-assembled-route.test.tsx`) |
+| **F3** | Med | `UserVoiceProfile` seed rows for `DOCTOR`/`DOCTOR2` (one active + one inactive each; respects the partial-unique active index), `vector(256)` deterministic unit-normalized embeddings written via `$executeRawUnsafe` (mirrors `UserVoiceProfileRepository.createWithEmbedding`); ids in `00-constants.ts`. No `tenantId` (model is `userId`-scoped). | `seed/91-user.ts`, `seed/00-constants.ts` (+`seed.test.ts`) |
+| **F4** | Med | `cacheHit` (mixed true/false) + `qualityScore` (0.84–0.91) set on the existing `SummaryMeta` seed rows so `QualityBadge` demos both states. | `seed/09-consultation.ts` (+`seed.test.ts`) |
+| **F5a** | Med | `ConfigManager` gains a second persist callback (`onPersistUserPreferencesToServer`), invoked behind the existing `readOnly` short-circuit; `AgenticProvider` adds a **debounced (500 ms)** `makePersistUserPreferencesToServer` that flattens the user-pref tier to dot-paths and PATCHes each leaf to `/user/me/settings/arcaai-sdk/{key}` with PascalCase `dataType`, with a flush-time read-only re-check. Local-storage persistence unchanged; failed PATCHes never break it. | `agentic-sdk-v2/core/ConfigManager.ts`, `providers/AgenticProvider.tsx` (+`impersonation-config.test.ts`, +`AgenticProvider.serverPrefSync.task331.test.ts`) |
+| **F5b** | Med | **Done upstream by doc-05** — verified, not re-implemented. | `user-list.tsx`, `use-end-impersonation.ts` (doc-05) |
+| **F6** | Med | Explicit consultation `<Select>` in `SavedSummariesPanel` (`selectedConsultationId ?? session.consultation?.id`); `reloadSummaries` `await session.load(consultationId)` before `loadSummaries()`, decoupling from the implicit "last-loaded" side effect. | `summarization/components/saved-summaries-panel.tsx` (+test) |
+| **F8** | Low | `buildAudioSnippet` → real `useArcaAudio` (`startFromPreferences()`); `buildDnaSnippet` → `useDnaStyle` from `@arcaai/vox`; `buildSummarizationSnippet` → snake_case `prompt_template_id`/`dna_writing_style_id` + `context_item_ids`; top JSDoc corrected. | `lib/playground-snippets.ts` (+test) |
+| **F9** | Low | `QuickTestCard` resolves a friendly `matchedLabel` from the enrolled profile (fallback to a shortened id) instead of the raw `profileId` UUID. | `voice-profile/local-voice.tsx` (+test) |
+| **F11** | Low | Deleted the orphaned `voice-embedding-panel.tsx` + its test (zero references confirmed). | (removed) |
+| **F7** | Low-Med | **Accepted deviation — documented, no code.** "Generate from history" remains a DNA **version** picker (matches TASK-329 §1.1); a clinical context-item picker is a scope expansion, deferred. | — |
+| **F10** | Low | **Accepted deviation — documented, no code.** `set-default` stays `PATCH /:reportId/default` (functionally correct; renaming the route is API-compat risk for no functional gain). | — |
+
+### Verification (consolidated post-merge gate @ `a32811b8`)
+- **Dep-graph build:** `turbo run build` for ui-playground + api closures (incl. merged `@arcaai/vox`, `@arcaai/ui` DTS) → **14/14 tasks**, clean.
+- **Typecheck:** `@arcaai/ui-playground` `tsc --noEmit` → **0 errors** (the 555 errors seen mid-flight were purely unbuilt `@arcaai/ui` subpath types — resolved by building deps first); `@arcaai/vox` + `@arcaai/database` clean.
+- **Tests:** ui-playground **908**, `@arcaai/vox` **3280**, `@arcaai/database` **696** (incl. seed), apps/api **1569 passed / 4 skipped** → **all passing, 0 failing**.
+- **Lint:** IDE diagnostics on all 13 merged source files → **0 errors**.
+- **Pre-existing (not introduced by doc-07):** apps/api whole-repo `tsc` reports type errors in untouched test files (`auth/__tests__/*`, `consultation.controller.test.ts`, `dna-writing-style-admin.controller.test.ts`); these exist on the baseline and the vitest runtime suite is green.
+
+### Deferrals / follow-ups (tracked, not blocking)
+1. **F7** — broaden DNA "generate from history" to also accept clinical **context items** (scope expansion beyond TASK-329 §1.1).
+2. **F10** — optional `POST /:reportId/set-default` route rename for brief parity.
+3. **F2 dead hooks** — `useGenerateSummary` / `useStreamSummary` are now orphaned in `summarization/api/summarization.ts` (the summary page no longer calls them). Recommend deleting in a follow-up (left in place here to avoid public-API churn outside the F2 ask).
+4. **F4 row count** — the seed file currently holds **2** `SummaryMeta` rows (the `// SUMMARY METAS (4)` comment is a pre-existing inaccuracy); `cacheHit`/`qualityScore` were applied to the rows that exist and the test written generically (`≥2 rows`).
+5. **F3 UI copy** — an optional "enroll live during the demo" note on `voice-profile/index.tsx` was not added (outside the seed agent's file scope); seeding already makes the page demonstrable.
+
+---
+
+## 10. Change History
+
+| Date | Change | Files / Commits |
+|---|---|---|
+| 2026-06-04 | **F3/F4 SEED** — `UserVoiceProfile` rows for DOCTOR/DOCTOR2 (`vector(256)` deterministic embeddings) + `cacheHit`/`qualityScore` on `SummaryMeta` | `a4549afd` → merge `5e4dec60` |
+| 2026-06-04 | **F5a SDK** — debounced server-sync of user prefs via `PATCH /user/me/settings/arcaai-sdk/{key}` when not impersonating (read-only-gated + flush-time re-check) | `3871d771` → merge `5c48675c` |
+| 2026-06-04 | **F2/F6 SMR** — default summary generate+stream via `/text/generate/assembled` (raw inlining removed); explicit consultation selector in `SavedSummariesPanel` | `a8e05efd` → merge `1d58f4a2` |
+| 2026-06-04 | **F1/F8/F9/F11 UI** — DNA generate gated inside `ImpersonationGuard` + backend `assertActingAsDoctor()`; snippet fidelity (`useArcaAudio`/`useDnaStyle`/snake_case ids); friendly quick-test label; deleted orphaned `VoiceEmbeddingPanel` | `d7501d1a` → merge `a32811b8` |
