@@ -115,7 +115,7 @@ export class DnaWritingStyleController {
   })
   @RequiresIfMatch()
   @ApiOperation({
-    summary: 'Update the current doctor\'s DNA writing-style report',
+    summary: "Update the current doctor's DNA writing-style report",
     description:
       'Updates one DNA writing-style report row owned by the caller. Optimistic ' +
       'concurrency is enforced (TASK-331 doc-02 F12): the `If-Match` header (RFC ' +

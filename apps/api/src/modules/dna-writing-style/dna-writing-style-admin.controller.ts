@@ -49,7 +49,12 @@ export class DnaWritingStyleAdminController {
   // supplied `tenantId` is ignored.
   @Get('dashboard')
   @ApiOperation({ summary: 'DNA aggregate dashboard (users with a style, avg versions, recent usage activity)' })
-  @ApiQuery({ name: 'tenantId', required: false, type: String, description: 'Global-admin only: scope the aggregate to a tenant. Ignored for tenant admins.' })
+  @ApiQuery({
+    name: 'tenantId',
+    required: false,
+    type: String,
+    description: 'Global-admin only: scope the aggregate to a tenant. Ignored for tenant admins.',
+  })
   @ApiResponse({ status: 200, description: 'DNA aggregate dashboard', type: DnaDashboardResponse })
   async getDashboard(@Query('tenantId') tenantId?: string): Promise<DnaDashboardResponse> {
     return this.dnaService.getDashboard(tenantId);
@@ -59,7 +64,12 @@ export class DnaWritingStyleAdminController {
     returnedModel: DnaReportResponse,
     multi: true,
   })
-  @ApiQuery({ name: 'tenantId', required: false, type: String, description: 'Global-admin only: scope the list to a tenant. Ignored for tenant admins.' })
+  @ApiQuery({
+    name: 'tenantId',
+    required: false,
+    type: String,
+    description: 'Global-admin only: scope the list to a tenant. Ignored for tenant admins.',
+  })
   @ApiQuery({ name: 'includeDisabled', required: false, type: Boolean, description: 'Include disabled reports in results' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
