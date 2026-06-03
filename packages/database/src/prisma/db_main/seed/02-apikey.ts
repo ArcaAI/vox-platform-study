@@ -1,5 +1,6 @@
 import { createHash, createHmac } from 'crypto';
 import type { CorePrismaClient } from '../../../client';
+import { getNodeEnv, type Environment } from '../../../env';
 import { ApiKeyStatus, ApiKeyType } from '../../../generated/core-prisma-client/client.js';
 import {
     SEED_TENANT_ID,
@@ -8,6 +9,28 @@ import {
     SEED_API_KEY_RAW,
     SEED_USER_IDS,
 } from './00-constants';
+
+/**
+ * TASK-331 doc-08 F5 — dev/test gate predicate (single source of truth).
+ *
+ * The demo API keys below embed raw secrets (from 00-constants), ACTIVE status
+ * and broad scopes. They are LOCAL DEV fixtures only and must never be seeded
+ * in production/staging. This predicate is reused by the seed orchestrator
+ * (`SEED_DEMO_DATA` in index.ts) and by the defence-in-depth guard inside
+ * `seedApiKey`, so the gate and the guard can never disagree.
+ */
+export function shouldSeedApiKeys(env: Environment = getNodeEnv()): boolean {
+  return env === 'development' || env === 'test';
+}
+
+/**
+ * TASK-331 doc-08 F5 — build a non-secret, masked preview of a raw key for
+ * confirmation logging. Exposes at most the first 4 characters (the shared,
+ * non-sensitive `hope` prefix) and masks the remainder, e.g. `hope****`.
+ */
+export function maskSecret(rawKey: string): string {
+  return `${rawKey.slice(0, 4)}****`;
+}
 
 /**
  * Hash an API key using SHA-256
@@ -174,10 +197,22 @@ export const DEFAULT_API_KEYS = [
 ];
 
 export const seedApiKey = async (client: CorePrismaClient) => {
+  // TASK-331 doc-08 F5 — defence in depth. The orchestrator already gates this
+  // step behind `SEED_DEMO_DATA` (dev/test only); refuse to run if invoked
+  // directly outside dev/test so the raw-secret fixtures can never reach
+  // production/staging even if the gate is bypassed.
+  const env = getNodeEnv();
+  if (!shouldSeedApiKeys(env)) {
+    throw new Error(
+      `Refusing to seed API keys: NODE_ENV="${env}" is not development/test. ` +
+        'Demo API-key fixtures contain raw secrets and must never be seeded outside local dev/test.'
+    );
+  }
+
   console.log('Seeding API keys...');
 
   try {
-    console.log('\n📋 Development API Keys (use these in your requests):');
+    console.log('\n📋 Development API Keys (raw values defined in seed/00-constants.ts):');
     console.log('─'.repeat(60));
 
     for (const { rawKey, keyName, ...apiKeyData } of DEFAULT_API_KEYS) {
@@ -185,9 +220,12 @@ export const seedApiKey = async (client: CorePrismaClient) => {
       const keyPrefix = extractPrefix(rawKey);
       const keyChecksum = extractChecksum(rawKey);
 
+      // F5 — never print the raw secret; log only a non-secret reference plus a
+      // masked preview (at most the first 4 chars).
       console.log(`  ${keyName}:`);
-      console.log(`    Raw Key: ${rawKey}`);
-      console.log(`    Prefix:  ${keyPrefix}`);
+      console.log(`    Key ID:  ${apiKeyData.id}`);
+      console.log(`    Tenant:  ${apiKeyData.tenantId}`);
+      console.log(`    Preview: ${maskSecret(rawKey)}`);
       console.log('');
 
       await client.apiKey.upsert({
