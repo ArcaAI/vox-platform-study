@@ -128,3 +128,63 @@ Seed (`packages/database/src/prisma/db_main/seed/09-consultation.ts`) is **reali
 3. **File/audio injection:** is the Audio File tab meant to transcribe (FOCUS) or only to attach raw audio for later processing? Current code does the latter; confirm the intended behavior before implementing F1.
 4. **Prompt-tier visibility:** should the resolved tier (and chosen department prompt id) be persisted on `SummaryMeta`/a context item and shown, or is server-side logging sufficient? FOCUS says "surfaced in UI" — currently it is not.
 5. **`useArcaAudio` vs `useRealtimeTranscription`:** the FOCUS names `useArcaAudio`; the implementation standardized on the playground-local `useRealtimeTranscription`. Confirm whether convergence on the SDK hook is required for parity with other playgrounds.
+
+---
+
+## 9. Implementation Summary
+
+**Status:** Completed (merged to `fix/2605-review`). Date: 2026-06-04.
+
+Work was executed by four non-overlapping agents in isolated git worktrees, each gated green independently, then merged (clean — disjoint file sets, no conflicts) into `fix/2605-review`. The open questions in §8 were resolved by the product owner and shaped the scope below.
+
+### Resolved open questions (owner decisions)
+- **Q3/F1 — file/audio injection:** confirmed **upload-only** (no batch transcription expected). → **F1 closed as by-design**; the Audio File/Attachment tabs remain upload+attach. No code change; UI copy was already accurate.
+- **Q2/F2 — dual capture:** **configurable per audio pipeline** (`preprocessing`/`postprocessing` steps) **and** captured client-side when the user prefers the **local** processing pipeline. → built (config + SDK + UI + seed). The **server-side remote (Python STT-v2) dual-media path is deferred** (needs the conda-managed service); the TS writer is made ready to accept both ids.
+- **Q4/F4 — prompt tier:** **persist + surface in UI.** → new `SummaryMeta` columns + badge.
+- **Q5/F3 — `useArcaAudio`:** **consolidate** mic selection / mixing / feature toggles + a prefs-driven start. → SDK hook consolidated; full playground convergence onto the SDK hook left as a follow-up (panel still uses `useRealtimeTranscription`, now with real dual capture).
+
+### What was built (by finding)
+
+| # | Resolution | Key files |
+|---|---|---|
+| **F1** | Closed by-design (upload-only confirmed) | — |
+| **F2** | `SummaryMeta`-independent: STT writer (`sttInternal.createAudioRecord`) + `CreateAudioRecordRequest` now accept `rawMediaId`/`processedMediaId`; SDK `useArcaAudio` gains `dualCaptureEnabled` + `DualStreamRecorder` wiring surfaced via `onDualCapture`; playground recording panel captures raw+processed → uploads → `useAudioRecordings.add(...)`; seed adds a `dual_capture` pipeline-config block + a demo recording with real `Media` rows | `sttInternal.service.ts`, `stt/internal/dto/internal.request.ts`, `useArcaAudio.ts`, `types/audio.ts`, `consultation-recording-panel.tsx`, `seed/06-stt.ts`, `seed/09-consultation.ts` |
+| **F3** | `useArcaAudio` consolidated: `start({ deviceId, secondaryDeviceId, dualCaptureEnabled })` (2-mic mixing via `@arcaai/room` `AudioMixer`) + `startFromPreferences()`; keeps noise-filter/VAD/STT toggles | `useArcaAudio.ts`, `useArca.ts`, `types/audio.ts` |
+| **F4** | New `SummaryMeta.promptResolvedFrom` + `resolvedPromptId` columns (additive migration), threaded domain→factory→service→DTO→mapper; surfaced on both the **summary** and **context** endpoints (`structuredData`); SDK type updated; `SummaryPanel` renders a tier badge ("Doctor preferred"/"Department"/"Default") | `consultation.prisma` (+migration), `SummaryMetaEntity/Factory/Model.ts`, `summary.service.ts`, `summary.response.ts`, `summary.dto.mapper.ts`, `context-item.response.ts`, `context.dto.mapper.ts`, `types/summary.ts`, `summary-panel.tsx` |
+| **F5** | Gate copy now points at the header tenant switcher / impersonation, not the removed Overview card | `user-list.tsx`, `consultation/index.tsx` |
+| **F6** | `LiveCodePanel` snippet recomputes on the impersonated user (added to `useMemo` deps), not only `tenantId` | `consultation/index.tsx` |
+| **F7** | `CaseNoteForm.addContextItem` now posts against the `consultationId` **prop** (not the store id) | `case-note-form.tsx` |
+| **F8** | `DiarizationSeedingIndicator` mounted in the consultation recording panel, wired to `realtime.voiceProfileSeeded` | `consultation-recording-panel.tsx` |
+| **F9** | `PromptResolutionService` JSDoc corrected from "two-tier" to the three tiers (preferred/department/default) | `prompt-resolution.service.ts` |
+
+### Database migration (additive, backward-compatible)
+`packages/database/src/prisma/db_main/migrations/20260603175719_add_summary_meta_prompt_tier/migration.sql`:
+```sql
+ALTER TABLE "core"."SummaryMeta" ADD COLUMN "promptResolvedFrom" TEXT,
+ADD COLUMN "resolvedPromptId" TEXT;
+CREATE INDEX "SummaryMeta_promptResolvedFrom_idx" ON "core"."SummaryMeta"("promptResolvedFrom");
+```
+No `DROP/DELETE/TRUNCATE`. **Not yet applied to any DB** — apply via `pnpm db:migrate` (or `prisma migrate deploy`) on the next deploy.
+
+### Verification (consolidated post-merge gate @ `3bb27df4`)
+- Builds: `@arcaai/domains`, `@arcaai/applications`, `@arcaai/database`, `@arcaai/vox` → all clean; `@arcaai/ui-playground` `tsc --noEmit` → 0 errors.
+- Tests: domains **1132**, applications **4675**, database **685**, vox **3270**, ui-playground **915** → **10,677 passing**, 0 failing.
+- Lint: applications/domains/vox/ui → **0 errors** (only pre-existing warnings).
+
+### Deferrals / follow-ups (tracked, not blocking)
+1. **F2 remote path (Python):** STT-v2 producing two media blobs for the *remote* pipeline is deferred (separate conda-managed service). The TS writer already accepts the ids.
+2. **F2 live-flag wiring:** the playground derives the live dual-capture flag from `resolvedConfig.audio.dualCapture` (absent in baseline `AppConfig` → defaults OFF), while the seed sets `dual_capture` in the *pipeline* `configYaml`. The seed-data badge renders; connecting the pipeline flag to the live SDK capture path needs backend config-surfacing + an SDK `AppConfig` field.
+3. **F2 raw≠processed tracks:** baseline `useRealtimeTranscription` exposes no `TranscriptionPipeline`, so `DualStreamRecorder` is currently fed the same input track for both streams; swapping to `getRawInputTrack()`/`getProcessedTrack()` requires the panel to converge on a pipeline-exposing hook (ties into the Q5 convergence follow-up).
+4. **Admin pipeline-config editor UI** for the `dual_capture` toggle (apps/admin) — deferred; config currently lives in `configYaml` and is seeded.
+
+---
+
+## 10. Change History
+
+| Date | Change | Files / Commits |
+|---|---|---|
+| 2026-06-04 | F2/F4/F9 backend: `SummaryMeta` prompt-tier persistence (+additive migration), STT writer accepts dual-capture ids, prompt-resolution JSDoc fix | `64c624f7` → merge `e47b2847` |
+| 2026-06-04 | F2 seed/config: `dual_capture` pipeline YAML + dual-capture demo recording with real `Media` rows | `8e3640a9` → merge `3b36bd66` |
+| 2026-06-04 | F2/F3/F4 SDK: `useArcaAudio` consolidation (mic select + 2-mic mix + `startFromPreferences`), dual-capture wiring, prompt-tier type | `1e9c0f52` → merge `5fe91eb4` |
+| 2026-06-04 | F2/F4/F5/F6/F7/F8 UI: gate copy, snippet deps, case-note id, diarization indicator, tier badge, real dual capture | `b443c208` → merge `c2a710c4` |
+| 2026-06-04 | F4 merge reconciliation: populate tier fields in `ContextDtoMapper.toSummaryMetaResponse` (+2 tests) | `3bb27df4` |
