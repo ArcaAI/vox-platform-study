@@ -5,18 +5,41 @@ import type { DraggableNavItem } from './draggable-nav-group';
 /**
  * TASK-327 T5 — admin nav is scope-driven, not visibility-driven.
  *
- * Any admin (SUPER_ADMIN / GLOBAL_ADMIN / TENANT_ADMIN — `isAdmin`) sees the
- * full admin menu set; data is scoped server-side by the `X-Tenant-Id`
- * header, so there's no need to HIDE menus per role. The one exception is
- * Prisma Studio, which stays global-scope only (TASK-326 Q4) and is gated by
- * `isGlobalScope`.
+ * Any admin (SUPER_ADMIN / TENANT_ADMIN — `isAdmin`) sees the full admin menu
+ * set; data is scoped server-side by the `X-Tenant-Id` header, so there's no
+ * need to HIDE menus per role. The one exception is Prisma Studio, which stays
+ * global-scope only (TASK-326 Q4) and is gated by `isGlobalScope`.
+ *
+ * TASK-331 #1 — a global-scope admin (SUPER_ADMIN) has no implicit tenant, so
+ * the tenant-scoped pages are DISABLED until they pick one in the header
+ * ScopeSwitcher. The Overview, the Tenants management area, the cross-tenant
+ * Users directory and the global Prisma Studio stay enabled so the admin can
+ * reach the tenant picker and operate cross-tenant. A TENANT_ADMIN is always
+ * bound to their session tenant, so nothing is gated for them.
  *
  * The resulting list is ordered by the caller's persisted preference
  * (`orderItemsById`); unknown / not-yet-saved ids fall back to this build
  * order at the end.
  */
-export function buildAdminNavItems(opts: { isAdmin: boolean; isGlobalScope: boolean; order: readonly string[] }): DraggableNavItem[] {
-  const { isAdmin, isGlobalScope, order } = opts;
+const TENANT_SCOPED_ADMIN_IDS = new Set([
+  'dna-reports',
+  'prompts',
+  'departments',
+  'audio-pipelines',
+  'frontend-pipeline',
+  'backend-pipeline',
+  'storage',
+  'configurations',
+  'audit-logs',
+]);
+
+export function buildAdminNavItems(opts: {
+  isAdmin: boolean;
+  isGlobalScope: boolean;
+  tenantSelected: boolean;
+  order: readonly string[];
+}): DraggableNavItem[] {
+  const { isAdmin, isGlobalScope, tenantSelected, order } = opts;
 
   const items: DraggableNavItem[] = [{ id: 'overview', title: 'Overview', url: '/', icon: Settings }];
 
@@ -36,10 +59,20 @@ export function buildAdminNavItems(opts: { isAdmin: boolean; isGlobalScope: bool
     );
   }
 
-  // Prisma Studio — global scope only (super-admin / global-admin).
+  // Prisma Studio — global scope only (super-admin).
   if (isGlobalScope) {
     items.push({ id: 'studio', title: 'Prisma Studio', url: '/admin/studio', icon: Database });
   }
 
-  return orderItemsById(items, order);
+  // Gate tenant-scoped pages behind a selected tenant for a global-scope admin.
+  const gated =
+    isGlobalScope && !tenantSelected
+      ? items.map((item) =>
+          TENANT_SCOPED_ADMIN_IDS.has(item.id)
+            ? { ...item, disabled: true, disabledReason: 'Select a tenant first to manage tenant-scoped resources' }
+            : item,
+        )
+      : items;
+
+  return orderItemsById(gated, order);
 }

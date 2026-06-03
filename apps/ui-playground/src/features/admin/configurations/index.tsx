@@ -98,7 +98,7 @@ export default function ConfigurationManagementPage() {
   const roles = useAuthStore((s: { user?: { roles?: string[] } | null }) => s.user?.roles ?? []);
   const tenantId = useAuthStore((s: { tenantId: string }) => s.tenantId);
   const tenantName = useAuthStore((s: { tenantName: string }) => s.tenantName);
-  const isSuperOrGlobalAdmin = roles.includes('SUPER_ADMIN') || roles.includes('GLOBAL_ADMIN');
+  const isSuperAdmin = roles.includes('SUPER_ADMIN');
 
   const [tenantSearch, setTenantSearch] = useState('');
   const [configSearch, setConfigSearch] = useState('');
@@ -121,10 +121,10 @@ export default function ConfigurationManagementPage() {
     fetchNextPage: fetchNextTenants,
     refetch: refetchTenants,
     isFetchingNextPage: tenantsLoadingMore,
-  } = useTenantsInfinite(25, { enabled: isSuperOrGlobalAdmin });
+  } = useTenantsInfinite(25, { enabled: isSuperAdmin });
 
   const allTenants = useMemo<Tenant[]>(() => {
-    if (!isSuperOrGlobalAdmin) {
+    if (!isSuperAdmin) {
       if (!tenantId) return [];
       return [
         {
@@ -138,27 +138,27 @@ export default function ConfigurationManagementPage() {
       ];
     }
     return tenantsPages?.pages.flatMap((page) => page.data) ?? [];
-  }, [isSuperOrGlobalAdmin, tenantId, tenantName, tenantsPages]);
+  }, [isSuperAdmin, tenantId, tenantName, tenantsPages]);
 
   const filteredTenants = useMemo(
     () => allTenants.filter((item) => `${item.name} ${item.key}`.toLowerCase().includes(tenantSearch.toLowerCase())),
     [allTenants, tenantSearch],
   );
 
-  const effectiveTenantIdentifier = isSuperOrGlobalAdmin ? selectedTenantId : tenantId;
+  const effectiveTenantIdentifier = isSuperAdmin ? selectedTenantId : tenantId;
 
   const tenantConfigsQuery = useTenantConfigs(
     effectiveTenantIdentifier || '',
     { page: 1, limit: 300 },
     {
-      enabled: isSuperOrGlobalAdmin && !!effectiveTenantIdentifier,
+      enabled: isSuperAdmin && !!effectiveTenantIdentifier,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
       staleTime: 60 * 1000,
     },
   );
   const myConfigsQuery = useMyTenantConfigs({
-    enabled: !isSuperOrGlobalAdmin,
+    enabled: !isSuperAdmin,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     staleTime: 60 * 1000,
@@ -167,11 +167,11 @@ export default function ConfigurationManagementPage() {
   const updateMyTenantConfigs = useUpdateMyTenantConfigs();
 
   const configScopeKey = useMemo(() => {
-    if (isSuperOrGlobalAdmin) return effectiveTenantIdentifier || '';
+    if (isSuperAdmin) return effectiveTenantIdentifier || '';
     return 'my-tenant-configs';
-  }, [effectiveTenantIdentifier, isSuperOrGlobalAdmin]);
+  }, [effectiveTenantIdentifier, isSuperAdmin]);
 
-  const activeConfigsQuery = isSuperOrGlobalAdmin ? tenantConfigsQuery : myConfigsQuery;
+  const activeConfigsQuery = isSuperAdmin ? tenantConfigsQuery : myConfigsQuery;
   const configs = activeConfigsQuery.data?.data ?? [];
   const configsLoading = activeConfigsQuery.isLoading;
   const configsRefreshing = activeConfigsQuery.isRefetching;
@@ -268,7 +268,7 @@ export default function ConfigurationManagementPage() {
     const row = { id: selectedConfig.id, value: normalizedCurrentValue, expectedVersion: editingVersion };
 
     try {
-      if (isSuperOrGlobalAdmin) {
+      if (isSuperAdmin) {
         await updateTenantConfigs.mutateAsync({
           identifier: effectiveTenantIdentifier,
           configs: [row],
@@ -305,7 +305,7 @@ export default function ConfigurationManagementPage() {
         </div>
       </div>
     ),
-    onRefresh: isSuperOrGlobalAdmin
+    onRefresh: isSuperAdmin
       ? () => {
           void refetchTenants();
         }
@@ -317,10 +317,10 @@ export default function ConfigurationManagementPage() {
   const tenantState: MultiColumnState<Tenant> = {
     data: filteredTenants,
     isLoading: tenantsLoading,
-    selectedId: isSuperOrGlobalAdmin ? selectedTenantId : tenantId,
+    selectedId: isSuperAdmin ? selectedTenantId : tenantId,
     onSelect: (id: string) => {
-      if (isSuperOrGlobalAdmin && id === selectedTenantId) return;
-      if (isSuperOrGlobalAdmin) setSelectedTenantId(id);
+      if (isSuperAdmin && id === selectedTenantId) return;
+      if (isSuperAdmin) setSelectedTenantId(id);
       setSelectedConfigId('');
     },
     hasMore: !!tenantsHasMore,

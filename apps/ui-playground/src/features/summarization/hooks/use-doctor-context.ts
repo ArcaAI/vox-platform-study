@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useAuth } from '@arcaai/vox';
 import { useAuthStore } from '@/store/auth-store';
 
-const ADMIN_ROLES = ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'] as const;
+const ADMIN_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN'] as const;
 const DOCTOR_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'] as const;
 
 export interface DoctorContext {
