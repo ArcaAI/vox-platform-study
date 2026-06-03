@@ -8,6 +8,7 @@ import { Input } from '@arcaai/ui/input';
 import { type MultiColumnConfig, type MultiColumnContentConfig, MultiColumnLayout, type MultiColumnState } from '@arcaai/ui/multi-column-layout';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
 import { Separator } from '@arcaai/ui/separator';
+import { Skeleton } from '@arcaai/ui/skeleton';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Building2, FolderPlus, Grid3X3, KeyRound, List, Loader2, Plus, Settings2, Trash2, Upload } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -142,8 +143,8 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
     data: objects = [],
     isLoading: objectsLoading,
     refetch: refetchObjects,
-  } = useTenantBucketObjects(effectiveTenantId || '', selectedBucket?.name || '', selectedFolderPath, {
-    enabled: !!effectiveTenantId && !!selectedBucket?.name,
+  } = useTenantBucketObjects(effectiveTenantId || '', selectedBucketId, selectedFolderPath, {
+    enabled: !!effectiveTenantId && !!selectedBucketId,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
@@ -257,7 +258,7 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
     createFolder.mutate(
       {
         tenantId: effectiveTenantId,
-        bucketName: selectedBucket.name,
+        bucketId: selectedBucket.id,
         folderName: newFolderName,
         path: selectedFolderPath,
       },
@@ -279,7 +280,7 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
     const uploadJobs = Array.from(files).map((file) =>
       uploadObject.mutateAsync({
         tenantId: effectiveTenantId,
-        bucketName: selectedBucket.name,
+        bucketId: selectedBucket.id,
         file,
         fileName: file.name,
         path: selectedFolderPath,
@@ -428,29 +429,35 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
           className="grid max-h-56 gap-2 overflow-auto"
           onScroll={(event: React.UIEvent<HTMLDivElement>) => loadMoreOnScroll(event, setVisibleBucketCount)}
         >
-          {bucketsLoading ? (
-            <div className="text-muted-foreground text-sm">Loading buckets...</div>
-          ) : (
-            visibleBuckets.map((bucket) => (
-              <button
-                key={bucket.id}
-                type="button"
-                className={cn(
-                  'hover:bg-muted flex items-center justify-between rounded-md border px-2 py-2 text-left',
-                  selectedBucketId === bucket.id && 'bg-muted',
-                )}
-                onClick={() => {
-                  handleBucketSelect(bucket.id);
-                }}
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{bucket.slug}</p>
-                  <p className="text-muted-foreground truncate text-xs">{bucket.name}</p>
+          {bucketsLoading
+            ? Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="flex items-center justify-between rounded-md border px-2 py-2" data-testid="bucket-skeleton">
+                  <div className="flex min-w-0 flex-col gap-1.5">
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-3 w-40" />
+                  </div>
+                  <Skeleton className="h-5 w-14 rounded-full" />
                 </div>
-                <Badge variant="outline">{bucket.bucketType}</Badge>
-              </button>
-            ))
-          )}
+              ))
+            : visibleBuckets.map((bucket) => (
+                <button
+                  key={bucket.id}
+                  type="button"
+                  className={cn(
+                    'hover:bg-muted flex items-center justify-between rounded-md border px-2 py-2 text-left',
+                    selectedBucketId === bucket.id && 'bg-muted',
+                  )}
+                  onClick={() => {
+                    handleBucketSelect(bucket.id);
+                  }}
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{bucket.slug}</p>
+                    <p className="text-muted-foreground truncate text-xs">{bucket.name}</p>
+                  </div>
+                  <Badge variant="outline">{bucket.bucketType}</Badge>
+                </button>
+              ))}
         </div>
         {visibleBuckets.length < filteredBuckets.length && (
           <Button variant="outline" size="sm" onClick={() => setVisibleBucketCount((prev) => prev + PAGE_SIZE)}>
