@@ -117,6 +117,14 @@ export interface AgenticConfig {
   logging?: LoggingConfig;
   /** Debug mode - enables verbose logging */
   debug?: boolean;
+  /**
+   * TASK-331 doc-05 F-5 — auto-wire the provider's default 401→refresh handler
+   * onto the single-slot `AgenticClient.setOnUnauthorized`. Defaults to `true`
+   * (TASK-320 B2 behaviour, refresh works out of the box). Set to `false` when
+   * the host owns its own impersonation-aware 401 handling (e.g. the
+   * ui-playground's `useAutoRefresh`) so the slot has one deterministic owner.
+   */
+  autoWireTokenRefresh?: boolean;
 }
 
 /**

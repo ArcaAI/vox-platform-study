@@ -23,7 +23,10 @@ describe('admin route guards', () => {
   });
 
   describe('RequireAdmin', () => {
-    it.each(['SUPER_ADMIN', 'TENANT_ADMIN'])('renders children for %s', (role) => {
+    // TASK-331 doc-05 F-4 — GLOBAL_ADMIN ≡ SUPER_ADMIN (product decision: "global
+    // admin is super admin, with no limits in any tenant"), reversing the doc-04
+    // "dead arm" pin, so it reaches every admin page like SUPER_ADMIN.
+    it.each(['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'])('renders children for %s', (role) => {
       setRoles([role]);
       render(
         <RequireAdmin>
@@ -32,19 +35,6 @@ describe('admin route guards', () => {
       );
       expect(screen.getByTestId('page')).toBeInTheDocument();
       expect(screen.queryByTestId('navigate')).not.toBeInTheDocument();
-    });
-
-    // TASK-331 #7 — GLOBAL_ADMIN is not a seeded role; the predicate no longer
-    // accepts it, so it is treated like any other non-admin role.
-    it('redirects the unseeded GLOBAL_ADMIN role to /403', () => {
-      setRoles(['GLOBAL_ADMIN']);
-      render(
-        <RequireAdmin>
-          <div data-testid="page" />
-        </RequireAdmin>,
-      );
-      expect(screen.queryByTestId('page')).not.toBeInTheDocument();
-      expect(screen.getByTestId('navigate')).toHaveAttribute('data-to', '/403');
     });
 
     it('redirects a non-admin clinical role to /403', () => {
@@ -69,8 +59,10 @@ describe('admin route guards', () => {
   });
 
   describe('RequireGlobalScope (Prisma Studio surface)', () => {
-    it('renders children for the global-scope role SUPER_ADMIN', () => {
-      setRoles(['SUPER_ADMIN']);
+    // TASK-331 doc-05 F-4 — GLOBAL_ADMIN ≡ SUPER_ADMIN, so it now carries global
+    // scope (reversing the doc-04 pin that grouped it with the bound roles).
+    it.each(['SUPER_ADMIN', 'GLOBAL_ADMIN'])('renders children for the global-scope role %s', (role) => {
+      setRoles([role]);
       render(
         <RequireGlobalScope>
           <div data-testid="studio" />
@@ -79,7 +71,7 @@ describe('admin route guards', () => {
       expect(screen.getByTestId('studio')).toBeInTheDocument();
     });
 
-    it.each(['TENANT_ADMIN', 'GLOBAL_ADMIN', 'DOCTOR'])('redirects non-global-scope role %s to /403', (role) => {
+    it.each(['TENANT_ADMIN', 'DOCTOR'])('redirects non-global-scope role %s to /403', (role) => {
       setRoles([role]);
       render(
         <RequireGlobalScope>
