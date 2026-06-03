@@ -12,7 +12,7 @@ import { useCallback, useMemo } from 'react';
 import { ServiceStatusGrid } from './components/service-status-grid';
 import { TenantSettingsPanel } from './components/tenant-settings-panel';
 
-const TENANT_ADMIN_ROLES = ['GLOBAL_ADMIN', 'TENANT_ADMIN'] as const;
+const TENANT_ADMIN_ROLES = ['TENANT_ADMIN'] as const;
 
 export default function Introduction() {
   const tenantId = useAuthStore((s) => s.tenantId);
