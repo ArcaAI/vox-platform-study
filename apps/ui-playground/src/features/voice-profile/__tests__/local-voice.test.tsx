@@ -214,4 +214,31 @@ describe('Voice Profile — LOCAL provider UI (TASK-329 P4)', () => {
     expect(screen.getByText('41.0%')).toBeInTheDocument();
     expect(screen.getByText(/No match/i)).toBeInTheDocument();
   });
+
+  // ── F9: friendly profile label (no raw UUID) ────────────────────────
+  const PROFILE_UUID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+
+  it('shows the enrolled profile LABEL — not the raw profileId UUID — for the closest match', async () => {
+    hookOverrides = { enrolled: [makeEnrolled(PROFILE_UUID)] }; // label: 'Me'
+    mockQuickTest.mockResolvedValueOnce({ profileId: PROFILE_UUID, score: 0.9, isMatch: true, threshold: 0.75 });
+
+    renderWithClient(<QuickTestCard />);
+    uploadTo('Upload audio file for quick test', new File([new Uint8Array([1])], 'probe.wav', { type: 'audio/wav' }));
+
+    await screen.findByTestId('quick-test-result');
+    expect(screen.getByText(/Closest profile:\s*Me/)).toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(PROFILE_UUID))).not.toBeInTheDocument();
+  });
+
+  it('falls back to a shortened id when the matched profile has no label', async () => {
+    hookOverrides = { enrolled: [{ ...makeEnrolled(PROFILE_UUID), label: null }] };
+    mockQuickTest.mockResolvedValueOnce({ profileId: PROFILE_UUID, score: 0.9, isMatch: true, threshold: 0.75 });
+
+    renderWithClient(<QuickTestCard />);
+    uploadTo('Upload audio file for quick test', new File([new Uint8Array([1])], 'probe.wav', { type: 'audio/wav' }));
+
+    await screen.findByTestId('quick-test-result');
+    expect(screen.getByText(/Closest profile:\s*a1b2c3d4…/)).toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(PROFILE_UUID))).not.toBeInTheDocument();
+  });
 });
