@@ -71,8 +71,9 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'ApiKey',
   // globalSetting.prisma (1)
   'GlobalSetting',
-  // stt.prisma (3)
+  // stt.prisma (4)
   'AsrPipeline',
+  'AsrPipelineVersion', // version-history child of AsrPipeline (doc-08 F3)
   'AiModel',
   'TranscriptionJob',
   // department.prisma (1)
@@ -92,6 +93,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'TenantBucket',
   'StorageAccessKey',
   'TenantStorageConfig',
+  // tenant.prisma (1)
+  'TenantFrontendConfig', // per-tenant frontend pipeline config (doc-08 F2)
   // media.prisma (1)
   'Media',
 ]);
