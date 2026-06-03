@@ -17,6 +17,11 @@ export class PromptTemplateResponse {
   @ApiProperty({ description: 'Template category' })
   category: string;
 
+  // TASK-331 doc-02 F5 — real Draft/Published lifecycle column (was previously
+  // dropped server-side; the admin status filter is now server-side).
+  @ApiProperty({ description: 'Publication status', enum: ['DRAFT', 'PUBLISHED'], default: 'DRAFT' })
+  status: 'DRAFT' | 'PUBLISHED';
+
   @ApiPropertyOptional({ description: 'Template variable definitions' })
   variables?: Record<string, unknown>;
 

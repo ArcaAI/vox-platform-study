@@ -11,6 +11,7 @@ export class PromptTemplate extends BaseTenantDataModel {
   public description: string | null;
   public content: string | null;
   public category: string | null;
+  public status: string | null;
   public variables: any | null;
   public currentVersionNumber: number | null;
   public departmentId: string | null;
@@ -30,6 +31,7 @@ export class PromptTemplate extends BaseTenantDataModel {
     this.description = data.description;
     this.content = data.content;
     this.category = data.category;
+    this.status = data.status;
     this.variables = data.variables;
     this.currentVersionNumber = data.currentVersionNumber;
     this.departmentId = data.departmentId;
