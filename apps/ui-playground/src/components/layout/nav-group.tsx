@@ -22,6 +22,13 @@ export interface NavItem {
   icon?: React.ComponentType<{ className?: string }>;
   badge?: string;
   children?: { title: string; url: string }[];
+  /**
+   * TASK-331 #1 — when set, the item is shown but not navigable (e.g. a
+   * tenant-scoped admin page a global-scope admin can't open until they pick
+   * a tenant). `disabledReason` explains why.
+   */
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 interface NavGroupProps {
@@ -68,6 +75,19 @@ export function NavGroup({ label, items }: NavGroupProps) {
                   </CollapsibleContent>
                 </SidebarMenuItem>
               </Collapsible>
+            ) : item.disabled ? (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton
+                  tooltip={item.disabledReason ?? item.title}
+                  aria-disabled
+                  title={item.disabledReason}
+                  className="cursor-not-allowed opacity-50"
+                  onClick={(e) => e.preventDefault()}
+                >
+                  {item.icon && <item.icon className="size-4" />}
+                  <span>{item.title}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             ) : (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton asChild tooltip={item.title} isActive={!!matchRoute({ to: item.url, fuzzy: item.url !== '/' })}>

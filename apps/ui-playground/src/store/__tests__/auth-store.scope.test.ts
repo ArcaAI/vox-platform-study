@@ -1,11 +1,12 @@
 /**
- * TASK-327 T1 — global-scope predicate.
+ * TASK-327 T1 / TASK-331 #7 — global-scope predicate.
  *
- * D1: SUPER_ADMIN and GLOBAL_ADMIN share the same "global scope". A
- * global-scope user must pick a tenant before tenant-scoped views.
- * `isSuperAdmin()` stays STRICT (only SUPER_ADMIN) — it gates
- * super-admin-only surfaces (e.g. Prisma Studio). This test pins both
- * predicates so they don't silently collapse into each other.
+ * "Global scope" is SUPER_ADMIN ONLY. The earlier GLOBAL_ADMIN role was never
+ * seeded, so the predicate arm that accepted it was dead code and has been
+ * removed. A global-scope user must pick a tenant before tenant-scoped views.
+ * `isSuperAdmin()` stays STRICT (only SUPER_ADMIN) — it gates super-admin-only
+ * surfaces (e.g. Prisma Studio). This test pins the predicates and guards
+ * against the unseeded GLOBAL_ADMIN role silently re-acquiring admin scope.
  */
 import { useAuthStore } from '../auth-store';
 
@@ -32,13 +33,13 @@ describe('auth-store scope predicates (TASK-327 T1)', () => {
       expect(useAuthStore.getState().isGlobalScope()).toBe(true);
     });
 
-    it('is true for GLOBAL_ADMIN', () => {
+    it('is false for the unseeded GLOBAL_ADMIN role (dead arm removed)', () => {
       setRoles(['GLOBAL_ADMIN']);
-      expect(useAuthStore.getState().isGlobalScope()).toBe(true);
+      expect(useAuthStore.getState().isGlobalScope()).toBe(false);
     });
 
-    it('is true when both global roles are present', () => {
-      setRoles(['SUPER_ADMIN', 'GLOBAL_ADMIN']);
+    it('is true when SUPER_ADMIN is present alongside other roles', () => {
+      setRoles(['SUPER_ADMIN', 'DOCTOR']);
       expect(useAuthStore.getState().isGlobalScope()).toBe(true);
     });
 
@@ -83,15 +84,15 @@ describe('auth-store scope predicates (TASK-327 T1)', () => {
   // predicate the sidebar/nav use (TASK-327 "scope, not visibility"). It is
   // deliberately broader than `isGlobalScope`: a TENANT_ADMIN is an admin
   // (data is tenant-scoped server-side) but is NOT global scope.
-  describe('isAdmin (SUPER_ADMIN ∪ GLOBAL_ADMIN ∪ TENANT_ADMIN)', () => {
+  describe('isAdmin (SUPER_ADMIN ∪ TENANT_ADMIN)', () => {
     it('is true for SUPER_ADMIN', () => {
       setRoles(['SUPER_ADMIN']);
       expect(useAuthStore.getState().isAdmin()).toBe(true);
     });
 
-    it('is true for GLOBAL_ADMIN', () => {
+    it('is false for the unseeded GLOBAL_ADMIN role (dead arm removed)', () => {
       setRoles(['GLOBAL_ADMIN']);
-      expect(useAuthStore.getState().isAdmin()).toBe(true);
+      expect(useAuthStore.getState().isAdmin()).toBe(false);
     });
 
     it('is true for TENANT_ADMIN', () => {

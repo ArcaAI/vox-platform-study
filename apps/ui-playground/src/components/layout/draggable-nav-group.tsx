@@ -59,13 +59,26 @@ export function DraggableNavGroup({ label, items, onReorder }: DraggableNavGroup
                 return (
                   <SortableItem key={item.id} value={item.id} asChild>
                     <SidebarMenuItem>
-                      <SidebarMenuButton asChild tooltip={item.title} isActive={active}>
-                        <Link to={item.url}>
+                      {item.disabled ? (
+                        <SidebarMenuButton
+                          tooltip={item.disabledReason ?? item.title}
+                          aria-disabled
+                          title={item.disabledReason}
+                          className="cursor-not-allowed opacity-50"
+                          onClick={(e) => e.preventDefault()}
+                        >
                           {item.icon && <item.icon className="size-4" />}
                           <span>{item.title}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                      {item.badge && (
+                        </SidebarMenuButton>
+                      ) : (
+                        <SidebarMenuButton asChild tooltip={item.title} isActive={active}>
+                          <Link to={item.url}>
+                            {item.icon && <item.icon className="size-4" />}
+                            <span>{item.title}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      )}
+                      {item.badge && !item.disabled && (
                         <SidebarMenuBadge className="bg-primary/10 text-primary text-[10px] font-semibold transition-opacity group-hover/menu-item:opacity-0">
                           {item.badge}
                         </SidebarMenuBadge>

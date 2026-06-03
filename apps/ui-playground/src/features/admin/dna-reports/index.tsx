@@ -263,7 +263,7 @@ export default function DnaReportsAdminPage() {
   const tenantName = useAuthStore((s: { tenantName: string }) => s.tenantName);
   const setTenant = useAuthStore((s: { setTenant: (tenantId: string, tenantName?: string) => void }) => s.setTenant);
 
-  const isSuperOrGlobalAdmin = roles.includes('SUPER_ADMIN') || roles.includes('GLOBAL_ADMIN');
+  const isSuperAdmin = roles.includes('SUPER_ADMIN');
   const [selectedTenantId, setSelectedTenantId] = useState(tenantId || '');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedVersionIds, setSelectedVersionIds] = useState<string[]>([]);
@@ -278,16 +278,16 @@ export default function DnaReportsAdminPage() {
     fetchNextPage: fetchNextTenants,
     isFetchingNextPage: tenantsLoadingMore,
     refetch: refetchTenants,
-  } = useTenantsInfinite(25, { enabled: isSuperOrGlobalAdmin });
+  } = useTenantsInfinite(25, { enabled: isSuperAdmin });
 
   const {
     data: currentTenant,
     isLoading: currentTenantLoading,
     refetch: refetchCurrentTenant,
-  } = useTenant(tenantId || '', { enabled: !isSuperOrGlobalAdmin && !!tenantId });
+  } = useTenant(tenantId || '', { enabled: !isSuperAdmin && !!tenantId });
 
   const tenantList = useMemo(() => {
-    if (isSuperOrGlobalAdmin) {
+    if (isSuperAdmin) {
       return tenantsPages?.pages.flatMap((page) => page.data) ?? [];
     }
     if (currentTenant) return [currentTenant];
@@ -302,18 +302,18 @@ export default function DnaReportsAdminPage() {
         updatedAt: '',
       } as Tenant,
     ];
-  }, [currentTenant, isSuperOrGlobalAdmin, tenantId, tenantName, tenantsPages]);
+  }, [currentTenant, isSuperAdmin, tenantId, tenantName, tenantsPages]);
 
   useEffect(() => {
-    if (isSuperOrGlobalAdmin) {
+    if (isSuperAdmin) {
       return;
     }
     if (tenantId && tenantId !== selectedTenantId) {
       setSelectedTenantId(tenantId);
     }
-  }, [isSuperOrGlobalAdmin, selectedTenantId, tenantId]);
+  }, [isSuperAdmin, selectedTenantId, tenantId]);
 
-  const effectiveTenantId = isSuperOrGlobalAdmin ? selectedTenantId : tenantId;
+  const effectiveTenantId = isSuperAdmin ? selectedTenantId : tenantId;
 
   const tenantDataQuery = useTenantDnaReportData(effectiveTenantId);
 
@@ -374,13 +374,13 @@ export default function DnaReportsAdminPage() {
 
   const handleTenantSelect = useCallback(
     (tenantSelectionId: string) => {
-      if (!isSuperOrGlobalAdmin) return;
+      if (!isSuperAdmin) return;
       if (tenantSelectionId === selectedTenantId) return;
       setSelectedTenantId(tenantSelectionId);
       const tenant = tenantList.find((item) => item.id === tenantSelectionId);
       setTenant(tenantSelectionId, tenant?.name);
     },
-    [isSuperOrGlobalAdmin, selectedTenantId, setTenant, tenantList],
+    [isSuperAdmin, selectedTenantId, setTenant, tenantList],
   );
 
   const handleUserSelect = useCallback(
@@ -402,13 +402,13 @@ export default function DnaReportsAdminPage() {
   const tenantColumn: MultiColumnConfig<Tenant> = {
     id: 'tenants',
     title: 'Tenants',
-    subtitle: isSuperOrGlobalAdmin ? 'Select a tenant context' : 'Current tenant',
+    subtitle: isSuperAdmin ? 'Select a tenant context' : 'Current tenant',
     width: '220px',
     showItemCount: true,
     keyExtractor: (tenant: Tenant) => tenant.id,
     estimateItemSize: 62,
     onRefresh: () => {
-      if (isSuperOrGlobalAdmin) {
+      if (isSuperAdmin) {
         void refetchTenants();
       } else {
         void refetchCurrentTenant();
@@ -429,12 +429,12 @@ export default function DnaReportsAdminPage() {
 
   const tenantState: MultiColumnState<Tenant> = {
     data: tenantList,
-    isLoading: isSuperOrGlobalAdmin ? tenantsLoading : currentTenantLoading,
+    isLoading: isSuperAdmin ? tenantsLoading : currentTenantLoading,
     selectedId: effectiveTenantId || null,
     onSelect: handleTenantSelect,
-    hasMore: isSuperOrGlobalAdmin ? !!tenantsHasMore : false,
-    onLoadMore: isSuperOrGlobalAdmin ? () => void fetchNextTenants() : undefined,
-    isLoadingMore: isSuperOrGlobalAdmin ? tenantsLoadingMore : false,
+    hasMore: isSuperAdmin ? !!tenantsHasMore : false,
+    onLoadMore: isSuperAdmin ? () => void fetchNextTenants() : undefined,
+    isLoadingMore: isSuperAdmin ? tenantsLoadingMore : false,
   };
 
   const usersColumn: MultiColumnConfig<AdminUser> = {

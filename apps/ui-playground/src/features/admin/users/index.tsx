@@ -41,11 +41,13 @@ import {
   Star,
   Trash2,
   User as UserIcon,
+  UserCheck,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@arcaai/ui/tooltip';
 
-import { DEFAULT_PAGE_SIZE } from '@arcaai/vox';
+import { DEFAULT_PAGE_SIZE, useAuth } from '@arcaai/vox';
 
+import { useAuthStore } from '@/store/auth-store';
 import { Main } from '@/components/layout/main';
 
 import { AdminDataTable, ConfirmDialog, SearchFilterBar, StatusBadge } from '../components';
@@ -90,6 +92,12 @@ const createSchema = z.object({
   password: z.string().min(6, 'Minimum 6 characters'),
   externalId: z.string(),
   isServiceAccount: z.boolean(),
+  // TASK-331 r2605 #3 — optional membership created atomically with the user
+  // (role + department in the active tenant) so a console-created user can
+  // satisfy the Phase F login invariant in one step.
+  roleId: z.string().optional(),
+  departmentId: z.string().optional(),
+  isPrimaryDepartment: z.boolean().optional(),
 });
 
 const editSchema = z.object({
@@ -97,6 +105,12 @@ const editSchema = z.object({
   password: z.string().refine((v) => !v || v.length >= 6, 'Minimum 6 characters'),
   externalId: z.string(),
   isServiceAccount: z.boolean(),
+  // Mirror the create-schema shape so `UserFormValues` (inferred from
+  // `createSchema`) stays assignable to the shared resolver; the edit flow
+  // never reads these membership fields.
+  roleId: z.string().optional(),
+  departmentId: z.string().optional(),
+  isPrimaryDepartment: z.boolean().optional(),
 });
 
 type UserFormValues = z.infer<typeof createSchema>;
@@ -208,6 +222,13 @@ function UserFormDialog({
   const [selectedRoleId, setSelectedRoleId] = useState('');
   const [selectedTenantId, setSelectedTenantId] = useState('');
 
+  // TASK-331 r2605 #3 — membership is created in the ACTIVE tenant (a
+  // super-admin's selected tenant, or a tenant-admin's own). The create POST
+  // carries it as `X-Tenant-Id` and the API attributes the role/department to
+  // it, so departments are listed for that tenant only.
+  const activeTenantId = useAuthStore((s) => s.tenantId);
+  const { data: membershipDepartments } = useTenantDepartments(activeTenantId, { enabled: !isEdit && !!activeTenantId });
+
   const roles = rolesData?.data ?? [];
   const tenants = tenantsData?.data ?? [];
 
@@ -218,6 +239,9 @@ function UserFormDialog({
       password: '',
       externalId: '',
       isServiceAccount: false,
+      roleId: '',
+      departmentId: '',
+      isPrimaryDepartment: false,
     },
   });
 
@@ -228,6 +252,9 @@ function UserFormDialog({
         password: '',
         externalId: user?.externalId ?? '',
         isServiceAccount: user?.isServiceAccount ?? false,
+        roleId: '',
+        departmentId: '',
+        isPrimaryDepartment: false,
       });
       setStep('form');
       setSelectedRoleId('');
@@ -343,6 +370,87 @@ function UserFormDialog({
                     </FormItem>
                   )}
                 />
+
+                {/* TASK-331 r2605 #3 — optional membership, created atomically
+                    with the user in the active tenant so the account can log in
+                    without a separate role/department step. Shown only once a
+                    tenant is active (a super-admin must pick one first). */}
+                {!isEdit && activeTenantId && (
+                  <div className="space-y-3 rounded-md border p-3">
+                    <div>
+                      <p className="text-sm font-medium">Membership (optional)</p>
+                      <p className="text-muted-foreground text-xs">
+                        Assign a role and department in the active tenant so the user can log in. Created together with the user.
+                      </p>
+                    </div>
+
+                    <FormField
+                      control={form.control}
+                      name="roleId"
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      render={({ field }: { field: any }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">Role</FormLabel>
+                          <Select value={field.value || ''} onValueChange={field.onChange}>
+                            <FormControl>
+                              <SelectTrigger className="h-9">
+                                <SelectValue placeholder={rolesLoading ? 'Loading roles…' : 'Select a role…'} />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {roles.map((r) => (
+                                <SelectItem key={r.id} value={r.id}>
+                                  {r.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="departmentId"
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      render={({ field }: { field: any }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">Department</FormLabel>
+                          <Select value={field.value || ''} onValueChange={field.onChange}>
+                            <FormControl>
+                              <SelectTrigger className="h-9">
+                                <SelectValue placeholder="Select a department…" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {(membershipDepartments ?? []).map((d) => (
+                                <SelectItem key={d.id} value={d.id}>
+                                  {d.name ?? d.code ?? d.id}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </FormItem>
+                      )}
+                    />
+
+                    {form.watch('departmentId') && (
+                      <FormField
+                        control={form.control}
+                        name="isPrimaryDepartment"
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        render={({ field }: { field: any }) => (
+                          <FormItem className="flex items-center gap-2 space-y-0">
+                            <FormControl>
+                              <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                            </FormControl>
+                            <FormLabel className="text-sm font-normal">Set as primary department</FormLabel>
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                  </div>
+                )}
 
                 <DialogFooter>
                   <DialogClose asChild>
@@ -1467,21 +1575,40 @@ export default function UserManagementPage() {
   const deleteMutation = useDeleteUser();
   const bulkDeleteMutation = useBulkDeleteUsers();
 
+  // TASK-331 r2605 #5 — impersonation entry point. `impersonate` mints the
+  // impersonation token (SDK), `startImpersonation` persists it to the store —
+  // the same path the playground UserList uses. Gated on `isGlobalScope`.
+  const { impersonate } = useAuth();
+  const isGlobalScope = useAuthStore((s) => s.isGlobalScope());
+  const activeTenantId = useAuthStore((s) => s.tenantId);
+  const startImpersonation = useAuthStore((s) => s.startImpersonation);
+
   // ---- Handlers -----------------------------------------------------------
 
   const handleCreate = useCallback(
     (values: UserFormValues) => {
+      // TASK-331 r2605 #3 — when a role/department is chosen the API creates the
+      // membership atomically with the user (active tenant via X-Tenant-Id), so
+      // the account is login-ready immediately and the optional role step below
+      // is skipped. Without membership we keep the legacy post-create role step.
+      const hasMembership = !!values.roleId || !!values.departmentId;
       createMutation.mutate(
         {
           username: values.username,
           password: values.password,
           externalId: values.externalId || undefined,
           isServiceAccount: values.isServiceAccount,
+          ...(values.roleId ? { roleId: values.roleId } : {}),
+          ...(values.departmentId ? { departmentId: values.departmentId, isPrimaryDepartment: values.isPrimaryDepartment ?? false } : {}),
         },
         {
           onSuccess: (data) => {
             toast.success('User created successfully');
-            setCreatedUserId(data.id);
+            if (hasMembership) {
+              setCreateOpen(false);
+            } else {
+              setCreatedUserId(data.id);
+            }
           },
           onError: (err) => toast.error(`Failed to create user: ${err.message}`),
         },
@@ -1554,6 +1681,25 @@ export default function UserManagementPage() {
       );
     },
     [statusMutation],
+  );
+
+  const handleImpersonate = useCallback(
+    async (user: AdminUser) => {
+      // A global-scope admin has no implicit tenant, so impersonation is
+      // ambiguous until they pick one (mirrors the playground UserList guard).
+      if (isGlobalScope && !activeTenantId) {
+        toast.error('Select a tenant first');
+        return;
+      }
+      try {
+        const result = await impersonate(user.id);
+        startImpersonation(result.user, result.token, result.user.tenantId);
+        toast.success(`Now impersonating ${user.username}`);
+      } catch {
+        toast.error('Failed to impersonate user');
+      }
+    },
+    [impersonate, startImpersonation, isGlobalScope, activeTenantId],
   );
 
   // ---- Columns ------------------------------------------------------------
@@ -1656,6 +1802,12 @@ export default function UserManagementPage() {
                   <Pencil className="mr-2 size-4" />
                   Edit Profile
                 </DropdownMenuItem>
+                {isGlobalScope && (
+                  <DropdownMenuItem onClick={() => handleImpersonate(u)}>
+                    <UserCheck className="mr-2 size-4" />
+                    Impersonate
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={() => handleToggleStatus(u)}>
                   {isEnabled ? <PowerOff className="mr-2 size-4" /> : <Power className="mr-2 size-4" />}
                   {isEnabled ? 'Disable' : 'Enable'}
@@ -1677,7 +1829,7 @@ export default function UserManagementPage() {
         },
       },
     ],
-    [handleToggleStatus],
+    [handleToggleStatus, handleImpersonate, isGlobalScope],
   );
 
   // ---- Render -------------------------------------------------------------
