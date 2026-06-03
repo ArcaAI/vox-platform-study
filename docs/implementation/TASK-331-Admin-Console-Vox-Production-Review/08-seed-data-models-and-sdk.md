@@ -107,3 +107,58 @@ The vox-SDK client-side multi-tenancy is **strong and matches ticket intent — 
 2. **Production seed gating.** Does the single-deployment production install run the full demo seed (`index.ts`), including `02-apikey.ts`? If so, Finding #5 escalates; if the demo seed is dev-only, it stays Medium. Not verified in this scope.
 3. **RLS / Phase C status.** No `ROW LEVEL SECURITY` / `CREATE POLICY` / `app.tenant_id` statements exist in `migrations/`, yet `tenant-scope.ts:1-9` describes itself as the "second line of defence behind … Row-Level Security … in Phase C." Assumption: Phase C RLS is not yet shipped, so the extension + explicit service filtering are the only active isolation layers — which raises the stakes on Finding #2.
 4. **Prompt inheritance for customer tenants.** Customer tenants have no prompt templates of their own; it is assumed prompt resolution falls back to Global/System defaults. The exact fallback path (and whether a customer-tenant doctor would resolve a usable prompt) was not traced through the resolver in this scope.
+
+## 9. Implementation Summary
+
+**Status: Completed** — all findings resolved on `fix/2605-review` (HEAD `c333a083`). Work was executed by four non-overlapping parallel agents in isolated git worktrees (TDD, RED→GREEN), then merged with `--no-ff`. The codebase had drifted from the reviewed commit (`e91fc450`) because doc-01→07 had already merged; each fix was re-confirmed against the live `HEAD` before implementation.
+
+### Findings resolution
+
+| # | Sev | Resolution | Branch → merge |
+|---|---|---|---|
+| **F1** | High | Added per-customer-tenant clinical data: 6 consultations (ArcaAI/4bits/Mumbai × NEW_PATIENT + REVISIT) owned by each tenant's canonical doctor in its `GEN` department, + 1 transcript each, in new `CUSTOMER_TENANT_CONSULTATIONS` / `CUSTOMER_TENANT_CONTEXT_ITEMS` arrays. Customer admin clinical lists are no longer empty. | `fix/2605-doc08-seed` `e07fa8de` → `0e4830c7` |
+| **F2** | High | `TenantFrontendConfig` added to `TENANT_SCOPED_MODELS` (exact-match scoped). | `fix/2605-doc08-scope` `f25976f5` → `6e133d89` |
+| **F3** | Medium | `AsrPipelineVersion` added to `TENANT_SCOPED_MODELS` (exact-match, **not** system-shared — the pipeline service hard-guards version reads behind caller-owns-pipeline, so no cross-tenant read exists to widen for). Allow-list now **31**. | `fix/2605-doc08-scope` `f25976f5` → `6e133d89` |
+| **F4** | Medium | All four tenants now emit the `general` namespace (max-concurrent-sessions, default-language, session-timeout) + an `enable-transcription` flag (wires the previously-dead `ffTranscription`). Per-tenant count reconciled to **19** across header comment, `console.log`, and actual `.length`. | `fix/2605-doc08-settings` `7ad19311` → `5f511498` |
+| **F5** | High | Demo API-key seeding gated behind `shouldSeedApiKeys(env)` (dev/test only) in `index.ts`; `seedApiKey` throws if invoked in prod/staging (defence-in-depth); raw secrets no longer printed — logs now show only a masked `hope****` preview. `SEED_API_KEY_RAW` left in place as dev fixtures. | `fix/2605-doc08-secure` `b841a186` → `4524e43a` |
+| **F6** | Medium-Low | Customer-tenant audit rows repointed to same-tenant users/consultations; the never-seeded `CARD_REVISIT` reference replaced with the real `MUMBAI_GEN_REVISIT`; cross-tenant user/department refs corrected. | `fix/2605-doc08-seed` `e07fa8de` → `0e4830c7` |
+| **F7a** | Low | Stale `09-consultation.ts` header counts corrected (10→9 consultations, 24→21 context items, `// CONSULTATIONS (9)`), now consistent with the +6/+6 doc-08 additions (15 / 27 actual). | `c333a083` |
+| **F7b** | Low | **Deferred (accepted).** Relocating SMR/system prompt templates from the Global customer tenant to the System tenant is rated "functionally fine" by the review, is absent from the Section 5 action plan, and would risk the prompt resolution that currently works for Global-resident clinicians. Logged as a future consistency cleanup rather than a risky in-scope refactor. |
+| **F8** | Low | New data-completeness tests (`seed/__tests__/seed.test.ts`, 14 tests): each customer tenant has ≥1 clinician + ≥1 same-tenant consultation; audit rows never cross tenants or reference unseeded consultations; seed usernames globally unique. | `fix/2605-doc08-seed` `e07fa8de` → `0e4830c7` |
+| **Bug (cold-seed crash)** | — | `08-dna-writing-style.ts` was inventing new users under fresh UUIDs that duplicated canonical `91-user.ts` usernames (`username @unique`) → cold-DB seed crash. Rewired to reuse `SEED_USER_IDS.{ARCAAI,FOURBITS,MUMBAI}_DOCTOR`; user/profile/role/department creation (and unused `bcryptjs`/`SEED_ROLE_IDS` imports) removed. No `index.ts` reorder needed (91 already runs before 08). | `fix/2605-doc08-seed` `e07fa8de` → `0e4830c7` |
+
+### Root-cause guard (F2/F3)
+
+The recurrence vector was a **count-only** guard test (`expect(TENANT_SCOPED_MODELS.size).toBe(29)`), blind to add+drop migrations. Replaced with a **schema-derived drift guard** that parses every `db_main/*.prisma` for models declaring a `tenantId` scalar and asserts each is in the allow-list (minus an explicit, documented `INTENTIONALLY_UNSCOPED` deny-list). A future `tenantId` model now fails the test until consciously triaged.
+
+### Files changed (12 files, +836 / −144, all in `packages/database`)
+
+- `src/extensions/tenant-scope.ts`, `src/extensions/__tests__/tenant-scope.test.ts` — F2/F3 + schema-derived guard
+- `src/prisma/db_main/seed/11-global-setting.ts`, `src/__tests__/seed-global-settings.test.ts` — F4
+- `src/prisma/db_main/seed/index.ts`, `src/prisma/db_main/seed/02-apikey.ts`, `src/__tests__/seed-gating.test.ts` (new) — F5
+- `src/prisma/db_main/seed/08-dna-writing-style.ts` — collision fix
+- `src/prisma/db_main/seed/09-consultation.ts` — F1 + F7a
+- `src/prisma/db_main/seed/10-audit-log.ts` — F6
+- `src/prisma/db_main/seed/__tests__/seed.test.ts` (new) — F8 completeness
+- `src/prisma/db_main/seed/00-constants.ts` — new ArcaAI `general` setting IDs (F4) + customer consultation IDs (F1); `SEED_API_KEY_RAW` untouched
+
+No Prisma schema/migration changes were required (all affected models already existed); the layer chain stayed at the Database layer only.
+
+### Verification (integrated, post-merge on `fix/2605-review`)
+
+- **Build:** `pnpm --filter @arcaai/database build` (`tsc`) → exit 0, no diagnostics.
+- **Tests:** `pnpm --filter @arcaai/database test` → **734 passed (734)** across **19** files (base 17 + 2 new test files). No regressions; the shared `00-constants.ts` 3-way merge introduced no count-assertion breakage.
+- **Lint:** `ReadLints` on all 12 changed files → no errors.
+- **Merge:** all four branches merged via `ort` with **zero conflicts** (the only shared file, `00-constants.ts`, auto-merged B's settings region with C's consultation/audit regions). Secret-scanner (gitleaks) pre-commit hook reported no leaks. Nothing pushed to remote.
+
+### Open-questions resolution
+
+- **Q2 (production seed gating)** — **answered/fixed by F5:** the demo API-key seed is now dev/test-only with a prod throw-guard. (Broader demo-data gating beyond API keys remains available via the single `SEED_DEMO_DATA` switch if desired — flagged as a follow-up, not done here to preserve FK integrity for un-owned seed steps.)
+- **Q1 (thin tenants intentional?)** — treated as a gap and populated for all three customer tenants per F1.
+- **Q3 (RLS/Phase C)** and **Q4 (prompt inheritance)** remain open as originally scoped (no change).
+
+## 10. Change History
+
+| Date | Change | Files |
+|---|---|---|
+| 2026-06-04 | Resolved F1–F8 + cold-seed username collision via four parallel TDD agents; merged to `fix/2605-review` (`6e133d89`, `5f511498`, `4524e43a`, `0e4830c7`) + F7a comment fix (`c333a083`). F7b consciously deferred. Integrated verification: tsc 0, 734/734 tests, lint clean. | 12 files in `packages/database` (see §9) |
