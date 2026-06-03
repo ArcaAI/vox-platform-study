@@ -9,7 +9,7 @@
 import { useState, useCallback } from 'react';
 import { useApiOperation } from './useApiOperation';
 import { AUDIT_LOG_ENDPOINTS } from '../core/constants';
-import { extractArray } from '../utils/responseUtils';
+import { extractArray, extractPaginated } from '../utils/responseUtils';
 import { appendFilters, appendPagination } from '../utils/urlUtils';
 import type { PaginationParams } from '../types/common';
 
@@ -21,6 +21,8 @@ export interface AuditLogResponsibleUser {
 
 export interface AuditLogEntry {
   id: string;
+  /** TASK-331 doc-03 F6 — owning tenant id, surfaced so a global-scope console can render a Tenant column. */
+  tenantId?: string | null;
   responsibleUserId?: string | null;
   responsibleIp?: string | null;
   resourceType?: string;
@@ -55,6 +57,13 @@ export interface AuditLogFilterParams extends PaginationParams {
 
 export interface UseAuditLogReturn {
   entries: AuditLogEntry[];
+  /**
+   * TASK-331 doc-03 F11 — total number of audit rows matching the active
+   * filters, taken from the paginated envelope so the UI can render true
+   * pagination ("Page N of M") instead of guessing from the page length.
+   * `0` until the first successful `list()`.
+   */
+  count: number;
   isLoading: boolean;
   error: Error | null;
   list: (params?: AuditLogFilterParams) => Promise<AuditLogEntry[]>;
@@ -78,6 +87,7 @@ function toFilterQuery(params?: AuditLogFilterParams): Record<string, string | u
 export function useAuditLog(): UseAuditLogReturn {
   const { execute, isLoading, error } = useApiOperation('useAuditLog');
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
+  const [count, setCount] = useState(0);
 
   const list = useCallback(
     (params?: AuditLogFilterParams) =>
@@ -88,9 +98,13 @@ export function useAuditLog(): UseAuditLogReturn {
             : undefined;
         const url = appendPagination(appendFilters(AUDIT_LOG_ENDPOINTS.LIST, toFilterQuery(params)), pagination);
         const raw = await client.get(url);
-        const result = extractArray<AuditLogEntry>(raw);
-        setEntries(result);
-        return result;
+        // TASK-331 doc-03 F11 — read the full paginated envelope so we can keep
+        // the real `count` for pagination, while still returning the bare array
+        // that existing callers depend on.
+        const { data, total } = extractPaginated<AuditLogEntry>(raw);
+        setEntries(data);
+        setCount(total);
+        return data;
       }),
     [execute],
   );
@@ -127,5 +141,5 @@ export function useAuditLog(): UseAuditLogReturn {
     [execute],
   );
 
-  return { entries, isLoading, error, list, getById, exportCsv, byResource, byUser };
+  return { entries, count, isLoading, error, list, getById, exportCsv, byResource, byUser };
 }

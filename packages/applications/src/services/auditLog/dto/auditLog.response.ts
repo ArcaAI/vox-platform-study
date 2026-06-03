@@ -36,6 +36,16 @@ export class ResponsibleUserResponse {
 }
 
 export class AuditLogResponse extends BaseResponse {
+  /**
+   * TASK-331 doc-03 F6 — owning tenant id. The column is NOT NULL on the entity
+   * (TASK-305 Phase A); the global-scope admin console resolves it to a tenant
+   * name and renders a Tenant column. It is declared here because
+   * `AutoEntityMapper` only copies fields present on the target DTO — without
+   * this property the id is silently dropped and never reaches the wire.
+   */
+  @EntityIdProperty()
+  tenantId: string;
+
   @EntityIdProperty()
   responsibleUserId: string | null;
 
@@ -93,6 +103,7 @@ export class AuditLogResponse extends BaseResponse {
 
   constructor(init: AuditLogResponse & BaseResponseProps) {
     super(init);
+    this.tenantId = init.tenantId;
     this.responsibleUserId = init.responsibleUserId;
     this.responsibleIp = init.responsibleIp;
     this.resourceType = init.resourceType;
