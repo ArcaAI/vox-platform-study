@@ -68,8 +68,14 @@ describe('Seed Constants (00-constants)', () => {
         expect(SEED_USER_IDS.SYSTEM).toBe(SYSTEM_USER_ID);
     });
 
-    it('should define 18 department IDs', () => {
-        expect(Object.keys(SEED_DEPARTMENT_IDS).length).toBe(18);
+    it('should define 21 department IDs (18 Global-tenant + 3 per-customer-tenant GEN, TASK-305 Phase F)', () => {
+        expect(Object.keys(SEED_DEPARTMENT_IDS).length).toBe(21);
+    });
+
+    it('should define a per-customer-tenant GEN department ID for each non-Global tenant (TASK-305 Phase F)', () => {
+        expect(SEED_DEPARTMENT_IDS.GEN_ARCAAI).toBeDefined();
+        expect(SEED_DEPARTMENT_IDS.GEN_FOURBITS).toBeDefined();
+        expect(SEED_DEPARTMENT_IDS.GEN_MUMBAI).toBeDefined();
     });
 
     it('should include DIET, NEPH, SONC department IDs', () => {

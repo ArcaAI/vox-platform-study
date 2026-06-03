@@ -1,4 +1,5 @@
 import type { CorePrismaClient } from '../../../client';
+import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS } from './00-constants';
 
 // Default tenant ID for seed data
 export const DEFAULT_TENANT_ID = '50000000-0000-0000-0000-000000000000';
@@ -300,11 +301,72 @@ export const DEFAULT_DEPARTMENTS = [
     },
 ];
 
+// Per-customer-tenant General Practice departments (TASK-305 Phase F).
+//
+// The DEFAULT_DEPARTMENTS above all belong to the Global customer tenant
+// (DEFAULT_TENANT_ID). The remaining customer tenants need at least a GEN
+// department of their own so their non-exempt admins can satisfy the
+// role + department membership invariant enforced at login. Prompt IDs are
+// intentionally null here — they reference Global-tenant prompt templates.
+//
+// Exported for testing purposes.
+export const CUSTOMER_TENANT_GEN_DEPARTMENTS = [
+    {
+        id: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        code: 'GEN',
+        name: 'General Practice',
+        description: 'General medical consultations and primary care',
+        defaultSummaryTemplate: 'SOAP',
+        preSummaryPromptId: null,
+        newPatientPromptId: null,
+        revisitPromptId: null,
+        promptConfig: {
+            contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
+            preferredSections: ['Chief Complaint', 'HPI', 'Assessment', 'Plan'],
+            abbreviationDensity: 'low',
+        },
+    },
+    {
+        id: SEED_DEPARTMENT_IDS.GEN_FOURBITS,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        code: 'GEN',
+        name: 'General Practice',
+        description: 'General medical consultations and primary care',
+        defaultSummaryTemplate: 'SOAP',
+        preSummaryPromptId: null,
+        newPatientPromptId: null,
+        revisitPromptId: null,
+        promptConfig: {
+            contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
+            preferredSections: ['Chief Complaint', 'HPI', 'Assessment', 'Plan'],
+            abbreviationDensity: 'low',
+        },
+    },
+    {
+        id: SEED_DEPARTMENT_IDS.GEN_MUMBAI,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+        code: 'GEN',
+        name: 'General Practice',
+        description: 'General medical consultations and primary care',
+        defaultSummaryTemplate: 'SOAP',
+        preSummaryPromptId: null,
+        newPatientPromptId: null,
+        revisitPromptId: null,
+        promptConfig: {
+            contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
+            preferredSections: ['Chief Complaint', 'HPI', 'Assessment', 'Plan'],
+            abbreviationDensity: 'low',
+        },
+    },
+];
+
 export const seedDepartment = async (client: CorePrismaClient) => {
     console.log('Seeding departments...');
 
     try {
-        for (const dept of DEFAULT_DEPARTMENTS) {
+        const allDepartments = [...DEFAULT_DEPARTMENTS, ...CUSTOMER_TENANT_GEN_DEPARTMENTS];
+        for (const dept of allDepartments) {
             await client.department.upsert({
                 where: { id: dept.id },
                 update: dept,
@@ -312,7 +374,7 @@ export const seedDepartment = async (client: CorePrismaClient) => {
             });
         }
 
-        console.log(`Seeded ${DEFAULT_DEPARTMENTS.length} departments`);
+        console.log(`Seeded ${allDepartments.length} departments`);
     } catch (error) {
         console.error('Error seeding departments:', error);
         throw error;

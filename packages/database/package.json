@@ -30,6 +30,7 @@
     "db:studio": "prisma studio",
     "seed": "tsx src/index.ts",
     "build": "tsc",
+    "test": "vitest run",
     "clean": "rimraf dist tsconfig.tsbuildinfo src/generated",
     "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo src/generated"
   },
@@ -41,7 +42,8 @@
     "node-vault": "^0.10.10",
     "tsconfig-paths": "^4.2.0",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.1"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.5.0",

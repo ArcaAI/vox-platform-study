@@ -165,6 +165,14 @@ export const SEED_DEPARTMENT_IDS = {
     DIET: '70000000-0000-0000-0000-000000000016',
     NEPH: '70000000-0000-0000-0000-000000000017',
     SONC: '70000000-0000-0000-0000-000000000018',
+    // Per-customer-tenant General Practice departments (TASK-305 Phase F).
+    // The 18 departments above belong to the Global customer tenant
+    // (SEED_TENANT_ID, 50000000-…0000). The other customer tenants need their
+    // own GEN department so their non-exempt admins can satisfy the
+    // role + department membership invariant enforced at login.
+    GEN_ARCAAI: '70000000-0000-0000-0001-000000000001',
+    GEN_FOURBITS: '70000000-0000-0000-0002-000000000001',
+    GEN_MUMBAI: '70000000-0000-0000-0003-000000000001',
 } as const;
 
 // =============================================================================
