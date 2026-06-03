@@ -27,6 +27,15 @@ export interface ConfigManagerLogger {
 
 export interface ConfigManagerOptions {
   onPersistUserPreferences?: (prefs: DeepPartial<AppConfig>) => Promise<void>;
+  /**
+   * TASK-331 doc-07 F5a — OPTIONAL additive server sync of the user-pref tier
+   * (e.g. debounced `PATCH /user/me/settings`). Runs ALONGSIDE
+   * `onPersistUserPreferences` and is gated by the SAME read-only
+   * short-circuit (TASK-245), so an admin's edits while impersonating never
+   * reach the impersonated user's server profile. A rejection here is
+   * isolated and never breaks local-storage persistence.
+   */
+  onPersistUserPreferencesToServer?: (prefs: DeepPartial<AppConfig>) => Promise<void>;
   onLoadUserPreferences?: () => Promise<DeepPartial<AppConfig> | null>;
   /** Optional SDK logger; if provided, load/persist errors are surfaced via `warn`. */
   logger?: ConfigManagerLogger;
@@ -317,13 +326,28 @@ export class ConfigManager {
 
   private async persistUserPreferences(): Promise<void> {
     if (this.readOnly) return;
-    if (!this.options.onPersistUserPreferences) return;
-    try {
-      await this.options.onPersistUserPreferences(this.userPreferences);
-    } catch (error) {
-      this.options.logger?.warn?.('[ConfigManager] persistUserPreferences failed', {
-        error: error as Error,
-      });
+    const prefs = this.userPreferences;
+
+    if (this.options.onPersistUserPreferences) {
+      try {
+        await this.options.onPersistUserPreferences(prefs);
+      } catch (error) {
+        this.options.logger?.warn?.('[ConfigManager] persistUserPreferences failed', {
+          error: error as Error,
+        });
+      }
+    }
+
+    // TASK-331 doc-07 F5a — additive server sync. Isolated try/catch so a
+    // failed PATCH can never break the local-storage persistence above.
+    if (this.options.onPersistUserPreferencesToServer) {
+      try {
+        await this.options.onPersistUserPreferencesToServer(prefs);
+      } catch (error) {
+        this.options.logger?.warn?.('[ConfigManager] persistUserPreferencesToServer failed', {
+          error: error as Error,
+        });
+      }
     }
   }
 }

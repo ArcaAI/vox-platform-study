@@ -123,4 +123,73 @@ describe('Impersonation Config Isolation (TASK-245)', () => {
             expect(manager.getResolved().stt.language).toBe('en');
         });
     });
+
+    // -------------------------------------------------------------------------
+    // TASK-331 doc-07 F5a — additive server sync of the user-pref tier.
+    //
+    // ConfigManager now accepts a SECOND persist callback
+    // (`onPersistUserPreferencesToServer`) alongside the existing
+    // local-storage one. It MUST honour the same TASK-245 read-only
+    // short-circuit so an admin's edits while impersonating never reach the
+    // impersonated doctor's server profile.
+    // -------------------------------------------------------------------------
+    describe('server preference sync (F5a)', () => {
+        it('calls onPersistUserPreferencesToServer on setUserValue when NOT impersonating', async () => {
+            const persistServer = vi.fn().mockResolvedValue(undefined);
+            const mgr = new ConfigManager({ onPersistUserPreferencesToServer: persistServer });
+
+            const ok = mgr.setUserValue('stt.language', 'fr');
+            expect(ok).toBe(true);
+            await Promise.resolve();
+
+            expect(persistServer).toHaveBeenCalledTimes(1);
+            expect(persistServer).toHaveBeenCalledWith(expect.objectContaining({ stt: { language: 'fr' } }));
+        });
+
+        it('does NOT call onPersistUserPreferencesToServer while impersonating (readOnly=true)', async () => {
+            const persistServer = vi.fn().mockResolvedValue(undefined);
+            const mgr = new ConfigManager({ onPersistUserPreferencesToServer: persistServer });
+
+            mgr.setReadOnly(true);
+            mgr.loadExternalPreferences({ stt: { language: 'hi' } });
+            mgr.setUserValue('stt.language', 'fr');
+            mgr.setUserValue('audio.noiseSuppression', false);
+            await Promise.resolve();
+
+            expect(persistServer).not.toHaveBeenCalled();
+        });
+
+        it('runs the server sync independently of the storage callback (both behind read-only)', async () => {
+            const persistStorage = vi.fn().mockResolvedValue(undefined);
+            const persistServer = vi.fn().mockResolvedValue(undefined);
+            const mgr = new ConfigManager({
+                onPersistUserPreferences: persistStorage,
+                onPersistUserPreferencesToServer: persistServer,
+            });
+
+            mgr.setUserValue('stt.language', 'fr');
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(persistStorage).toHaveBeenCalledTimes(1);
+            expect(persistServer).toHaveBeenCalledTimes(1);
+        });
+
+        it('a failing server sync does not break local-storage persistence', async () => {
+            const persistStorage = vi.fn().mockResolvedValue(undefined);
+            const persistServer = vi.fn().mockRejectedValue(new Error('network down'));
+            const mgr = new ConfigManager({
+                onPersistUserPreferences: persistStorage,
+                onPersistUserPreferencesToServer: persistServer,
+            });
+
+            // Must not throw even though the server callback rejects.
+            expect(() => mgr.setUserValue('stt.language', 'fr')).not.toThrow();
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(persistStorage).toHaveBeenCalledTimes(1);
+            expect(persistServer).toHaveBeenCalledTimes(1);
+        });
+    });
 });
