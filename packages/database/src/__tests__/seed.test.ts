@@ -30,6 +30,7 @@ import {
 import {
     DEFAULT_AI_MODELS,
     DEFAULT_ASR_PIPELINES,
+    CUSTOMER_TENANT_ASR_PIPELINES,
     DEFAULT_STT_SETTINGS,
     AiModelSource,
     AiModelFormat,
@@ -37,6 +38,7 @@ import {
     ModelTaskType,
     ModelType,
 } from '../prisma/db_main/seed/06-stt';
+import { TENANT_FRONTEND_CONFIGS } from '../prisma/db_main/seed/05-tenant';
 import {
     DEFAULT_PROMPT_TEMPLATES,
     DEFAULT_PROMPT_VERSIONS,
@@ -54,6 +56,7 @@ import {
     SEED_POLICY_IDS,
     SEED_ROLE_IDS,
     SEED_CUSTOMER_TENANT_IDS,
+    SEED_TENANT_ID,
     SYSTEM_TENANT_ID,
     SYSTEM_USER_ID,
 } from '../prisma/db_main/seed/00-constants';
@@ -1183,6 +1186,157 @@ describe('STT Seed Data', () => {
                     expect(pipelineSlugs).toContain(setting.value);
                 }
             });
+        });
+    });
+});
+
+// =============================================================================
+// PER-TENANT ASR PIPELINES + isDefault (TASK-331 doc-03 F3 / Q2)
+// =============================================================================
+
+describe('Per-Tenant ASR Pipelines (TASK-331 doc-03 F3)', () => {
+    const customerTenantIds = [
+        SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+    ];
+
+    it('should seed at least one ASR pipeline for each customer tenant (ArcaAI/4bits/Mumbai)', () => {
+        customerTenantIds.forEach((tenantId) => {
+            const count = CUSTOMER_TENANT_ASR_PIPELINES.filter((p) => p.tenantId === tenantId).length;
+            expect(count).toBeGreaterThanOrEqual(1);
+        });
+    });
+
+    it('should bind every customer-tenant pipeline to a known customer tenant id', () => {
+        CUSTOMER_TENANT_ASR_PIPELINES.forEach((p) => {
+            expect(customerTenantIds).toContain(p.tenantId);
+        });
+    });
+
+    it('should NOT own any customer-tenant pipeline by the system tenant', () => {
+        CUSTOMER_TENANT_ASR_PIPELINES.forEach((p) => {
+            expect(p.tenantId).not.toBe(SYSTEM_TENANT_ID);
+        });
+    });
+
+    it('should have required fields + valid UUID for each customer-tenant pipeline', () => {
+        const requiredFields = ['id', 'tenantId', 'name', 'slug', 'description', 'configYaml', 'tags'];
+        CUSTOMER_TENANT_ASR_PIPELINES.forEach((p) => {
+            requiredFields.forEach((field) => {
+                expect(p).toHaveProperty(field);
+            });
+            expect(p.id).toMatch(UUID_REGEX);
+            expect(p.configYaml.length).toBeGreaterThan(100);
+        });
+    });
+
+    it('should keep pipeline IDs globally unique across system + customer pipelines', () => {
+        const ids = [...DEFAULT_ASR_PIPELINES, ...CUSTOMER_TENANT_ASR_PIPELINES].map((p) => p.id);
+        expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('should keep slugs unique within each tenant (system + customer combined)', () => {
+        const slugsByTenant = new Map<string, Set<string>>();
+        [...DEFAULT_ASR_PIPELINES, ...CUSTOMER_TENANT_ASR_PIPELINES].forEach((pipeline) => {
+            if (!slugsByTenant.has(pipeline.tenantId)) {
+                slugsByTenant.set(pipeline.tenantId, new Set());
+            }
+            const slugs = slugsByTenant.get(pipeline.tenantId)!;
+            expect(slugs.has(pipeline.slug)).toBe(false);
+            slugs.add(pipeline.slug);
+        });
+    });
+});
+
+describe('ASR Pipeline isDefault invariant (TASK-331 doc-03 Q2)', () => {
+    const allPipelines = [...DEFAULT_ASR_PIPELINES, ...CUSTOMER_TENANT_ASR_PIPELINES];
+    const customerTenantIds = [
+        SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+    ];
+
+    it('should mark exactly ONE pipeline as isDefault:true per owning tenant', () => {
+        const defaultsByTenant = new Map<string, number>();
+        allPipelines.forEach((p) => {
+            if (p.isDefault === true) {
+                defaultsByTenant.set(p.tenantId, (defaultsByTenant.get(p.tenantId) ?? 0) + 1);
+            }
+        });
+
+        const tenantsThatOwnPipelines = new Set(allPipelines.map((p) => p.tenantId));
+        tenantsThatOwnPipelines.forEach((tenantId) => {
+            expect(defaultsByTenant.get(tenantId)).toBe(1);
+        });
+    });
+
+    it('should make the system production pipeline (the GlobalSetting default) the isDefault one', () => {
+        const production = DEFAULT_ASR_PIPELINES.find(
+            (p) => p.id === '81000000-0000-0000-0001-000000000001'
+        );
+        expect(production).toBeDefined();
+        expect(production?.slug).toBe('production-whisper-large-v3');
+        expect(production?.isDefault).toBe(true);
+    });
+
+    it('should give each customer tenant exactly one isDefault pipeline', () => {
+        customerTenantIds.forEach((tenantId) => {
+            const defaults = CUSTOMER_TENANT_ASR_PIPELINES.filter(
+                (p) => p.tenantId === tenantId && p.isDefault === true
+            );
+            expect(defaults.length).toBe(1);
+        });
+    });
+
+    it('should keep idempotency intent: never define two defaults for one tenant in the seed data', () => {
+        // A re-run upserts by (tenantId, slug); the source data must therefore
+        // never declare two isDefault rows for the same tenant, or a re-seed
+        // could create two defaults.
+        const defaultsByTenant = new Map<string, number>();
+        allPipelines
+            .filter((p) => p.isDefault === true)
+            .forEach((p) => {
+                defaultsByTenant.set(p.tenantId, (defaultsByTenant.get(p.tenantId) ?? 0) + 1);
+            });
+        defaultsByTenant.forEach((count) => {
+            expect(count).toBeLessThanOrEqual(1);
+        });
+    });
+});
+
+// =============================================================================
+// TENANT FRONTEND CONFIG SEED (TASK-331 doc-03 F3)
+// =============================================================================
+
+describe('Tenant Frontend Config Seed (TASK-331 doc-03 F3)', () => {
+    const expectedTenantIds = [
+        SEED_TENANT_ID,
+        SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+    ];
+
+    it('should seed one frontend config per customer tenant + the Global/SEED tenant', () => {
+        expectedTenantIds.forEach((tenantId) => {
+            const rows = TENANT_FRONTEND_CONFIGS.filter((c) => c.tenantId === tenantId);
+            expect(rows.length).toBe(1);
+        });
+    });
+
+    it('should have a unique tenantId across all frontend configs (idempotent upsert key)', () => {
+        const tenantIds = TENANT_FRONTEND_CONFIGS.map((c) => c.tenantId);
+        expect(new Set(tenantIds).size).toBe(tenantIds.length);
+    });
+
+    it('should use reasonable boolean frontend defaults on every row', () => {
+        TENANT_FRONTEND_CONFIGS.forEach((cfg) => {
+            expect(typeof cfg.noiseCancel).toBe('boolean');
+            expect(typeof cfg.vad).toBe('boolean');
+            expect(typeof cfg.voiceEnrollment).toBe('boolean');
+            expect(typeof cfg.diarization).toBe('boolean');
+            expect(cfg).toHaveProperty('asrModel');
+            expect(cfg).toHaveProperty('configJson');
         });
     });
 });
