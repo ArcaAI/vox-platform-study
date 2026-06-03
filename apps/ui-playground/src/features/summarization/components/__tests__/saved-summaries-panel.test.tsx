@@ -10,6 +10,7 @@
  * @vitest-environment jsdom
  */
 
+import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 
@@ -41,12 +42,30 @@ vi.mock('@arcaai/ui/skeleton', () => ({
 vi.mock('@arcaai/ui/separator', () => ({
   Separator: (p: any) => <hr {...p} />,
 }));
+// Radix `Select` is event-driven; the default stub can't fire `onValueChange`.
+// Mirror the `processing-config-panel` test: thread `onValueChange` through a
+// context so a `SelectItem` click selects its value (and composes with the
+// Trigger/Value/Content wrappers the panel uses for the version pickers).
+const SelectContext = React.createContext<{ onValueChange?: (v: string) => void }>({});
 vi.mock('@arcaai/ui/select', () => ({
-  Select: ({ children }: any) => <div>{children}</div>,
+  Select: ({ children, value, onValueChange }: any) => (
+    <SelectContext.Provider value={{ onValueChange }}>
+      <div data-testid="select-root" data-value={value}>
+        {children}
+      </div>
+    </SelectContext.Provider>
+  ),
   SelectContent: ({ children }: any) => <div>{children}</div>,
-  SelectItem: ({ children }: any) => <div>{children}</div>,
+  SelectItem: ({ children, value }: any) => {
+    const { onValueChange } = React.useContext(SelectContext);
+    return (
+      <div data-testid="select-item" data-value={value} onClick={() => onValueChange?.(value)}>
+        {children}
+      </div>
+    );
+  },
   SelectTrigger: ({ children }: any) => <div>{children}</div>,
-  SelectValue: ({ children }: any) => <div>{children}</div>,
+  SelectValue: ({ children, placeholder }: any) => <div>{children ?? placeholder}</div>,
 }));
 vi.mock('@/components/version-diff-panel', () => ({
   VersionDiffPanel: () => <div data-testid="version-diff-panel" />,
@@ -54,6 +73,8 @@ vi.mock('@/components/version-diff-panel', () => ({
 
 const state = vi.hoisted(() => ({
   consultation: null as { id: string } | null,
+  listConsultations: vi.fn(),
+  load: vi.fn(),
   loadSummaries: vi.fn(),
   getSummaryHistory: vi.fn(),
   getSummaryTags: vi.fn(),
@@ -64,7 +85,13 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock('@arcaai/vox', () => ({
-  useArca: () => ({ session: { consultation: state.consultation } }),
+  useArca: () => ({
+    session: {
+      consultation: state.consultation,
+      listConsultations: state.listConsultations,
+      load: state.load,
+    },
+  }),
   useArcaSummary: () => ({
     loadSummaries: state.loadSummaries,
     getSummaryHistory: state.getSummaryHistory,
@@ -73,6 +100,18 @@ vi.mock('@arcaai/vox', () => ({
     deleteSummaryTag: state.deleteSummaryTag,
     diffSummaryVersions: state.diffSummaryVersions,
     updateSummary: state.updateSummary,
+  }),
+}));
+
+vi.mock('../../hooks/use-doctor-context', () => ({
+  useDoctorContext: () => ({
+    effectiveUserId: 'doctor-1',
+    isImpersonated: false,
+    requiresImpersonation: false,
+    isAdmin: false,
+    isDoctor: true,
+    primaryDepartmentId: undefined,
+    roles: ['DOCTOR'],
   }),
 }));
 
@@ -91,6 +130,8 @@ const SUMMARY = {
 beforeEach(() => {
   vi.clearAllMocks();
   state.consultation = null;
+  state.listConsultations.mockResolvedValue({ data: [], total: 0, page: 1, limit: 20 });
+  state.load.mockResolvedValue(undefined);
   state.loadSummaries.mockResolvedValue([]);
   state.getSummaryHistory.mockResolvedValue([]);
   state.getSummaryTags.mockResolvedValue([]);
@@ -139,5 +180,49 @@ describe('SavedSummariesPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Add/i }));
 
     await waitFor(() => expect(state.tagSummary).toHaveBeenCalledWith('ctx-1', { tagValue: 'reviewed' }));
+  });
+
+  // ── F6 (TASK-331 doc-07): explicit consultation selector ───────────────
+  // The panel must let the user pick WHICH consultation's saved summaries to
+  // view, instead of implicitly binding to the "last loaded" store consultation
+  // (a side effect of the summary page's suggestion loader).
+  describe('explicit consultation selector (F6)', () => {
+    const CONSULTATIONS = {
+      data: [
+        { id: 'c-1', patientId: 'patient-alpha', doctorId: 'doctor-1', appointmentDate: '2026-01-01' },
+        { id: 'c-2', patientId: 'patient-bravo', doctorId: 'doctor-1', appointmentDate: '2026-02-02' },
+      ],
+      total: 2,
+      page: 1,
+      limit: 20,
+    };
+
+    it('renders a consultation selector listing the doctor’s consultations', async () => {
+      state.consultation = { id: 'c-1' };
+      state.listConsultations.mockResolvedValue(CONSULTATIONS);
+      render(<SavedSummariesPanel />);
+
+      await waitFor(() => expect(state.listConsultations).toHaveBeenCalled());
+      // Both consultations are offered as choices (not just the active one).
+      expect(await screen.findByText(/patient-alpha/)).toBeTruthy();
+      expect(await screen.findByText(/patient-bravo/)).toBeTruthy();
+    });
+
+    it('switching the selector loads the chosen consultation and reloads its summaries', async () => {
+      state.consultation = { id: 'c-1' };
+      state.listConsultations.mockResolvedValue(CONSULTATIONS);
+      render(<SavedSummariesPanel />);
+
+      await waitFor(() => expect(state.listConsultations).toHaveBeenCalled());
+      const option = await screen.findByText(/patient-bravo/);
+
+      state.load.mockClear();
+      state.loadSummaries.mockClear();
+      fireEvent.click(option);
+
+      // Picking c-2 makes it the active consultation (explicit), then reloads.
+      await waitFor(() => expect(state.load).toHaveBeenCalledWith('c-2'));
+      await waitFor(() => expect(state.loadSummaries).toHaveBeenCalled());
+    });
   });
 });
