@@ -8,6 +8,7 @@ import {
     SEED_USER_IDS,
     SEED_DEPARTMENT_IDS,
     SYSTEM_TENANT_ID,
+    SEED_VOICE_PROFILE_IDS,
 } from './00-constants';
 
 /**
@@ -666,6 +667,98 @@ export const SEED_USERS = [
 
 ];
 
+// =========================================================================
+// USER VOICE PROFILES (TASK-331 doc-07 F3)
+// =========================================================================
+// Deterministic voice-enrollment rows for the two primary seed doctors so the
+// Voice Profile playground, active-profile diarization seeding, and the
+// `voiceProfileSeeded` indicator are demonstrable out-of-the-box.
+//
+// The `embedding` column is pgvector `vector(256)` — `Unsupported(...)` in the
+// Prisma schema, so the Prisma client cannot write it. The upsert loop in
+// `seedUser` therefore uses `$executeRawUnsafe` with a `[v1,…,v256]` vector
+// literal (mirrors `UserVoiceProfileRepository.createWithEmbedding`).
+// =========================================================================
+
+/**
+ * pgvector dimension of `core."UserVoiceProfile"."embedding"`. MUST match the
+ * `vector(N)` in the migration and `EXPECTED_EMBEDDING_DIM` in the backend
+ * `VoiceProfileService` (256-d wespeaker/WavLM speaker embedding).
+ */
+export const VOICE_EMBEDDING_DIM = 256;
+
+/** Speaker-embedding model id used for the demo rows (matches the backend default). */
+const VOICE_PROFILE_MODEL_ID = 'pyannote/wespeaker-voxceleb-resnet34-LM';
+
+/**
+ * Build a DETERMINISTIC placeholder speaker embedding of length
+ * {@link VOICE_EMBEDDING_DIM}. A fixed trig pattern keyed by `seed` makes the
+ * vector byte-stable across re-seeds; the result is L2-normalized to unit
+ * length to mimic a real wespeaker/WavLM `*-sv` embedding. This is NOT a real
+ * biometric — it only exists so the playground has data to render.
+ */
+function makeDeterministicEmbedding(seed: number): number[] {
+    const raw: number[] = [];
+    let mag = 0;
+    for (let i = 0; i < VOICE_EMBEDDING_DIM; i++) {
+        const x = Math.sin((i + 1) * 0.12345 + seed * 1.7) * Math.cos(seed + i * 0.031);
+        raw.push(x);
+        mag += x * x;
+    }
+    const norm = Math.sqrt(mag) || 1;
+    return raw.map((x) => x / norm);
+}
+
+export interface SeedVoiceProfile {
+    id: string;
+    userId: string;
+    isActive: boolean;
+    label: string;
+    modelId: string;
+    embedding: number[];
+}
+
+/**
+ * One ACTIVE + one inactive profile per primary seed doctor. The DB enforces at
+ * most one active profile per user (partial unique index), so exactly one row
+ * per doctor carries `isActive: true`. Distinct embedding seeds keep each
+ * profile's vector unique so cosine-similarity demos are meaningful.
+ */
+export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
+    {
+        id: SEED_VOICE_PROFILE_IDS.DOCTOR_ACTIVE,
+        userId: SEED_USER_IDS.DOCTOR,
+        isActive: true,
+        label: 'Clinic mic (primary)',
+        modelId: VOICE_PROFILE_MODEL_ID,
+        embedding: makeDeterministicEmbedding(1),
+    },
+    {
+        id: SEED_VOICE_PROFILE_IDS.DOCTOR_INACTIVE,
+        userId: SEED_USER_IDS.DOCTOR,
+        isActive: false,
+        label: 'Headset (backup)',
+        modelId: VOICE_PROFILE_MODEL_ID,
+        embedding: makeDeterministicEmbedding(2),
+    },
+    {
+        id: SEED_VOICE_PROFILE_IDS.DOCTOR2_ACTIVE,
+        userId: SEED_USER_IDS.DOCTOR2,
+        isActive: true,
+        label: 'Clinic mic (primary)',
+        modelId: VOICE_PROFILE_MODEL_ID,
+        embedding: makeDeterministicEmbedding(3),
+    },
+    {
+        id: SEED_VOICE_PROFILE_IDS.DOCTOR2_INACTIVE,
+        userId: SEED_USER_IDS.DOCTOR2,
+        isActive: false,
+        label: 'Old enrollment (2025)',
+        modelId: VOICE_PROFILE_MODEL_ID,
+        embedding: makeDeterministicEmbedding(4),
+    },
+];
+
 export const seedUser = async (client: CorePrismaClient) => {
     console.log('Seeding users...');
 
@@ -791,6 +884,48 @@ export const seedUser = async (client: CorePrismaClient) => {
             console.error(`Error creating user ${userData.username}:`, error);
         }
     }
+
+    // =========================================================================
+    // User Voice Profiles (TASK-331 doc-07 F3)
+    // =========================================================================
+    // `core."UserVoiceProfile"."embedding"` is pgvector `vector(256)`, declared
+    // `Unsupported(...)` in the Prisma schema, so the Prisma client cannot write
+    // it. We INSERT with raw SQL using a `[v1,…,v256]` vector literal (mirrors
+    // `UserVoiceProfileRepository.createWithEmbedding`). `ON CONFLICT ("id") DO
+    // UPDATE` keeps the seed idempotent — no destructive DELETE/TRUNCATE, and it
+    // never introduces a second active row per user (partial unique index safe).
+    console.log('Seeding user voice profiles...');
+    const voiceProfileTimestamp = new Date('2026-02-20T08:00:00Z');
+    for (const vp of SEED_VOICE_PROFILES) {
+        if (!vp.embedding.every((n) => typeof n === 'number' && Number.isFinite(n))) {
+            throw new Error(`Invalid embedding for voice profile ${vp.id}: all values must be finite numbers`);
+        }
+        const vectorStr = `[${vp.embedding.join(',')}]`;
+        await client.$executeRawUnsafe(
+            `INSERT INTO "core"."UserVoiceProfile"
+                ("id", "userId", "embedding", "isActive", "label", "modelId",
+                 "resourceStatus", "createdBy", "createdAt", "updatedAt")
+             VALUES ($1, $2, $3::vector, $4, $5, $6, $7::"core"."ResourceStatusType", $8, $9, $10)
+             ON CONFLICT ("id") DO UPDATE SET
+                "userId" = EXCLUDED."userId",
+                "embedding" = EXCLUDED."embedding",
+                "isActive" = EXCLUDED."isActive",
+                "label" = EXCLUDED."label",
+                "modelId" = EXCLUDED."modelId",
+                "updatedAt" = EXCLUDED."updatedAt"`,
+            vp.id,
+            vp.userId,
+            vectorStr,
+            vp.isActive,
+            vp.label,
+            vp.modelId,
+            'ENABLED',
+            SYSTEM_USER_ID,
+            voiceProfileTimestamp,
+            voiceProfileTimestamp,
+        );
+    }
+    console.log(`  Seeded ${SEED_VOICE_PROFILES.length} user voice profiles`);
 
     // =========================================================================
     // User Settings - General UI preferences
