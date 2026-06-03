@@ -94,6 +94,8 @@ export class ContextDtoMapper {
       generatedAt: entity.generatedAt?.toISOString(),
       cacheHit: entity.cacheHit ?? undefined,
       qualityScore: entity.qualityScore ?? undefined,
+      promptResolvedFrom: (entity.promptResolvedFrom ?? undefined) as SummaryMetaResponse['promptResolvedFrom'],
+      resolvedPromptId: entity.resolvedPromptId ?? undefined,
       createdAt: entity.createdAt.toISOString(),
     };
   }

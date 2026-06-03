@@ -133,6 +133,8 @@ const createMockSummaryMetaEntity = (overrides: Partial<{
     hasAnyContext: boolean;
     generatedAt: Date | null;
     createdAt: Date;
+    promptResolvedFrom: string | null;
+    resolvedPromptId: string | null;
 }> = {}) => ({
     id: overrides.id ?? 'summary-meta-id-1',
     aiModelId: 'aiModelId' in overrides ? overrides.aiModelId : 'gpt-4',
@@ -149,6 +151,8 @@ const createMockSummaryMetaEntity = (overrides: Partial<{
     hasAnyContext: overrides.hasAnyContext ?? false,
     generatedAt: 'generatedAt' in overrides ? overrides.generatedAt : new Date('2026-01-29T10:00:00Z'),
     createdAt: overrides.createdAt ?? new Date('2026-01-29T10:00:00Z'),
+    promptResolvedFrom: 'promptResolvedFrom' in overrides ? overrides.promptResolvedFrom : null,
+    resolvedPromptId: 'resolvedPromptId' in overrides ? overrides.resolvedPromptId : null,
 });
 
 // Helper to create mock named entity
@@ -784,6 +788,27 @@ describe('ContextDtoMapper', () => {
             expect(result.totalTokens).toBe(1500);
             expect(result.hasAnyContext).toBe(false);
             expect(result.generatedAt).toBe('2026-01-29T10:00:00.000Z');
+        });
+
+        it('should map prompt-resolution tier fields when present (TASK-331 doc-06 F4)', () => {
+            const entity = createMockSummaryMetaEntity({
+                promptResolvedFrom: 'department',
+                resolvedPromptId: 'prompt-dept-1',
+            });
+
+            const result = ContextDtoMapper.toSummaryMetaResponse(entity as any);
+
+            expect(result.promptResolvedFrom).toBe('department');
+            expect(result.resolvedPromptId).toBe('prompt-dept-1');
+        });
+
+        it('should leave prompt-resolution tier fields undefined when absent (TASK-331 doc-06 F4)', () => {
+            const entity = createMockSummaryMetaEntity();
+
+            const result = ContextDtoMapper.toSummaryMetaResponse(entity as any);
+
+            expect(result.promptResolvedFrom).toBeUndefined();
+            expect(result.resolvedPromptId).toBeUndefined();
         });
 
         it('should map context IDs when present', () => {
