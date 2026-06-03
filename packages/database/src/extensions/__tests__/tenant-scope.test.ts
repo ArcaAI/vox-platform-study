@@ -14,6 +14,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
 
 vi.mock('@prisma/adapter-pg', () => ({
   PrismaPg: vi.fn().mockImplementation(() => ({})),
@@ -77,15 +80,17 @@ function captureExtensionConfig(opts: {
 // ---------------------------------------------------------------------------
 
 describe('TENANT_SCOPED_MODELS allow-list', () => {
-  it('contains the 29 tenant-scoped models currently defined in db_main/*.prisma', () => {
+  it('contains the 31 tenant-scoped models currently defined in db_main/*.prisma', () => {
     // The allow-list tracks SCHEMA TRUTH (every model here has a tenantId
     // scalar), not the audit's 30-name wish-list. The User* identity tables
     // are intentionally excluded — `User` is global by design (§B6 /
     // TASK-305 Phase F); tenant membership lives in the UserRoleAssignment
     // (role) + UserDepartment (department) join tables.
     // TASK-318 added TenantStorageConfig → 28. TASK-305 Phase F added
-    // UserDepartment → 29.
-    expect(TENANT_SCOPED_MODELS.size).toBe(29);
+    // UserDepartment → 29. TASK-331 doc-08 added TenantFrontendConfig (F2)
+    // + AsrPipelineVersion (F3) → 31. (The drift guard below is the durable
+    // check; this count stays as a quick human-readable tripwire.)
+    expect(TENANT_SCOPED_MODELS.size).toBe(31);
   });
 
   it('includes every PHI-bearing model', () => {
@@ -114,6 +119,82 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     expect(isTenantScopedModel('consultation')).toBe(true);
     expect(isTenantScopedModel('tenant')).toBe(false);
     expect(isTenantScopedModel('Tenant')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Schema-derived drift guard (TASK-331 doc-08 F2/F3)
+// ---------------------------------------------------------------------------
+
+/**
+ * The `size` assertion above is COUNT-ONLY: it cannot say WHICH model drifted,
+ * and a migration that both adds and drops a tenantId model keeps the count
+ * stable while silently changing the truth. That blind spot is exactly how
+ * `TenantFrontendConfig` and `AsrPipelineVersion` shipped with a `tenantId`
+ * column yet missing from the allow-list (doc-08 F2/F3).
+ *
+ * This block derives SCHEMA TRUTH at runtime — it reads every
+ * `db_main/*.prisma` file, extracts each `model` that declares a `tenantId`
+ * scalar, and asserts the allow-list covers all of them. A newly-added
+ * tenant-scoped model now fails CI until it is triaged into
+ * TENANT_SCOPED_MODELS (the default) or the explicit INTENTIONALLY_UNSCOPED
+ * deny-list, so the guard can never silently fall behind a migration again.
+ */
+describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
+  // Resolve db_main relative to THIS test file (ESM, no __dirname):
+  //   src/extensions/__tests__ → ../../prisma/db_main
+  const DB_MAIN_DIR = join(
+    dirname(fileURLToPath(import.meta.url)),
+    '..',
+    '..',
+    'prisma',
+    'db_main',
+  );
+
+  /**
+   * Models that carry a `tenantId` scalar but are DELIBERATELY excluded from
+   * tenant-scope injection. Empty today — every tenantId model is scoped. Add
+   * a name here ONLY for a conscious, reviewed exception (with a justifying
+   * comment), never to silence this guard for a real tenant-scoped model.
+   */
+  const INTENTIONALLY_UNSCOPED: ReadonlySet<string> = new Set<string>([]);
+
+  /** Every `model X { … tenantId String … }` declared across db_main/*.prisma. */
+  function schemaModelsWithTenantId(): string[] {
+    // Prisma formats each block with the keyword and the closing brace at
+    // column 0 and never nests `{}` in a model body, so a line-anchored block
+    // match is exact. A `tenantId String` line is the scalar column; the
+    // relation attribute (`@relation(fields: [tenantId] …)`) and
+    // `@@index([tenantId])` keep `tenantId` off the start of the line, so they
+    // are not mistaken for the scalar.
+    const modelBlock = /^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm;
+    const tenantIdScalar = /^\s*tenantId\s+String\b/m;
+    const models: string[] = [];
+    for (const file of readdirSync(DB_MAIN_DIR).filter((f) => f.endsWith('.prisma'))) {
+      const src = readFileSync(join(DB_MAIN_DIR, file), 'utf-8');
+      for (const [, name, body] of src.matchAll(modelBlock)) {
+        if (name && body && tenantIdScalar.test(body)) models.push(name);
+      }
+    }
+    return models;
+  }
+
+  it('parses tenantId-bearing models off disk (guards against a false green)', () => {
+    // If the path or regex ever breaks this reads 0 models and the drift check
+    // below would pass vacuously — so assert the parser actually sees them.
+    const found = schemaModelsWithTenantId();
+    expect(found.length).toBeGreaterThan(0);
+    expect(found).toContain('Consultation');
+    expect(found).toContain('TenantFrontendConfig'); // tenant.prisma (F2)
+    expect(found).toContain('AsrPipelineVersion'); // stt.prisma (F3)
+  });
+
+  it('lists every schema tenantId model in TENANT_SCOPED_MODELS (drift = []) ', () => {
+    const missing = schemaModelsWithTenantId().filter(
+      (m) => !TENANT_SCOPED_MODELS.has(m) && !INTENTIONALLY_UNSCOPED.has(m),
+    );
+    // Empty once F2/F3 are fixed; the failure diff names any drifted model.
+    expect(missing).toEqual([]);
   });
 });
 
