@@ -32,7 +32,7 @@ import { createSDKLogger, type SDKLogger, type ISDKLogger } from '../core/logger
 import { useStore } from 'zustand';
 import { createAgenticStore, AgenticStoreContext, type AgenticStoreApi } from '../store';
 import { DEFAULT_AUDIO_CONFIG, DEFAULT_PERSONALIZATION_CONFIG } from '../types';
-import { AUTH_ENDPOINTS, DEPARTMENT_ENDPOINTS } from '../core/constants';
+import { AUTH_ENDPOINTS, DEPARTMENT_ENDPOINTS, USER_SETTINGS_ENDPOINTS } from '../core/constants';
 // TASK-304 Wave 2D — single source of truth for the `arcaai-config` IDB
 // schema (now v2 with `user-preferences` and `personalization` stores).
 import { configDBGet, configDBSet, USER_PREFERENCES_STORE } from '../core/configDB';
@@ -96,6 +96,116 @@ function makePersistUserPreferencesToStorage(nsRef: { current: string }) {
         // Storage completely unavailable — silently degrade.
       }
     }
+  };
+}
+
+// =============================================================================
+// Server persistence (TASK-331 doc-07 F5a)
+//
+// ADDITIVE server sync of the user-pref tier. SDK prefs live under the
+// server-owned `arcaai-sdk` namespace with DOT-PATH keys (e.g. `stt.language`),
+// mirroring the read path (GET /user/me/settings → reconstruct by splitting the
+// key on `.`) and the existing `selectedPipelineId` persistence in usePipelines.
+// =============================================================================
+
+/** Namespace SDK user-preferences are stored under (matches usePipelines). */
+const SDK_SETTINGS_NAMESPACE = 'arcaai-sdk';
+
+/**
+ * Debounce window for the server sync. Rapid edits (e.g. dragging a slider or
+ * toggling several flags) coalesce into a single round of PATCHes carrying the
+ * latest values.
+ */
+const SERVER_PREF_SYNC_DEBOUNCE_MS = 500;
+
+/**
+ * `dataType` sent on `PATCH /user/me/settings/:ns/:key`. These are the
+ * server's `ValueType` enum members (PascalCase) — the WRITE DTO validates
+ * with `@IsEnum(ValueType)`, and the read-side reconstruction upper-cases the
+ * stored type before comparing, so they round-trip correctly.
+ */
+type ServerPrefDataType = 'String' | 'Boolean' | 'Integer' | 'Float';
+
+interface ServerPrefLeaf {
+  /** Dot-path key, e.g. `stt.language`. */
+  key: string;
+  /** Stringified value (the server column is a string). */
+  value: string;
+  dataType: ServerPrefDataType;
+}
+
+/**
+ * Flatten the (nested) user-pref tier into dot-path leaves with a stringified
+ * value + inferred `dataType`. Objects recurse; arrays / null / undefined are
+ * skipped (the user-pref tier has no array leaves).
+ */
+function flattenUserPrefsToLeaves(prefs: DeepPartial<AppConfig>, prefix = ''): ServerPrefLeaf[] {
+  const leaves: ServerPrefLeaf[] = [];
+  for (const [key, value] of Object.entries(prefs)) {
+    if (value === undefined || value === null) continue;
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      leaves.push(...flattenUserPrefsToLeaves(value as DeepPartial<AppConfig>, path));
+    } else if (typeof value === 'boolean') {
+      leaves.push({ key: path, value: String(value), dataType: 'Boolean' });
+    } else if (typeof value === 'number') {
+      leaves.push({ key: path, value: String(value), dataType: Number.isInteger(value) ? 'Integer' : 'Float' });
+    } else if (typeof value === 'string') {
+      leaves.push({ key: path, value, dataType: 'String' });
+    }
+    // Other types (arrays, etc.) are intentionally not synced.
+  }
+  return leaves;
+}
+
+/**
+ * Build a debounced server-sync persist callback. Flattens the user-pref tier
+ * and PATCHes each leaf to `/user/me/settings/arcaai-sdk/{dotPath}`. Each PATCH
+ * is best-effort: a failure is logged and the loop continues, and nothing here
+ * ever throws (a failed sync must not break local-storage persistence).
+ *
+ * Gating to "not impersonating" is handled by ConfigManager's read-only
+ * short-circuit (TASK-245) at SCHEDULE time, AND re-checked here at FLUSH time
+ * via `isReadOnly()`: because the sync is debounced, an edit scheduled by the
+ * admin just before impersonation starts must not have its pending PATCH land
+ * on the impersonated user's profile.
+ */
+function makePersistUserPreferencesToServer(apiClient: AgenticClient, logger: ISDKLogger, isReadOnly: () => boolean) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let pending: DeepPartial<AppConfig> | null = null;
+
+  const flush = async (): Promise<void> => {
+    timer = null;
+    const prefs = pending;
+    pending = null;
+    if (!prefs) return;
+    // Re-check at flush time — impersonation may have started during the
+    // debounce window (the admin's pending edit must never reach the server
+    // under the impersonation JWT).
+    if (isReadOnly()) return;
+    for (const leaf of flattenUserPrefsToLeaves(prefs)) {
+      try {
+        await apiClient.patch(USER_SETTINGS_ENDPOINTS.updateByKey(SDK_SETTINGS_NAMESPACE, leaf.key), {
+          value: leaf.value,
+          dataType: leaf.dataType,
+        });
+      } catch (error) {
+        logger.warn('Failed to sync user preference to server', {
+          operation: 'persistUserPreferencesToServer',
+          component: 'AgenticProvider',
+          error: error as Error,
+          attributes: { key: leaf.key },
+        });
+      }
+    }
+  };
+
+  return async function persistUserPreferencesToServer(prefs: DeepPartial<AppConfig>): Promise<void> {
+    pending = prefs;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      void flush();
+    }, SERVER_PREF_SYNC_DEBOUNCE_MS);
   };
 }
 
@@ -313,10 +423,20 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     // Namespace bootstrapped to `pre-login` above (TASK-317 W1.1/W1.2); the
     // managers follow `namespaceRef` lazily and are re-hydrated once /auth/me
     // resolves the real `${tenantId}::${userId}`.
+    const configManagerLogger = logger.child('ConfigManager');
     const configManager = new ConfigManager({
       onLoadUserPreferences: makeLoadUserPreferencesFromStorage(namespaceRef),
       onPersistUserPreferences: makePersistUserPreferencesToStorage(namespaceRef),
-      logger: logger.child('ConfigManager'),
+      // TASK-331 doc-07 F5a — additive, debounced server sync. ConfigManager's
+      // read-only short-circuit (TASK-245) keeps this from firing while the
+      // playground impersonates, so impersonated edits never reach the server;
+      // the flush-time `isReadOnly` re-check also covers the debounce window.
+      onPersistUserPreferencesToServer: makePersistUserPreferencesToServer(
+        apiClient,
+        configManagerLogger,
+        () => configManagerRef.current?.isReadOnly() ?? false,
+      ),
+      logger: configManagerLogger,
     });
     configManagerRef.current = configManager;
     store.setConfigManager(configManager);
