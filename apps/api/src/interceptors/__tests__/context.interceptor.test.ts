@@ -308,6 +308,110 @@ describe('ContextInterceptor', () => {
         });
     });
 
+    describe('TASK-331 r2605 #1 — super-admin x-tenant-id → CLS elevation', () => {
+        const VALID_TENANT = '0190b6e2-7e7a-7c3a-8b1a-2c3d4e5f6a7b';
+
+        function buildCls(user: unknown) {
+            return {
+                get: vi.fn((key: string) => (key === 'user' ? user : undefined)),
+                set: vi.fn(),
+                getId: vi.fn().mockReturnValue('test-request-id'),
+            };
+        }
+
+        async function buildInterceptor(cls: unknown) {
+            vi.resetModules();
+            const { ContextInterceptor } = await import('../context.interceptor');
+            return new ContextInterceptor(cls as any);
+        }
+
+        beforeEach(() => {
+            vi.clearAllMocks();
+        });
+
+        it('elevates: sets CLS tenantId to the header for a super-admin with an empty JWT tenant', async () => {
+            const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] });
+            interceptor = await buildInterceptor(cls);
+
+            const context = createMockContext({ headers: { 'x-tenant-id': VALID_TENANT } });
+            await firstValueFrom(interceptor.intercept(context, createMockHandler()));
+
+            expect(cls.set).toHaveBeenCalledWith('tenantId', VALID_TENANT);
+        });
+
+        it('emits a structured audit log line naming the elevated tenant', async () => {
+            const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] });
+            interceptor = await buildInterceptor(cls);
+            const logSpy = vi.spyOn(interceptor['logger'], 'log');
+
+            const context = createMockContext({ headers: { 'x-tenant-id': VALID_TENANT } });
+            await firstValueFrom(interceptor.intercept(context, createMockHandler()));
+
+            expect(logSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    message: expect.stringContaining('tenant'),
+                    elevatedTenantId: VALID_TENANT,
+                    superAdminId: 'admin-1',
+                }),
+            );
+        });
+
+        it('throws BadRequest("Invalid x-tenant-id format") when a super-admin passes a malformed header', async () => {
+            const { BadRequestException } = await import('@nestjs/common');
+            const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] });
+            interceptor = await buildInterceptor(cls);
+
+            const context = createMockContext({ headers: { 'x-tenant-id': 'not-a-uuid' } });
+
+            let caught: unknown;
+            try {
+                interceptor.intercept(context, createMockHandler());
+            } catch (e) {
+                caught = e;
+            }
+            expect(caught).toBeInstanceOf(BadRequestException);
+            expect((caught as InstanceType<typeof BadRequestException>).message).toContain('Invalid x-tenant-id format');
+            expect(cls.set).not.toHaveBeenCalledWith('tenantId', expect.anything());
+        });
+
+        it('does NOT elevate a super-admin when no x-tenant-id header is present', async () => {
+            const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] });
+            interceptor = await buildInterceptor(cls);
+
+            const context = createMockContext({ headers: {} });
+            await firstValueFrom(interceptor.intercept(context, createMockHandler()));
+
+            expect(cls.set).not.toHaveBeenCalledWith('tenantId', expect.anything());
+        });
+
+        it('does NOT elevate a non-super-admin with an empty JWT tenant even with a valid header', async () => {
+            const cls = buildCls({ id: 'u-1', tenantId: '', roles: ['DEPARTMENT_ADMIN'] });
+            interceptor = await buildInterceptor(cls);
+
+            const context = createMockContext({ headers: { 'x-tenant-id': VALID_TENANT } });
+            await firstValueFrom(interceptor.intercept(context, createMockHandler()));
+
+            expect(cls.set).not.toHaveBeenCalledWith('tenantId', expect.anything());
+        });
+
+        it('keeps the TASK-307 W5.3 reject path: a tenant-bound caller with a divergent header is still 400', async () => {
+            const { BadRequestException } = await import('@nestjs/common');
+            const cls = buildCls({ id: 'u-1', tenantId: 'tenant-A', roles: ['DEPARTMENT_ADMIN'] });
+            interceptor = await buildInterceptor(cls);
+
+            const context = createMockContext({ headers: { 'x-tenant-id': 'tenant-B' } });
+
+            let caught: unknown;
+            try {
+                interceptor.intercept(context, createMockHandler());
+            } catch (e) {
+                caught = e;
+            }
+            expect(caught).toBeInstanceOf(BadRequestException);
+            expect(cls.set).not.toHaveBeenCalledWith('tenantId', expect.anything());
+        });
+    });
+
     describe('OTel trace context propagation', () => {
         const mockTraceId = 'abc123def456789012345678abcdef01';
         const mockSpanId = '1234567890abcdef';
