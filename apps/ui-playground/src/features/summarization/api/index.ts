@@ -5,6 +5,7 @@ export {
   useGenerateAsync,
   useGeneratePreSummary,
   useGenerateSummary,
+  useGenerateSummaryAssembled,
   useGenerateSync,
   useSmrHealth,
   useSmrProviders,

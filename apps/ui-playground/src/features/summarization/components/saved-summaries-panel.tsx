@@ -25,6 +25,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@arcaai/ui/separator';
 import { FileText, GitCompare, Loader2, Plus, Save, Sparkles, Tag as TagIcon, X } from 'lucide-react';
 import { VersionDiffPanel } from '@/components/version-diff-panel';
+import { useDoctorContext } from '../hooks/use-doctor-context';
+
+/** Minimal shape of a consultation needed to populate the explicit picker (F6). */
+interface ConsultationOption {
+  id: string;
+  patientId?: string;
+  appointmentDate?: string;
+}
 
 function QualityBadge({ summary }: { summary: SummaryResponse }) {
   const cacheHit = summary.structuredData?.cacheHit;
@@ -47,8 +55,16 @@ function QualityBadge({ summary }: { summary: SummaryResponse }) {
 
 export function SavedSummariesPanel() {
   const { session } = useArca();
-  const consultationId = session.consultation?.id ?? null;
   const summaryApi = useArcaSummary();
+  const { effectiveUserId, requiresImpersonation } = useDoctorContext();
+
+  // F6: the consultation whose summaries we view is an EXPLICIT user choice,
+  // not the implicit "last loaded wins" store consultation that the summary
+  // page's suggestion loader mutates as a side effect.
+  const [consultations, setConsultations] = useState<ConsultationOption[]>([]);
+  const [loadingConsultations, setLoadingConsultations] = useState(false);
+  const [selectedConsultationId, setSelectedConsultationId] = useState<string | null>(null);
+  const consultationId = selectedConsultationId ?? session.consultation?.id ?? null;
 
   const [summaries, setSummaries] = useState<SummaryResponse[]>([]);
   const [loadingSummaries, setLoadingSummaries] = useState(false);
@@ -77,6 +93,11 @@ export function SavedSummariesPanel() {
     }
     setLoadingSummaries(true);
     try {
+      // loadSummaries() reads the store's active consultation, so make sure the
+      // store points at the explicitly selected one before fetching.
+      if (session.consultation?.id !== consultationId) {
+        await session.load(consultationId);
+      }
       const list = await summaryApi.loadSummaries();
       setSummaries(list);
     } catch (err) {
@@ -84,10 +105,35 @@ export function SavedSummariesPanel() {
     } finally {
       setLoadingSummaries(false);
     }
-  }, [consultationId, summaryApi]);
+  }, [consultationId, session, summaryApi]);
+
+  // Populate the selector with the doctor's consultations and default the
+  // selection (prefer the active store consultation, else the first listed).
+  useEffect(() => {
+    if (!effectiveUserId || requiresImpersonation) return;
+    let cancelled = false;
+    setLoadingConsultations(true);
+    void (async () => {
+      try {
+        const res = await session.listConsultations({ doctorId: effectiveUserId, page: 1, limit: 20 });
+        if (cancelled) return;
+        const list = (res?.data ?? []) as ConsultationOption[];
+        setConsultations(list);
+        setSelectedConsultationId((prev) => prev ?? session.consultation?.id ?? list[0]?.id ?? null);
+      } catch (err) {
+        if (!cancelled) toast.error(`Failed to load consultations: ${(err as Error).message}`);
+      } finally {
+        if (!cancelled) setLoadingConsultations(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on doctor identity
+  }, [effectiveUserId, requiresImpersonation]);
 
   useEffect(() => {
-    // Reset selection whenever the active consultation changes, then load.
+    // Reset selection whenever the chosen consultation changes, then load.
     setSelectedId(null);
     setVersions([]);
     setTags([]);
@@ -95,6 +141,10 @@ export function SavedSummariesPanel() {
     void reloadSummaries();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload is keyed on consultationId
   }, [consultationId]);
+
+  const handleSelectConsultation = useCallback((id: string) => {
+    setSelectedConsultationId(id);
+  }, []);
 
   const selectSummary = useCallback(
     async (summary: SummaryResponse) => {
@@ -213,6 +263,24 @@ export function SavedSummariesPanel() {
         <CardDescription>List, version-browse, diff, tag, and edit a consultation's persisted summaries.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* F6: explicit consultation picker — decouples the viewed summaries
+            from the implicit "last loaded" store consultation. */}
+        <div className="space-y-1.5">
+          <label className="text-muted-foreground text-xs font-medium">Consultation</label>
+          <Select value={consultationId ?? ''} onValueChange={handleSelectConsultation} disabled={loadingConsultations || consultations.length === 0}>
+            <SelectTrigger className="w-full" data-testid="consultation-select">
+              <SelectValue placeholder={loadingConsultations ? 'Loading consultations…' : 'Select a consultation'} />
+            </SelectTrigger>
+            <SelectContent>
+              {consultations.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {(c.patientId ?? 'Unknown patient') + (c.appointmentDate ? ` · ${c.appointmentDate}` : '')}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         {/* List */}
         {loadingSummaries ? (
           <div className="space-y-2" data-testid="summaries-skeleton">
