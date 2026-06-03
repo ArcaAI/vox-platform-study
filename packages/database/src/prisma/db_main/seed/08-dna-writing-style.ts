@@ -1,8 +1,11 @@
+import * as bcryptjs from 'bcryptjs';
 import type { CorePrismaClient } from '../../../client';
 import {
     SEED_TENANT_ID,
+    SEED_CUSTOMER_TENANT_IDS,
     SEED_DEPARTMENT_IDS,
     SEED_USER_IDS,
+    SEED_ROLE_IDS,
     SEED_DNA_REPORT_IDS,
     SEED_TEMPLATE_IDS,
     SYSTEM_USER_ID,
@@ -371,6 +374,105 @@ export const DEFAULT_PROMPT_USAGE_RECORDS = [
     },
 ];
 
+// =============================================================================
+// CUSTOMER-TENANT CLINICIANS + DNA (TASK-331 doc-02 F7)
+//
+// The DNA reports/versions/usage above all belong to the Global customer
+// tenant (SEED_TENANT_ID), so the admin cross-tenant switcher demoed empty DNA
+// for ArcaAI / 4bits / Mumbai. Those customer tenants seed only a TENANT_ADMIN
+// user (see 91-user.ts) and NO clinician, while a DnaWritingStyleReport.doctorId
+// is a hard FK to User AND the runtime membership/PHI guard requires that
+// doctor to be a member of the tenant (role + department).
+//
+// DEVIATION (documented): since no customer tenant has an existing clinician,
+// this seed adds ONE minimal DOCTOR clinician per customer tenant (DOCTOR role
+// + that tenant's GEN department, satisfying the membership invariant) and
+// attaches a DNA report to it. Clinicians are created here — inside an owned
+// seed file under seed/ — rather than in 91-user.ts.
+//
+// IDs follow the per-tenant 4th-UUID-group convention (0001 ArcaAI, 0002 4bits,
+// 0003 Mumbai): users 70…, reports 73…, versions 74…, usage 75…. DnaUsageRecord
+// has no createdAt override so it defaults to now(), keeping the records inside
+// the 30-day admin dashboard window.
+// =============================================================================
+const CUSTOMER_DNA_CLINICIANS = [
+    {
+        userId: '70000000-0000-0000-0001-000000000010',
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        departmentId: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
+        username: 'arcaai_doctor',
+        profile: { firstName: 'Aarav', lastName: 'Mehta', email: 'doctor@arcaai.com', phone: '+6591234568' },
+        tags: ['clinical', 'doctor', 'arcaai'],
+        reportId: '73000000-0000-0000-0001-000000000001',
+        versionId: '74000000-0000-0000-0001-000000000001',
+        usageIds: ['75000000-0000-0000-0001-000000000001', '75000000-0000-0000-0001-000000000002'],
+        reportData: { formality: 'professional', sentenceLength: 'medium', medicalTermUsage: 'moderate', abbreviationStyle: 'standard' },
+        styleText:
+            'Dr. Mehta (ArcaAI, General Practice) writes concise, professional outpatient notes with moderate medical terminology and standard abbreviations. Documentation follows a clear SOAP structure with explicit assessment and plan sections.',
+    },
+    {
+        userId: '70000000-0000-0000-0002-000000000010',
+        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        departmentId: SEED_DEPARTMENT_IDS.GEN_FOURBITS,
+        username: 'fourbits_doctor',
+        profile: { firstName: 'Bryan', lastName: 'Tan', email: 'doctor@4bits.io', phone: '+6581234568' },
+        tags: ['clinical', 'doctor', 'fourbits'],
+        reportId: '73000000-0000-0000-0002-000000000001',
+        versionId: '74000000-0000-0000-0002-000000000001',
+        usageIds: ['75000000-0000-0000-0002-000000000001', '75000000-0000-0000-0002-000000000002'],
+        reportData: { formality: 'casual', sentenceLength: 'short', medicalTermUsage: 'moderate', abbreviationStyle: 'heavy' },
+        styleText:
+            'Dr. Tan (4bits, General Practice) favours short, efficient notes with heavy use of standard abbreviations. Sentences are brief and bullet-oriented, prioritising the active problem and immediate plan.',
+    },
+    {
+        userId: '70000000-0000-0000-0003-000000000010',
+        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+        departmentId: SEED_DEPARTMENT_IDS.GEN_MUMBAI,
+        username: 'mumbai_doctor',
+        profile: { firstName: 'Neha', lastName: 'Iyer', email: 'doctor@mumbaihospital.in', phone: '+912212345679' },
+        tags: ['clinical', 'doctor', 'mumbai'],
+        reportId: '73000000-0000-0000-0003-000000000001',
+        versionId: '74000000-0000-0000-0003-000000000001',
+        usageIds: ['75000000-0000-0000-0003-000000000001', '75000000-0000-0000-0003-000000000002'],
+        reportData: { formality: 'formal', sentenceLength: 'long', medicalTermUsage: 'extensive', abbreviationStyle: 'minimal' },
+        styleText:
+            'Dr. Iyer (Mumbai General Hospital, General Practice) writes detailed, formal notes with extensive medical terminology and minimal abbreviations. Documentation is narrative, occasionally code-switching between English and Hindi for patient-reported history.',
+    },
+];
+
+export const CUSTOMER_DNA_REPORTS = CUSTOMER_DNA_CLINICIANS.map((c) => ({
+    id: c.reportId,
+    tenantId: c.tenantId,
+    doctorId: c.userId,
+    reportData: c.reportData,
+    styleText: c.styleText,
+    isLatest: true,
+    currentVersionNumber: 1,
+}));
+
+export const CUSTOMER_DNA_VERSIONS = CUSTOMER_DNA_CLINICIANS.map((c) => ({
+    id: c.versionId,
+    tenantId: c.tenantId,
+    dnaReportId: c.reportId,
+    versionNumber: 1,
+    reportData: c.reportData,
+    styleText: c.styleText,
+    changeReason: 'AI-generated initial analysis',
+    changedBy: SYSTEM_USER_ID,
+}));
+
+export const CUSTOMER_DNA_USAGE_RECORDS = CUSTOMER_DNA_CLINICIANS.flatMap((c) =>
+    c.usageIds.map((usageId) => ({
+        id: usageId,
+        tenantId: c.tenantId,
+        doctorId: c.userId,
+        dnaReportId: c.reportId,
+        dnaVersionNumber: 1,
+        consultationId: null,
+        departmentId: c.departmentId,
+    })),
+);
+
 export const DNA_REGEN_SETTINGS = [
     {
         id: '77000000-0000-0000-0000-000000000001',
@@ -485,4 +587,105 @@ export const seedDnaWritingStyle = async (client: CorePrismaClient) => {
         });
     }
     console.log(`Seeded ${DEFAULT_PROMPT_USAGE_RECORDS.length} prompt usage records`);
+
+    // -------------------------------------------------------------------------
+    // Customer-tenant clinicians + DNA (TASK-331 doc-02 F7).
+    //
+    // Each customer tenant gets one minimal DOCTOR clinician (DOCTOR role + that
+    // tenant's GEN department) so a DNA report can be FK-valid and pass the
+    // membership/PHI guard. Clinician creation mirrors the idempotent pattern in
+    // 91-user.ts (upsert user/profile; find-or-create role assignment and
+    // department). Must run before the DNA reports below (doctorId FK).
+    // -------------------------------------------------------------------------
+    console.log('Seeding customer-tenant DNA clinicians...');
+    const customerDnaPassword = await bcryptjs.hash('password123', 10);
+    for (const clinician of CUSTOMER_DNA_CLINICIANS) {
+        const user = await client.user.upsert({
+            where: { id: clinician.userId },
+            update: {
+                username: clinician.username,
+                password: customerDnaPassword,
+                isServiceAccount: false,
+                tags: clinician.tags,
+            },
+            create: {
+                id: clinician.userId,
+                username: clinician.username,
+                password: customerDnaPassword,
+                isServiceAccount: false,
+                tags: clinician.tags,
+            },
+        });
+
+        await client.userProfile.upsert({
+            where: { userId: user.id },
+            update: {
+                firstName: clinician.profile.firstName,
+                lastName: clinician.profile.lastName,
+                email: clinician.profile.email,
+                phone: clinician.profile.phone,
+            },
+            create: {
+                userId: user.id,
+                firstName: clinician.profile.firstName,
+                lastName: clinician.profile.lastName,
+                email: clinician.profile.email,
+                phone: clinician.profile.phone,
+            },
+        });
+
+        const existingRole = await client.userRoleAssignment.findFirst({
+            where: { userId: user.id, roleId: SEED_ROLE_IDS.DOCTOR, tenantId: clinician.tenantId },
+        });
+        if (!existingRole) {
+            await client.userRoleAssignment.create({
+                data: { userId: user.id, roleId: SEED_ROLE_IDS.DOCTOR, tenantId: clinician.tenantId },
+            });
+        }
+
+        const existingDepartment = await client.userDepartment.findFirst({
+            where: { userId: user.id, tenantId: clinician.tenantId },
+        });
+        if (!existingDepartment) {
+            await client.userDepartment.create({
+                data: {
+                    userId: user.id,
+                    departmentId: clinician.departmentId,
+                    tenantId: clinician.tenantId,
+                    isPrimary: true,
+                },
+            });
+        }
+    }
+    console.log(`Seeded ${CUSTOMER_DNA_CLINICIANS.length} customer-tenant DNA clinicians`);
+
+    console.log('Seeding customer-tenant DNA reports...');
+    for (const report of CUSTOMER_DNA_REPORTS) {
+        await client.dnaWritingStyleReport.upsert({
+            where: { id: report.id },
+            update: report,
+            create: report,
+        });
+    }
+    console.log(`Seeded ${CUSTOMER_DNA_REPORTS.length} customer-tenant DNA reports`);
+
+    console.log('Seeding customer-tenant DNA versions...');
+    for (const version of CUSTOMER_DNA_VERSIONS) {
+        await client.dnaWritingStyleVersion.upsert({
+            where: { id: version.id },
+            update: version,
+            create: version,
+        });
+    }
+    console.log(`Seeded ${CUSTOMER_DNA_VERSIONS.length} customer-tenant DNA versions`);
+
+    console.log('Seeding customer-tenant DNA usage records...');
+    for (const record of CUSTOMER_DNA_USAGE_RECORDS) {
+        await client.dnaUsageRecord.upsert({
+            where: { id: record.id },
+            update: record,
+            create: record,
+        });
+    }
+    console.log(`Seeded ${CUSTOMER_DNA_USAGE_RECORDS.length} customer-tenant DNA usage records`);
 };

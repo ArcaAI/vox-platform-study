@@ -1,6 +1,7 @@
 import type { CorePrismaClient } from '../../../client';
 import { Prisma } from '../../../generated/core-prisma-client/client';
 import type { PromptTemplateCategory } from '../../../generated/core-prisma-client/enums';
+import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS } from './00-constants';
 
 export const DEFAULT_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 export const SYSTEM_USER_ID = '60000000-0000-0000-0000-000000000000';
@@ -2117,6 +2118,257 @@ export const DEFAULT_PROMPT_VERSIONS = DEFAULT_PROMPT_TEMPLATES.map((t, i) => ({
     changedBy: SYSTEM_USER_ID,
 }));
 
+// =============================================================================
+// CUSTOMER-TENANT PROMPT TEMPLATES (TASK-331 doc-02 F7)
+//
+// The DEFAULT_PROMPT_TEMPLATES above all belong to the Global customer tenant
+// (DEFAULT_TENANT_ID). The other customer tenants (ArcaAI, 4bits, Mumbai) had
+// ZERO prompt templates, so the admin cross-tenant switcher demoed empty for
+// three of four tenants. This block adds a small, realistic, idempotent set
+// (4 per tenant covering SYSTEM / SUMMARY / DNA_ANALYSIS / CUSTOM) so the
+// switcher shows distinct, believable per-tenant content.
+//
+// ID convention mirrors the per-tenant 4th-UUID-group encoding used by the
+// department / global-setting seeds: 0001 = ArcaAI, 0002 = 4bits,
+// 0003 = Mumbai. Templates use the `71…` prefix; their initial versions use
+// the matching `72…` prefix (see customerVersionId below). The CUSTOM
+// (cardiology) template is attached to that tenant's own CARD department.
+// =============================================================================
+const CUSTOMER_TEMPLATE_IDS = {
+    // ArcaAI (0001)
+    ARCAAI_SYSTEM: '71000000-0000-0000-0001-000000000001',
+    ARCAAI_SUMMARY: '71000000-0000-0000-0001-000000000002',
+    ARCAAI_DNA: '71000000-0000-0000-0001-000000000003',
+    ARCAAI_CARD: '71000000-0000-0000-0001-000000000004',
+    // 4bits (0002)
+    FOURBITS_SYSTEM: '71000000-0000-0000-0002-000000000001',
+    FOURBITS_SUMMARY: '71000000-0000-0000-0002-000000000002',
+    FOURBITS_DNA: '71000000-0000-0000-0002-000000000003',
+    FOURBITS_CARD: '71000000-0000-0000-0002-000000000004',
+    // Mumbai General Hospital (0003)
+    MUMBAI_SYSTEM: '71000000-0000-0000-0003-000000000001',
+    MUMBAI_SUMMARY: '71000000-0000-0000-0003-000000000002',
+    MUMBAI_DNA: '71000000-0000-0000-0003-000000000003',
+    MUMBAI_CARD: '71000000-0000-0000-0003-000000000004',
+} as const;
+
+// The initial version of each customer template reuses the template UUID with
+// the `72…` (PromptVersion) prefix so the cross-reference stays deterministic
+// and idempotent without a parallel hand-maintained map.
+const customerVersionId = (templateId: string): string => `72${templateId.slice(2)}`;
+
+export const CUSTOMER_PROMPT_TEMPLATES = [
+    // --- ArcaAI ------------------------------------------------------------
+    {
+        id: CUSTOMER_TEMPLATE_IDS.ARCAAI_SYSTEM,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        name: 'ArcaAI System Prompt',
+        description: 'ArcaAI house system prompt for ambient clinical documentation',
+        content:
+            'You are ArcaAI, an ambient clinical documentation assistant. Produce accurate, concise notes from the consultation. Preserve the conversation language, use standard medical terminology, never invent findings, and keep all patient identifiers confidential. Format output according to the active department template.',
+        category: 'SYSTEM',
+        variables: {
+            patient_name: { type: 'string', required: true },
+            department: { type: 'string', required: false },
+        },
+        currentVersionNumber: 1,
+        departmentId: null,
+        tags: ['arcaai', 'system'],
+    },
+    {
+        id: CUSTOMER_TEMPLATE_IDS.ARCAAI_SUMMARY,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        name: 'ArcaAI SOAP Summary',
+        description: 'ArcaAI SOAP-format clinical summary tuned for outpatient encounters',
+        content:
+            'Generate a SOAP-format clinical summary for an ArcaAI outpatient encounter.\n\n- Subjective: chief complaint, HPI, relevant history\n- Objective: vitals, examination findings, available investigations\n- Assessment: working diagnosis and key differentials\n- Plan: medications, referrals, follow-up timeline, patient education\n\nUse concise clinical language and flag any critical values.',
+        category: 'SUMMARY',
+        variables: {
+            patient_name: { type: 'string', required: true },
+            chief_complaint: { type: 'string', required: true },
+            department: { type: 'string', required: false },
+        },
+        currentVersionNumber: 1,
+        departmentId: null,
+        tags: ['arcaai', 'soap', 'summary'],
+    },
+    {
+        id: CUSTOMER_TEMPLATE_IDS.ARCAAI_DNA,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        name: 'ArcaAI Writing Style Analysis',
+        description: 'ArcaAI prompt for analysing a clinician writing style (DNA)',
+        content:
+            "Analyse the clinician's documentation style from the supplied ArcaAI transcripts and notes. Extract sentence-structure preferences, terminology and abbreviation habits, section ordering, and tone. Output a structured style profile with confidence scores that can steer future summaries to match this clinician.",
+        category: 'DNA_ANALYSIS',
+        variables: {
+            physician_id: { type: 'string', required: true },
+            sample_count: { type: 'number', required: false },
+        },
+        currentVersionNumber: 1,
+        departmentId: null,
+        tags: ['arcaai', 'dna', 'writing-style'],
+    },
+    {
+        id: CUSTOMER_TEMPLATE_IDS.ARCAAI_CARD,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        name: 'ArcaAI Cardiology Note',
+        description: 'ArcaAI cardiology-specific documentation prompt',
+        content:
+            'Generate cardiology documentation for ArcaAI. Capture cardiac history, relevant vitals (BP, HR, rhythm), ECG findings when present, and the cardiovascular examination. Use cardiology-standard terminology (LVEF, NYHA, STEMI) and highlight any time-critical findings.',
+        category: 'CUSTOM',
+        variables: {
+            patient_name: { type: 'string', required: true },
+            ecg_results: { type: 'string', required: false },
+        },
+        currentVersionNumber: 1,
+        departmentId: SEED_DEPARTMENT_IDS.CARD_ARCAAI,
+        tags: ['arcaai', 'cardiology'],
+    },
+
+    // --- 4bits -------------------------------------------------------------
+    {
+        id: CUSTOMER_TEMPLATE_IDS.FOURBITS_SYSTEM,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        name: '4bits System Prompt',
+        description: '4bits house system prompt for clinical documentation',
+        content:
+            'You are the 4bits clinical scribe. Generate faithful, concise documentation from the consultation in the conversation language. Use standard medical terminology, never fabricate clinical detail, and keep patient information confidential. Follow the active department template for structure.',
+        category: 'SYSTEM',
+        variables: {
+            patient_name: { type: 'string', required: true },
+            department: { type: 'string', required: false },
+        },
+        currentVersionNumber: 1,
+        departmentId: null,
+        tags: ['4bits', 'system'],
+    },
+    {
+        id: CUSTOMER_TEMPLATE_IDS.FOURBITS_SUMMARY,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        name: '4bits Encounter Summary',
+        description: '4bits structured encounter summary prompt',
+        content:
+            'Produce a structured 4bits encounter summary.\n\n- Reason for visit and history\n- Examination and relevant investigations\n- Assessment with primary diagnosis and differentials\n- Plan: treatment, follow-up, and safety-netting advice\n\nKeep language concise and clinically precise; flag urgent findings explicitly.',
+        category: 'SUMMARY',
+        variables: {
+            patient_name: { type: 'string', required: true },
+            chief_complaint: { type: 'string', required: true },
+        },
+        currentVersionNumber: 1,
+        departmentId: null,
+        tags: ['4bits', 'summary'],
+    },
+    {
+        id: CUSTOMER_TEMPLATE_IDS.FOURBITS_DNA,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        name: '4bits Writing Style Analysis',
+        description: '4bits prompt for clinician writing-style (DNA) analysis',
+        content:
+            "Examine the clinician's notes from 4bits consultations and derive a writing-style profile: sentence length and structure, formality, abbreviation density, terminology choices, and preferred section order. Return the profile with per-attribute confidence scores for use in style-matched summarisation.",
+        category: 'DNA_ANALYSIS',
+        variables: {
+            physician_id: { type: 'string', required: true },
+            sample_count: { type: 'number', required: false },
+        },
+        currentVersionNumber: 1,
+        departmentId: null,
+        tags: ['4bits', 'dna', 'writing-style'],
+    },
+    {
+        id: CUSTOMER_TEMPLATE_IDS.FOURBITS_CARD,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+        name: '4bits Cardiology Note',
+        description: '4bits cardiology-specific documentation prompt',
+        content:
+            'Generate cardiology documentation for 4bits. Include cardiac history, vitals (BP, HR, rhythm), ECG interpretation when available, and cardiovascular examination findings. Apply cardiology-standard abbreviations and surface any critical results for immediate attention.',
+        category: 'CUSTOM',
+        variables: {
+            patient_name: { type: 'string', required: true },
+            ecg_results: { type: 'string', required: false },
+        },
+        currentVersionNumber: 1,
+        departmentId: SEED_DEPARTMENT_IDS.CARD_FOURBITS,
+        tags: ['4bits', 'cardiology'],
+    },
+
+    // --- Mumbai General Hospital ------------------------------------------
+    {
+        id: CUSTOMER_TEMPLATE_IDS.MUMBAI_SYSTEM,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+        name: 'Mumbai General System Prompt',
+        description: 'Mumbai General Hospital house system prompt for clinical documentation',
+        content:
+            'You are the Mumbai General Hospital documentation assistant. Generate accurate, concise clinical notes in the conversation language (English, Hindi, or Marathi as spoken). Use standard medical terminology, do not invent findings, and protect patient confidentiality. Follow the active department template.',
+        category: 'SYSTEM',
+        variables: {
+            patient_name: { type: 'string', required: true },
+            department: { type: 'string', required: false },
+        },
+        currentVersionNumber: 1,
+        departmentId: null,
+        tags: ['mumbai', 'system'],
+    },
+    {
+        id: CUSTOMER_TEMPLATE_IDS.MUMBAI_SUMMARY,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+        name: 'Mumbai General Discharge Summary',
+        description: 'Mumbai General Hospital inpatient discharge summary prompt',
+        content:
+            'Generate a Mumbai General Hospital discharge summary.\n\n- Admission reason and relevant history\n- Hospital course and key investigations\n- Diagnoses at discharge\n- Discharge medications, follow-up plan, and warning signs for the patient\n\nUse clear clinical language suitable for the receiving clinician and the patient.',
+        category: 'SUMMARY',
+        variables: {
+            patient_name: { type: 'string', required: true },
+            admission_reason: { type: 'string', required: true },
+        },
+        currentVersionNumber: 1,
+        departmentId: null,
+        tags: ['mumbai', 'discharge', 'summary'],
+    },
+    {
+        id: CUSTOMER_TEMPLATE_IDS.MUMBAI_DNA,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+        name: 'Mumbai General Writing Style Analysis',
+        description: 'Mumbai General Hospital clinician writing-style (DNA) analysis prompt',
+        content:
+            "Analyse the clinician's Mumbai General Hospital notes and produce a writing-style profile covering sentence structure, formality, abbreviation usage, terminology, and section ordering. Account for multilingual (English/Hindi/Marathi) documentation. Output the profile with confidence scores for style-matched summary generation.",
+        category: 'DNA_ANALYSIS',
+        variables: {
+            physician_id: { type: 'string', required: true },
+            sample_count: { type: 'number', required: false },
+        },
+        currentVersionNumber: 1,
+        departmentId: null,
+        tags: ['mumbai', 'dna', 'writing-style'],
+    },
+    {
+        id: CUSTOMER_TEMPLATE_IDS.MUMBAI_CARD,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+        name: 'Mumbai General Cardiology Note',
+        description: 'Mumbai General Hospital cardiology-specific documentation prompt',
+        content:
+            'Generate cardiology documentation for Mumbai General Hospital. Record cardiac history, vitals (BP, HR, rhythm), ECG findings when present, and the cardiovascular examination. Use cardiology-standard terminology and flag time-critical findings such as STEMI for immediate escalation.',
+        category: 'CUSTOM',
+        variables: {
+            patient_name: { type: 'string', required: true },
+            ecg_results: { type: 'string', required: false },
+        },
+        currentVersionNumber: 1,
+        departmentId: SEED_DEPARTMENT_IDS.CARD_MUMBAI,
+        tags: ['mumbai', 'cardiology'],
+    },
+];
+
+export const CUSTOMER_PROMPT_VERSIONS = CUSTOMER_PROMPT_TEMPLATES.map((t) => ({
+    id: customerVersionId(t.id),
+    tenantId: t.tenantId,
+    promptTemplateId: t.id,
+    versionNumber: 1,
+    content: t.content,
+    variables: t.variables,
+    changeReason: 'Initial version',
+    changedBy: SYSTEM_USER_ID,
+}));
+
 export const seedPromptTemplate = async (client: CorePrismaClient) => {
     console.log('Seeding prompt templates...');
     for (const template of DEFAULT_PROMPT_TEMPLATES) {
@@ -2211,4 +2463,36 @@ export const seedPromptTemplate = async (client: CorePrismaClient) => {
     }
 
     console.log(`Seeded ${DEFAULT_PROMPT_VERSIONS.length + extraVersions.length} prompt versions`);
+
+    // Customer-tenant templates + initial versions (TASK-331 doc-02 F7).
+    console.log('Seeding customer-tenant prompt templates...');
+    for (const template of CUSTOMER_PROMPT_TEMPLATES) {
+        const { variables, ...rest } = template;
+        const data = {
+            ...rest,
+            category: rest.category as PromptTemplateCategory,
+            ...(variables != null ? { variables: variables as Prisma.InputJsonValue } : {}),
+        };
+        await client.promptTemplate.upsert({
+            where: { id: template.id },
+            update: data,
+            create: data,
+        });
+    }
+    console.log(`Seeded ${CUSTOMER_PROMPT_TEMPLATES.length} customer-tenant prompt templates`);
+
+    console.log('Seeding customer-tenant prompt versions...');
+    for (const version of CUSTOMER_PROMPT_VERSIONS) {
+        const { variables, ...rest } = version;
+        const data = {
+            ...rest,
+            ...(variables != null ? { variables: variables as Prisma.InputJsonValue } : {}),
+        };
+        await client.promptVersion.upsert({
+            where: { id: version.id },
+            update: data,
+            create: data,
+        });
+    }
+    console.log(`Seeded ${CUSTOMER_PROMPT_VERSIONS.length} customer-tenant prompt versions`);
 };
