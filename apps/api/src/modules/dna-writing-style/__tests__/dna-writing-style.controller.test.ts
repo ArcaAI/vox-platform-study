@@ -35,9 +35,12 @@ const createMockDnaService = () => ({
     listReports: vi.fn(),
 });
 
-const createMockClsService = (userId: string | null = 'doctor-1') => ({
+const createMockClsService = (
+    userId: string | null = 'doctor-1',
+    session: { roles?: string[]; impersonatedBy?: string } = {},
+) => ({
     get: vi.fn((key: string) => {
-        if (key === 'user') return userId ? { id: userId, tenantId: 'tenant-1' } : null;
+        if (key === 'user') return userId ? { id: userId, tenantId: 'tenant-1', ...session } : null;
         return undefined;
     }),
 });
@@ -82,6 +85,50 @@ describe('DnaWritingStyleController', () => {
 
             expect(result.jobId).toBe('job-abc');
             expect(result.status).toBe('PENDING');
+        });
+
+        // ─── TASK-331 doc-07 F1 — doctor-scope gate (defense-in-depth) ───
+        // The UI hides the generate trigger for a non-impersonating admin, but
+        // the route trusts `getDoctorId()` = caller, so a bare admin could
+        // self-generate a DNA style under their OWN account (isolation break).
+        // The handler now rejects an admin caller that is not acting as a doctor.
+        it('rejects an admin caller without active doctor scope (no impersonation)', async () => {
+            const adminCls = createMockClsService('admin-1', { roles: ['TENANT_ADMIN'] });
+            const adminController = new DnaWritingStyleController(mockDnaService as any, adminCls as any, mockDnaQueue as any);
+
+            await expect(adminController.generate({ textSamples: ['note'] } as any)).rejects.toThrow(/impersonate a doctor/i);
+            expect(mockDnaService.generateDnaReport).not.toHaveBeenCalled();
+        });
+
+        it('rejects a global admin caller without active doctor scope', async () => {
+            const adminCls = createMockClsService('admin-2', { roles: ['SUPER_ADMIN', 'GLOBAL_ADMIN'] });
+            const adminController = new DnaWritingStyleController(mockDnaService as any, adminCls as any, mockDnaQueue as any);
+
+            await expect(adminController.generate({ textSamples: ['note'] } as any)).rejects.toThrow(/impersonate a doctor/i);
+            expect(mockDnaService.generateDnaReport).not.toHaveBeenCalled();
+        });
+
+        it('allows an admin who is actively impersonating a doctor', async () => {
+            // Impersonation swaps the CLS user to the doctor (DOCTOR role) and
+            // stamps `impersonatedBy` with the admin id — the gate must pass.
+            const impersonatedCls = createMockClsService('doctor-7', { roles: ['DOCTOR'], impersonatedBy: 'admin-1' });
+            const impersonatedController = new DnaWritingStyleController(mockDnaService as any, impersonatedCls as any, mockDnaQueue as any);
+            mockDnaService.generateDnaReport.mockResolvedValue({ jobId: 'job-imp', status: 'PENDING' });
+
+            const result = await impersonatedController.generate({ textSamples: ['note'] } as any);
+
+            expect(mockDnaService.generateDnaReport).toHaveBeenCalledWith('doctor-7', { textSamples: ['note'] });
+            expect(result.jobId).toBe('job-imp');
+        });
+
+        it('allows a real doctor caller (non-admin)', async () => {
+            const doctorCls = createMockClsService('doctor-1', { roles: ['DOCTOR'] });
+            const doctorController = new DnaWritingStyleController(mockDnaService as any, doctorCls as any, mockDnaQueue as any);
+            mockDnaService.generateDnaReport.mockResolvedValue({ jobId: 'job-doc', status: 'PENDING' });
+
+            await doctorController.generate({ textSamples: ['note'] } as any);
+
+            expect(mockDnaService.generateDnaReport).toHaveBeenCalledWith('doctor-1', { textSamples: ['note'] });
         });
     });
 

@@ -328,6 +328,15 @@ export function QuickTestCard() {
 
   const hasEnrolled = enrolled.length > 0;
   const scorePct = result ? (result.score * 100).toFixed(1) : null;
+  // F9 — surface a human-readable profile label for the closest match instead
+  // of the raw profileId UUID; fall back to a shortened id when unlabeled.
+  const matchedLabel = result
+    ? (() => {
+        const label = enrolled.find((e) => e.profileId === result.profileId)?.label?.trim();
+        if (label) return label;
+        return result.profileId.length > 12 ? `${result.profileId.slice(0, 8)}…` : result.profileId;
+      })()
+    : null;
 
   return (
     <Card>
@@ -388,7 +397,7 @@ export function QuickTestCard() {
                 </Badge>
               )}
             </div>
-            <p className="text-muted-foreground mt-2 text-xs">Closest profile: {result.profileId}</p>
+            <p className="text-muted-foreground mt-2 text-xs">Closest profile: {matchedLabel}</p>
           </div>
         ) : null}
       </CardContent>
