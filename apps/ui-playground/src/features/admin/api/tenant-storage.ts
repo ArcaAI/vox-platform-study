@@ -48,7 +48,7 @@ export interface CreateTenantBucketInput {
 
 export interface UploadTenantObjectInput {
   tenantId: string;
-  bucketName: string;
+  bucketId: string;
   file: File | Blob;
   fileName: string;
   path?: string;
@@ -58,7 +58,7 @@ const keys = {
   all: ['admin', 'tenant-storage'] as const,
   buckets: (tenantId: string) => [...keys.all, 'buckets', tenantId] as const,
   tree: (tenantId: string, bucketId: string, prefix: string) => [...keys.all, 'tree', tenantId, bucketId, prefix] as const,
-  objects: (tenantId: string, bucketName: string, prefix: string) => [...keys.all, 'objects', tenantId, bucketName, prefix] as const,
+  objects: (tenantId: string, bucketId: string, prefix: string) => [...keys.all, 'objects', tenantId, bucketId, prefix] as const,
 };
 
 function normalizePrefix(prefix?: string): string {
@@ -102,7 +102,7 @@ export function useTenantBucketTree(
 
 export function useTenantBucketObjects(
   tenantId: string,
-  bucketName: string,
+  bucketId: string,
   prefix?: string,
   options?: Omit<UseQueryOptions<TenantBucketObject[]>, 'queryKey' | 'queryFn'>,
 ) {
@@ -110,9 +110,9 @@ export function useTenantBucketObjects(
   const query = normalizedPrefix ? `?prefix=${encodeURIComponent(normalizedPrefix)}` : '';
 
   return useQuery({
-    queryKey: keys.objects(tenantId, bucketName, normalizedPrefix),
-    queryFn: () => adminClient.get<TenantBucketObject[]>(`/storage/buckets/${bucketName}/files${query}`, { tenantId }),
-    enabled: !!tenantId && !!bucketName,
+    queryKey: keys.objects(tenantId, bucketId, normalizedPrefix),
+    queryFn: () => adminClient.get<TenantBucketObject[]>(`/admin/tenants/storage/buckets/${bucketId}/objects${query}`, { tenantId }),
+    enabled: !!tenantId && !!bucketId,
     ...options,
   });
 }
@@ -148,13 +148,12 @@ export function useDeleteTenantBucketObject(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ bucketId, fileKey }: { bucketId: string; bucketName: string; fileKey: string; path?: string }) =>
-      adminClient.delete<{ key: string; deleted: boolean }>(
-        `/admin/tenants/storage/buckets/${bucketId}/objects?key=${encodeURIComponent(fileKey)}`,
-        { tenantId },
-      ),
+      adminClient.delete<{ key: string; deleted: boolean }>(`/admin/tenants/storage/buckets/${bucketId}/objects?key=${encodeURIComponent(fileKey)}`, {
+        tenantId,
+      }),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({
-        queryKey: keys.objects(tenantId, variables.bucketName, normalizePrefix(variables.path)),
+        queryKey: keys.objects(tenantId, variables.bucketId, normalizePrefix(variables.path)),
       });
       qc.invalidateQueries({ queryKey: [...keys.all, 'tree', tenantId] });
     },
@@ -169,10 +168,7 @@ export function useDeleteTenantBucketObject(tenantId: string) {
 export function useTenantBucketPresignedUrl(tenantId: string) {
   return useMutation({
     mutationFn: ({ bucketId, fileKey }: { bucketId: string; fileKey: string }) =>
-      adminClient.get<{ url: string }>(
-        `/admin/tenants/storage/buckets/${bucketId}/presigned-url?key=${encodeURIComponent(fileKey)}`,
-        { tenantId },
-      ),
+      adminClient.get<{ url: string }>(`/admin/tenants/storage/buckets/${bucketId}/presigned-url?key=${encodeURIComponent(fileKey)}`, { tenantId }),
   });
 }
 
@@ -208,19 +204,27 @@ export function useSetTenantBucketDefaults(tenantId: string) {
   });
 }
 
+/**
+ * Upload a single object through the broadcasting admin endpoint
+ * (`POST /admin/tenants/storage/buckets/:id/objects?key=`, TASK-331 doc-03 F7).
+ * The server writes the object to the storage provider and emits a
+ * `ResourceCreated` SysEvent.
+ */
 export function useUploadTenantObject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ tenantId, bucketName, file, fileName, path }: UploadTenantObjectInput) => {
+    mutationFn: ({ tenantId, bucketId, file, fileName, path }: UploadTenantObjectInput) => {
       const key = joinObjectPath(path, fileName);
       const formData = new FormData();
       formData.append('file', file, fileName);
-      return adminClient.upload<TenantBucketObject>(`/storage/buckets/${bucketName}/files?key=${encodeURIComponent(key)}`, formData, { tenantId });
+      return adminClient.upload<TenantBucketObject>(`/admin/tenants/storage/buckets/${bucketId}/objects?key=${encodeURIComponent(key)}`, formData, {
+        tenantId,
+      });
     },
     onSuccess: (_data, variables) => {
       const normalizedPrefix = normalizePrefix(variables.path);
       qc.invalidateQueries({
-        queryKey: keys.objects(variables.tenantId, variables.bucketName, normalizedPrefix),
+        queryKey: keys.objects(variables.tenantId, variables.bucketId, normalizedPrefix),
       });
       qc.invalidateQueries({
         queryKey: [...keys.all, 'tree', variables.tenantId],
@@ -232,7 +236,7 @@ export function useUploadTenantObject() {
 export function useCreateTenantFolder() {
   const uploader = useUploadTenantObject();
   return useMutation({
-    mutationFn: ({ tenantId, bucketName, folderName, path }: { tenantId: string; bucketName: string; folderName: string; path?: string }) => {
+    mutationFn: ({ tenantId, bucketId, folderName, path }: { tenantId: string; bucketId: string; folderName: string; path?: string }) => {
       const normalizedFolder = folderName.trim().replace(/\/+/g, '/');
       if (!normalizedFolder) {
         throw new Error('Folder name is required');
@@ -242,24 +246,10 @@ export function useCreateTenantFolder() {
       });
       return uploader.mutateAsync({
         tenantId,
-        bucketName,
+        bucketId,
         file: folderMarker,
         fileName: '.folder',
         path: joinObjectPath(path, normalizedFolder),
-      });
-    },
-  });
-}
-
-export function useDeleteTenantObject() {
-  const qc = useQueryClient();
-  return useMutation({
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    mutationFn: ({ tenantId, bucketName, fileKey, path }: { tenantId: string; bucketName: string; fileKey: string; path?: string }) =>
-      adminClient.delete(`/storage/buckets/${bucketName}/files/${encodeURIComponent(fileKey)}`, { tenantId }),
-    onSuccess: (_data, variables) => {
-      qc.invalidateQueries({
-        queryKey: keys.objects(variables.tenantId, variables.bucketName, normalizePrefix(variables.path)),
       });
     },
   });

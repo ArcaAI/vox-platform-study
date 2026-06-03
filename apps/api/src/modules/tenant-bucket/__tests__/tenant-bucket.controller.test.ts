@@ -15,6 +15,8 @@ const mockTenantBucketService = {
     getBucketBySlug: vi.fn(),
     createCustomBucket: vi.fn(),
     deleteBucket: vi.fn(),
+    listObjects: vi.fn(),
+    uploadObject: vi.fn(),
     deleteObject: vi.fn(),
     provisionSystemBuckets: vi.fn(),
 };
@@ -136,6 +138,53 @@ describe('TenantBucketController', () => {
         });
     });
 
+    // ------------------------------------------------------------------------
+    // TASK-331 doc-03 F7 — object LIST + UPLOAD on the admin plane (by bucket id).
+    // ------------------------------------------------------------------------
+    describe('listObjects', () => {
+        it('should list objects via the service with the bucket id and prefix', async () => {
+            const objects = [
+                { key: 'patients/2026/report-1.txt', size: 1200, lastModified: '2026-04-08T00:00:00.000Z' },
+            ];
+            mockTenantBucketService.listObjects.mockResolvedValue(objects);
+
+            const result = await controller.listObjects('bucket-1', 'patients/');
+
+            expect(result).toEqual(objects);
+            expect(mockTenantBucketService.listObjects).toHaveBeenCalledWith('bucket-1', 'patients/');
+        });
+
+        it('should default the prefix to an empty string', async () => {
+            mockTenantBucketService.listObjects.mockResolvedValue([]);
+
+            await controller.listObjects('bucket-1', undefined);
+
+            expect(mockTenantBucketService.listObjects).toHaveBeenCalledWith('bucket-1', '');
+        });
+    });
+
+    describe('uploadObject', () => {
+        it('should upload the file buffer via the service using the provided key', async () => {
+            const uploaded = { key: '2026/04/08/test.wav', size: 5 };
+            mockTenantBucketService.uploadObject.mockResolvedValue(uploaded);
+            const file = { buffer: Buffer.from('hello'), mimetype: 'audio/wav', originalname: 'test.wav' } as any;
+
+            const result = await controller.uploadObject('bucket-1', file, '2026/04/08/test.wav');
+
+            expect(result).toEqual(uploaded);
+            expect(mockTenantBucketService.uploadObject).toHaveBeenCalledWith('bucket-1', '2026/04/08/test.wav', file.buffer, 'audio/wav');
+        });
+
+        it('should fall back to the uploaded file name when no key is provided', async () => {
+            mockTenantBucketService.uploadObject.mockResolvedValue({ key: 'test.wav', size: 2 });
+            const file = { buffer: Buffer.from('hi'), mimetype: 'audio/wav', originalname: 'test.wav' } as any;
+
+            await controller.uploadObject('bucket-1', file, undefined);
+
+            expect(mockTenantBucketService.uploadObject).toHaveBeenCalledWith('bucket-1', 'test.wav', file.buffer, 'audio/wav');
+        });
+    });
+
     describe('deleteObject', () => {
         it('should delete an object via the service with the bucket id and key', async () => {
             mockTenantBucketService.deleteObject.mockResolvedValue({ key: '2026/04/08/test.wav', deleted: true });
@@ -191,6 +240,14 @@ describe('TenantBucketController', () => {
 
         it('deleteObject is annotated with modelName TenantBucket + paramName id', () => {
             expect(meta('deleteObject')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
+        });
+
+        it('listObjects is annotated with modelName TenantBucket + paramName id', () => {
+            expect(meta('listObjects')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
+        });
+
+        it('uploadObject is annotated with modelName TenantBucket + paramName id', () => {
+            expect(meta('uploadObject')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
         });
 
         it('listBuckets and createBucket and provisionSystemBuckets are NOT annotated (no :id route param)', () => {
