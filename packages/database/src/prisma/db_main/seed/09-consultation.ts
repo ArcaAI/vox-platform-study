@@ -21,9 +21,9 @@ import {
  * exercise the full clinical workflow without additional setup.
  *
  * Seeded entities:
- *   10 Consultations        — full lifecycle coverage across 6 statuses and 6 departments
+ *   9 Consultations         — full lifecycle coverage across 6 statuses and 6 departments
  *   +6 Consultations        — customer-tenant (ArcaAI/4bits/Mumbai) NEW + REVISIT pairs (doc-08 F1)
- *   24 ContextItems          — transcripts, summaries, audio, worknotes, pre-summaries, case notes
+ *   21 ContextItems          — transcripts, summaries, audio, worknotes, pre-summaries, case notes
  *   +6 ContextItems          — one transcript per customer-tenant consultation (doc-08 F1)
  *   4  SummaryMetas          — AI generation metadata
  *   3  Media                 — dual-capture demo blobs (primary + raw + processed) for the GEN recording
@@ -48,7 +48,7 @@ const PATIENT_IDS = {
 };
 
 // =============================================================================
-// CONSULTATIONS (10)
+// CONSULTATIONS (9)
 // =============================================================================
 
 export const DEFAULT_CONSULTATIONS = [
