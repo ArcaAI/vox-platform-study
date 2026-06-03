@@ -27,6 +27,8 @@ import {
 import { useAuditLog, type AuditLogEntry, type AuditLogFilterParams } from '@arcaai/vox';
 import { Download } from 'lucide-react';
 import { Main } from '@/components/layout/main';
+import { useAuthStore } from '@/store/auth-store';
+import { useAdminTenants } from '../api/tenants';
 
 const PAGE_SIZE = 25;
 const ALL = '__all__';
@@ -81,8 +83,44 @@ function responsibleUserLabel(entry: AuditLogEntry): string {
   return entry.responsibleUserId ?? '—';
 }
 
+/**
+ * Whether a JSON value carries something worth rendering. Used to decide if an
+ * audit row has a meaningful "Before" snapshot (UPDATE/DELETE) vs. none
+ * (CREATE/LOGIN), so we never render an empty Before block.
+ */
+function hasContent(value: unknown): boolean {
+  if (value == null) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value as object).length > 0;
+  return true;
+}
+
 export default function AuditLogManagementPage() {
-  const { entries, isLoading, error, list, getById, exportCsv } = useAuditLog();
+  const { entries, count, isLoading, error, list, getById, exportCsv } = useAuditLog();
+
+  // TASK-331 doc-03 F6 — the Tenant column is a cross-tenant concern, so it is
+  // shown to global-scope (super-admin) operators only; tenant-scoped admins
+  // already work inside a single tenant. Mirrors the prompts/DNA pages: gate on
+  // `isGlobalScope`, resolve ids → names, and never surface a raw tenant UUID.
+  const isGlobalScope = useAuthStore((s) => s.isGlobalScope);
+  const showTenant = isGlobalScope();
+
+  const { data: tenantsData } = useAdminTenants({ page: 1, limit: 100 }, { enabled: showTenant });
+  const tenantNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const tenant of tenantsData?.data ?? []) map.set(tenant.id, tenant.name);
+    return map;
+  }, [tenantsData]);
+
+  const tenantLabel = useCallback(
+    (tenantId?: string | null) => {
+      if (!tenantId) return '—';
+      // Fall back to a short, truncated id (never the full UUID) when the name
+      // can't be resolved — e.g. the tenant list hasn't loaded or was deleted.
+      return tenantNameById.get(tenantId) ?? `${tenantId.slice(0, 8)}…`;
+    },
+    [tenantNameById],
+  );
 
   // Draft filter state (committed via "Apply" / select changes).
   const [from, setFrom] = useState('');
@@ -183,6 +221,13 @@ export default function AuditLogManagementPage() {
 
   const showSkeleton = isLoading && entries.length === 0;
   const showEmpty = !isLoading && entries.length === 0;
+
+  // TASK-331 doc-03 F11 — true pagination from the server `count`. Fall back to
+  // the page-length heuristic only when the count is unavailable (e.g. an older
+  // API response or before the first successful load).
+  const total = count;
+  const pageCount = total > 0 ? Math.ceil(total / PAGE_SIZE) : 1;
+  const nextDisabled = total > 0 ? page * PAGE_SIZE >= total : entries.length < PAGE_SIZE;
 
   return (
     <Main>
@@ -285,6 +330,7 @@ export default function AuditLogManagementPage() {
                 <TableHead>Resource ID</TableHead>
                 <TableHead>Responsible user</TableHead>
                 <TableHead>IP</TableHead>
+                {showTenant && <TableHead data-testid="audit-tenant-head">Tenant</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -307,6 +353,7 @@ export default function AuditLogManagementPage() {
                   </TableCell>
                   <TableCell data-testid="audit-responsible-user">{responsibleUserLabel(entry)}</TableCell>
                   <TableCell>{String(entry.responsibleIp ?? '—')}</TableCell>
+                  {showTenant && <TableCell data-testid="audit-tenant">{tenantLabel(entry.tenantId)}</TableCell>}
                 </TableRow>
               ))}
             </TableBody>
@@ -316,16 +363,13 @@ export default function AuditLogManagementPage() {
 
       {/* Pagination */}
       <div className="mt-3 flex items-center justify-end gap-2">
-        <span className="text-muted-foreground text-sm">Page {page}</span>
+        <span className="text-muted-foreground text-sm" data-testid="audit-pagination-info">
+          {total > 0 ? `Page ${page} of ${pageCount} · ${total} total` : `Page ${page}`}
+        </span>
         <Button variant="outline" size="sm" disabled={page <= 1 || isLoading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
           Previous
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={entries.length < PAGE_SIZE || isLoading}
-          onClick={() => setPage((p) => p + 1)}
-        >
+        <Button variant="outline" size="sm" disabled={nextDisabled || isLoading} onClick={() => setPage((p) => p + 1)}>
           Next
         </Button>
       </div>
@@ -335,7 +379,11 @@ export default function AuditLogManagementPage() {
         <SheetContent className="w-full overflow-hidden sm:max-w-xl" data-testid="audit-detail-drawer">
           <SheetHeader>
             <SheetTitle>Audit entry</SheetTitle>
-            <SheetDescription>{detail ? `${detail.action} · ${detail.resourceType}` : 'Loading…'}</SheetDescription>
+            {detailLoading ? (
+              <Skeleton className="mt-1 h-4 w-44" data-testid="audit-detail-header-skeleton" />
+            ) : (
+              <SheetDescription>{detail ? `${detail.action} · ${detail.resourceType}` : '—'}</SheetDescription>
+            )}
           </SheetHeader>
           {detail && (
             <ScrollArea className="h-[calc(100vh-8rem)] px-4 pb-6">
@@ -345,19 +393,43 @@ export default function AuditLogManagementPage() {
                 <DetailRow label="Action" value={detail.action ?? '—'} />
                 <DetailRow label="Resource" value={detail.resourceType ?? '—'} />
                 <DetailRow label="Resource ID" value={String(detail.resourceId ?? '—')} mono />
+                {showTenant && <DetailRow label="Tenant" value={tenantLabel(detail.tenantId)} />}
                 <DetailRow label="Responsible" value={responsibleUserLabel(detail)} />
                 <DetailRow label="IP" value={String(detail.responsibleIp ?? '—')} />
                 <DetailRow label="Success" value={detail.success == null ? '—' : String(detail.success)} />
               </dl>
-              <div className="mt-4">
-                <p className="mb-1 text-sm font-medium">Payload</p>
-                <pre
-                  className="bg-muted max-h-[40vh] overflow-auto rounded-md p-3 text-xs"
-                  data-testid="audit-detail-data"
-                >
-                  {detailLoading ? 'Loading…' : JSON.stringify(detail.data ?? {}, null, 2)}
-                </pre>
-              </div>
+              {detailLoading ? (
+                <div className="mt-4 space-y-2" data-testid="audit-detail-skeleton">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-40 w-full" />
+                </div>
+              ) : hasContent(detail.previousData) ? (
+                // TASK-331 doc-03 F5 — UPDATE/DELETE rows carry a `previousData`
+                // snapshot; show a Before/After pair so reviewers can see what
+                // changed. CREATE/LOGIN rows (no previousData) keep the single
+                // "Payload" view below.
+                <div className="mt-4 grid gap-4">
+                  <div>
+                    <p className="mb-1 text-sm font-medium">Before</p>
+                    <pre className="bg-muted max-h-[35vh] overflow-auto rounded-md p-3 text-xs" data-testid="audit-detail-previous">
+                      {JSON.stringify(detail.previousData, null, 2)}
+                    </pre>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-sm font-medium">After</p>
+                    <pre className="bg-muted max-h-[35vh] overflow-auto rounded-md p-3 text-xs" data-testid="audit-detail-data">
+                      {JSON.stringify(detail.data ?? {}, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4">
+                  <p className="mb-1 text-sm font-medium">Payload</p>
+                  <pre className="bg-muted max-h-[40vh] overflow-auto rounded-md p-3 text-xs" data-testid="audit-detail-data">
+                    {JSON.stringify(detail.data ?? {}, null, 2)}
+                  </pre>
+                </div>
+              )}
             </ScrollArea>
           )}
         </SheetContent>
