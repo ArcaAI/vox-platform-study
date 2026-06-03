@@ -70,8 +70,14 @@ export interface STTPluginState extends PluginState {
  * Audio actions interface
  */
 export interface AudioActions {
-  /** Start audio capture */
-  start: () => Promise<void>;
+  /** Start audio capture with optional per-capture options (TASK-331 doc-06 F3). */
+  start: (options?: AudioStartOptions) => Promise<void>;
+  /**
+   * TASK-331 doc-06 F3/Q5 — start capture using the user's persisted
+   * preferences (device(s), language, workflow mode → local/backend STT,
+   * dual-capture). Derives {@link AudioStartOptions} and delegates to `start`.
+   */
+  startFromPreferences: () => Promise<void>;
   /** Stop audio capture */
   stop: () => Promise<void>;
   /** Mute microphone */
@@ -215,11 +221,47 @@ export interface TranscriptSegment {
 }
 
 /**
+ * Result of a dual-capture session: the unprocessed microphone blob (`raw`)
+ * and the noise-filtered/VAD-gated pipeline output blob (`processed`).
+ * Structurally identical to `DualStreamRecorderResult` in
+ * `core/DualStreamRecorder` (kept here so the public types don't import core).
+ */
+export interface DualCaptureResult {
+  raw: Blob;
+  processed: Blob;
+}
+
+/**
  * Options accepted by audio.start() to configure the capture session.
  */
 export interface AudioStartOptions {
   language?: string;
   pipelineId?: string;
+  /**
+   * TASK-331 doc-06 F3 — primary microphone deviceId. Forwarded as
+   * `getUserMedia({ audio: { deviceId: { exact } } })`. Omit for the default mic.
+   */
+  deviceId?: string;
+  /**
+   * TASK-331 doc-06 F3 — optional second microphone. When set, its stream is
+   * mixed with the primary mic (via `@arcaai/room`'s `AudioMixer`) into a single
+   * processed graph before the noise-filter/VAD/STT pipeline.
+   */
+  secondaryDeviceId?: string;
+  /**
+   * TASK-331 doc-06 F2 — when true (and the workflow is LOCAL), records the
+   * pre-noise-filter (raw) and post-filter (processed) tracks in parallel via
+   * `DualStreamRecorder`. The resulting blobs are delivered on `stop()` through
+   * {@link AudioStartOptions.onDualCapture}.
+   */
+  dualCaptureEnabled?: boolean;
+  /**
+   * TASK-331 doc-06 F2 — callback fired on `stop()` with the dual-capture blobs.
+   * A consumer uploads each blob, then attaches both via
+   * `useAudioRecordings.add(consultationId, { mediaId, rawMediaId, processedMediaId })`.
+   * The SDK does not perform the upload itself (that's the UI bucket).
+   */
+  onDualCapture?: (result: DualCaptureResult) => void;
 }
 
 // =============================================================================
