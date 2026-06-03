@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { useAuth } from '@arcaai/vox';
 import { useAuthStore } from '@/store/auth-store';
 
-const ADMIN_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN'] as const;
+// TASK-331 doc-05 F-4 — GLOBAL_ADMIN is a full SUPER_ADMIN synonym.
+const ADMIN_ROLES = ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'] as const;
 const DOCTOR_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'] as const;
 
 export interface DoctorContext {

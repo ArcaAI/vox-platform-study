@@ -97,14 +97,54 @@ describe('useAutoRefresh — impersonation 401 handling (TASK-235)', () => {
             expect.objectContaining({ method: 'POST' }),
         );
 
+        // TASK-331 doc-05 F-3 — the re-impersonation POST forwards the active
+        // tenant (set on the store during impersonation) as targetTenantId.
         expect(mockPostFn).toHaveBeenCalledWith(
             '/auth/impersonate',
-            { targetUserId: mockDoctor.id },
+            { targetUserId: mockDoctor.id, targetTenantId: TENANT_UUID },
         );
 
         expect(mockUpdateAccessToken).toHaveBeenCalledWith('fresh-impersonation-token');
 
         expect(useAuthStore.getState().impersonationToken).toBe('fresh-impersonation-token');
+
+        fetchSpy.mockRestore();
+    });
+
+    it('TASK-331 F-10/F-3: resolves tenantId from data.user.tenantId (no atob) and re-keys the store tenant', async () => {
+        useAuthStore.getState().setCredentialsAuth(
+            'admin-access-token',
+            mockSuperAdmin,
+            TENANT_UUID,
+            'acme',
+            'refresh_admin_123_abc',
+        );
+        useAuthStore.getState().startImpersonation(mockDoctor, 'expired-impersonation-token');
+
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+            new Response(
+                JSON.stringify({ token: 'fresh-admin-token', refreshToken: 'new-refresh' }),
+                { status: 200, headers: { 'Content-Type': 'application/json' } },
+            ),
+        );
+
+        const RESOLVED_TENANT = '50000000-0000-0000-0000-000000000099';
+        // Non-JWT token on purpose: the old atob fallback would have thrown on
+        // it. The handler must trust data.user.tenantId instead.
+        mockPostFn.mockResolvedValueOnce({
+            user: { ...mockDoctor, tenantId: RESOLVED_TENANT },
+            token: 'not-a-jwt',
+            impersonatedBy: mockSuperAdmin.id,
+        });
+
+        renderHook(() => useAutoRefresh());
+
+        const handler = mockSetOnUnauthorized.mock.calls[0][0];
+        const result = await handler();
+
+        expect(result).toBe(true);
+        expect(useAuthStore.getState().tenantId).toBe(RESOLVED_TENANT);
+        expect(useAuthStore.getState().impersonationToken).toBe('not-a-jwt');
 
         fetchSpy.mockRestore();
     });
