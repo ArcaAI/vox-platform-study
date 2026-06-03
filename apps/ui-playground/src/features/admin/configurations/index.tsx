@@ -53,6 +53,12 @@ function isJsonDataType(dataType?: string | null): boolean {
   return String(dataType ?? 'STRING').toUpperCase() === 'JSON';
 }
 
+// TASK-331 doc-03 #4 — never surface a raw tenant UUID to operators; fall back
+// to a short, truncated id when a human-readable tenant name is unavailable.
+function shortTenantLabel(id: string): string {
+  return id ? `${id.slice(0, 8)}\u2026` : '';
+}
+
 function formatConfigValue(value: string, dataType?: string | null): string {
   return isJsonDataType(dataType) ? tryFormatJsonString(value) : value;
 }
@@ -113,6 +119,18 @@ export default function ConfigurationManagementPage() {
   // of which are tied to the editor's draft, not the global session.
   const [conflictErr, setConflictErr] = useState<ConfigConflictError | null>(null);
 
+  // TASK-331 doc-03 #4 — keep the super-admin's in-page tenant selection in
+  // sync with the header ScopeSwitcher (store `tenantId`). `selectedTenantId`
+  // is seeded once from the store, so without this a tenant picked in the
+  // header after mount was ignored here. Deps intentionally OMIT
+  // `selectedTenantId` so an in-page pick (which does not touch the store) is
+  // not clobbered — this only reacts to header-driven `tenantId` changes.
+  useEffect(() => {
+    if (isSuperAdmin && tenantId) {
+      setSelectedTenantId(tenantId);
+    }
+  }, [isSuperAdmin, tenantId]);
+
   const {
     data: tenantsPages,
     isLoading: tenantsLoading,
@@ -129,8 +147,10 @@ export default function ConfigurationManagementPage() {
       return [
         {
           id: tenantId,
-          name: tenantName || tenantId,
-          key: tenantId,
+          // TASK-331 doc-03 #4 — display the tenant name (fallback to a short
+          // truncated id) instead of the raw tenantId UUID.
+          name: tenantName || shortTenantLabel(tenantId),
+          key: shortTenantLabel(tenantId),
           resourceStatus: 'ENABLED',
           createdAt: '',
           updatedAt: '',
