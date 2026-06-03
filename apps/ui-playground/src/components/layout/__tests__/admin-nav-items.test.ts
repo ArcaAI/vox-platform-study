@@ -4,7 +4,7 @@
  *  - Any admin (incl. TENANT_ADMIN) sees the full admin menu set EXCEPT
  *    Prisma Studio.
  *  - Global scope (SUPER_ADMIN) additionally sees Prisma Studio.
- *  - Non-admins see only Overview.
+ *  - Non-admins see no admin nav items (the Administration group is hidden).
  *  - A global-scope admin with NO tenant selected has the tenant-scoped pages
  *    disabled (but still listed); Overview / Tenants / Users / Prisma Studio
  *    stay enabled. A TENANT_ADMIN is never gated.
@@ -55,9 +55,16 @@ describe('buildAdminNavItems (TASK-327 T5)', () => {
     expect(got).not.toContain('studio');
   });
 
-  it('non-admin sees only Overview', () => {
+  it('non-admin sees no admin nav items', () => {
     const got = ids(buildAdminNavItems({ isAdmin: false, isGlobalScope: false, tenantSelected: false, order: DEFAULT_ADMIN_MENU_ORDER }));
-    expect(got).toEqual(['overview']);
+    expect(got).toEqual([]);
+  });
+
+  // TASK-331 doc-04 F7b — Prisma Studio (global-only raw-DB tool) is segregated
+  // at the END of the default menu order.
+  it('places Prisma Studio last in the default order for a global-scope admin', () => {
+    const got = ids(buildAdminNavItems({ isAdmin: true, isGlobalScope: true, tenantSelected: true, order: DEFAULT_ADMIN_MENU_ORDER }));
+    expect(got[got.length - 1]).toBe('studio');
   });
 
   it('honours the persisted order (and appends unknown ids at the end)', () => {
