@@ -43,6 +43,11 @@ describe('useAuditLog', () => {
             expect(result.current.isLoading).toBe(false);
             expect(result.current.error).toBeNull();
         });
+
+        it('should return an initial count of 0 (TASK-331 doc-03 F11)', () => {
+            const { result } = renderHook(() => useAuditLog());
+            expect(result.current.count).toBe(0);
+        });
     });
 
     describe('list', () => {
@@ -108,6 +113,25 @@ describe('useAuditLog', () => {
             await act(async () => { await result.current.list(); });
 
             expect(result.current.entries).toEqual(entries);
+        });
+
+        it('should surface the paginated envelope count while keeping the array return shape (TASK-331 doc-03 F11)', async () => {
+            const entries = [
+                { id: 'al-1', resourceType: 'Role', action: 'CREATE' },
+                { id: 'al-2', resourceType: 'Policy', action: 'UPDATE' },
+            ];
+            mockGet.mockResolvedValue({ data: entries, count: 137, limit: 25, page: 1 });
+            const { result } = renderHook(() => useAuditLog());
+
+            let resp: unknown;
+            await act(async () => { resp = await result.current.list({ page: 1, limit: 25 }); });
+
+            // Existing callers still receive the bare array …
+            expect(Array.isArray(resp)).toBe(true);
+            expect(resp).toEqual(entries);
+            expect(result.current.entries).toEqual(entries);
+            // … and the real total is now exposed for true pagination.
+            expect(result.current.count).toBe(137);
         });
 
         it('should return empty array for unexpected response shape', async () => {
