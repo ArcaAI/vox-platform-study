@@ -59,24 +59,22 @@ export class DnaWritingStyleAdminController {
     returnedModel: DnaReportResponse,
     multi: true,
   })
+  @ApiQuery({ name: 'tenantId', required: false, type: String, description: 'Global-admin only: scope the list to a tenant. Ignored for tenant admins.' })
   @ApiQuery({ name: 'includeDisabled', required: false, type: Boolean, description: 'Include disabled reports in results' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
-  async list(@Query() queryParams: PaginatedQuery & { includeDisabled?: string }): Promise<PaginatedDnaReportResponse> {
-    const reports = await this.dnaService.listReports({
+  async list(@Query() queryParams: PaginatedQuery & { tenantId?: string; includeDisabled?: string }): Promise<PaginatedDnaReportResponse> {
+    // TASK-331 doc-02 F6 — pagination is pushed down to the repository
+    // (`findPaginated` → `db.findMany` + `db.count`) instead of materializing
+    // the full tenant result set and slicing it in memory. A global admin may
+    // scope to a tenant via `?tenantId=`; a tenant admin is pinned to their CLS
+    // tenant and the supplied value is ignored in the service.
+    return this.dnaService.listReportsPaginated({
+      tenantId: queryParams?.tenantId,
       includeDisabled: queryParams?.includeDisabled === 'true',
+      page: Number(queryParams?.page) || 1,
+      limit: Number(queryParams?.limit) || 10,
     });
-    const page = queryParams?.page ?? 0;
-    const limit = queryParams?.limit ?? 10;
-    const start = page > 0 ? (page - 1) * limit : 0;
-    const paged = limit > 0 ? reports.slice(start, start + limit) : reports;
-
-    return {
-      data: paged,
-      count: reports.length,
-      limit,
-      page,
-    };
   }
 
   @ApiEndpoint({

@@ -18,7 +18,7 @@ import {
   UserRepository,
   UserRoleAssignmentRepository,
 } from '@arcaai/domains';
-import { IDnaWritingStyleService, DnaJobResponse } from './IDnaWritingStyleService';
+import { IDnaWritingStyleService, DnaJobResponse, ListDnaReportsFilters, PaginatedDnaReports } from './IDnaWritingStyleService';
 import { DnaReportResponse, DnaVersionResponse, GenerateDnaReportRequest, UpdateDnaReportRequest, DnaDashboardResponse } from './dto';
 import { DnaWritingStyleDtoMapper } from './dna-writing-style.dto.mapper';
 import { BaseService } from '../../common';
@@ -312,6 +312,36 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     const mapper = DnaWritingStyleReportEntityMapper.getInstance();
     const reports = models.map((m) => mapper.toDomainEntity(m));
     return reports.map(DnaWritingStyleDtoMapper.toReportResponse);
+  }
+
+  /**
+   * TASK-331 doc-02 F6 — repository-level paginated admin list.
+   *
+   * Pushes pagination down to the repository (`findPaginated` → `db.findMany` +
+   * `db.count`) instead of materializing the full tenant result set and slicing
+   * it in the controller. Tenant scope is resolved identically to
+   * `getDashboard`/`resolveDashboardScope`: a global admin may target a tenant
+   * via `tenantId` (or omit it for an all-tenants view); a tenant admin is
+   * pinned to their CLS tenant and any supplied `tenantId` is ignored.
+   */
+  async listReportsPaginated(filters?: ListDnaReportsFilters): Promise<PaginatedDnaReports> {
+    const scopeTenantId = this.resolveDashboardScope(filters?.tenantId);
+
+    const page = filters?.page && filters.page > 0 ? filters.page : 1;
+    const limit = filters?.limit && filters.limit > 0 ? filters.limit : 50;
+
+    const where: Record<string, unknown> = {};
+    if (scopeTenantId) where.tenantId = scopeTenantId;
+    if (!filters?.includeDisabled) where.resourceStatus = ResourceStatusType.ENABLED;
+    if (filters?.doctorId) where.doctorId = filters.doctorId;
+
+    const { data, count } = await this.dnaReportRepository.findPaginated(where, page, limit);
+    return {
+      data: data.map(DnaWritingStyleDtoMapper.toReportResponse),
+      count,
+      page,
+      limit,
+    };
   }
 
   /**

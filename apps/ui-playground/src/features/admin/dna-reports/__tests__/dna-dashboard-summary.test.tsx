@@ -35,6 +35,10 @@ vi.mock('@arcaai/ui', () => ({
   ),
 }));
 
+// TASK-331 doc-02 F10 — DashboardSkeleton now uses <Skeleton/> (rule 10).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+vi.mock('@arcaai/ui/skeleton', () => ({ Skeleton: (props: any) => <div data-testid="skeleton" {...props} /> }));
+
 import { DnaDashboardSummary } from '../dna-dashboard-summary';
 
 const dashboardWithData = {
@@ -69,6 +73,8 @@ describe('DnaDashboardSummary (TASK-328 A5)', () => {
 
     expect(screen.getByTestId('dna-dashboard-skeleton')).toBeInTheDocument();
     expect(screen.queryByTestId('chart')).not.toBeInTheDocument();
+    // TASK-331 doc-02 F10 — skeleton built from <Skeleton/>, not raw animate-pulse.
+    expect(screen.getAllByTestId('skeleton').length).toBeGreaterThan(0);
   });
 
   it('shows an empty state when there is no activity', () => {
@@ -92,6 +98,39 @@ describe('DnaDashboardSummary (TASK-328 A5)', () => {
     const chart = screen.getByTestId('chart');
     expect(chart).toBeInTheDocument();
     expect(chart).toHaveAttribute('data-points', '2');
+  });
+
+  // TASK-331 doc-02 F9 — render the `recentActivity.latest` usage feed.
+  it('renders the recent usage feed from recentActivity.latest', () => {
+    const dashboardWithFeed = {
+      usersWithStyle: 2,
+      avgVersions: 1.5,
+      recentActivity: {
+        dailyCounts: [{ date: '2026-02-18', count: 2 }],
+        latest: [
+          { id: 'u1', doctorId: 'doc-1', dnaReportId: 'rep-1', dnaVersionNumber: 3, consultationId: 'consult-1', createdAt: '2026-02-18T09:00:00Z' },
+          { id: 'u2', doctorId: 'doc-2', dnaReportId: 'rep-2', dnaVersionNumber: 1, consultationId: null, createdAt: '2026-02-18T08:00:00Z' },
+        ],
+        total: 2,
+        windowDays: 30,
+      },
+    };
+    useDnaDashboard.mockReturnValue({ dashboard: dashboardWithFeed, isLoading: false, error: null, fetchDashboard });
+
+    render(<DnaDashboardSummary tenantId="tenant-1" />);
+
+    const feed = screen.getByTestId('dna-recent-usage');
+    expect(feed).toBeInTheDocument();
+    expect(screen.getAllByTestId('dna-recent-usage-item')).toHaveLength(2);
+    expect(feed).toHaveTextContent('v3');
+  });
+
+  it('does not render the recent usage feed when latest is empty', () => {
+    useDnaDashboard.mockReturnValue({ dashboard: dashboardWithData, isLoading: false, error: null, fetchDashboard });
+
+    render(<DnaDashboardSummary tenantId="tenant-1" />);
+
+    expect(screen.queryByTestId('dna-recent-usage')).not.toBeInTheDocument();
   });
 
   it('fetches the dashboard for the provided tenant on mount', () => {

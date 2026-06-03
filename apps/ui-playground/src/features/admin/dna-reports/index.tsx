@@ -94,6 +94,17 @@ const updateSchema = z.object({
 
 type UpdateFormValues = z.infer<typeof updateSchema>;
 
+/**
+ * TASK-331 doc-02 F11 — coerce a react-hook-form field `value` to `''` when it is
+ * `undefined`/`null` so the inputs stay controlled across the open→reset cycle
+ * (an undefined value flips an input to uncontrolled and triggers React's
+ * controlled/uncontrolled warning).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function safeFieldProps(field: any) {
+  return { ...field, value: field?.value ?? '' };
+}
+
 function AdminEditDialog({
   open,
   onOpenChange,
@@ -154,6 +165,10 @@ function AdminEditDialog({
         {
           reportId: report.id,
           tenantId,
+          // TASK-331 doc-02 F1 — echo the loaded report's row version as the RFC
+          // 7232 `If-Match: "<version>"` so the `@RequiresIfMatch()` admin PATCH
+          // route's compare-and-set can detect drift (412) instead of 428'ing.
+          ifMatch: report.version != null ? `"${report.version}"` : undefined,
           styleText: values.styleText || undefined,
           reportData: Object.keys(reportData).length > 0 ? reportData : undefined,
           changeReason: values.changeReason,
@@ -172,7 +187,10 @@ function AdminEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+      {/* TASK-331 doc-02 F11 — fixed viewport-relative dims so the long attribute
+          form gets a stable, roomy frame; `flex flex-col` + a `min-h-0` scroll body
+          keep the header/footer pinned while the fields scroll. */}
+      <DialogContent className="flex h-[70vh] flex-col overflow-hidden sm:max-w-[50vw]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Pencil className="size-5" />
@@ -181,7 +199,7 @@ function AdminEditDialog({
           <DialogDescription>Update the writing style attributes and provide a reason for the change.</DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
+        <ScrollArea className="min-h-0 flex-1 pr-4">
           <Form {...form}>
             <form id="admin-edit-dna-form" onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
               <FormField
@@ -191,7 +209,7 @@ function AdminEditDialog({
                   <FormItem>
                     <FormLabel>Style Text</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Descriptive text about the writing style..." className="min-h-25" {...field} />
+                      <Textarea placeholder="Descriptive text about the writing style..." className="min-h-25" {...safeFieldProps(field)} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -212,7 +230,7 @@ function AdminEditDialog({
                         <FormItem>
                           <FormLabel className="capitalize">{fieldName.replace(/([A-Z])/g, ' $1').trim()}</FormLabel>
                           <FormControl>
-                            <Input placeholder={`e.g., ${fieldName}`} {...field} />
+                            <Input placeholder={`e.g., ${fieldName}`} {...safeFieldProps(field)} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -231,7 +249,7 @@ function AdminEditDialog({
                   <FormItem>
                     <FormLabel>Change Reason</FormLabel>
                     <FormControl>
-                      <Input placeholder="Why are you making this change?" {...field} />
+                      <Input placeholder="Why are you making this change?" {...safeFieldProps(field)} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

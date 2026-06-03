@@ -42,6 +42,8 @@ const createMockDnaService = () => ({
     getVersions: vi.fn(),
     getVersionsForDoctor: vi.fn(),
     listReports: vi.fn(),
+    // TASK-331 doc-02 F6 — repository-level pagination delegate.
+    listReportsPaginated: vi.fn(),
     getDashboard: vi.fn(),
 });
 
@@ -64,14 +66,20 @@ describe('DnaWritingStyleAdminController', () => {
         );
     });
 
+    // ─── TASK-331 doc-02 F6 — repository-level pagination ────────────────
+    // The admin list now delegates to `listReportsPaginated` (repo `findMany` +
+    // `count`) instead of loading the full tenant result set and slicing it.
     describe('GET /admin/dna-writing-styles (list)', () => {
-        it('should call service.listReports and return paginated response', async () => {
-            mockDnaService.listReports.mockResolvedValue([fakeReportEntity]);
+        it('delegates to service.listReportsPaginated and returns its envelope', async () => {
+            mockDnaService.listReportsPaginated.mockResolvedValue({ data: [fakeReportEntity], count: 1, page: 1, limit: 10 });
 
             const result = await controller.list({ page: 1, limit: 10 } as any);
 
-            expect(mockDnaService.listReports).toHaveBeenCalledWith({
+            expect(mockDnaService.listReportsPaginated).toHaveBeenCalledWith({
+                tenantId: undefined,
                 includeDisabled: false,
+                page: 1,
+                limit: 10,
             });
             expect(result.data).toHaveLength(1);
             expect(result.count).toBe(1);
@@ -80,87 +88,74 @@ describe('DnaWritingStyleAdminController', () => {
         });
 
         it('should pass includeDisabled: true when query param is "true"', async () => {
-            mockDnaService.listReports.mockResolvedValue([fakeReportEntity]);
+            mockDnaService.listReportsPaginated.mockResolvedValue({ data: [fakeReportEntity], count: 1, page: 1, limit: 10 });
 
             const result = await controller.list({ page: 1, limit: 10, includeDisabled: 'true' } as any);
 
-            expect(mockDnaService.listReports).toHaveBeenCalledWith({
-                includeDisabled: true,
-            });
+            expect(mockDnaService.listReportsPaginated).toHaveBeenCalledWith(
+                expect.objectContaining({ includeDisabled: true }),
+            );
             expect(result.data).toHaveLength(1);
         });
 
         it('should pass includeDisabled: false when query param is absent', async () => {
-            mockDnaService.listReports.mockResolvedValue([]);
+            mockDnaService.listReportsPaginated.mockResolvedValue({ data: [], count: 0, page: 1, limit: 10 });
 
             await controller.list({} as any);
 
-            expect(mockDnaService.listReports).toHaveBeenCalledWith({
-                includeDisabled: false,
-            });
+            expect(mockDnaService.listReportsPaginated).toHaveBeenCalledWith(
+                expect.objectContaining({ includeDisabled: false }),
+            );
         });
 
-        it('should return paginated response with empty data when no reports exist', async () => {
-            mockDnaService.listReports.mockResolvedValue([]);
+        it('forwards the tenantId query param (global admin tenant scoping)', async () => {
+            mockDnaService.listReportsPaginated.mockResolvedValue({ data: [], count: 0, page: 1, limit: 10 });
 
-            const result = await controller.list({ page: 1, limit: 10 } as any);
+            await controller.list({ tenantId: 'tenant-7', page: 1, limit: 10 } as any);
 
-            expect(result.data).toEqual([]);
-            expect(result.count).toBe(0);
+            expect(mockDnaService.listReportsPaginated).toHaveBeenCalledWith(
+                expect.objectContaining({ tenantId: 'tenant-7' }),
+            );
         });
 
-        it('should default to page 0 and limit 10 when no query params', async () => {
-            mockDnaService.listReports.mockResolvedValue([fakeReportEntity]);
+        it('should default to page 1 and limit 10 when no query params', async () => {
+            mockDnaService.listReportsPaginated.mockResolvedValue({ data: [fakeReportEntity], count: 1, page: 1, limit: 10 });
 
-            const result = await controller.list({} as any);
+            await controller.list({} as any);
 
-            expect(result.page).toBe(0);
-            expect(result.limit).toBe(10);
+            expect(mockDnaService.listReportsPaginated).toHaveBeenCalledWith(
+                expect.objectContaining({ page: 1, limit: 10 }),
+            );
         });
 
         it('should pass includeDisabled: false when query param is "false" string', async () => {
-            mockDnaService.listReports.mockResolvedValue([]);
+            mockDnaService.listReportsPaginated.mockResolvedValue({ data: [], count: 0, page: 1, limit: 10 });
 
             await controller.list({ includeDisabled: 'false' } as any);
 
-            expect(mockDnaService.listReports).toHaveBeenCalledWith({
-                includeDisabled: false,
-            });
+            expect(mockDnaService.listReportsPaginated).toHaveBeenCalledWith(
+                expect.objectContaining({ includeDisabled: false }),
+            );
         });
 
-        it('should pass includeDisabled: false for non-boolean string values', async () => {
-            mockDnaService.listReports.mockResolvedValue([]);
-
-            await controller.list({ includeDisabled: '1' } as any);
-
-            expect(mockDnaService.listReports).toHaveBeenCalledWith({
-                includeDisabled: false,
-            });
-        });
-
-        it('should return mixed ENABLED and DISABLED reports when includeDisabled is true', async () => {
-            const enabledReport = { ...fakeReportEntity, id: 'r1', resourceStatus: 'ENABLED' };
-            const disabledReport = { ...fakeReportEntity, id: 'r2', resourceStatus: 'DISABLED' };
-            mockDnaService.listReports.mockResolvedValue([enabledReport, disabledReport]);
-
-            const result = await controller.list({ page: 1, limit: 10, includeDisabled: 'true' } as any);
-
-            expect(result.data).toHaveLength(2);
-            expect(result.count).toBe(2);
-        });
-
-        it('should combine includeDisabled with pagination correctly', async () => {
-            const reports = Array.from({ length: 5 }, (_, i) => ({
-                ...fakeReportEntity,
-                id: `r${i}`,
-                resourceStatus: i % 2 === 0 ? 'ENABLED' : 'DISABLED',
-            }));
-            mockDnaService.listReports.mockResolvedValue(reports);
+        it('returns the paginated envelope unchanged from the service', async () => {
+            const envelope = {
+                data: [
+                    { ...fakeReportEntity, id: 'r1', resourceStatus: 'ENABLED' },
+                    { ...fakeReportEntity, id: 'r2', resourceStatus: 'DISABLED' },
+                ],
+                count: 5,
+                page: 1,
+                limit: 2,
+            };
+            mockDnaService.listReportsPaginated.mockResolvedValue(envelope);
 
             const result = await controller.list({ page: 1, limit: 2, includeDisabled: 'true' } as any);
 
             expect(result.data).toHaveLength(2);
             expect(result.count).toBe(5);
+            expect(result.page).toBe(1);
+            expect(result.limit).toBe(2);
         });
     });
 

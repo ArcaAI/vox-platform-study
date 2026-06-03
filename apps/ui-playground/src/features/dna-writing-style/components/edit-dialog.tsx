@@ -90,6 +90,10 @@ export function EditDialog({ open, onOpenChange, report }: EditDialogProps) {
       updateMutation.mutate(
         {
           reportId: report.id,
+          // TASK-331 doc-02 F12 — echo the loaded report's row version as the RFC
+          // 7232 `If-Match: "<version>"` so the `@RequiresIfMatch()` route's
+          // compare-and-set can detect drift (412).
+          ifMatch: report.version != null ? `"${report.version}"` : undefined,
           styleText: values.styleText || undefined,
           reportData: Object.keys(reportData).length > 0 ? reportData : undefined,
           changeReason: values.changeReason,
