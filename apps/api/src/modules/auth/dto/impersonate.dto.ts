@@ -46,13 +46,28 @@ export class ImpersonateUserResponse {
   @ApiProperty({ description: 'Tenant ID of the impersonated user', required: false })
   tenantId?: string;
 
-  constructor(init: { id: string; username: string; email: string; roles: string[]; permissions: string[]; tenantId?: string }) {
+  // TASK-331 F-9 — primary department of the impersonated user in the
+  // impersonation tenant; lets the SDK preference cascade keep the doctor's
+  // department tier during impersonation.
+  @ApiProperty({ description: 'Primary department ID of the impersonated user in the impersonation tenant', required: false })
+  departmentId?: string;
+
+  constructor(init: {
+    id: string;
+    username: string;
+    email: string;
+    roles: string[];
+    permissions: string[];
+    tenantId?: string;
+    departmentId?: string;
+  }) {
     this.id = init.id;
     this.username = init.username;
     this.email = init.email;
     this.roles = init.roles;
     this.permissions = init.permissions;
     this.tenantId = init.tenantId;
+    this.departmentId = init.departmentId;
   }
 }
 
