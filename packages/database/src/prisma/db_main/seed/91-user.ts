@@ -35,7 +35,7 @@ import {
  * departments for the tenant admins). Exempt users — service accounts and the
  * platform `super_admin` (system tenant) — are intentionally omitted.
  */
-const PRIMARY_DEPARTMENT_CODE_BY_USERNAME: Record<string, string> = {
+export const PRIMARY_DEPARTMENT_CODE_BY_USERNAME: Record<string, string> = {
     tenant_admin: 'GEN',
     doctor: 'GEN',
     doctor2: 'CARD',
