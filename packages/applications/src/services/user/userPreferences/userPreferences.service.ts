@@ -58,7 +58,8 @@ const LEGACY_KEYS = {
  *
  * Pipeline resolution chain:
  * 1. Per-user admin override (UserSettings, namespace='arcaai-admin', key='assigned-pipeline')
- * 2. Tenant-wide default (GlobalSettings, key='default-stt-pipeline')
+ * 2. Tenant default pipeline (AsrPipeline.isDefault) — TASK-331 doc-03 Q2
+ * 3. Tenant-wide default (GlobalSettings, key='default-stt-pipeline')
  */
 @Injectable()
 export class UserPreferencesService extends BaseService implements IUserPreferencesService {
@@ -239,7 +240,17 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
 
   /**
    * Resolve the remote pipeline configuration from admin settings.
-   * Resolution order: per-user admin override > tenant-wide default.
+   *
+   * Resolution order:
+   *   1. Per-user admin override (UserSettings 'arcaai-admin'/'assigned-pipeline')
+   *   2. Tenant's default pipeline (AsrPipeline.isDefault) — TASK-331 doc-03 Q2:
+   *      admins control the per-tenant backend default, which supersedes the
+   *      GlobalSetting slug default below.
+   *   3. Tenant-wide GlobalSetting default ('default-stt-pipeline').
+   *
+   * Steps 2 + 3 both surface as `assignedBy: 'tenant-default'`. Step 2 is
+   * additive and backward-compatible: when the tenant has no isDefault pipeline
+   * we fall through to the existing GlobalSetting behaviour unchanged.
    */
   private async resolveRemoteConfig(userId: string): Promise<UserPreferencesResponse['remoteConfig']> {
     // 1. Check per-user admin override
@@ -254,7 +265,20 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
       };
     }
 
-    // 2. Fall back to tenant-wide default
+    // 2. Prefer the tenant's default pipeline (AsrPipeline.isDefault).
+    const tenantId = this.tenantId;
+    if (tenantId) {
+      const tenantDefault = await this.resolveTenantDefaultPipeline(tenantId);
+      if (tenantDefault) {
+        return {
+          pipelineId: tenantDefault.id,
+          pipelineName: tenantDefault.name,
+          assignedBy: 'tenant-default',
+        };
+      }
+    }
+
+    // 3. Fall back to the tenant-wide GlobalSetting default
     const defaultPipelineId = this.appSettingsService.getValueFromCache(GLOBAL_SETTING_KEYS.DEFAULT_STT_PIPELINE);
 
     if (defaultPipelineId) {
@@ -267,6 +291,21 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
     }
 
     return undefined;
+  }
+
+  /**
+   * Resolve the tenant's default ASR pipeline via `AsrPipeline.isDefault`.
+   * Returns `null` (so callers fall back to the GlobalSetting default) when no
+   * default exists or the lookup fails.
+   */
+  private async resolveTenantDefaultPipeline(tenantId: string): Promise<{ id: string; name: string } | null> {
+    try {
+      const pipeline = await this.asrPipelineRepository.findDefault(tenantId);
+      return pipeline ? { id: pipeline.id, name: pipeline.name } : null;
+    } catch {
+      this.logger.warn(`Failed to resolve tenant default pipeline for tenant: ${tenantId}`);
+      return null;
+    }
   }
 
   private async resolvePipelineName(pipelineId: string): Promise<{ name: string } | null> {
