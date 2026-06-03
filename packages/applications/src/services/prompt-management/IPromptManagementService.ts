@@ -12,6 +12,8 @@ import { DepartmentResponse } from '../department/dto';
 
 export interface ListPromptTemplatesFilters {
   category?: string;
+  // TASK-331 doc-02 F5 — server-side Draft/Published filter.
+  status?: string;
   departmentId?: string;
   search?: string;
   includeDisabled?: boolean;

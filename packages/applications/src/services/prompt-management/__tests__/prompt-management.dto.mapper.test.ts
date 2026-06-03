@@ -40,6 +40,30 @@ describe('PromptManagementDtoMapper', () => {
             expect(result.updatedAt).toBe('2026-02-18T12:00:00.000Z');
         });
 
+        // TASK-331 doc-02 F5 — status maps through; pre-migration rows default DRAFT.
+        it('should map status when present and default to DRAFT when absent', async () => {
+            const withStatus = PromptManagementDtoMapper.toTemplateResponse({
+                id: 'tpl-s',
+                name: 'Published',
+                content: 'x',
+                category: 'SYSTEM',
+                status: 'PUBLISHED',
+                createdAt: new Date('2026-02-18T10:00:00Z'),
+                updatedAt: new Date('2026-02-18T10:00:00Z'),
+            } as never);
+            expect(withStatus.status).toBe('PUBLISHED');
+
+            const withoutStatus = PromptManagementDtoMapper.toTemplateResponse({
+                id: 'tpl-d',
+                name: 'Draft',
+                content: 'x',
+                category: 'SYSTEM',
+                createdAt: new Date('2026-02-18T10:00:00Z'),
+                updatedAt: new Date('2026-02-18T10:00:00Z'),
+            } as never);
+            expect(withoutStatus.status).toBe('DRAFT');
+        });
+
         it('should handle null/undefined fields with fallback defaults', () => {
             const entity = {
                 id: 'tpl-2',

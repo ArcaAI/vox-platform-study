@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsArray, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsArray, IsIn, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreatePromptTemplateRequest {
@@ -20,6 +20,12 @@ export class CreatePromptTemplateRequest {
   @ApiProperty({ description: 'Template category', enum: ['SYSTEM', 'SUMMARY', 'DNA_ANALYSIS', 'CUSTOM'] })
   @IsEnum(['SYSTEM', 'SUMMARY', 'DNA_ANALYSIS', 'CUSTOM'] as const)
   category: string;
+
+  // TASK-331 doc-02 F5 — publication status; defaults to DRAFT server-side.
+  @ApiPropertyOptional({ description: 'Publication status', enum: ['DRAFT', 'PUBLISHED'], default: 'DRAFT' })
+  @IsOptional()
+  @IsIn(['DRAFT', 'PUBLISHED'])
+  status?: 'DRAFT' | 'PUBLISHED';
 
   @ApiPropertyOptional({ description: 'Template variable definitions (JSON)' })
   @IsOptional()

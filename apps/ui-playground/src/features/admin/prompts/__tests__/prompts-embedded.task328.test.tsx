@@ -13,15 +13,18 @@
  */
 import { render, screen } from '@testing-library/react';
 
-const authState = vi.hoisted(() => ({ isSuperAdmin: true, tenantKey: '' }));
+// TASK-331 doc-02 F2/F3 — the prompts page now gates the tenant picker on
+// `isGlobalScope` and reads/writes `tenantId`/`setTenant` (not the deprecated
+// `tenantKey`/`setTenantKey`).
+const authState = vi.hoisted(() => ({ isGlobalScope: true, tenantId: '' }));
 const promptsInfinite = vi.hoisted(() => vi.fn());
 
 vi.mock('@/store/auth-store', () => ({
   useAuthStore: (selector: any) =>
     selector({
-      tenantKey: authState.tenantKey,
-      isSuperAdmin: () => authState.isSuperAdmin,
-      setTenantKey: vi.fn(),
+      tenantId: authState.tenantId,
+      isGlobalScope: () => authState.isGlobalScope,
+      setTenant: vi.fn(),
     }),
 }));
 
@@ -87,6 +90,8 @@ vi.mock('../../api/prompts', () => ({
   useUpdatePrompt: () => ({ mutate: vi.fn(), isPending: false }),
   useDeletePrompt: () => ({ mutate: vi.fn(), isPending: false }),
   useTogglePromptStatus: () => ({ mutate: vi.fn(), isPending: false }),
+  // TASK-331 doc-02 F4 — the page now instantiates the activate-version mutation.
+  useActivatePromptVersion: () => ({ mutate: vi.fn(), isPending: false }),
   useRefreshPromptDetails: () => vi.fn(),
 }));
 
@@ -95,8 +100,8 @@ import PromptManagementPage from '../index';
 describe('PromptManagementPage composition (TASK-328 A2)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authState.isSuperAdmin = true;
-    authState.tenantKey = '';
+    authState.isGlobalScope = true;
+    authState.tenantId = '';
   });
 
   it('hides the tenant picker and scopes the prompt query when embedded', () => {
@@ -104,16 +109,24 @@ describe('PromptManagementPage composition (TASK-328 A2)', () => {
 
     // No page chrome (Main) in embedded mode.
     expect(screen.queryByTestId('main')).not.toBeInTheDocument();
-    // Tenant-picker column is dropped even for a super admin.
+    // Tenant-picker column is dropped even for a global-scope admin.
     expect(screen.queryByTestId('col-tenants')).not.toBeInTheDocument();
     // Prompt list is fetched for the scoped tenant.
     expect(promptsInfinite).toHaveBeenCalledWith('t-9', expect.anything());
   });
 
-  it('shows the tenant picker for a non-embedded super admin', () => {
+  // TASK-331 doc-02 F2 — the tenant picker is gated on global scope.
+  it('shows the tenant picker for a non-embedded global-scope admin', () => {
     render(<PromptManagementPage />);
 
     expect(screen.getByTestId('main')).toBeInTheDocument();
     expect(screen.getByTestId('col-tenants')).toBeInTheDocument();
+  });
+
+  it('hides the tenant picker for a non-global-scope admin', () => {
+    authState.isGlobalScope = false;
+    render(<PromptManagementPage />);
+
+    expect(screen.queryByTestId('col-tenants')).not.toBeInTheDocument();
   });
 });

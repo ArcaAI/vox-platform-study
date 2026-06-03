@@ -27,6 +27,7 @@ import { useAuthStore } from '@/store/auth-store';
 
 import { MultiColumnLayout, type MultiColumnConfig, type MultiColumnContentConfig, type MultiColumnState } from '@arcaai/ui/multi-column-layout';
 import {
+  useActivatePromptVersion,
   useCreatePrompt,
   useDeletePrompt,
   usePromptTemplate,
@@ -477,17 +478,24 @@ function CreatePromptDialog({
 // InlinePromptVersionDetail — editable form shown in the detail column
 // ---------------------------------------------------------------------------
 
-function InlinePromptVersionDetail({
+export function InlinePromptVersionDetail({
   prompt,
   version,
   isPending,
   onSubmit,
+  onActivate,
+  isActivating,
 }: {
   prompt: PromptTemplate;
   version: PromptVersion;
   isPending: boolean;
   onSubmit: (values: EditFormValues) => void;
+  // TASK-331 doc-02 F4 — activate/rollback the viewed version when it is not
+  // already the template's current version.
+  onActivate?: (versionNumber: number) => void;
+  isActivating?: boolean;
 }) {
+  const isCurrentVersion = version.versionNumber === prompt.currentVersionNumber;
   const form = useForm<EditFormValues>({
     resolver: zodResolver(editSchema),
     defaultValues: {
@@ -520,7 +528,7 @@ function InlinePromptVersionDetail({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="text-lg font-semibold">Version {version.versionNumber}</h3>
-            {version.versionNumber === prompt.currentVersionNumber && <Badge variant="secondary">Active</Badge>}
+            {isCurrentVersion && <Badge variant="secondary">Active</Badge>}
             {prompt.resourceStatus && prompt.resourceStatus.toUpperCase() === 'DISABLED' && (
               <Badge variant="outline" className="bg-red-500/15 text-red-700 dark:text-red-400 text-xs">
                 DISABLED
@@ -532,6 +540,20 @@ function InlinePromptVersionDetail({
             {version.changedBy && ` by ${version.changedBy}`}
           </p>
         </div>
+        {/* TASK-331 doc-02 F4 — activate (roll back to) a non-current version. */}
+        {!isCurrentVersion && onActivate && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={() => onActivate(version.versionNumber)}
+            disabled={isActivating}
+          >
+            {isActivating ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <History className="mr-1 size-3.5" />}
+            Activate this version
+          </Button>
+        )}
       </div>
 
       <Separator />
@@ -795,16 +817,23 @@ function PromptDetailDialog({
  * @param embedded  Render bare (no `<Main>` / page header) for use inside a tab.
  */
 export default function PromptManagementPage({ scopedTenantId, embedded }: { scopedTenantId?: string; embedded?: boolean } = {}) {
-  // ---- Tenant context for super admins ------------------------------------
+  // ---- Tenant context for global-scope admins -----------------------------
 
-  const tenantKey = useAuthStore((s) => s.tenantKey);
-  const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
-  const setTenantKey = useAuthStore((s) => s.setTenantKey);
+  // TASK-331 doc-02 F3 — read `tenantId` (kept in lockstep with the legacy
+  // `tenantKey` by the store) and write via `setTenant`. The deprecated
+  // `setTenantKey`/`tenantKey` pair is no longer referenced here.
+  const storeTenantId = useAuthStore((s) => s.tenantId);
+  // TASK-331 doc-02 F2 — gate the tenant picker on global scope (mirrors the
+  // DNA page), not the stricter super-admin-only predicate. The two sets are
+  // identical today, but `isGlobalScope` is the correct intent for cross-tenant
+  // surfaces.
+  const isGlobalScope = useAuthStore((s) => s.isGlobalScope);
+  const setTenant = useAuthStore((s) => s.setTenant);
 
   // When locked to a tenant (embedded tab), never show the tenant picker.
-  const showTenantsColumn = !scopedTenantId && isSuperAdmin();
+  const showTenantsColumn = !scopedTenantId && isGlobalScope();
 
-  const [selectedTenantId, setSelectedTenantId] = useState(tenantKey || '');
+  const [selectedTenantId, setSelectedTenantId] = useState(storeTenantId || '');
 
   const {
     data: tenantsPages,
@@ -816,22 +845,22 @@ export default function PromptManagementPage({ scopedTenantId, embedded }: { sco
   } = useTenantsInfinite(25, { enabled: showTenantsColumn });
   const tenants = useMemo(() => tenantsPages?.pages.flatMap((p) => p.data) ?? [], [tenantsPages]);
 
-  const effectiveTenantId = scopedTenantId ?? (tenantKey || selectedTenantId);
+  const effectiveTenantId = scopedTenantId ?? (storeTenantId || selectedTenantId);
   const hasTenantContext = !!effectiveTenantId;
 
   useEffect(() => {
-    if (tenantKey && tenantKey !== selectedTenantId) {
-      setSelectedTenantId(tenantKey);
+    if (storeTenantId && storeTenantId !== selectedTenantId) {
+      setSelectedTenantId(storeTenantId);
     }
-  }, [tenantKey, selectedTenantId]);
+  }, [storeTenantId, selectedTenantId]);
 
   const handleTenantSelect = useCallback(
     (tenantId: string) => {
       if (tenantId === effectiveTenantId) return;
       setSelectedTenantId(tenantId);
-      setTenantKey(tenantId, tenants.find((t) => t.id === tenantId)?.name);
+      setTenant(tenantId, tenants.find((t) => t.id === tenantId)?.name);
     },
-    [effectiveTenantId, tenants, setTenantKey],
+    [effectiveTenantId, tenants, setTenant],
   );
 
   // ---- UI state -----------------------------------------------------------
@@ -867,9 +896,12 @@ export default function PromptManagementPage({ scopedTenantId, embedded }: { sco
   const infiniteParams = useMemo(() => {
     const p: Record<string, unknown> = { includeDisabled: true };
     if (categoryFilter !== '_all') p.category = categoryFilter;
+    // TASK-331 doc-02 F5 — status filtering is now server-side (real column),
+    // so it travels with the query params and re-fetches on change.
+    if (statusFilter !== '_all') p.status = statusFilter;
     if (search) p.search = search;
     return p;
-  }, [categoryFilter, search]);
+  }, [categoryFilter, statusFilter, search]);
 
   const {
     data: promptsPages,
@@ -887,13 +919,10 @@ export default function PromptManagementPage({ scopedTenantId, embedded }: { sco
 
   const prompts = useMemo(() => promptsPages?.pages.flatMap((p) => p.data) ?? [], [promptsPages]);
 
-  const filteredPrompts = useMemo(() => {
-    let result = prompts;
-    if (statusFilter !== '_all') {
-      result = result.filter((p) => (p.status ?? 'DRAFT').toUpperCase() === statusFilter);
-    }
-    return result;
-  }, [prompts, statusFilter]);
+  // TASK-331 doc-02 F5 — the status filter moved server-side (see `infiniteParams`),
+  // so the list is no longer post-filtered client-side over paginated pages.
+  // `filteredPrompts` is retained as the canonical list the columns/effects read.
+  const filteredPrompts = prompts;
 
   // ---- Mutations ----------------------------------------------------------
 
@@ -901,6 +930,7 @@ export default function PromptManagementPage({ scopedTenantId, embedded }: { sco
   const updateMutation = useUpdatePrompt(effectiveTenantId);
   const deleteMutation = useDeletePrompt(effectiveTenantId);
   const toggleMutation = useTogglePromptStatus(effectiveTenantId);
+  const activateMutation = useActivatePromptVersion(effectiveTenantId);
   const refreshPromptDetails = useRefreshPromptDetails(effectiveTenantId);
 
   // ---- Handlers -----------------------------------------------------------
@@ -973,6 +1003,22 @@ export default function PromptManagementPage({ scopedTenantId, embedded }: { sco
       onError: (err) => toast.error(`Failed to delete prompt: ${err.message}`),
     });
   }, [selectedPrompt, deleteMutation]);
+
+  // TASK-331 doc-02 F4 — activate (roll back to) a non-current version. The
+  // hook already invalidates the template/detail/versions queries on success.
+  const handleActivateVersion = useCallback(
+    (versionNumber: number) => {
+      if (!selectedPrompt) return;
+      activateMutation.mutate(
+        { templateId: selectedPrompt.id, versionNumber },
+        {
+          onSuccess: () => toast.success(`Version ${versionNumber} is now active`),
+          onError: (err) => toast.error(`Failed to activate version: ${err.message}`),
+        },
+      );
+    },
+    [selectedPrompt, activateMutation],
+  );
 
   const handleToggleStatus = useCallback(
     (prompt: PromptTemplate) => {
@@ -1323,7 +1369,14 @@ export default function PromptManagementPage({ scopedTenantId, embedded }: { sco
 
       if (selectedVersionId && selectedVersion && selectedPrompt) {
         return (
-          <InlinePromptVersionDetail prompt={selectedPrompt} version={selectedVersion} isPending={updateMutation.isPending} onSubmit={handleEdit} />
+          <InlinePromptVersionDetail
+            prompt={selectedPrompt}
+            version={selectedVersion}
+            isPending={updateMutation.isPending}
+            onSubmit={handleEdit}
+            onActivate={handleActivateVersion}
+            isActivating={activateMutation.isPending}
+          />
         );
       }
 
