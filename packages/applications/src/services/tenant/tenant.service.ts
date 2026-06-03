@@ -13,6 +13,7 @@ import {
   GlobalSettingEntity,
   CoreDatabaseService,
   DepartmentRepository,
+  DepartmentFactory,
   PromptTemplateRepository,
   AsrPipelineRepository,
 } from '@arcaai/domains';
@@ -24,6 +25,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { UpdateTenantConfigRequest } from './dto/updateTenantConfigRequest';
 import { ITenantBucketService } from '../tenant-bucket/ITenantBucketService';
 import { GLOBAL_TENANT_KEY, SUPER_ADMIN_ROLE, isUuidIdentifier } from './constants';
+import { DEFAULT_GEN_DEPARTMENT } from './departmentDefaults';
 import { scrubLockedForAudit } from './scrubbing';
 
 /**
@@ -94,7 +96,50 @@ export class TenantService extends BaseService implements ITenantService {
       });
     }
 
+    try {
+      await this.provisionDefaultDepartment(tenant.id);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to provision default department for new tenant',
+        tenantId: tenant.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     return tenant;
+  }
+
+  /**
+   * Provisions a default General Practice (`GEN`) department for a newly
+   * created tenant so its first admin can satisfy the TASK-305 Phase F login
+   * invariant (an ENABLED role AND an ENABLED department in the tenant).
+   *
+   * The department is built from the local `DEFAULT_GEN_DEPARTMENT` template
+   * via `DepartmentFactory` and bound to the NEW tenant's id (never the CLS
+   * tenant). A `ResourceCreated` SysEvent is broadcast for it, attributed to
+   * the `Department` resource type. Failures propagate to the caller, which
+   * logs and swallows them so department provisioning never aborts tenant
+   * creation (mirrors the bucket/config provisioning blocks).
+   */
+  private async provisionDefaultDepartment(newTenantId: string): Promise<void> {
+    const department = DepartmentFactory.CreateDepartment({
+      ...DEFAULT_GEN_DEPARTMENT,
+      tenantId: newTenantId,
+      createdBy: this.requestUser?.id,
+    });
+
+    const saved = await this.departmentRepository.create(department);
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: saved.id,
+      resourceType: ResourceType.Department,
+      createdAt: saved.createdAt,
+      data: {
+        tenantId: newTenantId,
+        code: saved.code,
+        name: saved.name,
+      },
+    });
   }
 
   /**
