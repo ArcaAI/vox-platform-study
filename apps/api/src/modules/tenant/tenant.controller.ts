@@ -17,7 +17,7 @@ import {
 import { Controller, Body, Param, Get, Inject, Query, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { ApiEndpoint, CanManage } from '../../decorators';
+import { ApiEndpoint, CanAny, CanManage } from '../../decorators';
 // TASK-302 Stream D Phase E.1 — `@RequiresIfMatch()` route marker +
 // `@ExpectedVersion()` param decorator. The route guard fires 428 when
 // the header is missing; the param decorator returns the parsed version
@@ -26,10 +26,19 @@ import { ApiEndpoint, CanManage } from '../../decorators';
 import { RequiresIfMatch, ExpectedVersion } from '../../decorators';
 import { TenantUsageResponse } from './dto';
 
+/**
+ * TASK-331 doc-04 F1/Q2 — class-level posture is `manage:Tenant` OR
+ * `update:Tenant`, so a TENANT_ADMIN (who has tenant-scoped `update:Tenant`
+ * via `tenant-full-access`) can reach the read/update/config routes for their
+ * own tenant, while SUPER_ADMIN (`manage:all`) keeps full cross-tenant access.
+ * Tenant `create`/`delete` are privilege-escalation paths and are pinned to
+ * `manage:Tenant` at the method level below (SUPER_ADMIN-only). Per-row reads
+ * still inline-assert tenant scope via `assertTenantInScope`.
+ */
 @ApiBearerAuth()
 @ApiTags('admin-tenants')
 @Controller('admin/tenants')
-@CanManage('Tenant')
+@CanAny(['manage', 'Tenant'], ['update', 'Tenant'])
 export class TenantController {
   constructor(
     @Inject(ITenantService)
@@ -38,9 +47,10 @@ export class TenantController {
   ) {}
 
   /**
-   * TASK-307 W5.5 (AC-19, audit D-5): the class-level `@CanManage('Tenant')`
-   * authorises any caller with `manage:Tenant` to reach the per-row routes,
-   * but the underlying CASL policy is `tenantId: ${user.tenantId}`. The
+   * TASK-307 W5.5 (AC-19, audit D-5): the class-level
+   * `@CanAny(['manage','Tenant'],['update','Tenant'])` authorises any caller
+   * with `manage:Tenant` or tenant-scoped `update:Tenant` to reach the per-row
+   * routes, but the underlying CASL policy is `tenantId: ${user.tenantId}`. The
    * `:id` path param breaks that condition silently — so each per-row
    * handler must inline-assert the tenant scope itself. SUPER_ADMIN
    * bypasses (cross-tenant ops are an operator's job).
@@ -58,6 +68,10 @@ export class TenantController {
     method: HttpMethod.POST,
   })
   @ApiResponse({ status: 400, description: 'Bad request - invalid input' })
+  // TASK-331 doc-04 Q2 — creating tenants is SUPER_ADMIN-only. Method-level
+  // metadata overrides the class `@CanAny(...)`, so a TENANT_ADMIN (who lacks
+  // `manage:Tenant`) is refused here even though it can reach read/update.
+  @CanManage('Tenant')
   async create(@Body() request: CreateTenantRequest): Promise<TenantResponse> {
     const result = await this.tenantService.create(request);
     return TenantDtoMapper.ToResponse(result);
@@ -71,8 +85,8 @@ export class TenantController {
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   async fetchAll(@Query() queryParams: PaginatedQuery): Promise<PaginatedTenantResponse> {
     // TASK-319 F5: `Tenant` rows are NOT covered by the tenantScopeFilter Prisma
-    // extension, and the class-level `@CanManage('Tenant')` admits any
-    // TENANT_ADMIN (their CASL policy is `tenantId: ${user.tenantId}`). Without
+    // extension, and the class-level `@CanAny(['manage','Tenant'],['update','Tenant'])`
+    // admits any TENANT_ADMIN (their CASL policy is `tenantId: ${user.tenantId}`). Without
     // this guard a tenant admin could enumerate every tenant on the platform.
     // Non-super-admins are restricted to their own tenant; SUPER_ADMIN keeps the
     // full cross-tenant listing (admin/operator surfaces). Mirrors the write-path
@@ -198,6 +212,8 @@ export class TenantController {
   })
   @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
+  // TASK-331 doc-04 Q2 — deleting tenants is SUPER_ADMIN-only (see create()).
+  @CanManage('Tenant')
   async delete(@Param('id') id: string): Promise<TenantResponse> {
     this.assertTenantInScope(id);
     const result = await this.tenantService.deleteById(id);
