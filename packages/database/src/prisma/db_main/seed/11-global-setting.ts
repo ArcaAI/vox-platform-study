@@ -119,6 +119,29 @@ export const SMR_PROVIDER_MODELS = [
 
 const SMR_PROVIDER_MODELS_JSON = JSON.stringify(SMR_PROVIDER_MODELS);
 
+// =============================================================================
+// Admin Console Menu Order (TASK-331 doc-04 F4)
+//
+// Seeds the TENANT tier of the admin console's menu-order resolver
+// (USER → TENANT → DEFAULT). The console reads this under the server-owned
+// `arcaai-admin` namespace / `menuOrder` key. Canonical order keeps "studio"
+// LAST so a tenant default is observably different from any client fallback.
+// =============================================================================
+
+const ADMIN_MENU_ORDER_JSON = JSON.stringify([
+    'overview',
+    'dna-reports',
+    'tenants',
+    'users',
+    'prompts',
+    'departments',
+    'audio-pipelines',
+    'storage',
+    'configurations',
+    'audit-logs',
+    'studio',
+]);
+
 function tenantSettings(
     tenantId: string,
     ids: {
@@ -137,6 +160,7 @@ function tenantSettings(
         uxLocalNoiseSuppressionModels: string;
         uxSmrProviderModels: string;
         lockedConfigPaths: string;
+        adminMenuOrder: string;
     },
 ): SettingDef[] {
     return [
@@ -330,6 +354,18 @@ function tenantSettings(
             dataType: ValueType.Json,
             description: 'Config paths that are locked and editable only by admins',
         },
+        // ── arcaai-admin (1) ──────────────────────────────────────────────
+        {
+            id: ids.adminMenuOrder,
+            tenantId,
+            namespace: 'arcaai-admin',
+            name: 'Admin Menu Order',
+            key: 'menuOrder',
+            value: ADMIN_MENU_ORDER_JSON,
+            defaultValue: ADMIN_MENU_ORDER_JSON,
+            dataType: ValueType.Json,
+            description: 'Default admin-console left-nav menu order (TENANT tier of the USER → TENANT → DEFAULT resolver)',
+        },
     ];
 }
 
@@ -350,6 +386,7 @@ const ALL_SETTINGS: SettingDef[] = [
         uxLocalNoiseSuppressionModels: IDS.GLOBAL_UX_LOCAL_NOISE_SUPPRESSION_MODELS,
         uxSmrProviderModels: IDS.GLOBAL_UX_SMR_PROVIDER_MODELS,
         lockedConfigPaths: IDS.GLOBAL_LOCKED_CONFIG_PATHS,
+        adminMenuOrder: IDS.GLOBAL_ADMIN_MENU_ORDER,
     }),
     ...tenantSettings(SEED_CUSTOMER_TENANT_IDS.ARCAAI, {
         ffTranscription: IDS.ARCAAI_FF_TRANSCRIPTION,
@@ -367,6 +404,7 @@ const ALL_SETTINGS: SettingDef[] = [
         uxLocalNoiseSuppressionModels: IDS.ARCAAI_UX_LOCAL_NOISE_SUPPRESSION_MODELS,
         uxSmrProviderModels: IDS.ARCAAI_UX_SMR_PROVIDER_MODELS,
         lockedConfigPaths: IDS.ARCAAI_LOCKED_CONFIG_PATHS,
+        adminMenuOrder: IDS.ARCAAI_ADMIN_MENU_ORDER,
     }),
     ...tenantSettings(SEED_CUSTOMER_TENANT_IDS.FOURBITS, {
         ffTranscription: IDS.FOURBITS_FF_TRANSCRIPTION,
@@ -384,6 +422,7 @@ const ALL_SETTINGS: SettingDef[] = [
         uxLocalNoiseSuppressionModels: IDS.FOURBITS_UX_LOCAL_NOISE_SUPPRESSION_MODELS,
         uxSmrProviderModels: IDS.FOURBITS_UX_SMR_PROVIDER_MODELS,
         lockedConfigPaths: IDS.FOURBITS_LOCKED_CONFIG_PATHS,
+        adminMenuOrder: IDS.FOURBITS_ADMIN_MENU_ORDER,
     }),
     ...tenantSettings(SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL, {
         ffTranscription: IDS.MUMBAI_FF_TRANSCRIPTION,
@@ -401,6 +440,7 @@ const ALL_SETTINGS: SettingDef[] = [
         uxLocalNoiseSuppressionModels: IDS.MUMBAI_UX_LOCAL_NOISE_SUPPRESSION_MODELS,
         uxSmrProviderModels: IDS.MUMBAI_UX_SMR_PROVIDER_MODELS,
         lockedConfigPaths: IDS.MUMBAI_LOCKED_CONFIG_PATHS,
+        adminMenuOrder: IDS.MUMBAI_ADMIN_MENU_ORDER,
     }),
 ];
 

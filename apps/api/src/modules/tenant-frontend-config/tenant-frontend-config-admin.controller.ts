@@ -1,7 +1,7 @@
 import { ITenantFrontendConfigService, TenantFrontendConfigResponse, UpsertTenantFrontendConfigRequest } from '@arcaai/applications';
 import { Body, Controller, Get, Inject, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanManage, ExpectedVersion } from '../../decorators';
+import { CanAny, ExpectedVersion } from '../../decorators';
 
 /**
  * Admin API for the per-tenant FRONTEND audio-pipeline defaults (TASK-328 A6).
@@ -9,17 +9,20 @@ import { CanManage, ExpectedVersion } from '../../decorators';
  * A single row per tenant holds the client-side capture defaults applied to
  * every user in that tenant (ASR model + feature switches + a typed advanced
  * `configJson`). Tenant scoping mirrors the DNA admin surface (TASK-328 A5):
- * a global admin (SUPER_ADMIN/GLOBAL_ADMIN) may target a tenant via
+ * a global admin (SUPER_ADMIN) may target a tenant via
  * `?tenantId=`; a tenant admin is pinned to their CLS tenant and any supplied
  * `tenantId` is ignored by the service.
  *
- * `@CanManage('Tenant')` gates the surface (the `tenant-full-access` policy
- * grants this to tenant admins, matching `TenantStorageConfigAdminController`).
+ * `@CanAny(['manage','Tenant'],['update','Tenant'])` gates the surface
+ * (TASK-331 doc-04 F1): the `tenant-full-access` policy grants tenant admins
+ * tenant-scoped `update:Tenant` (not `manage:Tenant`), which now suffices to
+ * reach this config surface; SUPER_ADMIN passes via `manage:all`. Matches
+ * `TenantStorageConfigAdminController`.
  */
 @ApiBearerAuth()
 @ApiTags('admin-frontend-pipeline-config')
 @Controller('admin/tenant-frontend-config')
-@CanManage('Tenant')
+@CanAny(['manage', 'Tenant'], ['update', 'Tenant'])
 export class TenantFrontendConfigAdminController {
   constructor(
     @Inject(ITenantFrontendConfigService)

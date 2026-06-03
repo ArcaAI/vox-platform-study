@@ -144,6 +144,23 @@ describe('Tenant-ability regression — seeded SUPER_ADMIN policy linkage', () =
         expect.arrayContaining([{ action: 'manage', subject: 'all' }]),
       );
     });
+
+    // TASK-331 doc-04 F1 — the tenant-admin nav↔backend gap is closed by
+    // widening `tenant-full-access` with tenant-scoped manage rules for
+    // Departments and ASR pipelines. Lock the seed shape so a future edit
+    // that drops either rule fails here before reaching production.
+    it('tenant-full-access policy includes manage:Department and manage:AsrPipeline', () => {
+      const policy = DEFAULT_POLICIES.find(
+        (p) => p.name === 'tenant-full-access',
+      );
+      expect(policy).toBeDefined();
+      expect(policy?.rules).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ action: 'manage', subject: 'Department' }),
+          expect.objectContaining({ action: 'manage', subject: 'AsrPipeline' }),
+        ]),
+      );
+    });
   });
 
   describe('SUPER_ADMIN via PolicyEngine.buildAbility', () => {
@@ -244,6 +261,47 @@ describe('Tenant-ability regression — seeded SUPER_ADMIN policy linkage', () =
         tenantId: '50000000-0000-0000-0000-000000000000',
       });
 
+      expect(ability.can('manage', 'Tenant')).toBe(false);
+      expect(ability.can('create', 'Tenant')).toBe(false);
+      expect(ability.can('delete', 'Tenant')).toBe(false);
+    });
+  });
+
+  describe('TENANT_ADMIN via PolicyEngine.buildAbility', () => {
+    // TASK-331 doc-04 F1 + Q2 — a seeded TENANT_ADMIN must be able to
+    // self-serve their own departments, ASR pipelines, storage, and their
+    // own tenant row (read/update), so the admin nav stops linking to
+    // backend-403 pages. The same posture must NOT leak tenant create/delete
+    // (privilege escalation) — those stay SUPER_ADMIN-only via the
+    // method-level `@CanManage('Tenant')` on TenantController.
+    it('grants tenant-scoped self-service but forbids tenant create/delete', async () => {
+      const tenantAdminRolePayload = buildPrismaRolePayload('TENANT_ADMIN');
+
+      mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
+        {
+          id: 'ura-tenant-admin',
+          userId: SEED_USER_IDS.TENANT_ADMIN,
+          roleId: SEED_ROLE_IDS.TENANT_ADMIN,
+          tenantId: '50000000-0000-0000-0000-000000000000',
+          scopeOverrides: null,
+          resourceStatus: 'ENABLED',
+        },
+      ]);
+      mockPrismaClient.role.findMany.mockResolvedValue([tenantAdminRolePayload]);
+
+      const ability = await policyEngine.buildAbility({
+        userId: SEED_USER_IDS.TENANT_ADMIN,
+        tenantId: '50000000-0000-0000-0000-000000000000',
+      });
+
+      // Widened self-service surfaces (doc-04 F1 nav↔backend gap closed).
+      expect(ability.can('manage', 'Department')).toBe(true);
+      expect(ability.can('manage', 'AsrPipeline')).toBe(true);
+      expect(ability.can('manage', 'Storage')).toBe(true);
+      // Own-tenant read/update reaches the relaxed Tenant controllers.
+      expect(ability.can('update', 'Tenant')).toBe(true);
+      expect(ability.can('read', 'Tenant')).toBe(true);
+      // No privilege escalation — cannot manage/create/delete tenants.
       expect(ability.can('manage', 'Tenant')).toBe(false);
       expect(ability.can('create', 'Tenant')).toBe(false);
       expect(ability.can('delete', 'Tenant')).toBe(false);
