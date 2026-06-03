@@ -1,7 +1,22 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, BadRequestException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { ResourceType, ResourceStatusType, SysEventType, EntityId, UserEntity, UserFactory, UserRepository } from '@arcaai/domains';
+import {
+  ResourceType,
+  ResourceStatusType,
+  SysEventType,
+  EntityId,
+  UserEntity,
+  UserFactory,
+  UserRepository,
+  UserRoleAssignmentEntity,
+  UserRoleAssignmentFactory,
+  UserRoleAssignmentRepository,
+  UserDepartmentEntity,
+  UserDepartmentFactory,
+  UserDepartmentRepository,
+  CoreDatabaseService,
+} from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException, NotFoundException } from '@arcaai/exceptions';
 import { IUserService } from './IUserService';
 import { CreateOAuthUserRequest, CreateUserRequest, UpdateUserRequest } from './dto';
@@ -14,31 +29,110 @@ import { IActiveUserContext } from '../../../interfaces';
 export class UserService extends BaseService implements IUserService {
   constructor(
     private readonly userRepository: UserRepository,
+    private readonly userRoleAssignmentRepository: UserRoleAssignmentRepository,
+    private readonly userDepartmentRepository: UserDepartmentRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-331 r2605 #3 — `baseClient.$transaction(callback)` is the canonical
+    // Prisma-7 atomic idiom in this codebase (see TenantService TASK-302 D.4).
+    @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
   ) {
     super(eventEmitter, clsService, ResourceType.User);
   }
 
   async create(request: CreateUserRequest): Promise<UserEntity> {
+    const { roleId, departmentId, isPrimaryDepartment, ...userRequest } = request;
+    const wantsMembership = Boolean(roleId || departmentId);
+
     const newUser = UserFactory.CreateUser({
-      ...request,
-      externalId: request.externalId || null,
-      isServiceAccount: request.isServiceAccount ?? false,
+      ...userRequest,
+      externalId: userRequest.externalId || null,
+      isServiceAccount: userRequest.isServiceAccount ?? false,
       createdBy: this.requestUser?.id,
     });
 
-    const user = await this.userRepository.create(newUser);
+    if (!wantsMembership) {
+      const user = await this.userRepository.create(newUser);
 
-    if (!user) {
-      throw new InternalServerErrorException(`Failed to create UserEntity: ${request}`);
+      if (!user) {
+        throw new InternalServerErrorException(`Failed to create UserEntity: ${request}`);
+      }
+
+      this.broadcastSysEvent(SysEventType.ResourceCreated, {
+        resourceId: user.id,
+        createdAt: user.createdAt,
+        data: user.toObject() as object,
+      });
+      return user;
     }
 
+    // TASK-331 r2605 #3 — membership requested. Tenant attribution comes from
+    // the ACTIVE CLS tenant (a super-admin's selected tenant is elevated into
+    // CLS by the context interceptor; a tenant-admin's comes from their
+    // session). It is NEVER taken from the request body — the same security
+    // boundary `broadcastSysEvent` enforces for `tenantId`.
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant context required to assign role/department');
+    }
+
+    // Create the identity + membership rows atomically so a partial failure
+    // leaves NO orphaned user (which would silently fail the Phase F login
+    // invariant). Each repository.create participates via the supplied `tx`.
+    const { user, roleAssignment, departmentAssignment } = await this.databaseService.baseClient.$transaction(async (tx) => {
+      const createdUser = await this.userRepository.create(newUser, tx);
+      if (!createdUser) {
+        throw new InternalServerErrorException(`Failed to create UserEntity: ${request}`);
+      }
+
+      let roleAssignment: UserRoleAssignmentEntity | undefined;
+      if (roleId) {
+        const roleEntity = UserRoleAssignmentFactory.CreateUserRoleAssignment({
+          userId: createdUser.id,
+          roleId,
+          tenantId,
+          createdBy: this.requestUser?.id,
+        });
+        roleAssignment = await this.userRoleAssignmentRepository.create(roleEntity, tx);
+      }
+
+      let departmentAssignment: UserDepartmentEntity | undefined;
+      if (departmentId) {
+        const departmentEntity = UserDepartmentFactory.CreateUserDepartment({
+          tenantId,
+          userId: createdUser.id,
+          departmentId,
+          isPrimary: isPrimaryDepartment ?? false,
+          createdBy: this.requestUser?.id,
+        });
+        departmentAssignment = await this.userDepartmentRepository.create(departmentEntity, tx);
+      }
+
+      return { user: createdUser, roleAssignment, departmentAssignment };
+    });
+
+    // Broadcast AFTER commit so a rolled-back transaction emits no audit noise.
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: user.id,
       createdAt: user.createdAt,
       data: user.toObject() as object,
     });
+    if (roleAssignment) {
+      this.broadcastSysEvent(SysEventType.ResourceCreated, {
+        resourceType: ResourceType.UserRoleAssignment,
+        resourceId: roleAssignment.id,
+        createdAt: roleAssignment.createdAt,
+        data: roleAssignment.toObject() as object,
+      });
+    }
+    if (departmentAssignment) {
+      this.broadcastSysEvent(SysEventType.ResourceCreated, {
+        resourceType: ResourceType.UserDepartment,
+        resourceId: departmentAssignment.id,
+        createdAt: departmentAssignment.createdAt,
+        data: departmentAssignment.toObject() as object,
+      });
+    }
     return user;
   }
 

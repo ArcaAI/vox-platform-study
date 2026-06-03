@@ -283,6 +283,56 @@ describe('UserController', () => {
         });
     });
 
+    // -------------------------------------------------------------------------
+    // TASK-331 r2605 #2 (Critical, IDOR) — GET /admin/users/tenant/:tenantId
+    // had NO caller-tenant guard, so any `manage:User` holder (e.g. a
+    // TENANT_ADMIN) could enumerate ANY tenant's users by UUID. Mirror the
+    // `fetchAll` X2 hardening: a non-super-admin may only read their OWN tenant;
+    // SUPER_ADMIN keeps the cross-tenant read.
+    // -------------------------------------------------------------------------
+    describe('TASK-331 #2 — GET /admin/users/tenant/:tenantId caller-tenant guard', () => {
+        const buildController = (cls: ReturnType<typeof createMockCls>) =>
+            new UserController(
+                mockUserService as any,
+                mockApiKeyService as any,
+                mockUserSettingsService as any,
+                mockUserRoleAssignmentService as any,
+                mockUserProfileService as any,
+                mockVoiceProfileService as any,
+                cls as any,
+            );
+
+        it('rejects a TENANT_ADMIN reading ANOTHER tenant (ForbiddenException, service untouched)', async () => {
+            const cls = createMockCls({ id: 'u-1', tenantId: 't-A', roles: ['TENANT_ADMIN'] }, 't-A');
+
+            await expect(buildController(cls).fetchByTenant('t-B', { page: 1 } as any)).rejects.toBeInstanceOf(ForbiddenException);
+
+            expect(mockUserService.fetchAllByTenantId).not.toHaveBeenCalled();
+        });
+
+        it('lets a TENANT_ADMIN read their OWN tenant', async () => {
+            mockUserService.fetchAllByTenantId.mockResolvedValue(fakeFetchResponse);
+            const cls = createMockCls({ id: 'u-1', tenantId: 't-A', roles: ['TENANT_ADMIN'] }, 't-A');
+
+            await buildController(cls).fetchByTenant('t-A', { page: 1, pageSize: 10 } as any);
+
+            expect(mockUserService.fetchAllByTenantId).toHaveBeenCalledWith(
+                expect.objectContaining({ tenantId: 't-A', page: 1, pageSize: 10 }),
+            );
+        });
+
+        it('lets a SUPER_ADMIN read ANY tenant cross-tenant', async () => {
+            mockUserService.fetchAllByTenantId.mockResolvedValue(fakeFetchResponse);
+            const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+
+            await buildController(cls).fetchByTenant('t-OTHER', { page: 1 } as any);
+
+            expect(mockUserService.fetchAllByTenantId).toHaveBeenCalledWith(
+                expect.objectContaining({ tenantId: 't-OTHER', page: 1 }),
+            );
+        });
+    });
+
     describe('PATCH /admin/users/:id (update)', () => {
         it('should call userService.update with id and request body', async () => {
             const request = { username: 'updated_user' };

@@ -34,16 +34,25 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     return (this._databaseContext as Record<string, any>)[this._modelName];
   }
 
-  public async create(entity: DomainEntity): Promise<DomainEntity> {
+  public async create(entity: DomainEntity, tx?: Prisma.TransactionClient | any): Promise<DomainEntity> {
     let data = this._mapper.toPersistence(entity);
     data = removeNullValues(data);
 
-    const model = await this.db.create({
+    // TASK-331 r2605 #3 — when a transaction client is supplied (atomic
+    // multi-entity create, e.g. user + role + department membership), route the
+    // write through it so it participates in the caller's `$transaction` and
+    // rolls back with the rest on partial failure. Mirrors the existing
+    // `updateWithVersion(..., tx)` contract. Without `tx` the cached extended
+    // client (`this.db`) is used — behaviour unchanged.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const delegate = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
+
+    const model = await delegate.create({
       data,
       include: this._includes,
     });
     if (!model) {
-      throw new DataCreationException(this.db.name || Repository.name);
+      throw new DataCreationException(delegate?.name || this._modelName || Repository.name);
     }
     return this._mapper.toDomainEntity(model);
   }
