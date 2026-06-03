@@ -29,6 +29,11 @@ export interface DnaReport {
   updatedBy?: string;
   createdAt: string;
   updatedAt: string;
+  // TASK-331 doc-02 F1/F12 — row `_version` OCC token (distinct from
+  // `currentVersionNumber`, the DnaVersion history counter). Echo back via
+  // `If-Match: "<version>"` on the next PATCH so the server's compare-and-set
+  // can detect drift (412) on both the admin and doctor self-edit routes.
+  version?: number;
 }
 
 export interface DnaStyleVersion {
@@ -238,8 +243,13 @@ export function streamDnaJob(jobId: string, callbacks: DnaStreamCallbacks): Abor
 export function useUpdateDnaReport() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ reportId, ...input }: DnaUpdateInput & { reportId: string }) =>
-      adminClient.patch<DnaReport>(`/dna-writing-styles/${reportId}`, input),
+    // TASK-331 doc-02 F12 — the doctor self-edit route is now `@RequiresIfMatch()`;
+    // forward the RFC 7232 `If-Match: "<version>"` header (echoed from the loaded
+    // report's `version`) so the server runs its compare-and-set (412 on drift,
+    // 428 when omitted). The doctor is derived from CLS, so an admin-impersonated
+    // doctor session works identically.
+    mutationFn: ({ reportId, ifMatch, ...input }: DnaUpdateInput & { reportId: string; ifMatch?: string }) =>
+      adminClient.patch<DnaReport>(`/dna-writing-styles/${reportId}`, input, ifMatch ? { ifMatch } : undefined),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.all });
       qc.invalidateQueries({ queryKey: keys.detail(variables.reportId) });

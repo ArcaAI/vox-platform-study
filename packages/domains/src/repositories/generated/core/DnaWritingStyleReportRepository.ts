@@ -59,6 +59,39 @@ export class DnaWritingStyleReportRepository extends Repository<DnaWritingStyleR
     });
   }
 
+  /**
+   * TASK-331 doc-02 F6 — repository-level pagination for the admin list.
+   *
+   * Returns both the page slice and the total matching count in one call so
+   * the admin controller no longer materializes the full tenant result set
+   * just to slice it in memory. Mirrors `PromptTemplateRepository.findPaginated`
+   * (`db.findMany` + `db.count` against the same extended client, so soft-delete
+   * semantics match the query-builder list path), ordering by `createdAt desc`.
+   */
+  async findPaginated(
+    where: Record<string, unknown>,
+    page: number,
+    limit: number,
+  ): Promise<{ data: DnaWritingStyleReportEntity[]; count: number }> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = (this as any).db;
+    const [models, count] = await Promise.all([
+      db.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      db.count({ where }),
+    ]);
+
+    return {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: models.map((model: DnaWritingStyleReport) => (this as any)._mapper.toDomainEntity(model)),
+      count,
+    };
+  }
+
   // ============================================
   // Aggregate Query Methods (TASK-328 A5 — DNA dashboard)
   // ============================================
