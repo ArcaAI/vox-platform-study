@@ -221,6 +221,12 @@ model SummaryMeta {
     // Generation metadata
     generatedAt DateTime? // When the summary was generated
 
+    // Prompt resolution provenance (TASK-331 doc-06 F4) — which tier of the
+    // PromptResolutionService chain produced the summary, plus the prompt id
+    // actually used. Nullable + additive.
+    promptResolvedFrom String? // 'preferred' | 'department' | 'default'
+    resolvedPromptId   String? // the promptId actually used
+
     // Timestamps
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
@@ -230,6 +236,7 @@ model SummaryMeta {
     @@index([contextItemId], name: "SummaryMeta_contextItemId_idx")
     @@index([aiModelId], name: "SummaryMeta_aiModelId_idx")
     @@index([generatedAt], name: "SummaryMeta_generatedAt_idx")
+    @@index([promptResolvedFrom], name: "SummaryMeta_promptResolvedFrom_idx")
     // TASK-305 A.4 — tenant-leading composite for per-contextItem reads.
     @@index([tenantId, contextItemId], name: "SummaryMeta_tenant_contextItem_idx")
     @@schema("core")

@@ -2,10 +2,16 @@
  * PromptResolutionService
  *
  * Resolves prompt configuration (summary template, prompt ID, context variables)
- * using a two-tier fallback chain:
+ * using a three-tier fallback chain (highest priority first):
  *
- *   1. Department-level — from Department model prompt config fields
- *   2. System default — hardcoded fallback values
+ *   Tier-0 (preferred) — the consulting doctor's preferred prompt template,
+ *     from `UserProfile.preferredPromptTemplateId` (TASK-329 P2). When it
+ *     resolves, its id wins over the department/default tiers.
+ *   Tier-1 (department) — from Department model prompt config fields.
+ *   Tier-2 (default) — hardcoded system fallback values.
+ *
+ * The chosen tier is reported back on `ResolvedPromptConfig.resolvedFrom`
+ * (`'preferred' | 'department' | 'default'`).
  *
  * DNA resolution is no longer part of this service; DNA style is per-doctor
  * and resolved elsewhere.

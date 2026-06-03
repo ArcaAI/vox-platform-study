@@ -19,6 +19,8 @@ export class SummaryMeta extends BaseTenantDataModel {
   public generatedAt: Date | null;
   public cacheHit: boolean | null;
   public qualityScore: number | null;
+  public promptResolvedFrom: string | null;
+  public resolvedPromptId: string | null;
 
   constructor(data: SummaryMeta & BaseTenantDataModel) {
     super(data);
@@ -35,5 +37,7 @@ export class SummaryMeta extends BaseTenantDataModel {
     this.generatedAt = data.generatedAt;
     this.cacheHit = data.cacheHit;
     this.qualityScore = data.qualityScore;
+    this.promptResolvedFrom = data.promptResolvedFrom;
+    this.resolvedPromptId = data.resolvedPromptId;
   }
 }
