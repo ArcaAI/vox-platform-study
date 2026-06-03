@@ -103,7 +103,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <DraggableNavGroup label="Administration" items={adminItems} onReorder={reorder} />
+        {adminItems.length > 0 && <DraggableNavGroup label="Administration" items={adminItems} onReorder={reorder} />}
         <NavGroup label="Playground" items={playgroundItems} />
         <NavGroup label="Documents" items={documentItems} />
       </SidebarContent>

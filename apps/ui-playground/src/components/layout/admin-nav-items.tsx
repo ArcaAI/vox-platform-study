@@ -31,10 +31,11 @@ export function buildAdminNavItems(opts: {
 }): DraggableNavItem[] {
   const { isAdmin, isGlobalScope, tenantSelected, order } = opts;
 
-  const items: DraggableNavItem[] = [{ id: 'overview', title: 'Overview', url: '/', icon: Settings }];
+  const items: DraggableNavItem[] = [];
 
   if (isAdmin) {
     items.push(
+      { id: 'overview', title: 'Overview', url: '/', icon: Settings },
       { id: 'dna-reports', title: 'DNA Reports', url: '/admin/dna-reports', icon: Dna, badge: 'NEW' },
       { id: 'tenants', title: 'Tenants', url: '/admin/tenants', icon: Building2 },
       { id: 'users', title: 'Users', url: '/admin/users', icon: Users },
