@@ -117,11 +117,35 @@ export class UserController {
   })
   @ApiParam({ name: 'tenantId', description: 'Tenant ID', type: String })
   async fetchByTenant(@Param('tenantId') tenantId: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedUserResponse> {
+    // TASK-331 r2605 #2 (Critical, IDOR): the X2 hardening scoped `fetchAll`
+    // but left this sibling path-param route with only the class-level
+    // `@CanManage('User')` action check — which does NOT constrain WHICH
+    // tenant. Any `manage:User` holder (e.g. a TENANT_ADMIN) could enumerate
+    // any tenant's users by UUID. Mirror `fetchAll`: a non-super-admin may
+    // only read their own CLS tenant; SUPER_ADMIN keeps the cross-tenant read.
+    this.assertCanReadTenant(tenantId);
+
     const result = await this.userService.fetchAllByTenantId({
       ...queryParams,
       tenantId,
     });
     return UserDtoMapper.ToPaginatedResponse(result);
+  }
+
+  /**
+   * TASK-331 r2605 #2 — shared caller-tenant guard for the by-tenant read
+   * routes. SUPER_ADMIN reads any tenant; every other `manage:User` holder is
+   * confined to their own CLS tenant. Throws `ForbiddenException` otherwise.
+   */
+  private assertCanReadTenant(tenantId: string): void {
+    const user = this.cls.get('user');
+    if (isSuperAdmin(user)) {
+      return;
+    }
+    const callerTenantId = this.cls.get('tenantId');
+    if (!callerTenantId || callerTenantId !== tenantId) {
+      throw new ForbiddenException('You can only list users within your own tenant');
+    }
   }
 
   @ApiEndpoint({
