@@ -125,6 +125,8 @@ export class SummaryService extends BaseService implements ISummaryService {
       outputTokens: smrResponse.outputTokens,
       cacheHit: smrResponse.cacheHit,
       qualityScore: smrResponse.qualityScore,
+      promptResolvedFrom: assembledPrompt.resolvedFrom,
+      resolvedPromptId: assembledPrompt.promptId,
     });
     await this.summaryMetaRepository.create(summaryMeta);
 
@@ -218,6 +220,8 @@ export class SummaryService extends BaseService implements ISummaryService {
       outputTokens: smrResponse.outputTokens,
       cacheHit: smrResponse.cacheHit,
       qualityScore: smrResponse.qualityScore,
+      promptResolvedFrom: assembledPrompt.resolvedFrom,
+      resolvedPromptId: assembledPrompt.promptId,
     });
     await this.summaryMetaRepository.create(summaryMeta);
 

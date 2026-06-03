@@ -24,6 +24,8 @@ export class SummaryResponse {
     entities?: Record<string, unknown>[];
     cacheHit?: boolean;
     qualityScore?: number;
+    promptResolvedFrom?: 'preferred' | 'department' | 'default';
+    resolvedPromptId?: string;
   };
 
   @ApiProperty()
