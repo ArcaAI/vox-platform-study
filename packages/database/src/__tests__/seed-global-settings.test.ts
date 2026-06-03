@@ -4,6 +4,7 @@ import {
   SEED_GLOBAL_SETTING_IDS,
   SEED_TENANT_ID,
 } from '../prisma/db_main/seed/00-constants';
+import { ALL_SETTINGS } from '../prisma/db_main/seed/11-global-setting';
 
 const UUID_REGEX = /^85000000-/;
 
@@ -36,7 +37,10 @@ const CORE_SUFFIXES = [
   'ADMIN_MENU_ORDER',
 ] as const;
 
-const PREFIXES_WITH_GENERAL = new Set(['FOURBITS', 'MUMBAI', 'GLOBAL']);
+// TASK-331 doc-08 F4 — every tenant (including ArcaAI) now carries the `general`
+// namespace block (max-concurrent-sessions, default-language, session-timeout) so
+// all four tenants are consistent and no admin "General" tab is left empty.
+const PREFIXES_WITH_GENERAL = new Set(['ARCAAI', 'FOURBITS', 'MUMBAI', 'GLOBAL']);
 
 // TASK-316 — platform-wide (NOT per-tenant) settings: DB-backed gateway
 // rate-limit config. These live on the platform tenant only and therefore
@@ -156,6 +160,58 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
       expect(SEED_CUSTOMER_TENANT_IDS.ARCAAI).toBeDefined();
       expect(SEED_CUSTOMER_TENANT_IDS.FOURBITS).toBeDefined();
       expect(SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL).toBeDefined();
+    });
+  });
+
+  // TASK-331 doc-08 F4 — assert the FACTORY actually EMITS the rows, not just
+  // that the IDs exist. The previous code allocated `*_FF_TRANSCRIPTION` and the
+  // GENERAL ids but `tenantSettings()` emitted neither (dead config), leaving the
+  // admin "General" tab empty for every tenant. These assertions pin the emitted
+  // per-tenant rows so the IDs and the seed can never silently drift apart again.
+  describe('tenantSettings factory emits a consistent block for every tenant', () => {
+    const TENANT_ID_BY_PREFIX: Record<string, string> = {
+      GLOBAL: SEED_TENANT_ID,
+      ARCAAI: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+      FOURBITS: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+      MUMBAI: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+    };
+
+    const settingsForTenant = (tenantId: string) =>
+      ALL_SETTINGS.filter((s) => s.tenantId === tenantId);
+
+    for (const prefix of SETTING_PREFIXES) {
+      const tenantId = TENANT_ID_BY_PREFIX[prefix];
+      describe(prefix, () => {
+        it('emits the general namespace block (3 settings)', () => {
+          const generalKeys = settingsForTenant(tenantId)
+            .filter((s) => s.namespace === 'general')
+            .map((s) => s.key)
+            .sort();
+          expect(generalKeys).toEqual([
+            'default-language',
+            'max-concurrent-sessions',
+            'session-timeout',
+          ]);
+        });
+
+        it('emits the enable-transcription feature flag', () => {
+          const flag = settingsForTenant(tenantId).find(
+            (s) => s.namespace === 'feature-flags' && s.key === 'enable-transcription',
+          );
+          expect(flag).toBeDefined();
+        });
+
+        it('emits exactly one row per declared setting ID (no dead config)', () => {
+          expect(settingsForTenant(tenantId).length).toBe(suffixesFor(prefix).length);
+        });
+      });
+    }
+
+    it('emits the same number of settings for every tenant', () => {
+      const counts = SETTING_PREFIXES.map(
+        (p) => settingsForTenant(TENANT_ID_BY_PREFIX[p]).length,
+      );
+      expect(new Set(counts).size).toBe(1);
     });
   });
 });
