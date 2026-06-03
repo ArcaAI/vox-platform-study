@@ -18,7 +18,10 @@ export default function ConsultationPage() {
   const { requiresImpersonation, isImpersonated, roles } = useDoctorContext();
 
   const canAccess = hasTenant && !requiresImpersonation;
-  const consultationCode = useMemo(() => buildConsultationSnippet({ tenantId }), [tenantId]);
+  // TASK-331 doc-06 F6 — the snippet displays the effective (impersonated) user
+  // too, so recompute when it changes, not only on `tenantId`.
+  const impersonatedUsername = useAuthStore((s) => s.impersonatedUser?.username ?? null);
+  const consultationCode = useMemo(() => buildConsultationSnippet({ tenantId, userLabel: impersonatedUsername }), [tenantId, impersonatedUsername]);
 
   return (
     <Main>
@@ -49,14 +52,17 @@ export default function ConsultationPage() {
                     </div>
                     <div>
                       <CardTitle className="text-base">Tenant Required</CardTitle>
-                      <CardDescription>Select a tenant to access consultation features</CardDescription>
+                      <CardDescription>Activate a tenant to access consultation features</CardDescription>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* TASK-331 doc-06 F5 — point at the real control: tenant selection
+                      moved to the header tenant switcher (the on-page tenant card was
+                      removed), or it can be inherited by impersonating a tenant user. */}
                   <p className="text-muted-foreground text-sm">
-                    Consultations are scoped to a specific tenant. Please select a tenant from the Playground Overview or impersonate a user that
-                    belongs to a tenant.
+                    Consultations are scoped to a specific tenant. Use the tenant switcher in the header to choose a tenant, or impersonate a user
+                    that belongs to one.
                   </p>
                   <div className="flex items-center gap-3">
                     <Link to="/playground/overview">
