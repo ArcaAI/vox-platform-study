@@ -9,6 +9,8 @@
 | Verdict      | **Ship-with-fixes** (1 High nav↔backend RBAC mismatch must be fixed/verified before tenant-admin GA)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 
+> **Status update — 2026-06-03: RESOLVED.** All eight findings (F1–F8) are fixed or verified on `fix/2605-review` (commits `8d737df5`, `87b9fbab`, merged via `4ef67234` + `d655334f`, integration gate fixes `ec52a249`). The **High** nav↔backend RBAC blocker (F1) is closed, so tenant-admin is unblocked for GA. Full gate green: build **19/19**, test **34/34 tasks**, `ui-playground` type-check **0 errors**, lint **0 errors**. See **§9 Implementation Summary** and **§10 Change History**. The §3–§5 references to *11 isAdmin items* / `frontend-pipeline` / `backend-pipeline` are superseded — see F8.
+
 ---
 
 ## 1. Scope & Business Context
@@ -159,4 +161,54 @@ Answer: Global admin is super admin, where the admin has all permissions in all 
 Answer: following best practice to fit requirements/expectation and current architecture
 5. Assumption: `UnifiedAuthGuard` composes `AuthorizationGuard` (whose `can()` logic was reviewed) — i.e., the decorator metadata is enforced as analysed.  
 Answer: suggest best practices for production-ready, manitainability and scalability
+
+---
+
+## 9. Implementation Summary (2026-06-03)
+
+Remediation was executed by two parallel, non-overlapping subagents in isolated git worktrees — **backend** (`fix/2605-shell-rbac`, packages `database`/`applications` + `apps/api`) and **frontend** (`fix/2605-shell-ui`, `apps/ui-playground`) — then merged to `fix/2605-review` and gated end-to-end. F2/F3/F5 were already resolved on-branch in earlier work and were re-verified, not re-implemented.
+
+### Finding resolution
+
+| #   | Sev      | Status                  | Resolution & evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --- | -------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F1  | High     | ✅ Resolved             | `tenant-full-access` widened with tenant-scoped `manage:Department` + `manage:AsrPipeline` (`01-policy.ts`). Class guard on `tenant.controller.ts`, `tenant-frontend-config-admin.controller.ts`, `tenant-storage-config-admin.controller.ts` relaxed `@CanManage('Tenant')` → `@CanAny(['manage','Tenant'],['update','Tenant'])` (mode `OR`) so a tenant admin's `update:Tenant` clears it. `create()`/`delete()` re-guarded method-level `@CanManage('Tenant')` → SUPER_ADMIN-only (no privilege escalation). RED→GREEN `TENANT_ADMIN` block added to `tenant-ability.regression.test.ts`. Commit `8d737df5`. |
+| F2  | Medium   | ✅ Resolved (on branch) | `isGlobalScope` narrowed to `SUPER_ADMIN` only (`auth-store.ts:148-152`), so the Studio nav item + route now match the backend `@CanManage('all')` on `pstudio.controller.ts`. No global-but-not-super user can open Studio.                                                                                                                                                                                                                                                                          |
+| F3  | Medium   | ✅ Resolved (on branch) | Per Q3 ("global admin = super admin"), the half-wired `GLOBAL_ADMIN` arm was dropped from `isGlobalScope`/`isAdmin` (`auth-store.ts:142-165`); `canImpersonate` stays `SUPER_ADMIN ∪ TENANT_ADMIN`. No inconsistent state remains.                                                                                                                                                                                                                                                                   |
+| F4  | Medium   | ✅ Resolved             | `arcaai-admin`/`menuOrder` `GlobalSetting` seeded per tenant with the canonical **studio-last** order (`11-global-setting.ts`) + 4 `*_ADMIN_MENU_ORDER` ids (`00-constants.ts`, suffix `051`). The TENANT precedence tier now fires from seed. Commit `8d737df5`.                                                                                                                                                                                                                                     |
+| F5  | Low      | ✅ Resolved (on branch) | `setTenant` keeps `tenantKey` in lockstep with `tenantId` (`auth-store.ts:109`).                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| F6  | Low      | ✅ Resolved             | Breadcrumb `routeMeta` added for `audio-pipelines`, `storage`, `configurations`, `audit-logs`, `studio` (`header.tsx`). Commit `87b9fbab`.                                                                                                                                                                                                                                                                                                                                                          |
+| F7  | Low      | ✅ Resolved             | `overview` pushed only when `isAdmin`; the "Administration" group is hidden when it has no items (`admin-nav-items.tsx`, `app-sidebar.tsx`); `studio` moved to the END of `DEFAULT_ADMIN_MENU_ORDER` (`use-admin-preferences.ts`). Commit `87b9fbab`.                                                                                                                                                                                                                                                 |
+| F8  | Low/Info | ✅ Addressed / N/A      | The nav at HEAD is **Overview + 9 admin pages + Studio**; `frontend-pipeline`/`backend-pipeline` were already removed from the build, so the "pin those two" item is moot and the "11 menus" figure is superseded. `admin-nav-items.test.ts` pins the current set (non-admin → `[]`; `studio` last for global scope).                                                                                                                                                                                  |
+
+### Files changed (since review @ `e91fc450`)
+
+**Backend** — `8d737df5`:
+`packages/database/src/prisma/db_main/seed/01-policy.ts`, `…/00-constants.ts`, `…/11-global-setting.ts`; `apps/api/src/modules/tenant/tenant.controller.ts`, `…/tenant-frontend-config/tenant-frontend-config-admin.controller.ts`, `…/tenant-storage-config/tenant-storage-config-admin.controller.ts`; `packages/applications/src/authorization/__tests__/tenant-ability.regression.test.ts`.
+
+**Frontend** — `87b9fbab`:
+`apps/ui-playground/src/components/layout/header.tsx`, `…/admin-nav-items.tsx`, `…/app-sidebar.tsx`, `…/features/admin/hooks/use-admin-preferences.ts`, `…/layout/__tests__/admin-nav-items.test.ts`.
+
+**Integration gate fixes** — `ec52a249` (test-only):
+`packages/database/src/__tests__/seed-global-settings.test.ts` (`TOTAL_IDS` model 78→82 for the F4 `ADMIN_MENU_ORDER` ids); `apps/api/src/modules/tenant/__tests__/tenant.controller.test.ts` (class permission mode `AND`→`OR`, asserts both `manage:Tenant` and `update:Tenant`, for the F2 `@CanAny` change).
+
+### Gate evidence (on merged `fix/2605-review`)
+
+- **Build** — `pnpm build` → `Tasks: 19 successful, 19 total`.
+- **Test** — `pnpm test` → `Tasks: 34 successful, 34 total` (incl. `@arcaai/database` 659, `@arcaai/applications` 4662, `@arcaai/api` 1562, `@arcaai/ui-playground` 903).
+- **Type-check** — `pnpm --filter @arcaai/ui-playground type-check` → exit 0.
+- **Lint** — changed files 0 errors (`api` test files are eslint-ignored; `database` has no lint script).
+
+### Notes / deviations
+
+- The two integration gate fixes (`ec52a249`) were required because the subagents' `@arcaai/api` and `@arcaai/database` verify scope was **build + lint, not the test suites**; the merged changes broke two pre-existing contract tests (a hardcoded GlobalSetting-id count and the tenant-controller permission-mode assertion). Both are test-only and reflect the intended F1/F2/F4 contract changes.
+- Tenant `create`/`delete` remain SUPER_ADMIN-only by design — the F1 policy widening grants tenant admins self-service on Departments/Audio-Pipelines/own-Tenant `update`, not destructive Tenant lifecycle.
+
+---
+
+## 10. Change History
+
+| Date       | Change                                                                                                                                                                                                                                                                                                                            | Commits                                                              |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 2026-06-03 | doc-04 remediation. Backend F1 (RBAC policy + controller guards) & F4 (menuOrder seed) on `fix/2605-shell-rbac`; frontend F6 (breadcrumbs) & F7 (non-admin nav gating + studio-last) on `fix/2605-shell-ui`; merged to `fix/2605-review`; integration gate fixes for two contract tests. F2/F3/F5 confirmed already resolved on-branch. Full gate green. | `8d737df5`, `87b9fbab`, `4ef67234`, `d655334f`, `ec52a249`          |
 
