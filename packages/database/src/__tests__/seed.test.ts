@@ -60,6 +60,11 @@ import {
     SYSTEM_TENANT_ID,
     SYSTEM_USER_ID,
 } from '../prisma/db_main/seed/00-constants';
+import {
+    DEFAULT_AUDIO_RECORDINGS,
+    DEFAULT_MEDIA,
+    SEED_MEDIA_IDS,
+} from '../prisma/db_main/seed/09-consultation';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -2049,5 +2054,145 @@ describe('Seed Data Cross-Reference Integrity', () => {
     it('should have unique IDs for all prompt usage records', () => {
         const ids = DEFAULT_PROMPT_USAGE_RECORDS.map((r) => r.id);
         expect(new Set(ids).size).toBe(ids.length);
+    });
+});
+
+// =============================================================================
+// DUAL CAPTURE — PIPELINE CONFIG + DEMO RECORDING (TASK-331 doc-06 F2)
+// =============================================================================
+
+/**
+ * Walks a key path (e.g. ['preprocessing', 'dual_capture']) through a 2-space
+ * indented YAML blob and returns the indented child lines of the final key, or
+ * null when the path is absent. Lets the seed tests assert nested structure of
+ * the pipeline configYaml without adding a YAML-parser dependency.
+ */
+function getYamlBlock(yaml: string, keyPath: string[]): string | null {
+    let scope = yaml.split('\n');
+    let parentIndent = -2; // first level expects indent 0
+    for (const key of keyPath) {
+        const expectIndent = parentIndent + 2;
+        const headerRe = new RegExp(`^ {${expectIndent}}${key}:\\s*(#.*)?$`);
+        const startIdx = scope.findIndex((line) => headerRe.test(line));
+        if (startIdx === -1) return null;
+        const body: string[] = [];
+        for (let i = startIdx + 1; i < scope.length; i++) {
+            const line = scope[i];
+            if (line.trim() === '') {
+                body.push(line);
+                continue;
+            }
+            const indent = line.length - line.trimStart().length;
+            if (indent <= expectIndent) break;
+            body.push(line);
+        }
+        scope = body;
+        parentIndent = expectIndent;
+    }
+    return scope.join('\n');
+}
+
+describe('Dual Capture Pipeline Config (TASK-331 doc-06 F2)', () => {
+    const defaultPipeline = DEFAULT_ASR_PIPELINES.find((p) => p.isDefault === true);
+
+    it('should expose a default pipeline (production) whose config drives dual capture', () => {
+        expect(defaultPipeline).toBeDefined();
+        expect(defaultPipeline?.slug).toBe('production-whisper-large-v3');
+    });
+
+    it('should add a dual_capture block under preprocessing on the default pipeline (raw capture before filters)', () => {
+        const block = getYamlBlock(defaultPipeline!.configYaml, ['preprocessing', 'dual_capture']);
+        expect(block).not.toBeNull();
+        expect(block).toMatch(/enabled:\s*true/);
+        expect(block).toMatch(/capture_raw:\s*true/);
+    });
+
+    it('should add a dual_capture block under postprocessing on the default pipeline (processed capture after filters)', () => {
+        const block = getYamlBlock(defaultPipeline!.configYaml, ['postprocessing', 'dual_capture']);
+        expect(block).not.toBeNull();
+        expect(block).toMatch(/enabled:\s*true/);
+        expect(block).toMatch(/capture_processed:\s*true/);
+    });
+});
+
+describe('Dual-Capture Demo AudioRecording (TASK-331 doc-06 F2)', () => {
+    it('should seed at least one AudioRecording carrying both rawMediaId and processedMediaId', () => {
+        const dualCapture = DEFAULT_AUDIO_RECORDINGS.filter(
+            (r) => r.rawMediaId != null && r.processedMediaId != null
+        );
+        expect(dualCapture.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should resolve the dual-capture recording primary/raw/processed ids to seeded Media rows', () => {
+        const mediaIds = new Set(DEFAULT_MEDIA.map((m) => m.id));
+        const dualCapture = DEFAULT_AUDIO_RECORDINGS.find(
+            (r) => r.rawMediaId != null && r.processedMediaId != null
+        );
+        expect(dualCapture).toBeDefined();
+        expect(mediaIds.has(dualCapture!.mediaId)).toBe(true);
+        expect(mediaIds.has(dualCapture!.rawMediaId!)).toBe(true);
+        expect(mediaIds.has(dualCapture!.processedMediaId!)).toBe(true);
+    });
+
+    it('should use three distinct media ids (primary != raw != processed) on the demo recording', () => {
+        const dualCapture = DEFAULT_AUDIO_RECORDINGS.find(
+            (r) => r.rawMediaId != null && r.processedMediaId != null
+        );
+        expect(dualCapture).toBeDefined();
+        const ids = [dualCapture!.mediaId, dualCapture!.rawMediaId!, dualCapture!.processedMediaId!];
+        expect(new Set(ids).size).toBe(3);
+        expect(ids).toEqual([
+            SEED_MEDIA_IDS.GEN_AUDIO_PRIMARY,
+            SEED_MEDIA_IDS.GEN_AUDIO_RAW,
+            SEED_MEDIA_IDS.GEN_AUDIO_PROCESSED,
+        ]);
+    });
+
+    it('should keep the dual-capture recording referencing a real (non-placeholder) primary mediaId', () => {
+        const dualCapture = DEFAULT_AUDIO_RECORDINGS.find(
+            (r) => r.rawMediaId != null && r.processedMediaId != null
+        );
+        expect(dualCapture).toBeDefined();
+        expect(dualCapture!.mediaId).not.toMatch(/placeholder/);
+        expect(dualCapture!.mediaId).toMatch(UUID_REGEX);
+    });
+});
+
+describe('Dual-Capture Demo Media (TASK-331 doc-06 F2)', () => {
+    it('should seed exactly three Media rows (primary + raw + processed)', () => {
+        expect(DEFAULT_MEDIA.length).toBe(3);
+    });
+
+    it('should have required fields for each Media row', () => {
+        const requiredFields = ['id', 'tenantId', 'name', 'uri', 'extension', 'mimeType', 'size', 'hash'];
+        DEFAULT_MEDIA.forEach((media) => {
+            requiredFields.forEach((field) => {
+                expect(media).toHaveProperty(field);
+            });
+            expect(media.name.length).toBeGreaterThan(0);
+            expect(media.uri.length).toBeGreaterThan(0);
+            expect(media.size).toBeGreaterThan(0);
+        });
+    });
+
+    it('should have valid UUID format and unique Media ids', () => {
+        DEFAULT_MEDIA.forEach((media) => {
+            expect(media.id).toMatch(UUID_REGEX);
+        });
+        const ids = DEFAULT_MEDIA.map((m) => m.id);
+        expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('should own all demo Media rows under the Global seed tenant', () => {
+        DEFAULT_MEDIA.forEach((media) => {
+            expect(media.tenantId).toBe(SEED_TENANT_ID);
+        });
+    });
+
+    it('should expose every SEED_MEDIA_IDS value as a seeded Media row', () => {
+        const ids = new Set(DEFAULT_MEDIA.map((m) => m.id));
+        Object.values(SEED_MEDIA_IDS).forEach((id) => {
+            expect(ids.has(id)).toBe(true);
+        });
     });
 });
