@@ -111,6 +111,11 @@ export interface UseArcaAudio {
   plugins: AudioPluginStates;
   error: Error | null;
   start: (options?: AudioStartOptions) => Promise<void>;
+  /**
+   * TASK-331 doc-06 F3/Q5 — start capture from the user's persisted preferences
+   * (device(s), language, workflow mode → local/backend STT, dual-capture).
+   */
+  startFromPreferences: () => Promise<void>;
   stop: () => Promise<void>;
   mute: () => void;
   unmute: () => void;
