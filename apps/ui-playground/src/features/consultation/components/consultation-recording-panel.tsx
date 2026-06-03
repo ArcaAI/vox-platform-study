@@ -1,13 +1,14 @@
+import { DiarizationSeedingIndicator } from '@/features/audio/components/diarization-seeding-indicator';
 import { DEFAULT_TRANSCRIPTION_PIPELINE_ID } from '@/features/audio/constants';
 import { useRealtimeTranscription } from '@/hooks/use-realtime-transcription';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Card, CardContent } from '@arcaai/ui/card';
 import { Skeleton } from '@arcaai/ui/skeleton';
-import { useAudioRecordings } from '@arcaai/vox';
+import { DualStreamRecorder, useArcaConfig, useAudioRecordings, useStorage } from '@arcaai/vox';
 import { formatDistanceToNow } from 'date-fns';
 import { AlertCircle, Layers, Loader2, Mic, RefreshCw, Square, Waves } from 'lucide-react';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
 interface ConsultationRecordingPanelProps {
@@ -36,7 +37,15 @@ const RECORDING_STATUS_LABEL: Record<string, string> = {
  */
 export function ConsultationRecordingPanel({ consultationId, pipelineId = DEFAULT_TRANSCRIPTION_PIPELINE_ID }: ConsultationRecordingPanelProps) {
   const realtime = useRealtimeTranscription();
-  const { recordings, isLoading: recordingsLoading, error: recordingsError, list } = useAudioRecordings();
+  const { recordings, isLoading: recordingsLoading, error: recordingsError, list, add } = useAudioRecordings();
+  const storage = useStorage();
+  const { resolvedConfig } = useArcaConfig();
+
+  // TASK-331 doc-06 F2 — gate dual capture behind the resolved pipeline/tenant
+  // config; default OFF when the flag is absent/unknown.
+  const dualCaptureEnabled = (resolvedConfig?.audio as { dualCapture?: unknown } | undefined)?.dualCapture === true;
+
+  const dualRecorderRef = useRef<DualStreamRecorder | null>(null);
 
   const refreshRecordings = useCallback(() => {
     void list(consultationId).catch(() => {
@@ -48,6 +57,27 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId = DEFAUL
     refreshRecordings();
   }, [refreshRecordings]);
 
+  // TASK-331 doc-06 F2 — capture the live audio with DualStreamRecorder once the
+  // session exposes its input stream. Baseline `useRealtimeTranscription` only
+  // surfaces the raw mic stream (no `TranscriptionPipeline` /
+  // `getProcessedTrack()`), so both recorder inputs derive from that track; the
+  // resolved-config flag governs whether the RAW stream is also persisted.
+  useEffect(() => {
+    if (!realtime.isStreaming || !realtime.inputStream || dualRecorderRef.current) return;
+    const track = realtime.inputStream.getAudioTracks()[0];
+    if (!track) return;
+    const recorder = new DualStreamRecorder(track, track);
+    recorder.start();
+    dualRecorderRef.current = recorder;
+  }, [realtime.isStreaming, realtime.inputStream]);
+
+  useEffect(() => {
+    return () => {
+      void dualRecorderRef.current?.stop().catch(() => {});
+      dualRecorderRef.current = null;
+    };
+  }, []);
+
   const handleStart = useCallback(async () => {
     try {
       await realtime.start({ pipelineId, consultationId });
@@ -58,9 +88,32 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId = DEFAUL
 
   const handleStop = useCallback(async () => {
     await realtime.stop();
+
+    // TASK-331 doc-06 F2 — persist the captured audio. The PROCESSED stream is
+    // the canonical media; when dual capture is enabled we also upload the RAW
+    // stream and attach both ids so the dual-capture badge reflects real data.
+    const recorder = dualRecorderRef.current;
+    dualRecorderRef.current = null;
+    if (recorder) {
+      try {
+        const { raw, processed } = await recorder.stop();
+        const processedKey = (
+          await storage.uploadFile('attachments', new File([processed], 'processed.webm', { type: processed.type || 'audio/webm' }))
+        ).key;
+        if (dualCaptureEnabled) {
+          const rawKey = (await storage.uploadFile('attachments', new File([raw], 'raw.webm', { type: raw.type || 'audio/webm' }))).key;
+          await add(consultationId, { mediaId: processedKey, rawMediaId: rawKey, processedMediaId: processedKey });
+        } else {
+          await add(consultationId, { mediaId: processedKey });
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to save recording');
+      }
+    }
+
     // Audio is persisted server-side during the session; refresh once it closes.
     refreshRecordings();
-  }, [realtime, refreshRecordings]);
+  }, [realtime, storage, add, consultationId, dualCaptureEnabled, refreshRecordings]);
 
   const busy = realtime.status !== 'idle' && realtime.status !== 'streaming' && realtime.status !== 'error';
 
@@ -84,6 +137,10 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId = DEFAUL
           <Badge variant={realtime.status === 'error' ? 'destructive' : realtime.isStreaming ? 'default' : 'secondary'}>
             {RECORDING_STATUS_LABEL[realtime.status] ?? realtime.status}
           </Badge>
+
+          {/* TASK-331 doc-06 F8 — surface the diarization voice-profile seeding
+              signal, matching the Audio playground's feedback. */}
+          <DiarizationSeedingIndicator seeded={realtime.voiceProfileSeeded} />
 
           {realtime.isStreaming && (
             <span className="text-muted-foreground text-xs tabular-nums">{(realtime.bytesSent / 1024).toFixed(0)} KB sent</span>

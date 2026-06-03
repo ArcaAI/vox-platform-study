@@ -3,8 +3,9 @@
  *
  * A global-scope operator (SUPER_ADMIN / GLOBAL_ADMIN) with no tenant
  * selected must NOT be able to impersonate: the button is disabled with a
- * "Select a tenant first" tooltip. Once a tenant is selected (or for a
- * tenant-locked TENANT_ADMIN) the gate is lifted.
+ * tooltip that points at the real control — the header tenant switcher
+ * (TASK-331 doc-06 F5; the on-page tenant card was removed). Once a tenant is
+ * selected (or for a tenant-locked TENANT_ADMIN) the gate is lifted.
  *
  * `@arcaai/vox` and `@arcaai/ui/*` are globally stubbed, so each is mocked
  * here with render-through shims (the tooltip shim renders its content
@@ -100,17 +101,20 @@ describe('UserList impersonation tenant-gate (TASK-327 T6)', () => {
     scope.tenantId = '';
   });
 
-  it('global scope + no tenant → impersonate is disabled with a reason tooltip', () => {
+  it('global scope + no tenant → impersonate is disabled with a header-switcher reason tooltip', () => {
     render(<UserList />);
     expect(startButton()).toBeDisabled();
-    expect(screen.getByText('Select a tenant first')).toBeInTheDocument();
+    // F5 — the reason points at the header tenant switcher, not a removed on-page card.
+    expect(screen.getByText('Choose a tenant in the header switcher to start impersonation')).toBeInTheDocument();
+    // …and no longer uses the misleading "select a tenant" phrasing.
+    expect(screen.queryByText(/select a tenant/i)).not.toBeInTheDocument();
   });
 
   it('global scope + a selected tenant → gate lifted and impersonate enabled once a user is picked', async () => {
     scope.tenantId = 'tenant-1';
     render(<UserList />);
 
-    expect(screen.queryByText('Select a tenant first')).not.toBeInTheDocument();
+    expect(screen.queryByText('Choose a tenant in the header switcher to start impersonation')).not.toBeInTheDocument();
     // No user selected yet → still disabled (pre-existing rule), but not by the tenant gate.
     expect(startButton()).toBeDisabled();
 
@@ -124,7 +128,7 @@ describe('UserList impersonation tenant-gate (TASK-327 T6)', () => {
     scope.tenantId = '';
     render(<UserList />);
 
-    expect(screen.queryByText('Select a tenant first')).not.toBeInTheDocument();
+    expect(screen.queryByText('Choose a tenant in the header switcher to start impersonation')).not.toBeInTheDocument();
     fireEvent.click(await screen.findByTestId('user-row-alice'));
     expect(startButton()).not.toBeDisabled();
   });
