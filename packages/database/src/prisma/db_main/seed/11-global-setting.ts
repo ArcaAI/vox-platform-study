@@ -14,12 +14,14 @@ import {
  * every tenant (Global + customer tenants) so the admin panel and SDK
  * always see populated configuration.
  *
- * Every tenant gets the same 15 settings (consolidated):
+ * Every tenant gets the same 19 settings (consolidated):
  *   - general       (3) — session limits, language, timeouts
- *   - feature-flags (5) — toggles for platform capabilities
+ *   - feature-flags (6) — toggles for platform capabilities
  *   - stt           (2) — speech-to-text defaults
  *   - smr           (2) — summarisation provider / model defaults
- *   - ux-constants  (3) — static model lists for UI dropdowns
+ *   - ux-constants  (4) — static model lists for UI dropdowns
+ *   - admin         (1) — locked config paths
+ *   - arcaai-admin  (1) — admin-console menu order
  *
  * Uses upsert on the (tenantId, name, key) composite unique constraint
  * to remain idempotent across repeated runs.
@@ -47,7 +49,7 @@ interface SettingDef {
 // These define the available local browser models that the SDK can use.
 // The UI reads these to populate <select> dropdowns on the Installation
 // pages (STT, VAD, Noise Filter). Seeded per-tenant so each tenant gets
-// the same consolidated set of 15 settings.
+// the same consolidated set of 19 settings.
 // =============================================================================
 
 const LOCAL_ASR_MODELS = JSON.stringify([
@@ -145,6 +147,9 @@ const ADMIN_MENU_ORDER_JSON = JSON.stringify([
 function tenantSettings(
     tenantId: string,
     ids: {
+        genMaxConcurrentSessions: string;
+        genDefaultLanguage: string;
+        genSessionTimeout: string;
         ffTranscription: string;
         ffDnaStyle: string;
         ffCrossChain: string;
@@ -165,8 +170,53 @@ function tenantSettings(
 ): SettingDef[] {
     return [
         // ── general (3) ─────────────────────────────────────────────────
+        {
+            id: ids.genMaxConcurrentSessions,
+            tenantId,
+            namespace: 'general',
+            name: 'Max Concurrent Sessions',
+            key: 'max-concurrent-sessions',
+            value: '10',
+            defaultValue: '10',
+            dataType: ValueType.Integer,
+            description: 'Maximum number of concurrent active consultation sessions allowed per user',
+        },
+        {
+            id: ids.genDefaultLanguage,
+            tenantId,
+            namespace: 'general',
+            name: 'Default Language',
+            key: 'default-language',
+            value: 'en',
+            defaultValue: 'en',
+            dataType: ValueType.String,
+            description: 'Default UI and transcription language (ISO 639-1 code)',
+        },
+        {
+            id: ids.genSessionTimeout,
+            tenantId,
+            namespace: 'general',
+            name: 'Session Timeout',
+            key: 'session-timeout',
+            value: '30',
+            defaultValue: '30',
+            dataType: ValueType.Integer,
+            description: 'Idle session timeout in minutes before automatic logout',
+        },
 
         // ── feature-flags (6) ───────────────────────────────────────────
+        {
+            id: ids.ffTranscription,
+            tenantId,
+            namespace: 'feature-flags',
+            name: 'Real-Time Transcription',
+            key: 'enable-transcription',
+            value: 'true',
+            defaultValue: 'true',
+            dataType: ValueType.Boolean,
+            description: 'Enable real-time speech-to-text transcription during consultations',
+            locked: true,
+        },
         {
             id: ids.ffDnaStyle,
             tenantId,
@@ -369,8 +419,11 @@ function tenantSettings(
     ];
 }
 
-const ALL_SETTINGS: SettingDef[] = [
+export const ALL_SETTINGS: SettingDef[] = [
     ...tenantSettings(SEED_TENANT_ID, {
+        genMaxConcurrentSessions: IDS.GLOBAL_MAX_CONCURRENT_SESSIONS,
+        genDefaultLanguage: IDS.GLOBAL_DEFAULT_LANGUAGE,
+        genSessionTimeout: IDS.GLOBAL_SESSION_TIMEOUT,
         ffTranscription: IDS.GLOBAL_FF_TRANSCRIPTION,
         ffDnaStyle: IDS.GLOBAL_FF_DNA_STYLE,
         ffCrossChain: IDS.GLOBAL_FF_CROSS_CHAIN,
@@ -389,6 +442,9 @@ const ALL_SETTINGS: SettingDef[] = [
         adminMenuOrder: IDS.GLOBAL_ADMIN_MENU_ORDER,
     }),
     ...tenantSettings(SEED_CUSTOMER_TENANT_IDS.ARCAAI, {
+        genMaxConcurrentSessions: IDS.ARCAAI_MAX_CONCURRENT_SESSIONS,
+        genDefaultLanguage: IDS.ARCAAI_DEFAULT_LANGUAGE,
+        genSessionTimeout: IDS.ARCAAI_SESSION_TIMEOUT,
         ffTranscription: IDS.ARCAAI_FF_TRANSCRIPTION,
         ffDnaStyle: IDS.ARCAAI_FF_DNA_STYLE,
         ffCrossChain: IDS.ARCAAI_FF_CROSS_CHAIN,
@@ -407,6 +463,9 @@ const ALL_SETTINGS: SettingDef[] = [
         adminMenuOrder: IDS.ARCAAI_ADMIN_MENU_ORDER,
     }),
     ...tenantSettings(SEED_CUSTOMER_TENANT_IDS.FOURBITS, {
+        genMaxConcurrentSessions: IDS.FOURBITS_MAX_CONCURRENT_SESSIONS,
+        genDefaultLanguage: IDS.FOURBITS_DEFAULT_LANGUAGE,
+        genSessionTimeout: IDS.FOURBITS_SESSION_TIMEOUT,
         ffTranscription: IDS.FOURBITS_FF_TRANSCRIPTION,
         ffDnaStyle: IDS.FOURBITS_FF_DNA_STYLE,
         ffCrossChain: IDS.FOURBITS_FF_CROSS_CHAIN,
@@ -425,6 +484,9 @@ const ALL_SETTINGS: SettingDef[] = [
         adminMenuOrder: IDS.FOURBITS_ADMIN_MENU_ORDER,
     }),
     ...tenantSettings(SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL, {
+        genMaxConcurrentSessions: IDS.MUMBAI_MAX_CONCURRENT_SESSIONS,
+        genDefaultLanguage: IDS.MUMBAI_DEFAULT_LANGUAGE,
+        genSessionTimeout: IDS.MUMBAI_SESSION_TIMEOUT,
         ffTranscription: IDS.MUMBAI_FF_TRANSCRIPTION,
         ffDnaStyle: IDS.MUMBAI_FF_DNA_STYLE,
         ffCrossChain: IDS.MUMBAI_FF_CROSS_CHAIN,
@@ -445,7 +507,7 @@ const ALL_SETTINGS: SettingDef[] = [
 ];
 
 export const seedGlobalSetting = async (client: CorePrismaClient) => {
-    console.log('Seeding per-tenant Global Settings (17 settings × 4 tenants)...');
+    console.log('Seeding per-tenant Global Settings (19 settings × 4 tenants)...');
 
     for (const s of ALL_SETTINGS) {
         await client.globalSetting.upsert({
