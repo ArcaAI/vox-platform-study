@@ -35,7 +35,7 @@ const RECORDING_STATUS_LABEL: Record<string, string> = {
  * recordings. Recordings expose the dual-capture (X8) RAW/PROCESSED media ids
  * when present, via {@link useAudioRecordings}.
  */
-export function ConsultationRecordingPanel({ consultationId, pipelineId = DEFAULT_TRANSCRIPTION_PIPELINE_ID }: ConsultationRecordingPanelProps) {
+export function ConsultationRecordingPanel({ consultationId, pipelineId }: ConsultationRecordingPanelProps) {
   const realtime = useRealtimeTranscription();
   const { recordings, isLoading: recordingsLoading, error: recordingsError, list, add } = useAudioRecordings();
   const storage = useStorage();
@@ -44,6 +44,13 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId = DEFAUL
   // TASK-331 doc-06 F2 — gate dual capture behind the resolved pipeline/tenant
   // config; default OFF when the flag is absent/unknown.
   const dualCaptureEnabled = (resolvedConfig?.audio as { dualCapture?: unknown } | undefined)?.dualCapture === true;
+
+  // TASK-333 T5 — resolve the remote transcription pipeline: explicit prop >
+  // the user/tenant cascade-resolved config (SDK config hook) > system default.
+  const resolvedPipelineId =
+    pipelineId ??
+    (resolvedConfig?.stt as { transcriptionPipelineId?: string } | undefined)?.transcriptionPipelineId ??
+    DEFAULT_TRANSCRIPTION_PIPELINE_ID;
 
   const dualRecorderRef = useRef<DualStreamRecorder | null>(null);
 
@@ -80,11 +87,11 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId = DEFAUL
 
   const handleStart = useCallback(async () => {
     try {
-      await realtime.start({ pipelineId, consultationId });
+      await realtime.start({ pipelineId: resolvedPipelineId, consultationId });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to start recording');
     }
-  }, [realtime, pipelineId, consultationId]);
+  }, [realtime, resolvedPipelineId, consultationId]);
 
   const handleStop = useCallback(async () => {
     await realtime.stop();
