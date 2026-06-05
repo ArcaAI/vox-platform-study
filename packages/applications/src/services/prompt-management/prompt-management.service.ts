@@ -399,6 +399,44 @@ export class PromptManagementService extends BaseService implements IPromptManag
     return templates.map(PromptManagementDtoMapper.toTemplateResponse);
   }
 
+  /**
+   * TASK-331 doc-09 — end-user readable templates for the calling clinician.
+   *
+   * Serves the doctor-facing template selector WITHOUT the admin
+   * `/admin/prompt-templates` plane or the `manage:PromptTemplate` ability.
+   * Returns only what the caller may consume for generation: the tenant's
+   * defaults, any department defaults, and the caller's OWN personal overlays.
+   * Other users' `USER_PERSONAL` templates are never returned — the owner
+   * predicate is bound to the caller, so this cannot leak peers' personal
+   * prompts the way the admin list would.
+   *
+   * Resulting predicate (top-level AND of the OR group, per query-builder
+   * semantics):
+   *   tenantId = caller AND resourceStatus = ENABLED [AND category = ?]
+   *   AND ( scope = TENANT_DEFAULT
+   *         OR scope = DEPARTMENT_DEFAULT
+   *         OR ( scope = USER_PERSONAL AND ownerUserId = caller ) )
+   */
+  async listAvailableForCaller(filters?: { category?: string }): Promise<PromptTemplateResponse[]> {
+    const tenantId = this.tenantId;
+    const userId = this.requestUserId;
+    if (!tenantId) throw new BadRequestException('Tenant ID is required');
+    if (!userId) throw new BadRequestException('Caller user ID is required');
+
+    const qb = this.promptTemplateRepository.$();
+    qb.Where({ tenantId });
+    qb.Where({ resourceStatus: ResourceStatusType.ENABLED });
+    if (filters?.category) qb.Where({ category: filters.category });
+    qb.WhereOr({ scope: SCOPE_TENANT_DEFAULT });
+    qb.WhereOr({ scope: 'DEPARTMENT_DEFAULT' });
+    qb.WhereOr({ scope: SCOPE_USER_PERSONAL, ownerUserId: userId });
+
+    const models = await qb.ToList();
+    const mapper = PromptTemplateEntityMapper.getInstance();
+    const templates = models.map((m) => mapper.toDomainEntity(m));
+    return templates.map(PromptManagementDtoMapper.toTemplateResponse);
+  }
+
   async getVersions(templateId: string): Promise<PromptVersionResponse[]> {
     const versions = await this.promptVersionRepository.findByTemplate(templateId);
     return versions.map(PromptManagementDtoMapper.toVersionResponse);

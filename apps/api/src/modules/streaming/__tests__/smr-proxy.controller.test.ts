@@ -1221,6 +1221,100 @@ describe('SmrProxyController', () => {
       });
     });
 
+    // TASK-331 doc-09 — `prompt_template_id` ownership bypass on the
+    // assembled-generation path. The template branch previously resolved any
+    // `findById` hit with NO tenant/owner check (unlike the DNA guard right
+    // below it), so a caller could reference another tenant's template — or a
+    // peer's USER_PERSONAL template within the same tenant — and fold its
+    // content into the system prompt. Mirror the DNA guard: tenant must match
+    // (NotFound on mismatch, no existence leak), and a USER_PERSONAL template
+    // must be owned by the caller (Forbidden otherwise).
+    describe('TASK-331 doc-09 — prompt-template tenant/owner scope', () => {
+      it('rejects a prompt template that belongs to a different tenant (NotFound, no leak)', async () => {
+        mockPromptTemplateRepo.findById.mockResolvedValue({
+          id: 'tmpl-foreign',
+          name: 'Foreign tenant template',
+          content: "Another tenant's prompt",
+          scope: 'TENANT_DEFAULT',
+          tenantId: 'tenant-other',
+        });
+
+        await expect(
+          controller.generateAssembled({
+            type: 'summary',
+            message: 'Patient transcript',
+            prompt_template_id: 'tmpl-foreign',
+          }),
+        ).rejects.toThrow(NotFoundException);
+
+        expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
+      });
+
+      it("rejects another user's USER_PERSONAL template within the same tenant (Forbidden)", async () => {
+        mockPromptTemplateRepo.findById.mockResolvedValue({
+          id: 'tmpl-peer-personal',
+          name: 'Peer personal template',
+          content: "A peer's private prompt",
+          scope: 'USER_PERSONAL',
+          ownerUserId: 'doctor-other',
+          tenantId: 'tenant-1',
+        });
+
+        await expect(
+          controller.generateAssembled({
+            type: 'summary',
+            message: 'Patient transcript',
+            prompt_template_id: 'tmpl-peer-personal',
+          }),
+        ).rejects.toThrow(ForbiddenException);
+
+        expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
+      });
+
+      it("allows the caller's OWN USER_PERSONAL template in the caller's tenant", async () => {
+        mockPromptTemplateRepo.findById.mockResolvedValue({
+          id: 'tmpl-own-personal',
+          name: 'My personal template',
+          content: 'You are my personalized assistant.',
+          scope: 'USER_PERSONAL',
+          ownerUserId: 'user-1',
+          tenantId: 'tenant-1',
+        });
+        mockHttpService.axiosRef.post.mockResolvedValue({
+          data: { task_id: 'ok', status: 'completed', content: 'ok' },
+        });
+
+        await expect(
+          controller.generateAssembled({
+            type: 'summary',
+            message: 'Patient transcript',
+            prompt_template_id: 'tmpl-own-personal',
+          }),
+        ).resolves.toBeDefined();
+      });
+
+      it('allows a TENANT_DEFAULT template in the caller tenant', async () => {
+        mockPromptTemplateRepo.findById.mockResolvedValue({
+          id: 'tmpl-tenant-default',
+          name: 'Tenant default',
+          content: 'You are a clinical assistant.',
+          scope: 'TENANT_DEFAULT',
+          tenantId: 'tenant-1',
+        });
+        mockHttpService.axiosRef.post.mockResolvedValue({
+          data: { task_id: 'ok', status: 'completed', content: 'ok' },
+        });
+
+        await expect(
+          controller.generateAssembled({
+            type: 'summary',
+            message: 'Patient transcript',
+            prompt_template_id: 'tmpl-tenant-default',
+          }),
+        ).resolves.toBeDefined();
+      });
+    });
+
     // TASK-329 X3 — raw context ownership bypass on the assembled-generation path.
     // A caller could previously pass another tenant's context_item_ids and
     // exfiltrate their content through the generated summary; the proxy must

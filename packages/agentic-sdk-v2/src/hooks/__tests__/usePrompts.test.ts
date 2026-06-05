@@ -120,6 +120,43 @@ describe('usePrompts', () => {
         });
     });
 
+    // TASK-331 doc-09 — end-user (clinician) read-only template list.
+    describe('listAvailable', () => {
+        it('should GET from PROMPT_TEMPLATE_ENDPOINTS.AVAILABLE (the end-user plane, not /admin)', async () => {
+            const templates = [{ id: 'pt-1', name: 'T1', category: 'SUMMARY', content: 'c', tags: [], currentVersionNumber: 1, createdAt: '', updatedAt: '' }];
+            mockGet.mockResolvedValue(templates);
+            const { result } = renderHook(() => usePrompts());
+
+            let resp: unknown;
+            await act(async () => { resp = await result.current.listAvailable(); });
+
+            expect(mockGet).toHaveBeenCalledWith(PROMPT_TEMPLATE_ENDPOINTS.AVAILABLE);
+            expect(resp).toEqual(templates);
+        });
+
+        it('should append the category filter when provided', async () => {
+            mockGet.mockResolvedValue([]);
+            const { result } = renderHook(() => usePrompts());
+
+            await act(async () => { await result.current.listAvailable({ category: 'SUMMARY' }); });
+
+            expect(mockGet).toHaveBeenCalledWith(expect.stringContaining('/prompt-templates/available'));
+            expect(mockGet).toHaveBeenCalledWith(expect.stringContaining('category=SUMMARY'));
+        });
+
+        it('should extract the array from a paginated wrapper response', async () => {
+            const templates = [{ id: 'pt-1', name: 'T1', category: 'SUMMARY', content: 'c', tags: [], currentVersionNumber: 1, createdAt: '', updatedAt: '' }];
+            mockGet.mockResolvedValue({ data: templates, count: 1, page: 1, limit: 10 });
+            const { result } = renderHook(() => usePrompts());
+
+            let resp: unknown;
+            await act(async () => { resp = await result.current.listAvailable(); });
+
+            expect(resp).toEqual(templates);
+            expect(Array.isArray(resp)).toBe(true);
+        });
+    });
+
     describe('get', () => {
         it('should GET from PROMPT_TEMPLATE_ENDPOINTS.GET(id)', async () => {
             const template = { id: 'pt-1', name: 'T1', category: 'SYSTEM', content: 'c', tags: [], currentVersionNumber: 1, createdAt: '', updatedAt: '' };

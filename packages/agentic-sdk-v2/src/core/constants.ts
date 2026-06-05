@@ -184,6 +184,16 @@ export const DNA_STYLE_ENDPOINTS = {
 export const PROMPT_TEMPLATE_ENDPOINTS = {
   CREATE: '/admin/prompt-templates',
   LIST: '/admin/prompt-templates',
+  /**
+   * TASK-331 doc-09 — end-user (clinician) read-only template list. Matches
+   * `PromptTemplateController` at `@Controller('prompt-templates')`
+   * `GET /available`. This is the doctor-safe path (tenant + department
+   * defaults + the caller's OWN personal templates) and requires only
+   * `read:PromptTemplate` — NOT the admin `manage` plane above. Use this (not
+   * `LIST`) for clinician-facing selectors so an impersonated/direct doctor is
+   * never bounced to `/403`.
+   */
+  AVAILABLE: '/prompt-templates/available',
   GET: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}`,
   UPDATE: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}`,
   DELETE: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}`,

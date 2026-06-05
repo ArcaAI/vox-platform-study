@@ -1413,6 +1413,60 @@ describe('PromptManagementService', () => {
         });
     });
 
+    // ─── TASK-331 doc-09: end-user readable templates (no admin ability) ─────
+    describe('listAvailableForCaller (TASK-331 doc-09)', () => {
+        it('scopes to tenant + ENABLED and ORs (TENANT_DEFAULT, DEPARTMENT_DEFAULT, own USER_PERSONAL)', async () => {
+            const qb = createMockQueryBuilder();
+            mockTemplateRepo.$.mockReturnValue(qb);
+            qb.ToList.mockResolvedValue([createMockTemplateEntity({ id: 't1' })]);
+
+            const result = await service.listAvailableForCaller();
+
+            expect(qb.Where).toHaveBeenCalledWith({ tenantId: 'tenant-1' });
+            expect(qb.Where).toHaveBeenCalledWith({ resourceStatus: ResourceStatusType.ENABLED });
+            expect(qb.WhereOr).toHaveBeenCalledWith({ scope: 'TENANT_DEFAULT' });
+            expect(qb.WhereOr).toHaveBeenCalledWith({ scope: 'DEPARTMENT_DEFAULT' });
+            expect(qb.WhereOr).toHaveBeenCalledWith({ scope: 'USER_PERSONAL', ownerUserId: 'user-id-1' });
+            expect(result).toHaveLength(1);
+        });
+
+        it('applies the category filter when provided', async () => {
+            const qb = createMockQueryBuilder();
+            mockTemplateRepo.$.mockReturnValue(qb);
+            qb.ToList.mockResolvedValue([]);
+
+            await service.listAvailableForCaller({ category: 'SUMMARY' });
+
+            expect(qb.Where).toHaveBeenCalledWith({ category: 'SUMMARY' });
+        });
+
+        it('does NOT include other users personal templates (owner predicate bound to caller)', async () => {
+            const qb = createMockQueryBuilder();
+            mockTemplateRepo.$.mockReturnValue(qb);
+            qb.ToList.mockResolvedValue([]);
+
+            await service.listAvailableForCaller();
+
+            const personalCalls = qb.WhereOr.mock.calls.filter(
+                ([p]: [Record<string, unknown>]) => p?.scope === 'USER_PERSONAL',
+            );
+            expect(personalCalls).toHaveLength(1);
+            expect(personalCalls[0][0]).toEqual({ scope: 'USER_PERSONAL', ownerUserId: 'user-id-1' });
+        });
+
+        it('throws BadRequestException when tenantId is missing', async () => {
+            mockClsService.get.mockImplementation((k: string) => (k === 'user' ? defaultClsContext.user : null));
+
+            await expect(service.listAvailableForCaller()).rejects.toThrow(BadRequestException);
+        });
+
+        it('throws BadRequestException when caller user id is missing', async () => {
+            mockClsService.get.mockImplementation((k: string) => (k === 'tenantId' ? 'tenant-1' : null));
+
+            await expect(service.listAvailableForCaller()).rejects.toThrow(BadRequestException);
+        });
+    });
+
     // ─── TASK-294 DEF-C4 W5B-8: assign templates to department ───────────
 
     describe('assignToDepartment (DEF-C4 W5B-8)', () => {

@@ -34,16 +34,14 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import type { AssembledGenerateRequest, SmrGenerateResponse } from '../api';
-import { smrClient, useGeneratePreSummary } from '../api';
+import type { AssembledGenerateRequest, PromptTemplate, SmrGenerateResponse } from '../api';
+import { smrClient, useGeneratePreSummary, usePromptTemplatesAvailable } from '../api';
 import { ImpersonationGuard, ProviderModelSelect, ResultCard, SavedSummariesPanel } from '../components';
 import { SmrStatusBadge } from '../components/smr-status-badge';
 import { addToHistory } from '../history';
 import { useDoctorContext } from '../hooks/use-doctor-context';
 
 import { useDepartment } from '@/features/admin/api/departments';
-import type { PromptTemplate } from '@/features/admin/api/prompts';
-import { usePromptTemplates } from '@/features/admin/api/prompts';
 import type { DnaReport } from '@/features/dna-writing-style/api/dna-writing-styles';
 import { useMyDnaStyle, useDnaStyleByDoctor } from '@/features/dna-writing-style/api/dna-writing-styles';
 import { CONTEXT_ENDPOINTS, useStoreApi, useArca, type ContextItem } from '@arcaai/vox';
@@ -118,7 +116,10 @@ export default function PreSummaryPage() {
 
   const userDeptId = ctx.primaryDepartmentId ?? '';
   const { data: userDepartment } = useDepartment(userDeptId, { enabled: !!userDeptId });
-  const { data: promptTemplatesResponse, isLoading: promptsLoading } = usePromptTemplates(tenantId, undefined, {
+  // TASK-331 doc-09 — clinician (end-user) plane: `/prompt-templates/available`
+  // via smrClient, NOT the admin `/admin/prompt-templates` (which requires
+  // `manage:PromptTemplate` and 403'd for impersonated/direct doctors).
+  const { data: promptTemplatesResponse, isLoading: promptsLoading } = usePromptTemplatesAvailable(tenantId, undefined, {
     enabled: !!tenantId && !ctx.requiresImpersonation,
   });
   const { data: doctorDnaStyle, isLoading: dnaLoading } = useDnaStyleByDoctor(ctx.effectiveUserId, {

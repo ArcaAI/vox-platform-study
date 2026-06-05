@@ -54,7 +54,11 @@ export const SYSTEM_ROLES = [
         externalName: 'Doctor / Clinician',
         isSystemRole: true,
         parentRoleId: null,
-        policies: ['consultation-own-manage', 'consultation-shared-patient-read', 'user-profile-own', 'api-key-own-manage', 'storage-upload'],
+        // TASK-331 doc-09 — `prompt-template-read` lets a clinician populate the
+        // Pre-Summary / Summary template selector via the end-user
+        // `GET /prompt-templates/available` route (read-only; NOT the admin
+        // `manage` plane). DEPARTMENT_HEAD inherits these via parentRoleId.
+        policies: ['consultation-own-manage', 'consultation-shared-patient-read', 'user-profile-own', 'api-key-own-manage', 'storage-upload', 'prompt-template-read'],
     },
     {
         id: SEED_ROLE_IDS.NURSE,

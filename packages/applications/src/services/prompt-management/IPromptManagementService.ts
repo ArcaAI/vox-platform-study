@@ -37,6 +37,8 @@ export abstract class IPromptManagementService {
   abstract listPromptTemplatesPaginated(filters?: ListPromptTemplatesFilters): Promise<PaginatedPromptTemplates>;
   abstract listDefaultsForDepartment(departmentId: string): Promise<PromptTemplateResponse[]>;
   abstract listMyPersonalForDepartment(departmentId: string): Promise<PromptTemplateResponse[]>;
+  // TASK-331 doc-09 — end-user readable templates (no admin ability / plane).
+  abstract listAvailableForCaller(filters?: { category?: string }): Promise<PromptTemplateResponse[]>;
   abstract getVersions(templateId: string): Promise<PromptVersionResponse[]>;
   abstract softDeletePromptTemplate(id: string): Promise<PromptTemplateResponse>;
   abstract assignToDepartment(dto: AssignDepartmentPromptRequest): Promise<DepartmentResponse>;

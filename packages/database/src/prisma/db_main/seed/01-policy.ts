@@ -290,6 +290,23 @@ export const DEFAULT_POLICIES = [
             { action: ['read', 'list'], subject: 'PromptUsageRecord', conditions: { tenantId: '${context.tenantId}' } },
         ],
     },
+    // TASK-331 doc-09 — end-user (clinician) read-only prompt-template ability.
+    // Clinicians need to populate the Pre-Summary / Summary template selector
+    // via the end-user `GET /prompt-templates/available` route. This grants ONLY
+    // `read`+`list` on PromptTemplate (tenant-scoped) — NOT `manage`. Combined
+    // with doc-09 D1 (the admin read surface bumped to `manage:PromptTemplate`),
+    // this ability satisfies the end-user controller without opening the admin
+    // `/admin/prompt-templates` GET routes (list-all / drafts / peers' personal
+    // templates / usage analytics) to doctors.
+    {
+        id: '00000000-0000-0000-0001-000000000053',
+        name: 'prompt-template-read',
+        description: 'Read-only access to prompt templates within tenant (clinician template selector)',
+        scope: PolicyScope.TENANT,
+        rules: [
+            { action: ['read', 'list'], subject: 'PromptTemplate', conditions: { tenantId: '${context.tenantId}' } },
+        ],
+    },
     {
         id: '00000000-0000-0000-0001-000000000051',
         name: 'global-settings-manage',

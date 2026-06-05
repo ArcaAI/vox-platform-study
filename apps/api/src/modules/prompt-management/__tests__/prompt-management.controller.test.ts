@@ -426,8 +426,15 @@ describe('PromptManagementController', () => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, (PromptManagementController.prototype as any)[method]);
 
-        it('should require ["read","PromptTemplate"] at class level', () => {
-            expect(getClassMetadata()).toEqual([{ action: 'read', subject: 'PromptTemplate' }]);
+        // TASK-331 doc-09 D1 — plane separation. The admin read surface is
+        // bumped class-level `read`→`manage` so that granting clinicians the
+        // new `read:PromptTemplate` ability does NOT also open the admin GET
+        // routes (list/getById/versions/usage/analytics) to them. Admins keep
+        // `manage` (no regression); the method-level create/update/delete
+        // tuples are unchanged because `getAllAndOverride` lets a handler
+        // decorator win over the class one.
+        it('should require ["manage","PromptTemplate"] at class level (doc-09 D1 plane bump)', () => {
+            expect(getClassMetadata()).toEqual([{ action: 'manage', subject: 'PromptTemplate' }]);
         });
 
         it('should require ["create","PromptTemplate"] on create (POST /prompt-templates)', () => {

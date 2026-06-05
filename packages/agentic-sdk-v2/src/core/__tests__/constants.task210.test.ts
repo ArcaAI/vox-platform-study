@@ -376,6 +376,13 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       expect(PROMPT_TEMPLATE_ENDPOINTS.CREATE).toBe('/admin/prompt-templates');
     });
 
+    // TASK-331 doc-09 — end-user (clinician) read-only template plane. This is
+    // the doctor-safe path integrators should copy for the Pre-Summary /
+    // Summary selector; it must NOT carry the `/admin` prefix.
+    it('PROMPT_TEMPLATE_ENDPOINTS.AVAILABLE should be the unprefixed end-user route', () => {
+      expect(PROMPT_TEMPLATE_ENDPOINTS.AVAILABLE).toBe('/prompt-templates/available');
+    });
+
     it('DEPARTMENT_ENDPOINTS should use admin prefix', () => {
       expect(DEPARTMENT_ENDPOINTS.LIST).toBe('/admin/departments');
       expect(DEPARTMENT_ENDPOINTS.GET('d-1')).toBe('/admin/departments/d-1');
