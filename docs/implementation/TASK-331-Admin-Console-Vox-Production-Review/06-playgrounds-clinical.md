@@ -173,9 +173,19 @@ No `DROP/DELETE/TRUNCATE`. **Not yet applied to any DB** — apply via `pnpm db:
 
 ### Deferrals / follow-ups (tracked, not blocking)
 1. **F2 remote path (Python):** STT-v2 producing two media blobs for the *remote* pipeline is deferred (separate conda-managed service). The TS writer already accepts the ids.
+Answer: Create new follow-up ticket to track this one.
 2. **F2 live-flag wiring:** the playground derives the live dual-capture flag from `resolvedConfig.audio.dualCapture` (absent in baseline `AppConfig` → defaults OFF), while the seed sets `dual_capture` in the *pipeline* `configYaml`. The seed-data badge renders; connecting the pipeline flag to the live SDK capture path needs backend config-surfacing + an SDK `AppConfig` field.
+Answer: For local-processing pipeline, capturing raw audio file and store it in backend storage is optional, we must allow developers to set it up as controlled by tenant admin. An endpoint for uploading raw audio file is required. Audio will be stored as context item as attachments.
 3. **F2 raw≠processed tracks:** baseline `useRealtimeTranscription` exposes no `TranscriptionPipeline`, so `DualStreamRecorder` is currently fed the same input track for both streams; swapping to `getRawInputTrack()`/`getProcessedTrack()` requires the panel to converge on a pipeline-exposing hook (ties into the Q5 convergence follow-up).
+Answer: For local-processing pipeline, capturing raw audio file and store it in backend storage is optional, we must allow developers to set it up as controlled by tenant admin. An endpoint for uploading raw audio file is required. Audio will be stored as context item as attachments.
 4. **Admin pipeline-config editor UI** for the `dual_capture` toggle (apps/admin) — deferred; config currently lives in `configYaml` and is seeded.
+Answer: Create new follow-up ticket to track this one.
+
+For F2: lemme get this straight for 2 use-cases:
+1. Admin set local-processing pipeline as default for all users, and users prefer to use local-processing pipeline:
+- Capture and store raw audio file in backend storage is an optional feature, feature can be enabled by developer and only tenant admin can control when to enable this feature for all users.
+2. Admin set remote-processing pipeline as default for all users, and users prefer to use remote-processing pipeline:
+- Capture and store raw audio file in backend storage is an optional feature, configured in the pipeline yaml, feature can be enabled by only tenant admin, per each pipeline.
 
 ---
 
@@ -188,3 +198,4 @@ No `DROP/DELETE/TRUNCATE`. **Not yet applied to any DB** — apply via `pnpm db:
 | 2026-06-04 | F2/F3/F4 SDK: `useArcaAudio` consolidation (mic select + 2-mic mix + `startFromPreferences`), dual-capture wiring, prompt-tier type | `1e9c0f52` → merge `5fe91eb4` |
 | 2026-06-04 | F2/F4/F5/F6/F7/F8 UI: gate copy, snippet deps, case-note id, diarization indicator, tier badge, real dual capture | `b443c208` → merge `c2a710c4` |
 | 2026-06-04 | F4 merge reconciliation: populate tier fields in `ContextDtoMapper.toSummaryMetaResponse` (+2 tests) | `3bb27df4` |
+| 2026-06-05 | F2 dual-capture follow-up (addresses §9 deferrals 1–3), parallel tracks merged to `fix/2605-review`: **TASK-332** local raw-stream capture shipped E2E (tenant-gated, server-computed effective flag, admin-locked SDK field, single-blob `AUDIO_RECORDING`); **TASK-333** remote per-pipeline `dual_capture` honored in Python + authoring/selection + typed `stt.transcriptionPipelineId` (scaffolded, **NOT E2E**); **TASK-334** opened for the remaining server-side NestJS wiring + pipeline-id population. Gate green (ui-tsc 0, vox 3297, py 1862, app 81, api 89, ui 541, builds ok). | `f545b25c`,`a2ed422a`,`19bfd643`,`bf7d2306`→`0bd5335c`; `2faa2282`,`20dcc48a`→`4f6bccb0`; `95b77524`,`91855260` |

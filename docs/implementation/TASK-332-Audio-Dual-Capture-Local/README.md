@@ -7,7 +7,7 @@
 | **Parent** | TASK-331 doc-06 (F2 — clinical playground dual capture) |
 | **Created** | 2026-06-05 |
 | **Updated** | 2026-06-05 |
-| **Status** | Pending (plan — awaiting approval) |
+| **Status** | Completed — merged to `fix/2605-review` (migration unapplied; apply on deploy) |
 
 > Sibling ticket: **TASK-333 — Audio Dual-Capture: Remote (per-pipeline)**. The two run in parallel.
 
@@ -27,12 +27,12 @@ When the active audio pipeline is **LOCAL** (client-side WASM processing in `@ar
 Gives an auditable raw recording for local-processing workflows without shipping a half-built affordance (the TASK-331 doc-06 F2 "misleading affordance" risk). Reuses the SDK's existing admin-locked config rail.
 
 ### Acceptance criteria
-- [ ] Platform capability flag exists, is `locked` (only SUPER_ADMIN can write), defaults OFF.
-- [ ] Tenant admin can toggle `captureRawAudio` per tenant; honored only when the platform capability is ON.
-- [ ] `GET /tenant/me/config` returns a single resolved boolean for local raw capture.
-- [ ] SDK exposes the typed flag in `resolvedConfig.audio` as an **admin-locked path** (not user-overridable).
-- [ ] Consultation recording panel reads the typed flag (no dead cast); when ON + local pipeline, the raw mic blob is uploaded and attached as a context item; when OFF, no raw capture.
-- [ ] All gates green (tests/build/lint); migration is additive.
+- [x] Platform capability flag exists, is `locked` (only SUPER_ADMIN can write), defaults OFF.
+- [x] Tenant admin can toggle `captureRawAudio` per tenant; honored only when the platform capability is ON.
+- [x] `GET /tenant/me/config` returns a single resolved boolean for local raw capture.
+- [x] SDK exposes the typed flag in `resolvedConfig.audio` as an **admin-locked path** (not user-overridable).
+- [x] Consultation recording panel reads the typed flag (no dead cast); when ON + local pipeline, the raw mic blob is uploaded and attached as a context item; when OFF, no raw capture.
+- [x] All gates green (tests/build/lint); migration is additive.
 
 ---
 
@@ -91,12 +91,34 @@ SDK config schema/provider; backend tenant-config resolver + `TenantFrontendConf
 ---
 
 ## 4. Implementation Summary
-_To be completed during implementation._
+
+Delivered exactly to plan (T1→T2→T3, TDD). Built in worktree branch `fix/2605-doc06-local`, code-reviewed (APPROVE-WITH-MINORS after one trivial typecheck fix), merged to `fix/2605-review`.
+
+### What was built
+- **T1 — SDK typed flag (`f545b25c`):** added `audio.captureRawAudio` to `AudioConfigSchema` (Valibot, default `false`) and `CONFIG_PERMISSIONS['audio.captureRawAudio'] = 'admin'`, so `stripLockedAndAdminPaths` strips any user-pref override. Replaced the panel's dead `as` cast with a typed read.
+- **T2 — Control-plane (`a2ed422a`):** additive migration adds `TenantFrontendConfig.captureRawAudio`, threaded through entity/factory/model/DTO + service `upsert` (mapper auto-maps via reflection). `GlobalSettingService.update` now **enforces** the `locked` write-guard (rejects non-SUPER_ADMIN — closes the prior `// TODO`). Seeded the platform capability `GlobalSetting` `enable-local-raw-capture` (SYSTEM tenant, namespace `feature-flags`, `locked`, default `false`). `MyTenantController` computes `effective = platformCapability AND tenant.captureRawAudio` **server-side** and appends one synthetic `enable-local-raw-capture` row to `GET /tenant/me/config`; `AgenticProvider` maps it to the admin-locked `tenantOverrides.audio.captureRawAudio`. Admin toggle added to the frontend-pipeline tab.
+- **T3 — Capture path (`19bfd643`):** when effective flag ON **and** `stt.provider === 'local'`, the panel records the raw mic as a **single** `MediaRecorder` blob (not `DualStreamRecorder`), uploads via `storage.uploadFile('attachments', …)`, and attaches it as an `AUDIO_RECORDING`. OFF or remote → no capture; transcription flow untouched.
+- **Review fix C1 (`bf7d2306`):** updated the second `AppConfig` test helper (`audio-page-config.test.ts`) for the now-required field.
+
+### Migration
+`20260605073615_task_332_add_tenant_capture_raw_audio` — `ADD COLUMN "captureRawAudio" BOOLEAN NOT NULL DEFAULT false` (additive, PG fast-default, no rewrite). **Unapplied** — apply on next deploy (shared note below).
+
+### API surface
+`GET /tenant/me/config` appends one `enable-local-raw-capture` row (namespace `feature-flags`, `Boolean`) carrying the server-computed **effective** boolean. The raw platform capability is never exposed on the SDK-consumption surface.
+
+### Gate evidence (post-merge, `fix/2605-review`)
+ui-playground `tsc --noEmit` **0 errors** · `@arcaai/vox` **3297 passed** · applications (tenant-frontend-config + globalSetting) **81 passed** · api (tenant module) **89 passed** · `@arcaai/{database,domains,applications}` build **success**.
+
+### Deviations / notes
+- No mapper change needed — `TenantFrontendConfigEntityMapper` uses reflection-based `AutoClassMapper`/`AutoEntityChangeMapper`, so `captureRawAudio` auto-maps both directions.
+- Post-merge, the main checkout needed a `@arcaai/{domains,applications}` rebuild (the committed `dist` was stale) before app/api unit tests passed — the standard Database→Domain→Service layer-build step.
+- Review deferred minors (non-blocking): **M1** `GlobalSettingService.create/deleteById` lack the locked guard (no remote reachability today; delete is fail-closed); **M2** extend the boot duplicate-key invariant to the SYSTEM tenant; **M3** defensive recorder-restart gate in the panel.
 
 ## 5. Change History
 | Date | Change | Files / Commits |
 |---|---|---|
 | 2026-06-05 | Plan authored (parallel Track A of TASK-331 doc-06 F2 follow-up) | — |
+| 2026-06-05 | Implemented T1–T3 (TDD), reviewed, C1 fixed, merged to `fix/2605-review`; full gate green | `f545b25c`, `a2ed422a`, `19bfd643`, `bf7d2306`; merge `0bd5335c` |
 
 ---
 

@@ -7,7 +7,7 @@
 | **Parent** | TASK-331 doc-06 (F2 — clinical playground dual capture) |
 | **Created** | 2026-06-05 |
 | **Updated** | 2026-06-05 |
-| **Status** | Pending (plan — awaiting approval) |
+| **Status** | Partial — core merged to `fix/2605-review`; remote capture **NOT yet E2E** (AC#2/#4 → TASK-334) |
 
 > Sibling ticket: **TASK-332 — Audio Dual-Capture: Local (raw)**. The two run in parallel.
 >
@@ -24,12 +24,12 @@ For **REMOTE** (server-side Python STT) processing, optionally persist **raw and
 The remote streaming path **already uploads** raw+processed WAV to MinIO, but the bytes are orphaned — no DB rows, no context item, and the `dual_capture` YAML is silently ignored. This ticket makes the seeded `dual_capture` config actually do something and closes the TASK-331 doc-06 F2 remote deferral.
 
 ### Acceptance criteria
-- [ ] Python parses `dual_capture` from `configYaml` (preprocessing + postprocessing).
-- [ ] When enabled, the already-uploaded raw/processed WAVs are registered as `Media` + `AudioRecording` (with `rawMediaId`/`processedMediaId`) and attached to the consultation context.
-- [ ] Tenant admin can configure `dual_capture` via the pipeline editor (structured, not raw-YAML-only).
-- [ ] In-consultation recording uses the user's **resolved remote pipeline** (not the hardcoded `turbo`), so per-pipeline `dual_capture` applies.
-- [ ] Unknown YAML keys are no longer silently ignored (warn) — hardening.
-- [ ] Tests green (pytest + vitest), no regressions.
+- [x] Python parses `dual_capture` from `configYaml` (preprocessing + postprocessing).
+- [~] When enabled, the already-uploaded raw/processed WAVs are registered as `Media` + `AudioRecording` and attached to the consultation context — **Python `_finalize_session` registration implemented, but NOT functional E2E** (server-side NestJS route/contract gap → **TASK-334**).
+- [x] Tenant admin can configure `dual_capture` via the pipeline editor (structured, not raw-YAML-only).
+- [~] In-consultation recording uses the user's **resolved remote pipeline** (not the hardcoded `turbo`) — **typed `stt.transcriptionPipelineId` field + read landed (I-1), but population from the tenant/user cascade is NOT wired**, so runtime still falls back to `turbo` (→ **TASK-334**).
+- [x] Unknown YAML keys are no longer silently ignored (warn) — hardening.
+- [x] Tests green (pytest + vitest), no regressions.
 
 ---
 
@@ -76,12 +76,31 @@ Python `apps/stt-v2` (dto/parser/session/gateway); admin pipeline editor; consul
 ---
 
 ## 4. Implementation Summary
-_To be completed during implementation._
+
+Built in worktree branch `fix/2605-doc06-remote` (TDD, conda `arcaenv`), code-reviewed (APPROVE-WITH-MINORS), merged to `fix/2605-review`. **Important:** the remote dual-capture feature is **scaffolded but not functional end-to-end** — see "Deferred" below.
+
+### What was built (merged)
+- **T4 — Python honors `dual_capture` + media registration (`2faa2282`):** added `DualCaptureConfig` and `dual_capture` to `PreprocessingConfig`/`PostprocessingConfig` (`pipeline/dto.py`); `yaml_parser.py` parses it and now **warns on unknown top-level keys** (hardening); `gateway.create_audio_recording` accepts/forwards `raw_media_id`/`processed_media_id`/`consultation_id`; `session_manager` stores per-session dual-capture settings and registers `Media` + `AudioRecording` in `_finalize_session` when enabled (best-effort, non-fatal).
+- **T5 — Authoring + pipeline selection (`20dcc48a`):** the admin pipeline editor models `dual_capture` as structured toggles with YAML round-trip; the consultation panel selects the resolved remote pipeline id (prop > resolved config > default).
+- **I-1 — typed pipeline field (`95b77524`):** added optional, admin-owned `stt.transcriptionPipelineId` to `SttConfigSchema` so the panel read is typed + valibot-preserved (previously an `as` cast on a non-schema field that valibot silently stripped → always fell back to `turbo`).
+- **Post-merge test repair (`91855260`):** the consolidated gate caught a real regression — `create_session` now writes `self._dual_capture`, so 3 `MagicMock(spec=SessionManager)` denoiser tests needed `_dual_capture={}` seeded; also corrected 2 **pre-existing** stale assertions (TASK-298 D-3 forwards `tenant_id` to pipeline loads — these failed on the base branch too).
+
+### Deferred to TASK-334 — remote capture is NOT E2E
+- **I-2 (server-side, the blocker):** the Python client targets a NestJS route that doesn't exist as written (`/audio-recordings` vs the actual `/audio-records`), there is **no `/internal/stt/media`** endpoint to register `Media`, and there is **no `consultationId → contextItem` container resolution**. With `dual_capture` enabled the WAV bytes are uploaded to storage but are **not** persisted as `Media`/`AudioRecording` rows nor attached to the consultation.
+- **I-1 population:** the resolved remote pipeline id is **not** populated into `stt.transcriptionPipelineId` from the tenant/user remote-config cascade, so the panel still resolves to the hardcoded `turbo` at runtime.
+- **Therefore AC#2 and AC#4 are NOT met end-to-end** and must not be claimed as such until TASK-334 lands.
+
+### Gate evidence (post-merge, `fix/2605-review`)
+Python `apps/stt-v2` unit **1862 passed** (conda `arcaenv`) · pipeline editor + consultation panel vitest green (within ui-playground **541 passed**) · `@arcaai/vox` **3297 passed** (incl. the I-1 `transcriptionPipelineId` preservation regression guard).
+
+### Conda env
+`arcaenv` (per environment rule). The `stt_v2` editable install points at the main checkout, so post-merge pytest exercises the merged code directly.
 
 ## 5. Change History
 | Date | Change | Files / Commits |
 |---|---|---|
 | 2026-06-05 | Plan authored (parallel Track B of TASK-331 doc-06 F2 follow-up) | — |
+| 2026-06-05 | Implemented T4–T5 (TDD, `arcaenv`), reviewed, merged; I-1 typed pipeline field plumbed; gate caught + fixed a denoiser regression + 2 pre-existing stale assertions. Remote capture **not E2E** — server-side wiring + pipeline-id population → TASK-334 | `2faa2282`, `20dcc48a`, `95b77524`, `91855260`; merge `4f6bccb0` |
 
 ---
 
