@@ -254,4 +254,33 @@ describe('ConfigSchema', () => {
             expect(getUserEditableFields()).not.toContain('audio.captureRawAudio');
         });
     });
+
+    // =========================================================================
+    // TASK-333 — stt.transcriptionPipelineId (resolved remote pipeline id)
+    // =========================================================================
+    describe('TASK-333: stt.transcriptionPipelineId', () => {
+        it('should be undefined by default (no system default)', () => {
+            expect(SYSTEM_DEFAULTS.stt.transcriptionPipelineId).toBeUndefined();
+            expect(v.parse(SttConfigSchema, {}).transcriptionPipelineId).toBeUndefined();
+        });
+
+        it('should PRESERVE an explicit id through parse (regression guard for I-1)', () => {
+            // The field MUST survive valibot so a surfaced remote pipeline id can
+            // reach consumers (e.g. the consultation panel). Before TASK-333 the
+            // field was absent from the schema and v.parse() stripped it.
+            const parsed = v.parse(AppConfigSchema, { stt: { transcriptionPipelineId: 'pipe-remote-1' } });
+            expect(parsed.stt.transcriptionPipelineId).toBe('pipe-remote-1');
+        });
+
+        it('should reject a non-string transcriptionPipelineId', () => {
+            expect(() => v.parse(SttConfigSchema, { transcriptionPipelineId: 123 })).toThrow();
+        });
+
+        it('should declare an admin-permission entry so user prefs cannot override it', () => {
+            expect(CONFIG_PERMISSIONS['stt.transcriptionPipelineId']).toBeDefined();
+            expect(getFieldPermission('stt.transcriptionPipelineId')).toBe('admin');
+            expect(canUserEditField('stt.transcriptionPipelineId', new Set())).toBe(false);
+            expect(getUserEditableFields()).not.toContain('stt.transcriptionPipelineId');
+        });
+    });
 });

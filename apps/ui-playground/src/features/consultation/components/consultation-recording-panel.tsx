@@ -72,7 +72,7 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId }: Consu
   // the user/tenant cascade-resolved config (SDK config hook) > system default.
   const resolvedPipelineId =
     pipelineId ??
-    (resolvedConfig?.stt as { transcriptionPipelineId?: string } | undefined)?.transcriptionPipelineId ??
+    resolvedConfig?.stt?.transcriptionPipelineId ??
     DEFAULT_TRANSCRIPTION_PIPELINE_ID;
 
   const refreshRecordings = useCallback(() => {

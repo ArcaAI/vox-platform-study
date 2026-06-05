@@ -43,6 +43,12 @@ export const SttConfigSchema = v.object({
   // truth) so the presented list can never drift from the registry-loadable set.
   availableModels: v.optional(v.array(v.object({ id: v.string(), name: v.string(), size: v.optional(v.string()) })), [...DEFAULT_AVAILABLE_STT_MODELS]),
   language: v.optional(v.string(), 'en'),
+  // TASK-333 — resolved REMOTE transcription pipeline id (admin/tenant-assigned).
+  // Surfaced through the cascade so consumers (e.g. the consultation recording
+  // panel) select the right pipeline instead of a hardcoded default. Optional:
+  // `undefined` → the caller falls back to its own default. Populating this from
+  // the tenant/user remote-config cascade is tracked in TASK-334.
+  transcriptionPipelineId: v.optional(v.string()),
 });
 
 export const UiConfigSchema = v.object({
@@ -105,6 +111,9 @@ export const CONFIG_PERMISSIONS: Record<string, ConfigFieldMeta> = {
   'stt.defaultModel': { permission: 'admin', section: 'stt', key: 'defaultModel', label: 'Default STT Model' },
   'stt.availableModels': { permission: 'admin', section: 'stt', key: 'availableModels', label: 'Available Models' },
   'stt.language': { permission: 'user', section: 'stt', key: 'language', label: 'Transcription Language' },
+  // TASK-333 — which remote pipeline a user runs is admin/tenant-assigned, so the
+  // resolved id is admin-owned (user prefs can't override it via the cascade).
+  'stt.transcriptionPipelineId': { permission: 'admin', section: 'stt', key: 'transcriptionPipelineId', label: 'Transcription Pipeline' },
 
   'ui.theme': { permission: 'user', section: 'ui', key: 'theme', label: 'Theme' },
   'ui.density': { permission: 'user', section: 'ui', key: 'density', label: 'UI Density' },
