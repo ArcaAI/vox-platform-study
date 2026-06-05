@@ -1919,3 +1919,116 @@ inference:
 """
         spec = parser.parse(yaml_content)
         assert spec.inference.max_words_per_second == 1000.0
+
+
+class TestYamlParserDualCapture:
+    """Parsing for per-pipeline ``dual_capture`` (raw / processed audio registration)."""
+
+    @pytest.fixture
+    def parser(self):
+        return PipelineYamlParser()
+
+    def test_dual_capture_defaults_disabled_when_absent(self, parser):
+        """Omitting ``dual_capture`` leaves both blocks disabled (opt-in)."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.preprocessing.dual_capture.enabled is False
+        assert spec.preprocessing.dual_capture.capture_raw is False
+        assert spec.postprocessing.dual_capture.enabled is False
+        assert spec.postprocessing.dual_capture.capture_processed is False
+
+    def test_preprocessing_dual_capture_raw_parsed(self, parser):
+        """``preprocessing.dual_capture`` opts in to raw (pre-filter) capture."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+preprocessing:
+  dual_capture:
+    enabled: true
+    capture_raw: true
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.preprocessing.dual_capture.enabled is True
+        assert spec.preprocessing.dual_capture.capture_raw is True
+
+    def test_postprocessing_dual_capture_processed_parsed(self, parser):
+        """``postprocessing.dual_capture`` opts in to processed (post-filter) capture."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+postprocessing:
+  dual_capture:
+    enabled: true
+    capture_processed: true
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.postprocessing.dual_capture.enabled is True
+        assert spec.postprocessing.dual_capture.capture_processed is True
+
+    def test_dual_capture_enabled_but_capture_flags_off(self, parser):
+        """``enabled`` with a capture flag false keeps the block on but capture off."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+preprocessing:
+  dual_capture:
+    enabled: true
+    capture_raw: false
+postprocessing:
+  dual_capture:
+    enabled: true
+    capture_processed: false
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.preprocessing.dual_capture.enabled is True
+        assert spec.preprocessing.dual_capture.capture_raw is False
+        assert spec.postprocessing.dual_capture.enabled is True
+        assert spec.postprocessing.dual_capture.capture_processed is False
+
+
+class TestYamlParserUnknownKeyWarning:
+    """Hardening: warn on unknown top-level keys so intent-only keys don't silently no-op."""
+
+    @pytest.fixture
+    def parser(self):
+        return PipelineYamlParser()
+
+    def test_unknown_top_level_key_warns(self, parser, caplog):
+        """An unrecognised top-level section emits a warning naming the key."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+telephony:
+  enabled: true
+"""
+        with caplog.at_level(logging.WARNING):
+            parser.parse(yaml_content)
+        assert "telephony" in caplog.text
+        assert "Unknown top-level" in caplog.text
+
+    def test_known_top_level_keys_do_not_warn(self, parser, caplog):
+        """All recognised sections parse without an unknown-key warning."""
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+preprocessing:
+  normalize: true
+inference:
+  beam_size: 5
+postprocessing:
+  lowercase: false
+diarization:
+  enabled: false
+"""
+        with caplog.at_level(logging.WARNING):
+            parser.parse(yaml_content)
+        assert "Unknown top-level" not in caplog.text
