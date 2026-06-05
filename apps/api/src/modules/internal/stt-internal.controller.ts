@@ -2,6 +2,7 @@ import {
   CreateAudioRecordRequest,
   CreateTranscriptRequest,
   InternalCompleteJobRequest,
+  InternalCreateMediaRequest,
   InternalFailJobRequest,
   InternalStartJobRequest,
   InternalUpdateProgressRequest,
@@ -82,5 +83,13 @@ export class SttInternalController {
   async createAudioRecord(@Req() request: RequestWithAuth, @Body() dto: CreateAudioRecordRequest) {
     this.ensureInternalApiKey(request);
     return this.sttInternalService.createAudioRecord(dto);
+  }
+
+  // TASK-334 I-2b — register a stored object as a Media row (dual-capture).
+  @Post('media')
+  @ApiOperation({ summary: 'Register a stored audio object as a Media row' })
+  async createMedia(@Req() request: RequestWithAuth, @Body() dto: InternalCreateMediaRequest) {
+    this.ensureInternalApiKey(request);
+    return this.sttInternalService.createMedia(dto);
   }
 }

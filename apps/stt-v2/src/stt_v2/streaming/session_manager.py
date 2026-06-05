@@ -1628,7 +1628,7 @@ class SessionManager:
                 raw_media_id=raw_media_id,
                 processed_media_id=processed_media_id,
                 sample_rate=session.sample_rate,
-                duration=int(session.total_duration_seconds),
+                duration_ms=int(round(session.total_duration_seconds * 1000)),
             )
 
             logger.info(

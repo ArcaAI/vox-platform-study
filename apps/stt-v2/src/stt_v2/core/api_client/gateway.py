@@ -295,7 +295,6 @@ class APIGatewayClient:
         context_item_id: str | None = None,
         media_id: str | None = None,
         tenant_id: str | None = None,
-        duration: int | None = None,
         format: str | None = None,
         sample_rate: int | None = None,
         channels: int | None = None,
@@ -306,6 +305,7 @@ class APIGatewayClient:
         raw_media_id: str | None = None,
         processed_media_id: str | None = None,
         consultation_id: str | None = None,
+        duration_ms: int | None = None,
     ) -> dict[str, Any]:
         """Create an AudioRecording linked to a ContextItem.
 
@@ -325,8 +325,8 @@ class APIGatewayClient:
             payload["tenantId"] = tenant_id
         if consultation_id:
             payload["consultationId"] = consultation_id
-        if duration is not None:
-            payload["duration"] = duration
+        if duration_ms is not None:
+            payload["durationMs"] = duration_ms
         if format:
             payload["format"] = format
         if sample_rate:
@@ -346,7 +346,7 @@ class APIGatewayClient:
 
         return await self._request(
             "POST",
-            "/internal/stt/audio-recordings",
+            "/internal/stt/audio-records",
             json=payload,
         )
 

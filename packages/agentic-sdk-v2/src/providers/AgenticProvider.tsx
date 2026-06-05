@@ -396,9 +396,14 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
       });
     }
 
+    // TASK-334 I-1 — capture the backend-preferences load so init() can await
+    // it and read the per-user resolved `remoteConfig.pipelineId` before the
+    // first cascade resolve (see Step 2). Resolves even on failure so the
+    // tenant tier still applies without the pipeline id.
+    let preferencesLoadPromise: Promise<void> = Promise.resolve();
     if (personalizationConfig.storage !== 'local') {
       const loadOp = providerLogger.startOperation('loadPreferences');
-      personalizationManager
+      preferencesLoadPromise = personalizationManager
         .loadFromBackend()
         .then(() => {
           const loaded = personalizationManager.getPreferences();
@@ -538,6 +543,26 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         // overriding it; the panel reads resolvedConfig.audio.captureRawAudio.
         if (tenantCfg.captureRawAudio !== undefined) {
           tenantOverrides.audio = { ...(tenantOverrides.audio ?? {}), captureRawAudio: tenantCfg.captureRawAudio };
+        }
+        // TASK-334 I-1 — the assigned remote ASR pipeline is resolved per-user
+        // server-side (per-user admin override -> tenant default -> global) and
+        // returned on GET /user/me/preferences as `remoteConfig.pipelineId`.
+        // Surface it as an admin-owned tenant-tier override
+        // (stt.transcriptionPipelineId is permission:'admin' in
+        // CONFIG_PERMISSIONS), so the cascade's stripLockedAndAdminPaths keeps
+        // it authoritative against user prefs and the consultation panel runs
+        // the correct pipeline instead of DEFAULT_TRANSCRIPTION_PIPELINE_ID.
+        // Awaiting the in-flight backend-prefs load (started above) adds no new
+        // request and only blocks the tier on a fetch the SDK already issues.
+        try {
+          await preferencesLoadPromise;
+          const remotePipelineId = personalizationManager.getPreferences().remoteConfig?.pipelineId;
+          if (remotePipelineId) {
+            tenantOverrides.stt = { ...(tenantOverrides.stt ?? {}), transcriptionPipelineId: remotePipelineId };
+          }
+        } catch {
+          // loadFromBackend already logs at error; the tenant tier still
+          // applies — the panel just falls back to its default pipeline id.
         }
         if ('lockedPaths' in tenantCfg && Array.isArray((tenantCfg as Record<string, unknown>).lockedPaths)) {
           lockedPaths.push(...((tenantCfg as Record<string, unknown>).lockedPaths as string[]));

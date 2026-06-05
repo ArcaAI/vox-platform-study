@@ -27,6 +27,7 @@ describe('SttInternalController.ensureInternalApiKey (TASK-310 E-6 / AC-6)', () 
       failJob: vi.fn(),
       getJobStatus: vi.fn(),
       createAudioRecord: vi.fn(),
+      createMedia: vi.fn(),
     };
     controller = new SttInternalController(sttInternalService);
   });
@@ -58,5 +59,25 @@ describe('SttInternalController.ensureInternalApiKey (TASK-310 E-6 / AC-6)', () 
     await expect(
       controller.createTranscript(request, {} as any),
     ).rejects.toThrow(UnauthorizedException);
+  });
+
+  // TASK-334 I-2b — POST internal/stt/media: register a storage object as Media.
+  describe('createMedia', () => {
+    it('throws UnauthorizedException when `apiKey` is undefined', async () => {
+      const request = {} as any;
+      await expect(controller.createMedia(request, {} as any)).rejects.toThrow(UnauthorizedException);
+      expect(sttInternalService.createMedia).not.toHaveBeenCalled();
+    });
+
+    it('delegates to the service and returns the created media id when authorized', async () => {
+      const request = { apiKey: { id: 'key-1' } } as any;
+      const dto = { tenantId: 't-1', name: 'x.wav', uri: 's3://b/x.wav', extension: 'wav', mimeType: 'audio/wav', size: 10, hash: '' } as any;
+      sttInternalService.createMedia.mockResolvedValue({ id: 'media-1' });
+
+      const result = await controller.createMedia(request, dto);
+
+      expect(result).toEqual({ id: 'media-1' });
+      expect(sttInternalService.createMedia).toHaveBeenCalledWith(dto);
+    });
   });
 });
