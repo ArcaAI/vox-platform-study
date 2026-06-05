@@ -227,4 +227,31 @@ describe('ConfigSchema', () => {
             expect(fields).not.toContain('features.dnaStyle');
         });
     });
+
+    // =========================================================================
+    // TASK-332 — audio.captureRawAudio (local raw-stream dual-capture flag)
+    // =========================================================================
+    describe('TASK-332: audio.captureRawAudio', () => {
+        it('should default captureRawAudio to false', () => {
+            expect(SYSTEM_DEFAULTS.audio.captureRawAudio).toBe(false);
+            const parsed = v.parse(AudioConfigSchema, {});
+            expect(parsed.captureRawAudio).toBe(false);
+        });
+
+        it('should accept an explicit boolean override', () => {
+            expect(v.parse(AudioConfigSchema, { captureRawAudio: true }).captureRawAudio).toBe(true);
+        });
+
+        it('should reject a non-boolean captureRawAudio', () => {
+            expect(() => v.parse(AudioConfigSchema, { captureRawAudio: 'yes' })).toThrow();
+        });
+
+        it('should declare an admin-permission entry so user prefs cannot override it', () => {
+            expect(CONFIG_PERMISSIONS['audio.captureRawAudio']).toBeDefined();
+            expect(CONFIG_PERMISSIONS['audio.captureRawAudio'].permission).toBe('admin');
+            expect(getFieldPermission('audio.captureRawAudio')).toBe('admin');
+            expect(canUserEditField('audio.captureRawAudio', new Set())).toBe(false);
+            expect(getUserEditableFields()).not.toContain('audio.captureRawAudio');
+        });
+    });
 });

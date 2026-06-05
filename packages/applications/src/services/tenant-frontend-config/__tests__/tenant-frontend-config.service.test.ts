@@ -28,9 +28,17 @@ const mockConfigRepository = {
   create: vi.fn(),
   updateWithVersion: vi.fn(),
 };
+// TASK-332 — the service reads the platform capability (a single SYSTEM_TENANT_ID
+// `GlobalSetting`) from the boot-time AppSettings cache, keyed flat by `key`.
+const mockAppSettings = { getValueWithDefault: vi.fn() };
 
 function makeService(): TenantFrontendConfigService {
-  return new TenantFrontendConfigService(mockConfigRepository as any, mockEventEmitter as any, mockClsService as any);
+  return new TenantFrontendConfigService(
+    mockConfigRepository as any,
+    mockEventEmitter as any,
+    mockClsService as any,
+    mockAppSettings as any,
+  );
 }
 
 /** Default CLS: a tenant admin pinned to tenant-1. */
@@ -65,6 +73,8 @@ describe('TenantFrontendConfigService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: platform capability OFF unless a test opts in.
+    mockAppSettings.getValueWithDefault.mockReturnValue(false);
     asTenantAdmin();
     service = makeService();
   });
@@ -193,6 +203,91 @@ describe('TenantFrontendConfigService', () => {
       await service.getByTenant('tenant-someone-else');
 
       expect(mockConfigRepository.findByTenant).toHaveBeenCalledWith('tenant-1');
+    });
+  });
+
+  // ===========================================================================
+  // TASK-332 — local raw-stream dual-capture
+  // The tenant toggle persists like the other booleans; the SDK-facing
+  // enablement is the SERVER-COMPUTED `platformCapability AND tenantToggle`.
+  // ===========================================================================
+  describe('TASK-332 captureRawAudio', () => {
+    it('persists captureRawAudio on create (defaults false when omitted)', async () => {
+      mockConfigRepository.findByTenant.mockResolvedValue(null);
+      mockConfigRepository.create.mockImplementation(async (entity: any) => entity);
+
+      await service.upsert({ captureRawAudio: true });
+      const created = mockConfigRepository.create.mock.calls[0][0];
+      expect(created.captureRawAudio).toBe(true);
+
+      vi.clearAllMocks();
+      mockAppSettings.getValueWithDefault.mockReturnValue(false);
+      asTenantAdmin();
+      mockConfigRepository.findByTenant.mockResolvedValue(null);
+      mockConfigRepository.create.mockImplementation(async (entity: any) => entity);
+      await service.upsert({ noiseCancel: true });
+      const createdDefault = mockConfigRepository.create.mock.calls[0][0];
+      expect(createdDefault.captureRawAudio).toBe(false);
+    });
+
+    it('updates captureRawAudio on the update branch (OCC)', async () => {
+      const { TenantFrontendConfigFactory } = await import('@arcaai/domains');
+      const existing = TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1', captureRawAudio: false });
+      mockConfigRepository.findByTenant.mockResolvedValue(existing);
+      mockConfigRepository.updateWithVersion.mockImplementation(async (_id: string, entity: any) => entity);
+
+      await service.upsert({ captureRawAudio: true, expectedVersion: 1 });
+
+      expect(existing.captureRawAudio).toBe(true);
+      expect(mockConfigRepository.updateWithVersion).toHaveBeenCalledWith(existing.id, existing, 1);
+    });
+
+    it('response carries captureRawAudio and the server-computed platformRawCaptureCapable', async () => {
+      const { TenantFrontendConfigFactory } = await import('@arcaai/domains');
+      const entity = TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1', captureRawAudio: true });
+      mockConfigRepository.findByTenant.mockResolvedValue(entity);
+      mockAppSettings.getValueWithDefault.mockReturnValue(true);
+
+      const result = await service.getByTenant();
+
+      expect(result!.captureRawAudio).toBe(true);
+      expect(result!.platformRawCaptureCapable).toBe(true);
+      expect(mockAppSettings.getValueWithDefault).toHaveBeenCalledWith('enable-local-raw-capture', false);
+    });
+
+    describe('resolveEffectiveLocalRawCapture — platformCapability AND tenantToggle', () => {
+      it.each([
+        { platform: true, tenant: true, expected: true },
+        { platform: true, tenant: false, expected: false },
+        { platform: false, tenant: true, expected: false },
+        { platform: false, tenant: false, expected: false },
+      ])('platform=$platform tenant=$tenant -> $expected', async ({ platform, tenant, expected }) => {
+        const { TenantFrontendConfigFactory } = await import('@arcaai/domains');
+        mockAppSettings.getValueWithDefault.mockReturnValue(platform);
+        mockConfigRepository.findByTenant.mockResolvedValue(
+          TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1', captureRawAudio: tenant }),
+        );
+
+        const effective = await service.resolveEffectiveLocalRawCapture('tenant-1');
+
+        expect(effective).toBe(expected);
+      });
+
+      it('is false when the tenant has no config row yet (even if platform-capable)', async () => {
+        mockAppSettings.getValueWithDefault.mockReturnValue(true);
+        mockConfigRepository.findByTenant.mockResolvedValue(null);
+
+        expect(await service.resolveEffectiveLocalRawCapture('tenant-1')).toBe(false);
+      });
+
+      it('short-circuits the DB read when the platform capability is OFF', async () => {
+        mockAppSettings.getValueWithDefault.mockReturnValue(false);
+
+        const effective = await service.resolveEffectiveLocalRawCapture('tenant-1');
+
+        expect(effective).toBe(false);
+        expect(mockConfigRepository.findByTenant).not.toHaveBeenCalled();
+      });
     });
   });
 });

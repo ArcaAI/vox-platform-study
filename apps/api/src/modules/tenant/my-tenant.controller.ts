@@ -3,10 +3,14 @@ import {
   TenantResponse,
   TenantDtoMapper,
   PaginatedTenantConfigResponse,
+  TenantConfigResponse,
   GlobalSettingDtoMapper,
   IActiveUserContext,
+  ITenantFrontendConfigService,
+  LOCAL_RAW_CAPTURE_CAPABILITY_KEY,
   UpdateTenantConfigRequest,
 } from '@arcaai/applications';
+import { ValueType } from '@arcaai/domains';
 import { Controller, Get, Patch, Body, Inject, BadRequestException, ParseArrayPipe } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiHeader } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
@@ -20,6 +24,8 @@ export class MyTenantController {
   constructor(
     @Inject(ITenantService)
     private readonly tenantService: ITenantService,
+    @Inject(ITenantFrontendConfigService)
+    private readonly tenantFrontendConfigService: ITenantFrontendConfigService,
     private readonly clsService: ClsService<IActiveUserContext>,
   ) {}
 
@@ -51,7 +57,21 @@ export class MyTenantController {
   async myConfig(): Promise<PaginatedTenantConfigResponse> {
     const tenantId = this.resolveTenantId();
     const result = await this.tenantService.fetchTenantConfigs({ tenantId, limit: 200, page: 1 });
-    return GlobalSettingDtoMapper.ToPaginatedResponse(result) as PaginatedTenantConfigResponse;
+    const response = GlobalSettingDtoMapper.ToPaginatedResponse(result) as PaginatedTenantConfigResponse;
+
+    // TASK-332 — surface the server-computed effective local raw-capture flag
+    // (platform capability AND tenant toggle) as a synthetic, read-only config
+    // row keyed `enable-local-raw-capture`. The SDK maps it into
+    // `audio.captureRawAudio`; the user cannot override it (admin-owned in the
+    // cascade). It is appended here so it scopes to GET /tenant/me/config only.
+    const effective = await this.tenantFrontendConfigService.resolveEffectiveLocalRawCapture(tenantId);
+    const rawCaptureRow = this.buildLocalRawCaptureRow(tenantId, effective);
+
+    return {
+      ...response,
+      count: response.count + 1,
+      data: [...response.data, rawCaptureRow],
+    } as PaginatedTenantConfigResponse;
   }
 
   /**
@@ -118,5 +138,36 @@ export class MyTenantController {
     if (tenantId) return tenantId;
 
     throw new BadRequestException('Tenant context is required. Super-admins must use /admin/tenants endpoints to manage other tenants.');
+  }
+
+  /**
+   * TASK-332 — builds the synthetic, read-only `enable-local-raw-capture` row
+   * carrying the server-computed effective boolean. It is not backed by a
+   * persisted GlobalSetting (the value is `platformCapability AND tenantToggle`),
+   * so identity/audit fields are empty and `version` is 0; the SDK only reads
+   * `key`, `namespace`, `value`, and `dataType`.
+   */
+  private buildLocalRawCaptureRow(tenantId: string, enabled: boolean): TenantConfigResponse {
+    return {
+      id: '',
+      projectId: null,
+      createdAt: '',
+      updatedAt: '',
+      resourceStatus: null,
+      resourceStatusUpdatedAt: null,
+      resourceStatusUpdatedBy: null,
+      createdBy: null,
+      updatedBy: null,
+      name: 'Enable Local Raw Capture',
+      description: 'Server-computed effective flag: platform capability AND tenant toggle. Read-only; cannot be overridden by user preferences.',
+      key: LOCAL_RAW_CAPTURE_CAPABILITY_KEY,
+      defaultValue: 'false',
+      value: enabled ? 'true' : 'false',
+      dataType: ValueType.Boolean,
+      namespace: 'feature-flags',
+      tenantId,
+      tenantCode: '',
+      version: 0,
+    };
   }
 }

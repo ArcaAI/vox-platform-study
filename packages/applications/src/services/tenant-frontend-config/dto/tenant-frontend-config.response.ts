@@ -30,6 +30,18 @@ export class TenantFrontendConfigResponse {
   @ApiProperty({ description: 'Enable speaker diarization by default' })
   diarization: boolean;
 
+  // TASK-332 — the tenant toggle (persisted). NOTE: this is NOT the SDK-facing
+  // enablement; the effective flag is `platformRawCaptureCapable && captureRawAudio`,
+  // surfaced separately to `GET /tenant/me/config` as `enable-local-raw-capture`.
+  @ApiProperty({ description: 'Tenant toggle for local raw-stream audio capture (persisted; effective only when platformRawCaptureCapable is true)' })
+  captureRawAudio: boolean;
+
+  // TASK-332 — server-computed platform capability (the locked SYSTEM_TENANT_ID
+  // `enable-local-raw-capture` GlobalSetting). The admin UI disables the toggle
+  // with a hint when this is false. Not persisted on TenantFrontendConfig.
+  @ApiProperty({ description: 'Whether the platform capability for local raw capture is enabled (admin UI disables the toggle when false)' })
+  platformRawCaptureCapable: boolean;
+
   @ApiPropertyOptional({ description: 'Typed advanced configuration (see FrontendPipelineConfigJson)' })
   configJson?: FrontendPipelineConfigJson | null;
 

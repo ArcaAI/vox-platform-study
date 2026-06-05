@@ -49,6 +49,10 @@ model TenantFrontendConfig {
     vad             Boolean @default(false)
     voiceEnrollment Boolean @default(false)
     diarization     Boolean @default(false)
+    // TASK-332 — tenant toggle for local raw-stream dual-capture. The effective
+    // SDK flag is platformCapability(GlobalSetting) AND this column, computed
+    // server-side in GET /tenant/me/config.
+    captureRawAudio Boolean @default(false)
     configJson      Json?   @db.JsonB
 
     // resource status fields

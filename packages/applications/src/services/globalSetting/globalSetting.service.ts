@@ -1,14 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ResourceType, SysEventType, EntityId, GlobalSettingEntity, GlobalSettingFactory, GlobalSettingRepository } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException } from '@arcaai/exceptions';
 import { IGlobalSettingService } from './IGlobalSettingService';
 import { CreateGlobalSettingRequest, UpdateGlobalSettingRequest } from './dto';
-import { BaseService, FetchResponse, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
+import { BaseService, FetchResponse, PaginatedQuery, isSuperAdmin, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 
-// TODO: Implement this
+const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 
 @Injectable()
 export class GlobalSettingService extends BaseService implements IGlobalSettingService {
@@ -133,6 +133,14 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
 
   async update(id: EntityId, request: UpdateGlobalSettingRequest): Promise<GlobalSettingEntity> {
     const globalSetting = await this.globalSettingRepository.findById(id);
+
+    // TASK-332 — `locked` rows are platform-owned defaults (e.g. the
+    // `enable-local-raw-capture` capability). Only a SUPER_ADMIN may write
+    // them; everyone else is refused BEFORE any mutation. Mirrors the
+    // `TenantService.updateTenantConfigs` locked posture.
+    if (globalSetting.locked && !isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException(`Setting '${globalSetting.key}' is locked and can only be modified by ${SUPER_ADMIN_ROLE} users.`);
+    }
 
     const previousData = globalSetting.toObject();
     // TASK-302 Stream D Phase C (C.7/C.8) — snapshot the row version BEFORE
