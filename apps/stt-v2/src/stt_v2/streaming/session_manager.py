@@ -27,6 +27,7 @@ import numpy as np
 import structlog
 
 from stt_v2.core.config.settings import get_settings
+from stt_v2.pipeline.dto import DualCaptureConfig
 from stt_v2.storage.blob_service import BlobService
 from stt_v2.streaming.capacity_guard import CapacityGuard
 from stt_v2.streaming.denoiser import StreamingDenoiser
@@ -96,6 +97,8 @@ class SessionManager:
         self._processed_chunk_indices: dict[str, int] = {}
         self._chunk_offsets: dict[str, int] = {}
         self._processed_chunk_offsets: dict[str, int] = {}
+        # Per-session resolved dual-capture flags (raw/processed registration).
+        self._dual_capture: dict[str, DualCaptureConfig] = {}
         self._running = False
 
         # Cache settings values at init time to avoid calling get_settings()
@@ -472,6 +475,7 @@ class SessionManager:
             self._register_inference_runtime(session, inference_worker)
 
             self._sessions[session_id] = session
+            self._dual_capture[session_id] = self._resolve_dual_capture(pipeline_config)
             self._publishers[session_id] = publisher
             self._preprocessors[session_id] = preprocessor
             self._inference_workers[session_id] = inference_worker
@@ -616,6 +620,7 @@ class SessionManager:
         self._processed_chunk_indices.pop(session_id, None)
         self._chunk_offsets.pop(session_id, None)
         self._processed_chunk_offsets.pop(session_id, None)
+        self._dual_capture.pop(session_id, None)
 
         # Release capacity (must happen even if other cleanup fails)
         try:
@@ -1508,6 +1513,138 @@ class SessionManager:
             self._blob_service = BlobService()
         return self._blob_service
 
+    def _get_api_client(self) -> Any:
+        """Lazy accessor for the API Gateway client (overridable in tests)."""
+        from stt_v2.core.api_client.gateway import get_api_client
+
+        return get_api_client()
+
+    def _resolve_dual_capture(self, pipeline_config: Any) -> DualCaptureConfig:
+        """Resolve effective dual-capture flags from a pipeline config.
+
+        ``capture_raw`` requires ``preprocessing.dual_capture`` to be enabled;
+        ``capture_processed`` requires ``postprocessing.dual_capture``. Strict
+        ``is True`` checks avoid a MagicMock pipeline config (unit tests)
+        accidentally enabling capture. ``enabled`` is the OR of the two.
+        """
+        if pipeline_config is None:
+            return DualCaptureConfig()
+        try:
+            pre = pipeline_config.preprocessing.dual_capture
+            post = pipeline_config.postprocessing.dual_capture
+            capture_raw = (
+                getattr(pre, "enabled", False) is True
+                and getattr(pre, "capture_raw", False) is True
+            )
+            capture_processed = (
+                getattr(post, "enabled", False) is True
+                and getattr(post, "capture_processed", False) is True
+            )
+        except Exception:
+            return DualCaptureConfig()
+        return DualCaptureConfig(
+            enabled=capture_raw or capture_processed,
+            capture_raw=capture_raw,
+            capture_processed=capture_processed,
+        )
+
+    async def _register_dual_capture(
+        self,
+        session: StreamSession,
+        raw_audio_uri: str | None,
+        processed_audio_uri: str | None,
+    ) -> None:
+        """Register dual-capture Media + AudioRecording for a finalized session.
+
+        The raw/processed WAVs are already uploaded to object storage; this
+        creates the corresponding ``Media`` rows and an ``AudioRecording``
+        carrying ``rawMediaId``/``processedMediaId`` against the consultation.
+
+        No-op unless the pipeline opted in *and* the relevant WAV(s) were
+        produced. Requires a ``consultation_id`` on the session (resolved from
+        the streaming-start handshake) to attach the recording. All failures
+        are logged and swallowed so finalization is never blocked.
+        """
+        settings = self._dual_capture.get(session.session_id)
+        if settings is None or not settings.enabled:
+            return
+
+        capture_raw = bool(settings.capture_raw and raw_audio_uri)
+        capture_processed = bool(settings.capture_processed and processed_audio_uri)
+        if not capture_raw and not capture_processed:
+            return
+
+        consultation_id = session.consultation_id
+        if not consultation_id:
+            logger.warning(
+                "dual_capture enabled but session has no consultation_id; "
+                "skipping media registration",
+                session_id=session.session_id,
+            )
+            return
+
+        try:
+            gateway = self._get_api_client()
+            created_by = getattr(session.metadata, "user_id", None)
+
+            raw_media_id: str | None = None
+            processed_media_id: str | None = None
+
+            if capture_raw:
+                raw_media = await gateway.create_media(
+                    tenant_id=session.tenant_id,
+                    name=f"{session.session_id}-raw.wav",
+                    uri=raw_audio_uri,
+                    extension="wav",
+                    mime_type="audio/wav",
+                    size=len(session.audio_buffer),
+                    hash="",
+                    created_by=created_by,
+                )
+                raw_media_id = (raw_media or {}).get("id") or (raw_media or {}).get(
+                    "mediaId"
+                )
+
+            if capture_processed:
+                processed_media = await gateway.create_media(
+                    tenant_id=session.tenant_id,
+                    name=f"{session.session_id}-processed.wav",
+                    uri=processed_audio_uri,
+                    extension="wav",
+                    mime_type="audio/wav",
+                    size=len(session.processed_audio_buffer),
+                    hash="",
+                    created_by=created_by,
+                )
+                processed_media_id = (processed_media or {}).get("id") or (
+                    processed_media or {}
+                ).get("mediaId")
+
+            primary_media_id = processed_media_id or raw_media_id
+            await gateway.create_audio_recording(
+                media_id=primary_media_id,
+                tenant_id=session.tenant_id,
+                consultation_id=consultation_id,
+                raw_media_id=raw_media_id,
+                processed_media_id=processed_media_id,
+                sample_rate=session.sample_rate,
+                duration=int(session.total_duration_seconds),
+            )
+
+            logger.info(
+                "Dual-capture media registered",
+                session_id=session.session_id,
+                consultation_id=consultation_id,
+                raw_media_id=raw_media_id,
+                processed_media_id=processed_media_id,
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to register dual-capture media (non-fatal)",
+                session_id=session.session_id,
+                error=str(exc),
+            )
+
     async def _finalize_session(self, session: StreamSession) -> None:
         """Finalize a session — mark finalizing, upload recordings, close, and clean up.
 
@@ -1631,6 +1768,12 @@ class SessionManager:
                         processed_audio_uri=processed_audio_uri,
                         transcript_uri=transcript_uri,
                     )
+
+                # Register dual-capture Media + AudioRecording when the
+                # pipeline opted in (self-guarded; never blocks finalization).
+                await self._register_dual_capture(
+                    session, raw_audio_uri, processed_audio_uri
+                )
         except Exception as exc:
             logger.error(
                 "Session finalization failed; will still attempt close",
@@ -1865,6 +2008,9 @@ class SessionManager:
                     )
 
                     self._sessions[meta.session_id] = session
+                    self._dual_capture[meta.session_id] = self._resolve_dual_capture(
+                        pipeline_config
+                    )
                     self._consumers[meta.session_id] = consumer
                     self._control_listeners[meta.session_id] = control_listener
                     self._publishers[meta.session_id] = publisher

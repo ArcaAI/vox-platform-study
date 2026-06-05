@@ -624,6 +624,113 @@ class TestFinalizeSessionRecording:
         assert session.status == SessionStatus.CLOSED
 
 
+class TestFinalizeSessionDualCapture:
+    """Dual-capture media registration in SessionManager._finalize_session()."""
+
+    @staticmethod
+    def _blob_with_both_complete():
+        mock_blob = MagicMock()
+        mock_blob.upload_streaming_raw_chunk = AsyncMock(return_value="s3://bucket/chunk")
+        mock_blob.upload_streaming_raw_complete = AsyncMock(return_value="s3://bucket/raw.wav")
+        mock_blob.upload_streaming_processed_complete = AsyncMock(
+            return_value="s3://bucket/processed.wav"
+        )
+        mock_blob.upload_streaming_transcript = AsyncMock(
+            return_value="s3://bucket/transcript.json"
+        )
+        mock_blob.upload_streaming_metadata = AsyncMock(
+            return_value="s3://bucket/metadata.json"
+        )
+        return mock_blob
+
+    @pytest.mark.asyncio
+    async def test_finalize_registers_dual_capture_media_when_enabled(self):
+        """Enabled (raw+processed): create two Media + an AudioRecording carrying both ids."""
+        from stt_v2.pipeline.dto import DualCaptureConfig
+
+        mgr = _make_manager()
+        session = _make_session(consultation_id="c1")
+        session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
+        session.processed_audio_buffer = bytearray(_one_second_pcm())
+        session.processed_sample_rate = 16000
+
+        mgr._sessions[session.session_id] = session
+        mgr._dual_capture[session.session_id] = DualCaptureConfig(
+            enabled=True, capture_raw=True, capture_processed=True
+        )
+
+        mgr._blob_service = self._blob_with_both_complete()
+        mgr.remove_session = AsyncMock()
+
+        mock_gateway = MagicMock()
+        mock_gateway.create_media = AsyncMock(
+            side_effect=[{"id": "raw-media-1"}, {"id": "proc-media-2"}]
+        )
+        mock_gateway.create_audio_recording = AsyncMock(return_value={"id": "ar-1"})
+        mgr._get_api_client = MagicMock(return_value=mock_gateway)
+
+        await mgr._finalize_session(session)
+
+        assert mock_gateway.create_media.await_count == 2
+        mock_gateway.create_audio_recording.assert_awaited_once()
+        kwargs = mock_gateway.create_audio_recording.await_args.kwargs
+        assert kwargs["raw_media_id"] == "raw-media-1"
+        assert kwargs["processed_media_id"] == "proc-media-2"
+        assert kwargs["consultation_id"] == "c1"
+
+    @pytest.mark.asyncio
+    async def test_finalize_skips_dual_capture_when_disabled(self):
+        """Disabled config: no Media and no AudioRecording are created."""
+        from stt_v2.pipeline.dto import DualCaptureConfig
+
+        mgr = _make_manager()
+        session = _make_session(consultation_id="c1")
+        session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
+
+        mgr._sessions[session.session_id] = session
+        mgr._dual_capture[session.session_id] = DualCaptureConfig()  # all-off
+
+        mgr._blob_service = self._blob_with_both_complete()
+        mgr.remove_session = AsyncMock()
+
+        mock_gateway = MagicMock()
+        mock_gateway.create_media = AsyncMock()
+        mock_gateway.create_audio_recording = AsyncMock()
+        mgr._get_api_client = MagicMock(return_value=mock_gateway)
+
+        await mgr._finalize_session(session)
+
+        mock_gateway.create_media.assert_not_awaited()
+        mock_gateway.create_audio_recording.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_finalize_dual_capture_skips_without_consultation(self):
+        """Enabled but no consultation_id: skip registration (documented gap, non-fatal)."""
+        from stt_v2.pipeline.dto import DualCaptureConfig
+
+        mgr = _make_manager()
+        session = _make_session(consultation_id=None)
+        session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
+
+        mgr._sessions[session.session_id] = session
+        mgr._dual_capture[session.session_id] = DualCaptureConfig(
+            enabled=True, capture_raw=True
+        )
+
+        mgr._blob_service = self._blob_with_both_complete()
+        mgr.remove_session = AsyncMock()
+
+        mock_gateway = MagicMock()
+        mock_gateway.create_media = AsyncMock()
+        mock_gateway.create_audio_recording = AsyncMock()
+        mgr._get_api_client = MagicMock(return_value=mock_gateway)
+
+        await mgr._finalize_session(session)
+
+        mock_gateway.create_media.assert_not_awaited()
+        mock_gateway.create_audio_recording.assert_not_awaited()
+
+
 # ---------------------------------------------------------------------------
 # SessionManager — snapshot loop
 # ---------------------------------------------------------------------------
