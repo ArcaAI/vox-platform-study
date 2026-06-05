@@ -41,9 +41,10 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId = DEFAUL
   const storage = useStorage();
   const { resolvedConfig } = useArcaConfig();
 
-  // TASK-331 doc-06 F2 — gate dual capture behind the resolved pipeline/tenant
-  // config; default OFF when the flag is absent/unknown.
-  const dualCaptureEnabled = (resolvedConfig?.audio as { dualCapture?: unknown } | undefined)?.dualCapture === true;
+  // TASK-332 — gate local raw-stream capture behind the server-computed
+  // effective flag (platform capability AND tenant toggle). It is admin-owned in
+  // the SDK cascade, so user prefs can't override it. Defaults OFF when absent.
+  const dualCaptureEnabled = resolvedConfig?.audio?.captureRawAudio === true;
 
   const dualRecorderRef = useRef<DualStreamRecorder | null>(null);
 

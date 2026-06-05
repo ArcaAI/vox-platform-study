@@ -210,7 +210,7 @@ describe('ConsultationRecordingPanel (TASK-329 P2)', () => {
     });
 
     it('when enabled, stopping uploads raw+processed and registers both media ids', async () => {
-      configState.resolvedConfig = { audio: { dualCapture: true } };
+      configState.resolvedConfig = { audio: { captureRawAudio: true } };
       render(<ConsultationRecordingPanel consultationId="c-1" />);
 
       // the dual recorder is started for the live capture
@@ -227,7 +227,7 @@ describe('ConsultationRecordingPanel (TASK-329 P2)', () => {
     });
 
     it('when disabled, stopping registers a single mediaId only (single-stream)', async () => {
-      configState.resolvedConfig = { audio: { dualCapture: false } };
+      configState.resolvedConfig = { audio: { captureRawAudio: false } };
       render(<ConsultationRecordingPanel consultationId="c-1" />);
 
       fireEvent.click(screen.getByText('Stop'));
