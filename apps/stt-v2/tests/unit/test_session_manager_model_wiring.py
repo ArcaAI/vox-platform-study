@@ -135,7 +135,9 @@ class TestLoadPipelineConfig:
                 result = await mgr._load_pipeline_config("pipe-1")
 
         assert result is mock_spec
-        mock_reader.get_pipeline.assert_awaited_once_with("pipe-1")
+        # TASK-298 D-3 — _load_pipeline_config forwards tenant_id (None here) to
+        # the reader so STT-V2 can refuse cross-tenant pipeline loads.
+        mock_reader.get_pipeline.assert_awaited_once_with("pipe-1", tenant_id=None)
 
     @pytest.mark.asyncio
     async def test_raises_when_pipeline_not_found(self):
@@ -653,7 +655,8 @@ class TestCreateSessionModelWiring:
             )
 
         assert session is not None
-        mgr._load_pipeline_config.assert_awaited_once_with("pipe-1")
+        # TASK-298 D-3 — create_session forwards tenant_id to the config loader.
+        mgr._load_pipeline_config.assert_awaited_once_with("pipe-1", tenant_id="t-1")
         mgr._load_vad_service.assert_awaited_once()
         mgr._load_asr_pipeline.assert_awaited_once()
 

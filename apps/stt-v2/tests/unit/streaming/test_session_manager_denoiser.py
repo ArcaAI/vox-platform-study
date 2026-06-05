@@ -25,6 +25,7 @@ class TestSessionManagerDenoiserWiring:
         mgr._publishers = {}
         mgr._preprocessors = {}
         mgr._inference_workers = {}
+        mgr._dual_capture = {}
 
         pipeline_config = MagicMock()
         pipeline_config.preprocessing.vad.enabled = True
@@ -99,6 +100,7 @@ class TestSessionManagerDenoiserWiring:
         mgr._publishers = {}
         mgr._preprocessors = {}
         mgr._inference_workers = {}
+        mgr._dual_capture = {}
 
         pipeline_config = MagicMock()
         pipeline_config.preprocessing.vad.enabled = True
@@ -166,6 +168,7 @@ class TestSessionManagerDenoiserWiring:
         mgr._publishers = {}
         mgr._preprocessors = {}
         mgr._inference_workers = {}
+        mgr._dual_capture = {}
 
         pipeline_config = MagicMock()
         pipeline_config.preprocessing.vad.enabled = True
