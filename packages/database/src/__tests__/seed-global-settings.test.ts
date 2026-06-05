@@ -57,6 +57,11 @@ const PLATFORM_WIDE_KEYS = [
   'RATE_LIMIT_TIER_RELAXED_TTL',
 ] as const;
 
+// TASK-332 — system-tenant (SYSTEM_TENANT_ID) platform capability, not per-tenant
+// and not part of the rate-limit block. A single locked row for local raw-stream
+// dual-capture, so it falls outside the per-prefix model and is counted separately.
+const SYSTEM_WIDE_KEYS = ['SYSTEM_FF_LOCAL_RAW_CAPTURE'] as const;
+
 function suffixesFor(prefix: string) {
   return PREFIXES_WITH_GENERAL.has(prefix)
     ? [...GENERAL_SUFFIXES, ...CORE_SUFFIXES]
@@ -65,7 +70,8 @@ function suffixesFor(prefix: string) {
 
 const TOTAL_IDS =
   SETTING_PREFIXES.reduce((sum, p) => sum + suffixesFor(p).length, 0) +
-  PLATFORM_WIDE_KEYS.length;
+  PLATFORM_WIDE_KEYS.length +
+  SYSTEM_WIDE_KEYS.length;
 
 describe('Global Settings Seed Data (11-global-setting)', () => {
   describe('every tenant has all expected setting IDs', () => {
@@ -147,6 +153,16 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
         const id = SEED_GLOBAL_SETTING_IDS[key as keyof typeof SEED_GLOBAL_SETTING_IDS];
         expect(id).toBeDefined();
         expect(id).toMatch(UUID_REGEX);
+      });
+    }
+  });
+
+  describe('system-wide settings (TASK-332 local raw-capture)', () => {
+    for (const key of SYSTEM_WIDE_KEYS) {
+      it(`should define ${key} on the system tenant`, () => {
+        const id = SEED_GLOBAL_SETTING_IDS[key as keyof typeof SEED_GLOBAL_SETTING_IDS];
+        expect(id).toBeDefined();
+        expect(id).toMatch(/^00000000-/);
       });
     }
   });
