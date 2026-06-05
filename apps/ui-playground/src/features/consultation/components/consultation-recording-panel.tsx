@@ -5,7 +5,7 @@ import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Card, CardContent } from '@arcaai/ui/card';
 import { Skeleton } from '@arcaai/ui/skeleton';
-import { DualStreamRecorder, useArcaConfig, useAudioRecordings, useStorage } from '@arcaai/vox';
+import { useArcaConfig, useAudioRecordings, useStorage } from '@arcaai/vox';
 import { formatDistanceToNow } from 'date-fns';
 import { AlertCircle, Layers, Loader2, Mic, RefreshCw, Square, Waves } from 'lucide-react';
 import { useCallback, useEffect, useRef } from 'react';
@@ -28,6 +28,22 @@ const RECORDING_STATUS_LABEL: Record<string, string> = {
 };
 
 /**
+ * Stop a MediaRecorder and resolve with the concatenated single blob once its
+ * final `dataavailable` + `stop` events have flushed.
+ */
+function stopAndCollectBlob(recorder: MediaRecorder, chunks: Blob[]): Promise<Blob> {
+  return new Promise((resolve) => {
+    const finalize = () => resolve(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }));
+    recorder.onstop = finalize;
+    if (recorder.state !== 'inactive') {
+      recorder.stop();
+    } else {
+      finalize();
+    }
+  });
+}
+
+/**
  * Recording tab (TASK-329 P2) — in-flow consultation capture.
  *
  * Drives a live transcription session scoped to the consultation (server
@@ -44,9 +60,13 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId = DEFAUL
   // TASK-332 — gate local raw-stream capture behind the server-computed
   // effective flag (platform capability AND tenant toggle). It is admin-owned in
   // the SDK cascade, so user prefs can't override it. Defaults OFF when absent.
-  const dualCaptureEnabled = resolvedConfig?.audio?.captureRawAudio === true;
+  const captureRawAudio = resolvedConfig?.audio?.captureRawAudio === true;
+  // Only the LOCAL (client-side) pipeline captures the raw mic here; the resolved
+  // STT provider is the admin-owned signal for where transcription runs.
+  const isLocalPipeline = resolvedConfig?.stt?.provider === 'local';
+  const shouldCaptureRaw = captureRawAudio && isLocalPipeline;
 
-  const dualRecorderRef = useRef<DualStreamRecorder | null>(null);
+  const rawRecorderRef = useRef<{ recorder: MediaRecorder; chunks: Blob[] } | null>(null);
 
   const refreshRecordings = useCallback(() => {
     void list(consultationId).catch(() => {
@@ -58,24 +78,32 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId = DEFAUL
     refreshRecordings();
   }, [refreshRecordings]);
 
-  // TASK-331 doc-06 F2 — capture the live audio with DualStreamRecorder once the
-  // session exposes its input stream. Baseline `useRealtimeTranscription` only
-  // surfaces the raw mic stream (no `TranscriptionPipeline` /
-  // `getProcessedTrack()`), so both recorder inputs derive from that track; the
-  // resolved-config flag governs whether the RAW stream is also persisted.
+  // TASK-332 — on the LOCAL path, capture the RAW mic stream as a single blob
+  // with one MediaRecorder once the session exposes its input stream. The local
+  // pipeline's processed output is the transcription itself, so there is no
+  // second audio artifact (hence a single recorder, not DualStreamRecorder).
   useEffect(() => {
-    if (!realtime.isStreaming || !realtime.inputStream || dualRecorderRef.current) return;
-    const track = realtime.inputStream.getAudioTracks()[0];
-    if (!track) return;
-    const recorder = new DualStreamRecorder(track, track);
+    if (!shouldCaptureRaw || !realtime.isStreaming || !realtime.inputStream || rawRecorderRef.current) return;
+    const chunks: Blob[] = [];
+    const recorder = new MediaRecorder(realtime.inputStream);
+    recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) chunks.push(event.data);
+    };
     recorder.start();
-    dualRecorderRef.current = recorder;
-  }, [realtime.isStreaming, realtime.inputStream]);
+    rawRecorderRef.current = { recorder, chunks };
+  }, [shouldCaptureRaw, realtime.isStreaming, realtime.inputStream]);
 
   useEffect(() => {
     return () => {
-      void dualRecorderRef.current?.stop().catch(() => {});
-      dualRecorderRef.current = null;
+      const active = rawRecorderRef.current;
+      rawRecorderRef.current = null;
+      if (active && active.recorder.state !== 'inactive') {
+        try {
+          active.recorder.stop();
+        } catch {
+          /* best-effort cleanup */
+        }
+      }
     };
   }, []);
 
@@ -90,23 +118,16 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId = DEFAUL
   const handleStop = useCallback(async () => {
     await realtime.stop();
 
-    // TASK-331 doc-06 F2 — persist the captured audio. The PROCESSED stream is
-    // the canonical media; when dual capture is enabled we also upload the RAW
-    // stream and attach both ids so the dual-capture badge reflects real data.
-    const recorder = dualRecorderRef.current;
-    dualRecorderRef.current = null;
-    if (recorder) {
+    // TASK-332 — on the local path, persist the captured RAW mic blob and attach
+    // it as an AUDIO_RECORDING context item. When the flag is off (or the
+    // pipeline is remote) no recorder was started, so nothing is captured here.
+    const active = rawRecorderRef.current;
+    rawRecorderRef.current = null;
+    if (active) {
       try {
-        const { raw, processed } = await recorder.stop();
-        const processedKey = (
-          await storage.uploadFile('attachments', new File([processed], 'processed.webm', { type: processed.type || 'audio/webm' }))
-        ).key;
-        if (dualCaptureEnabled) {
-          const rawKey = (await storage.uploadFile('attachments', new File([raw], 'raw.webm', { type: raw.type || 'audio/webm' }))).key;
-          await add(consultationId, { mediaId: processedKey, rawMediaId: rawKey, processedMediaId: processedKey });
-        } else {
-          await add(consultationId, { mediaId: processedKey });
-        }
+        const blob = await stopAndCollectBlob(active.recorder, active.chunks);
+        const { key } = await storage.uploadFile('attachments', new File([blob], 'raw.webm', { type: blob.type || 'audio/webm' }));
+        await add(consultationId, { mediaId: key });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Failed to save recording');
       }
@@ -114,7 +135,7 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId = DEFAUL
 
     // Audio is persisted server-side during the session; refresh once it closes.
     refreshRecordings();
-  }, [realtime, storage, add, consultationId, dualCaptureEnabled, refreshRecordings]);
+  }, [realtime, storage, add, consultationId, refreshRecordings]);
 
   const busy = realtime.status !== 'idle' && realtime.status !== 'streaming' && realtime.status !== 'error';
 

@@ -18,6 +18,7 @@ function makeAppConfig(overrides: Partial<AppConfig> = {}): AppConfig {
             vadThreshold: 0.5,
             diarization: false,
             codeSwitching: false,
+            captureRawAudio: false,
             ...overrides.audio,
         },
         stt: {
@@ -487,21 +488,21 @@ describe('useAudioStore', () => {
 
         it('should apply noiseSuppression from resolved audio config', () => {
             getState().applyResolvedConfig(makeAppConfig({
-                audio: { noiseSuppression: false, sampleRate: 16000, noiseFilterLevel: 'medium', echoCancellation: true, autoGainControl: true, vadEnabled: false, vadThreshold: 0.5, diarization: false, codeSwitching: false },
+                audio: { noiseSuppression: false, sampleRate: 16000, noiseFilterLevel: 'medium', echoCancellation: true, autoGainControl: true, vadEnabled: false, vadThreshold: 0.5, diarization: false, codeSwitching: false, captureRawAudio: false },
             }));
             expect(getState().noiseFilterEnabled).toBe(false);
         });
 
         it('should apply noiseFilterLevel from resolved audio config', () => {
             getState().applyResolvedConfig(makeAppConfig({
-                audio: { noiseFilterLevel: 'high', sampleRate: 16000, noiseSuppression: true, echoCancellation: true, autoGainControl: true, vadEnabled: false, vadThreshold: 0.5, diarization: false, codeSwitching: false },
+                audio: { noiseFilterLevel: 'high', sampleRate: 16000, noiseSuppression: true, echoCancellation: true, autoGainControl: true, vadEnabled: false, vadThreshold: 0.5, diarization: false, codeSwitching: false, captureRawAudio: false },
             }));
             expect(getState().noiseFilterLevel).toBe('high');
         });
 
         it('should apply vadEnabled and vadThreshold from resolved config', () => {
             getState().applyResolvedConfig(makeAppConfig({
-                audio: { vadEnabled: true, vadThreshold: 0.8, sampleRate: 16000, noiseSuppression: true, noiseFilterLevel: 'medium', echoCancellation: true, autoGainControl: true, diarization: false, codeSwitching: false },
+                audio: { vadEnabled: true, vadThreshold: 0.8, sampleRate: 16000, noiseSuppression: true, noiseFilterLevel: 'medium', echoCancellation: true, autoGainControl: true, diarization: false, codeSwitching: false, captureRawAudio: false },
             }));
             expect(getState().vadEnabled).toBe(true);
             expect(getState().vadThreshold).toBe(0.8);
@@ -509,14 +510,14 @@ describe('useAudioStore', () => {
 
         it('should apply diarization from resolved config', () => {
             getState().applyResolvedConfig(makeAppConfig({
-                audio: { diarization: true, sampleRate: 16000, noiseSuppression: true, noiseFilterLevel: 'medium', echoCancellation: true, autoGainControl: true, vadEnabled: false, vadThreshold: 0.5, codeSwitching: false },
+                audio: { diarization: true, sampleRate: 16000, noiseSuppression: true, noiseFilterLevel: 'medium', echoCancellation: true, autoGainControl: true, vadEnabled: false, vadThreshold: 0.5, codeSwitching: false, captureRawAudio: false },
             }));
             expect(getState().diarizationEnabled).toBe(true);
         });
 
         it('should apply codeSwitching from resolved config', () => {
             getState().applyResolvedConfig(makeAppConfig({
-                audio: { codeSwitching: true, sampleRate: 16000, noiseSuppression: true, noiseFilterLevel: 'medium', echoCancellation: true, autoGainControl: true, vadEnabled: false, vadThreshold: 0.5, diarization: false },
+                audio: { codeSwitching: true, sampleRate: 16000, noiseSuppression: true, noiseFilterLevel: 'medium', echoCancellation: true, autoGainControl: true, vadEnabled: false, vadThreshold: 0.5, diarization: false, captureRawAudio: false },
             }));
             expect(getState().codeSwitchingEnabled).toBe(true);
         });
