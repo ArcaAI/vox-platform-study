@@ -51,6 +51,7 @@ interface FormState {
   vad: boolean;
   voiceEnrollment: boolean;
   diarization: boolean;
+  captureRawAudio: boolean;
   configJson: FrontendPipelineConfigJson;
 }
 
@@ -60,6 +61,7 @@ const EMPTY_FORM: FormState = {
   vad: false,
   voiceEnrollment: false,
   diarization: false,
+  captureRawAudio: false,
   configJson: {},
 };
 
@@ -108,12 +110,18 @@ export function FrontendPipelineTab() {
         vad: config.vad,
         voiceEnrollment: config.voiceEnrollment,
         diarization: config.diarization,
+        captureRawAudio: config.captureRawAudio ?? false,
         configJson: config.configJson ?? {},
       });
     } else if (loadedOnce) {
       setForm(EMPTY_FORM);
     }
   }, [config, loadedOnce]);
+
+  // TASK-332 — the "Capture raw audio (local)" toggle is only operable when the
+  // server reports the locked platform capability is on. Fail closed (disabled)
+  // until a config is loaded that confirms the capability.
+  const platformRawCaptureCapable = config?.platformRawCaptureCapable === true;
 
   const patchConfigJson = useCallback((patch: Partial<FrontendPipelineConfigJson>) => {
     setForm((prev) => ({ ...prev, configJson: { ...prev.configJson, ...patch } }));
@@ -128,6 +136,7 @@ export function FrontendPipelineTab() {
         vad: form.vad,
         voiceEnrollment: form.voiceEnrollment,
         diarization: form.diarization,
+        captureRawAudio: form.captureRawAudio,
         configJson: form.configJson,
         // OCC: on update we MUST echo the version we read; on first create the
         // row has no version yet, so omit it.
@@ -240,6 +249,19 @@ export function FrontendPipelineTab() {
                   checked={form.diarization}
                   onChange={(v) => setForm((p) => ({ ...p, diarization: v }))}
                 />
+                <FeatureSwitch
+                  id="captureRawAudio"
+                  label="Capture raw audio (local)"
+                  description="Save the raw microphone stream as a downloadable recording when the local pipeline is active."
+                  checked={form.captureRawAudio}
+                  onChange={(v) => setForm((p) => ({ ...p, captureRawAudio: v }))}
+                  disabled={!platformRawCaptureCapable}
+                  hint={
+                    !platformRawCaptureCapable
+                      ? 'Unavailable — the platform capability “enable-local-raw-capture” is turned off for this deployment.'
+                      : undefined
+                  }
+                />
               </div>
             </CardContent>
           </Card>
@@ -329,12 +351,16 @@ function FeatureSwitch({
   description,
   checked,
   onChange,
+  disabled,
+  hint,
 }: {
   id: string;
   label: string;
   description: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  disabled?: boolean;
+  hint?: string;
 }) {
   return (
     <div className="flex items-start justify-between gap-3 rounded-lg border p-3">
@@ -343,8 +369,13 @@ function FeatureSwitch({
           {label}
         </Label>
         <p className="text-muted-foreground text-xs">{description}</p>
+        {hint ? (
+          <p className="text-muted-foreground mt-1 text-xs italic" data-testid={`${id}-hint`}>
+            {hint}
+          </p>
+        ) : null}
       </div>
-      <Switch id={id} checked={checked} onCheckedChange={onChange} aria-label={label} />
+      <Switch id={id} checked={checked} onCheckedChange={onChange} aria-label={label} disabled={disabled} />
     </div>
   );
 }

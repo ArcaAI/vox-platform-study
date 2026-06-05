@@ -36,6 +36,17 @@ export interface TenantFrontendConfig {
   vad: boolean;
   voiceEnrollment: boolean;
   diarization: boolean;
+  /**
+   * TASK-332 — tenant toggle for local raw-stream audio capture (persisted).
+   * Only takes effect when `platformRawCaptureCapable` is also true.
+   */
+  captureRawAudio: boolean;
+  /**
+   * TASK-332 — server-computed platform capability for local raw capture
+   * (the locked `enable-local-raw-capture` GlobalSetting). Read-only; the admin
+   * UI disables the `captureRawAudio` toggle when this is false.
+   */
+  platformRawCaptureCapable: boolean;
   configJson?: FrontendPipelineConfigJson | null;
   resourceStatus?: string;
   createdAt: string;
@@ -55,6 +66,8 @@ export interface UpsertTenantFrontendConfigInput {
   vad?: boolean;
   voiceEnrollment?: boolean;
   diarization?: boolean;
+  /** TASK-332 — tenant toggle for local raw-stream audio capture. */
+  captureRawAudio?: boolean;
   configJson?: FrontendPipelineConfigJson | null;
   /** Required to UPDATE an existing config; omit on first-time create. */
   expectedVersion?: number;

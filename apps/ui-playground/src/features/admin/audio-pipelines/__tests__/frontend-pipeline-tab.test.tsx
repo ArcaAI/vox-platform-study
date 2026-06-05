@@ -12,7 +12,7 @@
  * so we provide explicit test doubles.
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const useTenantFrontendConfig = vi.fn();
@@ -160,5 +160,74 @@ describe('FrontendPipelineTab (TASK-331 doc-03 #1)', () => {
     fireEvent.click(await screen.findByTestId('frontend-pipeline-save'));
 
     await waitFor(() => expect(toastError).toHaveBeenCalledWith('conflict'));
+  });
+
+  // TASK-332 — "Capture raw audio (local)" toggle. It maps to the tenant
+  // `captureRawAudio` column but is only operable when the server reports the
+  // platform capability (`platformRawCaptureCapable`) is on.
+  it('TASK-332 — enables the raw-capture toggle and saves captureRawAudio when platform capability is on', async () => {
+    mockIsGlobalScope = true;
+    mockTenantId = 'tenant-cap';
+    const save = vi.fn().mockResolvedValue({ version: 3 });
+    const hook = {
+      ...baseHook(),
+      config: {
+        tenantId: 'tenant-cap',
+        asrModel: '',
+        noiseCancel: false,
+        vad: false,
+        voiceEnrollment: false,
+        diarization: false,
+        captureRawAudio: false,
+        platformRawCaptureCapable: true,
+        configJson: {},
+        version: 2,
+      },
+      save,
+    };
+    useTenantFrontendConfig.mockReturnValue(hook);
+
+    render(<FrontendPipelineTab />);
+
+    // Drain the initial async load (get → loadedOnce flip → re-hydrate) so the
+    // subsequent toggle click is not clobbered by a late re-hydration.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    const toggle = await screen.findByRole('switch', { name: 'Capture raw audio (local)' });
+    expect(toggle).not.toBeDisabled();
+    expect(screen.queryByTestId('captureRawAudio-hint')).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByTestId('frontend-pipeline-save'));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ captureRawAudio: true, expectedVersion: 2 }), 'tenant-cap');
+  });
+
+  it('TASK-332 — disables the raw-capture toggle with a hint when platform capability is off', async () => {
+    const hook = {
+      ...baseHook(),
+      config: {
+        tenantId: 't-off',
+        asrModel: '',
+        noiseCancel: false,
+        vad: false,
+        voiceEnrollment: false,
+        diarization: false,
+        captureRawAudio: false,
+        platformRawCaptureCapable: false,
+        configJson: {},
+        version: 1,
+      },
+    };
+    useTenantFrontendConfig.mockReturnValue(hook);
+
+    render(<FrontendPipelineTab />);
+
+    const toggle = await screen.findByRole('switch', { name: 'Capture raw audio (local)' });
+    expect(toggle).toBeDisabled();
+    expect(screen.getByTestId('captureRawAudio-hint')).toBeInTheDocument();
   });
 });

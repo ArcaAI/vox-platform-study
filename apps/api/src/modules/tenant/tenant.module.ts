@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { TenantServiceModule } from '@arcaai/applications';
+import { TenantServiceModule, TenantFrontendConfigServiceModule } from '@arcaai/applications';
 import { TenantController } from './tenant.controller';
 import { MyTenantController } from './my-tenant.controller';
 
 @Module({
-  imports: [TenantServiceModule],
+  imports: [TenantServiceModule, TenantFrontendConfigServiceModule],
   controllers: [TenantController, MyTenantController],
 })
 export class TenantModule {}

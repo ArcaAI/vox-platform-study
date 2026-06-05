@@ -762,6 +762,12 @@ export interface TenantAudioConfig {
   defaultSmrModel?: string;
   defaultLanguage?: string;
   features: TenantFeatureFlags;
+  /**
+   * TASK-332 — server-computed effective local raw-capture flag
+   * (platform capability AND tenant toggle). Read-only from the client's
+   * perspective; the provider maps it into `audio.captureRawAudio`.
+   */
+  captureRawAudio?: boolean;
   localAsrModels?: LocalAsrModelInfo[];
   localVadModels?: LocalVadModelInfo[];
   localNoiseSuppressionModels?: LocalNoiseSuppressionModelInfo[];
@@ -808,6 +814,11 @@ export const TENANT_CONFIG_KEYS = {
   ENABLE_CODE_SWITCHING: 'enable-code-switching',
   ENABLE_DNA_STYLE: 'enable-dna-style',
   ENABLE_CROSS_CHAIN_SUMMARY: 'enable-cross-chain-summary',
+  // TASK-332 — server-computed effective flag (platform capability AND tenant
+  // toggle) for local raw-stream audio capture. Surfaced via GET
+  // /tenant/me/config and mapped into audio.captureRawAudio (admin-owned;
+  // user preferences cannot override it).
+  ENABLE_LOCAL_RAW_CAPTURE: 'enable-local-raw-capture',
   LOCAL_ASR_MODELS: 'local-asr-models',
   LOCAL_VAD_MODELS: 'local-vad-models',
   LOCAL_NOISE_SUPPRESSION_MODELS: 'local-noise-suppression-models',
@@ -878,6 +889,7 @@ export function parseTenantConfig(settings: TenantSettingRecord[]): TenantAudioC
       dnaStyle: settingBool(settings, K.ENABLE_DNA_STYLE, D.dnaStyle),
       crossChainSummary: settingBool(settings, K.ENABLE_CROSS_CHAIN_SUMMARY, D.crossChainSummary),
     },
+    captureRawAudio: settingBool(settings, K.ENABLE_LOCAL_RAW_CAPTURE, false),
     localAsrModels: settingJsonArray<LocalAsrModelInfo>(settings, K.LOCAL_ASR_MODELS),
     localVadModels: settingJsonArray<LocalVadModelInfo>(settings, K.LOCAL_VAD_MODELS),
     localNoiseSuppressionModels: settingJsonArray<LocalNoiseSuppressionModelInfo>(settings, K.LOCAL_NOISE_SUPPRESSION_MODELS),

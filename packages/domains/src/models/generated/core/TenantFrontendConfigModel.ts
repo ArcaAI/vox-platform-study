@@ -12,6 +12,7 @@ export class TenantFrontendConfig extends BaseTenantDataModel {
   public vad: boolean;
   public voiceEnrollment: boolean;
   public diarization: boolean;
+  public captureRawAudio: boolean;
   public configJson: any | null;
 
   public resourceStatus: Enums.ResourceStatusType;
@@ -25,6 +26,7 @@ export class TenantFrontendConfig extends BaseTenantDataModel {
     this.vad = data.vad;
     this.voiceEnrollment = data.voiceEnrollment;
     this.diarization = data.diarization;
+    this.captureRawAudio = data.captureRawAudio;
     this.configJson = data.configJson;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
