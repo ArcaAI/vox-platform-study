@@ -122,46 +122,78 @@ export class InternalFailJobRequest {
  * Called after STT-v2 stores audio blob to MinIO
  */
 export class CreateAudioRecordRequest {
-  @ApiProperty({
-    description: 'Context item ID to associate the audio with',
+  // TASK-334 I-2c — the writer now serves two callers:
+  //  • batch/local: `contextItemId` + the storage quartet (creates the Media here)
+  //  • streaming dual-capture: `consultationId` (+ `tenantId`) + a pre-registered
+  //    `mediaId` (raw/processed Media already created via /internal/stt/media)
+  // Hence the previously-required fields are optional; the service enforces
+  // "contextItemId OR consultationId" and "mediaId OR storage quartet".
+  @ApiPropertyOptional({
+    description: 'Context item ID to associate the audio with. Provide this OR consultationId.',
     example: '01234567-89ab-cdef-0123-456789abcdef',
   })
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @IsUUID()
-  contextItemId: string;
+  contextItemId?: string;
 
-  @ApiProperty({
-    description: 'MinIO storage path/URI where audio is stored',
+  @ApiPropertyOptional({
+    description: 'Consultation ID to attach the recording to (streaming path). Resolves/creates the AUDIO_RECORDING container. Provide this OR contextItemId.',
+    example: '01234567-89ab-cdef-0123-456789abcdef',
+  })
+  @IsString()
+  @IsOptional()
+  @IsUUID()
+  consultationId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Owning tenant ID (required when attaching by consultationId).',
+  })
+  @IsString()
+  @IsOptional()
+  tenantId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Pre-registered primary Media id (streaming dual-capture). Provide this OR the storage quartet.',
+    example: '01234567-89ab-cdef-0123-456789abcdef',
+  })
+  @IsString()
+  @IsOptional()
+  @IsUUID()
+  mediaId?: string;
+
+  @ApiPropertyOptional({
+    description: 'MinIO storage path/URI where audio is stored (required when mediaId is absent)',
     example: 'hope-audio/tenant-123/2026/02/consultations/consult-456/audio-789.wav',
   })
   @IsString()
-  @IsNotEmpty()
-  storagePath: string;
+  @IsOptional()
+  storagePath?: string;
 
-  @ApiProperty({
-    description: 'Original filename',
+  @ApiPropertyOptional({
+    description: 'Original filename (required when mediaId is absent)',
     example: 'recording.wav',
   })
   @IsString()
-  @IsNotEmpty()
-  filename: string;
+  @IsOptional()
+  filename?: string;
 
-  @ApiProperty({
-    description: 'File size in bytes',
+  @ApiPropertyOptional({
+    description: 'File size in bytes (required when mediaId is absent)',
     example: 1048576,
   })
   @IsNumber()
+  @IsOptional()
   @Min(1)
-  fileSizeBytes: number;
+  fileSizeBytes?: number;
 
-  @ApiProperty({
-    description: 'MIME type of the audio file',
+  @ApiPropertyOptional({
+    description: 'MIME type of the audio file (required when mediaId is absent)',
     example: 'audio/wav',
   })
   @IsString()
-  @IsNotEmpty()
-  mimeType: string;
+  @IsOptional()
+  mimeType?: string;
 
   @ApiPropertyOptional({
     description: 'Audio duration in milliseconds',
@@ -266,4 +298,61 @@ export class AudioRecordResponse {
 
   @ApiProperty({ description: 'Media ID' })
   mediaId: string;
+}
+
+/**
+ * TASK-334 I-2b — Request from STT-v2 to register a stored object as a `Media`
+ * row. The streaming dual-capture path uploads raw/processed WAVs to object
+ * storage, then calls this to obtain each `Media` id (`rawMediaId` /
+ * `processedMediaId`) before creating the `AudioRecording`.
+ */
+export class InternalCreateMediaRequest {
+  @ApiProperty({ description: 'Owning tenant ID' })
+  @IsString()
+  @IsNotEmpty()
+  tenantId: string;
+
+  @ApiProperty({ description: 'Media display name / filename', example: 'session-1-raw.wav' })
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @ApiProperty({ description: 'Storage URI/key where the object is stored' })
+  @IsString()
+  @IsNotEmpty()
+  uri: string;
+
+  @ApiProperty({ description: 'File extension', example: 'wav' })
+  @IsString()
+  @IsNotEmpty()
+  extension: string;
+
+  @ApiProperty({ description: 'MIME type', example: 'audio/wav' })
+  @IsString()
+  @IsNotEmpty()
+  mimeType: string;
+
+  @ApiProperty({ description: 'File size in bytes', example: 2048 })
+  @IsNumber()
+  @Min(0)
+  size: number;
+
+  @ApiPropertyOptional({ description: 'Content hash (SHA256); empty when unknown', default: '' })
+  @IsString()
+  @IsOptional()
+  hash?: string;
+
+  @ApiPropertyOptional({ description: 'User id that created the capture' })
+  @IsString()
+  @IsOptional()
+  createdBy?: string;
+}
+
+/**
+ * Response for a created Media row. `id` matches what the STT-v2 client reads
+ * back as `rawMediaId`/`processedMediaId`.
+ */
+export class InternalCreateMediaResponse {
+  @ApiProperty({ description: 'Created Media ID' })
+  id: string;
 }

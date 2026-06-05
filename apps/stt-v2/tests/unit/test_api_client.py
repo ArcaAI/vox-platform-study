@@ -354,7 +354,7 @@ class TestAPIGatewayClientMethods:
                 context_item_id="ctx-123",
                 media_id="m-456",
                 tenant_id="t-789",
-                duration=60,
+                duration_ms=60000,
                 format="wav",
                 sample_rate=16000,
                 channels=1,
@@ -363,10 +363,11 @@ class TestAPIGatewayClientMethods:
                 sequence_number=2,
             )
 
-            # Test all audio metadata is included
+            # Test all audio metadata is included. The duration is forwarded as
+            # `durationMs` to match the NestJS DTO whitelist (TASK-334 I-2c).
             assert captured_payload["contextItemId"] == "ctx-123"
             assert captured_payload["mediaId"] == "m-456"
-            assert captured_payload["duration"] == 60
+            assert captured_payload["durationMs"] == 60000
             assert captured_payload["format"] == "wav"
             assert captured_payload["sampleRate"] == 16000
             assert captured_payload["channels"] == 1
@@ -422,6 +423,47 @@ class TestAPIGatewayClientMethods:
 
         assert "rawMediaId" not in captured_payload
         assert "processedMediaId" not in captured_payload
+
+    @pytest.mark.asyncio
+    async def test_create_audio_recording_targets_internal_route(self, client):
+        """I-2a contract: must POST the route the NestJS controller serves
+        (``internal/stt/audio-records``), not the mismatched ``audio-recordings``."""
+        captured: dict[str, Any] = {}
+
+        async def capture_request(method, path, json=None, params=None):
+            captured["method"] = method
+            captured["path"] = path
+            return {"id": "ar-route"}
+
+        with patch.object(client, "_request", side_effect=capture_request):
+            await client.create_audio_recording(consultation_id="c-1", tenant_id="t-1")
+
+        assert captured["method"] == "POST"
+        assert captured["path"] == "/internal/stt/audio-records"
+
+    @pytest.mark.asyncio
+    async def test_create_media_targets_internal_route(self, client):
+        """Contract guard: create_media POSTs ``internal/stt/media`` (I-2b endpoint)."""
+        captured: dict[str, Any] = {}
+
+        async def capture_request(method, path, json=None, params=None):
+            captured["method"] = method
+            captured["path"] = path
+            return {"id": "m-route"}
+
+        with patch.object(client, "_request", side_effect=capture_request):
+            await client.create_media(
+                tenant_id="t-1",
+                name="x.wav",
+                uri="s3://b/x.wav",
+                extension="wav",
+                mime_type="audio/wav",
+                size=1,
+                hash="",
+            )
+
+        assert captured["method"] == "POST"
+        assert captured["path"] == "/internal/stt/media"
 
     # =========================================================================
     # Media Creation - Test complete payload

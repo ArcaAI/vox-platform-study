@@ -1,6 +1,7 @@
 import {
   AudioRecordingFactory,
   AudioRecordingRepository,
+  ContextItemEntity,
   ContextItemFactory,
   ContextItemRepository,
   ContextItemSource,
@@ -24,6 +25,8 @@ import {
   AudioRecordResponse,
   CreateAudioRecordRequest,
   CreateTranscriptRequest,
+  InternalCreateMediaRequest,
+  InternalCreateMediaResponse,
   InternalCompleteJobRequest,
   InternalFailJobRequest,
   InternalStartJobRequest,
@@ -194,36 +197,67 @@ export class SttInternalService extends BaseService implements ISttInternalServi
    * Called by STT-v2 after storing audio blob to MinIO
    */
   async createAudioRecord(dto: CreateAudioRecordRequest): Promise<AudioRecordResponse> {
-    // Verify context item exists
-    const contextItem = await this.contextItemRepository.findById(dto.contextItemId);
-    if (!contextItem) {
-      throw new NotFoundException(`Context item ${dto.contextItemId} not found`);
+    // Validate the two input shapes up-front (before any side effects, so an
+    // invalid request never leaves an orphan container behind).
+    if (!dto.contextItemId && !dto.consultationId) {
+      throw new BadRequestException('Either contextItemId or consultationId is required');
+    }
+    const hasStorageObject = Boolean(dto.storagePath && dto.filename && dto.mimeType) && dto.fileSizeBytes != null;
+    if (!dto.mediaId && !hasStorageObject) {
+      throw new BadRequestException('Either mediaId or (storagePath, filename, fileSizeBytes, mimeType) is required');
     }
 
-    // Extract file extension from filename or mimeType
-    const extension = this.extractExtension(dto.filename, dto.mimeType);
+    // Resolve the container: explicit contextItemId (batch/local) OR resolve the
+    // consultation's AUDIO_RECORDING container (streaming dual-capture, parity
+    // with the local path's findOrCreateAudioContainer).
+    let contextItemId: string;
+    let tenantId: string | undefined;
+    if (dto.contextItemId) {
+      const contextItem = await this.contextItemRepository.findById(dto.contextItemId);
+      if (!contextItem) {
+        throw new NotFoundException(`Context item ${dto.contextItemId} not found`);
+      }
+      contextItemId = dto.contextItemId;
+      tenantId = dto.tenantId ?? contextItem.tenantId ?? undefined;
+    } else {
+      if (!dto.tenantId) {
+        throw new BadRequestException('tenantId is required when attaching by consultationId');
+      }
+      const container = await this.findOrCreateAudioContainer(dto.consultationId as string, dto.tenantId);
+      contextItemId = container.id;
+      tenantId = dto.tenantId ?? container.tenantId ?? undefined;
+    }
 
-    // Create Media record first (stores the file reference)
-    const media = MediaFactory.CreateMedia({
-      tenantId: contextItem.tenantId || undefined,
-      name: dto.filename,
-      uri: dto.storagePath,
-      extension,
-      mimeType: dto.mimeType,
-      size: dto.fileSizeBytes,
-      hash: dto.hash || '',
-    });
-
-    const savedMedia = await this.mediaRepository.create(media);
+    // Resolve the primary Media: a pre-registered mediaId (streaming, where the
+    // raw/processed Media were already created via createMedia) wins; otherwise
+    // create one from the storage object (batch/local).
+    let primaryMediaId: string;
+    let extension: string | undefined;
+    if (dto.mediaId) {
+      primaryMediaId = dto.mediaId;
+    } else {
+      extension = this.extractExtension(dto.filename as string, dto.mimeType as string);
+      const media = MediaFactory.CreateMedia({
+        tenantId,
+        name: dto.filename as string,
+        uri: dto.storagePath as string,
+        extension,
+        mimeType: dto.mimeType as string,
+        size: dto.fileSizeBytes as number,
+        hash: dto.hash || '',
+      });
+      const savedMedia = await this.mediaRepository.create(media);
+      primaryMediaId = savedMedia.id;
+    }
 
     // Get next sequence number for this context item
-    const sequenceNumber = dto.sequenceNumber || (await this.audioRecordingRepository.getNextSequenceNumber(dto.contextItemId));
+    const sequenceNumber = dto.sequenceNumber || (await this.audioRecordingRepository.getNextSequenceNumber(contextItemId));
 
     // Create AudioRecording record (links Media to ContextItem with audio metadata)
     const audioRecording = AudioRecordingFactory.CreateAudioRecording({
-      tenantId: contextItem.tenantId || undefined,
-      contextItemId: dto.contextItemId,
-      mediaId: savedMedia.id,
+      tenantId,
+      contextItemId,
+      mediaId: primaryMediaId,
       rawMediaId: dto.rawMediaId,
       processedMediaId: dto.processedMediaId,
       duration: dto.durationMs,
@@ -242,7 +276,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     if (dto.jobId) {
       const job = await this.jobRepository.findById(dto.jobId);
       if (job) {
-        job.mediaId = savedMedia.id;
+        job.mediaId = primaryMediaId;
         await this.jobRepository.update(dto.jobId, job);
       }
     }
@@ -259,16 +293,58 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       responsibleEntityId: audioResponsibleEntityId,
       data: {
         type: 'AUDIO_RECORDING',
-        mediaId: savedMedia.id,
-        contextItemId: dto.contextItemId,
+        mediaId: primaryMediaId,
+        contextItemId,
+        consultationId: dto.consultationId,
         storagePath: dto.storagePath,
       },
     });
 
     return {
       audioRecordingId: savedAudioRecording.id,
-      mediaId: savedMedia.id,
+      mediaId: primaryMediaId,
     };
+  }
+
+  /**
+   * Resolve (or create) the consultation's AUDIO_RECORDING container context
+   * item. Mirrors `ContextService.findOrCreateAudioContainer` so the streaming
+   * dual-capture path attaches recordings exactly like the local path. Uses the
+   * already-injected ContextItemRepository — no cross-service dependency.
+   */
+  private async findOrCreateAudioContainer(consultationId: string, tenantId: string): Promise<ContextItemEntity> {
+    const existing = await this.contextItemRepository.findAudioRecordings(consultationId);
+    if (existing.length > 0) {
+      return existing[0];
+    }
+    const container = ContextItemFactory.CreateAudioRecording(tenantId, consultationId);
+    return this.contextItemRepository.create(container);
+  }
+
+  /**
+   * Register a stored object as a Media row (TASK-334 I-2b).
+   *
+   * The streaming dual-capture path uploads raw/processed WAVs to object
+   * storage and calls this once per capture to obtain the Media ids it then
+   * threads onto the AudioRecording. Mirrors the internal Media creation that
+   * `createAudioRecord` does from a `storagePath`, but as a standalone step so
+   * the caller can register raw and processed independently.
+   */
+  async createMedia(dto: InternalCreateMediaRequest): Promise<InternalCreateMediaResponse> {
+    const media = MediaFactory.CreateMedia({
+      tenantId: dto.tenantId,
+      name: dto.name,
+      uri: dto.uri,
+      extension: dto.extension,
+      mimeType: dto.mimeType,
+      size: dto.size,
+      hash: dto.hash || '',
+      createdBy: dto.createdBy,
+    });
+
+    const savedMedia = await this.mediaRepository.create(media);
+
+    return { id: savedMedia.id };
   }
 
   /**

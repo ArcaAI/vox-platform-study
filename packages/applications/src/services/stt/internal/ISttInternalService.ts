@@ -3,6 +3,8 @@ import {
   AudioRecordResponse,
   CreateAudioRecordRequest,
   CreateTranscriptRequest,
+  InternalCreateMediaRequest,
+  InternalCreateMediaResponse,
   InternalCompleteJobRequest,
   InternalFailJobRequest,
   InternalStartJobRequest,
@@ -54,4 +56,10 @@ export interface ISttInternalService {
    * Called by STT-v2 after storing audio blob to MinIO
    */
   createAudioRecord(dto: CreateAudioRecordRequest): Promise<AudioRecordResponse>;
+
+  /**
+   * Register a stored object as a `Media` row (TASK-334 I-2b)
+   * Called by STT-v2 for each dual-capture WAV before `createAudioRecord`.
+   */
+  createMedia(dto: InternalCreateMediaRequest): Promise<InternalCreateMediaResponse>;
 }

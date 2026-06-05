@@ -231,6 +231,7 @@ const mockJobRepository = {
 const mockContextItemRepository = {
     findById: vi.fn(),
     create: vi.fn(),
+    findAudioRecordings: vi.fn(),
 };
 
 const mockMediaRepository = {
@@ -641,6 +642,128 @@ describe('SttInternalService', () => {
             const createdRecording = mockAudioRecordingRepository.create.mock.calls[0][0];
             expect(createdRecording.rawMediaId).toBeNull();
             expect(createdRecording.processedMediaId).toBeNull();
+        });
+    });
+
+    // ---------------------------------------------------------------------
+    // TASK-334 I-2c — streaming shape: attach by consultationId (resolve the
+    // AUDIO_RECORDING container) and use a pre-registered mediaId (the raw /
+    // processed Media were already created via createMedia), so NO third Media
+    // row is created. This is the parity with the local path's container model.
+    // ---------------------------------------------------------------------
+
+    describe('createAudioRecord (streaming consultationId shape)', () => {
+        it('resolves/creates the AUDIO_RECORDING container from consultationId and uses the pre-registered mediaId', async () => {
+            const container = createMockContextItemEntity({ id: 'audio-container-1', tenantId: 'tenant-1' });
+            const audioRecording = createMockAudioRecordingEntity({ id: 'ar-stream-1' });
+
+            mockContextItemRepository.findAudioRecordings.mockResolvedValue([]); // none yet → create
+            mockContextItemRepository.create.mockResolvedValue(container);
+            mockAudioRecordingRepository.getNextSequenceNumber.mockResolvedValue(1);
+            mockAudioRecordingRepository.create.mockResolvedValue(audioRecording);
+
+            const result = await service.createAudioRecord({
+                consultationId: 'consultation-1',
+                tenantId: 'tenant-1',
+                mediaId: 'processed-media-1',
+                rawMediaId: 'raw-media-1',
+                processedMediaId: 'processed-media-1',
+                sampleRate: 16000,
+            } as any);
+
+            expect(result.audioRecordingId).toBe('ar-stream-1');
+            // Primary = the pre-registered mediaId; NO third Media row created.
+            expect(result.mediaId).toBe('processed-media-1');
+            expect(mockMediaRepository.create).not.toHaveBeenCalled();
+
+            expect(mockContextItemRepository.findAudioRecordings).toHaveBeenCalledWith('consultation-1');
+            const created = mockAudioRecordingRepository.create.mock.calls[0][0];
+            expect(created.contextItemId).toBe('audio-container-1');
+            expect(created.rawMediaId).toBe('raw-media-1');
+            expect(created.processedMediaId).toBe('processed-media-1');
+        });
+
+        it('reuses an existing AUDIO_RECORDING container instead of creating a new one', async () => {
+            const existing = createMockContextItemEntity({ id: 'existing-container', tenantId: 'tenant-1' });
+            const audioRecording = createMockAudioRecordingEntity({ id: 'ar-stream-2' });
+
+            mockContextItemRepository.findAudioRecordings.mockResolvedValue([existing]);
+            mockAudioRecordingRepository.getNextSequenceNumber.mockResolvedValue(2);
+            mockAudioRecordingRepository.create.mockResolvedValue(audioRecording);
+
+            await service.createAudioRecord({
+                consultationId: 'consultation-1',
+                tenantId: 'tenant-1',
+                mediaId: 'media-x',
+            } as any);
+
+            expect(mockContextItemRepository.create).not.toHaveBeenCalled();
+            expect(mockAudioRecordingRepository.create.mock.calls[0][0].contextItemId).toBe('existing-container');
+        });
+
+        it('throws BadRequestException when neither contextItemId nor consultationId is provided', async () => {
+            await expect(
+                service.createAudioRecord({ mediaId: 'media-x', tenantId: 'tenant-1' } as any),
+            ).rejects.toThrow(BadRequestException);
+        });
+
+        it('throws BadRequestException when no mediaId and the storage fields are incomplete', async () => {
+            await expect(
+                service.createAudioRecord({ consultationId: 'consultation-1', tenantId: 'tenant-1' } as any),
+            ).rejects.toThrow(BadRequestException);
+            // No container should be created for an invalid request (validate before side effects).
+            expect(mockContextItemRepository.create).not.toHaveBeenCalled();
+        });
+    });
+
+    // =========================================================================
+    // TASK-334 I-2b — standalone Media registration (POST /internal/stt/media).
+    // The streaming dual-capture path uploads raw/processed WAVs to storage and
+    // needs to turn each storage object into a Media row (to obtain rawMediaId /
+    // processedMediaId) BEFORE creating the AudioRecording.
+    // =========================================================================
+
+    describe('createMedia', () => {
+        it('registers a storage object as a Media row and returns its id', async () => {
+            const media = createMockMediaEntity({ id: 'media-xyz' });
+            mockMediaRepository.create.mockResolvedValue(media);
+
+            const result = await service.createMedia({
+                tenantId: 'tenant-1',
+                name: 'session-1-raw.wav',
+                uri: 's3://bucket/tenant-1/session-1-raw.wav',
+                extension: 'wav',
+                mimeType: 'audio/wav',
+                size: 2048,
+                hash: '',
+                createdBy: 'user-123',
+            });
+
+            expect(result.id).toBe('media-xyz');
+
+            // The Media handed to the repository carries the storage uri, tenant, and creator.
+            const created = mockMediaRepository.create.mock.calls[0][0];
+            expect(created.uri).toBe('s3://bucket/tenant-1/session-1-raw.wav');
+            expect(created.tenantId).toBe('tenant-1');
+            expect(created.createdBy).toBe('user-123');
+            expect(created.hash).toBe('');
+        });
+
+        it('defaults a missing hash to empty string', async () => {
+            const media = createMockMediaEntity({ id: 'media-2' });
+            mockMediaRepository.create.mockResolvedValue(media);
+
+            const result = await service.createMedia({
+                tenantId: 'tenant-1',
+                name: 'x.wav',
+                uri: 's3://b/x.wav',
+                extension: 'wav',
+                mimeType: 'audio/wav',
+                size: 1,
+            } as any);
+
+            expect(result.id).toBe('media-2');
+            expect(mockMediaRepository.create.mock.calls[0][0].hash).toBe('');
         });
     });
 

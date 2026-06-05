@@ -7,7 +7,7 @@
 | **Parent** | TASK-331 doc-06 (F2 — clinical playground dual capture) |
 | **Created** | 2026-06-05 |
 | **Updated** | 2026-06-05 |
-| **Status** | Partial — core merged to `fix/2605-review`; remote capture **NOT yet E2E** (AC#2/#4 → TASK-334) |
+| **Status** | Completed — core merged to `fix/2605-review`; remote capture wired **E2E via TASK-334** (AC#2/#4 now met) |
 
 > Sibling ticket: **TASK-332 — Audio Dual-Capture: Local (raw)**. The two run in parallel.
 >
@@ -25,9 +25,9 @@ The remote streaming path **already uploads** raw+processed WAV to MinIO, but th
 
 ### Acceptance criteria
 - [x] Python parses `dual_capture` from `configYaml` (preprocessing + postprocessing).
-- [~] When enabled, the already-uploaded raw/processed WAVs are registered as `Media` + `AudioRecording` and attached to the consultation context — **Python `_finalize_session` registration implemented, but NOT functional E2E** (server-side NestJS route/contract gap → **TASK-334**).
+- [x] When enabled, the already-uploaded raw/processed WAVs are registered as `Media` + `AudioRecording` and attached to the consultation context — **closed E2E via TASK-334** (NestJS route alignment + `POST /internal/stt/media` + `consultationId→container` resolution).
 - [x] Tenant admin can configure `dual_capture` via the pipeline editor (structured, not raw-YAML-only).
-- [~] In-consultation recording uses the user's **resolved remote pipeline** (not the hardcoded `turbo`) — **typed `stt.transcriptionPipelineId` field + read landed (I-1), but population from the tenant/user cascade is NOT wired**, so runtime still falls back to `turbo` (→ **TASK-334**).
+- [x] In-consultation recording uses the user's **resolved remote pipeline** (not the hardcoded `turbo`) — **closed E2E via TASK-334** (`AgenticProvider` populates `stt.transcriptionPipelineId` from `remoteConfig.pipelineId` via the admin tier).
 - [x] Unknown YAML keys are no longer silently ignored (warn) — hardening.
 - [x] Tests green (pytest + vitest), no regressions.
 
@@ -85,10 +85,11 @@ Built in worktree branch `fix/2605-doc06-remote` (TDD, conda `arcaenv`), code-re
 - **I-1 — typed pipeline field (`95b77524`):** added optional, admin-owned `stt.transcriptionPipelineId` to `SttConfigSchema` so the panel read is typed + valibot-preserved (previously an `as` cast on a non-schema field that valibot silently stripped → always fell back to `turbo`).
 - **Post-merge test repair (`91855260`):** the consolidated gate caught a real regression — `create_session` now writes `self._dual_capture`, so 3 `MagicMock(spec=SessionManager)` denoiser tests needed `_dual_capture={}` seeded; also corrected 2 **pre-existing** stale assertions (TASK-298 D-3 forwards `tenant_id` to pipeline loads — these failed on the base branch too).
 
-### Deferred to TASK-334 — remote capture is NOT E2E
-- **I-2 (server-side, the blocker):** the Python client targets a NestJS route that doesn't exist as written (`/audio-recordings` vs the actual `/audio-records`), there is **no `/internal/stt/media`** endpoint to register `Media`, and there is **no `consultationId → contextItem` container resolution**. With `dual_capture` enabled the WAV bytes are uploaded to storage but are **not** persisted as `Media`/`AudioRecording` rows nor attached to the consultation.
-- **I-1 population:** the resolved remote pipeline id is **not** populated into `stt.transcriptionPipelineId` from the tenant/user remote-config cascade, so the panel still resolves to the hardcoded `turbo` at runtime.
-- **Therefore AC#2 and AC#4 are NOT met end-to-end** and must not be claimed as such until TASK-334 lands.
+### Deferred to TASK-334 — ✅ NOW CLOSED (remote capture is E2E)
+> Resolved 2026-06-05 by **TASK-334** (see its README §4). Retained here for history.
+- **I-2 (server-side, the blocker):** ✅ Python client aligned to `/internal/stt/audio-records`; `POST /internal/stt/media` added; `createAudioRecord` resolves `consultationId → AUDIO_RECORDING container`. With `dual_capture` enabled the uploaded WAVs are now persisted as `Media` + `AudioRecording` and attached to the consultation.
+- **I-1 population:** ✅ `AgenticProvider` injects the resolved `remoteConfig.pipelineId` into `stt.transcriptionPipelineId` via the admin tier, so the panel runs the assigned pipeline instead of `turbo`.
+- **AC#2 and AC#4 are now met end-to-end** via TASK-334.
 
 ### Gate evidence (post-merge, `fix/2605-review`)
 Python `apps/stt-v2` unit **1862 passed** (conda `arcaenv`) · pipeline editor + consultation panel vitest green (within ui-playground **541 passed**) · `@arcaai/vox` **3297 passed** (incl. the I-1 `transcriptionPipelineId` preservation regression guard).
@@ -101,6 +102,7 @@ Python `apps/stt-v2` unit **1862 passed** (conda `arcaenv`) · pipeline editor +
 |---|---|---|
 | 2026-06-05 | Plan authored (parallel Track B of TASK-331 doc-06 F2 follow-up) | — |
 | 2026-06-05 | Implemented T4–T5 (TDD, `arcaenv`), reviewed, merged; I-1 typed pipeline field plumbed; gate caught + fixed a denoiser regression + 2 pre-existing stale assertions. Remote capture **not E2E** — server-side wiring + pipeline-id population → TASK-334 | `2faa2282`, `20dcc48a`, `95b77524`, `91855260`; merge `4f6bccb0` |
+| 2026-06-05 | **Deferred items closed via TASK-334** — remote dual-capture now E2E (route alignment, `POST /internal/stt/media`, `consultationId→container`, pipeline-id population). AC#2/#4 met. Status → Completed. | See TASK-334 README §4 |
 
 ---
 
