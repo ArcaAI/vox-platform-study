@@ -462,6 +462,22 @@ class DiarizationConfig:
 
 
 @dataclass
+class DualCaptureConfig:
+    """Per-pipeline dual audio capture.
+
+    When ``enabled``, the streaming finalize path registers the audio WAVs
+    already uploaded to object storage as ``Media`` + ``AudioRecording`` rows on
+    the consultation. ``capture_raw`` selects the pre-filter (raw) audio under
+    ``preprocessing``; ``capture_processed`` selects the post-filter audio under
+    ``postprocessing``.
+    """
+
+    enabled: bool = False
+    capture_raw: bool = False
+    capture_processed: bool = False
+
+
+@dataclass
 class PreprocessingConfig:
     """Audio preprocessing configuration."""
 
@@ -469,6 +485,7 @@ class PreprocessingConfig:
     normalize: bool = True
     vad: VadConfig = field(default_factory=VadConfig)
     denoise: DenoiseConfig = field(default_factory=DenoiseConfig)
+    dual_capture: DualCaptureConfig = field(default_factory=DualCaptureConfig)
 
 
 @dataclass
@@ -521,6 +538,7 @@ class PostprocessingConfig:
     punctuation: PunctuationConfig = field(default_factory=PunctuationConfig)
     remove_disfluencies: bool = False
     lowercase: bool = False
+    dual_capture: DualCaptureConfig = field(default_factory=DualCaptureConfig)
 
 
 @dataclass

@@ -292,9 +292,9 @@ class APIGatewayClient:
 
     async def create_audio_recording(
         self,
-        context_item_id: str,
-        media_id: str,
-        tenant_id: str,
+        context_item_id: str | None = None,
+        media_id: str | None = None,
+        tenant_id: str | None = None,
         duration: int | None = None,
         format: str | None = None,
         sample_rate: int | None = None,
@@ -303,15 +303,28 @@ class APIGatewayClient:
         language: str | None = None,
         sequence_number: int = 1,
         recorded_at: datetime | None = None,
+        raw_media_id: str | None = None,
+        processed_media_id: str | None = None,
+        consultation_id: str | None = None,
     ) -> dict[str, Any]:
-        """Create an AudioRecording linked to a ContextItem."""
-        payload = {
-            "contextItemId": context_item_id,
-            "mediaId": media_id,
-            "tenantId": tenant_id,
-            "sequenceNumber": sequence_number,
-        }
+        """Create an AudioRecording linked to a ContextItem.
 
+        ``raw_media_id`` / ``processed_media_id`` carry the dual-capture Media
+        ids (pre-filter / post-filter audio) when the pipeline opts in. The
+        streaming finalize path has no pre-resolved ``context_item_id``, so it
+        may instead pass ``consultation_id`` for the gateway to attach the
+        recording to.
+        """
+        payload: dict[str, Any] = {"sequenceNumber": sequence_number}
+
+        if context_item_id:
+            payload["contextItemId"] = context_item_id
+        if media_id:
+            payload["mediaId"] = media_id
+        if tenant_id:
+            payload["tenantId"] = tenant_id
+        if consultation_id:
+            payload["consultationId"] = consultation_id
         if duration is not None:
             payload["duration"] = duration
         if format:
@@ -326,6 +339,10 @@ class APIGatewayClient:
             payload["language"] = language
         if recorded_at:
             payload["recordedAt"] = recorded_at.isoformat()
+        if raw_media_id:
+            payload["rawMediaId"] = raw_media_id
+        if processed_media_id:
+            payload["processedMediaId"] = processed_media_id
 
         return await self._request(
             "POST",

@@ -374,6 +374,55 @@ class TestAPIGatewayClientMethods:
             assert captured_payload["language"] == "en"
             assert captured_payload["sequenceNumber"] == 2
 
+    @pytest.mark.asyncio
+    async def test_create_audio_recording_forwards_dual_capture_media_ids(self, client):
+        """Dual-capture: raw/processed media ids + consultation are forwarded.
+
+        The streaming finalize path has no pre-resolved contextItemId/mediaId;
+        it forwards the consultation plus the raw/processed Media ids so the
+        gateway can attach an AudioRecording with both captures.
+        """
+        captured_payload = None
+
+        async def capture_request(method, path, json=None, params=None):
+            nonlocal captured_payload
+            captured_payload = json
+            return {"id": "ar-456"}
+
+        with patch.object(client, "_request", side_effect=capture_request):
+            await client.create_audio_recording(
+                tenant_id="t-789",
+                consultation_id="c-123",
+                raw_media_id="raw-media-1",
+                processed_media_id="proc-media-2",
+                sample_rate=16000,
+            )
+
+        assert captured_payload["rawMediaId"] == "raw-media-1"
+        assert captured_payload["processedMediaId"] == "proc-media-2"
+        assert captured_payload["consultationId"] == "c-123"
+        assert captured_payload["tenantId"] == "t-789"
+
+    @pytest.mark.asyncio
+    async def test_create_audio_recording_omits_dual_capture_ids_when_absent(self, client):
+        """Back-compat: no raw/processed keys when the caller doesn't pass them."""
+        captured_payload = None
+
+        async def capture_request(method, path, json=None, params=None):
+            nonlocal captured_payload
+            captured_payload = json
+            return {"id": "ar-789"}
+
+        with patch.object(client, "_request", side_effect=capture_request):
+            await client.create_audio_recording(
+                context_item_id="ctx-1",
+                media_id="m-1",
+                tenant_id="t-1",
+            )
+
+        assert "rawMediaId" not in captured_payload
+        assert "processedMediaId" not in captured_payload
+
     # =========================================================================
     # Media Creation - Test complete payload
     # =========================================================================
