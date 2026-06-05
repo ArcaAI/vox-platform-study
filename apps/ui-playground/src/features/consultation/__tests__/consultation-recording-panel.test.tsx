@@ -63,7 +63,26 @@ const recordingsState = vi.hoisted(() => ({
 
 const storageState = vi.hoisted(() => ({ uploadFile: vi.fn() }));
 const configState = vi.hoisted(() => ({ resolvedConfig: null as any }));
-const dual = vi.hoisted(() => ({ start: vi.fn(), stop: vi.fn(), ctorArgs: [] as any[][] }));
+// TASK-332 — local raw capture uses a single MediaRecorder (not DualStreamRecorder).
+const mediaRec = vi.hoisted(() => ({ instances: [] as any[] }));
+
+class MockMediaRecorder {
+  state = 'inactive';
+  mimeType = 'audio/webm';
+  ondataavailable: ((e: { data: Blob }) => void) | null = null;
+  onstop: (() => void) | null = null;
+  constructor(public stream: unknown) {
+    mediaRec.instances.push(this);
+  }
+  start() {
+    this.state = 'recording';
+  }
+  stop() {
+    this.state = 'inactive';
+    this.ondataavailable?.({ data: new Blob(['raw-audio'], { type: 'audio/webm' }) });
+    this.onstop?.();
+  }
+}
 
 vi.mock('@/hooks/use-realtime-transcription', () => ({
   useRealtimeTranscription: () => ({
@@ -92,17 +111,6 @@ vi.mock('@arcaai/vox', () => ({
   }),
   useStorage: () => ({ uploadFile: storageState.uploadFile }),
   useArcaConfig: () => ({ resolvedConfig: configState.resolvedConfig }),
-  DualStreamRecorder: class {
-    constructor(...args: any[]) {
-      dual.ctorArgs.push(args);
-    }
-    start() {
-      dual.start();
-    }
-    stop() {
-      return dual.stop();
-    }
-  },
 }));
 
 import { ConsultationRecordingPanel } from '../components/consultation-recording-panel';
@@ -127,9 +135,8 @@ describe('ConsultationRecordingPanel (TASK-329 P2)', () => {
 
     storageState.uploadFile = vi.fn().mockImplementation((_bucket: string, file: File) => Promise.resolve({ key: `key-${file.name}` }));
     configState.resolvedConfig = null;
-    dual.start = vi.fn();
-    dual.stop = vi.fn().mockResolvedValue({ raw: new Blob(['raw']), processed: new Blob(['proc']) });
-    dual.ctorArgs = [];
+    mediaRec.instances = [];
+    vi.stubGlobal('MediaRecorder', MockMediaRecorder);
   });
 
   it('lists recordings for the consultation on mount', () => {
@@ -201,39 +208,57 @@ describe('ConsultationRecordingPanel (TASK-329 P2)', () => {
     expect(screen.queryByText('Diarization not personalized')).not.toBeInTheDocument();
   });
 
-  // F2 — real dual capture wired through DualStreamRecorder + upload + add().
-  describe('dual capture (F2)', () => {
+  // TASK-332 — local raw-stream capture. When the effective flag is ON and the
+  // active pipeline is LOCAL (stt.provider === 'local'), the raw mic is recorded
+  // as a SINGLE blob via one MediaRecorder, uploaded, and attached as an
+  // AUDIO_RECORDING context item. There is no separate "processed" artifact on
+  // the local path (the transcription IS the processed output).
+  describe('local raw capture (TASK-332)', () => {
     beforeEach(() => {
       realtime.isStreaming = true;
       realtime.status = 'streaming';
       realtime.inputStream = { getAudioTracks: () => [{ kind: 'audio' }] };
     });
 
-    it('when enabled, stopping uploads raw+processed and registers both media ids', async () => {
-      configState.resolvedConfig = { audio: { captureRawAudio: true } };
+    it('when enabled + local pipeline, stopping records the raw mic, uploads it, and attaches an AUDIO_RECORDING context item', async () => {
+      configState.resolvedConfig = { audio: { captureRawAudio: true }, stt: { provider: 'local' } };
       render(<ConsultationRecordingPanel consultationId="c-1" />);
 
-      // the dual recorder is started for the live capture
-      expect(dual.start).toHaveBeenCalledTimes(1);
+      // a single MediaRecorder is started for the raw mic (not DualStreamRecorder)
+      await waitFor(() => expect(mediaRec.instances).toHaveLength(1));
 
       fireEvent.click(screen.getByText('Stop'));
 
       await waitFor(() => expect(recordingsState.add).toHaveBeenCalledTimes(1));
-      expect(recordingsState.add).toHaveBeenCalledWith('c-1', {
-        mediaId: 'key-processed.webm',
-        rawMediaId: 'key-raw.webm',
-        processedMediaId: 'key-processed.webm',
-      });
+      expect(storageState.uploadFile).toHaveBeenCalledTimes(1);
+      expect(storageState.uploadFile).toHaveBeenCalledWith('attachments', expect.any(File));
+      expect(recordingsState.add).toHaveBeenCalledWith('c-1', { mediaId: 'key-raw.webm' });
     });
 
-    it('when disabled, stopping registers a single mediaId only (single-stream)', async () => {
-      configState.resolvedConfig = { audio: { captureRawAudio: false } };
+    it('when the flag is OFF, stopping does NOT capture or upload anything', async () => {
+      configState.resolvedConfig = { audio: { captureRawAudio: false }, stt: { provider: 'local' } };
       render(<ConsultationRecordingPanel consultationId="c-1" />);
+
+      expect(mediaRec.instances).toHaveLength(0);
 
       fireEvent.click(screen.getByText('Stop'));
 
-      await waitFor(() => expect(recordingsState.add).toHaveBeenCalledTimes(1));
-      expect(recordingsState.add).toHaveBeenCalledWith('c-1', { mediaId: 'key-processed.webm' });
+      await waitFor(() => expect(realtime.stop).toHaveBeenCalled());
+      expect(storageState.uploadFile).not.toHaveBeenCalled();
+      expect(recordingsState.add).not.toHaveBeenCalled();
+    });
+
+    it('does NOT capture on a remote pipeline even when the flag is ON (remote path unaffected)', async () => {
+      configState.resolvedConfig = { audio: { captureRawAudio: true }, stt: { provider: 'backend' } };
+      render(<ConsultationRecordingPanel consultationId="c-1" />);
+
+      expect(mediaRec.instances).toHaveLength(0);
+
+      fireEvent.click(screen.getByText('Stop'));
+
+      await waitFor(() => expect(realtime.stop).toHaveBeenCalled());
+      expect(storageState.uploadFile).not.toHaveBeenCalled();
+      expect(recordingsState.add).not.toHaveBeenCalled();
     });
   });
 });
