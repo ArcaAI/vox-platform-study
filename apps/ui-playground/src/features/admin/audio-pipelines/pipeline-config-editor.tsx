@@ -38,6 +38,10 @@ interface PipelineConfig {
       enabled: boolean;
       strength: number;
     };
+    dual_capture: {
+      enabled: boolean;
+      capture_raw: boolean;
+    };
   };
   inference: {
     batch_size: number;
@@ -55,6 +59,10 @@ interface PipelineConfig {
     };
     remove_disfluencies: boolean;
     lowercase: boolean;
+    dual_capture: {
+      enabled: boolean;
+      capture_processed: boolean;
+    };
   };
 }
 
@@ -82,6 +90,7 @@ export const DEFAULT_CONFIG: PipelineConfig = {
     normalize: true,
     vad: { enabled: true, threshold: 0.5, min_speech_duration_ms: 250, min_silence_duration_ms: 1000 },
     denoise: { enabled: true, strength: 0.7 },
+    dual_capture: { enabled: false, capture_raw: false },
   },
   inference: { batch_size: 1, compute_type: 'auto', device: 'auto', language: null },
   postprocessing: {
@@ -89,6 +98,7 @@ export const DEFAULT_CONFIG: PipelineConfig = {
     punctuation: { enabled: true },
     remove_disfluencies: false,
     lowercase: false,
+    dual_capture: { enabled: false, capture_processed: false },
   },
 };
 
@@ -96,7 +106,7 @@ export const DEFAULT_CONFIG: PipelineConfig = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function tryParseYaml(yaml: string): PipelineConfig | null {
+export function tryParseYaml(yaml: string): PipelineConfig | null {
   try {
     const parsed = parse(yaml);
     if (!parsed || typeof parsed !== 'object') return null;
@@ -467,6 +477,28 @@ function VisualForm({
               </FieldRow>
             </div>
           )}
+
+          <Separator className="my-2" />
+
+          {/* Dual capture — raw (pre-filter) audio */}
+          <ToggleRow
+            id="pre-dual-capture-enabled"
+            label="Dual Capture"
+            checked={config.preprocessing.dual_capture.enabled}
+            onCheckedChange={(v) => onFieldChange(['preprocessing', 'dual_capture', 'enabled'], v)}
+            disabled={readOnly}
+          />
+          {config.preprocessing.dual_capture.enabled && (
+            <div className="border-muted flex flex-col gap-2.5 border-l-2 pl-4">
+              <ToggleRow
+                id="pre-dual-capture-raw"
+                label="Capture Raw"
+                checked={config.preprocessing.dual_capture.capture_raw}
+                onCheckedChange={(v) => onFieldChange(['preprocessing', 'dual_capture', 'capture_raw'], v)}
+                disabled={readOnly}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -572,6 +604,28 @@ function VisualForm({
             onCheckedChange={(v) => onFieldChange(['postprocessing', 'lowercase'], v)}
             disabled={readOnly}
           />
+
+          <Separator className="my-2" />
+
+          {/* Dual capture — processed (post-filter) audio */}
+          <ToggleRow
+            id="post-dual-capture-enabled"
+            label="Dual Capture"
+            checked={config.postprocessing.dual_capture.enabled}
+            onCheckedChange={(v) => onFieldChange(['postprocessing', 'dual_capture', 'enabled'], v)}
+            disabled={readOnly}
+          />
+          {config.postprocessing.dual_capture.enabled && (
+            <div className="border-muted flex flex-col gap-2.5 border-l-2 pl-4">
+              <ToggleRow
+                id="post-dual-capture-processed"
+                label="Capture Processed"
+                checked={config.postprocessing.dual_capture.capture_processed}
+                onCheckedChange={(v) => onFieldChange(['postprocessing', 'dual_capture', 'capture_processed'], v)}
+                disabled={readOnly}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

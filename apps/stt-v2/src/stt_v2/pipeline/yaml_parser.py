@@ -10,6 +10,7 @@ from .dto import (
     VALID_ONNX_QUANTIZATIONS,
     DenoiseConfig,
     DiarizationConfig,
+    DualCaptureConfig,
     InferenceConfig,
     ModelRef,
     ModelRefs,
@@ -37,6 +38,19 @@ class PipelineYamlParser:
 
     SUPPORTED_VERSIONS = ["1.0", "1.1"]
 
+    # Recognised top-level pipeline config sections. Unknown keys are warned
+    # about (not silently dropped) so future intent-only keys don't no-op.
+    KNOWN_TOP_LEVEL_KEYS = frozenset(
+        {
+            "version",
+            "models",
+            "preprocessing",
+            "inference",
+            "postprocessing",
+            "diarization",
+        }
+    )
+
     def parse(self, yaml_content: str) -> PipelineSpec:
         """
         Parse YAML string to PipelineSpec.
@@ -57,6 +71,16 @@ class PipelineYamlParser:
 
         if not isinstance(data, dict):
             raise ValueError("YAML must be a dictionary/object")
+
+        # Hardening: warn (don't silently drop) unknown top-level sections so
+        # future intent-only keys surface instead of no-op'ing.
+        unknown_keys = sorted(str(k) for k in data if k not in self.KNOWN_TOP_LEVEL_KEYS)
+        if unknown_keys:
+            logger.warning(
+                "Unknown top-level pipeline config key(s) ignored: %s. Known keys: %s",
+                ", ".join(unknown_keys),
+                ", ".join(sorted(self.KNOWN_TOP_LEVEL_KEYS)),
+            )
 
         # Parse version
         version = str(data.get("version", "1.0"))
@@ -386,11 +410,18 @@ class PipelineYamlParser:
             strength=float(denoise_data.get("strength", 0.5)),
         )
 
+        dual_capture_data = data.get("dual_capture") or {}
+        dual_capture = DualCaptureConfig(
+            enabled=bool(dual_capture_data.get("enabled", False)),
+            capture_raw=bool(dual_capture_data.get("capture_raw", False)),
+        )
+
         return PreprocessingConfig(
             target_sample_rate=int(data.get("target_sample_rate", 16000)),
             normalize=data.get("normalize", True),
             vad=vad,
             denoise=denoise,
+            dual_capture=dual_capture,
         )
 
     def _parse_inference(self, data: dict[str, Any]) -> InferenceConfig:
@@ -490,11 +521,18 @@ class PipelineYamlParser:
             model=punctuation_data.get("model"),
         )
 
+        dual_capture_data = data.get("dual_capture") or {}
+        dual_capture = DualCaptureConfig(
+            enabled=bool(dual_capture_data.get("enabled", False)),
+            capture_processed=bool(dual_capture_data.get("capture_processed", False)),
+        )
+
         return PostprocessingConfig(
             timestamps=timestamps,
             punctuation=punctuation,
             remove_disfluencies=data.get("remove_disfluencies", False),
             lowercase=data.get("lowercase", False),
+            dual_capture=dual_capture,
         )
 
     def _parse_diarization(self, data: dict[str, Any]) -> DiarizationConfig:

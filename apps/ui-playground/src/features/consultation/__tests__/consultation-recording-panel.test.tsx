@@ -181,6 +181,29 @@ describe('ConsultationRecordingPanel (TASK-329 P2)', () => {
     expect(realtime.start).toHaveBeenCalledWith({ pipelineId: 'pipe-x', consultationId: 'c-1' });
   });
 
+  // TASK-333 T5 — pipeline selection resolves the user's remote pipeline id
+  // (cascade-resolved via the SDK config hook), falling back to the constant.
+  it('uses the resolved remote pipeline id from config when no prop is given', () => {
+    configState.resolvedConfig = { stt: { transcriptionPipelineId: 'pipe-remote' } };
+    render(<ConsultationRecordingPanel consultationId="c-1" />);
+    fireEvent.click(screen.getByText('Start recording'));
+    expect(realtime.start).toHaveBeenCalledWith({ pipelineId: 'pipe-remote', consultationId: 'c-1' });
+  });
+
+  it('prefers an explicit pipeline prop over the resolved config id', () => {
+    configState.resolvedConfig = { stt: { transcriptionPipelineId: 'pipe-remote' } };
+    render(<ConsultationRecordingPanel consultationId="c-1" pipelineId="pipe-x" />);
+    fireEvent.click(screen.getByText('Start recording'));
+    expect(realtime.start).toHaveBeenCalledWith({ pipelineId: 'pipe-x', consultationId: 'c-1' });
+  });
+
+  it('falls back to the default pipeline when config has no resolved id', () => {
+    configState.resolvedConfig = { audio: { dualCapture: false } };
+    render(<ConsultationRecordingPanel consultationId="c-1" />);
+    fireEvent.click(screen.getByText('Start recording'));
+    expect(realtime.start).toHaveBeenCalledWith({ pipelineId: 'pipe-default', consultationId: 'c-1' });
+  });
+
   it('shows Stop while streaming and stops the session', () => {
     realtime.isStreaming = true;
     realtime.status = 'streaming';
