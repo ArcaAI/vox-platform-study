@@ -40,6 +40,18 @@ function createMockClsService(tenantId?: string, user?: { roles?: string[] }) {
     };
 }
 
+// TASK-332 — the controller now appends a synthetic `enable-local-raw-capture`
+// row computed by ITenantFrontendConfigService. Existing tests inject a default
+// mock that resolves `false` so the appended row is harmless; the dedicated
+// TASK-332 tests below assert the appended row's shape and value.
+function createMockFrontendConfigService(effective = false) {
+    return {
+        resolveEffectiveLocalRawCapture: vi.fn().mockResolvedValue(effective),
+        getByTenant: vi.fn(),
+        upsert: vi.fn(),
+    };
+}
+
 describe('MyTenantController', () => {
     let controller: MyTenantController;
     let tenantService: ReturnType<typeof createMockTenantService>;
@@ -59,7 +71,7 @@ describe('MyTenantController', () => {
                 updatedAt: new Date(),
             });
 
-            controller = new MyTenantController(tenantService as any, clsService as any);
+            controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
             const result = await controller.me();
 
             expect(clsService.get).toHaveBeenCalledWith('tenantId');
@@ -73,7 +85,7 @@ describe('MyTenantController', () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService(undefined, { roles: ['DOCTOR'] });
 
-            controller = new MyTenantController(tenantService as any, clsService as any);
+            controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
 
             await expect(controller.me()).rejects.toThrow(BadRequestException);
             expect(tenantService.fetchById).not.toHaveBeenCalled();
@@ -83,7 +95,7 @@ describe('MyTenantController', () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService(undefined, { roles: ['SUPER_ADMIN'] });
 
-            controller = new MyTenantController(tenantService as any, clsService as any);
+            controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
 
             await expect(controller.me()).rejects.toThrow(BadRequestException);
             await expect(controller.me()).rejects.toThrow(/Tenant context is required/);
@@ -99,7 +111,7 @@ describe('MyTenantController', () => {
                 new NotFoundException('Tenant not found')
             );
 
-            controller = new MyTenantController(tenantService as any, clsService as any);
+            controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
 
             await expect(controller.me()).rejects.toThrow(NotFoundException);
         });
@@ -129,7 +141,7 @@ describe('MyTenantController', () => {
                 page: 1,
             });
 
-            controller = new MyTenantController(tenantService as any, clsService as any);
+            controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
             const result = await controller.myConfig();
 
             expect(clsService.get).toHaveBeenCalledWith('tenantId');
@@ -150,7 +162,7 @@ describe('MyTenantController', () => {
                 page: 1,
             });
 
-            controller = new MyTenantController(tenantService as any, clsService as any);
+            controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
             await controller.myConfig();
 
             expect(tenantService.fetchTenantConfigs).toHaveBeenCalledWith(
@@ -158,11 +170,68 @@ describe('MyTenantController', () => {
             );
         });
 
+        // TASK-332 — GET /tenant/me/config must append a synthetic, read-only
+        // `enable-local-raw-capture` row carrying the server-computed effective
+        // boolean (platform capability AND tenant toggle). The SDK maps it into
+        // audio.captureRawAudio; the user cannot override it.
+        it('TASK-332 — appends the effective enable-local-raw-capture row (value true)', async () => {
+            tenantService = createMockTenantService();
+            clsService = createMockClsService('tenant-uuid-332');
+            const frontendConfig = createMockFrontendConfigService(true);
+
+            tenantService.fetchTenantConfigs.mockResolvedValue({
+                data: [
+                    {
+                        id: 'cfg-1',
+                        key: 'default-language',
+                        value: 'th',
+                        name: 'Default Language',
+                        dataType: 'String',
+                        namespace: 'general',
+                        tenantId: 'tenant-uuid-332',
+                        tenantCode: 'test-clinic',
+                    },
+                ],
+                count: 1,
+                limit: 200,
+                page: 1,
+            });
+
+            controller = new MyTenantController(tenantService as any, frontendConfig as any, clsService as any);
+            const result = await controller.myConfig();
+
+            expect(frontendConfig.resolveEffectiveLocalRawCapture).toHaveBeenCalledWith('tenant-uuid-332');
+            expect(result.count).toBe(2);
+            expect(result.data).toHaveLength(2);
+
+            const row = result.data.find((c) => c.key === 'enable-local-raw-capture');
+            expect(row).toBeDefined();
+            expect(row?.namespace).toBe('feature-flags');
+            expect(row?.dataType).toBe('Boolean');
+            expect(row?.value).toBe('true');
+            expect(row?.tenantId).toBe('tenant-uuid-332');
+        });
+
+        it('TASK-332 — appended row carries value false when capability is off', async () => {
+            tenantService = createMockTenantService();
+            clsService = createMockClsService('tenant-uuid-332');
+            const frontendConfig = createMockFrontendConfigService(false);
+
+            tenantService.fetchTenantConfigs.mockResolvedValue({ data: [], count: 0, limit: 200, page: 1 });
+
+            controller = new MyTenantController(tenantService as any, frontendConfig as any, clsService as any);
+            const result = await controller.myConfig();
+
+            const row = result.data.find((c) => c.key === 'enable-local-raw-capture');
+            expect(row?.value).toBe('false');
+            expect(result.count).toBe(1);
+        });
+
         it('should throw BadRequestException when no tenantId and not super admin', async () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService(undefined, { roles: ['DOCTOR'] });
 
-            controller = new MyTenantController(tenantService as any, clsService as any);
+            controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
 
             await expect(controller.myConfig()).rejects.toThrow(BadRequestException);
             expect(tenantService.fetchTenantConfigs).not.toHaveBeenCalled();
@@ -172,7 +241,7 @@ describe('MyTenantController', () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService(undefined, { roles: ['SUPER_ADMIN'] });
 
-            controller = new MyTenantController(tenantService as any, clsService as any);
+            controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
 
             await expect(controller.myConfig()).rejects.toThrow(BadRequestException);
             expect(tenantService.fetchByCodeName).not.toHaveBeenCalled();
@@ -204,7 +273,7 @@ describe('MyTenantController', () => {
                 page: 1,
             });
 
-            controller = new MyTenantController(tenantService as any, clsService as any);
+            controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
             const configs = [{ id: 'cfg-1', value: 'th' }];
             const result = await controller.updateMyConfig(configs as any, undefined);
 
@@ -217,7 +286,7 @@ describe('MyTenantController', () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService(undefined, { roles: ['DOCTOR'] });
 
-            controller = new MyTenantController(tenantService as any, clsService as any);
+            controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
 
             await expect(controller.updateMyConfig([] as any, undefined)).rejects.toThrow(BadRequestException);
             expect(tenantService.updateTenantConfigs).not.toHaveBeenCalled();
@@ -227,7 +296,7 @@ describe('MyTenantController', () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService(undefined, { roles: ['SUPER_ADMIN'] });
 
-            controller = new MyTenantController(tenantService as any, clsService as any);
+            controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
             const configs = [{ id: 'cfg-1', value: 'th' }];
 
             await expect(controller.updateMyConfig(configs as any, undefined)).rejects.toThrow(BadRequestException);
@@ -252,7 +321,7 @@ describe('MyTenantController', () => {
                 page: 1,
             });
 
-            controller = new MyTenantController(tenantService as any, clsService as any);
+            controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
             const configs = [
                 { id: 'cfg-1', value: 'th', expectedVersion: 99 },
                 { id: 'cfg-2', value: 'en', expectedVersion: 99 },
@@ -282,7 +351,7 @@ describe('MyTenantController', () => {
 
             tenantService.updateTenantConfigs.mockResolvedValue({ data: [], count: 0, limit: 100, page: 1 });
 
-            controller = new MyTenantController(tenantService as any, clsService as any);
+            controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
             const configs = [
                 { id: 'cfg-1', value: 'th', expectedVersion: 5 },
                 { id: 'cfg-2', value: 'en', expectedVersion: 12 },

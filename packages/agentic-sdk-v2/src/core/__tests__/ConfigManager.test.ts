@@ -471,4 +471,36 @@ describe('ConfigManager', () => {
             expect(manager.snapshotUserPreferences()).toEqual({});
         });
     });
+
+    // =========================================================================
+    // TASK-332 — audio.captureRawAudio is admin-owned (server-computed effective
+    // flag). It must survive from the tenant tier and be unoverridable by users.
+    // =========================================================================
+    describe('TASK-332: audio.captureRawAudio cascade', () => {
+        it('should default to false with no overrides', () => {
+            expect(manager.getResolved().audio.captureRawAudio).toBe(false);
+        });
+
+        it('should let a tenant-set true survive resolution', () => {
+            manager.setTenantConfig({ audio: { captureRawAudio: true } });
+            expect(manager.getResolved().audio.captureRawAudio).toBe(true);
+        });
+
+        it('should strip a user-pref attempt to enable it (admin-owned)', () => {
+            manager.setUserPreferences({ audio: { captureRawAudio: true } });
+            expect(manager.getResolved().audio.captureRawAudio).toBe(false);
+        });
+
+        it('should not let a user-pref override a tenant-set true to false', () => {
+            manager.setTenantConfig({ audio: { captureRawAudio: true } });
+            manager.setUserPreferences({ audio: { captureRawAudio: false } });
+            expect(manager.getResolved().audio.captureRawAudio).toBe(true);
+        });
+
+        it('should reject setUserValue for audio.captureRawAudio', () => {
+            const ok = manager.setUserValue('audio.captureRawAudio', true);
+            expect(ok).toBe(false);
+            expect(manager.getResolved().audio.captureRawAudio).toBe(false);
+        });
+    });
 });

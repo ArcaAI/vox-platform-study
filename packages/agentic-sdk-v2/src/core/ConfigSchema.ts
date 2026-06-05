@@ -30,6 +30,10 @@ export const AudioConfigSchema = v.object({
   vadThreshold: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1)), 0.5),
   diarization: v.optional(v.boolean(), false),
   codeSwitching: v.optional(v.boolean(), false),
+  // TASK-332 — local raw-stream dual-capture. Server-computed effective flag
+  // (platform capability AND tenant toggle); admin-owned so user prefs can't
+  // flip it (see CONFIG_PERMISSIONS below). Defaults OFF.
+  captureRawAudio: v.optional(v.boolean(), false),
 });
 
 export const SttConfigSchema = v.object({
@@ -93,6 +97,9 @@ export const CONFIG_PERMISSIONS: Record<string, ConfigFieldMeta> = {
   'audio.vadThreshold': { permission: 'admin', section: 'audio', key: 'vadThreshold', label: 'VAD Sensitivity' },
   'audio.diarization': { permission: 'user', section: 'audio', key: 'diarization', label: 'Speaker Diarization' },
   'audio.codeSwitching': { permission: 'admin', section: 'audio', key: 'codeSwitching', label: 'Code-Switching' },
+  // TASK-332 — admin-owned so the cascade's stripLockedAndAdminPaths prevents a
+  // user pref from overriding the server-computed local raw-capture flag.
+  'audio.captureRawAudio': { permission: 'admin', section: 'audio', key: 'captureRawAudio', label: 'Capture Raw Audio (Local)' },
 
   'stt.provider': { permission: 'admin', section: 'stt', key: 'provider', label: 'STT Provider' },
   'stt.defaultModel': { permission: 'admin', section: 'stt', key: 'defaultModel', label: 'Default STT Model' },

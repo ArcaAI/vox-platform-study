@@ -25,6 +25,7 @@ function makeAppConfig(overrides: Partial<AppConfig> = {}): AppConfig {
             vadThreshold: 0.5,
             diarization: false,
             codeSwitching: false,
+            captureRawAudio: false,
             ...overrides.audio,
         },
         stt: {
@@ -86,11 +87,12 @@ describe('AudioPage config resolution (TASK-244)', () => {
                     vadThreshold: 0.8,
                     diarization: true,
                     codeSwitching: true,
-                    sampleRate: 16000,
-                    noiseFilterLevel: 'high',
-                    echoCancellation: true,
-                    autoGainControl: true,
-                },
+                sampleRate: 16000,
+                noiseFilterLevel: 'high',
+                echoCancellation: true,
+                autoGainControl: true,
+                captureRawAudio: false,
+            },
             });
             useAudioStore.getState().applyResolvedConfig(config);
             expect(useAudioStore.getState().noiseFilterEnabled).toBe(false);
@@ -145,7 +147,7 @@ describe('AudioPage config resolution (TASK-244)', () => {
 
         it('should reset all audio settings to defaults', () => {
             useAudioStore.getState().applyResolvedConfig(makeAppConfig({
-                audio: { vadEnabled: true, diarization: true, codeSwitching: true, noiseSuppression: false, sampleRate: 16000, noiseFilterLevel: 'high', echoCancellation: true, autoGainControl: true, vadThreshold: 0.9 },
+                audio: { vadEnabled: true, diarization: true, codeSwitching: true, noiseSuppression: false, sampleRate: 16000, noiseFilterLevel: 'high', echoCancellation: true, autoGainControl: true, vadThreshold: 0.9, captureRawAudio: false },
             }));
             useAudioStore.getState().reset();
             const state = useAudioStore.getState();
