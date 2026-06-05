@@ -38,6 +38,14 @@ export class UpsertTenantFrontendConfigRequest {
   @IsBoolean()
   diarization?: boolean;
 
+  // TASK-332 — tenant toggle for local raw-stream dual-capture. Honored only
+  // when the platform capability (`enable-local-raw-capture` GlobalSetting) is
+  // ON; the SDK-facing enablement is the server-computed AND of the two.
+  @ApiPropertyOptional({ description: 'Enable local raw-stream audio capture for the tenant (effective only when the platform capability is on)' })
+  @IsOptional()
+  @IsBoolean()
+  captureRawAudio?: boolean;
+
   @ApiPropertyOptional({ description: 'Typed advanced configuration (see FrontendPipelineConfigJson)' })
   @IsOptional()
   @IsObject()

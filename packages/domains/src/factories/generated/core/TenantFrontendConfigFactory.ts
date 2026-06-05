@@ -11,6 +11,7 @@ export interface CreateTenantFrontendConfigProps extends BaseEntityFactoryCreate
   vad?: ITenantFrontendConfigEntity['vad'];
   voiceEnrollment?: ITenantFrontendConfigEntity['voiceEnrollment'];
   diarization?: ITenantFrontendConfigEntity['diarization'];
+  captureRawAudio?: ITenantFrontendConfigEntity['captureRawAudio'];
   configJson?: ITenantFrontendConfigEntity['configJson'];
   tenantId: ITenantFrontendConfigEntity['tenantId'];
 
@@ -37,6 +38,7 @@ export class TenantFrontendConfigFactory {
       vad: props.vad ?? false,
       voiceEnrollment: props.voiceEnrollment ?? false,
       diarization: props.diarization ?? false,
+      captureRawAudio: props.captureRawAudio ?? false,
       configJson: props.configJson ?? null,
     });
   }

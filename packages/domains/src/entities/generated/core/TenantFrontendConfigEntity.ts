@@ -10,6 +10,7 @@ export interface ITenantFrontendConfigEntity extends IBaseTenantEntity {
   vad: boolean;
   voiceEnrollment: boolean;
   diarization: boolean;
+  captureRawAudio: boolean;
   configJson?: Record<string, unknown> | null;
 }
 
@@ -19,6 +20,7 @@ export class TenantFrontendConfigEntity extends BaseTenantEntity {
   private _vad: ITenantFrontendConfigEntity['vad'];
   private _voiceEnrollment: ITenantFrontendConfigEntity['voiceEnrollment'];
   private _diarization: ITenantFrontendConfigEntity['diarization'];
+  private _captureRawAudio: ITenantFrontendConfigEntity['captureRawAudio'];
   private _configJson?: ITenantFrontendConfigEntity['configJson'];
 
   constructor(init: ITenantFrontendConfigEntity) {
@@ -28,6 +30,7 @@ export class TenantFrontendConfigEntity extends BaseTenantEntity {
     this._vad = init.vad;
     this._voiceEnrollment = init.voiceEnrollment;
     this._diarization = init.diarization;
+    this._captureRawAudio = init.captureRawAudio;
     this._configJson = init.configJson;
   }
 
@@ -69,6 +72,14 @@ export class TenantFrontendConfigEntity extends BaseTenantEntity {
 
   set diarization(value: ITenantFrontendConfigEntity['diarization']) {
     this.setProperty('diarization', value);
+  }
+
+  get captureRawAudio(): ITenantFrontendConfigEntity['captureRawAudio'] {
+    return this._captureRawAudio;
+  }
+
+  set captureRawAudio(value: ITenantFrontendConfigEntity['captureRawAudio']) {
+    this.setProperty('captureRawAudio', value);
   }
 
   get configJson(): ITenantFrontendConfigEntity['configJson'] {

@@ -600,6 +600,12 @@ export const SEED_GLOBAL_SETTING_IDS = {
     FOURBITS_ADMIN_MENU_ORDER: '85000000-0000-0000-0002-000000000051',
     MUMBAI_ADMIN_MENU_ORDER: '85000000-0000-0000-0003-000000000051',
 
+    // TASK-332 — platform capability for local raw-stream dual-capture. A single
+    // `locked` row owned by SYSTEM_TENANT_ID (the reserved platform tenant). The
+    // 4th UUID group `0002` is a fresh system-tenant block (roles use `0000`,
+    // policies `0001`). Read flat-by-key from the AppSettings boot cache.
+    SYSTEM_FF_LOCAL_RAW_CAPTURE: '00000000-0000-0000-0002-000000000001',
+
     // TASK-316 — DB-backed rate-limit config (platform tenant only; gateway-wide).
     RATE_LIMIT_ENABLED: '85000000-0000-0000-0000-000000000300',
     RATE_LIMIT_TIER_DEFAULT_LIMIT: '85000000-0000-0000-0000-000000000301',

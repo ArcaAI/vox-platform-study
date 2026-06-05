@@ -5,14 +5,23 @@ import {
   TenantFrontendConfigFactory,
   TenantFrontendConfigRepository,
 } from '@arcaai/domains';
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
+import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { ITenantFrontendConfigService } from './ITenantFrontendConfigService';
 import { TenantFrontendConfigResponse, UpsertTenantFrontendConfigRequest } from './dto';
 import { TenantFrontendConfigDtoMapper } from './tenant-frontend-config.dto.mapper';
+
+/**
+ * TASK-332 — platform-capability flag for local raw-stream dual-capture. A
+ * single `locked` GlobalSetting owned by `SYSTEM_TENANT_ID` (namespace
+ * `feature-flags`). The `AppSettingsService` cache is keyed flat by `key`, so a
+ * single platform-scoped row resolves deterministically regardless of tenant.
+ */
+export const LOCAL_RAW_CAPTURE_CAPABILITY_KEY = 'enable-local-raw-capture';
 
 /**
  * Manages per-tenant frontend audio-pipeline defaults (TASK-328 A6).
@@ -30,6 +39,8 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
     private readonly configRepository: TenantFrontendConfigRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    @Inject(IAppSettingsService)
+    private readonly appSettings: IAppSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.TenantFrontendConfig);
   }
@@ -40,7 +51,26 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
     if (!config) return null;
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, { resourceId: config.id });
-    return TenantFrontendConfigDtoMapper.toResponse(config);
+    return TenantFrontendConfigDtoMapper.toResponse(config, this.platformRawCaptureCapable());
+  }
+
+  /**
+   * TASK-332 — the SDK-facing enablement for local raw-stream capture:
+   * `platformCapability AND tenantToggle`, computed server-side. The platform
+   * capability comes from the boot-cached `enable-local-raw-capture`
+   * GlobalSetting; the tenant toggle is the `captureRawAudio` column. Returns
+   * `false` whenever the platform capability is OFF (short-circuits the DB read)
+   * or the tenant has no config row.
+   */
+  async resolveEffectiveLocalRawCapture(tenantId: string): Promise<boolean> {
+    if (!this.platformRawCaptureCapable()) return false;
+    const config = await this.configRepository.findByTenant(tenantId);
+    return config?.captureRawAudio === true;
+  }
+
+  /** The locked platform capability (single SYSTEM_TENANT_ID GlobalSetting). */
+  private platformRawCaptureCapable(): boolean {
+    return this.appSettings.getValueWithDefault<boolean>(LOCAL_RAW_CAPTURE_CAPABILITY_KEY, false);
   }
 
   async upsert(dto: UpsertTenantFrontendConfigRequest, tenantId?: string): Promise<TenantFrontendConfigResponse> {
@@ -57,10 +87,11 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
         vad: saved.vad,
         voiceEnrollment: saved.voiceEnrollment,
         diarization: saved.diarization,
+        captureRawAudio: saved.captureRawAudio,
       },
     });
 
-    return TenantFrontendConfigDtoMapper.toResponse(saved);
+    return TenantFrontendConfigDtoMapper.toResponse(saved, this.platformRawCaptureCapable());
   }
 
   private async createNew(tenantId: string, dto: UpsertTenantFrontendConfigRequest): Promise<TenantFrontendConfigEntity> {
@@ -71,6 +102,7 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
       vad: dto.vad ?? false,
       voiceEnrollment: dto.voiceEnrollment ?? false,
       diarization: dto.diarization ?? false,
+      captureRawAudio: dto.captureRawAudio ?? false,
       configJson: (dto.configJson ?? null) as Record<string, unknown> | null,
       createdBy: this.requestUserId ?? undefined,
     });
@@ -84,6 +116,7 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
     if (dto.vad !== undefined) entity.vad = dto.vad;
     if (dto.voiceEnrollment !== undefined) entity.voiceEnrollment = dto.voiceEnrollment;
     if (dto.diarization !== undefined) entity.diarization = dto.diarization;
+    if (dto.captureRawAudio !== undefined) entity.captureRawAudio = dto.captureRawAudio;
     if (dto.configJson !== undefined) entity.configJson = (dto.configJson ?? null) as Record<string, unknown> | null;
     entity.updatedBy = this.requestUserId ?? undefined;
 

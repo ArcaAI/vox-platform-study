@@ -532,6 +532,13 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         if (tenantCfg.features) {
           tenantOverrides.features = tenantCfg.features as DeepPartial<AppConfig['features']>;
         }
+        // TASK-332 — surface the server-computed effective local raw-capture
+        // flag as a tenant-tier override. It is admin-owned in CONFIG_PERMISSIONS,
+        // so the cascade's stripLockedAndAdminPaths prevents user prefs from
+        // overriding it; the panel reads resolvedConfig.audio.captureRawAudio.
+        if (tenantCfg.captureRawAudio !== undefined) {
+          tenantOverrides.audio = { ...(tenantOverrides.audio ?? {}), captureRawAudio: tenantCfg.captureRawAudio };
+        }
         if ('lockedPaths' in tenantCfg && Array.isArray((tenantCfg as Record<string, unknown>).lockedPaths)) {
           lockedPaths.push(...((tenantCfg as Record<string, unknown>).lockedPaths as string[]));
         }

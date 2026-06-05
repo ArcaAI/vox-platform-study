@@ -5,6 +5,7 @@ import {
     SEED_TENANT_ID,
     SEED_USER_IDS,
     SEED_GLOBAL_SETTING_IDS,
+    SYSTEM_TENANT_ID,
 } from './00-constants';
 
 /**
@@ -506,6 +507,32 @@ export const ALL_SETTINGS: SettingDef[] = [
     }),
 ];
 
+// =============================================================================
+// Platform-owned settings (SYSTEM_TENANT_ID)
+//
+// TASK-332 — the local raw-stream dual-capture capability is a PLATFORM gate,
+// not a per-tenant flag: a single `locked` row owned by SYSTEM_TENANT_ID. The
+// `AppSettingsService` cache is keyed flat by `key`, so one platform-scoped row
+// resolves deterministically (the key is unique, so it never trips the
+// boot-time duplicate-key invariant). Only SUPER_ADMIN can flip it
+// (enforced by the `GlobalSettingService` locked write-guard). Default OFF.
+// =============================================================================
+const PLATFORM_SETTINGS: SettingDef[] = [
+    {
+        id: SEED_GLOBAL_SETTING_IDS.SYSTEM_FF_LOCAL_RAW_CAPTURE,
+        tenantId: SYSTEM_TENANT_ID,
+        namespace: 'feature-flags',
+        name: 'Enable Local Raw Capture',
+        key: 'enable-local-raw-capture',
+        value: 'false',
+        defaultValue: 'false',
+        dataType: ValueType.Boolean,
+        description:
+            'Platform capability for local raw-stream dual-capture (TASK-332). The SDK-facing enablement is this AND the per-tenant TenantFrontendConfig.captureRawAudio toggle. Locked — only SUPER_ADMIN may change it.',
+        locked: true,
+    },
+];
+
 export const seedGlobalSetting = async (client: CorePrismaClient) => {
     console.log('Seeding per-tenant Global Settings (19 settings × 4 tenants)...');
 
@@ -544,4 +571,41 @@ export const seedGlobalSetting = async (client: CorePrismaClient) => {
     }
 
     console.log(`Seeded ${ALL_SETTINGS.length} Global Settings across all tenants`);
+
+    // TASK-332 — platform-owned capability rows (SYSTEM_TENANT_ID). Idempotent:
+    // refresh metadata but NEVER clobber an admin-tuned `value` on re-seed, so a
+    // SUPER_ADMIN who turned the capability ON keeps it after `db:seed`.
+    console.log(`Seeding platform Global Settings (${PLATFORM_SETTINGS.length} SYSTEM rows)...`);
+    for (const s of PLATFORM_SETTINGS) {
+        await client.globalSetting.upsert({
+            where: {
+                GlobalSetting_tenantId_name_key_unique: {
+                    tenantId: s.tenantId,
+                    name: s.name,
+                    key: s.key,
+                },
+            },
+            update: {
+                defaultValue: s.defaultValue,
+                dataType: s.dataType,
+                description: s.description,
+                namespace: s.namespace,
+                locked: s.locked ?? false,
+            },
+            create: {
+                id: s.id,
+                tenantId: s.tenantId,
+                namespace: s.namespace,
+                name: s.name,
+                key: s.key,
+                value: s.value,
+                defaultValue: s.defaultValue,
+                dataType: s.dataType,
+                description: s.description,
+                locked: s.locked ?? false,
+                createdBy: CREATED_BY,
+            },
+        });
+        console.log(`  [SYSTEM] ${s.namespace}/${s.key}`);
+    }
 };

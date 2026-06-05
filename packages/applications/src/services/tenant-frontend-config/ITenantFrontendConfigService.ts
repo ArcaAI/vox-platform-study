@@ -14,4 +14,11 @@ export abstract class ITenantFrontendConfigService {
 
   /** Create-or-update the tenant's frontend config (OCC on update). */
   abstract upsert(dto: UpsertTenantFrontendConfigRequest, tenantId?: string): Promise<TenantFrontendConfigResponse>;
+
+  /**
+   * TASK-332 — the server-computed SDK-facing enablement for local raw-stream
+   * capture: `platformCapability AND tenantToggle`. Surfaced to
+   * `GET /tenant/me/config` as the `enable-local-raw-capture` row.
+   */
+  abstract resolveEffectiveLocalRawCapture(tenantId: string): Promise<boolean>;
 }

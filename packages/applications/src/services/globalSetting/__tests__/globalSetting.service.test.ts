@@ -605,6 +605,54 @@ describe('GlobalSettingService', () => {
         });
     });
 
+    // =========================================================================
+    // TASK-332 — `locked` write-guard. A locked row (e.g. the platform
+    // capability `enable-local-raw-capture`) may only be written by a
+    // SUPER_ADMIN. Mirrors the `updateTenantConfigs` posture already enforced
+    // for the tenant-config PATCH path.
+    // =========================================================================
+    describe('TASK-332 locked write-guard', () => {
+        const asSuperAdmin = () =>
+            mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'super-1', roles: ['SUPER_ADMIN'] } : key === 'tenantId' ? 'tenant-1' : null));
+
+        it('rejects a non-super-admin write to a locked row with ForbiddenException', async () => {
+            const locked = createMockGlobalSettingEntity({ id: 'locked-1', key: 'enable-local-raw-capture', hasChanges: true, changes: { value: 'true' } });
+            (locked as any).locked = true;
+            (locked as any).version = 1;
+            mockGlobalSettingRepository.findById.mockResolvedValue(locked);
+
+            const { ForbiddenException } = await import('@nestjs/common');
+            await expect(service.update('locked-1', { value: 'true', expectedVersion: 1 } as any)).rejects.toBeInstanceOf(ForbiddenException);
+            // Guard fires BEFORE the CAS write — the row is never touched.
+            expect(mockGlobalSettingRepository.updateWithVersion).not.toHaveBeenCalled();
+        });
+
+        it('allows a SUPER_ADMIN to write a locked row', async () => {
+            asSuperAdmin();
+            const locked = createMockGlobalSettingEntity({ id: 'locked-1', key: 'enable-local-raw-capture', hasChanges: true, changes: { value: 'true' } });
+            (locked as any).locked = true;
+            (locked as any).version = 1;
+            mockGlobalSettingRepository.findById.mockResolvedValue(locked);
+            mockGlobalSettingRepository.updateWithVersion.mockResolvedValue(locked);
+
+            await service.update('locked-1', { value: 'true', expectedVersion: 1 } as any);
+
+            expect(mockGlobalSettingRepository.updateWithVersion).toHaveBeenCalledWith('locked-1', locked, 1);
+        });
+
+        it('does NOT guard an unlocked row for a non-super-admin', async () => {
+            const unlocked = createMockGlobalSettingEntity({ id: 'unlocked-1', hasChanges: true, changes: { value: 'x' } });
+            (unlocked as any).locked = false;
+            (unlocked as any).version = 1;
+            mockGlobalSettingRepository.findById.mockResolvedValue(unlocked);
+            mockGlobalSettingRepository.updateWithVersion.mockResolvedValue(unlocked);
+
+            await service.update('unlocked-1', { value: 'x', expectedVersion: 1 } as any);
+
+            expect(mockGlobalSettingRepository.updateWithVersion).toHaveBeenCalled();
+        });
+    });
+
     describe('deleteById', () => {
         it('should soft delete global setting successfully', async () => {
             const deletedSetting = createMockGlobalSettingEntity({ id: 'setting-123' });
