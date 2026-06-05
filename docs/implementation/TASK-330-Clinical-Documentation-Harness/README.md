@@ -518,10 +518,15 @@ rate per doctor/specialty/provider (alert >15–20%) · judge-vs-clinician ICC �
 
 ### 7.5 Remaining open decisions
 1. **Golden-set ownership** — which clinical SME(s) curate/maintain the golden consultation set + rubric weights?
+Answer: TBD
 2. **Institutional-knowledge ingestion** — formats/sources tenants will provide (PDF protocols, formulary, guidelines?) + who approves/versions them.
+Answer: TBD
 3. **Faithfulness-judge model** — which reasoning model runs the inferential sensor in a tenant-configurable (cloud/local) world, and the minimum-assurance threshold for local-only tenants.
+Answer: Suggest the best practices for 2 sector: small model <= 20B which we can hosted using LM Studio (priority) , large models we can use Azure OpenAI or AWS Bedrock.
 4. **ABDM timing** — do any target tenants need AB-PMJAY/insurance exchange soon enough to prioritise the HIP/HIU certification beyond schema-readiness?
+Answer: TBD
 5. **SDF assumption** — do we design now for Significant-Data-Fiduciary obligations (DPIA/audit/localization) or treat as flag-gated until designated?
+Answer: TBD
 
 ---
 

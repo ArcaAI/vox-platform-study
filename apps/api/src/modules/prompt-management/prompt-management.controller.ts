@@ -22,10 +22,20 @@ import { PaginatedPromptTemplateResponse, PromptUsageStatsResponse } from './dto
 @ApiTags('admin-prompt-templates')
 // TASK-319 F4 — prompt-template management is an admin capability; mounting it
 // under the audited `/admin` prefix brings it in line with the other admin
-// surfaces and the boot-time admin-route permission audit (F6). The existing
-// `@Authorize(['read','PromptTemplate'])` + per-method tuples are unchanged.
+// surfaces and the boot-time admin-route permission audit (F6).
+//
+// TASK-331 doc-09 D1 — the class-level read surface is `manage:PromptTemplate`
+// (was `read`). This keeps the admin GET routes that inherit the class
+// decorator (list / getById / getVersions / getVersion / getUsageStats /
+// analytics/usage) on the ADMIN plane: granting clinicians the new
+// `read:PromptTemplate` ability (for the end-user PromptTemplateController)
+// must NOT also let them list every tenant template, peers' personal prompts,
+// drafts, or usage analytics here. Admins already hold `manage` (no
+// regression). Per-method `create/update/delete/test/activate` tuples below
+// are unaffected — the guard reads metadata with `getAllAndOverride`, so a
+// handler-level `@Authorize` wins over this class-level one.
 @Controller('admin/prompt-templates')
-@Authorize(['read', 'PromptTemplate'])
+@Authorize(['manage', 'PromptTemplate'])
 export class PromptManagementController {
   constructor(
     @Inject(IPromptManagementService)

@@ -46,6 +46,14 @@ export interface UsePromptsReturn {
   error: Error | null;
   create: (input: CreatePromptInput) => Promise<PromptTemplate>;
   list: (filters?: PromptListFilters) => Promise<PromptTemplate[]>;
+  /**
+   * TASK-331 doc-09 — end-user (clinician) read-only template list. Hits the
+   * `prompt-templates/available` end-user route (NOT `/admin/*`), returning the
+   * tenant + department defaults plus the caller's OWN personal templates.
+   * Use this for clinician-facing selectors (Pre-Summary / Summary) so a doctor
+   * without admin ability is not bounced to `/403`.
+   */
+  listAvailable: (filters?: { category?: string }) => Promise<PromptTemplate[]>;
   get: (id: string) => Promise<PromptTemplate>;
   update: (id: string, input: UpdatePromptInput) => Promise<PromptTemplate>;
   remove: (id: string) => Promise<void>;
@@ -88,6 +96,20 @@ export function usePrompts(): UsePromptsReturn {
               search: filters.search || undefined,
             })
           : PROMPT_TEMPLATE_ENDPOINTS.LIST;
+        const raw = await client.get(url);
+        const items = extractArray<PromptTemplate>(raw);
+        setPrompts(items);
+        return items;
+      }),
+    [execute],
+  );
+
+  const listAvailable = useCallback(
+    (filters?: { category?: string }) =>
+      execute<PromptTemplate[]>('listAvailable', async (client) => {
+        const url = filters?.category
+          ? appendFilters(PROMPT_TEMPLATE_ENDPOINTS.AVAILABLE, { category: filters.category })
+          : PROMPT_TEMPLATE_ENDPOINTS.AVAILABLE;
         const raw = await client.get(url);
         const items = extractArray<PromptTemplate>(raw);
         setPrompts(items);
@@ -212,6 +234,7 @@ export function usePrompts(): UsePromptsReturn {
     error,
     create,
     list,
+    listAvailable,
     get,
     update,
     remove,

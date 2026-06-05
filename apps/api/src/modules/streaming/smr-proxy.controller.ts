@@ -655,6 +655,43 @@ export class SmrProxyController {
       if (!template) {
         throw new NotFoundException(`Prompt template ${body.prompt_template_id} not found`);
       }
+
+      // TASK-331 doc-09 — close the prompt-template ownership bypass. This
+      // branch previously resolved any `findById` hit with no tenant/owner
+      // check (unlike the DNA guard below), so a caller could fold another
+      // tenant's template — or a peer's USER_PERSONAL template in the same
+      // tenant — into the system prompt. Mirror the DNA guard:
+      //   1. tenant must match (NotFound on mismatch — never leak existence);
+      //   2. a USER_PERSONAL template must be owned by the caller (Forbidden).
+      // Tenant-less (global/system) templates keep `tenantId === null` and are
+      // intentionally allowed, matching the cross-tenant context-item guard.
+      const user = this.clsService.get('user') as { id?: string } | undefined;
+      const callerId = user?.id;
+      const templateTenant = (template as { tenantId?: string | null }).tenantId ?? null;
+      const templateScope = (template as { scope?: string | null }).scope ?? null;
+      const templateOwner = (template as { ownerUserId?: string | null }).ownerUserId ?? null;
+
+      if (callerTenantId && templateTenant !== null && templateTenant !== callerTenantId) {
+        this.logger.warn({
+          message: 'Cross-tenant prompt template usage rejected',
+          callerTenant: callerTenantId,
+          promptTemplateId: template.id,
+          templateTenant,
+        });
+        throw new NotFoundException(`Prompt template ${body.prompt_template_id} not found`);
+      }
+
+      if (templateScope === 'USER_PERSONAL' && templateOwner !== callerId) {
+        this.logger.warn({
+          message: 'Cross-doctor personal prompt template usage rejected',
+          callerId,
+          callerTenant: callerTenantId,
+          promptTemplateId: template.id,
+          templateOwner,
+        });
+        throw new ForbiddenException('You do not have access to this prompt template');
+      }
+
       systemPrompt = template.content ?? '';
       promptTemplateId = template.id;
       promptTemplateName = template.name;

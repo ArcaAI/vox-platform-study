@@ -287,12 +287,13 @@ describe('WS-4 endpoint constants', () => {
       ]));
     });
 
-    it('PROMPT_TEMPLATE_ENDPOINTS should have exactly 12 keys', () => {
+    it('PROMPT_TEMPLATE_ENDPOINTS should have exactly 13 keys', () => {
       const keys = Object.keys(PROMPT_TEMPLATE_ENDPOINTS);
       // TASK-328 A4 added TEST + USAGE_ANALYTICS (10 -> 12).
-      expect(keys).toHaveLength(12);
+      // TASK-331 doc-09 added AVAILABLE — the end-user (clinician) plane (12 -> 13).
+      expect(keys).toHaveLength(13);
       expect(keys).toEqual(expect.arrayContaining([
-        'CREATE', 'LIST', 'GET', 'UPDATE', 'DELETE', 'VERSIONS', 'VERSION',
+        'CREATE', 'LIST', 'AVAILABLE', 'GET', 'UPDATE', 'DELETE', 'VERSIONS', 'VERSION',
         'ASSIGN_DEPARTMENT', 'USAGE', 'ACTIVATE_VERSION', 'TEST', 'USAGE_ANALYTICS',
       ]));
     });

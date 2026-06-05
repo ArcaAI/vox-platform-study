@@ -244,8 +244,9 @@ describe('Policy Seed Data', () => {
     });
 
     describe('Default Policies', () => {
-        it('should define 17 policies', () => {
-            expect(DEFAULT_POLICIES.length).toBe(17);
+        it('should define 18 policies', () => {
+            // TASK-331 doc-09 — +1 for the new `prompt-template-read` policy.
+            expect(DEFAULT_POLICIES.length).toBe(18);
         });
 
         it('should include system-full-access policy', () => {
@@ -264,6 +265,22 @@ describe('Policy Seed Data', () => {
             const promptPolicy = DEFAULT_POLICIES.find((p) => p.name === 'prompt-template-manage');
             expect(promptPolicy).toBeDefined();
             expect(promptPolicy?.scope).toBe(PolicyScope.TENANT);
+        });
+
+        // TASK-331 doc-09 — end-user (clinician) read-only template ability.
+        it('should include prompt-template-read policy (read+list PromptTemplate, tenant-scoped)', () => {
+            const readPolicy = DEFAULT_POLICIES.find((p) => p.name === 'prompt-template-read');
+            expect(readPolicy).toBeDefined();
+            expect(readPolicy?.scope).toBe(PolicyScope.TENANT);
+
+            const rule = readPolicy?.rules.find((r) => r.subject === 'PromptTemplate');
+            expect(rule).toBeDefined();
+            // read-only — must NOT grant `manage` (that's the admin plane).
+            const actions = Array.isArray(rule?.action) ? rule?.action : [rule?.action];
+            expect(actions).toEqual(expect.arrayContaining(['read', 'list']));
+            expect(actions).not.toContain('manage');
+            // tenant-scoped to the caller's tenant.
+            expect(JSON.stringify(rule?.conditions)).toContain('${context.tenantId}');
         });
 
         it('should include global-settings-manage policy', () => {
@@ -403,6 +420,15 @@ describe('Role Seed Data', () => {
         it('should assign consultation-own-manage to DOCTOR', () => {
             const doctor = DEFAULT_ROLES.find((r) => r.name === 'DOCTOR');
             expect(doctor?.policies).toContain('consultation-own-manage');
+        });
+
+        // TASK-331 doc-09 — DOCTOR gets read-only template access (for the
+        // Pre-Summary / Summary selector) but NOT the admin `manage` plane.
+        // DEPARTMENT_HEAD inherits DOCTOR's policies via parentRoleId.
+        it('should assign prompt-template-read to DOCTOR (and NOT prompt-template-manage)', () => {
+            const doctor = DEFAULT_ROLES.find((r) => r.name === 'DOCTOR');
+            expect(doctor?.policies).toContain('prompt-template-read');
+            expect(doctor?.policies).not.toContain('prompt-template-manage');
         });
 
         it('should assign consultation-read-assigned to NURSE', () => {
