@@ -13,8 +13,19 @@ export class ConsultationDtoMapper {
    */
   static toResponse(entity: ConsultationEntity, isNew = false): ConsultationResponse {
     const metadata = entity.metadata as Record<string, unknown> | null | undefined;
-    // TASK-322 — lifecycle status lives in metadata.status; absent ⇒ OPEN.
-    const status = (metadata?.status as string | undefined) ?? CONSULTATION_STATUS.OPEN;
+    // Lifecycle status precedence:
+    //   • TASK-330 promoted status to a typed `status` COLUMN; the attestation
+    //     gate writes it (harness draft → PENDING_REVIEW, approve → SIGNED). An
+    //     explicit non-OPEN column value is canonical and wins.
+    //   • TASK-322 close/reopen still write the legacy `metadata.status` JSON.
+    //     The column default is OPEN ("not yet transitioned"), so when the
+    //     column is OPEN/absent we defer to metadata.status, then OPEN.
+    const columnStatus = entity.status as string | undefined;
+    const metaStatus = metadata?.status as string | undefined;
+    const status =
+      columnStatus && columnStatus !== CONSULTATION_STATUS.OPEN
+        ? columnStatus
+        : (metaStatus ?? columnStatus ?? CONSULTATION_STATUS.OPEN);
 
     return {
       id: entity.id,
