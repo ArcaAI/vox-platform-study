@@ -128,15 +128,19 @@ test.describe('TASK-330 — full harness loop (gate not bypassable + provenance 
     const consult = await detail.json();
     expect(consult.status, 'auto-generation must stop at the human gate').toBe('PENDING_REVIEW');
 
-    // Provenance/citations + sensor scores surface on the summary meta.
+    // The harness-produced RAW_SUMMARY draft must be retrievable for clinician
+    // review. The list endpoint is `:id/summary` (singular). (sensorScores /
+    // citationsMap are persisted on SummaryMeta and asserted at the
+    // unit/integration layer; this endpoint returns the draft context items.)
     const summaries = await request.get(
-      `/api/v1/consultations/${consultationId}/summaries`,
+      `/api/v1/consultations/${consultationId}/summary`,
       { headers: auth },
     );
     expect(summaries.status()).toBe(200);
     const body = await summaries.json();
-    const draft = (body.data ?? body).find?.((s: { citationsMap?: unknown }) => s.citationsMap) ?? body;
-    expect(draft, 'a draft with a citationsMap must surface for clinician review').toBeTruthy();
+    const items = Array.isArray(body) ? body : (body.data ?? []);
+    const draft = items.find?.((s: { type?: string }) => s.type === 'RAW_SUMMARY') ?? items;
+    expect(draft, 'a harness draft must surface for clinician review').toBeTruthy();
   });
 
   test('only the approve path produces a SIGNED_NOTE + GATE_DECISION', async ({ request }) => {

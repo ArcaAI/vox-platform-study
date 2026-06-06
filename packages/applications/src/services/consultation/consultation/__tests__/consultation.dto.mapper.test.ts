@@ -16,6 +16,7 @@ const createMockConsultationEntity = (overrides: Partial<{
     appointmentDate: Date;
     departmentId: string | null;
     parentConsultationId: string | null;
+    status: string;
     metadata: Record<string, unknown> | null;
     createdAt: Date;
     updatedAt: Date;
@@ -30,6 +31,7 @@ const createMockConsultationEntity = (overrides: Partial<{
     appointmentDate: 'appointmentDate' in overrides ? overrides.appointmentDate : new Date('2026-01-29'),
     departmentId: 'departmentId' in overrides ? overrides.departmentId : null,
     parentConsultationId: 'parentConsultationId' in overrides ? overrides.parentConsultationId : null,
+    status: 'status' in overrides ? overrides.status : undefined,
     metadata: 'metadata' in overrides ? overrides.metadata : null,
     createdAt: 'createdAt' in overrides ? overrides.createdAt : new Date('2026-01-29T10:00:00Z'),
     updatedAt: 'updatedAt' in overrides ? overrides.updatedAt : new Date('2026-01-29T10:30:00Z'),
@@ -272,6 +274,46 @@ describe('ConsultationDtoMapper', () => {
 
         it('should derive status from metadata.status when present', () => {
             const entity = createMockConsultationEntity({ metadata: { status: 'CLOSED' } });
+
+            const result = ConsultationDtoMapper.toResponse(entity as any);
+
+            expect(result.status).toBe('CLOSED');
+        });
+
+        // TASK-330 — lifecycle was promoted to a typed `status` COLUMN. The
+        // attestation gate (harness draft → PENDING_REVIEW, approve → SIGNED)
+        // writes the column, NOT metadata.status, so the read must surface it.
+        it('should surface PENDING_REVIEW from the typed status column (harness draft)', () => {
+            const entity = createMockConsultationEntity({ status: 'PENDING_REVIEW', metadata: null });
+
+            const result = ConsultationDtoMapper.toResponse(entity as any);
+
+            expect(result.status).toBe('PENDING_REVIEW');
+        });
+
+        it('should surface SIGNED from the typed status column (approve)', () => {
+            const entity = createMockConsultationEntity({ status: 'SIGNED', metadata: null });
+
+            const result = ConsultationDtoMapper.toResponse(entity as any);
+
+            expect(result.status).toBe('SIGNED');
+        });
+
+        it('should prefer a non-OPEN typed column even when metadata has other keys', () => {
+            const entity = createMockConsultationEntity({
+                status: 'PENDING_REVIEW',
+                metadata: { visitType: 'follow-up' },
+            });
+
+            const result = ConsultationDtoMapper.toResponse(entity as any);
+
+            expect(result.status).toBe('PENDING_REVIEW');
+        });
+
+        // Column default OPEN means "not yet transitioned" → defer to the legacy
+        // TASK-322 close/reopen JSON so closing a consultation still surfaces.
+        it('should defer to legacy metadata.status (CLOSED) when the column is default OPEN', () => {
+            const entity = createMockConsultationEntity({ status: 'OPEN', metadata: { status: 'CLOSED' } });
 
             const result = ConsultationDtoMapper.toResponse(entity as any);
 
