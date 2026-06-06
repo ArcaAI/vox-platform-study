@@ -34,7 +34,6 @@ import {
   type Department,
 } from '../api/departments';
 import { usePromptTemplates, type PromptTemplate } from '../api/prompts';
-import { useTenantsInfinite, type Tenant } from '../api/tenants';
 import { ConfirmDialog, StatusBadge } from '../components';
 
 // ---------------------------------------------------------------------------
@@ -733,37 +732,9 @@ export default function DepartmentManagementPage() {
   // ---- Tenant context for super admins ------------------------------------
 
   const tenantKey = useAuthStore((s) => s.tenantKey);
-  const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
-  const setTenantKey = useAuthStore((s) => s.setTenantKey);
 
-  const [selectedTenantId, setSelectedTenantId] = useState(tenantKey || '');
-
-  const {
-    data: tenantsPages,
-    hasNextPage: tenantsHasMore,
-    fetchNextPage: fetchNextTenants,
-    isFetchingNextPage: tenantsLoadingMore,
-    isRefetching: tenantsRefreshing,
-    refetch: refetchTenants,
-  } = useTenantsInfinite(25, { enabled: isSuperAdmin() });
-  const tenants = useMemo(() => tenantsPages?.pages.flatMap((p) => p.data) ?? [], [tenantsPages]);
-
-  const effectiveTenantId = tenantKey || selectedTenantId;
+  const effectiveTenantId = tenantKey;
   const hasTenantContext = !!effectiveTenantId;
-
-  useEffect(() => {
-    if (tenantKey && tenantKey !== selectedTenantId) {
-      setSelectedTenantId(tenantKey);
-    }
-  }, [tenantKey, selectedTenantId]);
-
-  const handleTenantSelect = useCallback(
-    (tenantId: string) => {
-      setSelectedTenantId(tenantId);
-      setTenantKey(tenantId, tenants.find((t) => t.id === tenantId)?.name);
-    },
-    [tenants, setTenantKey],
-  );
 
   // ---- Data ---------------------------------------------------------------
 
@@ -876,42 +847,6 @@ export default function DepartmentManagementPage() {
 
   // ---- Multi-column layout ------------------------------------------------
 
-  const tenantsColumn: MultiColumnConfig<Tenant> = {
-    id: 'tenants',
-    title: 'Tenants',
-    showItemCount: true,
-    width: '180px',
-    skeletonCount: 5,
-    skeletonHeight: 'h-12',
-    estimateItemSize: 56,
-    emptyIcon: <Building2 className="size-5" />,
-    emptyTitle: 'No tenants available',
-    onRefresh: () => {
-      void refetchTenants();
-    },
-    isRefreshing: tenantsRefreshing,
-    keyExtractor: (t) => t.id,
-    renderItem: (t) => (
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{t.name}</p>
-          <p className="text-muted-foreground truncate text-xs">{t.key}</p>
-        </div>
-        <StatusBadge status={t.resourceStatus ?? 'ENABLED'} />
-      </div>
-    ),
-  };
-
-  const tenantsState: MultiColumnState<Tenant> = {
-    data: tenants,
-    isLoading: !tenants.length && isSuperAdmin(),
-    selectedId: effectiveTenantId || null,
-    onSelect: handleTenantSelect,
-    hasMore: !!tenantsHasMore,
-    onLoadMore: () => fetchNextTenants(),
-    isLoadingMore: tenantsLoadingMore,
-  };
-
   const deptsColumn: MultiColumnConfig<Department> = {
     id: 'departments',
     title: 'Departments',
@@ -950,7 +885,7 @@ export default function DepartmentManagementPage() {
     ),
     emptyIcon: <Building2 className="size-5" />,
     emptyTitle: !hasTenantContext ? 'No tenant selected' : 'No departments found',
-    emptyDescription: !hasTenantContext ? 'Select a tenant to view departments.' : 'Create a department to get started.',
+    emptyDescription: !hasTenantContext ? 'Select a tenant from the header to view departments.' : 'Create a department to get started.',
     onRefresh: hasTenantContext
       ? () => {
           void refetchDepartments();
@@ -1073,8 +1008,8 @@ export default function DepartmentManagementPage() {
       </div>
 
       <MultiColumnLayout
-        columns={[...(isSuperAdmin() ? [tenantsColumn] : []), deptsColumn, detailColumn]}
-        columnStates={[...(isSuperAdmin() ? [tenantsState] : []), deptsState, detailState]}
+        columns={[deptsColumn, detailColumn]}
+        columnStates={[deptsState, detailState]}
         height="calc(100vh - 12rem)"
       />
 

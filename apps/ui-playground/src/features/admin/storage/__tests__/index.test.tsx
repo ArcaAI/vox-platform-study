@@ -20,25 +20,20 @@ vi.mock('@/store/auth-store', () => ({
 
 // ── api hooks ───────────────────────────────────────────────────────
 let bucketsLoading = true;
+let bucketsTenantArg = '';
+let lastColumns: any[] = [];
 const refetch = vi.fn();
 vi.mock('../../api/tenant-storage', () => ({
-    useTenantBuckets: () => ({ data: [], isLoading: bucketsLoading, refetch }),
+    useTenantBuckets: (tenantId: string) => {
+        bucketsTenantArg = tenantId;
+        return { data: [], isLoading: bucketsLoading, refetch };
+    },
     useTenantBucketTree: () => ({ data: undefined, refetch }),
     useTenantBucketObjects: () => ({ data: [], isLoading: false, refetch }),
     useCreateTenantBucket: () => ({ mutate: vi.fn(), isPending: false }),
     useDeleteTenantBucket: () => ({ mutate: vi.fn(), isPending: false }),
     useCreateTenantFolder: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
     useUploadTenantObject: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
-}));
-vi.mock('../../api/tenants', () => ({
-    useTenantsInfinite: () => ({
-        data: undefined,
-        isLoading: false,
-        hasNextPage: false,
-        fetchNextPage: vi.fn(),
-        isFetchingNextPage: false,
-        refetch,
-    }),
 }));
 
 // ── feature components ──────────────────────────────────────────────
@@ -76,13 +71,16 @@ vi.mock('@arcaai/ui/dialog', () => ({
 // MultiColumnLayout drives each content column's renderContent(), where the
 // bucket-loading skeleton lives.
 vi.mock('@arcaai/ui/multi-column-layout', () => ({
-    MultiColumnLayout: ({ columns }: any) => (
-        <div>
-            {columns.map((col: any, i: number) => (
-                <div key={col.id ?? i}>{typeof col.renderContent === 'function' ? col.renderContent() : null}</div>
-            ))}
-        </div>
-    ),
+    MultiColumnLayout: ({ columns }: any) => {
+        lastColumns = columns;
+        return (
+            <div>
+                {columns.map((col: any, i: number) => (
+                    <div key={col.id ?? i}>{typeof col.renderContent === 'function' ? col.renderContent() : null}</div>
+                ))}
+            </div>
+        );
+    },
 }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -107,5 +105,29 @@ describe('StorageManagementPage — bucket loading (TASK-331 doc-03 F9)', () => 
         render(<StorageManagementPage scopedTenantId="t1" embedded />);
 
         expect(screen.queryAllByTestId('bucket-skeleton').length).toBe(0);
+    });
+});
+
+// TASK-335 — the header ScopeSwitcher owns the working tenant, so the in-page
+// "Tenants" column is gone; the page scopes buckets to the header store tenant.
+describe('StorageManagementPage — header-driven tenant scope (TASK-335)', () => {
+    beforeEach(() => {
+        bucketsLoading = false;
+        bucketsTenantArg = '';
+        lastColumns = [];
+        vi.clearAllMocks();
+    });
+
+    it('renders no in-page tenants column — scope comes from the header switcher', () => {
+        render(<StorageManagementPage embedded />);
+
+        expect(lastColumns.map((col) => col.id)).toEqual(['storage-buckets', 'storage-objects']);
+        expect(lastColumns.some((col) => col.id === 'storage-tenants')).toBe(false);
+    });
+
+    it('scopes buckets to the header store tenant', () => {
+        render(<StorageManagementPage embedded />);
+
+        expect(bucketsTenantArg).toBe('t1');
     });
 });

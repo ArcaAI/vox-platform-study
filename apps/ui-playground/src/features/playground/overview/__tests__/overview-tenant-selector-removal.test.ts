@@ -1,27 +1,32 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Tests that the overview page no longer renders the TenantSelector
- * (Tenant Context card). The TenantSelector was removed because tenant
- * selection is handled through user impersonation instead.
+ * TASK-335 #3 — the playground Overview must NOT host its own tenant picker.
+ * The header `ScopeSwitcher` is the single working-tenant control; the old
+ * `TenantSelector` ("Tenant Context" card) was a competing second picker and
+ * has been deleted. These are real source-graph guards (not tautologies) so
+ * the regression fails if the picker is ever re-introduced.
+ *
+ * Paths resolve from the package root (`process.cwd()`), which is the
+ * ui-playground dir under both `pnpm --filter … test` and turbo.
  */
 
-describe('Overview page — TenantSelector removal', () => {
-  it('should NOT include TenantSelector in the rendered component tree', () => {
-    // The overview page's default export should not reference TenantSelector.
-    // We verify this by checking the module's import graph.
-    // This test validates the architectural decision: TenantSelector is removed.
-    const overviewModuleShouldNotImportTenantSelector = true;
-    expect(overviewModuleShouldNotImportTenantSelector).toBe(true);
+const overviewDir = resolve(process.cwd(), 'src/features/playground/overview');
+const overviewSource = readFileSync(resolve(overviewDir, 'index.tsx'), 'utf8');
+
+describe('Overview page — TenantSelector removal (TASK-335)', () => {
+  it('does not reference a TenantSelector / in-page tenant picker', () => {
+    expect(overviewSource).not.toMatch(/TenantSelector/);
+    expect(overviewSource).not.toMatch(/tenant-selector/);
   });
 
-  it('should still render UserList component', () => {
-    const overviewRendersUserList = true;
-    expect(overviewRendersUserList).toBe(true);
+  it('has deleted the dead tenant-selector component file', () => {
+    expect(existsSync(resolve(overviewDir, 'components/tenant-selector.tsx'))).toBe(false);
   });
 
-  it('should still render ArcaVox Admin Console info card', () => {
-    const overviewRendersInfoCard = true;
-    expect(overviewRendersInfoCard).toBe(true);
+  it('still renders the UserList (impersonation entry point)', () => {
+    expect(overviewSource).toMatch(/<UserList\s*\/>/);
   });
 });

@@ -89,7 +89,11 @@ export function ScopeSwitcher() {
                 <CommandEmpty>No tenants found.</CommandEmpty>
                 <CommandGroup>
                   {tenants
-                    .filter((t) => t.resourceStatus !== 'DISABLED')
+                    // TASK-335 #1 — the `__SYSTEM__` tenant owns platform catalog
+                    // rows (AI models / ASR pipelines / system accounts), not
+                    // customer data, so it is never a valid *working* tenant.
+                    // Keep `__GLOBAL__` selectable (it is the rich default tenant).
+                    .filter((t) => t.resourceStatus !== 'DISABLED' && t.key !== '__SYSTEM__')
                     .map((t) => (
                       <CommandItem key={t.id} value={`${t.name} ${t.key}`} onSelect={() => handleSelect(t)} className="gap-2">
                         <Building2 className="size-3.5 shrink-0" />

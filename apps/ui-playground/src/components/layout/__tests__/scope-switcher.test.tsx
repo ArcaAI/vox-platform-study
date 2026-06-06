@@ -69,6 +69,8 @@ import { ScopeSwitcher } from '../scope-switcher';
 const tenants = [
   { id: 't-1', name: 'Acme Hospital', key: 'acme', resourceStatus: 'ENABLED', createdAt: '', updatedAt: '' },
   { id: 't-2', name: 'Beta Clinic', key: 'beta', resourceStatus: 'ENABLED', createdAt: '', updatedAt: '' },
+  // TASK-335 #1 — the platform `__SYSTEM__` tenant must never be selectable as a working tenant.
+  { id: 't-sys', name: 'System', key: '__SYSTEM__', resourceStatus: 'ENABLED', createdAt: '', updatedAt: '' },
 ];
 
 describe('ScopeSwitcher (TASK-327 T4)', () => {
@@ -99,6 +101,15 @@ describe('ScopeSwitcher (TASK-327 T4)', () => {
       tenantsQuery.current = { data: undefined, isLoading: true };
       render(<ScopeSwitcher />);
       expect(screen.getAllByTestId('skeleton').length).toBeGreaterThan(0);
+    });
+
+    it('excludes the __SYSTEM__ tenant from the working-tenant list (TASK-335)', () => {
+      render(<ScopeSwitcher />);
+      // Customer tenants remain selectable…
+      expect(screen.getByText('Acme Hospital')).toBeInTheDocument();
+      expect(screen.getByText('Beta Clinic')).toBeInTheDocument();
+      // …but the platform System tenant is filtered out (owns no customer data).
+      expect(screen.queryByText('System')).not.toBeInTheDocument();
     });
   });
 

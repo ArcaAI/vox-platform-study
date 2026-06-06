@@ -11,10 +11,8 @@ import { AdminApiError } from '../api/admin-client';
 import {
   useMyTenantConfigs,
   useTenantConfigs,
-  useTenantsInfinite,
   useUpdateMyTenantConfigs,
   useUpdateTenantConfigs,
-  type Tenant,
   type TenantConfig,
 } from '../api/tenants';
 import { ConfigConflictModal } from './conflict-modal';
@@ -51,12 +49,6 @@ function normalizeJsonString(input: string): string {
 
 function isJsonDataType(dataType?: string | null): boolean {
   return String(dataType ?? 'STRING').toUpperCase() === 'JSON';
-}
-
-// TASK-331 doc-03 #4 — never surface a raw tenant UUID to operators; fall back
-// to a short, truncated id when a human-readable tenant name is unavailable.
-function shortTenantLabel(id: string): string {
-  return id ? `${id.slice(0, 8)}\u2026` : '';
 }
 
 function formatConfigValue(value: string, dataType?: string | null): string {
@@ -103,12 +95,9 @@ function ConfigValueEditor({ config, value, onChange }: { config: TenantConfig; 
 export default function ConfigurationManagementPage() {
   const roles = useAuthStore((s: { user?: { roles?: string[] } | null }) => s.user?.roles ?? []);
   const tenantId = useAuthStore((s: { tenantId: string }) => s.tenantId);
-  const tenantName = useAuthStore((s: { tenantName: string }) => s.tenantName);
   const isSuperAdmin = roles.includes('SUPER_ADMIN');
 
-  const [tenantSearch, setTenantSearch] = useState('');
   const [configSearch, setConfigSearch] = useState('');
-  const [selectedTenantId, setSelectedTenantId] = useState(tenantId || '');
   const [selectedConfigId, setSelectedConfigId] = useState('');
   const [draftValue, setDraftValue] = useState('');
   const [draftError, setDraftError] = useState<string | null>(null);
@@ -119,53 +108,10 @@ export default function ConfigurationManagementPage() {
   // of which are tied to the editor's draft, not the global session.
   const [conflictErr, setConflictErr] = useState<ConfigConflictError | null>(null);
 
-  // TASK-331 doc-03 #4 — keep the super-admin's in-page tenant selection in
-  // sync with the header ScopeSwitcher (store `tenantId`). `selectedTenantId`
-  // is seeded once from the store, so without this a tenant picked in the
-  // header after mount was ignored here. Deps intentionally OMIT
-  // `selectedTenantId` so an in-page pick (which does not touch the store) is
-  // not clobbered — this only reacts to header-driven `tenantId` changes.
-  useEffect(() => {
-    if (isSuperAdmin && tenantId) {
-      setSelectedTenantId(tenantId);
-    }
-  }, [isSuperAdmin, tenantId]);
-
-  const {
-    data: tenantsPages,
-    isLoading: tenantsLoading,
-    isRefetching: tenantsRefreshing,
-    hasNextPage: tenantsHasMore,
-    fetchNextPage: fetchNextTenants,
-    refetch: refetchTenants,
-    isFetchingNextPage: tenantsLoadingMore,
-  } = useTenantsInfinite(25, { enabled: isSuperAdmin });
-
-  const allTenants = useMemo<Tenant[]>(() => {
-    if (!isSuperAdmin) {
-      if (!tenantId) return [];
-      return [
-        {
-          id: tenantId,
-          // TASK-331 doc-03 #4 — display the tenant name (fallback to a short
-          // truncated id) instead of the raw tenantId UUID.
-          name: tenantName || shortTenantLabel(tenantId),
-          key: shortTenantLabel(tenantId),
-          resourceStatus: 'ENABLED',
-          createdAt: '',
-          updatedAt: '',
-        } as Tenant,
-      ];
-    }
-    return tenantsPages?.pages.flatMap((page) => page.data) ?? [];
-  }, [isSuperAdmin, tenantId, tenantName, tenantsPages]);
-
-  const filteredTenants = useMemo(
-    () => allTenants.filter((item) => `${item.name} ${item.key}`.toLowerCase().includes(tenantSearch.toLowerCase())),
-    [allTenants, tenantSearch],
-  );
-
-  const effectiveTenantIdentifier = isSuperAdmin ? selectedTenantId : tenantId;
+  // TASK-335 — the working tenant is chosen exclusively via the header
+  // ScopeSwitcher (store `tenantId`) for every role; the in-page tenant
+  // picker column was removed, so there is no local selection to reconcile.
+  const effectiveTenantIdentifier = tenantId;
 
   const tenantConfigsQuery = useTenantConfigs(
     effectiveTenantIdentifier || '',
@@ -302,52 +248,6 @@ export default function ConfigurationManagementPage() {
     }
   };
 
-  const tenantColumn: MultiColumnConfig<Tenant> = {
-    id: 'config-tenants',
-    title: 'Tenants',
-    subtitle: 'Select tenant',
-    width: '220px',
-    showItemCount: true,
-    keyExtractor: (tenant: Tenant) => tenant.id,
-    estimateItemSize: 62,
-    headerControls: (
-      <Input
-        value={tenantSearch}
-        onChange={(event: React.ChangeEvent<HTMLInputElement>) => setTenantSearch(event.target.value)}
-        placeholder="Search tenant..."
-      />
-    ),
-    renderItem: (tenant: Tenant) => (
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{tenant.name}</p>
-          <p className="text-muted-foreground truncate text-xs">{tenant.key}</p>
-        </div>
-      </div>
-    ),
-    onRefresh: isSuperAdmin
-      ? () => {
-          void refetchTenants();
-        }
-      : undefined,
-    isRefreshing: tenantsRefreshing,
-    emptyTitle: 'No tenants',
-  };
-
-  const tenantState: MultiColumnState<Tenant> = {
-    data: filteredTenants,
-    isLoading: tenantsLoading,
-    selectedId: isSuperAdmin ? selectedTenantId : tenantId,
-    onSelect: (id: string) => {
-      if (isSuperAdmin && id === selectedTenantId) return;
-      if (isSuperAdmin) setSelectedTenantId(id);
-      setSelectedConfigId('');
-    },
-    hasMore: !!tenantsHasMore,
-    onLoadMore: () => fetchNextTenants(),
-    isLoadingMore: tenantsLoadingMore,
-  };
-
   const configColumn: MultiColumnConfig<TenantConfig> = {
     id: 'config-items',
     title: 'Configurations',
@@ -372,8 +272,11 @@ export default function ConfigurationManagementPage() {
         <p className="text-muted-foreground truncate font-mono text-xs">{config.key}</p>
       </div>
     ),
-    emptyTitle: 'No configurations',
-    emptyDescription: 'No settings matched your filters.',
+    emptyTitle: isSuperAdmin && !effectiveTenantIdentifier ? 'No tenant selected' : 'No configurations',
+    emptyDescription:
+      isSuperAdmin && !effectiveTenantIdentifier
+        ? 'Select a tenant from the header switcher to view its configurations.'
+        : 'No settings matched your filters.',
     onRefresh: configScopeKey
       ? () => {
           void activeConfigsQuery.refetch();
@@ -463,8 +366,8 @@ export default function ConfigurationManagementPage() {
         <p className="text-muted-foreground mt-1">Manage tenant settings with type-aware editing and API-backed persistence.</p>
       </div>
       <MultiColumnLayout
-        columns={[tenantColumn, configColumn, detailColumn]}
-        columnStates={[tenantState, configState, detailState]}
+        columns={[configColumn, detailColumn]}
+        columnStates={[configState, detailState]}
         height="calc(100vh - 12rem)"
       />
       <ConfigConflictModal
