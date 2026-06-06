@@ -21,6 +21,14 @@ export interface CreateSummaryMetaProps extends BaseEntityFactoryCreateProps {
   qualityScore?: ISummaryMetaEntity['qualityScore'];
   promptResolvedFrom?: ISummaryMetaEntity['promptResolvedFrom'];
   resolvedPromptId?: ISummaryMetaEntity['resolvedPromptId'];
+  // TASK-330 Phase 1 — clinical-harness sensor scores + citation provenance
+  entityFaithfulnessScore?: ISummaryMetaEntity['entityFaithfulnessScore'];
+  coverageScore?: ISummaryMetaEntity['coverageScore'];
+  ragTriadScore?: ISummaryMetaEntity['ragTriadScore'];
+  citationsMap?: ISummaryMetaEntity['citationsMap'];
+  guardrailDecisions?: ISummaryMetaEntity['guardrailDecisions'];
+  attestationRef?: ISummaryMetaEntity['attestationRef'];
+  modelName?: ISummaryMetaEntity['modelName'];
   tenantId: ISummaryMetaEntity['tenantId'];
 
   createdAt?: ISummaryMetaEntity['createdAt'];
@@ -57,6 +65,13 @@ export class SummaryMetaFactory {
       qualityScore: props.qualityScore ?? null,
       promptResolvedFrom: props.promptResolvedFrom ?? null,
       resolvedPromptId: props.resolvedPromptId ?? null,
+      entityFaithfulnessScore: props.entityFaithfulnessScore ?? null,
+      coverageScore: props.coverageScore ?? null,
+      ragTriadScore: props.ragTriadScore ?? null,
+      citationsMap: props.citationsMap ?? null,
+      guardrailDecisions: props.guardrailDecisions ?? null,
+      attestationRef: props.attestationRef ?? null,
+      modelName: props.modelName ?? null,
       tenantId: props.tenantId,
     });
   }

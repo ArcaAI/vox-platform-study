@@ -1,0 +1,123 @@
+"""Verdict aggregator — fold sensor results into a fail-safe gate decision.
+
+Decision policy (deterministic; clinical-safety > automation, per TASK-330 D2/D4):
+
+* **degraded inputs** — a sensor could not verify (``SensorResult.degraded``), the
+  caller signalled a degraded run (``degraded=True``), or an ``expected`` sensor is
+  missing from the results — always ``FLAG``. The harness never auto-PASSes on
+  missing/degraded inputs; it forces human review instead.
+* **highest-harm failures** — a fabricated entity (``entity_faithfulness``) or a
+  numeric/dose mismatch (``numeric_dose``) — ``FLAG``. These errors are dangerous
+  and not safely auto-fixable, so they escalate to a clinician.
+* **regen-fixable failures** — invalid schema, omission, or a missing citation
+  (``schema_validity`` / ``coverage_omission`` / ``citation_presence``) — ``REGEN``
+  the implicated SOAP sections while regen budget remains; once the budget is
+  exhausted (``regens_remaining <= 0``) they escalate to ``FLAG``.
+* otherwise — ``PASS``.
+
+The aggregator is pure: thresholds live on the sensors; the workflow owns the
+regen budget and passes ``regens_remaining`` / ``degraded`` in.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from enum import StrEnum
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from harness.sensors.base import SensorResult, dedupe
+from harness.sensors.computational import (
+    citation_presence,
+    coverage_omission,
+    entity_faithfulness,
+    numeric_dose,
+    schema_validity,
+)
+
+# SOAP section codes regenerated when a regen-fixable sensor fails without naming
+# specific sections (i.e. regenerate the whole note).
+DEFAULT_SOAP_SECTIONS: tuple[str, ...] = ("S", "O", "A", "P")
+
+# Sensors whose failures are highest-harm -> escalate to a clinician (FLAG).
+HIGHEST_HARM_SENSORS: tuple[str, ...] = (entity_faithfulness.NAME, numeric_dose.NAME)
+
+# Sensors whose failures are plausibly fixed by re-generating the note (REGEN).
+REGEN_FIXABLE_SENSORS: tuple[str, ...] = (
+    schema_validity.NAME,
+    coverage_omission.NAME,
+    citation_presence.NAME,
+)
+
+
+class GateDecision(StrEnum):
+    """The harness gate outcome for one generated draft."""
+
+    PASS = "PASS"
+    REGEN = "REGEN"
+    FLAG = "FLAG"
+
+
+class Verdict(BaseModel):
+    """The aggregated gate decision over a set of sensor results."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision: GateDecision
+    sections_to_regen: list[str] = Field(default_factory=list)
+    claims_flagged: list[str] = Field(default_factory=list)
+    scores: dict[str, float] = Field(default_factory=dict)
+
+
+def _scores(results: Sequence[SensorResult]) -> dict[str, float]:
+    return {r.name: round(r.score, 6) for r in results}
+
+
+def aggregate(
+    results: Sequence[SensorResult],
+    *,
+    regens_remaining: int | None = None,
+    degraded: bool = False,
+    expected: Sequence[str] | None = None,
+) -> Verdict:
+    """Combine ``results`` into a :class:`Verdict` using the fail-safe policy."""
+    by_name = {r.name: r for r in results}
+    scores = _scores(results)
+
+    is_degraded = bool(degraded) or any(r.degraded for r in results)
+    if expected is not None:
+        is_degraded = is_degraded or any(name not in by_name for name in expected)
+    if is_degraded:
+        flagged = dedupe(claim for r in results for claim in r.claims_flagged)
+        return Verdict(decision=GateDecision.FLAG, claims_flagged=flagged, scores=scores)
+
+    harm_flagged: list[str] = []
+    for name in HIGHEST_HARM_SENSORS:
+        result = by_name.get(name)
+        if result is not None and (not result.passed or result.claims_flagged):
+            harm_flagged.extend(result.claims_flagged or [name])
+    if harm_flagged:
+        return Verdict(
+            decision=GateDecision.FLAG, claims_flagged=dedupe(harm_flagged), scores=scores
+        )
+
+    failing = [
+        by_name[name]
+        for name in REGEN_FIXABLE_SENSORS
+        if name in by_name and not by_name[name].passed
+    ]
+    if failing:
+        flagged = dedupe(claim for r in failing for claim in r.claims_flagged)
+        if regens_remaining is not None and regens_remaining <= 0:
+            return Verdict(decision=GateDecision.FLAG, claims_flagged=flagged, scores=scores)
+        sections = sorted({s for r in failing for s in r.details.get("sections", [])})
+        if not sections:
+            sections = list(DEFAULT_SOAP_SECTIONS)
+        return Verdict(
+            decision=GateDecision.REGEN,
+            sections_to_regen=sections,
+            claims_flagged=flagged,
+            scores=scores,
+        )
+
+    return Verdict(decision=GateDecision.PASS, scores=scores)

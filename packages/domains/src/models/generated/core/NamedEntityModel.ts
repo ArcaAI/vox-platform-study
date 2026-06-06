@@ -18,6 +18,16 @@ export class NamedEntity extends BaseTenantDataModel {
   public aiModelVersion: string | null;
   public processingTimeMs: number | null;
   public metadata: JsonValue | null;
+  // TASK-330 Phase 1 — clinical ontology normalization codes
+  public umlsCui: string | null;
+  public snomedCode: string | null;
+  public rxnormCode: string | null;
+  public icdCode: string | null;
+  public loincCode: string | null;
+  // TASK-330 Phase 1 — transcript-span provenance
+  public transcriptContextItemId: string | null;
+  public transcriptStartOffset: number | null;
+  public transcriptEndOffset: number | null;
 
   constructor(data: NamedEntity & BaseTenantDataModel) {
     super(data);
@@ -32,5 +42,13 @@ export class NamedEntity extends BaseTenantDataModel {
     this.aiModelVersion = data.aiModelVersion;
     this.processingTimeMs = data.processingTimeMs;
     this.metadata = data.metadata;
+    this.umlsCui = data.umlsCui;
+    this.snomedCode = data.snomedCode;
+    this.rxnormCode = data.rxnormCode;
+    this.icdCode = data.icdCode;
+    this.loincCode = data.loincCode;
+    this.transcriptContextItemId = data.transcriptContextItemId;
+    this.transcriptStartOffset = data.transcriptStartOffset;
+    this.transcriptEndOffset = data.transcriptEndOffset;
   }
 }

@@ -135,29 +135,6 @@ class CloudASRTranscriptionError(CloudASRError):
 
 
 # =============================================================================
-# Vector Store Errors
-# =============================================================================
-
-
-class VectorStoreError(STTServiceError):
-    """Base class for vector store (Qdrant) errors."""
-
-    error_code = "VECTOR_STORE_ERROR"
-
-
-class VectorStoreConnectionError(VectorStoreError):
-    """Failed to connect to vector store."""
-
-    error_code = "VECTOR_STORE_CONNECTION_ERROR"
-
-
-class SpeakerEmbeddingError(VectorStoreError):
-    """Error during speaker embedding operations."""
-
-    error_code = "SPEAKER_EMBEDDING_ERROR"
-
-
-# =============================================================================
 # Diarization Errors
 # =============================================================================
 
@@ -302,5 +279,4 @@ RETRYABLE_EXCEPTIONS = (
     TransientError,
     ModelError,
     CloudASRQuotaError,  # Quota errors are transient — retry after backoff
-    VectorStoreConnectionError,  # Qdrant connection issues are transient
 )

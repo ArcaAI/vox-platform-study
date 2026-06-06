@@ -1,0 +1,85 @@
+name: Harness Eval Gate (TASK-330)
+
+# Release-blocking evaluation gate for the clinical-documentation harness.
+# Two independent checks, both run against the PINNED golden-set version:
+#   1) DeepEval (pytest-native) — PDSQI-9 / faithfulness / DeepEval wrappers +
+#      the ICC >= 0.8 judge-calibration gate.
+#   2) promptfoo — PDSQI-9 output-contract gate via `npx` (no root dep / lockfile).
+#
+# Scope: only touches apps/harness/** ; offline + deterministic (no model secrets).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/harness/**"
+      - ".github/workflows/harness-eval.yml"
+  pull_request:
+    paths:
+      - "apps/harness/**"
+      - ".github/workflows/harness-eval.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harness-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned golden-set version the gate runs against.
+  HARNESS_EVAL_GOLDEN_SET_VERSION: "synthetic-v0.1.0"
+  # Keep eval tooling offline/hermetic.
+  DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
+  ERROR_REPORTING: "NO"
+  PROMPTFOO_DISABLE_TELEMETRY: "1"
+  PROMPTFOO_DISABLE_UPDATE: "1"
+  PROMPTFOO_DISABLE_SHARING: "1"
+
+jobs:
+  deepeval:
+    name: DeepEval + ICC calibration gate (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/harness
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/harness/pyproject.toml
+
+      - name: Install harness (test + eval extras)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test,eval]"
+
+      - name: Run eval suite (DeepEval pytest-native + ICC >= 0.8 gate)
+        run: pytest src/harness/tests/unit/eval -v --no-cov
+
+  promptfoo:
+    name: promptfoo PDSQI-9 contract gate (npx)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # promptfoo's provider/tests/assert are Python (stdlib only) — it needs a
+      # Python interpreter on PATH, no pip install required.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run promptfoo eval (pinned golden set, via npx)
+        working-directory: apps/harness/eval/promptfoo
+        env:
+          PROMPTFOO_PYTHON: python
+        # Exits non-zero if any pinned case fails the PDSQI-9 output contract.
+        run: npx --yes promptfoo@0.121.15 eval -c promptfooconfig.yaml --no-cache --no-table

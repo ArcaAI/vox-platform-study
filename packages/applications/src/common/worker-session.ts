@@ -15,7 +15,9 @@ export type WorkerSessionKind =
   | 'comprehensive-summary'
   | 'transcription-created-event'
   | 'summary-generated-event'
-  | 'ner-extracted-event';
+  | 'ner-extracted-event'
+  // TASK-330 Phase 1 (Lane G) — inbound harness gate adapter (entities/assemble/draft).
+  | 'harness-internal';
 
 /**
  * Init shape for `createWorkerSession`.

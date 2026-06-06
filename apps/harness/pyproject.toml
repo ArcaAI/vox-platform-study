@@ -1,0 +1,205 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "harness"
+version = "0.1.0"
+description = "Clinical Documentation Harness orchestrator (TASK-330) — bounded guides→generate→sensors→gate loop on Temporal"
+authors = [
+    {name = "ARCA AI Team", email = "team@arcaai.com"}
+]
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+keywords = ["clinical", "harness", "temporal", "fastapi", "durable-workflow"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Framework :: FastAPI",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "fastapi>=0.133.0",
+    "uvicorn[standard]>=0.41.0",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.13.1",
+    "httpx>=0.28.1",
+    "structlog>=25.5.0",
+    "python-dotenv>=1.2.0",
+    "orjson>=3.11.7",
+    "jsonschema>=4.23.0",   # SOAP json_schema validation (sensors.computational.schema_validity)
+    "temporalio>=1.28.0",
+    "prometheus-client>=0.24.1",
+    "prometheus-fastapi-instrumentator>=7.1.0",
+    "opentelemetry-api>=1.39.1",
+    "opentelemetry-sdk>=1.39.1",
+    "opentelemetry-instrumentation-fastapi>=0.60b1",
+    "opentelemetry-instrumentation-httpx>=0.60b1",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.39.0",
+    "opentelemetry-instrumentation-logging>=0.60b1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
+    "pytest-mock>=3.15.1",
+    "black>=26.1.0",
+    "ruff>=0.15.7",
+    "mypy>=1.19.1",
+    "pre-commit>=4.5.1",
+]
+
+test = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
+    "pytest-mock>=3.15.1",
+    "httpx>=0.28.1",
+    "pytest-xdist>=3.8.0",
+]
+
+# Evaluation harness (TASK-330 Phase 0): PDSQI-9 LLM-as-judge, RAGAS-style
+# faithfulness, DeepEval metric wrappers, and ICC/Gwet-AC2 calibration. Kept as
+# an opt-in extra so the base service install stays slim and CI installs it
+# explicitly for the eval gate (`pip install -e '.[test,eval]'`).
+eval = [
+    "numpy>=1.26",          # ICC(2,1) + Gwet AC2 reliability math
+    "openai>=1.0.0",        # LM Studio / vLLM (OpenAI-compatible) + Azure OpenAI judge
+    "deepeval>=4.0,<5",     # Faithfulness / Hallucination / Summarization / GEval wrappers
+    "boto3>=1.34.0",        # optional AWS Bedrock judge backend (imported lazily)
+]
+
+# RAGAS-the-library is OPTIONAL: the harness implements faithfulness RAGAS-*style*
+# natively (claim decomposition + support check) with no langchain dependency.
+# Installing ragas pulls the full langchain/langgraph stack, so it is isolated
+# here and is NOT part of the CI eval gate.
+eval-ragas = [
+    "ragas>=0.2",
+]
+
+lint = [
+    "black>=26.1.0",
+    "ruff>=0.15.7",
+    "mypy>=1.19.1",
+]
+
+[project.scripts]
+harness-worker = "harness.temporal.worker:main"
+
+[project.urls]
+"Homepage" = "https://github.com/arcaai/hope"
+"Repository" = "https://github.com/arcaai/hope"
+"Bug Tracker" = "https://github.com/arcaai/hope/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+harness = ["py.typed", "*.yaml", "*.yml", "*.json"]
+
+# Black configuration
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # Directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+# mypy configuration
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+
+# pytest configuration
+[tool.pytest.ini_options]
+minversion = "9.0"
+# pythonpath lets pytest import `harness` from src/ without requiring an
+# editable install (the service is also installed via `pip install -e` to
+# mirror smr/stt-v2/nlp, but tests must work standalone too).
+pythonpath = ["src"]
+addopts = [
+    "-ra",
+    "--strict-config",
+    "--strict-markers",
+    "--cov=harness",
+    "--cov-report=term-missing",
+    "-m", "not e2e",
+]
+testpaths = ["src/harness/tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+markers = [
+    "e2e: End-to-end tests requiring a running Temporal server (deselect with '-m \"not e2e\"')",
+    "integration: Integration tests requiring external services",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["src/harness"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/.*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "@abstract",
+]
+
+# Ruff configuration
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/**/*" = ["B011"]

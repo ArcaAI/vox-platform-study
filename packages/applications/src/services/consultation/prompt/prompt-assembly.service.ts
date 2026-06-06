@@ -22,9 +22,59 @@ function substituteVariables(template: string, variables: Record<string, string>
   });
 }
 
+/**
+ * Serialises NER entities into a compact, LLM-friendly block.
+ *
+ * One line per entity:
+ *   `- <label> (<TYPE>) [umls:..; snomed:..; rxnorm:..; icd:..; loinc:..] @<start>-<end>`
+ *
+ * The label prefers the normalized form when available. Codes and offsets are
+ * only emitted when present, keeping the block dense and deterministic.
+ */
+function serializeNerEntities(entities: NerEntityForPrompt[]): string {
+  if (!entities?.length) {
+    return '';
+  }
+
+  return entities
+    .map((entity) => {
+      const label = entity.normalizedText && entity.normalizedText.trim().length > 0 ? entity.normalizedText : entity.text;
+
+      const codeParts: string[] = [];
+      if (entity.umlsCui) codeParts.push(`umls:${entity.umlsCui}`);
+      if (entity.snomedCode) codeParts.push(`snomed:${entity.snomedCode}`);
+      if (entity.rxnormCode) codeParts.push(`rxnorm:${entity.rxnormCode}`);
+      if (entity.icdCode) codeParts.push(`icd:${entity.icdCode}`);
+      if (entity.loincCode) codeParts.push(`loinc:${entity.loincCode}`);
+      const codes = codeParts.length > 0 ? ` [${codeParts.join('; ')}]` : '';
+
+      const span = entity.startOffset != null && entity.endOffset != null ? ` @${entity.startOffset}-${entity.endOffset}` : '';
+
+      return `- ${label} (${entity.type})${codes}${span}`;
+    })
+    .join('\n');
+}
+
 // ============================================================================
 // Types
 // ============================================================================
+
+/**
+ * A NER entity flattened for prompt injection (TASK-330 Phase 1).
+ * Mapped from NamedEntityEntity by the SummaryProcessor; codes/offsets optional.
+ */
+export interface NerEntityForPrompt {
+  text: string;
+  type: string;
+  normalizedText?: string | null;
+  umlsCui?: string | null;
+  snomedCode?: string | null;
+  rxnormCode?: string | null;
+  icdCode?: string | null;
+  loincCode?: string | null;
+  startOffset?: number | null;
+  endOffset?: number | null;
+}
 
 export interface PromptAssemblyParams {
   departmentId?: string;
@@ -37,6 +87,12 @@ export interface PromptAssemblyParams {
   explicitTemplate?: string;
   /** The requesting doctor's preferred prompt template id (TASK-329 P2 Tier-0). */
   preferredPromptTemplateId?: string | null;
+  /**
+   * TASK-330 Phase 1 — clinical NER entities for the consultation transcript.
+   * Serialised into the {ner_entities} variable and/or appended to the prompt
+   * so NER output actually reaches the LLM.
+   */
+  nerEntities?: NerEntityForPrompt[];
 }
 
 export interface AssembledPrompt {
@@ -90,6 +146,13 @@ export class PromptAssemblyService {
       userPrompt += `\n\n--- TRANSCRIPT ---\n${params.transcript}`;
     }
 
+    // TASK-330 Phase 1 — guarantee NER reaches the LLM. If the template
+    // consumed {ner_entities} the block is already present; otherwise append it.
+    const nerBlock = variables.ner_entities ?? '';
+    if (nerBlock && !userPrompt.includes(nerBlock)) {
+      userPrompt += `\n\n--- RECOGNIZED CLINICAL ENTITIES (from NER) ---\n${nerBlock}`;
+    }
+
     const promptConfig = this.extractPromptConfig(template);
     const hyperparameters = promptConfig?.hyperparameters ?? {};
     const outputSchema = promptConfig?.outputSchema ?? null;
@@ -119,6 +182,9 @@ export class PromptAssemblyService {
   private async buildVariables(params: PromptAssemblyParams): Promise<Record<string, string>> {
     const variables: Record<string, string> = {
       conversation_language: params.conversationLanguage,
+      // TASK-330 Phase 1 — always define {ner_entities} (empty when none) so
+      // templates referencing it never leave a literal placeholder behind.
+      ner_entities: serializeNerEntities(params.nerEntities ?? []),
     };
 
     if (params.preSummaryText) {

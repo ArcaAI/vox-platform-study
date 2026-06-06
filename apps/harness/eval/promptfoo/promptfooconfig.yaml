@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+#
+# TASK-330 Phase 0 — PDSQI-9 judge output-contract gate (promptfoo).
+#
+# Release-blocking check run via `npx promptfoo eval` in CI. Pinned to the
+# golden-set version below. Offline-deterministic by default (mock provider);
+# point at a real OpenAI-compatible endpoint with HARNESS_PROMPTFOO_BASE_URL +
+# HARNESS_PROMPTFOO_API_KEY for nightly/full runs.
+description: >-
+  TASK-330 PDSQI-9 judge output-contract gate (pinned golden set synthetic-v0.1.0).
+  Validates that the judge emits schema-valid PDSQI-9 JSON for every pinned case.
+
+metadata:
+  ticket: TASK-330
+  goldenSetVersion: synthetic-v0.1.0
+
+prompts:
+  - file://prompt.py:build_prompt
+
+providers:
+  - id: file://provider.py
+    label: harness-pdsqi-judge
+
+# Test cases are generated from the PINNED golden-set fixture (override with
+# HARNESS_GOLDEN_SET_PATH). Keeps promptfoo and the Python gate on the same set.
+tests: file://tests.py:generate_tests
+
+defaultTest:
+  assert:
+    - type: is-json
+    - type: python
+      value: file://assertions.py:check_pdsqi

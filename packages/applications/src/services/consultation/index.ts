@@ -5,3 +5,5 @@ export * from './jobs';
 export * from './events';
 export * from './timeline';
 export * from './prompt';
+// TASK-330 Phase 1 (Lane G) — apps/api <-> apps/harness gate adapter.
+export * from './harness';

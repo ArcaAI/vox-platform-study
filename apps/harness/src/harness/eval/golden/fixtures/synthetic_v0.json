@@ -1,0 +1,74 @@
+{
+  "version": "synthetic-v0.1.0",
+  "name": "synthetic-clinical-doc-golden-set",
+  "description": "SYNTHETIC, NON-CLINICAL placeholder golden set for wiring + CI only. Transcript->note cases with fixture clinician PDSQI-9 ratings. MUST be replaced by the real clinician-authored golden set (HLD 7.5 #1/#3) before gating any clinical claim.",
+  "cases": [
+    {
+      "case_id": "synthetic-001-uri-good",
+      "target_specialty": "Family Medicine",
+      "source_documents": [
+        "Patient is a 34-year-old reporting a dry cough for three days, no fever, no shortness of breath. Lungs clear to auscultation bilaterally. Vitals within normal limits. Plan discussed: supportive care, rest and fluids, return if symptoms worsen.",
+        "Past medical history: hypertension, currently on lisinopril 10 mg once daily. No known drug allergies."
+      ],
+      "generated_note": "Subjective: 34-year-old with a 3-day dry cough, afebrile, no dyspnea <Note ID:1>. Objective: lungs clear bilaterally, vitals normal <Note ID:1>. Assessment: likely viral upper respiratory infection; hypertension stable on lisinopril 10 mg daily <Note ID:2>. Plan: supportive care, rest and fluids, return precautions discussed <Note ID:1>.",
+      "clinician_pdsqi": {
+        "citation": 5, "accurate": 5, "thorough": 5, "useful": 5, "organized": 5,
+        "comprehensible": 5, "succinct": 4, "synthesized": 5,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      }
+    },
+    {
+      "case_id": "synthetic-002-omission",
+      "target_specialty": "Internal Medicine",
+      "source_documents": [
+        "65-year-old with type 2 diabetes presents for follow-up. Reports occasional tingling in both feet. HbA1c 8.2%. Metformin 1000 mg twice daily continued. Started on atorvastatin 20 mg nightly. Foot exam shows decreased monofilament sensation. Advised on glycemic control and foot care."
+      ],
+      "generated_note": "Assessment: type 2 diabetes, suboptimal control with HbA1c 8.2% <Note ID:1>. Plan: continue metformin 1000 mg BID, start atorvastatin 20 mg nightly <Note ID:1>.",
+      "clinician_pdsqi": {
+        "citation": 4, "accurate": 5, "thorough": 2, "useful": 4, "organized": 4,
+        "comprehensible": 5, "succinct": 4, "synthesized": 3,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      }
+    },
+    {
+      "case_id": "synthetic-003-fabrication",
+      "target_specialty": "Cardiology",
+      "source_documents": [
+        "58-year-old with exertional chest tightness for two weeks. ECG shows normal sinus rhythm without ST changes. Troponin pending. Plan: outpatient stress test, start aspirin 81 mg daily, follow up after results."
+      ],
+      "generated_note": "Assessment: acute myocardial infarction confirmed by ECG <Note ID:1>. Plan: aspirin 81 mg daily, stress test, cardiology follow-up <Note ID:1>.",
+      "clinician_pdsqi": {
+        "citation": 3, "accurate": 2, "thorough": 4, "useful": 4, "organized": 4,
+        "comprehensible": 4, "succinct": 4, "synthesized": 3,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      }
+    },
+    {
+      "case_id": "synthetic-004-adequate",
+      "target_specialty": "Pediatrics",
+      "source_documents": [
+        "4-year-old with two days of ear pain and low-grade fever. Right tympanic membrane erythematous and bulging. Diagnosis acute otitis media. Prescribed amoxicillin 45 mg/kg/day divided twice daily for 10 days. Caregiver counseled on fever management.",
+        "Immunizations up to date. No drug allergies."
+      ],
+      "generated_note": "Assessment: right acute otitis media in a 4-year-old with ear pain and low-grade fever; right TM erythematous and bulging <Note ID:1>. Plan: amoxicillin 45 mg/kg/day divided BID x10 days; fever management counseling <Note ID:1>. Immunizations up to date <Note ID:2>.",
+      "clinician_pdsqi": {
+        "citation": 4, "accurate": 4, "thorough": 4, "useful": 4, "organized": 4,
+        "comprehensible": 4, "succinct": 3, "synthesized": 4,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      }
+    },
+    {
+      "case_id": "synthetic-005-verbose-disorganized",
+      "target_specialty": "Family Medicine",
+      "source_documents": [
+        "29-year-old with seasonal allergic rhinitis, sneezing and nasal congestion worse in spring. No fever. Started intranasal fluticasone once daily and advised on allergen avoidance. Reports good response to antihistamines previously."
+      ],
+      "generated_note": "The patient, who is 29 years old, came in today and reported that they have been having symptoms, and these symptoms include sneezing and also nasal congestion, and the patient says it is worse in the spring time of year. There is no fever noted at this time. We talked about a lot of things. Fluticasone nasal spray once a day was started. Allergen avoidance was discussed in detail.",
+      "clinician_pdsqi": {
+        "citation": 2, "accurate": 4, "thorough": 3, "useful": 3, "organized": 2,
+        "comprehensible": 3, "succinct": 2, "synthesized": 2,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      }
+    }
+  ]
+}

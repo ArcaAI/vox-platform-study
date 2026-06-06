@@ -1,6 +1,7 @@
 export * from './ApiKeyStatus';
 export * from './ApiKeyType';
 export * from './AuditAction';
+export * from './HarnessAuditAction';
 export * from './ResourceType';
 export * from './ValueType';
 export * from './ResourceStatusType';
@@ -13,6 +14,7 @@ export * from './ModelJobStatus';
 export * from './WebhookRunStatus';
 export * from './NotificationType';
 export * from './ContextItemType';
+export * from './ConsultationStatus';
 export * from './ContextItemSource';
 export * from './AiModelSource';
 export * from './AiModelFormat';

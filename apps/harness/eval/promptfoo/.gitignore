@@ -1,0 +1,5 @@
+# promptfoo run artifacts / cache (never commit eval output)
+output.json
+output.*.json
+.promptfoo/
+.promptfoo-cache/

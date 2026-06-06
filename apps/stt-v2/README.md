@@ -10,9 +10,22 @@ STT V2 is a Python FastAPI service that provides:
 - **Batch file transcription** via Dramatiq job queue
 - **Multi-model ASR support**: Whisper (ONNX), NVIDIA NeMo (Parakeet), Azure Speech Service
 - **Voice Activity Detection (VAD)**: Silero VAD v5 (ONNX) with per-session streaming state
-- **Speaker Diarization**: Pyannote embedding extraction + Qdrant vector similarity
+- **Speaker Diarization**: Pyannote embedding extraction + in-memory, session-scoped speaker tracking
 - **LRU model caching** with configurable TTL
-- **Read-only database access** for pipeline configurations
+- **Read-only database access** for pipeline configurations and speaker voice profiles
+
+> **Speaker identity & persistence (TASK-330 note).** Speaker diarization is
+> **in-memory and session-scoped**: within a consultation a `SpeakerTracker`
+> assigns and matches speakers with no external vector store. **Cross-session**
+> speaker identity is persisted via **PostgreSQL voice profiles** — at session
+> start `diarization.preseed.preseed_speaker()` loads the doctor's stored voice
+> embedding and registers it so segments are labelled with the real display name.
+>
+> The earlier **Qdrant-backed speaker store was removed by design** during the
+> diarization refactor (commit `feat(diarization): implement speaker tracking and
+> embedding extraction`). Any provisioned `stt_speaker_embeddings` Qdrant
+> collection is **legacy/unused** by STT-v2 — the absence of a `core/vectorstore`
+> module is **intentional, not a regression**.
 
 ## Architecture
 
@@ -32,7 +45,7 @@ STT V2 is a Python FastAPI service that provides:
 │    STT Service V2                                │
 │    ┌───────────────┐  ┌─────────────────────┐    │
 │    │ Transcription │  │ Speaker Diarize     │    │
-│    │ + VAD (Silero │  │ (Pyannote + Qdrant) │    │
+│    │ + VAD (Silero │  │ (Pyannote, in-mem)  │    │
 │    └──────┬────────┘  └────────┬────────────┘    │
 │           │                    │                 │
 │    ┌──────┴────────────────────┴───────┐         │
@@ -41,8 +54,8 @@ STT V2 is a Python FastAPI service that provides:
 └──────────────────────────────────────────────────┘
             │                 │
      ┌──────┴──────┐   ┌──────┴──────┐
-     │ PostgreSQL  │   │   Qdrant    │
-     │ (read-only) │   │ (vectors)   │
+     │ PostgreSQL  │   │   MinIO     │
+     │ (read-only) │   │ (audio blob)│
      └─────────────┘   └─────────────┘
 ```
 
@@ -52,7 +65,7 @@ STT V2 is a Python FastAPI service that provides:
 
 - **Python 3.11+**
 - **conda** (Anaconda or Miniconda — recommended for managing PyTorch + native deps)
-- **Docker** (for infrastructure: PostgreSQL, Redis, MinIO, Qdrant)
+- **Docker** (for infrastructure: PostgreSQL, Redis, MinIO)
 - **FFmpeg 6.x** (required by torchcodec/pyannote.audio; installed via conda)
 
 ### Infrastructure Services
@@ -63,7 +76,7 @@ Start the infrastructure services from the **monorepo root**:
 # Core services: PostgreSQL, Redis, MinIO
 docker compose -f infrastructure/docker/docker-compose.yml up -d
 
-# Extended services: Qdrant (required for diarization), Vault
+# Extended services: Vault (+ Qdrant, which is NOT used by STT-v2 diarization — see Overview note)
 docker compose -f infrastructure/docker/docker-compose.yml \
                -f infrastructure/docker/docker-compose.dev.yml up -d
 ```
@@ -75,7 +88,6 @@ Verify services are healthy:
 | PostgreSQL | 5432                       | `pg_isready -U postgres`                |
 | Redis      | 6379                       | `redis-cli ping`                        |
 | MinIO      | 9000 (API), 9001 (Console) | http://localhost:9000/minio/health/live |
-| Qdrant     | 6333 (HTTP), 6334 (gRPC)   | http://localhost:6333/healthz           |
 | Vault      | 8200                       | http://localhost:8200/v1/sys/health     |
 
 ### Conda Environment Setup
@@ -117,7 +129,6 @@ import torch; print(f'torch {torch.__version__} | MPS: {torch.backends.mps.is_av
 import torchaudio; print(f'torchaudio {torchaudio.__version__}')
 import pyannote.audio; print(f'pyannote.audio {pyannote.audio.__version__}')
 import azure.cognitiveservices.speech as s; print(f'azure-speech {s.__version__}')
-import qdrant_client; print('qdrant-client OK')
 import onnxruntime; print(f'onnxruntime {onnxruntime.__version__} | providers: {onnxruntime.get_available_providers()}')
 print('All imports OK')
 "
@@ -130,7 +141,6 @@ torch 2.8.0 | MPS: True | CUDA: False
 torchaudio 2.8.0
 pyannote.audio 4.0.3
 azure-speech 1.48.1
-qdrant-client OK
 onnxruntime 1.23.2 | providers: ['CoreMLExecutionProvider', 'AzureExecutionProvider', 'CPUExecutionProvider']
 All imports OK
 ```
@@ -206,16 +216,6 @@ cp .env.example .env.dev
 | `HUGGINGFACE_TOKEN`     | HuggingFace API token (for gated models) | -                  |
 | `HUGGINGFACE_CACHE_DIR` | Model download cache directory           | `/models/hf-cache` |
 
-#### Qdrant (Speaker Diarization Vector Store)
-
-| Variable                     | Description                       | Default                  |
-| ---------------------------- | --------------------------------- | ------------------------ |
-| `QDRANT_URL`                 | Qdrant HTTP API endpoint          | `http://localhost:6333`  |
-| `QDRANT_API_KEY`             | Qdrant API key (optional for dev) | -                        |
-| `QDRANT_COLLECTION_SPEAKERS` | Collection for speaker embeddings | `stt_speaker_embeddings` |
-| `QDRANT_POOL_SIZE`           | Connection pool size              | `20`                     |
-| `QDRANT_TIMEOUT`             | Client timeout in seconds         | `30`                     |
-
 #### Voice Activity Detection (Silero VAD v5)
 
 | Variable                      | Description                                          | Default |
@@ -276,7 +276,7 @@ stt-v2
 stt-v2-worker
 ```
 
-> The worker process initializes VAD, Qdrant vectorstore, and diarization services on startup
+> The worker process initializes VAD and diarization services on startup
 > and cleans them up on graceful shutdown (SIGTERM/SIGINT).
 
 ## Project Structure
@@ -292,18 +292,19 @@ apps/stt-v2/
 │       │   ├── database/        # SQLAlchemy (read-only)
 │       │   ├── messaging/       # Dramatiq broker setup
 │       │   ├── storage/         # MinIO client
-│       │   ├── vectorstore/     # Qdrant client manager + speaker embedding store
 │       │   ├── api_client/      # API Gateway client
-│       │   └── exceptions.py    # Custom exceptions (VectorStoreError, DiarizationError, etc.)
+│       │   └── exceptions.py    # Custom exceptions (DiarizationError, AudioProcessingError, etc.)
 │       ├── transcription/       # Transcription domain (batch_service, preprocessing)
 │       ├── pipeline/            # Pipeline domain (YAML parser, DTOs with DiarizationConfig)
 │       ├── vad/                 # Voice Activity Detection (Silero VAD v5 ONNX)
 │       │   ├── silero_service.py   # ONNX session management, batch + streaming inference
 │       │   ├── session_manager.py  # Per-session state for streaming VAD
 │       │   └── dto.py              # SpeechSegment, VADResult, VADSessionState
-│       ├── diarization/         # Speaker Diarization (Pyannote + Qdrant)
+│       ├── diarization/         # Speaker Diarization (Pyannote + in-memory tracking)
 │       │   ├── embedding_service.py   # Pyannote embedding extraction (512-dim)
-│       │   ├── speaker_identifier.py  # Orchestrates identify + register speakers
+│       │   ├── speaker_tracker.py     # In-memory, session-scoped speaker store
+│       │   ├── speaker_identifier.py  # Session-scoped identify + register (no external I/O)
+│       │   ├── preseed.py             # Pre-seed tracker from DB voice profile (cross-session identity)
 │       │   └── dto.py                 # DiarizedSegment, DiarizationResult, SpeakerIdentification
 │       ├── models/              # AI model loaders (HF, ONNX, Azure Speech, NeMo)
 │       ├── storage/             # Audio storage domain
@@ -483,10 +484,10 @@ pip install 'pyannote.audio>=3.3.0'
 
 Do NOT upgrade torch past 2.8.x while using pyannote.audio 4.x.
 
-### `ModuleNotFoundError: No module named 'azure'` or `qdrant_client`
+### `ModuleNotFoundError: No module named 'azure'`
 
-`azure-cognitiveservices-speech` and `qdrant-client` are core dependencies (not optional).
-If you see import errors for these, your base install is incomplete:
+`azure-cognitiveservices-speech` is a core dependency (not optional).
+If you see import errors for it, your base install is incomplete:
 
 ```bash
 pip install -e "."
@@ -501,20 +502,13 @@ without them, but integration/E2E tests need the full stack:
 pip install -e ".[ml,dev,test]"
 ```
 
-### Qdrant collection not found
+### Speaker diarization does not persist across sessions
 
-The speaker embeddings collection is created automatically by the Docker init container
-(`docker-compose.dev.yml` > `qdrant-init`). If you reset Qdrant data:
-
-```bash
-# Re-run the init container
-docker compose -f infrastructure/docker/docker-compose.dev.yml up qdrant-init --force-recreate
-
-# Or create manually via the API
-curl -X PUT http://localhost:6333/collections/stt_speaker_embeddings \
-  -H 'Content-Type: application/json' \
-  -d '{"vectors": {"size": 512, "distance": "Cosine"}}'
-```
+This is expected. STT-v2 speaker diarization is **in-memory and session-scoped**
+(see the Overview note). Cross-session speaker identity comes from **PostgreSQL
+voice profiles** via `diarization.preseed.preseed_speaker()`, not from Qdrant. The
+legacy `stt_speaker_embeddings` Qdrant collection is no longer read or written by
+STT-v2, so a missing collection is **not** an STT-v2 error.
 
 ### Database errors in tests (`type "core.ModelCategory" does not exist`)
 

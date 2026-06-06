@@ -18,6 +18,16 @@ export interface INamedEntityEntity extends IBaseTenantEntity {
   aiModelVersion?: string | null;
   processingTimeMs?: number | null;
   metadata?: JsonValue | null;
+  // TASK-330 Phase 1 — clinical ontology normalization codes
+  umlsCui?: string | null;
+  snomedCode?: string | null;
+  rxnormCode?: string | null;
+  icdCode?: string | null;
+  loincCode?: string | null;
+  // TASK-330 Phase 1 — transcript-span provenance
+  transcriptContextItemId?: string | null;
+  transcriptStartOffset?: number | null;
+  transcriptEndOffset?: number | null;
   ContextItem?: Entities.ContextItemEntity | null;
 }
 
@@ -33,6 +43,14 @@ export class NamedEntityEntity extends BaseTenantEntity {
   private _aiModelVersion?: INamedEntityEntity['aiModelVersion'];
   private _processingTimeMs?: INamedEntityEntity['processingTimeMs'];
   private _metadata?: INamedEntityEntity['metadata'];
+  private _umlsCui?: INamedEntityEntity['umlsCui'];
+  private _snomedCode?: INamedEntityEntity['snomedCode'];
+  private _rxnormCode?: INamedEntityEntity['rxnormCode'];
+  private _icdCode?: INamedEntityEntity['icdCode'];
+  private _loincCode?: INamedEntityEntity['loincCode'];
+  private _transcriptContextItemId?: INamedEntityEntity['transcriptContextItemId'];
+  private _transcriptStartOffset?: INamedEntityEntity['transcriptStartOffset'];
+  private _transcriptEndOffset?: INamedEntityEntity['transcriptEndOffset'];
   private _ContextItem?: INamedEntityEntity['ContextItem'];
 
   constructor(init: INamedEntityEntity) {
@@ -48,6 +66,14 @@ export class NamedEntityEntity extends BaseTenantEntity {
     this._aiModelVersion = init.aiModelVersion;
     this._processingTimeMs = init.processingTimeMs;
     this._metadata = init.metadata;
+    this._umlsCui = init.umlsCui;
+    this._snomedCode = init.snomedCode;
+    this._rxnormCode = init.rxnormCode;
+    this._icdCode = init.icdCode;
+    this._loincCode = init.loincCode;
+    this._transcriptContextItemId = init.transcriptContextItemId;
+    this._transcriptStartOffset = init.transcriptStartOffset;
+    this._transcriptEndOffset = init.transcriptEndOffset;
     this._ContextItem = init.ContextItem;
   }
 
@@ -137,6 +163,70 @@ export class NamedEntityEntity extends BaseTenantEntity {
 
   set metadata(value: INamedEntityEntity['metadata']) {
     this.setProperty('metadata', value);
+  }
+
+  get umlsCui(): INamedEntityEntity['umlsCui'] {
+    return this._umlsCui;
+  }
+
+  set umlsCui(value: INamedEntityEntity['umlsCui']) {
+    this.setProperty('umlsCui', value);
+  }
+
+  get snomedCode(): INamedEntityEntity['snomedCode'] {
+    return this._snomedCode;
+  }
+
+  set snomedCode(value: INamedEntityEntity['snomedCode']) {
+    this.setProperty('snomedCode', value);
+  }
+
+  get rxnormCode(): INamedEntityEntity['rxnormCode'] {
+    return this._rxnormCode;
+  }
+
+  set rxnormCode(value: INamedEntityEntity['rxnormCode']) {
+    this.setProperty('rxnormCode', value);
+  }
+
+  get icdCode(): INamedEntityEntity['icdCode'] {
+    return this._icdCode;
+  }
+
+  set icdCode(value: INamedEntityEntity['icdCode']) {
+    this.setProperty('icdCode', value);
+  }
+
+  get loincCode(): INamedEntityEntity['loincCode'] {
+    return this._loincCode;
+  }
+
+  set loincCode(value: INamedEntityEntity['loincCode']) {
+    this.setProperty('loincCode', value);
+  }
+
+  get transcriptContextItemId(): INamedEntityEntity['transcriptContextItemId'] {
+    return this._transcriptContextItemId;
+  }
+
+  set transcriptContextItemId(value: INamedEntityEntity['transcriptContextItemId']) {
+    this.setProperty('transcriptContextItemId', value);
+  }
+
+  get transcriptStartOffset(): INamedEntityEntity['transcriptStartOffset'] {
+    return this._transcriptStartOffset;
+  }
+
+  set transcriptStartOffset(value: INamedEntityEntity['transcriptStartOffset']) {
+    this.setProperty('transcriptStartOffset', value);
+  }
+
+  get transcriptEndOffset(): INamedEntityEntity['transcriptEndOffset'] {
+    return this._transcriptEndOffset;
+  }
+
+  set transcriptEndOffset(value: INamedEntityEntity['transcriptEndOffset']) {
+    this.setProperty('transcriptEndOffset', value);
   }
 
   get ContextItem(): INamedEntityEntity['ContextItem'] {
@@ -233,6 +323,27 @@ export class NamedEntityEntity extends BaseTenantEntity {
    */
   get displayText(): string {
     return this._normalizedText ?? this._text;
+  }
+
+  /**
+   * TASK-330 Phase 1 — true when at least one clinical ontology code is set
+   * (UMLS / SNOMED / RxNorm / ICD / LOINC). Used by entity-faithfulness scoring
+   * and coded list generation.
+   */
+  get hasOntologyCodes(): boolean {
+    return !!(this._umlsCui || this._snomedCode || this._rxnormCode || this._icdCode || this._loincCode);
+  }
+
+  /**
+   * TASK-330 Phase 1 — true when this entity carries a transcript-span
+   * provenance pointer (so summaries can cite the source offsets).
+   */
+  get hasTranscriptSpan(): boolean {
+    return (
+      this._transcriptContextItemId != null &&
+      this._transcriptStartOffset != null &&
+      this._transcriptEndOffset != null
+    );
   }
 
   public override validate(): void {

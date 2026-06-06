@@ -80,7 +80,7 @@ function captureExtensionConfig(opts: {
 // ---------------------------------------------------------------------------
 
 describe('TENANT_SCOPED_MODELS allow-list', () => {
-  it('contains the 31 tenant-scoped models currently defined in db_main/*.prisma', () => {
+  it('contains the 36 tenant-scoped models currently defined in db_main/*.prisma', () => {
     // The allow-list tracks SCHEMA TRUTH (every model here has a tenantId
     // scalar), not the audit's 30-name wish-list. The User* identity tables
     // are intentionally excluded — `User` is global by design (§B6 /
@@ -88,9 +88,11 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // (role) + UserDepartment (department) join tables.
     // TASK-318 added TenantStorageConfig → 28. TASK-305 Phase F added
     // UserDepartment → 29. TASK-331 doc-08 added TenantFrontendConfig (F2)
-    // + AsrPipelineVersion (F3) → 31. (The drift guard below is the durable
-    // check; this count stays as a quick human-readable tripwire.)
-    expect(TENANT_SCOPED_MODELS.size).toBe(31);
+    // + AsrPipelineVersion (F3) → 31. TASK-330 Phase 0 added the clinical-
+    // documentation harness GoldenSet/GoldenCase/EvalRun/EvalScore +
+    // HarnessAuditEvent → 36. (The drift guard below is the durable check;
+    // this count stays as a quick human-readable tripwire.)
+    expect(TENANT_SCOPED_MODELS.size).toBe(36);
   });
 
   it('includes every PHI-bearing model', () => {
@@ -187,6 +189,7 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
     expect(found).toContain('Consultation');
     expect(found).toContain('TenantFrontendConfig'); // tenant.prisma (F2)
     expect(found).toContain('AsrPipelineVersion'); // stt.prisma (F3)
+    expect(found).toContain('HarnessAuditEvent'); // harness.prisma (TASK-330)
   });
 
   it('lists every schema tenantId model in TENANT_SCOPED_MODELS (drift = []) ', () => {

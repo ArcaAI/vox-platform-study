@@ -97,6 +97,12 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'TenantFrontendConfig', // per-tenant frontend pipeline config (doc-08 F2)
   // media.prisma (1)
   'Media',
+  // harness.prisma (5) — TASK-330 Phase 0 clinical-documentation harness
+  'GoldenSet',
+  'GoldenCase',
+  'EvalRun',
+  'EvalScore',
+  'HarnessAuditEvent', // append-only WORM audit (no soft-delete; see client.ts)
 ]);
 
 /**

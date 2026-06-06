@@ -75,7 +75,9 @@ dependencies = [
     "numpy>=2.0.0",
     # --- Azure Speech SDK (cloud ASR engine, imported top-level in batch_service) ---
     "azure-cognitiveservices-speech>=1.47.0",
-    # --- Qdrant (speaker embedding vector store, used by diarization) ---
+    # --- Qdrant client: LEGACY/UNUSED (diarization is now in-memory/session-scoped; see
+    #     README Overview note). Retained only because `uv lock` cannot currently re-resolve
+    #     (pre-existing stt-v2[ml] vs stt-v2[nemo] transformers conflict); drop when fixed. ---
     "qdrant-client>=1.13.0",
     # --- Cadence punctuation runtime compatibility (Gemma3 bidirectional mask path) ---
     "cadence-punctuation>=1.1.0",

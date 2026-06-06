@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { BaseTenantDataModel } from '../../../common';
+import { JsonValue } from '../../../interfaces';
 import * as Models from './';
 
 export class SummaryMeta extends BaseTenantDataModel {
@@ -21,6 +22,14 @@ export class SummaryMeta extends BaseTenantDataModel {
   public qualityScore: number | null;
   public promptResolvedFrom: string | null;
   public resolvedPromptId: string | null;
+  // TASK-330 Phase 1 — clinical-harness sensor scores + citation provenance
+  public entityFaithfulnessScore: number | null;
+  public coverageScore: number | null;
+  public ragTriadScore: number | null;
+  public citationsMap: JsonValue | null;
+  public guardrailDecisions: JsonValue | null;
+  public attestationRef: string | null;
+  public modelName: string | null;
 
   constructor(data: SummaryMeta & BaseTenantDataModel) {
     super(data);
@@ -39,5 +48,12 @@ export class SummaryMeta extends BaseTenantDataModel {
     this.qualityScore = data.qualityScore;
     this.promptResolvedFrom = data.promptResolvedFrom;
     this.resolvedPromptId = data.resolvedPromptId;
+    this.entityFaithfulnessScore = data.entityFaithfulnessScore;
+    this.coverageScore = data.coverageScore;
+    this.ragTriadScore = data.ragTriadScore;
+    this.citationsMap = data.citationsMap;
+    this.guardrailDecisions = data.guardrailDecisions;
+    this.attestationRef = data.attestationRef;
+    this.modelName = data.modelName;
   }
 }

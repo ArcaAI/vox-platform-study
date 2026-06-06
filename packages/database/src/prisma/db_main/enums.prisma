@@ -212,6 +212,22 @@ enum ContextItemType {
     TRANSCRIPT           // Transcription of audio
     CASE_NOTE            // Case notes - shared across linked consultations as additional context
     ATTACHMENT           // Other attachments
+    SIGNED_NOTE          // TASK-330 — clinician-attested, immutable signed note (confirm-before-commit gate)
+
+    @@schema("core")
+}
+
+// TASK-330 Phase 1 — first-class consultation lifecycle state machine.
+// Previously the lifecycle lived in the free-form `Consultation.metadata.status`
+// JSON; this enum promotes it to a typed column so the clinical-documentation
+// harness can gate transitions (e.g. PENDING_REVIEW → SIGNED on attestation).
+enum ConsultationStatus {
+    OPEN                 // Active consultation, not yet under review
+    RECORDING            // Audio capture in progress
+    PENDING_REVIEW       // Summary generated, awaiting clinician review/attestation
+    SIGNED               // Clinician-attested (immutable signed note committed)
+    CLOSED               // Consultation closed
+    REOPENED             // Reopened after being closed
 
     @@schema("core")
 }

@@ -16,9 +16,31 @@ export interface CreateContextItemVersionProps extends BaseEntityFactoryCreatePr
   changedBy?: IContextItemVersionEntity['changedBy'];
   changeSource?: IContextItemVersionEntity['changeSource'];
   fieldChanges?: IContextItemVersionEntity['fieldChanges'];
+  // TASK-330 Phase 1 — clinician attestation fields
+  attestedAt?: IContextItemVersionEntity['attestedAt'];
+  attestedBy?: IContextItemVersionEntity['attestedBy'];
+  attestationHash?: IContextItemVersionEntity['attestationHash'];
+  modelName?: IContextItemVersionEntity['modelName'];
+  modelVersion?: IContextItemVersionEntity['modelVersion'];
+  sensorScores?: IContextItemVersionEntity['sensorScores'];
   tenantId: IContextItemVersionEntity['tenantId'];
 
   createdAt?: IContextItemVersionEntity['createdAt'];
+}
+
+export interface CreateSignedNoteVersionProps extends BaseEntityFactoryCreateProps {
+  contextItemId: IContextItemVersionEntity['contextItemId'];
+  versionNumber: IContextItemVersionEntity['versionNumber'];
+  tenantId: IContextItemVersionEntity['tenantId'];
+  attestedBy: NonNullable<IContextItemVersionEntity['attestedBy']>;
+  attestationHash: NonNullable<IContextItemVersionEntity['attestationHash']>;
+  content?: IContextItemVersionEntity['content'];
+  attestedAt?: IContextItemVersionEntity['attestedAt'];
+  modelName?: IContextItemVersionEntity['modelName'];
+  modelVersion?: IContextItemVersionEntity['modelVersion'];
+  sensorScores?: IContextItemVersionEntity['sensorScores'];
+  changeReason?: IContextItemVersionEntity['changeReason'];
+  changeSummary?: IContextItemVersionEntity['changeSummary'];
 }
 
 export class ContextItemVersionFactory {
@@ -46,7 +68,37 @@ export class ContextItemVersionFactory {
       changedBy: props.changedBy ?? null,
       changeSource: props.changeSource ?? 'manual',
       fieldChanges: props.fieldChanges ?? null,
+      attestedAt: props.attestedAt ?? null,
+      attestedBy: props.attestedBy ?? null,
+      attestationHash: props.attestationHash ?? null,
+      modelName: props.modelName ?? null,
+      modelVersion: props.modelVersion ?? null,
+      sensorScores: props.sensorScores ?? null,
       tenantId: props.tenantId,
+    });
+  }
+
+  /**
+   * TASK-330 Phase 1 — create an attested SIGNED_NOTE version (confirm-before-commit
+   * gate). Keeps `changeReason='approved'` for back-compat with the existing
+   * approval idempotency check and stamps the attestation provenance fields.
+   */
+  static CreateSignedNoteVersion(props: CreateSignedNoteVersionProps): ContextItemVersionEntity {
+    return this.CreateVersion({
+      contextItemId: props.contextItemId,
+      versionNumber: props.versionNumber,
+      tenantId: props.tenantId,
+      content: props.content,
+      changeReason: props.changeReason ?? 'approved',
+      changeSummary: props.changeSummary ?? 'Clinician attested signed note',
+      changedBy: props.attestedBy,
+      changeSource: 'attestation',
+      attestedAt: props.attestedAt ?? new Date(),
+      attestedBy: props.attestedBy,
+      attestationHash: props.attestationHash,
+      modelName: props.modelName,
+      modelVersion: props.modelVersion,
+      sensorScores: props.sensorScores,
     });
   }
 

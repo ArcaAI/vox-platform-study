@@ -16,7 +16,12 @@ import { DepartmentRepository } from '../../../repositories/generated/core/Depar
 import { DnaUsageRecordRepository } from '../../../repositories/generated/core/DnaUsageRecordRepository';
 import { DnaWritingStyleReportRepository } from '../../../repositories/generated/core/DnaWritingStyleReportRepository';
 import { DnaWritingStyleVersionRepository } from '../../../repositories/generated/core/DnaWritingStyleVersionRepository';
+import { EvalRunRepository } from '../../../repositories/generated/core/EvalRunRepository';
+import { EvalScoreRepository } from '../../../repositories/generated/core/EvalScoreRepository';
 import { GlobalSettingRepository } from '../../../repositories/generated/core/GlobalSettingRepository';
+import { GoldenCaseRepository } from '../../../repositories/generated/core/GoldenCaseRepository';
+import { GoldenSetRepository } from '../../../repositories/generated/core/GoldenSetRepository';
+import { HarnessAuditEventRepository } from '../../../repositories/generated/core/HarnessAuditEventRepository';
 import { MediaRepository } from '../../../repositories/generated/core/MediaRepository';
 import { NamedEntityRepository } from '../../../repositories/generated/core/NamedEntityRepository';
 import { NotificationRepository } from '../../../repositories/generated/core/NotificationRepository';
@@ -115,6 +120,12 @@ const repositories = [
   TenantStorageConfigRepository,
   // Voice profile domain
   UserVoiceProfileRepository,
+  // Clinical documentation harness domain (TASK-330 Phase 0)
+  GoldenSetRepository,
+  GoldenCaseRepository,
+  EvalRunRepository,
+  EvalScoreRepository,
+  HarnessAuditEventRepository,
 ];
 
 @Module({

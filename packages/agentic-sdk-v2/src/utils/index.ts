@@ -37,3 +37,15 @@ export {
   resolveVoiceEnrollmentProvider,
 } from './voiceEmbedding';
 export type { VoiceEnrollmentProvider, EnrolledEmbeddingRef, VoiceMatchResult } from './voiceEmbedding';
+
+// TASK-330 Phase 1 (Lane J) — provenance/citations helpers for the review UI.
+export {
+  SOAP_SECTIONS,
+  SOAP_SECTION_LABELS,
+  isNeedsAttention,
+  sortClaimsByAttention,
+  selectClaimsNeedingAttention,
+  groupClaimsBySection,
+  buildTranscriptHighlights,
+  confidencePercent,
+} from './citations';

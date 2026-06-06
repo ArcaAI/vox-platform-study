@@ -29,6 +29,21 @@ export class NamedEntityRepository extends Repository<NamedEntityEntity, NamedEn
   }
 
   /**
+   * TASK-330 Phase 1 — find ALL named entities for a consultation (across every
+   * ContextItem in it), WITH their transcript-span offsets + ontology codes.
+   * Used by the SummaryProcessor to inject grounded NER into the LLM prompt.
+   * Ordered by transcript span then in-source offset for stable citation order.
+   */
+  async findByConsultation(consultationId: string): Promise<NamedEntityEntity[]> {
+    const models = await (this as any).db.findMany({
+      where: { ContextItem: { consultationId } },
+      orderBy: [{ transcriptStartOffset: 'asc' }, { startOffset: 'asc' }],
+    });
+
+    return models.map((model: NamedEntity) => (this as any)._mapper.toDomainEntity(model));
+  }
+
+  /**
    * Find named entities by class name
    */
   async findByClassName(contextItemId: string, className: string): Promise<NamedEntityEntity[]> {

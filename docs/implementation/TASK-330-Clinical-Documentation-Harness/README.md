@@ -7,14 +7,15 @@
 | Type | research + high-level design (architecture) |
 | Created | 2026-06-02 |
 | Updated | 2026-06-06 (**v3** — codebase re-review post-TASK-331, SOTA reconciliation, **durability locked = Temporal**, detailed implementation plan) |
-| Status | **Review** (design + plan ready for approval; no code written) |
+| Status | **In Progress** (Phase 0 foundation + corrective tickets landed 2026-06-06; remaining phases per implementation-plan.md) |
 | Scope | `apps/{stt-v2,nlp,smr,api}` + new `apps/harness`; `packages/{agentic-sdk-v2,med-ner,applications,domains,database}`; infra `Qdrant` + `Langfuse` + **Temporal**; India `ABDM/FHIR` adapter |
 | Research | Fully-cited research archive: [`research/clinical-harness/`](../../../research/clinical-harness/README.md) (8 docs, 182 sources) |
 | Plan | Detailed phased implementation plan: [`implementation-plan.md`](./implementation-plan.md) |
 | Interpretation | "Harness Engineering" = the 2026 AI-agent discipline (*Agent = Model + Harness*). "Build automation workflow" = the automated **clinical-document build pipeline** (transcribe → detect entities → summarize → assemble note → clinician sign-off), **not** Harness.io / CI-CD. |
 
-> Phase-3 (Plan) document per `01-development-workflow.mdc`. No code is written until the plan + use cases
-> below are approved. "Implementation Summary" is intentionally empty.
+> Phase-3 (Plan) document per `01-development-workflow.mdc`. The owner approved execution; **Phase 0
+> foundation + corrective tickets landed 2026-06-06** (see §9). Remaining phases proceed per
+> [`implementation-plan.md`](./implementation-plan.md).
 
 ---
 
@@ -603,10 +604,153 @@ The detailed, phased, TDD implementation plan lives in **[`implementation-plan.m
 (Database → Domain → Services → API → Python), red-green-refactor, with concrete file touch-points, Temporal
 durability (D11), the SOTA stack (D12), and per-phase regulatory guardrails + exit criteria.
 
-> **Gate:** the plan is **awaiting approval** (Phase-3). No code is written until approved.
+> **Status:** approved for execution. **Phase 0** (eval + WORM data layer) + the `apps/harness`/Temporal
+> scaffold + corrective tickets have landed (§9); subsequent phases continue per the plan.
 
 ## 9. Implementation Summary
-*Empty — no code written yet.*
+
+### 2026-06-06 — Phase 0 foundation + corrective tickets (4 parallel, non-overlapping lanes, TDD)
+
+**Phase 0 data layer** (`packages/{database,domains,applications}`):
+- New `db_main/harness.prisma`: tenant-scoped `GoldenSet`, `GoldenCase`, `EvalRun`, `EvalScore` + append-only
+  **`HarnessAuditEvent`** (hash-chained WORM) + enum `HarnessAuditAction`.
+- Migration `20260606143138_task_330_add_clinical_harness_eval_and_worm_audit` (additive; `REVOKE UPDATE, DELETE`
+  on `HarnessAuditEvent`) — applied.
+- Domain: full Entity/Factory/Mapper/Repository set + `utils/harnessAuditHash.ts` (SHA-256 chain + verify); repos in
+  `CoreDatabaseModule`; drift guard `TENANT_SCOPED_MODELS` 31→36, `HarnessAuditEvent` in `MODELS_WITHOUT_SOFT_DELETE`.
+- Services: `EvalService`, `HarnessAuditService` (append computes chain; `verifyChain` detects tamper).
+- Tests: domains 1142 ✓ · applications 4768 ✓ · database 744 ✓ · WORM live-Postgres 6 ✓ (UPDATE/DELETE → SQLSTATE 42501).
+- Caveat: dev DB connects as superuser (bypasses REVOKE) → WORM is a no-op *in dev* but proven via the dedicated-role
+  test; takes effect in bootstrapped/prod environments.
+
+**Infra/scaffold** (`apps/harness`, `infrastructure/docker`, root `turbo.json`/`package.json`):
+- `apps/harness` FastAPI service (port **8866**) mirroring `apps/smr` (uv/pyproject, Dockerfile, structlog, `/health`).
+- Temporal substrate: deterministic `HarnessPingWorkflow` + `ping_activity` + env client + worker; tested via the
+  time-skipping `WorkflowEnvironment` (5 ✓).
+- `temporal` + `temporal-ui` (+ dedicated PG) added to `docker-compose.dev.yml` behind an opt-in **`temporal` profile**
+  (default stack untouched); `py:harness:*` scripts; `turbo.json` globalEnv.
+
+**Corrective tickets:**
+- NLP (`apps/nlp`): doc-type classifier no longer defaults to the emotion model — now **fail-safe** (sentinel default →
+  `/classify/text` returns 503 + loud warning until `TEXT_CLASSIFIER_MODEL_NAME` is set). 32 tests ✓.
+  **Open owner question:** the intended doc-type taxonomy/model (or deprecate the endpoint).
+- STT-v2 (`apps/stt-v2`): confirmed via git history the Qdrant speaker store was an intentional refactor to in-memory +
+  Postgres voice profiles → removed dead bytecache/refs, documented; 56 diarization + 1866-collection ✓.
+  **Carry-forward:** unused `qdrant-client` dep blocked from removal by a *pre-existing* `transformers` ml/nemo
+  conflict; unused `stt_speaker_embeddings` collection left untouched (no-destructive-data rule).
+
+**Registries:** `apps/harness` added to `scripts/setup-python-env.sh` + port tables (`06-python-services.mdc`,
+`09-infrastructure.mdc`).
+
+### 2026-06-06 — Phase 1 TS core + Phase 0 Python eval (Lanes E, F; 2 parallel non-overlapping lanes, TDD)
+
+**Phase 1 TypeScript core** (`packages/{database,domains,applications}`; `apps/api` unchanged — controller already delegates):
+- Migration `20260606154250_task_330_phase1_clinical_harness_status_attestation_ner` (additive; `ADD VALUE IF NOT EXISTS`,
+  non-destructive `CASE` backfill of `Consultation.status` from `metadata.status`) — applied.
+- Schema: `ConsultationStatus` enum + `Consultation.status`; `ContextItemType += SIGNED_NOTE`; `ContextItemVersion`
+  attestation cols; `NamedEntity` ontology codes + transcript-span FK; `SummaryMeta` sensor/citation cols.
+- **NER → prompt injection** (closes the gap where NER output never reached the LLM): `PromptAssemblyParams.nerEntities`
+  → `buildVariables()`/`assemble()`; `SummaryProcessor` queries `NamedEntityRepository.findByConsultation()` and injects mapped entities.
+- **Structured SOAP** json_schema seeded into the SOAP template (`07-prompt-template.ts`) + forwarded for non-Ollama providers (locking test).
+- **Attestation gate** (non-bypassable, fail-closed): `approveSummary` writes a `SIGNED_NOTE` version (attestation + SHA-256 hash)
+  → appends an `ATTEST` WORM event via `HarnessAuditService` → sets `Consultation.status = SIGNED`.
+- Tests: domains 1158 ✓ · applications 4754 ✓ · API build 8/8 ✓ · live-Postgres 15/15 ✓ (schema 6 + WORM 6 + attestation-gate 3,
+  incl. the `ATTEST` row rejecting UPDATE/DELETE → 42501).
+
+**Phase 0 Python eval harness** (`apps/harness/src/harness/eval` + `apps/harness/eval` promptfoo assets + `.github/workflows`;
+self-contained — no Postgres / no `packages/*` imports):
+- PDSQI-9 LLM-as-judge (vendored Epic Apache-2.0 prompts) — model-agnostic via env: `openai_compat` (LM Studio/vLLM ≤20B, default) · Azure OpenAI · AWS Bedrock.
+- RAGAS-style faithfulness (claim decomposition) + DeepEval wrappers (Faithfulness/Hallucination/Summarization/GEval) sharing the same judge client.
+- Calibration gate: ICC(2,1) + Gwet AC2 — **blocks ICC < 0.8** (proven: miscalibrated ICC = −0.19 BLOCKED; calibrated ICC = +0.93 PASS).
+- CI: `.github/workflows/harness-eval.yml` — DeepEval (pytest) + promptfoo (`npx`, no root dep) release-blocking against a pinned golden set.
+- Tests: 69 ✓ (64 eval + 5 scaffold); ruff + black clean. Deps: `deepeval` in `[eval]`; `ragas` isolated in opt-in `[eval-ragas]` (kept out of CI).
+
+**Open prerequisites (owner/SME — not code):**
+1. **Real clinician-authored golden set** (≥50 transcript→note cases, versioned) — eval currently runs on a *synthetic* pluggable
+   fixture and must not gate any clinical claim until replaced.
+2. **NLP doc-type taxonomy/model** (or deprecate `/classify/text`) — classifier stays fail-safe-disabled until set.
+
+**Not yet done (next batch):** Phase 1 **Python** harness loop/sensors (computational + inferential: MiniCheck groundedness,
+Presidio/clinical-NER PHI, Llama-Guard safety) wired into the Temporal workflow; the `apps/api` ↔ `apps/harness` gate adapter
+(provenance/citations contract); and the linked-evidence clinician **review UI**. Nothing committed to git.
+
+### 2026-06-06 — Phase 1 loop + sensors + gate adapter + review UI (Lanes G, H, I, J + final integration, TDD)
+
+The "next batch" above. Four parallel non-overlapping lanes landed in the working tree (uncommitted), then a final
+integration pass reconciled the cross-lane contracts and wired the path end-to-end behind the existing `harnessEnabled`
+flag (default **off**). The legacy BullMQ path and Lane E's attestation writes are untouched.
+
+**Lane G — `apps/api` ↔ `apps/harness` gate adapter** (`apps/api/src/modules/consultation`, `packages/applications/.../harness`):
+- Inbound `HarnessInternalController` (service-to-service, `X-Service-Token` via `HarnessServiceTokenGuard`, CLS
+  re-established from body `tenantId`): `POST /api/v1/internal/harness/consultations/:id/{entities,assemble,draft,gate-decision}`.
+- Outbound `HarnessGatewayService` (`start` / `signalApproval`) calls the harness `document:start` + approval signal.
+- `HarnessInternalService` persists NER entities, resolves prompt tier + assembles the SMR payload, persists the draft
+  (`ContextItem` + `SummaryMeta` + `PENDING_REVIEW` + WORM audit), and records the clinician `GATE_DECISION`.
+
+**Lane H — computational sensors** (`apps/harness/src/harness/sensors`): five pure, deterministic, offline sensors —
+`entity_faithfulness` (anti-fabrication), `coverage_omission`, `schema_validity`, `citation_presence`, `numeric_dose` —
+folded by a **fail-safe** `aggregate()` (PASS/REGEN/FLAG with a bounded regen budget; any degraded sensor → never auto-PASS).
+`sensor_runner` parses the SOAP JSON, builds the provenance `citationsMap`, and runs the five in canonical order.
+
+**Lane I — durable Temporal loop** (`apps/harness/src/harness/temporal`, `.../services`): `HarnessDocWorkflow`
+orchestrates extract-entities (NLP) → persist/assemble/draft (apps/api) → generate (SMR) → sensors → aggregate →
+`PENDING_REVIEW`, then a durable clinician **gate** (signal + SLA timer/escalation) → on approve, `record_gate_decision`.
+`api_client` / `smr_client` / `nlp_client` are the typed callouts; tested with the time-skipping `WorkflowEnvironment`.
+
+**Lane J — clinician review UI** (`apps/ui-playground/src/features/clinical-review`): linked-evidence review screen
+(transcript pane, SOAP panel, claim lines + status/confidence badges, needs-attention list) on a `clinical-review` route.
+
+**Reconciled cross-lane contract gaps (final pass):**
+1. **Mount-prefix alignment** — the harness `api_client` read `api_internal_prefix` defaulting to `/internal/harness`,
+   but Lane G mounts under the global `api/v1` prefix. Set the default to **`/api/v1/internal/harness`**
+   (`apps/harness/src/harness/core/config.py` + `.env.example` `HARNESS_API_INTERNAL_PREFIX`) so live wiring works out of the box.
+2. **Missing `gate-decision` route** — Lane I POSTs `{prefix}/consultations/{id}/gate-decision` but Lane G had only
+   entities/assemble/draft. Added the route → `HarnessInternalService.recordGateDecision` →
+   `HarnessAuditService.append({ action: GATE_DECISION })` (RED-first vitest; same guard + CLS re-establish).
+3. **Boot-blocking route audit** — the inbound routes are guarded by `HarnessServiceTokenGuard` (not user-JWT), so the
+   TASK-307 W4a.1 boot audit **refused to start apps/api** ("4 HTTP route(s) lack both @Public() and a permission
+   decorator"). Added class-level **`@Public()`** to `HarnessInternalController` (skip-auth label only — the token guard
+   still enforces). Verified at boot: the API now progresses **past** the route audit. (RED-first: controller test asserts
+   `SKIP_AUTH_KEY`.)
+4. **Transcript forwarding** — on the flag path the event handler now best-effort loads the transcript via
+   `ContextItemRepository` and forwards `transcriptText` to `HarnessGatewayService.start`, so the workflow's NER + sensors
+   operate on the real source (additive; failure to load never blocks harness start).
+
+**e2e** (`apps/api/tests/e2e/task-330-harness-gate.spec.ts`, Playwright — matches the existing apps/api e2e harness):
+asserts the HITL gate is non-bypassable — all four inbound routes + a wrong/absent token are rejected **401**, and the
+clinician `approve` (the SINGLE path to a `SIGNED_NOTE`) requires auth. Full-loop provenance/citation + "only approve
+produces SIGNED_NOTE + GATE_DECISION" assertions are written but **skipped behind `HARNESS_E2E_FULL`**.
+- **What ran:** the unit/integration layer — applications **4813 ✓** (4 skipped), apps/api harness controller+guard **12 ✓**,
+  apps/api build **8/8 ✓**, harness pytest **176 ✓**, ruff + black clean. The `@Public()` boot fix was verified by actually
+  booting `dev:api` (audit passed).
+- **What is BLOCKED here (not fabricated):** the live Playwright run needs apps/api + apps/harness + Temporal + SMR + NLP +
+  Postgres + Redis. In this environment the dev API could not finish booting (`permission denied for schema core` — dev DB
+  role grants) and the **test** containers (Postgres 5433 / Redis 6380) are down, so `pnpm test:e2e` cannot execute. The
+  guard 401s run against any live API via `SKIP_DB_PRECHECK=true` (skips the prohibited destructive `test:db:reset`). The
+  gate is independently covered at unit/integration by Lane E's live-Postgres attestation-gate test + Lane I's
+  time-skipping workflow tests.
+
+**Eval delta** (`apps/harness/src/harness/eval/draft_eval.py` + `tests/unit/eval/test_draft_eval.py`, 5 ✓): a bridge that
+adapts a harness draft into the Phase-0 eval harness, two scoring paths —
+- **LLM-judge path** (PDSQI-9 + RAGAS faithfulness): `harness_draft_to_golden_case(...)` → `GoldenCase` → `run_and_gate`.
+  **Wired and reached** — but **BLOCKED here**: no live judge model (`python -m harness.eval.ci` → `JudgeConnectionError:
+  Connection error`). Needs `HARNESS_JUDGE_*` (LM Studio/Azure/Bedrock).
+- **Computational-sensor path** (offline, deterministic): `score_draft_with_sensors(...)` runs the five Lane-H sensors.
+  **Actually ran** over the packaged **synthetic** golden set (`python -m harness.eval.draft_eval`): **FLAG ×5**
+  (`schema_validity`/`citation_presence` = 0 because the synthetic notes are prose-with-markers authored for the *judge*,
+  not the loop's JSON-SOAP; `entity_faithfulness`/`coverage_omission` = 1.0 trivially because NER is empty offline).
+  This is the **honest** result: it proves the wiring + the fail-safe (no NER / non-JSON → FLAG, never auto-PASS), but is
+  **not a clinical omission/fabrication delta**. The unit tests prove the sensors carry real signal (a fabricated note
+  entity → FLAG + `claims_flagged`; a grounded entity → faithfulness 1.0).
+- **A real delta vs baseline REQUIRES** (open): the SME-authored golden set in the loop's JSON-SOAP shape, live NLP for
+  NER, and a live judge/SMR endpoint.
+
+**Remaining prerequisites:**
+1. **Real clinician-authored golden set** (≥50 cases, versioned) in the loop's JSON-SOAP shape — replaces the synthetic fixture.
+2. **Live model endpoints** — judge (`HARNESS_JUDGE_*`) for PDSQI-9/faithfulness; SMR (8862) + NLP (8864) for generation/NER.
+3. **Phase-2 inferential sensors + PHI/safety guardrails** — MiniCheck groundedness, Presidio/clinical-NER PHI, Llama-Guard safety.
+4. **Deployment env** — set `HARNESS_API_INTERNAL_PREFIX=/api/v1/internal/harness` + `HARNESS_SERVICE_TOKEN`; for live e2e,
+   a bootstrapped DB role (dev hit `permission denied for schema core`) + the test containers (5433/6380).
 
 ## 10. Change History
 | Date | Description | Files |
@@ -615,6 +759,9 @@ durability (D11), the SOTA stack (D12), and per-phase regulatory guardrails + ex
 | 2026-06-02 | Reconciled with full codebase exploration — concrete reuse points: `PipelineOrchestrator`, `PromptAssemblyService.buildVariables()`, SMR `json_schema` (unused), provisioned-but-empty Qdrant `context_items`, STT hallucination heuristics, NLP text-classifier misconfig | this README |
 | 2026-06-02 | **v2 — decision-locked + medical-domain research.** Added 10 brainstorm decisions (§1.4); folded in 5 research agents (clinical-doc accuracy, grounding/licensing, evals/governance, India regulation, interop) as §2.5–2.9; replaced architecture with the **dedicated Python `apps/harness` orchestrator**; added components (§4.3), data flow (§4.5), error-handling/degradation (§4.6), India-first governance (§4.7), testing/eval (§6); reworked use cases to internal+institutional grounding + read-only tools; new 6-phase roadmap with regulatory guardrails; resolved 4 prior open decisions, surfaced 5 new ones | this README |
 | 2026-06-06 | **v3 — codebase re-review + SOTA + plan.** 3 review agents re-evaluated the post-TASK-331 codebase; 1 research agent compiled the 2026 implementation SOTA; all 6 reports archived (with the v2 set, 8 docs) in `research/clinical-harness/`. **Locked Temporal** (D11) + the SOTA eval/guardrail/judge stack (D12); resolved the faithfulness-judge decision; added §3.4 codebase reconciliation; updated topology (§4.1) + components (§4.3) for Temporal + SOTA; added the detailed `implementation-plan.md`; status → Review | this README, `implementation-plan.md`, `research/clinical-harness/*` |
+| 2026-06-06 | **Phase 0 foundation + correctives implemented** (4 parallel non-overlapping lanes, TDD; see §9): eval + WORM data layer (`harness.prisma` + migration + domain + services); `apps/harness` + Temporal scaffold; NLP doc-type fail-safe; STT-v2 Qdrant cleanup; registries/port tables updated. Status → In Progress | `packages/{database,domains,applications}/*`, `apps/harness/*`, `apps/{nlp,stt-v2}/*`, `infrastructure/docker/*`, `scripts/setup-python-env.sh`, `.cursor/rules/0{6,9}-*.mdc` |
+| 2026-06-06 | **Phase 1 TS core + Phase 0 Python eval implemented** (Lanes E, F; 2 parallel non-overlapping lanes, TDD; see §9): status/attestation/NER/SOAP schema + additive migration, NER→prompt injection, structured SOAP forwarding, non-bypassable attestation gate (SIGNED_NOTE + `ATTEST` WORM); PDSQI-9 judge + RAGAS/DeepEval + ICC calibration gate + release-blocking CI | `packages/{database,domains,applications}/*`, `apps/harness/{src/harness/eval,eval}/*`, `.github/workflows/harness-eval.yml` |
+| 2026-06-06 | **Phase 1 loop + sensors + gate adapter + review UI implemented + integrated** (Lanes G/H/I/J + final pass, TDD; see §9): gate adapter (inbound controller incl. new `gate-decision` route + outbound gateway + service), 5 computational sensors + fail-safe aggregator, durable Temporal loop + gate, clinician review UI. Reconciled contracts: `api_internal_prefix` default → `/api/v1/internal/harness`; added `gate-decision` → `GATE_DECISION` WORM; `@Public()` on `HarnessInternalController` (fixes the TASK-307 boot route-audit, verified at boot); transcript forwarding to the workflow. Added Playwright gate e2e (guard 401s + skipped full-loop) + an eval bridge (`draft_eval.py`) scoring a draft via the Phase-0 harness. Evidence: applications 4813 ✓, apps/api harness 12 ✓, build:api 8/8 ✓, harness pytest 176 ✓, ruff+black clean; computational-sensor eval over the synthetic set ran (FLAG×5, honest caveats), LLM-judge + live e2e blocked (no judge model / dev-DB grants + test infra). All flag-gated (default off); nothing committed | `apps/api/src/modules/consultation/*`, `apps/api/tests/e2e/task-330-harness-gate.spec.ts`, `packages/applications/src/services/consultation/{harness,events}/*`, `apps/harness/src/harness/{core/config.py,eval/draft_eval.py,tests}/*`, `apps/harness/.env.example`, this README |
 
 ## 11. References
 > **Full, categorised, fully-cited research archive (182 sources):** [`research/clinical-harness/`](../../../research/clinical-harness/README.md)

@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { SummaryService } from '../summary.service';
-import { SysEventType, ContextItemVersionFactory } from '@arcaai/domains';
+import { SysEventType, ContextItemVersionFactory, HarnessAuditAction, ConsultationStatus } from '@arcaai/domains';
 
 // Mock domain factories — same approach as ner.processor.test.ts
 vi.mock('@arcaai/domains', async () => {
@@ -42,8 +42,28 @@ vi.mock('@arcaai/domains', async () => {
                     changeSource: changeSource ?? 'manual',
                     changeSummary: changeSummary ?? null,
                     tenantId: contextItem.tenantId,
+                    createdAt: new Date('2026-06-06T00:00:00.000Z'),
                 }),
             ),
+            // TASK-330 Phase 1 — attested SIGNED_NOTE version used by approveSummary.
+            CreateSignedNoteVersion: vi.fn((props) => ({
+                id: 'signed-version-id-1',
+                contextItemId: props.contextItemId,
+                versionNumber: props.versionNumber,
+                content: props.content ?? null,
+                changeReason: props.changeReason ?? 'approved',
+                changeSummary: props.changeSummary ?? 'Clinician attested signed note',
+                changedBy: props.attestedBy,
+                changeSource: 'attestation',
+                attestedAt: props.attestedAt ?? new Date('2026-06-06T00:00:00.000Z'),
+                attestedBy: props.attestedBy,
+                attestationHash: props.attestationHash,
+                modelName: props.modelName ?? null,
+                modelVersion: props.modelVersion ?? null,
+                sensorScores: props.sensorScores ?? null,
+                tenantId: props.tenantId,
+                createdAt: new Date('2026-06-06T00:00:00.000Z'),
+            })),
         },
     };
 });
@@ -79,6 +99,19 @@ const createMockContextItemRepository = () => ({
 
 const createMockConsultationRepository = () => ({
     findById: vi.fn(),
+    update: vi.fn(),
+});
+
+// TASK-330 Phase 1 — Phase-0 WORM audit service (attestation gate).
+const createMockHarnessAuditService = () => ({
+    append: vi.fn().mockResolvedValue({ id: 'audit-evt-1' }),
+});
+
+// TASK-330 Phase 1 (Lane G) — outbound harness gate adapter. approveSummary
+// forwards the sign-off to the harness best-effort (after the WORM write).
+const createMockHarnessGatewayService = () => ({
+    start: vi.fn().mockResolvedValue({ workflowId: 'wf-1' }),
+    signalApproval: vi.fn().mockResolvedValue({ ok: true }),
 });
 
 const createMockSummaryMetaRepository = () => ({
@@ -1365,6 +1398,240 @@ describe('SummaryService', () => {
                     service.approveSummary('ctx-other'),
                 ).rejects.toThrow(NotFoundException);
                 expect(mockContextItemRepository.update).not.toHaveBeenCalled();
+            });
+        });
+
+        // ===================================================================
+        // TASK-330 Phase 1 — attestation gate (confirm-before-commit)
+        //
+        // approveSummary MUST, in one path that cannot be bypassed:
+        //   1. write a SIGNED_NOTE ContextItemVersion carrying attestation fields,
+        //   2. append an ATTEST HarnessAuditEvent (Phase-0 WORM trail),
+        //   3. flip Consultation.status → SIGNED.
+        // ===================================================================
+        describe('approveSummary — attestation gate (TASK-330 Phase 1)', () => {
+            let mockHarnessAuditService: ReturnType<typeof createMockHarnessAuditService>;
+            let gatedService: SummaryService;
+
+            const makeFinalSummary = () => ({
+                id: 'ctx-item-123',
+                tenantId: 'tenant-1',
+                consultationId: 'consultation-1',
+                type: 'RAW_SUMMARY',
+                content: 'S: ... O: ... A: ... P: ...',
+                isFinalSummary: true,
+                isSummary: true,
+                currentVersionNumber: 2,
+                updatedBy: null as string | null,
+                toObject: vi.fn().mockReturnValue({}),
+                changes: {},
+            });
+
+            beforeEach(() => {
+                mockHarnessAuditService = createMockHarnessAuditService();
+                gatedService = new SummaryService(
+                    mockContextItemRepository as any,
+                    mockConsultationRepository as any,
+                    mockSummaryMetaRepository as any,
+                    mockNamedEntityRepository as any,
+                    mockHttpService as any,
+                    mockConfigService as any,
+                    mockEventEmitter as any,
+                    mockClsService as any,
+                    mockContextItemVersionRepository as any,
+                    mockPromptAssemblyService as any,
+                    undefined, // secretsService
+                    undefined, // userProfileRepository
+                    mockHarnessAuditService as any, // harnessAuditService (Phase-0 WORM)
+                );
+            });
+
+            it('writes an attested SIGNED_NOTE version, appends an ATTEST WORM event, and sets status=SIGNED', async () => {
+                mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
+                mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
+                mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'consultation-1',
+                    tenantId: 'tenant-1',
+                    status: ConsultationStatus.OPEN,
+                    updatedBy: null,
+                });
+                mockConsultationRepository.update.mockResolvedValue({ id: 'consultation-1' });
+
+                const result = await gatedService.approveSummary('ctx-item-123');
+
+                // 1. attested SIGNED_NOTE version
+                expect(ContextItemVersionFactory.CreateSignedNoteVersion).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        contextItemId: 'ctx-item-123',
+                        tenantId: 'tenant-1',
+                        attestedBy: 'user-1',
+                        attestationHash: expect.any(String),
+                    }),
+                );
+                expect(mockContextItemVersionRepository.create).toHaveBeenCalledTimes(1);
+
+                // 2. ATTEST WORM audit event referencing the signed version
+                expect(mockHarnessAuditService.append).toHaveBeenCalledTimes(1);
+                expect(mockHarnessAuditService.append).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        tenantId: 'tenant-1',
+                        consultationId: 'consultation-1',
+                        action: HarnessAuditAction.ATTEST,
+                        clinicianId: 'user-1',
+                        contextItemVersionId: 'signed-version-id-1',
+                        attestationHash: expect.any(String),
+                    }),
+                );
+
+                // 3. consultation lifecycle → SIGNED
+                expect(mockConsultationRepository.update).toHaveBeenCalledWith(
+                    'consultation-1',
+                    expect.objectContaining({ status: ConsultationStatus.SIGNED }),
+                );
+
+                expect(result.approvalStatus).toBe('APPROVED');
+                expect(result.approvedBy).toBe('user-1');
+            });
+
+            it('is idempotent — an already-approved summary does NOT re-attest, re-audit, or re-sign', async () => {
+                mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
+                mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([
+                    { changedBy: 'user-9', createdAt: new Date('2026-06-01T00:00:00.000Z') },
+                ]);
+
+                const result = await gatedService.approveSummary('ctx-item-123');
+
+                expect(ContextItemVersionFactory.CreateSignedNoteVersion).not.toHaveBeenCalled();
+                expect(mockHarnessAuditService.append).not.toHaveBeenCalled();
+                expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+                expect(result.approvalStatus).toBe('APPROVED');
+                expect(result.approvedBy).toBe('user-9');
+            });
+
+            it('is fail-closed — if the WORM audit append fails, approval is rejected (gate cannot be bypassed)', async () => {
+                mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
+                mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
+                mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
+                mockHarnessAuditService.append.mockRejectedValue(new Error('audit chain unavailable'));
+
+                await expect(gatedService.approveSummary('ctx-item-123')).rejects.toThrow();
+
+                // The consultation must NOT be flipped to SIGNED when the audit fails.
+                expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+            });
+        });
+
+        // ===================================================================
+        // TASK-330 Phase 1 (Lane G) — best-effort harness sign-off signal
+        //
+        // AFTER the SIGNED_NOTE + ATTEST + status=SIGNED writes (the WORM trail
+        // is the source of truth), approveSummary forwards the sign-off to the
+        // harness so it can resolve the workflow's approval wait-condition. A
+        // signal failure MUST NOT block or roll back the sign-off.
+        // ===================================================================
+        describe('approveSummary — harness sign-off signal (TASK-330 Lane G)', () => {
+            let mockHarnessAuditService: ReturnType<typeof createMockHarnessAuditService>;
+            let mockHarnessGateway: ReturnType<typeof createMockHarnessGatewayService>;
+            let signalingService: SummaryService;
+
+            const makeFinalSummary = () => ({
+                id: 'ctx-item-123',
+                tenantId: 'tenant-1',
+                consultationId: 'consultation-1',
+                type: 'RAW_SUMMARY',
+                content: 'S: ... O: ... A: ... P: ...',
+                isFinalSummary: true,
+                isSummary: true,
+                currentVersionNumber: 2,
+                updatedBy: null as string | null,
+                toObject: vi.fn().mockReturnValue({}),
+                changes: {},
+            });
+
+            beforeEach(() => {
+                mockHarnessAuditService = createMockHarnessAuditService();
+                mockHarnessGateway = createMockHarnessGatewayService();
+                signalingService = new SummaryService(
+                    mockContextItemRepository as any,
+                    mockConsultationRepository as any,
+                    mockSummaryMetaRepository as any,
+                    mockNamedEntityRepository as any,
+                    mockHttpService as any,
+                    mockConfigService as any,
+                    mockEventEmitter as any,
+                    mockClsService as any,
+                    mockContextItemVersionRepository as any,
+                    mockPromptAssemblyService as any,
+                    undefined, // secretsService
+                    undefined, // userProfileRepository
+                    mockHarnessAuditService as any, // harnessAuditService (Phase-0 WORM)
+                    mockHarnessGateway as any, // harnessGatewayService (Lane G)
+                );
+
+                mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
+                mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
+                mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'consultation-1',
+                    tenantId: 'tenant-1',
+                    status: ConsultationStatus.OPEN,
+                    updatedBy: null,
+                });
+                mockConsultationRepository.update.mockResolvedValue({ id: 'consultation-1' });
+            });
+
+            it('signals the harness with versionId + attestationHash + clinicianId after a successful sign-off', async () => {
+                await signalingService.approveSummary('ctx-item-123');
+
+                expect(mockHarnessGateway.signalApproval).toHaveBeenCalledTimes(1);
+                expect(mockHarnessGateway.signalApproval).toHaveBeenCalledWith(
+                    'consultation-1',
+                    expect.objectContaining({
+                        tenantId: 'tenant-1',
+                        contextItemVersionId: 'signed-version-id-1',
+                        attestationHash: expect.any(String),
+                        clinicianId: 'user-1',
+                    }),
+                );
+            });
+
+            it('signals AFTER the consultation is flipped to SIGNED (WORM is the source of truth)', async () => {
+                const order: string[] = [];
+                mockConsultationRepository.update.mockImplementation(async () => {
+                    order.push('status-signed');
+                    return { id: 'consultation-1' };
+                });
+                mockHarnessGateway.signalApproval.mockImplementation(async () => {
+                    order.push('harness-signal');
+                    return { ok: true };
+                });
+
+                await signalingService.approveSummary('ctx-item-123');
+
+                expect(order).toEqual(['status-signed', 'harness-signal']);
+            });
+
+            it('still completes the sign-off when the harness signal throws (best-effort, not rolled back)', async () => {
+                mockHarnessGateway.signalApproval.mockRejectedValue(new Error('harness unreachable'));
+
+                const result = await signalingService.approveSummary('ctx-item-123');
+
+                expect(result.approvalStatus).toBe('APPROVED');
+                expect(mockConsultationRepository.update).toHaveBeenCalledWith(
+                    'consultation-1',
+                    expect.objectContaining({ status: ConsultationStatus.SIGNED }),
+                );
+            });
+
+            it('does not signal on the idempotent already-approved path', async () => {
+                mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([
+                    { changedBy: 'user-9', createdAt: new Date('2026-06-01T00:00:00.000Z') },
+                ]);
+
+                await signalingService.approveSummary('ctx-item-123');
+
+                expect(mockHarnessGateway.signalApproval).not.toHaveBeenCalled();
             });
         });
 

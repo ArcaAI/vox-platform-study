@@ -103,6 +103,11 @@ const createMockClsService = () => {
     return mock;
 };
 
+// Mock NamedEntityRepository (TASK-330 Phase 1 — NER → prompt injection)
+const createMockNamedEntityRepository = () => ({
+    findByConsultation: vi.fn().mockResolvedValue([]),
+});
+
 // Helper to create mock job
 const createMockJob = (data: GenerateSummaryJobPayload): Job<GenerateSummaryJobPayload> =>
     ({
@@ -1326,6 +1331,148 @@ Assessment: "Alert" & oriented × 3
             // Make sure we never reached the write side.
             expect(mockContextItemRepository.create).not.toHaveBeenCalled();
             expect(mockJobService.notifyFailed).toHaveBeenCalled();
+        });
+    });
+
+    // ===========================================================================
+    // TASK-330 Phase 1 — NER → prompt injection
+    //
+    // The processor must query the consultation's NER entities and forward them
+    // to PromptAssemblyService so they actually reach the LLM.
+    // ===========================================================================
+
+    describe('NER → prompt injection (TASK-330 Phase 1)', () => {
+        let mockNamedEntityRepository: ReturnType<typeof createMockNamedEntityRepository>;
+        let nerProcessor: SummaryProcessor;
+
+        const setupSuccessfulJob = () => {
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([
+                createMockContextItem({ content: 'Patient on amoxicillin.' }),
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: { summary: 'Summary', modelName: 'gpt-4' },
+            });
+            mockContextItemRepository.create.mockResolvedValue({ id: 'ctx-id', content: 'Summary' });
+        };
+
+        beforeEach(() => {
+            mockNamedEntityRepository = createMockNamedEntityRepository();
+            nerProcessor = new SummaryProcessor(
+                mockJobService as any,
+                mockContextItemRepository as any,
+                mockConsultationRepository as any,
+                mockHttpService as any,
+                mockConfigService as any,
+                mockEventEmitter as any,
+                mockPromptResolutionService as any,
+                mockPromptAssemblyService as any,
+                mockJobMetrics as any,
+                mockClsService as any,
+                undefined, // secretsService (optional)
+                mockNamedEntityRepository as any, // namedEntityRepository (optional)
+            );
+        });
+
+        it('queries NER entities and forwards them (mapped) to assemble() when includeNER is true', async () => {
+            setupSuccessfulJob();
+            mockNamedEntityRepository.findByConsultation.mockResolvedValue([
+                {
+                    text: 'amoxicillin',
+                    className: 'MEDICATION',
+                    normalizedText: null,
+                    umlsCui: null,
+                    snomedCode: null,
+                    rxnormCode: '723',
+                    icdCode: null,
+                    loincCode: null,
+                    startOffset: 11,
+                    endOffset: 22,
+                    transcriptStartOffset: null,
+                    transcriptEndOffset: null,
+                },
+            ]);
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-ner',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: { includeNER: true },
+            };
+
+            await nerProcessor.process(createMockJob(payload));
+
+            expect(mockNamedEntityRepository.findByConsultation).toHaveBeenCalledWith('consultation-123');
+            expect(mockPromptAssemblyService.assemble).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    nerEntities: expect.arrayContaining([
+                        expect.objectContaining({
+                            text: 'amoxicillin',
+                            type: 'MEDICATION',
+                            rxnormCode: '723',
+                            startOffset: 11,
+                            endOffset: 22,
+                        }),
+                    ]),
+                }),
+            );
+        });
+
+        it('prefers transcript-span offsets over raw offsets when mapping', async () => {
+            setupSuccessfulJob();
+            mockNamedEntityRepository.findByConsultation.mockResolvedValue([
+                {
+                    text: 'pneumonia',
+                    className: 'CONDITION',
+                    normalizedText: 'pneumonia',
+                    icdCode: 'J18.9',
+                    startOffset: 1,
+                    endOffset: 2,
+                    transcriptStartOffset: 40,
+                    transcriptEndOffset: 49,
+                },
+            ]);
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-ner-span',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: { includeNER: true },
+            };
+
+            await nerProcessor.process(createMockJob(payload));
+
+            expect(mockPromptAssemblyService.assemble).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    nerEntities: expect.arrayContaining([
+                        expect.objectContaining({
+                            text: 'pneumonia',
+                            type: 'CONDITION',
+                            icdCode: 'J18.9',
+                            startOffset: 40,
+                            endOffset: 49,
+                        }),
+                    ]),
+                }),
+            );
+        });
+
+        it('does NOT query NER entities when includeNER is false', async () => {
+            setupSuccessfulJob();
+
+            const payload: GenerateSummaryJobPayload = {
+                jobId: 'job-no-ner',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: { includeNER: false },
+            };
+
+            await nerProcessor.process(createMockJob(payload));
+
+            expect(mockNamedEntityRepository.findByConsultation).not.toHaveBeenCalled();
         });
     });
 });

@@ -16,6 +16,13 @@ export class ContextItemVersion extends BaseTenantDataModel {
   public changedBy: string | null;
   public changeSource: string | null;
   public fieldChanges: JsonValue | null;
+  // TASK-330 Phase 1 — clinician attestation (confirm-before-commit gate)
+  public attestedAt: Date | null;
+  public attestedBy: string | null;
+  public attestationHash: string | null;
+  public modelName: string | null;
+  public modelVersion: string | null;
+  public sensorScores: JsonValue | null;
 
   constructor(data: ContextItemVersion & BaseTenantDataModel) {
     super(data);
@@ -28,5 +35,11 @@ export class ContextItemVersion extends BaseTenantDataModel {
     this.changedBy = data.changedBy;
     this.changeSource = data.changeSource;
     this.fieldChanges = data.fieldChanges;
+    this.attestedAt = data.attestedAt;
+    this.attestedBy = data.attestedBy;
+    this.attestationHash = data.attestationHash;
+    this.modelName = data.modelName;
+    this.modelVersion = data.modelVersion;
+    this.sensorScores = data.sensorScores;
   }
 }

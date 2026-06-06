@@ -1,0 +1,73 @@
+# =============================================================================
+# HOPE Python Service — Docker Build Context Exclusions
+# =============================================================================
+# Keeps the build context small and prevents secrets/dev artifacts from leaking
+# into the image. The Dockerfile only needs: pyproject.toml, uv.lock, src/
+
+# --- Version control ---
+.git
+.gitignore
+.gitattributes
+
+# --- Python artifacts ---
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+*.egg
+dist/
+build/
+.eggs/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+.conda/
+
+# --- IDE / editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# --- Test & coverage ---
+tests/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- Linter caches ---
+.mypy_cache/
+.ruff_cache/
+
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Docker (avoid recursive context) ---
+docker-compose*.yml
+
+# --- Dev configs ---
+Makefile
+
+# --- CI/CD ---
+.github/
+.gitlab-ci.yml
+
+# --- Scripts (not needed in image) ---
+scripts/
+
+# --- Documentation ---
+docs/
+*.md
+!README.md
+
+# --- Misc ---
+*.log
+*.tmp

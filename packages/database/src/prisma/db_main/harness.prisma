@@ -1,0 +1,230 @@
+// =============================================================================
+// TASK-330 — Clinical Documentation Harness (Phase 0)
+//
+// Eval storage + WORM audit. Two groups of models live here:
+//
+//   1. Eval tables (GoldenSet / GoldenCase / EvalRun / EvalScore) — standard
+//      tenant-scoped models (tenantId + resourceStatus + audit + _version /
+//      _metadata). They store golden transcript→note pairs and judge results
+//      for offline evaluation of the documentation harness.
+//
+//   2. HarnessAuditEvent — an APPEND-ONLY, hash-chained WORM audit record.
+//      It deliberately has NO _version / resourceStatus / updatedAt columns:
+//      rows are immutable. The migration that introduces this table also
+//      `REVOKE UPDATE, DELETE` on it from the application role so append-only
+//      is enforced at the database-privilege layer, not only in application
+//      code (see research/clinical-harness/03-…-guardrails-governance.md).
+// =============================================================================
+
+enum HarnessAuditAction {
+    GENERATE
+    SENSOR_RUN
+    GATE_DECISION
+    ATTEST
+    CONSENT_GIVEN
+    CONSENT_WITHDRAWN
+    BREACH_REPORTED
+    REDUCED_ASSURANCE
+
+    @@schema("core")
+}
+
+// =============================================================================
+// EVAL STORAGE
+// =============================================================================
+
+model GoldenSet {
+    // Meta fields (BaseEntity pattern)
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String
+
+    // Business fields
+    name        String
+    description String? @db.Text
+    // Pinned dataset version label (e.g. "v1") an EvalRun executes against, so
+    // a run is reproducible against a frozen snapshot of the golden cases.
+    pinnedVersion String?
+
+    // Resource status + Audit (standard fields)
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime @default(now())
+    updatedAt               DateTime @updatedAt
+
+    // Relations
+    GoldenCases GoldenCase[]
+    EvalRuns    EvalRun[]
+
+    @@index([tenantId], name: "GoldenSet_tenantId_idx")
+    @@index([tenantId, name], name: "GoldenSet_tenant_name_idx")
+    @@schema("core")
+}
+
+model GoldenCase {
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    tenantId String
+
+    // Parent golden set
+    goldenSetId String
+    GoldenSet   GoldenSet @relation(fields: [goldenSetId], references: [id])
+
+    // The input transcript and the reference (gold) note for this case
+    label         String?
+    transcript    String  @db.Text
+    referenceNote String  @db.Text
+
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime @default(now())
+    updatedAt               DateTime @updatedAt
+
+    EvalScores EvalScore[]
+
+    @@index([tenantId], name: "GoldenCase_tenantId_idx")
+    @@index([goldenSetId], name: "GoldenCase_goldenSetId_idx")
+    @@index([tenantId, goldenSetId], name: "GoldenCase_tenant_set_idx")
+    @@schema("core")
+}
+
+model EvalRun {
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    tenantId String
+
+    goldenSetId String
+    GoldenSet   GoldenSet @relation(fields: [goldenSetId], references: [id])
+
+    // What was evaluated (model + prompt provenance, judge model)
+    modelName        String
+    modelVersion     String?
+    promptTemplateId String?
+    promptVersion    String?
+    judgeModel       String?
+
+    // Lifecycle (free-form for Phase 0: QUEUED | RUNNING | COMPLETED | FAILED)
+    status      String?
+    startedAt   DateTime?
+    completedAt DateTime?
+
+    // Aggregate metrics across the run (e.g. mean faithfulness / coverage)
+    aggregateScores Json?   @db.JsonB
+    notes           String? @db.Text
+
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime @default(now())
+    updatedAt               DateTime @updatedAt
+
+    EvalScores EvalScore[]
+
+    @@index([tenantId], name: "EvalRun_tenantId_idx")
+    @@index([goldenSetId], name: "EvalRun_goldenSetId_idx")
+    @@index([tenantId, goldenSetId], name: "EvalRun_tenant_set_idx")
+    @@index([tenantId, createdAt], name: "EvalRun_tenant_createdAt_idx")
+    @@schema("core")
+}
+
+model EvalScore {
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    tenantId String
+
+    evalRunId String
+    EvalRun   EvalRun @relation(fields: [evalRunId], references: [id])
+
+    goldenCaseId String
+    GoldenCase   GoldenCase @relation(fields: [goldenCaseId], references: [id])
+
+    // A single metric result for (run, case)
+    metric     String // e.g. 'faithfulness' | 'coverage' | 'pdsqi9'
+    score      Float
+    maxScore   Float?
+    rationale  String? @db.Text
+    judgeModel String?
+    details    Json?   @db.JsonB
+
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime @default(now())
+    updatedAt               DateTime @updatedAt
+
+    @@index([tenantId], name: "EvalScore_tenantId_idx")
+    @@index([evalRunId], name: "EvalScore_evalRunId_idx")
+    @@index([goldenCaseId], name: "EvalScore_goldenCaseId_idx")
+    @@index([tenantId, evalRunId], name: "EvalScore_tenant_run_idx")
+    @@schema("core")
+}
+
+// =============================================================================
+// WORM AUDIT (append-only, hash-chained)
+// =============================================================================
+
+model HarnessAuditEvent {
+    // Identity only — NO _version / _metadata / updatedAt / resourceStatus.
+    // Rows are immutable (append-only); the migration REVOKEs UPDATE/DELETE
+    // on this table from the application role.
+    id String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String
+
+    // Subject of the event
+    consultationId       String
+    contextItemVersionId String?
+
+    // What happened + the model that did it (version, not just name)
+    action       HarnessAuditAction
+    modelName    String
+    modelVersion String
+
+    // Prompt provenance
+    promptTemplateId String?
+    promptVersion    String?
+
+    // Evidence captured at the time of the event
+    sensorScores Json @db.JsonB
+    citations    Json @db.JsonB
+
+    // Governance
+    gateDecision    String?
+    clinicianId     String?
+    attestationHash String?
+
+    // Tamper-evident hash chain: prevHash links to the previous event's hash
+    // for the same tenant; hash = SHA-256 over the canonical event fields.
+    prevHash String
+    hash     String
+
+    createdAt DateTime @default(now())
+
+    @@unique([hash], name: "HarnessAuditEvent_hash_key")
+    @@index([tenantId], name: "HarnessAuditEvent_tenantId_idx")
+    @@index([tenantId, consultationId], name: "HarnessAuditEvent_tenant_consultation_idx")
+    @@index([tenantId, createdAt], name: "HarnessAuditEvent_tenant_createdAt_idx")
+    @@index([consultationId], name: "HarnessAuditEvent_consultationId_idx")
+    @@index([prevHash], name: "HarnessAuditEvent_prevHash_idx")
+    @@schema("core")
+}

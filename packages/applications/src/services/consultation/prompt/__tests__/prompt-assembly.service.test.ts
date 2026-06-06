@@ -329,4 +329,87 @@ describe('PromptAssemblyService', () => {
             expect(result).toHaveProperty('resolvedFrom');
         });
     });
+
+    // ── NER → prompt injection (TASK-330 Phase 1) ──
+    // Closes the gap where NER output is computed but never reaches the LLM.
+
+    describe('NER injection (TASK-330 Phase 1)', () => {
+        it('appends recognized clinical entities (text + codes) when the template has no {ner_entities} placeholder', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient on amoxicillin for pneumonia.',
+                conversationLanguage: 'English',
+                nerEntities: [
+                    { text: 'amoxicillin', type: 'MEDICATION', rxnormCode: '723', startOffset: 11, endOffset: 22 },
+                    { text: 'pneumonia', type: 'CONDITION', icdCode: 'J18.9' },
+                ],
+            });
+
+            expect(result.userPrompt).toContain('RECOGNIZED CLINICAL ENTITIES');
+            expect(result.userPrompt).toContain('amoxicillin');
+            expect(result.userPrompt).toContain('MEDICATION');
+            expect(result.userPrompt).toContain('rxnorm:723');
+            expect(result.userPrompt).toContain('icd:J18.9');
+            expect(result.userPrompt).toContain('@11-22');
+        });
+
+        it('substitutes the {ner_entities} placeholder in template content (no duplicate appended block)', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({
+                    content: 'Known entities: {ner_entities}. Language: {conversation_language}.',
+                }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient has pneumonia.',
+                conversationLanguage: 'English',
+                nerEntities: [{ text: 'pneumonia', type: 'CONDITION', icdCode: 'J18.9' }],
+            });
+
+            expect(result.userPrompt).toContain('pneumonia');
+            expect(result.userPrompt).toContain('icd:J18.9');
+            expect(result.userPrompt).not.toContain('{ner_entities}');
+            // Block was consumed by the placeholder → no second "RECOGNIZED" section.
+            expect(result.userPrompt).not.toContain('RECOGNIZED CLINICAL ENTITIES');
+        });
+
+        it('prefers normalizedText for the entity label when present', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Pt c/o HA.',
+                conversationLanguage: 'English',
+                nerEntities: [{ text: 'HA', type: 'SYMPTOM', normalizedText: 'headache', snomedCode: '25064002' }],
+            });
+
+            expect(result.userPrompt).toContain('headache');
+            expect(result.userPrompt).toContain('snomed:25064002');
+        });
+
+        it('does not add a NER section when no entities are provided', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'No entities here.',
+                conversationLanguage: 'English',
+            });
+
+            expect(result.userPrompt).not.toContain('RECOGNIZED CLINICAL ENTITIES');
+        });
+    });
 });
