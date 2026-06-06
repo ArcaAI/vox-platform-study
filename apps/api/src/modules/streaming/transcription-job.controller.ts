@@ -1,6 +1,9 @@
 import type { IActiveUserContext, IBlobStorageService as IBlobStorageServiceType, StorageDescriptor } from '@arcaai/applications';
 import {
   Authorize,
+  CreateBatchJobRequest,
+  CreateJobRequest,
+  CreateStreamingJobRequest,
   IBlobStorageService,
   ITenantBucketService,
   PipelineService,
@@ -125,24 +128,21 @@ export class TranscriptionJobController {
   @Post()
   @HttpCode(201)
   @ApiOperation({ summary: 'Create a transcription job' })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async create(@Body() dto: any) {
+  async create(@Body() dto: CreateJobRequest) {
     return this.jobService.create(dto);
   }
 
   @Post('batch')
   @HttpCode(201)
   @ApiOperation({ summary: 'Create a batch transcription job' })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async createBatch(@Body() dto: any) {
+  async createBatch(@Body() dto: CreateBatchJobRequest) {
     return this.jobService.createBatchJob(dto);
   }
 
   @Post('streaming')
   @HttpCode(201)
   @ApiOperation({ summary: 'Create a streaming transcription job' })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async createStreaming(@Body() dto: any) {
+  async createStreaming(@Body() dto: CreateStreamingJobRequest) {
     return this.jobService.createStreamingJob(dto);
   }
 
@@ -291,10 +291,12 @@ export class TranscriptionJobController {
   }
 
   @Get('consultation/:consultationId')
-  @ApiOperation({ summary: 'Get transcription jobs by consultation' })
+  @ApiOperation({ summary: 'Get transcription jobs by consultation (caller-owned jobs)' })
   @ApiParam({ name: 'consultationId', description: 'Consultation ID' })
   async getByConsultation(@Param('consultationId') consultationId: string) {
-    return this.jobService.getByConsultation(consultationId);
+    // EU-02 — owner-scoped: only the caller's OWN jobs for this consultation.
+    // The tenant-wide view lives on the admin surface.
+    return this.jobService.getByConsultationForOwner(this.getUserId(), consultationId);
   }
 
   @Post('stream/session')
@@ -463,7 +465,11 @@ export class TranscriptionJobController {
   @ApiOperation({ summary: 'Cancel a transcription job' })
   @ApiParam({ name: 'id', description: 'Transcription job ID' })
   async cancel(@Param('id') id: string) {
-    return this.jobService.cancelJob(id);
+    // EU-01 — creator-scoped: a same-tenant peer cannot cancel a job they did
+    // not create. (The @TenantOwnedResource interceptor enforces the tenant
+    // boundary; its creator branch resolves a `userId`, but TranscriptionJob is
+    // `createdBy`-scoped, so the creator check is enforced in the service.)
+    return this.jobService.cancelJobForOwner(this.getUserId(), id);
   }
 
   @Post(':id/retry')
@@ -471,7 +477,8 @@ export class TranscriptionJobController {
   @ApiOperation({ summary: 'Retry a failed transcription job' })
   @ApiParam({ name: 'id', description: 'Transcription job ID' })
   async retry(@Param('id') id: string) {
-    return this.jobService.retryJob(id);
+    // EU-01 — creator-scoped (mirrors cancel).
+    return this.jobService.retryJobForOwner(this.getUserId(), id);
   }
 
   @Get()

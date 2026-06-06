@@ -13,6 +13,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { EventTypes } from '@arcaai/domains';
 import { AuthController } from '../auth.controller';
+import { ImpersonationEvents, ImpersonationDeniedReason } from '../impersonation-events';
+
+const SWAGGER_API_OPERATION = 'swagger/apiOperation';
 
 const SUPER_ADMIN = 'SUPER_ADMIN';
 const GLOBAL_ADMIN = 'GLOBAL_ADMIN';
@@ -541,6 +544,111 @@ describe('AuthController — TASK-295 impersonation security', () => {
                     method: 'POST',
                 }),
             );
+        });
+    });
+
+    // ─── AC-11 (TASK-336): dedicated impersonation events + denial audit ──────
+    // The legacy `UserAuthenticated` phase bracket is preserved (above); these
+    // dedicated, semantically named events are emitted IN ADDITION and, unlike
+    // the success-only bracket, also record DENIED attempts.
+    describe('AC-11 — dedicated impersonation audit events', () => {
+        it('emits ImpersonationEvents.Started (success) on a successful impersonate', async () => {
+            const { controller, eventEmitter } = buildController({
+                user: { id: 'admin-A', tenantId: 'tenant-A' },
+                fixture: { adminRoles: [SUPER_ADMIN], targetRoles: [DOCTOR], targetAssignments: [{ tenantId: 'tenant-B' }] },
+            });
+
+            await controller.impersonate(
+                { targetUserId: 'target-B' } as never,
+                { ip: '10.0.0.1', headers: { 'user-agent': 'vitest' } } as never,
+            );
+
+            expect(eventEmitter.emit).toHaveBeenCalledWith(
+                ImpersonationEvents.Started,
+                expect.objectContaining({ adminId: 'admin-A', targetUserId: 'target-B', tenantId: 'tenant-B', success: true }),
+            );
+        });
+
+        it('emits ImpersonationEvents.Ended (success) on revoke-impersonation', async () => {
+            const { controller, eventEmitter } = buildController({
+                user: { id: 'doctor-001', impersonatedBy: 'admin-007', jti: 'impersonate-deadbeef', exp: Math.floor(Date.now() / 1000) + 600 },
+            });
+
+            await controller.revokeImpersonation({ ip: '10.0.0.1', headers: { 'user-agent': 'vitest' } } as never);
+
+            expect(eventEmitter.emit).toHaveBeenCalledWith(
+                ImpersonationEvents.Ended,
+                expect.objectContaining({ adminId: 'admin-007', targetUserId: 'doctor-001', success: true }),
+            );
+        });
+
+        it('records a denial when a TENANT_ADMIN impersonates a user in another tenant (CROSS_TENANT_DENIED)', async () => {
+            const { controller, eventEmitter } = buildController({
+                user: { id: 'admin-A', tenantId: 'tenant-A' },
+                fixture: { adminRoles: [TENANT_ADMIN], targetRoles: [DOCTOR], targetAssignments: [{ tenantId: 'tenant-B' }] },
+            });
+
+            await expect(
+                controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '10.0.0.1', headers: { 'user-agent': 'vitest' } } as never),
+            ).rejects.toBeInstanceOf(ForbiddenException);
+
+            expect(eventEmitter.emit).toHaveBeenCalledWith(
+                ImpersonationEvents.Denied,
+                expect.objectContaining({
+                    adminId: 'admin-A',
+                    targetUserId: 'target-B',
+                    success: false,
+                    reason: ImpersonationDeniedReason.CrossTenantDenied,
+                }),
+            );
+        });
+
+        it('records a denial when the target is a super-admin (TARGET_IS_SUPER_ADMIN)', async () => {
+            const { controller, eventEmitter } = buildController({
+                user: { id: 'admin-A', tenantId: 'tenant-A' },
+                fixture: { adminRoles: [SUPER_ADMIN], targetRoles: [SUPER_ADMIN], targetAssignments: [{ tenantId: 'tenant-A' }] },
+            });
+
+            await expect(
+                controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '10.0.0.1', headers: { 'user-agent': 'vitest' } } as never),
+            ).rejects.toBeInstanceOf(BadRequestException);
+
+            expect(eventEmitter.emit).toHaveBeenCalledWith(
+                ImpersonationEvents.Denied,
+                expect.objectContaining({
+                    adminId: 'admin-A',
+                    targetUserId: 'target-B',
+                    success: false,
+                    reason: ImpersonationDeniedReason.TargetIsSuperAdmin,
+                }),
+            );
+        });
+
+        it('records a denial when a non-admin attempts to impersonate (CALLER_NOT_ADMIN)', async () => {
+            const { controller, eventEmitter } = buildController({
+                user: { id: 'admin-A', tenantId: 'tenant-A' },
+                fixture: { adminRoles: [DOCTOR], targetRoles: [DOCTOR], targetAssignments: [{ tenantId: 'tenant-A' }] },
+            });
+
+            await expect(
+                controller.impersonate({ targetUserId: 'target-B' } as never, { ip: '10.0.0.1', headers: { 'user-agent': 'vitest' } } as never),
+            ).rejects.toBeInstanceOf(UnauthorizedException);
+
+            expect(eventEmitter.emit).toHaveBeenCalledWith(
+                ImpersonationEvents.Denied,
+                expect.objectContaining({ adminId: 'admin-A', targetUserId: 'target-B', success: false, reason: ImpersonationDeniedReason.CallerNotAdmin }),
+            );
+        });
+    });
+
+    // ─── AC-08 (TASK-336): Swagger description matches actual behaviour ───────
+    describe('AC-08 — impersonate Swagger description accuracy', () => {
+        it('documents that SUPER_ADMIN can impersonate a TENANT_ADMIN and only super-admin targets are blocked', () => {
+            const op = Reflect.getMetadata(SWAGGER_API_OPERATION, AuthController.prototype.impersonate);
+            expect(op).toBeDefined();
+            expect(op.description).toBeDefined();
+            expect(op.description).toMatch(/TENANT_ADMIN/);
+            expect(op.description).toMatch(/SUPER_ADMIN|GLOBAL_ADMIN/);
         });
     });
 });

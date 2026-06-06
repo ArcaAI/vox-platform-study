@@ -206,7 +206,14 @@ export function LocalEnrollCard() {
           </div>
         )}
 
-        <input ref={fileInputRef} type="file" accept="audio/*" onChange={handleFileChange} className="hidden" aria-label="Upload audio file for local voice enrollment" />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="audio/*"
+          onChange={handleFileChange}
+          className="hidden"
+          aria-label="Upload audio file for local voice enrollment"
+        />
 
         <div className="space-y-3">
           <Label className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">1. Add Audio Samples</Label>
@@ -220,7 +227,13 @@ export function LocalEnrollCard() {
             </div>
           ) : !isFull ? (
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={isBusy || !supported}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 gap-1.5"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isBusy || !supported}
+              >
                 <Upload className="size-3.5" />
                 Upload File
               </Button>
@@ -230,7 +243,9 @@ export function LocalEnrollCard() {
               </Button>
             </div>
           ) : (
-            <div className="text-muted-foreground rounded-lg border border-dashed bg-muted/10 px-4 py-3 text-center text-sm">Maximum sample limit reached.</div>
+            <div className="text-muted-foreground rounded-lg border border-dashed bg-muted/10 px-4 py-3 text-center text-sm">
+              Maximum sample limit reached.
+            </div>
           )}
 
           <div className="space-y-2">
@@ -246,7 +261,14 @@ export function LocalEnrollCard() {
                       {formatDuration(sample.duration)}
                     </Badge>
                   </div>
-                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive ml-2 size-7 shrink-0" onClick={() => removeSample(sample.id)} disabled={isBusy} aria-label={`Remove sample ${i + 1}`}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground hover:text-destructive ml-2 size-7 shrink-0"
+                    onClick={() => removeSample(sample.id)}
+                    disabled={isBusy}
+                    aria-label={`Remove sample ${i + 1}`}
+                  >
                     <XCircle className="size-4" />
                   </Button>
                 </div>
@@ -259,7 +281,14 @@ export function LocalEnrollCard() {
           <Label htmlFor="local-voice-label" className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
             2. Profile Label (Optional)
           </Label>
-          <Input id="local-voice-label" value={label} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLabel(e.target.value)} disabled={isBusy} className="text-sm" placeholder="e.g. Clinic mic" />
+          <Input
+            id="local-voice-label"
+            value={label}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLabel(e.target.value)}
+            disabled={isBusy}
+            className="text-sm"
+            placeholder="e.g. Clinic mic"
+          />
         </div>
 
         {isBusy ? <ProgressReadout status={status} progress={progress} /> : null}
@@ -346,11 +375,19 @@ export function QuickTestCard() {
           <CardTitle className="text-sm">Quick Test (speaker match)</CardTitle>
         </div>
         <CardDescription className="text-xs">
-          Record or upload a short clip; it’s compared (cosine similarity) against your locally-enrolled voice to validate diarization / user-voice detection.
+          Record or upload a short clip; it’s compared (cosine similarity) against your locally-enrolled voice to validate diarization / user-voice
+          detection.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <input ref={fileInputRef} type="file" accept="audio/*" onChange={handleFileChange} className="hidden" aria-label="Upload audio file for quick test" />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="audio/*"
+          onChange={handleFileChange}
+          className="hidden"
+          aria-label="Upload audio file for quick test"
+        />
 
         {!hasEnrolled ? (
           <p className="text-muted-foreground text-sm" data-testid="quick-test-empty">
@@ -358,7 +395,13 @@ export function QuickTestCard() {
           </p>
         ) : (
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={isBusy || !supported}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 gap-1.5"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isBusy || !supported}
+            >
               <Upload className="size-3.5" />
               Upload Clip
             </Button>

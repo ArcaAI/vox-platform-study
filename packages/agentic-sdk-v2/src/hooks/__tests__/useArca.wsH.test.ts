@@ -124,6 +124,28 @@ describe('useArca — WS-H: listConsultations', () => {
             expect(resp).toEqual(paginatedResp);
         });
 
+        it('should normalize API `count` to `total` so SDK pagination works past page 1 (EU-03)', async () => {
+            // The API returns `{ count }`; the SDK pagination contract expects `total`.
+            mockStore.mockGet.mockResolvedValue({
+                data: [{ id: 'c-1', patientId: 'p-1', doctorId: 'd-1', appointmentDate: '2025-01-01', createdAt: '', updatedAt: '' }],
+                count: 42,
+                page: 2,
+                limit: 20,
+            });
+            const { result } = renderHook(() => useArca());
+
+            let resp: any;
+            await act(async () => {
+                resp = await result.current.session.listConsultations({ page: 2 });
+            });
+
+            expect(resp.total).toBe(42);
+            expect(resp.page).toBe(2);
+            expect(resp.limit).toBe(20);
+            expect(resp.data).toHaveLength(1);
+            expect(resp.count).toBeUndefined();
+        });
+
         it('should pass filters as query params', async () => {
             const paginatedResp = { data: [], total: 0, page: 1, limit: 20 };
             mockStore.mockGet.mockResolvedValue(paginatedResp);

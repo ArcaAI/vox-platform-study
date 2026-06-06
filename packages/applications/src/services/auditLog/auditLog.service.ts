@@ -9,7 +9,7 @@ import {
 } from './IAuditLogService';
 import { ResponsibleUserResponse } from './dto';
 import { AuditLogRepository, AuditLogEntityMapper, CoreDatabaseService, UserRepository, UserEntity } from '@arcaai/domains';
-import { EventTypes, AuditAction, AuditLogEntity, ResourceType, AuditLogFactory, SysEventType } from '@arcaai/domains';
+import { EventTypes, AuditAction, AuditLogEntity, ResourceType, AuditLogFactory } from '@arcaai/domains';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
@@ -103,11 +103,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       }),
     ]);
 
-    this.broadcastSysEvent(SysEventType.ResourceViewed, {
-      data: {
-        items: auditLogs.map((auditLog: AuditLogEntity) => auditLog.id),
-      },
-    });
+    // OB-04 (TASK-336): reads of the audit log are never themselves audited.
     return new FetchResponse<AuditLogEntity>({
       data: auditLogs,
       count,
@@ -144,12 +140,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
 
     const responsibleUsers = await this.resolveResponsibleUsers(auditLogs.map((log) => log.responsibleUserId));
 
-    this.broadcastSysEvent(SysEventType.ResourceViewed, {
-      data: {
-        items: auditLogs.map((auditLog: AuditLogEntity) => auditLog.id),
-      },
-    });
-
+    // OB-04 (TASK-336): reads of the audit log are never themselves audited.
     return {
       result: new FetchResponse<AuditLogEntity>({ data: auditLogs, count, limit, page }),
       responsibleUsers,
@@ -174,13 +165,8 @@ export class AuditLogService extends BaseService implements IAuditLogService {
 
     const responsibleUsers = await this.resolveResponsibleUsers(rows.map((row) => row.responsibleUserId));
 
-    this.broadcastSysEvent(SysEventType.ResourceViewed, {
-      data: {
-        export: true,
-        items: rows.map((row) => row.id),
-      },
-    });
-
+    // OB-04 (TASK-336): exporting the audit log is itself a read of the audit
+    // log and is never audited (no self-inflation of the trail).
     return { rows, responsibleUsers };
   }
 
@@ -284,13 +270,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       }),
     ]);
 
-    this.broadcastSysEvent(SysEventType.ResourceViewed, {
-      data: {
-        resourceId,
-        resourceType,
-        items: auditLogs.map((auditLog: AuditLogEntity) => auditLog.id),
-      },
-    });
+    // OB-04 (TASK-336): reads of the audit log are never themselves audited.
     return new FetchResponse<AuditLogEntity>({
       data: auditLogs,
       count,
@@ -329,12 +309,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       }),
     ]);
 
-    this.broadcastSysEvent(SysEventType.ResourceViewed, {
-      data: {
-        createdBy: userId,
-        items: auditLogs.map((auditLog: AuditLogEntity) => auditLog.id),
-      },
-    });
+    // OB-04 (TASK-336): reads of the audit log are never themselves audited.
     return new FetchResponse<AuditLogEntity>({
       data: auditLogs,
       count,
@@ -357,35 +332,14 @@ export class AuditLogService extends BaseService implements IAuditLogService {
     const auditLog = await this.auditLogRepository.findById(id);
     this.assertTenantOwnership(auditLog, id);
 
-    this.broadcastSysEvent(SysEventType.ResourceViewed, {
-      resourceId: auditLog.id,
-      data: auditLog.toObject() as object,
-    });
+    // OB-04 (TASK-336): reading a single audit row is never itself audited.
     return auditLog;
   }
 
-  /**
-   * Delete a specific audit log by its ID.
-   *
-   * TASK-305 D.8: load-then-assert-then-delete so we never soft-delete an
-   * audit row belonging to another tenant. `NotFoundException` is thrown
-   * for cross-tenant ids to avoid existence leakage.
-   *
-   * @param id - The ID of the audit log to delete.
-   * @returns A promise that resolves to the deleted AuditLogEntity.
-   */
-  public async deleteById(id: string): Promise<AuditLogEntity> {
-    const existing = await this.auditLogRepository.findById(id);
-    this.assertTenantOwnership(existing, id);
-
-    const auditLog = await this.auditLogRepository.softDelete(id);
-
-    this.broadcastSysEvent(SysEventType.ResourceDeleted, {
-      resourceId: auditLog.id,
-      data: auditLog.toObject() as object,
-    });
-    return auditLog;
-  }
+  // OB-10 (TASK-336) — the soft-delete capability was intentionally removed for
+  // audit-log immutability (HIPAA §164.312(b)/(c)(1)). Audit rows are append-only
+  // from the admin surface; any retention/archival must be an explicit, separately
+  // audited process — never an ad-hoc admin delete.
 
   /**
    * True when the active request user carries the SUPER_ADMIN role.

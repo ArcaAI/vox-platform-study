@@ -631,8 +631,18 @@ function useModelCacheStatus(modelId: string) {
 }
 
 function LocalAITranscriptInner({ onRetry }: { onRetry?: () => void }) {
-  const { language, whisperModel, sttTask, sources, isMixing, noiseFilterEnabled, diarizationEnabled, vadEnabled, vadThreshold, codeSwitchingEnabled } =
-    useAudioStore();
+  const {
+    language,
+    whisperModel,
+    sttTask,
+    sources,
+    isMixing,
+    noiseFilterEnabled,
+    diarizationEnabled,
+    vadEnabled,
+    vadThreshold,
+    codeSwitchingEnabled,
+  } = useAudioStore();
   const debugMode = usePlaygroundStore((s) => s.debugMode);
   const [transcriptEntries, setTranscriptEntries] = useState<TranscriptEntry[]>([]);
   const transcriptIdRef = useRef(0);

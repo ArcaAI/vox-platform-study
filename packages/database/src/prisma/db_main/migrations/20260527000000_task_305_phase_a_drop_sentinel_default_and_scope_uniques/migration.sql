@@ -61,7 +61,7 @@
 -- STEP 1 — Insert the reserved system tenant (idempotent)
 -- =============================================================================
 
-INSERT INTO core."Tenant" (id, name, key, description, "_metadata", "_version", "resourceStatus")
+INSERT INTO core."Tenant" (id, name, key, description, "_metadata", "_version", "resourceStatus", "updatedAt")
 VALUES (
     '00000000-0000-0000-0000-000000000000',
     'System',
@@ -69,7 +69,8 @@ VALUES (
     'Reserved system tenant for platform-wide rows (policies, roles, system AI models). DO NOT use for customer data.',
     '{}'::jsonb,
     1,
-    'ENABLED'
+    'ENABLED',
+    CURRENT_TIMESTAMP
 )
 ON CONFLICT (id) DO NOTHING;
 

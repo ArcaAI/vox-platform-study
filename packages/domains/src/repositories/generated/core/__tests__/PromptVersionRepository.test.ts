@@ -18,6 +18,8 @@ describe('PromptVersionRepository', () => {
     const proto = PromptVersionRepository.prototype;
     expect(typeof proto.findByTemplate).toBe('function');
     expect(typeof proto.findLatestVersion).toBe('function');
+    // CC-01 — tx-aware max-version helper for collision-free next versions.
+    expect(typeof proto.findMaxVersionNumber).toBe('function');
   });
 
   it('should inherit base Repository methods', async () => {

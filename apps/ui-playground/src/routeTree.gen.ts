@@ -33,9 +33,13 @@ import { Route as AuthenticatedAudioLiveTranscriptionRouteImport } from './route
 import { Route as AuthenticatedAudioJobTranscriptionRouteImport } from './routes/_authenticated/audio/job-transcription'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminTenantsRouteImport } from './routes/_authenticated/admin/tenants'
+import { Route as AuthenticatedAdminSystemHealthRouteImport } from './routes/_authenticated/admin/system-health'
 import { Route as AuthenticatedAdminStudioRouteImport } from './routes/_authenticated/admin/studio'
 import { Route as AuthenticatedAdminStorageRouteImport } from './routes/_authenticated/admin/storage'
+import { Route as AuthenticatedAdminRateLimitsRouteImport } from './routes/_authenticated/admin/rate-limits'
+import { Route as AuthenticatedAdminQueuesRouteImport } from './routes/_authenticated/admin/queues'
 import { Route as AuthenticatedAdminPromptsRouteImport } from './routes/_authenticated/admin/prompts'
+import { Route as AuthenticatedAdminJobsRouteImport } from './routes/_authenticated/admin/jobs'
 import { Route as AuthenticatedAdminDnaReportsRouteImport } from './routes/_authenticated/admin/dna-reports'
 import { Route as AuthenticatedAdminDepartmentsRouteImport } from './routes/_authenticated/admin/departments'
 import { Route as AuthenticatedAdminConfigurationsRouteImport } from './routes/_authenticated/admin/configurations'
@@ -177,6 +181,12 @@ const AuthenticatedAdminTenantsRoute =
     path: '/admin/tenants',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAdminSystemHealthRoute =
+  AuthenticatedAdminSystemHealthRouteImport.update({
+    id: '/admin/system-health',
+    path: '/admin/system-health',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminStudioRoute =
   AuthenticatedAdminStudioRouteImport.update({
     id: '/admin/studio',
@@ -189,12 +199,29 @@ const AuthenticatedAdminStorageRoute =
     path: '/admin/storage',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAdminRateLimitsRoute =
+  AuthenticatedAdminRateLimitsRouteImport.update({
+    id: '/admin/rate-limits',
+    path: '/admin/rate-limits',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminQueuesRoute =
+  AuthenticatedAdminQueuesRouteImport.update({
+    id: '/admin/queues',
+    path: '/admin/queues',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminPromptsRoute =
   AuthenticatedAdminPromptsRouteImport.update({
     id: '/admin/prompts',
     path: '/admin/prompts',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAdminJobsRoute = AuthenticatedAdminJobsRouteImport.update({
+  id: '/admin/jobs',
+  path: '/admin/jobs',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedAdminDnaReportsRoute =
   AuthenticatedAdminDnaReportsRouteImport.update({
     id: '/admin/dna-reports',
@@ -239,9 +266,13 @@ export interface FileRoutesByFullPath {
   '/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
   '/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
   '/admin/dna-reports': typeof AuthenticatedAdminDnaReportsRoute
+  '/admin/jobs': typeof AuthenticatedAdminJobsRoute
   '/admin/prompts': typeof AuthenticatedAdminPromptsRoute
+  '/admin/queues': typeof AuthenticatedAdminQueuesRoute
+  '/admin/rate-limits': typeof AuthenticatedAdminRateLimitsRoute
   '/admin/storage': typeof AuthenticatedAdminStorageRoute
   '/admin/studio': typeof AuthenticatedAdminStudioRoute
+  '/admin/system-health': typeof AuthenticatedAdminSystemHealthRoute
   '/admin/tenants': typeof AuthenticatedAdminTenantsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/audio/job-transcription': typeof AuthenticatedAudioJobTranscriptionRoute
@@ -272,9 +303,13 @@ export interface FileRoutesByTo {
   '/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
   '/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
   '/admin/dna-reports': typeof AuthenticatedAdminDnaReportsRoute
+  '/admin/jobs': typeof AuthenticatedAdminJobsRoute
   '/admin/prompts': typeof AuthenticatedAdminPromptsRoute
+  '/admin/queues': typeof AuthenticatedAdminQueuesRoute
+  '/admin/rate-limits': typeof AuthenticatedAdminRateLimitsRoute
   '/admin/storage': typeof AuthenticatedAdminStorageRoute
   '/admin/studio': typeof AuthenticatedAdminStudioRoute
+  '/admin/system-health': typeof AuthenticatedAdminSystemHealthRoute
   '/admin/tenants': typeof AuthenticatedAdminTenantsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/audio/job-transcription': typeof AuthenticatedAudioJobTranscriptionRoute
@@ -307,9 +342,13 @@ export interface FileRoutesById {
   '/_authenticated/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
   '/_authenticated/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
   '/_authenticated/admin/dna-reports': typeof AuthenticatedAdminDnaReportsRoute
+  '/_authenticated/admin/jobs': typeof AuthenticatedAdminJobsRoute
   '/_authenticated/admin/prompts': typeof AuthenticatedAdminPromptsRoute
+  '/_authenticated/admin/queues': typeof AuthenticatedAdminQueuesRoute
+  '/_authenticated/admin/rate-limits': typeof AuthenticatedAdminRateLimitsRoute
   '/_authenticated/admin/storage': typeof AuthenticatedAdminStorageRoute
   '/_authenticated/admin/studio': typeof AuthenticatedAdminStudioRoute
+  '/_authenticated/admin/system-health': typeof AuthenticatedAdminSystemHealthRoute
   '/_authenticated/admin/tenants': typeof AuthenticatedAdminTenantsRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/audio/job-transcription': typeof AuthenticatedAudioJobTranscriptionRoute
@@ -342,9 +381,13 @@ export interface FileRouteTypes {
     | '/admin/configurations'
     | '/admin/departments'
     | '/admin/dna-reports'
+    | '/admin/jobs'
     | '/admin/prompts'
+    | '/admin/queues'
+    | '/admin/rate-limits'
     | '/admin/storage'
     | '/admin/studio'
+    | '/admin/system-health'
     | '/admin/tenants'
     | '/admin/users'
     | '/audio/job-transcription'
@@ -375,9 +418,13 @@ export interface FileRouteTypes {
     | '/admin/configurations'
     | '/admin/departments'
     | '/admin/dna-reports'
+    | '/admin/jobs'
     | '/admin/prompts'
+    | '/admin/queues'
+    | '/admin/rate-limits'
     | '/admin/storage'
     | '/admin/studio'
+    | '/admin/system-health'
     | '/admin/tenants'
     | '/admin/users'
     | '/audio/job-transcription'
@@ -409,9 +456,13 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/configurations'
     | '/_authenticated/admin/departments'
     | '/_authenticated/admin/dna-reports'
+    | '/_authenticated/admin/jobs'
     | '/_authenticated/admin/prompts'
+    | '/_authenticated/admin/queues'
+    | '/_authenticated/admin/rate-limits'
     | '/_authenticated/admin/storage'
     | '/_authenticated/admin/studio'
+    | '/_authenticated/admin/system-health'
     | '/_authenticated/admin/tenants'
     | '/_authenticated/admin/users'
     | '/_authenticated/audio/job-transcription'
@@ -609,6 +660,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminTenantsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/system-health': {
+      id: '/_authenticated/admin/system-health'
+      path: '/admin/system-health'
+      fullPath: '/admin/system-health'
+      preLoaderRoute: typeof AuthenticatedAdminSystemHealthRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/studio': {
       id: '/_authenticated/admin/studio'
       path: '/admin/studio'
@@ -623,11 +681,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminStorageRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/rate-limits': {
+      id: '/_authenticated/admin/rate-limits'
+      path: '/admin/rate-limits'
+      fullPath: '/admin/rate-limits'
+      preLoaderRoute: typeof AuthenticatedAdminRateLimitsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/queues': {
+      id: '/_authenticated/admin/queues'
+      path: '/admin/queues'
+      fullPath: '/admin/queues'
+      preLoaderRoute: typeof AuthenticatedAdminQueuesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/prompts': {
       id: '/_authenticated/admin/prompts'
       path: '/admin/prompts'
       fullPath: '/admin/prompts'
       preLoaderRoute: typeof AuthenticatedAdminPromptsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/jobs': {
+      id: '/_authenticated/admin/jobs'
+      path: '/admin/jobs'
+      fullPath: '/admin/jobs'
+      preLoaderRoute: typeof AuthenticatedAdminJobsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/admin/dna-reports': {
@@ -676,9 +755,13 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminConfigurationsRoute: typeof AuthenticatedAdminConfigurationsRoute
   AuthenticatedAdminDepartmentsRoute: typeof AuthenticatedAdminDepartmentsRoute
   AuthenticatedAdminDnaReportsRoute: typeof AuthenticatedAdminDnaReportsRoute
+  AuthenticatedAdminJobsRoute: typeof AuthenticatedAdminJobsRoute
   AuthenticatedAdminPromptsRoute: typeof AuthenticatedAdminPromptsRoute
+  AuthenticatedAdminQueuesRoute: typeof AuthenticatedAdminQueuesRoute
+  AuthenticatedAdminRateLimitsRoute: typeof AuthenticatedAdminRateLimitsRoute
   AuthenticatedAdminStorageRoute: typeof AuthenticatedAdminStorageRoute
   AuthenticatedAdminStudioRoute: typeof AuthenticatedAdminStudioRoute
+  AuthenticatedAdminSystemHealthRoute: typeof AuthenticatedAdminSystemHealthRoute
   AuthenticatedAdminTenantsRoute: typeof AuthenticatedAdminTenantsRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
   AuthenticatedAudioJobTranscriptionRoute: typeof AuthenticatedAudioJobTranscriptionRoute
@@ -705,9 +788,13 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminConfigurationsRoute: AuthenticatedAdminConfigurationsRoute,
   AuthenticatedAdminDepartmentsRoute: AuthenticatedAdminDepartmentsRoute,
   AuthenticatedAdminDnaReportsRoute: AuthenticatedAdminDnaReportsRoute,
+  AuthenticatedAdminJobsRoute: AuthenticatedAdminJobsRoute,
   AuthenticatedAdminPromptsRoute: AuthenticatedAdminPromptsRoute,
+  AuthenticatedAdminQueuesRoute: AuthenticatedAdminQueuesRoute,
+  AuthenticatedAdminRateLimitsRoute: AuthenticatedAdminRateLimitsRoute,
   AuthenticatedAdminStorageRoute: AuthenticatedAdminStorageRoute,
   AuthenticatedAdminStudioRoute: AuthenticatedAdminStudioRoute,
+  AuthenticatedAdminSystemHealthRoute: AuthenticatedAdminSystemHealthRoute,
   AuthenticatedAdminTenantsRoute: AuthenticatedAdminTenantsRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
   AuthenticatedAudioJobTranscriptionRoute:

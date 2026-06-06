@@ -1100,10 +1100,7 @@ function DepartmentAssignmentsSection({ userId, tenantId }: { userId: string; te
   const unassignMut = useUnassignUserDepartment(userId);
   const [pendingDept, setPendingDept] = useState<string>('');
 
-  const deptName = useCallback(
-    (id: string) => departments?.find((d) => d.id === id)?.name ?? id,
-    [departments],
-  );
+  const deptName = useCallback((id: string) => departments?.find((d) => d.id === id)?.name ?? id, [departments]);
 
   const assignedIds = new Set((assignments ?? []).map((a) => a.departmentId));
   const available = (departments ?? []).filter((d) => !assignedIds.has(d.id));
@@ -1172,13 +1169,7 @@ function DepartmentAssignmentsSection({ userId, tenantId }: { userId: string; te
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {!a.isPrimary && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => handleSetPrimary(a)}
-                    disabled={updateMut.isPending}
-                  >
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleSetPrimary(a)} disabled={updateMut.isPending}>
                     <Star className="mr-1 size-3" />
                     Set primary
                   </Button>

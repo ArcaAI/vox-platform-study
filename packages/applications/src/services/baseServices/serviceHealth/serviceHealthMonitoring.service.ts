@@ -258,10 +258,14 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
   }
 
   async getSessionCounts(): Promise<SessionsResponse> {
+    // OB-13: cover all four downstream services so sessions stays aligned with
+    // uptime/health. Counts are static placeholders — no per-service polling.
     return {
       services: {
         tts: { active: 0 },
         smr: { active: 0 },
+        stt: { active: 0 },
+        nlp: { active: 0 },
       },
       totalUsers: 0,
       refreshedAt: new Date().toISOString(),

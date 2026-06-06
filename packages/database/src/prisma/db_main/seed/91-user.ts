@@ -130,6 +130,27 @@ export const SEED_USERS = [
             lastActiveAt: new Date(),
         },
         {
+            // TASK-336 AC-06 — elevated platform-wide "global admin". Treated as
+            // SUPER_ADMIN by the code guard (tenant-guards.ELEVATED_ROLES). Lives
+            // on the SYSTEM tenant so it is membership-exempt (no department
+            // required) exactly like super_admin, and works cross-tenant.
+            id: SEED_USER_IDS.GLOBAL_ADMIN,
+            username: 'global_admin',
+            password: null,
+            isServiceAccount: false,
+            roleNames: ['GLOBAL_ADMIN'],
+            tenantId: SYSTEM_TENANT_ID,
+            profile: {
+                firstName: 'Global',
+                lastName: 'Admin',
+                email: 'global.admin@example.com',
+                phone: '+1234567899',
+            },
+            tags: ['admin', 'system', 'global'],
+            lastLoginAt: null,
+            lastActiveAt: null,
+        },
+        {
             id: SEED_USER_IDS.TENANT_ADMIN,
             username: 'tenant_admin',
             password: null,
@@ -757,6 +778,34 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
         modelId: VOICE_PROFILE_MODEL_ID,
         embedding: makeDeterministicEmbedding(4),
     },
+    // TASK-336 EU-05 — one ACTIVE enrollment per customer-tenant doctor so the
+    // voice-enrollment / diarization demos are populated for ArcaAI, 4bits and
+    // Mumbai, not just the Global-tenant doctors above. Distinct embedding seeds
+    // keep each vector unique for cosine-similarity demos.
+    {
+        id: SEED_VOICE_PROFILE_IDS.ARCAAI_DOCTOR_ACTIVE,
+        userId: SEED_USER_IDS.ARCAAI_DOCTOR,
+        isActive: true,
+        label: 'Clinic mic (primary)',
+        modelId: VOICE_PROFILE_MODEL_ID,
+        embedding: makeDeterministicEmbedding(5),
+    },
+    {
+        id: SEED_VOICE_PROFILE_IDS.FOURBITS_DOCTOR_ACTIVE,
+        userId: SEED_USER_IDS.FOURBITS_DOCTOR,
+        isActive: true,
+        label: 'Clinic mic (primary)',
+        modelId: VOICE_PROFILE_MODEL_ID,
+        embedding: makeDeterministicEmbedding(6),
+    },
+    {
+        id: SEED_VOICE_PROFILE_IDS.MUMBAI_DOCTOR_ACTIVE,
+        userId: SEED_USER_IDS.MUMBAI_DOCTOR,
+        isActive: true,
+        label: 'Clinic mic (primary)',
+        modelId: VOICE_PROFILE_MODEL_ID,
+        embedding: makeDeterministicEmbedding(7),
+    },
 ];
 
 export const seedUser = async (client: CorePrismaClient) => {
@@ -970,6 +1019,12 @@ export const seedUser = async (client: CorePrismaClient) => {
     // =========================================================================
     console.log('Seeding tenant-wide default pipeline setting...');
 
+    // TASK-336 IC-03 — point the Global tenant's `default-stt-pipeline` at the
+    // Global tenant's OWN production pipeline (06-stt GLOBAL_TENANT_ASR_PIPELINES,
+    // id …0401) instead of the SYSTEM-owned …0001 row. SYSTEM pipelines are not
+    // shared-read into customer tenants, so the old value was unreachable for
+    // Global doctors; the …0401 pipeline lives in SEED_TENANT_ID and is both
+    // listable and resolvable for them.
     await client.globalSetting.upsert({
         where: {
             GlobalSetting_tenantId_name_key_unique: {
@@ -979,7 +1034,7 @@ export const seedUser = async (client: CorePrismaClient) => {
             },
         },
         update: {
-            value: '81000000-0000-0000-0001-000000000001',
+            value: '81000000-0000-0000-0001-000000000401',
             description: 'Default ASR pipeline for all doctors when using remote workflow mode',
         },
         create: {
@@ -988,8 +1043,8 @@ export const seedUser = async (client: CorePrismaClient) => {
             namespace: 'arcaai-sdk',
             name: 'stt-pipeline',
             key: 'default-stt-pipeline',
-            value: '81000000-0000-0000-0001-000000000001',
-            defaultValue: '81000000-0000-0000-0001-000000000001',
+            value: '81000000-0000-0000-0001-000000000401',
+            defaultValue: '81000000-0000-0000-0001-000000000401',
             dataType: ValueType.String,
             description: 'Default ASR pipeline for all doctors when using remote workflow mode',
         },
@@ -1545,6 +1600,26 @@ export const seedUser = async (client: CorePrismaClient) => {
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },
+        // TASK-336 EU-05 — enrich ArcaAI doctor prefs (primary department + DNA
+        // style) so impersonation surfaces a complete, realistic profile.
+        {
+            id: '84000000-0000-0000-0000-000000000083',
+            userId: SEED_USER_IDS.ARCAAI_DOCTOR,
+            name: 'SDK Preference: primaryDepartmentId',
+            key: 'primaryDepartmentId',
+            value: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
+            dataType: ValueType.String,
+            namespace: 'arcaai-sdk',
+        },
+        {
+            id: '84000000-0000-0000-0000-000000000084',
+            userId: SEED_USER_IDS.ARCAAI_DOCTOR,
+            name: 'SDK Preference: dnaStyleId',
+            key: 'dnaStyleId',
+            value: 'clinical-concise-en',
+            dataType: ValueType.String,
+            namespace: 'arcaai-sdk',
+        },
         {
             id: '84000000-0000-0000-0000-000000000091',
             userId: SEED_USER_IDS.FOURBITS_DOCTOR,
@@ -1563,6 +1638,25 @@ export const seedUser = async (client: CorePrismaClient) => {
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },
+        // TASK-336 EU-05 — enrich 4bits doctor prefs.
+        {
+            id: '84000000-0000-0000-0000-000000000093',
+            userId: SEED_USER_IDS.FOURBITS_DOCTOR,
+            name: 'SDK Preference: primaryDepartmentId',
+            key: 'primaryDepartmentId',
+            value: SEED_DEPARTMENT_IDS.GEN_FOURBITS,
+            dataType: ValueType.String,
+            namespace: 'arcaai-sdk',
+        },
+        {
+            id: '84000000-0000-0000-0000-000000000094',
+            userId: SEED_USER_IDS.FOURBITS_DOCTOR,
+            name: 'SDK Preference: dnaStyleId',
+            key: 'dnaStyleId',
+            value: 'clinical-concise-th',
+            dataType: ValueType.String,
+            namespace: 'arcaai-sdk',
+        },
         {
             id: '84000000-0000-0000-0000-000000000101',
             userId: SEED_USER_IDS.MUMBAI_DOCTOR,
@@ -1578,6 +1672,25 @@ export const seedUser = async (client: CorePrismaClient) => {
             name: 'SDK Preference: language',
             key: 'language',
             value: 'hi',
+            dataType: ValueType.String,
+            namespace: 'arcaai-sdk',
+        },
+        // TASK-336 EU-05 — enrich Mumbai doctor prefs.
+        {
+            id: '84000000-0000-0000-0000-000000000103',
+            userId: SEED_USER_IDS.MUMBAI_DOCTOR,
+            name: 'SDK Preference: primaryDepartmentId',
+            key: 'primaryDepartmentId',
+            value: SEED_DEPARTMENT_IDS.GEN_MUMBAI,
+            dataType: ValueType.String,
+            namespace: 'arcaai-sdk',
+        },
+        {
+            id: '84000000-0000-0000-0000-000000000104',
+            userId: SEED_USER_IDS.MUMBAI_DOCTOR,
+            name: 'SDK Preference: dnaStyleId',
+            key: 'dnaStyleId',
+            value: 'clinical-concise-hi',
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },

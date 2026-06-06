@@ -73,11 +73,13 @@ describe('AuditLogController - OpenAPI/Swagger metadata', () => {
         });
     });
 
-    describe('delete', () => {
-        it('should have @ApiResponse for 404 (not found)', () => {
-            const responses = getMethodMetadata(SWAGGER.API_RESPONSE, 'delete');
-            expect(responses).toBeDefined();
-            expect(responses[404]).toBeDefined();
+    // OB-10 (TASK-336): the delete route was removed for audit-log immutability,
+    // so there is no `delete` handler (and therefore no Swagger metadata) at all.
+    describe('delete (removed — OB-10)', () => {
+        it('exposes no delete handler', () => {
+            expect(
+                (AuditLogController.prototype as Record<string, unknown>).delete,
+            ).toBeUndefined();
         });
     });
 });

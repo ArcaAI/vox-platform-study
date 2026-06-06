@@ -40,6 +40,28 @@ describe('AudioPipelineController route metadata (TASK-263 W0-9)', () => {
 });
 
 // =============================================================================
+// IC-02 — admin list returns ALL statuses (so disabled pipelines stay visible)
+// =============================================================================
+describe('AudioPipelineController fetchAll — IC-02 admin all-status list', () => {
+  it('delegates the admin list to getAllForAdmin (all statuses), not the enabled-only getAll', async () => {
+    const getAllForAdmin = vi.fn().mockResolvedValue([
+      { id: 'p1', resourceStatus: 'ENABLED' },
+      { id: 'p2', resourceStatus: 'DISABLED' },
+    ]);
+    const getAll = vi.fn().mockResolvedValue([]);
+    const controller = new AudioPipelineController({ getAllForAdmin, getAll } as any);
+
+    const result = await controller.fetchAll();
+
+    expect(getAllForAdmin).toHaveBeenCalledTimes(1);
+    // The enabled-only query (shared with the public controller) must not be
+    // what backs the admin surface — that is what hid disabled pipelines.
+    expect(getAll).not.toHaveBeenCalled();
+    expect(result.map((p) => p.resourceStatus)).toContain('DISABLED');
+  });
+});
+
+// =============================================================================
 // TASK-298 D-6 — validateConfig body field alignment
 // =============================================================================
 describe('AudioPipelineController validateYaml — TASK-298 D-6 body alignment', () => {
@@ -85,11 +107,11 @@ describe('AudioPipelineController authorization metadata — TASK-298 D-10', () 
 // =============================================================================
 // TASK-298 D-7 — assign-tenant endpoint
 // =============================================================================
-describe('AudioPipelineController assignTenant — TASK-298 D-7', () => {
+describe('AudioPipelineController assignTenant — IC-04 (TASK-336)', () => {
   const buildController = () => {
-    const getById = vi.fn();
-    const svc = { getById } as any;
-    return { controller: new AudioPipelineController(svc), getById };
+    const assignToTenant = vi.fn();
+    const svc = { assignToTenant } as any;
+    return { controller: new AudioPipelineController(svc), assignToTenant };
   };
 
   it('exposes POST :id/assign-tenant', () => {
@@ -99,27 +121,27 @@ describe('AudioPipelineController assignTenant — TASK-298 D-7', () => {
     expect(method).toBe(RequestMethod.POST);
   });
 
-  it('returns success when the pipeline belongs to the caller tenant', async () => {
-    const { controller, getById } = buildController();
-    getById.mockResolvedValue({ id: 'p-1', tenantId: 't-1' });
+  // IC-04 — the handler must delegate real persistence to the service (which
+  // promotes the pipeline to the tenant default) instead of echoing success.
+  it('delegates persistence to the service and maps the assignment response', async () => {
+    const { controller, assignToTenant } = buildController();
+    assignToTenant.mockResolvedValue({ id: 'p-1', isDefault: true });
 
-    const result = await controller.assignTenant('p-1', { tenantId: 't-target' });
+    const result = await controller.assignTenant('p-1', { tenantId: 't-1' });
 
+    expect(assignToTenant).toHaveBeenCalledWith('p-1', 't-1');
     expect(result).toEqual(
-      expect.objectContaining({ pipelineId: 'p-1', tenantId: 't-target' }),
+      expect.objectContaining({ pipelineId: 'p-1', tenantId: 't-1' }),
     );
+    expect(typeof result.message).toBe('string');
   });
 
-  it('throws BadRequestException when pipeline is not in tenant scope', async () => {
-    const { controller, getById } = buildController();
-    getById.mockResolvedValue(null);
+  it('propagates the service rejection for a cross-tenant target (no fake success)', async () => {
+    const { controller, assignToTenant } = buildController();
+    assignToTenant.mockRejectedValue(new BadRequestException('Cross-tenant pipeline assignment is not supported'));
 
-    await expect(controller.assignTenant('p-foreign', { tenantId: 't-x' })).rejects.toThrow(BadRequestException);
-  });
-
-  it('throws BadRequestException when tenantId is missing', async () => {
-    const { controller } = buildController();
-    await expect(controller.assignTenant('p-1', { tenantId: '   ' } as any)).rejects.toThrow(BadRequestException);
+    await expect(controller.assignTenant('p-1', { tenantId: 't-other' })).rejects.toThrow(BadRequestException);
+    expect(assignToTenant).toHaveBeenCalledWith('p-1', 't-other');
   });
 });
 

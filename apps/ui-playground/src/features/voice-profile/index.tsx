@@ -496,9 +496,7 @@ function VoiceProfileWorkspace() {
   const localSupported = useMemo(() => isLocalVoiceEmbeddingSupported(), []);
   // Showcase the LOCAL provider when the browser supports it; otherwise the
   // server provider (always available) is the safe default.
-  const [provider, setProvider] = useState<VoiceEnrollmentProvider>(() =>
-    resolveVoiceEnrollmentProvider({ preferred: 'local', localSupported }),
-  );
+  const [provider, setProvider] = useState<VoiceEnrollmentProvider>(() => resolveVoiceEnrollmentProvider({ preferred: 'local', localSupported }));
   const voiceCode = useMemo(() => buildVoiceSnippet({ tenantId, provider }), [tenantId, provider]);
 
   return (
@@ -593,10 +591,7 @@ export default function VoiceProfilePage() {
             </div>
           ) : (
             /* Guard: impersonation required (shared guard renders children when satisfied) */
-            <ImpersonationGuard
-              featureName="voice profile"
-              featureDescription="Voice profiles are user-scoped and require impersonation to manage."
-            >
+            <ImpersonationGuard featureName="voice profile" featureDescription="Voice profiles are user-scoped and require impersonation to manage.">
               <VoiceProfileWorkspace />
             </ImpersonationGuard>
           )}

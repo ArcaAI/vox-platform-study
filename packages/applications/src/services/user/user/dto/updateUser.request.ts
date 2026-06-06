@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsOptional, IsBoolean, IsDate, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsIn } from 'class-validator';
 import { ResourceStatusType } from '@arcaai/domains';
 import { BaseRequest } from '../../../../common';
 
@@ -36,23 +36,7 @@ export class UpdateUserRequest extends BaseRequest {
   @IsOptional()
   isServiceAccount?: boolean;
 
-  @ApiProperty({ description: 'First secret key', required: false })
-  @IsString()
-  @IsOptional()
-  secret1?: string;
-
-  @ApiProperty({ description: 'First secret key expiry', required: false })
-  @IsDate()
-  @IsOptional()
-  secret1Expiry?: Date;
-
-  @ApiProperty({ description: 'Second secret key', required: false })
-  @IsString()
-  @IsOptional()
-  secret2?: string;
-
-  @ApiProperty({ description: 'Second secret key expiry', required: false })
-  @IsDate()
-  @IsOptional()
-  secret2Expiry?: Date;
+  // AC-05 (TASK-336) — secret1/secret2 are NOT client-assignable via the generic
+  // update payload (they were mass-assignable here). Secret material is changed
+  // only through the dedicated rotation flow.
 }

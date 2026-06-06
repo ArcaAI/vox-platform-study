@@ -34,6 +34,21 @@ import {
 const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 
 /**
+ * Platform-wide operator role, scoped above any single tenant (e.g. the
+ * console "global admin"). Treated identically to `SUPER_ADMIN` for every
+ * cross-tenant privilege check.
+ */
+const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
+
+/**
+ * AC-06 (TASK-336) — single source of truth for the set of roles that are
+ * cross-tenant privileged ("elevated"). Both the pure `isSuperAdmin` predicate
+ * below and the DB-layer `ClsTenantContextProvider.isSuperAdmin()` consume this
+ * set, so a new elevated role is added in exactly one place.
+ */
+export const ELEVATED_ROLES: readonly string[] = [SUPER_ADMIN_ROLE, GLOBAL_ADMIN_ROLE];
+
+/**
  * TASK-307 W5.5 / W5.7 / W5.9 — pure predicate that names the
  * "is the caller cross-tenant privileged?" check used by inline
  * controller guards. Mirrors the existing service-side pattern
@@ -49,7 +64,7 @@ const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 export function isSuperAdmin(user: { roles?: string[] | null } | null | undefined): boolean {
   if (!user) return false;
   const roles = user.roles;
-  return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
+  return Array.isArray(roles) && roles.some((role) => ELEVATED_ROLES.includes(role));
 }
 
 /**

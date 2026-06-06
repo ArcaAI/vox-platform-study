@@ -46,6 +46,7 @@ import {
   IssueStreamTicketRequest,
   IssueStreamTicketResponse,
 } from './dto';
+import { ImpersonationEvents, ImpersonationDeniedReason, ImpersonationEventPayload } from './impersonation-events';
 import { StreamTicketService } from './stream-ticket.service';
 
 const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
@@ -405,6 +406,27 @@ export class AuthController {
     }
   }
 
+  /**
+   * AC-11 (TASK-336): record a DENIED impersonation attempt as a dedicated
+   * audit event. The legacy `UserAuthenticated` bracket is success-only, so
+   * denials were previously invisible to the audit trail. Fire-and-forget — an
+   * audit failure must never mask the authorization error being thrown.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private recordImpersonationDenied(req: any, adminId: string, targetUserId: string, reason: string): void {
+    this.eventEmitter?.emit(ImpersonationEvents.Denied, {
+      adminId,
+      targetUserId,
+      success: false,
+      reason,
+      endpoint: '/auth/impersonate',
+      method: 'POST',
+      ip: req.ip || '127.0.0.1',
+      userAgent: req.headers['user-agent'] || 'Unknown',
+      timestamp: new Date(),
+    } satisfies ImpersonationEventPayload);
+  }
+
   @Post('impersonate')
   // TASK-308 AC-5 — 10 req/min: same envelope as the retired class-wide
   // throttle, kept explicit. Impersonation is an admin-tier action and
@@ -413,15 +435,27 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Authorize()
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Impersonate another user (admin only)' })
+  // AC-08 (TASK-336): the prior "Cannot impersonate admin users" wording was
+  // inaccurate. A SUPER_ADMIN/GLOBAL_ADMIN MAY impersonate a TENANT_ADMIN (and
+  // any non-super-admin) cross-tenant; only super-admin-tier TARGETS
+  // (SUPER_ADMIN/GLOBAL_ADMIN) can never be impersonated. A TENANT_ADMIN may
+  // impersonate only non-admin users within its OWN tenant.
+  @ApiOperation({
+    summary: 'Impersonate another user (admin only)',
+    description:
+      'Mints a short-lived impersonation token. A SUPER_ADMIN/GLOBAL_ADMIN may impersonate any ' +
+      'non-super-admin user cross-tenant — including a TENANT_ADMIN. A TENANT_ADMIN may impersonate ' +
+      'only non-admin users within its own tenant. Super-admin-tier targets (SUPER_ADMIN/GLOBAL_ADMIN) ' +
+      'can never be impersonated.',
+  })
   @ApiResponse({
     status: 200,
     description: 'Impersonation token generated',
     type: ImpersonateResponse,
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden - requires admin role' })
-  @ApiResponse({ status: 400, description: 'Cannot impersonate admin users' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - caller is not an administrator' })
+  @ApiResponse({ status: 403, description: 'Forbidden - tenant admin cannot impersonate outside its own tenant' })
+  @ApiResponse({ status: 400, description: 'Invalid target (e.g. a super-admin target) or missing tenant assignment' })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async impersonate(@Body() request: ImpersonateRequest, @Request() req: any): Promise<ImpersonateResponse> {
     const adminUser = this.clsService.get('user');
@@ -438,6 +472,7 @@ export class AuthController {
     const isSuperAdmin = adminRoleNames.some((r) => ['SUPER_ADMIN', 'GLOBAL_ADMIN'].includes(r));
     const isTenantAdmin = adminRoleNames.some((r) => ['TENANT_ADMIN', 'admin', 'system-admin'].includes(r));
     if (!isSuperAdmin && !isTenantAdmin) {
+      this.recordImpersonationDenied(req, adminUser.id, request.targetUserId, ImpersonationDeniedReason.CallerNotAdmin);
       throw new UnauthorizedException('Only administrators can impersonate users');
     }
 
@@ -462,10 +497,12 @@ export class AuthController {
     const targetIsTenantAdmin = targetRoleNames.some((r) => ['TENANT_ADMIN', 'admin', 'system-admin'].includes(r));
 
     if (targetIsSuperAdmin) {
+      this.recordImpersonationDenied(req, adminUser.id, targetUser.id, ImpersonationDeniedReason.TargetIsSuperAdmin);
       throw new BadRequestException('Cannot impersonate a super administrator');
     }
 
     if (isTenantAdmin && !isSuperAdmin && targetIsTenantAdmin) {
+      this.recordImpersonationDenied(req, adminUser.id, targetUser.id, ImpersonationDeniedReason.TenantAdminTargetNotAllowed);
       throw new BadRequestException('Tenant administrators cannot impersonate other administrators');
     }
 
@@ -501,6 +538,7 @@ export class AuthController {
         throw new BadRequestException('Tenant admin missing tenant context');
       }
       if (adminTenantId !== resolvedTenantId) {
+        this.recordImpersonationDenied(req, adminUser.id, targetUser.id, ImpersonationDeniedReason.CrossTenantDenied);
         throw new ForbiddenException('Tenant admin cannot impersonate users outside their own tenant');
       }
     }
@@ -555,6 +593,20 @@ export class AuthController {
       userAgent: req.headers['user-agent'] || 'Unknown',
       timestamp: new Date(),
     });
+
+    // AC-11 (TASK-336): dedicated, semantically named start event (in addition
+    // to the legacy bracket above) so audit consumers get a precise signal.
+    this.eventEmitter?.emit(ImpersonationEvents.Started, {
+      adminId: adminUser.id,
+      targetUserId: targetUser.id,
+      tenantId: resolvedTenantId,
+      success: true,
+      endpoint: '/auth/impersonate',
+      method: 'POST',
+      ip: req.ip || '127.0.0.1',
+      userAgent: req.headers['user-agent'] || 'Unknown',
+      timestamp: new Date(),
+    } satisfies ImpersonationEventPayload);
 
     // TASK-331 F-9 — resolve the target's PRIMARY department for the
     // impersonation tenant so the SDK preference cascade keeps the impersonated
@@ -743,6 +795,19 @@ export class AuthController {
       userAgent: req.headers['user-agent'] || 'Unknown',
       timestamp: new Date(),
     });
+
+    // AC-11 (TASK-336): dedicated, semantically named end event (in addition to
+    // the legacy bracket above) so audit consumers get a precise signal.
+    this.eventEmitter?.emit(ImpersonationEvents.Ended, {
+      adminId: user.impersonatedBy,
+      targetUserId: user.id,
+      success: true,
+      endpoint: '/auth/revoke-impersonation',
+      method: 'POST',
+      ip: req.ip || '127.0.0.1',
+      userAgent: req.headers['user-agent'] || 'Unknown',
+      timestamp: new Date(),
+    } satisfies ImpersonationEventPayload);
     return { success: true };
   }
 

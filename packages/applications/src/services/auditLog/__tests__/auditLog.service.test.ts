@@ -210,12 +210,8 @@ describe('AuditLogService', () => {
             expect(result.count).toBe(2);
             expect(result.limit).toBe(10);
             expect(result.page).toBe(1);
-            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-                SysEventType.ResourceViewed,
-                expect.objectContaining({
-                    data: { items: ['audit-1', 'audit-2'] },
-                })
-            );
+            // OB-04: reading the audit log must not self-broadcast ResourceViewed.
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
         });
 
         it('should return empty result when no audit logs found', async () => {
@@ -264,16 +260,8 @@ describe('AuditLogService', () => {
                     }),
                 })
             );
-            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-                SysEventType.ResourceViewed,
-                expect.objectContaining({
-                    data: {
-                        resourceId: 'user-123',
-                        resourceType: 'User',
-                        items: ['audit-1'],
-                    },
-                })
-            );
+            // OB-04: audit-log reads are not self-audited.
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
         });
 
         it('should apply pagination and search', async () => {
@@ -320,15 +308,8 @@ describe('AuditLogService', () => {
                     }),
                 })
             );
-            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-                SysEventType.ResourceViewed,
-                expect.objectContaining({
-                    data: {
-                        createdBy: 'creator-id',
-                        items: ['audit-1'],
-                    },
-                })
-            );
+            // OB-04: audit-log reads are not self-audited.
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
         });
     });
 
@@ -341,40 +322,68 @@ describe('AuditLogService', () => {
 
             expect(result.id).toBe('audit-123');
             expect(mockAuditLogRepository.findById).toHaveBeenCalledWith('audit-123');
-            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-                SysEventType.ResourceViewed,
-                expect.objectContaining({
-                    resourceId: 'audit-123',
-                })
-            );
+            // OB-04: reading a single audit row must not self-broadcast ResourceViewed.
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
         });
 
-        it('should broadcast event with entity data', async () => {
+        it('should NOT serialise the entity for a self-audit broadcast (OB-04)', async () => {
             const auditLog = createMockAuditLogEntity({ id: 'audit-123' });
             mockAuditLogRepository.findById.mockResolvedValue(auditLog);
 
             await service.fetchById('audit-123');
 
-            expect(auditLog.toObject).toHaveBeenCalled();
+            expect(auditLog.toObject).not.toHaveBeenCalled();
         });
     });
 
-    describe('deleteById', () => {
-        it('should soft delete audit log successfully', async () => {
-            const deletedAuditLog = createMockAuditLogEntity({ id: 'audit-123' });
-            mockAuditLogRepository.findById.mockResolvedValue(deletedAuditLog);
-            mockAuditLogRepository.softDelete.mockResolvedValue(deletedAuditLog);
+    // -------------------------------------------------------------------------
+    // OB-04 (TASK-336) — admin reads must not inflate the audit trail, and reads
+    // OF the audit log itself must never be audited. No read path may emit a
+    // ResourceViewed system event (the SysEvent → audit/webhook/activity pipeline).
+    // -------------------------------------------------------------------------
+    describe('OB-04 — audit-log reads are never self-audited', () => {
+        beforeEach(() => {
+            mockAuditLogRepository.findAll.mockResolvedValue([createMockAuditLogEntity({ id: 'audit-1' })]);
+            mockAuditLogRepository.count.mockResolvedValue(1);
+            mockAuditLogRepository.findById.mockResolvedValue(createMockAuditLogEntity({ id: 'audit-1' }));
+        });
 
-            const result = await service.deleteById('audit-123');
+        it('fetchAll does not emit ResourceViewed', async () => {
+            await service.fetchAll({ limit: 10, page: 1 });
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+        });
 
-            expect(result.id).toBe('audit-123');
-            expect(mockAuditLogRepository.softDelete).toHaveBeenCalledWith('audit-123');
-            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-                SysEventType.ResourceDeleted,
-                expect.objectContaining({
-                    resourceId: 'audit-123',
-                })
-            );
+        it('fetchAllFiltered does not emit ResourceViewed', async () => {
+            await service.fetchAllFiltered({ limit: 10, page: 1 });
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+        });
+
+        it('exportFiltered does not emit ResourceViewed', async () => {
+            await service.exportFiltered({});
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+        });
+
+        it('fetchAllByResource does not emit ResourceViewed', async () => {
+            await service.fetchAllByResource({ limit: 10, page: 1, resourceType: 'User', resourceId: 'u-1' });
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+        });
+
+        it('fetchAllCreatedByUser does not emit ResourceViewed', async () => {
+            await service.fetchAllCreatedByUser({ limit: 10, page: 1, userId: 'u-1' });
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+        });
+
+        it('fetchById does not emit ResourceViewed', async () => {
+            await service.fetchById('audit-1');
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+        });
+    });
+
+    // OB-10 (TASK-336) — the soft-delete capability was removed for audit-log
+    // immutability. Audit rows are append-only from the admin surface.
+    describe('deleteById removed (OB-10)', () => {
+        it('does not expose a deleteById method on the service', () => {
+            expect((service as unknown as Record<string, unknown>).deleteById).toBeUndefined();
         });
     });
 
@@ -385,9 +394,9 @@ describe('AuditLogService', () => {
      * letting a Tenant-A admin enumerate every tenant's audit log.
      *
      * All fetch methods MUST inject `this.tenantId` from CLS into the repository
-     * `where` clause; `fetchById`/`deleteById` MUST throw `NotFoundException`
-     * (never `Forbidden` — that would leak existence) when the loaded entity's
-     * tenant does not match the caller. Only `SUPER_ADMIN` may bypass.
+     * `where` clause; `fetchById` MUST throw `NotFoundException` (never
+     * `Forbidden` — that would leak existence) when the loaded entity's tenant
+     * does not match the caller. Only `SUPER_ADMIN` may bypass.
      */
     describe('Multi-tenant scoping (TASK-305 D.8)', () => {
         describe('fetchAll', () => {
@@ -503,6 +512,39 @@ describe('AuditLogService', () => {
             });
         });
 
+        // OB-07 / TASK-305 D.8 (TASK-336) — the CSV export is a bulk read of the
+        // audit trail; it MUST honour the same tenant scope as the table it
+        // mirrors, otherwise an operator could export another tenant's rows.
+        describe('exportFiltered', () => {
+            it('should scope the export to the caller tenantId (no cross-tenant leak)', async () => {
+                mockAuditLogRepository.findAll.mockResolvedValue([]);
+
+                await service.exportFiltered({});
+
+                expect(mockAuditLogRepository.findAll).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: expect.objectContaining({ tenantId: 'tenant-1' }),
+                    })
+                );
+            });
+
+            it('should NOT inject tenantId for SUPER_ADMIN caller (cross-tenant export)', async () => {
+                mockClsService.get.mockImplementation((key: string) => {
+                    switch (key) {
+                        case 'user': return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
+                        case 'tenantId': return 'tenant-1';
+                        default: return null;
+                    }
+                });
+                mockAuditLogRepository.findAll.mockResolvedValue([]);
+
+                await service.exportFiltered({});
+
+                const findAllCall = mockAuditLogRepository.findAll.mock.calls[0][0];
+                expect(findAllCall.where?.tenantId).toBeUndefined();
+            });
+        });
+
         describe('fetchById', () => {
             it('should throw NotFoundException when audit log belongs to a different tenant', async () => {
                 const foreignAuditLog = createMockAuditLogEntity({
@@ -549,54 +591,6 @@ describe('AuditLogService', () => {
                 const result = await service.fetchById('audit-from-tenant-2');
 
                 expect(result.id).toBe('audit-from-tenant-2');
-            });
-        });
-
-        describe('deleteById', () => {
-            it('should throw NotFoundException when audit log belongs to a different tenant', async () => {
-                const foreignAuditLog = createMockAuditLogEntity({
-                    id: 'audit-from-tenant-2',
-                    tenantId: 'tenant-2',
-                });
-                mockAuditLogRepository.findById.mockResolvedValue(foreignAuditLog);
-
-                await expect(service.deleteById('audit-from-tenant-2')).rejects.toThrow(
-                    'AuditLog audit-from-tenant-2 not found',
-                );
-                expect(mockAuditLogRepository.softDelete).not.toHaveBeenCalled();
-            });
-
-            it('should NOT call softDelete when ownership check fails', async () => {
-                const foreignAuditLog = createMockAuditLogEntity({
-                    id: 'audit-from-tenant-2',
-                    tenantId: 'tenant-2',
-                });
-                mockAuditLogRepository.findById.mockResolvedValue(foreignAuditLog);
-
-                await expect(service.deleteById('audit-from-tenant-2')).rejects.toThrow();
-
-                expect(mockAuditLogRepository.softDelete).not.toHaveBeenCalled();
-            });
-
-            it('should soft delete when SUPER_ADMIN deletes a cross-tenant entry', async () => {
-                mockClsService.get.mockImplementation((key: string) => {
-                    switch (key) {
-                        case 'user': return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
-                        case 'tenantId': return 'tenant-1';
-                        default: return null;
-                    }
-                });
-                const foreignAuditLog = createMockAuditLogEntity({
-                    id: 'audit-from-tenant-2',
-                    tenantId: 'tenant-2',
-                });
-                mockAuditLogRepository.findById.mockResolvedValue(foreignAuditLog);
-                mockAuditLogRepository.softDelete.mockResolvedValue(foreignAuditLog);
-
-                const result = await service.deleteById('audit-from-tenant-2');
-
-                expect(result.id).toBe('audit-from-tenant-2');
-                expect(mockAuditLogRepository.softDelete).toHaveBeenCalledWith('audit-from-tenant-2');
             });
         });
 
@@ -923,17 +917,7 @@ describe('AuditLogService', () => {
     });
 
     describe('Context Integration', () => {
-        it('should use requestIp from CLS context', async () => {
-            const auditLog = createMockAuditLogEntity({ id: 'audit-123' });
-            mockAuditLogRepository.findById.mockResolvedValue(auditLog);
-
-            await service.fetchById('audit-123');
-
-            // The service should access requestIp from context
-            expect(mockClsService.get).toHaveBeenCalledWith('requestIp');
-        });
-
-        it('should use user from CLS context for event broadcasting', async () => {
+        it('should read the user from CLS context for the tenant-ownership check', async () => {
             const auditLog = createMockAuditLogEntity({ id: 'audit-123' });
             mockAuditLogRepository.findById.mockResolvedValue(auditLog);
 
@@ -1020,16 +1004,6 @@ describe('AuditLogService', () => {
             mockAuditLogRepository.findAll.mockRejectedValue(new Error('Database error'));
 
             await expect(service.fetchAll({ limit: 10, page: 1 })).rejects.toThrow('Database error');
-        });
-
-        it('should propagate repository errors on softDelete', async () => {
-            // deleteById first loads via findById (for tenant ownership check),
-            // then calls softDelete. Mock findById to succeed so the failure surfaces
-            // from softDelete itself.
-            mockAuditLogRepository.findById.mockResolvedValue(createMockAuditLogEntity({ id: 'audit-123' }));
-            mockAuditLogRepository.softDelete.mockRejectedValue(new Error('Delete failed'));
-
-            await expect(service.deleteById('audit-123')).rejects.toThrow('Delete failed');
         });
     });
 

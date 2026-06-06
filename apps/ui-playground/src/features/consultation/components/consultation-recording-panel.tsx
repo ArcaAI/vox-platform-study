@@ -70,10 +70,7 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId }: Consu
 
   // TASK-333 T5 — resolve the remote transcription pipeline: explicit prop >
   // the user/tenant cascade-resolved config (SDK config hook) > system default.
-  const resolvedPipelineId =
-    pipelineId ??
-    resolvedConfig?.stt?.transcriptionPipelineId ??
-    DEFAULT_TRANSCRIPTION_PIPELINE_ID;
+  const resolvedPipelineId = pipelineId ?? resolvedConfig?.stt?.transcriptionPipelineId ?? DEFAULT_TRANSCRIPTION_PIPELINE_ID;
 
   const refreshRecordings = useCallback(() => {
     void list(consultationId).catch(() => {

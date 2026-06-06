@@ -35,7 +35,7 @@ export class PromptTemplateController {
     description:
       'Returns only templates the caller can consume for generation: the ' +
       "tenant's defaults, department defaults, and the caller's OWN personal " +
-      'overlays. Other users\' personal templates, drafts on the admin plane, ' +
+      "overlays. Other users' personal templates, drafts on the admin plane, " +
       'and usage analytics are never exposed here. Tenant-scoped to the caller.',
   })
   @ApiQuery({ name: 'category', required: false, type: String, description: 'Narrow to a single category (e.g. SUMMARY).' })

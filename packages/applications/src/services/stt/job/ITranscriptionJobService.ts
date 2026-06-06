@@ -36,9 +36,15 @@ export interface ITranscriptionJobService {
   getByIdWithPipeline(id: string): Promise<TranscriptionJobResponse | null>;
 
   /**
-   * Get jobs by consultation
+   * Get jobs by consultation (tenant-wide — admin surface)
    */
   getByConsultation(consultationId: string): Promise<TranscriptionJobResponse[]>;
+
+  /**
+   * EU-02 (TASK-336) — owner-scoped variant of {@link getByConsultation}: only
+   * the caller's OWN jobs (`createdBy`) for the consultation.
+   */
+  getByConsultationForOwner(ownerId: string, consultationId: string): Promise<TranscriptionJobResponse[]>;
 
   /**
    * Get paginated list of jobs (tenant-wide — admin surface)
@@ -97,12 +103,23 @@ export interface ITranscriptionJobService {
   failJob(id: string, errorMessage: string, errorCode?: string): Promise<TranscriptionJobResponse>;
 
   /**
-   * Cancel a job
+   * Cancel a job (tenant-scoped — internal/admin use)
    */
   cancelJob(id: string): Promise<TranscriptionJobResponse>;
 
   /**
-   * Retry a failed job
+   * EU-01 (TASK-336) — creator-scoped cancel for the end-user surface: the
+   * caller must be the job's `createdBy` (404 otherwise, no existence leak).
+   */
+  cancelJobForOwner(ownerId: string, id: string): Promise<TranscriptionJobResponse>;
+
+  /**
+   * Retry a failed job (tenant-scoped — internal/admin use)
    */
   retryJob(id: string): Promise<TranscriptionJobResponse>;
+
+  /**
+   * EU-01 (TASK-336) — creator-scoped retry (mirrors {@link cancelJobForOwner}).
+   */
+  retryJobForOwner(ownerId: string, id: string): Promise<TranscriptionJobResponse>;
 }

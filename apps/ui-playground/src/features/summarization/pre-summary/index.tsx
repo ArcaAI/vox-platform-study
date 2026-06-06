@@ -147,9 +147,11 @@ export default function PreSummaryPage() {
   }, [promptTemplates, userDeptId]);
 
   const availableTemplates = useMemo(() => {
-    const preSummaryTagged = deptScopedTemplates.filter(
-      (t) => t.category === 'PRE_SUMMARY' || t.tags?.some((tag) => tag.toLowerCase().includes('pre-summary')),
-    );
+    // CC-07 (TASK-336) — pre-summary templates are identified by a `pre-summary`
+    // tag. The former `category === 'PRE_SUMMARY'` check was dead (no backend
+    // prompt category enum includes PRE_SUMMARY) and was removed alongside the
+    // category itself.
+    const preSummaryTagged = deptScopedTemplates.filter((t) => t.tags?.some((tag) => tag.toLowerCase().includes('pre-summary')));
 
     const visitTypeTemplateId =
       visitType === 'new_visit'

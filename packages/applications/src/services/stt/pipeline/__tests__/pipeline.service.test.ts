@@ -183,6 +183,8 @@ const mockPipelineRepository = {
     findBySlug: vi.fn(),
     findAll: vi.fn(),
     findEnabledPipelines: vi.fn(),
+    // IC-02 — admin all-status list (ENABLED + DISABLED, excludes deleted).
+    findAllForAdmin: vi.fn(),
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -381,6 +383,46 @@ describe('PipelineService', () => {
         });
     });
 
+    // =====================================================================
+    // IC-04 (TASK-336) — assign-tenant persists instead of echoing success.
+    // AsrPipeline has a single, protected `tenantId` (BaseTenantEntity,
+    // TASK-305), so cross-tenant transfer is unsupported; a same-tenant
+    // assignment is persisted by promoting the pipeline to the tenant default.
+    // =====================================================================
+    describe('assignToTenant — IC-04 (TASK-336)', () => {
+        it('persists a same-tenant assignment by promoting the pipeline to the tenant default', async () => {
+            const pipeline = createBehavioralPipelineEntity({ id: 'pipeline-1', tenantId: 'tenant-1', slug: 'p1' });
+            // setDefault reads the row, flips the default inside a tx, then re-reads.
+            mockPipelineRepository.findById.mockResolvedValue(pipeline);
+            mockPipelineRepository.setDefaultForTenant.mockResolvedValue(undefined);
+
+            const result = await service.assignToTenant('pipeline-1', 'tenant-1');
+
+            expect(mockPipelineRepository.setDefaultForTenant).toHaveBeenCalledWith('tenant-1', 'pipeline-1', 'current-user-id');
+            expect(result.id).toBe('pipeline-1');
+        });
+
+        it('rejects a cross-tenant target without persisting (single protected tenantId)', async () => {
+            await expect(service.assignToTenant('pipeline-1', 'tenant-OTHER')).rejects.toThrow(BadRequestException);
+            expect(mockPipelineRepository.setDefaultForTenant).not.toHaveBeenCalled();
+        });
+
+        it('throws BadRequestException when the target tenantId is blank', async () => {
+            await expect(service.assignToTenant('pipeline-1', '   ')).rejects.toThrow(BadRequestException);
+            expect(mockPipelineRepository.setDefaultForTenant).not.toHaveBeenCalled();
+        });
+
+        it('throws NotFoundException when the pipeline is not in the caller tenant', async () => {
+            const foreign = createBehavioralPipelineEntity({ id: 'pipeline-x', tenantId: 'tenant-other' });
+            mockPipelineRepository.findById.mockResolvedValue(foreign);
+
+            // Target equals the caller tenant, but the row belongs elsewhere →
+            // setDefault's tenant-scope check raises 404 (no existence leak).
+            await expect(service.assignToTenant('pipeline-x', 'tenant-1')).rejects.toThrow(NotFoundException);
+            expect(mockPipelineRepository.setDefaultForTenant).not.toHaveBeenCalled();
+        });
+    });
+
     describe('getById', () => {
         it('should return pipeline by ID', async () => {
             const pipeline = createBehavioralPipelineEntity({ id: 'pipeline-123' });
@@ -475,6 +517,37 @@ describe('PipelineService', () => {
             });
 
             await expect(service.getAll()).rejects.toThrow(BadRequestException);
+        });
+    });
+
+    // IC-02 — the admin pipelines list must include DISABLED pipelines so a
+    // toggled-off pipeline stays visible and can be re-enabled. This rides the
+    // repository's `findAllForAdmin` (ENABLED + DISABLED, excludes deleted) and
+    // must NOT reuse the enabled-only `findEnabledPipelines` that hid them.
+    describe('getAllForAdmin', () => {
+        it('should return pipelines of ALL statuses (enabled + disabled) via findAllForAdmin', async () => {
+            const pipelines = [
+                createBehavioralPipelineEntity({ id: 'p1', resourceStatus: ResourceStatusType.ENABLED }),
+                createBehavioralPipelineEntity({ id: 'p2', resourceStatus: ResourceStatusType.DISABLED }),
+            ];
+            mockPipelineRepository.findAllForAdmin.mockResolvedValue(pipelines);
+
+            const result = await service.getAllForAdmin();
+
+            expect(result).toHaveLength(2);
+            expect(result.map((p) => p.resourceStatus)).toContain(ResourceStatusType.DISABLED);
+            expect(mockPipelineRepository.findAllForAdmin).toHaveBeenCalledWith('tenant-1');
+            // Must NOT fall back to the enabled-only query that dropped disabled rows.
+            expect(mockPipelineRepository.findEnabledPipelines).not.toHaveBeenCalled();
+        });
+
+        it('should throw BadRequestException when tenant ID is missing', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'tenantId') return null;
+                return null;
+            });
+
+            await expect(service.getAllForAdmin()).rejects.toThrow(BadRequestException);
         });
     });
 

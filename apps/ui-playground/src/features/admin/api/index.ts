@@ -59,17 +59,7 @@ export {
   type UploadTenantObjectInput,
 } from './tenant-storage';
 
-export {
-  auditLogKeys,
-  useAuditLog,
-  useAuditLogs,
-  useAuditLogsByResource,
-  useAuditLogsByUser,
-  useDeleteAuditLog,
-  useTenantAuditLogs,
-  type AuditLog,
-  type AuditLogParams,
-} from './audit-logs';
+export { auditLogKeys, normalizeAuditLogList, useTenantAuditLogs, type AuditLog, type AuditLogListEnvelope, type AuditLogParams } from './audit-logs';
 
 export {
   roleKeys,
@@ -115,7 +105,6 @@ export { adminClient as adminClientWithOptions, type RequestOptions } from './ad
 export {
   promptKeys,
   useActivatePromptVersion,
-  useAssignDepartmentPrompt,
   useCreatePrompt,
   useDeletePrompt,
   usePromptTemplate,
@@ -125,9 +114,7 @@ export {
   usePromptVersions,
   useRefreshPromptDetails,
   useUpdatePrompt,
-  type AssignDepartmentPromptInput,
   type CreatePromptInput,
-  type DepartmentPromptField,
   type PromptTemplate,
   type PromptTemplateCategory,
   type PromptTemplateStatus,

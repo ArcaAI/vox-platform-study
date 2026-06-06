@@ -15,7 +15,8 @@
  *                       extension behave as a pass-through, which is the
  *                       behaviour seed scripts and CLI tools depend on.
  *  - `isSuperAdmin()` — true when the current user's `roles` array contains
- *                       `SUPER_ADMIN_ROLE`, OR when no CLS context exists at
+ *                       any `ELEVATED_ROLES` member (SUPER_ADMIN / GLOBAL_ADMIN),
+ *                       OR when no CLS context exists at
  *                       all (system/startup path). The latter "no context =
  *                       super-admin" stance keeps the extension permissive in
  *                       contexts that haven't been wrapped in `cls.run()` yet;
@@ -30,6 +31,15 @@ import type { IActiveUserContext } from '@arcaai/applications';
 import { setTenantContextProvider, type TenantContextProvider } from '@arcaai/database';
 import { Injectable, Logger, Module, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
 import { ClsModule, ClsService } from 'nestjs-cls';
+
+/**
+ * AC-06 (TASK-336) — cross-tenant privileged roles for the DB-extension layer.
+ * Local mirror of `@arcaai/applications` `ELEVATED_ROLES` (the canonical set
+ * consumed by the `isSuperAdmin` helper). Kept local so this DB adapter has no
+ * hard dependency on the applications elevated-set export, matching the same
+ * deliberate cross-layer duplication documented in `common/tenant-guards.ts`.
+ */
+const ELEVATED_ROLES: readonly string[] = [SUPER_ADMIN_ROLE, 'GLOBAL_ADMIN'];
 
 @Injectable()
 export class ClsTenantContextProvider implements TenantContextProvider, OnApplicationBootstrap, OnApplicationShutdown {
@@ -51,7 +61,7 @@ export class ClsTenantContextProvider implements TenantContextProvider, OnApplic
 
   isSuperAdmin(): boolean {
     if (!this.cls.isActive()) return true;
-    return this.cls.get('user')?.roles?.includes(SUPER_ADMIN_ROLE) ?? false;
+    return this.cls.get('user')?.roles?.some((role) => ELEVATED_ROLES.includes(role)) ?? false;
   }
 
   onApplicationBootstrap(): void {

@@ -150,6 +150,26 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
   }
 
   /**
+   * EU-02 (TASK-336) — owner-scoped variant of {@link getByConsultation} for
+   * the end-user surface. In addition to the tenant filter, it restricts the
+   * result to the caller's OWN jobs (`createdBy`), so a same-tenant peer cannot
+   * read another user's transcription jobs by guessing a consultation id. The
+   * tenant-wide view stays on the admin surface.
+   */
+  async getByConsultationForOwner(ownerId: string, consultationId: string): Promise<TranscriptionJobResponse[]> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const jobs = await this.jobRepository.findAll({
+      filters: { consultationId, tenantId, createdBy: ownerId } as Record<string, unknown>,
+      sort: [{ createdAt: 'desc' }],
+    });
+    return jobs.map(TranscriptionJobDtoMapper.toResponse);
+  }
+
+  /**
    * Get paginated list of jobs
    */
   async list(page: number = 1, limit: number = 20): Promise<PaginatedTranscriptionJobResponse> {
@@ -420,6 +440,42 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
     });
 
     return TranscriptionJobDtoMapper.toResponse(updated);
+  }
+
+  /**
+   * EU-01 (TASK-336) — creator-scoped cancel for the end-user surface.
+   *
+   * The plain {@link cancelJob} stays tenant-scoped for internal/admin use.
+   * This variant additionally requires the caller to be the job's `createdBy`,
+   * so a same-tenant peer cannot cancel a job they did not create via id
+   * enumeration. A non-creator (or unknown id) 404s with no existence leak,
+   * mirroring the `@TenantOwnedResource({ scope: 'creator' })` posture used for
+   * `ConsultationJob` (the route-guard creator branch resolves a `userId`;
+   * `TranscriptionJob` is `createdBy`-scoped, so it is enforced here instead).
+   */
+  async cancelJobForOwner(ownerId: string, id: string): Promise<TranscriptionJobResponse> {
+    await this.assertCreatedBy(id, ownerId);
+    return this.cancelJob(id);
+  }
+
+  /**
+   * EU-01 (TASK-336) — creator-scoped retry (mirrors {@link cancelJobForOwner}).
+   */
+  async retryJobForOwner(ownerId: string, id: string): Promise<TranscriptionJobResponse> {
+    await this.assertCreatedBy(id, ownerId);
+    return this.retryJob(id);
+  }
+
+  /**
+   * Assert the job exists AND was created by `ownerId`. Both "not found" and
+   * "not yours" collapse to the same `NotFoundException` (DEF-C3: no existence
+   * leak between same-tenant peers).
+   */
+  private async assertCreatedBy(id: string, ownerId: string): Promise<void> {
+    const job = await this.jobRepository.findById(id);
+    if (!job || job.createdBy !== ownerId) {
+      throw new NotFoundException(`Job ${id} not found`);
+    }
   }
 
   /**

@@ -1,9 +1,4 @@
-import {
-  IUserDepartmentService,
-  UserDepartmentResponse,
-  AssignUserDepartmentRequest,
-  UpdateUserDepartmentRequest,
-} from '@arcaai/applications';
+import { IUserDepartmentService, UserDepartmentResponse, AssignUserDepartmentRequest, UpdateUserDepartmentRequest } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CanManage, ExpectedVersion, RequiresIfMatch } from '../../../decorators';
@@ -53,7 +48,7 @@ export class UserDepartmentsController {
     summary: 'Update a user-department assignment (e.g. toggle primary)',
     description:
       'Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED and folds onto ' +
-      "`expectedVersion`. On version drift the response is `412`; a missing header is `428`.",
+      '`expectedVersion`. On version drift the response is `412`; a missing header is `428`.',
   })
   @ApiHeader({ name: 'If-Match', description: 'Row version the client read (e.g. `"1"`).', required: true, example: '"1"' })
   @ApiParam({ name: 'id', description: 'User ID', type: String })
@@ -67,8 +62,7 @@ export class UserDepartmentsController {
     @Body() body: UpdateUserDepartmentRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<UserDepartmentResponse> {
-    const effectiveRequest: UpdateUserDepartmentRequest =
-      expectedFromHeader !== undefined ? { ...body, expectedVersion: expectedFromHeader } : body;
+    const effectiveRequest: UpdateUserDepartmentRequest = expectedFromHeader !== undefined ? { ...body, expectedVersion: expectedFromHeader } : body;
     return this.userDepartmentService.update(assignmentId, effectiveRequest);
   }
 

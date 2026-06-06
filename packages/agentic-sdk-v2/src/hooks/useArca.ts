@@ -440,7 +440,10 @@ export function useArca(): UseArcaReturn {
         const qs = query.toString();
         const url = qs ? `${CONSULTATION_ENDPOINTS.LIST}?${qs}` : CONSULTATION_ENDPOINTS.LIST;
 
-        return await apiClient.get<PaginatedConsultations>(url);
+        // EU-03: the API paginates with `count`, but the SDK contract uses `total`.
+        // Normalize here so pagination works past page 1 for SDK consumers.
+        const { count, ...rest } = await apiClient.get<PaginatedConsultations & { count?: number }>(url);
+        return { ...rest, total: rest.total ?? count ?? 0 };
       } catch (error) {
         store.setSessionError(error as Error);
         throw error;

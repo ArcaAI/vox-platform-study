@@ -98,7 +98,6 @@ function safeFieldProps(field: any) {
 const CATEGORY_COLORS: Record<PromptTemplateCategory, string> = {
   SYSTEM: 'bg-violet-500/15 text-violet-700 dark:text-violet-400',
   SUMMARY: 'bg-blue-500/15 text-blue-700 dark:text-blue-400',
-  PRE_SUMMARY: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-400',
   DNA_ANALYSIS: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
   CUSTOM: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
 };

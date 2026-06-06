@@ -27,6 +27,13 @@ export const DEFAULT_ADMIN_MENU_ORDER: readonly string[] = [
   'storage',
   'configurations',
   'audit-logs',
+  // TASK-336 — new admin ops surfaces. `jobs` is tenant-scoped; `system-health`,
+  // `rate-limits` and `queues` (OB-03) are global-scope ops. Prisma Studio stays
+  // segregated last.
+  'jobs',
+  'system-health',
+  'rate-limits',
+  'queues',
   'studio',
 ];
 

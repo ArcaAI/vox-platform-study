@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { tryRefreshToken } from '@/lib/auth-refresh';
 import { useAuthStore } from '@/store/auth-store';
 import { usePlaygroundStore } from '@/store/playground-store';
@@ -81,6 +82,23 @@ function getBaseUrl(): string {
   return usePlaygroundStore.getState().apiBaseUrl;
 }
 
+/**
+ * AC-09 (TASK-336): on a 401 the client drops any active impersonation and
+ * retries as the admin. Previously this was silent, so the operator had no idea
+ * their "acting as" session had ended and could keep working as themselves
+ * believing they were still impersonating. End the session AND surface an
+ * explicit, user-visible notice. No-op when not impersonating.
+ */
+function endImpersonationWithNotice(): void {
+  const { isImpersonating, impersonatedUser } = useAuthStore.getState();
+  if (!isImpersonating) return;
+  useAuthStore.getState().endImpersonation();
+  const who = impersonatedUser?.username ? ` as ${impersonatedUser.username}` : '';
+  toast.warning('Impersonation ended', {
+    description: `Your impersonation session${who} expired or was revoked. You are now acting as yourself.`,
+  });
+}
+
 async function request<T>(method: string, path: string, body?: unknown, options?: RequestOptions, isRetry = false): Promise<T> {
   const url = `${getBaseUrl()}${path}`;
   const init: RequestInit = {
@@ -96,10 +114,7 @@ async function request<T>(method: string, path: string, body?: unknown, options?
 
   if (!res.ok) {
     if (res.status === 401 && !isRetry) {
-      const { isImpersonating } = useAuthStore.getState();
-      if (isImpersonating) {
-        useAuthStore.getState().endImpersonation();
-      }
+      endImpersonationWithNotice();
       const refreshed = await tryRefreshToken();
       if (refreshed) {
         return request<T>(method, path, body, options, true);
@@ -147,10 +162,7 @@ async function requestMultipart<T>(method: string, path: string, formData: FormD
 
   if (!res.ok) {
     if (res.status === 401 && !isRetry) {
-      const { isImpersonating } = useAuthStore.getState();
-      if (isImpersonating) {
-        useAuthStore.getState().endImpersonation();
-      }
+      endImpersonationWithNotice();
       const refreshed = await tryRefreshToken();
       if (refreshed) {
         return requestMultipart<T>(method, path, formData, options, true);

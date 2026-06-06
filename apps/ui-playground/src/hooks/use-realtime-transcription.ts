@@ -2,7 +2,14 @@ import { recordSpeakerObservation, resolveSpeakerLabel } from '@/features/audio/
 import { upsertTranscriptEntry } from '@/features/audio/lib/transcript-state';
 import type { TranscriptEntry } from '@/store/audio-store';
 import { usePlaygroundStore } from '@/store/playground-store';
-import { StreamingSessionManager, SttV2WebSocketClient, useArcaStore, type AgenticClient, type ISDKLogger, type WsTranscriptResult } from '@arcaai/vox';
+import {
+  StreamingSessionManager,
+  SttV2WebSocketClient,
+  useArcaStore,
+  type AgenticClient,
+  type ISDKLogger,
+  type WsTranscriptResult,
+} from '@arcaai/vox';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type RealtimeStatus = 'idle' | 'creating_session' | 'connecting' | 'streaming' | 'reconnecting' | 'stopping' | 'error';

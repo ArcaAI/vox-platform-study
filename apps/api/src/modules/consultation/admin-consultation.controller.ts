@@ -1,10 +1,4 @@
-import {
-  IConsultationService,
-  ConsultationResponse,
-  PaginatedConsultationResponse,
-  PaginatedQuery,
-  HttpMethod,
-} from '@arcaai/applications';
+import { IConsultationService, ConsultationResponse, PaginatedConsultationResponse, PaginatedQuery, HttpMethod } from '@arcaai/applications';
 import { Controller, Param, Inject, Query, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { ApiEndpoint, CanManage } from '../../decorators';

@@ -328,9 +328,9 @@ describe('ApiHealthController', () => {
                 REQUIRED_PERMISSIONS_KEY,
                 ApiHealthController.prototype.checkServices,
             );
-            // @Authorize() with no args sets metadata to [] (an empty array
-            // is the explicit "authenticated, no specific permission needed"
-            // marker the UnifiedAuthGuard accepts).
+            // @Authorize(...) sets a RequiredPermission[] on the handler. Post
+            // TASK-336 OB-12 this is the concrete admin gate (asserted exactly
+            // in the OB-12 block below); here we only check the gate exists.
             expect(required).toBeDefined();
             expect(Array.isArray(required)).toBe(true);
         });
@@ -392,6 +392,42 @@ describe('ApiHealthController', () => {
             for (const key of Object.keys(result.services)) {
                 expect(result.services[key]).not.toHaveProperty('version');
                 expect(result.services[key]).not.toHaveProperty('checks');
+            }
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────────
+    // TASK-336 OB-12 — admin-gate /health/services{/:key}
+    //   Pre-OB-12 these carried @Authorize() (any authenticated caller —
+    //   a plain doctor could read downstream ops health). OB-12 tightens
+    //   them to the same SUPER_ADMIN gate the other ops/admin surfaces use
+    //   (`manage all`, e.g. RateLimitAdminController). The k8s probes
+    //   (/live, /ready, /startup, /) stay public.
+    // ─────────────────────────────────────────────────────────────────
+    describe('TASK-336 OB-12 — admin-gate /health/services', () => {
+        it('requires `manage all` on checkServices()', () => {
+            const required = Reflect.getMetadata(
+                REQUIRED_PERMISSIONS_KEY,
+                ApiHealthController.prototype.checkServices,
+            );
+            expect(required).toEqual([{ action: 'manage', subject: 'all' }]);
+        });
+
+        it('requires `manage all` on checkServiceByKey()', () => {
+            const required = Reflect.getMetadata(
+                REQUIRED_PERMISSIONS_KEY,
+                ApiHealthController.prototype.checkServiceByKey,
+            );
+            expect(required).toEqual([{ action: 'manage', subject: 'all' }]);
+        });
+
+        it('keeps the k8s probes public (no permissions on liveness/readiness/startup)', () => {
+            for (const method of ['liveness', 'readiness', 'startup'] as const) {
+                const required = Reflect.getMetadata(
+                    REQUIRED_PERMISSIONS_KEY,
+                    ApiHealthController.prototype[method],
+                );
+                expect(required).toBeUndefined();
             }
         });
     });

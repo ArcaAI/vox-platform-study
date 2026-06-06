@@ -13,7 +13,8 @@ research/
 ├── networking/         SSH access, Cloudflare Tunnel, database connectivity
 ├── ai-ml/             Whisper ONNX optimization, Apple Silicon inference
 ├── architecture/       Application audits, fit-gap analysis, streaming timeouts
-└── configs/            Ready-to-deploy configuration files (Docker Compose, HAProxy, Patroni, etc.)
+├── configs/            Ready-to-deploy configuration files (Docker Compose, HAProxy, Patroni, etc.)
+└── clinical-harness/   Medical-AI + harness-engineering research backing TASK-330 (scribes, RAG, evals, governance, India, FHIR)
 ```
 
 ---
@@ -60,6 +61,20 @@ research/
 |----------|-------------|
 | [ai-streaming-timeout-audit-2026.md](./architecture/ai-streaming-timeout-audit-2026.md) | Timeout audit across API gateway, SMR, STT, NLP for HTTP/SSE/WebSocket AI streaming |
 | [encounter-workflow-fit-gap-analysis-2026-03-10.md](./architecture/encounter-workflow-fit-gap-analysis-2026-03-10.md) | Fit-gap analysis of HOPE data model against standard outpatient encounter workflow |
+
+## Clinical Documentation Harness — Medical-AI Research
+
+Fully-cited research backing `docs/implementation/TASK-330-Clinical-Documentation-Harness/`. See [clinical-harness/README.md](./clinical-harness/README.md) for the full index.
+
+| Document | Description |
+|----------|-------------|
+| [clinical-harness/00-harness-engineering-foundations.md](./clinical-harness/00-harness-engineering-foundations.md) | Harness engineering — control model, agent building blocks, context engineering |
+| [clinical-harness/01-ambient-clinical-documentation.md](./clinical-harness/01-ambient-clinical-documentation.md) | AI medical scribes — accuracy, omissions, clinician UX, trust, regulation |
+| [clinical-harness/02-medical-knowledge-grounding.md](./clinical-harness/02-medical-knowledge-grounding.md) | Corpora/licensing, embeddings, hybrid retrieval, ontology linking, faithfulness, benchmarks |
+| [clinical-harness/03-medical-ai-evaluation-guardrails-governance.md](./clinical-harness/03-medical-ai-evaluation-guardrails-governance.md) | Eval rubrics/tooling, LLM-as-judge, guardrails, HITL, FDA/EU/UK regulation, audit |
+| [clinical-harness/04-clinical-interoperability-structured-output.md](./clinical-harness/04-clinical-interoperability-structured-output.md) | FHIR/HL7 mapping, structured output, CDS Hooks/SMART, safe clinical tool-calling |
+| [clinical-harness/05-india-health-ai-regulation.md](./clinical-harness/05-india-health-ai-regulation.md) | DPDP 2023 + Rules 2025, ABDM/NRCeS FHIR, Telemedicine 2020, CDSCO, MeitY |
+| [clinical-harness/06-sota-harness-implementation.md](./clinical-harness/06-sota-harness-implementation.md) | 2026 implementation SOTA — orchestration libs, eval/guardrail stacks, durable HITL |
 
 ## Configuration Files
 

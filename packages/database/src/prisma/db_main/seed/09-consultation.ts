@@ -1,4 +1,9 @@
 import type { CorePrismaClient } from '../../../client';
+import { Prisma } from '../../../generated/core-prisma-client/client';
+import type {
+    TranscriptionJobStatus,
+    TranscriptionJobType,
+} from '../../../generated/core-prisma-client/enums';
 import {
     SEED_TENANT_ID,
     SEED_CUSTOMER_TENANT_IDS,
@@ -10,6 +15,7 @@ import {
     SEED_AUDIO_RECORDING_IDS,
     SEED_CONTEXT_VERSION_IDS,
     SEED_NAMED_ENTITY_IDS,
+    SEED_TRANSCRIPTION_JOB_IDS,
     SYSTEM_USER_ID,
 } from './00-constants';
 
@@ -1324,6 +1330,179 @@ const DEFAULT_NAMED_ENTITIES = [
 // SEED FUNCTION
 // =============================================================================
 
+// =============================================================================
+// TRANSCRIPTION JOBS (TASK-336 EU-04)
+//
+// ASR job-queue rows across the full status lifecycle (QUEUED / PROCESSING /
+// COMPLETED / FAILED) for the Global tenant + one customer tenant (ArcaAI) so
+// the admin job views and EU analytics are populated for more than one tenant.
+//
+// FK/coherence rules honoured:
+//   - `pipelineId` is a REAL FK to AsrPipeline.id; each job references the
+//     production pipeline OWNED BY THE SAME TENANT (Global → …0401 from
+//     GLOBAL_TENANT_ASR_PIPELINES; ArcaAI → …0101). Pipelines are seeded by
+//     `seedAsrPipelines` earlier in index.ts, so the FK resolves.
+//   - `consultationId` / `contextItemId` / `mediaId` are soft references (no
+//     DB FK); each points at a seeded row in the SAME tenant.
+//   - `mediaId` is only set where real Media exists (the Global GEN dual-capture
+//     recording); other jobs leave it null.
+// =============================================================================
+
+const GLOBAL_PRODUCTION_PIPELINE_ID = '81000000-0000-0000-0001-000000000401';
+const ARCAAI_PRODUCTION_PIPELINE_ID = '81000000-0000-0000-0001-000000000101';
+
+interface TranscriptionJobSeed {
+    id: string;
+    tenantId: string;
+    jobType: TranscriptionJobType;
+    status: TranscriptionJobStatus;
+    pipelineId: string;
+    consultationId: string | null;
+    contextItemId: string | null;
+    mediaId: string | null;
+    progress: number;
+    queuedAt: Date;
+    startedAt: Date | null;
+    completedAt: Date | null;
+    resultText: string | null;
+    resultMetadata: Record<string, unknown> | null;
+    errorMessage: string | null;
+    errorCode: string | null;
+    retryCount: number;
+    workerId: string | null;
+}
+
+export const DEFAULT_TRANSCRIPTION_JOBS: TranscriptionJobSeed[] = [
+    // ── Global tenant — COMPLETED batch (produced the GEN transcript) ──────
+    {
+        id: SEED_TRANSCRIPTION_JOB_IDS.GEN_COMPLETED,
+        tenantId: SEED_TENANT_ID,
+        jobType: 'BATCH' as TranscriptionJobType,
+        status: 'COMPLETED' as TranscriptionJobStatus,
+        pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
+        consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
+        contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
+        mediaId: SEED_MEDIA_IDS.GEN_AUDIO_PRIMARY,
+        progress: 100,
+        queuedAt: new Date('2025-12-15T10:30:05Z'),
+        startedAt: new Date('2025-12-15T10:30:08Z'),
+        completedAt: new Date('2025-12-15T10:33:12Z'),
+        resultText:
+            'Patient presents with a three-day history of productive cough and low-grade fever. Chest examination reveals scattered crepitations at the right base. Plan: chest X-ray, oral amoxicillin, review in five days.',
+        resultMetadata: { confidence: 0.94, language: 'en', durationMs: 185000, wordCount: 38 },
+        errorMessage: null,
+        errorCode: null,
+        retryCount: 0,
+        workerId: 'asr-worker-01',
+    },
+    // ── Global tenant — PROCESSING batch (neurology referral) ──────────────
+    {
+        id: SEED_TRANSCRIPTION_JOB_IDS.NEUR_PROCESSING,
+        tenantId: SEED_TENANT_ID,
+        jobType: 'BATCH' as TranscriptionJobType,
+        status: 'PROCESSING' as TranscriptionJobStatus,
+        pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
+        consultationId: SEED_CONSULTATION_IDS.NEUR_REFERRAL,
+        contextItemId: SEED_CONTEXT_ITEM_IDS.NEUR_TRANSCRIPT,
+        mediaId: null,
+        progress: 45,
+        queuedAt: new Date('2026-02-20T09:00:00Z'),
+        startedAt: new Date('2026-02-20T09:00:06Z'),
+        completedAt: null,
+        resultText: null,
+        resultMetadata: null,
+        errorMessage: null,
+        errorCode: null,
+        retryCount: 0,
+        workerId: 'asr-worker-02',
+    },
+    // ── Global tenant — QUEUED streaming (ER live recording) ───────────────
+    {
+        id: SEED_TRANSCRIPTION_JOB_IDS.ER_QUEUED,
+        tenantId: SEED_TENANT_ID,
+        jobType: 'STREAMING' as TranscriptionJobType,
+        status: 'QUEUED' as TranscriptionJobStatus,
+        pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
+        consultationId: SEED_CONSULTATION_IDS.ER_RECORDING,
+        contextItemId: SEED_CONTEXT_ITEM_IDS.ER_AUDIO,
+        mediaId: null,
+        progress: 0,
+        queuedAt: new Date('2026-02-20T09:15:00Z'),
+        startedAt: null,
+        completedAt: null,
+        resultText: null,
+        resultMetadata: null,
+        errorMessage: null,
+        errorCode: null,
+        retryCount: 0,
+        workerId: null,
+    },
+    // ── Global tenant — FAILED batch (exhausted retries) ───────────────────
+    {
+        id: SEED_TRANSCRIPTION_JOB_IDS.CARD_FAILED,
+        tenantId: SEED_TENANT_ID,
+        jobType: 'BATCH' as TranscriptionJobType,
+        status: 'FAILED' as TranscriptionJobStatus,
+        pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
+        consultationId: SEED_CONSULTATION_IDS.CARD_NEW,
+        contextItemId: null,
+        mediaId: null,
+        progress: 20,
+        queuedAt: new Date('2026-02-19T14:00:00Z'),
+        startedAt: new Date('2026-02-19T14:00:04Z'),
+        completedAt: null,
+        resultText: null,
+        resultMetadata: null,
+        errorMessage: 'ASR worker timed out while decoding audio segment 3/7',
+        errorCode: 'ASR_DECODE_TIMEOUT',
+        retryCount: 3,
+        workerId: 'asr-worker-03',
+    },
+    // ── ArcaAI tenant — COMPLETED batch ────────────────────────────────────
+    {
+        id: SEED_TRANSCRIPTION_JOB_IDS.ARCAAI_COMPLETED,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        jobType: 'BATCH' as TranscriptionJobType,
+        status: 'COMPLETED' as TranscriptionJobStatus,
+        pipelineId: ARCAAI_PRODUCTION_PIPELINE_ID,
+        consultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_NEW,
+        contextItemId: SEED_CONTEXT_ITEM_IDS.ARCAAI_GEN_NEW_TRANSCRIPT,
+        mediaId: null,
+        progress: 100,
+        queuedAt: new Date('2026-02-21T11:00:02Z'),
+        startedAt: new Date('2026-02-21T11:00:05Z'),
+        completedAt: new Date('2026-02-21T11:01:40Z'),
+        resultText:
+            'Patient reports a sore throat and mild fever for three days, with some difficulty swallowing and no cough. Throat examination performed; rapid swab ordered.',
+        resultMetadata: { confidence: 0.92, language: 'en', durationMs: 96000, wordCount: 27 },
+        errorMessage: null,
+        errorCode: null,
+        retryCount: 0,
+        workerId: 'asr-worker-01',
+    },
+    // ── ArcaAI tenant — QUEUED streaming (revisit) ─────────────────────────
+    {
+        id: SEED_TRANSCRIPTION_JOB_IDS.ARCAAI_QUEUED,
+        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+        jobType: 'STREAMING' as TranscriptionJobType,
+        status: 'QUEUED' as TranscriptionJobStatus,
+        pipelineId: ARCAAI_PRODUCTION_PIPELINE_ID,
+        consultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_REVISIT,
+        contextItemId: null,
+        mediaId: null,
+        progress: 0,
+        queuedAt: new Date('2026-02-28T10:30:00Z'),
+        startedAt: null,
+        completedAt: null,
+        resultText: null,
+        resultMetadata: null,
+        errorMessage: null,
+        errorCode: null,
+        retryCount: 0,
+        workerId: null,
+    },
+];
+
 export const seedConsultation = async (client: CorePrismaClient) => {
     console.log('Seeding consultations (e2e workflow data)...');
 
@@ -1398,6 +1577,39 @@ export const seedConsultation = async (client: CorePrismaClient) => {
         });
     }
     console.log(`  Seeded ${DEFAULT_NAMED_ENTITIES.length} named entities`);
+
+    // Transcription jobs (TASK-336 EU-04) — depend on ASR pipelines (FK) which
+    // are seeded earlier by seedAsrPipelines, and reference seeded consultations.
+    for (const job of DEFAULT_TRANSCRIPTION_JOBS) {
+        const data = {
+            id: job.id,
+            tenantId: job.tenantId,
+            jobType: job.jobType,
+            status: job.status,
+            pipelineId: job.pipelineId,
+            consultationId: job.consultationId,
+            contextItemId: job.contextItemId,
+            mediaId: job.mediaId,
+            progress: job.progress,
+            queuedAt: job.queuedAt,
+            startedAt: job.startedAt,
+            completedAt: job.completedAt,
+            resultText: job.resultText,
+            errorMessage: job.errorMessage,
+            errorCode: job.errorCode,
+            retryCount: job.retryCount,
+            workerId: job.workerId,
+            ...(job.resultMetadata != null
+                ? { resultMetadata: job.resultMetadata as Prisma.InputJsonValue }
+                : {}),
+        };
+        await client.transcriptionJob.upsert({
+            where: { id: job.id },
+            update: data,
+            create: data,
+        });
+    }
+    console.log(`  Seeded ${DEFAULT_TRANSCRIPTION_JOBS.length} transcription jobs`);
 
     console.log('Consultation seeding completed');
 };

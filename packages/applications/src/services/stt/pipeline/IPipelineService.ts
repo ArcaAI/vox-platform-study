@@ -12,6 +12,17 @@ export interface IPipelineService {
   update(id: string, dto: UpdatePipelineRequest): Promise<PipelineResponse>;
 
   /**
+   * IC-04 (TASK-336) — Assign a pipeline within its owning tenant.
+   *
+   * `AsrPipeline` carries a single, deliberately *protected* `tenantId`
+   * (BaseTenantEntity, TASK-305 multi-tenancy hardening), so a pipeline cannot
+   * be transferred across tenants from this path. Cross-tenant targets are
+   * rejected (rather than silently echoed) and the only meaningful same-tenant
+   * assignment — promoting the pipeline to the tenant default — is persisted.
+   */
+  assignToTenant(id: string, targetTenantId: string): Promise<PipelineResponse>;
+
+  /**
    * TASK-328 A6 — Mark a pipeline as the tenant default (unsets the previous
    * default atomically/transactionally).
    */
@@ -44,9 +55,16 @@ export interface IPipelineService {
   getBySlug(slug: string): Promise<PipelineResponse | null>;
 
   /**
-   * Get all enabled pipelines
+   * Get all enabled pipelines (public/end-user surface).
    */
   getAll(): Promise<PipelineResponse[]>;
+
+  /**
+   * Get all pipelines for the admin surface, regardless of enabled status
+   * (ENABLED + DISABLED, excludes deleted). Lets an admin see — and re-enable
+   * — a pipeline they have disabled.
+   */
+  getAllForAdmin(): Promise<PipelineResponse[]>;
 
   /**
    * Get paginated list of pipelines

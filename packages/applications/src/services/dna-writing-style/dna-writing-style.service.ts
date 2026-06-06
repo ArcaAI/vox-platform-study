@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -17,6 +17,7 @@ import {
   UserDepartmentRepository,
   UserRepository,
   UserRoleAssignmentRepository,
+  CoreDatabaseService,
 } from '@arcaai/domains';
 import { IDnaWritingStyleService, DnaJobResponse, ListDnaReportsFilters, PaginatedDnaReports } from './IDnaWritingStyleService';
 import { DnaReportResponse, DnaVersionResponse, GenerateDnaReportRequest, UpdateDnaReportRequest, DnaDashboardResponse } from './dto';
@@ -59,6 +60,11 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     @InjectQueue(JobQueue.GenerateDnaReport) private readonly dnaQueue: Queue,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // CC-01 — `baseClient.$transaction(callback)` is the canonical Prisma-7
+    // atomic idiom in this codebase (see TenantService TASK-302 D.4 /
+    // PromptManagementService). Required so the version-history insert and the
+    // OCC compare-and-set commit (or roll back) together.
+    @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
   ) {
     super(eventEmitter, clsService, ResourceType.DnaWritingStyleReport);
   }
@@ -154,6 +160,10 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
 
     const hasContentChanges = dto.reportData !== undefined || dto.styleText !== undefined;
 
+    // Build the version snapshot (capturing the NEW content) and apply the
+    // in-memory entity mutations FIRST; the two DB writes (insert + CAS) then
+    // run together inside one transaction below.
+    let version: ReturnType<typeof DnaWritingStyleVersionFactory.CreateDnaWritingStyleVersion> | null = null;
     if (hasContentChanges) {
       const existingVersions = await this.dnaVersionRepository.findAll({
         filters: { dnaReportId: reportId },
@@ -163,7 +173,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       const highestExistingVersion = existingVersions[0]?.versionNumber ?? 0;
       const nextVersionNumber = Math.max(highestExistingVersion, report.currentVersionNumber ?? 0) + 1;
 
-      const version = DnaWritingStyleVersionFactory.CreateDnaWritingStyleVersion({
+      version = DnaWritingStyleVersionFactory.CreateDnaWritingStyleVersion({
         tenantId: report.tenantId,
         dnaReportId: reportId,
         versionNumber: nextVersionNumber,
@@ -172,8 +182,6 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
         changeReason: dto.changeReason ?? null,
         changedBy: userId ?? null,
       });
-
-      await this.dnaVersionRepository.create(version);
 
       if (dto.reportData !== undefined) report.reportData = dto.reportData;
       if (dto.styleText !== undefined) report.styleText = dto.styleText;
@@ -184,13 +192,26 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       await this.updateEntity(report, { resourceStatus: dto.resourceStatus });
     }
 
-    // TASK-326 X7 / D-2 — final write is a Compare-And-Set against the report
-    // row's `_version` OCC column. `dto.expectedVersion` (folded from the
-    // admin route's required `If-Match` header) is the CAS predicate input;
-    // on version drift the repository throws `OptimisticConcurrencyException`
-    // → HTTP 412. This `_version` token is DISTINCT from the DNA domain's
+    // CC-01 — the version-history insert and the OCC Compare-And-Set now run
+    // inside a SINGLE interactive transaction (canonical Prisma-7 idiom, see
+    // TenantService TASK-302 D.4 / PromptManagementService). Previously these
+    // were two independent awaits, so a stale `If-Match` that (correctly)
+    // rejected the CAS with 412 still left the freshly-inserted version row
+    // committed — a live-reproduced orphan. Running both writes in one tx means
+    // the repository's `OptimisticConcurrencyException` (HTTP 412) — thrown from
+    // inside the callback when the CAS matches 0 rows — aborts the transaction
+    // and rolls the version row back, so NO orphan persists.
+    //
+    // TASK-326 X7 / D-2 — the CAS guards the report row's `_version` OCC column.
+    // `dto.expectedVersion` (folded from the admin route's required `If-Match`
+    // header) is the CAS predicate input; it is DISTINCT from the DNA domain's
     // `currentVersionNumber` / `DnaVersion` history bumped above.
-    const updated = await this.dnaReportRepository.updateWithVersion(reportId, report, dto.expectedVersion);
+    const updated = await this.databaseService.baseClient.$transaction(async (tx) => {
+      if (version) {
+        await this.dnaVersionRepository.create(version, tx);
+      }
+      return this.dnaReportRepository.updateWithVersion(reportId, report, dto.expectedVersion, tx);
+    });
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: reportId,
@@ -325,7 +346,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
    * pinned to their CLS tenant and any supplied `tenantId` is ignored.
    */
   async listReportsPaginated(filters?: ListDnaReportsFilters): Promise<PaginatedDnaReports> {
-    const scopeTenantId = this.resolveDashboardScope(filters?.tenantId);
+    const scopeTenantId = this.resolveListScope(filters?.tenantId);
 
     const page = filters?.page && filters.page > 0 ? filters.page : 1;
     const limit = filters?.limit && filters.limit > 0 ? filters.limit : 50;
@@ -377,6 +398,29 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
         windowDays,
       },
     };
+  }
+
+  /**
+   * CC-02 (TASK-336) — resolve the tenant the admin *list* runs against.
+   *
+   * Mirrors `resolveDashboardScope`, EXCEPT a global admin who supplied no
+   * explicit `tenantId` falls back to their ACTIVE tenant (the `X-Tenant-Id`
+   * header surfaced on CLS as `tenantId`) before defaulting to the all-tenants
+   * view. Without this, a super-admin who had selected an active tenant still
+   * saw EVERY tenant's reports on the list whenever the `?tenantId` query param
+   * was omitted (the header was ignored). A tenant admin stays pinned to their
+   * CLS tenant exactly as before. The dashboard roll-up intentionally keeps its
+   * all-tenants default, so it is left on `resolveDashboardScope`.
+   */
+  private resolveListScope(requestedTenantId?: string): string | undefined {
+    if (this.isGlobalRole()) {
+      return requestedTenantId ?? this.tenantId ?? undefined;
+    }
+    const ctxTenant = this.tenantId;
+    if (!ctxTenant) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+    return ctxTenant;
   }
 
   /**

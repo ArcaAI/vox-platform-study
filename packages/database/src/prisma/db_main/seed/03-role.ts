@@ -81,6 +81,25 @@ export const SYSTEM_ROLES = [
 ];
 
 // =============================================================================
+// GLOBAL ROLES (TASK-336 AC-06)
+// Elevated, platform-wide role kept separate from the count-pinned SYSTEM_ROLES
+// array. `GLOBAL_ADMIN` is treated identically to `SUPER_ADMIN` by the code-side
+// guard (`tenant-guards.ELEVATED_ROLES`), so it carries the same system-level
+// policy grants. It is a reserved system role (cannot be deleted) with no parent.
+// =============================================================================
+export const GLOBAL_ROLES = [
+    {
+        id: SEED_ROLE_IDS.GLOBAL_ADMIN,
+        name: 'GLOBAL_ADMIN',
+        description: 'Elevated platform-wide administrator (treated as SUPER_ADMIN) with full access across all tenants',
+        externalName: 'Global Administrator',
+        isSystemRole: true,
+        parentRoleId: null,
+        policies: ['system-full-access', 'rbac-system-manage', 'global-settings-manage'],
+    },
+];
+
+// =============================================================================
 // TENANT EXTENDABLE ROLES - Examples of custom roles tenants can create
 // These inherit from system roles and add additional permissions
 // Exported for testing purposes
@@ -110,12 +129,14 @@ export const TENANT_EXTENDABLE_ROLES = [
 // Exported for testing purposes
 export const DEFAULT_ROLES = [
     ...SYSTEM_ROLES,
+    ...GLOBAL_ROLES,
     ...TENANT_EXTENDABLE_ROLES,
 ];
 
 export const seedRole = async (client: CorePrismaClient) => {
     console.log('Seeding roles...');
     console.log('  System roles:', SYSTEM_ROLES.length);
+    console.log('  Global roles:', GLOBAL_ROLES.length);
     console.log('  Tenant extendable roles:', TENANT_EXTENDABLE_ROLES.length);
 
     // First, get all policies

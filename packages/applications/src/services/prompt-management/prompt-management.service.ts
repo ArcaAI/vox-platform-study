@@ -15,6 +15,7 @@ import {
   ResourceType,
   ResourceStatusType,
   SysEventType,
+  CoreDatabaseService,
 } from '@arcaai/domains';
 import {
   IPromptManagementService,
@@ -123,6 +124,11 @@ export class PromptManagementService extends BaseService implements IPromptManag
     @Inject(IDepartmentService) private readonly departmentService: IDepartmentService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // CC-01 — `baseClient.$transaction(callback)` is the canonical Prisma-7
+    // atomic idiom in this codebase (see TenantService TASK-302 D.4 /
+    // UserService TASK-331 r2605 #3). Required so the version-history insert
+    // and the OCC compare-and-set commit (or roll back) together.
+    @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     // TASK-328 A4 — SMR/text-generation client (mirrors SummaryService). These
     // are @Optional() so existing unit-test fixtures that construct the service
     // directly without the SMR deps keep compiling; the live API always wires
@@ -255,17 +261,6 @@ export class PromptManagementService extends BaseService implements IPromptManag
       dto.name !== undefined || dto.description !== undefined || dto.content !== undefined || dto.variables !== undefined || dto.tags !== undefined;
 
     if (hasContentChanges) {
-      const version = PromptVersionFactory.CreatePromptVersion({
-        tenantId: template.tenantId,
-        promptTemplateId: id,
-        versionNumber: (template.currentVersionNumber ?? 0) + 1,
-        content: dto.content ?? template.content,
-        variables: dto.variables ?? template.variables,
-        changeReason: dto.changeReason ?? null,
-        changedBy: userId ?? null,
-      });
-      await this.promptVersionRepository.create(version);
-
       if (dto.name !== undefined) template.name = dto.name;
       if (dto.description !== undefined) template.description = dto.description;
       if (dto.content !== undefined) template.content = dto.content;
@@ -297,10 +292,35 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // correlation mirrors C.8 / E.1 / E.2).
     const previousVersion = template.version;
 
-    // TASK-302 Stream D Phase E.3 — Compare-And-Set against `_version`.
-    // `expectedVersion` is the CAS predicate input only; it never
-    // reaches the entity (the `_version` getter is read-only per B.5).
-    const updated = await this.promptTemplateRepository.updateWithVersion(id, template, dto.expectedVersion);
+    // CC-01 — the version-history insert and the OCC Compare-And-Set now run
+    // inside a SINGLE interactive transaction (canonical Prisma-7 idiom, see
+    // TenantService TASK-302 D.4). The next versionNumber is `max(existing) + 1`
+    // queried via the tx client — NOT `currentVersionNumber + 1` — so a lagging
+    // counter or an orphaned history row cannot recompute an existing
+    // versionNumber and trip the `(promptTemplateId, versionNumber)` unique
+    // constraint (which would brick further edits of the template). When the
+    // CAS matches 0 rows the repository throws `OptimisticConcurrencyException`
+    // (HTTP 412) from inside the callback, aborting the transaction so the
+    // version row rolls back and NO orphan persists. `expectedVersion` is the
+    // CAS predicate input only; it never reaches the entity (the `_version`
+    // getter is read-only per B.5).
+    const updated = await this.databaseService.baseClient.$transaction(async (tx) => {
+      if (hasContentChanges) {
+        const maxVersionNumber = await this.promptVersionRepository.findMaxVersionNumber(id, tx);
+        const version = PromptVersionFactory.CreatePromptVersion({
+          tenantId: template.tenantId,
+          promptTemplateId: id,
+          versionNumber: maxVersionNumber + 1,
+          content: dto.content ?? template.content,
+          variables: dto.variables ?? template.variables,
+          changeReason: dto.changeReason ?? null,
+          changedBy: userId ?? null,
+        });
+        await this.promptVersionRepository.create(version, tx);
+      }
+
+      return this.promptTemplateRepository.updateWithVersion(id, template, dto.expectedVersion, tx);
+    });
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,
@@ -413,9 +433,12 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * Resulting predicate (top-level AND of the OR group, per query-builder
    * semantics):
    *   tenantId = caller AND resourceStatus = ENABLED [AND category = ?]
-   *   AND ( scope = TENANT_DEFAULT
-   *         OR scope = DEPARTMENT_DEFAULT
-   *         OR ( scope = USER_PERSONAL AND ownerUserId = caller ) )
+   *   AND ( ( scope = TENANT_DEFAULT      AND status != DRAFT )
+   *         OR ( scope = DEPARTMENT_DEFAULT AND status != DRAFT )
+   *         OR ( scope = USER_PERSONAL      AND ownerUserId = caller ) )
+   *
+   * CC-03 (TASK-336): the publication gate (`status != DRAFT`) applies only to
+   * the shared DEFAULT scopes; personal overlays are never publication-gated.
    */
   async listAvailableForCaller(filters?: { category?: string }): Promise<PromptTemplateResponse[]> {
     const tenantId = this.tenantId;
@@ -427,8 +450,15 @@ export class PromptManagementService extends BaseService implements IPromptManag
     qb.Where({ tenantId });
     qb.Where({ resourceStatus: ResourceStatusType.ENABLED });
     if (filters?.category) qb.Where({ category: filters.category });
-    qb.WhereOr({ scope: SCOPE_TENANT_DEFAULT });
-    qb.WhereOr({ scope: 'DEPARTMENT_DEFAULT' });
+    // CC-03 (TASK-336) — enforce publication status on the clinician path: the
+    // shared tenant/department DEFAULT templates must be non-DRAFT so doctors
+    // never consume an admin's in-progress draft. `{ not: 'DRAFT' }` is the safe
+    // fallback — it keeps PUBLISHED plus any legacy/unset (NULL) rows visible,
+    // so pre-publication-status data is not silently hidden. The caller's OWN
+    // personal overlays are intentionally NOT gated (a clinician may use their
+    // own drafts).
+    qb.WhereOr({ scope: SCOPE_TENANT_DEFAULT, status: { not: 'DRAFT' } });
+    qb.WhereOr({ scope: 'DEPARTMENT_DEFAULT', status: { not: 'DRAFT' } });
     qb.WhereOr({ scope: SCOPE_USER_PERSONAL, ownerUserId: userId });
 
     const models = await qb.ToList();

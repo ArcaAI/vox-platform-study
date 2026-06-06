@@ -42,8 +42,10 @@ export interface AuditLogExportResult {
  * the SysEventService → Redis queue → background worker path. This service
  * handles only:
  * - Querying/fetching audit logs
- * - Deleting audit logs
  * - Direct event handling for authentication events (UserAuthenticated)
+ *
+ * Audit logs are append-only: there is intentionally no delete capability
+ * (OB-10, TASK-336) so the trail stays immutable for compliance.
  *
  * @see SysEventService for the CRUD event → Redis queue pipeline
  */
@@ -96,13 +98,6 @@ export interface IAuditLogService {
    * @returns A promise that resolves to the requested AuditLogEntity.
    */
   fetchById(id: EntityId): Promise<AuditLogEntity>;
-
-  /**
-   * Delete a specific audit log by its ID.
-   * @param id - The ID of the audit log to delete.
-   * @returns A promise that resolves to the deleted AuditLogEntity.
-   */
-  deleteById(id: EntityId): Promise<AuditLogEntity>;
 
   /**
    * Handle the event of a user being authenticated.

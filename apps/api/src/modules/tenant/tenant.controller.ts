@@ -14,10 +14,15 @@ import {
   isSuperAdmin,
   FetchResponse,
 } from '@arcaai/applications';
-import { Controller, Body, Param, Get, Inject, Query, ForbiddenException } from '@nestjs/common';
+import { Controller, Body, Param, Get, Inject, Query, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { ApiEndpoint, CanAny, CanManage } from '../../decorators';
+
+// AC-10 (TASK-336) — canonical RFC 4122 8-4-4-4-12 shape (any version, incl. the
+// uuidv7 tenant ids the platform mints). Lets the config scope guard decide
+// up-front when a dual `:identifier` is a tenant UUID vs a code-name.
+const TENANT_UUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 // TASK-302 Stream D Phase E.1 — `@RequiresIfMatch()` route marker +
 // `@ExpectedVersion()` param decorator. The route guard fires 428 when
 // the header is missing; the param decorator returns the parsed version
@@ -60,6 +65,28 @@ export class TenantController {
     if (isSuperAdmin(user)) return;
     if (!user?.tenantId || user.tenantId !== targetTenantId) {
       throw new ForbiddenException('You do not have access to this tenant');
+    }
+  }
+
+  /**
+   * AC-10 (TASK-336) — scope guard for the tenant-config routes, which take a
+   * dual `:identifier` (tenant UUID OR code-name). A non-super-admin may only
+   * address their own tenant. We can decide this up-front ONLY for a UUID
+   * identifier; a code-name is deferred to the service's own
+   * no-existence-leak guard (it resolves code-name → tenant, then 404s
+   * cross-tenant). Throws `NotFoundException` (NOT `ForbiddenException`) so the
+   * controller does NOT weaken that no-existence-leak posture for config rows.
+   * SUPER_ADMIN bypasses (cross-tenant operator flows + console tenant picker).
+   */
+  private assertConfigInScope(identifier: string): void {
+    const user = this.cls.get('user');
+    if (isSuperAdmin(user)) return;
+    const callerTenantId = user?.tenantId;
+    if (!callerTenantId) {
+      throw new NotFoundException('Resource not found');
+    }
+    if (TENANT_UUID_PATTERN.test(identifier) && identifier !== callerTenantId) {
+      throw new NotFoundException('Resource not found');
     }
   }
 
@@ -228,6 +255,7 @@ export class TenantController {
   })
   @ApiParam({ name: 'identifier', description: 'Tenant ID or code name', type: String })
   async fetchTenantConfigs(@Param('identifier') identifier: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedTenantConfigResponse> {
+    this.assertConfigInScope(identifier);
     const result = await this.tenantService.fetchTenantConfigs({
       ...queryParams,
       tenantId: identifier,
@@ -248,7 +276,19 @@ export class TenantController {
     @Param('identifier') identifier: string,
     @Body() configs: UpdateTenantConfigRequest[],
   ): Promise<PaginatedTenantConfigResponse> {
-    const result = await this.tenantService.updateTenantConfigs(identifier, configs);
+    this.assertConfigInScope(identifier);
+    // AC-10 (TASK-336) — explicit updatable-key allow-list. The global
+    // ValidationPipe does NOT whitelist array-body elements (see
+    // `my-tenant.controller.ts`), so the raw body could smuggle extra keys
+    // (`locked`, `tenantId`, `key`, …) to the service. Forward ONLY the
+    // mutable fields — id (target row), value, description and the OCC token.
+    const sanitizedConfigs = (configs ?? []).map(({ id, value, description, expectedVersion }) => ({
+      id,
+      value,
+      description,
+      expectedVersion,
+    })) as UpdateTenantConfigRequest[];
+    const result = await this.tenantService.updateTenantConfigs(identifier, sanitizedConfigs);
     return GlobalSettingDtoMapper.ToPaginatedResponse(result) as PaginatedTenantConfigResponse;
   }
 }

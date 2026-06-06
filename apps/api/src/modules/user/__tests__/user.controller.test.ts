@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { UserController } from '../user.controller';
 
 // TASK-326 X2 — mirror of the AuditLogController CLS mock so the
@@ -41,6 +42,9 @@ const createMockUserRoleAssignmentService = () => ({
     deleteById: vi.fn(),
     fetchAll: vi.fn(),
     fetchAllByUserId: vi.fn(),
+    // AC-01 — by-id tenant-scope guard resolves the target user's tenant
+    // membership through this existing service method.
+    findActiveTenantIdsForUser: vi.fn(),
 });
 
 // TASK-328 A1–A3 added admin user-profile + voice-profile read surfaces to the
@@ -239,6 +243,22 @@ describe('UserController', () => {
 
             expect(mockUserService.fetchAll).toHaveBeenCalledTimes(1);
             expect(mockUserService.fetchAllByTenantId).not.toHaveBeenCalled();
+        });
+
+        // AC-07 (TASK-336) — when a SUPER_ADMIN selects a tenant in the console,
+        // the ContextInterceptor elevates `x-tenant-id` into CLS `tenantId`.
+        // `fetchAll` must honour it and scope the listing to that tenant instead
+        // of silently enumerating every tenant.
+        it('scopes a SUPER_ADMIN to the elevated CLS tenant (X-Tenant-Id) when present', async () => {
+            mockUserService.fetchAllByTenantId.mockResolvedValue(fakeFetchResponse);
+            const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, 't-PICKED');
+
+            await buildController(cls).fetchAll({ page: 1, pageSize: 10 } as any);
+
+            expect(mockUserService.fetchAllByTenantId).toHaveBeenCalledWith(
+                expect.objectContaining({ tenantId: 't-PICKED', page: 1, pageSize: 10 }),
+            );
+            expect(mockUserService.fetchAll).not.toHaveBeenCalled();
         });
     });
 
@@ -558,6 +578,128 @@ describe('UserController', () => {
 
             expect(result).toBeDefined();
             expect(result.data).toBeDefined();
+        });
+    });
+
+    // -------------------------------------------------------------------------
+    // AC-01 (Critical, IDOR) — the by-id User routes had NO caller-tenant guard.
+    // The `User` model is intentionally NOT tenant-scoped at the Prisma
+    // extension level, so a TENANT_ADMIN with `manage:User` could read/mutate
+    // ANY tenant's user by UUID. The fix resolves the TARGET user's tenant
+    // membership (via UserRoleAssignment) and throws 404 (no existence leak)
+    // when the target is outside the caller's active tenant. SUPER_ADMIN is
+    // platform-wide and exempt.
+    // -------------------------------------------------------------------------
+    describe('AC-01 — by-id tenant-scope guard (cross-tenant User IDOR)', () => {
+        const buildController = (cls: ReturnType<typeof createMockCls>) =>
+            new UserController(
+                mockUserService as any,
+                mockApiKeyService as any,
+                mockUserSettingsService as any,
+                mockUserRoleAssignmentService as any,
+                mockUserProfileService as any,
+                mockVoiceProfileService as any,
+                cls as any,
+            );
+
+        const tenantAdmin = () => createMockCls({ id: 'admin-a', tenantId: 't-A', roles: ['TENANT_ADMIN'] }, 't-A');
+
+        it('fetchById: rejects a TENANT_ADMIN reading a user in ANOTHER tenant with 404 (service untouched)', async () => {
+            mockUserRoleAssignmentService.findActiveTenantIdsForUser.mockResolvedValue(['t-B']);
+
+            await expect(buildController(tenantAdmin()).fetchById('victim')).rejects.toBeInstanceOf(NotFoundException);
+
+            expect(mockUserRoleAssignmentService.findActiveTenantIdsForUser).toHaveBeenCalledWith('victim');
+            expect(mockUserService.fetchById).not.toHaveBeenCalled();
+        });
+
+        it('fetchById: allows a TENANT_ADMIN reading a user in their OWN tenant', async () => {
+            mockUserRoleAssignmentService.findActiveTenantIdsForUser.mockResolvedValue(['t-A']);
+            mockUserService.fetchById.mockResolvedValue(fakeUserEntity);
+
+            await buildController(tenantAdmin()).fetchById('member');
+
+            expect(mockUserService.fetchById).toHaveBeenCalledWith('member');
+        });
+
+        it('fetchById: SUPER_ADMIN bypasses the scope check (cross-tenant read, membership never resolved)', async () => {
+            mockUserService.fetchById.mockResolvedValue(fakeUserEntity);
+            const cls = createMockCls({ id: 'root', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+
+            await buildController(cls).fetchById('anyone');
+
+            expect(mockUserService.fetchById).toHaveBeenCalledWith('anyone');
+            expect(mockUserRoleAssignmentService.findActiveTenantIdsForUser).not.toHaveBeenCalled();
+        });
+
+        it('update: rejects a cross-tenant target with 404 (service untouched)', async () => {
+            mockUserRoleAssignmentService.findActiveTenantIdsForUser.mockResolvedValue(['t-B']);
+
+            await expect(buildController(tenantAdmin()).update('victim', { username: 'x' } as any)).rejects.toBeInstanceOf(NotFoundException);
+
+            expect(mockUserService.update).not.toHaveBeenCalled();
+        });
+
+        it('updateStatus: rejects a cross-tenant target with 404 (service untouched)', async () => {
+            mockUserRoleAssignmentService.findActiveTenantIdsForUser.mockResolvedValue(['t-B']);
+
+            await expect(buildController(tenantAdmin()).updateStatus('victim', { resourceStatus: 'DISABLED' } as any)).rejects.toBeInstanceOf(NotFoundException);
+
+            expect(mockUserService.update).not.toHaveBeenCalled();
+        });
+
+        it('delete: rejects a cross-tenant target with 404 (service untouched)', async () => {
+            mockUserRoleAssignmentService.findActiveTenantIdsForUser.mockResolvedValue(['t-B']);
+
+            await expect(buildController(tenantAdmin()).delete('victim')).rejects.toBeInstanceOf(NotFoundException);
+
+            expect(mockUserService.deleteById).not.toHaveBeenCalled();
+        });
+
+        it('fetchUserSettings: rejects a cross-tenant target with 404 (service untouched)', async () => {
+            mockUserRoleAssignmentService.findActiveTenantIdsForUser.mockResolvedValue(['t-B']);
+
+            await expect(buildController(tenantAdmin()).fetchUserSettings('victim')).rejects.toBeInstanceOf(NotFoundException);
+
+            expect(mockUserSettingsService.fetchAllByUserId).not.toHaveBeenCalled();
+        });
+
+        it('rejects a non-super-admin with NO tenant context with 404 (no enumeration)', async () => {
+            const cls = createMockCls({ id: 'u-1', tenantId: null, roles: ['TENANT_ADMIN'] }, null);
+
+            await expect(buildController(cls).fetchById('victim')).rejects.toBeInstanceOf(NotFoundException);
+
+            expect(mockUserService.fetchById).not.toHaveBeenCalled();
+        });
+
+        it('bulkDelete: validates EVERY id — a cross-tenant id is recorded as failed and is NOT deleted', async () => {
+            mockUserRoleAssignmentService.findActiveTenantIdsForUser.mockImplementation((id: string) =>
+                id === 'mine' ? Promise.resolve(['t-A']) : Promise.resolve(['t-B']),
+            );
+            mockUserService.deleteById.mockResolvedValue(fakeUserEntity);
+
+            const result = await buildController(tenantAdmin()).bulkDelete({ ids: ['mine', 'theirs'] });
+
+            expect(mockUserService.deleteById).toHaveBeenCalledTimes(1);
+            expect(mockUserService.deleteById).toHaveBeenCalledWith('mine');
+            expect(result.succeeded).toHaveLength(1);
+            expect(result.failed).toHaveLength(1);
+            expect(result.failed[0].id).toBe('theirs');
+        });
+    });
+
+    // -------------------------------------------------------------------------
+    // AC-02 (Critical, privilege escalation) — POST /admin/users/:id/roles
+    // inherited only the class-level `@CanManage('User')`. A role-assignment
+    // route must carry the permission that governs the resource it mutates:
+    // `manage:UserRoleAssignment` (matches the `rbac-*` policy seed). The
+    // method-level decorator overrides the class-level one via
+    // `Reflector.getAllAndOverride([handler, class])`.
+    // -------------------------------------------------------------------------
+    describe('AC-02 — assignRole route permission', () => {
+        it('assignRole carries manage:UserRoleAssignment (overrides the class-level manage:User)', () => {
+            const required = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, UserController.prototype.assignRole);
+            expect(required).toEqual([{ action: 'manage', subject: 'UserRoleAssignment' }]);
         });
     });
 });

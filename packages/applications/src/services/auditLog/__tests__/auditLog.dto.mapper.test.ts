@@ -792,5 +792,39 @@ describe('AuditLogDtoMapper', () => {
             const csv = AuditLogDtoMapper.ToCsv([], {});
             expect(csv.split('\n')).toHaveLength(1);
         });
+
+        // OB-07 (TASK-336) — a cross-tenant (global/super-admin) export must carry
+        // tenant attribution; a tenant-scoped export must not (every row is the
+        // caller's own tenant, so the column would be noise).
+        describe('OB-07 — tenant column on global export', () => {
+            it('appends a tenantId column when includeTenant is set', () => {
+                const rows = [createMockAuditLogEntity({ id: 'a1', tenantId: 't-9', responsibleUserId: null })];
+
+                const csv = AuditLogDtoMapper.ToCsv(rows as any, {}, { includeTenant: true });
+                const lines = csv.split('\n');
+
+                expect(lines[0]).toBe(
+                    'id,createdAt,action,resourceType,resourceId,responsibleUserId,responsibleUserName,responsibleUserEmail,responsibleIp,eventType,success,data,tenantId',
+                );
+                expect(lines[1].endsWith(',t-9')).toBe(true);
+            });
+
+            it('omits the tenantId column by default (tenant-scoped export)', () => {
+                const rows = [createMockAuditLogEntity({ id: 'a1', tenantId: 't-9', responsibleUserId: null })];
+
+                const header = AuditLogDtoMapper.ToCsv(rows as any, {}).split('\n')[0];
+
+                expect(header).not.toContain('tenantId');
+                expect(header.endsWith('data')).toBe(true);
+            });
+
+            it('emits an empty tenant cell when the row has no tenantId (global export)', () => {
+                const rows = [createMockAuditLogEntity({ id: 'a1', tenantId: null as any, responsibleUserId: null })];
+
+                const dataLine = AuditLogDtoMapper.ToCsv(rows as any, {}, { includeTenant: true }).split('\n')[1];
+
+                expect(dataLine.endsWith(',')).toBe(true);
+            });
+        });
     });
 });

@@ -24,13 +24,6 @@ function formatDate(value?: string) {
   return new Date(value).toLocaleString();
 }
 
-/** Mask a secret/access-key id, revealing only the last 4 characters. */
-function mask(value: string) {
-  if (!value) return '';
-  const tail = value.slice(-4);
-  return `••••••••${tail}`;
-}
-
 export function AccessKeysPanel({ tenantId }: AccessKeysPanelProps) {
   const { data: keys = [], isLoading } = useStorageAccessKeys(tenantId, {
     refetchOnWindowFocus: false,
@@ -145,7 +138,7 @@ export function AccessKeysPanel({ tenantId }: AccessKeysPanelProps) {
                   {key.permissions?.length > 0 && <Badge variant="outline">{key.permissions.join(', ')}</Badge>}
                 </div>
                 <p className="text-muted-foreground truncate text-xs">
-                  <span className="font-mono">{key.accessKeyId}</span> · secret <span className="font-mono">{mask(key.accessKeyId)}</span>
+                  Access Key ID <span className="font-mono">{key.accessKeyId}</span>
                 </p>
                 <p className="text-muted-foreground truncate text-xs">
                   Created {formatDate(key.createdAt)} · Last used {formatDate(key.lastUsedAt)}

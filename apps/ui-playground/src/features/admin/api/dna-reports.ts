@@ -125,3 +125,31 @@ export function useAdminUpdateDnaReport() {
     },
   });
 }
+
+// CC-05 (TASK-336) — admin-initiated DNA generation. Mirrors the backend admin
+// route `POST /admin/dna-writing-styles/generate/:doctorId` (all body fields
+// optional; the service gathers text samples from ContextItems when omitted).
+// `tenantId` scopes the call to the admin's active tenant (the `X-Tenant-Id`
+// header); it travels as a request option, never in the body.
+export interface AdminDnaGenerateInput {
+  doctorId: string;
+  tenantId: string;
+  textSamples?: string[];
+  promptTemplateId?: string;
+  editedSummary?: string;
+  sourceIds?: string[];
+}
+
+export function useAdminGenerateDnaReport() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ doctorId, tenantId, ...body }: AdminDnaGenerateInput) =>
+      adminClient.post<{ jobId: string }>(`/admin/dna-writing-styles/generate/${doctorId}`, body, { tenantId }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: dnaReportsAdminKeys.tenantData(variables.tenantId),
+      });
+    },
+  });
+}

@@ -3,6 +3,7 @@ import { validate } from 'class-validator';
 import { Observable, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CreateStreamSessionRequest, TranscribeFileRequest } from '../dto';
+import { CreateJobRequest, CreateBatchJobRequest, CreateStreamingJobRequest } from '@arcaai/applications';
 import { TranscriptionJobController } from '../transcription-job.controller';
 import {
     TENANT_OWNED_RESOURCE_KEY,
@@ -19,10 +20,13 @@ const createMockJobService = () => ({
     getStatusCounts: vi.fn(),
     getStatusCountsForOwner: vi.fn(),
     getByConsultation: vi.fn(),
+    getByConsultationForOwner: vi.fn(),
     getByStatus: vi.fn(),
     getByStatusForOwner: vi.fn(),
     cancelJob: vi.fn(),
+    cancelJobForOwner: vi.fn(),
     retryJob: vi.fn(),
+    retryJobForOwner: vi.fn(),
 });
 
 const createMockRealtimeService = () => ({
@@ -181,13 +185,16 @@ describe('TranscriptionJobController', () => {
     });
 
     describe('GET /consultation/:consultationId', () => {
-        it('should return jobs by consultation', async () => {
+        // EU-02 (TASK-336) — owner-scoped: the end-user surface returns only the
+        // caller's OWN jobs for the consultation, not every tenant job on it.
+        it('should return the caller-owned jobs for the consultation', async () => {
             const jobs = [{ id: 'job-1' }, { id: 'job-2' }];
-            mockJobService.getByConsultation.mockResolvedValue(jobs);
+            mockJobService.getByConsultationForOwner.mockResolvedValue(jobs);
 
             const result = await controller.getByConsultation('consult-1');
 
-            expect(mockJobService.getByConsultation).toHaveBeenCalledWith('consult-1');
+            expect(mockJobService.getByConsultationForOwner).toHaveBeenCalledWith('user-1', 'consult-1');
+            expect(mockJobService.getByConsultation).not.toHaveBeenCalled();
             expect(result).toEqual(jobs);
         });
     });
@@ -480,25 +487,31 @@ describe('TranscriptionJobController', () => {
     });
 
     describe('POST /:id/cancel', () => {
-        it('should cancel a job', async () => {
+        // EU-01 (TASK-336) — creator-scoped: a same-tenant peer cannot cancel a
+        // job they did not create (id enumeration). The controller forwards the
+        // caller id so the service can 404 non-creators.
+        it('should cancel a job via the creator-scoped service method', async () => {
             const cancelled = { id: 'job-1', status: 'CANCELLED' };
-            mockJobService.cancelJob.mockResolvedValue(cancelled);
+            mockJobService.cancelJobForOwner.mockResolvedValue(cancelled);
 
             const result = await controller.cancel('job-1');
 
-            expect(mockJobService.cancelJob).toHaveBeenCalledWith('job-1');
+            expect(mockJobService.cancelJobForOwner).toHaveBeenCalledWith('user-1', 'job-1');
+            expect(mockJobService.cancelJob).not.toHaveBeenCalled();
             expect(result).toEqual(cancelled);
         });
     });
 
     describe('POST /:id/retry', () => {
-        it('should retry a failed job', async () => {
+        // EU-01 (TASK-336) — creator-scoped retry (mirrors cancel).
+        it('should retry a failed job via the creator-scoped service method', async () => {
             const retried = { id: 'job-1', status: 'QUEUED' };
-            mockJobService.retryJob.mockResolvedValue(retried);
+            mockJobService.retryJobForOwner.mockResolvedValue(retried);
 
             const result = await controller.retry('job-1');
 
-            expect(mockJobService.retryJob).toHaveBeenCalledWith('job-1');
+            expect(mockJobService.retryJobForOwner).toHaveBeenCalledWith('user-1', 'job-1');
+            expect(mockJobService.retryJob).not.toHaveBeenCalled();
             expect(result).toEqual(retried);
         });
     });
@@ -587,6 +600,45 @@ describe('TranscriptionJobController', () => {
 
             expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-xyz');
             expect(mockStreamSessionTenantBinding.clear).toHaveBeenCalledWith('sess-xyz');
+        });
+    });
+
+    // ------------------------------------------------------------------------
+    // EU-07 (TASK-336) — the create endpoints (`create` / `createBatch` /
+    // `createStreaming`) previously accepted `@Body() dto: any`, bypassing the
+    // global ValidationPipe. They now bind to typed request DTOs so malformed
+    // input (bad enum, non-UUID ids, missing required fields) is rejected.
+    // These tests lock the validation contract those endpoints rely on.
+    // ------------------------------------------------------------------------
+    describe('EU-07 — create endpoints use typed, validated request DTOs', () => {
+        const VALID_UUID_V7 = '0188b1f7-7f1a-7e7a-9c0a-2d9b6f3a1c2d';
+        const VALID_UUID_V7_B = '0190a2c4-1b2c-7d3e-8f4a-5b6c7d8e9f01';
+
+        it('CreateJobRequest accepts a valid jobType + UUIDv7 pipelineId', async () => {
+            const dto = plainToInstance(CreateJobRequest, {
+                jobType: 'BATCH',
+                pipelineId: VALID_UUID_V7,
+                mediaId: VALID_UUID_V7_B,
+            });
+            expect(await validate(dto)).toHaveLength(0);
+        });
+
+        it('CreateJobRequest rejects an invalid jobType and a non-UUID pipelineId', async () => {
+            const dto = plainToInstance(CreateJobRequest, { jobType: 'NOT_A_TYPE', pipelineId: 'not-a-uuid' });
+            const errors = await validate(dto);
+            const failedProps = errors.map((e) => e.property);
+            expect(failedProps).toContain('jobType');
+            expect(failedProps).toContain('pipelineId');
+        });
+
+        it('CreateBatchJobRequest requires both pipelineId and mediaId', async () => {
+            const missingMedia = plainToInstance(CreateBatchJobRequest, { pipelineId: VALID_UUID_V7 });
+            expect((await validate(missingMedia)).map((e) => e.property)).toContain('mediaId');
+        });
+
+        it('CreateStreamingJobRequest rejects a path-traversal pipelineId', async () => {
+            const dto = plainToInstance(CreateStreamingJobRequest, { pipelineId: '../../etc/passwd' });
+            expect((await validate(dto)).length).toBeGreaterThan(0);
         });
     });
 });

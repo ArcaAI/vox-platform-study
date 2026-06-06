@@ -1,6 +1,20 @@
 const STUDIO_VERSION = '0.15.0';
 
-export function getStudioHtml(studioEndpointUrl: string, token: string): string {
+/**
+ * Server-rendered standalone Prisma Studio shell (dev-only).
+ *
+ * TASK-336 OB-11 — the bearer JWT is NO LONGER inlined into this HTML. The
+ * served body must stay secret-free (it can otherwise leak via proxy / CDN /
+ * browser-history logs). The shell reads the token from the URL fragment
+ * (`#token=…`, which the browser never sends to the server), uses it for the
+ * BFF client, then immediately scrubs it from history.
+ *
+ * TASK-336 BR-02 — HOPE's tables all live in the `core` schema; studio-core's
+ * postgres adapter hardcodes `defaultSchema: "public"`, which is empty here and
+ * makes the UI render "No tables found". We override the adapter's
+ * `defaultSchema` to `core` so the table list resolves.
+ */
+export function getStudioHtml(studioEndpointUrl: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -85,13 +99,31 @@ export function getStudioHtml(studioEndpointUrl: string, token: string): string 
             banner.style.display = 'block';
         }
 
+        // OB-11: read the bearer token from the URL fragment (never sent to the
+        // server, absent from this response body) and immediately scrub it from
+        // history so it does not linger in the address bar / back-forward cache.
+        function readAndScrubToken() {
+            const raw = window.location.hash.indexOf('#') === 0 ? window.location.hash.slice(1) : '';
+            const token = new URLSearchParams(raw).get('token') || '';
+            if (token) {
+                window.history.replaceState(null, '', window.location.pathname + window.location.search);
+            }
+            return token;
+        }
+
         function App() {
             const adapter = useMemo(() => {
+                const token = readAndScrubToken();
+                if (!token) {
+                    showError('No access token supplied. Open Prisma Studio from the admin console (the token is passed via the URL fragment).');
+                }
                 const executor = createStudioBFFClient({
                     url: '${studioEndpointUrl}',
-                    customHeaders: { 'Authorization': 'Bearer ${token}' },
+                    customHeaders: { 'Authorization': 'Bearer ' + token },
                 });
-                return createPostgresAdapter({ executor });
+                // BR-02: HOPE tables live in the core schema; studio-core defaults
+                // to the (empty) public schema, which renders "No tables found".
+                return Object.assign(createPostgresAdapter({ executor }), { defaultSchema: 'core' });
             }, []);
 
             return h(Studio, { adapter });

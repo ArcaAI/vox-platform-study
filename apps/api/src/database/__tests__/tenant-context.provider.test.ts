@@ -102,6 +102,20 @@ describe('ClsTenantContextProvider', () => {
     expect(provider.isSuperAdmin()).toBe(true);
   });
 
+  // AC-06 (TASK-336) — GLOBAL_ADMIN must receive the same cross-tenant
+  // pass-through at the DB-extension layer as SUPER_ADMIN, otherwise an
+  // elevated GLOBAL_ADMIN passes the controller guard but is blocked by the
+  // tenant-scope Prisma extension.
+  it('isSuperAdmin reflects the GLOBAL_ADMIN role on the user', () => {
+    const provider = new ClsTenantContextProvider(
+      makeCls({
+        active: true,
+        store: { tenantId: 't', user: { roles: ['GLOBAL_ADMIN', 'User'] } },
+      }),
+    );
+    expect(provider.isSuperAdmin()).toBe(true);
+  });
+
   it('onApplicationBootstrap registers the provider; shutdown clears it', () => {
     const provider = new ClsTenantContextProvider(
       makeCls({ active: false, store: {} }),

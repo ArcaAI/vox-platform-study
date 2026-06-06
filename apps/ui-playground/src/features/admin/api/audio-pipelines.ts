@@ -77,6 +77,15 @@ export const audioPipelineKeys = {
 // Query hooks
 // ---------------------------------------------------------------------------
 
+// TODO(IC-08 / TASK-336 — DEFERRED): adopt the paginated
+// `/admin/audio/pipelines/list` endpoint (envelope: `PaginatedAudioPipelines`)
+// with page controls in the pipelines list. Deliberately left on the flat
+// all-status `/admin/audio/pipelines` (admin `getAllForAdmin`) for now: the
+// paginated route returns a different envelope, defaults to limit=20
+// (truncation past page 1 without UI page controls), and its service-side
+// `findAll` does not share the ENABLED+DISABLED semantics of IC-02's
+// `findAllForAdmin` — so a naive switch would revert IC-02 and break consumers.
+// Safe adoption needs an all-status paginated server route + FE page controls.
 export function useAudioPipelines(tenantId: string, options?: Omit<UseQueryOptions<AudioPipeline[]>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: audioPipelineKeys.list(tenantId),
@@ -144,6 +153,6 @@ export function useDeleteAudioPipeline(tenantId: string) {
 
 export function useValidateAudioPipelineYaml(tenantId: string) {
   return useMutation({
-    mutationFn: (yaml: string) => adminClient.post<YamlValidationResult>('/admin/audio/pipelines/validate-yaml', { yaml }, { tenantId }),
+    mutationFn: (yaml: string) => adminClient.post<YamlValidationResult>('/admin/audio/pipelines/validate', { yaml }, { tenantId }),
   });
 }

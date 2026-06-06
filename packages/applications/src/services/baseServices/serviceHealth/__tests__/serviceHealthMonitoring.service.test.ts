@@ -277,10 +277,19 @@ describe('ServiceHealthMonitoringService', () => {
             expect(result.totalUsers).toBe(0);
         });
 
-        it('should not include STT v1 sessions (removed)', async () => {
+        // TASK-336 OB-13 — sessions now cover all four downstream services
+        // (tts, smr, stt, nlp), matching the uptime/health surfaces. The
+        // counts stay static zeros (no per-service polling — see no-fetch test).
+        it('should include stt and nlp session counts (OB-13)', async () => {
             const result = await service.getSessionCounts();
 
-            expect(result.services).not.toHaveProperty('stt');
+            expect(result.services.stt.active).toBe(0);
+            expect(result.services.nlp.active).toBe(0);
+        });
+
+        it('should not poll downstream services for session counts (no fetch)', async () => {
+            await service.getSessionCounts();
+
             expect(mockFetch).not.toHaveBeenCalled();
         });
 

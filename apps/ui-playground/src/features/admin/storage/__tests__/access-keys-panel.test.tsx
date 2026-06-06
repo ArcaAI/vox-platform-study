@@ -88,6 +88,18 @@ describe('AccessKeysPanel (TASK-328 A7)', () => {
         expect(screen.getByText(/no access keys yet/i)).toBeTruthy();
     });
 
+    // IC-06 (TASK-336) — the list row showed the (non-secret) accessKeyId masked
+    // and mislabeled "secret". The real secret is write-only (one-time box only),
+    // so the row must label the identifier as the Access Key ID, never "secret".
+    it('labels the list row "Access Key ID" and never mislabels it as a secret (IC-06)', () => {
+        keysData = [existingKey];
+        const { container } = render(<AccessKeysPanel tenantId="t1" />);
+
+        expect(screen.getByText('AKIAPUBLICID1234')).toBeTruthy();
+        expect(container.textContent).toMatch(/access key id/i);
+        expect(container.textContent).not.toMatch(/secret/i);
+    });
+
     it('reveals the one-time secret after creating a key', () => {
         createMutate.mockImplementation((_vars: unknown, opts: any) => {
             opts?.onSuccess?.({ ...existingKey, id: 'key-2', accessKeyId: 'AKIANEWID5678', secretAccessKey: 'super-secret-shhh' });

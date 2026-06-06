@@ -274,6 +274,13 @@ describe('tenant-guards', () => {
       expect(isSuperAdmin({ roles: ['DOCTOR', 'SUPER_ADMIN'] })).toBe(true);
     });
 
+    // AC-06 (TASK-336) — GLOBAL_ADMIN is a platform-wide elevated role and
+    // MUST be treated as cross-tenant privileged, identical to SUPER_ADMIN.
+    it('returns true when user.roles includes "GLOBAL_ADMIN"', () => {
+      expect(isSuperAdmin({ roles: ['GLOBAL_ADMIN'] })).toBe(true);
+      expect(isSuperAdmin({ roles: ['DOCTOR', 'GLOBAL_ADMIN'] })).toBe(true);
+    });
+
     it('is case-sensitive — "super_admin" or "SuperAdmin" does NOT grant the bypass', () => {
       expect(isSuperAdmin({ roles: ['super_admin'] })).toBe(false);
       expect(isSuperAdmin({ roles: ['SuperAdmin'] })).toBe(false);

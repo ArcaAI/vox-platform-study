@@ -167,6 +167,36 @@ export class PipelineService extends BaseService implements IPipelineService {
   }
 
   /**
+   * IC-04 (TASK-336) — Assign a pipeline within its owning tenant.
+   *
+   * The endpoint previously returned success without persisting anything. The
+   * data model does not support a cross-tenant move: `AsrPipeline` has a single
+   * `tenantId` whose entity setter is deliberately *protected* (BaseTenantEntity,
+   * TASK-305), and the tenant-scope Prisma extension constrains writes to the
+   * caller's tenant. We therefore reject a cross-tenant target instead of faking
+   * a transfer, and persist the only meaningful same-tenant assignment:
+   * promoting the pipeline to the tenant default (atomic flip via `setDefault`).
+   */
+  async assignToTenant(id: string, targetTenantId: string): Promise<PipelineResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+    if (!targetTenantId || targetTenantId.trim().length === 0) {
+      throw new BadRequestException('tenantId is required');
+    }
+    if (targetTenantId !== tenantId) {
+      throw new BadRequestException(
+        'Cross-tenant pipeline assignment is not supported; a pipeline can only be assigned within its owning tenant.',
+      );
+    }
+
+    // Same-tenant assignment → persist by promoting the pipeline to the tenant
+    // default (tenant-scoped 404 if the row is not owned by the caller).
+    return this.setDefault(id);
+  }
+
+  /**
    * TASK-328 A6 — Mark a pipeline as the tenant default.
    *
    * Delegates the multi-row flip to the repository transaction
@@ -339,6 +369,31 @@ export class PipelineService extends BaseService implements IPipelineService {
     }
 
     const pipelines = await this.pipelineRepository.findEnabledPipelines(tenantId);
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: { count: pipelines.length },
+    });
+
+    return pipelines.map(PipelineDtoMapper.toResponse);
+  }
+
+  /**
+   * Get all pipelines for the admin surface, regardless of enabled status.
+   *
+   * IC-02 — the enabled-only `getAll` (above) is shared with the public
+   * end-user listing. The admin list, however, has a disable toggle and then
+   * refetches, so an enabled-only query made a just-disabled pipeline vanish
+   * with no way to re-enable it. The admin surface therefore reads
+   * `findAllForAdmin` (ENABLED + DISABLED, excludes deleted) while the public
+   * listing stays enabled-only.
+   */
+  async getAllForAdmin(): Promise<PipelineResponse[]> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const pipelines = await this.pipelineRepository.findAllForAdmin(tenantId);
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: { count: pipelines.length },

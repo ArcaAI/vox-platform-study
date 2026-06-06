@@ -24,4 +24,14 @@ export class CreateDepartmentRequest {
   @IsOptional()
   @IsString()
   parentDepartmentId?: string;
+
+  // CC-04 (TASK-336) — the admin create modal collects a default summary
+  // template. The field must be whitelisted here or the global
+  // `forbidNonWhitelisted` ValidationPipe rejects the request (400) before it
+  // reaches the service. `UpdateDepartmentRequest` already exposes it; this
+  // brings create to parity so a template typed at create-time is not dropped.
+  @ApiPropertyOptional({ description: 'Default summary template for the department' })
+  @IsOptional()
+  @IsString()
+  defaultSummaryTemplate?: string;
 }

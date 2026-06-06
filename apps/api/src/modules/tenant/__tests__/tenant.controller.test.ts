@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { TenantController } from '../tenant.controller';
 
 const REQUIRED_PERMISSIONS_KEY = 'required_permissions';
@@ -400,6 +400,82 @@ describe('TenantController', () => {
             await expect(controller.fetchAll({ page: 1, limit: 10 } as any)).rejects.toBeInstanceOf(ForbiddenException);
             expect(svc.fetchById).not.toHaveBeenCalled();
             expect(svc.fetchAll).not.toHaveBeenCalled();
+        });
+    });
+
+    // AC-10 (TASK-336) — the tenant-config read/update routes take a dual
+    // `:identifier` (tenant UUID OR code-name) and previously forwarded it (and
+    // the raw config body) straight to the service. Add a controller-layer scope
+    // guard (404, NOT 403 — preserves the service's no-existence-leak posture for
+    // configs) plus an explicit updatable-key allow-list on update (the global
+    // ValidationPipe does NOT whitelist array-body elements).
+    describe('AC-10 — tenant config scope guard + updatable-key allow-list', () => {
+        const OWN_UUID = '11111111-1111-1111-1111-111111111111';
+        const FOREIGN_UUID = '00000000-0000-0000-0000-0000000000ff';
+
+        function build(user: { id?: string; tenantId?: string | null; roles?: string[] } | null) {
+            const svc = createMockTenantService();
+            svc.fetchTenantConfigs.mockResolvedValue({ page: 1, limit: 10, count: 0, data: [] });
+            svc.updateTenantConfigs.mockResolvedValue({ page: 1, limit: 10, count: 0, data: [] });
+            const cls = createMockCls(user);
+            return { controller: new TenantController(svc as never, cls as never), svc };
+        }
+
+        describe('fetchTenantConfigs', () => {
+            it('404s a non-super-admin addressing a FOREIGN tenant by UUID (no leak, service untouched)', async () => {
+                const { controller, svc } = build({ id: 'u-1', tenantId: OWN_UUID, roles: ['TENANT_ADMIN'] });
+                await expect(controller.fetchTenantConfigs(FOREIGN_UUID, {} as any)).rejects.toBeInstanceOf(NotFoundException);
+                expect(svc.fetchTenantConfigs).not.toHaveBeenCalled();
+            });
+
+            it('allows a non-super-admin to read their OWN tenant by UUID', async () => {
+                const { controller, svc } = build({ id: 'u-1', tenantId: OWN_UUID, roles: ['TENANT_ADMIN'] });
+                await controller.fetchTenantConfigs(OWN_UUID, {} as any);
+                expect(svc.fetchTenantConfigs).toHaveBeenCalledTimes(1);
+            });
+
+            it('defers a code-name identifier to the service no-leak guard', async () => {
+                const { controller, svc } = build({ id: 'u-1', tenantId: OWN_UUID, roles: ['TENANT_ADMIN'] });
+                await controller.fetchTenantConfigs('acme-clinic', {} as any);
+                expect(svc.fetchTenantConfigs).toHaveBeenCalledTimes(1);
+            });
+
+            it('lets a SUPER_ADMIN read any tenant', async () => {
+                const { controller, svc } = build({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] });
+                await controller.fetchTenantConfigs(FOREIGN_UUID, {} as any);
+                expect(svc.fetchTenantConfigs).toHaveBeenCalledTimes(1);
+            });
+        });
+
+        describe('updateTenantConfigs', () => {
+            it('404s a non-super-admin updating a FOREIGN tenant by UUID (service untouched)', async () => {
+                const { controller, svc } = build({ id: 'u-1', tenantId: OWN_UUID, roles: ['TENANT_ADMIN'] });
+                await expect(
+                    controller.updateTenantConfigs(FOREIGN_UUID, [{ id: 'c1', value: 'v', expectedVersion: 1 } as any]),
+                ).rejects.toBeInstanceOf(NotFoundException);
+                expect(svc.updateTenantConfigs).not.toHaveBeenCalled();
+            });
+
+            it('forwards ONLY the allow-listed keys (id, value, description, expectedVersion) to the service', async () => {
+                const { controller, svc } = build({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] });
+                await controller.updateTenantConfigs(OWN_UUID, [
+                    {
+                        id: 'c1',
+                        value: 'v',
+                        description: 'd',
+                        expectedVersion: 1,
+                        // smuggled keys — must be stripped before reaching the service:
+                        locked: true,
+                        tenantId: 'evil',
+                        key: 'default-stt-model',
+                    } as any,
+                ]);
+                const passed = svc.updateTenantConfigs.mock.calls[0][1];
+                expect(passed[0]).toEqual({ id: 'c1', value: 'v', description: 'd', expectedVersion: 1 });
+                expect('locked' in passed[0]).toBe(false);
+                expect('tenantId' in passed[0]).toBe(false);
+                expect('key' in passed[0]).toBe(false);
+            });
         });
     });
 });

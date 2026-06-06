@@ -249,6 +249,41 @@ describe('ConfigurationManagementPage', () => {
         });
     });
 
+    // IC-07 (TASK-336) — the platform/global defaults live on the `__GLOBAL__`
+    // tenant and were only reachable by hunting for it in the header switcher.
+    // A dedicated SUPER_ADMIN-only "Platform defaults" toggle re-scopes the
+    // existing (GET/PATCH) config editor to `__GLOBAL__`.
+    describe('platform settings section (IC-07)', () => {
+        it('lets SUPER_ADMIN switch the config scope to the global (__GLOBAL__) tenant', () => {
+            mockRoles = ['SUPER_ADMIN'];
+            mockTenantId = 'tenant-001';
+            renderPage();
+
+            // Default scope = the header-selected tenant.
+            expect(vi.mocked(useTenantConfigs)).toHaveBeenCalledWith(
+                'tenant-001',
+                expect.any(Object),
+                expect.objectContaining({ enabled: true }),
+            );
+
+            fireEvent.click(screen.getByRole('button', { name: /platform defaults/i }));
+
+            // Switching re-scopes the same admin config query to `__GLOBAL__`.
+            expect(vi.mocked(useTenantConfigs)).toHaveBeenCalledWith(
+                '__GLOBAL__',
+                expect.any(Object),
+                expect.objectContaining({ enabled: true }),
+            );
+        });
+
+        it('does NOT expose the platform toggle to TENANT_ADMIN', () => {
+            mockRoles = ['TENANT_ADMIN'];
+            renderPage();
+
+            expect(screen.queryByRole('button', { name: /platform defaults/i })).not.toBeInTheDocument();
+        });
+    });
+
     describe('configuration listing', () => {
         it('should display configurations in the second column', () => {
             renderPage();

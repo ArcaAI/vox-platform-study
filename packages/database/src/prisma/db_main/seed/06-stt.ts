@@ -1,6 +1,6 @@
 import type { CorePrismaClient } from '../../../client';
 import { ValueType } from '../../../generated/core-prisma-client/client.js';
-import { SYSTEM_TENANT_ID, SEED_CUSTOMER_TENANT_IDS } from './00-constants';
+import { SYSTEM_TENANT_ID, SEED_TENANT_ID, SEED_CUSTOMER_TENANT_IDS } from './00-constants';
 import { TEMPLATE_IDS } from './07-prompt-template';
 
 /**
@@ -1700,6 +1700,52 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
 ];
 
 // =============================================================================
+// GLOBAL CUSTOMER-TENANT ASR PIPELINES (TASK-336 IC-03)
+//
+// The DEFAULT_ASR_PIPELINES above are owned by the reserved SYSTEM tenant
+// (DEFAULT_TENANT_ID === SYSTEM_TENANT_ID) and are NOT shared-read into customer
+// tenants, so the Global customer tenant (SEED_TENANT_ID, 50000000-…0000)
+// previously had ZERO pipelines: its doctors' public pipeline list resolved to
+// [] and the `default-stt-pipeline` GlobalSetting pointed at an unreachable
+// SYSTEM row. Here we give the Global tenant its OWN small catalog (a production
+// default + a turbo streaming option) and mark EXACTLY ONE `isDefault: true`, so
+// the SYSTEM-vs-tenant story matches the customer tenants: SYSTEM owns the master
+// catalog; every customer-facing tenant (incl. Global) owns its own pipelines.
+//
+// ID scheme: stays in the `81000000-…-0001-…` ASR-pipeline block; the trailing
+// group uses the 4xx slot (Global) so IDs never collide with the system rows
+// (01-07, 50-52) or the other customer tenants (1xx/2xx/3xx). Slugs are reused
+// per tenant — safe under `@@unique([tenantId, slug])`.
+//
+// Kept in a SEPARATE array (not CUSTOMER_TENANT_ASR_PIPELINES) because the seed
+// tests require every CUSTOMER_TENANT_ASR_PIPELINES row to be an ArcaAI/4bits/
+// Mumbai tenant. Exported for testing + reuse by transcription-job seeds.
+// =============================================================================
+
+export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
+    {
+        id: '81000000-0000-0000-0001-000000000401',
+        tenantId: SEED_TENANT_ID,
+        name: 'Global Production Pipeline (Whisper Large V3)',
+        slug: 'production-whisper-large-v3',
+        description: 'Global tenant default production pipeline using Whisper Large V3 with VAD and noise reduction. Referenced by the tenant `default-stt-pipeline` setting.',
+        configYaml: PIPELINE_CONFIGS.production,
+        isDefault: true,
+        tags: ['production', 'high-quality', 'recommended'],
+    },
+    {
+        id: '81000000-0000-0000-0001-000000000402',
+        tenantId: SEED_TENANT_ID,
+        name: 'Global Turbo Pipeline (Whisper Large V3 Turbo)',
+        slug: 'turbo-whisper-large-v3',
+        description: 'Global tenant fast streaming pipeline using Whisper Large V3 Turbo for low-latency transcription.',
+        configYaml: PIPELINE_CONFIGS.turbo,
+        isDefault: false,
+        tags: ['streaming', 'real-time', 'fast'],
+    },
+];
+
+// =============================================================================
 // GLOBAL SETTINGS FOR STT SERVICE
 // =============================================================================
 
@@ -1999,8 +2045,13 @@ export const seedAiModels = async (client: CorePrismaClient) => {
 export const seedAsrPipelines = async (client: CorePrismaClient) => {
     console.log('Seeding ASR Pipelines...');
 
-    // System (platform-wide) pipelines + per-customer-tenant pipelines.
-    const allPipelines = [...DEFAULT_ASR_PIPELINES, ...CUSTOMER_TENANT_ASR_PIPELINES];
+    // System (platform-wide) pipelines + Global-tenant pipelines (TASK-336
+    // IC-03) + per-customer-tenant pipelines.
+    const allPipelines = [
+        ...DEFAULT_ASR_PIPELINES,
+        ...GLOBAL_TENANT_ASR_PIPELINES,
+        ...CUSTOMER_TENANT_ASR_PIPELINES,
+    ];
 
     for (const pipelineData of allPipelines) {
         const existing = await client.asrPipeline.findFirst({

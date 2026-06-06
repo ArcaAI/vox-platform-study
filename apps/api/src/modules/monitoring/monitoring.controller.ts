@@ -7,7 +7,11 @@ import { HeartbeatRecord, ServiceUptime, SessionsResponse, UptimeResponse } from
 
 @ApiTags('monitoring')
 @ApiBearerAuth()
-@Authorize()
+// TASK-336 OB-12 — ops monitoring is platform-wide infra data. Gate the whole
+// controller to SUPER_ADMIN (`manage all`), matching the other ops/admin
+// surfaces (e.g. RateLimitAdminController). Pre-OB-12 a bare @Authorize() let
+// any authenticated caller (e.g. a doctor) read uptime/sessions.
+@Authorize(['manage', 'all'])
 @Throttle({ default: { limit: 300, ttl: 60000 } })
 @Controller('monitoring')
 export class MonitoringController {
