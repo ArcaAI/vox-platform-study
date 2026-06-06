@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsOptional, IsBoolean, IsDate } from 'class-validator';
+import { IsString, IsOptional, IsBoolean } from 'class-validator';
 import { BaseRequest } from '../../../../common';
 
 export class CreateUserRequest extends BaseRequest {
@@ -21,25 +21,10 @@ export class CreateUserRequest extends BaseRequest {
   @IsOptional()
   isServiceAccount?: boolean;
 
-  @ApiProperty({ description: 'First secret key', required: false })
-  @IsString()
-  @IsOptional()
-  secret1?: string;
-
-  @ApiProperty({ description: 'First secret key expiry', required: false })
-  @IsDate()
-  @IsOptional()
-  secret1Expiry?: Date;
-
-  @ApiProperty({ description: 'Second secret key', required: false })
-  @IsString()
-  @IsOptional()
-  secret2?: string;
-
-  @ApiProperty({ description: 'Second secret key expiry', required: false })
-  @IsDate()
-  @IsOptional()
-  secret2Expiry?: Date;
+  // AC-05 (TASK-336) — secret1/secret2 are NOT client-assignable. They were
+  // mass-assignable here, letting a caller seed arbitrary service-account
+  // credentials on create. Secrets are provisioned only by the dedicated
+  // rotation flow, never through the generic create payload.
 
   // TASK-331 r2605 #3 — optional membership. When supplied, the user is created
   // together with an ENABLED UserRoleAssignment and/or UserDepartment in the

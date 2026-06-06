@@ -58,6 +58,25 @@ interface PaginationParams {
   search?: string;
 }
 
+/**
+ * AC-04 (TASK-336): the RBAC controllers (`/admin/rbac/roles`, `/policies`) do
+ * NOT speak the admin `{ count, limit }` envelope — they return `{ total,
+ * pageSize }` and read the page-size query param as `pageSize`. Left unmapped
+ * the count came back `undefined` and the requested page size was ignored
+ * (stuck at the controller default). This typed envelope + `toAdminEnvelope`
+ * normalize the RBAC shape to the admin contract the FE already consumes.
+ */
+interface RbacPaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+function toAdminEnvelope<T>(res: RbacPaginatedResponse<T>): PaginatedResponse<T> {
+  return { data: res.data, count: res.total, limit: res.pageSize, page: res.page };
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -77,7 +96,9 @@ const assignmentKeys = {
 
 function qs(params?: PaginationParams): string {
   if (!params) return '';
-  const entries = Object.entries(params).filter(([, v]) => v != null);
+  // AC-04 (TASK-336): RBAC reads `pageSize`, not the admin-plane `limit`.
+  const mapped: Record<string, unknown> = { page: params.page, pageSize: params.limit, search: params.search };
+  const entries = Object.entries(mapped).filter(([, v]) => v != null);
   if (entries.length === 0) return '';
   return '?' + new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString();
 }
@@ -89,7 +110,7 @@ function qs(params?: PaginationParams): string {
 export function useRoles(params?: PaginationParams, options?: Omit<UseQueryOptions<PaginatedResponse<Role>>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.list(params),
-    queryFn: () => adminClient.get<PaginatedResponse<Role>>(`/admin/rbac/roles${qs(params)}`),
+    queryFn: async () => toAdminEnvelope(await adminClient.get<RbacPaginatedResponse<Role>>(`/admin/rbac/roles${qs(params)}`)),
     ...options,
   });
 }

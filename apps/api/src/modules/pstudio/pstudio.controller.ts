@@ -41,32 +41,23 @@ export class PrismaStudioController {
     private readonly auditLogService: IAuditLogService,
   ) {}
 
-  // TASK-307 W5.2 (AC-16, audit C-9): GET no longer accepts a JWT via
-  // `?token=` query string (it leaks through proxy / CDN / browser
-  // history logs). Authentication is required at the guard layer, and
-  // the same Bearer credential is read from the Authorization header
-  // here so it can be embedded in the studio shell for the BFF client.
+  // TASK-307 W5.2 (AC-16, audit C-9): GET does not accept a JWT via `?token=`
+  // query string. Authentication is enforced at the guard layer.
+  // TASK-336 OB-11 (audit OB-11): the bearer token is NO LONGER embedded in the
+  // served HTML — the shell sources it from the URL fragment at runtime — so the
+  // response body carries no secret. We also mark it no-store so no proxy / CDN
+  // caches the dev-only studio shell.
   @Get()
   @Authorize(['manage', 'all'])
   @ApiBearerAuth()
   @ApiExcludeEndpoint()
   serveStudio(@Req() req: Request, @Res() res: Response) {
-    const auth = typeof req.headers?.authorization === 'string' ? req.headers.authorization : '';
-    const match = auth.match(/^Bearer\s+(.+)$/i);
-    if (!match) {
-      // Defensive: the guard normally catches missing/invalid bearer
-      // tokens before this handler runs. If reached anyway, refuse
-      // without naming a "?token=" alternative.
-      res.status(401).type('text/plain').send('Access denied. A valid Authorization: Bearer <jwt> header is required.');
-      return;
-    }
-    const token = match[1].trim();
-
     const protocol = req.headers['x-forwarded-proto'] || req.protocol;
     const host = req.get('host');
     const studioEndpointUrl = `${protocol}://${host}/api/v1/admin/pstudio`;
 
-    const html = getStudioHtml(studioEndpointUrl, token);
+    const html = getStudioHtml(studioEndpointUrl);
+    res.setHeader('Cache-Control', 'no-store');
     res.type('text/html').send(html);
   }
 

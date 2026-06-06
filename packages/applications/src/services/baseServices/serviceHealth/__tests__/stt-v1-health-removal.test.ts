@@ -136,9 +136,14 @@ describe('STT v1 Health Check Removal (TASK-210 Phase 1)', () => {
             expect(mockFetch).not.toHaveBeenCalled();
         });
 
-        it('should not include stt in services', async () => {
+        // TASK-336 OB-13 — sessions now expose an `stt` (STT v2) key alongside
+        // tts/smr/nlp for surface consistency. This does NOT reintroduce the
+        // removed STT v1 *polling* (see "should not make any fetch calls"); the
+        // count is a static placeholder produced without any network call.
+        it('should include stt (STT v2) as a static, non-polled session count (OB-13)', async () => {
             const result = await service.getSessionCounts();
-            expect(result.services).not.toHaveProperty('stt');
+            expect(result.services).toHaveProperty('stt');
+            expect(result.services.stt.active).toBe(0);
         });
 
         it('should return 0 totalUsers', async () => {

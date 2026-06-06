@@ -7,12 +7,7 @@ import { Switch } from '@arcaai/ui/switch';
 import { Loader2, Save } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import {
-  type StorageProvider,
-  type StorageTopology,
-  useTenantStorageConfigs,
-  useUpsertTenantStorageConfig,
-} from '../api/storage-config';
+import { type StorageProvider, type StorageTopology, useTenantStorageConfigs, useUpsertTenantStorageConfig } from '../api/storage-config';
 import { type TenantBucket, useSetTenantBucketDefaults, useTenantBucketDefaults } from '../api/tenant-storage';
 
 interface ProviderConfigPanelProps {

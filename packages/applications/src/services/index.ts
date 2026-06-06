@@ -1,6 +1,8 @@
 // This file is auto-generated. Be careful to edit manually
 export * from './audit';
 export * from './auditLog';
+// TASK-336 OB-05 / TH6 — scheduled AuditLog retention purge.
+export * from './audit-retention';
 export * from './auth';
 export * from './baseServices';
 export * from './sysEvent';

@@ -6,9 +6,11 @@
 | Title | Clinical Documentation Harness — applying Harness Engineering to the AI consultation / clinical-document build workflow |
 | Type | research + high-level design (architecture) |
 | Created | 2026-06-02 |
-| Updated | 2026-06-02 (**v2** — decision-locked, medical-domain research, dedicated-orchestrator design) |
-| Status | **Pending** (design proposal — awaiting approval before any implementation) |
-| Scope | `apps/{stt-v2,nlp,smr,api}` + new `apps/harness`; `packages/{agentic-sdk-v2,med-ner,applications,domains,database}`; infra `Qdrant` + `Langfuse`; India `ABDM/FHIR` adapter |
+| Updated | 2026-06-06 (**v3** — codebase re-review post-TASK-331, SOTA reconciliation, **durability locked = Temporal**, detailed implementation plan) |
+| Status | **Review** (design + plan ready for approval; no code written) |
+| Scope | `apps/{stt-v2,nlp,smr,api}` + new `apps/harness`; `packages/{agentic-sdk-v2,med-ner,applications,domains,database}`; infra `Qdrant` + `Langfuse` + **Temporal**; India `ABDM/FHIR` adapter |
+| Research | Fully-cited research archive: [`research/clinical-harness/`](../../../research/clinical-harness/README.md) (8 docs, 182 sources) |
+| Plan | Detailed phased implementation plan: [`implementation-plan.md`](./implementation-plan.md) |
 | Interpretation | "Harness Engineering" = the 2026 AI-agent discipline (*Agent = Model + Harness*). "Build automation workflow" = the automated **clinical-document build pipeline** (transcribe → detect entities → summarize → assemble note → clinician sign-off), **not** Harness.io / CI-CD. |
 
 > Phase-3 (Plan) document per `01-development-workflow.mdc`. No code is written until the plan + use cases
@@ -16,7 +18,30 @@
 
 ---
 
-## 0. What changed in v2
+## 0. What changed
+
+### v3 (2026-06-06) — codebase re-review + SOTA reconciliation + implementation plan
+Three review agents re-evaluated the **current** codebase (post **TASK-331**) and one research agent gathered the
+**2026 implementation SOTA**; all six research reports are now archived with full citations in
+[`research/clinical-harness/`](../../../research/clinical-harness/README.md). Net changes vs v2:
+- **Durability/HITL locked = Temporal** (D11). Sign-off can lag hours/days → the loop must be a *resumable* durable
+  workflow with zero-compute waits, SLA/escalation timers, and replay-grade audit. LLM/tool calls live in Temporal
+  **Activities**; workflow code stays deterministic.
+- **SOTA stack chosen** (D12): **Outlines+vLLM `guided_json`** / OpenAI Structured Outputs for schema enforcement;
+  **Bespoke-MiniCheck-7B** as the self-hosted groundedness sensor; **Presidio + clinical NER → John Snow Labs** for
+  PHI; **Llama Guard 3** for safety; **DeepEval + promptfoo** CI gates + **RAGAS** + **Epic's open-source PDSQI-9**
+  LLM-judge; **Langfuse over OTel** with masking at *both* SDK and Collector. (See `06-sota-harness-implementation.md`.)
+- **Faithfulness-judge strategy resolved** (was open #3): small judge **≤20B self-hosted via LM Studio** (priority),
+  large judge via **Azure OpenAI / AWS Bedrock** — model-agnostic, honours D3.
+- **Reconciled to current codebase** (new §3.4): TASK-331 added `SummaryMeta.promptResolvedFrom/resolvedPromptId`,
+  dual-capture `AudioRecording.rawMediaId/processedMediaId`, `prompt-template-read` for `DOCTOR`, DNA-generate
+  isolation, assembled-IDs default summary, and a tenant-scope drift guard. Confirmed still-missing: NER→prompt
+  injection, activated SOAP schema, sensors, Qdrant ingestion, WORM/attestation/consent/lifecycle-status/FHIR-id/
+  eval tables, Langfuse wiring. `AuditLog` exists but is **mutable (not WORM)** with no `ATTEST` action.
+- **Detailed implementation plan added** as [`implementation-plan.md`](./implementation-plan.md) (phased, TDD,
+  layer order, concrete file touch-points).
+
+### v2 (2026-06-02)
 
 v1 was the initial research + HLD. v2 **locks the design** against an interactive brainstorm (10 decisions, §1.4)
 and **5 parallel deep-research agents** focused on the medical domain + harness engineering for medical
@@ -69,6 +94,8 @@ probabilistic model into a dependable, verifiable, auditable system — i.e. HOP
 | **D8** | Sequencing | **Eval harness first** | golden set + judge + CI gates *before* any model/prompt change |
 | **D9** | Topology | **Dedicated orchestrator service** (ACI) | `apps/harness`; reuse STT/NLP/SMR as tools; propagate tenancy/authZ |
 | **D10** | Orchestrator stack | **Python / FastAPI** | co-locate the ML control stack; `apps/api` = gateway + system-of-record |
+| **D11** | Durability / HITL layer *(v3)* | **Temporal** | resumable durable workflow; signal-based confirm-before-commit; SLA/escalation timers; replay audit. LLM/tool calls in Activities; adds a Temporal server/cluster to ops |
+| **D12** | Eval/guardrail/judge stack *(v3)* | **Adopt SOTA** (see §0/§4.3) | Outlines/OpenAI structured outputs · Bespoke-MiniCheck-7B · Presidio→JSL · Llama Guard 3 · DeepEval/promptfoo/RAGAS + Epic PDSQI-9; judge ≤20B via LM Studio, large via Azure/Bedrock |
 
 ---
 
@@ -247,6 +274,36 @@ layers are missing (sensors/verification, knowledge-grounding, eval harness).**
    (1536-dim) is **provisioned but empty** — only the ingestion/retrieval pipeline is new (lower lift than greenfield).
 3. **Eval harness** — no golden set, no faithfulness/coverage metrics, no regression gate. (Böckeler: build *first*.)
 
+### 3.4 Reconciliation with current codebase (v3 — post-TASK-331 re-review)
+Three review agents confirmed §3.1–3.3 and pinned the exact integration points + governance deltas:
+
+**TASK-331 baseline now in place (build on it):**
+- `SummaryMeta.promptResolvedFrom` + `resolvedPromptId` (migration `20260603175719_add_summary_meta_prompt_tier`) —
+  the start of a prompt-tier audit trail the harness WORM record extends.
+- `AudioRecording.rawMediaId` + `processedMediaId` — dual-capture infra usable for transcript-faithfulness checks.
+- `prompt-template-read` policy added to `DOCTOR` (`seed/03-role.ts`) → clinicians can select templates at the gate
+  without admin privilege (prereq for the Gate adapter).
+- `assertActingAsDoctor()` on DNA generate + default summary via `/text/generate/assembled` (IDs, not raw text) —
+  closes PHI-in-prompt / ownership-bypass risks the sensor layer depends on.
+- Schema-derived **tenant-scope drift guard** (`TENANT_SCOPED_MODELS`) — any new governance table must be
+  consciously triaged or tests fail (prevents silent tenancy gaps).
+
+**Confirmed still-missing (the work):**
+| Area | Exact finding | Touch-point |
+|---|---|---|
+| NER→prompt injection | `PromptAssemblyService.buildVariables()` has no NER slot; `PromptAssemblyParams` has no `nerEntities` | `prompt-assembly.service.ts` + `summary.processor.ts` query `NamedEntityRepository` |
+| Structured SOAP | `json_schema` wired end-to-end (all 4 SMR providers) but **never activated** — no template seeds `metaData.promptConfig.outputSchema` | seed a SOAP schema; `smr-v2-generate.ts:112`, `prompt-assembly.service.ts:97` |
+| Sensors | zero faithfulness/grounding/coverage code anywhere; no `apps/harness` | new service |
+| Qdrant `context_items` | 1536-dim cosine + indexes provisioned; **zero ingestion/retrieval**; `ContextItem.qdrantSynced` flag never read | new ingestion job |
+| WORM audit | `core.AuditLog` exists but **mutable** (`resourceStatus` soft-delete), `data/previousData` untyped JSON, **no `ATTEST`/`CONSENT_*`/`BREACH_*` actions** | append-only table or constrained extension |
+| Attestation | no `Attestation` model, no hash, no `APPROVED_NOTE`/`SIGNED_NOTE` ContextItemType; `approveSummary` only writes `ContextItemVersion changeReason='approved'` | new |
+| Lifecycle status | no `ConsultationStatus` enum; status is an untyped string in `Consultation.metadata` | new enum + column |
+| NER ontology | `NamedEntity` has `normalizedText`/untyped `metadata` but **no `umlsCui`/`snomedCode`/`rxnormCode`/`icdCode` columns and no transcript-span FK** (the faithfulness sensor's primary join) | schema + linker |
+| FHIR identifiers | no `abhaId`/`hprId`/`hfrId`/`fhirEncounterId`/`abdmConsentArtefactId` columns | additive nullable columns day 1 |
+| Eval storage | no `GoldenSet`/`EvalRun`/`JudgeResult` tables | new |
+| Langfuse / evals | Langfuse deployed (VM 400) but **no SDK calls** in any service; DeepEval/promptfoo/RAGAS absent | wire in harness/SMR |
+| NLP misfires | doc-type classifier defaults to `michellejieli/emotion_text_classifier`; STT-v2 Qdrant vectorstore source files deleted (`.pyc` only) → diarization in-memory/session-scoped | small corrective tickets |
+
 ---
 
 ## 4. Proposed HLD — the "Clinical Documentation Harness"
@@ -254,7 +311,11 @@ layers are missing (sensors/verification, knowledge-grounding, eval harness).**
 ### 4.1 Topology (D9 + D10)
 A dedicated service — **`apps/harness` (Python/FastAPI)** — owns a **bounded control loop** (Böckeler
 *guides→generate→sensors→gate*; Anthropic *workflow, not autonomous agent*) and orchestrates existing services
-**as tools** via a clean ACI. **`apps/api` stays the gateway + system-of-record**: authentication, tenant/CLS
+**as tools** via a clean ACI. The loop runs as a **Temporal durable workflow** (D11): each guide/generate/sensor is a
+Temporal **Activity** (non-deterministic LLM/tool calls), the workflow body stays deterministic, and the **gate is a
+`wait_condition()` on a clinician-approval Signal** — so a 3-day sign-off consumes zero compute, survives
+deploys/crashes by replaying Event History, and yields a replay-grade audit trail. **`apps/api` stays the gateway +
+system-of-record**: authentication, tenant/CLS
 resolution, BullMQ enqueue, Postgres (`ContextItem`/versions), the **WORM audit log**, consent, and the HITL
 sign-off endpoints. Tenancy + per-job authZ are **propagated** to the harness via signed context — never rebuilt.
 
@@ -293,19 +354,21 @@ flowchart TB
 
 ### 4.3 Component breakdown
 **`apps/harness` internal modules**
-| Module | Responsibility | Default |
+| Module | Responsibility | Default (v3 SOTA) |
 |---|---|---|
-| **Loop controller** | guide→generate→sense→gate; bounded retries; 1 Langfuse span/step | evaluator-optimizer |
-| **Tool clients (ACI)** | narrow typed contracts for STT-v2, NLP, SMR, Knowledge, Drug-safety | one purpose each |
-| **Guide: entity+ontology** | NLP NER → UMLS CUI → SNOMED/RxNorm/LOINC/ICD; keep transcript offsets | scispaCy+UMLS → MedCAT |
+| **Durability / HITL** | Temporal workflow; steps = Activities; gate = `wait_condition()` on approval Signal; SLA/escalation timers; Event-History replay audit | **Temporal** (D11) |
+| **Loop controller** | guide→generate→sense→gate; bounded retries; 1 Langfuse span/step | evaluator-optimizer (deterministic workflow) |
+| **Tool clients (ACI)** | narrow Pydantic-typed contracts for STT-v2, NLP, SMR, Knowledge, Drug-safety | one purpose each |
+| **Guide: entity+ontology** | NLP NER → UMLS CUI → SNOMED/RxNorm/LOINC/ICD; keep transcript offsets | scispaCy+UMLS → MedCAT v2 |
 | **Guide: JIT retriever** | hybrid BM25+dense over tenant `context_items`, RRF, rerank → top-k | text-embedding-3-small @1536 |
-| **Guide: prompt assembler** | reuse `PromptAssemblyService` contract + DNA + evidence + entities → **SOAP `json_schema`** | activate SMR structured output |
-| **Guide: PHI redaction** | Presidio/GLiNER — only on cloud egress | local-only |
+| **Guide: prompt assembler** | reuse `PromptAssemblyService` contract + DNA + evidence + entities → **SOAP schema** | **Outlines+vLLM `guided_json`** / OpenAI Structured Outputs |
+| **Guide: PHI redaction** | de-identify on cloud egress; fail-closed | **Presidio + clinical NER → John Snow Labs** |
 | **Sensors (computational)** | entity-faithfulness, coverage/omission, schema, citation-presence, numeric/dose cross-check | targets omission + med errors |
-| **Sensors (inferential)** | groundedness/faithfulness judge (reasoning, PDQI-9-aligned), RAG-triad, refusal | judge ICC≈0.82 |
+| **Sensors (inferential)** | per-claim groundedness + reasoning judge (PDSQI-9-aligned), RAG-triad, refusal | **Bespoke-MiniCheck-7B** + judge ≤20B (LM Studio) / Azure·Bedrock |
+| **Safety classifier** | input/output unsafe-advice screening, self-hosted | **Llama Guard 3** (1B/8B) |
 | **Verdict aggregator** | pass / bounded-regen / flag-claims-for-human | |
 | **Gate adapter** | package draft + provenance map + per-claim confidence + flags → `apps/api` | confirm-before-commit |
-| **Observability** | Langfuse PHI-safe spans (IDs/scores/offsets, not raw PHI) | |
+| **Observability** | PHI-safe spans (IDs/scores/offsets, not raw PHI); store eval scores | **Langfuse over OTel**, mask at SDK + Collector |
 
 **`apps/api` (reused/extended)**: authZ, tenant/CLS, lifecycle, BullMQ enqueue, `ContextItem`/versions, **WORM
 audit** (model+version, prompt/template version, citations, accept/edit/reject + rationale, attestation hash),
@@ -515,14 +578,18 @@ rate per doctor/specialty/provider (alert >15–20%) · judge-vs-clinician ICC �
 | Knowledge corpora / licensing | **Internal + institutional only** (D5) — no external corpora, no licensing |
 | Autonomy ceiling | **Bounded workflow + mandatory clinician sign-off** (D4); tools read-only/advisory (D7) |
 | Citation UX | **Linked-evidence chips + inline citations**, unverified claims floated up (§5.1) |
+| **Durability / HITL layer** *(v3)* | **Temporal** (D11) — durable workflow + approval Signal + SLA timers + replay audit |
+| **Eval/guardrail/judge stack** *(v3)* | **Adopt SOTA** (D12) — Outlines/OpenAI · MiniCheck-7B · Presidio→JSL · Llama Guard 3 · DeepEval/promptfoo/RAGAS + Epic PDSQI-9 |
+| **Faithfulness-judge model** *(v3, was open #3)* | small **≤20B via LM Studio** (priority) + large via **Azure OpenAI / AWS Bedrock**; Epic PDSQI-9 prompts + MiniCheck for groundedness |
 
 ### 7.5 Remaining open decisions
 1. **Golden-set ownership** — which clinical SME(s) curate/maintain the golden consultation set + rubric weights?
 Answer: TBD
 2. **Institutional-knowledge ingestion** — formats/sources tenants will provide (PDF protocols, formulary, guidelines?) + who approves/versions them.
 Answer: TBD
-3. **Faithfulness-judge model** — which reasoning model runs the inferential sensor in a tenant-configurable (cloud/local) world, and the minimum-assurance threshold for local-only tenants.
-Answer: Suggest the best practices for 2 sector: small model <= 20B which we can hosted using LM Studio (priority) , large models we can use Azure OpenAI or AWS Bedrock.
+3. ~~**Faithfulness-judge model**~~ — **RESOLVED (v3, see §7.4)**: small **≤20B via LM Studio** (priority) + large via
+**Azure OpenAI / AWS Bedrock**; pair Epic's PDSQI-9 judge prompts with Bespoke-MiniCheck-7B for per-claim
+groundedness; validate any judge at ICC ≥0.8 / Gwet AC2 vs clinicians before trusting it (Phase 0).
 4. **ABDM timing** — do any target tenants need AB-PMJAY/insurance exchange soon enough to prioritise the HIP/HIU certification beyond schema-readiness?
 Answer: TBD
 5. **SDF assumption** — do we design now for Significant-Data-Fiduciary obligations (DPIA/audit/localization) or treat as flag-gated until designated?
@@ -531,9 +598,12 @@ Answer: TBD
 ---
 
 ## 8. Implementation Plan
-*Deferred until this design + use cases are approved (Phase-3 gate). On approval, filled per the layer order in
-`01-development-workflow.mdc` (Database → Domain → Services → API → Python), TDD red-green-refactor, with the
-**Phase-0 eval harness** as the first build.*
+The detailed, phased, TDD implementation plan lives in **[`implementation-plan.md`](./implementation-plan.md)** —
+7 phases (Phase 0 eval-harness first), per the layer order in `01-development-workflow.mdc`
+(Database → Domain → Services → API → Python), red-green-refactor, with concrete file touch-points, Temporal
+durability (D11), the SOTA stack (D12), and per-phase regulatory guardrails + exit criteria.
+
+> **Gate:** the plan is **awaiting approval** (Phase-3). No code is written until approved.
 
 ## 9. Implementation Summary
 *Empty — no code written yet.*
@@ -544,8 +614,20 @@ Answer: TBD
 | 2026-06-02 | Initial research + HLD: harness-engineering definition (sourced), full business-flow review + best practices, Clinical Documentation Harness HLD, four use cases (UC-1 deep dive), phased roadmap | this README |
 | 2026-06-02 | Reconciled with full codebase exploration — concrete reuse points: `PipelineOrchestrator`, `PromptAssemblyService.buildVariables()`, SMR `json_schema` (unused), provisioned-but-empty Qdrant `context_items`, STT hallucination heuristics, NLP text-classifier misconfig | this README |
 | 2026-06-02 | **v2 — decision-locked + medical-domain research.** Added 10 brainstorm decisions (§1.4); folded in 5 research agents (clinical-doc accuracy, grounding/licensing, evals/governance, India regulation, interop) as §2.5–2.9; replaced architecture with the **dedicated Python `apps/harness` orchestrator**; added components (§4.3), data flow (§4.5), error-handling/degradation (§4.6), India-first governance (§4.7), testing/eval (§6); reworked use cases to internal+institutional grounding + read-only tools; new 6-phase roadmap with regulatory guardrails; resolved 4 prior open decisions, surfaced 5 new ones | this README |
+| 2026-06-06 | **v3 — codebase re-review + SOTA + plan.** 3 review agents re-evaluated the post-TASK-331 codebase; 1 research agent compiled the 2026 implementation SOTA; all 6 reports archived (with the v2 set, 8 docs) in `research/clinical-harness/`. **Locked Temporal** (D11) + the SOTA eval/guardrail/judge stack (D12); resolved the faithfulness-judge decision; added §3.4 codebase reconciliation; updated topology (§4.1) + components (§4.3) for Temporal + SOTA; added the detailed `implementation-plan.md`; status → Review | this README, `implementation-plan.md`, `research/clinical-harness/*` |
 
 ## 11. References
+> **Full, categorised, fully-cited research archive (182 sources):** [`research/clinical-harness/`](../../../research/clinical-harness/README.md)
+> — 00 foundations · 01 ambient documentation · 02 knowledge grounding · 03 evals/guardrails/governance ·
+> 04 interoperability/structured-output · 05 India regulation · 06 SOTA implementation. Key sources below.
+
+**Implementation SOTA (v3)**
+- Temporal — human-in-the-loop approvals (durable signals/timers): https://temporal.io/blog/human-in-the-loop-approvals
+- Bespoke-MiniCheck-7B (groundedness sensor): https://www.bespokelabs.ai/bespoke-minicheck
+- Epic — PDSQI-9 LLM-as-judge (open source): https://github.com/epic-open-source/evaluation-instruments/tree/main/src/evaluation_instruments/instruments/pdsqi_9
+- Outlines structured generation / OpenAI Structured Outputs: https://developers.openai.com/api/docs/guides/structured-outputs
+- John Snow Labs vs Presidio clinical de-identification: https://www.johnsnowlabs.com/comparing-john-snow-labs-medical-text-de-identification-with-microsoft-presidio/
+
 **Harness engineering**
 - Böckeler / Fowler — Harness engineering: https://martinfowler.com/articles/harness-engineering.html
 - Anthropic — Building effective agents: https://www.anthropic.com/engineering/building-effective-agents

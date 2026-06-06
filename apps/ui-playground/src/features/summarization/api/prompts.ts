@@ -32,8 +32,7 @@ const AVAILABLE_STALE_TIME_MS = 60_000;
 const AVAILABLE_GC_TIME_MS = 10 * 60_000;
 
 const keys = {
-  available: (tenantId?: string, params?: AvailablePromptParams) =>
-    ['summarization', 'prompts', 'available', tenantId ?? '', params ?? {}] as const,
+  available: (tenantId?: string, params?: AvailablePromptParams) => ['summarization', 'prompts', 'available', tenantId ?? '', params ?? {}] as const,
 };
 
 function qs(params?: AvailablePromptParams): string {

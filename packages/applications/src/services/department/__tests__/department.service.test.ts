@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DepartmentService } from '../department.service';
-import { SysEventType } from '@arcaai/domains';
+import { SysEventType, DepartmentFactory } from '@arcaai/domains';
 
 // Mock ClsService
 const mockClsService = {
@@ -444,6 +444,25 @@ describe('DepartmentService', () => {
                     resourceId: 'new-department-id',
                     data: { code: undefined, name: 'New Department' },
                 })
+            );
+        });
+
+        // CC-04 (TASK-336) — the create modal collects `defaultSummaryTemplate`,
+        // so `create` must forward it into department creation (the factory).
+        // Previously it was dropped, so a template typed at create-time was lost.
+        it('CC-04: forwards defaultSummaryTemplate from the DTO into department creation', async () => {
+            mockDepartmentRepository.findByCode.mockResolvedValue(null);
+            mockDepartmentRepository.create.mockResolvedValue(
+                createMockDepartmentEntity({ id: 'new-department-id', name: 'New Department' }),
+            );
+
+            await service.create({
+                name: 'New Department',
+                defaultSummaryTemplate: 'Default discharge summary template',
+            });
+
+            expect(DepartmentFactory.CreateDepartment as Mock).toHaveBeenCalledWith(
+                expect.objectContaining({ defaultSummaryTemplate: 'Default discharge summary template' }),
             );
         });
 

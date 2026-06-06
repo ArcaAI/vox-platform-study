@@ -32,6 +32,10 @@ export interface CreateDepartmentInput {
   name?: string;
   description?: string;
   parentDepartmentId?: string;
+  // CC-04 (TASK-336) — the create modal collects a default summary template;
+  // the backend `CreateDepartmentRequest` now whitelists it (parity with the
+  // update path), so it must travel in the create payload too.
+  defaultSummaryTemplate?: string;
 }
 
 export interface UpdateDepartmentInput {

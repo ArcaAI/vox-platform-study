@@ -38,6 +38,7 @@
  *   95000000-xxxx  →  Named Entities
  *   96000000-xxxx  →  Media (dual-capture demo blobs; defined in 09-consultation)
  *   97000000-xxxx  →  User Voice Profiles (diarization enrollment)
+ *   98000000-xxxx  →  Transcription Jobs (ASR job queue rows)
  *   A0000000-xxxx  →  Audit Log Entries
  */
 
@@ -104,6 +105,9 @@ export const SEED_POLICY_IDS = {
 export const SEED_ROLE_IDS = {
     SUPER_ADMIN: '00000000-0000-0000-0000-000000000001',
     TENANT_ADMIN: '00000000-0000-0000-0000-000000000002',
+    // TASK-336 AC-06 — elevated platform-wide "global admin". The code-side
+    // guard (tenant-guards.ELEVATED_ROLES) treats GLOBAL_ADMIN ≡ SUPER_ADMIN.
+    GLOBAL_ADMIN: '00000000-0000-0000-0000-000000000003',
     DOCTOR: '00000000-0000-0000-0000-000000000010',
     NURSE: '00000000-0000-0000-0000-000000000011',
     SERVICE_ACCOUNT: '00000000-0000-0000-0000-000000000012',
@@ -122,6 +126,9 @@ export const SEED_USER_IDS = {
     ARCAAI_ADMIN: '70000000-0000-0000-0000-000000000003',
     FOURBITS_ADMIN: '70000000-0000-0000-0000-000000000004',
     MUMBAI_ADMIN: '70000000-0000-0000-0000-000000000005',
+    // TASK-336 AC-06 — platform-wide global admin. Lives on the SYSTEM tenant
+    // (like SUPER_ADMIN) so it is membership-exempt and elevated cross-tenant.
+    GLOBAL_ADMIN: '70000000-0000-0000-0000-000000000006',
     DOCTOR: '70000000-0000-0000-0000-000000000010',
     DOCTOR2: '70000000-0000-0000-0000-000000000011',
     DEPT_HEAD: '70000000-0000-0000-0000-000000000012',
@@ -436,6 +443,33 @@ export const SEED_VOICE_PROFILE_IDS = {
     DOCTOR_INACTIVE: '97000000-0000-0000-0000-000000000002',
     DOCTOR2_ACTIVE: '97000000-0000-0000-0000-000000000003',
     DOCTOR2_INACTIVE: '97000000-0000-0000-0000-000000000004',
+    // TASK-336 EU-05 — one ACTIVE enrollment per customer-tenant doctor
+    // (ArcaAI / 4bits / Mumbai) so voice-enrollment demos are populated for
+    // every tenant, not just the Global-tenant doctors above.
+    ARCAAI_DOCTOR_ACTIVE: '97000000-0000-0000-0001-000000000001',
+    FOURBITS_DOCTOR_ACTIVE: '97000000-0000-0000-0002-000000000001',
+    MUMBAI_DOCTOR_ACTIVE: '97000000-0000-0000-0003-000000000001',
+} as const;
+
+// =============================================================================
+// TRANSCRIPTION JOBS (TASK-336 EU-04)
+// =============================================================================
+// ASR job-queue rows across the full status lifecycle so the admin "jobs"
+// views and EU analytics are populated. The 4th UUID group encodes the owning
+// tenant (0000=Global/SEED, 0001=ArcaAI); every row references a real seeded
+// ASR pipeline (FK) and a real seeded consultation (soft ref) in the SAME
+// tenant. Idempotent upsert-by-id.
+// =============================================================================
+
+export const SEED_TRANSCRIPTION_JOB_IDS = {
+    // Global customer tenant (SEED_TENANT_ID) — full lifecycle coverage.
+    GEN_COMPLETED: '98000000-0000-0000-0000-000000000001',
+    NEUR_PROCESSING: '98000000-0000-0000-0000-000000000002',
+    ER_QUEUED: '98000000-0000-0000-0000-000000000003',
+    CARD_FAILED: '98000000-0000-0000-0000-000000000004',
+    // ArcaAI customer tenant — at least one completed + one queued.
+    ARCAAI_COMPLETED: '98000000-0000-0000-0001-000000000001',
+    ARCAAI_QUEUED: '98000000-0000-0000-0001-000000000002',
 } as const;
 
 // =============================================================================

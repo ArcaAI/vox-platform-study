@@ -167,11 +167,13 @@ export class ApiHealthController {
   }
 
   @Get('services')
-  // TASK-307 W5.1 / AC-15 — close audit C-8 (was unauthenticated). Any
-  // authenticated caller is permitted; the probe payload itself is
-  // sanitised below (version + checks stripped per audit E-3).
-  @Authorize()
-  @ApiOperation({ summary: 'Consolidated health check for all downstream microservices (authenticated)' })
+  // TASK-307 W5.1 / AC-15 — close audit C-8 (was unauthenticated). The probe
+  // payload is sanitised below (version + checks stripped per audit E-3).
+  // TASK-336 OB-12 — tightened from any-authenticated to SUPER_ADMIN
+  // (`manage all`), matching the other ops/admin surfaces; this downstream
+  // ops health is not for plain doctors.
+  @Authorize(['manage', 'all'])
+  @ApiOperation({ summary: 'Consolidated health check for all downstream microservices (admin only)' })
   @ApiResponse({ status: 200, description: 'Sanitised health status of TTS, SMR, NLP, and STT services' })
   @ApiResponse({ status: 401, description: 'Authentication required' })
   async checkServices() {
@@ -209,8 +211,9 @@ export class ApiHealthController {
 
   @Get('services/:serviceKey')
   // TASK-307 W5.1 / AC-15 — close audit C-8.
-  @Authorize()
-  @ApiOperation({ summary: 'Health check for a single downstream microservice (authenticated)' })
+  // TASK-336 OB-12 — SUPER_ADMIN (`manage all`), as for /services above.
+  @Authorize(['manage', 'all'])
+  @ApiOperation({ summary: 'Health check for a single downstream microservice (admin only)' })
   @ApiParam({ name: 'serviceKey', enum: ['tts', 'smr', 'nlp', 'stt'], description: 'Service key' })
   @ApiResponse({ status: 200, description: 'Sanitised health status of the requested service' })
   @ApiResponse({ status: 401, description: 'Authentication required' })

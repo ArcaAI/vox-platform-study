@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@arcaai/database';
 
 import { Repository } from '../../../common';
 import { PromptVersionEntityMapper } from '../../../mappers';
@@ -58,5 +59,34 @@ export class PromptVersionRepository extends Repository<PromptVersionEntity, Pro
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Highest persisted `versionNumber` for a template, or 0 when none exist.
+   *
+   * CC-01 — the versioned-update path computes the next version as
+   * `max(versionNumber) + 1` rather than `currentVersionNumber + 1`, so a
+   * lagging row counter (or an orphaned history row left by a prior partial
+   * write) cannot recompute an existing `versionNumber` and trip the
+   * `(promptTemplateId, versionNumber)` unique constraint — which would
+   * permanently brick further edits of the template.
+   *
+   * When `tx` is supplied the aggregate is issued through the interactive
+   * transaction client so the read shares the same snapshot as the version
+   * insert + CAS it guards (mirrors the `create(entity, tx)` /
+   * `updateWithVersion(..., tx)` contract).
+   */
+  async findMaxVersionNumber(
+    templateId: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tx?: Prisma.TransactionClient | any,
+  ): Promise<number> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const model: any = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
+    const result = await model.aggregate({
+      where: { promptTemplateId: templateId },
+      _max: { versionNumber: true },
+    });
+    return result?._max?.versionNumber ?? 0;
   }
 }

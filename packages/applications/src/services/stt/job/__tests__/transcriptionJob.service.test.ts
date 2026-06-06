@@ -748,4 +748,91 @@ describe('TranscriptionJobService', () => {
             await expect(service.listForOwner('owner-1', 1, 20)).rejects.toThrow(BadRequestException);
         });
     });
+
+    // ------------------------------------------------------------------------
+    // EU-01 (TASK-336) — creator-scoped cancel/retry for the end-user surface.
+    // The plain cancelJob/retryJob remain tenant-scoped (internal/admin). The
+    // *ForOwner variants additionally require the caller to be the job's
+    // `createdBy`, and 404 (no existence leak) otherwise — mirroring the
+    // @TenantOwnedResource creator posture used for ConsultationJob.
+    // ------------------------------------------------------------------------
+    describe('EU-01 — creator-scoped cancel/retry (end-user)', () => {
+        it('cancelJobForOwner cancels the job when the caller is its creator', async () => {
+            const job = createBehavioralJobEntity({ id: 'job-123', status: TranscriptionJobStatus.QUEUED, createdBy: 'owner-1' });
+            mockJobRepository.findById.mockResolvedValue(job);
+            mockJobRepository.update.mockImplementation(async (_id: any, entity: any) => entity);
+
+            const result = await service.cancelJobForOwner('owner-1', 'job-123');
+
+            expect(result.status).toBe(TranscriptionJobStatus.CANCELLED);
+            expect(job.isCancelled).toBe(true);
+        });
+
+        it('cancelJobForOwner throws NotFoundException (no leak) when the caller is NOT the creator', async () => {
+            const job = createBehavioralJobEntity({ id: 'job-123', status: TranscriptionJobStatus.QUEUED, createdBy: 'someone-else' });
+            mockJobRepository.findById.mockResolvedValue(job);
+
+            await expect(service.cancelJobForOwner('owner-1', 'job-123')).rejects.toThrow(NotFoundException);
+            expect(job.isCancelled).toBe(false);
+            expect(mockJobRepository.update).not.toHaveBeenCalled();
+        });
+
+        it('cancelJobForOwner throws NotFoundException when the job does not exist', async () => {
+            mockJobRepository.findById.mockResolvedValue(null);
+            await expect(service.cancelJobForOwner('owner-1', 'missing')).rejects.toThrow(NotFoundException);
+        });
+
+        it('retryJobForOwner retries the job when the caller is its creator', async () => {
+            const job = createBehavioralJobEntity({
+                id: 'job-123',
+                status: TranscriptionJobStatus.FAILED,
+                retryCount: 0,
+                maxRetries: 3,
+                createdBy: 'owner-1',
+            });
+            mockJobRepository.findById.mockResolvedValue(job);
+            mockJobRepository.update.mockImplementation(async (_id: any, entity: any) => entity);
+
+            const result = await service.retryJobForOwner('owner-1', 'job-123');
+
+            expect(result.status).toBe(TranscriptionJobStatus.QUEUED);
+            expect(job.retryCount).toBe(1);
+        });
+
+        it('retryJobForOwner throws NotFoundException when the caller is NOT the creator', async () => {
+            const job = createBehavioralJobEntity({ id: 'job-123', status: TranscriptionJobStatus.FAILED, createdBy: 'someone-else' });
+            mockJobRepository.findById.mockResolvedValue(job);
+
+            await expect(service.retryJobForOwner('owner-1', 'job-123')).rejects.toThrow(NotFoundException);
+            expect(mockJobRepository.update).not.toHaveBeenCalled();
+        });
+    });
+
+    // ------------------------------------------------------------------------
+    // EU-02 (TASK-336) — owner-scoped getByConsultation for the end-user
+    // surface: only the caller's OWN jobs (createdBy) for the consultation, in
+    // addition to the existing tenant filter.
+    // ------------------------------------------------------------------------
+    describe('EU-02 — owner-scoped getByConsultation (end-user)', () => {
+        it('getByConsultationForOwner filters by createdBy AND tenantId AND consultationId', async () => {
+            mockJobRepository.findAll.mockResolvedValue([]);
+
+            await service.getByConsultationForOwner('owner-1', 'consultation-1');
+
+            expect(mockJobRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    filters: expect.objectContaining({
+                        consultationId: 'consultation-1',
+                        tenantId: 'tenant-1',
+                        createdBy: 'owner-1',
+                    }),
+                }),
+            );
+        });
+
+        it('getByConsultationForOwner throws BadRequestException when tenantId is missing', async () => {
+            mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? null : null));
+            await expect(service.getByConsultationForOwner('owner-1', 'consultation-1')).rejects.toThrow(BadRequestException);
+        });
+    });
 });

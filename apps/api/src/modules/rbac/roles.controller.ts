@@ -1,14 +1,14 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Inject, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { IRbacRoleService } from '@arcaai/applications';
-import { CanManage } from '../../decorators';
+import { CanManage, CanAny } from '../../decorators';
 import { CreateRoleDto, UpdateRoleDto, AssignPolicyToRoleDto, RoleResponse, PaginatedRoleResponse, AssignPolicyResponse } from './dto';
 
 /**
  * RBAC Roles Controller
  *
  * Manages roles in the RBAC system.
- * All endpoints require 'manage' permission on 'Role' subject.
+ * Read/list endpoints accept `read` or `manage` on 'Role'; mutations require `manage`.
  *
  * TASK-307 W6.3 (audit C-10 / F-1 / H-9) — every Prisma call used to live
  * here. The controller is now a thin transport-layer wrapper around
@@ -30,7 +30,10 @@ export class RolesController {
    * List all roles
    */
   @Get()
-  @CanManage('Role')
+  // AC-03 (TASK-336): read/list reachable by holders of decomposed `read:Role`
+  // (e.g. TENANT_ADMIN per seed) OR the `manage:Role` alias. Mutations below
+  // stay `manage`-only.
+  @CanAny(['read', 'Role'], ['manage', 'Role'])
   @ApiOperation({ summary: 'List all roles' })
   @ApiResponse({ status: 200, description: 'List of roles', type: PaginatedRoleResponse })
   async findAll(
@@ -51,7 +54,7 @@ export class RolesController {
    * Get a role by ID
    */
   @Get(':id')
-  @CanManage('Role')
+  @CanAny(['read', 'Role'], ['manage', 'Role'])
   @ApiOperation({ summary: 'Get role by ID' })
   @ApiResponse({ status: 200, description: 'Role details', type: RoleResponse })
   @ApiResponse({ status: 404, description: 'Role not found' })

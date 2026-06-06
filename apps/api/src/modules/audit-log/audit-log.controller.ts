@@ -1,5 +1,4 @@
 import {
-  HttpMethod,
   IAuditLogService,
   PaginatedQuery,
   PaginatedAuditLogResponse,
@@ -12,7 +11,7 @@ import {
 import { Controller, ForbiddenException, Get, Header, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiProduces, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { ApiEndpoint, CanRead, CanDelete } from '../../decorators';
+import { ApiEndpoint, CanRead } from '../../decorators';
 
 /**
  * AuditLogController - Audit log management endpoints
@@ -21,10 +20,12 @@ import { ApiEndpoint, CanRead, CanDelete } from '../../decorators';
  *
  * Authorization is handled via policy-based decorators:
  * - @CanRead('AuditLog') - Requires 'read' permission on 'AuditLog' resource
- * - @CanDelete('AuditLog') - Requires 'delete' permission on 'AuditLog' resource
  *
  * Note: Audit logs are created automatically by the system when resources are
- * created, viewed, updated, or deleted. There is no manual create endpoint.
+ * created, viewed, updated, or deleted. There is no manual create endpoint, and
+ * (OB-10, TASK-336) no delete endpoint either — the trail is append-only/immutable
+ * for compliance (HIPAA §164.312(b)). Retention/archival is a separate, audited
+ * process owned outside the admin surface.
  *
  * Permissions are defined in database policies and assigned to roles.
  * See: packages/database/src/prisma/db_main/seed/01-policy.ts for default policies.
@@ -107,8 +108,14 @@ export class AuditLogController {
       throw new ForbiddenException('Tenant context required to export audit logs');
     }
 
+    // OB-07 (TASK-336): a global (cross-tenant) export is a super-admin reading
+    // without a tenant scope — those rows span tenants, so the CSV must carry a
+    // tenantId column. A tenant-scoped export omits it (every row is the same
+    // tenant, so the column would be noise).
+    const includeTenant = isSuperAdmin(user) && !callerTenantId;
+
     const { rows, responsibleUsers } = await this.auditLogService.exportFiltered(queryParams);
-    return AuditLogDtoMapper.ToCsv(rows, responsibleUsers);
+    return AuditLogDtoMapper.ToCsv(rows, responsibleUsers, { includeTenant });
   }
 
   /**
@@ -211,28 +218,7 @@ export class AuditLogController {
     return AuditLogDtoMapper.ToPaginatedResponse(result);
   }
 
-  /**
-   * Soft delete an audit log (for compliance, typically restricted)
-   */
-  @ApiEndpoint({
-    returnedModel: AuditLogResponse,
-    method: HttpMethod.DELETE,
-    path: '/:id',
-    by: ['id'],
-  })
-  @ApiOperation({
-    summary: 'Delete audit log',
-    description: 'Soft deletes an audit log entry. This action is typically restricted to super admins for compliance reasons.',
-  })
-  @ApiParam({
-    name: 'id',
-    description: 'The unique identifier of the audit log to delete',
-    type: String,
-  })
-  @ApiResponse({ status: 404, description: 'Audit log not found' })
-  @CanDelete('AuditLog')
-  async delete(@Param('id') id: string): Promise<AuditLogResponse> {
-    const result = await this.auditLogService.deleteById(id);
-    return AuditLogDtoMapper.ToResponse(result);
-  }
+  // OB-10 (TASK-336): the soft-delete route was removed. Audit logs are
+  // append-only/immutable from the admin surface; any retention/archival must
+  // be a separate, explicitly audited process — never an ad-hoc admin delete.
 }

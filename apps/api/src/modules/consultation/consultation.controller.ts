@@ -290,6 +290,7 @@ export class ConsultationController {
     method: HttpMethod.POST,
     path: 'open',
   })
+  @Authorize(['create', 'Consultation'])
   @ApiResponse({ status: 400, description: 'Bad request' })
   async open(@Body() request: OpenConsultationRequest): Promise<ConsultationResponse> {
     return this.consultationService.getOrCreate(request, this.getDoctorId());
@@ -688,11 +689,7 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiParam({ name: 'contextItemId', description: 'Summary Context Item ID' })
-  async tagSummary(
-    @Param('id') id: string,
-    @Param('contextItemId') contextItemId: string,
-    @Body() body: CreateTagRequest,
-  ): Promise<TagResponse> {
+  async tagSummary(@Param('id') id: string, @Param('contextItemId') contextItemId: string, @Body() body: CreateTagRequest): Promise<TagResponse> {
     await this.verifyConsultationOwnership(id);
     // Server controls the polymorphic target + tenant; client-supplied values are ignored.
     const created = await this.tagService.create({

@@ -41,7 +41,10 @@ export class AudioPipelineController {
     multi: true,
   })
   async fetchAll(): Promise<PipelineResponse[]> {
-    return this.pipelineService.getAll();
+    // IC-02 — the admin surface lists pipelines of ALL statuses (ENABLED +
+    // DISABLED) so a disabled pipeline stays visible and can be re-enabled.
+    // The public controller keeps the enabled-only `getAll`.
+    return this.pipelineService.getAllForAdmin();
   }
 
   @ApiEndpoint({
@@ -140,32 +143,27 @@ export class AudioPipelineController {
   }
 
   /**
-   * TASK-298 D-7 — Assign a pipeline to a tenant.
+   * IC-04 (TASK-336) — Assign a pipeline within its owning tenant.
    *
-   * Validates that the caller's tenant owns the pipeline (via the
-   * tenant-scoped `getById` from D-9) before recording the assignment.
-   * Cross-tenant attempts surface as `BadRequestException` so existence
-   * is not leaked.
+   * Previously a no-op stub that echoed success without persisting anything.
+   * Real persistence now lives in the service: `AsrPipeline` has a single,
+   * deliberately protected `tenantId` (BaseTenantEntity, TASK-305), so a
+   * cross-tenant transfer is unsupported and is rejected; a same-tenant
+   * assignment is persisted by promoting the pipeline to the tenant default.
    */
   @Post(':id/assign-tenant')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Assign an ASR pipeline to a tenant (TASK-298 D-7)' })
+  @ApiOperation({ summary: 'Assign an ASR pipeline within its tenant (IC-04 / TASK-336)' })
   @ApiParam({ name: 'id', description: 'Pipeline ID' })
   @ApiResponse({ status: 200, description: 'Pipeline assigned', type: AssignTenantResponse })
   async assignTenant(@Param('id') id: string, @Body() body: AssignTenantRequest): Promise<AssignTenantResponse> {
-    if (!body?.tenantId || body.tenantId.trim().length === 0) {
-      throw new BadRequestException('tenantId is required');
-    }
-
-    const pipeline = await this.pipelineService.getById(id);
-    if (!pipeline) {
-      throw new BadRequestException(`Pipeline ${id} not found in your tenant`);
-    }
+    const targetTenantId = body?.tenantId ?? '';
+    const updated = await this.pipelineService.assignToTenant(id, targetTenantId);
 
     return {
-      message: `Pipeline ${id} assigned to tenant ${body.tenantId} successfully`,
-      pipelineId: id,
-      tenantId: body.tenantId,
+      message: `Pipeline ${id} assigned to tenant ${targetTenantId} (now the tenant default)`,
+      pipelineId: updated.id,
+      tenantId: targetTenantId,
     };
   }
 

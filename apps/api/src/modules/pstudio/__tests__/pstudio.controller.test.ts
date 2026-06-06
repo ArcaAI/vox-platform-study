@@ -96,3 +96,53 @@ describe('PrismaStudioController (TASK-326 X1 — audit)', () => {
         expect(result).toEqual([{ message: 'Invalid request: missing query or sequence', name: 'BadRequest' }]);
     });
 });
+
+// -----------------------------------------------------------------------------
+// TASK-336 OB-11 — serveStudio must not inline the bearer JWT into the HTML it
+// returns (the token would otherwise sit in the response body / proxy / CDN /
+// browser-history logs). The shell now reads the token from the URL fragment;
+// the served HTML therefore never contains the request's bearer credential.
+// -----------------------------------------------------------------------------
+describe('PrismaStudioController.serveStudio (TASK-336 OB-11)', () => {
+    let controller: PrismaStudioController;
+
+    beforeEach(() => {
+        controller = new PrismaStudioController(
+            createMockStudioService() as never,
+            createMockAuditLogService() as never,
+        );
+    });
+
+    function mockReqRes(authHeader: string) {
+        const res = {
+            type: vi.fn().mockReturnThis(),
+            send: vi.fn().mockReturnThis(),
+            status: vi.fn().mockReturnThis(),
+            setHeader: vi.fn(),
+        };
+        const req = {
+            headers: { authorization: authHeader },
+            protocol: 'https',
+            get: (key: string) => (key === 'host' ? 'admin.example.test' : undefined),
+        };
+        return { req, res };
+    }
+
+    it('does NOT inline the request bearer token into the served HTML', () => {
+        const { req, res } = mockReqRes('Bearer super-secret-jwt-value');
+
+        controller.serveStudio(req as never, res as never);
+
+        expect(res.type).toHaveBeenCalledWith('text/html');
+        const html = (res.send.mock.calls[0]?.[0] ?? '') as string;
+        expect(html).not.toContain('super-secret-jwt-value');
+    });
+
+    it('marks the dev-only studio shell as no-store', () => {
+        const { req, res } = mockReqRes('Bearer x');
+
+        controller.serveStudio(req as never, res as never);
+
+        expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+    });
+});

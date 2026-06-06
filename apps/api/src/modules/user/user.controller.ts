@@ -27,7 +27,21 @@ import {
   isSuperAdmin,
   IActiveUserContext,
 } from '@arcaai/applications';
-import { Body, Controller, Delete, ForbiddenException, HttpCode, HttpStatus, Inject, Param, Post, Query, Get, Patch } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  NotFoundException,
+  Param,
+  Post,
+  Query,
+  Get,
+  Patch,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { ApiEndpoint, CanManage } from '../../decorators';
@@ -91,6 +105,18 @@ export class UserController {
       return UserDtoMapper.ToPaginatedResponse(scoped);
     }
 
+    // AC-07 (TASK-336): when a super-admin selects a tenant in the console, the
+    // ContextInterceptor elevates `x-tenant-id` into CLS `tenantId`. Honour it
+    // and scope the listing to that tenant; with no selection the platform-wide
+    // cross-tenant listing is preserved.
+    if (callerTenantId) {
+      const scoped = await this.userService.fetchAllByTenantId({
+        ...queryParams,
+        tenantId: callerTenantId,
+      });
+      return UserDtoMapper.ToPaginatedResponse(scoped);
+    }
+
     const result = await this.userService.fetchAll({
       ...queryParams,
     });
@@ -105,6 +131,7 @@ export class UserController {
   @ApiParam({ name: 'id', description: 'User ID', type: String })
   @ApiResponse({ status: 404, description: 'User not found' })
   async fetchById(@Param('id') id: string): Promise<UserResponse> {
+    await this.assertUserInScope(id);
     const result = await this.userService.fetchById(id);
     return UserDtoMapper.ToResponse(result);
   }
@@ -148,6 +175,32 @@ export class UserController {
     }
   }
 
+  /**
+   * AC-01 r2605 (Critical, IDOR) — shared caller-tenant guard for the by-id
+   * User routes (read/mutate/profile/settings/sub-resource). Unlike the LIST
+   * routes (which scope by an explicit `tenantId`), these accept a raw user
+   * UUID, and the `User` model is intentionally NOT tenant-scoped at the
+   * Prisma extension level — so the TARGET user's tenant membership must be
+   * asserted explicitly. Resolves the target's ENABLED tenant memberships via
+   * `UserRoleAssignment` and throws `NotFoundException` (404, NOT 403, to avoid
+   * disclosing the existence of a cross-tenant user) when the caller's active
+   * tenant is not among them. SUPER_ADMIN is platform-wide and exempt.
+   */
+  private async assertUserInScope(id: string): Promise<void> {
+    const user = this.cls.get('user');
+    if (isSuperAdmin(user)) {
+      return;
+    }
+    const callerTenantId = this.cls.get('tenantId');
+    if (!callerTenantId) {
+      throw new NotFoundException('User not found');
+    }
+    const tenantIds = await this.userRoleAssignmentService.findActiveTenantIdsForUser(id);
+    if (!tenantIds.includes(callerTenantId)) {
+      throw new NotFoundException('User not found');
+    }
+  }
+
   @ApiEndpoint({
     returnedModel: UserResponse,
     method: HttpMethod.PATCH,
@@ -157,6 +210,7 @@ export class UserController {
   @ApiParam({ name: 'id', description: 'User ID', type: String })
   @ApiResponse({ status: 404, description: 'User not found' })
   async update(@Param('id') id: string, @Body() request: UpdateUserRequest): Promise<UserResponse> {
+    await this.assertUserInScope(id);
     const result = await this.userService.update(id, request);
     return UserDtoMapper.ToResponse(result);
   }
@@ -171,6 +225,7 @@ export class UserController {
   @ApiParam({ name: 'id', description: 'User ID', type: String })
   @ApiResponse({ status: 404, description: 'User not found' })
   async updateStatus(@Param('id') id: string, @Body() body: UpdateUserStatusRequest): Promise<UserResponse> {
+    await this.assertUserInScope(id);
     const result = await this.userService.update(id, {
       resourceStatus: body.resourceStatus,
     } as UpdateUserRequest);
@@ -186,6 +241,7 @@ export class UserController {
   @ApiParam({ name: 'id', description: 'User ID', type: String })
   @ApiResponse({ status: 404, description: 'User not found' })
   async delete(@Param('id') id: string): Promise<UserResponse> {
+    await this.assertUserInScope(id);
     const result = await this.userService.deleteById(id);
     return UserDtoMapper.ToResponse(result);
   }
@@ -223,6 +279,10 @@ export class UserController {
 
     for (const id of body.ids) {
       try {
+        // AC-01 r2605 — validate EVERY id; a cross-tenant target throws
+        // `NotFoundException` here and is captured under `failed` (never
+        // deleted), preserving the partial-failure contract.
+        await this.assertUserInScope(id);
         const result = await this.userService.deleteById(id);
         succeeded.push(UserDtoMapper.ToResponse(result));
       } catch (err) {
@@ -243,6 +303,7 @@ export class UserController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   async fetchUserApiKeys(@Param('id') id: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedApiKeyResponse> {
+    await this.assertUserInScope(id);
     const result = await this.apiKeyService.fetchAllByUserId({
       ...queryParams,
       userId: id,
@@ -264,6 +325,7 @@ export class UserController {
   })
   @ApiResponse({ status: 404, description: 'User not found' })
   async fetchUserSettings(@Param('id') id: string): Promise<UserSettingsResponse[]> {
+    await this.assertUserInScope(id);
     const settings = await this.userSettingsService.fetchAllByUserId(id);
     return settings.map((s) => UserSettingsDtoMapper.ToResponse(s));
   }
@@ -281,6 +343,7 @@ export class UserController {
     @Param('key') key: string,
     @Body() request: UpdateUserSettingByKeyRequest,
   ): Promise<UserSettingsResponse> {
+    await this.assertUserInScope(id);
     const updated = await this.userSettingsService.upsertByUserKeyNamespace(id, namespace, key, request);
     return UserSettingsDtoMapper.ToResponse(updated);
   }
@@ -296,6 +359,7 @@ export class UserController {
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Role assignments listed', type: PaginatedUserRoleAssignmentResponse })
   async fetchUserRoleAssignments(@Param('id') id: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedUserRoleAssignmentResponse> {
+    await this.assertUserInScope(id);
     const result = await this.userRoleAssignmentService.fetchAllByUserId({
       ...queryParams,
       userId: id,
@@ -304,6 +368,12 @@ export class UserController {
   }
 
   @Post(':id/roles')
+  // AC-02 r2605 (Critical, privilege escalation) — a role-assignment route must
+  // be gated by the permission that governs the resource it mutates, NOT the
+  // inherited class-level `manage:User`. `manage:UserRoleAssignment` matches the
+  // `rbac-*` policy seed; this method-level decorator overrides the class-level
+  // one via `Reflector.getAllAndOverride([handler, class])`.
+  @CanManage('UserRoleAssignment')
   @ApiOperation({ summary: 'Assign a role to a user' })
   @ApiParam({ name: 'id', description: 'User ID', type: String })
   @ApiResponse({ status: 201, description: 'Role assigned', type: UserRoleAssignmentResponse })
@@ -333,6 +403,7 @@ export class UserController {
   @ApiParam({ name: 'id', description: 'User ID', type: String })
   @ApiResponse({ status: 200, description: 'Profile retrieved (null when none exists)', type: UserProfileResponse })
   async fetchUserProfile(@Param('id') id: string): Promise<UserProfileResponse | null> {
+    await this.assertUserInScope(id);
     const profile = await this.userProfileService.getByUserId(id);
     return profile ? UserProfileDtoMapper.ToResponse(profile) : null;
   }
@@ -342,6 +413,7 @@ export class UserController {
   @ApiParam({ name: 'id', description: 'User ID', type: String })
   @ApiResponse({ status: 200, description: 'Profile upserted', type: UserProfileResponse })
   async updateUserProfile(@Param('id') id: string, @Body() request: UpdateUserProfileRequest): Promise<UserProfileResponse> {
+    await this.assertUserInScope(id);
     const updated = await this.userProfileService.upsertByUserId(id, request);
     return UserProfileDtoMapper.ToResponse(updated);
   }
@@ -351,6 +423,7 @@ export class UserController {
   @ApiParam({ name: 'id', description: 'User ID', type: String })
   @ApiResponse({ status: 200, description: 'Enrolled voice profiles', type: [VoiceProfileResponse] })
   async fetchUserVoiceProfiles(@Param('id') id: string): Promise<VoiceProfileResponse[]> {
+    await this.assertUserInScope(id);
     const profiles = await this.voiceProfileService.listByUserId(id);
     return profiles.map(VoiceProfileResponse.fromEntity);
   }

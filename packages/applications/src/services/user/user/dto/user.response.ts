@@ -18,21 +18,13 @@ export class UserResponse extends BaseResponse {
   @ApiProperty({ description: 'Whether this is a service account' })
   isServiceAccount: boolean = false;
 
-  @ApiProperty({ description: 'First secret key', required: false })
-  secret1?: string;
-
-  @ApiProperty({ description: 'First secret key expiry', required: false })
-  secret1Expiry?: Date;
-
-  @ApiProperty({ description: 'Second secret key', required: false })
-  secret2?: string;
-
-  @ApiProperty({ description: 'Second secret key expiry', required: false })
-  secret2Expiry?: Date;
-
   @ApiPropertyOptional({ type: [UserRoleAssignmentResponse], description: 'Role assignments (included when includeRoles=true)' })
   UserRoleAssignments?: UserRoleAssignmentResponse[];
 
+  // AC-05 (TASK-336) — secret1/secret2 (and their expiries) are sensitive user
+  // credentials and are deliberately NOT exposed on this response. The auto
+  // entity→DTO mapper copies a field only when the target instance declares it,
+  // so omitting them here keeps them out of every serialised UserResponse.
   constructor(init: UserResponse & BaseResponseProps) {
     super(init);
     this.username = init.username;
@@ -40,10 +32,6 @@ export class UserResponse extends BaseResponse {
     this.lastActiveAt = init.lastActiveAt;
     this.externalId = init.externalId;
     this.isServiceAccount = init.isServiceAccount;
-    this.secret1 = init.secret1;
-    this.secret1Expiry = init.secret1Expiry;
-    this.secret2 = init.secret2;
-    this.secret2Expiry = init.secret2Expiry;
     this.UserRoleAssignments = init.UserRoleAssignments;
   }
 }

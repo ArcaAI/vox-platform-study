@@ -19,10 +19,7 @@ import { isSuperAdmin } from '@arcaai/applications';
  *  - non-super-admin                                    → `none`
  *  - no header                                          → `none`
  */
-export type ActiveTenantDecision =
-  | { type: 'elevate'; tenantId: string }
-  | { type: 'invalid' }
-  | { type: 'none' };
+export type ActiveTenantDecision = { type: 'elevate'; tenantId: string } | { type: 'invalid' } | { type: 'none' };
 
 // Canonical RFC 4122 8-4-4-4-12 hex shape (any version, incl. the uuidv7 the
 // platform mints for tenant ids). Mirrors the pattern already used in

@@ -41,6 +41,7 @@ interface SessionsResponse {
         stt: { active: number };
         tts: { active: number };
         smr: { active: number };
+        nlp: { active: number };
     };
     totalUsers: number;
     refreshedAt: string;
@@ -193,6 +194,7 @@ describe('MonitoringController', () => {
                     stt: { active: 5 },
                     tts: { active: 0 },
                     smr: { active: 0 },
+                    nlp: { active: 0 },
                 },
                 totalUsers: 5,
                 refreshedAt: new Date().toISOString(),
@@ -204,5 +206,47 @@ describe('MonitoringController', () => {
             expect(result).toEqual(expected);
             expect(mockService.getSessionCounts).toHaveBeenCalledOnce();
         });
+
+        // TASK-336 OB-13 — sessions cover all four downstream services so the
+        // surface stays aligned with uptime/health.
+        it('returns stt and nlp session counts alongside tts/smr (OB-13)', async () => {
+            const expected: SessionsResponse = {
+                services: {
+                    tts: { active: 0 },
+                    smr: { active: 0 },
+                    stt: { active: 0 },
+                    nlp: { active: 0 },
+                },
+                totalUsers: 0,
+                refreshedAt: new Date().toISOString(),
+            };
+            (mockService.getSessionCounts as ReturnType<typeof vi.fn>).mockResolvedValue(expected);
+
+            const result = await controller.getSessions();
+
+            expect(result.services.stt).toEqual({ active: 0 });
+            expect(result.services.nlp).toEqual({ active: 0 });
+        });
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// TASK-336 OB-12 — admin-gate the monitoring surface
+//   Pre-OB-12 the controller carried a bare @Authorize() (any authenticated
+//   caller — a plain doctor could read ops uptime/sessions). OB-12 tightens
+//   the whole controller to the SUPER_ADMIN `manage all` gate the other
+//   ops/admin surfaces use (e.g. RateLimitAdminController).
+//
+//   Asserted against the REAL controller via dynamic import (the suite above
+//   uses a local mirror to dodge the @arcaai/applications circular dep; the
+//   metadata check needs the actual decorated class).
+// ─────────────────────────────────────────────────────────────────────────
+describe('TASK-336 OB-12 — monitoring admin-gating', () => {
+    const REQUIRED_PERMISSIONS_KEY = 'required_permissions';
+
+    it('requires `manage all` at the controller level', async () => {
+        const { MonitoringController } = await import('../monitoring.controller');
+        const required = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, MonitoringController);
+        expect(required).toEqual([{ action: 'manage', subject: 'all' }]);
     });
 });

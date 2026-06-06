@@ -2,6 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
 import {
+  useAdminGenerateDnaReport,
   useAdminUpdateDnaReport,
   useDnaReportVersions,
   useTenantDnaReportData,
@@ -20,6 +21,7 @@ import { adminClient } from '../admin-client';
 
 const mockGet = adminClient.get as ReturnType<typeof vi.fn>;
 const mockPatch = adminClient.patch as ReturnType<typeof vi.fn>;
+const mockPost = adminClient.post as ReturnType<typeof vi.fn>;
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -185,6 +187,49 @@ describe('DNA Reports Admin API hooks', () => {
       expect(mockPatch).toHaveBeenCalledWith(
         `/admin/dna-writing-styles/${REPORT_ID}`,
         { styleText: 'No version' },
+        { tenantId: TENANT_ID },
+      );
+    });
+  });
+
+  // CC-05 (TASK-336) — the admin DNA generate endpoint
+  // (`POST /admin/dna-writing-styles/generate/:doctorId`) was unreachable from
+  // the console. This hook makes it reachable: it targets the selected doctor,
+  // scopes the call to the active tenant, and forwards optional body fields.
+  describe('useAdminGenerateDnaReport', () => {
+    const DOCTOR_ID = 'doctor-9';
+
+    it('POSTs to the admin generate route for the doctor, scoped to the tenant', async () => {
+      mockPost.mockResolvedValueOnce({ jobId: 'job-1' });
+
+      const { result } = renderHook(() => useAdminGenerateDnaReport(), { wrapper: createWrapper() });
+
+      result.current.mutate({ doctorId: DOCTOR_ID, tenantId: TENANT_ID });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockPost).toHaveBeenCalledWith(
+        `/admin/dna-writing-styles/generate/${DOCTOR_ID}`,
+        {},
+        { tenantId: TENANT_ID },
+      );
+    });
+
+    it('forwards optional generation inputs in the body (not doctorId/tenantId)', async () => {
+      mockPost.mockResolvedValueOnce({ jobId: 'job-2' });
+
+      const { result } = renderHook(() => useAdminGenerateDnaReport(), { wrapper: createWrapper() });
+
+      result.current.mutate({
+        doctorId: DOCTOR_ID,
+        tenantId: TENANT_ID,
+        textSamples: ['sample a', 'sample b'],
+        editedSummary: 'edited',
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockPost).toHaveBeenCalledWith(
+        `/admin/dna-writing-styles/generate/${DOCTOR_ID}`,
+        { textSamples: ['sample a', 'sample b'], editedSummary: 'edited' },
         { tenantId: TENANT_ID },
       );
     });

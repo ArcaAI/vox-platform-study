@@ -14,6 +14,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ForbiddenException } from '@nestjs/common';
+import { AuditLogDtoMapper } from '@arcaai/applications';
 import { AuditLogController } from '../audit-log.controller';
 
 function createMockAuditLogService() {
@@ -26,7 +27,6 @@ function createMockAuditLogService() {
         fetchById: vi.fn(),
         fetchAllByResource: vi.fn(),
         fetchAllCreatedByUser: vi.fn().mockResolvedValue({ data: [], count: 0, limit: 10, page: 1 }),
-        deleteById: vi.fn(),
     };
 }
 
@@ -224,5 +224,47 @@ describe('TASK-328 A8 — AuditLogController.exportCsv', () => {
 
         await controller.exportCsv({} as never);
         expect(svc.exportFiltered).toHaveBeenCalledTimes(1);
+    });
+
+    // OB-07 (TASK-336) — the controller decides tenant attribution: a global
+    // (cross-tenant) export = SUPER_ADMIN with no tenant scope → ToCsv must be
+    // asked to include the tenant column; a tenant-scoped export must not. The
+    // column rendering itself is covered by the applications mapper unit test.
+    it('OB-07 — global export (SUPER_ADMIN, no tenant scope) requests the tenant column', async () => {
+        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+        const controller = new AuditLogController(svc as never, cls as never);
+        const toCsv = vi.spyOn(AuditLogDtoMapper, 'ToCsv').mockReturnValue('');
+        svc.exportFiltered.mockResolvedValue({ rows: [], responsibleUsers: {} });
+
+        await controller.exportCsv({} as never);
+
+        expect(toCsv).toHaveBeenCalledWith([], {}, { includeTenant: true });
+        toCsv.mockRestore();
+    });
+
+    it('OB-07 — tenant-scoped export does not request the tenant column', async () => {
+        const cls = createMockCls({ id: 'u-1', tenantId: 't-OWN', roles: ['DOCTOR'] }, 't-OWN');
+        const controller = new AuditLogController(svc as never, cls as never);
+        const toCsv = vi.spyOn(AuditLogDtoMapper, 'ToCsv').mockReturnValue('');
+        svc.exportFiltered.mockResolvedValue({ rows: [], responsibleUsers: {} });
+
+        await controller.exportCsv({} as never);
+
+        expect(toCsv).toHaveBeenCalledWith([], {}, { includeTenant: false });
+        toCsv.mockRestore();
+    });
+});
+
+// -----------------------------------------------------------------------------
+// OB-10 (TASK-336) — audit logs are append-only. The admin delete route/handler
+// was removed so the trail can never be mutated from the admin surface.
+// -----------------------------------------------------------------------------
+describe('OB-10 — AuditLogController has no delete capability', () => {
+    it('does not expose a delete handler', () => {
+        const svc = createMockAuditLogService();
+        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+        const controller = new AuditLogController(svc as never, cls as never);
+
+        expect((controller as unknown as Record<string, unknown>).delete).toBeUndefined();
     });
 });

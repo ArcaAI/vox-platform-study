@@ -5,7 +5,11 @@ import { adminClient, type PaginatedResponse } from './admin-client';
 // Types
 // ---------------------------------------------------------------------------
 
-export type PromptTemplateCategory = 'SYSTEM' | 'SUMMARY' | 'PRE_SUMMARY' | 'DNA_ANALYSIS' | 'CUSTOM';
+// CC-07 (TASK-336) — `PRE_SUMMARY` removed: no backend prompt category enum
+// includes it (create DTO is SYSTEM/SUMMARY/DNA_ANALYSIS/CUSTOM), the admin UI
+// never offered it, and pre-summary template selection keys off tags, not this
+// category. It was dead across the prompt surfaces.
+export type PromptTemplateCategory = 'SYSTEM' | 'SUMMARY' | 'DNA_ANALYSIS' | 'CUSTOM';
 
 export type PromptTemplateStatus = 'DRAFT' | 'PUBLISHED';
 
@@ -133,14 +137,6 @@ export interface UpdatePromptInput {
   // the prior GET). The API folds the `If-Match` header over this when
   // both are present.
   expectedVersion: number;
-}
-
-export type DepartmentPromptField = 'newPatientPromptId' | 'revisitPromptId' | 'summaryPromptId' | 'preSummaryPromptId';
-
-export interface AssignDepartmentPromptInput {
-  departmentId: string;
-  promptTemplateId: string;
-  field: DepartmentPromptField;
 }
 
 interface PromptListParams {
@@ -365,16 +361,6 @@ export function useTestPrompt(tenantId: string) {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: keys.detail(tenantId, variables.id) });
       qc.invalidateQueries({ queryKey: keys.lists(tenantId) });
-    },
-  });
-}
-
-export function useAssignDepartmentPrompt(tenantId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: AssignDepartmentPromptInput) => adminClient.post<void>('/admin/prompt-templates/assign-department', input, { tenantId }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: keys.all(tenantId) });
     },
   });
 }

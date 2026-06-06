@@ -8,13 +8,7 @@ import { ConfigConflictError } from '@arcaai/vox';
 import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { AdminApiError } from '../api/admin-client';
-import {
-  useMyTenantConfigs,
-  useTenantConfigs,
-  useUpdateMyTenantConfigs,
-  useUpdateTenantConfigs,
-  type TenantConfig,
-} from '../api/tenants';
+import { useMyTenantConfigs, useTenantConfigs, useUpdateMyTenantConfigs, useUpdateTenantConfigs, type TenantConfig } from '../api/tenants';
 import { ConfigConflictModal } from './conflict-modal';
 
 function tryFormatJsonString(input: string): string {
@@ -92,11 +86,22 @@ function ConfigValueEditor({ config, value, onChange }: { config: TenantConfig; 
   return <Input value={value} onChange={(event: React.ChangeEvent<HTMLInputElement>) => onChange(event.target.value)} />;
 }
 
+// IC-07 (TASK-336) — the platform/global defaults are stored on the master
+// `__GLOBAL__` tenant (server-side GLOBAL_TENANT_KEY); only a SUPER_ADMIN may
+// edit them. It is not surfaced as a normal working tenant, so the scope toggle
+// below is the clearest way to reach platform-wide settings.
+const GLOBAL_TENANT_KEY = '__GLOBAL__';
+type ConfigScope = 'tenant' | 'platform';
+
 export default function ConfigurationManagementPage() {
   const roles = useAuthStore((s: { user?: { roles?: string[] } | null }) => s.user?.roles ?? []);
   const tenantId = useAuthStore((s: { tenantId: string }) => s.tenantId);
   const isSuperAdmin = roles.includes('SUPER_ADMIN');
 
+  // IC-07 — SUPER_ADMIN can flip between the header-selected tenant's settings
+  // and the platform/global (`__GLOBAL__`) defaults. Defaults to 'tenant' so
+  // the existing per-tenant behaviour (and header scoping) is unchanged.
+  const [scope, setScope] = useState<ConfigScope>('tenant');
   const [configSearch, setConfigSearch] = useState('');
   const [selectedConfigId, setSelectedConfigId] = useState('');
   const [draftValue, setDraftValue] = useState('');
@@ -111,7 +116,9 @@ export default function ConfigurationManagementPage() {
   // TASK-335 — the working tenant is chosen exclusively via the header
   // ScopeSwitcher (store `tenantId`) for every role; the in-page tenant
   // picker column was removed, so there is no local selection to reconcile.
-  const effectiveTenantIdentifier = tenantId;
+  // IC-07 — when a super-admin selects the platform scope, target the global
+  // defaults tenant instead, reusing the same GET/PATCH config endpoints.
+  const effectiveTenantIdentifier = isSuperAdmin && scope === 'platform' ? GLOBAL_TENANT_KEY : tenantId;
 
   const tenantConfigsQuery = useTenantConfigs(
     effectiveTenantIdentifier || '',
@@ -248,6 +255,12 @@ export default function ConfigurationManagementPage() {
     }
   };
 
+  // IC-07 (TASK-336) — create/remove of config rows is intentionally NOT wired
+  // here: the only config write path is the tenant module's update-by-id PATCH
+  // (`/admin/tenants/configs/:id`, `/tenant/me/config`); there is no POST/DELETE
+  // for config rows and the tenant module is out of scope for this change.
+  // Config rows are provisioned by the seed/global-defaults clone, so the
+  // editor exposes view/edit (+ the platform-defaults scope) rather than CRUD.
   const configColumn: MultiColumnConfig<TenantConfig> = {
     id: 'config-items',
     title: 'Configurations',
@@ -364,12 +377,18 @@ export default function ConfigurationManagementPage() {
       <div className="mb-4">
         <h2 className="text-2xl font-bold tracking-tight">Configuration Management</h2>
         <p className="text-muted-foreground mt-1">Manage tenant settings with type-aware editing and API-backed persistence.</p>
+        {isSuperAdmin && (
+          <div className="mt-3 flex items-center gap-2" role="group" aria-label="Configuration scope">
+            <Button variant={scope === 'tenant' ? 'default' : 'outline'} size="sm" onClick={() => setScope('tenant')}>
+              Tenant settings
+            </Button>
+            <Button variant={scope === 'platform' ? 'default' : 'outline'} size="sm" onClick={() => setScope('platform')}>
+              Platform defaults
+            </Button>
+          </div>
+        )}
       </div>
-      <MultiColumnLayout
-        columns={[configColumn, detailColumn]}
-        columnStates={[configState, detailState]}
-        height="calc(100vh - 12rem)"
-      />
+      <MultiColumnLayout columns={[configColumn, detailColumn]} columnStates={[configState, detailState]} height="calc(100vh - 12rem)" />
       <ConfigConflictModal
         error={conflictErr}
         onRefresh={() => {

@@ -39,6 +39,21 @@ const mockUserRoleAssignmentRepository = {
     softDelete: vi.fn()
 };
 
+// Mock CoreDatabaseService (CORE_DATABASE_SERVICE) - the service uses the
+// unscoped `baseClient` for the AC-02 role-tier lookup (Role is a global,
+// non-tenant-scoped model) and for the existing cross-tenant identity reads.
+const mockDatabaseService = {
+    baseClient: {
+        role: {
+            findUnique: vi.fn()
+        },
+        userRoleAssignment: {
+            findFirst: vi.fn(),
+            findMany: vi.fn()
+        }
+    }
+};
+
 /**
  * Creates a complete mock user role assignment entity matching the real entity structure.
  * This ensures tests don't pass due to incomplete mock data.
@@ -148,13 +163,20 @@ describe('UserRoleAssignmentService', () => {
         service = new UserRoleAssignmentService(
             mockUserRoleAssignmentRepository as any,
             mockEventEmitter as any,
-            mockClsService as any
+            mockClsService as any,
+            mockDatabaseService as any
         );
 
         // Default: no soft-deleted record exists, so create proceeds normally
         mockUserRoleAssignmentRepository.findFirst.mockRejectedValue(
             new DataNotFoundException('UserRoleAssignment', 'not-found')
         );
+
+        // AC-02 defaults: the target role is a non-elevated tenant role and the
+        // target user has no prior tenant membership (clean onboarding), so the
+        // privilege-escalation guard is a no-op for the existing create specs.
+        mockDatabaseService.baseClient.role.findUnique.mockResolvedValue({ name: 'DOCTOR' });
+        mockDatabaseService.baseClient.userRoleAssignment.findMany.mockResolvedValue([]);
     });
 
     describe('create', () => {
@@ -453,7 +475,8 @@ describe('UserRoleAssignmentService', () => {
                 service = new UserRoleAssignmentService(
                     mockUserRoleAssignmentRepository as any,
                     mockEventEmitter as any,
-                    mockClsService as any
+                    mockClsService as any,
+                    mockDatabaseService as any
                 );
 
                 const newAssignment = createMockUserRoleAssignmentEntity({
@@ -944,6 +967,107 @@ describe('UserRoleAssignmentService', () => {
                     roleId: 'role-id-1'
                 })
             ).rejects.toThrow('Database connection failed');
+        });
+    });
+
+    // -------------------------------------------------------------------------
+    // AC-02 r2605 (Critical, privilege escalation) — service-layer defense in
+    // depth for POST /admin/users/:id/roles. A non-SUPER_ADMIN caller must
+    // never be able to (a) grant the platform-wide SUPER_ADMIN role, nor
+    // (b) assign a role to a user that lives outside the caller's tenant.
+    // SUPER_ADMIN and system/bootstrap (no CLS user) paths stay exempt.
+    // -------------------------------------------------------------------------
+    describe('AC-02 — privilege-escalation guard on create', () => {
+        const buildAs = (user: { id: string; roles?: string[] } | null, tenantId: string | null) => {
+            mockClsService.get.mockImplementation((key: string) => {
+                switch (key) {
+                    case 'user':
+                        return user;
+                    case 'tenantId':
+                        return tenantId;
+                    default:
+                        return null;
+                }
+            });
+            return new UserRoleAssignmentService(
+                mockUserRoleAssignmentRepository as any,
+                mockEventEmitter as any,
+                mockClsService as any,
+                mockDatabaseService as any
+            );
+        };
+
+        it('rejects a non-super-admin assigning the SUPER_ADMIN role (ForbiddenException, no write)', async () => {
+            const svc = buildAs({ id: 'tadmin', roles: ['TENANT_ADMIN'] }, 'tenant-1');
+            mockDatabaseService.baseClient.role.findUnique.mockResolvedValue({ name: 'SUPER_ADMIN' });
+
+            await expect(
+                svc.create({ userId: 'target', roleId: 'role-super' })
+            ).rejects.toBeInstanceOf(ForbiddenException);
+
+            // Defense-in-depth: nothing on the create path may have run.
+            expect(UserRoleAssignmentFactory.CreateUserRoleAssignment).not.toHaveBeenCalled();
+            expect(mockUserRoleAssignmentRepository.create).not.toHaveBeenCalled();
+            expect(mockUserRoleAssignmentRepository.restore).not.toHaveBeenCalled();
+        });
+
+        it('allows a SUPER_ADMIN to assign the SUPER_ADMIN role (exempt — tier lookup skipped)', async () => {
+            const svc = buildAs({ id: 'root', roles: ['SUPER_ADMIN'] }, 'tenant-1');
+            mockDatabaseService.baseClient.role.findUnique.mockResolvedValue({ name: 'SUPER_ADMIN' });
+            mockUserRoleAssignmentRepository.create.mockResolvedValue(
+                createMockUserRoleAssignmentEntity({ id: 'ok' })
+            );
+
+            const result = await svc.create({ userId: 'target', roleId: 'role-super' });
+
+            expect(result.id).toBe('ok');
+            expect(mockDatabaseService.baseClient.role.findUnique).not.toHaveBeenCalled();
+            expect(mockUserRoleAssignmentRepository.create).toHaveBeenCalled();
+        });
+
+        it('rejects a non-super-admin assigning a role to a user in ANOTHER tenant (ForbiddenException, no write)', async () => {
+            const svc = buildAs({ id: 'tadmin', roles: ['TENANT_ADMIN'] }, 'tenant-1');
+            mockDatabaseService.baseClient.role.findUnique.mockResolvedValue({ name: 'DOCTOR' });
+            mockDatabaseService.baseClient.userRoleAssignment.findMany.mockResolvedValue([
+                { tenantId: 'tenant-2' }
+            ]);
+
+            await expect(
+                svc.create({ userId: 'foreign-user', roleId: 'role-doc' })
+            ).rejects.toBeInstanceOf(ForbiddenException);
+
+            expect(UserRoleAssignmentFactory.CreateUserRoleAssignment).not.toHaveBeenCalled();
+            expect(mockUserRoleAssignmentRepository.create).not.toHaveBeenCalled();
+        });
+
+        it('allows onboarding a NEW user (no prior memberships) with a non-elevated role', async () => {
+            const svc = buildAs({ id: 'tadmin', roles: ['TENANT_ADMIN'] }, 'tenant-1');
+            mockDatabaseService.baseClient.role.findUnique.mockResolvedValue({ name: 'DOCTOR' });
+            mockDatabaseService.baseClient.userRoleAssignment.findMany.mockResolvedValue([]);
+            mockUserRoleAssignmentRepository.create.mockResolvedValue(
+                createMockUserRoleAssignmentEntity({ id: 'onboard' })
+            );
+
+            const result = await svc.create({ userId: 'new-user', roleId: 'role-doc' });
+
+            expect(result.id).toBe('onboard');
+            expect(mockUserRoleAssignmentRepository.create).toHaveBeenCalled();
+        });
+
+        it('allows a non-super-admin to assign a non-elevated role to a user already in their tenant', async () => {
+            const svc = buildAs({ id: 'tadmin', roles: ['TENANT_ADMIN'] }, 'tenant-1');
+            mockDatabaseService.baseClient.role.findUnique.mockResolvedValue({ name: 'NURSE' });
+            mockDatabaseService.baseClient.userRoleAssignment.findMany.mockResolvedValue([
+                { tenantId: 'tenant-1' }
+            ]);
+            mockUserRoleAssignmentRepository.create.mockResolvedValue(
+                createMockUserRoleAssignmentEntity({ id: 'same-tenant' })
+            );
+
+            const result = await svc.create({ userId: 'member', roleId: 'role-nurse' });
+
+            expect(result.id).toBe('same-tenant');
+            expect(mockUserRoleAssignmentRepository.create).toHaveBeenCalled();
         });
     });
 });

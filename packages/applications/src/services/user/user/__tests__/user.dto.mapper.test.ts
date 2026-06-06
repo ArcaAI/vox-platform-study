@@ -141,10 +141,28 @@ describe('UserDtoMapper', () => {
             const result = UserDtoMapper.ToResponse(entity);
 
             expect(result.isServiceAccount).toBe(true);
-            expect(result.secret1).toBe('secret-key-1');
-            expect(result.secret1Expiry).toEqual(
-                new Date('2027-01-01T00:00:00Z')
-            );
+        });
+
+        // AC-05 (TASK-336) — the user secret material (secret1/secret2 and their
+        // expiries) is sensitive and MUST NOT be serialised onto UserResponse,
+        // even for service accounts whose entity carries it.
+        it('should NOT expose secret fields on the response', () => {
+            const entity = createMockUserEntity({
+                id: 'service-user-123',
+                username: 'api-service',
+                isServiceAccount: true,
+                secret1: 'secret-key-1',
+                secret1Expiry: new Date('2027-01-01T00:00:00Z'),
+                secret2: 'secret-key-2',
+                secret2Expiry: new Date('2027-06-01T00:00:00Z')
+            });
+
+            const result = UserDtoMapper.ToResponse(entity);
+
+            expect('secret1' in result).toBe(false);
+            expect('secret1Expiry' in result).toBe(false);
+            expect('secret2' in result).toBe(false);
+            expect('secret2Expiry' in result).toBe(false);
         });
 
         it('should map external user correctly', () => {
@@ -284,7 +302,7 @@ describe('UserDtoMapper', () => {
 
             expect(result.data[0].isServiceAccount).toBe(false);
             expect(result.data[1].isServiceAccount).toBe(true);
-            expect(result.data[1].secret1).toBe('api-key');
+            expect('secret1' in result.data[1]).toBe(false);
             expect(result.data[2].externalId).toBe('oauth-123');
         });
 
@@ -338,7 +356,7 @@ describe('UserDtoMapper', () => {
             expect(result.lastActiveAt).toBeNull();
         });
 
-        it('should handle entity with both secrets set', () => {
+        it('should omit secret fields even when the entity has both secrets set', () => {
             const entity = createMockUserEntity({
                 id: 'service-user',
                 isServiceAccount: true,
@@ -350,10 +368,10 @@ describe('UserDtoMapper', () => {
 
             const result = UserDtoMapper.ToResponse(entity);
 
-            expect(result.secret1).toBe('primary-api-key');
-            expect(result.secret1Expiry).toEqual(new Date('2027-01-01T00:00:00Z'));
-            expect(result.secret2).toBe('secondary-api-key');
-            expect(result.secret2Expiry).toEqual(new Date('2027-06-01T00:00:00Z'));
+            expect('secret1' in result).toBe(false);
+            expect('secret1Expiry' in result).toBe(false);
+            expect('secret2' in result).toBe(false);
+            expect('secret2Expiry' in result).toBe(false);
         });
 
         it('should handle entity with recent activity timestamps', () => {

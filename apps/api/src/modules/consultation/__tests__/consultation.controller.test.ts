@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { ConsultationController } from '../consultation.controller';
 
 // ─── Test Fixtures ──────────────────────────────────────────────────────────
@@ -928,6 +929,19 @@ describe('ConsultationController', () => {
             expect(consultationService.listConsultations).toHaveBeenCalledWith(
                 expect.objectContaining({ patientId: PATIENT_SHARED, pageSize: 5 }),
             );
+        });
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // EU-06: POST /consultations/open must be gated to create:Consultation
+    // ═══════════════════════════════════════════════════════════════════════
+
+    describe('open endpoint role gate (EU-06)', () => {
+        it('requires @Authorize(["create","Consultation"]) so read-only roles cannot open consultations', () => {
+            const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, ConsultationController.prototype.open) as
+                | Array<{ action: string; subject: string }>
+                | undefined;
+            expect(meta).toEqual([{ action: 'create', subject: 'Consultation' }]);
         });
     });
 });

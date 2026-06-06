@@ -9,7 +9,7 @@ import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Separator } from '@arcaai/ui/separator';
 import { Skeleton } from '@arcaai/ui/skeleton';
-import { ArrowRight, Building2, Calendar, Info, Shield, Users } from 'lucide-react';
+import { ArrowRight, Building2, Calendar, Info, Shield, UserCog, Users } from 'lucide-react';
 
 function formatDate(date?: string | Date | null) {
   if (!date) return '—';
@@ -43,7 +43,7 @@ export default function AdminOverviewPage() {
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card className="md:col-span-2 lg:col-span-3">
-          <CardHeader className="flex flex-row items-start gap-4">
+          <CardHeader className="flex flex-row flex-wrap items-start gap-4">
             <div className="bg-primary/10 flex size-10 shrink-0 items-center justify-center rounded-lg">
               <Info className="text-primary size-5" />
             </div>
@@ -51,9 +51,18 @@ export default function AdminOverviewPage() {
               <CardTitle className="text-base">Welcome to Administration</CardTitle>
               <CardDescription>
                 This section provides tools for managing your platform. Impersonation is not applied here — all actions are performed as your real
-                identity.
+                identity. To act as a clinician and exercise the playgrounds, start impersonation from the Playground Overview.
               </CardDescription>
             </div>
+            {/* TASK-336 IMP-05 — make the impersonation entry point discoverable
+                from the admin home (it lives on the Playground Overview user list). */}
+            <Button size="sm" className="ml-auto shrink-0 self-center" asChild>
+              <Link to="/playground/overview">
+                <UserCog className="mr-1.5 size-4" />
+                Impersonate a user
+                <ArrowRight className="ml-1.5 size-3.5" />
+              </Link>
+            </Button>
           </CardHeader>
         </Card>
 

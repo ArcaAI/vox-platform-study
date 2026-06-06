@@ -33,6 +33,12 @@ import { useAdminTenants } from '../api/tenants';
 const PAGE_SIZE = 25;
 const ALL = '__all__';
 
+// OB-08 (TASK-336): the committed filter snapshot — the ONLY state that feeds a
+// request. Draft edits live in their own state and are copied here on "Apply",
+// so a pagination click can never smuggle an un-applied draft into the query.
+type CommittedFilters = { from: string; to: string; action: string; resourceType: string; userId: string };
+const EMPTY_FILTERS: CommittedFilters = { from: '', to: '', action: ALL, resourceType: ALL, userId: '' };
+
 // Mirrors the AuditAction / ResourceType enums (packages/database/.../audit.prisma).
 // A curated list keeps the selects usable; "All" clears the filter.
 const ACTION_OPTIONS = ['CREATE', 'READ', 'UPDATE', 'DELETE', 'ARCHIVE', 'LOGIN', 'LOGOUT', 'IMPERSONATED_ACTION'] as const;
@@ -122,7 +128,7 @@ export default function AuditLogManagementPage() {
     [tenantNameById],
   );
 
-  // Draft filter state (committed via "Apply" / select changes).
+  // Draft filter state — what the user is editing in the filter bar.
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [action, setAction] = useState<string>(ALL);
@@ -130,23 +136,20 @@ export default function AuditLogManagementPage() {
   const [userId, setUserId] = useState('');
   const [page, setPage] = useState(1);
 
-  // Committed params actually sent to the hook. Bumping `applyToken` re-commits.
-  const [applyToken, setApplyToken] = useState(0);
+  // OB-08: only the committed snapshot (+ page) drives the request.
+  const [committed, setCommitted] = useState<CommittedFilters>(EMPTY_FILTERS);
 
   const params = useMemo<AuditLogFilterParams>(
     () => ({
       page,
       limit: PAGE_SIZE,
-      from: toIsoStart(from),
-      to: toIsoEnd(to),
-      action: action === ALL ? undefined : action,
-      resourceType: resourceType === ALL ? undefined : resourceType,
-      userId: userId.trim() || undefined,
+      from: toIsoStart(committed.from),
+      to: toIsoEnd(committed.to),
+      action: committed.action === ALL ? undefined : committed.action,
+      resourceType: committed.resourceType === ALL ? undefined : committed.resourceType,
+      userId: committed.userId.trim() || undefined,
     }),
-    // `applyToken` forces a re-fetch when the user clicks Apply without changing
-    // the date inputs (they otherwise debounce poorly with text typing).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page, applyToken],
+    [page, committed],
   );
 
   useEffect(() => {
@@ -159,8 +162,8 @@ export default function AuditLogManagementPage() {
 
   const applyFilters = useCallback(() => {
     setPage(1);
-    setApplyToken((token) => token + 1);
-  }, []);
+    setCommitted({ from, to, action, resourceType, userId });
+  }, [from, to, action, resourceType, userId]);
 
   const resetFilters = useCallback(() => {
     setFrom('');
@@ -169,7 +172,7 @@ export default function AuditLogManagementPage() {
     setResourceType(ALL);
     setUserId('');
     setPage(1);
-    setApplyToken((token) => token + 1);
+    setCommitted(EMPTY_FILTERS);
   }, []);
 
   // Detail drawer ----------------------------------------------------------
@@ -335,12 +338,7 @@ export default function AuditLogManagementPage() {
             </TableHeader>
             <TableBody>
               {entries.map((entry) => (
-                <TableRow
-                  key={entry.id}
-                  className="cursor-pointer"
-                  data-testid="audit-row"
-                  onClick={() => void openDetail(entry)}
-                >
+                <TableRow key={entry.id} className="cursor-pointer" data-testid="audit-row" onClick={() => void openDetail(entry)}>
                   <TableCell className="whitespace-nowrap">{formatDate(entry.createdAt)}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={ACTION_COLOR[entry.action ?? ''] ?? 'bg-muted'}>

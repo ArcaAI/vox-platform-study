@@ -7,7 +7,7 @@ import { type MultiColumnConfig, type MultiColumnContentConfig, MultiColumnLayou
 import { ScrollArea } from '@arcaai/ui/scroll-area';
 import { Separator } from '@arcaai/ui/separator';
 import { Textarea } from '@arcaai/ui/textarea';
-import { GitCompare, History, Loader2, Pencil, User as UserIcon } from 'lucide-react';
+import { GitCompare, History, Loader2, Pencil, Sparkles, User as UserIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -20,6 +20,7 @@ import type { DnaReport, DnaReportData, DnaStyleVersion } from '@/features/dna-w
 import { zodResolver } from '@/lib/zod-resolver';
 import { useAuthStore } from '@/store/auth-store';
 import {
+  useAdminGenerateDnaReport,
   useAdminUpdateDnaReport,
   useDnaReportVersions,
   useRefreshDnaReportVersions,
@@ -282,6 +283,7 @@ export default function DnaReportsAdminPage() {
   const [editOpen, setEditOpen] = useState(false);
   const refreshTenantData = useRefreshTenantDnaReportData();
   const refreshVersions = useRefreshDnaReportVersions();
+  const generateMutation = useAdminGenerateDnaReport();
 
   const effectiveTenantId = tenantId;
 
@@ -358,6 +360,24 @@ export default function DnaReportsAdminPage() {
     });
   }, []);
 
+  // CC-05 (TASK-336) — admin-initiated DNA generation for the selected doctor.
+  // Wires the previously console-unreachable admin generate endpoint; the call
+  // is scoped to the active tenant and queues a background job, so on success
+  // we refresh the tenant data and let the new report surface on completion.
+  const handleGenerate = useCallback(() => {
+    if (!selectedUserId || !effectiveTenantId) return;
+    generateMutation.mutate(
+      { doctorId: selectedUserId, tenantId: effectiveTenantId },
+      {
+        onSuccess: () => {
+          toast.success('DNA generation started');
+          void refreshTenantData(effectiveTenantId);
+        },
+        onError: (err) => toast.error(`Failed to start generation: ${err.message}`),
+      },
+    );
+  }, [selectedUserId, effectiveTenantId, generateMutation, refreshTenantData]);
+
   const usersColumn: MultiColumnConfig<AdminUser> = {
     id: 'users',
     title: 'Tenant Users',
@@ -403,6 +423,18 @@ export default function DnaReportsAdminPage() {
     subtitle: selectedUserId ? (selectedReport ? `${versions.length} versions` : 'No report for selected user') : 'Select a user',
     width: '220px',
     showItemCount: true,
+    headerActions: selectedUserId ? (
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 gap-1 text-xs"
+        onClick={handleGenerate}
+        disabled={generateMutation.isPending || !effectiveTenantId}
+      >
+        {generateMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+        Generate
+      </Button>
+    ) : undefined,
     onRefresh: () => {
       if (!effectiveTenantId || !selectedReport?.id) return;
       void refreshVersions(effectiveTenantId, selectedReport.id);

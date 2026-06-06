@@ -1,5 +1,5 @@
-import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
-import { adminClient, type PaginatedResponse } from './admin-client';
+import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
+import { adminClient } from './admin-client';
 
 // ---------------------------------------------------------------------------
 // Types — aligned with backend AuditLogResponse
@@ -33,18 +33,26 @@ export interface AuditLogParams {
   sort?: string;
 }
 
+/**
+ * OB-06 (TASK-336) — the one canonical list envelope for the audit/observability
+ * admin client. The backend audit endpoints already return `{ data, count, limit,
+ * page }`, but consumers read `data`/`count` directly, so a single drifted field
+ * (e.g. `total` instead of `count`) would silently show 0 rows/totals. We pin the
+ * shape here so the rest of the admin console can depend on it.
+ */
+export interface AuditLogListEnvelope<T = AuditLog> {
+  data: T[];
+  count: number;
+  limit: number;
+  page: number;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 const keys = {
   all: ['admin', 'audit-logs'] as const,
-  lists: () => [...keys.all, 'list'] as const,
-  list: (params?: AuditLogParams) => [...keys.lists(), params] as const,
-  details: () => [...keys.all, 'detail'] as const,
-  detail: (id: string) => [...keys.details(), id] as const,
-  byResource: (resourceType: string, resourceId: string) => [...keys.all, 'resource', resourceType, resourceId] as const,
-  byUser: (userId: string) => [...keys.all, 'user', userId] as const,
   byTenant: (tenantId: string, params?: AuditLogParams) => [...keys.all, 'tenant', tenantId, params] as const,
 };
 
@@ -55,22 +63,40 @@ function qs(params?: AuditLogParams): string {
   return '?' + new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString();
 }
 
+function asNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * OB-06 (TASK-336) — normalize any audit list response onto
+ * {@link AuditLogListEnvelope}. Tolerates the historical envelope variants
+ * (`count`/`total`, `limit`/`pageSize`, `data`/`items`) so the admin console
+ * keeps working if an endpoint drifts. Scoped to the audit client only.
+ */
+export function normalizeAuditLogList(raw: unknown): AuditLogListEnvelope {
+  const source = (raw ?? {}) as Record<string, unknown>;
+  const rows = Array.isArray(source.data) ? (source.data as AuditLog[]) : Array.isArray(source.items) ? (source.items as AuditLog[]) : [];
+
+  return {
+    data: rows,
+    count: asNumber(source.count) ?? asNumber(source.total) ?? rows.length,
+    limit: asNumber(source.limit) ?? asNumber(source.pageSize) ?? rows.length,
+    page: asNumber(source.page) ?? 1,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Query hooks
 // ---------------------------------------------------------------------------
 
-export function useAuditLogs(params?: AuditLogParams, options?: Omit<UseQueryOptions<PaginatedResponse<AuditLog>>, 'queryKey' | 'queryFn'>) {
-  return useQuery({
-    queryKey: keys.list(params),
-    queryFn: () => adminClient.get<PaginatedResponse<AuditLog>>(`/admin/audit-logs${qs(params)}`),
-    ...options,
-  });
-}
-
+/**
+ * The single audit-log list client (OB-09): the tenant-scoped list used by the
+ * admin tenant drawer. All responses pass through {@link normalizeAuditLogList}.
+ */
 export function useTenantAuditLogs(
   tenantId: string,
   params?: Omit<AuditLogParams, 'filters'>,
-  options?: Omit<UseQueryOptions<PaginatedResponse<AuditLog>>, 'queryKey' | 'queryFn'>,
+  options?: Omit<UseQueryOptions<AuditLogListEnvelope>, 'queryKey' | 'queryFn'>,
 ) {
   const fullParams: AuditLogParams = {
     ...params,
@@ -79,59 +105,9 @@ export function useTenantAuditLogs(
   };
   return useQuery({
     queryKey: keys.byTenant(tenantId, fullParams),
-    queryFn: () => adminClient.get<PaginatedResponse<AuditLog>>(`/admin/audit-logs${qs(fullParams)}`),
+    queryFn: async () => normalizeAuditLogList(await adminClient.get<unknown>(`/admin/audit-logs${qs(fullParams)}`)),
     enabled: !!tenantId,
     ...options,
-  });
-}
-
-export function useAuditLog(id: string, options?: Omit<UseQueryOptions<AuditLog>, 'queryKey' | 'queryFn'>) {
-  return useQuery({
-    queryKey: keys.detail(id),
-    queryFn: () => adminClient.get<AuditLog>(`/admin/audit-logs/${id}`),
-    enabled: !!id,
-    ...options,
-  });
-}
-
-export function useAuditLogsByResource(
-  resourceType: string,
-  resourceId: string,
-  params?: AuditLogParams,
-  options?: Omit<UseQueryOptions<PaginatedResponse<AuditLog>>, 'queryKey' | 'queryFn'>,
-) {
-  return useQuery({
-    queryKey: keys.byResource(resourceType, resourceId),
-    queryFn: () => adminClient.get<PaginatedResponse<AuditLog>>(`/admin/audit-logs/resource/${resourceType}/${resourceId}${qs(params)}`),
-    enabled: !!resourceType && !!resourceId,
-    ...options,
-  });
-}
-
-export function useAuditLogsByUser(
-  userId: string,
-  params?: AuditLogParams,
-  options?: Omit<UseQueryOptions<PaginatedResponse<AuditLog>>, 'queryKey' | 'queryFn'>,
-) {
-  return useQuery({
-    queryKey: keys.byUser(userId),
-    queryFn: () => adminClient.get<PaginatedResponse<AuditLog>>(`/admin/audit-logs/user/${userId}${qs(params)}`),
-    enabled: !!userId,
-    ...options,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Mutation hooks
-// ---------------------------------------------------------------------------
-
-export function useDeleteAuditLog() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => adminClient.delete<void>(`/admin/audit-logs/${id}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: keys.all });
-    },
   });
 }
 

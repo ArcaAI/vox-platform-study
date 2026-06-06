@@ -1,7 +1,25 @@
 import type { CorePrismaClient } from '../../../client';
 import { Prisma } from '../../../generated/core-prisma-client/client';
-import type { PromptTemplateCategory } from '../../../generated/core-prisma-client/enums';
+import type {
+    PromptTemplateCategory,
+    PromptTemplateStatus,
+} from '../../../generated/core-prisma-client/enums';
 import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS } from './00-constants';
+
+/**
+ * TASK-336 CC-03 — publication baseline.
+ *
+ * Templates default to DRAFT in the DB, but the clinician resolution path
+ * (`PromptManagementService.listAvailableForCaller`) filters TENANT_DEFAULT /
+ * DEPARTMENT_DEFAULT scopes to `status != DRAFT`, so a DRAFT-only seed left
+ * clinicians with NO selectable prompts. We PUBLISH every clinician-facing
+ * template and keep only `DNA_ANALYSIS` templates as DRAFT for realism — the
+ * DNA writing-style service resolves its templates WITHOUT a publication gate,
+ * so leaving them DRAFT keeps DNA working while still demonstrating a mixed
+ * draft/published catalog in the admin console.
+ */
+const resolvePromptStatus = (category: string): PromptTemplateStatus =>
+    (category === 'DNA_ANALYSIS' ? 'DRAFT' : 'PUBLISHED') as PromptTemplateStatus;
 
 export const DEFAULT_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 export const SYSTEM_USER_ID = '60000000-0000-0000-0000-000000000000';
@@ -2376,6 +2394,8 @@ export const seedPromptTemplate = async (client: CorePrismaClient) => {
         const data = {
             ...rest,
             category: rest.category as PromptTemplateCategory,
+            // TASK-336 CC-03 — publish clinician-facing templates (keep DNA DRAFT).
+            status: resolvePromptStatus(rest.category),
             ...(variables != null ? { variables: variables as Prisma.InputJsonValue } : {}),
         };
         await client.promptTemplate.upsert({
@@ -2471,6 +2491,9 @@ export const seedPromptTemplate = async (client: CorePrismaClient) => {
         const data = {
             ...rest,
             category: rest.category as PromptTemplateCategory,
+            // TASK-336 CC-03 — publish clinician-facing templates (keep DNA DRAFT)
+            // so every customer tenant has >= 1 PUBLISHED template to resolve.
+            status: resolvePromptStatus(rest.category),
             ...(variables != null ? { variables: variables as Prisma.InputJsonValue } : {}),
         };
         await client.promptTemplate.upsert({

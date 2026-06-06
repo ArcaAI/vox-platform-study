@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Inject, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { IPolicyService } from '@arcaai/applications';
-import { CanManage } from '../../decorators';
+import { CanManage, CanAny } from '../../decorators';
 import {
   CreatePolicyDto,
   UpdatePolicyDto,
@@ -16,7 +16,7 @@ import {
  * RBAC Policies Controller
  *
  * Manages policies in the RBAC system.
- * All endpoints require 'manage' permission on 'Policy' subject.
+ * Read/list endpoints accept `read` or `manage` on 'Policy'; mutations require `manage`.
  *
  * TASK-307 W6.2 (audit C-10 / F-1 / H-9) — every Prisma call used to live
  * here. The controller is now a thin transport-layer wrapper around
@@ -38,7 +38,10 @@ export class PoliciesController {
    * List all policies
    */
   @Get()
-  @CanManage('Policy')
+  // AC-03 (TASK-336): read/list reachable by holders of decomposed `read:Policy`
+  // (e.g. TENANT_ADMIN per seed) OR the `manage:Policy` alias. Mutations below
+  // stay `manage`-only.
+  @CanAny(['read', 'Policy'], ['manage', 'Policy'])
   @ApiOperation({ summary: 'List all policies' })
   @ApiResponse({ status: 200, description: 'List of policies', type: PaginatedPolicyResponse })
   async findAll(
@@ -66,7 +69,7 @@ export class PoliciesController {
    * Get a policy by ID
    */
   @Get(':id')
-  @CanManage('Policy')
+  @CanAny(['read', 'Policy'], ['manage', 'Policy'])
   @ApiOperation({ summary: 'Get policy by ID' })
   @ApiResponse({ status: 200, description: 'Policy details', type: PolicyResponse })
   @ApiResponse({ status: 404, description: 'Policy not found' })

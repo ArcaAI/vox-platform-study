@@ -18,7 +18,10 @@ export default function StudioPage() {
       url: `${apiBaseUrl}/admin/pstudio`,
       customHeaders: { Authorization: `Bearer ${token}` },
     });
-    return createPostgresAdapter({ executor });
+    // TASK-336 BR-02: HOPE tables all live in the `core` schema. studio-core's
+    // postgres adapter hardcodes `defaultSchema: "public"` (empty here), so the
+    // UI renders "No tables found". Override it so the table list resolves.
+    return Object.assign(createPostgresAdapter({ executor }), { defaultSchema: 'core' });
   }, [token, apiBaseUrl]);
 
   useEffect(() => {

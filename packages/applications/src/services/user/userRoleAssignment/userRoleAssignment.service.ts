@@ -115,6 +115,16 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
       throw new ArgumentInvalidException('userId and roleId are required');
     }
 
+    // AC-02 r2605 (Critical, privilege escalation) — defense-in-depth role-tier
+    // + cross-tenant-target guard. Only an authenticated NON-super-admin caller
+    // is constrained; SUPER_ADMIN and system/bootstrap (no CLS user) paths keep
+    // the existing cross-tenant behaviour. Runs BEFORE any factory/repository
+    // call so a rejected attempt never touches the write path.
+    if (this.requestUser && !this.isSuperAdmin()) {
+      await this.assertAssignableRoleTier(request.roleId);
+      await this.assertTargetUserInCallerTenant(request.userId);
+    }
+
     // TASK-305 D.7 (audit C-6) — pin the working tenantId to the caller's CLS
     // context. The only legitimate cross-tenant create is when the caller
     // explicitly passes `request.tenantId` AND holds the SUPER_ADMIN role
@@ -186,6 +196,44 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
   private isSuperAdmin(): boolean {
     const roles = this.requestUser?.roles;
     return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
+  }
+
+  /**
+   * AC-02 r2605 — reject a non-SUPER_ADMIN caller's attempt to grant the
+   * platform-wide SUPER_ADMIN role. Per the `03-role` seed, SUPER_ADMIN is the
+   * only Global role (its assignments are cross-tenant); every other role is
+   * tenant-scoped and a TENANT_ADMIN may legitimately delegate it within their
+   * tenant. Resolves the target role's name through the unscoped `baseClient`
+   * (Role is a global, non-tenant-scoped model — same precedent as the
+   * cross-tenant identity reads above). A missing/unknown role is left for the
+   * downstream create/FK path to reject.
+   */
+  private async assertAssignableRoleTier(roleId: string): Promise<void> {
+    const role = (await this.databaseService.baseClient.role.findUnique({
+      where: { id: roleId },
+      select: { name: true },
+    })) as { name: string } | null;
+    if (role?.name === SUPER_ADMIN_ROLE) {
+      throw new ForbiddenException('Only a SUPER_ADMIN may assign the SUPER_ADMIN role');
+    }
+  }
+
+  /**
+   * AC-02 r2605 — reject a non-SUPER_ADMIN caller's attempt to assign a role to
+   * a user that belongs to a DIFFERENT tenant. A user with no ENABLED
+   * membership yet (a fresh account being onboarded into the caller's tenant)
+   * is allowed; a user whose memberships are all in other tenants is not.
+   * Skipped when the caller has no concrete tenant context (system/global path).
+   */
+  private async assertTargetUserInCallerTenant(userId: string): Promise<void> {
+    const callerTenantId = this.tenantId;
+    if (!callerTenantId) {
+      return;
+    }
+    const tenantIds = await this.findActiveTenantIdsForUser(userId);
+    if (tenantIds.length > 0 && !tenantIds.includes(callerTenantId)) {
+      throw new ForbiddenException('Cannot assign roles to a user outside your tenant');
+    }
   }
 
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<UserRoleAssignmentEntity>> {

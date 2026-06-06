@@ -804,6 +804,9 @@ export default function DepartmentManagementPage() {
           name: values.name,
           description: values.description || undefined,
           parentDepartmentId: values.parentDepartmentId || undefined,
+          // CC-04 (TASK-336) — the modal already collects this; forward it so a
+          // template typed at create-time is persisted instead of dropped.
+          defaultSummaryTemplate: values.defaultSummaryTemplate || undefined,
         },
         {
           onSuccess: (dept) => {
@@ -1007,11 +1010,7 @@ export default function DepartmentManagementPage() {
         <p className="text-muted-foreground mt-1">Manage medical departments, hierarchy, and prompt template assignments.</p>
       </div>
 
-      <MultiColumnLayout
-        columns={[deptsColumn, detailColumn]}
-        columnStates={[deptsState, detailState]}
-        height="calc(100vh - 12rem)"
-      />
+      <MultiColumnLayout columns={[deptsColumn, detailColumn]} columnStates={[deptsState, detailState]} height="calc(100vh - 12rem)" />
 
       <DepartmentFormDialog
         open={createOpen}

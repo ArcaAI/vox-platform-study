@@ -64,8 +64,7 @@ export function useTenantStorageConfigs(tenantId: string, options?: Omit<UseQuer
 export function useUpsertTenantStorageConfig(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: UpsertTenantStorageConfigInput) =>
-      adminClient.put<TenantStorageConfig>('/admin/tenants/storage/config', input, { tenantId }),
+    mutationFn: (input: UpsertTenantStorageConfigInput) => adminClient.put<TenantStorageConfig>('/admin/tenants/storage/config', input, { tenantId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.list(tenantId) });
     },

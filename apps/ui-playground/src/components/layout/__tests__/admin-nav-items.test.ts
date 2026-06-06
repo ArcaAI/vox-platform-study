@@ -17,7 +17,7 @@ const ids = (items: { id: string }[]) => items.map((i) => i.id);
 const disabledIds = (items: { id: string; disabled?: boolean }[]) => items.filter((i) => i.disabled).map((i) => i.id);
 
 describe('buildAdminNavItems (TASK-327 T5)', () => {
-  it('TENANT_ADMIN sees every admin menu except Prisma Studio', () => {
+  it('TENANT_ADMIN sees every admin menu except the global-scope ops surfaces', () => {
     const got = ids(buildAdminNavItems({ isAdmin: true, isGlobalScope: false, tenantSelected: false, order: DEFAULT_ADMIN_MENU_ORDER }));
     expect(got).toEqual(
       expect.arrayContaining([
@@ -30,9 +30,24 @@ describe('buildAdminNavItems (TASK-327 T5)', () => {
         'storage',
         'configurations',
         'audit-logs',
+        // TASK-336 OB-02 — tenant-wide jobs view is available to any admin.
+        'jobs',
       ]),
     );
+    // Prisma Studio, System Health, Rate Limits and Queues & Jobs are global-scope only.
     expect(got).not.toContain('studio');
+    expect(got).not.toContain('system-health');
+    expect(got).not.toContain('rate-limits');
+    expect(got).not.toContain('queues');
+  });
+
+  // TASK-336 OB-01 / IC-05 / OB-03 — System Health, Rate Limits and Queues & Jobs
+  // are global-scope ops surfaces (super-admin only), surfaced alongside Prisma Studio.
+  it('global scope (SUPER_ADMIN) additionally sees System Health, Rate Limits and Queues & Jobs', () => {
+    const got = ids(buildAdminNavItems({ isAdmin: true, isGlobalScope: true, tenantSelected: true, order: DEFAULT_ADMIN_MENU_ORDER }));
+    expect(got).toContain('system-health');
+    expect(got).toContain('rate-limits');
+    expect(got).toContain('queues');
   });
 
   // TASK-331 doc-03 #2 — the three pipeline nav entries are consolidated into a
@@ -81,11 +96,14 @@ describe('buildAdminNavItems (TASK-327 T5)', () => {
     it('disables tenant-scoped pages for a global-scope admin with no tenant selected', () => {
       const items = buildAdminNavItems({ isAdmin: true, isGlobalScope: true, tenantSelected: false, order: DEFAULT_ADMIN_MENU_ORDER });
       expect(disabledIds(items).sort()).toEqual(
-        ['audio-pipelines', 'audit-logs', 'configurations', 'departments', 'dna-reports', 'prompts', 'storage'].sort(),
+        // TASK-336 OB-02 — `jobs` is tenant-scoped (needs a selected tenant).
+        ['audio-pipelines', 'audit-logs', 'configurations', 'departments', 'dna-reports', 'jobs', 'prompts', 'storage'].sort(),
       );
-      // Overview / Tenants / Users / Prisma Studio remain reachable.
+      // Overview / Tenants / Users / Prisma Studio + the global-scope ops
+      // surfaces (System Health, Rate Limits, Queues & Jobs) remain reachable
+      // without a tenant.
       for (const item of items) {
-        if (['overview', 'tenants', 'users', 'studio'].includes(item.id)) {
+        if (['overview', 'tenants', 'users', 'studio', 'system-health', 'rate-limits', 'queues'].includes(item.id)) {
           expect(item.disabled).toBeFalsy();
         }
       }

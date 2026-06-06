@@ -497,7 +497,11 @@ export default function DnaWritingStylePage() {
 
   const reportId = myStyle?.id ?? '';
 
-  const { data: versions = [], isLoading: isLoadingVersions, refetch: refetchVersions } = useDnaVersions(reportId, {
+  const {
+    data: versions = [],
+    isLoading: isLoadingVersions,
+    refetch: refetchVersions,
+  } = useDnaVersions(reportId, {
     enabled: !!reportId && !requiresImpersonation,
   });
 

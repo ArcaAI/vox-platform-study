@@ -139,6 +139,9 @@ export class DepartmentService extends BaseService implements IDepartmentService
       name: dto.name,
       description: dto.description,
       parentDepartmentId: dto.parentDepartmentId,
+      // CC-04 (TASK-336) — forward the create modal's default summary template
+      // (the factory defaults it to null when absent).
+      defaultSummaryTemplate: dto.defaultSummaryTemplate,
       createdBy: userId ?? undefined,
     });
 

@@ -1,5 +1,6 @@
 import {
   AuditLogServiceModule,
+  AuditRetentionServiceModule,
   AuthServiceModule,
   AuthorizationModule,
   BlobStorageModule,
@@ -45,6 +46,7 @@ import { MonitoringModule } from './modules/monitoring/monitoring.module';
 import { PipelineModule } from './modules/pipeline/pipeline.module';
 import { PromptManagementModule } from './modules/prompt-management/prompt-management.module';
 import { PrismaStudioModule, shouldEnablePrismaStudio } from './modules/pstudio/pstudio.module';
+import { QueueAdminModule } from './modules/queue-admin/queue-admin.module';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { StorageAccessKeyModule } from './modules/storage-access-key/storage-access-key.module';
 import { StorageModule } from './modules/storage/storage.module';
@@ -192,6 +194,7 @@ const common = [
   RedisServiceModule.register(queueNames),
   ObservabilityModule,
   AuditLogServiceModule, // Event-driven audit logging (replaces Kafka audit topics)
+  AuditRetentionServiceModule, // TASK-336 OB-05 — scheduled AuditLog retention purge (bounds growth)
   JwtAuthGuardModule, // JWT guard — before AuthorizationModule
   AuthorizationModule, // Policy-based authorization (RBAC)
   // TASK-302 Phase 5 Task 5.6 (Stream B) — Vault prisma factory.
@@ -229,6 +232,7 @@ const featureModules: any[] = [
   InternalModule,
   MonitoringModule,
   PromptManagementModule,
+  QueueAdminModule,
   RbacModule,
   StorageModule,
   StorageAccessKeyModule,

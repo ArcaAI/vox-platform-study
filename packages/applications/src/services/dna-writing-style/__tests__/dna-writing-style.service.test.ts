@@ -80,6 +80,21 @@ const createMockQueue = () => ({
     add: vi.fn().mockResolvedValue({ id: 'job-mock' }),
 });
 
+// CC-01 — `updateDnaReport` now wraps the version-row insert + the OCC
+// compare-and-set in `databaseService.baseClient.$transaction(callback)` so a
+// rejected CAS rolls the orphan version row back (mirrors PromptManagementService
+// / TenantService). The mock runs the callback with a stub tx client so the body
+// executes; tests assert the create + CAS receive that tx client and that a
+// thrown conflict propagates without a ResourceUpdated broadcast.
+const mockTxClient = { __tx: true } as const;
+const createMockDatabaseService = () => ({
+    baseClient: {
+        $transaction: vi.fn().mockImplementation(
+            async (callback: (tx: typeof mockTxClient) => Promise<unknown>) => callback(mockTxClient),
+        ),
+    },
+});
+
 // ─── Entity Helpers ─────────────────────────────────────────────────
 
 const createMockReportEntity = (overrides: Record<string, unknown> = {}) => ({
@@ -142,6 +157,7 @@ describe('DnaWritingStyleService', () => {
     let mockQueue: ReturnType<typeof createMockQueue>;
     let mockClsService: ReturnType<typeof createMockClsService>;
     let mockEventEmitter: ReturnType<typeof createMockEventEmitter>;
+    let mockDatabaseService: ReturnType<typeof createMockDatabaseService>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -155,6 +171,7 @@ describe('DnaWritingStyleService', () => {
         mockQueue = createMockQueue();
         mockClsService = createMockClsService();
         mockEventEmitter = createMockEventEmitter();
+        mockDatabaseService = createMockDatabaseService();
 
         mockClsService.get.mockImplementation((key: string) => {
             switch (key) {
@@ -194,6 +211,7 @@ describe('DnaWritingStyleService', () => {
             mockQueue as never,
             mockEventEmitter as never,
             mockClsService as never,
+            mockDatabaseService as never,
         );
     });
 
@@ -288,6 +306,7 @@ describe('DnaWritingStyleService', () => {
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
+                mockDatabaseService as never,
             );
 
             await freshService.generateDnaReport('doctor-id-1', {});
@@ -360,7 +379,7 @@ describe('DnaWritingStyleService', () => {
                 expectedVersion: 7,
             });
 
-            expect(mockReportRepo.updateWithVersion).toHaveBeenCalledWith('report-id-1', existing, 7);
+            expect(mockReportRepo.updateWithVersion).toHaveBeenCalledWith('report-id-1', existing, 7, mockTxClient);
             // CAS-only — the legacy non-versioned write MUST NOT fire.
             expect(mockReportRepo.update).not.toHaveBeenCalled();
         });
@@ -388,6 +407,66 @@ describe('DnaWritingStyleService', () => {
                 'SysEvent.ResourceUpdated',
                 expect.anything(),
             );
+        });
+
+        // ─── CC-01 — non-transactional OCC write (orphan version row) ────────
+        // Before the fix the version-history insert and the OCC compare-and-set
+        // were two independent awaits: a stale `If-Match` (412) rejected the CAS
+        // yet the version row had already committed — a live-reproduced orphan.
+        // The two writes must now share ONE `$transaction` so a rejected CAS
+        // rolls the version row back.
+        it('runs the version-history insert and the CAS write inside a single transaction (CC-01)', async () => {
+            const existing = createMockReportEntity({ currentVersionNumber: 1 });
+            mockReportRepo.findById.mockResolvedValue(existing);
+            mockReportRepo.updateWithVersion.mockResolvedValue(
+                createMockReportEntity({ currentVersionNumber: 2, styleText: 'Updated' }),
+            );
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 2 }));
+
+            await service.updateDnaReport('report-id-1', {
+                styleText: 'Updated style',
+                changeReason: 'Refined analysis',
+                expectedVersion: 7,
+            });
+
+            // one interactive transaction wraps the whole versioned write…
+            expect(mockDatabaseService.baseClient.$transaction).toHaveBeenCalledTimes(1);
+            // …and BOTH the insert and the CAS receive the tx client so they
+            // commit / roll back atomically.
+            expect(mockVersionRepo.create).toHaveBeenCalledWith(
+                expect.objectContaining({ versionNumber: 2 }),
+                mockTxClient,
+            );
+            expect(mockReportRepo.updateWithVersion).toHaveBeenCalledWith('report-id-1', existing, 7, mockTxClient);
+        });
+
+        it('rolls back the version-history insert when the OCC CAS is rejected — no orphan, no event (CC-01)', async () => {
+            const existing = createMockReportEntity({ currentVersionNumber: 1 });
+            mockReportRepo.findById.mockResolvedValue(existing);
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 2 }));
+            // On version drift the repository CAS predicate matches 0 rows and
+            // throws from INSIDE the transaction callback, aborting the tx.
+            mockReportRepo.updateWithVersion.mockRejectedValue(
+                new OptimisticConcurrencyException('DnaWritingStyleReport', 'report-id-1', {
+                    expectedVersion: 7,
+                    currentVersion: 8,
+                }),
+            );
+
+            await expect(
+                service.updateDnaReport('report-id-1', { styleText: 'Stale write', expectedVersion: 7 }),
+            ).rejects.toThrow(OptimisticConcurrencyException);
+
+            // the insert + CAS ran inside the SAME transaction, so the throw
+            // aborts it and the version row never commits (no orphan persists).
+            expect(mockDatabaseService.baseClient.$transaction).toHaveBeenCalledTimes(1);
+            expect(mockVersionRepo.create).toHaveBeenCalledWith(
+                expect.objectContaining({ versionNumber: 2 }),
+                mockTxClient,
+            );
+            expect(mockReportRepo.updateWithVersion).toHaveBeenCalledWith('report-id-1', existing, 7, mockTxClient);
+            // a write that never landed must not broadcast.
+            expect(mockEventEmitter.emit).not.toHaveBeenCalledWith('SysEvent.ResourceUpdated', expect.anything());
         });
 
         it('should create version snapshot and increment version', async () => {
@@ -454,6 +533,7 @@ describe('DnaWritingStyleService', () => {
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
+                mockDatabaseService as never,
             );
 
             const report = createMockReportEntity({ doctorId: 'some-doctor' });
@@ -606,6 +686,7 @@ describe('DnaWritingStyleService', () => {
 
             expect(mockVersionRepo.create).toHaveBeenCalledWith(
                 expect.objectContaining({ versionNumber: 1 }),
+                mockTxClient,
             );
         });
 
@@ -926,6 +1007,7 @@ describe('DnaWritingStyleService', () => {
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
+                mockDatabaseService as never,
             );
 
             await expect(freshService.listReports()).rejects.toThrow(BadRequestException);
@@ -944,6 +1026,7 @@ describe('DnaWritingStyleService', () => {
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
+                mockDatabaseService as never,
             );
 
             await expect(freshService.listReports()).rejects.toThrow('Tenant ID is required');
@@ -964,6 +1047,7 @@ describe('DnaWritingStyleService', () => {
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
+                mockDatabaseService as never,
             );
 
             const mockQb = createMockQueryBuilder();
@@ -995,6 +1079,7 @@ describe('DnaWritingStyleService', () => {
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
+                mockDatabaseService as never,
             );
 
             const mockQb = createMockQueryBuilder();
@@ -1024,6 +1109,7 @@ describe('DnaWritingStyleService', () => {
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
+                mockDatabaseService as never,
             );
 
             const mockQb = createMockQueryBuilder();
@@ -1050,6 +1136,7 @@ describe('DnaWritingStyleService', () => {
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
+                mockDatabaseService as never,
             );
 
             await expect(doctorService.listReports()).rejects.toThrow(BadRequestException);
@@ -1070,6 +1157,7 @@ describe('DnaWritingStyleService', () => {
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
+                mockDatabaseService as never,
             );
 
             const mockQb = createMockQueryBuilder();
@@ -1095,6 +1183,7 @@ describe('DnaWritingStyleService', () => {
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
+                mockDatabaseService as never,
             );
         };
 
@@ -1180,6 +1269,37 @@ describe('DnaWritingStyleService', () => {
             expect(where).not.toHaveProperty('tenantId');
         });
 
+        // CC-02 (TASK-336) — a super-admin who has selected an active tenant
+        // (X-Tenant-Id → CLS `tenantId`) but omits the `?tenantId` query param
+        // must see ONLY that tenant's reports, not every tenant's.
+        it('CC-02: scopes a global admin with an active tenant header and no explicit tenantId to the active tenant', async () => {
+            const globalAdmin = buildWith((key: string) => {
+                if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
+                if (key === 'tenantId') return 'tenant-ACTIVE';
+                return null;
+            });
+            mockReportRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
+
+            await globalAdmin.listReportsPaginated();
+
+            const [where] = mockReportRepo.findPaginated.mock.calls[0];
+            expect(where).toMatchObject({ tenantId: 'tenant-ACTIVE' });
+        });
+
+        it('CC-02: an explicit tenantId still overrides the active tenant header for a global admin', async () => {
+            const globalAdmin = buildWith((key: string) => {
+                if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
+                if (key === 'tenantId') return 'tenant-ACTIVE';
+                return null;
+            });
+            mockReportRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
+
+            await globalAdmin.listReportsPaginated({ tenantId: 'tenant-X' });
+
+            const [where] = mockReportRepo.findPaginated.mock.calls[0];
+            expect(where).toMatchObject({ tenantId: 'tenant-X' });
+        });
+
         it('throws BadRequestException when a TENANT_ADMIN has no CLS tenant', async () => {
             const tenantAdmin = buildWith((key: string) => {
                 if (key === 'user') return { id: 'tenant-admin-1', roles: ['TENANT_ADMIN'] };
@@ -1209,6 +1329,7 @@ describe('DnaWritingStyleService', () => {
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
+                mockDatabaseService as never,
             );
 
             const mockQb = createMockQueryBuilder();
@@ -1236,6 +1357,7 @@ describe('DnaWritingStyleService', () => {
                 mockQueue as never,
                 mockEventEmitter as never,
                 mockClsService as never,
+                mockDatabaseService as never,
             );
             mockUserRoleAssignmentRepo.findFirst.mockResolvedValue({
                 id: 'ura-doctor-c',
@@ -1290,6 +1412,7 @@ describe('DnaWritingStyleService', () => {
                     mockQueue as never,
                     mockEventEmitter as never,
                     mockClsService as never,
+                    mockDatabaseService as never,
                 );
                 mockUserRoleAssignmentRepo.findFirst.mockResolvedValue(null);
 
@@ -1356,6 +1479,7 @@ describe('DnaWritingStyleService', () => {
                     mockQueue as never,
                     mockEventEmitter as never,
                     mockClsService as never,
+                    mockDatabaseService as never,
                 );
                 const foreignReport = createMockReportEntity({
                     id: 'report-foreign',

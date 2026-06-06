@@ -23,7 +23,14 @@ import { StreamTicketModule } from './stream-ticket.module';
  * UnifiedAuthGuard can resolve it across all feature modules.
  */
 @Module({
-  imports: [AuthServiceModule, UserServiceModule, UserRoleAssignmentServiceModule, UserDepartmentServiceModule, CoreDatabaseModule, StreamTicketModule],
+  imports: [
+    AuthServiceModule,
+    UserServiceModule,
+    UserRoleAssignmentServiceModule,
+    UserDepartmentServiceModule,
+    CoreDatabaseModule,
+    StreamTicketModule,
+  ],
   controllers: [AuthController],
 })
 export class AuthModule {}

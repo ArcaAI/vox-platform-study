@@ -239,9 +239,7 @@ export function ProcessingConfigPanel() {
                       <SelectItem key={pipeline.id} value={pipeline.id} className="text-xs">
                         <span className="flex w-full items-center gap-2">
                           <span className="truncate">{pipeline.name}</span>
-                          {pipeline.description && (
-                            <span className="text-muted-foreground shrink-0 text-[10px]">({pipeline.description})</span>
-                          )}
+                          {pipeline.description && <span className="text-muted-foreground shrink-0 text-[10px]">({pipeline.description})</span>}
                         </span>
                       </SelectItem>
                     ))}

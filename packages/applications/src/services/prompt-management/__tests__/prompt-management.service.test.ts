@@ -70,6 +70,9 @@ const createMockPromptVersionRepository = () => ({
     findByTemplate: vi.fn(),
     findByVersionNumber: vi.fn(),
     create: vi.fn(),
+    // CC-01 — max-version helper queried inside the OCC transaction so the
+    // next versionNumber is max(existing)+1, never a recomputed duplicate.
+    findMaxVersionNumber: vi.fn().mockResolvedValue(0),
 });
 
 const createMockPromptUsageRecordRepository = () => ({
@@ -96,6 +99,21 @@ const createMockConfigService = (smrUrl = 'http://smr.local:8862') => ({
 
 const wordsOfLength = (n: number): string =>
     Array.from({ length: n }, (_, i) => `word${i}`).join(' ');
+
+// CC-01 — `updatePromptTemplate` now wraps the version-row insert + the OCC
+// compare-and-set in `databaseService.baseClient.$transaction(callback)` so
+// they commit/roll back atomically (mirrors TenantService / UserService).
+// The mock invokes the callback with a stub tx client so the body executes;
+// tests assert the create + CAS receive that tx client and that a thrown
+// conflict propagates without a ResourceUpdated broadcast.
+const mockTxClient = { __tx: true } as const;
+const mockDatabaseService = {
+    baseClient: {
+        $transaction: vi.fn().mockImplementation(
+            async (callback: (tx: typeof mockTxClient) => Promise<unknown>) => callback(mockTxClient),
+        ),
+    },
+};
 
 // ─── Entity Helpers ─────────────────────────────────────────────────
 // Complete mock entities matching real entity structure for mapper compatibility.
@@ -235,6 +253,7 @@ describe('PromptManagementService', () => {
             mockDepartmentService as never,
             mockEventEmitter as never,
             mockClsService as never,
+            mockDatabaseService as never,
         );
     });
 
@@ -446,6 +465,8 @@ describe('PromptManagementService', () => {
         it('should create new version snapshot and increment version number on success', async () => {
             const existing = createMockTemplateEntity({ currentVersionNumber: 2, version: 4 });
             mockTemplateRepo.findById.mockResolvedValue(existing);
+            // CC-01 — next version is max(existing)+1; history max here is 2 → 3.
+            mockVersionRepo.findMaxVersionNumber.mockResolvedValue(2);
             mockTemplateRepo.updateWithVersion.mockResolvedValue(
                 createMockTemplateEntity({ currentVersionNumber: 3, version: 5 }),
             );
@@ -464,12 +485,13 @@ describe('PromptManagementService', () => {
                     content: 'Updated content',
                     changeReason: 'Improved prompt',
                 }),
+                mockTxClient,
             );
             expect(existing.incrementVersion).toHaveBeenCalled();
             expect(result.currentVersionNumber).toBe(3);
             // CAS-only — the legacy non-versioned write MUST NOT fire.
             expect(mockTemplateRepo.update).not.toHaveBeenCalled();
-            expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledWith('template-id-1', existing, 4);
+            expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledWith('template-id-1', existing, 4, mockTxClient);
         });
 
         it('should throw NotFoundException when template does not exist', async () => {
@@ -552,7 +574,7 @@ describe('PromptManagementService', () => {
             // status-only edits don't spawn a PromptVersion row
             expect(mockVersionRepo.create).not.toHaveBeenCalled();
             // but the OCC write must still fire (status counts as a change)
-            expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledWith('template-id-1', existing, 3);
+            expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledWith('template-id-1', existing, 3, mockTxClient);
             expect(result.status).toBe('PUBLISHED');
         });
 
@@ -570,6 +592,7 @@ describe('PromptManagementService', () => {
                 expect.objectContaining({
                     versionNumber: 1,
                 }),
+                mockTxClient,
             );
         });
 
@@ -589,6 +612,7 @@ describe('PromptManagementService', () => {
                 expect.objectContaining({
                     changeReason: 'Bug fix',
                 }),
+                mockTxClient,
             );
         });
 
@@ -604,6 +628,7 @@ describe('PromptManagementService', () => {
                 expect.objectContaining({
                     changeReason: null,
                 }),
+                mockTxClient,
             );
         });
 
@@ -662,6 +687,72 @@ describe('PromptManagementService', () => {
             expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
                 SysEventType.ResourceUpdated,
                 expect.anything(),
+            );
+        });
+
+        // ─── CC-01 — transactional OCC writes ────────────────────────────
+        // The version-history insert and the OCC compare-and-set must run in
+        // ONE transaction. A rejected CAS (stale expectedVersion) must roll
+        // back the version row so no orphan persists, and the next version
+        // number must be max(existing)+1 — never a recomputed duplicate that
+        // would trip the (promptTemplateId, versionNumber) unique constraint.
+        it('rolls back the version-history insert inside the transaction when the OCC update is rejected (CC-01)', async () => {
+            const existing = createMockTemplateEntity({ currentVersionNumber: 1, version: 9 });
+            mockTemplateRepo.findById.mockResolvedValue(existing);
+            mockVersionRepo.findMaxVersionNumber.mockResolvedValue(1);
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 2 }));
+            mockTemplateRepo.updateWithVersion.mockRejectedValue(
+                new OptimisticConcurrencyException('PromptTemplate', 'template-id-1', {
+                    expectedVersion: 9,
+                    currentVersion: 10,
+                }),
+            );
+
+            await expect(
+                service.updatePromptTemplate('template-id-1', {
+                    content: 'Stale write',
+                    changeReason: 'probe',
+                    expectedVersion: 9,
+                } as never),
+            ).rejects.toThrow(OptimisticConcurrencyException);
+
+            // The version insert and the CAS both ran INSIDE a single
+            // transaction (received the same tx client); a real $transaction
+            // rolls the version row back when the CAS throws.
+            expect(mockDatabaseService.baseClient.$transaction).toHaveBeenCalledTimes(1);
+            expect(mockVersionRepo.create).toHaveBeenCalledWith(
+                expect.objectContaining({ versionNumber: 2, changeReason: 'probe' }),
+                mockTxClient,
+            );
+            expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledWith('template-id-1', existing, 9, mockTxClient);
+            // A rolled-back write emits NO audit event — the row never committed.
+            expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+                SysEventType.ResourceUpdated,
+                expect.anything(),
+            );
+        });
+
+        it('computes the next version as max(existing versionNumber)+1, not currentVersionNumber+1 (CC-01)', async () => {
+            // History already holds a HIGHER version than the row counter (e.g.
+            // a prior orphaned/partial write). currentVersionNumber+1 (=2) would
+            // recompute an existing versionNumber and brick further edits; the
+            // service must use max(existing)+1 (=6) instead.
+            const existing = createMockTemplateEntity({ currentVersionNumber: 1, version: 3 });
+            mockTemplateRepo.findById.mockResolvedValue(existing);
+            mockVersionRepo.findMaxVersionNumber.mockResolvedValue(5);
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity({ versionNumber: 6 }));
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ version: 4 }));
+
+            await service.updatePromptTemplate('template-id-1', {
+                content: 'New content',
+                expectedVersion: 3,
+            } as never);
+
+            // The max query is issued inside the transaction (tx client).
+            expect(mockVersionRepo.findMaxVersionNumber).toHaveBeenCalledWith('template-id-1', mockTxClient);
+            expect(mockVersionRepo.create).toHaveBeenCalledWith(
+                expect.objectContaining({ versionNumber: 6 }),
+                mockTxClient,
             );
         });
     });
@@ -1106,6 +1197,7 @@ describe('PromptManagementService', () => {
                 mockDepartmentService as never,
                 mockEventEmitter as never,
                 mockClsService as never,
+                mockDatabaseService as never,
             );
 
             const mockQb = createMockQueryBuilder();
@@ -1133,6 +1225,7 @@ describe('PromptManagementService', () => {
                 mockDepartmentService as never,
                 mockEventEmitter as never,
                 mockClsService as never,
+                mockDatabaseService as never,
             );
 
             mockTemplateRepo.findByName.mockResolvedValue(null);
@@ -1424,10 +1517,34 @@ describe('PromptManagementService', () => {
 
             expect(qb.Where).toHaveBeenCalledWith({ tenantId: 'tenant-1' });
             expect(qb.Where).toHaveBeenCalledWith({ resourceStatus: ResourceStatusType.ENABLED });
-            expect(qb.WhereOr).toHaveBeenCalledWith({ scope: 'TENANT_DEFAULT' });
-            expect(qb.WhereOr).toHaveBeenCalledWith({ scope: 'DEPARTMENT_DEFAULT' });
+            // CC-03 (TASK-336) — tenant + department defaults are publication-gated
+            // to non-DRAFT so clinicians never see admin drafts-in-progress.
+            expect(qb.WhereOr).toHaveBeenCalledWith({ scope: 'TENANT_DEFAULT', status: { not: 'DRAFT' } });
+            expect(qb.WhereOr).toHaveBeenCalledWith({ scope: 'DEPARTMENT_DEFAULT', status: { not: 'DRAFT' } });
             expect(qb.WhereOr).toHaveBeenCalledWith({ scope: 'USER_PERSONAL', ownerUserId: 'user-id-1' });
             expect(result).toHaveLength(1);
+        });
+
+        // CC-03 (TASK-336) — publication status (DRAFT/PUBLISHED) is enforced on
+        // the clinician resolution: tenant + department DEFAULT templates must be
+        // non-DRAFT (PUBLISHED, or legacy/unset as a safe fallback), while the
+        // caller's OWN personal overlays are returned regardless of status.
+        it('CC-03: gates tenant + department defaults to non-DRAFT but never the caller own personal templates', async () => {
+            const qb = createMockQueryBuilder();
+            mockTemplateRepo.$.mockReturnValue(qb);
+            qb.ToList.mockResolvedValue([]);
+
+            await service.listAvailableForCaller();
+
+            expect(qb.WhereOr).toHaveBeenCalledWith({ scope: 'TENANT_DEFAULT', status: { not: 'DRAFT' } });
+            expect(qb.WhereOr).toHaveBeenCalledWith({ scope: 'DEPARTMENT_DEFAULT', status: { not: 'DRAFT' } });
+
+            const personalCalls = qb.WhereOr.mock.calls.filter(
+                ([p]: [Record<string, unknown>]) => p?.scope === 'USER_PERSONAL',
+            );
+            expect(personalCalls).toHaveLength(1);
+            expect(personalCalls[0][0]).toEqual({ scope: 'USER_PERSONAL', ownerUserId: 'user-id-1' });
+            expect(personalCalls[0][0]).not.toHaveProperty('status');
         });
 
         it('applies the category filter when provided', async () => {
@@ -1512,6 +1629,7 @@ describe('PromptManagementService', () => {
                 mockDepartmentService as never,
                 mockEventEmitter as never,
                 mockClsService as never,
+                mockDatabaseService as never,
                 httpMock as never,
                 configMock as never,
                 undefined,

@@ -61,15 +61,21 @@ export class AuditLogDtoMapper {
    * user name/email are flattened into dedicated columns and the `data` JSON
    * blob is stringified into a single (escaped) cell so the export is a
    * faithful, spreadsheet-friendly snapshot of the table.
+   *
+   * OB-07 (TASK-336) — when `options.includeTenant` is set (cross-tenant /
+   * super-admin "global" export), a trailing `tenantId` column is appended so
+   * each row keeps its tenant attribution. Tenant-scoped exports omit it (every
+   * row belongs to the caller's own tenant, so the column would be noise).
    */
-  static ToCsv(rows: AuditLogEntity[], responsibleUsers: ResponsibleUserMap = {}): string {
-    const lines: string[] = [CSV_COLUMNS.join(',')];
+  static ToCsv(rows: AuditLogEntity[], responsibleUsers: ResponsibleUserMap = {}, options: { includeTenant?: boolean } = {}): string {
+    const columns: string[] = options.includeTenant ? [...CSV_COLUMNS, 'tenantId'] : [...CSV_COLUMNS];
+    const lines: string[] = [columns.join(',')];
 
     for (const row of rows) {
       const user = row.responsibleUserId ? responsibleUsers[row.responsibleUserId] : undefined;
       const createdAt = row.createdAt instanceof Date ? row.createdAt.toISOString() : (row.createdAt ?? '');
 
-      const cells: Record<(typeof CSV_COLUMNS)[number], unknown> = {
+      const cells: Record<string, unknown> = {
         id: row.id,
         createdAt,
         action: row.action,
@@ -84,7 +90,11 @@ export class AuditLogDtoMapper {
         data: row.data === null || row.data === undefined ? '' : JSON.stringify(row.data),
       };
 
-      lines.push(CSV_COLUMNS.map((col) => escapeCsvField(cells[col])).join(','));
+      if (options.includeTenant) {
+        cells.tenantId = row.tenantId ?? '';
+      }
+
+      lines.push(columns.map((col) => escapeCsvField(cells[col])).join(','));
     }
 
     return lines.join('\n');
