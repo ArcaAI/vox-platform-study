@@ -31,12 +31,22 @@ NLP_MAX_BATCH_SIZE=100
 
 ### Text Classification Configuration
 
+> **Open decision (TASK-330 §3.4) — doc-type classifier is unconfigured.** The
+> `/classify/text` endpoint is meant for clinical *document-type* classification (e.g.
+> clinical note vs discharge summary vs lab report), but the intended model + label
+> taxonomy has not been chosen yet. The default is therefore a non-functional placeholder
+> (`__UNCONFIGURED_DOC_TYPE_CLASSIFIER__`); while it is in effect the service logs a loud
+> warning at startup and `/classify/text` returns **HTTP 503**. Set
+> `TEXT_CLASSIFIER_MODEL_NAME` to a real model to enable the endpoint. (The previous default,
+> `michellejieli/emotion_text_classifier`, was an emotion model used only as a placeholder.)
+
 ```bash
 # Model Configuration
-TEXT_CLASSIFIER_MODEL_NAME=michellejieli/emotion_text_classifier
+# REQUIRED to enable /classify/text — defaults to an unconfigured placeholder (see note above).
+TEXT_CLASSIFIER_MODEL_NAME=__UNCONFIGURED_DOC_TYPE_CLASSIFIER__
 TEXT_CLASSIFIER_MODEL_VERSION=1.0.0
 TEXT_CLASSIFIER_MODEL_PATH=  # Optional: local model path
-TEXT_CLASSIFIER_TOKENIZER_NAME=michellejieli/emotion_text_classifier
+TEXT_CLASSIFIER_TOKENIZER_NAME=__UNCONFIGURED_DOC_TYPE_CLASSIFIER__
 
 # Processing Settings
 TEXT_CLASSIFIER_MAX_SEQUENCE_LENGTH=512

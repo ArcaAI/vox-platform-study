@@ -3,6 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { createHash } from 'node:crypto';
 import {
   ContextItemRepository,
   ContextItemVersionRepository,
@@ -16,7 +17,10 @@ import {
   NamedEntityFactory,
   ResourceType,
   SysEventType,
+  ConsultationStatus,
+  HarnessAuditAction,
 } from '@arcaai/domains';
+import { HarnessAuditService } from '../../harness-audit';
 import { ISummaryService } from './ISummaryService';
 import { GenerateSummaryRequest, GeneratePreSummaryRequest, UpdateSummaryRequest, SummaryResponse } from './dto';
 import { SummaryDtoMapper } from './summary.dto.mapper';
@@ -25,6 +29,7 @@ import { BaseService, assertParentInScope } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { SecretsService } from '../../baseServices/_meta/secrets';
+import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 
 @Injectable()
@@ -54,6 +59,15 @@ export class SummaryService extends BaseService implements ISummaryService {
     // positional test fixtures keep compiling; production DI (CoreDatabaseModule)
     // always supplies it.
     @Optional() @Inject(UserProfileRepository) private readonly userProfileRepository?: UserProfileRepository,
+    // TASK-330 Phase 1 (attestation gate): append the ATTEST event to the Phase-0
+    // WORM audit trail on approval. Optional + trailing so existing positional test
+    // fixtures keep compiling; production DI (ConsultationServiceModule) always
+    // supplies it, making the gate fail-closed (audit failure aborts the approval).
+    @Optional() @Inject(HarnessAuditService) private readonly harnessAuditService?: HarnessAuditService,
+    // TASK-330 Phase 1 (Lane G): forward the clinician sign-off to the durable
+    // harness workflow (best-effort). Optional + trailing so existing positional
+    // test fixtures keep compiling; production DI (SummaryServiceModule) supplies it.
+    @Optional() @Inject(HarnessGatewayService) private readonly harnessGatewayService?: HarnessGatewayService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -293,11 +307,17 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * Approve and lock a summary.
+   * Approve and lock a summary (TASK-330 Phase 1 — attestation gate /
+   * confirm-before-commit). This is the single, non-bypassable signing path:
    *
-   * Implementation detail:
-   * We persist approval as a ContextItemVersion record with changeReason = 'approved'.
-   * This avoids requiring new DB columns while still being enforceable.
+   *   1. Writes a SIGNED_NOTE `ContextItemVersion` stamped with the clinician
+   *      attestation fields (attestedBy / attestedAt / attestationHash). The
+   *      version keeps `changeReason='approved'` so the existing idempotency
+   *      check still recognises a signed note.
+   *   2. Appends an `ATTEST` event to the Phase-0 WORM audit trail
+   *      (`HarnessAuditService`) — fail-closed: if the audit append throws, the
+   *      whole approval is rejected and the consultation is NOT signed.
+   *   3. Flips `Consultation.status` → `SIGNED`.
    */
   async approveSummary(contextItemId: string): Promise<{ contextItemId: string; approvalStatus: string; approvedBy: string; approvedAt: string }> {
     const tenantId = this.tenantId;
@@ -330,15 +350,52 @@ export class SummaryService extends BaseService implements ISummaryService {
     }
 
     const versionNumber = ((contextItem.currentVersionNumber as number) ?? 0) + 1;
-    const version = ContextItemVersionFactory.CreateFromContextItem(
-      contextItem,
+    const attestedAt = new Date();
+    const attestationHash = this.computeAttestationHash({
+      contextItemId,
       versionNumber,
-      'approved',
-      approvedBy,
-      'system',
-      'Approved and locked',
-    );
-    await this.contextItemVersionRepository.create(version);
+      content: contextItem.content ?? '',
+      attestedBy: approvedBy,
+      attestedAt,
+    });
+
+    // 1. Persist the attested SIGNED_NOTE version.
+    const version = ContextItemVersionFactory.CreateSignedNoteVersion({
+      tenantId,
+      contextItemId,
+      versionNumber,
+      content: contextItem.content ?? undefined,
+      attestedBy: approvedBy,
+      attestationHash,
+      attestedAt,
+      changeSummary: 'Approved and locked',
+    });
+    const savedVersion = await this.contextItemVersionRepository.create(version);
+    const versionId = savedVersion?.id ?? version.id;
+
+    // 2. Append the ATTEST event to the WORM audit trail. Fail-closed: any error
+    //    propagates and aborts the approval BEFORE the consultation is signed.
+    await this.harnessAuditService?.append({
+      tenantId,
+      consultationId: contextItem.consultationId,
+      contextItemVersionId: versionId,
+      action: HarnessAuditAction.ATTEST,
+      modelName: 'clinician-attestation',
+      modelVersion: 'v1',
+      sensorScores: {},
+      citations: [],
+      clinicianId: approvedBy,
+      attestationHash,
+      createdBy: approvedBy,
+    });
+
+    // 3. Flip the consultation lifecycle → SIGNED.
+    const consultation = await this.consultationRepository.findById(contextItem.consultationId);
+    if (consultation) {
+      consultation.status = ConsultationStatus.SIGNED;
+      consultation.updatedBy = approvedBy;
+      await this.consultationRepository.update(consultation.id, consultation);
+    }
 
     contextItem.currentVersionNumber = versionNumber;
     contextItem.updatedBy = approvedBy;
@@ -347,8 +404,27 @@ export class SummaryService extends BaseService implements ISummaryService {
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: contextItemId,
       responsibleEntityId: approvedBy,
-      data: { approvalStatus: 'APPROVED' },
+      data: { approvalStatus: 'APPROVED', consultationStatus: ConsultationStatus.SIGNED, attested: true },
     });
+
+    // 4. TASK-330 Phase 1 (Lane G) — best-effort: forward the sign-off to the
+    //    harness so it can resolve the workflow's approval wait-condition. The
+    //    WORM ATTEST write above is the system-of-record; a signal failure here
+    //    MUST NOT block or roll back the (already-committed) sign-off.
+    try {
+      await this.harnessGatewayService?.signalApproval(contextItem.consultationId, {
+        tenantId,
+        contextItemVersionId: versionId,
+        attestationHash,
+        clinicianId: approvedBy,
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Harness approval signal failed (best-effort, sign-off not rolled back)',
+        consultationId: contextItem.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     return {
       contextItemId,
@@ -356,6 +432,24 @@ export class SummaryService extends BaseService implements ISummaryService {
       approvedBy,
       approvedAt: version.createdAt.toISOString(),
     };
+  }
+
+  /**
+   * TASK-330 Phase 1 — deterministic SHA-256 attestation hash binding the
+   * clinician + timestamp to the exact signed content/version. Stored on the
+   * SIGNED_NOTE version and echoed into the ATTEST audit event so tampering
+   * with the note after signing is detectable.
+   */
+  private computeAttestationHash(input: {
+    contextItemId: string;
+    versionNumber: number;
+    content: string;
+    attestedBy: string;
+    attestedAt: Date;
+  }): string {
+    return createHash('sha256')
+      .update(`${input.contextItemId}:${input.versionNumber}:${input.attestedBy}:${input.attestedAt.toISOString()}:${input.content}`)
+      .digest('hex');
   }
 
   /**

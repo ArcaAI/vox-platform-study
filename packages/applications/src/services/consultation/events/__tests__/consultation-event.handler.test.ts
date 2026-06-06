@@ -52,6 +52,20 @@ const createMockEventEmitter = () => ({
     emit: vi.fn(),
 });
 
+// TASK-330 Phase 1 (Lane G) — outbound harness gate adapter. When the
+// consultation's pipelineConfig.harnessEnabled flag is set, the handler routes
+// to HarnessGatewayService.start instead of the legacy BullMQ summary job.
+const createMockHarnessGatewayService = () => ({
+    start: vi.fn().mockResolvedValue({ workflowId: 'harness-wf-001' }),
+    signalApproval: vi.fn().mockResolvedValue({ ok: true }),
+});
+
+// TASK-330 Phase 1 (Lane G) — the handler loads the triggering transcript's
+// content so it can forward it to the harness workflow (NER + sensors run on it).
+const createMockContextItemRepository = () => ({
+    findById: vi.fn().mockResolvedValue({ id: 'ctx-transcript-001', content: 'Patient reports chest pain.' }),
+});
+
 const createMockPromptResolutionService = () => ({
     resolve: vi.fn().mockImplementation((params: { explicitTemplate?: string }) =>
         Promise.resolve({
@@ -137,6 +151,8 @@ describe('ConsultationEventHandler', () => {
     let mockPromptResolutionService: ReturnType<typeof createMockPromptResolutionService>;
     let mockEventEmitter: ReturnType<typeof createMockEventEmitter>;
     let mockClsService: ReturnType<typeof createMockClsService>;
+    let mockHarnessGateway: ReturnType<typeof createMockHarnessGatewayService>;
+    let mockContextItemRepository: ReturnType<typeof createMockContextItemRepository>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -146,6 +162,8 @@ describe('ConsultationEventHandler', () => {
         mockPromptResolutionService = createMockPromptResolutionService();
         mockEventEmitter = createMockEventEmitter();
         mockClsService = createMockClsService();
+        mockHarnessGateway = createMockHarnessGatewayService();
+        mockContextItemRepository = createMockContextItemRepository();
 
         handler = new ConsultationEventHandler(
             mockJobService as any,
@@ -153,6 +171,8 @@ describe('ConsultationEventHandler', () => {
             mockPromptResolutionService as any,
             mockEventEmitter as any,
             mockClsService as any,
+            mockHarnessGateway as any,
+            mockContextItemRepository as any,
         );
     });
 
@@ -916,6 +936,118 @@ describe('ConsultationEventHandler', () => {
             await handler.handleNerExtracted(payload);
 
             expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+        });
+    });
+
+    // =========================================================================
+    // TASK-330 Phase 1 (Lane G) — harness flag routing
+    //
+    // When `metadata.pipelineConfig.harnessEnabled` is true, the transcription
+    // handler routes auto-generation to the durable harness workflow
+    // (HarnessGatewayService.start) and does NOT enqueue the legacy BullMQ
+    // summary job. When the flag is absent/false (the default), the legacy path
+    // is preserved unchanged.
+    // =========================================================================
+
+    describe('harness flag routing (TASK-330 Lane G)', () => {
+        const withHarnessConfig = (harnessEnabled: boolean) =>
+            mockConsultationRepository.findById.mockResolvedValue({
+                id: 'consultation-001',
+                tenantId: 'tenant-abc',
+                departmentId: 'dept-card-001',
+                parentConsultationId: null,
+                metadata: { pipelineConfig: { autoSummaryEnabled: true, harnessEnabled } },
+            });
+
+        it('routes to HarnessGatewayService.start (legacy summary job NOT enqueued) when harnessEnabled=true', async () => {
+            withHarnessConfig(true);
+
+            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+            expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
+            expect(mockHarnessGateway.start).toHaveBeenCalledWith(
+                'consultation-001',
+                expect.objectContaining({
+                    tenantId: 'tenant-abc',
+                    userId: 'doctor-1',
+                    contextItemId: 'ctx-transcript-001',
+                    jobId: expect.any(String),
+                }),
+            );
+            expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
+        });
+
+        it('mints a non-empty jobId so the existing SSE channel works', async () => {
+            withHarnessConfig(true);
+
+            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+            const ctx = mockHarnessGateway.start.mock.calls[0][1];
+            expect(typeof ctx.jobId).toBe('string');
+            expect(ctx.jobId.length).toBeGreaterThan(0);
+        });
+
+        it('loads the triggering transcript and forwards its text to the workflow', async () => {
+            withHarnessConfig(true);
+
+            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+            expect(mockContextItemRepository.findById).toHaveBeenCalledWith('ctx-transcript-001');
+            const ctx = mockHarnessGateway.start.mock.calls[0][1];
+            expect(ctx.transcriptText).toBe('Patient reports chest pain.');
+        });
+
+        it('still starts the harness when the transcript load fails (best-effort; assemble re-loads)', async () => {
+            withHarnessConfig(true);
+            mockContextItemRepository.findById.mockRejectedValue(new Error('ctx read failed'));
+
+            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+            expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
+            const ctx = mockHarnessGateway.start.mock.calls[0][1];
+            expect(ctx.transcriptText).toBeUndefined();
+        });
+
+        it('keeps the legacy summary-job path (gateway NOT called) when harnessEnabled=false', async () => {
+            withHarnessConfig(false);
+
+            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+            expect(mockHarnessGateway.start).not.toHaveBeenCalled();
+            expect(mockJobService.createSummaryJob).toHaveBeenCalledTimes(1);
+        });
+
+        it('keeps the legacy path (gateway NOT called) when harnessEnabled is absent (default)', async () => {
+            // default mock consultation has metadata: null
+            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+            expect(mockHarnessGateway.start).not.toHaveBeenCalled();
+            expect(mockJobService.createSummaryJob).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not start the harness when auto-summary is disabled, even if harnessEnabled=true', async () => {
+            mockConsultationRepository.findById.mockResolvedValue({
+                id: 'consultation-001',
+                tenantId: 'tenant-abc',
+                metadata: { pipelineConfig: { autoSummaryEnabled: false, harnessEnabled: true } },
+            });
+
+            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+            expect(mockHarnessGateway.start).not.toHaveBeenCalled();
+            expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
+        });
+
+        it('emits PipelineStepFailed when the harness start call throws', async () => {
+            withHarnessConfig(true);
+            mockHarnessGateway.start.mockRejectedValue(new Error('harness unreachable'));
+
+            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                ConsultationPipelineEvent.PipelineStepFailed,
+                expect.objectContaining({ failedStep: 'summary', error: 'harness unreachable' }),
+            );
         });
     });
 });

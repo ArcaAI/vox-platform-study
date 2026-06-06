@@ -5,12 +5,12 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { JobQueue, ContextItemRepository, ConsultationRepository, ContextItemFactory } from '@arcaai/domains';
+import { JobQueue, ContextItemRepository, ConsultationRepository, ContextItemFactory, NamedEntityRepository } from '@arcaai/domains';
 import { IConsultationJobService } from '../consultation-job.service';
 import { GenerateSummaryJobPayload, SummaryJobResult } from '../dto';
 import { ConsultationPipelineEvent, SummaryGeneratedPayload } from '../../events';
 import { PromptResolutionService, type PromptResolutionTier } from '../../prompt/prompt-resolution.service';
-import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
+import { PromptAssemblyService, type NerEntityForPrompt } from '../../prompt/prompt-assembly.service';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-v2-generate';
@@ -34,6 +34,7 @@ export class SummaryProcessor extends WorkerHost {
     private readonly jobMetrics: JobMetricsService,
     private readonly cls: ClsService<IActiveUserContext>,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    @Optional() @Inject(NamedEntityRepository) private readonly namedEntityRepository?: NamedEntityRepository,
   ) {
     super();
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -117,6 +118,12 @@ export class SummaryProcessor extends WorkerHost {
         }
 
         const latestPreSummary = await this.contextItemRepository.findLatestPreSummary(consultationId);
+
+        // TASK-330 Phase 1 — inject NER entities into the prompt so the model
+        // sees the coded clinical concepts (closes the gap where NER output was
+        // computed but never reached the LLM). Opt-in via request.includeNER.
+        const nerEntities = await this.loadNerEntities(consultationId, request.includeNER);
+
         const assembledPrompt = await this.promptAssemblyService.assemble({
           departmentId: consultation.departmentId ?? undefined,
           promptType: consultation.parentConsultationId ? 'revisit' : 'new-patient',
@@ -125,6 +132,7 @@ export class SummaryProcessor extends WorkerHost {
           dnaStyleId: request.dnaStyleId,
           preSummaryText: latestPreSummary?.content ?? undefined,
           explicitTemplate: request.template,
+          nerEntities,
         });
 
         // Step 2: Calling AI service (30%)
@@ -265,5 +273,31 @@ export class SummaryProcessor extends WorkerHost {
     const candidate = options?.conversationLanguage ?? options?.language ?? options?.locale;
 
     return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : 'en';
+  }
+
+  /**
+   * TASK-330 Phase 1 — load + flatten the consultation's NER entities for the
+   * prompt. Returns undefined when NER isn't requested or the repository isn't
+   * wired (keeps the dependency optional). Transcript-span offsets are preferred
+   * over the raw model offsets so the model can cite the source location.
+   */
+  private async loadNerEntities(consultationId: string, includeNER?: boolean): Promise<NerEntityForPrompt[] | undefined> {
+    if (!includeNER || !this.namedEntityRepository) {
+      return undefined;
+    }
+
+    const entities = await this.namedEntityRepository.findByConsultation(consultationId);
+    return entities.map((entity) => ({
+      text: entity.text,
+      type: entity.className,
+      normalizedText: entity.normalizedText ?? undefined,
+      umlsCui: entity.umlsCui ?? undefined,
+      snomedCode: entity.snomedCode ?? undefined,
+      rxnormCode: entity.rxnormCode ?? undefined,
+      icdCode: entity.icdCode ?? undefined,
+      loincCode: entity.loincCode ?? undefined,
+      startOffset: entity.transcriptStartOffset ?? entity.startOffset ?? undefined,
+      endOffset: entity.transcriptEndOffset ?? entity.endOffset ?? undefined,
+    }));
   }
 }

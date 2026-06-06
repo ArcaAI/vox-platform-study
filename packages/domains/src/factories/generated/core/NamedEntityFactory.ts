@@ -18,6 +18,16 @@ export interface CreateNamedEntityProps extends BaseEntityFactoryCreateProps {
   aiModelVersion?: INamedEntityEntity['aiModelVersion'];
   processingTimeMs?: INamedEntityEntity['processingTimeMs'];
   metadata?: INamedEntityEntity['metadata'];
+  // TASK-330 Phase 1 — clinical ontology codes
+  umlsCui?: INamedEntityEntity['umlsCui'];
+  snomedCode?: INamedEntityEntity['snomedCode'];
+  rxnormCode?: INamedEntityEntity['rxnormCode'];
+  icdCode?: INamedEntityEntity['icdCode'];
+  loincCode?: INamedEntityEntity['loincCode'];
+  // TASK-330 Phase 1 — transcript-span provenance
+  transcriptContextItemId?: INamedEntityEntity['transcriptContextItemId'];
+  transcriptStartOffset?: INamedEntityEntity['transcriptStartOffset'];
+  transcriptEndOffset?: INamedEntityEntity['transcriptEndOffset'];
   tenantId: INamedEntityEntity['tenantId'];
 
   createdAt?: INamedEntityEntity['createdAt'];
@@ -50,6 +60,14 @@ export class NamedEntityFactory {
       aiModelVersion: props.aiModelVersion ?? null,
       processingTimeMs: props.processingTimeMs ?? null,
       metadata: props.metadata ?? null,
+      umlsCui: props.umlsCui ?? null,
+      snomedCode: props.snomedCode ?? null,
+      rxnormCode: props.rxnormCode ?? null,
+      icdCode: props.icdCode ?? null,
+      loincCode: props.loincCode ?? null,
+      transcriptContextItemId: props.transcriptContextItemId ?? null,
+      transcriptStartOffset: props.transcriptStartOffset ?? null,
+      transcriptEndOffset: props.transcriptEndOffset ?? null,
       tenantId: props.tenantId,
     });
   }

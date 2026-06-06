@@ -1,0 +1,13 @@
+# Temporal dynamic config (development, SQL persistence).
+# Mounted into temporalio/auto-setup at
+#   /etc/temporal/config/dynamicconfig/development-sql.yaml
+# and referenced via DYNAMIC_CONFIG_FILE_PATH. Mirrors the upstream
+# temporalio/docker-compose dynamicconfig for a Postgres-backed dev server.
+#
+# TASK-330 (Clinical Documentation Harness) — dev/opt-in only.
+limit.maxIDLength:
+  - value: 255
+    constraints: {}
+system.forceSearchAttributesCacheRefreshOnRead:
+  - value: true # Dev only — do NOT enable in production.
+    constraints: {}

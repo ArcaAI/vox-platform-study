@@ -48,9 +48,27 @@ class TransformerTextClassifier(TextClassifier):
         self.tokenizer: Any = None
         self.model: Any = None
         self.pipeline: Any = None
+        self._unconfigured_warning_emitted = False
 
     async def initialize(self) -> None:
         """Load transformer text classification model"""
+        if not self.config.is_configured:
+            # No clinical doc-type model has been chosen (TASK-330 §3.4). Refuse to load the
+            # placeholder sentinel as a real model: leave the service uninitialized so the
+            # endpoint returns 503 instead of emitting wrong (e.g. emotion) labels for
+            # clinical text. Warn loudly, but only once to avoid log spam on repeated calls.
+            if not self._unconfigured_warning_emitted:
+                logger.warning(
+                    "Document-type text classification is UNCONFIGURED: no clinical doc-type "
+                    "classifier model is set via TEXT_CLASSIFIER_MODEL_NAME (the current default "
+                    "is a non-functional placeholder). The /classify/text endpoint will be "
+                    "unavailable (HTTP 503) until a model is configured. See the open decision "
+                    "in nlp.core.config (TASK-330 §3.4)."
+                )
+                self._unconfigured_warning_emitted = True
+            self.is_initialized = False
+            return
+
         try:
             logger.info("Initializing TextClassifier service.")
 

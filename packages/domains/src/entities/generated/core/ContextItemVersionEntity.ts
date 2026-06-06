@@ -16,6 +16,13 @@ export interface IContextItemVersionEntity extends IBaseTenantEntity {
   changedBy?: string | null;
   changeSource?: string | null;
   fieldChanges?: JsonValue | null;
+  // TASK-330 Phase 1 — clinician attestation fields
+  attestedAt?: Date | null;
+  attestedBy?: string | null;
+  attestationHash?: string | null;
+  modelName?: string | null;
+  modelVersion?: string | null;
+  sensorScores?: JsonValue | null;
   ContextItem?: Entities.ContextItemEntity | null;
 }
 
@@ -29,6 +36,12 @@ export class ContextItemVersionEntity extends BaseTenantEntity {
   private _changedBy?: IContextItemVersionEntity['changedBy'];
   private _changeSource?: IContextItemVersionEntity['changeSource'];
   private _fieldChanges?: IContextItemVersionEntity['fieldChanges'];
+  private _attestedAt?: IContextItemVersionEntity['attestedAt'];
+  private _attestedBy?: IContextItemVersionEntity['attestedBy'];
+  private _attestationHash?: IContextItemVersionEntity['attestationHash'];
+  private _modelName?: IContextItemVersionEntity['modelName'];
+  private _modelVersion?: IContextItemVersionEntity['modelVersion'];
+  private _sensorScores?: IContextItemVersionEntity['sensorScores'];
   private _ContextItem?: IContextItemVersionEntity['ContextItem'];
 
   constructor(init: IContextItemVersionEntity) {
@@ -42,6 +55,12 @@ export class ContextItemVersionEntity extends BaseTenantEntity {
     this._changedBy = init.changedBy;
     this._changeSource = init.changeSource;
     this._fieldChanges = init.fieldChanges;
+    this._attestedAt = init.attestedAt;
+    this._attestedBy = init.attestedBy;
+    this._attestationHash = init.attestationHash;
+    this._modelName = init.modelName;
+    this._modelVersion = init.modelVersion;
+    this._sensorScores = init.sensorScores;
     this._ContextItem = init.ContextItem;
   }
 
@@ -117,6 +136,54 @@ export class ContextItemVersionEntity extends BaseTenantEntity {
     this.setProperty('fieldChanges', value);
   }
 
+  get attestedAt(): IContextItemVersionEntity['attestedAt'] {
+    return this._attestedAt;
+  }
+
+  set attestedAt(value: IContextItemVersionEntity['attestedAt']) {
+    this.setProperty('attestedAt', value);
+  }
+
+  get attestedBy(): IContextItemVersionEntity['attestedBy'] {
+    return this._attestedBy;
+  }
+
+  set attestedBy(value: IContextItemVersionEntity['attestedBy']) {
+    this.setProperty('attestedBy', value);
+  }
+
+  get attestationHash(): IContextItemVersionEntity['attestationHash'] {
+    return this._attestationHash;
+  }
+
+  set attestationHash(value: IContextItemVersionEntity['attestationHash']) {
+    this.setProperty('attestationHash', value);
+  }
+
+  get modelName(): IContextItemVersionEntity['modelName'] {
+    return this._modelName;
+  }
+
+  set modelName(value: IContextItemVersionEntity['modelName']) {
+    this.setProperty('modelName', value);
+  }
+
+  get modelVersion(): IContextItemVersionEntity['modelVersion'] {
+    return this._modelVersion;
+  }
+
+  set modelVersion(value: IContextItemVersionEntity['modelVersion']) {
+    this.setProperty('modelVersion', value);
+  }
+
+  get sensorScores(): IContextItemVersionEntity['sensorScores'] {
+    return this._sensorScores;
+  }
+
+  set sensorScores(value: IContextItemVersionEntity['sensorScores']) {
+    this.setProperty('sensorScores', value);
+  }
+
   get ContextItem(): IContextItemVersionEntity['ContextItem'] {
     return this._ContextItem;
   }
@@ -148,6 +215,15 @@ export class ContextItemVersionEntity extends BaseTenantEntity {
    */
   get hasFieldChanges(): boolean {
     return !!this._fieldChanges;
+  }
+
+  /**
+   * TASK-330 Phase 1 — true when this version carries a clinician attestation
+   * (i.e. it is an immutable, signed note produced by the confirm-before-commit
+   * gate). Anchored by the SHA-256 `attestationHash` linking to the WORM audit.
+   */
+  get isAttested(): boolean {
+    return !!this._attestationHash;
   }
 
   public override validate(): void {

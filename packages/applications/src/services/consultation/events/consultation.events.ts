@@ -225,6 +225,13 @@ export interface ConsultationPipelineConfig {
 
   /** Stop pipeline on step failure, or continue remaining steps */
   haltOnFailure?: boolean;
+
+  /**
+   * TASK-330 Phase 1 (Lane G) — route auto-generation to the durable harness
+   * workflow (apps/harness) instead of the legacy BullMQ summary job. Defaults
+   * to false/undefined, so existing consultations keep the legacy pipeline.
+   */
+  harnessEnabled?: boolean;
 }
 
 /**

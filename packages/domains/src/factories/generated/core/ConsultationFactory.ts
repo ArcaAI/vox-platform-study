@@ -14,6 +14,8 @@ export interface CreateConsultationProps extends BaseEntityFactoryCreateProps {
   departmentId?: IConsultationEntity['departmentId'];
   parentConsultationId?: IConsultationEntity['parentConsultationId'];
   metadata?: IConsultationEntity['metadata'];
+  // TASK-330 Phase 1 — typed lifecycle state (defaults to OPEN)
+  status?: IConsultationEntity['status'];
   tenantId: IConsultationEntity['tenantId'];
 
   createdAt?: IConsultationEntity['createdAt'];
@@ -46,6 +48,7 @@ export class ConsultationFactory {
       departmentId: props.departmentId ?? null,
       parentConsultationId: props.parentConsultationId ?? null,
       metadata: props.metadata ?? null,
+      status: props.status ?? Enums.ConsultationStatus.OPEN,
       tenantId: props.tenantId,
     });
   }

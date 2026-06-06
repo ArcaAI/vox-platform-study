@@ -161,6 +161,20 @@ export type { SummaryApprovalResponse, SummaryApprovalStatus } from './summary';
 
 export { DEFAULT_SUMMARY_STATE } from './summary';
 
+// Provenance / citations types (TASK-330 Phase 1, Lane J)
+export type {
+  CitationClaim,
+  CitationsMap,
+  ClaimEvidence,
+  ClaimStatus,
+  ClinicalReviewData,
+  HighlightSegment,
+  SensorScores,
+  SoapSection,
+  SoapSectionGroup,
+  TranscriptSource,
+} from './citations';
+
 // DNA Writing Style types (SDK-207 WS-4)
 export type { DnaGenerateInput, DnaJobResult, DnaJobStatus, DnaReport, DnaReportData, DnaReportWithFallback, DnaStyleVersion, DnaUpdateInput } from './dna';
 

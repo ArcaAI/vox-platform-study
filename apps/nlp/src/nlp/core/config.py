@@ -83,14 +83,28 @@ class NLPServiceConfig(BaseSettings):
         return _parse_otel_resource_attributes(self.resource_attributes_raw)
 
 
+# Sentinel default for the document-type text classifier.
+#
+# OPEN DECISION (TASK-330 §3.4): the `/classify/text` endpoint is meant for clinical
+# *document-type* classification (e.g. clinical note vs discharge summary vs lab report),
+# but no clinical doc-type model or label taxonomy has been chosen yet. The previous
+# default, `michellejieli/emotion_text_classifier`, is an *emotion* model and was only ever
+# a placeholder — it would emit emotion labels for clinical text. Until a product owner
+# picks the intended model + taxonomy, the default is this non-functional sentinel so the
+# service refuses to silently run the wrong model and instead reports the feature as
+# unconfigured (see `TransformerTextClassifier.initialize`). Configure a real model via the
+# `TEXT_CLASSIFIER_MODEL_NAME` env var to enable the endpoint.
+UNCONFIGURED_DOC_TYPE_CLASSIFIER_MODEL = "__UNCONFIGURED_DOC_TYPE_CLASSIFIER__"
+
+
 class TextClassificationConfig(BaseSettings):
     """Text classification model configuration"""
 
     # Model settings
-    model_name: str = Field(default="michellejieli/emotion_text_classifier")
+    model_name: str = Field(default=UNCONFIGURED_DOC_TYPE_CLASSIFIER_MODEL)
     model_version: str = Field(default="1.0.0")
     model_path: str | None = Field(default=None)
-    tokenizer_name: str = Field(default="michellejieli/emotion_text_classifier")
+    tokenizer_name: str = Field(default=UNCONFIGURED_DOC_TYPE_CLASSIFIER_MODEL)
 
     # Processing settings
     max_sequence_length: int = Field(default=512)
@@ -107,6 +121,11 @@ class TextClassificationConfig(BaseSettings):
 
     class Config:
         env_prefix = "TEXT_CLASSIFIER_"
+
+    @property
+    def is_configured(self) -> bool:
+        """True once a real doc-type model is set (i.e. not the placeholder sentinel)."""
+        return self.model_name != UNCONFIGURED_DOC_TYPE_CLASSIFIER_MODEL
 
 
 class TokenClassificationConfig(BaseSettings):

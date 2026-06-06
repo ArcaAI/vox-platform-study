@@ -158,6 +158,7 @@ describe('modelHasSoftDelete', () => {
       'SummaryMeta',
       'NamedEntity',
       'TranscriptionJob',
+      'HarnessAuditEvent',
     ];
 
     expected.forEach((model) => {
@@ -182,6 +183,7 @@ describe('modelHasSoftDelete', () => {
       'summaryMeta',
       'namedEntity',
       'transcriptionJob',
+      'harnessAuditEvent',
     ];
 
     camelCaseModels.forEach((model) => {

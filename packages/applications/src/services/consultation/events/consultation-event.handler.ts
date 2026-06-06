@@ -15,13 +15,15 @@
  * JSON field (`metadata.pipelineConfig`), falling back to system defaults.
  */
 
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { ConsultationRepository } from '@arcaai/domains';
+import { randomUUID } from 'node:crypto';
+import { ConsultationRepository, ContextItemRepository } from '@arcaai/domains';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
 import { PromptResolutionService } from '../prompt/prompt-resolution.service';
+import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { createWorkerSession } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import {
@@ -46,6 +48,14 @@ export class ConsultationEventHandler {
     private readonly promptResolutionService: PromptResolutionService,
     private readonly eventEmitter: EventEmitter2,
     private readonly cls: ClsService<IActiveUserContext>,
+    // TASK-330 Phase 1 (Lane G) — optional so existing unit fixtures (and any
+    // deployment without the harness wired) keep the legacy path. Only invoked
+    // when pipelineConfig.harnessEnabled is true.
+    @Optional() @Inject(HarnessGatewayService) private readonly harnessGatewayService?: HarnessGatewayService,
+    // TASK-330 Phase 1 — used only on the harness path to forward the triggering
+    // transcript's text to the durable workflow. Optional + trailing so the
+    // legacy fixtures/DI keep compiling.
+    @Optional() @Inject(ContextItemRepository) private readonly contextItemRepository?: ContextItemRepository,
   ) {
     this.logger.log('ConsultationEventHandler initialized — auto-pipeline enabled');
   }
@@ -101,6 +111,48 @@ export class ConsultationEventHandler {
           this.logger.log({
             message: 'Auto-summary disabled — skipping pipeline',
             consultationId,
+            correlationId,
+          });
+          return;
+        }
+
+        // TASK-330 Phase 1 (Lane G) — when the harness flag is set, route
+        // auto-generation to the durable harness workflow instead of the legacy
+        // BullMQ summary job. A jobId is minted so the harness can publish SSE
+        // progress on the existing `consultation_job_updates:{jobId}` channel.
+        if (config.harnessEnabled) {
+          const harnessJobId = `harness-doc-${randomUUID()}`;
+          // Best-effort: forward the triggering transcript's text so the workflow
+          // can run NER + sensors on it. A read miss must not block the start —
+          // the assemble callback re-loads the transcript on the apps/api side
+          // (the prompt's source of truth), so we degrade gracefully.
+          let transcriptText: string | undefined;
+          try {
+            const transcript = await this.contextItemRepository?.findById(contextItemId);
+            transcriptText = transcript?.content ?? undefined;
+          } catch (loadError) {
+            this.logger.warn({
+              message: 'Failed to load transcript text for harness start (best-effort)',
+              consultationId,
+              contextItemId,
+              error: loadError instanceof Error ? loadError.message : String(loadError),
+            });
+          }
+
+          await this.harnessGatewayService?.start(consultationId, {
+            tenantId,
+            userId: payload.userId,
+            jobId: harnessJobId,
+            correlationId: correlationId ?? payload.jobId,
+            contextItemId,
+            transcriptText,
+          });
+
+          this.logger.log({
+            message: 'Harness document workflow start requested',
+            consultationId,
+            harnessJobId,
+            contextItemId,
             correlationId,
           });
           return;
@@ -366,6 +418,9 @@ export class ConsultationEventHandler {
           summaryTemplate: config.summaryTemplate ?? DEFAULT_PIPELINE_CONFIG.summaryTemplate,
           includeSharedContext: config.includeSharedContext ?? DEFAULT_PIPELINE_CONFIG.includeSharedContext,
           haltOnFailure: config.haltOnFailure ?? DEFAULT_PIPELINE_CONFIG.haltOnFailure,
+          // TASK-330 (Lane G) — only surface harnessEnabled when explicitly set so
+          // callers reading a fully-specified config don't see a synthesized default.
+          ...(config.harnessEnabled !== undefined ? { harnessEnabled: config.harnessEnabled } : {}),
         };
       }
 

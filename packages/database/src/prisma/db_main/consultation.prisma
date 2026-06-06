@@ -30,6 +30,11 @@ model Consultation {
     // Flexible metadata (scheduling info, external refs, etc.)
     metadata Json? @db.JsonB
 
+    // Lifecycle state (TASK-330 Phase 1) — typed promotion of the legacy
+    // free-form `metadata.status` JSON. Backfilled NON-destructively in the
+    // migration; the attestation gate transitions PENDING_REVIEW → SIGNED.
+    status ConsultationStatus @default(OPEN)
+
     // Resource status + Audit (standard fields)
     resourceStatus          ResourceStatusType @default(ENABLED)
     resourceStatusUpdatedAt DateTime?
@@ -53,6 +58,8 @@ model Consultation {
     @@index([tenantId, doctorId], name: "Consultation_tenant_doctor_idx")
     @@index([tenantId, departmentId], name: "Consultation_tenant_department_idx")
     @@index([tenantId, patientId, appointmentDate], name: "Consultation_tenant_patient_date_idx")
+    // TASK-330 Phase 1 — tenant-leading lifecycle filter (e.g. review queues).
+    @@index([tenantId, status], name: "Consultation_tenant_status_idx")
     @@schema("core")
 }
 
@@ -107,8 +114,13 @@ model ContextItem {
     // Relations to type-specific data
     AudioRecordings AudioRecording[]
     SummaryMeta     SummaryMeta?
-    NamedEntities   NamedEntity[]
+    NamedEntities   NamedEntity[]        @relation("NamedEntityParent")
     Versions        ContextItemVersion[]
+
+    // TASK-330 Phase 1 — NamedEntities whose transcript span points at THIS
+    // (TRANSCRIPT) context item. Distinct from the `NamedEntities` container
+    // relation above, so both relations are explicitly named.
+    TranscriptNamedEntities NamedEntity[] @relation("NamedEntityTranscript")
 
     // Indexes
     @@index([tenantId], name: "ContextItem_tenantId_idx")
@@ -227,6 +239,16 @@ model SummaryMeta {
     promptResolvedFrom String? // 'preferred' | 'department' | 'default'
     resolvedPromptId   String? // the promptId actually used
 
+    // TASK-330 Phase 1 — clinical-harness sensor scores + citation provenance.
+    // All nullable/additive; populated by the eval/guardrail pipeline.
+    entityFaithfulnessScore Float? // NER entity faithfulness (0.0 - 1.0)
+    coverageScore           Float? // transcript coverage (0.0 - 1.0)
+    ragTriadScore           Float? // RAG triad (context relevance / groundedness / answer relevance)
+    citationsMap            Json?   @db.JsonB // claim → supporting transcript spans
+    guardrailDecisions      Json?   @db.JsonB // guardrail pass/fail decisions + reasons
+    attestationRef          String? // ref to the attestation (ContextItemVersion id / audit hash)
+    modelName               String? // model that produced the scored summary
+
     // Timestamps
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
@@ -256,12 +278,29 @@ model NamedEntity {
 
     // Parent context item (typically linked to TRANSCRIPT or RAW_SUMMARY)
     contextItemId String
-    ContextItem   ContextItem @relation(fields: [contextItemId], references: [id])
+    ContextItem   ContextItem @relation("NamedEntityParent", fields: [contextItemId], references: [id])
 
     // Entity information
     text           String  // The recognized text span
     className      String  // Entity class (e.g., "MEDICATION", "CONDITION", "PROCEDURE", "ANATOMY")
     normalizedText String? // Normalized/canonical form (e.g., standard drug name)
+
+    // TASK-330 Phase 1 — clinical ontology normalization codes (nullable; set by
+    // the NER/normalization pipeline). Enables entity-faithfulness scoring and
+    // coded problem / medication / observation lists.
+    umlsCui    String? // UMLS Concept Unique Identifier
+    snomedCode String? // SNOMED CT code
+    rxnormCode String? // RxNorm code (medications)
+    icdCode    String? // ICD-10 code
+    loincCode  String? // LOINC code (labs / observations)
+
+    // Transcript provenance (TASK-330 Phase 1) — FK back into the originating
+    // TRANSCRIPT context item plus the character span, so summaries can cite the
+    // exact source offsets that grounded each entity.
+    transcriptContextItemId String?
+    TranscriptContextItem   ContextItem? @relation("NamedEntityTranscript", fields: [transcriptContextItemId], references: [id])
+    transcriptStartOffset   Int? // Character offset start within the transcript
+    transcriptEndOffset     Int? // Character offset end within the transcript
 
     // Location in source text
     startOffset Int? // Character offset start
@@ -292,6 +331,8 @@ model NamedEntity {
     @@index([contextItemId, className], name: "NamedEntity_item_class_idx")
     // TASK-305 A.4 — tenant-leading composite for entity-class lookups.
     @@index([tenantId, contextItemId, className], name: "NamedEntity_tenant_item_class_idx")
+    // TASK-330 Phase 1 — transcript-span provenance lookups.
+    @@index([transcriptContextItemId], name: "NamedEntity_transcriptContextItem_idx")
     @@schema("core")
 }
 
@@ -329,6 +370,17 @@ model ContextItemVersion {
 
     // For modified summaries: track specific field changes
     fieldChanges Json? @db.JsonB // { field: { old: "...", new: "..." } }
+
+    // TASK-330 Phase 1 — clinician attestation (confirm-before-commit gate).
+    // Populated when a SIGNED_NOTE version is written on approveSummary; the
+    // attestationHash anchors the version to its append-only HarnessAuditEvent
+    // (action = ATTEST). All nullable/additive.
+    attestedAt      DateTime? // when the clinician attested
+    attestedBy      String?   // clinician user id who attested
+    attestationHash String?   // SHA-256 hash linking to the WORM audit event
+    modelName       String?   // model that produced the attested content
+    modelVersion    String?
+    sensorScores    Json?     @db.JsonB // guardrail/sensor scores captured at attestation
 
     // Timestamp
     createdAt DateTime @default(now())

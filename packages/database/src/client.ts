@@ -112,6 +112,10 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // COMPLETED/FAILED/CANCELLED) and has no `resourceStatus` column, so the
   // soft-delete filter would otherwise emit an invalid Prisma `where`.
   'TranscriptionJob',
+  // HarnessAuditEvent (TASK-330) is an append-only WORM audit table — no
+  // `resourceStatus` column and no soft-delete (rows are immutable; the
+  // migration REVOKEs UPDATE/DELETE from the app role).
+  'HarnessAuditEvent',
 ]);
 
 /**

@@ -11,7 +11,12 @@ export * from './DepartmentRepository';
 export * from './DnaUsageRecordRepository';
 export * from './DnaWritingStyleReportRepository';
 export * from './DnaWritingStyleVersionRepository';
+export * from './EvalRunRepository';
+export * from './EvalScoreRepository';
 export * from './GlobalSettingRepository';
+export * from './GoldenCaseRepository';
+export * from './GoldenSetRepository';
+export * from './HarnessAuditEventRepository';
 // TASK-302 Phase 4 — sibling file that patches GlobalSettingRepository
 // prototype with encryptValueIntoEntity / decryptValueFromEntity /
 // findByIdWithDecryptedValue. Importing here ensures the augmentation

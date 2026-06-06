@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedVoiceProfileRouteImport } from './routes/_authenticated/voice-profile'
+import { Route as AuthenticatedClinicalReviewRouteImport } from './routes/_authenticated/clinical-review'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors404RouteImport } from './routes/(errors)/404'
 import { Route as errors403RouteImport } from './routes/(errors)/403'
@@ -59,6 +60,12 @@ const AuthenticatedVoiceProfileRoute =
   AuthenticatedVoiceProfileRouteImport.update({
     id: '/voice-profile',
     path: '/voice-profile',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedClinicalReviewRoute =
+  AuthenticatedClinicalReviewRouteImport.update({
+    id: '/clinical-review',
+    path: '/clinical-review',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const errors500Route = errors500RouteImport.update({
@@ -260,6 +267,7 @@ export interface FileRoutesByFullPath {
   '/403': typeof errors403Route
   '/404': typeof errors404Route
   '/500': typeof errors500Route
+  '/clinical-review': typeof AuthenticatedClinicalReviewRoute
   '/voice-profile': typeof AuthenticatedVoiceProfileRoute
   '/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
   '/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
@@ -296,6 +304,7 @@ export interface FileRoutesByTo {
   '/403': typeof errors403Route
   '/404': typeof errors404Route
   '/500': typeof errors500Route
+  '/clinical-review': typeof AuthenticatedClinicalReviewRoute
   '/voice-profile': typeof AuthenticatedVoiceProfileRoute
   '/': typeof AuthenticatedIndexRoute
   '/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
@@ -335,6 +344,7 @@ export interface FileRoutesById {
   '/(errors)/403': typeof errors403Route
   '/(errors)/404': typeof errors404Route
   '/(errors)/500': typeof errors500Route
+  '/_authenticated/clinical-review': typeof AuthenticatedClinicalReviewRoute
   '/_authenticated/voice-profile': typeof AuthenticatedVoiceProfileRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
@@ -375,6 +385,7 @@ export interface FileRouteTypes {
     | '/403'
     | '/404'
     | '/500'
+    | '/clinical-review'
     | '/voice-profile'
     | '/admin/audio-pipelines'
     | '/admin/audit-logs'
@@ -411,6 +422,7 @@ export interface FileRouteTypes {
     | '/403'
     | '/404'
     | '/500'
+    | '/clinical-review'
     | '/voice-profile'
     | '/'
     | '/admin/audio-pipelines'
@@ -449,6 +461,7 @@ export interface FileRouteTypes {
     | '/(errors)/403'
     | '/(errors)/404'
     | '/(errors)/500'
+    | '/_authenticated/clinical-review'
     | '/_authenticated/voice-profile'
     | '/_authenticated/'
     | '/_authenticated/admin/audio-pipelines'
@@ -511,6 +524,13 @@ declare module '@tanstack/react-router' {
       path: '/voice-profile'
       fullPath: '/voice-profile'
       preLoaderRoute: typeof AuthenticatedVoiceProfileRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/clinical-review': {
+      id: '/_authenticated/clinical-review'
+      path: '/clinical-review'
+      fullPath: '/clinical-review'
+      preLoaderRoute: typeof AuthenticatedClinicalReviewRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/(errors)/500': {
@@ -748,6 +768,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedClinicalReviewRoute: typeof AuthenticatedClinicalReviewRoute
   AuthenticatedVoiceProfileRoute: typeof AuthenticatedVoiceProfileRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedAdminAudioPipelinesRoute: typeof AuthenticatedAdminAudioPipelinesRoute
@@ -781,6 +802,7 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedClinicalReviewRoute: AuthenticatedClinicalReviewRoute,
   AuthenticatedVoiceProfileRoute: AuthenticatedVoiceProfileRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedAdminAudioPipelinesRoute: AuthenticatedAdminAudioPipelinesRoute,

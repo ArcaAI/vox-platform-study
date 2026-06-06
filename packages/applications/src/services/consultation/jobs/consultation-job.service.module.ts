@@ -16,6 +16,7 @@ import { ChainSummaryServiceModule } from '../summary/chain-summary.service.modu
 import { PromptResolutionServiceModule } from '../prompt/prompt-resolution.service.module';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { ObservabilityModule } from '../../baseServices/observability/observability.module';
+import { HarnessGatewayServiceModule } from '../harness/harness-gateway.service.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ObservabilityModule } from '../../baseServices/observability/observabil
     ObservabilityModule,
     ChainSummaryServiceModule, // Required for ComprehensiveSummaryProcessor
     PromptResolutionServiceModule, // Required for prompt fallback chain (GAP-3)
+    HarnessGatewayServiceModule, // TASK-330 (Lane G) — harnessEnabled routing in ConsultationEventHandler
     EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection
     RedisCacheModule.register(), // For job status storage and pub/sub
     BullModule.registerQueue(

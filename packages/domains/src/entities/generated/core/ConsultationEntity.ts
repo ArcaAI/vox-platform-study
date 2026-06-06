@@ -15,6 +15,8 @@ export interface IConsultationEntity extends IBaseTenantEntity {
   departmentId?: string | null;
   parentConsultationId?: string | null;
   metadata?: JsonValue | null;
+  // TASK-330 Phase 1 — typed lifecycle state (defaults to OPEN)
+  status?: Enums.ConsultationStatus;
   Doctor?: Entities.UserEntity | null;
   Department?: Entities.DepartmentEntity | null;
   ParentConsultation?: Entities.ConsultationEntity | null;
@@ -29,6 +31,7 @@ export class ConsultationEntity extends BaseTenantEntity {
   private _departmentId?: IConsultationEntity['departmentId'];
   private _parentConsultationId?: IConsultationEntity['parentConsultationId'];
   private _metadata?: IConsultationEntity['metadata'];
+  private _status: Enums.ConsultationStatus;
   private _Doctor?: IConsultationEntity['Doctor'];
   private _Department?: IConsultationEntity['Department'];
   private _ParentConsultation?: IConsultationEntity['ParentConsultation'];
@@ -43,6 +46,7 @@ export class ConsultationEntity extends BaseTenantEntity {
     this._departmentId = init.departmentId;
     this._parentConsultationId = init.parentConsultationId;
     this._metadata = init.metadata;
+    this._status = init.status ?? Enums.ConsultationStatus.OPEN;
     this._Doctor = init.Doctor;
     this._Department = init.Department;
     this._ParentConsultation = init.ParentConsultation;
@@ -96,6 +100,14 @@ export class ConsultationEntity extends BaseTenantEntity {
 
   set metadata(value: IConsultationEntity['metadata']) {
     this.setProperty('metadata', value);
+  }
+
+  get status(): Enums.ConsultationStatus {
+    return this._status;
+  }
+
+  set status(value: Enums.ConsultationStatus) {
+    this.setProperty('status', value);
   }
 
   get Doctor(): IConsultationEntity['Doctor'] {
@@ -154,6 +166,14 @@ export class ConsultationEntity extends BaseTenantEntity {
    */
   get isRevisit(): boolean {
     return !!this._parentConsultationId;
+  }
+
+  /**
+   * TASK-330 Phase 1 — true when the consultation has been clinician-attested
+   * (the documentation is committed/immutable).
+   */
+  get isSigned(): boolean {
+    return this._status === Enums.ConsultationStatus.SIGNED;
   }
 
   public override validate(): void {

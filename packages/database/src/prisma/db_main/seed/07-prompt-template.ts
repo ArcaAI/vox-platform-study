@@ -24,6 +24,34 @@ const resolvePromptStatus = (category: string): PromptTemplateStatus =>
 export const DEFAULT_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 export const SYSTEM_USER_ID = '60000000-0000-0000-0000-000000000000';
 
+/**
+ * TASK-330 Phase 1 — structured SOAP output schema.
+ *
+ * Seeded into the SOAP template's `metaData.promptConfig.outputSchema` so
+ * `PromptAssemblyService.assemble()` emits a non-null `responseFormat`
+ * (`{ type: 'json_schema', json_schema, strict: true }`). For non-Ollama
+ * providers `buildSmrGeneratePayload()` then forwards it as `response_format`,
+ * activating constrained SOAP generation end-to-end.
+ */
+export const SOAP_OUTPUT_SCHEMA = {
+    title: 'SOAPNote',
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+        subjective: { type: 'string', description: 'Patient history, chief complaint, HPI, review of systems.' },
+        objective: { type: 'string', description: 'Vitals, physical exam findings, labs, imaging.' },
+        assessment: { type: 'string', description: 'Primary diagnosis, differentials, severity grading, ICD-10 codes.' },
+        plan: { type: 'string', description: 'Medications with dosages, referrals, follow-up timeline, patient education.' },
+    },
+    required: ['subjective', 'objective', 'assessment', 'plan'],
+};
+
+/** SOAP prompt hyperparameters + output schema, persisted under `metaData.promptConfig`. */
+export const SOAP_PROMPT_CONFIG = {
+    hyperparameters: { temperature: 0.1, max_tokens: 6000, top_p: 0.95 },
+    outputSchema: SOAP_OUTPUT_SCHEMA,
+};
+
 // Template IDs - exported for cross-referencing in other seeds
 export const TEMPLATE_IDS = {
     SYSTEM_DEFAULT: '71000000-0000-0000-0000-000000000001',
@@ -220,6 +248,8 @@ export const DEFAULT_PROMPT_TEMPLATES = [
             department: { type: 'string', required: false },
             severity: { type: 'string', required: false },
         },
+        // TASK-330 Phase 1 — activate structured SOAP output (json_schema).
+        metaData: { promptConfig: SOAP_PROMPT_CONFIG } as Prisma.InputJsonValue,
         currentVersionNumber: 3,
         departmentId: null,
         tags: ['soap', 'clinical'],

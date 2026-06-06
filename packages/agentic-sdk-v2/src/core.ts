@@ -280,6 +280,23 @@ export type {
 } from './types';
 
 // =============================================================================
+// Types - Provenance / Citations (TASK-330 Phase 1, Lane J)
+// =============================================================================
+
+export type {
+  CitationClaim,
+  CitationsMap,
+  ClaimEvidence,
+  ClaimStatus,
+  ClinicalReviewData,
+  HighlightSegment,
+  SensorScores,
+  SoapSection,
+  SoapSectionGroup,
+  TranscriptSource,
+} from './types';
+
+// =============================================================================
 // Types - DNA Writing Style (SDK-207 WS-4)
 // =============================================================================
 
@@ -469,6 +486,15 @@ export {
   validatePromptVariables,
   withIdempotencyKey,
   wrapError,
+  // TASK-330 Phase 1 (Lane J): provenance/citations helpers for the review UI.
+  SOAP_SECTIONS,
+  SOAP_SECTION_LABELS,
+  isNeedsAttention,
+  sortClaimsByAttention,
+  selectClaimsNeedingAttention,
+  groupClaimsBySection,
+  buildTranscriptHighlights,
+  confidencePercent,
 } from './utils';
 
 // =============================================================================

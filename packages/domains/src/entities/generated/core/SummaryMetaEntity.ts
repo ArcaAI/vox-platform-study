@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { JsonValue } from '../../../interfaces';
 import * as Entities from '../../../entities';
 
 export interface ISummaryMetaEntity extends IBaseTenantEntity {
@@ -21,6 +22,14 @@ export interface ISummaryMetaEntity extends IBaseTenantEntity {
   qualityScore?: number | null;
   promptResolvedFrom?: string | null;
   resolvedPromptId?: string | null;
+  // TASK-330 Phase 1 — clinical-harness sensor scores + citation provenance
+  entityFaithfulnessScore?: number | null;
+  coverageScore?: number | null;
+  ragTriadScore?: number | null;
+  citationsMap?: JsonValue | null;
+  guardrailDecisions?: JsonValue | null;
+  attestationRef?: string | null;
+  modelName?: string | null;
   ContextItem?: Entities.ContextItemEntity | null;
 }
 
@@ -40,6 +49,13 @@ export class SummaryMetaEntity extends BaseTenantEntity {
   private _qualityScore?: ISummaryMetaEntity['qualityScore'];
   private _promptResolvedFrom?: ISummaryMetaEntity['promptResolvedFrom'];
   private _resolvedPromptId?: ISummaryMetaEntity['resolvedPromptId'];
+  private _entityFaithfulnessScore?: ISummaryMetaEntity['entityFaithfulnessScore'];
+  private _coverageScore?: ISummaryMetaEntity['coverageScore'];
+  private _ragTriadScore?: ISummaryMetaEntity['ragTriadScore'];
+  private _citationsMap?: ISummaryMetaEntity['citationsMap'];
+  private _guardrailDecisions?: ISummaryMetaEntity['guardrailDecisions'];
+  private _attestationRef?: ISummaryMetaEntity['attestationRef'];
+  private _modelName?: ISummaryMetaEntity['modelName'];
   private _ContextItem?: ISummaryMetaEntity['ContextItem'];
 
   constructor(init: ISummaryMetaEntity) {
@@ -59,6 +75,13 @@ export class SummaryMetaEntity extends BaseTenantEntity {
     this._qualityScore = init.qualityScore;
     this._promptResolvedFrom = init.promptResolvedFrom;
     this._resolvedPromptId = init.resolvedPromptId;
+    this._entityFaithfulnessScore = init.entityFaithfulnessScore;
+    this._coverageScore = init.coverageScore;
+    this._ragTriadScore = init.ragTriadScore;
+    this._citationsMap = init.citationsMap;
+    this._guardrailDecisions = init.guardrailDecisions;
+    this._attestationRef = init.attestationRef;
+    this._modelName = init.modelName;
     this._ContextItem = init.ContextItem;
   }
 
@@ -180,6 +203,62 @@ export class SummaryMetaEntity extends BaseTenantEntity {
 
   set resolvedPromptId(value: ISummaryMetaEntity['resolvedPromptId']) {
     this.setProperty('resolvedPromptId', value);
+  }
+
+  get entityFaithfulnessScore(): ISummaryMetaEntity['entityFaithfulnessScore'] {
+    return this._entityFaithfulnessScore;
+  }
+
+  set entityFaithfulnessScore(value: ISummaryMetaEntity['entityFaithfulnessScore']) {
+    this.setProperty('entityFaithfulnessScore', value);
+  }
+
+  get coverageScore(): ISummaryMetaEntity['coverageScore'] {
+    return this._coverageScore;
+  }
+
+  set coverageScore(value: ISummaryMetaEntity['coverageScore']) {
+    this.setProperty('coverageScore', value);
+  }
+
+  get ragTriadScore(): ISummaryMetaEntity['ragTriadScore'] {
+    return this._ragTriadScore;
+  }
+
+  set ragTriadScore(value: ISummaryMetaEntity['ragTriadScore']) {
+    this.setProperty('ragTriadScore', value);
+  }
+
+  get citationsMap(): ISummaryMetaEntity['citationsMap'] {
+    return this._citationsMap;
+  }
+
+  set citationsMap(value: ISummaryMetaEntity['citationsMap']) {
+    this.setProperty('citationsMap', value);
+  }
+
+  get guardrailDecisions(): ISummaryMetaEntity['guardrailDecisions'] {
+    return this._guardrailDecisions;
+  }
+
+  set guardrailDecisions(value: ISummaryMetaEntity['guardrailDecisions']) {
+    this.setProperty('guardrailDecisions', value);
+  }
+
+  get attestationRef(): ISummaryMetaEntity['attestationRef'] {
+    return this._attestationRef;
+  }
+
+  set attestationRef(value: ISummaryMetaEntity['attestationRef']) {
+    this.setProperty('attestationRef', value);
+  }
+
+  get modelName(): ISummaryMetaEntity['modelName'] {
+    return this._modelName;
+  }
+
+  set modelName(value: ISummaryMetaEntity['modelName']) {
+    this.setProperty('modelName', value);
   }
 
   get ContextItem(): ISummaryMetaEntity['ContextItem'] {

@@ -1,0 +1,111 @@
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { SecretsService } from '../../baseServices/_meta/secrets';
+
+/**
+ * Context for starting a durable harness document workflow. `tenantId` is
+ * REQUIRED and travels in the request body (the harness re-establishes CLS
+ * from it on its side). `jobId` lets the existing SSE pub/sub channel
+ * (`consultation_job_updates:{jobId}`) surface progress to the frontend.
+ */
+export interface HarnessStartContext {
+  tenantId: string;
+  userId?: string;
+  jobId?: string;
+  correlationId?: string;
+  /** The transcript ContextItem that triggered generation. */
+  contextItemId?: string;
+  /**
+   * The transcript text the workflow runs NER + sensors against. apps/api stays
+   * the sole DB reader, so it supplies the text at start; the assemble callback
+   * re-loads the transcript on the apps/api side as the prompt's source of truth.
+   */
+  transcriptText?: string;
+}
+
+/**
+ * Sign-off signal payload forwarded to the harness so it can resolve the
+ * workflow's `approval` wait-condition. The WORM write in apps/api is the
+ * source of truth; this is a best-effort notification.
+ */
+export interface HarnessApprovalSignal {
+  tenantId?: string;
+  contextItemVersionId?: string;
+  attestationHash?: string;
+  clinicianId?: string;
+  decision?: string;
+}
+
+/**
+ * HarnessGatewayService (TASK-330 Phase 1 — Lane G).
+ *
+ * The OUTBOUND half of the apps/api <-> apps/harness gate adapter. Uses Nest
+ * `HttpService` to POST to the harness internal endpoints, authenticating with
+ * `X-Service-Token: <HARNESS_SERVICE_TOKEN>` and carrying `tenantId` in the body.
+ *
+ * Base URL resolves from `HARNESS_URL` (default `http://localhost:8866`). The
+ * Temporal SDK stays isolated inside apps/harness — this service only speaks
+ * HTTP, so the durable-workflow concern never leaks into the NestJS gateway.
+ */
+@Injectable()
+export class HarnessGatewayService {
+  private readonly logger = new Logger(HarnessGatewayService.name);
+  private readonly harnessUrl: string;
+
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
+    // Optional so unit fixtures (and any caller that constructs this directly)
+    // compile without a mock. When unset we send an empty token, which the
+    // harness-side service-token guard rejects (fail-closed on the harness).
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+  ) {
+    this.harnessUrl = this.configService.get<string>('HARNESS_URL') ?? 'http://localhost:8866';
+  }
+
+  /**
+   * Start (or no-op re-trigger) the harness document workflow for a consultation.
+   */
+  async start(consultationId: string, ctx: HarnessStartContext): Promise<unknown> {
+    const url = `${this.harnessUrl}/api/v1/internal/consultations/${consultationId}/document:start`;
+    const body = {
+      tenantId: ctx.tenantId,
+      userId: ctx.userId,
+      jobId: ctx.jobId,
+      correlationId: ctx.correlationId,
+      contextItemId: ctx.contextItemId,
+      transcriptText: ctx.transcriptText,
+    };
+
+    const response = await this.httpService.axiosRef.post(url, body, {
+      headers: await this.buildHeaders(),
+    });
+
+    this.logger.log({ message: 'Harness document workflow started', consultationId, jobId: ctx.jobId });
+    return response.data;
+  }
+
+  /**
+   * Forward a clinician sign-off to the harness so it can resolve the workflow's
+   * approval wait-condition and record the GATE_DECISION audit event.
+   */
+  async signalApproval(consultationId: string, payload: HarnessApprovalSignal): Promise<unknown> {
+    const url = `${this.harnessUrl}/api/v1/internal/workflows/${consultationId}/signal/approve`;
+
+    const response = await this.httpService.axiosRef.post(url, { ...payload }, {
+      headers: await this.buildHeaders(),
+    });
+
+    this.logger.log({ message: 'Harness approval signal sent', consultationId });
+    return response.data;
+  }
+
+  private async buildHeaders(): Promise<Record<string, string>> {
+    const token = (await this.secretsService?.getSecretOptional('HARNESS_SERVICE_TOKEN')) ?? '';
+    return {
+      'Content-Type': 'application/json',
+      'X-Service-Token': token,
+    };
+  }
+}

@@ -8,7 +8,7 @@ Worker architecture for 100+ concurrent users:
 - Dramatiq threads: 2–4 per process (low for CPU-bound ML work)
 - ProcessPoolExecutor: optional in-process parallelism for lightweight tasks
 - VAD service: Silero ONNX loaded once per worker process (single-threaded CPU)
-- Qdrant client: async connection pool shared across threads
+- Speaker tracking: in-memory, session-scoped (no external vector store)
 - Diarization model: pyannote loaded once per worker process (GPU if available)
 
 Usage:

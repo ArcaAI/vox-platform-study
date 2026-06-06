@@ -19,6 +19,9 @@ export * from './webhook';
 export * from './apiKey';
 export * from './consultation';
 export * from './department';
+// TASK-330 Phase 0 — clinical documentation harness (eval storage + WORM audit).
+export * from './eval';
+export * from './harness-audit';
 export * from './prompt-management';
 export * from './dna-writing-style';
 export * from './smr';

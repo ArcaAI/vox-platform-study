@@ -32,6 +32,9 @@ networks:
 volumes:
   vault-data:
   qdrant-data:
+  # TASK-330: dedicated persistence for the Temporal dev server (isolated from
+  # hope-postgres / the test PG — Temporal never touches the app database).
+  temporal-pg-data:
 
 services:
   # HashiCorp Vault - Secret Management
@@ -128,5 +131,86 @@ services:
     volumes:
       - ./scripts/init-qdrant-collections.py:/scripts/init.py:ro
     command: sh -c "pip install -q qdrant-client && python /scripts/init.py"
+
+  # ==========================================================================
+  # Temporal — durable-workflow substrate for the Clinical Documentation
+  # Harness (TASK-330, apps/harness).
+  #
+  # OPT-IN by design: all three services below are gated behind the `temporal`
+  # profile, so a plain `docker compose up` (and `start-infra.sh --all`, which
+  # only activates `--profile vault`) does NOT start them — existing
+  # postgres/redis/minio/qdrant/vault are untouched. Mirrors the Vault opt-in
+  # precedent above.
+  #
+  # Start (from the monorepo root):
+  #   docker compose -f infrastructure/docker/docker-compose.yml \
+  #                  -f infrastructure/docker/docker-compose.dev.yml \
+  #                  --profile temporal up -d temporal-postgresql temporal temporal-ui
+  #
+  #   Web UI:        http://localhost:${TEMPORAL_UI_PORT:-8233}
+  #   gRPC frontend: localhost:${TEMPORAL_PORT:-7233}
+  # ==========================================================================
+
+  # Dedicated PostgreSQL for Temporal persistence.
+  # NOTE: intentionally NOT publishing a host port — Temporal reaches it over
+  # hope-network. This keeps it fully isolated from hope-postgres (5432) and the
+  # test PG (5433) with zero port conflicts.
+  temporal-postgresql:
+    container_name: hope-temporal-postgresql
+    image: postgres:${TEMPORAL_POSTGRESQL_VERSION:-16}
+    profiles: ["temporal"]
+    networks:
+      - hope-network
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${TEMPORAL_POSTGRES_USER:-temporal}
+      POSTGRES_PASSWORD: ${TEMPORAL_POSTGRES_PASSWORD:-temporal}
+    volumes:
+      - temporal-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${TEMPORAL_POSTGRES_USER:-temporal}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Temporal server (auto-setup: provisions schema + the `default` namespace).
+  temporal:
+    container_name: hope-temporal
+    image: temporalio/auto-setup:${TEMPORAL_VERSION:-1.29.1}
+    profiles: ["temporal"]
+    networks:
+      - hope-network
+    restart: unless-stopped
+    depends_on:
+      temporal-postgresql:
+        condition: service_healthy
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=${TEMPORAL_POSTGRES_USER:-temporal}
+      - POSTGRES_PWD=${TEMPORAL_POSTGRES_PASSWORD:-temporal}
+      - POSTGRES_SEEDS=temporal-postgresql
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    ports:
+      - '${TEMPORAL_PORT:-7233}:7233'
+    volumes:
+      - ./configs/temporal:/etc/temporal/config/dynamicconfig:ro
+
+  # Temporal Web UI.
+  temporal-ui:
+    container_name: hope-temporal-ui
+    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.34.0}
+    profiles: ["temporal"]
+    networks:
+      - hope-network
+    restart: unless-stopped
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:${TEMPORAL_UI_PORT:-8233}
+    ports:
+      - '${TEMPORAL_UI_PORT:-8233}:8080'
 
 
