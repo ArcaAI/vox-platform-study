@@ -4,18 +4,20 @@
  * The same `PromptManagementPage` is reused (not forked) inside the
  * tenant-detail "Prompts" tab via `scopedTenantId` + `embedded`. This smoke
  * test asserts the composition contract:
- *   - embedded + scopedTenantId  → the tenant-picker column is hidden and the
- *     prompt list is fetched for the scoped tenant.
- *   - non-embedded super-admin   → the tenant-picker column is shown.
+ *   - embedded + scopedTenantId  → the prompt list is fetched for the scoped
+ *     tenant.
+ *   - non-embedded               → the working tenant comes from the header
+ *     `ScopeSwitcher` (store `tenantId`); no in-page tenant picker column
+ *     (TASK-335).
  *
  * `MultiColumnLayout` is stubbed to surface each column's title; the data
  * hooks / store are stubbed so the page renders without a backend.
  */
 import { render, screen } from '@testing-library/react';
 
-// TASK-331 doc-02 F2/F3 — the prompts page now gates the tenant picker on
-// `isGlobalScope` and reads/writes `tenantId`/`setTenant` (not the deprecated
-// `tenantKey`/`setTenantKey`).
+// TASK-335 — the prompts page reads the working tenant from the store
+// (`tenantId`, chosen via the header `ScopeSwitcher`) and no longer renders an
+// in-page tenant picker column.
 const authState = vi.hoisted(() => ({ isGlobalScope: true, tenantId: '' }));
 const promptsInfinite = vi.hoisted(() => vi.fn());
 
@@ -115,12 +117,15 @@ describe('PromptManagementPage composition (TASK-328 A2)', () => {
     expect(promptsInfinite).toHaveBeenCalledWith('t-9', expect.anything());
   });
 
-  // TASK-331 doc-02 F2 — the tenant picker is gated on global scope.
-  it('shows the tenant picker for a non-embedded global-scope admin', () => {
+  // TASK-335 — the in-page tenant picker column is gone; the working tenant
+  // comes from the header store and scopes the prompt query.
+  it('renders no tenant picker and scopes the prompt query to the header store tenant', () => {
+    authState.tenantId = 't-3';
     render(<PromptManagementPage />);
 
     expect(screen.getByTestId('main')).toBeInTheDocument();
-    expect(screen.getByTestId('col-tenants')).toBeInTheDocument();
+    expect(screen.queryByTestId('col-tenants')).not.toBeInTheDocument();
+    expect(promptsInfinite).toHaveBeenCalledWith('t-3', expect.anything());
   });
 
   it('hides the tenant picker for a non-global-scope admin', () => {

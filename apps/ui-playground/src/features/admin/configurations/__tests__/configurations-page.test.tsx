@@ -132,11 +132,6 @@ vi.mock('@/store/auth-store', () => ({
 
 // ── API mocks ───────────────────────────────────────────────────────
 
-const mockTenants = [
-    { id: 'tenant-001', name: 'Test Tenant', key: 'test-tenant', resourceStatus: 'ENABLED', createdAt: '', updatedAt: '' },
-    { id: 'tenant-002', name: 'Other Tenant', key: 'other-tenant', resourceStatus: 'ENABLED', createdAt: '', updatedAt: '' },
-];
-
 const mockConfigs = [
     { id: 'cfg-1', name: 'STT Provider', key: 'stt-provider', value: 'local', dataType: 'STRING', namespace: 'stt', version: 1 },
     { id: 'cfg-2', name: 'Noise Suppression', key: 'noise-suppression', value: 'true', dataType: 'BOOLEAN', namespace: 'audio', version: 1 },
@@ -146,18 +141,14 @@ const mockConfigs = [
 const mockMutateTenantConfigs = vi.fn();
 const mockMutateMyConfigs = vi.fn();
 
+// TASK-335 — the in-page tenant picker column was removed; the working tenant
+// now comes from the header ScopeSwitcher (store `tenantId`). `useTenantConfigs`
+// is a spy so we can assert the config list is scoped to that header tenant.
 vi.mock('../../api/tenants', () => ({
-    useTenantsInfinite: () => ({
-        data: { pages: [{ data: mockTenants, count: mockTenants.length }] },
-        isLoading: false,
-        hasNextPage: false,
-        fetchNextPage: vi.fn(),
-        isFetchingNextPage: false,
-    }),
-    useTenantConfigs: () => ({
+    useTenantConfigs: vi.fn(() => ({
         data: { data: mockConfigs, count: mockConfigs.length },
         isLoading: false,
-    }),
+    })),
     useMyTenantConfigs: () => ({
         data: { data: mockConfigs, count: mockConfigs.length },
         isLoading: false,
@@ -179,6 +170,7 @@ vi.mock('../../api/tenants', () => ({
 
 // ── Import component under test ─────────────────────────────────────
 
+import { useTenantConfigs } from '../../api/tenants';
 import ConfigurationManagementPage from '../index';
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -216,33 +208,44 @@ describe('ConfigurationManagementPage', () => {
         });
     });
 
-    describe('role-based access', () => {
-        it('SUPER_ADMIN should see the tenant picker column', () => {
+    // TASK-335 — the redundant in-page "Tenants" column was removed. The
+    // working tenant is selected exclusively via the header ScopeSwitcher
+    // (store `tenantId`), so the page must NOT render a tenant picker and
+    // must scope the config list to that header tenant for every role.
+    describe('tenant scoping (header ScopeSwitcher)', () => {
+        it('does NOT render an in-page tenant picker column', () => {
             mockRoles = ['SUPER_ADMIN'];
             renderPage();
 
-            const tenantColumn = screen.getByTestId('column-config-tenants');
-            expect(tenantColumn).toBeInTheDocument();
-            expect(within(tenantColumn).getByText('Tenants')).toBeInTheDocument();
+            expect(screen.queryByTestId('column-config-tenants')).not.toBeInTheDocument();
+            expect(screen.queryByText('Tenants')).not.toBeInTheDocument();
         });
 
-        it('a non-super admin (TENANT_ADMIN) still sees the tenant picker column scoped to own tenant', () => {
-            mockRoles = ['TENANT_ADMIN'];
+        it('renders only the configurations and detail columns', () => {
             renderPage();
 
-            const tenantColumn = screen.getByTestId('column-config-tenants');
-            expect(tenantColumn).toBeInTheDocument();
+            expect(screen.getByTestId('column-config-items')).toBeInTheDocument();
+            expect(screen.getByTestId('column-config-detail')).toBeInTheDocument();
+            expect(screen.queryByTestId('column-config-tenants')).not.toBeInTheDocument();
         });
 
-        it('TENANT_ADMIN should see only own tenant in picker', () => {
-            mockRoles = ['TENANT_ADMIN'];
+        it('scopes configs to the header store tenantId for SUPER_ADMIN', () => {
+            mockRoles = ['SUPER_ADMIN'];
             mockTenantId = 'tenant-001';
-            mockTenantName = 'Test Tenant';
             renderPage();
 
-            const tenantColumn = screen.getByTestId('column-config-tenants');
-            const items = within(tenantColumn).getByTestId('item-list');
-            expect(within(items).getByText('Test Tenant')).toBeInTheDocument();
+            expect(vi.mocked(useTenantConfigs)).toHaveBeenCalledWith(
+                'tenant-001',
+                expect.any(Object),
+                expect.objectContaining({ enabled: true }),
+            );
+        });
+
+        it('TENANT_ADMIN also has no in-page tenant picker column', () => {
+            mockRoles = ['TENANT_ADMIN'];
+            renderPage();
+
+            expect(screen.queryByTestId('column-config-tenants')).not.toBeInTheDocument();
         });
     });
 
@@ -531,18 +534,6 @@ describe('ConfigurationManagementPage', () => {
     });
 
     describe('search and filter', () => {
-        it('should filter tenants by search text', () => {
-            renderPage();
-
-            const tenantColumn = screen.getByTestId('column-config-tenants');
-            const searchInput = within(tenantColumn).getByPlaceholderText('Search tenant...');
-            fireEvent.change(searchInput, { target: { value: 'Other' } });
-
-            const itemList = within(tenantColumn).getByTestId('item-list');
-            expect(within(itemList).queryByText('Test Tenant')).not.toBeInTheDocument();
-            expect(within(itemList).getByText('Other Tenant')).toBeInTheDocument();
-        });
-
         it('should filter configs by search text', () => {
             renderPage();
 

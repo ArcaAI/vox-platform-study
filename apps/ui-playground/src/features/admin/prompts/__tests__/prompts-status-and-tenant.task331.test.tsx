@@ -1,21 +1,21 @@
 /**
- * TASK-331 doc-02 F5 + F3 — prompts page wiring.
+ * TASK-331 doc-02 F5 + TASK-335 — prompts page wiring.
  *
  *  - F5: choosing a status in the list filter threads `status` into the
  *    server-side query params (the client-side post-filter was removed).
- *  - F3: selecting a tenant persists via `setTenant` (not the deprecated
- *    `setTenantKey`).
+ *  - TASK-335: the in-page tenant picker column was removed; the working tenant
+ *    now comes from the header `ScopeSwitcher` (store `tenantId`) and scopes the
+ *    prompt query.
  *
  * `MultiColumnLayout` is stubbed to render each column's `headerActions` and to
- * expose the column states so the tenant `onSelect` can be invoked directly.
- * `@arcaai/ui/select` is stubbed as a native `<select>` so the status filter is
- * a plain combobox.
+ * expose the column states. `@arcaai/ui/select` is stubbed as a native
+ * `<select>` so the status filter is a plain combobox.
  *
  * @vitest-environment jsdom
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 const store = vi.hoisted(() => ({ setTenant: vi.fn(), tenantId: '', isGlobalScope: true }));
 const infinite = vi.hoisted(() => ({ calls: [] as { tenantId: string; params: any }[] }));
@@ -112,14 +112,13 @@ describe('PromptManagementPage status + tenant wiring (TASK-331 doc-02)', () => 
     expect(after.params).toMatchObject({ status: 'PUBLISHED' });
   });
 
-  // F3 — selecting a tenant persists via setTenant.
-  it('persists a tenant selection to the store via setTenant', () => {
-    store.tenantId = '';
+  // TASK-335 — the in-page tenant column is gone; the page scopes to the header
+  // store `tenantId` chosen via the `ScopeSwitcher`.
+  it('scopes the prompt query to the header store tenant', () => {
+    store.tenantId = 't-2';
     render(<PromptManagementPage />);
 
-    const tenantsState = mcl.states[0]; // tenants column is first for a global-scope admin
-    act(() => tenantsState.onSelect('t-2'));
-
-    expect(store.setTenant).toHaveBeenCalledWith('t-2', undefined);
+    const last = infinite.calls[infinite.calls.length - 1];
+    expect(last.tenantId).toBe('t-2');
   });
 });

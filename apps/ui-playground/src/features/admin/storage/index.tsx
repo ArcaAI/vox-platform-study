@@ -5,12 +5,12 @@ import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/dialog';
 import { Input } from '@arcaai/ui/input';
-import { type MultiColumnConfig, type MultiColumnContentConfig, MultiColumnLayout, type MultiColumnState } from '@arcaai/ui/multi-column-layout';
+import { type MultiColumnContentConfig, MultiColumnLayout, type MultiColumnState } from '@arcaai/ui/multi-column-layout';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/select';
 import { Separator } from '@arcaai/ui/separator';
 import { Skeleton } from '@arcaai/ui/skeleton';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Building2, FolderPlus, Grid3X3, KeyRound, List, Loader2, Plus, Settings2, Trash2, Upload } from 'lucide-react';
+import { FolderPlus, Grid3X3, KeyRound, List, Loader2, Plus, Settings2, Trash2, Upload } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -23,8 +23,7 @@ import {
   useTenantBucketTree,
   useUploadTenantObject,
 } from '../api/tenant-storage';
-import { type Tenant, useTenantsInfinite } from '../api/tenants';
-import { AdminDataTable, ConfirmDialog, StatusBadge } from '../components';
+import { AdminDataTable, ConfirmDialog } from '../components';
 import { FolderTreeView } from '../components/folder-tree-view';
 import { AccessKeysPanel } from './access-keys-panel';
 import { ObjectActions } from './object-actions';
@@ -46,21 +45,13 @@ function formatBytes(bytes: number) {
 
 /**
  * @param scopedTenantId  TASK-328 A2 — when provided (tenant-detail tab), the
- *   page is locked to this tenant: the tenant picker column is hidden and the
- *   tenant fetch is disabled. Composes the same view without forking it.
+ *   page is locked to this tenant instead of the header scope switcher's working
+ *   tenant. Composes the same view without forking it.
  * @param embedded  Render bare (no `<Main>` / page title) for use inside a tab.
  */
 export default function StorageManagementPage({ scopedTenantId, embedded }: { scopedTenantId?: string; embedded?: boolean } = {}) {
-  const roles = useAuthStore((s: { user?: { roles?: string[] } | null }) => s.user?.roles ?? []);
   const tenantId = useAuthStore((s: { tenantId: string }) => s.tenantId);
-  const tenantName = useAuthStore((s: { tenantName: string }) => s.tenantName);
-  const isSuperAdmin = roles.includes('SUPER_ADMIN');
 
-  // When locked to a tenant (embedded tab), never show the tenant picker.
-  const showTenantsColumn = !scopedTenantId;
-
-  const [tenantSearch, setTenantSearch] = useState('');
-  const [selectedTenantId, setSelectedTenantId] = useState<string>(tenantId || '');
   const [bucketSearch, setBucketSearch] = useState('');
   const [bucketSort, setBucketSort] = useState<'name' | 'created' | 'updated'>('name');
   const [selectedBucketId, setSelectedBucketId] = useState<string>('');
@@ -82,42 +73,7 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const uploadFolderInputRef = useRef<HTMLInputElement>(null);
 
-  const {
-    data: tenantsPages,
-    isLoading: tenantsLoading,
-    hasNextPage: tenantsHasMore,
-    fetchNextPage: fetchNextTenants,
-    isFetchingNextPage: tenantsLoadingMore,
-    refetch: refetchTenants,
-  } = useTenantsInfinite(25, {
-    enabled: isSuperAdmin && showTenantsColumn,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  });
-
-  const tenantList = useMemo<Tenant[]>(() => {
-    if (!isSuperAdmin) {
-      if (!tenantId) return [];
-      return [
-        {
-          id: tenantId,
-          name: tenantName || tenantId,
-          key: tenantId,
-          resourceStatus: 'ENABLED',
-          createdAt: '',
-          updatedAt: '',
-        } as Tenant,
-      ];
-    }
-    return tenantsPages?.pages.flatMap((page) => page.data) ?? [];
-  }, [isSuperAdmin, tenantId, tenantName, tenantsPages]);
-
-  const filteredTenants = useMemo(
-    () => tenantList.filter((item) => `${item.name} ${item.key}`.toLowerCase().includes(tenantSearch.toLowerCase())),
-    [tenantList, tenantSearch],
-  );
-
-  const effectiveTenantId = scopedTenantId ?? (isSuperAdmin ? selectedTenantId : tenantId);
+  const effectiveTenantId = scopedTenantId ?? tenantId;
   const {
     data: bucketsData = [],
     isLoading: bucketsLoading,
@@ -148,13 +104,6 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
-
-  useEffect(() => {
-    if (isSuperAdmin) return;
-    if (tenantId && tenantId !== selectedTenantId) {
-      setSelectedTenantId(tenantId);
-    }
-  }, [isSuperAdmin, selectedTenantId, tenantId]);
 
   const filteredBuckets = useMemo(() => {
     const rows = bucketsData.filter((bucket) => `${bucket.slug} ${bucket.name}`.toLowerCase().includes(bucketSearch.toLowerCase()));
@@ -309,17 +258,6 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
     });
   };
 
-  const handleTenantSelect = useCallback(
-    (id: string) => {
-      if (!isSuperAdmin) return;
-      if (id === selectedTenantId) return;
-      setSelectedTenantId(id);
-      setSelectedBucketId('');
-      setSelectedFolderPath('');
-    },
-    [isSuperAdmin, selectedTenantId],
-  );
-
   const handleBucketSelect = useCallback(
     (id: string) => {
       if (id === selectedBucketId) return;
@@ -337,54 +275,11 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
     [selectedFolderPath],
   );
 
-  const tenantsColumn: MultiColumnConfig<Tenant> = {
-    id: 'storage-tenants',
-    title: 'Tenants',
-    subtitle: 'Select tenant',
-    width: '220px',
-    showItemCount: true,
-    keyExtractor: (item: Tenant) => item.id,
-    estimateItemSize: 62,
-    onRefresh: () => {
-      if (!isSuperAdmin) return;
-      void refetchTenants();
-    },
-    headerControls: (
-      <Input
-        value={tenantSearch}
-        onChange={(event: React.ChangeEvent<HTMLInputElement>) => setTenantSearch(event.target.value)}
-        placeholder="Search tenant..."
-      />
-    ),
-    emptyTitle: 'No tenants',
-    emptyDescription: 'No tenant matched your search.',
-    emptyIcon: <Building2 className="size-4" />,
-    renderItem: (item: Tenant) => (
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{item.name}</p>
-          <p className="text-muted-foreground truncate text-xs">{item.key}</p>
-        </div>
-        <StatusBadge status={item.resourceStatus ?? 'ENABLED'} />
-      </div>
-    ),
-  };
-
-  const tenantsState: MultiColumnState<Tenant> = {
-    data: filteredTenants,
-    isLoading: tenantsLoading,
-    selectedId: isSuperAdmin ? selectedTenantId : tenantId,
-    onSelect: handleTenantSelect,
-    hasMore: !!tenantsHasMore,
-    onLoadMore: () => fetchNextTenants(),
-    isLoadingMore: tenantsLoadingMore,
-  };
-
   const bucketsColumn: MultiColumnContentConfig = {
     type: 'content',
     id: 'storage-buckets',
     title: 'Buckets & Folders',
-    subtitle: effectiveTenantId ? `${filteredBuckets.length} bucket(s)` : 'Select tenant',
+    subtitle: effectiveTenantId ? `${filteredBuckets.length} bucket(s)` : 'Select a tenant in the header',
     width: '340px',
     onRefresh: () => {
       if (!effectiveTenantId) return;
@@ -686,7 +581,7 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
           {effectiveTenantId ? (
             <ProviderConfigPanel tenantId={effectiveTenantId} buckets={bucketsData} />
           ) : (
-            <p className="text-muted-foreground text-sm">Select a tenant first.</p>
+            <p className="text-muted-foreground text-sm">Select a tenant in the header first.</p>
           )}
         </DialogContent>
       </Dialog>
@@ -700,7 +595,7 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
           {effectiveTenantId ? (
             <AccessKeysPanel tenantId={effectiveTenantId} />
           ) : (
-            <p className="text-muted-foreground text-sm">Select a tenant first.</p>
+            <p className="text-muted-foreground text-sm">Select a tenant in the header first.</p>
           )}
         </DialogContent>
       </Dialog>
@@ -720,8 +615,8 @@ export default function StorageManagementPage({ scopedTenantId, embedded }: { sc
 
   const layout = (
     <MultiColumnLayout
-      columns={[...(showTenantsColumn ? [tenantsColumn] : []), bucketsColumn, objectsColumn]}
-      columnStates={[...(showTenantsColumn ? [tenantsState] : []), bucketsState, objectsState]}
+      columns={[bucketsColumn, objectsColumn]}
+      columnStates={[bucketsState, objectsState]}
       height={embedded ? 'calc(100vh - 20rem)' : 'calc(100vh - 12rem)'}
     />
   );

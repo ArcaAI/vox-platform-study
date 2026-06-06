@@ -31,32 +31,27 @@ vi.mock('@arcaai/ui/multi-column-layout', () => ({
     columns: any[];
     columnStates: any[];
   }) => {
-    const renderItemFns = columns.map((c: any) => c.renderItem).filter(Boolean);
+    // TASK-335 — the in-page tenant picker column was removed, so the layout
+    // now receives only [configColumn, detailColumn]. Locate the config
+    // column by id (rather than a fixed index) and render its items plus the
+    // detail content panel.
+    const configIdx = columns.findIndex((c: any) => c.id === 'config-items');
+    const configCol = columns[configIdx];
+    const configState = columnStates[configIdx];
     const renderContentFn = columns.find((c: any) => c.renderContent)?.renderContent ?? null;
-    const onSelectFns = columnStates.map((s: any) => s.onSelect);
-    const columnData = columnStates.map((s: any) => s.data ?? []);
     const columnLoadingStates = columnStates.map((s: any) => s.isLoading);
 
     return createElement('div', { 'data-testid': 'multi-column-layout' },
       columnLoadingStates.some(Boolean)
         ? createElement('div', { 'data-testid': 'loading-indicator' }, 'Loading...')
         : null,
-      createElement('div', { 'data-testid': 'column-tenants' },
-        ...(columnData[0] ?? []).map((item: any) =>
-          createElement('div', {
-            key: item.id,
-            'data-testid': `tenant-item-${item.id}`,
-            onClick: () => onSelectFns[0]?.(item.id),
-          }, renderItemFns[0]?.(item)),
-        ),
-      ),
       createElement('div', { 'data-testid': 'column-configs' },
-        ...(columnData[1] ?? []).map((item: any) =>
+        ...((configState?.data ?? []) as any[]).map((item: any) =>
           createElement('div', {
             key: item.id,
             'data-testid': `config-item-${item.id}`,
-            onClick: () => onSelectFns[1]?.(item.id),
-          }, renderItemFns[1]?.(item)),
+            onClick: () => configState?.onSelect?.(item.id),
+          }, configCol?.renderItem?.(item)),
         ),
       ),
       renderContentFn
@@ -113,18 +108,6 @@ vi.mock('../../api/tenants', async () => {
   const actual = await vi.importActual<typeof import('../../api/tenants')>('../../api/tenants');
   return {
     ...actual,
-    useTenantsInfinite: vi.fn(() => ({
-      data: {
-        pages: [{
-          data: [{ id: TENANT_ID, name: TENANT_NAME, key: 'test-clinic', resourceStatus: 'ENABLED', createdAt: '', updatedAt: '' }],
-          count: 1, limit: 25, page: 1,
-        }],
-      },
-      isLoading: false,
-      hasNextPage: false,
-      fetchNextPage: vi.fn(),
-      isFetchingNextPage: false,
-    })),
     useTenantConfigs: vi.fn(() => ({
       data: paginatedConfigs,
       isLoading: false,
@@ -152,7 +135,6 @@ vi.mock('../../api/tenants', async () => {
 });
 
 import {
-  useTenantsInfinite,
   useTenantConfigs,
   useMyTenantConfigs,
   useUpdateTenantConfigs,
@@ -523,23 +505,15 @@ describe('ConfigurationManagementPage', () => {
   // Role-based behavior
   // -----------------------------------------------------------------------
   describe('role-based behavior', () => {
-    it('should enable infinite tenant list for SUPER_ADMIN', () => {
-      mockAuthState.user.roles = ['SUPER_ADMIN'];
-      renderPage();
-      expect(useTenantsInfinite).toHaveBeenCalledWith(25, { enabled: true });
-    });
-
-    it('should disable infinite tenant list for non-admin roles', () => {
-      mockAuthState.user.roles = ['TENANT_ADMIN'];
-      renderPage();
-      expect(useTenantsInfinite).toHaveBeenCalledWith(25, { enabled: false });
-    });
-
-    it('should use useTenantConfigs for SUPER_ADMIN', () => {
+    // TASK-335 — the in-page tenant picker (and its infinite tenant query)
+    // was removed; the working tenant comes from the header ScopeSwitcher
+    // (store `tenantId`), so the SUPER_ADMIN config list must be scoped to
+    // that header tenant, not an in-page selection.
+    it('should scope useTenantConfigs to the header store tenantId for SUPER_ADMIN', () => {
       mockAuthState.user.roles = ['SUPER_ADMIN'];
       renderPage();
       expect(useTenantConfigs).toHaveBeenCalledWith(
-        expect.any(String),
+        TENANT_ID,
         expect.any(Object),
         expect.objectContaining({ enabled: true }),
       );

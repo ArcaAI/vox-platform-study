@@ -7,7 +7,7 @@ import { type MultiColumnConfig, type MultiColumnContentConfig, MultiColumnLayou
 import { ScrollArea } from '@arcaai/ui/scroll-area';
 import { Separator } from '@arcaai/ui/separator';
 import { Textarea } from '@arcaai/ui/textarea';
-import { Building2, GitCompare, History, Loader2, Pencil, User as UserIcon } from 'lucide-react';
+import { GitCompare, History, Loader2, Pencil, User as UserIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -26,7 +26,6 @@ import {
   useRefreshTenantDnaReportData,
   useTenantDnaReportData,
 } from '../api/dna-reports';
-import { type Tenant, useTenant, useTenantsInfinite } from '../api/tenants';
 import { type AdminUser } from '../api/users';
 
 const ATTR_KEYS = ['tone', 'vocabulary', 'structure', 'formality', 'sentenceLength', 'medicalTermUsage', 'abbreviationStyle'] as const;
@@ -276,62 +275,15 @@ function AdminEditDialog({
 }
 
 export default function DnaReportsAdminPage() {
-  const roles = useAuthStore((s: { user?: { roles?: string[] } | null }) => s.user?.roles ?? []);
   const tenantId = useAuthStore((s: { tenantId: string }) => s.tenantId);
-  const tenantName = useAuthStore((s: { tenantName: string }) => s.tenantName);
-  const setTenant = useAuthStore((s: { setTenant: (tenantId: string, tenantName?: string) => void }) => s.setTenant);
 
-  const isSuperAdmin = roles.includes('SUPER_ADMIN');
-  const [selectedTenantId, setSelectedTenantId] = useState(tenantId || '');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedVersionIds, setSelectedVersionIds] = useState<string[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const refreshTenantData = useRefreshTenantDnaReportData();
   const refreshVersions = useRefreshDnaReportVersions();
 
-  const {
-    data: tenantsPages,
-    isLoading: tenantsLoading,
-    hasNextPage: tenantsHasMore,
-    fetchNextPage: fetchNextTenants,
-    isFetchingNextPage: tenantsLoadingMore,
-    refetch: refetchTenants,
-  } = useTenantsInfinite(25, { enabled: isSuperAdmin });
-
-  const {
-    data: currentTenant,
-    isLoading: currentTenantLoading,
-    refetch: refetchCurrentTenant,
-  } = useTenant(tenantId || '', { enabled: !isSuperAdmin && !!tenantId });
-
-  const tenantList = useMemo(() => {
-    if (isSuperAdmin) {
-      return tenantsPages?.pages.flatMap((page) => page.data) ?? [];
-    }
-    if (currentTenant) return [currentTenant];
-    if (!tenantId) return [];
-    return [
-      {
-        id: tenantId,
-        name: tenantName || tenantId,
-        key: tenantId,
-        resourceStatus: 'ENABLED',
-        createdAt: '',
-        updatedAt: '',
-      } as Tenant,
-    ];
-  }, [currentTenant, isSuperAdmin, tenantId, tenantName, tenantsPages]);
-
-  useEffect(() => {
-    if (isSuperAdmin) {
-      return;
-    }
-    if (tenantId && tenantId !== selectedTenantId) {
-      setSelectedTenantId(tenantId);
-    }
-  }, [isSuperAdmin, selectedTenantId, tenantId]);
-
-  const effectiveTenantId = isSuperAdmin ? selectedTenantId : tenantId;
+  const effectiveTenantId = tenantId;
 
   const tenantDataQuery = useTenantDnaReportData(effectiveTenantId);
 
@@ -367,7 +319,7 @@ export default function DnaReportsAdminPage() {
   useEffect(() => {
     setSelectedUserId((prev) => (prev === null ? prev : null));
     setSelectedVersionIds((prev) => (prev.length === 0 ? prev : []));
-  }, [selectedTenantId]);
+  }, [effectiveTenantId]);
 
   useEffect(() => {
     setSelectedVersionIds((prev) => (prev.length === 0 ? prev : []));
@@ -390,17 +342,6 @@ export default function DnaReportsAdminPage() {
     }
   }, [selectedUserId, users]);
 
-  const handleTenantSelect = useCallback(
-    (tenantSelectionId: string) => {
-      if (!isSuperAdmin) return;
-      if (tenantSelectionId === selectedTenantId) return;
-      setSelectedTenantId(tenantSelectionId);
-      const tenant = tenantList.find((item) => item.id === tenantSelectionId);
-      setTenant(tenantSelectionId, tenant?.name);
-    },
-    [isSuperAdmin, selectedTenantId, setTenant, tenantList],
-  );
-
   const handleUserSelect = useCallback(
     (userId: string) => {
       if (userId === selectedUserId) return;
@@ -417,48 +358,10 @@ export default function DnaReportsAdminPage() {
     });
   }, []);
 
-  const tenantColumn: MultiColumnConfig<Tenant> = {
-    id: 'tenants',
-    title: 'Tenants',
-    subtitle: isSuperAdmin ? 'Select a tenant context' : 'Current tenant',
-    width: '220px',
-    showItemCount: true,
-    keyExtractor: (tenant: Tenant) => tenant.id,
-    estimateItemSize: 62,
-    onRefresh: () => {
-      if (isSuperAdmin) {
-        void refetchTenants();
-      } else {
-        void refetchCurrentTenant();
-      }
-    },
-    emptyTitle: 'No tenants available',
-    emptyDescription: 'No tenant records were returned.',
-    emptyIcon: <Building2 className="text-muted-foreground size-8" />,
-    renderItem: (tenant: Tenant) => (
-      <div className="flex min-w-0 items-center justify-between gap-2 px-3 py-2">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{tenant.name}</p>
-          <p className="text-muted-foreground truncate text-xs">{tenant.key}</p>
-        </div>
-      </div>
-    ),
-  };
-
-  const tenantState: MultiColumnState<Tenant> = {
-    data: tenantList,
-    isLoading: isSuperAdmin ? tenantsLoading : currentTenantLoading,
-    selectedId: effectiveTenantId || null,
-    onSelect: handleTenantSelect,
-    hasMore: isSuperAdmin ? !!tenantsHasMore : false,
-    onLoadMore: isSuperAdmin ? () => void fetchNextTenants() : undefined,
-    isLoadingMore: isSuperAdmin ? tenantsLoadingMore : false,
-  };
-
   const usersColumn: MultiColumnConfig<AdminUser> = {
     id: 'users',
     title: 'Tenant Users',
-    subtitle: selectedTenantId ? `${users.length} users` : 'Select a tenant',
+    subtitle: effectiveTenantId ? `${users.length} users` : 'Select a tenant from the header switcher',
     width: '260px',
     showItemCount: true,
     onRefresh: () => {
@@ -466,7 +369,7 @@ export default function DnaReportsAdminPage() {
       void refreshTenantData(effectiveTenantId);
     },
     emptyTitle: effectiveTenantId ? 'No users found' : 'Select a tenant',
-    emptyDescription: effectiveTenantId ? 'No users are available in this tenant.' : 'Pick a tenant to load users.',
+    emptyDescription: effectiveTenantId ? 'No users are available in this tenant.' : 'Select a tenant from the header switcher to load users.',
     emptyIcon: <UserIcon className="text-muted-foreground size-8" />,
     keyExtractor: (user: AdminUser) => user.id,
     estimateItemSize: 72,
@@ -646,8 +549,8 @@ export default function DnaReportsAdminPage() {
       <DnaDashboardSummary tenantId={effectiveTenantId || undefined} />
 
       <MultiColumnLayout
-        columns={[tenantColumn, usersColumn, versionsColumn, detailColumn]}
-        columnStates={[tenantState, usersState, versionsState, detailState]}
+        columns={[usersColumn, versionsColumn, detailColumn]}
+        columnStates={[usersState, versionsState, detailState]}
         height="calc(100vh - 12rem)"
       />
 

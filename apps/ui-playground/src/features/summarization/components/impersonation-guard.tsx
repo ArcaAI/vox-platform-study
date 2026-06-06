@@ -4,6 +4,8 @@ import { Badge } from '@arcaai/ui/badge';
 import { ShieldAlert, UserCog } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 
+import { WorkingTenantNotice } from '@/components/working-tenant-notice';
+
 interface ImpersonationGuardProps {
   roles: string[];
   featureName?: string;
@@ -30,6 +32,7 @@ export function ImpersonationGuard({ roles, featureName = 'summarization', featu
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-muted-foreground text-sm">{bodyText}</p>
+        <WorkingTenantNotice />
         <div className="flex items-center gap-3">
           <Link to="/playground/overview">
             <Button variant="default" size="sm" className="gap-2">

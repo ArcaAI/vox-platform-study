@@ -15,7 +15,7 @@ import { Skeleton } from '@arcaai/ui/skeleton';
 import { Switch } from '@arcaai/ui/switch';
 import { Textarea } from '@arcaai/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@arcaai/ui/tooltip';
-import { BarChart3, Building2, Calendar, Clock, Eye, FileText, GitBranch, History, Loader2, Plus, Tag, Trash2, Variable } from 'lucide-react';
+import { BarChart3, Calendar, Clock, Eye, FileText, GitBranch, History, Loader2, Plus, Tag, Trash2, Variable } from 'lucide-react';
 
 import { Main } from '@/components/layout/main';
 import { VersionDiffPanel } from '@/components/version-diff-panel';
@@ -43,7 +43,6 @@ import {
   type PromptVariable,
   type PromptVersion,
 } from '../api/prompts';
-import { useTenantsInfinite, type Tenant } from '../api/tenants';
 import { ConfirmDialog, StatusBadge } from '../components';
 
 // ---------------------------------------------------------------------------
@@ -812,56 +811,19 @@ function PromptDetailDialog({
 
 /**
  * @param scopedTenantId  TASK-328 A2 — when provided (tenant-detail tab), the
- *   page is locked to this tenant: the tenant picker column is hidden and the
- *   tenant fetch is disabled. Composes the same view without forking it.
+ *   page is locked to this tenant. Composes the same view without forking it.
  * @param embedded  Render bare (no `<Main>` / page header) for use inside a tab.
  */
 export default function PromptManagementPage({ scopedTenantId, embedded }: { scopedTenantId?: string; embedded?: boolean } = {}) {
-  // ---- Tenant context for global-scope admins -----------------------------
+  // ---- Tenant context -----------------------------------------------------
 
-  // TASK-331 doc-02 F3 — read `tenantId` (kept in lockstep with the legacy
-  // `tenantKey` by the store) and write via `setTenant`. The deprecated
-  // `setTenantKey`/`tenantKey` pair is no longer referenced here.
+  // TASK-335 — the working tenant is selected by the header `ScopeSwitcher`;
+  // this page reads it from the store and no longer renders an in-page tenant
+  // picker. When embedded in the tenant-detail tab, `scopedTenantId` locks it.
   const storeTenantId = useAuthStore((s) => s.tenantId);
-  // TASK-331 doc-02 F2 — gate the tenant picker on global scope (mirrors the
-  // DNA page), not the stricter super-admin-only predicate. The two sets are
-  // identical today, but `isGlobalScope` is the correct intent for cross-tenant
-  // surfaces.
-  const isGlobalScope = useAuthStore((s) => s.isGlobalScope);
-  const setTenant = useAuthStore((s) => s.setTenant);
 
-  // When locked to a tenant (embedded tab), never show the tenant picker.
-  const showTenantsColumn = !scopedTenantId && isGlobalScope();
-
-  const [selectedTenantId, setSelectedTenantId] = useState(storeTenantId || '');
-
-  const {
-    data: tenantsPages,
-    hasNextPage: tenantsHasMore,
-    fetchNextPage: fetchNextTenants,
-    isFetchingNextPage: tenantsLoadingMore,
-    isRefetching: tenantsRefreshing,
-    refetch: refetchTenants,
-  } = useTenantsInfinite(25, { enabled: showTenantsColumn });
-  const tenants = useMemo(() => tenantsPages?.pages.flatMap((p) => p.data) ?? [], [tenantsPages]);
-
-  const effectiveTenantId = scopedTenantId ?? (storeTenantId || selectedTenantId);
+  const effectiveTenantId = scopedTenantId ?? storeTenantId;
   const hasTenantContext = !!effectiveTenantId;
-
-  useEffect(() => {
-    if (storeTenantId && storeTenantId !== selectedTenantId) {
-      setSelectedTenantId(storeTenantId);
-    }
-  }, [storeTenantId, selectedTenantId]);
-
-  const handleTenantSelect = useCallback(
-    (tenantId: string) => {
-      if (tenantId === effectiveTenantId) return;
-      setSelectedTenantId(tenantId);
-      setTenant(tenantId, tenants.find((t) => t.id === tenantId)?.name);
-    },
-    [effectiveTenantId, tenants, setTenant],
-  );
 
   // ---- UI state -----------------------------------------------------------
 
@@ -1118,41 +1080,6 @@ export default function PromptManagementPage({ scopedTenantId, embedded }: { sco
 
   // ---- Multi-column layout ------------------------------------------------
 
-  const tenantsColumn: MultiColumnConfig<Tenant> = {
-    id: 'tenants',
-    title: 'Tenants',
-    showItemCount: true,
-    width: '180px',
-    skeletonCount: 5,
-    skeletonHeight: 'h-12',
-    estimateItemSize: 56,
-    emptyIcon: <Building2 className="size-5" />,
-    emptyTitle: 'No tenants available',
-    onRefresh: () => {
-      void refetchTenants();
-    },
-    isRefreshing: tenantsRefreshing,
-    keyExtractor: (t) => t.id,
-    renderItem: (t) => (
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{t.name}</p>
-          <p className="text-muted-foreground truncate text-xs">{t.key}</p>
-        </div>
-      </div>
-    ),
-  };
-
-  const tenantsState: MultiColumnState<Tenant> = {
-    data: tenants,
-    isLoading: !tenants.length && showTenantsColumn,
-    selectedId: effectiveTenantId || null,
-    onSelect: handleTenantSelect,
-    hasMore: !!tenantsHasMore,
-    onLoadMore: () => fetchNextTenants(),
-    isLoadingMore: tenantsLoadingMore,
-  };
-
   const promptsColumn: MultiColumnConfig<PromptTemplate> = {
     id: 'prompts',
     title: 'Prompt Templates',
@@ -1203,7 +1130,7 @@ export default function PromptManagementPage({ scopedTenantId, embedded }: { sco
     ),
     emptyIcon: <FileText className="size-5" />,
     emptyTitle: !hasTenantContext ? 'No tenant selected' : 'No prompt templates',
-    emptyDescription: !hasTenantContext ? 'Select a tenant to view prompts.' : 'Create a prompt template to get started.',
+    emptyDescription: !hasTenantContext ? 'Select a tenant from the header to view prompts.' : 'Create a prompt template to get started.',
     onRefresh: hasTenantContext
       ? () => {
           void refetchPrompts();
@@ -1409,8 +1336,8 @@ export default function PromptManagementPage({ scopedTenantId, embedded }: { sco
   const body = (
     <>
       <MultiColumnLayout
-        columns={[...(showTenantsColumn ? [tenantsColumn] : []), promptsColumn, versionsColumn, detailColumn]}
-        columnStates={[...(showTenantsColumn ? [tenantsState] : []), promptsState, versionsState, detailState]}
+        columns={[promptsColumn, versionsColumn, detailColumn]}
+        columnStates={[promptsState, versionsState, detailState]}
         height={embedded ? 'calc(100vh - 20rem)' : 'calc(100vh - 12rem)'}
       />
 
