@@ -28,7 +28,7 @@ class BaseSmrUser(HttpUser):
     """Base class for SMR V2 load test users. Sets auth header and provider."""
 
     abstract = True
-    provider = "ollama"
+    provider = "lm-studio"
 
     def on_start(self) -> None:
         self.client.headers["X-Service-Token"] = ""

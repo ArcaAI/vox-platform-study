@@ -226,10 +226,10 @@ class TestGenerateRequestExistingValidation:
         with pytest.raises(ValidationError):
             GenerateRequest()
 
-    def test_default_provider_is_ollama(self):
+    def test_default_provider_is_lm_studio(self):
         from smr_v2.models.requests import GenerateRequest
         req = GenerateRequest(prompt="hello")
-        assert req.provider == "ollama"
+        assert req.provider == "lm-studio"
 
     def test_default_stream_is_false(self):
         from smr_v2.models.requests import GenerateRequest

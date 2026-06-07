@@ -92,8 +92,6 @@ class FailingMockProvider(MockProvider):
 def integration_settings() -> Settings:
     """Settings tuned for integration tests: auth disabled, guardrails off, metrics off."""
     return Settings(
-        guardrail_enabled=False,
-        guardrail_mode="log",
         metrics_enabled=False,
         otel_enabled=False,
     )

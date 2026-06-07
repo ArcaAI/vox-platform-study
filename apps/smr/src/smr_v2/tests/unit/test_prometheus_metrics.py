@@ -46,8 +46,6 @@ def _make_settings(**overrides) -> Settings:
         "port": 5099,
         "debug": True,
         "log_level": "debug",
-        "guardrail_enabled": True,
-        "guardrail_mode": "log",
         "metrics_enabled": False,
     }
     defaults.update(overrides)
@@ -97,7 +95,7 @@ def mock_task_manager():
 async def client(mock_provider_registry, mock_task_manager):
     from smr_v2.main import create_app
 
-    settings = _make_settings(guardrail_mode="log", guardrail_enabled=True)
+    settings = _make_settings()
     app = create_app(settings_override=settings)
     app.state.provider_registry = mock_provider_registry
     app.state.task_manager = mock_task_manager
@@ -117,7 +115,7 @@ async def failing_client(mock_task_manager):
     mock_provider.generate = AsyncMock(side_effect=RuntimeError("Provider exploded"))
     registry.register("ollama", mock_provider)
 
-    settings = _make_settings(guardrail_mode="log", guardrail_enabled=True)
+    settings = _make_settings()
     app = create_app(settings_override=settings)
     app.state.provider_registry = registry
     app.state.task_manager = mock_task_manager

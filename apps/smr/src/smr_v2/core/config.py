@@ -141,10 +141,6 @@ class Settings(BaseSettings):
     httpx_max_connections: int = 200
     httpx_max_keepalive: int = 100
 
-    # Guardrails
-    guardrail_mode: str = "log"
-    guardrail_enabled: bool = True
-
     # Observability
     otel_enabled: bool = False
     otel_exporter_endpoint: str = "http://localhost:4317"

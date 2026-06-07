@@ -109,7 +109,7 @@ class TestGenerateRequest:
         from smr_v2.models.requests import GenerateRequest
         req = GenerateRequest(prompt="Hello world")
         assert req.prompt == "Hello world"
-        assert req.provider == "ollama"
+        assert req.provider == "lm-studio"
         assert req.temperature is None
         assert req.max_tokens is None
         assert req.top_p is None

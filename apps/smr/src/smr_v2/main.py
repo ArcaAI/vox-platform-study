@@ -56,6 +56,15 @@ async def lifespan(app: FastAPI):
         app.state.provider_registry = ProviderRegistry()
 
     registry = app.state.provider_registry
+    # LM Studio (OpenAI-compatible) is the primary/default local LLM engine.
+    if settings.openai_compat.enabled and "lm-studio" not in registry.list_providers():
+        from smr_v2.providers.openai_compat import OpenAICompatProvider
+        provider_instance = OpenAICompatProvider(settings.openai_compat)
+        registry.register("lm-studio", provider_instance)
+        registry.register("openai_compat", provider_instance)  # backward-compatible alias
+        logger.info("smr_v2.provider_registered", provider="lm-studio", base_url=settings.openai_compat.base_url)
+
+    # Ollama is an optional, lower-priority local LLM engine.
     if settings.ollama.enabled and "ollama" not in registry.list_providers():
         from smr_v2.providers.ollama import OllamaProvider
         registry.register("ollama", OllamaProvider(settings.ollama, http_client))
@@ -72,13 +81,6 @@ async def lifespan(app: FastAPI):
         from smr_v2.providers.bedrock import BedrockProvider
         registry.register("bedrock", BedrockProvider(settings.bedrock))
         logger.info("smr_v2.provider_registered", provider="bedrock")
-
-    if settings.openai_compat.enabled and "lm-studio" not in registry.list_providers():
-        from smr_v2.providers.openai_compat import OpenAICompatProvider
-        provider_instance = OpenAICompatProvider(settings.openai_compat)
-        registry.register("lm-studio", provider_instance)
-        registry.register("openai_compat", provider_instance)  # backward-compatible alias
-        logger.info("smr_v2.provider_registered", provider="lm-studio", base_url=settings.openai_compat.base_url)
 
     from smr_v2.services.rate_limiter import RateLimitTracker
 
