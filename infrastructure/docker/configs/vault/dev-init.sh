@@ -87,6 +87,13 @@ for kv in \
   vault kv put "secret/hope/${k}" value="${v}" >/dev/null
 done
 
+# TASK-330 Phase 6 — apps/api <-> apps/harness shared service token. Unlike the
+# warmup keys above it is fetched on-demand (HarnessOpsClient / HarnessGatewayService /
+# HarnessServiceTokenGuard via SecretsService.getSecretOptional), so it lives outside
+# the warmup loop. The value MUST equal apps/harness/.env's HARNESS_SERVICE_TOKEN, or
+# apps/harness rejects apps/api's outbound /api/v1/internal/harness/* calls with 401.
+vault kv put secret/hope/HARNESS_SERVICE_TOKEN value="dev-harness-service-token-change-me" >/dev/null
+
 # TASK-302 Phase 4 Task 4.4 — Transit key for envelope-encrypting
 # GlobalSetting rows. The key is created idempotently (Vault returns 204
 # the first call, 400 if it already exists which we swallow). Config:
