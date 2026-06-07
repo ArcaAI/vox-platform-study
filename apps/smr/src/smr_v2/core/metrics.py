@@ -35,12 +35,6 @@ ACTIVE_GENERATIONS = Gauge(
     ["provider"],
 )
 
-GUARDRAIL_SCANS = Counter(
-    "smr_v2_guardrail_scans_total",
-    "Total guardrail scans",
-    ["result", "risk_level"],
-)
-
 PROVIDER_HEALTH = Gauge(
     "smr_v2_provider_health",
     "Provider health status (1=healthy, 0=unhealthy)",

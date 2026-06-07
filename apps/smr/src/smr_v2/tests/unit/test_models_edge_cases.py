@@ -78,9 +78,9 @@ class TestGenerateRequestEdgeCases:
         req = GenerateRequest(prompt="hi", context={"a": {"b": [1, 2, 3]}})
         assert req.context["a"]["b"] == [1, 2, 3]
 
-    def test_provider_defaults_to_ollama(self):
+    def test_provider_defaults_to_lm_studio(self):
         req = GenerateRequest(prompt="hi")
-        assert req.provider == "ollama"
+        assert req.provider == "lm-studio"
 
     def test_model_none_by_default(self):
         req = GenerateRequest(prompt="hi")

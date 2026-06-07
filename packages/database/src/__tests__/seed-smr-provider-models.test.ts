@@ -62,8 +62,8 @@ describe('SMR Provider-Model Catalog Seed Data (TASK-240)', () => {
   describe('SMR_PROVIDER_NAMES constant', () => {
     it('should list the three canonical provider names', () => {
       expect(SMR_PROVIDER_NAMES).toEqual([
-        'ollama',
         'lm-studio',
+        'ollama',
         'azure-openai',
       ]);
     });
@@ -103,11 +103,19 @@ describe('SMR Provider-Model Catalog Seed Data (TASK-240)', () => {
       expect(names).toContain('qwen3.5-4b');
     });
 
-    it('should have 13 models', () => {
+    it('should include the default gemma-4 model', () => {
       const lms = (SMR_PROVIDER_MODELS as SmrProviderCatalogEntry[]).find(
         (p) => p.provider === 'lm-studio',
       );
-      expect(lms!.models.length).toBe(13);
+      const names = lms!.models.map((m) => m.name);
+      expect(names).toContain('lmstudio-community/gemma-4-E4B-it-QAT-GGUF');
+    });
+
+    it('should have 15 models', () => {
+      const lms = (SMR_PROVIDER_MODELS as SmrProviderCatalogEntry[]).find(
+        (p) => p.provider === 'lm-studio',
+      );
+      expect(lms!.models.length).toBe(15);
     });
   });
 

@@ -75,9 +75,30 @@ const LOCAL_NOISE_SUPPRESSION_MODELS = JSON.stringify([
 // Admins pick a default provider + model from this catalog.
 // =============================================================================
 
-export const SMR_PROVIDER_NAMES = ['ollama', 'lm-studio', 'azure-openai'] as const;
+// LM Studio is the default/primary local engine; Ollama is optional/lower-priority.
+export const SMR_PROVIDER_NAMES = ['lm-studio', 'ollama', 'azure-openai'] as const;
 
 export const SMR_PROVIDER_MODELS = [
+    {
+        provider: 'lm-studio',
+        models: [
+            { name: 'lmstudio-community/gemma-4-E4B-it-QAT-GGUF', size: '4.7 GB' },
+            { name: 'google/gemma-4-12b-qat', size: '8.1 GB' },
+            { name: 'qwen3.5-4b', size: '3.1 GB' },
+            { name: 'qwen3.5-0.8b', size: '0.95 GB' },
+            { name: 'qwen/qwen3.5-9b', size: '6.1 GB' },
+            { name: 'qwen/qwen3.5-35b-a3b', size: '20.6 GB' },
+            { name: 'liquid/lfm2-24b-a2b', size: '12.5 GB' },
+            { name: 'zai-org/glm-4.6v-flash', size: '6.6 GB' },
+            { name: 'liquidai/lfm2.5-1.2b-instruct-mlx', size: '2.2 GB' },
+            { name: 'lfm2.5-1.2b-thinking-mlx', size: '2.2 GB' },
+            { name: 'liquidai/lfm2.5-vl-1.6b', size: '3.0 GB' },
+            { name: 'translategemma-27b-it', size: '14.2 GB' },
+            { name: 'mlx-community/medgemma-1.5-4b-it', size: '9.3 GB' },
+            { name: 'unsloth/medgemma-1.5-4b-it', size: '8.8 GB' },
+            { name: 'gpt-oss-20b', size: '12.3 GB' },
+        ],
+    },
     {
         provider: 'ollama',
         models: [
@@ -92,24 +113,6 @@ export const SMR_PROVIDER_MODELS = [
             { name: 'gemma3n:latest', size: '7.5 GB' },
             { name: 'granite4:tiny-h', size: '4.2 GB' },
             { name: 'granite4:latest', size: '2.1 GB' },
-        ],
-    },
-    {
-        provider: 'lm-studio',
-        models: [
-            { name: 'qwen3.5-4b', size: '3.1 GB' },
-            { name: 'qwen3.5-0.8b', size: '0.95 GB' },
-            { name: 'qwen/qwen3.5-9b', size: '6.1 GB' },
-            { name: 'qwen/qwen3.5-35b-a3b', size: '20.6 GB' },
-            { name: 'liquid/lfm2-24b-a2b', size: '12.5 GB' },
-            { name: 'zai-org/glm-4.6v-flash', size: '6.6 GB' },
-            { name: 'liquidai/lfm2.5-1.2b-instruct-mlx', size: '2.2 GB' },
-            { name: 'lfm2.5-1.2b-thinking-mlx', size: '2.2 GB' },
-            { name: 'liquidai/lfm2.5-vl-1.6b', size: '3.0 GB' },
-            { name: 'translategemma-27b-it', size: '14.2 GB' },
-            { name: 'mlx-community/medgemma-1.5-4b-it', size: '9.3 GB' },
-            { name: 'unsloth/medgemma-1.5-4b-it', size: '8.8 GB' },
-            { name: 'gpt-oss-20b', size: '12.3 GB' },
         ],
     },
     {
@@ -311,10 +314,10 @@ function tenantSettings(
             namespace: 'smr',
             name: 'Default SMR Provider',
             key: 'default-smr-provider',
-            value: 'ollama',
-            defaultValue: 'ollama',
+            value: 'lm-studio',
+            defaultValue: 'lm-studio',
             dataType: ValueType.String,
-            description: 'Default LLM provider for summarization (e.g., ollama, azure-openai)',
+            description: 'Default LLM provider for summarization (e.g., lm-studio, ollama, azure-openai)',
             locked: true,
         },
         {
@@ -323,10 +326,10 @@ function tenantSettings(
             namespace: 'smr',
             name: 'Default SMR Model',
             key: 'default-smr-model',
-            value: 'granite4:latest',
-            defaultValue: 'granite4:latest',
+            value: 'lmstudio-community/gemma-4-E4B-it-QAT-GGUF',
+            defaultValue: 'lmstudio-community/gemma-4-E4B-it-QAT-GGUF',
             dataType: ValueType.String,
-            description: 'Default LLM model slug for summarization tasks (Ollama model name)',
+            description: 'Default LLM model slug for summarization tasks (LM Studio model name)',
             locked: true,
         },
 

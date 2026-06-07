@@ -487,3 +487,27 @@ SMR_V2_AZURE_DEFAULT_MODEL=gpt-4o-mini
 - Ollama JSON streaming: verified via curl
 - LM Studio `json_schema` streaming: verified via curl
 - Azure OpenAI `json_object` streaming: verified via curl
+
+---
+
+## Change History
+
+### 2026-06-07 — Default local LLM engine switched to LM Studio
+
+The default local engine was changed from Ollama to **LM Studio** (OpenAI-compatible).
+Ollama is now an optional, lower-priority engine. This supersedes the original
+Task 1.5 decision ("keep `default-smr-provider` as `ollama`").
+
+Files modified:
+- `apps/smr/src/smr_v2/models/requests.py` — `GenerateRequest.provider` default `ollama` → `lm-studio`
+- `apps/smr/src/smr_v2/main.py` — LM Studio registered before Ollama
+- `packages/database/src/prisma/db_main/seed/11-global-setting.ts` — `default-smr-provider` → `lm-studio`, `default-smr-model` → `lmstudio-community/gemma-4-E4B-it-QAT-GGUF`, `SMR_PROVIDER_NAMES`/catalog reordered (LM Studio first), added `gemma-4-E4B-it-QAT-GGUF` and `gemma-4-12b-qat` to the LM Studio catalog
+- `packages/applications/src/services/tenant/tenant.service.ts` — fallback provider `ollama` → `lm-studio`
+- `.env.dev` — LM Studio enabled by default, Ollama disabled
+- `apps/smr/tests/load/locustfile.py` — load-test provider → `lm-studio`
+- Tests updated: SMR default-provider assertions, `seed-smr-provider-models.test.ts` ordering/count
+- `docs/marketing/V2_BRIEF_TECHNICAL.md` — LM Studio listed as default self-hosted engine
+
+Note: the Granite Guardian safety sensor (`apps/harness`) and the harness eval judge are
+unchanged — the judge already defaults to `openai_compat` (LM Studio), and Granite Guardian
+intentionally uses Ollama's native `/api/chat` API.

@@ -49,8 +49,6 @@ def _apply_env_overrides() -> None:
     dotenv = _load_env_file()
 
     os.environ["SMR_V2_SERVICE_TOKEN"] = ""
-    os.environ["SMR_V2_GUARDRAIL_ENABLED"] = "false"
-    os.environ["SMR_V2_GUARDRAIL_MODE"] = "log"
     os.environ["SMR_V2_METRICS_ENABLED"] = "false"
     os.environ["SMR_V2_OTEL_ENABLED"] = "false"
 

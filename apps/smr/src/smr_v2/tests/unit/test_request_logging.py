@@ -48,8 +48,6 @@ def _make_settings(**overrides) -> Settings:
         "port": 5099,
         "debug": True,
         "log_level": "debug",
-        "guardrail_enabled": False,
-        "guardrail_mode": "log",
     }
     defaults.update(overrides)
     return Settings(**defaults)
@@ -368,7 +366,7 @@ class TestEndpointEmitsGenerationAudit:
     async def gen_client(self, mock_provider_registry, mock_task_manager):
         from smr_v2.main import create_app
 
-        settings = _make_settings(guardrail_enabled=False)
+        settings = _make_settings()
         application = create_app(settings_override=settings)
         application.state.provider_registry = mock_provider_registry
         application.state.task_manager = mock_task_manager

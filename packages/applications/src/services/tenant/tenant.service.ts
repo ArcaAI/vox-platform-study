@@ -808,6 +808,6 @@ export class TenantService extends BaseService implements ITenantService {
     });
 
     const providerSetting = settings.find((s: GlobalSettingEntity) => s.key === 'default-smr-provider');
-    return providerSetting?.value?.trim() || 'ollama';
+    return providerSetting?.value?.trim() || 'lm-studio';
   }
 }
