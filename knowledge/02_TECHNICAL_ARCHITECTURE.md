@@ -76,7 +76,8 @@ NestJS application serving as the central gateway with:
 Independent Python FastAPI microservices:
 - **STT (Speech-to-Text)**: Multi-model ASR (Whisper ONNX, NeMo, Azure), VAD (Silero v5), speaker diarization (Pyannote), Qdrant speaker embeddings
 - **TTS (Text-to-Speech)**: Azure TTS integration, 400+ voices, batch synthesis, WebSocket streaming
-- **SMR (Summarization)**: Multi-LLM (Azure OpenAI, Ollama), specialty-specific prompts, sync/async processing via Celery
+- **SMR (Summarization)**: Multi-LLM (LM Studio (OpenAI-compatible, default local engine), Ollama, Azure OpenAI), specialty-specific prompts, sync/async processing via Celery. Provider/model are admin-configurable per tenant (see *Admin-Configurable LLM Engine Settings*).
+- **Guardrail (Content Safety)**: Granite Guardian moderation over the same pluggable LLM engines (LM Studio / Ollama / Azure OpenAI); provider/model + Azure deployment name are admin-configurable per tenant.
 - **NLP (Natural Language Processing)**: Text classification, medical NER, diagnosis classification, spell correction (SymSpell)
 
 ### 4. Data Layer
@@ -327,6 +328,22 @@ PostgreSQL 18 with Prisma 7 using a multi-schema layout organized by domain:
 **Multi-tenancy** — All tenant-scoped entities include `tenantId`. CASL conditions enforce isolation at the query level.
 
 **DDD Patterns** — Factory (create entities), Repository (data access), Mapper (domain ↔ persistence), Unit of Work (transaction management).
+
+### Admin-Configurable LLM Engine Settings
+
+The SMR and Guardrail engines are selected per tenant from the database (TASK-338), reusing the `GlobalSetting` pattern rather than redeploying services. Defaults are seeded on the `__GLOBAL__` tenant and cloned to each tenant on provisioning (`TenantService.provisionTenantConfigs()`); the admin console (`ui-playground` → Configuration Management) edits them via the tenant-config PATCH endpoints with optimistic-concurrency (`If-Match`/`expectedVersion`).
+
+| Namespace | Key | Purpose | Locked |
+|-----------|-----|---------|--------|
+| `smr` | `default-smr-provider` / `default-smr-model` | Active summarization provider + model | Yes (SUPER_ADMIN) |
+| `smr` | `smr-azure-deployment` | Azure OpenAI deployment **name** for SMR (non-secret) | No |
+| `guardrail` | `default-guardrail-provider` / `default-guardrail-model` | Active guardrail provider + model (default `lm-studio` / `granite-guardian-4.1-8b`) | Yes (SUPER_ADMIN) |
+| `guardrail` | `guardrail-azure-deployment` | Azure OpenAI deployment **name** for Guardrail (non-secret) | No |
+| `ux-constants` | `smr-provider-models` / `guardrail-provider-models` | Catalogs of selectable provider→model options for the admin dropdowns | Yes |
+
+The API gateway exposes the resolved provider lists at `GET /api/v1/text/providers` (SMR) and `GET /api/v1/text/guardrail-providers` (Guardrail); admins pick a default from the catalog and the value is validated (`TenantService.validateProviderModel`) against it before persistence.
+
+**Azure API key remains env/Vault.** Only the Azure **deployment name** is DB-driven; the Azure OpenAI API key is never stored as a `GlobalSetting` and continues to be sourced from environment/Vault. Admin-set (DB-driven) provider API keys are unblocked by TASK-302 Phase 4D (encrypted secret settings) and are out of scope here.
 
 ### Context Item Types
 

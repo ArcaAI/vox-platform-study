@@ -51,6 +51,21 @@ async def lifespan(app: FastAPI):
             stream_max_len=settings.redis.stream_max_len,
         )
 
+    # External Guardrail client (TASK-338 Phase 4b) — invoked per generate to
+    # validate medical content. fail-open vs fail-closed is honored by the client.
+    if not hasattr(app.state, "guardrail_client") or app.state.guardrail_client is None:
+        from smr_v2.services.external_guardrail import ExternalGuardrailClient
+        app.state.guardrail_client = ExternalGuardrailClient(
+            settings=settings.external_guardrail,
+            http_client=http_client,
+        )
+        logger.info(
+            "smr_v2.guardrail_client_initialized",
+            enabled=settings.external_guardrail.enabled,
+            base_url=settings.external_guardrail.base_url,
+            fail_open=settings.external_guardrail.fail_open,
+        )
+
     if not hasattr(app.state, "provider_registry") or app.state.provider_registry is None:
         from smr_v2.providers.base import ProviderRegistry
         app.state.provider_registry = ProviderRegistry()
@@ -184,6 +199,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.redis = None
     app.state.task_manager = None
+    app.state.guardrail_client = None
     app.state.provider_registry = None
     app.state.rate_limiters = {}
     app.state.circuit_breakers = {}

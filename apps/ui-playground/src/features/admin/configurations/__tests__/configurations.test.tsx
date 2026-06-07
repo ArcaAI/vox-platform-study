@@ -141,6 +141,19 @@ import {
   useUpdateMyTenantConfigs,
 } from '../../api/tenants';
 
+// TASK-338 — the Guardrail engine section is a self-contained component with
+// its own data hooks + component tests (see guardrail-section.test.tsx). Mock
+// it here so the page tests stay focused on the generic config editor while
+// still asserting the section is wired into the page with the right props.
+vi.mock('../guardrail-section', () => ({
+  GuardrailConfigSection: (props: any) =>
+    createElement('div', {
+      'data-testid': 'guardrail-section',
+      'data-superadmin': String(props.isSuperAdmin),
+      'data-tenant': props.effectiveTenantIdentifier,
+    }),
+}));
+
 // ---------------------------------------------------------------------------
 // Mock auth store
 // ---------------------------------------------------------------------------
@@ -213,6 +226,16 @@ describe('ConfigurationManagementPage', () => {
     it('should render the multi-column layout', () => {
       renderPage();
       expect(screen.getByTestId('multi-column-layout')).toBeInTheDocument();
+    });
+
+    // TASK-338 — Guardrail engine section is wired into the page.
+    it('should render the Guardrail configuration section with page props', () => {
+      mockAuthState.user.roles = ['SUPER_ADMIN'];
+      renderPage();
+      const section = screen.getByTestId('guardrail-section');
+      expect(section).toBeInTheDocument();
+      expect(section).toHaveAttribute('data-superadmin', 'true');
+      expect(section).toHaveAttribute('data-tenant', TENANT_ID);
     });
   });
 

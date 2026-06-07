@@ -154,6 +154,62 @@ class QueueConfig(BaseSettings):
     batch_size: int = 10
 
 
+class DatabaseConfig(BaseSettings):
+    """Per-tenant config DB access (TASK-338, decision Q3c).
+
+    When ``db_config_enabled`` is true the service resolves the admin-chosen
+    guardrail provider/model **per tenant** at request time by reading
+    ``core.GlobalSetting`` directly (SQLAlchemy + asyncpg, mirroring STT-v2),
+    with a short TTL cache. When false (the default) the service keeps using the
+    env-only engine selected by ``GUARDRAIL_V2_PROVIDER`` — existing deployments
+    are unaffected.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="GUARDRAIL_")
+
+    # Disabled by default so env-only deployments behave exactly as before.
+    db_config_enabled: bool = False
+
+    # Read-only connection string to the shared HOPE core DB.
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/hope"
+
+    # Fallback tenant used when the request omits X-Tenant-Id or the request
+    # tenant has no guardrail rows. Defaults to the seeded GLOBAL tenant
+    # (SEED_TENANT_ID) where the cross-worker seed places default guardrail config.
+    default_tenant_id: str = "50000000-0000-0000-0000-000000000000"
+
+    # TTL (seconds) for the resolved per-tenant config cache (OQ2 ~60s).
+    config_cache_ttl_s: int = 60
+
+    pool_size: int = 5
+    max_overflow: int = 10
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalize_database_url(cls, v: str) -> str:
+        """Normalize Prisma-style postgres:// URLs to asyncpg form.
+
+        Mirrors STT-v2: convert ``postgres://``/``postgresql://`` to
+        ``postgresql+asyncpg://`` and strip the Prisma-only ``?schema=`` param
+        that asyncpg rejects.
+        """
+        if not isinstance(v, str):
+            return v
+        if v.startswith("postgres://"):
+            v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif v.startswith("postgresql://") and "+asyncpg" not in v:
+            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+        from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+        parsed = urlparse(v)
+        if parsed.query:
+            params = parse_qs(parsed.query)
+            params.pop("schema", None)
+            v = urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
+        return v
+
+
 class Settings(BaseSettings):
     """Root application settings."""
 
@@ -191,6 +247,7 @@ class Settings(BaseSettings):
     gliner: GlinerConfig = Field(default_factory=GlinerConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
     queue: QueueConfig = Field(default_factory=QueueConfig)
+    db: DatabaseConfig = Field(default_factory=DatabaseConfig)
 
     @field_validator("log_level")
     @classmethod
@@ -206,15 +263,25 @@ class Settings(BaseSettings):
             raise ValueError(f"provider must be one of {sorted(allowed)}, got {v!r}")
         return normalized
 
-    @property
-    def engine(self) -> OpenAICompatConfig | OllamaConfig:
-        """Return the sub-config for the selected LLM engine."""
-        return {
+    def engine_for(self, provider: str) -> OpenAICompatConfig | OllamaConfig:
+        """Return the env sub-config for an arbitrary provider switch value.
+
+        Falls back to the env-default provider's engine when ``provider`` is
+        unknown. ``self.provider`` is always a validated key, so this never
+        recurses indefinitely.
+        """
+        engines: dict[str, OpenAICompatConfig | OllamaConfig] = {
             "lm-studio": self.openai_compat,
             "ollama": self.ollama,
             "azure": self.azure,
             "bedrock": self.bedrock,
-        }[self.provider]
+        }
+        return engines.get((provider or "").strip().lower(), engines[self.provider])
+
+    @property
+    def engine(self) -> OpenAICompatConfig | OllamaConfig:
+        """Return the sub-config for the selected LLM engine."""
+        return self.engine_for(self.provider)
 
 
 def _load_dotenv_into_environ() -> None:

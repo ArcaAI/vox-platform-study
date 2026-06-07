@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from smr_v2.core.config import Settings
     from smr_v2.providers.base import ProviderRegistry
     from smr_v2.services.circuit_breaker import CircuitBreaker
+    from smr_v2.services.external_guardrail import ExternalGuardrailClient
     from smr_v2.services.generation_audit import GenerationAuditLogger
     from smr_v2.services.provider_queue import ProviderQueue
     from smr_v2.services.rate_limiter import RateLimitTracker
@@ -77,3 +78,8 @@ def get_provider_semaphores(request: Request) -> dict[str, asyncio.Semaphore]:
     """Retrieve per-provider concurrency semaphores from app.state."""
 
     return getattr(request.app.state, "provider_semaphores", {})
+
+
+def get_guardrail_client(request: Request) -> ExternalGuardrailClient | None:
+    """Retrieve the external guardrail client from app.state (None if unwired)."""
+    return getattr(request.app.state, "guardrail_client", None)

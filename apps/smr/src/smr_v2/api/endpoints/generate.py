@@ -8,13 +8,14 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog.contextvars
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
 
 from smr_v2.core.config import Settings
 from smr_v2.core.dependencies import (
     get_circuit_breakers,
     get_generation_audit_logger,
+    get_guardrail_client,
     get_provider_queues,
     get_provider_registry,
     get_provider_semaphores,
@@ -65,6 +66,7 @@ from smr_v2.models.stream import StreamChunk
 from smr_v2.models.task import TaskStatus
 from smr_v2.providers.base import ProviderNotFoundError, ProviderRegistry
 from smr_v2.services.circuit_breaker import CircuitBreaker, CircuitState
+from smr_v2.services.external_guardrail import ExternalGuardrailClient
 from smr_v2.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
 from smr_v2.services.provider_queue import ProviderQueue, QueueFullError
 from smr_v2.services.rate_limiter import RateLimitTracker, estimate_tokens
@@ -118,9 +120,26 @@ async def generate(
     provider_queues: dict[str, ProviderQueue] = Depends(get_provider_queues),
     provider_semaphores: dict[str, asyncio.Semaphore] = Depends(get_provider_semaphores),
     settings: Settings = Depends(get_dep_settings),
+    guardrail_client: ExternalGuardrailClient | None = Depends(get_guardrail_client),
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
 ) -> Any:
     if shutdown_manager and shutdown_manager.is_shutting_down:
         raise ShutdownError("Service is shutting down — not accepting new requests.")
+
+    # Guardrail medical-content validation (TASK-338 Phase 4b). The consultation
+    # tenant is forwarded so guardrail resolves per-tenant provider/model from DB.
+    # fail-open vs fail-closed is enforced inside the client.
+    if guardrail_client is not None:
+        verdict = await guardrail_client.validate(
+            prompt=request_body.prompt,
+            system_prompt=request_body.system_prompt,
+            tenant_id=x_tenant_id,
+        )
+        if not verdict.get("allowed", True):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Content rejected by guardrail: {verdict.get('reason', 'not_allowed')}",
+            )
 
     ctx = structlog.contextvars.get_contextvars()
     model = request_body.model or "default"
