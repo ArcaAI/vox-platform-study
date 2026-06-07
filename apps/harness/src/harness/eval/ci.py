@@ -192,11 +192,23 @@ def main(
     if judge is None:
         # Lazy: only construct a live backend when one wasn't injected.
         from harness.eval.judge.pdsqi import PDSQI9Judge
+        from harness.eval.judge.prompts import OutputMode
         from harness.eval.judge.providers import build_judge_client
         from harness.eval.metrics.faithfulness import build_faithfulness_evaluator
 
         client = build_judge_client(config.judge)
-        judge = PDSQI9Judge(client)
+        judge = PDSQI9Judge(
+            client,
+            output_mode=OutputMode(config.judge.output_mode),
+            anchored=config.judge.anchored,
+            self_consistency=config.judge.self_consistency,
+            sc_temperature=config.judge.sc_temperature,
+            seed=config.judge.seed,
+            # getattr: Worker A is adding ``reasoning_mode`` to JudgeConfig concurrently;
+            # default to "auto" so this wiring is safe before that field lands.
+            reasoning_mode=getattr(config.judge, "reasoning_mode", "auto"),
+            suppress_reasoning=config.judge.suppress_reasoning,
+        )
         if not args.no_faithfulness and faithfulness is None:
             faithfulness = build_faithfulness_evaluator(client)
 

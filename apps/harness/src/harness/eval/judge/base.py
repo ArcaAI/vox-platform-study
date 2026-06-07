@@ -32,6 +32,20 @@ class JudgeClient(Protocol):
 
     model: str
 
-    async def complete(self, messages: Messages, *, json_mode: bool = False) -> str:
-        """Return the raw text completion for a chat ``messages`` array."""
+    async def complete(
+        self,
+        messages: Messages,
+        *,
+        json_mode: bool = False,
+        temperature: float | None = None,
+        seed: int | None = None,
+    ) -> str:
+        """Return the raw text completion for a chat ``messages`` array.
+
+        ``temperature`` overrides the configured decoding temperature for this one
+        call (used by self-consistency sampling); ``None`` keeps the default.
+        ``seed`` overrides the configured decoding seed for this one call (used to
+        give each self-consistency sample a *distinct but reproducible* seed);
+        ``None`` falls back to the configured seed.
+        """
         ...

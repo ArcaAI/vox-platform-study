@@ -2,7 +2,15 @@ import { AutoClassMapper, AutoEntityChangeMapper, BaseMapper, createMapperHandle
 import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 
-const FIELDS_NOT_IN_PRISMA: string[] = ['resourceStatus', 'resourceStatusUpdatedAt', 'resourceStatusUpdatedBy'];
+const FIELDS_NOT_IN_PRISMA: string[] = [
+  'version',
+  'createdBy',
+  'updatedBy',
+  'updatedAt',
+  'resourceStatus',
+  'resourceStatusUpdatedAt',
+  'resourceStatusUpdatedBy',
+];
 
 function stripNonPrismaFields<T extends object>(model: T, fields: string[]): T {
   for (const field of fields) {

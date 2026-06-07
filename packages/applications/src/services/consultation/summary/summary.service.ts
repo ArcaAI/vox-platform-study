@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, Optional, BadRequestException } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, BadRequestException, NotFoundException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
@@ -22,7 +22,7 @@ import {
 } from '@arcaai/domains';
 import { HarnessAuditService } from '../../harness-audit';
 import { ISummaryService } from './ISummaryService';
-import { GenerateSummaryRequest, GeneratePreSummaryRequest, UpdateSummaryRequest, SummaryResponse } from './dto';
+import { GenerateSummaryRequest, GeneratePreSummaryRequest, UpdateSummaryRequest, SummaryResponse, SummaryProvenanceResponse } from './dto';
 import { SummaryDtoMapper } from './summary.dto.mapper';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse, type LegacySmrSummaryResponse } from './smr-v2-generate';
 import { BaseService, assertParentInScope } from '../../../common';
@@ -480,6 +480,20 @@ export class SummaryService extends BaseService implements ISummaryService {
   async getSummaries(consultationId: string): Promise<SummaryResponse[]> {
     const summaries = await this.contextItemRepository.findSummaries(consultationId);
     return summaries.map(SummaryDtoMapper.toResponse);
+  }
+
+  /**
+   * TASK-330 follow-up — read-only harness provenance for a generated summary.
+   * Returns the `SummaryMeta` citationsMap + sensor scores + modelName that the
+   * harness wrote. Tenant isolation is enforced by the repository's tenant-scoped
+   * client (the controller has already verified read access to the consultation).
+   */
+  async getSummaryProvenance(contextItemId: string): Promise<SummaryProvenanceResponse> {
+    const meta = await this.summaryMetaRepository.findByContextItem(contextItemId);
+    if (!meta) {
+      throw new NotFoundException(`No provenance found for summary ${contextItemId}`);
+    }
+    return SummaryDtoMapper.toProvenanceResponse(meta);
   }
 
   /**

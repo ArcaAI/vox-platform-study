@@ -83,3 +83,44 @@ class TestBuildCitationsMap:
             transcript_context_item_id="ctx-t1",
         )
         assert len(cmap["claims"]) == 1
+
+    # ── TASK-330 follow-up: strip SentencePiece word-boundary markers ──────────
+    # NER spans tokenized by a SentencePiece model carry the U+2581 "▁"
+    # word-boundary marker (e.g. "▁October"). It must never leak into the
+    # human-readable citation claim text or evidence quotes.
+    def test_claim_text_strips_sentencepiece_word_boundary_markers(self):
+        cmap = build_citations_map(
+            soap_sections={"plan": "Follow up in October 2025."},
+            note_entities=[NEREntity(text="\u2581October \u25812025", type="DATE")],
+            transcript_entities=[
+                NEREntity(text="\u2581October \u25812025", type="DATE", start=10, end=22)
+            ],
+            transcript_text="See you in October 2025.",
+            transcript_context_item_id="ctx-t1",
+        )
+
+        claim = cmap["claims"][0]
+        assert claim["text"] == "October 2025"
+        assert "\u2581" not in claim["text"]
+        # The transcript evidence quote is human-readable too (no markers).
+        assert claim["evidence"][0]["quote"] == "October 2025"
+        assert "\u2581" not in claim["evidence"][0]["quote"]
+
+    def test_leading_marker_and_collapsed_whitespace_are_cleaned(self):
+        cmap = build_citations_map(
+            soap_sections={"assessment": "Type 2 diabetes mellitus."},
+            note_entities=[NEREntity(text="\u2581Type \u25812 \u2581diabetes", type="DISEASE")],
+            transcript_entities=[],
+            transcript_text="",
+        )
+        assert cmap["claims"][0]["text"] == "Type 2 diabetes"
+
+    def test_normalization_preserves_legitimate_punctuation_and_digits(self):
+        # No markers present → content (digits, punctuation) is untouched.
+        cmap = build_citations_map(
+            soap_sections={"objective": "BP 120/80 mmHg."},
+            note_entities=[NEREntity(text="120/80 mmHg", type="VITAL")],
+            transcript_entities=[],
+            transcript_text="",
+        )
+        assert cmap["claims"][0]["text"] == "120/80 mmHg"

@@ -32,7 +32,7 @@ class TestOllamaPayloadDefaults:
         req = GenerateRequest(prompt="hello")
         payload = provider._build_payload(req, stream=False)
         assert payload["options"]["temperature"] == 0.1
-        assert payload["options"]["num_predict"] == 4096
+        assert payload["options"]["num_predict"] == 16_384
         assert payload["options"]["top_p"] == 0.95
 
     def test_explicit_hyperparams_preserved(self):
@@ -161,7 +161,7 @@ class TestAzurePayloadDefaults:
 
         call_kwargs = provider._client.chat.completions.create.call_args
         assert call_kwargs.kwargs["temperature"] == 0.1
-        assert call_kwargs.kwargs["max_tokens"] == 4096
+        assert call_kwargs.kwargs["max_tokens"] == 16_384
         assert call_kwargs.kwargs["top_p"] == 0.95
 
     @pytest.mark.asyncio
@@ -279,7 +279,7 @@ class TestBedrockPayloadDefaults:
         req = GenerateRequest(prompt="hello")
         params = provider._build_converse_params(req)
         assert params["inferenceConfig"]["temperature"] == 0.1
-        assert params["inferenceConfig"]["maxTokens"] == 4096
+        assert params["inferenceConfig"]["maxTokens"] == 16_384
         assert params["inferenceConfig"]["topP"] == 0.95
 
     def test_explicit_hyperparams_preserved(self):

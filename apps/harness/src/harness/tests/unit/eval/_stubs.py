@@ -22,9 +22,20 @@ class StubJudgeClient:
         self._response = response
         self.model = model
         self.calls: list[Messages] = []
+        self.temperatures: list[float | None] = []
+        self.seeds: list[int | None] = []
 
-    async def complete(self, messages: Messages, *, json_mode: bool = False) -> str:
+    async def complete(
+        self,
+        messages: Messages,
+        *,
+        json_mode: bool = False,
+        temperature: float | None = None,
+        seed: int | None = None,
+    ) -> str:
         self.calls.append(messages)
+        self.temperatures.append(temperature)
+        self.seeds.append(seed)
         if callable(self._response):
             return self._response(messages)
         return self._response
@@ -37,9 +48,20 @@ class ScriptedJudgeClient:
         self._responses = list(responses)
         self.model = model
         self.calls: list[Messages] = []
+        self.temperatures: list[float | None] = []
+        self.seeds: list[int | None] = []
 
-    async def complete(self, messages: Messages, *, json_mode: bool = False) -> str:
+    async def complete(
+        self,
+        messages: Messages,
+        *,
+        json_mode: bool = False,
+        temperature: float | None = None,
+        seed: int | None = None,
+    ) -> str:
         self.calls.append(messages)
+        self.temperatures.append(temperature)
+        self.seeds.append(seed)
         if not self._responses:
             raise AssertionError("ScriptedJudgeClient ran out of responses")
         return self._responses.pop(0)
@@ -59,7 +81,14 @@ class MappingJudgeClient:
         self.model = model
         self.calls: list[Messages] = []
 
-    async def complete(self, messages: Messages, *, json_mode: bool = False) -> str:
+    async def complete(
+        self,
+        messages: Messages,
+        *,
+        json_mode: bool = False,
+        temperature: float | None = None,
+        seed: int | None = None,
+    ) -> str:
         self.calls.append(messages)
         blob = " ".join(m["content"] for m in messages)
         for key, response in self._mapping.items():

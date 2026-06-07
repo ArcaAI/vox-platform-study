@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 GENERATION_DEFAULTS: dict[str, float | int] = {
     "temperature": 0.1,
-    "max_tokens": 4096,
+    "max_tokens": 16_384,
     "top_p": 0.95,
 }
 

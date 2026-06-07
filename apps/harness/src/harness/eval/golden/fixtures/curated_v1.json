@@ -1,0 +1,303 @@
+{
+  "version": "curated-v1.0.0",
+  "name": "curated-clinical-doc-golden-set",
+  "description": "CURATED (NON-CLINICAL, SYNTHETIC-PROVENANCE) golden set for the TASK-330 eval harness. Two explicit lanes: (1) role=quality -> realistic transcript->SOAP cases whose generated_note is a high-quality reference exemplar (feeds the PDSQI quality + faithfulness gates); (2) role=calibration -> adversarial/range-spanning cases whose generated_note exhibits a deliberate flaw (feeds the judge<->reference ICC ONLY, NOT the quality mean). PROVENANCE: every clinician_pdsqi label here is a CURATED, RUBRIC-DERIVED reference label authored from the Epic PDSQI-9 grade descriptors. It is NOT a real clinician rating. Calibration-lane labels were refined to apply the rubric's INDEPENDENT-DIMENSION principle (a flaw in one dimension must not bleed into unrelated dimensions); see each calibration case's metadata.label_rationale. This rubric refinement does NOT substitute for real labels: production calibration (the ICC>=0.8 release claim) still REQUIRES real human-in-the-loop clinician labels per HLD 7.5 #1/#3; see apps/harness/eval/README.md.",
+  "cases": [
+    {
+      "case_id": "curated-q01-fammed-pharyngitis",
+      "role": "quality",
+      "target_specialty": "Family Medicine",
+      "source_documents": [
+        "Doctor: What brings you in today? Patient: I have had a sore throat and runny nose for two days. Doctor: Any fever or cough? Patient: No fever, just a mild cough. Doctor: On exam your temperature is 37.0 degrees Celsius, the throat shows mild redness without any white patches, there is no neck gland swelling, and your lungs are clear. This is a viral upper respiratory infection. Your Centor score is low, so antibiotics are not needed. Use saline gargles, take acetaminophen as needed for throat pain, rest and drink fluids. Return if you develop a high fever, trouble swallowing, or if symptoms last more than ten days.",
+        "Past medical history: seasonal allergic rhinitis. Current medications: none. No known drug allergies."
+      ],
+      "generated_note": "Subjective: Adult with a two-day sore throat and rhinorrhea, no fever, and a mild cough <Note ID:1>. History of seasonal allergic rhinitis, no current medications, and no known drug allergies <Note ID:2>. Objective: Temperature 37.0 C, mild pharyngeal erythema without exudate, no cervical lymphadenopathy, and clear lungs <Note ID:1>. Assessment: Viral upper respiratory infection with a low Centor score, not requiring antibiotics <Note ID:1>. Plan: Saline gargles, acetaminophen as needed for throat pain, rest and fluids; return for high fever, trouble swallowing, or symptoms beyond ten days <Note ID:1>.",
+      "reference_note": "High-quality SOAP exemplar: complete, fully cited, concise, grounded.",
+      "clinician_pdsqi": {
+        "citation": 5, "accurate": 5, "thorough": 5, "useful": 5, "organized": 5,
+        "comprehensible": 5, "succinct": 4, "synthesized": 4,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "quality" }
+    },
+    {
+      "case_id": "curated-q02-im-diabetes-complete",
+      "role": "quality",
+      "target_specialty": "Internal Medicine",
+      "source_documents": [
+        "Doctor: How have you been since your last diabetes visit? Patient: Mostly fine, but I get occasional tingling in both feet. Doctor: Your most recent HbA1c is 8.2 percent. On foot exam there is decreased monofilament sensation in both feet, consistent with early diabetic peripheral neuropathy. Your blood pressure is 128 over 78. Assessment is type 2 diabetes with suboptimal control and early peripheral neuropathy. Plan: continue metformin 1000 mg twice daily, start atorvastatin 20 mg at night, and I am referring you to podiatry for foot care. We discussed glycemic control, daily foot inspection, and proper footwear. Recheck HbA1c in three months.",
+        "Past medical history: type 2 diabetes mellitus, hyperlipidemia. No known drug allergies."
+      ],
+      "generated_note": "Subjective: Patient with type 2 diabetes reports occasional bilateral foot tingling <Note ID:1>. Objective: HbA1c 8.2 percent; blood pressure 128/78; decreased monofilament sensation bilaterally <Note ID:1>. Assessment: Type 2 diabetes with suboptimal glycemic control and early diabetic peripheral neuropathy <Note ID:1>. Plan: Continue metformin 1000 mg twice daily, start atorvastatin 20 mg nightly, and refer to podiatry; counseled on glycemic control, daily foot inspection, and footwear; recheck HbA1c in three months <Note ID:1>.",
+      "reference_note": "High-quality SOAP exemplar: captures every pertinent item (neuropathy, counseling, follow-up).",
+      "clinician_pdsqi": {
+        "citation": 5, "accurate": 5, "thorough": 5, "useful": 5, "organized": 5,
+        "comprehensible": 5, "succinct": 5, "synthesized": 4,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "quality" }
+    },
+    {
+      "case_id": "curated-q03-cardiology-stable-angina",
+      "role": "quality",
+      "target_specialty": "Cardiology",
+      "source_documents": [
+        "Doctor: Tell me about the chest discomfort. Patient: For two weeks I get tightness in my chest when I climb stairs, and it goes away with rest after a few minutes. Doctor: Any pain at rest or at night? Patient: No. Doctor: Your ECG today shows normal sinus rhythm with no ST-segment changes, and the first troponin is negative. This looks like stable exertional angina rather than an acute event. Plan: start aspirin 81 mg daily and a statin, begin a beta-blocker, and schedule an outpatient exercise stress test. Seek emergency care if you get chest pain at rest, pain lasting more than twenty minutes, or shortness of breath."
+      ],
+      "generated_note": "Subjective: Two weeks of exertional chest tightness relieved by rest within minutes, with no rest or nocturnal pain <Note ID:1>. Objective: ECG shows normal sinus rhythm without ST changes; initial troponin negative <Note ID:1>. Assessment: Stable exertional angina, not an acute coronary event <Note ID:1>. Plan: Start aspirin 81 mg daily, a statin, and a beta-blocker; schedule an outpatient exercise stress test; return precautions for rest pain, pain over twenty minutes, or dyspnea <Note ID:1>.",
+      "reference_note": "High-quality SOAP exemplar: accurate framing of a normal ECG, no overcall.",
+      "clinician_pdsqi": {
+        "citation": 5, "accurate": 5, "thorough": 4, "useful": 5, "organized": 5,
+        "comprehensible": 5, "succinct": 5, "synthesized": 5,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "quality" }
+    },
+    {
+      "case_id": "curated-q04-peds-otitis-media",
+      "role": "quality",
+      "target_specialty": "Pediatrics",
+      "source_documents": [
+        "Doctor: How long has she had ear pain? Parent: Two days, with a low-grade fever. Doctor: On exam the right eardrum is red and bulging with reduced mobility; the left ear is normal; temperature 38.0 degrees Celsius; she is well hydrated and playful. This is right acute otitis media. Plan: amoxicillin 45 mg per kilogram per day divided twice daily for ten days, and acetaminophen for fever and pain. We discussed fever management and ensuring fluids. Return if fever persists beyond 48 to 72 hours or symptoms worsen.",
+        "Immunizations up to date. No known drug allergies."
+      ],
+      "generated_note": "Subjective: Four-year-old with two days of right ear pain and low-grade fever <Note ID:1>. Immunizations up to date; no known drug allergies <Note ID:2>. Objective: Temperature 38.0 C; right tympanic membrane erythematous, bulging, with reduced mobility; left ear normal; well hydrated <Note ID:1>. Assessment: Right acute otitis media <Note ID:1>. Plan: Amoxicillin 45 mg/kg/day divided twice daily for ten days and acetaminophen for fever and pain; counseled on fever management and fluids; return if fever persists beyond 48 to 72 hours or symptoms worsen <Note ID:1>.",
+      "reference_note": "High-quality SOAP exemplar: includes allergy status and return precautions.",
+      "clinician_pdsqi": {
+        "citation": 5, "accurate": 5, "thorough": 5, "useful": 5, "organized": 4,
+        "comprehensible": 5, "succinct": 4, "synthesized": 4,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "quality" }
+    },
+    {
+      "case_id": "curated-q05-obgyn-prenatal",
+      "role": "quality",
+      "target_specialty": "Obstetrics and Gynecology",
+      "source_documents": [
+        "Doctor: This is your routine visit at 28 weeks. How are you feeling? Patient: Good, the baby is moving well. Doctor: Blood pressure is 118 over 72, fundal height is 28 centimeters, and the fetal heart rate is 145 beats per minute. Your one-hour glucose screen was normal. Assessment is a normal singleton pregnancy at 28 weeks with reassuring fetal status. Plan: administer the Tdap vaccine today, start a daily prenatal vitamin with iron, schedule the next visit in four weeks, and review preterm-labor warning signs. Call for vaginal bleeding, leaking fluid, severe headache, or decreased fetal movement."
+      ],
+      "generated_note": "Subjective: 28-week pregnant patient feeling well with good fetal movement <Note ID:1>. Objective: Blood pressure 118/72; fundal height 28 cm; fetal heart rate 145 bpm; normal one-hour glucose screen <Note ID:1>. Assessment: Normal singleton pregnancy at 28 weeks with reassuring fetal status <Note ID:1>. Plan: Administer Tdap today, start a daily prenatal vitamin with iron, return in four weeks, and reviewed preterm-labor precautions including bleeding, leaking fluid, severe headache, or decreased fetal movement <Note ID:1>.",
+      "reference_note": "High-quality SOAP exemplar: complete prenatal visit with anticipatory guidance.",
+      "clinician_pdsqi": {
+        "citation": 5, "accurate": 5, "thorough": 5, "useful": 5, "organized": 5,
+        "comprehensible": 5, "succinct": 4, "synthesized": 4,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "quality" }
+    },
+    {
+      "case_id": "curated-q06-psych-depression",
+      "role": "quality",
+      "target_specialty": "Psychiatry",
+      "source_documents": [
+        "Doctor: How has your mood been on the sertraline? Patient: Better over the last six weeks; my sleep and appetite have improved and I am back to work. Doctor: Any thoughts of harming yourself? Patient: No, none. Doctor: Your PHQ-9 today is 6, down from 16 at the start. This is major depressive disorder showing a good response to treatment, with no current suicidal ideation. Plan: continue sertraline 100 mg each morning, continue weekly therapy, and follow up in eight weeks. Contact the clinic or crisis line if mood worsens or any self-harm thoughts return.",
+        "Past psychiatric history: major depressive disorder. No known drug allergies."
+      ],
+      "generated_note": "Subjective: Patient reports six weeks of improved mood, sleep, and appetite on sertraline and has returned to work; denies suicidal ideation <Note ID:1>. History of major depressive disorder; no known drug allergies <Note ID:2>. Objective: PHQ-9 score 6, decreased from 16 <Note ID:1>. Assessment: Major depressive disorder with good treatment response and no current suicidal ideation <Note ID:1>. Plan: Continue sertraline 100 mg every morning, continue weekly therapy, follow up in eight weeks; safety-net to contact the clinic or crisis line if mood worsens or self-harm thoughts return <Note ID:1>.",
+      "reference_note": "High-quality SOAP exemplar: documents safety assessment and PHQ-9 trend.",
+      "clinician_pdsqi": {
+        "citation": 5, "accurate": 5, "thorough": 5, "useful": 5, "organized": 5,
+        "comprehensible": 5, "succinct": 4, "synthesized": 5,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "quality" }
+    },
+    {
+      "case_id": "curated-q07-pulm-copd",
+      "role": "quality",
+      "target_specialty": "Pulmonology",
+      "source_documents": [
+        "Doctor: What changed this week? Patient: More cough with yellow sputum and more breathlessness for three days, but no fever. Doctor: On exam your oxygen saturation is 92 percent on room air, there is diffuse wheezing, and you are speaking in full sentences. This is a moderate COPD exacerbation, likely from a respiratory infection. Plan: start prednisone 40 mg daily for five days, start azithromycin, increase your albuterol inhaler use, and continue your maintenance inhaler. Return to the emergency department for severe breathlessness, bluish lips, confusion, or a saturation below 90 percent.",
+        "Past medical history: COPD, 30 pack-year smoking history, currently not smoking. No known drug allergies."
+      ],
+      "generated_note": "Subjective: Three days of increased cough with yellow sputum and dyspnea, no fever, in a patient with COPD and a 30 pack-year history, not currently smoking <Note ID:1><Note ID:2>. Objective: Oxygen saturation 92 percent on room air, diffuse wheezing, speaking in full sentences <Note ID:1>. Assessment: Moderate COPD exacerbation, likely infective <Note ID:1>. Plan: Prednisone 40 mg daily for five days, azithromycin, increased albuterol, continue maintenance inhaler; return precautions for severe dyspnea, cyanosis, confusion, or saturation below 90 percent <Note ID:1>.",
+      "reference_note": "High-quality SOAP exemplar: severity, treatment, and escalation criteria all captured.",
+      "clinician_pdsqi": {
+        "citation": 4, "accurate": 5, "thorough": 5, "useful": 5, "organized": 5,
+        "comprehensible": 5, "succinct": 5, "synthesized": 4,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "quality" }
+    },
+    {
+      "case_id": "curated-q08-gi-gerd",
+      "role": "quality",
+      "target_specialty": "Gastroenterology",
+      "source_documents": [
+        "Doctor: Describe the heartburn. Patient: Burning behind my chest after meals and when lying down, several times a week for two months. No trouble swallowing, no weight loss, no black stools. Doctor: Exam is unremarkable and you have no alarm features. This is gastroesophageal reflux disease. Plan: start omeprazole 20 mg once daily before breakfast for eight weeks, elevate the head of the bed, avoid late meals and trigger foods, and lose weight if able. Follow up in eight weeks; we will consider endoscopy if symptoms persist."
+      ],
+      "generated_note": "Subjective: Two months of postprandial and recumbent retrosternal burning several times weekly, without dysphagia, weight loss, or melena <Note ID:1>. Objective: Unremarkable exam with no alarm features <Note ID:1>. Assessment: Gastroesophageal reflux disease <Note ID:1>. Plan: Omeprazole 20 mg once daily before breakfast for eight weeks, head-of-bed elevation, avoidance of late meals and trigger foods, weight loss as able; follow up in eight weeks with endoscopy if symptoms persist <Note ID:1>.",
+      "reference_note": "High-quality SOAP exemplar: documents absence of alarm features and a staged plan.",
+      "clinician_pdsqi": {
+        "citation": 5, "accurate": 5, "thorough": 5, "useful": 5, "organized": 5,
+        "comprehensible": 5, "succinct": 5, "synthesized": 4,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "quality" }
+    },
+    {
+      "case_id": "curated-q09-endo-hypothyroid",
+      "role": "quality",
+      "target_specialty": "Endocrinology",
+      "source_documents": [
+        "Doctor: How are you doing on levothyroxine? Patient: Less tired than before, but still a little constipated. Doctor: Your TSH today is 6.8, which is still slightly high, and your free T4 is low-normal. This is hypothyroidism that remains mildly under-replaced. Plan: increase levothyroxine from 75 to 88 micrograms daily, taken on an empty stomach, and recheck TSH in eight weeks. Increase dietary fiber and fluids for the constipation.",
+        "Past medical history: primary hypothyroidism. No known drug allergies."
+      ],
+      "generated_note": "Subjective: Patient on levothyroxine reports improved fatigue but persistent mild constipation <Note ID:1>. History of primary hypothyroidism; no known drug allergies <Note ID:2>. Objective: TSH 6.8 (elevated); free T4 low-normal <Note ID:1>. Assessment: Hypothyroidism, mildly under-replaced <Note ID:1>. Plan: Increase levothyroxine from 75 to 88 micrograms daily on an empty stomach, recheck TSH in eight weeks, and increase dietary fiber and fluids <Note ID:1>.",
+      "reference_note": "High-quality SOAP exemplar: dose change tied to labs and symptoms.",
+      "clinician_pdsqi": {
+        "citation": 5, "accurate": 5, "thorough": 4, "useful": 5, "organized": 5,
+        "comprehensible": 5, "succinct": 5, "synthesized": 4,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "quality" }
+    },
+    {
+      "case_id": "curated-q10-ortho-ankle-sprain",
+      "role": "quality",
+      "target_specialty": "Orthopedics",
+      "source_documents": [
+        "Doctor: How did you hurt the ankle? Patient: I rolled it playing basketball yesterday. Doctor: You can bear weight with a limp. There is swelling and tenderness over the outside of the ankle, but no bony tenderness at the malleoli and no midfoot tenderness, so by the Ottawa ankle rules an x-ray is not required. This is a lateral ankle sprain, grade 2. Plan: rest, ice, compression, and elevation, ibuprofen as needed, an ankle brace, weight-bearing as tolerated, and begin range-of-motion exercises in a few days. Follow up in two weeks if not improving."
+      ],
+      "generated_note": "Subjective: Patient rolled the ankle playing basketball yesterday and can bear weight with a limp <Note ID:1>. Objective: Lateral ankle swelling and tenderness, no malleolar or midfoot bony tenderness; Ottawa ankle rules negative, so no x-ray indicated <Note ID:1>. Assessment: Grade 2 lateral ankle sprain <Note ID:1>. Plan: Rest, ice, compression, elevation, ibuprofen as needed, ankle brace, weight-bearing as tolerated, early range-of-motion exercises; follow up in two weeks if not improving <Note ID:1>.",
+      "reference_note": "High-quality SOAP exemplar: justifies the no-imaging decision via Ottawa rules.",
+      "clinician_pdsqi": {
+        "citation": 5, "accurate": 5, "thorough": 5, "useful": 5, "organized": 5,
+        "comprehensible": 5, "succinct": 4, "synthesized": 5,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "quality" }
+    },
+    {
+      "case_id": "curated-q11-derm-contact-dermatitis",
+      "role": "quality",
+      "target_specialty": "Dermatology",
+      "source_documents": [
+        "Doctor: When did the rash start? Patient: A few days after I started a new nickel watch. It is itchy and only on my wrist. Doctor: On exam there is a well-demarcated red, scaly, itchy patch on the left wrist matching the watch contact area, with no signs of infection. This is allergic contact dermatitis, most likely to nickel. Plan: stop wearing the watch, apply a medium-potency topical steroid twice daily for two weeks, use an oral antihistamine at night for itch, and use a fragrance-free emollient. Follow up in two weeks if it does not clear."
+      ],
+      "generated_note": "Subjective: Itchy wrist rash beginning a few days after wearing a new nickel watch, limited to the wrist <Note ID:1>. Objective: Well-demarcated erythematous scaly patch on the left wrist matching the watch contact area, without signs of infection <Note ID:1>. Assessment: Allergic contact dermatitis, likely to nickel <Note ID:1>. Plan: Discontinue the watch, apply a medium-potency topical steroid twice daily for two weeks, take a nighttime oral antihistamine for itch, and use a fragrance-free emollient; follow up in two weeks if unresolved <Note ID:1>.",
+      "reference_note": "High-quality SOAP exemplar: links exposure, distribution, and management.",
+      "clinician_pdsqi": {
+        "citation": 5, "accurate": 5, "thorough": 5, "useful": 5, "organized": 5,
+        "comprehensible": 5, "succinct": 5, "synthesized": 4,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "quality" }
+    },
+    {
+      "case_id": "curated-q12-nephro-ckd",
+      "role": "quality",
+      "target_specialty": "Nephrology",
+      "source_documents": [
+        "Doctor: We are reviewing your kidney function. Patient: I feel well, no swelling. Doctor: Your eGFR is 48 and your urine albumin-to-creatinine ratio is 45, both stable from six months ago; blood pressure is 134 over 82. This is stage 3a chronic kidney disease with mild albuminuria, secondary to hypertension and stable. Plan: continue lisinopril 20 mg daily for kidney protection, limit dietary sodium, avoid NSAIDs, recheck kidney function and electrolytes in three months, and continue blood-pressure monitoring at home.",
+        "Past medical history: hypertension, chronic kidney disease. No known drug allergies."
+      ],
+      "generated_note": "Subjective: Patient with chronic kidney disease feels well and denies edema <Note ID:1>. History of hypertension and chronic kidney disease; no known drug allergies <Note ID:2>. Objective: eGFR 48 and urine albumin-to-creatinine ratio 45, both stable; blood pressure 134/82 <Note ID:1>. Assessment: Stable stage 3a chronic kidney disease with mild albuminuria, secondary to hypertension <Note ID:1>. Plan: Continue lisinopril 20 mg daily, limit dietary sodium, avoid NSAIDs, recheck renal function and electrolytes in three months, and continue home blood-pressure monitoring <Note ID:1>.",
+      "reference_note": "High-quality SOAP exemplar: stages CKD and includes nephroprotective counseling.",
+      "clinician_pdsqi": {
+        "citation": 5, "accurate": 5, "thorough": 5, "useful": 5, "organized": 5,
+        "comprehensible": 5, "succinct": 4, "synthesized": 5,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "quality" }
+    },
+
+    {
+      "case_id": "curated-c01-fabrication-mi",
+      "role": "calibration",
+      "target_specialty": "Cardiology",
+      "source_documents": [
+        "Doctor: You describe two weeks of exertional chest tightness. Your ECG today shows normal sinus rhythm with no ST-segment changes, and the troponin is pending. Plan: start aspirin 81 mg daily, arrange an outpatient stress test, and follow up after the results."
+      ],
+      "generated_note": "Assessment: Acute myocardial infarction confirmed by ECG <Note ID:1>. Plan: Aspirin 81 mg daily, stress test, and cardiology follow-up <Note ID:1>.",
+      "reference_note": "ADVERSARIAL: falsifies a normal ECG into a confirmed MI (fabrication/falsification).",
+      "clinician_pdsqi": {
+        "citation": 2, "accurate": 2, "thorough": 1, "useful": 2, "organized": 5,
+        "comprehensible": 5, "succinct": 4, "synthesized": 2,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "calibration", "flaw": "fabrication/falsification", "label_rationale": "Independent-dimension scoring: a SINGLE fabrication = accurate 2 (rubric: 'a major error ... overt falsification'), not 1 (which is 'multiple major errors'); the note omits Hx/exam/troponin -> thorough 1; the Assessment/Plan ordering is intact so organized = 5 (the flaw is accuracy, NOT structure). useful 2 retained (a false MI dx is harmful)." }
+    },
+    {
+      "case_id": "curated-c02-omission-diabetes",
+      "role": "calibration",
+      "target_specialty": "Internal Medicine",
+      "source_documents": [
+        "Doctor: Your HbA1c is 8.2 percent. On foot exam there is decreased monofilament sensation in both feet. Plan: continue metformin 1000 mg twice daily, start atorvastatin 20 mg at night, refer to podiatry, and we discussed glycemic control and daily foot care. Recheck HbA1c in three months."
+      ],
+      "generated_note": "Assessment: Type 2 diabetes with suboptimal control, HbA1c 8.2 percent <Note ID:1>. Plan: Continue metformin 1000 mg twice daily and start atorvastatin 20 mg nightly <Note ID:1>.",
+      "reference_note": "ADVERSARIAL: omits the neuropathy finding, podiatry referral, counseling, and follow-up (multiple pertinent omissions).",
+      "clinician_pdsqi": {
+        "citation": 5, "accurate": 5, "thorough": 1, "useful": 5, "organized": 5,
+        "comprehensible": 5, "succinct": 5, "synthesized": 3,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "calibration", "flaw": "pertinent-omission", "label_rationale": "Independent-dimension scoring: the flaw is omission ONLY -> thorough 1 (multiple pertinent omissions). What IS present is correctly cited (citation 5), clinically useful (useful 5), and in logical A/P order (organized 5); none of those should be penalized for the missing content." }
+    },
+    {
+      "case_id": "curated-c03-verbose-rhinitis",
+      "role": "calibration",
+      "target_specialty": "Family Medicine",
+      "source_documents": [
+        "Doctor: You have springtime sneezing and nasal congestion, worse in spring, with no fever, and you responded well to antihistamines before. This is seasonal allergic rhinitis. Plan: start intranasal fluticasone once daily and review allergen avoidance."
+      ],
+      "generated_note": "The patient, who is an adult person, came into the clinic today and reported to me that they have been experiencing some symptoms, and these symptoms that they have been experiencing include sneezing and also nasal congestion, and the patient told me that it is generally worse during the spring time of the year when spring arrives. There is no fever that is present at this particular time right now. We talked about a great many different things during the visit today. Fluticasone nasal spray, to be used one time each day, was started for the patient. Allergen avoidance strategies were also discussed in a fair amount of detail with the patient.",
+      "reference_note": "ADVERSARIAL: accurate content but extremely wordy/redundant and uncited.",
+      "clinician_pdsqi": {
+        "citation": 1, "accurate": 5, "thorough": 4, "useful": 4, "organized": 5,
+        "comprehensible": 5, "succinct": 1, "synthesized": 3,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "calibration", "flaw": "verbose-redundant-uncited", "label_rationale": "Independent-dimension scoring: the flaws are verbosity + no citations -> succinct 1 (KEPT, the note is genuinely padded/redundant) and citation 1. Verbosity is NOT disorganization or unclarity: the content flows S->O->A->P in plain sentences, so organized 5 and comprehensible 5." }
+    },
+    {
+      "case_id": "curated-c04-disorganized-uri",
+      "role": "calibration",
+      "target_specialty": "Family Medicine",
+      "source_documents": [
+        "Doctor: You have a two-day sore throat and runny nose, no fever, mild cough. Exam shows mild pharyngeal redness, no exudate, clear lungs, temperature 37.0. This is a viral upper respiratory infection; no antibiotics needed. Plan: saline gargles, acetaminophen as needed, rest and fluids."
+      ],
+      "generated_note": "Plan: acetaminophen as needed and saline gargles <Note ID:1>. The lungs are clear and there is mild pharyngeal redness <Note ID:1>. Rest and fluids were advised <Note ID:1>. There is a two-day sore throat. Viral upper respiratory infection, no antibiotics <Note ID:1>. No fever; temperature is 37.0. There is a mild cough and a runny nose.",
+      "reference_note": "ADVERSARIAL: accurate but assertions scrambled out of clinical order (plan before subjective/objective).",
+      "clinician_pdsqi": {
+        "citation": 3, "accurate": 5, "thorough": 4, "useful": 5, "organized": 1,
+        "comprehensible": 4, "succinct": 4, "synthesized": 2,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "calibration", "flaw": "disorganized", "label_rationale": "Independent-dimension scoring: the flaw is ordering ONLY -> organized 1 (KEPT, Plan precedes Subjective/Objective). The individual sentences remain readable (comprehensible 4) and the clinical content is correct and actionable (useful 5); disorder alone should not zero those out." }
+    },
+    {
+      "case_id": "curated-c05-uncited-otitis",
+      "role": "calibration",
+      "target_specialty": "Pediatrics",
+      "source_documents": [
+        "Doctor: The right eardrum is red and bulging; temperature 38.0. This is right acute otitis media. Plan: amoxicillin 45 mg per kilogram per day divided twice daily for ten days and acetaminophen for fever."
+      ],
+      "generated_note": "Assessment: Right acute otitis media in a child with fever and a red, bulging right eardrum. Plan: Amoxicillin 45 mg/kg/day divided twice daily for ten days and acetaminophen for fever.",
+      "reference_note": "ADVERSARIAL: accurate and complete but contains NO citations at all.",
+      "clinician_pdsqi": {
+        "citation": 1, "accurate": 5, "thorough": 5, "useful": 5, "organized": 5,
+        "comprehensible": 5, "succinct": 5, "synthesized": 4,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "calibration", "flaw": "uncited" }
+    },
+    {
+      "case_id": "curated-c06-falsified-dose",
+      "role": "calibration",
+      "target_specialty": "Internal Medicine",
+      "source_documents": [
+        "Doctor: For your community-acquired pneumonia we will start amoxicillin 500 mg three times daily for seven days, plus rest and fluids. Your chest x-ray shows a right lower lobe infiltrate and your vital signs are stable."
+      ],
+      "generated_note": "Assessment: Community-acquired pneumonia with a right lower lobe infiltrate and stable vital signs <Note ID:1>. Plan: Amoxicillin 5000 mg three times daily for seven days, with rest and fluids <Note ID:1>.",
+      "reference_note": "ADVERSARIAL: falsifies the antibiotic dose (5000 mg instead of 500 mg) - a critical numeric error.",
+      "clinician_pdsqi": {
+        "citation": 5, "accurate": 2, "thorough": 5, "useful": 4, "organized": 5,
+        "comprehensible": 5, "succinct": 5, "synthesized": 3,
+        "abstraction": 1, "voice_summ": 0, "voice_note": 0
+      },
+      "metadata": { "label_provenance": "curated-rubric-derived", "lane": "calibration", "flaw": "falsified-dose", "label_rationale": "Independent-dimension scoring: the flaw is a numeric falsification (5000 mg vs 500 mg) -> accurate 2 (KEPT, a major numeric error). Both assertions ARE cited (citation 5) and all source items are present (thorough 5); useful 4 keeps a mild penalty since the unusable dose lowers actionability." }
+    }
+  ]
+}
