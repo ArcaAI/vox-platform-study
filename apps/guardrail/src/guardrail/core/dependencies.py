@@ -14,7 +14,15 @@ if TYPE_CHECKING:
     from guardrail.providers.gliner import GlinerProvider
     from guardrail.providers.guardian import GuardianProvider
     from guardrail.providers.ollama import OllamaProvider
+    from guardrail.providers.openai_compat import (
+        OpenAICompatGuardianProvider,
+        OpenAICompatProvider,
+    )
     from guardrail.services.job_processor import JobProcessor
+
+    # The active content/guardian providers depend on the selected LLM engine.
+    ContentProvider = OllamaProvider | OpenAICompatProvider
+    GuardianLike = GuardianProvider | OpenAICompatGuardianProvider
 
 
 def get_settings(request: Request) -> Settings:
@@ -32,13 +40,13 @@ def get_redis(request: Request) -> aioredis.Redis:
     return request.app.state.redis
 
 
-def get_ollama_provider(request: Request) -> OllamaProvider:
-    """Retrieve Ollama provider from app.state."""
+def get_ollama_provider(request: Request) -> ContentProvider:
+    """Retrieve the active content-analysis provider for the selected engine."""
     return request.app.state.ollama_provider
 
 
-def get_guardian_provider(request: Request) -> GuardianProvider:
-    """Retrieve Guardian provider from app.state."""
+def get_guardian_provider(request: Request) -> GuardianLike:
+    """Retrieve the active guardian provider for the selected engine."""
     return request.app.state.guardian_provider
 
 

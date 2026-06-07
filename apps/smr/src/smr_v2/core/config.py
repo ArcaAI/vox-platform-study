@@ -17,7 +17,7 @@ class OllamaConfig(BaseSettings):
 
     enabled: bool = False
     base_url: str = "http://localhost:11434"
-    default_model: str = "qwen3.5:2b"
+    default_model: str = "google/gemma-4-e4b"
     timeout_s: int = 300
     max_concurrent: int = 4
     queue_backoff_s: float = 2.0
@@ -33,7 +33,7 @@ class AzureOpenAIConfig(BaseSettings):
     endpoint: str = ""
     api_version: str = "2024-12-01-preview"
     deployment_name: str = ""
-    default_model: str = "gpt-4"
+    default_model: str = "gpt-5-mini"
     timeout_s: int = 120
     max_concurrent: int = 10
     tpm_limit: int = 80_000
@@ -49,7 +49,7 @@ class BedrockConfig(BaseSettings):
 
     enabled: bool = False
     region: str = "us-east-1"
-    default_model: str = "anthropic.claude-3-haiku-20240307-v1:0"
+    default_model: str = "anthropic.claude-3-5-haiku-20241022-v1:0"
     timeout_s: int = 120
     max_concurrent: int = 10
     max_pool_connections: int = 150
@@ -68,7 +68,7 @@ class OpenAICompatConfig(BaseSettings):
     enabled: bool = False
     base_url: str = "http://localhost:1234/v1"
     api_key: SecretStr = SecretStr("not-needed")
-    default_model: str = "local-model"
+    default_model: str = "google/gemma-4-e4b"
     timeout_s: int = 300
     max_concurrent: int = 4
     organization: str | None = None

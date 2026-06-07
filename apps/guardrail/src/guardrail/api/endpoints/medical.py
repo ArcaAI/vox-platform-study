@@ -165,12 +165,14 @@ async def get_medical_validation_config(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     """Get current medical validation configuration."""
+    engine = settings.engine
     return {
-        "guardian_enabled": settings.ollama.guardian_enabled,
-        "guardian_model": settings.ollama.guardian_model,
-        "min_confidence": settings.ollama.guardian_min_confidence,
-        "temperature": settings.ollama.guardian_temperature,
-        "max_tokens": settings.ollama.guardian_max_tokens,
+        "provider": settings.provider,
+        "guardian_enabled": engine.guardian_enabled,
+        "guardian_model": engine.guardian_model,
+        "min_confidence": engine.guardian_min_confidence,
+        "temperature": engine.guardian_temperature,
+        "max_tokens": engine.guardian_max_tokens,
     }
 
 

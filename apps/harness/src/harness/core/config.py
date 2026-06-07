@@ -27,33 +27,40 @@ class TemporalConfig(BaseSettings):
     connect_timeout_s: float = 5.0
 
 
-class GraniteGuardConfig(BaseSettings):
-    """IBM Granite Guardian content-safety classifier, served locally via Ollama.
+_SAFETY_PROVIDERS = ("lm-studio", "ollama", "azure", "bedrock")
 
-    The Phase-2 safety sensor screens the generated note through Granite Guardian
-    over Ollama's **native** API (``base_url`` is the Ollama root, NOT the
-    OpenAI-compatible ``/v1`` path). ``harm_criteria`` is the Bring-Your-Own-Criteria
-    (BYOC) list of risk dimensions the guardian evaluates; ``no_think`` runs the
-    classifier without an explicit reasoning pass for fast, deterministic verdicts.
 
-    Model tag note (recorded 2026-06-07): IBM Granite Guardian **4.1 8B** has **no
-    official** ``ibm/`` Ollama tag yet (``ibm/granite-guardian-4.1:8b`` →
-    HTTP 404 on registry.ollama.ai). The only pullable 4.1 build is a fresh,
-    low-trust community tag ``elishabjm/granite-guardian-4.1:8b-q4_k_m`` (~5.1 GB).
-    The default below is therefore the **official, stable** ``ibm/granite3.3-guardian:8b``
-    (same Guardian family/criteria-block API, reproducible). Override via
-    ``HARNESS_GRANITE_MODEL`` to use the 4.1 community build now, or switch the
-    default once IBM publishes an official 4.1 Ollama tag.
+class SafetyGuardConfig(BaseSettings):
+    """IBM Granite Guardian content-safety classifier over a selectable engine.
+
+    The Phase-2 safety sensor screens the generated note through Granite Guardian.
+    The **default** engine is **LM Studio** — an OpenAI-compatible endpoint: the
+    safety client posts to ``{base_url}/chat/completions`` (``base_url`` already
+    includes the ``/v1`` path) and reads ``choices[0].message.content``. ``provider``
+    switches the engine: ``lm-studio`` (default) | ``ollama`` (native ``/api/chat``)
+    | ``azure`` | ``bedrock`` — the last two require a guardian-capable model hosted
+    on that engine.
+
+    ``harm_criteria`` is the Bring-Your-Own-Criteria (BYOC) list of risk dimensions
+    the guardian evaluates one-per-call via the canonical IBM 4.1 ``<guardian>``
+    block; ``no_think`` runs the classifier without an explicit reasoning pass for
+    fast, deterministic ``<score>yes/no</score>`` verdicts.
+
+    The default ``model`` slug is ``granite-guardian-4.1-8b``; operators load the
+    matching build in their engine (e.g. ``lmstudio-community/granite-guardian-4.1-8b-GGUF``,
+    resolving to the ``granite-guardian-4.1-8b`` id) or override via
+    ``HARNESS_SAFETY_MODEL``.
     """
 
-    model_config = SettingsConfigDict(env_prefix="HARNESS_GRANITE_")
+    model_config = SettingsConfigDict(env_prefix="HARNESS_SAFETY_")
 
     enabled: bool = True
-    # Ollama native API root (the safety client posts to ``{base_url}/api/chat``).
-    base_url: str = "http://localhost:11434"
-    # See the class docstring re: the 4.1 tag situation — this is the official,
-    # pullable baseline; operators override to the 4.1 build via env.
-    model: str = "ibm/granite3.3-guardian:8b"
+    # Engine selector: lm-studio (default, OpenAI-compatible) | ollama | azure | bedrock.
+    provider: str = "lm-studio"
+    # LM Studio OpenAI-compatible root (already includes ``/v1``). For the ``ollama``
+    # provider, override to the Ollama native root, e.g. ``http://localhost:11434``.
+    base_url: str = "http://localhost:1234/v1"
+    model: str = "granite-guardian-4.1-8b"
     # Guard classifier in no-think mode (fast, deterministic yes/no per criterion).
     no_think: bool = True
     timeout_s: float = 60.0
@@ -69,6 +76,13 @@ class GraniteGuardConfig(BaseSettings):
             "unethical_behavior",
         ]
     )
+
+    @field_validator("provider")
+    @classmethod
+    def _validate_provider(cls, v: str) -> str:
+        if v not in _SAFETY_PROVIDERS:
+            raise ValueError(f"provider must be one of {list(_SAFETY_PROVIDERS)}")
+        return v
 
 
 class PhiConfig(BaseSettings):
@@ -164,7 +178,7 @@ class Settings(BaseSettings):
     # Sub-configs (loaded from their own env prefixes)
     temporal: TemporalConfig = Field(default_factory=TemporalConfig)
     # Phase-2 guardrails (TASK-330): Granite Guardian safety + fail-closed PHI.
-    granite: GraniteGuardConfig = Field(default_factory=GraniteGuardConfig)
+    safety: SafetyGuardConfig = Field(default_factory=SafetyGuardConfig)
     phi: PhiConfig = Field(default_factory=PhiConfig)
 
     @field_validator("log_level")

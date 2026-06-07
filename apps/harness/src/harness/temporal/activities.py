@@ -117,7 +117,7 @@ def _build_runtime_judge() -> JudgeClient:
 
 
 def _granite_client(settings: Settings) -> GraniteGuardianClient:
-    return GraniteGuardianClient(settings.granite)
+    return GraniteGuardianClient(settings.safety)
 
 
 # ---------------------------------------------------------------------------

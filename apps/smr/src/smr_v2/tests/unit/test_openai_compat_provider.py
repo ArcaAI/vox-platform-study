@@ -79,7 +79,7 @@ class TestOpenAICompatConfig:
         cfg = OpenAICompatConfig()
         assert cfg.enabled is False
         assert cfg.base_url == "http://localhost:1234/v1"
-        assert cfg.default_model == "local-model"
+        assert cfg.default_model == "google/gemma-4-e4b"
         assert cfg.timeout_s == 300
         assert cfg.max_concurrent == 4
         assert cfg.organization is None

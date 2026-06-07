@@ -36,7 +36,7 @@ class TestOllamaConfig:
         cfg = OllamaConfig()
         assert cfg.enabled is False
         assert cfg.base_url == "http://localhost:11434"
-        assert cfg.default_model == "qwen3.5:2b"
+        assert cfg.default_model == "google/gemma-4-e4b"
         assert cfg.timeout_s == 300
         assert cfg.max_concurrent == 4
 
@@ -61,7 +61,7 @@ class TestAzureOpenAIConfig:
         assert cfg.enabled is False
         assert cfg.api_key.get_secret_value() == ""
         assert cfg.endpoint == ""
-        assert cfg.default_model == "gpt-4"
+        assert cfg.default_model == "gpt-5-mini"
         assert cfg.tpm_limit == 80_000
         assert cfg.rpm_limit == 480
         assert cfg.adaptive_limits is True

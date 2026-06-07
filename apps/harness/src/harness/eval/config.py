@@ -7,6 +7,8 @@ hardcoded. The judge is **model-agnostic** — pick the provider via
 
 * ``openai_compat`` (default, priority) — a small ≤20B judge on an LM Studio /
   vLLM / any OpenAI-compatible local endpoint (``HARNESS_JUDGE_OPENAI_COMPAT_*``).
+* ``ollama`` — Ollama via its OpenAI-compatible ``/v1`` (parity option; reuses the
+  ``HARNESS_JUDGE_OPENAI_COMPAT_*`` config — point ``base_url`` at ``:11434/v1``).
 * ``azure`` — a large judge via Azure OpenAI (``HARNESS_JUDGE_AZURE_*``).
 * ``bedrock`` — a large judge via AWS Bedrock (``HARNESS_JUDGE_BEDROCK_*``).
 """
@@ -24,6 +26,7 @@ class JudgeProvider(StrEnum):
     """Selects which backend serves the LLM-as-judge."""
 
     OPENAI_COMPAT = "openai_compat"  # LM Studio / vLLM / any OpenAI-compatible server
+    OLLAMA = "ollama"  # Ollama via its OpenAI-compatible ``/v1`` (parity option)
     AZURE = "azure"
     BEDROCK = "bedrock"
 

@@ -267,7 +267,8 @@ def build_judge_client(config: JudgeConfig | None = None) -> JudgeClient:
         config = get_judge_config()
 
     provider = config.provider
-    if provider == JudgeProvider.OPENAI_COMPAT:
+    # Ollama exposes an OpenAI-compatible ``/v1`` — it shares the openai_compat client.
+    if provider in (JudgeProvider.OPENAI_COMPAT, JudgeProvider.OLLAMA):
         if not config.openai_compat.base_url:
             raise ValueError("openai_compat judge requires HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL")
         return OpenAICompatJudgeClient(config)

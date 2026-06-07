@@ -362,12 +362,12 @@ A single internal abstraction (`generate` / `generate_stream`) routes per-reques
 
 | Tier            | Provider              | Status      | Registry key                     | Typical models                                      | Implementation                                                                            |
 | --------------- | --------------------- | ----------- | -------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **Self-hosted** | **LM Studio**         | ✓ current (default) | `lm-studio` / `openai_compat`    | `lmstudio-community/gemma-4-E4B-it-QAT-GGUF` (default), `qwen3.5-0.8b` | OpenAI-compatible local endpoint; default local LLM engine                  |
+| **Self-hosted** | **LM Studio**         | ✓ current (default) | `lm-studio` / `openai_compat`    | `google/gemma-4-e4b` (default), `qwen3.5-0.8b` | OpenAI-compatible local endpoint; default local LLM engine                  |
 | Self-hosted     | **Ollama**            | ✓ current (optional) | `ollama`                         | `qwen3.5:2b`, `granite4:latest` (tests)             | httpx + NDJSON streaming via `/api/generate`; built on llama.cpp; optional/lower-priority |
 | Self-hosted     | **OpenAI-Compatible** | ✓ current   | `openai_compat`                  | vLLM, TGI, Groq-self-host, Together-self-host       | Any `/v1/chat/completions` endpoint                                                       |
 | Self-hosted     | **llama.cpp**         | _(planned)_ | `openai_compat` (`llama-server`) | Any gguf-quantized open-weights LLM                 | Primary direct self-host engine; OpenAI-compatible HTTP; CPU / CUDA / Metal               |
-| **Managed**     | **Azure OpenAI**      | ✓ current   | `azure-openai` / `azure`         | `gpt-4`, `gpt-4o-mini`, `gpt-4-turbo`               | `AsyncAzureOpenAI` from `openai` SDK; API version `2024-12-01-preview`                    |
-| Managed         | **AWS Bedrock**       | ✓ current   | `bedrock`                        | `anthropic.claude-3-haiku-20240307-v1:0` and family | boto3 `converse` / `converse_stream` via `asyncio.to_thread`; supports Bedrock Guardrails |
+| **Managed**     | **Azure OpenAI**      | ✓ current   | `azure-openai` / `azure`         | `gpt-5-mini` (default), `gpt-4o-mini`               | `AsyncAzureOpenAI` from `openai` SDK; API version `2024-12-01-preview`                    |
+| Managed         | **AWS Bedrock**       | ✓ current   | `bedrock`                        | `anthropic.claude-3-5-haiku-20241022-v1:0` and family | boto3 `converse` / `converse_stream` via `asyncio.to_thread`; supports Bedrock Guardrails |
 
 **Not implemented:** Gemini, native OpenAI (non-Azure). The legacy v1 README mentions these; they are not in the v2 source.
 

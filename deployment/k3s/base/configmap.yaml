@@ -50,15 +50,15 @@ data:
   HUGGINGFACE_CACHE_DIR: "/models/hf-cache"
   AZURE_SPEECH_REGION: "eastus"
 
-  # -- SMR V2 --
-  SMR_V2_OLLAMA_ENABLED: "true"
-  SMR_V2_OLLAMA_BASE_URL: "http://hope-ollama:11434"
-  SMR_V2_OLLAMA_DEFAULT_MODEL: "granite4:latest"
-  SMR_V2_OLLAMA_TIMEOUT_S: "300"
-  SMR_V2_OPENAI_COMPAT_ENABLED: "false"
-  SMR_V2_OPENAI_COMPAT_BASE_URL: "http://localhost:1234/v1"
-  SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL: "qwen3.5-4b"
+  # -- SMR V2 (LM Studio is the default local engine; Ollama is optional) --
+  SMR_V2_OPENAI_COMPAT_ENABLED: "true"
+  SMR_V2_OPENAI_COMPAT_BASE_URL: "http://hope-lmstudio:1234/v1"
+  SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL: "google/gemma-4-e4b"
   SMR_V2_OPENAI_COMPAT_TIMEOUT_S: "300"
+  SMR_V2_OLLAMA_ENABLED: "false"
+  SMR_V2_OLLAMA_BASE_URL: "http://hope-ollama:11434"
+  SMR_V2_OLLAMA_DEFAULT_MODEL: "google/gemma-4-e4b"
+  SMR_V2_OLLAMA_TIMEOUT_S: "300"
   SMR_V2_GUARDRAIL_ENABLED: "false"
   SMR_V2_EXTERNAL_GUARDRAIL_ENABLED: "true"
   SMR_V2_EXTERNAL_GUARDRAIL_BASE_URL: "http://hope-guardrail:8863"
@@ -68,10 +68,26 @@ data:
   SMR_V2_EXTERNAL_GUARDRAIL_INCLUDE_REASONING: "false"
   SMR_V2_EXTERNAL_GUARDRAIL_SERVICE_TOKEN: ""
 
-  # -- Guardrail --
+  # -- Guardrail (LM Studio default via Granite Guardian; Ollama optional) --
+  # NOTE: requires an in-cluster LM Studio (or any OpenAI-compatible server)
+  # serving granite-guardian-4.1-8b reachable at the base URL below.
   GUARDRAIL_V2_LOG_LEVEL: "info"
   GUARDRAIL_V2_METRICS_ENABLED: "false"
-  GUARDRAIL_OLLAMA_ENABLED: "true"
+  GUARDRAIL_V2_PROVIDER: "lm-studio"
+  GUARDRAIL_OPENAI_COMPAT_ENABLED: "true"
+  GUARDRAIL_OPENAI_COMPAT_BASE_URL: "http://hope-lmstudio:1234/v1"
+  GUARDRAIL_OPENAI_COMPAT_API_KEY: "lm-studio"
+  GUARDRAIL_OPENAI_COMPAT_GUARDRAIL_MODEL: "granite-guardian-4.1-8b"
+  GUARDRAIL_OPENAI_COMPAT_CONTENT_SAFETY_MODEL: "granite-guardian-4.1-8b"
+  GUARDRAIL_OPENAI_COMPAT_PII_DETECTION_MODEL: "granite-guardian-4.1-8b"
+  GUARDRAIL_OPENAI_COMPAT_PROMPT_INJECTION_MODEL: "granite-guardian-4.1-8b"
+  GUARDRAIL_OPENAI_COMPAT_COMPREHENSIVE_MODEL: "granite-guardian-4.1-8b"
+  GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MODEL: "granite-guardian-4.1-8b"
+  GUARDRAIL_OPENAI_COMPAT_GUARDIAN_ENABLED: "true"
+  GUARDRAIL_OPENAI_COMPAT_TIMEOUT_S: "60"
+  GUARDRAIL_OPENAI_COMPAT_MAX_CONCURRENT: "4"
+  # Optional Ollama engine (set GUARDRAIL_V2_PROVIDER=ollama to use)
+  GUARDRAIL_OLLAMA_ENABLED: "false"
   GUARDRAIL_OLLAMA_BASE_URL: "http://hope-ollama:11434"
   GUARDRAIL_OLLAMA_GUARDRAIL_MODEL: "gemma3:latest"
   GUARDRAIL_OLLAMA_CONTENT_SAFETY_MODEL: "gemma3:latest"
