@@ -165,6 +165,16 @@ export class HarnessDraftRequest {
   @IsObject()
   citationsMap?: Record<string, unknown>;
 
+  @ApiPropertyOptional({ description: 'Guardrail / inferential-sensor decision detail (safety, groundedness, PHI)' })
+  @IsOptional()
+  @IsObject()
+  guardrailDecisions?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ description: 'Whether inferential assurance was reduced (judge/safety backend degraded)' })
+  @IsOptional()
+  @IsBoolean()
+  reducedAssurance?: boolean;
+
   @ApiPropertyOptional({ description: 'Entity-faithfulness sensor score column' })
   @IsOptional()
   @IsNumber()

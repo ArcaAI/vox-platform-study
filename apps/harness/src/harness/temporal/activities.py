@@ -13,11 +13,25 @@ runtime (allowed in activities) and construct a client per call.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
+from typing import Any
 
 from temporalio import activity
 
-from harness.core.config import Settings, get_settings
+from harness.core.config import Settings, get_runtime_judge_config, get_settings
+from harness.eval.judge.base import JudgeClient
+from harness.eval.judge.providers import build_judge_client
+from harness.sensors.base import SensorContext, SensorResult
+from harness.sensors.config import SensorThresholds
+from harness.sensors.inferential import (
+    GROUNDEDNESS_NAME,
+    SAFETY_NAME,
+    GraniteGuardianClient,
+    GroundednessSensor,
+    SafetySensor,
+)
+from harness.sensors.inferential.base import degraded_result
 from harness.services.api_client import (
     ApiClient,
     AssembleResponse,
@@ -35,9 +49,11 @@ from harness.temporal.models import (
     EscalateResult,
     ExtractEntitiesInput,
     GenerateInput,
+    InferentialRunOutput,
     PersistDraftInput,
     PersistEntitiesInput,
     RecordGateInput,
+    RunInferentialSensorsInput,
     RunSensorsInput,
 )
 
@@ -89,6 +105,19 @@ def _api_client(settings: Settings) -> ApiClient:
         service_token=settings.service_token.get_secret_value(),
         timeout=settings.api_timeout_s,
     )
+
+
+def _build_runtime_judge() -> JudgeClient:
+    """Build the calibrated runtime judge (reuses the eval ``HARNESS_JUDGE_*`` config).
+
+    Factored out (like the other client factories) so the inferential activity can
+    build the judge once and the tests can monkeypatch it with a stub.
+    """
+    return build_judge_client(get_runtime_judge_config())
+
+
+def _granite_client(settings: Settings) -> GraniteGuardianClient:
+    return GraniteGuardianClient(settings.granite)
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +190,102 @@ async def run_sensors(payload: RunSensorsInput) -> SensorRunOutput:
     )
 
 
+def _groundedness_decision(result: SensorResult) -> dict[str, Any]:
+    """Map the groundedness result to its guardrail-decision entry (regen-fixable)."""
+    if result.degraded:
+        return {"decision": "DEGRADED", "degraded": True, "reason": result.details.get("reason")}
+    details = result.details
+    return {
+        # Severity class this sensor's failure maps to in the aggregator; the FINAL
+        # gate verdict still depends on the regen budget.
+        "decision": "PASS" if result.passed else "REGEN",
+        "passed": result.passed,
+        "score": round(result.score, 6),
+        "ragTriadScore": details.get("rag_triad_score"),
+        "ragTriad": details.get("rag_triad"),
+        "sections": list(details.get("sections", [])),
+        "ungrounded": list(details.get("ungrounded", [])),
+        "claimsFlagged": list(result.claims_flagged),
+    }
+
+
+def _safety_decision(result: SensorResult) -> dict[str, Any]:
+    """Map the safety result to its guardrail-decision entry (highest-harm FLAG)."""
+    if result.degraded:
+        return {"decision": "DEGRADED", "degraded": True, "reason": result.details.get("reason")}
+    details = result.details
+    return {
+        "decision": "PASS" if result.passed else "FLAG",
+        "passed": result.passed,
+        "score": round(result.score, 6),
+        "unsafe": bool(details.get("unsafe", False)),
+        "flaggedDimensions": list(details.get("flagged_dimensions", [])),
+        "dimensions": dict(details.get("dimensions", {})),
+        "model": details.get("model"),
+    }
+
+
+def _assemble_inferential_output(results: list[SensorResult]) -> InferentialRunOutput:
+    """Fold the inferential sensor results into the activity's typed output."""
+    by_name = {r.name: r for r in results}
+    guardrail_decisions: dict[str, Any] = {}
+    rag_triad_score: float | None = None
+
+    grounded = by_name.get(GROUNDEDNESS_NAME)
+    if grounded is not None:
+        guardrail_decisions[GROUNDEDNESS_NAME] = _groundedness_decision(grounded)
+        if not grounded.degraded:
+            rag_triad_score = grounded.details.get("rag_triad_score")
+
+    safety = by_name.get(SAFETY_NAME)
+    if safety is not None:
+        guardrail_decisions[SAFETY_NAME] = _safety_decision(safety)
+
+    return InferentialRunOutput(
+        results=results,
+        guardrail_decisions=guardrail_decisions,
+        rag_triad_score=rag_triad_score,
+        degraded=any(r.degraded for r in results),
+    )
+
+
+@activity.defn
+async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> InferentialRunOutput:
+    """Run the costly inferential sensors (groundedness + safety) once, concurrently.
+
+    Builds the calibrated judge + the Granite Guardian client a single time and fans
+    them out via ``asyncio.gather`` (model calls live here, never in the workflow).
+    Backend failures degrade rather than raise into the durable loop: each sensor
+    self-degrades on a runtime backend outage, and an un-buildable judge degrades the
+    whole pass. Returns the raw results + a guardrailDecisions map + ragTriadScore.
+    """
+    settings = get_settings()
+    ctx = SensorContext(
+        note_text=payload.note_text,
+        transcript_text=payload.transcript_text,
+        citations_map=payload.citations_map,
+    )
+
+    try:
+        judge = _build_runtime_judge()
+    except Exception as exc:  # noqa: BLE001 — un-buildable judge degrades, never raises
+        reason = f"inferential judge unavailable: {exc}"
+        return _assemble_inferential_output(
+            [degraded_result(GROUNDEDNESS_NAME, reason), degraded_result(SAFETY_NAME, reason)]
+        )
+
+    threshold = SensorThresholds().groundedness_threshold
+    groundedness = GroundednessSensor(threshold=threshold)
+    safety = SafetySensor(_granite_client(settings))
+    results = list(
+        await asyncio.gather(
+            groundedness.arun(ctx, judge=judge),
+            safety.arun(ctx, judge=judge),
+        )
+    )
+    return _assemble_inferential_output(results)
+
+
 @activity.defn
 async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
     """Persist the generated draft (ContextItem + SummaryMeta + PENDING_REVIEW)."""
@@ -175,6 +300,8 @@ async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
         model_version=payload.model_version,
         sensor_scores=payload.sensor_scores,
         citations_map=payload.citations_map,
+        guardrail_decisions=payload.guardrail_decisions,
+        reduced_assurance=payload.reduced_assurance,
         entity_faithfulness_score=payload.entity_faithfulness_score,
         coverage_score=payload.coverage_score,
         rag_triad_score=payload.rag_triad_score,
@@ -224,6 +351,7 @@ DOCUMENT_ACTIVITIES = [
     assemble_prompt,
     generate,
     run_sensors,
+    run_inferential_sensors,
     persist_draft,
     record_gate_decision,
     escalate_gate,

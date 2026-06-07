@@ -27,6 +27,69 @@ class TemporalConfig(BaseSettings):
     connect_timeout_s: float = 5.0
 
 
+class GraniteGuardConfig(BaseSettings):
+    """IBM Granite Guardian content-safety classifier, served locally via Ollama.
+
+    The Phase-2 safety sensor screens the generated note through Granite Guardian
+    over Ollama's **native** API (``base_url`` is the Ollama root, NOT the
+    OpenAI-compatible ``/v1`` path). ``harm_criteria`` is the Bring-Your-Own-Criteria
+    (BYOC) list of risk dimensions the guardian evaluates; ``no_think`` runs the
+    classifier without an explicit reasoning pass for fast, deterministic verdicts.
+
+    Model tag note (recorded 2026-06-07): IBM Granite Guardian **4.1 8B** has **no
+    official** ``ibm/`` Ollama tag yet (``ibm/granite-guardian-4.1:8b`` →
+    HTTP 404 on registry.ollama.ai). The only pullable 4.1 build is a fresh,
+    low-trust community tag ``elishabjm/granite-guardian-4.1:8b-q4_k_m`` (~5.1 GB).
+    The default below is therefore the **official, stable** ``ibm/granite3.3-guardian:8b``
+    (same Guardian family/criteria-block API, reproducible). Override via
+    ``HARNESS_GRANITE_MODEL`` to use the 4.1 community build now, or switch the
+    default once IBM publishes an official 4.1 Ollama tag.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="HARNESS_GRANITE_")
+
+    enabled: bool = True
+    # Ollama native API root (the safety client posts to ``{base_url}/api/chat``).
+    base_url: str = "http://localhost:11434"
+    # See the class docstring re: the 4.1 tag situation — this is the official,
+    # pullable baseline; operators override to the 4.1 build via env.
+    model: str = "ibm/granite3.3-guardian:8b"
+    # Guard classifier in no-think mode (fast, deterministic yes/no per criterion).
+    no_think: bool = True
+    timeout_s: float = 60.0
+    # BYOC risk dimensions screened on the generated note (env: JSON array).
+    harm_criteria: list[str] = Field(
+        default_factory=lambda: [
+            "harm",
+            "social_bias",
+            "jailbreak",
+            "violence",
+            "profanity",
+            "sexual_content",
+            "unethical_behavior",
+        ]
+    )
+
+
+class PhiConfig(BaseSettings):
+    """Pre-cloud-egress PHI redaction guard (Presidio + clinical NER), fail-closed.
+
+    ``fail_closed`` is the load-bearing default: if the redactor cannot *confirm*
+    PHI was removed (analyzer failure, missing model, etc.), egress to a cloud
+    provider must be **blocked**, never silently allowed. ``cloud_egress_providers``
+    is the allowlist of provider identifiers treated as cloud egress — i.e. the
+    providers for which the guard's ``ensure_safe_for_cloud(...)`` must verify
+    redaction before any data leaves the box. Local providers (LM Studio / Ollama /
+    the local SMR) are not egress and are not listed here.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="HARNESS_PHI_")
+
+    enabled: bool = True
+    fail_closed: bool = True
+    cloud_egress_providers: list[str] = Field(default_factory=lambda: ["azure", "bedrock"])
+
+
 class Settings(BaseSettings):
     """Root harness application settings."""
 
@@ -100,6 +163,9 @@ class Settings(BaseSettings):
 
     # Sub-configs (loaded from their own env prefixes)
     temporal: TemporalConfig = Field(default_factory=TemporalConfig)
+    # Phase-2 guardrails (TASK-330): Granite Guardian safety + fail-closed PHI.
+    granite: GraniteGuardConfig = Field(default_factory=GraniteGuardConfig)
+    phi: PhiConfig = Field(default_factory=PhiConfig)
 
     @field_validator("log_level")
     @classmethod
@@ -143,3 +209,16 @@ def get_settings() -> Settings:
     """Create a settings instance.  Not cached — call once at startup."""
     _load_dotenv_into_environ()
     return Settings()
+
+
+def get_runtime_judge_config():  # noqa: ANN201 — return type is eval.JudgeConfig (lazy import)
+    """Reuse the eval ``JudgeConfig`` (``HARNESS_JUDGE_*``) at harness runtime.
+
+    Phase 2's groundedness + reasoning judge is the **same** calibrated judge the
+    eval gate uses — it is NOT re-declared under a new prefix. Construct the client
+    with ``harness.eval.judge.providers.build_judge_client(get_runtime_judge_config())``.
+    Imported lazily so ``core.config`` keeps no module-level dependency on ``eval``.
+    """
+    from harness.eval.config import get_judge_config
+
+    return get_judge_config()

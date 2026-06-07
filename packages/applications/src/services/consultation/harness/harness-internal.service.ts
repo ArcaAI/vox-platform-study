@@ -180,7 +180,7 @@ export class HarnessInternalService {
         coverageScore: dto.coverageScore ?? null,
         ragTriadScore: dto.ragTriadScore ?? null,
         citationsMap: (dto.citationsMap ?? null) as never,
-        guardrailDecisions: (dto.sensorScores ?? null) as never,
+        guardrailDecisions: (dto.guardrailDecisions ?? null) as never,
         generatedAt: new Date(),
       });
       await this.summaryMetaRepository.create(summaryMeta);
@@ -205,7 +205,13 @@ export class HarnessInternalService {
         }
       }
 
-      // 5. WORM audit trail — GENERATE (provenance) + SENSOR_RUN (verdict).
+      // 5. WORM audit trail — GENERATE (provenance) + SENSOR_RUN (verdict, carrying
+      // both sensorScores and guardrailDecisions) + REDUCED_ASSURANCE when the
+      // inferential pass degraded (judge/safety backend unavailable).
+      const sensorScoresAudit = {
+        ...((dto.sensorScores ?? {}) as Record<string, unknown>),
+        guardrailDecisions: dto.guardrailDecisions ?? null,
+      };
       await this.harnessAuditService.append({
         tenantId,
         consultationId,
@@ -226,11 +232,26 @@ export class HarnessInternalService {
         modelVersion: dto.modelVersion ?? 'unknown',
         promptTemplateId: dto.promptTemplateId ?? null,
         promptVersion: dto.promptVersion ?? null,
-        sensorScores: (dto.sensorScores ?? {}) as never,
+        sensorScores: sensorScoresAudit as never,
         citations: (this.extractClaims(dto.citationsMap) ?? []) as never,
         gateDecision: dto.gateDecision ?? null,
         createdBy: userId,
       });
+      if (dto.reducedAssurance) {
+        await this.harnessAuditService.append({
+          tenantId,
+          consultationId,
+          action: HarnessAuditAction.REDUCED_ASSURANCE,
+          modelName: dto.modelName ?? 'unknown',
+          modelVersion: dto.modelVersion ?? 'unknown',
+          promptTemplateId: dto.promptTemplateId ?? null,
+          promptVersion: dto.promptVersion ?? null,
+          sensorScores: sensorScoresAudit as never,
+          citations: [],
+          gateDecision: dto.gateDecision ?? null,
+          createdBy: userId,
+        });
+      }
 
       this.logger.log({ message: 'Harness draft persisted', consultationId, contextItemId, gateDecision: dto.gateDecision });
       return { contextItemId };

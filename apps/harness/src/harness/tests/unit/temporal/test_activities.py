@@ -15,6 +15,7 @@ import pytest
 from temporalio.testing import ActivityEnvironment
 
 from harness.sensors.base import NEREntity
+from harness.sensors.inferential.granite_client import GraniteServiceError
 from harness.services.api_client import (
     AssembleResponse,
     DraftResponse,
@@ -31,6 +32,7 @@ from harness.temporal.models import (
     PersistDraftInput,
     PersistEntitiesInput,
     RecordGateInput,
+    RunInferentialSensorsInput,
     RunSensorsInput,
 )
 
@@ -72,6 +74,40 @@ class _FakeApi:
     async def record_gate_decision(self, consultation_id: str, **kw: Any) -> RecordGateResponse:
         self.calls["record_gate_decision"] = {"consultation_id": consultation_id, **kw}
         return RecordGateResponse(recorded=True)
+
+
+class _StubJudge:
+    """Deterministic judge stub: ``supported`` unless a marker hits the hypothesis."""
+
+    model = "stub-judge"
+
+    def __init__(self, *, unsupported_markers: tuple[str, ...] = ()) -> None:
+        self.calls: list[list[dict[str, str]]] = []
+        self._markers = unsupported_markers
+
+    async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> str:
+        self.calls.append(messages)
+        content = messages[-1]["content"].lower()
+        unsupported = any(marker in content for marker in self._markers)
+        return '{"supported": false}' if unsupported else '{"supported": true}'
+
+
+class _FakeGranite:
+    """Stand-in Granite client: canned per-dimension verdicts (or raises)."""
+
+    def __init__(
+        self, *, dimensions: dict[str, bool] | None = None, error: Exception | None = None
+    ) -> None:
+        self.model = "granite-fake"
+        self._dimensions = dimensions or {}
+        self._error = error
+        self.screened: list[str] = []
+
+    async def screen(self, text: str) -> dict[str, bool]:
+        self.screened.append(text)
+        if self._error is not None:
+            raise self._error
+        return dict(self._dimensions)
 
 
 @pytest.fixture
@@ -174,6 +210,33 @@ class TestApiActivities:
         assert call["sensor_scores"] == {"entity_faithfulness": 1.0}
 
     @pytest.mark.asyncio
+    async def test_persist_draft_forwards_guardrail_decisions_and_reduced_assurance(
+        self, env, monkeypatch
+    ):
+        fake = _FakeApi()
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+        guardrail = {
+            "groundedness": {"decision": "PASS"},
+            "safety": {"decision": "FLAG", "flaggedDimensions": ["violence"]},
+        }
+        await env.run(
+            activities.persist_draft,
+            PersistDraftInput(
+                consultation_id="c-1",
+                tenant_id="t-1",
+                content="DRAFT",
+                guardrail_decisions=guardrail,
+                reduced_assurance=True,
+                rag_triad_score=0.91,
+                gate_decision="FLAG",
+            ),
+        )
+        call = fake.calls["persist_draft"]
+        assert call["guardrail_decisions"] == guardrail
+        assert call["reduced_assurance"] is True
+        assert call["rag_triad_score"] == 0.91
+
+    @pytest.mark.asyncio
     async def test_record_gate_decision_forwards_attestation(self, env, monkeypatch):
         fake = _FakeApi()
         monkeypatch.setattr(activities, "_api_client", lambda s: fake)
@@ -238,3 +301,138 @@ class TestEscalateGate:
             EscalateInput(consultation_id="c-1", tenant_id="t-1", reason="gate_sla_breached"),
         )
         assert result.escalated is True
+
+
+def _infer_input(**kw: Any) -> RunInferentialSensorsInput:
+    base: dict[str, Any] = {
+        "note_text": "Patient stable; continue current plan.",
+        "transcript_text": "Patient has hypertension.",
+        "citations_map": {
+            "claims": [
+                {
+                    "id": "c-htn",
+                    "text": "hypertension",
+                    "section": "A",
+                    "evidence": [{"quote": "hypertension"}],
+                }
+            ]
+        },
+    }
+    base.update(kw)
+    return RunInferentialSensorsInput(**base)
+
+
+class TestRunInferentialSensors:
+    """Builds the judge + Granite client once, runs both sensors concurrently, and
+    folds the results into a guardrailDecisions map + ragTriadScore (degrade, never
+    raise, on backend failure)."""
+
+    @pytest.mark.asyncio
+    async def test_runs_both_sensors_and_assembles_guardrail_decisions(self, env, monkeypatch):
+        judge = _StubJudge()
+        granite = _FakeGranite(dimensions={"harm": False, "violence": False})
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: judge)
+        monkeypatch.setattr(activities, "_granite_client", lambda s: granite)
+
+        result = await env.run(activities.run_inferential_sensors, _infer_input())
+
+        assert {r.name for r in result.results} == {"groundedness", "safety"}
+        assert result.degraded is False
+        assert result.rag_triad_score == pytest.approx(1.0)
+        gd = result.guardrail_decisions
+        assert gd["groundedness"]["decision"] == "PASS"
+        assert gd["groundedness"]["passed"] is True
+        assert gd["groundedness"]["ragTriadScore"] == pytest.approx(1.0)
+        assert gd["safety"]["decision"] == "PASS"
+        assert gd["safety"]["dimensions"] == {"harm": False, "violence": False}
+        assert gd["safety"]["model"] == "granite-fake"
+        assert judge.calls, "groundedness must drive the judge per claim"
+        assert granite.screened == ["Patient stable; continue current plan."]
+
+    @pytest.mark.asyncio
+    async def test_unsafe_dimension_marks_safety_flag(self, env, monkeypatch):
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(
+            activities,
+            "_granite_client",
+            lambda s: _FakeGranite(dimensions={"harm": False, "violence": True}),
+        )
+
+        result = await env.run(
+            activities.run_inferential_sensors, _infer_input(citations_map={"claims": []})
+        )
+
+        gd = result.guardrail_decisions
+        assert gd["safety"]["decision"] == "FLAG"
+        assert gd["safety"]["unsafe"] is True
+        assert gd["safety"]["flaggedDimensions"] == ["violence"]
+        assert result.degraded is False
+
+    @pytest.mark.asyncio
+    async def test_ungrounded_claim_marks_groundedness_regen(self, env, monkeypatch):
+        judge = _StubJudge(unsupported_markers=("penicillin",))
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: judge)
+        monkeypatch.setattr(
+            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+        )
+
+        result = await env.run(
+            activities.run_inferential_sensors,
+            _infer_input(
+                citations_map={
+                    "claims": [
+                        {
+                            "id": "c-pen",
+                            "text": "penicillin allergy",
+                            "section": "P",
+                            "evidence": [],
+                        }
+                    ]
+                }
+            ),
+        )
+
+        gd = result.guardrail_decisions
+        assert gd["groundedness"]["decision"] == "REGEN"
+        assert gd["groundedness"]["passed"] is False
+        assert gd["groundedness"]["sections"] == ["P"]
+        assert gd["groundedness"]["ungrounded"] == ["c-pen"]
+
+    @pytest.mark.asyncio
+    async def test_granite_failure_degrades_safety_without_raising(self, env, monkeypatch):
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(
+            activities,
+            "_granite_client",
+            lambda s: _FakeGranite(error=GraniteServiceError("ollama offline")),
+        )
+
+        result = await env.run(
+            activities.run_inferential_sensors, _infer_input(citations_map={"claims": []})
+        )
+
+        assert result.degraded is True
+        gd = result.guardrail_decisions
+        assert gd["safety"]["decision"] == "DEGRADED"
+        assert gd["safety"]["degraded"] is True
+        # Groundedness was fine -> only the safety backend degraded.
+        assert gd["groundedness"]["decision"] == "PASS"
+
+    @pytest.mark.asyncio
+    async def test_judge_build_failure_degrades_whole_pass(self, env, monkeypatch):
+        def _boom() -> object:
+            raise RuntimeError("judge unbuildable")
+
+        monkeypatch.setattr(activities, "_build_runtime_judge", _boom)
+        monkeypatch.setattr(
+            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+        )
+
+        result = await env.run(
+            activities.run_inferential_sensors, _infer_input(citations_map={"claims": []})
+        )
+
+        assert result.degraded is True
+        assert result.rag_triad_score is None
+        assert result.guardrail_decisions["groundedness"]["decision"] == "DEGRADED"
+        assert result.guardrail_decisions["safety"]["decision"] == "DEGRADED"

@@ -6,17 +6,25 @@ Decision policy (deterministic; clinical-safety > automation, per TASK-330 D2/D4
   caller signalled a degraded run (``degraded=True``), or an ``expected`` sensor is
   missing from the results — always ``FLAG``. The harness never auto-PASSes on
   missing/degraded inputs; it forces human review instead.
-* **highest-harm failures** — a fabricated entity (``entity_faithfulness``) or a
-  numeric/dose mismatch (``numeric_dose``) — ``FLAG``. These errors are dangerous
-  and not safely auto-fixable, so they escalate to a clinician.
-* **regen-fixable failures** — invalid schema, omission, or a missing citation
-  (``schema_validity`` / ``coverage_omission`` / ``citation_presence``) — ``REGEN``
-  the implicated SOAP sections while regen budget remains; once the budget is
-  exhausted (``regens_remaining <= 0``) they escalate to ``FLAG``.
+* **highest-harm failures** — a fabricated entity (``entity_faithfulness``), a
+  numeric/dose mismatch (``numeric_dose``), or unsafe content (``safety``, the
+  inferential Granite-Guardian gate) — ``FLAG``. These errors are dangerous and
+  not safely auto-fixable, so they escalate to a clinician; unsafe content is
+  **never** auto-regenerated.
+* **regen-fixable failures** — invalid schema, omission, a missing citation, or
+  ungrounded claims (``schema_validity`` / ``coverage_omission`` /
+  ``citation_presence`` / ``groundedness``, the inferential entailment gate) —
+  ``REGEN`` the implicated SOAP sections while regen budget remains; once the
+  budget is exhausted (``regens_remaining <= 0``) they escalate to ``FLAG``.
 * otherwise — ``PASS``.
 
 The aggregator is pure: thresholds live on the sensors; the workflow owns the
-regen budget and passes ``regens_remaining`` / ``degraded`` in.
+regen budget and passes ``regens_remaining`` / ``degraded`` in. **Reduced
+assurance** (Phase 2): when an inferential backend is unavailable its result is
+``degraded`` — the *workflow* omits that inferential name from ``expected`` and
+excludes the degraded result so the gate proceeds on the computational verdict
+rather than a blanket FLAG (the omission is logged out-of-band via a
+``REDUCED_ASSURANCE`` WORM event); it is never a silent auto-PASS.
 """
 
 from __future__ import annotations
@@ -40,13 +48,20 @@ from harness.sensors.computational import (
 DEFAULT_SOAP_SECTIONS: tuple[str, ...] = ("S", "O", "A", "P")
 
 # Sensors whose failures are highest-harm -> escalate to a clinician (FLAG).
-HIGHEST_HARM_SENSORS: tuple[str, ...] = (entity_faithfulness.NAME, numeric_dose.NAME)
+# ``"safety"`` is the inferential Granite-Guardian gate (unsafe content is never
+# auto-regenerated). Inferential names are string literals (not imported) to keep
+# this module pure/dependency-light; the aggregator tests import the sensors' NAME
+# constants and assert membership here, guarding against drift.
+HIGHEST_HARM_SENSORS: tuple[str, ...] = (entity_faithfulness.NAME, numeric_dose.NAME, "safety")
 
 # Sensors whose failures are plausibly fixed by re-generating the note (REGEN).
+# ``"groundedness"`` is the inferential per-claim entailment gate (regen the
+# offending ``details["sections"]``, FLAG once the budget is exhausted).
 REGEN_FIXABLE_SENSORS: tuple[str, ...] = (
     schema_validity.NAME,
     coverage_omission.NAME,
     citation_presence.NAME,
+    "groundedness",
 )
 
 

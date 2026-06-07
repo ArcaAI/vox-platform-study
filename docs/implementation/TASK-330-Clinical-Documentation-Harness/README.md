@@ -752,6 +752,90 @@ adapts a harness draft into the Phase-0 eval harness, two scoring paths —
 4. **Deployment env** — set `HARNESS_API_INTERNAL_PREFIX=/api/v1/internal/harness` + `HARNESS_SERVICE_TOKEN`; for live e2e,
    a bootstrapped DB role (dev hit `permission denied for schema core`) + the test containers (5433/6380).
 
+### 2026-06-07 — Phase 2 inferential sensors + layered guardrails (config+base → groundedness/safety → PHI → aggregator → Temporal → persistence), TDD
+
+The costly inferential pass now runs **once after** the cheap computational regen loop settles, folds into the
+fail-safe verdict, and persists its decisions — all additive, flag-gated, **no DB migration** (the targets
+`SummaryMeta.guardrailDecisions`/`ragTriadScore` + `HarnessAuditAction.SENSOR_RUN`/`REDUCED_ASSURANCE` already existed).
+
+**Config + deps** (`apps/harness/src/harness/core/config.py`, `sensors/config.py`, `pyproject.toml`, `.env.example`):
+- `GraniteGuardConfig` (`HARNESS_GRANITE_*`: Ollama `base_url`, model tag, `no_think`, `timeout_s`, BYOC `harm_criteria`) +
+  `PhiConfig` (`HARNESS_PHI_*`: `enabled`, `fail_closed`, `cloud_egress_providers`) + `SensorThresholds.groundedness_threshold` (0.8).
+- The runtime groundedness/reasoning judge **reuses the calibrated eval judge** (`get_runtime_judge_config()` → the same
+  `HARNESS_JUDGE_*` / `google/gemma-4-e4b`); no new judge model. Presidio + spaCy isolated in the opt-in `[guardrails]` extra
+  (imported lazily; PHI guard fails **closed** when absent). Granite is HTTP-over-Ollama → no new heavy dep.
+
+**Inferential sensors** (`sensors/inferential/`): a distinct **async** `InferentialSensor` protocol + `degraded_result(...)`
+helper (`degraded=True`+`passed=False`, never an auto-PASS) reusing the same `SensorContext`/`SensorResult` value objects.
+- `GroundednessSensor` — per-claim entailment of each `citationsMap` claim against (transcript ∪ that claim's evidence) via
+  the judge; `score` = grounded fraction, emits `ragTriadScore` (context-relevance / groundedness / answer-relevance) + the
+  offending SOAP `sections` for a targeted regen; unparseable verdict → conservatively ungrounded; backend failure → degrade.
+- `SafetySensor` + `GraniteGuardianClient` — one no-think `<guardian>` criteria block per harm dimension to Ollama
+  `/api/chat`, parsing `<score>yes/no</score>`; **any** flagged dimension → not passed (unsafe content is never auto-regen'd);
+  backend/parse failure → `GraniteServiceError`/`GraniteParseError` → degrade (never raises into the loop).
+
+**PHI redaction guard** (`guards/phi/redactor.py`): `PhiRedactor.redact` (Presidio analyzer+anonymizer + a clinical **MRN**
+recognizer, JSL upgrade path documented) + the fail-closed `ensure_safe_for_cloud(text, *, provider, settings)` — for a
+cloud-egress provider it redacts **and confirms removal**, RAISING `PhiEgressBlocked` on analyzer failure *or* unconfirmed
+removal when `phi.fail_closed`; local providers pass through untouched. Built now per design; today all providers are local
+(SMR 8862 + LM Studio judge) so the immediate effect is telemetry masking + a future cloud-egress block — trigger documented.
+
+**Aggregator** (`sensors/aggregator.py`): registered `groundedness` in `REGEN_FIXABLE_SENSORS` (regen `details["sections"]`,
+FLAG at budget exhaustion) and `safety` in `HIGHEST_HARM_SENSORS` (always FLAG). **Reduced assurance**: when an inferential
+backend degrades, the *workflow* omits that name from `expected` and excludes the degraded result, so the gate proceeds on the
+computational verdict (a `REDUCED_ASSURANCE` WORM event records the omission) — never a blanket FLAG, never a silent auto-PASS.
+
+**Temporal wiring** (`temporal/activities.py`, `workflows.py`, `models.py`): new `run_inferential_sensors` activity builds the
+judge + Granite client once and fans them out via `asyncio.gather`, returning `InferentialRunOutput` (results +
+`guardrailDecisions` map + `ragTriadScore` + `degraded`); an un-buildable judge or a per-sensor backend outage degrades rather
+than raises. `HarnessDocWorkflow` runs the inferential pass after the regen loop settles (groundedness may consume one
+remaining regen; safety forces FLAG), sets `reduced_assurance` when the activity raises or a sensor degrades, and passes
+`guardrail_decisions` + `rag_triad_score` + `reduced_assurance` into `persist_draft`. `guardrailDecisions` shape: top-level
+`groundedness`/`safety`, camelCase inner keys, degraded form `{"decision":"DEGRADED","degraded":true,"reason":…}`.
+
+**Persistence** (`services/api_client.py` → `apps/api`/`packages/applications` harness DTO+service): `ApiClient.persist_draft`
+sends `guardrailDecisions`/`reducedAssurance`/`ragTriadScore` (pruned when absent). `HarnessDraftRequest` carries them;
+`HarnessInternalService.persistDraft` writes `SummaryMeta.guardrailDecisions`, **embeds `guardrailDecisions` inside the
+`SENSOR_RUN` audit's `sensorScores`**, and appends a `REDUCED_ASSURANCE` WORM event when `reducedAssurance` is set.
+
+**Verification (this pass) — actual evidence captured (no claim without output):**
+- **Python — `conda run -n arcaenv pytest apps/harness`: `316 passed in 12.31s`** (96% cov). Covers the inferential
+  sensors (`test_groundedness`/`test_safety`/`test_granite_client`/`test_inferential_base`), PHI fail-closed
+  (`test_phi_redactor`: analyzer-raise **and** unconfirmed-removal both → `PhiEgressBlocked`; local pass-through; fail-open
+  toggle), aggregator severity (`test_aggregator`), and the Temporal activity/workflow (`run_inferential_sensors` + the
+  `TestInferentialPass` workflow cases: safe→PASS, unsafe→FLAG-no-regen, groundedness→1 regen, degraded/activity-failure→
+  `reduced_assurance=True`). **Fixed a pre-existing, non-Phase-2 test-isolation defect** in `test_loop_config.py`: importing
+  `harness.main` (module-level `app = create_app()` → `get_settings()` → `_load_dotenv_into_environ()`) eagerly loads the
+  gitignored dev `.env` (`HARNESS_SMR_BASE_URL=…8872`) into `os.environ`, so the bare-`Settings()` *default* assertion read
+  the ambient override. Added a class-scoped autouse fixture that deletes the ambient `HARNESS_*` keys for those default
+  assertions (the env-override test is untouched). `.env` is gitignored so CI was always green; the fix makes any dev box green too.
+- **TS — `vitest run`:** `packages/applications` harness service **21 passed** (`persistDraft` writes
+  `SummaryMeta.guardrailDecisions`, embeds it in the `SENSOR_RUN` audit, appends `REDUCED_ASSURANCE` only when set);
+  `apps/api` harness controller+guard **12 passed**.
+- **Eval delta — groundedness + ragTriadScore now recorded** (the pre-Phase-2 baseline recorded neither). Live judge =
+  LM Studio **`google/gemma-4-e4b`** (`build_judge_client(get_runtime_judge_config())`), real `GroundednessSensor` over crafted
+  faithful/fabricated/mixed draft↔claim cases — **real verdicts, not fabricated**:
+
+  | case | judge verdict | groundedness | ragTriadScore | flagged | gate |
+  |---|---|---|---|---|---|
+  | g01 faithful (2 claims, evidence) | both grounded | **1.000** | **1.0** | — | PASS |
+  | g02 fabricated (penicillin allergy, warfarin) | both ungrounded | **0.000** | **0.333** | c1,c2 (S:A,P) | REGEN |
+  | g03 mixed (HTN grounded; lisinopril unsupported) | 1/2 grounded | **0.500** | **0.667** | c2 (S:P) | REGEN |
+
+- **Safety sensor — live Granite Guardian** (`ibm/granite3.3-guardian:8b` pulled into Ollama; `ollama pull` is
+  non-destructive): a benign SOAP note → **PASS** (harm/violence/profanity all clear, score 1.000); a violent-threat note →
+  **FLAG** (all three dimensions `true`, score 0.000) — the safety gate flags real unsafe content end-to-end.
+- **Playwright safety-FLAG e2e** (`apps/api/tests/e2e/task-330-harness-gate.spec.ts`, extended): a non-bypass guard (a
+  safety-FLAG draft can't be forged without the service token → 401) + a deterministic, gated assertion that a `gateDecision=FLAG`
+  + `safety.decision=FLAG` draft lands at `PENDING_REVIEW` and is **never auto-SIGNED** (the JWT approve path stays the only
+  route to SIGNED). Spec compiles — `playwright test --list` enumerates all **10** tests incl. the 2 new ones. **Live run
+  BLOCKED (not fabricated):** apps/api (8868) is **down** here, so the FLAG-forces-review assertion is skipped behind
+  `HARNESS_E2E_FULL` + `HARNESS_SERVICE_TOKEN` + `HARNESS_E2E_CONSULTATION_ID`/`HARNESS_E2E_TENANT_ID` (consistent with the
+  Phase-1 full-loop evidence policy). The forced-review behaviour is independently proven at the workflow layer
+  (`test_unsafe_safety_forces_flag_without_regen`) and the persistence layer (`HarnessInternalService` always sets `PENDING_REVIEW`).
+
+**Out of scope / untouched (per plan):** `apps/guardrail` and `apps/smr` were not modified. Nothing committed.
+
 ## 10. Change History
 | Date | Description | Files |
 |---|---|---|
@@ -766,6 +850,7 @@ adapts a harness draft into the Phase-0 eval harness, two scoring paths —
 | 2026-06-06 | **Provenance read API + claim-text cleanup** (follow-up, TDD): added `GET /api/v1/consultations/:id/summary/:contextItemId/provenance` (clinician-auth — inherits class `@Authorize()` + `verifyConsultationAccess` read gate, **not** the service-token guard) returning `SummaryMeta` `citationsMap` + sensor scores (`coverage/entityFaithfulness/ragTriad`) + `sensorScores` (surfaced from the `guardrailDecisions` column) + `modelName`; 404 when no `SummaryMeta`. Layer chain `SummaryMetaRepository.findByContextItem` → `SummaryService.getSummaryProvenance` → controller → `SummaryProvenanceResponse` DTO (no Prisma in controller; entity→DTO mapped); no migration. Stripped SentencePiece `▁` (U+2581) markers from citation claim `text`/evidence `quote` in `harness/services/provenance.py` (matching/offsets untouched; also cleans the `citationsMap` feeding the new endpoint). Evidence: applications summary 128 ✓ (3 new), apps/api controller+integration 73 ✓, TASK-307 route audit 5 ✓, harness provenance pytest 8 ✓ (3 new `▁` cases) + services/sensors 79 ✓, `build:api` ✓, ReadLints + ruff clean. Nothing committed | `apps/api/src/modules/consultation/consultation.controller.ts`, `packages/applications/src/services/consultation/summary/*` (service + `SummaryProvenanceResponse` DTO + `SummaryDtoMapper.toProvenanceResponse`), `apps/harness/src/harness/services/provenance.py`, `apps/api/tests/integration/summary-provenance.spec.ts`, this README |
 | 2026-06-07 | **Multi-family reasoning support for the PDSQI-9 judge** (TDD). Hardens the LLM-as-judge to survive reasoning **and** non-reasoning model families in four layers: (1) the OpenAI-compatible / Azure clients read the server-split `reasoning_content` / `reasoning` field and **fall back to it when `content` is blank**, so a reasoning model that strands its answer in the reasoning channel is never lost; (2) an `extra_body` JSON-**string** passthrough (server-specific vLLM/Azure reasoning controls; ignored by Bedrock) + `max_tokens` default = **8192** (a small ~2k cap truncates mid-reasoning → `finish_reason=length`, empty `content`, parse failure) + `sc_temperature` **0.2**; (3) **generalized reasoning stripping** — closed/dangling `<think>` blocks, harmony analysis/commentary channels, Gemma `<unused94>thought` & `<|think|>` leaks, and markdown fences — shared by ONE implementation across the tolerant loader + the judge, with **LAST-balanced-object** JSON extraction so a stray `{` inside leaked chain-of-thought never wins over the real score object; (4) a **family-aware `reasoning_mode`** (`auto`/`think`/`none`) system prompt that replaces the prior **unconditional `<think>` directive** (`auto` = neutral base — neither forces nor forbids reasoning — safe for non-reasoning Gemma 3 / MedGemma). **Empirical basis:** live LM Studio probes revealed **4 distinct reasoning serializations** (plus a non-reasoning baseline) — Qwen3.5 `<think>` in `reasoning_content` (runaway truncation at small token budgets); gpt-oss harmony with a separate `reasoning` field; Gemma-4 fenced JSON + `reasoning_content`; MLX MedGemma leaking `<unused94>thought` into `content`; non-reasoning Gemma 3. New **default judge model `google/gemma-4-e4b`** (was `qwen/qwen3.5-9b`), a small Gemma-4 reasoning model on LM Studio `:1234` (the larger `gemma-4-12b-qat` was tried first but rejected in live testing — see the next entry). Eval suite **123 passed** (`conda run -n arcaenv pytest apps/harness/src/harness/tests/unit/eval/ -q --no-cov`); ruff/black clean. Also corrected a stale `HARNESS_JUDGE_SC_TEMPERATURE` README default (`0.4`→`0.2`, matching code) | `apps/harness/src/harness/eval/{config.py,jsonio.py,judge/{base.py,prompts.py,providers.py,pdsqi.py}}`, `apps/harness/src/harness/tests/unit/eval/{test_reasoning_parsing.py,test_judge_transport.py,test_calibration_levers.py,test_judge_config.py,_stubs.py}`, `apps/harness/eval/README.md`, this README |
 | 2026-06-07 | **Live end-to-end judge verification + default-model correction.** Ran the real `PDSQI9Judge.score` against live LM Studio per family (short synthetic case; defaults `max_tokens=8192`, `temperature=0.0`, `reasoning_mode=auto`). **4/5 families parse cleanly at ctx 8192**: `gpt-oss-20b` (harmony channels), `mlx-community/medgemma-1.5-4b-it` (the `<unused94>thought`-leak path), `google/gemma-3-4b` (non-reasoning), `qwen/qwen3.5-9b` (`<think>`; fit with ~168-tok headroom, ~339s). **`google/gemma-4-12b-qat` rejected as the default** — its reasoning trace exhausts the entire completion budget (`finish_reason=length` at ctx 8192 **and** 16384) and never emits the JSON (a model-behaviour issue, not a parser defect; `/no_think` is ignored by LM Studio). **Default switched `gemma-4-12b-qat` → `google/gemma-4-e4b`**, which finishes cleanly (`finish=stop`, 2054 prompt + 2218 completion tok, all 11 PDSQI dims, ~92s). Also raised `JudgeConfig.timeout_s` **120 → 300s** (slow local reasoners legitimately exceed 120s). Eval suite still **green**. Read-only smoke harness at `/tmp/pdsqi_smoke.py`; nothing committed | `apps/harness/src/harness/eval/config.py`, `apps/harness/.env`, `apps/harness/.env.example`, `apps/harness/eval/README.md`, `apps/harness/src/harness/tests/unit/eval/test_judge_config.py`, this README |
+| 2026-06-07 | **Phase 2 inferential sensors + layered guardrails — implemented + verified end-to-end** (see §9). Groundedness (per-claim entailment via the calibrated `google/gemma-4-e4b` judge → `ragTriadScore`/sections) + safety (`GraniteGuardianClient` → Ollama `ibm/granite3.3-guardian:8b`, per-dimension) async inferential sensors behind a new `InferentialSensor` protocol + `degraded_result`; `PhiRedactor` fail-closed cloud-egress guard (Presidio/spaCy `[guardrails]` extra + MRN recognizer); aggregator severity (groundedness REGEN-fixable, safety highest-harm FLAG) + reduced-assurance (degraded inferential excluded from `expected`, never blanket-FLAG/auto-PASS); Temporal `run_inferential_sensors` activity + workflow wiring (`reduced_assurance`, `guardrailDecisions`, `ragTriadScore`) → `persist_draft` → `SummaryMeta.guardrailDecisions` + `SENSOR_RUN.sensorScores` + `REDUCED_ASSURANCE` WORM. **Evidence:** harness pytest **316 ✓** (fixed a pre-existing `test_loop_config` env-isolation defect — ambient dev `.env` leaking via `harness.main` import), applications harness **21 ✓**, apps/api harness controller+guard **12 ✓**, ReadLints/ruff clean; **live eval-delta** (gemma-4-e4b judge): groundedness/ragTriadScore now recorded — faithful 1.0/1.0 PASS, fabricated 0.0/0.333 REGEN, mixed 0.5/0.667 REGEN; **live safety** (Granite Guardian): benign→PASS, violent→FLAG (all dims). Playwright FLAG-forces-review spec added (compiles, `--list` 10 tests) but **live run BLOCKED — apps/api 8868 down** (gated behind `HARNESS_E2E_FULL`; forced-review independently proven at workflow + persistence layers). No migration; `apps/guardrail`/`apps/smr` untouched; nothing committed | `apps/harness/src/harness/{core/config.py,sensors/{config.py,aggregator.py,inferential/*},guards/phi/*,temporal/{activities.py,workflows.py,models.py},services/api_client.py,tests/unit/**}`, `apps/api/tests/e2e/task-330-harness-gate.spec.ts`, `packages/applications/src/services/consultation/harness/*`, `apps/harness/eval/README.md`, this README |
 
 ## 11. References
 > **Full, categorised, fully-cited research archive (182 sources):** [`research/clinical-harness/`](../../../research/clinical-harness/README.md)

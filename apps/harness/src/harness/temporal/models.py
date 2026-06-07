@@ -16,7 +16,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from harness.sensors.base import NEREntity
+from harness.sensors.base import NEREntity, SensorResult
 
 # ---------------------------------------------------------------------------
 # Workflow I/O
@@ -146,6 +146,39 @@ class RunSensorsInput(BaseModel):
     transcript_context_item_id: str | None = None
 
 
+class RunInferentialSensorsInput(BaseModel):
+    """Inputs for the Phase-2 ``run_inferential_sensors`` activity.
+
+    The activity builds the judge + Granite client itself (model calls live in the
+    activity, never the workflow); it only needs the generated note (safety screen),
+    the transcript, and the provenance ``citationsMap`` (per-claim groundedness).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    note_text: str
+    transcript_text: str = ""
+    citations_map: dict[str, Any] = Field(default_factory=dict)
+
+
+class InferentialRunOutput(BaseModel):
+    """Result of one inferential pass: the raw sensor results + a guardrail-decision
+    map + the extracted ``ragTriadScore`` + a degraded marker.
+
+    ``guardrail_decisions`` is persisted as ``SummaryMeta.guardrailDecisions``
+    (and embedded in the ``SENSOR_RUN`` WORM audit). ``degraded`` is True when any
+    inferential backend was unavailable — the workflow turns that into
+    ``reduced_assurance`` (and excludes the degraded result from the aggregate).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    results: list[SensorResult] = Field(default_factory=list)
+    guardrail_decisions: dict[str, Any] = Field(default_factory=dict)
+    rag_triad_score: float | None = None
+    degraded: bool = False
+
+
 class PersistDraftInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -158,6 +191,10 @@ class PersistDraftInput(BaseModel):
     model_version: str | None = None
     sensor_scores: dict[str, Any] | None = None
     citations_map: dict[str, Any] | None = None
+    # Phase-2 inferential guardrails: persisted as SummaryMeta.guardrailDecisions;
+    # reduced_assurance=True appends the REDUCED_ASSURANCE WORM event on apps/api.
+    guardrail_decisions: dict[str, Any] | None = None
+    reduced_assurance: bool | None = None
     entity_faithfulness_score: float | None = None
     coverage_score: float | None = None
     rag_triad_score: float | None = None

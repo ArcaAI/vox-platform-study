@@ -1,32 +1,30 @@
-"""Phase-2 *inferential* sensors — extension point (NOT implemented in Phase 1).
+"""Phase-2 *inferential* sensors — async, model-backed gate sensors (TASK-330).
 
-Phase 1 ships only the pure/deterministic computational sensors
-(:mod:`harness.sensors.computational`). The model-backed sensors below are a
-Phase-2 extension and are intentionally left unimplemented here.
+Unlike the pure/deterministic computational sensors
+(:mod:`harness.sensors.computational`), these call models: ``groundedness`` does
+per-claim entailment via the calibrated LM Studio judge, and ``safety`` screens
+the note through IBM Granite Guardian over Ollama. They implement the async
+:class:`~harness.sensors.inferential.base.InferentialSensor` protocol
+(``arun(ctx, *, judge)``) and run inside the ``run_inferential_sensors`` Temporal
+activity (model calls never run in the deterministic workflow body).
 
-When implemented, each will satisfy the **same** :class:`harness.sensors.base.Sensor`
-protocol (``name`` + ``run(ctx) -> SensorResult``) and reuse the model-agnostic
-provider plumbing already built for the eval judge
-(:mod:`harness.sensors`/:mod:`harness.eval.judge` — see
-:class:`harness.eval.judge.base.JudgeClient` and
-``harness.eval.judge.providers.build_judge_client``), so the harness loop and the
-aggregator consume them unchanged.
-
-Planned Phase-2 sensors:
-
-* ``groundedness`` — Bespoke-MiniCheck-7B (or HHEM/NLI) per-claim entailment of
-  the note against the transcript/evidence.
-* ``safety`` — Llama Guard 3 content-safety screen on the generated note.
-* ``reasoning_judge`` — an LLM-as-judge (PDSQI-9 style, reusing
-  :class:`harness.eval.judge.pdsqi.PDSQI9Judge`) for holistic quality.
-
-These are model calls and therefore live in Temporal *activities*, not in the
-deterministic workflow path.
+This package re-exports the sensors, the Granite client, and each sensor's
+``NAME`` (aliased ``GROUNDEDNESS_NAME`` / ``SAFETY_NAME``) as the stable surface
+the activity wires together.
 """
 
 from __future__ import annotations
 
-# TODO(TASK-330 Phase 2): implement GroundednessSensor (MiniCheck), SafetySensor
-# (Llama Guard 3), and ReasoningJudgeSensor (PDSQI-9) against the Sensor protocol,
-# reusing harness.eval.judge providers. Left as a stub by design in Phase 1.
-__all__: list[str] = []
+from harness.sensors.inferential.granite_client import GraniteGuardianClient
+from harness.sensors.inferential.groundedness import NAME as GROUNDEDNESS_NAME
+from harness.sensors.inferential.groundedness import GroundednessSensor
+from harness.sensors.inferential.safety import NAME as SAFETY_NAME
+from harness.sensors.inferential.safety import SafetySensor
+
+__all__ = [
+    "GroundednessSensor",
+    "GROUNDEDNESS_NAME",
+    "SafetySensor",
+    "SAFETY_NAME",
+    "GraniteGuardianClient",
+]

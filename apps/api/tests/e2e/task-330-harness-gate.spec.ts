@@ -84,6 +84,23 @@ test.describe('TASK-330 — inbound harness endpoints are service-token guarded'
     });
     expect(response.status(), 'an invalid token must be rejected').toBe(401);
   });
+
+  test('a safety-FLAG draft cannot be forged without a service token (401)', async ({ request }) => {
+    // Phase 2: even a draft carrying a "flagged unsafe" verdict must arrive over
+    // the service-token-guarded channel — an unauthenticated caller can neither
+    // inject a draft NOR fabricate its safety verdict / gate decision.
+    const response = await request.post(`${INTERNAL_HARNESS_BASE}/draft`, {
+      data: {
+        tenantId: 't-1',
+        content: 'S: forged note',
+        gateDecision: 'FLAG',
+        guardrailDecisions: {
+          safety: { decision: 'FLAG', unsafe: true, flaggedDimensions: ['violence'] },
+        },
+      },
+    });
+    expect(response.status(), 'a safety-FLAG draft must require a service token').toBe(401);
+  });
 });
 
 test.describe('TASK-330 — the HITL signing gate is not bypassable', () => {
@@ -156,5 +173,75 @@ test.describe('TASK-330 — full harness loop (gate not bypassable + provenance 
 
     const detail = await request.get(`/api/v1/consultations/${consultationId}`, { headers: auth });
     expect((await detail.json()).status, 'consultation must be SIGNED after approve').toBe('SIGNED');
+  });
+});
+
+// ===========================================================================
+// Phase 2 — a SAFETY FLAG forces the note into review (never auto-approved).
+//
+// Deterministic by design: rather than relying on a model to emit unsafe content,
+// this drives the service-token-guarded `…/draft` endpoint directly with a
+// safety-FLAG verdict (gateDecision=FLAG + guardrailDecisions.safety.decision=FLAG)
+// and asserts the consultation lands at PENDING_REVIEW — never auto-SIGNED. The
+// ONLY path to SIGNED remains the JWT-guarded clinician approve endpoint (proven
+// non-bypassable above), so a flagged note cannot be auto-approved.
+//
+// Requires a live apps/api + Postgres + the shared HARNESS_SERVICE_TOKEN + a
+// seeded consultation (id + tenantId) in a pre-draft state. SKIPPED unless
+// HARNESS_E2E_FULL + those env vars are set, so CI never reports a fabricated
+// pass (mirrors the full-loop block's evidence policy).
+// ===========================================================================
+const SERVICE_TOKEN = process.env.HARNESS_SERVICE_TOKEN ?? '';
+const FLAG_CONSULT_ID = process.env.HARNESS_E2E_CONSULTATION_ID ?? '';
+const FLAG_TENANT_ID = process.env.HARNESS_E2E_TENANT_ID ?? '';
+
+test.describe('TASK-330 Phase 2 — a safety FLAG forces review (never auto-approved)', () => {
+  test.skip(
+    !RUN_FULL || !SERVICE_TOKEN || !FLAG_CONSULT_ID || !FLAG_TENANT_ID,
+    'requires apps/api + Postgres + HARNESS_SERVICE_TOKEN + HARNESS_E2E_CONSULTATION_ID + HARNESS_E2E_TENANT_ID (set HARNESS_E2E_FULL=1)',
+  );
+
+  let doctorToken: string;
+
+  test.beforeAll(async ({ request }) => {
+    doctorToken = await loginDoctor(request);
+  });
+
+  test('a safety-FLAG draft persists as PENDING_REVIEW and is never auto-SIGNED', async ({ request }) => {
+    // 1) The harness persists a draft whose inferential safety screen FLAGGED it
+    //    (gate decision FLAG + the safety guardrail-decision detail), over the
+    //    service-token channel — the system-of-record write the loop performs.
+    const draftRes = await request.post(
+      `/api/v1/internal/harness/consultations/${FLAG_CONSULT_ID}/draft`,
+      {
+        headers: { 'X-Service-Token': SERVICE_TOKEN },
+        data: {
+          tenantId: FLAG_TENANT_ID,
+          content: '{"subjective":"s","objective":"o","assessment":"a","plan":"p"}',
+          gateDecision: 'FLAG',
+          guardrailDecisions: {
+            safety: {
+              decision: 'FLAG',
+              passed: false,
+              unsafe: true,
+              flaggedDimensions: ['violence'],
+              dimensions: { violence: true, harm: false },
+              model: 'ibm/granite3.3-guardian:8b',
+            },
+            groundedness: { decision: 'PASS', passed: true },
+          },
+        },
+      },
+    );
+    expect(draftRes.status(), 'authenticated draft write must succeed').toBeLessThan(300);
+
+    // 2) A FLAG must stop at the human gate — the note is forced into review and
+    //    is NEVER auto-approved/auto-SIGNED.
+    const auth = { Authorization: `Bearer ${doctorToken}` };
+    const detail = await request.get(`/api/v1/consultations/${FLAG_CONSULT_ID}`, { headers: auth });
+    expect(detail.status()).toBe(200);
+    const status = (await detail.json()).status;
+    expect(status, 'a FLAG draft must force review, not auto-approve').toBe('PENDING_REVIEW');
+    expect(status, 'a FLAG draft must never be auto-SIGNED').not.toBe('SIGNED');
   });
 });
