@@ -239,6 +239,29 @@ class TestGroundednessRegenFixable:
         assert verdict.decision is GateDecision.PASS
 
 
+class TestCitationVerifyRegenFixable:
+    """``citation_verify`` (Phase 3) is regen-fixable, like groundedness."""
+
+    def test_citation_verify_registered_as_regen_fixable(self):
+        from harness.sensors.inferential.citation_verify import NAME as CITATION_VERIFY_NAME
+
+        assert CITATION_VERIFY_NAME in REGEN_FIXABLE_SENSORS
+
+    def test_unverified_citation_regens_reported_sections(self):
+        from harness.sensors.inferential.citation_verify import NAME as CITATION_VERIFY_NAME
+
+        cv = SensorResult(
+            name=CITATION_VERIFY_NAME,
+            score=0.5,
+            passed=False,
+            claims_flagged=["c-bad"],
+            details={"sections": ["A"]},
+        )
+        verdict = aggregate([*_all_pass(), cv], regens_remaining=1)
+        assert verdict.decision is GateDecision.REGEN
+        assert verdict.sections_to_regen == ["A"]
+
+
 class TestReducedAssurance:
     """A degraded inferential backend must NOT force a blanket FLAG (reduced assurance)."""
 

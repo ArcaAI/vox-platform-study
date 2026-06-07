@@ -104,6 +104,62 @@ class PhiConfig(BaseSettings):
     cloud_egress_providers: list[str] = Field(default_factory=lambda: ["azure", "bedrock"])
 
 
+class RetrievalConfig(BaseSettings):
+    """Phase-3 institutional-RAG hybrid retriever (TASK-330 Phase 3, Lane A).
+
+    The JIT retriever grounds generation in a tenant-owned knowledge corpus: a
+    query built from the extracted entities is dense-embedded (self-hosted LM
+    Studio ``/v1/embeddings``) **and** sparse-embedded (in-process fastembed
+    ``Qdrant/bm25``), fused server-side via the Qdrant Query API
+    (``prefetch(dense)`` + ``prefetch(sparse)`` -> ``FusionQuery(RRF, k=rrf_k)``)
+    filtered by ``tenant_id`` + ``status=APPROVED`` over the dedicated
+    ``knowledge_chunks`` collection, then reranked by a HF TEI cross-encoder
+    (``hope-reranker``) down to ``top_k_rerank``.
+
+    ``enabled`` is **False by default** — the whole feature is flag-gated and
+    additive, so Phase 1/2 behaviour is unchanged until an operator opts in. Every
+    backend is degrade-safe: if embeddings/Qdrant/reranker are down the retriever
+    yields an empty context (generation proceeds, flagged), never an exception
+    into the durable loop.
+
+    The dense query is entity/transcript-derived and can contain PHI, so it stays
+    on the self-hosted LM Studio path (a cloud embeddings provider would trip the
+    fail-closed PHI guard). ``embeddings_dim`` defaults to 1024 (``BAAI/bge-m3``);
+    set it to 1536 (and recreate the collection) only if a 1536-dim model is
+    loaded — it MUST match both the loaded model and the Qdrant collection.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="HARNESS_RETRIEVAL_")
+
+    enabled: bool = False
+    qdrant_url: str = "http://localhost:6333"
+    collection: str = "knowledge_chunks"
+    # LM Studio OpenAI-compatible root (already includes ``/v1``); the embeddings
+    # client posts to ``{base_url}/embeddings``.
+    embeddings_base_url: str = "http://localhost:1234/v1"
+    # Model id the engine exposes for the loaded dense embedding model. Operators
+    # override to match the loaded build (the plan's reference model is BAAI/bge-m3).
+    embeddings_model: str = "text-embedding-bge-m3"
+    # Dense vector dimension — MUST match the loaded model AND the Qdrant collection.
+    embeddings_dim: int = 1024
+    # HF Text-Embeddings-Inference reranker root (cross-encoder ``/rerank``).
+    reranker_base_url: str = "http://localhost:8870"
+    # Hybrid knobs: dense+sparse prefetch limit -> RRF fusion -> cross-encoder rerank.
+    top_k_retrieval: int = 20
+    top_k_rerank: int = 5
+    rrf_k: int = 60
+    embeddings_timeout_s: float = 30.0
+    reranker_timeout_s: float = 30.0
+    qdrant_timeout_s: float = 10.0
+
+    @field_validator("embeddings_dim", "top_k_retrieval", "top_k_rerank", "rrf_k")
+    @classmethod
+    def _positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("retrieval sizing knobs must be positive integers")
+        return v
+
+
 class Settings(BaseSettings):
     """Root harness application settings."""
 
@@ -121,6 +177,13 @@ class Settings(BaseSettings):
     # This is the shared HARNESS_SERVICE_TOKEN: it guards the inbound internal
     # endpoints AND is the ``X-Service-Token`` the api_client presents to apps/api.
     service_token: SecretStr = SecretStr("")
+
+    # Phase-3 (TASK-330) dedicated token for the institutional-knowledge ingest
+    # endpoint (``POST /internal/knowledge/ingest``). The ingest guard accepts an
+    # ``X-Service-Token`` matching THIS secret OR the shared ``service_token``;
+    # empty (and an empty shared token) disables the guard for local dev. Lane B's
+    # BullMQ ingest processor presents this as the ingest contract's token.
+    internal_service_token: SecretStr = SecretStr("")
 
     # Connection pooling (used by the loop's httpx tool clients)
     httpx_max_connections: int = 200
@@ -180,6 +243,8 @@ class Settings(BaseSettings):
     # Phase-2 guardrails (TASK-330): Granite Guardian safety + fail-closed PHI.
     safety: SafetyGuardConfig = Field(default_factory=SafetyGuardConfig)
     phi: PhiConfig = Field(default_factory=PhiConfig)
+    # Phase-3 institutional RAG (TASK-330): hybrid JIT retriever (flag-gated off).
+    retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
 
     @field_validator("log_level")
     @classmethod

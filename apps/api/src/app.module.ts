@@ -7,6 +7,7 @@ import {
   CommonServiceModule,
   ConfigModule,
   JWT_AUTH_GUARD,
+  KnowledgeServiceModule,
   LoggingServiceModule,
   ObservabilityModule,
   RateLimitServiceModule,
@@ -40,6 +41,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { ConsultationModule } from './modules/consultation/consultation.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
+// TASK-330 Phase 6 — harness administration & observability console (/admin/harness/*).
+import { HarnessAdminModule } from './modules/harness-admin/harness-admin.module';
 import { HealthModule } from './modules/health/health.module';
 import { InternalModule } from './modules/internal/internal.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
@@ -228,10 +231,16 @@ const featureModules: any[] = [
   ConsultationModule,
   DepartmentModule,
   DnaWritingStyleModule,
+  // TASK-330 Phase 3 — institutional-RAG knowledge ingestion (BullMQ worker;
+  // registers the IngestKnowledgeDocument queue + processor). Worker-only — no
+  // REST controllers in this phase.
+  KnowledgeServiceModule,
   HealthModule,
   InternalModule,
   MonitoringModule,
   PromptManagementModule,
+  // TASK-330 Phase 6 — /admin/harness/* (policy, observe, workflow ops).
+  HarnessAdminModule,
   QueueAdminModule,
   RbacModule,
   StorageModule,

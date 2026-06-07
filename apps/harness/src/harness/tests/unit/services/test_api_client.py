@@ -15,7 +15,7 @@ import httpx
 import pytest
 
 from harness.sensors.base import NEREntity
-from harness.services.api_client import ApiClient
+from harness.services.api_client import ApiClient, ApiServiceError
 
 
 def _client(handler) -> ApiClient:
@@ -200,6 +200,65 @@ class TestRecordGateDecision:
         assert body["attestationHash"] == "h-1"
         assert body["clinicianId"] == "doc-1"
         assert result.recorded is True
+
+
+_POLICY_JSON = {
+    "id": "hp-1",
+    "tenantId": "t-1",
+    "source": "tenant",
+    "entityFaithfulnessThreshold": 0.7,
+    "coverageThreshold": 0.6,
+    "citationPresenceThreshold": 0.9,
+    "numericDoseThreshold": 1.0,
+    "groundednessThreshold": 0.5,
+    "safetyEnabled": False,
+    "phiEnabled": False,
+    "phiFailClosed": False,
+    "safetyProvider": "ollama",
+    "safetyModel": "granite-guardian-x",
+    "smrProvider": "azure",
+    "smrModel": "gpt-4o",
+    "maxRegen": 4,
+    "gateSlaSeconds": 3600,
+    "gateEscalationSeconds": 1800,
+    "toolAllowlist": ["nlp", "smr"],
+    "updatedAt": "2026-06-07T00:00:00Z",
+    "version": 7,
+}
+
+
+class TestGetPolicy:
+    """The worker ``fetch_policy`` activity reads the effective harness policy from
+    the apps/api worker-facing endpoint (TASK-330 Phase 6 — Phase C.3)."""
+
+    @pytest.mark.asyncio
+    async def test_get_policy_gets_with_tenant_query_and_token(self):
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json=_POLICY_JSON)
+
+        client = _client(handler)
+        data = await client.get_policy("t-1")
+
+        req = seen["request"]
+        assert req.method == "GET"
+        assert str(req.url) == "http://api:8868/internal/harness/policy?tenantId=t-1"
+        assert req.headers["X-Service-Token"] == "svc-token"
+        # The raw camelCase contract is returned verbatim (mapped by the activity).
+        assert data["coverageThreshold"] == 0.6
+        assert data["safetyEnabled"] is False
+        assert data["version"] == 7
+
+    @pytest.mark.asyncio
+    async def test_get_policy_raises_on_upstream_error(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, json={"error": "policy unavailable"})
+
+        client = _client(handler)
+        with pytest.raises(ApiServiceError):
+            await client.get_policy("t-1")
 
 
 class TestConfigurablePrefix:

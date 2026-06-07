@@ -53,6 +53,7 @@ def claim(
     section: str = "A",
     status: str = "unverified",
     evidence: list[dict[str, Any]] | None = None,
+    knowledge_chunk_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """A ``citationsMap.claims[]`` entry."""
     return {
@@ -62,7 +63,7 @@ def claim(
         "status": status,
         "evidence": [] if evidence is None else evidence,
         "entityRefs": [],
-        "knowledgeChunkIds": [],
+        "knowledgeChunkIds": list(knowledge_chunk_ids or []),
     }
 
 

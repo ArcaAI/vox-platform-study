@@ -46,6 +46,13 @@ import { Route as AuthenticatedAdminDepartmentsRouteImport } from './routes/_aut
 import { Route as AuthenticatedAdminConfigurationsRouteImport } from './routes/_authenticated/admin/configurations'
 import { Route as AuthenticatedAdminAuditLogsRouteImport } from './routes/_authenticated/admin/audit-logs'
 import { Route as AuthenticatedAdminAudioPipelinesRouteImport } from './routes/_authenticated/admin/audio-pipelines'
+import { Route as AuthenticatedAdminHarnessRouteRouteImport } from './routes/_authenticated/admin/harness/route'
+import { Route as AuthenticatedAdminHarnessIndexRouteImport } from './routes/_authenticated/admin/harness/index'
+import { Route as AuthenticatedAdminHarnessWorkflowsRouteImport } from './routes/_authenticated/admin/harness/workflows'
+import { Route as AuthenticatedAdminHarnessPolicyRouteImport } from './routes/_authenticated/admin/harness/policy'
+import { Route as AuthenticatedAdminHarnessOverviewRouteImport } from './routes/_authenticated/admin/harness/overview'
+import { Route as AuthenticatedAdminHarnessEvalsRouteImport } from './routes/_authenticated/admin/harness/evals'
+import { Route as AuthenticatedAdminHarnessAuditRouteImport } from './routes/_authenticated/admin/harness/audit'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
@@ -259,6 +266,48 @@ const AuthenticatedAdminAudioPipelinesRoute =
     path: '/admin/audio-pipelines',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAdminHarnessRouteRoute =
+  AuthenticatedAdminHarnessRouteRouteImport.update({
+    id: '/admin/harness',
+    path: '/admin/harness',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminHarnessIndexRoute =
+  AuthenticatedAdminHarnessIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
+  } as any)
+const AuthenticatedAdminHarnessWorkflowsRoute =
+  AuthenticatedAdminHarnessWorkflowsRouteImport.update({
+    id: '/workflows',
+    path: '/workflows',
+    getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
+  } as any)
+const AuthenticatedAdminHarnessPolicyRoute =
+  AuthenticatedAdminHarnessPolicyRouteImport.update({
+    id: '/policy',
+    path: '/policy',
+    getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
+  } as any)
+const AuthenticatedAdminHarnessOverviewRoute =
+  AuthenticatedAdminHarnessOverviewRouteImport.update({
+    id: '/overview',
+    path: '/overview',
+    getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
+  } as any)
+const AuthenticatedAdminHarnessEvalsRoute =
+  AuthenticatedAdminHarnessEvalsRouteImport.update({
+    id: '/evals',
+    path: '/evals',
+    getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
+  } as any)
+const AuthenticatedAdminHarnessAuditRoute =
+  AuthenticatedAdminHarnessAuditRouteImport.update({
+    id: '/audit',
+    path: '/audit',
+    getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -269,6 +318,7 @@ export interface FileRoutesByFullPath {
   '/500': typeof errors500Route
   '/clinical-review': typeof AuthenticatedClinicalReviewRoute
   '/voice-profile': typeof AuthenticatedVoiceProfileRoute
+  '/admin/harness': typeof AuthenticatedAdminHarnessRouteRouteWithChildren
   '/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
   '/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
   '/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
@@ -297,6 +347,12 @@ export interface FileRoutesByFullPath {
   '/dna-writing-style/': typeof AuthenticatedDnaWritingStyleIndexRoute
   '/installation/': typeof AuthenticatedInstallationIndexRoute
   '/introduction/': typeof AuthenticatedIntroductionIndexRoute
+  '/admin/harness/audit': typeof AuthenticatedAdminHarnessAuditRoute
+  '/admin/harness/evals': typeof AuthenticatedAdminHarnessEvalsRoute
+  '/admin/harness/overview': typeof AuthenticatedAdminHarnessOverviewRoute
+  '/admin/harness/policy': typeof AuthenticatedAdminHarnessPolicyRoute
+  '/admin/harness/workflows': typeof AuthenticatedAdminHarnessWorkflowsRoute
+  '/admin/harness/': typeof AuthenticatedAdminHarnessIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof authLoginRoute
@@ -335,6 +391,12 @@ export interface FileRoutesByTo {
   '/dna-writing-style': typeof AuthenticatedDnaWritingStyleIndexRoute
   '/installation': typeof AuthenticatedInstallationIndexRoute
   '/introduction': typeof AuthenticatedIntroductionIndexRoute
+  '/admin/harness/audit': typeof AuthenticatedAdminHarnessAuditRoute
+  '/admin/harness/evals': typeof AuthenticatedAdminHarnessEvalsRoute
+  '/admin/harness/overview': typeof AuthenticatedAdminHarnessOverviewRoute
+  '/admin/harness/policy': typeof AuthenticatedAdminHarnessPolicyRoute
+  '/admin/harness/workflows': typeof AuthenticatedAdminHarnessWorkflowsRoute
+  '/admin/harness': typeof AuthenticatedAdminHarnessIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -347,6 +409,7 @@ export interface FileRoutesById {
   '/_authenticated/clinical-review': typeof AuthenticatedClinicalReviewRoute
   '/_authenticated/voice-profile': typeof AuthenticatedVoiceProfileRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/admin/harness': typeof AuthenticatedAdminHarnessRouteRouteWithChildren
   '/_authenticated/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
   '/_authenticated/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
   '/_authenticated/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
@@ -375,6 +438,12 @@ export interface FileRoutesById {
   '/_authenticated/dna-writing-style/': typeof AuthenticatedDnaWritingStyleIndexRoute
   '/_authenticated/installation/': typeof AuthenticatedInstallationIndexRoute
   '/_authenticated/introduction/': typeof AuthenticatedIntroductionIndexRoute
+  '/_authenticated/admin/harness/audit': typeof AuthenticatedAdminHarnessAuditRoute
+  '/_authenticated/admin/harness/evals': typeof AuthenticatedAdminHarnessEvalsRoute
+  '/_authenticated/admin/harness/overview': typeof AuthenticatedAdminHarnessOverviewRoute
+  '/_authenticated/admin/harness/policy': typeof AuthenticatedAdminHarnessPolicyRoute
+  '/_authenticated/admin/harness/workflows': typeof AuthenticatedAdminHarnessWorkflowsRoute
+  '/_authenticated/admin/harness/': typeof AuthenticatedAdminHarnessIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -387,6 +456,7 @@ export interface FileRouteTypes {
     | '/500'
     | '/clinical-review'
     | '/voice-profile'
+    | '/admin/harness'
     | '/admin/audio-pipelines'
     | '/admin/audit-logs'
     | '/admin/configurations'
@@ -415,6 +485,12 @@ export interface FileRouteTypes {
     | '/dna-writing-style/'
     | '/installation/'
     | '/introduction/'
+    | '/admin/harness/audit'
+    | '/admin/harness/evals'
+    | '/admin/harness/overview'
+    | '/admin/harness/policy'
+    | '/admin/harness/workflows'
+    | '/admin/harness/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -453,6 +529,12 @@ export interface FileRouteTypes {
     | '/dna-writing-style'
     | '/installation'
     | '/introduction'
+    | '/admin/harness/audit'
+    | '/admin/harness/evals'
+    | '/admin/harness/overview'
+    | '/admin/harness/policy'
+    | '/admin/harness/workflows'
+    | '/admin/harness'
   id:
     | '__root__'
     | '/_authenticated'
@@ -464,6 +546,7 @@ export interface FileRouteTypes {
     | '/_authenticated/clinical-review'
     | '/_authenticated/voice-profile'
     | '/_authenticated/'
+    | '/_authenticated/admin/harness'
     | '/_authenticated/admin/audio-pipelines'
     | '/_authenticated/admin/audit-logs'
     | '/_authenticated/admin/configurations'
@@ -492,6 +575,12 @@ export interface FileRouteTypes {
     | '/_authenticated/dna-writing-style/'
     | '/_authenticated/installation/'
     | '/_authenticated/introduction/'
+    | '/_authenticated/admin/harness/audit'
+    | '/_authenticated/admin/harness/evals'
+    | '/_authenticated/admin/harness/overview'
+    | '/_authenticated/admin/harness/policy'
+    | '/_authenticated/admin/harness/workflows'
+    | '/_authenticated/admin/harness/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -764,13 +853,89 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminAudioPipelinesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/harness': {
+      id: '/_authenticated/admin/harness'
+      path: '/admin/harness'
+      fullPath: '/admin/harness'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/harness/': {
+      id: '/_authenticated/admin/harness/'
+      path: '/'
+      fullPath: '/admin/harness/'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessIndexRouteImport
+      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute
+    }
+    '/_authenticated/admin/harness/workflows': {
+      id: '/_authenticated/admin/harness/workflows'
+      path: '/workflows'
+      fullPath: '/admin/harness/workflows'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessWorkflowsRouteImport
+      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute
+    }
+    '/_authenticated/admin/harness/policy': {
+      id: '/_authenticated/admin/harness/policy'
+      path: '/policy'
+      fullPath: '/admin/harness/policy'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessPolicyRouteImport
+      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute
+    }
+    '/_authenticated/admin/harness/overview': {
+      id: '/_authenticated/admin/harness/overview'
+      path: '/overview'
+      fullPath: '/admin/harness/overview'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessOverviewRouteImport
+      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute
+    }
+    '/_authenticated/admin/harness/evals': {
+      id: '/_authenticated/admin/harness/evals'
+      path: '/evals'
+      fullPath: '/admin/harness/evals'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessEvalsRouteImport
+      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute
+    }
+    '/_authenticated/admin/harness/audit': {
+      id: '/_authenticated/admin/harness/audit'
+      path: '/audit'
+      fullPath: '/admin/harness/audit'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessAuditRouteImport
+      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute
+    }
   }
 }
+
+interface AuthenticatedAdminHarnessRouteRouteChildren {
+  AuthenticatedAdminHarnessAuditRoute: typeof AuthenticatedAdminHarnessAuditRoute
+  AuthenticatedAdminHarnessEvalsRoute: typeof AuthenticatedAdminHarnessEvalsRoute
+  AuthenticatedAdminHarnessOverviewRoute: typeof AuthenticatedAdminHarnessOverviewRoute
+  AuthenticatedAdminHarnessPolicyRoute: typeof AuthenticatedAdminHarnessPolicyRoute
+  AuthenticatedAdminHarnessWorkflowsRoute: typeof AuthenticatedAdminHarnessWorkflowsRoute
+  AuthenticatedAdminHarnessIndexRoute: typeof AuthenticatedAdminHarnessIndexRoute
+}
+
+const AuthenticatedAdminHarnessRouteRouteChildren: AuthenticatedAdminHarnessRouteRouteChildren =
+  {
+    AuthenticatedAdminHarnessAuditRoute: AuthenticatedAdminHarnessAuditRoute,
+    AuthenticatedAdminHarnessEvalsRoute: AuthenticatedAdminHarnessEvalsRoute,
+    AuthenticatedAdminHarnessOverviewRoute:
+      AuthenticatedAdminHarnessOverviewRoute,
+    AuthenticatedAdminHarnessPolicyRoute: AuthenticatedAdminHarnessPolicyRoute,
+    AuthenticatedAdminHarnessWorkflowsRoute:
+      AuthenticatedAdminHarnessWorkflowsRoute,
+    AuthenticatedAdminHarnessIndexRoute: AuthenticatedAdminHarnessIndexRoute,
+  }
+
+const AuthenticatedAdminHarnessRouteRouteWithChildren =
+  AuthenticatedAdminHarnessRouteRoute._addFileChildren(
+    AuthenticatedAdminHarnessRouteRouteChildren,
+  )
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedClinicalReviewRoute: typeof AuthenticatedClinicalReviewRoute
   AuthenticatedVoiceProfileRoute: typeof AuthenticatedVoiceProfileRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedAdminHarnessRouteRoute: typeof AuthenticatedAdminHarnessRouteRouteWithChildren
   AuthenticatedAdminAudioPipelinesRoute: typeof AuthenticatedAdminAudioPipelinesRoute
   AuthenticatedAdminAuditLogsRoute: typeof AuthenticatedAdminAuditLogsRoute
   AuthenticatedAdminConfigurationsRoute: typeof AuthenticatedAdminConfigurationsRoute
@@ -805,6 +970,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedClinicalReviewRoute: AuthenticatedClinicalReviewRoute,
   AuthenticatedVoiceProfileRoute: AuthenticatedVoiceProfileRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedAdminHarnessRouteRoute:
+    AuthenticatedAdminHarnessRouteRouteWithChildren,
   AuthenticatedAdminAudioPipelinesRoute: AuthenticatedAdminAudioPipelinesRoute,
   AuthenticatedAdminAuditLogsRoute: AuthenticatedAdminAuditLogsRoute,
   AuthenticatedAdminConfigurationsRoute: AuthenticatedAdminConfigurationsRoute,

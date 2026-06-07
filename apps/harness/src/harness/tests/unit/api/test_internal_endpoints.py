@@ -145,3 +145,50 @@ class TestTokenDisabledForLocalDev:
             )
         assert resp.status_code == 200
         client.start_workflow.assert_awaited_once()
+
+
+class TestStartSetsTenantMetadata:
+    @pytest.mark.asyncio
+    async def test_start_sets_tenant_search_attribute_and_memo(self, harness):
+        # The owning tenant rides on the HarnessTenantId search attribute (so the
+        # admin console can filter by it) AND on the memo (the SA-outage fallback).
+        http, client, _handle, _settings = harness
+        resp = await http.post(
+            "/api/v1/internal/consultations/c-1/document:start",
+            headers=_HEADERS,
+            json={"tenantId": "t-1", "transcriptText": "x"},
+        )
+        assert resp.status_code == 200
+
+        _args, kwargs = client.start_workflow.call_args
+        memo = kwargs["memo"]
+        assert memo["tenantId"] == "t-1"
+        assert memo["consultationId"] == "c-1"
+
+        from temporalio.common import SearchAttributeKey
+
+        sa = kwargs["search_attributes"]
+        assert sa.get(SearchAttributeKey.for_keyword("HarnessTenantId")) == "t-1"
+
+    @pytest.mark.asyncio
+    async def test_start_degrades_to_memo_when_search_attribute_unregistered(self):
+        # If HarnessTenantId is not registered on the cluster, the first start
+        # rejects; we retry memo-only rather than failing the consultation.
+        app, client, handle, _settings = _build()
+        client.start_workflow = AsyncMock(
+            side_effect=[RuntimeError("search attribute HarnessTenantId is not registered"), handle]
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as http:
+            resp = await http.post(
+                "/api/v1/internal/consultations/c-1/document:start",
+                headers=_HEADERS,
+                json={"tenantId": "t-1"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "started"
+        assert client.start_workflow.await_count == 2
+        # The retry dropped the search attribute but kept the memo fallback.
+        _a, retry_kwargs = client.start_workflow.call_args_list[1]
+        assert retry_kwargs.get("search_attributes") is None
+        assert retry_kwargs["memo"]["tenantId"] == "t-1"

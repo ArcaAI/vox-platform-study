@@ -18,6 +18,8 @@ persistence of eval runs is a later phase via `apps/api`.
 | `../src/harness/eval/golden/fixtures/synthetic_v0.json` | 5-case synthetic wiring fixture (pinned default) |
 | `../src/harness/eval/golden/fixtures/curated_v1.json` | 18-case **curated** set: 12 quality-lane + 6 calibration-lane |
 | `../src/harness/eval/ci.py` | Release-gate runner + JSON report (CI entrypoint) |
+| `../src/harness/eval/retrieval_eval.py` | **Phase-3** institutional-RAG retrieval eval (recall / MRR / citation-validity / cross-tenant leaks) |
+| `../src/harness/eval/golden/fixtures/retrieval_synthetic_v0.json` | Phase-3 synthetic retrieval fixture (9-chunk / 2-tenant corpus, 5 queries) |
 | `./promptfoo/` | promptfoo output-contract gate (run via `npx`) |
 
 > The Python package lives under `src/harness/eval/` (not here) so it imports as
@@ -400,3 +402,47 @@ guardian, not a clinical-appropriateness oracle.
   driven by the `HARNESS_JUDGE_*` env above + a default `GraniteGuardConfig` against local Ollama. The JSON report was
   written outside the repo (`/tmp`). Nothing was written to Postgres; no app/sensor logic, `core/config.py`, or
   `temporal/*` changed; nothing committed.
+
+## Phase 3 — retrieval eval (institutional RAG) (2026-06-07)
+
+The Phase-3 exit-gate item — **"% claims with a valid citation; basic recall sanity"** — is closed by a deterministic,
+offline retrieval eval (`harness.eval.retrieval_eval`). It indexes a small synthetic clinical corpus into a **real
+Qdrant engine** (the `qdrant-client` in-memory mode) using the **real in-process fastembed BM25** sparse embedder, then
+runs the **real** `HybridRetriever` for each query. Only the dense embedder (LM Studio `/v1/embeddings` BAAI/bge-m3) and
+the cross-encoder reranker (TEI `hope-reranker`) are stubbed — so the numbers below are the **BM25 + RRF +
+tenant/APPROVED-filter** lexical channel; the live dense + rerank channels lift recall further once the models load.
+
+```bash
+conda run -n arcaenv python -m harness.eval.retrieval_eval \
+  --golden-set apps/harness/src/harness/eval/golden/fixtures/retrieval_synthetic_v0.json \
+  --output retrieval-eval.json
+```
+
+### Results — synthetic `retrieval_synthetic_v0` (corpus = 9 chunks / 2 tenants, queries = 5)
+
+| Metric | Value | Meaning |
+|---|---|---|
+| `recall_at_k_mean` (k=5) | **1.000** | every gold-relevant chunk surfaced in the top-5 |
+| `hit_at_k_rate` | **1.000** | every query retrieved ≥1 relevant chunk |
+| `mrr` | **1.000** | the first hit was always rank-1 |
+| `citation_validity_rate` | **1.000** | every query's top `[[kb:<id>]]` citation survives the strict (hallucination-dropping) parser **and** points at a gold-relevant chunk |
+| `cross_tenant_leaks` | **0** | a same-vocabulary sepsis chunk owned by a *different* tenant was never retrieved |
+
+This is a **wiring + tenant-isolation** proof on a tiny, well-separated synthetic set — every metric is at ceiling by
+construction, so read it as "the hybrid retriever + tenant/APPROVED filter + StrictCitations parser are correctly
+wired", **not** as a discrimination/recall benchmark. The 6-test unit suite
+(`tests/unit/eval/test_retrieval_eval.py`) locks these numbers in CI.
+
+### OPEN PREREQUISITE — real retrieval golden set + GPU models
+
+Same philosophy as the Phase-0 golden-set handoff. A release-grade retrieval eval needs:
+1. the **clinician-curated retrieval golden set** (N≈132 query→chunk relevance pairs across specialties/tenants), owned +
+   versioned by a clinical SME — drop it in via `--golden-set` (same shape) with **no code change**;
+2. **BAAI/bge-m3 (1024-dim)** loaded in LM Studio `/v1/embeddings` (the `knowledge_chunks` collection is 1024-dim) and
+   the **`hope-reranker`** TEI service (:8870) up — to score the full dense + rerank channels, not just BM25.
+
+### Reproduce / hygiene
+
+Read-only eval module `harness.eval.retrieval_eval` + fixture `golden/fixtures/retrieval_synthetic_v0.json` (added under
+the eval harness). Uses an **in-memory** Qdrant engine — nothing is written to the live Qdrant, Postgres, or any
+`packages/*`; no app/sensor logic, `core/config.py`, or `temporal/*` changed; nothing committed.

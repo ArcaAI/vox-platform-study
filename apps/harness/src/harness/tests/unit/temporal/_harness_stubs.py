@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
+from harness.guides.retrieval.prompt import build_strict_citations_block
+from harness.guides.retrieval.retriever import RetrievedChunk
 from harness.sensors.base import NEREntity, SensorResult
 from harness.sensors.inferential import GROUNDEDNESS_NAME, SAFETY_NAME
 from harness.sensors.inferential.base import degraded_result
@@ -32,11 +34,15 @@ from harness.temporal.models import (
     EscalateInput,
     EscalateResult,
     ExtractEntitiesInput,
+    FetchPolicyInput,
     GenerateInput,
+    HarnessPolicy,
     InferentialRunOutput,
     PersistDraftInput,
     PersistEntitiesInput,
     RecordGateInput,
+    RetrieveContextInput,
+    RetrievedContext,
     RunInferentialSensorsInput,
     RunSensorsInput,
 )
@@ -59,6 +65,14 @@ class StubConfig:
     # assurance). ``inferential_fails`` makes the activity raise (infra failure).
     inferential_verdicts: list[str] = field(default_factory=lambda: ["SAFE"])
     inferential_fails: bool = False
+    # Phase-3 retrieval: chunks the ``retrieve_context`` stub returns as (id, text);
+    # ``retrieval_degraded`` simulates a backend outage -> reduced assurance.
+    retrieved_chunks: list[tuple[str, str]] = field(default_factory=list)
+    retrieval_degraded: bool = False
+    # Phase-6 policy injection: the policy the ``fetch_policy`` stub returns. ``None``
+    # makes the stub raise (endpoint unavailable) so the workflow degrades to the
+    # code defaults — i.e. unchanged Phase 1-3 behaviour for the existing tests.
+    policy: HarnessPolicy | None = None
 
 
 @dataclass
@@ -66,11 +80,15 @@ class StubRecorder:
     """Captures what the workflow drove (call counts + payloads)."""
 
     calls: Counter = field(default_factory=Counter)
+    fetch_policy_inputs: list[FetchPolicyInput] = field(default_factory=list)
     persist_entities_inputs: list[PersistEntitiesInput] = field(default_factory=list)
     persist_draft_inputs: list[PersistDraftInput] = field(default_factory=list)
     record_inputs: list[RecordGateInput] = field(default_factory=list)
     escalate_inputs: list[EscalateInput] = field(default_factory=list)
     inferential_inputs: list[RunInferentialSensorsInput] = field(default_factory=list)
+    retrieve_inputs: list[RetrieveContextInput] = field(default_factory=list)
+    generate_inputs: list[GenerateInput] = field(default_factory=list)
+    run_sensors_inputs: list[RunSensorsInput] = field(default_factory=list)
 
 
 def _ok(name: str) -> SensorResult:
@@ -194,6 +212,16 @@ def _inferential_for(kind: str) -> InferentialRunOutput:
 def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
     """Build the full set of name-matched stub activities."""
 
+    @activity.defn(name="fetch_policy")
+    async def fetch_policy(payload: FetchPolicyInput) -> HarnessPolicy:
+        recorder.calls["fetch_policy"] += 1
+        recorder.fetch_policy_inputs.append(payload)
+        if config.policy is None:
+            # No policy configured -> simulate an unreachable endpoint so the
+            # workflow degrades to the code defaults (the fail-safe path).
+            raise ApplicationError("policy endpoint unavailable", non_retryable=True)
+        return config.policy
+
     @activity.defn(name="extract_entities")
     async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
         recorder.calls["extract_entities"] += 1
@@ -227,9 +255,21 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
             resolved_from="department",
         )
 
+    @activity.defn(name="retrieve_context")
+    async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
+        recorder.calls["retrieve_context"] += 1
+        recorder.retrieve_inputs.append(payload)
+        chunks = [RetrievedChunk(chunk_id=cid, text=txt) for cid, txt in config.retrieved_chunks]
+        return RetrievedContext(
+            chunks=chunks,
+            degraded=config.retrieval_degraded,
+            prompt_block=build_strict_citations_block(chunks),
+        )
+
     @activity.defn(name="generate")
     async def generate(payload: GenerateInput) -> SmrGenerationResult:
         recorder.calls["generate"] += 1
+        recorder.generate_inputs.append(payload)
         if config.generate_fails:
             raise ApplicationError("smr unavailable", non_retryable=True)
         return SmrGenerationResult(
@@ -245,6 +285,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
     async def run_sensors(payload: RunSensorsInput) -> SensorRunOutput:
         i = recorder.calls["run_sensors"]
         recorder.calls["run_sensors"] += 1
+        recorder.run_sensors_inputs.append(payload)
         kind = config.verdicts[min(i, len(config.verdicts) - 1)]
         results = _results_for(kind)
         return SensorRunOutput(
@@ -283,9 +324,11 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         return EscalateResult(escalated=True)
 
     return [
+        fetch_policy,
         extract_entities,
         persist_entities,
         assemble_prompt,
+        retrieve_context,
         generate,
         run_sensors,
         run_inferential_sensors,

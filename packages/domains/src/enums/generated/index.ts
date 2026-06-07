@@ -15,6 +15,7 @@ export * from './WebhookRunStatus';
 export * from './NotificationType';
 export * from './ContextItemType';
 export * from './ConsultationStatus';
+export * from './KnowledgeDocumentStatus';
 export * from './ContextItemSource';
 export * from './AiModelSource';
 export * from './AiModelFormat';

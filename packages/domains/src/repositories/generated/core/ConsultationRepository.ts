@@ -5,7 +5,7 @@ import { ConsultationEntityMapper } from '../../../mappers';
 import { ConsultationEntity } from '../../../entities';
 import { Consultation } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
-import { ResourceStatusType } from '../../../enums';
+import { ConsultationStatus, ResourceStatusType } from '../../../enums';
 
 @Injectable()
 export class ConsultationRepository extends Repository<ConsultationEntity, Consultation> {
@@ -357,6 +357,23 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
     } catch {
       return 0;
     }
+  }
+
+  /**
+   * Consultations awaiting clinician review (the harness gate queue), oldest
+   * first so the longest-waiting item leads. TASK-330 Phase 6 — backs
+   * `HarnessObservabilityService.gateQueue`; SLA/escalation is computed in the
+   * service from the effective policy + the audit trail.
+   */
+  async findPendingReviewForTenant(tenantId: string): Promise<ConsultationEntity[]> {
+    return this.findAll({
+      filters: {
+        tenantId,
+        status: ConsultationStatus.PENDING_REVIEW,
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+      sort: [{ updatedAt: 'asc' }],
+    });
   }
 
   /**

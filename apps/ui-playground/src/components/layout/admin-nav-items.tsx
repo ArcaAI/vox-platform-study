@@ -12,6 +12,7 @@ import {
   ScrollText,
   Settings,
   Settings2,
+  Stethoscope,
   Users,
   Workflow,
 } from 'lucide-react';
@@ -51,6 +52,9 @@ const TENANT_SCOPED_ADMIN_IDS = new Set([
   'configurations',
   'audit-logs',
   'jobs',
+  // TASK-330 Phase 6 — the harness console lands on the tenant-scoped overview
+  // (gate queue / audit / evals), so a global-scope admin must pick a tenant.
+  'harness',
 ]);
 
 export function buildAdminNavItems(opts: {
@@ -77,6 +81,8 @@ export function buildAdminNavItems(opts: {
       { id: 'audit-logs', title: 'Audit Logs', url: '/admin/audit-logs', icon: ScrollText },
       // TASK-336 OB-02 — tenant-wide consultations + transcription jobs.
       { id: 'jobs', title: 'Jobs', url: '/admin/jobs', icon: ClipboardList },
+      // TASK-330 Phase 6 — clinical documentation harness admin & observability.
+      { id: 'harness', title: 'Harness', url: '/admin/harness/overview', icon: Stethoscope, badge: 'NEW' },
     );
   }
 

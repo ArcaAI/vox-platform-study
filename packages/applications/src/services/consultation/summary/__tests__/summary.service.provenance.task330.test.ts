@@ -69,6 +69,37 @@ describe('SummaryService.getSummaryProvenance (TASK-330 — provenance over HTTP
     });
   });
 
+  it('passes per-claim knowledgeChunkIds through provenance unchanged (TASK-330 Phase 3 institutional RAG)', async () => {
+    // Phase 3 adds `knowledgeChunkIds: string[]` to each citationsMap claim
+    // (the harness RAG path links a claim to the KnowledgeChunk rows that
+    // grounded it). citationsMap is a Json passthrough end-to-end, so this is
+    // surfaced verbatim — no schema/DTO change. This test locks that contract.
+    const { service, summaryMetaRepository } = buildService();
+    const citationsMap = {
+      claims: [
+        { id: 'claim-1', text: 'start lisinopril', status: 'verified', knowledgeChunkIds: ['kc-1', 'kc-2'] },
+        { id: 'claim-2', text: 'monitor potassium', status: 'unverified', knowledgeChunkIds: [] },
+      ],
+    };
+    summaryMetaRepository.findByContextItem.mockResolvedValue({
+      contextItemId: 'ctx-rag-1',
+      modelName: 'gpt-x',
+      entityFaithfulnessScore: null,
+      coverageScore: null,
+      ragTriadScore: null,
+      citationsMap,
+      guardrailDecisions: null,
+      generatedAt: null,
+    });
+
+    const result = await service.getSummaryProvenance('ctx-rag-1');
+
+    expect(result.citationsMap).toEqual(citationsMap);
+    const claims = (result.citationsMap as { claims: Array<{ knowledgeChunkIds: string[] }> }).claims;
+    expect(claims[0].knowledgeChunkIds).toEqual(['kc-1', 'kc-2']);
+    expect(claims[1].knowledgeChunkIds).toEqual([]);
+  });
+
   it('normalises absent provenance to null fields (no SummaryMeta optional columns set)', async () => {
     const { service, summaryMetaRepository } = buildService();
     summaryMetaRepository.findByContextItem.mockResolvedValue({

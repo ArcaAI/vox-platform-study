@@ -95,6 +95,19 @@ guardrails = [
     "spacy>=3.7",
 ]
 
+# Phase-3 institutional RAG (TASK-330): hybrid retrieval over a dedicated Qdrant
+# `knowledge_chunks` collection. `qdrant-client` drives the named dense+sparse
+# vectors and the Query API (prefetch + RRF fusion); `fastembed` produces the
+# in-process Qdrant/bm25 sparse vectors (CPU, no extra service). Dense embeddings
+# and the cross-encoder rerank are HTTP (LM Studio /v1/embeddings + a TEI
+# reranker), so they need NO new dependency (they reuse httpx). Kept opt-in like
+# `eval`/`guardrails` so the base service install stays slim; all RAG code is
+# flag-gated (HARNESS_RETRIEVAL_ENABLED, default off) and degrade-safe.
+rag = [
+    "qdrant-client>=1.12",
+    "fastembed>=0.4",
+]
+
 lint = [
     "black>=26.1.0",
     "ruff>=0.15.7",

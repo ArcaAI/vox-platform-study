@@ -52,6 +52,7 @@ def run_computational_sensors(
     transcript_entities: Sequence[NEREntity],
     response_format: dict[str, Any] | None = None,
     transcript_context_item_id: str | None = None,
+    retrieved_chunk_ids: Sequence[str] = (),
     thresholds: SensorThresholds | None = None,
 ) -> SensorRunOutput:
     """Run all computational sensors over one generated draft."""
@@ -63,6 +64,7 @@ def run_computational_sensors(
         transcript_entities=transcript_entities,
         transcript_text=transcript_text,
         transcript_context_item_id=transcript_context_item_id,
+        retrieved_chunk_ids=retrieved_chunk_ids,
     )
 
     context = SensorContext(

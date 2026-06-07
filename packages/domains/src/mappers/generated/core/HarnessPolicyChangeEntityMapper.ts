@@ -1,0 +1,53 @@
+import { AutoClassMapper, AutoEntityChangeMapper, BaseMapper, createMapperHandlers } from '../../../common';
+import * as Entities from '../../../entities';
+import * as Models from '../../../models';
+import * as Mappers from '../../../mappers';
+
+/**
+ * The `HarnessPolicyChange` table is append-only (WORM) and intentionally has
+ * NO `_metadata` / `_version` / `createdBy` / `updatedBy` / `updatedAt` /
+ * `resourceStatus*` columns. The base entity/model carry those inherited
+ * fields, so we strip them before persistence to avoid "Unknown argument"
+ * Prisma errors. Only `id`, `tenantId`, `createdAt` and the business columns
+ * are written. Mirrors `HarnessAuditEventEntityMapper`.
+ */
+function stripNonPersistedFields<T>(model: T): T {
+  const raw = model as unknown as Record<string, unknown>;
+  delete raw.metaData;
+  delete raw.version;
+  delete raw.createdBy;
+  delete raw.updatedBy;
+  delete raw.updatedAt;
+  delete raw.resourceStatus;
+  delete raw.resourceStatusUpdatedAt;
+  delete raw.resourceStatusUpdatedBy;
+  return model;
+}
+
+export class HarnessPolicyChangeEntityMapper extends BaseMapper<Entities.HarnessPolicyChangeEntity, Models.HarnessPolicyChange> {
+  constructor() {
+    super();
+  }
+
+  public toPersistence(entity: Entities.HarnessPolicyChangeEntity): Models.HarnessPolicyChange {
+    const model = AutoClassMapper(entity, Models.HarnessPolicyChange, HarnessPolicyChangeEntityMapperHandlers.$toPersistence);
+    return stripNonPersistedFields(model);
+  }
+
+  public toPersistenceChanges(entity: Entities.HarnessPolicyChangeEntity): Partial<Models.HarnessPolicyChange> {
+    const model = AutoEntityChangeMapper(entity, Models.HarnessPolicyChange, HarnessPolicyChangeEntityMapperHandlers.$toPersistence);
+    return stripNonPersistedFields(model);
+  }
+
+  public toDomainEntity(dataModel: Models.HarnessPolicyChange): Entities.HarnessPolicyChangeEntity {
+    return AutoClassMapper(dataModel, Entities.HarnessPolicyChangeEntity, HarnessPolicyChangeEntityMapperHandlers.$toDomain);
+  }
+}
+
+export const HarnessPolicyChangeEntityMapperHandlers = createMapperHandlers<
+  Entities.HarnessPolicyChangeEntity,
+  Models.HarnessPolicyChange
+>({
+  $toPersistence: {},
+  $toDomain: {},
+});

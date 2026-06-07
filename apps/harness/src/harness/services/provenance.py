@@ -19,6 +19,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from harness.guides.retrieval.prompt import extract_cited_ids
 from harness.sensors.base import NEREntity, normalize_text
 
 # SOAP property name -> single-letter section code (matches the sensors).
@@ -92,6 +93,30 @@ def _evidence_for(
     return None
 
 
+def _section_cited_ids(
+    soap_sections: dict[str, Any], retrieved_chunk_ids: Sequence[str]
+) -> dict[str, list[str]]:
+    """Map each S/O/A/P code to the retrieved chunk ids the model cited in it.
+
+    StrictCitations: the model cites supporting chunks inline with ``[[kb:<id>]]``.
+    Parsing is **strict** — only ids that were actually retrieved survive — so a
+    hallucinated citation never reaches ``knowledgeChunkIds``. Empty universe ->
+    every section maps to ``[]`` (markers ignored).
+    """
+    allowed = {cid for cid in retrieved_chunk_ids if cid}
+    if not allowed:
+        return {}
+    cited: dict[str, list[str]] = {}
+    for key, code in _SECTION_CODES:
+        value = soap_sections.get(key)
+        if value is None:
+            continue
+        ids = extract_cited_ids(str(value), allowed)
+        if ids:
+            cited[code] = ids
+    return cited
+
+
 def build_citations_map(
     *,
     soap_sections: dict[str, Any],
@@ -99,8 +124,18 @@ def build_citations_map(
     transcript_entities: Sequence[NEREntity],
     transcript_text: str = "",
     transcript_context_item_id: str | None = None,
+    retrieved_chunk_ids: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Derive a deterministic ``{"claims": [...]}`` provenance map."""
+    """Derive a deterministic ``{"claims": [...]}`` provenance map.
+
+    ``retrieved_chunk_ids`` (Phase 3) is the set of chunk ids the JIT retriever
+    surfaced for this generation; when present, each claim's ``knowledgeChunkIds``
+    is filled from the StrictCitations ``[[kb:<id>]]`` markers the model wrote in
+    that claim's SOAP section (section-level attribution). Absent retrieval (the
+    flag-off Phase-1/2 path) the field stays ``[]``.
+    """
+    section_cited = _section_cited_ids(soap_sections, retrieved_chunk_ids)
+
     transcript_by_norm: dict[str, NEREntity] = {}
     for entity in transcript_entities:
         if entity.normalized and entity.normalized not in transcript_by_norm:
@@ -122,16 +157,17 @@ def build_citations_map(
             transcript_text=transcript_text,
             transcript_context_item_id=transcript_context_item_id,
         )
+        section = _derive_section(norm, soap_sections)
         claims.append(
             {
                 "id": f"claim-{len(claims) + 1}",
                 "text": _clean_claim_text(entity.text),
-                "section": _derive_section(norm, soap_sections),
+                "section": section,
                 "confidence": 1.0 if evidence else 0.0,
                 "status": "verified" if evidence else "unverified",
                 "evidence": [evidence] if evidence else [],
                 "entityRefs": [],
-                "knowledgeChunkIds": [],
+                "knowledgeChunkIds": list(section_cited.get(section, [])),
             }
         )
 

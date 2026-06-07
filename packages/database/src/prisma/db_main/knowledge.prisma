@@ -1,0 +1,112 @@
+// =============================================================================
+// TASK-330 — Phase 3 Institutional RAG (Knowledge corpus)
+//
+// Tenant-owned institutional knowledge corpus that backs the harness hybrid
+// JIT retriever. Two standard tenant-scoped models (tenantId + resourceStatus
+// + audit + _version / _metadata):
+//
+//   1. KnowledgeDocument — an admin-registered source document. Lifecycle:
+//      DRAFT (registered) -> APPROVED (cleared for ingestion/retrieval) ->
+//      ARCHIVED. Approval enqueues the BullMQ IngestKnowledgeDocument job,
+//      which calls the harness to chunk+embed+upsert into Qdrant, then marks
+//      the document ingested (ingestedAt + chunkCount).
+//
+//   2. KnowledgeChunk — one row per chunk the harness produced. Carries the
+//      Qdrant point id (knowledge is persisted in Postgres here; the vector
+//      lives in the harness-owned `knowledge_chunks` Qdrant collection) plus
+//      the offsets / token count / embedding provenance returned by ingest.
+// =============================================================================
+
+enum KnowledgeDocumentStatus {
+    DRAFT
+    APPROVED
+    ARCHIVED
+
+    @@schema("core")
+}
+
+model KnowledgeDocument {
+    // Meta fields (BaseEntity pattern)
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String
+
+    // Business fields
+    title      String
+    source     String // origin reference (filename / URL / path)
+    sourceType String // loader/source category (e.g. "text", "markdown", "upload")
+    mimeType   String
+    checksum   String // content hash for dedup / change detection
+    status     KnowledgeDocumentStatus @default(DRAFT)
+
+    // Approval (DRAFT -> APPROVED gate before ingestion)
+    approvedBy String?
+    approvedAt DateTime?
+
+    // Ingestion result (set when the harness ingest job completes)
+    ingestedAt DateTime?
+    chunkCount Int       @default(0)
+
+    // Resource status + Audit (standard fields)
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime @default(now())
+    updatedAt               DateTime @updatedAt
+
+    // Relations
+    KnowledgeChunks KnowledgeChunk[]
+
+    @@index([tenantId], name: "KnowledgeDocument_tenantId_idx")
+    @@index([tenantId, status], name: "KnowledgeDocument_tenant_status_idx")
+    @@index([tenantId, checksum], name: "KnowledgeDocument_tenant_checksum_idx")
+    @@schema("core")
+}
+
+model KnowledgeChunk {
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    tenantId String
+
+    // Parent document
+    knowledgeDocumentId String
+    KnowledgeDocument   KnowledgeDocument @relation(fields: [knowledgeDocumentId], references: [id])
+
+    // Chunk content + position within the source document
+    chunkIndex  Int
+    text        String @db.Text
+    tokenCount  Int
+    startOffset Int
+    endOffset   Int
+
+    // Vector provenance — the point id in the harness-owned Qdrant collection
+    qdrantPointId  String
+    embeddingModel String
+    embeddingDim   Int
+
+    // Chunk approval state (mirrors the harness ingest descriptor; free-form
+    // string like EvalRun.status — the harness returns "APPROVED").
+    status String
+
+    // Resource status + Audit (standard fields)
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime @default(now())
+    updatedAt               DateTime @updatedAt
+
+    @@index([tenantId], name: "KnowledgeChunk_tenantId_idx")
+    @@index([knowledgeDocumentId], name: "KnowledgeChunk_knowledgeDocumentId_idx")
+    @@index([tenantId, knowledgeDocumentId], name: "KnowledgeChunk_tenant_document_idx")
+    @@index([qdrantPointId], name: "KnowledgeChunk_qdrantPointId_idx")
+    @@schema("core")
+}

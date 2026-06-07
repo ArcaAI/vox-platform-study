@@ -119,6 +119,25 @@ class ApiClient:
                 raise ApiServiceError(f"apps/api {path} failed: {exc}") from exc
             return resp.json()
 
+    async def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
+        async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
+            try:
+                resp = await client.get(self._url(path), params=params, headers=self._headers())
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise ApiServiceError(f"apps/api {path} failed: {exc}") from exc
+            return resp.json()
+
+    async def get_policy(self, tenant_id: str) -> dict[str, Any]:
+        """Read the effective harness policy for ``tenant_id`` (Phase-6 worker fetch).
+
+        Returns the raw camelCase ``HarnessPolicyResponse`` JSON; the ``fetch_policy``
+        activity maps it onto :class:`~harness.temporal.models.HarnessPolicy`. Raises
+        :class:`ApiServiceError` on any transport/HTTP error so the workflow can fall
+        back to the code defaults.
+        """
+        return await self._get("/policy", {"tenantId": tenant_id})
+
     async def persist_entities(
         self,
         consultation_id: str,

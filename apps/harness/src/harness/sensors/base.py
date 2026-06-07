@@ -79,6 +79,10 @@ class SensorContext(BaseModel):
     transcript_entities: list[NEREntity] = Field(default_factory=list)
     soap_schema: dict[str, Any] = Field(default_factory=dict)
     citations_map: dict[str, Any] = Field(default_factory=dict)
+    # Phase-3 institutional RAG: retrieved chunk id -> chunk text. The
+    # citation-verify sensor entails each claim against ONLY its cited chunks'
+    # text (looked up here); empty in the flag-off Phase-1/2 path.
+    knowledge_chunks: dict[str, str] = Field(default_factory=dict)
 
     def note_blob(self) -> str:
         """Best-available note text: ``note_text`` if present, else joined sections."""

@@ -7,7 +7,7 @@
 | Type | research + high-level design (architecture) |
 | Created | 2026-06-02 |
 | Updated | 2026-06-06 (**v3** — codebase re-review post-TASK-331, SOTA reconciliation, **durability locked = Temporal**, detailed implementation plan) |
-| Status | **In Progress** (Phase 0 foundation + corrective tickets landed 2026-06-06; remaining phases per implementation-plan.md) |
+| Status | **In Progress** (Phases 0–3 + **Phase 6 (Harness Administration & Observability Console)** implemented + integrated-verified 2026-06-07; Phases 4–5 pending — see §9 + implementation-plan.md) |
 | Scope | `apps/{stt-v2,nlp,smr,api}` + new `apps/harness`; `packages/{agentic-sdk-v2,med-ner,applications,domains,database}`; infra `Qdrant` + `Langfuse` + **Temporal**; India `ABDM/FHIR` adapter |
 | Research | Fully-cited research archive: [`research/clinical-harness/`](../../../research/clinical-harness/README.md) (8 docs, 182 sources) |
 | Plan | Detailed phased implementation plan: [`implementation-plan.md`](./implementation-plan.md) |
@@ -837,6 +837,167 @@ sends `guardrailDecisions`/`reducedAssurance`/`ragTriadScore` (pruned when absen
 
 **Out of scope / untouched (per plan):** `apps/guardrail` and `apps/smr` were not modified. Nothing committed.
 
+### 2026-06-07 — Phase 3 institutional RAG (hybrid retrieval + StrictCitations) — implemented (Lanes A/B) + verified end-to-end (Lane C)
+
+UC-4: ground generation in a **tenant-owned institutional knowledge corpus** via a self-hosted hybrid JIT retriever, with
+every grounded claim citing a chunk and a post-hoc citation verifier. **Additive, flag-gated (`HARNESS_RETRIEVAL_ENABLED`,
+default OFF), degrade-safe.** Lanes A (Python/harness) + B (TS/DB/domain/ingest/persist) built it; Lane C reconciled the
+cross-service contract, added the deterministic e2e + retrieval eval, and verified the suites.
+
+**Architecture (what landed).**
+- **DB (additive):** `KnowledgeDocument` + `KnowledgeChunk` (tenant-scoped) + `KnowledgeDocumentStatus` enum; migration
+  `20260607000000_task_330_phase3_knowledge_rag`; **both** registered in the `TENANT_SCOPED_MODELS` drift guard.
+- **Domain:** Entity/Factory/Mapper/Model/Repository for both, barrel + `CoreDatabaseModule` wired.
+- **Ingestion (TS, BullMQ):** `JobQueue.IngestKnowledgeDocument` + `KnowledgeDocumentService` (CRUD + `approveDocument()`
+  enqueues the job with the raw `text`) + `IngestKnowledgeDocumentProcessor` (fail-closed `tenantId` guard, CLS rebind,
+  `assertEqualTenants`, progress) → calls the harness ingest endpoint via `KnowledgeIngestClient` → persists one
+  `KnowledgeChunk` row per returned chunk (keyed by `qdrantPointId`) → marks the doc ingested. There is intentionally **no
+  TS HTTP ingest controller** (ingest is service/queue-driven).
+- **Harness vectorize (Python):** `POST /api/v1/internal/knowledge/ingest` (`X-Service-Token` ←
+  `HARNESS_INTERNAL_SERVICE_TOKEN` **or** the shared `HARNESS_SERVICE_TOKEN`; both empty = guard off for dev): chunk →
+  dense (LM Studio `/v1/embeddings`) + sparse (in-process fastembed `Qdrant/bm25`) → upsert one point per chunk into the
+  dedicated `knowledge_chunks` collection → return chunk descriptors; **503** structured error on any backend outage
+  (nothing half-written — upsert is last). Stable `uuid5(tenant:doc:chunkIndex)` point id ⇒ idempotent re-ingest.
+- **Qdrant `knowledge_chunks`:** named vector `dense` (1024-dim, COSINE) + sparse `bm25` (IDF); payload `tenant_id`,
+  `knowledge_document_id`, `chunk_id`, `status`. Only `status=APPROVED` is retrievable.
+- **Retriever (Python):** `guides/retrieval` JIT hybrid — query built from extracted entities → dense + sparse →
+  Qdrant Query API `prefetch(dense)` + `prefetch(sparse)` (**both** scoped to `tenant_id` + `status=APPROVED`) →
+  `FusionQuery(RRF)` → TEI cross-encoder rerank (`hope-reranker`) → top-k. **Degrade-safe:** any backend down ⇒ empty
+  context + `degraded=True` (generation proceeds, flagged reduced-assurance) — never raises into the durable loop.
+  The `retrieve_context` activity (flag-gated) runs **once** in `HarnessDocWorkflow` right after entity-extraction
+  (before the bounded regen loop, since retrieval is entity-triggered + stable across regens); inside the loop the cited
+  Knowledge-Context block is appended to the user prompt between `assemble_prompt` and `generate` each iteration (an empty
+  block — retrieval off / no hits / degraded — leaves the prompt unchanged), and a degraded retrieval sets `reduced_assurance`.
+- **StrictCitations + verify:** retrieved chunks rendered as a numbered Knowledge Context, each tagged with the id the
+  model must cite inline via `[[kb:<id>]]`. `extract_cited_ids` strict-parses markers, **dropping hallucinated ids**
+  (only retrieved ids reach `citationsMap.knowledgeChunkIds`). `CitationVerifySensor` (forked from groundedness; premise =
+  the **cited chunk text only**; threshold 0.8; reuses the calibrated `google/gemma-4-e4b` judge) runs in
+  `run_inferential_sensors`, is in `REGEN_FIXABLE_SENSORS`, and surfaces an "unverified" badge on degrade.
+
+**Integration items reconciled (Lane C).**
+1. **Ingest URL path mismatch (real bug, fixed).** `KnowledgeIngestClient` posted to `{HARNESS_URL}/internal/knowledge/ingest`,
+   but the harness mounts the route under its global `/api/v1` prefix (`/api/v1/internal/knowledge/ingest`) — so the live
+   call would have **404'd**. Aligned the TS client to `{HARNESS_URL}/api/v1/internal/knowledge/ingest` (matching the
+   sibling `HarnessGatewayService`, which already uses `/api/v1/internal/...`; `HARNESS_URL` is host-only). Added a
+   regression suite `knowledge-ingest.client.test.ts` (6 ✓) pinning the path + the `HARNESS_INTERNAL_SERVICE_TOKEN`
+   resolution. **Token env name verified matching on both sides** (`HARNESS_INTERNAL_SERVICE_TOKEN`; harness also accepts
+   the shared `HARNESS_SERVICE_TOKEN`).
+2. **No TS HTTP ingest controller** (intentional). The e2e drives ingest via the service/queue path; the live full loop
+   (ingest via approve → BullMQ → harness) is codified + env-gated in the Playwright spec.
+
+**Verification evidence (actual output captured — no claim without output).**
+- **Python — `pytest apps/harness`: `412 passed in ~15s`** (402 pre-existing unit + **6** new retrieval-eval unit + **4**
+  new deterministic RAG integration). ruff + black clean on all touched files.
+- **TS vitest (unit):** `@arcaai/database` **801 ✓** (incl. the `TENANT_SCOPED_MODELS` drift guard covering both new
+  models), `@arcaai/domains` **1173 ✓** (incl. `task-330-phase3-domain.test.ts`), `@arcaai/applications` **4849 ✓**
+  (incl. knowledge domain/processor/approval/client = **14 ✓**), `apps/api` **1665 ✓**.
+- **TS builds:** `@arcaai/database` + `@arcaai/domains` **build GREEN**. `@arcaai/applications` + `@arcaai/api` builds are
+  **blocked solely by the parallel Phase-6 lane** (`packages/applications/src/services/harness-policy/harness-policy.service.ts`
+  TS2322 `beforeJson`/`afterJson` `Record<string,unknown>`→`JsonValue` at lines 191/192/218) — **not Phase 3**. `tsc`
+  reports the complete error set and it is **exactly those 3 Phase-6 errors** (zero in any Phase-3/knowledge file), so the
+  Phase-3 TS compiles clean; vitest (esbuild transform) runs green regardless, and `applications/dist` still emits
+  (`noEmitOnError` unset) so `apps/api` runtime imports are unaffected. Isolated + reported separately per the lane brief;
+  **not repaired** (Phase 6 is another lane's work).
+- **Retrieval eval (`harness.eval.retrieval_eval`, synthetic `retrieval_synthetic_v0`, 5 queries / 9-chunk 2-tenant
+  corpus):** **recall@5 = 1.000, hit@5 = 1.000, MRR = 1.000, citation-validity = 1.000, cross-tenant leaks = 0** (a
+  same-vocabulary sepsis chunk owned by a *different* tenant was never retrieved). This is the **BM25 + RRF +
+  tenant/APPROVED-filter** lexical channel; the dense + rerank channels lift it further once the GPU models load.
+- **Deterministic RAG e2e (`tests/integration/test_retrieval_rag_e2e.py`, 4 ✓)** against a **real Qdrant engine**
+  (`qdrant-client` in-memory) + **real fastembed BM25** + the real `KnowledgeQdrantStore`/`HybridRetriever`/ingest
+  endpoint (only LM Studio dense + TEI rerank stubbed): (a) the real `/api/v1/internal/knowledge/ingest` ingests a doc and
+  the retriever then retrieves it + the StrictCitations block carries its id (a note citing it survives, a hallucinated id
+  is dropped); (b) **cross-tenant isolation** — tenant B never sees tenant A's chunks (filter enforced by the engine, not
+  just constructed); (c) **APPROVED gate** — a `DRAFT` chunk for the same tenant is unretrievable; (d) a Qdrant outage
+  degrades to empty + `degraded=True`, never raises.
+- **Playwright e2e (`apps/api/tests/e2e/task-330-phase3-rag.spec.ts`, mirrors `task-330-harness-gate.spec.ts`):** 2
+  deterministic auth-gate assertions (Phase-3 `citationsMap`/provenance is read-only behind auth) + 3 env-gated full-loop
+  scenarios (ingest→retrieve→cite→`citation_verify` PASS; cross-tenant isolation; backend-down graceful degrade). Parses +
+  enumerates **5 tests** (`playwright test --list`). The live full loop is **SKIPPED** here — it needs the full stack +
+  the GPU-loaded models (below) — exactly the harness-gate full-loop evidence policy (no fabricated pass).
+- **Infra reachability:** Qdrant **UP**, `knowledge_chunks` **already created with the correct shape** (verified live:
+  `dense` 1024/Cosine + `bm25` IDF, 0 points, status green) — additive, no recreate/DROP. LM Studio **UP** but **no
+  BAAI/bge-m3 1024-dim embedder loaded** (only 768-dim `embeddinggemma-300m`/`nomic-embed-text-v1.5` in the catalog, none
+  loaded). TEI `hope-reranker` (:8870) **DOWN**.
+
+**Model/data prerequisite handoff (gates only the LIVE full ingest→embed→retrieve→rerank→cite run — same philosophy as the
+golden-set handoff):**
+1. **Dense embeddings:** load **BAAI/bge-m3 (1024-dim)** in LM Studio at `/v1/embeddings` (the collection is 1024-dim; the
+   768-dim models present would mismatch — do **not** silently swap dims / recreate the collection).
+2. **Reranker:** bring up the **`hope-reranker`** TEI service (:8870) serving `BAAI/bge-reranker-v2-m3`.
+3. **Institutional corpus:** SME-owned approved documents + the `DRAFT→APPROVED` owner (the pipeline ships a text/markdown
+   loader; PDF/docx are a noted follow-up). The release-grade **retrieval golden set (N≈132 query→chunk relevance pairs)** is
+   a clinician-owned data handoff — drop it into `harness.eval.retrieval_eval --golden-set` (same shape) with no code change.
+
+**Deviations from the plan (intentional).**
+- `KnowledgeQdrantStore.hybrid_query` uses `FusionQuery(fusion=RRF)` — the installed `qdrant-client` 1.17 exposes RRF
+  **without** an explicit `k`, so server-side RRF is used; the configured `rrf_k` (60) is carried in `RetrievalConfig` for
+  forward-compat but not passed to this API version.
+- StrictCitations `[[kb:<id>]]` markers are **not stripped** from the persisted note (a rendering-layer concern), so the
+  note retains its inline provenance for the review UI / verifier.
+- The deterministic isolation + degrade proofs run at the **harness layer** (real in-memory Qdrant engine + real BM25), and
+  the Playwright apps/api full loop is **gated** on the live stack + the two GPU models — because those models are the
+  documented prerequisite, not a code gap.
+
+**Out of scope / untouched:** `apps/smr` + `apps/guardrail` not modified; the parallel **Phase-6 harness-policy** lane was
+**not** authored/repaired (its build break isolated + reported). No `DROP`/`DELETE`/`TRUNCATE` (DB or Qdrant). Nothing committed.
+
+### 2026-06-07 — Phase 6 Harness Administration & Observability Console (BP1 TS backend, BP2 Python harness, BP3 frontend + integrated verification)
+
+An admin surface in `apps/ui-playground` `/admin/harness` to **observe** (WORM audit + integrity verdict, eval runs, clinician
+gate queue), **operate** (Temporal document-workflow list / describe / cancel / terminate / re-signal), and **manage** the
+DB-backed harness **policy** that the durable clinical loop reads **live** — every policy edit append-only WORM-audited, with
+platform-vs-tenant role separation. Full task-by-task detail in `implementation-plan.md` → *Phase 6*; plan
+`.cursor/plans/harness_admin_console_68547a26.plan.md`.
+
+**What shipped (by layer).**
+- **DB (additive):** `HarnessPolicy` (tenant-scoped, `_version` OCC, unique `tenantId`, thresholds + guard toggles + model
+  selection + `maxRegen`/gate-SLA/escalation + `toolAllowlist`) + `HarnessPolicyChange` (append-only **WORM**); migration
+  `20260607120000_task_330_phase6_harness_policy` with a **role-guarded idempotent `REVOKE UPDATE, DELETE`** on the change
+  table and a single GLOBAL-DEFAULT row seed (system tenant, `ON CONFLICT DO NOTHING`). Both registered in the
+  `TENANT_SCOPED_MODELS` drift guard.
+- **Domain:** hand-written Entity/Factory/Mapper/Model/Repository for both models (`HarnessPolicyRepository.findActiveForTenant`
+  with system-tenant fallback) + barrels + `CoreDatabaseModule`.
+- **Services (`@arcaai/applications`):** `HarnessPolicyService` (effective tenant→global→code merge, OCC CAS update + WORM
+  `HarnessPolicyChange` write in one transaction, GLOBAL-DEFAULT editor) + `HarnessObservabilityService` (audit list +
+  chain-verify, eval runs/detail, gate queue from `PENDING_REVIEW` + policy SLA/escalation).
+- **API (`apps/api`):** `HarnessAdminController` (`/admin/harness/*` — policy GET/PATCH + `policy/global`, audit, eval-runs,
+  gate-queue, workflows list/describe/cancel/terminate/signal) with `@Authorize(['read'|'manage', Subject])`, `If-Match` OCC,
+  CLS tenant scoping (super-admins cross-tenant); `HarnessOpsClient` (HTTP→harness, `X-Service-Token`); the worker-facing
+  `GET /internal/harness/policy?tenantId=` added to `HarnessInternalController`. Registered via `HarnessAdminModule` in
+  `AppModule`.
+- **Python harness:** admin endpoints `apps/harness/.../api/endpoints/admin.py` (mounted `/api/v1/internal/harness/*`, reuse
+  `require_service_token`) wrapping the Temporal client; a custom **`HarnessTenantId`** Keyword search attribute set on
+  `start_workflow` (+ `tenantId` memo fallback, degrade-safe); a **`fetch_policy`** activity that threads the effective policy
+  into the deterministic loop — `maxRegen`/gate SLA + escalation timer, `RunSensorsInput.thresholds`, `groundednessThreshold`
+  + `safetyEnabled`, and SMR provider/model defaults (workflow input still overrides).
+- **RBAC (`seed/01-policy.ts`):** subjects `HarnessPolicy`/`HarnessWorkflow`/`HarnessAudit`/`HarnessEval`; new
+  `harness-platform-manage` (GLOBAL) + `harness-tenant-manage` (TENANT) policies + `tenant-full-access` grants.
+- **Frontend:** `features/admin/harness/{overview,audit,evals,workflows,policy}` + routes, nav entry + `RequireAdmin` guards,
+  platform-only gating of the GLOBAL-DEFAULT editor + cross-tenant lists, confirm dialogs + toasts on destructive ops, and a
+  safety-lowering confirm in the policy editor.
+
+**Locked governance.** Policy edits live + WORM-audited (next run picks them up via `fetch_policy`); tenant admins may
+cancel/terminate/re-signal **their own** tenant's workflows (server-side ownership check via `HarnessTenantId`), platform
+super-admins act cross-tenant.
+
+**Integrated verification evidence.** `pnpm db:generate` ✓; `build --filter @arcaai/domains @arcaai/applications` ✓ (7/7) +
+`build:api` ✓ (8/8); vitest **domains 1173 ✓ / applications 4857 ✓ / api 1695 ✓** (incl. **boot-time admin-route permission
+audit 15 ✓** — every `/admin/harness/*` route maps to a concrete CASL ability); **`HarnessPolicyChange` WORM 21 ✓** on the
+live dev DB (UPDATE/DELETE → SQLSTATE `42501`; real `hope_app`/`hope_app_template` roles confirmed REVOKEd); **harness pytest
+443 ✓** (incl. `test_policy_injection` proving a lowered threshold flips the gate verdict); **ui-playground 1052 ✓**;
+`ReadLints` clean. The cross-service seams were checked: `HarnessOpsClient` base path `/api/v1/internal/harness` matches the
+harness admin router mount; `HarnessAdminModule` is wired in `AppModule`. **No real integration regression found** — no fix
+needed. The Phase-3 note of a "Phase-6 build block" is **now resolved** (full monorepo builds GREEN).
+
+**Deviations.** Frontend **mirrors API DTOs locally** (`@arcaai/applications` is server-only); **audit action/date filters are
+client-side**; harness **`describe` surfaces `tenantId` but ownership is enforced API-side**. No dedicated domain-layer specs
+for `HarnessPolicy*` (covered indirectly via the service + WORM + drift-guard tests).
+
+**Known pre-existing / unrelated (not Phase 6; left as-is):** 3 `tsc` errors in the untouched
+`ui-playground/.../{jobs,queues}.ts`; a ruff `B017` in the untouched `eval/test_calibration_levers.py`; 2 `packages/domains`
+`*.postgres.test.ts` that self-skip without a live `.env.test` DB. **Follow-ups:** server-side audit filters; eval-gated
+policy edits; prod IaC provisioning of the `HarnessTenantId` search attribute. No `DROP`/`DELETE`/`TRUNCATE`; nothing committed.
+
 ## 10. Change History
 | Date | Description | Files |
 |---|---|---|
@@ -853,6 +1014,8 @@ sends `guardrailDecisions`/`reducedAssurance`/`ragTriadScore` (pruned when absen
 | 2026-06-07 | **Live end-to-end judge verification + default-model correction.** Ran the real `PDSQI9Judge.score` against live LM Studio per family (short synthetic case; defaults `max_tokens=8192`, `temperature=0.0`, `reasoning_mode=auto`). **4/5 families parse cleanly at ctx 8192**: `gpt-oss-20b` (harmony channels), `mlx-community/medgemma-1.5-4b-it` (the `<unused94>thought`-leak path), `google/gemma-3-4b` (non-reasoning), `qwen/qwen3.5-9b` (`<think>`; fit with ~168-tok headroom, ~339s). **`google/gemma-4-12b-qat` rejected as the default** — its reasoning trace exhausts the entire completion budget (`finish_reason=length` at ctx 8192 **and** 16384) and never emits the JSON (a model-behaviour issue, not a parser defect; `/no_think` is ignored by LM Studio). **Default switched `gemma-4-12b-qat` → `google/gemma-4-e4b`**, which finishes cleanly (`finish=stop`, 2054 prompt + 2218 completion tok, all 11 PDSQI dims, ~92s). Also raised `JudgeConfig.timeout_s` **120 → 300s** (slow local reasoners legitimately exceed 120s). Eval suite still **green**. Read-only smoke harness at `/tmp/pdsqi_smoke.py`; nothing committed | `apps/harness/src/harness/eval/config.py`, `apps/harness/.env`, `apps/harness/.env.example`, `apps/harness/eval/README.md`, `apps/harness/src/harness/tests/unit/eval/test_judge_config.py`, this README |
 | 2026-06-07 | **Phase 2 inferential sensors + layered guardrails — implemented + verified end-to-end** (see §9). Groundedness (per-claim entailment via the calibrated `google/gemma-4-e4b` judge → `ragTriadScore`/sections) + safety (`GraniteGuardianClient` → Ollama `ibm/granite3.3-guardian:8b`, per-dimension) async inferential sensors behind a new `InferentialSensor` protocol + `degraded_result`; `PhiRedactor` fail-closed cloud-egress guard (Presidio/spaCy `[guardrails]` extra + MRN recognizer); aggregator severity (groundedness REGEN-fixable, safety highest-harm FLAG) + reduced-assurance (degraded inferential excluded from `expected`, never blanket-FLAG/auto-PASS); Temporal `run_inferential_sensors` activity + workflow wiring (`reduced_assurance`, `guardrailDecisions`, `ragTriadScore`) → `persist_draft` → `SummaryMeta.guardrailDecisions` + `SENSOR_RUN.sensorScores` + `REDUCED_ASSURANCE` WORM. **Evidence:** harness pytest **316 ✓** (fixed a pre-existing `test_loop_config` env-isolation defect — ambient dev `.env` leaking via `harness.main` import), applications harness **21 ✓**, apps/api harness controller+guard **12 ✓**, ReadLints/ruff clean; **live eval-delta** (gemma-4-e4b judge): groundedness/ragTriadScore now recorded — faithful 1.0/1.0 PASS, fabricated 0.0/0.333 REGEN, mixed 0.5/0.667 REGEN; **live safety** (Granite Guardian): benign→PASS, violent→FLAG (all dims). Playwright FLAG-forces-review spec added (compiles, `--list` 10 tests) but **live run BLOCKED — apps/api 8868 down** (gated behind `HARNESS_E2E_FULL`; forced-review independently proven at workflow + persistence layers). No migration; `apps/guardrail`/`apps/smr` untouched; nothing committed | `apps/harness/src/harness/{core/config.py,sensors/{config.py,aggregator.py,inferential/*},guards/phi/*,temporal/{activities.py,workflows.py,models.py},services/api_client.py,tests/unit/**}`, `apps/api/tests/e2e/task-330-harness-gate.spec.ts`, `packages/applications/src/services/consultation/harness/*`, `apps/harness/eval/README.md`, this README |
 | 2026-06-07 | **Phase-2 live safety-FLAG e2e — UNBLOCKED + GREEN (`task-330-harness-gate.spec.ts` → 10 passed / 0 skipped).** Closed the residual Phase-2 live-e2e gap (the prior entry left it blocked because apps/api 8868 was down). **Root cause** of the residual block: the running `apps/api` held a **stale `@arcaai/applications` build** (pre-Phase-2 DTO), so the service-token `…/draft` write rejected the `guardrailDecisions` body (`property guardrailDecisions should not exist`, 400). **Fix (build/runtime only — no app-logic change):** rebuilt `@arcaai/applications` (`dist` now carries `guardrailDecisions` across the harness service + DTO + summary mappers) and **restarted apps/api on 8868** on the current code. **No new GRANTs needed** — the Phase-1 `hope_app_template` grants (+ `ALTER DEFAULT PRIVILEGES`) are inherited by the fresh Vault dynamic lease; the full DB write path (open→draft→`PENDING_REVIEW`→approve→`SIGNED`→FLAG-redraft→`PENDING_REVIEW`) was re-verified live via a stdlib dry-run. **Stack:** Postgres/Redis/Vault/Temporal (docker, already up) + apps/api 8868; deterministic injected-verdict path only (no live-model harness run, per coordination with the concurrent eval). **Seed + run:** seeded a doctor-owned consult to `PENDING_REVIEW` (one `RAW_SUMMARY` ctx) then ran the FULL spec with `HARNESS_E2E_FULL=1` + `HARNESS_SERVICE_TOKEN` + `HARNESS_E2E_CONSULTATION_ID`/`HARNESS_E2E_TENANT_ID`/`HARNESS_E2E_CONTEXT_ITEM_ID` + `SKIP_DB_PRECHECK=true` (skips the forbidden destructive `test:db:reset`). **All 10 cases ran (0 skipped):** 6 service-token guard 401s (incl. forged safety-FLAG draft → 401), 1 HITL approve-auth 401, full-loop draft→`PENDING_REVIEW` + approve→`SIGNED`+`GATE_DECISION`, and the Phase-2 `safety-FLAG-forces-review` (`gateDecision=FLAG` + `safety.decision=FLAG` → `PENDING_REVIEW`, never auto-SIGNED). `apps/guardrail`/`apps/smr` untouched; the spec ran as-is (no edits); nothing committed | `apps/api/tests/e2e/task-330-harness-gate.spec.ts` (ran unchanged), this README |
+| 2026-06-07 | **Phase 3 institutional RAG — implemented (Lanes A/B) + verified end-to-end (Lane C); see §9.** Hybrid JIT retrieval over a tenant-owned `knowledge_chunks` Qdrant collection (dense BGE-M3 + sparse fastembed BM25 → RRF → TEI rerank), flag-gated `HARNESS_RETRIEVAL_ENABLED` (default OFF), degrade-safe; ingest via BullMQ `IngestKnowledgeDocument` → harness `POST /api/v1/internal/knowledge/ingest`; StrictCitations `[[kb:<id>]]` (hallucinated ids dropped) + `CitationVerifySensor` (threshold 0.8, REGEN-fixable). **Lane-C integration fix:** `KnowledgeIngestClient` posted to `{HARNESS_URL}/internal/knowledge/ingest` but the harness mounts under `/api/v1` → would 404; aligned the client to `{HARNESS_URL}/api/v1/internal/knowledge/ingest` (matches `HarnessGatewayService`) + regression suite (6 ✓); `X-Service-Token`/`HARNESS_INTERNAL_SERVICE_TOKEN` verified matching both sides. **Evidence:** pytest **412 ✓** (+6 retrieval-eval, +4 RAG integration); vitest db **801**/domains **1173**/applications **4849**/api **1665 ✓**; db+domains build GREEN, applications+api builds blocked **solely by the parallel Phase-6 lane** (`harness-policy.service.ts` TS2322 ×3 — isolated, **not Phase 3**, not repaired); retrieval-eval (synthetic) **recall@5=1.0, MRR=1.0, citation-validity=1.0, leaks=0**; 4 deterministic RAG e2e (real in-mem Qdrant + real BM25: ingest→retrieve→cite, cross-tenant isolation, APPROVED-gate, degrade) **PASS**; Playwright spec authored + `--list` 5 tests (live full loop env-gated). **Prereq handoff for the live full loop:** load BGE-M3 (1024-dim) in LM Studio, bring up `hope-reranker` TEI :8870, supply the approved corpus + N≈132 retrieval golden set. No `DROP`/`DELETE`/`TRUNCATE`; `apps/smr`/`apps/guardrail` untouched; nothing committed | `packages/applications/src/services/knowledge/{knowledge-ingest.client.ts,__tests__/knowledge-ingest.client.test.ts}`, `apps/harness/src/harness/{eval/retrieval_eval.py,eval/golden/fixtures/retrieval_synthetic_v0.json,tests/unit/eval/test_retrieval_eval.py,tests/integration/test_retrieval_rag_e2e.py}`, `apps/api/tests/e2e/task-330-phase3-rag.spec.ts`, `apps/harness/eval/README.md`, `implementation-plan.md`, this README |
+| 2026-06-07 | **Phase 6 — Harness Administration & Observability Console implemented (3 lanes) + integrated-verified; see §9.** DB-backed `HarnessPolicy` + append-only WORM `HarnessPolicyChange` (migration `…_phase6_harness_policy`, guarded `REVOKE UPDATE/DELETE` + GLOBAL-DEFAULT seed, drift-guard) → hand-written domain → `HarnessPolicyService` (effective merge, OCC + WORM write) + `HarnessObservabilityService` (audit/eval/gate-queue) → `HarnessAdminController` `/admin/harness/*` (policy GET/PATCH + `policy/global`, audit, eval-runs, gate-queue, workflow list/describe/cancel/terminate/signal; `If-Match` OCC; CLS tenant scoping) + `HarnessOpsClient` + worker-facing `GET /internal/harness/policy`. Python: harness admin endpoints (`/api/v1/internal/harness/*`), `HarnessTenantId` Keyword search attribute (+ memo fallback) on `start_workflow`, `fetch_policy` activity threading policy into the loop (thresholds, gate SLA/escalation, `safetyEnabled`, SMR defaults). RBAC: subjects `HarnessPolicy/HarnessWorkflow/HarnessAudit/HarnessEval` + `harness-platform-manage` (GLOBAL) / `harness-tenant-manage` (TENANT) policies. UI: `ui-playground` `/admin/harness` overview/audit/evals/workflows/policy + nav + platform-vs-tenant gating. **Evidence:** builds GREEN (domains+applications 7/7, api 8/8); vitest domains 1173 ✓ / applications 4857 ✓ / api 1695 ✓ (boot-time admin-route audit 15 ✓); `HarnessPolicyChange` WORM 21 ✓ live dev DB (UPDATE/DELETE→`42501`); harness pytest 443 ✓; ui-playground 1052 ✓; ReadLints clean. No real integration regression (no fix needed); Phase-3's isolated Phase-6 build block now resolved. Deviations: FE mirrors DTOs locally, client-side audit filters, API-side workflow ownership. Nothing committed | `packages/database/src/prisma/db_main/{harness.prisma,migrations/20260607120000_*/migration.sql,seed/01-policy.ts}`, `packages/database/src/{extensions/tenant-scope.ts,__tests__/harness-policy-change-worm.postgres.test.ts}`, `packages/domains/src/{entities,factories,mappers,models,repositories}/generated/core/HarnessPolicy*`, `packages/applications/src/services/{harness-policy,harness-observability}/*`, `apps/api/src/modules/harness-admin/*`, `apps/api/src/modules/consultation/harness-internal.controller.ts`, `apps/api/src/app.module.ts`, `apps/harness/src/harness/{api/endpoints/{admin.py,internal.py},temporal/{workflows.py,activities.py,models.py},main.py}`, `apps/ui-playground/src/{features/admin/harness/*,routes/_authenticated/admin/harness/*,components/layout/admin-nav-items.tsx}`, `implementation-plan.md`, this README |
 
 ## 11. References
 > **Full, categorised, fully-cited research archive (182 sources):** [`research/clinical-harness/`](../../../research/clinical-harness/README.md)

@@ -32,6 +32,7 @@ from harness.temporal.models import (
     PersistDraftInput,
     PersistEntitiesInput,
     RecordGateInput,
+    RetrieveContextInput,
     RunInferentialSensorsInput,
     RunSensorsInput,
 )
@@ -293,6 +294,81 @@ class TestRunSensors:
         assert "claims" in result.citations_map
 
 
+class _FakeRetriever:
+    """Stand-in :class:`HybridRetriever`: canned chunks (or degrade)."""
+
+    def __init__(self, chunks, *, degraded: bool = False) -> None:
+        from harness.guides.retrieval.retriever import RetrievalResult, RetrievedChunk
+
+        self._result = RetrievalResult(
+            chunks=[RetrievedChunk(chunk_id=c, text=f"text {c}") for c in chunks],
+            degraded=degraded,
+        )
+        self.calls: list[dict[str, Any]] = []
+
+    async def retrieve(self, *, query: str, tenant_id: str):
+        self.calls.append({"query": query, "tenant_id": tenant_id})
+        return self._result
+
+
+class TestRetrieveContext:
+    @pytest.mark.asyncio
+    async def test_disabled_flag_returns_empty_without_calling_backends(self, env, monkeypatch):
+        # Default settings have retrieval disabled -> no retriever is built/called.
+        def _boom(_settings):  # pragma: no cover - must not run
+            raise AssertionError("retriever must not be built when retrieval is disabled")
+
+        monkeypatch.setattr(activities, "_hybrid_retriever", _boom)
+        result = await env.run(
+            activities.retrieve_context,
+            RetrieveContextInput(tenant_id="t-1", entities=[NEREntity(text="x")]),
+        )
+        assert result.chunks == []
+        assert result.degraded is False
+        assert result.prompt_block == ""
+
+    @pytest.mark.asyncio
+    async def test_enabled_builds_query_and_returns_block(self, env, monkeypatch):
+        from harness.core.config import Settings
+
+        settings = Settings(retrieval={"enabled": True})
+        monkeypatch.setattr(activities, "get_settings", lambda: settings)
+        fake = _FakeRetriever(["kc-1", "kc-2"])
+        monkeypatch.setattr(activities, "_hybrid_retriever", lambda s: fake)
+
+        result = await env.run(
+            activities.retrieve_context,
+            RetrieveContextInput(
+                tenant_id="t-1",
+                entities=[NEREntity(text="hypertension"), NEREntity(text="metformin")],
+            ),
+        )
+        assert [c.chunk_id for c in result.chunks] == ["kc-1", "kc-2"]
+        assert result.degraded is False
+        assert "[[kb:" in result.prompt_block and "kc-1" in result.prompt_block
+        # Query is built from the entities; tenant scope is forwarded.
+        assert fake.calls[0]["query"] == "hypertension metformin"
+        assert fake.calls[0]["tenant_id"] == "t-1"
+
+    @pytest.mark.asyncio
+    async def test_enabled_degrade_yields_empty_flagged_context(self, env, monkeypatch):
+        from harness.core.config import Settings
+
+        settings = Settings(retrieval={"enabled": True})
+        monkeypatch.setattr(activities, "get_settings", lambda: settings)
+        monkeypatch.setattr(
+            activities, "_hybrid_retriever", lambda s: _FakeRetriever([], degraded=True)
+        )
+
+        result = await env.run(
+            activities.retrieve_context,
+            RetrieveContextInput(tenant_id="t-1", entities=[NEREntity(text="x")]),
+        )
+        assert result.chunks == []
+        assert result.degraded is True
+        assert result.prompt_block == ""
+
+
 class TestEscalateGate:
     @pytest.mark.asyncio
     async def test_escalate_is_failsafe_no_op(self, env):
@@ -336,7 +412,9 @@ class TestRunInferentialSensors:
 
         result = await env.run(activities.run_inferential_sensors, _infer_input())
 
-        assert {r.name for r in result.results} == {"groundedness", "safety"}
+        # Phase 3 adds citation_verify to the concurrent inferential pass. Its claim
+        # has no knowledgeChunkIds here, so it vacuously PASSes (no judge call).
+        assert {r.name for r in result.results} == {"groundedness", "safety", "citation_verify"}
         assert result.degraded is False
         assert result.rag_triad_score == pytest.approx(1.0)
         gd = result.guardrail_decisions
@@ -346,6 +424,7 @@ class TestRunInferentialSensors:
         assert gd["safety"]["decision"] == "PASS"
         assert gd["safety"]["dimensions"] == {"harm": False, "violence": False}
         assert gd["safety"]["model"] == "granite-fake"
+        assert gd["citation_verify"]["decision"] == "PASS"
         assert judge.calls, "groundedness must drive the judge per claim"
         assert granite.screened == ["Patient stable; continue current plan."]
 
@@ -436,3 +515,7 @@ class TestRunInferentialSensors:
         assert result.rag_triad_score is None
         assert result.guardrail_decisions["groundedness"]["decision"] == "DEGRADED"
         assert result.guardrail_decisions["safety"]["decision"] == "DEGRADED"
+        # The whole pass degrades, including citation-verify (the "unverified" badge).
+        cv = result.guardrail_decisions["citation_verify"]
+        assert cv["decision"] == "DEGRADED"
+        assert cv["badge"] == "unverified"
