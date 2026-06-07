@@ -4,9 +4,13 @@ import {
   HarnessGateDecisionRequest,
   HarnessInternalService,
   HarnessPersistEntitiesRequest,
+  HarnessPolicyResponse,
+  HarnessPolicyService,
+  IActiveUserContext,
 } from '@arcaai/applications';
-import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
-import { ApiExcludeController, ApiOperation, ApiParam } from '@nestjs/swagger';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiExcludeController, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { ClsService } from 'nestjs-cls';
 import { Public } from '../../decorators';
 import { HarnessServiceTokenGuard } from './harness-service-token.guard';
 
@@ -31,7 +35,32 @@ import { HarnessServiceTokenGuard } from './harness-service-token.guard';
 @UseGuards(HarnessServiceTokenGuard)
 @Controller('internal/harness')
 export class HarnessInternalController {
-  constructor(private readonly harnessInternalService: HarnessInternalService) {}
+  constructor(
+    private readonly harnessInternalService: HarnessInternalService,
+    // TASK-330 Phase 6 — the durable worker's `fetch_policy` activity reads the
+    // effective harness policy here; HarnessPolicyService comes from the
+    // HarnessPolicyServiceModule imported by ConsultationModule.
+    private readonly harnessPolicyService: HarnessPolicyService,
+    private readonly cls: ClsService<IActiveUserContext>,
+  ) {}
+
+  @Get('policy')
+  @ApiOperation({ summary: 'Effective harness policy for a tenant (worker fetch_policy activity)' })
+  @ApiQuery({ name: 'tenantId', required: true, description: 'Tenant whose effective policy to resolve.' })
+  async getEffectivePolicy(@Query('tenantId') tenantId?: string): Promise<HarnessPolicyResponse> {
+    if (!tenantId) {
+      throw new BadRequestException('tenantId query parameter is required');
+    }
+
+    // These requests run outside the API-edge ClsModule middleware (like the
+    // BullMQ workers + the POST callbacks above), so re-establish a CLS context
+    // pinned to the requested tenant. The tenant-scope extension then resolves
+    // the tenant row (and the SYSTEM-shared GLOBAL-DEFAULT fallback) correctly.
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      return this.harnessPolicyService.getEffectivePolicy(tenantId);
+    });
+  }
 
   @Post('consultations/:id/entities')
   @ApiOperation({ summary: 'Persist NamedEntity rows extracted by the harness NLP step' })

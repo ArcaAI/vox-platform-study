@@ -108,6 +108,15 @@ export const DEFAULT_POLICIES = [
             { action: 'read', subject: 'Tenant', conditions: { id: '${context.tenantId}' } },
             { action: 'update', subject: 'Tenant', conditions: { id: '${context.tenantId}' } },
             { action: 'read', subject: 'AuditLog', conditions: { tenantId: '${context.tenantId}' } },
+            // Clinical documentation harness (TASK-330 Phase 6) — tenant admins
+            // self-serve their own tenant's harness: tune the policy + drive the
+            // gate/Temporal workflow ops, and read the WORM audit trail + eval
+            // runs. All tenant-scoped (the admin controller + policy service
+            // additionally pin every read/write to the caller's tenant).
+            { action: 'manage', subject: 'HarnessPolicy', conditions: { tenantId: '${context.tenantId}' } },
+            { action: 'manage', subject: 'HarnessWorkflow', conditions: { tenantId: '${context.tenantId}' } },
+            { action: 'read', subject: 'HarnessAudit', conditions: { tenantId: '${context.tenantId}' } },
+            { action: 'read', subject: 'HarnessEval', conditions: { tenantId: '${context.tenantId}' } },
         ],
     },
     {
@@ -332,6 +341,46 @@ export const DEFAULT_POLICIES = [
         scope: PolicyScope.TENANT,
         rules: [
             { action: 'create', subject: 'Storage', conditions: { tenantId: '${context.tenantId}' } },
+        ],
+    },
+
+    // =========================================================================
+    // CLINICAL DOCUMENTATION HARNESS (TASK-330 Phase 6)
+    // =========================================================================
+    // Subjects: HarnessPolicy (the runtime knobs that drive the document loop),
+    // HarnessWorkflow (Temporal document-workflow ops + the clinician gate queue),
+    // HarnessAudit (the append-only WORM audit trail), HarnessEval (eval runs +
+    // per-case scores). Used by `/admin/harness/*` (`HarnessAdminController`).
+    {
+        // Platform operators: administer the harness across ALL tenants. (Super
+        // admins are already covered by `system-full-access`; this is the discrete,
+        // re-usable platform grant for a non-super harness-operator role.)
+        id: '00000000-0000-0000-0001-000000000070',
+        name: 'harness-platform-manage',
+        description: 'Platform-level clinical documentation harness administration — manage policy + Temporal workflow ops and read the WORM audit trail + eval runs across all tenants',
+        scope: PolicyScope.GLOBAL,
+        rules: [
+            { action: 'manage', subject: 'HarnessPolicy' },
+            { action: 'manage', subject: 'HarnessWorkflow' },
+            { action: 'read', subject: 'HarnessAudit' },
+            { action: 'read', subject: 'HarnessEval' },
+        ],
+    },
+    {
+        // Tenant-scoped harness administration — the same grant as
+        // `harness-platform-manage` but pinned to the caller's tenant. The
+        // tenant-scoped abilities are also folded into `tenant-full-access` so
+        // tenant admins get them out of the box; this stays a discrete re-usable
+        // policy for custom (e.g. harness-operator) tenant roles.
+        id: '00000000-0000-0000-0001-000000000071',
+        name: 'harness-tenant-manage',
+        description: 'Tenant-scoped clinical documentation harness administration — manage the tenant policy + Temporal workflow ops and read the WORM audit trail + eval runs within the tenant',
+        scope: PolicyScope.TENANT,
+        rules: [
+            { action: 'manage', subject: 'HarnessPolicy', conditions: { tenantId: '${context.tenantId}' } },
+            { action: 'manage', subject: 'HarnessWorkflow', conditions: { tenantId: '${context.tenantId}' } },
+            { action: 'read', subject: 'HarnessAudit', conditions: { tenantId: '${context.tenantId}' } },
+            { action: 'read', subject: 'HarnessEval', conditions: { tenantId: '${context.tenantId}' } },
         ],
     },
 ];

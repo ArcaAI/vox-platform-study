@@ -29,25 +29,33 @@ with workflow.unsafe.imports_passed_through():
         assemble_prompt,
         escalate_gate,
         extract_entities,
+        fetch_policy,
         generate,
         persist_draft,
         persist_entities,
         ping_activity,
         record_gate_decision,
+        retrieve_context,
         run_inferential_sensors,
         run_sensors,
     )
     from harness.temporal.models import (
+        DEFAULT_GROUNDEDNESS_THRESHOLD,
         ApprovalSignal,
         AssembleInput,
         EscalateInput,
         ExtractEntitiesInput,
+        FetchPolicyInput,
         GenerateInput,
         HarnessDocWorkflowInput,
         HarnessDocWorkflowResult,
+        HarnessGateConfig,
+        HarnessPolicy,
         PersistDraftInput,
         PersistEntitiesInput,
         RecordGateInput,
+        RetrieveContextInput,
+        RetrievedContext,
         RunInferentialSensorsInput,
         RunSensorsInput,
     )
@@ -62,6 +70,9 @@ _NLP_RETRY = RetryPolicy(maximum_attempts=2)
 _API_RETRY = RetryPolicy(maximum_attempts=3)
 _GENERATE_RETRY = RetryPolicy(maximum_attempts=2)
 _INFERENTIAL_RETRY = RetryPolicy(maximum_attempts=2)
+# Retrieval degrades internally (never raises for backend outages); its retries
+# cover only infra blips before the workflow falls back to an empty context.
+_RETRIEVAL_RETRY = RetryPolicy(maximum_attempts=2)
 
 
 @workflow.defn
@@ -113,6 +124,45 @@ class HarnessDocWorkflow:
 
     @workflow.run
     async def run(self, inp: HarnessDocWorkflowInput) -> HarnessDocWorkflowResult:
+        # 0) Live policy injection (Phase 6). Read ONCE at the start in an activity
+        # (I/O stays out of the deterministic body) and thread the result through.
+        # A failed fetch degrades to the code defaults — never crash the loop, and
+        # this is NOT a clinical degradation (it does not set reduced_assurance).
+        self._phase = "POLICY"
+        policy: HarnessPolicy | None = None
+        try:
+            policy = await workflow.execute_activity(
+                fetch_policy,
+                FetchPolicyInput(tenant_id=inp.tenant_id),
+                start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                retry_policy=_API_RETRY,
+            )
+        except ActivityError:
+            policy = None
+
+        # Effective loop knobs: the policy overrides the snapshotted gate budget and
+        # supplies sensor thresholds, guard toggles, and model defaults; the input
+        # (and code defaults) govern when there is no policy.
+        if policy is not None:
+            gate = HarnessGateConfig(
+                max_regen=policy.max_regen,
+                gate_sla_seconds=policy.gate_sla_seconds,
+                gate_escalation_seconds=policy.gate_escalation_seconds,
+            )
+            sensor_thresholds = policy.to_sensor_thresholds()
+            groundedness_threshold = policy.groundedness_threshold
+            safety_enabled = policy.safety_enabled
+            # The workflow input wins over the policy default when it specifies a model.
+            smr_provider = inp.smr_provider or policy.smr_provider
+            smr_model = inp.smr_model or policy.smr_model
+        else:
+            gate = inp.gate
+            sensor_thresholds = None
+            groundedness_threshold = DEFAULT_GROUNDEDNESS_THRESHOLD
+            safety_enabled = True
+            smr_provider = inp.smr_provider
+            smr_model = inp.smr_model
+
         # 1) Transcript NER. NLP down -> degrade (force human review), don't crash.
         self._phase = "EXTRACT"
         degraded = False
@@ -142,6 +192,27 @@ class HarnessDocWorkflow:
                 retry_policy=_API_RETRY,
             )
 
+        # 1b) Institutional RAG (Phase 3, flag-gated). JIT hybrid retrieval is
+        # entity-triggered and stable across regens, so it runs ONCE here (before the
+        # loop) and the prompt is augmented with the cited chunks each iteration. A
+        # degraded retrieval (backend down) yields an empty context and flags reduced
+        # assurance; it never raises into the loop.
+        self._phase = "RETRIEVE"
+        reduced_assurance = False
+        try:
+            retrieved = await workflow.execute_activity(
+                retrieve_context,
+                RetrieveContextInput(tenant_id=inp.tenant_id, entities=transcript_entities),
+                start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                retry_policy=_RETRIEVAL_RETRY,
+            )
+        except ActivityError:
+            retrieved = RetrievedContext(degraded=True)
+        if retrieved.degraded:
+            reduced_assurance = True
+        retrieved_chunk_ids = [c.chunk_id for c in retrieved.chunks]
+        knowledge_chunks = {c.chunk_id: c.text for c in retrieved.chunks}
+
         # 2) Bounded regen loop. The five computational sensors run every iteration
         # (cheap); once they settle, the costly inferential pass (groundedness +
         # safety) runs ONCE and is folded into the verdict — groundedness can consume
@@ -156,7 +227,6 @@ class HarnessDocWorkflow:
         sensors = None
         guardrail_decisions: dict[str, Any] = {}
         rag_triad_score: float | None = None
-        reduced_assurance = False
         while True:
             assembled = await workflow.execute_activity(
                 assemble_prompt,
@@ -171,15 +241,21 @@ class HarnessDocWorkflow:
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_API_RETRY,
             )
+            # Augment the prompt with the retrieved Knowledge Context (StrictCitations).
+            # Empty block (retrieval off / no hits / degraded) leaves the prompt unchanged.
+            user_prompt = assembled.user_prompt
+            if retrieved.prompt_block:
+                user_prompt = f"{user_prompt}\n\n{retrieved.prompt_block}"
+
             generated = await workflow.execute_activity(
                 generate,
                 GenerateInput(
-                    prompt=assembled.user_prompt,
+                    prompt=user_prompt,
                     system_prompt=assembled.system_prompt,
                     response_format=assembled.response_format,
                     hyperparameters=assembled.hyperparameters,
-                    provider=inp.smr_provider,
-                    model=inp.smr_model,
+                    provider=smr_provider,
+                    model=smr_model,
                 ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_GENERATE_RETRY,
@@ -208,6 +284,8 @@ class HarnessDocWorkflow:
                     transcript_entities=transcript_entities,
                     response_format=assembled.response_format,
                     transcript_context_item_id=inp.context_item_id,
+                    retrieved_chunk_ids=retrieved_chunk_ids,
+                    thresholds=sensor_thresholds,
                 ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_API_RETRY,
@@ -217,11 +295,11 @@ class HarnessDocWorkflow:
             # remains WITHOUT paying for the inferential pass.
             comp_verdict = aggregate(
                 sensors.results,
-                regens_remaining=inp.gate.max_regen - regens_used,
+                regens_remaining=gate.max_regen - regens_used,
                 degraded=degraded,
                 expected=list(COMPUTATIONAL_SENSOR_NAMES),
             )
-            if comp_verdict.decision == GateDecision.REGEN and regens_used < inp.gate.max_regen:
+            if comp_verdict.decision == GateDecision.REGEN and regens_used < gate.max_regen:
                 regens_used += 1
                 continue
 
@@ -236,6 +314,9 @@ class HarnessDocWorkflow:
                         note_text=generated.content,
                         transcript_text=inp.transcript_text,
                         citations_map=sensors.citations_map,
+                        knowledge_chunks=knowledge_chunks,
+                        groundedness_threshold=groundedness_threshold,
+                        safety_enabled=safety_enabled,
                     ),
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_INFERENTIAL_RETRY,
@@ -257,11 +338,11 @@ class HarnessDocWorkflow:
 
             verdict = aggregate(
                 list(sensors.results) + inferential_results,
-                regens_remaining=inp.gate.max_regen - regens_used,
+                regens_remaining=gate.max_regen - regens_used,
                 degraded=degraded,
                 expected=list(COMPUTATIONAL_SENSOR_NAMES) + inferential_expected,
             )
-            if verdict.decision == GateDecision.REGEN and regens_used < inp.gate.max_regen:
+            if verdict.decision == GateDecision.REGEN and regens_used < gate.max_regen:
                 regens_used += 1
                 continue
             break
@@ -301,7 +382,7 @@ class HarnessDocWorkflow:
         # 4) Clinician gate: approval signal raced against a durable SLA timer.
         self._phase = "GATE"
         escalations = 0
-        deadline = inp.gate.gate_sla_seconds
+        deadline = gate.gate_sla_seconds
         while self._approval is None:
             try:
                 await workflow.wait_condition(
@@ -321,7 +402,7 @@ class HarnessDocWorkflow:
                     retry_policy=_API_RETRY,
                 )
                 escalations += 1
-                deadline = inp.gate.gate_escalation_seconds
+                deadline = gate.gate_escalation_seconds
 
         approval = self._approval
 

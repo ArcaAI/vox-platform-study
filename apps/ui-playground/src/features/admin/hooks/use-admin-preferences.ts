@@ -31,6 +31,8 @@ export const DEFAULT_ADMIN_MENU_ORDER: readonly string[] = [
   // `rate-limits` and `queues` (OB-03) are global-scope ops. Prisma Studio stays
   // segregated last.
   'jobs',
+  // TASK-330 Phase 6 — clinical documentation harness console.
+  'harness',
   'system-health',
   'rate-limits',
   'queues',

@@ -22,6 +22,10 @@ import { GlobalSettingRepository } from '../../../repositories/generated/core/Gl
 import { GoldenCaseRepository } from '../../../repositories/generated/core/GoldenCaseRepository';
 import { GoldenSetRepository } from '../../../repositories/generated/core/GoldenSetRepository';
 import { HarnessAuditEventRepository } from '../../../repositories/generated/core/HarnessAuditEventRepository';
+import { HarnessPolicyChangeRepository } from '../../../repositories/generated/core/HarnessPolicyChangeRepository';
+import { HarnessPolicyRepository } from '../../../repositories/generated/core/HarnessPolicyRepository';
+import { KnowledgeChunkRepository } from '../../../repositories/generated/core/KnowledgeChunkRepository';
+import { KnowledgeDocumentRepository } from '../../../repositories/generated/core/KnowledgeDocumentRepository';
 import { MediaRepository } from '../../../repositories/generated/core/MediaRepository';
 import { NamedEntityRepository } from '../../../repositories/generated/core/NamedEntityRepository';
 import { NotificationRepository } from '../../../repositories/generated/core/NotificationRepository';
@@ -126,6 +130,12 @@ const repositories = [
   EvalRunRepository,
   EvalScoreRepository,
   HarnessAuditEventRepository,
+  // Harness Administration Console — editable runtime policy (TASK-330 Phase 6)
+  HarnessPolicyRepository,
+  HarnessPolicyChangeRepository,
+  // Institutional RAG knowledge corpus (TASK-330 Phase 3)
+  KnowledgeDocumentRepository,
+  KnowledgeChunkRepository,
 ];
 
 @Module({

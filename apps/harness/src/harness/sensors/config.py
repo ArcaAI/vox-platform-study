@@ -30,6 +30,10 @@ class SensorThresholds(BaseSettings):
     # transcript/evidence per the LM Studio judge (lower than the zero-tolerance
     # checks — semantic entailment is graded, not exact-match).
     groundedness_threshold: float = 0.8
+    # Inferential (Phase-3 institutional RAG): >= 80% of CITED claims must be
+    # entailed by their cited knowledge chunk(s) per the same judge — a strict
+    # citations check (regen-fixable; degrades to the "unverified" badge on outage).
+    citation_verify_threshold: float = 0.8
 
     @field_validator(
         "entity_faithfulness_threshold",
@@ -37,6 +41,7 @@ class SensorThresholds(BaseSettings):
         "citation_presence_threshold",
         "numeric_dose_threshold",
         "groundedness_threshold",
+        "citation_verify_threshold",
     )
     @classmethod
     def _unit_interval(cls, v: float) -> float:

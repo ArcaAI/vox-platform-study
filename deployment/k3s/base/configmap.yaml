@@ -127,6 +127,15 @@ data:
   HARNESS_SAFETY_BASE_URL: "http://hope-lmstudio:1234/v1"
   HARNESS_SAFETY_MODEL: "granite-guardian-4.1-8b"
 
+  # -- Harness Phase-3 institutional RAG reranker (TASK-330) --
+  # The harness hybrid retriever's cross-encoder rerank targets the in-cluster
+  # hope-reranker TEI service (see reranker.yaml -> hope-reranker, /rerank on :80).
+  # Retrieval is flag-gated OFF by default; an operator flips HARNESS_RETRIEVAL_ENABLED
+  # to "true" (and points the embeddings/Qdrant knobs at the in-cluster services)
+  # once an APPROVED institutional corpus is loaded.
+  HARNESS_RETRIEVAL_ENABLED: "false"
+  HARNESS_RETRIEVAL_RERANKER_BASE_URL: "http://hope-reranker:80"
+
   # -- OpenTelemetry --
   OTEL_TRACES_ENABLED: "false"
   OTEL_METRICS_ENABLED: "false"

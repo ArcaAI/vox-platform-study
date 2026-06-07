@@ -1,0 +1,23 @@
+{
+  "version": "retrieval_synthetic_v0",
+  "description": "Synthetic institutional-RAG retrieval wiring fixture (TASK-330 Phase 3). A small single-tenant clinical corpus + entity-style queries with gold-relevant chunks, plus one cross-tenant distractor chunk that must never be retrieved. Drives a deterministic recall / citation-validity sanity check of the real hybrid retriever (real BM25 sparse + real Qdrant engine); the dense channel + cross-encoder reranker are stubbed (the BAAI/bge-m3 + TEI models are the documented prerequisite handoff). Replace with the real clinician-curated golden set (N=132) for a release-grade retrieval eval.",
+  "tenant_id": "tenant-synthetic",
+  "corpus": [
+    { "doc_id": "sepsis", "chunk_index": 0, "tenant_id": "tenant-synthetic", "text": "Sepsis bundle: administer broad-spectrum antibiotics within one hour of recognition." },
+    { "doc_id": "sepsis", "chunk_index": 1, "tenant_id": "tenant-synthetic", "text": "In suspected sepsis, obtain blood cultures and measure serum lactate before starting antibiotics." },
+    { "doc_id": "htn", "chunk_index": 0, "tenant_id": "tenant-synthetic", "text": "Hypertension: first-line therapy is a thiazide diuretic; target blood pressure below 130/80 mmHg." },
+    { "doc_id": "htn", "chunk_index": 1, "tenant_id": "tenant-synthetic", "text": "For resistant hypertension add an ACE inhibitor or a calcium channel blocker." },
+    { "doc_id": "dm", "chunk_index": 0, "tenant_id": "tenant-synthetic", "text": "Type 2 diabetes: metformin is first-line; monitor HbA1c every three months until stable." },
+    { "doc_id": "dm", "chunk_index": 1, "tenant_id": "tenant-synthetic", "text": "Add a GLP-1 receptor agonist for diabetes with established cardiovascular disease." },
+    { "doc_id": "asthma", "chunk_index": 0, "tenant_id": "tenant-synthetic", "text": "Asthma exacerbation: give an inhaled short-acting beta agonist and systemic corticosteroids." },
+    { "doc_id": "vte", "chunk_index": 0, "tenant_id": "tenant-synthetic", "text": "Venous thromboembolism prophylaxis: low molecular weight heparin for hospitalized medical patients." },
+    { "doc_id": "cross-tenant", "chunk_index": 0, "tenant_id": "tenant-other", "text": "Sepsis lactate antibiotics and blood cultures — this chunk belongs to a DIFFERENT tenant and must never be retrieved." }
+  ],
+  "queries": [
+    { "query": "sepsis lactate blood cultures antibiotics", "tenant_id": "tenant-synthetic", "relevant": [["sepsis", 0], ["sepsis", 1]] },
+    { "query": "thiazide blood pressure target hypertension", "tenant_id": "tenant-synthetic", "relevant": [["htn", 0]] },
+    { "query": "metformin HbA1c diabetes monitoring", "tenant_id": "tenant-synthetic", "relevant": [["dm", 0]] },
+    { "query": "asthma beta agonist corticosteroids exacerbation", "tenant_id": "tenant-synthetic", "relevant": [["asthma", 0]] },
+    { "query": "heparin venous thromboembolism prophylaxis", "tenant_id": "tenant-synthetic", "relevant": [["vte", 0]] }
+  ]
+}

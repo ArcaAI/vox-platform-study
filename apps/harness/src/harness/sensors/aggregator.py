@@ -55,13 +55,15 @@ DEFAULT_SOAP_SECTIONS: tuple[str, ...] = ("S", "O", "A", "P")
 HIGHEST_HARM_SENSORS: tuple[str, ...] = (entity_faithfulness.NAME, numeric_dose.NAME, "safety")
 
 # Sensors whose failures are plausibly fixed by re-generating the note (REGEN).
-# ``"groundedness"`` is the inferential per-claim entailment gate (regen the
-# offending ``details["sections"]``, FLAG once the budget is exhausted).
+# ``"groundedness"`` is the inferential per-claim entailment gate, and
+# ``"citation_verify"`` is the Phase-3 per-claim citation-entailment gate (both
+# regen the offending ``details["sections"]``, FLAG once the budget is exhausted).
 REGEN_FIXABLE_SENSORS: tuple[str, ...] = (
     schema_validity.NAME,
     coverage_omission.NAME,
     citation_presence.NAME,
     "groundedness",
+    "citation_verify",
 )
 
 

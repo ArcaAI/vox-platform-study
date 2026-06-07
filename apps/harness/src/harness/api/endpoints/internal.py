@@ -22,6 +22,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from temporalio.client import Client
+from temporalio.common import SearchAttributeKey, SearchAttributePair, TypedSearchAttributes
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from harness.core.config import Settings
@@ -30,6 +31,14 @@ from harness.core.logging import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["internal"])
+
+# Custom Temporal search attribute carrying the owning tenant. Keyword-typed so the
+# admin console's visibility query can filter by it. One-time per-cluster setup:
+#   temporal operator search-attribute create --name HarnessTenantId --type Keyword
+# When it is not registered, ``start_document`` degrades to a memo-only start and the
+# admin endpoints fall back to memo + client-side filtering (see ``admin.py``).
+HARNESS_TENANT_ID_ATTR = "HarnessTenantId"
+HARNESS_TENANT_ID_KEY = SearchAttributeKey.for_keyword(HARNESS_TENANT_ID_ATTR)
 
 
 def _settings(request: Request) -> Settings:
@@ -137,17 +146,43 @@ async def start_document(
         ),
     )
 
+    # Tenant ownership rides on a search attribute (for the admin visibility query)
+    # AND a memo (the fallback when the SA is not registered on the cluster).
+    memo = {"tenantId": body.tenant_id, "consultationId": consultation_id}
+    search_attributes = TypedSearchAttributes(
+        [SearchAttributePair(HARNESS_TENANT_ID_KEY, body.tenant_id)]
+    )
+    start_kwargs: dict[str, Any] = {
+        "id": workflow_id,
+        "task_queue": settings.temporal.task_queue,
+        "memo": memo,
+    }
+
     try:
         await client.start_workflow(
             HarnessDocWorkflow.run,
             wf_input,
-            id=workflow_id,
-            task_queue=settings.temporal.task_queue,
+            search_attributes=search_attributes,
+            **start_kwargs,
         )
         status = "started"
     except WorkflowAlreadyStartedError:
         # Idempotent: a loop is already running for this consultation.
         status = "already_running"
+    except Exception as exc:  # noqa: BLE001 — fail-safe: the SA may be unregistered
+        # Degrade to a memo-only start so a missing search attribute never blocks a
+        # consultation. The admin console then filters by the memo client-side.
+        logger.warning(
+            "harness.document.start.search_attribute_unavailable",
+            consultation_id=consultation_id,
+            workflow_id=workflow_id,
+            error=str(exc),
+        )
+        try:
+            await client.start_workflow(HarnessDocWorkflow.run, wf_input, **start_kwargs)
+            status = "started"
+        except WorkflowAlreadyStartedError:
+            status = "already_running"
 
     logger.info(
         "harness.document.start",

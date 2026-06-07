@@ -5,7 +5,7 @@
 | Ticket | TASK-330 |
 | Companion | [`README.md`](./README.md) (HLD v3) · [`research/clinical-harness/`](../../../research/clinical-harness/README.md) (research, 182 sources) |
 | Created | 2026-06-06 |
-| Status | **Phases 0–2 implemented (uncommitted)** — Phase 2 (inferential sensors + layered guardrails) **verified end-to-end 2026-06-07** (README §9; with the documented deviations under Phase 2 below). Phases 3–5 pending. |
+| Status | **Phases 0–3 + 6 implemented (uncommitted)** — Phase 2 (inferential sensors + layered guardrails) **verified end-to-end 2026-06-07**; Phase 3 (institutional RAG) **verified end-to-end 2026-06-07** (README §9; deterministic + synthetic-eval, live full ingest→cite loop gated on the BGE-M3 + reranker + golden-set prerequisite handoff); **Phase 6 (Harness Administration & Observability Console) implemented + integrated-verified 2026-06-07** (builds GREEN across domains/applications/api; vitest domains 1173 ✓ / applications 4857 ✓ / api 1695 ✓ incl. boot-time admin-route audit 15 ✓; harness pytest 443 ✓; ui-playground 1052 ✓; `HarnessPolicyChange` WORM REVOKE enforced on the live dev DB 21 ✓). Phases 4–5 pending. |
 | Method | TDD red-green-refactor; layer order Database → Domain → Services → API → Python (`01-development-workflow.mdc`) |
 | Durability | **Temporal** (D11) · Stack | **SOTA adopt** (D12) |
 
@@ -180,9 +180,31 @@ triggers visible in Langfuse. **Regulatory:** non-device; reduced-assurance fall
 
 ---
 
-### Phase 3 — Institutional grounding (UC-4)
+### Phase 3 — Institutional grounding (UC-4)  ✅ implemented + verified (2026-06-07)
 **Objective:** light up the **provisioned-but-empty** Qdrant `context_items` (1536-dim) with tenant-owned knowledge.
 **Depends on:** Phase 1 (entities) — independent of Phase 2.
+
+> **Status: ✅ implemented (Lanes A/B) + verified end-to-end (Lane C) 2026-06-07** (README §9). A **dedicated
+> `knowledge_chunks` Qdrant collection** (named `dense` **1024**-dim/COSINE + sparse `bm25` IDF) was created instead of
+> reusing the 1536-dim `context_items` collection — BGE-M3 is 1024-dim and the corpus is tenant-/APPROVED-filtered.
+> **Evidence:** harness pytest **412 ✓** (+6 retrieval-eval, +4 RAG integration), vitest db **801**/domains **1173**/
+> applications **4849**/api **1665 ✓**; db+domains build GREEN (applications+api builds blocked **solely** by the parallel
+> Phase-6 lane — isolated, not Phase 3); retrieval-eval on the synthetic fixture **recall@5=1.0, MRR=1.0,
+> citation-validity=1.0, cross-tenant leaks=0**; **4 deterministic RAG e2e** (real in-memory Qdrant engine + real BM25:
+> ingest→retrieve→cite, cross-tenant isolation, APPROVED-gate, degrade-safe) **PASS**; Playwright spec authored
+> (`--list` 5 tests, live full loop env-gated). **Lane-C integration fix:** `KnowledgeIngestClient` URL aligned to
+> `{HARNESS_URL}/api/v1/internal/knowledge/ingest` (was missing the harness `/api/v1` prefix → would 404) + regression
+> suite (6 ✓); `X-Service-Token`/`HARNESS_INTERNAL_SERVICE_TOKEN` verified matching both sides.
+> **Intentional deviations from the task rows below:** **3.2** embeddings = **self-hosted BGE-M3 via LM Studio
+> `/v1/embeddings`** (not cloud `text-embedding-3-small`) + sparse **fastembed BM25** for the hybrid channel, and ingest is
+> driven by the **`IngestKnowledgeDocument` BullMQ queue + `KnowledgeDocumentService.approveDocument()`** (no `ContextItem`
+> reuse / `qdrantSynced` flag — knowledge lives in its own tables/collection); **3.3** RRF is **server-side RRF** via the
+> installed `qdrant-client` 1.17 `FusionQuery(RRF)` (no explicit `k` arg in this API version; `rrf_k=60` carried in
+> `RetrievalConfig` for forward-compat) + TEI cross-encoder rerank (`hope-reranker`); **3.4** StrictCitations `[[kb:<id>]]`
+> markers are **not stripped** from the persisted note (rendering-layer concern) and `CitationVerifySensor` reuses the
+> calibrated `google/gemma-4-e4b` judge (threshold 0.8, REGEN-fixable). **Prerequisite handoff for the LIVE full loop:**
+> load **BGE-M3 (1024-dim)** in LM Studio, bring up the **`hope-reranker`** TEI service (:8870), and supply the approved
+> institutional corpus + the **N≈132 retrieval golden set** (`retrieval_eval.py --golden-set`, same shape). Nothing committed.
 
 | # | Layer | Task | Files |
 |---|---|---|---|
@@ -228,6 +250,114 @@ on golden set. **Exit gate:** % claims with valid citation tracked; retrieval de
 **Tests:** pytest (tool clients mocked; advisory-only assertions; never-auto-apply). **Exit gate:** tools cited +
 advisory; no write/action tool present. **Regulatory:** any "drives management" feature → **separate SaMD track**
 (do not ship here). **Effort:** M.
+
+---
+
+### Phase 6 — Harness Administration & Observability Console  ✅ implemented + integrated-verified (2026-06-07)
+**Objective:** give platform + tenant admins a first-class surface (in `apps/ui-playground` `/admin/harness`) to **observe**
+harness activity (WORM audit + integrity verdict, eval runs, clinician gate queue), **operate** the durable Temporal document
+workflows (list / describe / cancel / terminate / re-signal), and **manage** the DB-backed policy that the clinical loop reads
+**live** — every policy edit append-only WORM-audited, with platform-vs-tenant role separation. Detailed plan:
+[`.cursor/plans/harness_admin_console_68547a26.plan.md`]. Built by three sibling lanes (BP1 TS backend, BP2 Python harness,
+BP3 frontend) + this integrated verification/documentation pass.
+
+**Locked governance decisions (carried from the plan).**
+- Policy edits are **live + WORM-audited** — the next workflow run picks up the change via the `fetch_policy` activity; every
+  edit appends a `HarnessPolicyChange` (before/after) in the same transaction as the row write.
+- Workflow ops: **tenant admins** may cancel / terminate / re-signal **their own tenant's** workflows; **platform
+  (super-admin)** admins act cross-tenant. Ownership is enforced **server-side** (apps/api re-`describe`s the workflow and
+  matches `HarnessTenantId` against the caller's CLS tenant; super-admins bypass).
+- Admin home is `apps/ui-playground` `/admin` (there is **no** `apps/admin` in this repo despite the project-context rule).
+
+**Data model (additive, non-destructive) — migration `20260607120000_task_330_phase6_harness_policy`.**
+- `HarnessPolicy` (tenant-scoped, `_version` OCC, **unique on `tenantId`**): sensor thresholds
+  (`entityFaithfulnessThreshold` 1.0, `coverageThreshold` 0.8, `citationPresenceThreshold` 1.0, `numericDoseThreshold` 1.0,
+  `groundednessThreshold` 0.8), guard toggles (`safetyEnabled`, `phiEnabled`, `phiFailClosed`), model selection
+  (`safetyProvider`/`safetyModel`, `smrProvider`/`smrModel`), loop knobs (`maxRegen` 2, `gateSlaSeconds` 86400,
+  `gateEscalationSeconds` 43200), and `toolAllowlist` Json. The **GLOBAL-DEFAULT** row lives under the system tenant
+  `00000000-…-000000000000` (seeded by the migration via `ON CONFLICT (tenantId) DO NOTHING`); tenant rows override it.
+- `HarnessPolicyChange` (append-only **WORM**, mirrors `HarnessAuditEvent`): `tenantId, changedBy, policyVersion,
+  beforeJson, afterJson, reason, createdAt`. The migration runs a **role-guarded, idempotent** `REVOKE UPDATE, DELETE …
+  FROM hope_app_template / hope_app` so the trail is immutable at the **DB-privilege** layer (proven by the live-Postgres
+  regression `harness-policy-change-worm.postgres.test.ts` → UPDATE/DELETE rejected with SQLSTATE `42501`).
+- Both models added to the `TENANT_SCOPED_MODELS` **drift guard** ([`extensions/tenant-scope.ts`]) + full hand-written
+  Domain layer (Entity/Factory/Mapper/Model/Repository) + `CoreDatabaseModule` registration + barrels.
+
+**API surface (`apps/api` `HarnessAdminController`, global prefix → `/api/v1/admin/harness/*`).**
+
+| Method | Path | `@Authorize` ability | Notes |
+|---|---|---|---|
+| GET | `/admin/harness/policy` | `read HarnessPolicy` | Effective policy (tenant row → global default → code default). `ETag: "<version>"`. |
+| PATCH | `/admin/harness/policy` | `manage HarnessPolicy` | Sparse patch; **`If-Match` OCC** (412 drift / 428 missing); appends a `HarnessPolicyChange`. Row created on first edit. |
+| GET | `/admin/harness/policy/global` | `read HarnessPolicy` | Platform GLOBAL-DEFAULT (super-admin only → 403). |
+| PATCH | `/admin/harness/policy/global` | `manage HarnessPolicy` | GLOBAL-DEFAULT edit (super-admin only); same OCC + WORM. |
+| GET | `/admin/harness/audit` | `read HarnessAudit` | Newest-first WORM trail + hash-chain integrity verdict (`?tenantId` platform-only, `?consultationId`, paging). |
+| GET | `/admin/harness/eval-runs` | `read HarnessEval` | Eval runs (`?goldenSetId`, paging). |
+| GET | `/admin/harness/eval-runs/:id` | `read HarnessEval` | One run + per-case scores. |
+| GET | `/admin/harness/gate-queue` | `read HarnessWorkflow` | `Consultation.status = PENDING_REVIEW` + SLA/escalation from the effective policy. |
+| GET | `/admin/harness/workflows` | `read HarnessWorkflow` | Temporal list, tenant-filtered (super-admin `?tenantId`; omit = all). |
+| GET | `/admin/harness/workflows/:id` | `read HarnessWorkflow` | Describe (`?phase=true`); ownership-checked (403 cross-tenant). |
+| POST | `/admin/harness/workflows/:id/cancel` | `manage HarnessWorkflow` | Graceful cancel; tenant-ownership enforced. |
+| POST | `/admin/harness/workflows/:id/terminate` | `manage HarnessWorkflow` | Forceful terminate + reason; ownership enforced. |
+| POST | `/admin/harness/workflows/:id/signal` | `manage HarnessWorkflow` | Arbitrary signal; ownership enforced. |
+| GET | `/internal/harness/policy?tenantId=` | service-token (`@Public`) | **Worker** `fetch_policy` read on `HarnessInternalController`; re-establishes CLS to the requested tenant. |
+
+The 9 `/admin/harness/*` routes all carry a **concrete** `@Authorize([...])`, so the boot-time admin-route permission audit
+([`apps/api/src/bootstrap/admin-route-permission-audit.ts`]) passes (no empty-`@Authorize()` admin route). Outbound Temporal
+ops go through `HarnessOpsClient` (HTTP-only, `X-Service-Token`, `HARNESS_BASE_URL`→`HARNESS_URL`→`localhost:8866`).
+
+**Harness Temporal admin endpoints (`apps/harness`, mounted at `/api/v1/internal/harness/*`, `X-Service-Token`).**
+`GET /workflows` (visibility query, cursor-paged), `GET /workflows/{id}` (`?phase=true` queries the loop phase),
+`POST /workflows/{id}/cancel|terminate|signal`. Tenant ownership rides a **custom Keyword search attribute
+`HarnessTenantId`** set via `search_attributes=` on `start_workflow`, plus a **memo fallback** (`tenantId`) — if the SA is
+not registered on the cluster, both the start and the admin list **degrade** to memo + client-side filtering (never 500 /
+never block a consultation). One-time infra: `temporal operator search-attribute create --name HarnessTenantId --type Keyword`.
+
+**Loop injection — `fetch_policy` activity (policy now drives the durable loop).**
+At workflow start `HarnessDocWorkflow` runs a new `fetch_policy` **activity** (calls `GET /internal/harness/policy` via the
+api client) and threads the result deterministically into the loop body: `maxRegen`/`gateSlaSeconds`/`gateEscalationSeconds`
+→ the gate config (bounded-regen budget + the SLA/escalation durable timer); `to_sensor_thresholds()` →
+`RunSensorsInput.thresholds` for the computational sensors; `groundednessThreshold` + `safetyEnabled` → the inferential
+sensors; `smrProvider`/`smrModel` defaults (workflow input still overrides). When no policy resolves, the input + code
+defaults govern (fail-safe). RED proof: `test_policy_injection.py` shows a lowered threshold flips the gate verdict.
+
+**RBAC ([`seed/01-policy.ts`]).** New CASL subjects **`HarnessPolicy` / `HarnessWorkflow` / `HarnessAudit` / `HarnessEval`**.
+Two dedicated policies: **`harness-platform-manage`** (`GLOBAL` — manage `HarnessPolicy`/`HarnessWorkflow`, read
+`HarnessAudit`/`HarnessEval` cross-tenant) and **`harness-tenant-manage`** (`TENANT` — same abilities, `tenantId`-conditioned).
+The existing `tenant-full-access` policy also gains the four tenant-scoped grants.
+
+**Frontend (`apps/ui-playground/src/features/admin/harness/` + routes `_authenticated/admin/harness/*`).** Overview, Audit,
+Evals, Workflows (confirm-dialog destructive actions + toasts), Policy (threshold/toggle/model/tool editor with `If-Match`
+and a safety-lowering confirm dialog). Nav entry + `RequireAdmin` guards; **platform-only** surfaces (the GLOBAL-DEFAULT
+policy editor, cross-tenant lists) are hidden unless the GLOBAL ability is present. TanStack Query + `admin-data-table` +
+skeleton loading per the UI rules.
+
+**Deviations reported by the three lanes.**
+- The **frontend mirrors the API DTOs locally** (`features/admin/harness/api/harness.ts`) because `@arcaai/applications` is
+  server-only and must not be imported into the browser bundle. The integrated check confirmed the mirrors match the live
+  controller JSON (builds + ui-playground typecheck clean on the harness files).
+- The **audit action/date filters are client-side** (the API returns a newest-first page; filtering by action/date happens
+  in the table). Follow-up: server-side audit filters.
+- The harness `describe` endpoint surfaces `tenantId` but **ownership is enforced API-side** (apps/api), not in the harness.
+
+**Migration note.** The schema is **additive** (two new tables + indexes + a guarded `REVOKE` + one GLOBAL-DEFAULT seed row).
+The committed SQL lives at `…/migrations/20260607120000_task_330_phase6_harness_policy/migration.sql` for `prisma migrate`
+environments; on the **db-push dev** environment it was applied via `prisma db execute` (the live WORM test confirms the
+table + REVOKE are present). **No `DROP`/`DELETE`/`TRUNCATE`** anywhere; nothing committed.
+
+**Integrated verification evidence (2026-06-07).** `pnpm db:generate` ✓; `pnpm build --filter @arcaai/domains --filter
+@arcaai/applications` ✓ (7/7) + `pnpm build:api` ✓ (8/8); vitest **domains 1173 ✓** / **applications 4857 ✓** / **api 1695 ✓**
+(incl. **admin-route permission audit 15 ✓**); **`HarnessPolicyChange` WORM 21 ✓** on the live dev DB (UPDATE/DELETE →
+`42501`; real `hope_app`/`hope_app_template` roles confirmed REVOKEd); **harness pytest 443 ✓**; **ui-playground 1052 ✓**;
+`ReadLints` clean on the changed files. Known **pre-existing, unrelated** non-Phase-6 findings (left as-is): 3 `tsc` errors in
+the untouched `ui-playground/.../jobs.ts`+`queues.ts`, a ruff `B017` in the untouched `eval/test_calibration_levers.py`, and
+2 `*.postgres.test.ts` in `packages/domains` that self-skip without a live `.env.test` DB. The Phase-3 lane's earlier note of
+an "applications+api build blocked by the parallel Phase-6 lane" is **now resolved** — the full monorepo builds GREEN.
+
+**Follow-ups for a future ticket.** Server-side audit action/date filters; **eval-gated policy edits** (block lowering a
+safety threshold unless a recent eval run clears it); a managed Temporal `HarnessTenantId` search-attribute provisioning step
+in prod IaC; optional dedicated domain-layer unit specs for `HarnessPolicy*` (currently covered indirectly via the service +
+WORM + drift-guard tests).
 
 ---
 

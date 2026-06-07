@@ -11,6 +11,7 @@ resources:
   - lmstudio.yaml
   - api.yaml
   - guardrail.yaml
+  - reranker.yaml
   - smr.yaml
   - stt-v2.yaml
   - stt-v2-worker.yaml

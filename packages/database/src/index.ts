@@ -53,9 +53,15 @@ export type {
 // TASK-305 Phase B — tenant-scope extension surface.
 export {
   applyTenantScopeExtension,
+  isSystemSharedReadModel,
   isTenantScopedModel,
   resolveTenantContext,
   setTenantContextProvider,
+  SYSTEM_SHARED_READ_MODELS,
+  // TASK-330 Phase 6 — reserved system tenant that owns the harness
+  // GLOBAL-DEFAULT policy row; the domain `HarnessPolicyRepository`
+  // falls back to it when a tenant has no own row.
+  SYSTEM_TENANT_ID,
   TENANT_SCOPED_MODELS,
 } from './extensions/tenant-scope.js';
 export type { TenantContextProvider } from './extensions/tenant-scope.js';

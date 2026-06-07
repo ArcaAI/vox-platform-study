@@ -21,7 +21,13 @@ export * from './consultation';
 export * from './department';
 // TASK-330 Phase 0 — clinical documentation harness (eval storage + WORM audit).
 export * from './eval';
+// TASK-330 Phase 3 — institutional RAG (knowledge corpus ingestion).
+export * from './knowledge';
 export * from './harness-audit';
+// TASK-330 Phase 6 — editable harness runtime policy (admin console + worker).
+export * from './harness-policy';
+// TASK-330 Phase 6 — read-only observability projections (audit/eval/gate-queue).
+export * from './harness-observability';
 export * from './prompt-management';
 export * from './dna-writing-style';
 export * from './smr';

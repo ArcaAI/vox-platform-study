@@ -17,6 +17,10 @@ export * from './GlobalSettingRepository';
 export * from './GoldenCaseRepository';
 export * from './GoldenSetRepository';
 export * from './HarnessAuditEventRepository';
+export * from './HarnessPolicyChangeRepository';
+export * from './HarnessPolicyRepository';
+export * from './KnowledgeChunkRepository';
+export * from './KnowledgeDocumentRepository';
 // TASK-302 Phase 4 — sibling file that patches GlobalSettingRepository
 // prototype with encryptValueIntoEntity / decryptValueFromEntity /
 // findByIdWithDecryptedValue. Importing here ensures the augmentation

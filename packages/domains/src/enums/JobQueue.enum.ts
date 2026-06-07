@@ -20,4 +20,7 @@ export enum JobQueue {
 
   // DNA Writing Style Analysis
   GenerateDnaReport = 'GenerateDnaReport',
+
+  // Institutional RAG knowledge corpus (TASK-330 Phase 3)
+  IngestKnowledgeDocument = 'IngestKnowledgeDocument',
 }

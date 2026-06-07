@@ -16,7 +16,13 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from harness.guides.retrieval.retriever import RetrievedChunk
 from harness.sensors.base import NEREntity, SensorResult
+from harness.sensors.config import SensorThresholds
+
+# Inferential groundedness default — mirrors ``SensorThresholds.groundedness_threshold``
+# so the workflow can thread a default when no policy row drives the loop.
+DEFAULT_GROUNDEDNESS_THRESHOLD = 0.8
 
 # ---------------------------------------------------------------------------
 # Workflow I/O
@@ -86,6 +92,106 @@ class HarnessDocWorkflowResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Harness policy (TASK-330 Phase 6 — Phase C.3): the DB-backed knobs the durable
+# loop reads live at workflow start (sensor thresholds, guard toggles, gate
+# budgets, model/tool selection). Snake_case on the Temporal side; the apps/api
+# worker-facing endpoint speaks camelCase (mapped in :meth:`HarnessPolicy.from_api`).
+# ---------------------------------------------------------------------------
+
+
+class FetchPolicyInput(BaseModel):
+    """Input for the ``fetch_policy`` activity (reads the effective tenant policy)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str
+
+
+class HarnessPolicy(BaseModel):
+    """Effective harness policy snapshot threaded through the deterministic loop.
+
+    Read ONCE in the ``fetch_policy`` activity (I/O stays out of the workflow body)
+    and carried through replay. Defaults mirror the harness code defaults so a
+    code-default / partial response degrades safely.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    entity_faithfulness_threshold: float = 1.0
+    coverage_threshold: float = 0.8
+    citation_presence_threshold: float = 1.0
+    numeric_dose_threshold: float = 1.0
+    groundedness_threshold: float = DEFAULT_GROUNDEDNESS_THRESHOLD
+    safety_enabled: bool = True
+    phi_enabled: bool = True
+    phi_fail_closed: bool = True
+    safety_provider: str = "lm-studio"
+    safety_model: str = "granite-guardian-4.1-8b"
+    smr_provider: str | None = None
+    smr_model: str | None = None
+    max_regen: int = 2
+    gate_sla_seconds: int = 86_400
+    gate_escalation_seconds: int = 43_200
+    tool_allowlist: list[str] | None = None
+    version: int = 0
+
+    @classmethod
+    def from_api(cls, data: dict[str, Any]) -> HarnessPolicy:
+        """Map the apps/api camelCase ``HarnessPolicyResponse`` onto this model.
+
+        Tolerant of missing keys (uses this model's defaults) so a partial / code
+        default response never crashes the loop — it degrades to the code defaults.
+        """
+        defaults = cls()
+
+        def _get(camel: str, fallback: Any) -> Any:
+            value = data.get(camel)
+            return fallback if value is None else value
+
+        return cls(
+            entity_faithfulness_threshold=_get(
+                "entityFaithfulnessThreshold", defaults.entity_faithfulness_threshold
+            ),
+            coverage_threshold=_get("coverageThreshold", defaults.coverage_threshold),
+            citation_presence_threshold=_get(
+                "citationPresenceThreshold", defaults.citation_presence_threshold
+            ),
+            numeric_dose_threshold=_get("numericDoseThreshold", defaults.numeric_dose_threshold),
+            groundedness_threshold=_get("groundednessThreshold", defaults.groundedness_threshold),
+            safety_enabled=_get("safetyEnabled", defaults.safety_enabled),
+            phi_enabled=_get("phiEnabled", defaults.phi_enabled),
+            phi_fail_closed=_get("phiFailClosed", defaults.phi_fail_closed),
+            safety_provider=_get("safetyProvider", defaults.safety_provider),
+            safety_model=_get("safetyModel", defaults.safety_model),
+            # smr_provider/smr_model are intentionally nullable (None => SMR default).
+            smr_provider=data.get("smrProvider"),
+            smr_model=data.get("smrModel"),
+            max_regen=_get("maxRegen", defaults.max_regen),
+            gate_sla_seconds=_get("gateSlaSeconds", defaults.gate_sla_seconds),
+            gate_escalation_seconds=_get(
+                "gateEscalationSeconds", defaults.gate_escalation_seconds
+            ),
+            tool_allowlist=data.get("toolAllowlist"),
+            version=_get("version", defaults.version),
+        )
+
+    def to_sensor_thresholds(self) -> SensorThresholds:
+        """Build the computational-sensor thresholds from the policy.
+
+        Uses ``model_construct`` so it stays deterministic/sandbox-safe (no env or
+        ``.env`` reads) when invoked from the workflow body. ``citation_verify`` is
+        not policy-driven yet, so it keeps the ``SensorThresholds`` default.
+        """
+        return SensorThresholds.model_construct(
+            entity_faithfulness_threshold=self.entity_faithfulness_threshold,
+            coverage_threshold=self.coverage_threshold,
+            citation_presence_threshold=self.citation_presence_threshold,
+            numeric_dose_threshold=self.numeric_dose_threshold,
+            groundedness_threshold=self.groundedness_threshold,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Activity inputs (outputs reuse the services'/sensors' typed models)
 # ---------------------------------------------------------------------------
 
@@ -135,6 +241,36 @@ class GenerateInput(BaseModel):
     model: str | None = None
 
 
+class RetrieveContextInput(BaseModel):
+    """Inputs for the Phase-3 ``retrieve_context`` activity (flag-gated, degrade-safe).
+
+    The activity builds the hybrid query from the extracted ``entities``; the
+    ``tenant_id`` is the load-bearing isolation scope (only that tenant's APPROVED
+    chunks are retrievable).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str
+    entities: list[NEREntity] = Field(default_factory=list)
+
+
+class RetrievedContext(BaseModel):
+    """Output of ``retrieve_context``: the reranked chunks + the StrictCitations block.
+
+    ``degraded`` is True when a retrieval backend (embeddings/Qdrant/reranker) was
+    down — the workflow turns that into reduced assurance (generation still proceeds
+    on whatever context exists, which on degrade is empty). ``prompt_block`` is the
+    ready-to-append Knowledge Context (empty when there is nothing to cite).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    chunks: list[RetrievedChunk] = Field(default_factory=list)
+    degraded: bool = False
+    prompt_block: str = ""
+
+
 class RunSensorsInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -144,6 +280,12 @@ class RunSensorsInput(BaseModel):
     transcript_entities: list[NEREntity] = Field(default_factory=list)
     response_format: dict[str, Any] | None = None
     transcript_context_item_id: str | None = None
+    # Phase-3 RAG: the chunk ids the retriever surfaced for this generation, used to
+    # map the model's StrictCitations markers onto each claim's knowledgeChunkIds.
+    retrieved_chunk_ids: list[str] = Field(default_factory=list)
+    # Phase-6: policy-driven computational thresholds (None => the sensors' own
+    # env-driven ``SensorThresholds`` defaults).
+    thresholds: SensorThresholds | None = None
 
 
 class RunInferentialSensorsInput(BaseModel):
@@ -159,6 +301,13 @@ class RunInferentialSensorsInput(BaseModel):
     note_text: str
     transcript_text: str = ""
     citations_map: dict[str, Any] = Field(default_factory=dict)
+    # Phase-3 RAG: retrieved chunk id -> chunk text, so the citation-verify sensor
+    # can entail each cited claim against ONLY its cited chunk(s).
+    knowledge_chunks: dict[str, str] = Field(default_factory=dict)
+    # Phase-6 policy injection: the groundedness pass threshold + the safety toggle.
+    # ``safety_enabled=False`` skips the Granite safety screen entirely.
+    groundedness_threshold: float = DEFAULT_GROUNDEDNESS_THRESHOLD
+    safety_enabled: bool = True
 
 
 class InferentialRunOutput(BaseModel):

@@ -1,0 +1,101 @@
+# hope-reranker — HF Text-Embeddings-Inference (TEI) cross-encoder reranker.
+#
+# TASK-330 Phase 3 (institutional RAG): the harness hybrid retriever fuses dense
+# (LM Studio) + sparse (fastembed BM25) candidates via the Qdrant Query API, then
+# reranks them with this cross-encoder (BAAI/bge-reranker-v2-m3) down to top-k.
+# Clients post query/document pairs to the TEI `/rerank` endpoint on port 80;
+# apps/harness targets it via HARNESS_RETRIEVAL_RERANKER_BASE_URL=http://hope-reranker:80.
+#
+# Mirrors the hope-guardrail Deployment/Service shape. The CPU image is the
+# portable default; on a GPU node, swap `image` for a CUDA tag and add the GPU
+# resource request. Retrieval is flag-gated OFF by default (HARNESS_RETRIEVAL_ENABLED),
+# so this service is only exercised once an operator opts in and a corpus is loaded.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hope-reranker
+  labels:
+    app: hope-reranker
+    app.kubernetes.io/part-of: project-hope
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: hope-reranker
+  template:
+    metadata:
+      labels:
+        app: hope-reranker
+    spec:
+      containers:
+        - name: reranker
+          # x86_64 CPU build; pin/override per node arch (cpu-arm64-1.9, or a CUDA tag on GPU nodes).
+          image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--model-id"
+            - "BAAI/bge-reranker-v2-m3"
+          ports:
+            - containerPort: 80
+          env:
+            - name: MODEL_ID
+              value: "BAAI/bge-reranker-v2-m3"
+            - name: HF_HOME
+              value: "/data"
+            - name: MAX_CLIENT_BATCH_SIZE
+              value: "32"
+          # The model is downloaded on first boot, so the startup probe is generous.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 80
+            failureThreshold: 60
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          volumeMounts:
+            - name: reranker-cache
+              mountPath: /data
+      volumes:
+        - name: reranker-cache
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hope-reranker
+  labels:
+    app: hope-reranker
+spec:
+  selector:
+    app: hope-reranker
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+  type: ClusterIP

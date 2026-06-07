@@ -80,7 +80,7 @@ function captureExtensionConfig(opts: {
 // ---------------------------------------------------------------------------
 
 describe('TENANT_SCOPED_MODELS allow-list', () => {
-  it('contains the 36 tenant-scoped models currently defined in db_main/*.prisma', () => {
+  it('contains the 40 tenant-scoped models currently defined in db_main/*.prisma', () => {
     // The allow-list tracks SCHEMA TRUTH (every model here has a tenantId
     // scalar), not the audit's 30-name wish-list. The User* identity tables
     // are intentionally excluded — `User` is global by design (§B6 /
@@ -90,9 +90,12 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // UserDepartment → 29. TASK-331 doc-08 added TenantFrontendConfig (F2)
     // + AsrPipelineVersion (F3) → 31. TASK-330 Phase 0 added the clinical-
     // documentation harness GoldenSet/GoldenCase/EvalRun/EvalScore +
-    // HarnessAuditEvent → 36. (The drift guard below is the durable check;
-    // this count stays as a quick human-readable tripwire.)
-    expect(TENANT_SCOPED_MODELS.size).toBe(36);
+    // HarnessAuditEvent → 36. TASK-330 Phase 3 added the institutional-RAG
+    // KnowledgeDocument + KnowledgeChunk → 38. TASK-330 Phase 6 added the
+    // editable harness policy HarnessPolicy + append-only HarnessPolicyChange
+    // → 40. (The drift guard below is the durable check; this count stays as a
+    // quick human-readable tripwire.)
+    expect(TENANT_SCOPED_MODELS.size).toBe(40);
   });
 
   it('includes every PHI-bearing model', () => {
@@ -190,6 +193,8 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
     expect(found).toContain('TenantFrontendConfig'); // tenant.prisma (F2)
     expect(found).toContain('AsrPipelineVersion'); // stt.prisma (F3)
     expect(found).toContain('HarnessAuditEvent'); // harness.prisma (TASK-330)
+    expect(found).toContain('KnowledgeDocument'); // knowledge.prisma (TASK-330 Phase 3)
+    expect(found).toContain('KnowledgeChunk'); // knowledge.prisma (TASK-330 Phase 3)
   });
 
   it('lists every schema tenantId model in TENANT_SCOPED_MODELS (drift = []) ', () => {
@@ -206,9 +211,11 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
 // ---------------------------------------------------------------------------
 
 describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
-  it('contains only the platform catalog models (AsrPipeline, AiModel)', () => {
+  it('contains the platform catalog models + the harness global-default policy (AsrPipeline, AiModel, HarnessPolicy)', () => {
     expect(new Set(SYSTEM_SHARED_READ_MODELS)).toEqual(
-      new Set(['AsrPipeline', 'AiModel']),
+      // TASK-330 Phase 6 — HarnessPolicy's SYSTEM-tenant row is the global
+      // default every tenant reads to compute its effective policy.
+      new Set(['AsrPipeline', 'AiModel', 'HarnessPolicy']),
     );
   });
 

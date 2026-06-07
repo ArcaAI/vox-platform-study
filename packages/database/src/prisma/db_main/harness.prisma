@@ -228,3 +228,107 @@ model HarnessAuditEvent {
     @@index([prevHash], name: "HarnessAuditEvent_prevHash_idx")
     @@schema("core")
 }
+
+// =============================================================================
+// POLICY MANAGEMENT (TASK-330 Phase 6 — Harness Administration Console)
+//
+// DB-backed, editable runtime knobs that drive the clinical documentation loop
+// live: the durable workflow reads the effective policy via a `fetch_policy`
+// activity at start, so an edit takes effect on the NEXT run with NO redeploy.
+//
+//   1. HarnessPolicy — a STANDARD tenant-scoped row (tenantId + _version OCC +
+//      resourceStatus + audit). The reserved system tenant
+//      `00000000-0000-0000-0000-000000000000` owns the GLOBAL-DEFAULT row; a
+//      per-tenant row OVERRIDES it. Column defaults mirror the harness runtime
+//      defaults (sensors/config.py SensorThresholds + core/config.py
+//      SafetyGuardConfig / PhiConfig / gate timing) so a fresh row is a faithful
+//      snapshot of the code defaults.
+//
+//   2. HarnessPolicyChange — an APPEND-ONLY, WORM change log (mirrors
+//      HarnessAuditEvent): every policy edit writes a before/after row. The
+//      migration that introduces it `REVOKE UPDATE, DELETE` for the app role so
+//      the change trail is immutable at the DB-privilege layer.
+// =============================================================================
+
+model HarnessPolicy {
+    // Meta fields (BaseEntity pattern) — `_version` is the OCC token.
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant — system tenant owns the global-default row; tenant rows override.
+    tenantId String
+
+    // Computational sensor thresholds (fractions in [0, 1]). Defaults mirror
+    // apps/harness/src/harness/sensors/config.py (SensorThresholds).
+    entityFaithfulnessThreshold Float @default(1.0)
+    coverageThreshold           Float @default(0.8)
+    citationPresenceThreshold   Float @default(1.0)
+    numericDoseThreshold        Float @default(1.0)
+    groundednessThreshold       Float @default(0.8)
+
+    // Guardrail toggles + engine selection. Defaults mirror SafetyGuardConfig
+    // (apps/harness/src/harness/core/config.py) + PhiConfig.
+    safetyEnabled Boolean @default(true)
+    phiEnabled    Boolean @default(true)
+    phiFailClosed Boolean @default(true)
+    safetyProvider String @default("lm-studio")
+    safetyModel    String @default("granite-guardian-4.1-8b")
+
+    // SMR generation defaults (null => let the SMR service choose). Mirrors
+    // Settings.smr_provider / smr_model.
+    smrProvider String?
+    smrModel    String?
+
+    // Bounded-regen budget + clinician-gate timing (durable, deterministic).
+    // Mirrors Settings.max_regen / gate_sla_seconds / gate_escalation_seconds.
+    maxRegen              Int @default(2)
+    gateSlaSeconds        Int @default(86400)
+    gateEscalationSeconds Int @default(43200)
+
+    // Tool allow-list the loop may call out to (JSON array of tool ids); null =
+    // no restriction (all tools allowed).
+    toolAllowlist Json? @db.JsonB
+
+    // Resource status + Audit (standard fields)
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime @default(now())
+    updatedAt               DateTime @updatedAt
+
+    // One policy row per tenant (the system tenant's row is the global default).
+    // The unique index doubles as the tenant lookup index, so no separate
+    // `@@index([tenantId])` is declared (it would be redundant).
+    @@unique([tenantId], name: "HarnessPolicy_tenantId_key")
+    @@schema("core")
+}
+
+model HarnessPolicyChange {
+    // Identity only — NO _version / _metadata / updatedAt / resourceStatus.
+    // Rows are immutable (append-only); the migration REVOKEs UPDATE/DELETE
+    // on this table from the application role.
+    id String @id @default(uuid(7))
+
+    // Multi-tenant — the policy row's tenant (system tenant for global-default edits).
+    tenantId String
+
+    // Who made the change (user id) + the optimistic-concurrency version of the
+    // policy row AFTER the edit (the `_version` the CAS produced), for correlation.
+    changedBy     String?
+    policyVersion Int?
+
+    // Full before/after snapshots of the policy values (null `beforeJson` => the
+    // policy row was created by this change).
+    beforeJson Json? @db.JsonB
+    afterJson  Json  @db.JsonB
+    reason     String? @db.Text
+
+    createdAt DateTime @default(now())
+
+    @@index([tenantId], name: "HarnessPolicyChange_tenantId_idx")
+    @@index([tenantId, createdAt], name: "HarnessPolicyChange_tenant_createdAt_idx")
+    @@schema("core")
+}

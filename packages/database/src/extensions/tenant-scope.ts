@@ -97,12 +97,18 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'TenantFrontendConfig', // per-tenant frontend pipeline config (doc-08 F2)
   // media.prisma (1)
   'Media',
-  // harness.prisma (5) — TASK-330 Phase 0 clinical-documentation harness
+  // harness.prisma (7) — TASK-330 Phase 0/6 clinical-documentation harness
   'GoldenSet',
   'GoldenCase',
   'EvalRun',
   'EvalScore',
   'HarnessAuditEvent', // append-only WORM audit (no soft-delete; see client.ts)
+  // TASK-330 Phase 6 — Harness Administration Console: editable runtime policy.
+  'HarnessPolicy', // also a SYSTEM-shared read model (global-default row, below)
+  'HarnessPolicyChange', // append-only WORM change log (no soft-delete)
+  // knowledge.prisma (2) — TASK-330 Phase 3 institutional RAG corpus
+  'KnowledgeDocument',
+  'KnowledgeChunk',
 ]);
 
 /**
@@ -150,6 +156,13 @@ export const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   'AsrPipeline',
   'AiModel',
+  // TASK-330 Phase 6 — the harness GLOBAL-DEFAULT policy row is owned by the
+  // SYSTEM tenant and every tenant must read it to compute its effective policy
+  // (tenant row merged over the system default). A READ therefore widens to
+  // `tenantId IN [caller, SYSTEM]`; WRITES are NOT widened, so a tenant can read
+  // but never mutate the SYSTEM-owned global default (only a platform admin can,
+  // through the dedicated global-default service path).
+  'HarnessPolicy',
 ]);
 
 export function isSystemSharedReadModel(model: string): boolean {

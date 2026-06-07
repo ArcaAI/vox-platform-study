@@ -103,6 +103,48 @@ See [`.env.example`](./.env.example) for the full list.
 | GET | `/metrics` | Prometheus metrics |
 | GET | `/api/v1/docs` | Swagger UI |
 
+### Internal (service-to-service, `X-Service-Token`)
+
+`apps/api` is the only caller; the Temporal SDK stays isolated in the harness. All routes
+require the shared `HARNESS_SERVICE_TOKEN` (an empty configured token disables the guard for
+local dev). Mounted under `/api/v1/internal`:
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/internal/consultations/{id}/document:start` | Start the document loop (idempotent on `harness-doc-{id}`) |
+| POST | `/internal/workflows/{id}/signal/approve` | Forward a clinician sign-off to the `approval` signal |
+| POST | `/internal/harness/knowledge:ingest` | Enqueue/ingest a knowledge document (RAG) |
+
+### Admin workflow-ops (`/api/v1/internal/harness`, `X-Service-Token`)
+
+Wrap the Temporal client so the apps/api `HarnessOpsClient` can observe/operate the document
+workflows. camelCase JSON; tenant ownership is enforced by apps/api from the surfaced `tenantId`.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/workflows?tenantId&status&consultationId&limit&pageToken` | List (visibility query; cursor-paged → `{ items, nextPageToken }`) |
+| GET | `/workflows/{id}?phase=true` | Describe (adds `historyLength`, `memo`, `searchAttributes`, `result`; `phase=true` also queries the loop phase) |
+| POST | `/workflows/{id}/cancel` | Request cancellation → `{ workflowId, runId, status, action:"cancel", requested:true }` |
+| POST | `/workflows/{id}/terminate` | Terminate (body `{ reason? }`) |
+| POST | `/workflows/{id}/signal` | Forward an arbitrary signal (body `{ signalName, payload? }`) |
+
+A missing/closed workflow returns **404**; a `HarnessTenantId` search-attribute outage degrades
+the list to a memo + client-side tenant filter (it never 500s).
+
+#### One-time setup: the `HarnessTenantId` search attribute
+
+`document:start` tags each workflow with a `HarnessTenantId` **Keyword** search attribute (so the
+admin list can filter by tenant server-side) and a `tenantId` **memo** (the fallback). Register the
+search attribute **once per cluster/namespace** before relying on server-side tenant filtering:
+
+```bash
+temporal operator search-attribute create --name HarnessTenantId --type Keyword
+#   add --namespace <ns> if not "default"
+```
+
+If it is **not** registered, the harness still works: `document:start` retries the start memo-only,
+and the admin list falls back to the memo + client-side tenant filtering. No crash either way.
+
 ---
 
 ## Testing

@@ -124,3 +124,35 @@ class TestBuildCitationsMap:
             transcript_text="",
         )
         assert cmap["claims"][0]["text"] == "120/80 mmHg"
+
+
+# ── TASK-330 Phase 3: per-claim knowledgeChunkIds from StrictCitations markers ──
+class TestKnowledgeChunkCitations:
+    def test_attaches_section_cited_ids_strictly(self):
+        cmap = build_citations_map(
+            soap_sections={
+                "plan": "Start a thiazide [[kb:kc-1]] for blood pressure.",
+                "assessment": "Type 2 diabetes [[kb:kc-2]] [[kb:kc-999]].",
+            },
+            note_entities=[
+                NEREntity(text="thiazide", type="MEDICATION"),
+                NEREntity(text="diabetes", type="DISEASE"),
+            ],
+            transcript_entities=[],
+            transcript_text="",
+            retrieved_chunk_ids=["kc-1", "kc-2"],
+        )
+        by_section = {c["section"]: c for c in cmap["claims"]}
+        # Section-level attribution; hallucinated kc-999 (not retrieved) is dropped.
+        assert by_section["P"]["knowledgeChunkIds"] == ["kc-1"]
+        assert by_section["A"]["knowledgeChunkIds"] == ["kc-2"]
+
+    def test_no_retrieved_ids_leaves_knowledge_chunk_ids_empty(self):
+        cmap = build_citations_map(
+            soap_sections={"plan": "Start a thiazide [[kb:kc-1]]."},
+            note_entities=[NEREntity(text="thiazide", type="MEDICATION")],
+            transcript_entities=[],
+            transcript_text="",
+        )
+        # No retrieval context -> markers are ignored, the field stays empty.
+        assert cmap["claims"][0]["knowledgeChunkIds"] == []

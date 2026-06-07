@@ -21,6 +21,7 @@ from harness.temporal.models import (
     ApprovalSignal,
     HarnessDocWorkflowInput,
     HarnessGateConfig,
+    HarnessPolicy,
 )
 from harness.temporal.workflows import HarnessDocWorkflow
 from harness.tests.unit.temporal._harness_stubs import (
@@ -411,6 +412,213 @@ class TestInferentialPass:
         assert result.decision == "PASS"
         assert recorder.calls["persist_draft"] == 1
         assert recorder.persist_draft_inputs[0].reduced_assurance is True
+
+
+class TestInstitutionalRetrieval:
+    """Phase 3: JIT retrieval augments the prompt + threads chunks into the sensors;
+    a degraded retrieval flags reduced assurance (generation still proceeds)."""
+
+    @pytest.mark.asyncio
+    async def test_retrieved_chunks_augment_prompt_and_thread_into_sensors(self):
+        recorder = StubRecorder()
+        config = StubConfig(
+            verdicts=["PASS"],
+            retrieved_chunks=[("kc-1", "First-line HTN therapy is a thiazide.")],
+        )
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["retrieve_context"] == 1
+        # Retrieval is entity-triggered, scoped to the tenant.
+        assert recorder.retrieve_inputs[0].tenant_id == "t-1"
+        # The generation prompt was augmented with the StrictCitations block.
+        gen_prompt = recorder.generate_inputs[0].prompt
+        assert "kc-1" in gen_prompt and "[[kb:" in gen_prompt
+        # Chunk ids are threaded into the computational pass (knowledgeChunkIds mapping)
+        assert recorder.run_sensors_inputs[0].retrieved_chunk_ids == ["kc-1"]
+        # ...and the chunk text is threaded into the inferential pass (citation-verify).
+        assert recorder.inferential_inputs[0].knowledge_chunks == {
+            "kc-1": "First-line HTN therapy is a thiazide."
+        }
+        assert recorder.persist_draft_inputs[0].reduced_assurance is False
+
+    @pytest.mark.asyncio
+    async def test_retrieval_degrade_flags_reduced_assurance_but_proceeds(self):
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], retrieval_degraded=True)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        # Generation proceeds (empty context), but the draft is flagged reduced assurance.
+        assert result.decision == "PASS"
+        assert recorder.calls["generate"] == 1
+        assert recorder.persist_draft_inputs[0].reduced_assurance is True
+
+
+class TestPolicyInjection:
+    """Phase 6: the policy is read ONCE at workflow start (``fetch_policy``) and
+    threaded into the deterministic body — thresholds, guard toggles, gate budget,
+    and model defaults. A failed fetch degrades to the code defaults (never crashes)."""
+
+    @pytest.mark.asyncio
+    async def test_policy_threads_thresholds_toggles_and_model_defaults(self):
+        recorder = StubRecorder()
+        policy = HarnessPolicy(
+            coverage_threshold=0.55,
+            groundedness_threshold=0.42,
+            safety_enabled=False,
+            smr_provider="azure",
+            smr_model="gpt-4o",
+        )
+        config = StubConfig(verdicts=["PASS"], policy=policy)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),  # no smr provider/model -> policy supplies the defaults
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        # Policy is fetched first, scoped to the consultation's tenant.
+        assert recorder.calls["fetch_policy"] == 1
+        assert recorder.fetch_policy_inputs[0].tenant_id == "t-1"
+        # Computational thresholds are threaded into run_sensors.
+        threaded = recorder.run_sensors_inputs[0].thresholds
+        assert threaded is not None
+        assert threaded.coverage_threshold == 0.55
+        # Inferential groundedness threshold + safety toggle are threaded in.
+        assert recorder.inferential_inputs[0].groundedness_threshold == 0.42
+        assert recorder.inferential_inputs[0].safety_enabled is False
+        # Policy smr provider/model are used as defaults when the input omits them.
+        assert recorder.generate_inputs[0].provider == "azure"
+        assert recorder.generate_inputs[0].model == "gpt-4o"
+
+    @pytest.mark.asyncio
+    async def test_input_smr_overrides_policy_default(self):
+        recorder = StubRecorder()
+        policy = HarnessPolicy(smr_provider="azure", smr_model="gpt-4o")
+        config = StubConfig(verdicts=["PASS"], policy=policy)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(smr_provider="lm-studio", smr_model="local-llm"),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        # An explicit workflow-input model wins over the policy default.
+        assert recorder.generate_inputs[0].provider == "lm-studio"
+        assert recorder.generate_inputs[0].model == "local-llm"
+
+    @pytest.mark.asyncio
+    async def test_policy_max_regen_overrides_gate_budget(self):
+        recorder = StubRecorder()
+        # 3 REGENs then PASS. With the policy budget of 3 the loop survives to PASS;
+        # the input gate's default budget of 2 would FLAG — so PASS proves the
+        # policy budget overrode the gate config.
+        policy = HarnessPolicy(max_regen=3)
+        config = StubConfig(verdicts=["REGEN", "REGEN", "REGEN", "PASS"], policy=policy)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=HarnessGateConfig(max_regen=2)),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert result.regens_used == 3
+        assert recorder.calls["run_sensors"] == 4
+
+    @pytest.mark.asyncio
+    async def test_policy_fetch_failure_degrades_to_code_defaults(self):
+        recorder = StubRecorder()
+        # policy=None -> the fetch_policy stub raises -> the workflow falls back to
+        # the code defaults: default thresholds (None passed through), safety ON,
+        # and the input gate budget governs the loop. Never crashes.
+        config = StubConfig(verdicts=["PASS"], policy=None)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["fetch_policy"] == 1
+        # Fallback: no policy thresholds, safety guard stays ON, draft is not flagged
+        # reduced-assurance just because the policy fetch failed.
+        assert recorder.run_sensors_inputs[0].thresholds is None
+        assert recorder.inferential_inputs[0].safety_enabled is True
+        assert recorder.persist_draft_inputs[0].reduced_assurance is False
 
 
 class TestDegradation:

@@ -22,11 +22,17 @@ from temporalio import activity
 from harness.core.config import Settings, get_runtime_judge_config, get_settings
 from harness.eval.judge.base import JudgeClient
 from harness.eval.judge.providers import build_judge_client
+from harness.guides.retrieval.prompt import build_strict_citations_block
+from harness.guides.retrieval.qdrant_store import KnowledgeQdrantStore
+from harness.guides.retrieval.retriever import HybridRetriever, build_query
+from harness.guides.retrieval.sparse import SparseBm25Embedder
 from harness.sensors.base import SensorContext, SensorResult
 from harness.sensors.config import SensorThresholds
 from harness.sensors.inferential import (
+    CITATION_VERIFY_NAME,
     GROUNDEDNESS_NAME,
     SAFETY_NAME,
+    CitationVerifySensor,
     GraniteGuardianClient,
     GroundednessSensor,
     SafetySensor,
@@ -39,7 +45,9 @@ from harness.services.api_client import (
     PersistEntitiesResponse,
     RecordGateResponse,
 )
+from harness.services.embeddings_client import EmbeddingsClient
 from harness.services.nlp_client import NlpClient
+from harness.services.reranker_client import RerankerClient
 from harness.services.sensor_runner import SensorRunOutput, run_computational_sensors
 from harness.services.smr_client import SmrClient, SmrGenerationResult
 from harness.temporal.models import (
@@ -48,11 +56,15 @@ from harness.temporal.models import (
     EscalateInput,
     EscalateResult,
     ExtractEntitiesInput,
+    FetchPolicyInput,
     GenerateInput,
+    HarnessPolicy,
     InferentialRunOutput,
     PersistDraftInput,
     PersistEntitiesInput,
     RecordGateInput,
+    RetrieveContextInput,
+    RetrievedContext,
     RunInferentialSensorsInput,
     RunSensorsInput,
 )
@@ -120,9 +132,42 @@ def _granite_client(settings: Settings) -> GraniteGuardianClient:
     return GraniteGuardianClient(settings.safety)
 
 
+def _hybrid_retriever(settings: Settings) -> HybridRetriever:
+    """Build the JIT hybrid retriever from the (flag-gated) ``RetrievalConfig``.
+
+    Factored out (like the other client factories) so ``retrieve_context`` builds it
+    once and the tests can monkeypatch it with a fake. The dense query stays on the
+    self-hosted LM Studio path (the query can contain PHI).
+    """
+    rc = settings.retrieval
+    return HybridRetriever(
+        embeddings=EmbeddingsClient(
+            rc.embeddings_base_url, model=rc.embeddings_model, timeout=rc.embeddings_timeout_s
+        ),
+        sparse=SparseBm25Embedder(),
+        store=KnowledgeQdrantStore(rc.qdrant_url, rc.collection, timeout=rc.qdrant_timeout_s),
+        reranker=RerankerClient(rc.reranker_base_url, timeout=rc.reranker_timeout_s),
+        top_k_retrieval=rc.top_k_retrieval,
+        top_k_rerank=rc.top_k_rerank,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Document-loop activities
 # ---------------------------------------------------------------------------
+
+
+@activity.defn
+async def fetch_policy(payload: FetchPolicyInput) -> HarnessPolicy:
+    """Read the effective harness policy for the tenant (Phase-6 live policy injection).
+
+    I/O lives here, never the workflow body. Raises :class:`ApiServiceError` on an
+    unreachable endpoint; the workflow catches the resulting ``ActivityError`` and
+    degrades to the code defaults (fail-safe — never crash the loop).
+    """
+    settings = get_settings()
+    data = await _api_client(settings).get_policy(payload.tenant_id)
+    return HarnessPolicy.from_api(data)
 
 
 @activity.defn
@@ -178,8 +223,35 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
 
 
 @activity.defn
+async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
+    """JIT hybrid retrieval for the generation prompt (flag-gated, degrade-safe).
+
+    Off by default (``HARNESS_RETRIEVAL_ENABLED``) -> returns an empty context with no
+    backend calls. When enabled, builds the query from the extracted entities and runs
+    the dense+sparse -> RRF -> rerank pipeline (tenant + APPROVED scoped). Any backend
+    outage degrades to an empty context (``degraded=True``); it never raises into the
+    durable loop. Returns the reranked chunks + the ready-to-append StrictCitations block.
+    """
+    settings = get_settings()
+    if not settings.retrieval.enabled:
+        return RetrievedContext()
+
+    query = build_query(payload.entities)
+    result = await _hybrid_retriever(settings).retrieve(query=query, tenant_id=payload.tenant_id)
+    return RetrievedContext(
+        chunks=result.chunks,
+        degraded=result.degraded,
+        prompt_block=build_strict_citations_block(result.chunks),
+    )
+
+
+@activity.defn
 async def run_sensors(payload: RunSensorsInput) -> SensorRunOutput:
-    """Build the SensorContext + provenance and run all computational sensors."""
+    """Build the SensorContext + provenance and run all computational sensors.
+
+    ``payload.thresholds`` is the policy-driven :class:`SensorThresholds` (Phase 6);
+    ``None`` falls back to the sensors' own env-driven defaults.
+    """
     return run_computational_sensors(
         note_text=payload.note_text,
         transcript_text=payload.transcript_text,
@@ -187,6 +259,8 @@ async def run_sensors(payload: RunSensorsInput) -> SensorRunOutput:
         transcript_entities=payload.transcript_entities,
         response_format=payload.response_format,
         transcript_context_item_id=payload.transcript_context_item_id,
+        retrieved_chunk_ids=payload.retrieved_chunk_ids,
+        thresholds=payload.thresholds,
     )
 
 
@@ -205,6 +279,32 @@ def _groundedness_decision(result: SensorResult) -> dict[str, Any]:
         "ragTriad": details.get("rag_triad"),
         "sections": list(details.get("sections", [])),
         "ungrounded": list(details.get("ungrounded", [])),
+        "claimsFlagged": list(result.claims_flagged),
+    }
+
+
+def _citation_verify_decision(result: SensorResult) -> dict[str, Any]:
+    """Map the citation-verify result to its guardrail-decision entry (regen-fixable).
+
+    On degrade (judge unavailable) it surfaces an ``"unverified"`` badge so the UI
+    can flag that the StrictCitations could not be checked this run.
+    """
+    if result.degraded:
+        return {
+            "decision": "DEGRADED",
+            "degraded": True,
+            "badge": "unverified",
+            "reason": result.details.get("reason"),
+        }
+    details = result.details
+    return {
+        "decision": "PASS" if result.passed else "REGEN",
+        "passed": result.passed,
+        "score": round(result.score, 6),
+        "total": details.get("total", 0),
+        "supported": details.get("supported", 0),
+        "unverified": list(details.get("unverified", [])),
+        "sections": list(details.get("sections", [])),
         "claimsFlagged": list(result.claims_flagged),
     }
 
@@ -241,6 +341,10 @@ def _assemble_inferential_output(results: list[SensorResult]) -> InferentialRunO
     if safety is not None:
         guardrail_decisions[SAFETY_NAME] = _safety_decision(safety)
 
+    citation_verify = by_name.get(CITATION_VERIFY_NAME)
+    if citation_verify is not None:
+        guardrail_decisions[CITATION_VERIFY_NAME] = _citation_verify_decision(citation_verify)
+
     return InferentialRunOutput(
         results=results,
         guardrail_decisions=guardrail_decisions,
@@ -264,25 +368,31 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
         note_text=payload.note_text,
         transcript_text=payload.transcript_text,
         citations_map=payload.citations_map,
+        knowledge_chunks=payload.knowledge_chunks,
     )
 
     try:
         judge = _build_runtime_judge()
     except Exception as exc:  # noqa: BLE001 — un-buildable judge degrades, never raises
         reason = f"inferential judge unavailable: {exc}"
-        return _assemble_inferential_output(
-            [degraded_result(GROUNDEDNESS_NAME, reason), degraded_result(SAFETY_NAME, reason)]
-        )
+        degraded = [
+            degraded_result(GROUNDEDNESS_NAME, reason),
+            degraded_result(CITATION_VERIFY_NAME, reason),
+        ]
+        # Phase 6: a disabled safety guard contributes no safety result at all.
+        if payload.safety_enabled:
+            degraded.append(degraded_result(SAFETY_NAME, reason))
+        return _assemble_inferential_output(degraded)
 
-    threshold = SensorThresholds().groundedness_threshold
-    groundedness = GroundednessSensor(threshold=threshold)
-    safety = SafetySensor(_granite_client(settings))
-    results = list(
-        await asyncio.gather(
-            groundedness.arun(ctx, judge=judge),
-            safety.arun(ctx, judge=judge),
-        )
-    )
+    thresholds = SensorThresholds()
+    # Phase 6: the groundedness pass threshold is policy-driven; the safety screen
+    # is skipped entirely when the policy disables the safety guard.
+    groundedness = GroundednessSensor(threshold=payload.groundedness_threshold)
+    citation_verify = CitationVerifySensor(threshold=thresholds.citation_verify_threshold)
+    tasks = [groundedness.arun(ctx, judge=judge), citation_verify.arun(ctx, judge=judge)]
+    if payload.safety_enabled:
+        tasks.append(SafetySensor(_granite_client(settings)).arun(ctx, judge=judge))
+    results = list(await asyncio.gather(*tasks))
     return _assemble_inferential_output(results)
 
 
@@ -346,9 +456,11 @@ async def escalate_gate(payload: EscalateInput) -> EscalateResult:
 
 # Registered on the worker alongside ``ping_activity``.
 DOCUMENT_ACTIVITIES = [
+    fetch_policy,
     extract_entities,
     persist_entities,
     assemble_prompt,
+    retrieve_context,
     generate,
     run_sensors,
     run_inferential_sensors,

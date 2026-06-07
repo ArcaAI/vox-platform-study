@@ -32,6 +32,8 @@ describe('buildAdminNavItems (TASK-327 T5)', () => {
         'audit-logs',
         // TASK-336 OB-02 — tenant-wide jobs view is available to any admin.
         'jobs',
+        // TASK-330 Phase 6 — harness console is available to any admin.
+        'harness',
       ]),
     );
     // Prisma Studio, System Health, Rate Limits and Queues & Jobs are global-scope only.
@@ -97,7 +99,8 @@ describe('buildAdminNavItems (TASK-327 T5)', () => {
       const items = buildAdminNavItems({ isAdmin: true, isGlobalScope: true, tenantSelected: false, order: DEFAULT_ADMIN_MENU_ORDER });
       expect(disabledIds(items).sort()).toEqual(
         // TASK-336 OB-02 — `jobs` is tenant-scoped (needs a selected tenant).
-        ['audio-pipelines', 'audit-logs', 'configurations', 'departments', 'dna-reports', 'jobs', 'prompts', 'storage'].sort(),
+        // TASK-330 Phase 6 — `harness` is tenant-scoped too.
+        ['audio-pipelines', 'audit-logs', 'configurations', 'departments', 'dna-reports', 'harness', 'jobs', 'prompts', 'storage'].sort(),
       );
       // Overview / Tenants / Users / Prisma Studio + the global-scope ops
       // surfaces (System Health, Rate Limits, Queues & Jobs) remain reachable
