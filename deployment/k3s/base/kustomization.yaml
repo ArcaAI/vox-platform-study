@@ -8,6 +8,7 @@ resources:
   - configmap.yaml
   - redis.yaml
   - ollama.yaml
+  - lmstudio.yaml
   - api.yaml
   - guardrail.yaml
   - smr.yaml

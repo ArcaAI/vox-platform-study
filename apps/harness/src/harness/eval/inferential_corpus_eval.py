@@ -7,16 +7,18 @@ micro-cases (see ``apps/harness/eval/README.md``), not a corpus. This module run
 the SAME two inferential sensors over EVERY case of a golden set (e.g.
 ``curated_v1.json``) using the live calibrated judge (LM Studio
 ``google/gemma-4-e4b`` via :func:`harness.core.config.get_runtime_judge_config`)
-and live IBM Granite Guardian (Ollama), then aggregates a corpus-level delta: the
+and the live IBM Granite Guardian safety classifier (``granite-guardian-4.1-8b``
+over LM Studio by default; ``Settings.safety``), then aggregates a corpus-level delta: the
 ``groundedness`` + ``ragTriadScore`` distribution, the safety PASS/FLAG tally, and
 the agreement of each live signal against the fixture's curated PDSQI reference
 labels.
 
 It mirrors the Temporal ``run_inferential_sensors`` activity's context build
 (``SensorContext(note_text, transcript_text, citations_map)``) and per-draft
-``asyncio.gather(groundedness, safety)`` fan-out (the two sensors hit different
-backends — LM Studio vs Ollama — so they are concurrent within a case; cases run
-sequentially to be kind to a single local GPU).
+``asyncio.gather(groundedness, safety)`` fan-out (the two sensors are independent
+async model calls — groundedness → the LM Studio judge, safety → Granite Guardian
+— so they are concurrent within a case; cases run sequentially to be kind to a
+single local GPU).
 
 **Claim provenance (integrity caveat).** The one input the activity gets upstream
 that a golden case lacks is the ``citationsMap``: production derives it from live
@@ -171,7 +173,7 @@ class InferentialCaseResult(BaseModel):
     ungrounded: list[str] = Field(default_factory=list)
     sections: list[str] = Field(default_factory=list)
 
-    # Safety (Granite Guardian over Ollama).
+    # Safety (Granite Guardian; LM Studio ``granite-guardian-4.1-8b`` by default).
     safety_unsafe: bool | None = None
     safety_passed: bool | None = None
     safety_degraded: bool = False

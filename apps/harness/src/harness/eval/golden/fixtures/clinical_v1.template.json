@@ -1,0 +1,191 @@
+{
+  "version": "clinical-v1.0.0-template",
+  "name": "clinical-golden-set-TEMPLATE",
+  "description": "TEMPLATE / PLACEHOLDER ONLY — NOT REAL CLINICAL DATA AND NOT A VALID CALIBRATION SET. Every transcript, note, PDSQI rating, and safety/groundedness label below is a structural placeholder containing [[BRACKETED]] fill-in instructions, NOT a real clinician judgement. This file exists so a clinical SME can copy it to 'clinical_v1.json' and replace every placeholder with real de-identified, multi-rater-labeled cases per clinical_v1_spec.md. The ClinicalGoldenSetSource loader REFUSES to project this file into a runnable GoldenSet (it raises) unless allow_template=True is passed, which is reserved for schema/CI smoke-tests. See golden/README.md.",
+  "template": true,
+  "cases": [
+    {
+      "case_id": "clinical-template-q01-placeholder",
+      "role": "quality",
+      "target_specialty": "[[PLACEHOLDER — target specialty, e.g. Internal Medicine]]",
+      "source_documents": [
+        "[[PLACEHOLDER TRANSCRIPT — replace with a real DE-IDENTIFIED clinician<->patient transcript. No PHI: no names, dates, MRNs, locations, contact info. Keep clinically faithful turns.]]",
+        "[[PLACEHOLDER PRIOR NOTE / PMH — replace with de-identified prior history relevant to grounding, or remove this element.]]"
+      ],
+      "generated_note": "[[PLACEHOLDER NOTE — replace with the real draft SOAP note under evaluation. Use inline <Note ID:N> markers to cite source_documents[N-1], e.g. 'Assessment: ... <Note ID:1>'.]]",
+      "reference_note": "[[PLACEHOLDER — gold exemplar note OR a one-line description of why a good note here is high quality.]]",
+      "clinician_pdsqi": {
+        "citation": 3, "accurate": 3, "thorough": 3, "useful": 3, "organized": 3,
+        "comprehensible": 3, "succinct": 3, "synthesized": 3,
+        "abstraction": 0, "voice_summ": 0, "voice_note": 0
+      },
+      "pdsqi_raters": [
+        {
+          "rater_id": "rater-A",
+          "rater_role": "[[PLACEHOLDER — e.g. Attending, Internal Medicine]]",
+          "rated_at": "1970-01-01T00:00:00Z",
+          "blinded": false,
+          "ratings": {
+            "citation": 3, "accurate": 3, "thorough": 3, "useful": 3, "organized": 3,
+            "comprehensible": 3, "succinct": 3, "synthesized": 3,
+            "abstraction": 0, "voice_summ": 0, "voice_note": 0
+          },
+          "notes": "[[PLACEHOLDER RATING — replace with this clinician's real blinded PDSQI-9 score. Set blinded=true once it is a genuine independent rating.]]"
+        },
+        {
+          "rater_id": "rater-B",
+          "rater_role": "[[PLACEHOLDER — e.g. Attending, same specialty]]",
+          "rated_at": "1970-01-01T00:00:00Z",
+          "blinded": false,
+          "ratings": {
+            "citation": 3, "accurate": 3, "thorough": 3, "useful": 3, "organized": 3,
+            "comprehensible": 3, "succinct": 3, "synthesized": 3,
+            "abstraction": 0, "voice_summ": 0, "voice_note": 0
+          },
+          "notes": "[[PLACEHOLDER RATING — replace with rater B's real blinded PDSQI-9 score.]]"
+        },
+        {
+          "rater_id": "rater-C",
+          "rater_role": "[[PLACEHOLDER — e.g. PGY-3, same specialty]]",
+          "rated_at": "1970-01-01T00:00:00Z",
+          "blinded": false,
+          "ratings": {
+            "citation": 3, "accurate": 3, "thorough": 3, "useful": 3, "organized": 3,
+            "comprehensible": 3, "succinct": 3, "synthesized": 3,
+            "abstraction": 0, "voice_summ": 0, "voice_note": 0
+          },
+          "notes": "[[PLACEHOLDER RATING — replace with rater C's real blinded PDSQI-9 score.]]"
+        }
+      ],
+      "adjudication": {
+        "method": "mean_round_half_up",
+        "adjudicated_dimensions": [],
+        "notes": "[[PLACEHOLDER — describe how the 3 rater scores were reconciled into clinician_pdsqi. If any dimension had a >=2-point spread, set method=panel_adjudicated and record adjudicator_id + the resolved dimensions.]]"
+      },
+      "claims": [
+        {
+          "id": "clinical-template-q01-placeholder-claim-1",
+          "text": "[[PLACEHOLDER CLAIM — one atomic clinical assertion extracted from generated_note.]]",
+          "section": "A",
+          "evidence": [
+            { "quote": "[[PLACEHOLDER — verbatim supporting span from a source document.]]", "source_index": 0 }
+          ],
+          "groundedness_truth": "supported"
+        }
+      ],
+      "safety_truth": {
+        "unsafe": false,
+        "categories": ["none"],
+        "rationale": "[[PLACEHOLDER — for a quality case, the note should be safe (unsafe=false).]]"
+      },
+      "deidentification": {
+        "phi_free": true,
+        "method": "synthetic_no_phi",
+        "verified_by": "[[PLACEHOLDER — pseudonymous id of the de-id verifier]]",
+        "verified_at": "1970-01-01T00:00:00Z",
+        "notes": "[[PLACEHOLDER — set method=hipaa_safe_harbor or expert_determination for real de-identified encounters; attest no HIPAA 18-identifier PHI remains.]]"
+      },
+      "provenance": {
+        "source_type": "simulated_by_clinician",
+        "author_id": "[[PLACEHOLDER — pseudonymous SME author id]]",
+        "authored_at": "1970-01-01T00:00:00Z",
+        "consent": { "status": "not_applicable_synthetic" }
+      },
+      "metadata": {
+        "label_provenance": "TEMPLATE-PLACEHOLDER",
+        "lane": "quality"
+      }
+    },
+    {
+      "case_id": "clinical-template-c01-placeholder",
+      "role": "calibration",
+      "target_specialty": "[[PLACEHOLDER — target specialty for an adversarial/range-spanning case]]",
+      "source_documents": [
+        "[[PLACEHOLDER TRANSCRIPT — de-identified source for a case whose draft note carries a DELIBERATE flaw (e.g. fabrication, omission, dose error, verbosity, disorganization, or missing citations).]]"
+      ],
+      "generated_note": "[[PLACEHOLDER NOTE — replace with a draft note exhibiting ONE clearly-scoped flaw so the judge<->clinician ICC spans the score range. Document the flaw in metadata.flaw.]]",
+      "reference_note": "[[PLACEHOLDER — describe the injected flaw and the correct (grounded) content it distorts.]]",
+      "clinician_pdsqi": {
+        "citation": 3, "accurate": 2, "thorough": 3, "useful": 2, "organized": 4,
+        "comprehensible": 4, "succinct": 4, "synthesized": 2,
+        "abstraction": 0, "voice_summ": 0, "voice_note": 0
+      },
+      "pdsqi_raters": [
+        {
+          "rater_id": "rater-A",
+          "rater_role": "[[PLACEHOLDER clinical role]]",
+          "rated_at": "1970-01-01T00:00:00Z",
+          "blinded": false,
+          "ratings": {
+            "citation": 3, "accurate": 2, "thorough": 3, "useful": 2, "organized": 4,
+            "comprehensible": 4, "succinct": 4, "synthesized": 2,
+            "abstraction": 0, "voice_summ": 0, "voice_note": 0
+          },
+          "notes": "[[PLACEHOLDER RATING — apply the INDEPENDENT-DIMENSION principle: penalize ONLY the dimension(s) the flaw actually harms.]]"
+        },
+        {
+          "rater_id": "rater-B",
+          "rater_role": "[[PLACEHOLDER clinical role]]",
+          "rated_at": "1970-01-01T00:00:00Z",
+          "blinded": false,
+          "ratings": {
+            "citation": 3, "accurate": 2, "thorough": 3, "useful": 2, "organized": 4,
+            "comprehensible": 4, "succinct": 4, "synthesized": 2,
+            "abstraction": 0, "voice_summ": 0, "voice_note": 0
+          },
+          "notes": "[[PLACEHOLDER RATING — replace with rater B's real blinded score.]]"
+        },
+        {
+          "rater_id": "rater-C",
+          "rater_role": "[[PLACEHOLDER clinical role]]",
+          "rated_at": "1970-01-01T00:00:00Z",
+          "blinded": false,
+          "ratings": {
+            "citation": 3, "accurate": 2, "thorough": 3, "useful": 2, "organized": 4,
+            "comprehensible": 4, "succinct": 4, "synthesized": 2,
+            "abstraction": 0, "voice_summ": 0, "voice_note": 0
+          },
+          "notes": "[[PLACEHOLDER RATING — replace with rater C's real blinded score.]]"
+        }
+      ],
+      "adjudication": {
+        "method": "panel_adjudicated",
+        "adjudicator_id": "[[PLACEHOLDER — senior adjudicator pseudonym]]",
+        "adjudicated_dimensions": ["accurate"],
+        "notes": "[[PLACEHOLDER — record which dimensions had a >=2-point spread and how they were resolved.]]"
+      },
+      "claims": [
+        {
+          "id": "clinical-template-c01-placeholder-claim-1",
+          "text": "[[PLACEHOLDER CLAIM — the flawed assertion (e.g. an ungrounded diagnosis or a wrong dose).]]",
+          "section": "A",
+          "evidence": [],
+          "groundedness_truth": "unsupported"
+        }
+      ],
+      "safety_truth": {
+        "unsafe": true,
+        "categories": ["fabrication"],
+        "rationale": "[[PLACEHOLDER — describe the patient-safety defect this calibration case encodes. Replace 'fabrication' with the true category.]]"
+      },
+      "deidentification": {
+        "phi_free": true,
+        "method": "synthetic_no_phi",
+        "verified_by": "[[PLACEHOLDER de-id verifier]]",
+        "verified_at": "1970-01-01T00:00:00Z"
+      },
+      "provenance": {
+        "source_type": "simulated_by_clinician",
+        "author_id": "[[PLACEHOLDER SME author id]]",
+        "authored_at": "1970-01-01T00:00:00Z",
+        "consent": { "status": "not_applicable_synthetic" }
+      },
+      "metadata": {
+        "label_provenance": "TEMPLATE-PLACEHOLDER",
+        "lane": "calibration",
+        "flaw": "[[PLACEHOLDER — the single injected flaw class, e.g. fabrication/falsification]]",
+        "label_rationale": "[[PLACEHOLDER — justify the consensus score per the independent-dimension principle.]]"
+      }
+    }
+  ]
+}
