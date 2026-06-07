@@ -209,6 +209,16 @@ Drop it in by implementing a `GoldenSetSource` (or pointing `--golden-set` at it
 
 ## Phase 2 eval delta — runtime inferential sensors now record `groundedness` + `ragTriadScore` (2026-06-07)
 
+> **Correction note (TASK-337 — default safety path migrated).** The safety figures in this
+> section **and** in the corpus section below were produced against the *original* Phase-2
+> default: IBM Granite Guardian **`ibm/granite3.3-guardian:8b`** served over **Ollama**
+> (`:11434`). Those runs are retained **verbatim as the historical record**. The **current**
+> default safety path is **LM Studio** serving **`granite-guardian-4.1-8b`** over the
+> OpenAI-compatible endpoint `http://localhost:1234/v1` (env prefix `HARNESS_SAFETY_*`,
+> `Settings.safety`; canonical in `harness/core/config.py`). Ollama remains a selectable
+> engine via `HARNESS_SAFETY_PROVIDER=ollama`. Re-running these cases on the 4.1 guardian
+> would refresh the verdicts/distributions — the numbers below are *not* re-run here.
+
 Everything above is the **Phase-0 offline judge gate** (PDSQI-9 / faithfulness / ICC). That gate — the
 pre-Phase-2 baseline — recorded **no groundedness and no `ragTriadScore`** for a generated note. Phase 2 adds
 the **runtime inferential pass** (`harness.sensors.inferential`) that the Temporal loop runs on each draft and

@@ -226,7 +226,7 @@ test.describe('TASK-330 Phase 2 — a safety FLAG forces review (never auto-appr
               unsafe: true,
               flaggedDimensions: ['violence'],
               dimensions: { violence: true, harm: false },
-              model: 'ibm/granite3.3-guardian:8b',
+              model: 'granite-guardian-4.1-8b',
             },
             groundedness: { decision: 'PASS', passed: true },
           },

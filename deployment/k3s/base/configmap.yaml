@@ -99,6 +99,34 @@ data:
   GUARDRAIL_OLLAMA_TIMEOUT_S: "60"
   GUARDRAIL_OLLAMA_MAX_CONCURRENT: "4"
 
+  # -- Harness (TASK-330 eval gate + Phase-2 sensors; LM Studio default per TASK-337) --
+  # The harness LLM-as-judge and the Granite-Guardian safety sensor target the
+  # in-cluster LM Studio (see lmstudio.yaml -> hope-lmstudio). WITHOUT these keys the
+  # harness falls back to its localhost:1234 defaults in-cluster (wrong endpoint).
+  # Requires hope-lmstudio backed by an OpenAI-compatible host serving
+  # google/gemma-4-e4b (judge) and granite-guardian-4.1-8b (safety).
+  #
+  # Eval LLM-as-judge (HARNESS_JUDGE_). IMPORTANT: the judge base URL lives on the
+  # openai_compat sub-config, so the key is HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL
+  # (there is NO HARNESS_JUDGE_BASE_URL). provider/model live on the root prefix.
+  HARNESS_JUDGE_PROVIDER: "openai_compat"
+  HARNESS_JUDGE_MODEL: "google/gemma-4-e4b"
+  HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL: "http://hope-lmstudio:1234/v1"
+  HARNESS_JUDGE_OPENAI_COMPAT_API_KEY: "lm-studio"
+  # Prod judge is loaded at ~4096 ctx: cap generation (default is 8192) so the
+  # prompt + completion fit inside the context window.
+  HARNESS_JUDGE_MAX_TOKENS: "3072"
+  # LM Studio rejects response_format=json_object ("must be json_schema or text");
+  # use text + the harness's tolerant JSON parsing.
+  HARNESS_JUDGE_OPENAI_COMPAT_JSON_RESPONSE_FORMAT: "text"
+  # Safety classifier (HARNESS_SAFETY_) — IBM Granite Guardian over LM Studio.
+  # PROVIDER kept here as the ops override point: to fall back to Ollama set
+  # HARNESS_SAFETY_PROVIDER=ollama and repoint HARNESS_SAFETY_BASE_URL to the Ollama
+  # native root (http://hope-ollama:11434, no /v1).
+  HARNESS_SAFETY_PROVIDER: "lm-studio"
+  HARNESS_SAFETY_BASE_URL: "http://hope-lmstudio:1234/v1"
+  HARNESS_SAFETY_MODEL: "granite-guardian-4.1-8b"
+
   # -- OpenTelemetry --
   OTEL_TRACES_ENABLED: "false"
   OTEL_METRICS_ENABLED: "false"

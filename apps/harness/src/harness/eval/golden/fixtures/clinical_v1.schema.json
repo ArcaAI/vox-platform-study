@@ -1,0 +1,317 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.com/schemas/harness/eval/golden/clinical_v1.schema.json",
+  "title": "HOPE Clinical Golden Set (clinical_v1)",
+  "description": "Authoring + labeling contract for the REAL clinician-authored golden set (TASK-330 Phase-0 exit prerequisite). This schema is a SUPERSET of the runtime harness.eval.models.GoldenCase: it adds the multi-rater human labels (pdsqi_raters), the adjudicated consensus (clinician_pdsqi), claim-level groundedness ground truth, safety ground truth, PHI de-identification attestation, and provenance/consent. The ClinicalGoldenSetSource loader PROJECTS a document validated by this schema down onto GoldenCase (consensus -> clinician_pdsqi; everything else preserved under metadata) so it flows into the existing judge<->clinician ICC release gate WITHOUT any change to models.py. INTEGRITY: a document with \"template\": true (or any case whose label_provenance is TEMPLATE-PLACEHOLDER) is structurally refused by the loader unless allow_template=True is passed, so placeholder data can never silently gate a clinical claim.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "cases"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Pinned, comparable version (e.g. clinical-v1.0.0). CI pins this so eval results are comparable across runs.",
+      "pattern": "^clinical-v[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z0-9.]+)?$"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name of the set."
+    },
+    "description": {
+      "type": "string",
+      "description": "What this set is, how it was authored, and its provenance summary."
+    },
+    "template": {
+      "type": "boolean",
+      "default": false,
+      "description": "TRUE marks the whole document as a non-clinical TEMPLATE/PLACEHOLDER scaffold. The loader REFUSES to project a template set into a runnable GoldenSet unless allow_template=True. Real clinician-authored sets MUST set this to false (or omit it)."
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The transcript->note evaluation cases. The Phase-0 exit gate requires N >= 132 real cases (the Bonett 2002 ICC(2,1) floor for the conservative precision target rho=0.75, +/-0.075 CI half-width; see clinical_v1_spec.md).",
+      "items": { "$ref": "#/$defs/case" }
+    }
+  },
+  "$defs": {
+    "likert": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "PDSQI-9 1-5 Likert grade (Epic instrument grade descriptors)."
+    },
+    "likertOrNa": {
+      "description": "A 1-5 Likert grade, or null for NA (e.g. synthesized when no abstraction is required).",
+      "oneOf": [{ "$ref": "#/$defs/likert" }, { "type": "null" }]
+    },
+    "binary": {
+      "type": "integer",
+      "enum": [0, 1],
+      "description": "PDSQI-9 categorical 0/1 flag."
+    },
+    "pdsqiScore": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A PDSQI-9 judgement. Field set mirrors harness.eval.models.PDSQIScore EXACTLY (eight 1-5 Likert dimensions incl. an NA-able 'synthesized', plus three 0/1 flags) so it projects onto GoldenCase.clinician_pdsqi with no transformation.",
+      "required": [
+        "citation", "accurate", "thorough", "useful", "organized",
+        "comprehensible", "succinct", "abstraction", "voice_summ", "voice_note"
+      ],
+      "properties": {
+        "citation": { "$ref": "#/$defs/likert", "description": "Are assertions correctly cited to the source notes?" },
+        "accurate": { "$ref": "#/$defs/likert", "description": "Is the summary free of factual errors / fabrication / falsification?" },
+        "thorough": { "$ref": "#/$defs/likert", "description": "Does it capture all pertinent information (no harmful omissions)?" },
+        "useful": { "$ref": "#/$defs/likert", "description": "Is it clinically actionable / decision-useful?" },
+        "organized": { "$ref": "#/$defs/likert", "description": "Is the structure logical (e.g. S->O->A->P)?" },
+        "comprehensible": { "$ref": "#/$defs/likert", "description": "Is it clear and readable?" },
+        "succinct": { "$ref": "#/$defs/likert", "description": "Is it free of redundancy / padding?" },
+        "synthesized": { "$ref": "#/$defs/likertOrNa", "description": "Quality of synthesis/abstraction; null (NA) when no abstraction was required." },
+        "abstraction": { "$ref": "#/$defs/binary", "description": "1 if abstraction was required to produce the note." },
+        "voice_summ": { "$ref": "#/$defs/binary", "description": "1 if the SUMMARY contains stigmatizing language." },
+        "voice_note": { "$ref": "#/$defs/binary", "description": "1 if the SOURCE NOTES contain stigmatizing language." },
+        "justifications": {
+          "type": "object",
+          "description": "Optional per-dimension free-text rationale.",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "rater": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One clinician's INDEPENDENT PDSQI-9 rating of generated_note. >= 3 raters per case are required for the human inter-rater reliability (ICC among clinicians) that establishes the consensus label is trustworthy. Raters score blind to one another and to the model's score.",
+      "required": ["rater_id", "rater_role", "ratings"],
+      "properties": {
+        "rater_id": {
+          "type": "string",
+          "description": "STABLE PSEUDONYM ONLY (e.g. rater-A). Never a real name/NPI/email — rater identity mapping is held off-repo by the clinical lead."
+        },
+        "rater_role": {
+          "type": "string",
+          "description": "Rater's clinical qualification (e.g. 'Attending, Internal Medicine', 'PGY-3 Family Medicine')."
+        },
+        "rated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO-8601 timestamp of the rating."
+        },
+        "ratings": { "$ref": "#/$defs/pdsqiScore" },
+        "blinded": {
+          "type": "boolean",
+          "default": true,
+          "description": "Confirms this rating was produced blind to other raters and to the model output. MUST be true for the rating to count toward IRR."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional rater free-text comment."
+        }
+      }
+    },
+    "adjudication": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How the per-rater labels were reconciled into clinician_pdsqi (the consensus). Required when there is dispersion among raters (see spec: any dimension where raters differ by >= 2 Likert points triggers adjudication).",
+      "required": ["method"],
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": ["mean_round_half_up", "median", "panel_adjudicated", "senior_override"],
+          "description": "mean/median = automatic aggregation of rater scores; panel_adjudicated/senior_override = a human resolved a >=2-point disagreement."
+        },
+        "adjudicator_id": {
+          "type": "string",
+          "description": "Pseudonymous id of the senior adjudicator (panel/override methods only)."
+        },
+        "adjudicated_dimensions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Which PDSQI dimensions required human adjudication (had >=2-point spread)."
+        },
+        "adjudicated_at": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string", "description": "Rationale for the resolution." }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A claim-level groundedness GROUND TRUTH unit. Mirrors the production NER-derived citationsMap claim shape (id/text/section/evidence) used by harness.eval.inferential_corpus_eval.derive_citations_map, plus a human-adjudicated groundedness_truth label so faithfulness/groundedness signals can be scored against truth rather than a heuristic.",
+      "required": ["id", "text", "groundedness_truth"],
+      "properties": {
+        "id": { "type": "string", "description": "Stable claim id (e.g. <case_id>-claim-1)." },
+        "text": { "type": "string", "description": "The atomic clinical assertion extracted from generated_note." },
+        "section": {
+          "type": "string",
+          "enum": ["S", "O", "A", "P", "other"],
+          "description": "SOAP section the claim belongs to."
+        },
+        "evidence": {
+          "type": "array",
+          "description": "Source spans supporting the claim.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["quote"],
+            "properties": {
+              "quote": { "type": "string", "description": "Verbatim supporting span from a source document." },
+              "source_index": { "type": "integer", "minimum": 0, "description": "0-based index into source_documents the quote came from." }
+            }
+          }
+        },
+        "groundedness_truth": {
+          "type": "string",
+          "enum": ["supported", "partially_supported", "unsupported", "contradicted"],
+          "description": "HUMAN-ADJUDICATED ground truth: is the claim entailed by the source documents? 'contradicted' = the note asserts something the sources refute (a falsification)."
+        }
+      }
+    },
+    "safety_truth": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Human-adjudicated SAFETY ground truth for the case (the label the safety sensor is measured against).",
+      "required": ["unsafe"],
+      "properties": {
+        "unsafe": {
+          "type": "boolean",
+          "description": "TRUE if the generated_note contains a patient-safety-relevant defect."
+        },
+        "categories": {
+          "type": "array",
+          "description": "Which safety-relevant defect classes are present.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "fabrication", "falsification", "harmful_omission",
+              "dose_error", "wrong_laterality", "contraindication_missed",
+              "stigmatizing_language", "none"
+            ]
+          }
+        },
+        "rationale": { "type": "string", "description": "Why the case is (un)safe." }
+      }
+    },
+    "deidentification": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Attestation that source_documents + generated_note are PHI-free. REQUIRED for every real case before it may enter the repository.",
+      "required": ["phi_free", "method"],
+      "properties": {
+        "phi_free": {
+          "type": "boolean",
+          "description": "MUST be true. Asserts no HIPAA 18-identifier PHI remains."
+        },
+        "method": {
+          "type": "string",
+          "enum": ["hipaa_safe_harbor", "expert_determination", "synthetic_no_phi"],
+          "description": "De-identification standard applied (45 CFR 164.514). 'synthetic_no_phi' = simulated content that never contained PHI."
+        },
+        "verified_by": { "type": "string", "description": "Pseudonymous id of the human who verified de-identification." },
+        "verified_at": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Where the case came from and under what authority it may be used.",
+      "required": ["source_type", "consent"],
+      "properties": {
+        "source_type": {
+          "type": "string",
+          "enum": ["real_encounter_deidentified", "simulated_by_clinician", "public_dataset"],
+          "description": "Origin of the transcript/note."
+        },
+        "dataset": { "type": "string", "description": "Name + version of the public/internal dataset, if any (e.g. license-permitting MTS-Dialog, ACI-Bench)." },
+        "license": { "type": "string", "description": "License/usage terms governing the source (required for public_dataset)." },
+        "consent": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["irb_approved", "data_use_agreement", "patient_consent", "not_applicable_synthetic", "public_license"],
+              "description": "Legal/ethical basis for using this case."
+            },
+            "irb_protocol": { "type": "string", "description": "IRB protocol number, when status=irb_approved." },
+            "dua_reference": { "type": "string", "description": "Data-use-agreement reference, when status=data_use_agreement." }
+          }
+        },
+        "author_id": { "type": "string", "description": "Pseudonymous id of the SME who authored/curated the case." },
+        "authored_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One transcript->note case. The fields case_id/source_documents/generated_note/target_specialty/role/reference_note/contexts/clinician_pdsqi project 1:1 onto GoldenCase; pdsqi_raters/adjudication/claims/safety_truth/deidentification/provenance are preserved under GoldenCase.metadata by the loader.",
+      "required": [
+        "case_id", "role", "target_specialty", "source_documents",
+        "generated_note", "clinician_pdsqi", "pdsqi_raters",
+        "deidentification", "provenance"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "description": "Unique, stable, lowercase-kebab id (e.g. clinical-q01-im-chf)."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["quality", "calibration"],
+          "description": "quality = realistic good note feeding the PDSQI quality + faithfulness gates; calibration = range-spanning/adversarial note feeding the judge<->clinician ICC only."
+        },
+        "target_specialty": {
+          "type": "string",
+          "description": "Clinical specialty the note targets (drives specialty stratification of the set)."
+        },
+        "source_documents": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "DE-IDENTIFIED grounding sources: transcript turns + prior notes. The entailment premise for groundedness."
+        },
+        "generated_note": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The draft note under evaluation. Inline <Note ID:N> markers cite source_documents[N-1] (1-based)."
+        },
+        "reference_note": {
+          "type": "string",
+          "description": "Gold exemplar note OR a short description of why the reference is high-quality."
+        },
+        "contexts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional explicit faithfulness contexts; defaults to source_documents when omitted."
+        },
+        "clinician_pdsqi": {
+          "$ref": "#/$defs/pdsqiScore",
+          "description": "The ADJUDICATED CONSENSUS PDSQI label. This is the human reference the judge is calibrated against (flows to GoldenCase.clinician_pdsqi -> the ICC gate). It MUST be derived from pdsqi_raters via adjudication, never authored directly."
+        },
+        "pdsqi_raters": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/rater" },
+          "description": ">= 3 independent clinician ratings (the inputs to human IRR and to the consensus)."
+        },
+        "adjudication": { "$ref": "#/$defs/adjudication" },
+        "claims": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/claim" },
+          "description": "Claim-level groundedness ground truth (optional but recommended for calibration-lane cases)."
+        },
+        "safety_truth": { "$ref": "#/$defs/safety_truth" },
+        "deidentification": { "$ref": "#/$defs/deidentification" },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "metadata": {
+          "type": "object",
+          "description": "Free-form extras. For calibration cases, document the injected 'flaw' and a 'label_rationale'. A case is treated as a TEMPLATE/PLACEHOLDER (loader-refused unless allow_template=True) when label_provenance == 'TEMPLATE-PLACEHOLDER'.",
+          "properties": {
+            "label_provenance": { "type": "string" },
+            "flaw": { "type": "string" },
+            "label_rationale": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}
