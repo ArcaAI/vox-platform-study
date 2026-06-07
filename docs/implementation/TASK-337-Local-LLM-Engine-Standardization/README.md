@@ -3,9 +3,10 @@
 - **Ticket Number**: TASK-337
 - **Created Date**: 2026-06-07
 - **Last Updated**: 2026-06-07
-- **Status**: Pending (Plan — awaiting approval)
+- **Status**: Completed (2026-06-07)
 - **Classification**: refactor / infrastructure
-- **Related**: TASK-238 (SMR seed defaults), TASK-330 (Clinical Documentation Harness), prior chat (SMR LM Studio default flip)
+- **Scope**: **Python LLM engine standardization only** (SMR + Harness + Guardrail services). Admin-console configurability was split out to **TASK-338**.
+- **Related**: TASK-238 (SMR seed defaults), TASK-330 (Clinical Documentation Harness), TASK-338 (admin-config backend + UI), prior chat (SMR LM Studio default flip)
 
 ---
 
@@ -94,22 +95,16 @@ Sources: IBM Granite Guardian docs, `ibm-granite/granite-guardian` repo (4.1 coo
 - **D4 — Clean break on env var renames** (no back-compat aliases) — **AND** the guardrail engine/provider/model must be **admin-console configurable** (new requirement, see §2b).
 - **D5 — Azure OpenAI deployment + API key must be admin-configurable** (not a hardcoded `gpt-5-mini`). See §2b for the secrets constraint.
 
-### ⚠ New requirements from D4/D5 → expanded scope
+### ✅ Resolved decisions (approval round 2)
 
-Admin-configurability follows the existing **SMR provider/model GlobalSetting pattern** (seed `namespace='smr'` rows + `ux-constants` catalog + `tenant.service.ts` validation + `GET /api/v1/text/providers`). Two hard constraints discovered:
+- **Q1 — Admin console = `apps/ui-playground`** (in this workspace; has `features/admin/configurations` + `summarization/components/provider-model-select.tsx`). Admin-configurability work lives in **TASK-338**.
+- **Q2 — Azure: deployment-name configurable via console now; API key stays env/Vault** (`SMR_V2_AZURE_API_KEY` / `GUARDRAIL_AZURE_API_KEY`). A non-secret GlobalSetting MUST NOT hold the raw key (blocked on TASK-302 Phase 4D). → **TASK-338**.
+- **Q3 — Guardrail reads tenant config directly from the DB (option c)** — guardrail service gains SQLAlchemy/asyncpg access to the `core.GlobalSetting` table (precedent: STT-v2 already uses SQLAlchemy+asyncpg). → **TASK-338**.
+- **Q4 — Split into two tickets:**
+  - **TASK-337 (this doc)** — Python engine standardization: LM-Studio default + `provider` switch across SMR/Harness/Guardrail; Granite-over-OpenAI; env renames; tests; docs.
+  - **TASK-338** — Admin-configurability backend + UI: guardrail GlobalSettings + catalog, generalized `tenant.service.ts` validation, API catalog endpoint, `ui-playground` UI, Azure deployment-name setting, and guardrail-reads-DB runtime application.
 
-1. **The `apps/admin` console UI source is NOT in this workspace** (separate repo / not checked out). This ticket can deliver the **backend contract** (GlobalSetting seed rows, applications-layer validation, and an API catalog endpoint) so the console can wire to it, but **the admin console UI changes are out-of-scope for this workspace** and tracked as a follow-up.
-2. **Admin-set Azure API key is blocked on TASK-302 Phase 4D** (GlobalSetting `encryptedValue`/Vault-Transit not fully wired). For now: the Azure **deployment/model name** is admin-configurable via a (non-secret) GlobalSetting; the Azure **API key** stays env/Vault-only (`SMR_V2_AZURE_API_KEY` / `GUARDRAIL_AZURE_API_KEY`). A non-secret GlobalSetting MUST NOT hold the raw key.
-
-### ⚠ Open questions for approval round 2
-
-- **Q1 — Admin UI scope.** Confirm the admin console UI work is handled in the separate `apps/admin` repo and this ticket delivers backend contract only (seed + validation + API). If `apps/admin` should be in this workspace, point me to it.
-- **Q2 — Azure key handling.** Accept "deployment-name configurable via console, API key via env/Vault only" for now, or block this ticket until TASK-302 Phase 4D secret-encryption lands?
-- **Q3 — Guardrail runtime config application.** The guardrail service reads its own env and is only (loosely) called by SMR's `ExternalGuardrailClient` (which isn't wired into the generate pipeline yet). How should admin-chosen guardrail provider/model reach the running guardrail service?
-  - (a) **Service-default + catalog** — guardrail keeps env-configured engine/model defaults; the console only manages the GlobalSetting catalog/defaults and the API surfaces them; no per-request override yet (simplest; admin choice is advisory until wired).
-  - (b) **Per-request forwarding** — wire `ExternalGuardrailClient` into SMR generate and forward admin-chosen guardrail provider/model per request (larger; SMR generate request gains guardrail fields).
-  - (c) **Guardrail reads DB** — give guardrail tenant-config access (largest; new DB dependency for that service).
-- **Q4 — Scope split.** This is now a multi-ticket-sized effort. Split into TASK-337 (Python engine standardization: SMR/harness/guardrail LM-Studio default + provider switch) and TASK-338 (admin-configurability backend: GlobalSettings + validation + API), or keep as one ticket with phased delivery?
+> The env var renames in TASK-337 are designed so TASK-338 can layer DB-driven overrides on top without re-renaming.
 
 ---
 
@@ -191,30 +186,11 @@ C5. **Tests:** `tests/test_job_processor.py`, `tests/test_job_endpoints_integrat
 D1. `docs/marketing/V2_BRIEF_TECHNICAL.md` (model table), `apps/harness/eval/README.md`, `apps/guardrail/README.md`, `apps/guardrail/GUARDIAN_INTEGRATION.md`, `knowledge/02_TECHNICAL_ARCHITECTURE.md` as needed.
 D2. This README → Implementation Summary + Change History on completion.
 
-### Phase E — Admin-configurability backend (D4/D5) — *pending Q1–Q4*
-
-> Scope assumes Q1 = backend-only (admin UI lives in external `apps/admin`), Q2 = deployment-name-configurable / key via env+Vault, Q3 = option (a) catalog+defaults unless told otherwise.
-
-E1. **DB seed** `packages/database/src/prisma/db_main/seed/11-global-setting.ts` (+ IDs in `00-constants.ts`):
-- New `namespace='guardrail'` rows: `default-guardrail-provider` (default `lm-studio`), `default-guardrail-model` (default `granite-guardian-4.1-8b`), `locked: true`.
-- New `ux-constants` catalog: `guardrail-provider-models` (JSON, mirrors `SMR_PROVIDER_MODELS` shape) + exported `GUARDRAIL_PROVIDER_NAMES`/`GUARDRAIL_PROVIDER_MODELS`.
-- New non-secret Azure settings: `smr-azure-deployment` (and optionally `guardrail-azure-deployment`) — **deployment name only, never the key**.
-
-E2. **Applications validation** `packages/applications/src/services/tenant/tenant.service.ts`:
-- Generalize `validateSmrConfigValue()` → also validate `default-guardrail-provider`/`default-guardrail-model` against the guardrail catalog (extract a shared `validateProviderModel(namespacePrefix, ...)` helper).
-- Add `getCurrentGuardrailProvider()` parallel to `getCurrentSmrProvider()`.
-
-E3. **API catalog endpoint** `apps/api/src/modules/streaming/smr-proxy.controller.ts` (or new controller): add `GET /api/v1/text/guardrail-providers` mirroring `GET /text/providers` (reads `default-guardrail-*` + `guardrail-provider-models`).
-
-E4. **Runtime application** (per Q3): default = (a) guardrail keeps env defaults; catalog/defaults are advisory. If (b): add `guardrail_provider`/`guardrail_model` to SMR generate request + wire `ExternalGuardrailClient` into the pipeline and forward.
-
-E5. **Out-of-workspace follow-up:** admin console UI section under `configurations` (tracked separately; not editable here).
-
-E6. **Tests:** extend `seed.test.ts`/`seed-smr-provider-models.test.ts` for guardrail catalog; extend `tenant.service.test.ts` for guardrail validation + reject-invalid cases.
+> **Admin-configurability (DB GlobalSettings, generalized validation, API catalog endpoint, `ui-playground` UI, Azure deployment-name setting, guardrail-reads-DB) is TASK-338** — see that doc. TASK-337 stops at env-configured engines + the `provider` switch.
 
 ### Layer/verification order
 
-`config → providers/clients → wiring (main/dependencies/activities) → env/configmap → DB seed/applications/api → tests → docs`. After each service: run that service's unit suite (conda `arcaenv`, `pytest -o addopts=""`), TS tests for SMR seed + tenant service, `ReadLints` on edited files. Capture output as evidence.
+`config → providers/clients → wiring (main/dependencies/activities) → env/configmap → tests → docs`. After each service: run that service's unit suite (conda `arcaenv`, `pytest -o addopts=""`), TS tests for SMR seed, `ReadLints` on edited files. Capture output as evidence.
 
 ### File touch inventory (estimate)
 
@@ -226,8 +202,41 @@ E6. **Tests:** extend `seed.test.ts`/`seed-smr-provider-models.test.ts` for guar
 
 ## 5. Implementation Summary
 
-_(to be completed after approval + implementation)_
+Implemented 2026-06-07 via three parallel workers (one per service). All scoped surgically.
+
+### Phase A — SMR (config + seed + docs)
+- `apps/smr/src/smr_v2/core/config.py`: provider `default_model`s → Ollama/OpenAI-compat `google/gemma-4-e4b`, Azure `gpt-5-mini`, Bedrock `anthropic.claude-3-5-haiku-20241022-v1:0`.
+- `packages/database/src/prisma/db_main/seed/11-global-setting.ts`: `default-smr-model` → `google/gemma-4-e4b`; added `google/gemma-4-e4b` as first `lm-studio` catalog entry (15→16).
+- `.env.dev`: `SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL=google/gemma-4-e4b`.
+- Tests updated: `test_config.py`, `test_openai_compat_provider.py`, `seed-smr-provider-models.test.ts`. **Python 39/39, TS 305/305.**
+- Docs: `docs/marketing/V2_BRIEF_TECHNICAL.md` model table.
+
+### Phase B — Harness safety (engine abstraction)
+- `core/config.py`: `GraniteGuardConfig` → `SafetyGuardConfig`, env `HARNESS_GRANITE_*` → `HARNESS_SAFETY_*` (clean break), `Settings.granite` → `Settings.safety`; added `provider` (lm-studio default), `base_url=http://localhost:1234/v1`, `model=granite-guardian-4.1-8b`.
+- `sensors/inferential/granite_client.py`: OpenAI-compatible `/v1/chat/completions` default (`choices[0].message.content`), legacy `/api/chat` for `provider=ollama`; canonical IBM 4.1 no-think BYOC block as final user message; `<score>` parser + degrade-don't-guess preserved; base_url `/v1` normalizer added.
+- Consumers updated: `temporal/activities.py`, `eval/inferential_corpus_eval.py`, `sensors/inferential/__init__.py`. `eval/config.py` + `judge/providers.py`: added `JudgeProvider.OLLAMA` (parity; openai_compat stays default).
+- `.env.example` renamed block. Tests rewritten/added. **Targeted 42/42, full harness unit suite 319/319.**
+- Note: `apps/harness/eval/README.md` left as-is — its safety mentions are historical run records (would falsify the record to flip).
+
+### Phase C — Guardrail (provider switch + Granite protocol)
+- `core/config.py`: new `OpenAICompatConfig` (`GUARDRAIL_OPENAI_COMPAT_*`, base_url `:1234/v1`, six task models + guardian = `granite-guardian-4.1-8b`); minimal Azure/Bedrock stubs (“requires guardian-capable model”); top-level `provider="lm-studio"` selector + `engine` property; kept `OllamaConfig` as optional engine.
+- New `providers/_granite.py` (BYOC block + `<score>` parser + criteria map) and `providers/openai_compat.py` (`OpenAICompatProvider` Granite protocol for safety/pii/injection/comprehensive + generic fallback; `OpenAICompatGuardianProvider` JSON medical-context path).
+- `main.py` + `core/dependencies.py`: provider selection by `settings.provider` (default → openai_compat). `api/endpoints/medical.py`, `health.py` engine-aware.
+- `.env.example` clean-break rename; `README.md` + `GUARDIAN_INTEGRATION.md` updated. **Tests 19/19** (7 pre-existing + 12 new), ruff clean. No DB access added (deferred to TASK-338).
+
+### Coordination (applied by parent)
+- `deployment/k3s/base/configmap.yaml`: SMR flipped to LM-Studio-default (`OPENAI_COMPAT_ENABLED=true`, `OLLAMA_ENABLED=false`, models → `google/gemma-4-e4b`); guardrail gained `GUARDRAIL_V2_PROVIDER=lm-studio` + full `GUARDRAIL_OPENAI_COMPAT_*` block (`granite-guardian-4.1-8b`), Ollama flipped to optional. Base URL `http://hope-lmstudio:1234/v1` — **requires an in-cluster OpenAI-compatible server serving the models (no `hope-lmstudio` service exists today)**.
+
+### Aggregate verification
+SMR Python 39/39 + TS 305/305; Harness 319/319; Guardrail 19/19. No lint errors across edited files.
 
 ## 6. Change History
 
-_(to be completed)_
+- **2026-06-07** — Initial implementation (Phases A–D) via three parallel workers; configmap consolidated by coordinator. Status → Completed.
+
+## 7. Follow-ups / Operational notes
+
+- **k3s LM Studio service**: configmap now points SMR + Guardrail at `http://hope-lmstudio:1234/v1`; an operator must provide an in-cluster OpenAI-compatible endpoint serving `google/gemma-4-e4b` and `granite-guardian-4.1-8b` (none exists today).
+- **`apps/harness/eval/README.md`**: still references the now-renamed `GraniteGuardConfig` in historical reproduction notes — optionally add a forward-looking note (left untouched to preserve the record).
+- **Model availability**: `google/gemma-4-e4b` and `granite-guardian-4.1-8b` are the configured LM Studio identifiers; operators must load the corresponding models (canonical Granite HF repo: `ibm-granite/granite-guardian-4.1-8b`).
+- **TASK-338** (admin-configurability) is unblocked and can now proceed.

@@ -1,6 +1,9 @@
 # Guardrail Service
 
-AI-powered content safety and medical context validation service with Ollama integration.
+AI-powered content safety and medical context validation service. The default LLM engine
+is **LM Studio** (OpenAI-compatible, `http://localhost:1234/v1`) running **IBM Granite
+Guardian** (`granite-guardian-4.1-8b`). The engine is selectable via `GUARDRAIL_V2_PROVIDER`
+(`lm-studio` default | `ollama` | `azure` | `bedrock`).
 
 ## Features
 
@@ -31,7 +34,9 @@ AI-powered content safety and medical context validation service with Ollama int
 
 - Python 3.11+
 - Redis server
-- Ollama server with the configured guardrail model
+- An LLM engine serving the configured model:
+  - **LM Studio** (default) with `granite-guardian-4.1-8b` loaded, exposed at `http://localhost:1234/v1`
+  - or Ollama / Azure OpenAI / AWS Bedrock (see the LLM Engine section)
 
 ### Installation
 
@@ -54,10 +59,14 @@ cp .env.example .env
 Edit `.env` to configure your settings:
 
 ```bash
-# Ollama configuration
-GUARDRAIL_OLLAMA_BASE_URL=http://localhost:11434
-GUARDRAIL_OLLAMA_GUARDRAIL_MODEL=meta-llama/Prompt-Guard-86M
-GUARDRAIL_OLLAMA_GUARDIAN_MODEL=meta-llama/Prompt-Guard-86M
+# LLM engine selector: lm-studio (default) | ollama | azure | bedrock
+GUARDRAIL_V2_PROVIDER=lm-studio
+
+# OpenAI-compatible engine (LM Studio default)
+GUARDRAIL_OPENAI_COMPAT_BASE_URL=http://localhost:1234/v1
+GUARDRAIL_OPENAI_COMPAT_API_KEY=lm-studio
+GUARDRAIL_OPENAI_COMPAT_GUARDRAIL_MODEL=granite-guardian-4.1-8b
+GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MODEL=granite-guardian-4.1-8b
 
 # Redis configuration
 GUARDRAIL_REDIS_URL=redis://localhost:6379/0
@@ -206,15 +215,34 @@ mypy src/
 pre-commit install
 ```
 
+## LLM Engine
+
+The service selects its LLM engine via `GUARDRAIL_V2_PROVIDER`:
+
+| Provider | Transport | Protocol | Notes |
+|---|---|---|---|
+| `lm-studio` (default) | `POST {base_url}/v1/chat/completions` | Granite Guardian `<guardian>`/`<score>` | `granite-guardian-4.1-8b` |
+| `ollama` | `POST {base_url}/api/generate` | Generic SAFE/UNSAFE prompts | optional, serves e.g. `gemma3` |
+| `azure` | OpenAI-compatible chat | Generic SAFE/UNSAFE fallback | requires a guardian-capable deployment |
+| `bedrock` | OpenAI-compatible gateway | Generic SAFE/UNSAFE fallback | requires a guardian-capable model |
+
+**Granite Guardian protocol (BYOC):** criteria cannot be passed as API params over the
+OpenAI-compatible endpoint, so each guardrail task appends a `<guardian>` block (the
+criterion) as the final user message after the judged text. The model replies with
+`<score>yes</score>` / `<score>no</score>` (`yes` = the criterion is met → unsafe). The
+`comprehensive` task runs the content-safety, PII, and prompt-injection checks and merges
+them. Medical-context validation uses a generic JSON prompt path. All engines fail open on
+timeout/error.
+
 ## Architecture
 
 ```
-┌─────────────┐    ┌─────────────────┐    ┌─────────────┐
-│   Client    │───▶│  Guardrail      │───▶│   Ollama    │
-│   Service   │    │    Service      │    │   Model     │
-└─────────────┘    │                 │    └─────────────┘
-                   │  ┌─────────────┐│
-                   │  │ Job Queue   ││
+┌─────────────┐    ┌─────────────────┐    ┌──────────────────────┐
+│   Client    │───▶│  Guardrail      │───▶│  LLM engine          │
+│   Service   │    │    Service      │    │  (LM Studio default; │
+└─────────────┘    │                 │    │   Ollama/Azure/      │
+                   │  ┌─────────────┐│    │   Bedrock optional)  │
+                   │  │ Job Queue   ││    └──────────────────────┘
                    │  │ (Redis)     ││
                    │  └─────────────┘│
                    └─────────────────┘
@@ -232,9 +260,11 @@ See `.env.example` for all available configuration options.
 
 ## Model Configuration
 
-- **Default model**: `meta-llama/Prompt-Guard-86M`
-- **Override general guardrail model**: `GUARDRAIL_OLLAMA_GUARDRAIL_MODEL`
-- **Override guardian model**: `GUARDRAIL_OLLAMA_GUARDIAN_MODEL`
+- **Default engine / model**: LM Studio serving `granite-guardian-4.1-8b`
+- **Switch engine**: `GUARDRAIL_V2_PROVIDER` (`lm-studio` | `ollama` | `azure` | `bedrock`)
+- **Override general guardrail model**: `GUARDRAIL_OPENAI_COMPAT_GUARDRAIL_MODEL`
+- **Override guardian model**: `GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MODEL`
+- Per-engine overrides use that engine's prefix (`GUARDRAIL_OLLAMA_*`, `GUARDRAIL_AZURE_*`, `GUARDRAIL_BEDROCK_*`)
 
 ## License
 

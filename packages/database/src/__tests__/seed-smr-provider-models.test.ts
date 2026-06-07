@@ -108,14 +108,15 @@ describe('SMR Provider-Model Catalog Seed Data (TASK-240)', () => {
         (p) => p.provider === 'lm-studio',
       );
       const names = lms!.models.map((m) => m.name);
+      expect(names).toContain('google/gemma-4-e4b');
       expect(names).toContain('lmstudio-community/gemma-4-E4B-it-QAT-GGUF');
     });
 
-    it('should have 15 models', () => {
+    it('should have 16 models', () => {
       const lms = (SMR_PROVIDER_MODELS as SmrProviderCatalogEntry[]).find(
         (p) => p.provider === 'lm-studio',
       );
-      expect(lms!.models.length).toBe(15);
+      expect(lms!.models.length).toBe(16);
     });
   });
 

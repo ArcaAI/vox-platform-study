@@ -1,9 +1,10 @@
-"""Phase-2 guardrail configuration tests (TASK-330 Phase 2 — FOUNDATION).
+"""Phase-2 guardrail configuration tests (TASK-330 Phase 2; TASK-337 Phase B).
 
-RED-first: written before the ``core/config.py`` additions exist. Phase 2 needs
+Phase 2 needs
 
-* a **Granite Guardian** sub-config (``HARNESS_GRANITE_*``) for the local Ollama
-  content-safety classifier,
+* a **safety** sub-config (``HARNESS_SAFETY_*``) for the Granite Guardian
+  content-safety classifier — defaulting to the LM Studio (OpenAI-compatible)
+  engine with an optional ``provider`` switch (ollama/azure/bedrock),
 * a fail-closed **PHI** sub-config (``HARNESS_PHI_*``) for the pre-cloud-egress
   redaction guard, and
 * the existing eval :class:`~harness.eval.config.JudgeConfig` (``HARNESS_JUDGE_*``)
@@ -18,19 +19,20 @@ import pytest
 from pydantic import ValidationError
 
 from harness.core.config import (
-    GraniteGuardConfig,
     PhiConfig,
+    SafetyGuardConfig,
     Settings,
     get_runtime_judge_config,
 )
 
-_GRANITE_ENV = (
-    "HARNESS_GRANITE_ENABLED",
-    "HARNESS_GRANITE_BASE_URL",
-    "HARNESS_GRANITE_MODEL",
-    "HARNESS_GRANITE_NO_THINK",
-    "HARNESS_GRANITE_TIMEOUT_S",
-    "HARNESS_GRANITE_HARM_CRITERIA",
+_SAFETY_ENV = (
+    "HARNESS_SAFETY_ENABLED",
+    "HARNESS_SAFETY_PROVIDER",
+    "HARNESS_SAFETY_BASE_URL",
+    "HARNESS_SAFETY_MODEL",
+    "HARNESS_SAFETY_NO_THINK",
+    "HARNESS_SAFETY_TIMEOUT_S",
+    "HARNESS_SAFETY_HARM_CRITERIA",
 )
 _PHI_ENV = (
     "HARNESS_PHI_ENABLED",
@@ -39,38 +41,46 @@ _PHI_ENV = (
 )
 
 
-class TestGraniteGuardConfig:
+class TestSafetyGuardConfig:
     def test_defaults(self, monkeypatch: pytest.MonkeyPatch):
-        for var in _GRANITE_ENV:
+        for var in _SAFETY_ENV:
             monkeypatch.delenv(var, raising=False)
-        c = GraniteGuardConfig()
+        c = SafetyGuardConfig()
         assert c.enabled is True
-        # Ollama native API endpoint (NOT the OpenAI-compatible /v1 path).
-        assert c.base_url == "http://localhost:11434"
-        # An IBM Granite Guardian tag (family-agnostic assertion — exact tag is
-        # operator-overridable; see the config docstring for the 4.1 note).
+        # Default engine is LM Studio (OpenAI-compatible /v1 endpoint).
+        assert c.provider == "lm-studio"
+        assert c.base_url == "http://localhost:1234/v1"
+        # Granite Guardian 4.1 slug (operator-overridable to match the loaded build).
+        assert c.model == "granite-guardian-4.1-8b"
         assert "guardian" in c.model.lower()
         # Guard classifier runs in no-think mode for fast, deterministic verdicts.
         assert c.no_think is True
         assert c.timeout_s > 0
         assert isinstance(c.harm_criteria, list) and c.harm_criteria
 
-    def test_env_override(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("HARNESS_GRANITE_MODEL", "elishabjm/granite-guardian-4.1:8b-q4_k_m")
-        monkeypatch.setenv("HARNESS_GRANITE_BASE_URL", "http://ollama:11434")
-        monkeypatch.setenv("HARNESS_GRANITE_ENABLED", "false")
-        monkeypatch.setenv("HARNESS_GRANITE_NO_THINK", "false")
-        monkeypatch.setenv("HARNESS_GRANITE_TIMEOUT_S", "90")
-        c = GraniteGuardConfig()
-        assert c.model == "elishabjm/granite-guardian-4.1:8b-q4_k_m"
+    def test_env_override_selects_ollama_engine(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("HARNESS_SAFETY_PROVIDER", "ollama")
+        monkeypatch.setenv("HARNESS_SAFETY_MODEL", "ibm/granite3.3-guardian:8b")
+        monkeypatch.setenv("HARNESS_SAFETY_BASE_URL", "http://ollama:11434")
+        monkeypatch.setenv("HARNESS_SAFETY_ENABLED", "false")
+        monkeypatch.setenv("HARNESS_SAFETY_NO_THINK", "false")
+        monkeypatch.setenv("HARNESS_SAFETY_TIMEOUT_S", "90")
+        c = SafetyGuardConfig()
+        assert c.provider == "ollama"
+        assert c.model == "ibm/granite3.3-guardian:8b"
         assert c.base_url == "http://ollama:11434"
         assert c.enabled is False
         assert c.no_think is False
         assert c.timeout_s == 90.0
 
+    def test_invalid_provider_rejected(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("HARNESS_SAFETY_PROVIDER", "not-an-engine")
+        with pytest.raises(ValidationError):
+            SafetyGuardConfig()
+
     def test_harm_criteria_parsed_from_env_json(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("HARNESS_GRANITE_HARM_CRITERIA", '["harm", "violence"]')
-        assert GraniteGuardConfig().harm_criteria == ["harm", "violence"]
+        monkeypatch.setenv("HARNESS_SAFETY_HARM_CRITERIA", '["harm", "violence"]')
+        assert SafetyGuardConfig().harm_criteria == ["harm", "violence"]
 
 
 class TestPhiConfig:
@@ -94,16 +104,16 @@ class TestPhiConfig:
 
 
 class TestSettingsWiring:
-    def test_settings_expose_granite_and_phi_subconfigs(self):
+    def test_settings_expose_safety_and_phi_subconfigs(self):
         s = Settings()
-        assert isinstance(s.granite, GraniteGuardConfig)
+        assert isinstance(s.safety, SafetyGuardConfig)
         assert isinstance(s.phi, PhiConfig)
 
-    def test_granite_subconfig_reads_its_prefix_through_settings(
+    def test_safety_subconfig_reads_its_prefix_through_settings(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        monkeypatch.setenv("HARNESS_GRANITE_MODEL", "ibm/granite3.3-guardian:8b")
-        assert Settings().granite.model == "ibm/granite3.3-guardian:8b"
+        monkeypatch.setenv("HARNESS_SAFETY_MODEL", "granite-guardian-4.1-8b")
+        assert Settings().safety.model == "granite-guardian-4.1-8b"
 
 
 class TestRuntimeJudgeReuse:
@@ -121,8 +131,8 @@ class TestRuntimeJudgeReuse:
 
 
 class TestUnitIntervalUnaffected:
-    """Sanity: a bogus Granite timeout is still a float (no silent coercion bug)."""
+    """Sanity: a bogus safety timeout is still a float (no silent coercion bug)."""
 
     def test_timeout_must_be_numeric(self):
         with pytest.raises(ValidationError):
-            GraniteGuardConfig(timeout_s="not-a-number")  # type: ignore[arg-type]
+            SafetyGuardConfig(timeout_s="not-a-number")  # type: ignore[arg-type]

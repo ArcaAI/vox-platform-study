@@ -45,14 +45,15 @@ async def health_check(
         }
         health_status["status"] = "degraded"
 
-    # Check Ollama (medical validation)
-    if settings.ollama.enabled:
-        ollama_health = await ollama_provider.health_check()
-        health_status["checks"]["ollama"] = ollama_health
-        if not ollama_health.get("healthy", False):
+    # Check the selected LLM engine (content analysis / medical validation)
+    if settings.engine.enabled:
+        engine_health = await ollama_provider.health_check()
+        engine_health["provider"] = settings.provider
+        health_status["checks"]["llm_engine"] = engine_health
+        if not engine_health.get("healthy", False):
             health_status["status"] = "degraded"
     else:
-        health_status["checks"]["ollama"] = {"status": "disabled"}
+        health_status["checks"]["llm_engine"] = {"status": "disabled", "provider": settings.provider}
 
     # Check GLiNER (content safety)
     gliner_health = gliner_provider.health_check()

@@ -4,14 +4,19 @@
 
 The Guardian service provides medical context validation to ensure only medical-related content reaches the SMR (medical documentation) service. This guide explains how to integrate the Guardian model with your API proxy.
 
+The default LLM engine is **LM Studio** (OpenAI-compatible, `http://localhost:1234/v1`)
+running `granite-guardian-4.1-8b`. Medical-context validation uses a generic JSON prompt
+path over `POST {base_url}/v1/chat/completions`. The engine is selectable via
+`GUARDRAIL_V2_PROVIDER` (`lm-studio` default | `ollama` | `azure` | `bedrock`).
+
 ## Architecture
 
 ```
-┌─────────────┐    ┌─────────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Client    │───▶│  API Proxy      │───▶│  Guardian   │───▶│   Ollama    │
-│  (Frontend) │    │  (NestJS)       │    │  Service    │    │   Model     │
-└─────────────┘    │                 │    └─────────────┘    └─────────────┘
-                   │  ✓ Validates    │           │
+┌─────────────┐    ┌─────────────────┐    ┌─────────────┐    ┌──────────────────┐
+│   Client    │───▶│  API Proxy      │───▶│  Guardian   │───▶│  LLM engine      │
+│  (Frontend) │    │  (NestJS)       │    │  Service    │    │  (LM Studio      │
+└─────────────┘    │                 │    └─────────────┘    │   default)       │
+                   │  ✓ Validates    │           │           └──────────────────┘
                    │  ✓ Blocks       │           ▼
                    │                 │    ┌─────────────┐
                    │                 │───▶│    SMR      │
@@ -23,42 +28,41 @@ The Guardian service provides medical context validation to ensure only medical-
 
 ### 1. Environment Variables
 
-Add to your Guardrail service `.env`:
+Add to your Guardrail service `.env` (default LM Studio engine):
 
 ```bash
-# Guardian Model Configuration
-GUARDRAIL_OLLAMA_GUARDIAN_MODEL=meta-llama/Prompt-Guard-86M
-GUARDRAIL_OLLAMA_GUARDIAN_ENABLED=true
-GUARDRAIL_OLLAMA_GUARDIAN_TEMPERATURE=0.05
-GUARDRAIL_OLLAMA_GUARDIAN_MAX_TOKENS=300
-GUARDRAIL_OLLAMA_GUARDIAN_MIN_CONFIDENCE=0.75
+# Engine selector
+GUARDRAIL_V2_PROVIDER=lm-studio
+
+# Guardian Model Configuration (OpenAI-compatible engine)
+GUARDRAIL_OPENAI_COMPAT_BASE_URL=http://localhost:1234/v1
+GUARDRAIL_OPENAI_COMPAT_API_KEY=lm-studio
+GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MODEL=granite-guardian-4.1-8b
+GUARDRAIL_OPENAI_COMPAT_GUARDIAN_ENABLED=true
+GUARDRAIL_OPENAI_COMPAT_GUARDIAN_TEMPERATURE=0.05
+GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MAX_TOKENS=300
+GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MIN_CONFIDENCE=0.75
 ```
+
+To use the optional Ollama engine instead, set `GUARDRAIL_V2_PROVIDER=ollama` and configure
+the `GUARDRAIL_OLLAMA_*` block.
 
 ### 2. Recommended Models
 
-**Option 1: Default**
-- Model: `meta-llama/Prompt-Guard-86M`
-- Good for: Prompt safety and lightweight guardrail classification
-- Size: lightweight
+**Default (LM Studio):**
+- Model: `granite-guardian-4.1-8b`
+- Load `lmstudio-community/granite-guardian-4.1-8b-GGUF` and ensure LM Studio's model id resolves to `granite-guardian-4.1-8b` (or override via `GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MODEL`)
 
-**Option 2: Medical Specialized (Recommended)**
-- Model: `meditron:7b` or `biomistral:7b`
-- Good for: Enhanced medical terminology understanding
-- Size: ~4GB
+**Optional (Ollama engine):**
+- A medical or general chat model served by Ollama (e.g. `gemma3`); uses the generic JSON prompt path
 
-**Option 3: Alternative Lightweight**
-- Model: another Ollama-compatible lightweight classifier
-- Good for: Fast validation with lower resource usage
-- Size: varies
-
-### 3. Pull the Model
+### 3. Load / Pull the Model
 
 ```bash
-# Pull the default model
-ollama pull meta-llama/Prompt-Guard-86M
+# LM Studio (default): load the GGUF via the LM Studio UI / CLI, then start the server on :1234
 
-# Or pull a medical-specialized model
-ollama pull meditron:7b
+# Or, with the optional Ollama engine:
+ollama pull gemma3:latest
 ```
 
 ## API Endpoints
@@ -113,9 +117,9 @@ ollama pull meditron:7b
 {
   "status": "healthy",
   "guardian_enabled": true,
-  "model": "meta-llama/Prompt-Guard-86M",
+  "model": "granite-guardian-4.1-8b",
   "model_available": true,
-  "base_url": "http://localhost:11434"
+  "base_url": "http://localhost:1234/v1"
 }
 ```
 
@@ -221,8 +225,8 @@ Guardian logs include:
 
 **Solutions:**
 1. Check Guardian service is running: `curl http://localhost:8863/api/health`
-2. Verify Ollama is accessible: `curl http://localhost:11434/api/tags`
-3. Check model is loaded: `ollama list`
+2. Verify the LLM engine is accessible: `curl http://localhost:1234/v1/models` (LM Studio default)
+3. Check the configured model id is loaded in the engine
 
 ### Low Confidence Scores
 

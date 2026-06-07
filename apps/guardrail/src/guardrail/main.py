@@ -47,31 +47,52 @@ async def lifespan(app: FastAPI):
     redis_client = aioredis.from_url(settings.redis.redis_url, decode_responses=True)
     app.state.redis = redis_client
 
-    # Initialize Ollama provider
+    # Initialize the LLM engine providers based on the selected provider.
+    # lm-studio (default) | azure | bedrock run over the OpenAI-compatible chat API;
+    # ollama uses its native API. The content provider keeps the historical
+    # `ollama_provider` app.state slot so endpoints/job_processor stay engine-agnostic.
+    engine_cfg = settings.engine
     if not hasattr(app.state, "ollama_provider") or app.state.ollama_provider is None:
-        from guardrail.providers.ollama import OllamaProvider
-        app.state.ollama_provider = OllamaProvider(
-            settings=settings.ollama,
-            http_client=http_client,
-        )
+        if settings.provider == "ollama":
+            from guardrail.providers.ollama import OllamaProvider
+            app.state.ollama_provider = OllamaProvider(
+                settings=engine_cfg,
+                http_client=http_client,
+            )
+        else:
+            from guardrail.providers.openai_compat import OpenAICompatProvider
+            app.state.ollama_provider = OpenAICompatProvider(
+                settings=engine_cfg,
+                http_client=http_client,
+                use_granite=(settings.provider == "lm-studio"),
+            )
         logger.info(
-            "guardrail.ollama_provider_initialized",
-            base_url=settings.ollama.base_url,
-            model=settings.ollama.guardrail_model,
+            "guardrail.content_provider_initialized",
+            provider=settings.provider,
+            base_url=engine_cfg.base_url,
+            model=engine_cfg.guardrail_model,
         )
 
     # Initialize Guardian provider for medical validation
     if not hasattr(app.state, "guardian_provider") or app.state.guardian_provider is None:
-        from guardrail.providers.guardian import GuardianProvider
-        app.state.guardian_provider = GuardianProvider(
-            settings=settings.ollama,
-            http_client=http_client,
-        )
+        if settings.provider == "ollama":
+            from guardrail.providers.guardian import GuardianProvider
+            app.state.guardian_provider = GuardianProvider(
+                settings=engine_cfg,
+                http_client=http_client,
+            )
+        else:
+            from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
+            app.state.guardian_provider = OpenAICompatGuardianProvider(
+                settings=engine_cfg,
+                http_client=http_client,
+            )
         logger.info(
             "guardrail.guardian_provider_initialized",
-            base_url=settings.ollama.base_url,
-            model=settings.ollama.guardian_model,
-            enabled=settings.ollama.guardian_enabled,
+            provider=settings.provider,
+            base_url=engine_cfg.base_url,
+            model=engine_cfg.guardian_model,
+            enabled=engine_cfg.guardian_enabled,
         )
 
     # Initialize GLiNER provider for content safety / adversarial / PII
@@ -90,7 +111,7 @@ async def lifespan(app: FastAPI):
         app.state.job_processor = JobProcessor(
             redis=redis_client,
             gliner_provider=app.state.gliner_provider,
-            max_concurrent=settings.ollama.max_concurrent,
+            max_concurrent=settings.engine.max_concurrent,
         )
 
         # Start background job processing

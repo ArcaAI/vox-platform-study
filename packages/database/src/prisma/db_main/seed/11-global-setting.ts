@@ -82,6 +82,7 @@ export const SMR_PROVIDER_MODELS = [
     {
         provider: 'lm-studio',
         models: [
+            { name: 'google/gemma-4-e4b', size: '4.7 GB' },
             { name: 'lmstudio-community/gemma-4-E4B-it-QAT-GGUF', size: '4.7 GB' },
             { name: 'google/gemma-4-12b-qat', size: '8.1 GB' },
             { name: 'qwen3.5-4b', size: '3.1 GB' },
@@ -326,8 +327,8 @@ function tenantSettings(
             namespace: 'smr',
             name: 'Default SMR Model',
             key: 'default-smr-model',
-            value: 'lmstudio-community/gemma-4-E4B-it-QAT-GGUF',
-            defaultValue: 'lmstudio-community/gemma-4-E4B-it-QAT-GGUF',
+            value: 'google/gemma-4-e4b',
+            defaultValue: 'google/gemma-4-e4b',
             dataType: ValueType.String,
             description: 'Default LLM model slug for summarization tasks (LM Studio model name)',
             locked: true,

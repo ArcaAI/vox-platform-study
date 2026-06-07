@@ -280,7 +280,7 @@ async def run_eval(
 ) -> dict[str, Any]:
     """Score every case (sequentially) and return ``{aggregate, cases, judge_model}``."""
     judge = build_judge_client(get_runtime_judge_config())
-    granite = GraniteGuardianClient(get_settings().granite)
+    granite = GraniteGuardianClient(get_settings().safety)
 
     cases = golden_set.cases if limit is None else golden_set.cases[:limit]
     results: list[InferentialCaseResult] = []

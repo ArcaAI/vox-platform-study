@@ -3,7 +3,8 @@
 Unlike the pure/deterministic computational sensors
 (:mod:`harness.sensors.computational`), these call models: ``groundedness`` does
 per-claim entailment via the calibrated LM Studio judge, and ``safety`` screens
-the note through IBM Granite Guardian over Ollama. They implement the async
+the note through IBM Granite Guardian over a selectable engine (LM Studio by
+default; Ollama/Azure/Bedrock optional). They implement the async
 :class:`~harness.sensors.inferential.base.InferentialSensor` protocol
 (``arun(ctx, *, judge)``) and run inside the ``run_inferential_sensors`` Temporal
 activity (model calls never run in the deterministic workflow body).
