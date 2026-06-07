@@ -26,7 +26,7 @@ class TestResolveRequestDefaults:
         from smr_v2.models.requests import GenerateRequest
         req = GenerateRequest(prompt="hello")
         resolved = resolve_request_defaults(req)
-        assert resolved["max_tokens"] == 4096
+        assert resolved["max_tokens"] == 16_384
 
     def test_none_top_p_becomes_default(self):
         from smr_v2.core.defaults import resolve_request_defaults
@@ -69,7 +69,7 @@ class TestResolveRequestDefaults:
         from smr_v2.models.requests import GenerateRequest
         req = GenerateRequest(prompt="hello")
         resolved = resolve_request_defaults(req)
-        assert resolved == {"temperature": 0.1, "max_tokens": 4096, "top_p": 0.95}
+        assert resolved == {"temperature": 0.1, "max_tokens": 16_384, "top_p": 0.95}
 
     def test_mixed_none_and_explicit(self):
         from smr_v2.core.defaults import resolve_request_defaults
@@ -92,9 +92,9 @@ class TestDefaultConstants:
         from smr_v2.core.defaults import GENERATION_DEFAULTS
         assert GENERATION_DEFAULTS["temperature"] == 0.1
 
-    def test_default_max_tokens_is_4096(self):
+    def test_default_max_tokens_is_16_384(self):
         from smr_v2.core.defaults import GENERATION_DEFAULTS
-        assert GENERATION_DEFAULTS["max_tokens"] == 4096
+        assert GENERATION_DEFAULTS["max_tokens"] == 16_384
 
     def test_default_top_p_is_0_95(self):
         from smr_v2.core.defaults import GENERATION_DEFAULTS

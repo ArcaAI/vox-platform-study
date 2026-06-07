@@ -2,7 +2,19 @@ import { AutoClassMapper, AutoEntityChangeMapper, BaseMapper, createMapperHandle
 import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 
-const FIELDS_NOT_IN_PRISMA: string[] = ['resourceStatus', 'resourceStatusUpdatedAt', 'resourceStatusUpdatedBy'];
+// `SummaryMeta` has `id`, `tenantId`, `createdAt`, `updatedAt` but NO `_version`
+// / `_metadata` / `createdBy` / `updatedBy` columns. The base entity/model carry
+// those inherited fields, so strip them before persistence to avoid Prisma
+// "Unknown argument `version`" errors on insert. (`updatedAt` IS a real column.)
+const FIELDS_NOT_IN_PRISMA: string[] = [
+  'version',
+  'metaData',
+  'createdBy',
+  'updatedBy',
+  'resourceStatus',
+  'resourceStatusUpdatedAt',
+  'resourceStatusUpdatedBy',
+];
 
 function stripNonPrismaFields<T extends object>(model: T, fields: string[]): T {
   for (const field of fields) {

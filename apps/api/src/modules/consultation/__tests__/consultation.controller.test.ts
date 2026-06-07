@@ -68,6 +68,7 @@ function createMockSummaryService() {
         updateSummary: vi.fn(),
         extractEntities: vi.fn(),
         approveSummary: vi.fn(),
+        getSummaryProvenance: vi.fn(),
     };
 }
 
@@ -700,6 +701,10 @@ describe('ConsultationController', () => {
             await expect(controller.getSummaryVersions(CONSULTATION_OWN, 'ctx-1')).rejects.toThrow(ForbiddenException);
         });
 
+        it('getSummaryProvenance should enforce read access', async () => {
+            await expect(controller.getSummaryProvenance(CONSULTATION_OWN, 'ctx-1')).rejects.toThrow(ForbiddenException);
+        });
+
         it('getNamedEntities should enforce read access', async () => {
             await expect(controller.getNamedEntities(CONSULTATION_OWN)).rejects.toThrow(ForbiddenException);
         });
@@ -929,6 +934,33 @@ describe('ConsultationController', () => {
             expect(consultationService.listConsultations).toHaveBeenCalledWith(
                 expect.objectContaining({ patientId: PATIENT_SHARED, pageSize: 5 }),
             );
+        });
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // TASK-330 — summary provenance read route (citationsMap + sensor scores)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    describe('getSummaryProvenance (TASK-330 provenance read)', () => {
+        it('delegates to summaryService with the contextItemId for an authorized reader', async () => {
+            const { controller, consultationService, summaryService } = buildController();
+            consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
+            const provenance = {
+                contextItemId: 'ctx-1',
+                modelName: 'gpt-x',
+                coverageScore: 0.9,
+                entityFaithfulnessScore: 0.95,
+                ragTriadScore: 0.92,
+                sensorScores: { coverage: 0.9 },
+                citationsMap: { claims: [{ id: 'claim-1', text: 'lisinopril', status: 'verified' }] },
+                generatedAt: '2026-06-06T00:00:00.000Z',
+            };
+            summaryService.getSummaryProvenance.mockResolvedValue(provenance);
+
+            const result = await controller.getSummaryProvenance(CONSULTATION_OWN, 'ctx-1');
+
+            expect(result).toEqual(provenance);
+            expect(summaryService.getSummaryProvenance).toHaveBeenCalledWith('ctx-1');
         });
     });
 

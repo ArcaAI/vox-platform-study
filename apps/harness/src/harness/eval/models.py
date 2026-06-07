@@ -9,6 +9,8 @@ adapter is trivial.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # PDSQI-9 dimensions (Epic open-source instrument). Eight 1–5 Likert quality
@@ -100,7 +102,18 @@ class GoldenCase(BaseModel):
 
     ``source_documents`` are the grounding sources (transcript turns + prior
     notes); ``generated_note`` is the summary under evaluation. ``clinician_pdsqi``
-    holds fixture clinician ratings used for judge calibration.
+    holds the reference PDSQI ratings used for judge calibration.
+
+    ``role`` separates two distinct eval purposes (see
+    ``apps/harness/eval/README.md``):
+
+    * ``"quality"`` — the ``generated_note`` is a high-quality reference exemplar
+      representative of good production output. These cases feed the PDSQI
+      *quality* aggregates (accurate/thorough/mean) and the faithfulness gate.
+    * ``"calibration"`` — a range-spanning / adversarial case whose
+      ``generated_note`` may exhibit a deliberate flaw. These cases feed the
+      judge↔reference agreement (ICC / Gwet AC2) ONLY; they are excluded from the
+      quality aggregates so the quality gate is not graded on sabotaged inputs.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -109,6 +122,7 @@ class GoldenCase(BaseModel):
     source_documents: list[str]
     generated_note: str
     target_specialty: str = "General Medicine"
+    role: Literal["quality", "calibration"] = "quality"
     reference_note: str | None = None
     contexts: list[str] | None = None
     clinician_pdsqi: PDSQIScore | None = None

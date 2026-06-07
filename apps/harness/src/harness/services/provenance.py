@@ -30,6 +30,23 @@ _SECTION_CODES = (
 )
 _DEFAULT_SECTION = "A"
 
+# SentencePiece "▁" (U+2581) word-boundary marker. NER spans tokenized by a
+# SentencePiece model can carry it (e.g. "▁October"); it must never leak into the
+# human-readable citation claim text / evidence quote.
+_SUBWORD_MARKER = "\u2581"
+
+
+def _clean_claim_text(text: str) -> str:
+    """Strip SentencePiece ``▁`` markers and collapse to clean human-readable text.
+
+    Replaces every ``▁`` (U+2581) with a regular space and collapses runs of
+    whitespace (so ``"▁October ▁2025"`` -> ``"October 2025"``). Legitimate content
+    (letters, digits, punctuation) is untouched, so ``"120/80 mmHg"`` is preserved.
+    """
+    if not text:
+        return text
+    return " ".join(text.replace(_SUBWORD_MARKER, " ").split())
+
 
 def _derive_section(entity_norm: str, soap_sections: dict[str, Any]) -> str:
     """Return the S/O/A/P code of the first section whose text contains the entity."""
@@ -61,7 +78,7 @@ def _evidence_for(
             "transcriptContextItemId": transcript_context_item_id,
             "startOffset": match.start,
             "endOffset": match.end,
-            "quote": match.text,
+            "quote": _clean_claim_text(match.text),
         }
 
     if norm in transcript_norm:
@@ -70,7 +87,7 @@ def _evidence_for(
             "transcriptContextItemId": transcript_context_item_id,
             "startOffset": idx,
             "endOffset": idx + len(entity.text) if idx >= 0 else -1,
-            "quote": entity.text,
+            "quote": _clean_claim_text(entity.text),
         }
     return None
 
@@ -108,7 +125,7 @@ def build_citations_map(
         claims.append(
             {
                 "id": f"claim-{len(claims) + 1}",
-                "text": entity.text,
+                "text": _clean_claim_text(entity.text),
                 "section": _derive_section(norm, soap_sections),
                 "confidence": 1.0 if evidence else 0.0,
                 "status": "verified" if evidence else "unverified",

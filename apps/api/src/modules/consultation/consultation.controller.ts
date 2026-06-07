@@ -20,6 +20,7 @@ import {
   GeneratePreSummaryRequest,
   UpdateSummaryRequest,
   SummaryResponse,
+  SummaryProvenanceResponse,
   AggregateNerResponse,
   ConsultationTimelineResponse,
   PaginatedQuery,
@@ -643,6 +644,22 @@ export class ConsultationController {
   async getSummaryVersions(@Param('id') id: string, @Param('contextItemId') contextItemId: string): Promise<ContextItemVersionResponse[]> {
     await this.verifyConsultationAccess(id);
     return this.contextService.getVersionHistory(contextItemId);
+  }
+
+  // TASK-330 follow-up — read-only harness provenance (citationsMap + sensor
+  // scores + modelName) for a generated summary. Normal clinician auth (inherits
+  // the class-level @Authorize() + verifyConsultationAccess read gate); NOT the
+  // service-to-service HarnessServiceTokenGuard.
+  @ApiEndpoint({
+    returnedModel: SummaryProvenanceResponse,
+    path: ':id/summary/:contextItemId/provenance',
+    by: ['id', 'contextItemId'],
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiParam({ name: 'contextItemId', description: 'Summary Context Item ID' })
+  async getSummaryProvenance(@Param('id') id: string, @Param('contextItemId') contextItemId: string): Promise<SummaryProvenanceResponse> {
+    await this.verifyConsultationAccess(id);
+    return this.summaryService.getSummaryProvenance(contextItemId);
   }
 
   // TASK-329 (P6) — diff two summary versions; the UI version-diff-panel renders the result

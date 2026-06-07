@@ -1,4 +1,4 @@
-import { GenerateSummaryRequest, GeneratePreSummaryRequest, UpdateSummaryRequest, SummaryResponse } from './dto';
+import { GenerateSummaryRequest, GeneratePreSummaryRequest, UpdateSummaryRequest, SummaryResponse, SummaryProvenanceResponse } from './dto';
 
 export abstract class ISummaryService {
   abstract generatePreSummary(consultationId: string, request: GeneratePreSummaryRequest): Promise<SummaryResponse>;
@@ -8,6 +8,7 @@ export abstract class ISummaryService {
   abstract getLatestSummary(consultationId: string): Promise<SummaryResponse | null>;
   abstract getLatestPreSummary(consultationId: string): Promise<SummaryResponse | null>;
   abstract getSummaries(consultationId: string): Promise<SummaryResponse[]>;
+  abstract getSummaryProvenance(contextItemId: string): Promise<SummaryProvenanceResponse>;
   abstract extractEntities(contextItemId: string): Promise<void>;
 }
 

@@ -7,10 +7,14 @@ Paper  : Croxford et al., "Development and validation of the provider
          models (PDSQI-9)", JAMIA 2025, doi:10.1093/jamia/ocaf068.
 
 The ``RUBRIC_SET`` / ``BASE_PROMPT_PATTERN`` / ``INSTRUCTION_LIST`` /
-``DETAIL_INSTRUCTIONS`` / ``SYSTEM_PROMPT`` constants are reproduced verbatim to
-preserve the *validated* instrument. Only the prompt-assembly glue (Epic's
-``prep`` module) is reimplemented here as a small, dependency-free
-:class:`OutputMode` + resolver so the harness stays self-contained.
+``DETAIL_INSTRUCTIONS`` constants are reproduced verbatim to preserve the
+*validated* instrument. Only the prompt-assembly glue (Epic's ``prep`` module)
+is reimplemented here as a small, dependency-free :class:`OutputMode` + resolver
+so the harness stays self-contained. The system message is harness glue (not
+part of the validated instrument): a neutral JSON-only base, with an optional
+``reasoning_mode`` lever that elicits or forbids a reasoning pass so the same
+judge is robust across reasoning (Qwen3.5, gpt-oss) and non-reasoning (Gemma 3,
+MedGemma) model families.
 """
 
 from __future__ import annotations
@@ -190,9 +194,48 @@ DETAIL_INSTRUCTIONS = {
     6: '- Your output must ba VALID JSON-formatted string as follows:\n"{"citation": {"explanation": "Your explanation here", "score": 1}, "accurate": {"explanation": "Your explanation here", "score": 1}, ...}"'
 }
 
-# First line of the response should include <think> when using a reasoning model.
-SYSTEM_PROMPT = """
-You are a summarization quality expert that specializes in text analysis and reasoning. Please start your response with '<think>' at the beginning. Provide your reasoning when generating the final output.
+# Neutral base system prompt — the DEFAULT (reasoning_mode="auto"). It neither
+# forces nor forbids reasoning, so it is SAFE across model families: reasoning
+# models (Qwen3.5, gpt-oss, Gemma/MedGemma thinking variants) split their
+# chain-of-thought into a separate channel/field that the parser strips, while
+# non-reasoning models (Gemma 3, MedGemma) are never told to emit a <think>
+# block. It only pins the JSON-only output contract. NOTE: empirically, server
+# levers (chat_template_kwargs.enable_thinking=false, a "/no_think" suffix) do
+# NOT reliably stop thinking on LM Studio — robustness comes from this neutral
+# base + the tolerant final-answer parser, not from prompt switches.
+BASE_SYSTEM_PROMPT = (
+    "You are a summarization quality expert that specializes in clinical text analysis. "
+    "Output a single JSON object exactly as specified; do not include any text outside "
+    "the JSON object."
+)
+
+# Appended to the base when reasoning_mode="think": the prior reasoning-eliciting
+# guidance, for reasoning models (e.g. Qwen3.5) that grade more reliably with an
+# explicit thinking pass before the JSON answer.
+THINK_SUFFIX = (
+    "\n\nYou specialize in text analysis and reasoning. Please start your response with "
+    "'<think>' at the beginning and provide your reasoning before generating the final "
+    "JSON output."
+)
+
+# Opt-in anchoring layer. PURELY ADDITIVE: it does not change the verbatim Epic
+# RUBRIC_SET above — it restates the published grade descriptors as crisp decision
+# rules and shows two balanced worked exemplars (one excellent note, one with a
+# single flaw) so a small local judge applies the SAME scale a careful human would.
+# This targets the known failure modes of an uncalibrated judge: (a) over-penalising
+# a single pertinent omission, and (b) letting an inaccurate assertion bleed into
+# unrelated dimensions (organized/comprehensible).
+ANCHOR_BLOCK = """
+CALIBRATION GUIDANCE (apply the RUBRIC_SET above literally and per-dimension):
+- Score every dimension INDEPENDENTLY. A factual error lowers ONLY 'accurate' (and 'citation' if mis-cited); it does NOT by itself lower 'organized', 'comprehensible', 'useful', or 'succinct'.
+- 'thorough' is graded by counting omissions exactly per the rubric: 0 omissions = 5; only potentially-pertinent omissions = 4; exactly ONE pertinent omission = 3; one pertinent plus multiple potentially-pertinent = 2; MORE THAN ONE pertinent omission = 1. Do not give 1 unless there are two or more pertinent omissions.
+- 'accurate' = 5 only when every assertion is traceable to the notes; a single overt fabrication/falsification (e.g., stating a confirmed diagnosis the notes do not support) is a 1-2.
+- 'citation' is graded on the <Note ID:#> format: every assertion correctly cited and relevance-prioritised = 5; all correct but some assertions uncited = 3; one wrong/grouped = 2; multiple wrong OR no citations at all = 1.
+- 'succinct' penalises redundancy/wordiness only; a concise note is 4-5 even if it has other flaws.
+
+CALIBRATION EXAMPLES (illustrative anchors, not the note under test):
+1. A complete, fully <Note ID:#>-cited, concise SOAP note that captures every pertinent item and invents nothing -> citation 5, accurate 5, thorough 5, useful 5, organized 5, comprehensible 5, succinct 4, synthesized 4.
+2. An accurate, well-cited note that omits exactly one pertinent item (e.g., a documented exam finding) and is otherwise fine -> accurate 5, organized 5, comprehensible 5, but thorough 3 (one pertinent omission).
 """
 # fmt: on
 
@@ -214,11 +257,29 @@ def resolve_instructions(output_mode: OutputMode = OutputMode.SCORE) -> str:
     return "\n".join(line for line in instructions if line)
 
 
+# Appended to the system message for reasoning_mode="none" (== suppress_reasoning).
+# Small local judge models (e.g. gemma-4-e4b on LM Studio) otherwise emit a long
+# ``<think>`` block and sometimes end the turn *before* the JSON ever appears (a
+# premature stop → unparseable). The ``/no_think`` hint + a JSON-only directive
+# makes such models answer with the score object directly. Larger judges (gpt-oss,
+# Azure) don't need it, so it is opt-in and defaults off.
+NO_THINK_SUFFIX = (
+    "\n\n/no_think\n"
+    "Respond with ONLY the JSON object containing the integer scores. "
+    "Do NOT emit any <think> block, analysis channel, chain-of-thought, reasoning, "
+    "or prose — output ONLY the JSON object."
+)
+
+
 def resolve_prompt(
     notes: list[str],
     summary: str,
     target_specialty: str,
     output_mode: OutputMode = OutputMode.SCORE,
+    anchored: bool = False,
+    *,
+    reasoning_mode: str = "auto",
+    suppress_reasoning: bool = False,
 ) -> list[dict[str, str]]:
     """Build the PDSQI-9 chat message array for a single summary.
 
@@ -233,11 +294,29 @@ def resolve_prompt(
         The reader's specialty (e.g. "Family Medicine").
     output_mode:
         :class:`OutputMode.SCORE` (ints) or ``WITH_EXPLANATION`` (scores + rationale).
+    anchored:
+        When ``True`` append the :data:`ANCHOR_BLOCK` calibration guidance + worked
+        exemplars (purely additive — the verbatim Epic rubric is unchanged).
+    reasoning_mode:
+        How the system message treats reasoning (only the system message changes):
+
+        * ``"auto"`` (default) — the neutral :data:`BASE_SYSTEM_PROMPT` only; it
+          neither forces nor forbids reasoning. Safe for non-reasoning families
+          (Gemma 3 / MedGemma): they are never told to emit a ``<think>`` block,
+          while reasoning families split their thinking out and the parser strips
+          any leak.
+        * ``"think"`` — append :data:`THINK_SUFFIX` to elicit an explicit
+          ``<think>`` reasoning pass (helps Qwen-style reasoning judges).
+        * ``"none"`` — append :data:`NO_THINK_SUFFIX` (JSON-only directive).
+    suppress_reasoning:
+        Back-compat alias: ``True`` is equivalent to ``reasoning_mode="none"``.
     """
     prompt_notes = "\n".join(
         f"<NoteID:{i + 1}>\nNote: {note}\n<\\NoteID:{i + 1}>" for i, note in enumerate(notes)
     )
     instructions = resolve_instructions(output_mode)
+    if anchored:
+        instructions = f"{instructions}\n{ANCHOR_BLOCK}"
     user = BASE_PROMPT_PATTERN.format(
         prompt_notes=prompt_notes,
         summary_to_evaluate=summary,
@@ -245,7 +324,14 @@ def resolve_prompt(
         target_specialty=target_specialty,
         instruction_set=instructions,
     )
+
+    system = BASE_SYSTEM_PROMPT
+    if suppress_reasoning or reasoning_mode == "none":
+        system += NO_THINK_SUFFIX
+    elif reasoning_mode == "think":
+        system += THINK_SUFFIX
+    # "auto" (and any unrecognised value) → neutral base only.
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]

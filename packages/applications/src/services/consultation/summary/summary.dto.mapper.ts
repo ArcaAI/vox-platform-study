@@ -1,5 +1,5 @@
-import { ContextItemEntity } from '@arcaai/domains';
-import { SummaryResponse } from './dto';
+import { ContextItemEntity, SummaryMetaEntity } from '@arcaai/domains';
+import { SummaryResponse, SummaryProvenanceResponse } from './dto';
 
 export class SummaryDtoMapper {
   static toResponse(entity: ContextItemEntity): SummaryResponse {
@@ -26,6 +26,25 @@ export class SummaryDtoMapper {
       structuredData,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),
+    };
+  }
+
+  /**
+   * TASK-330 follow-up — map a SummaryMeta entity to the read-only provenance
+   * DTO (citationsMap + sensor scores + modelName). The harness persists its
+   * full sensor-score detail object in the `guardrailDecisions` column, so we
+   * surface that as `sensorScores` for provenance consumers.
+   */
+  static toProvenanceResponse(meta: SummaryMetaEntity): SummaryProvenanceResponse {
+    return {
+      contextItemId: meta.contextItemId,
+      modelName: meta.modelName ?? null,
+      entityFaithfulnessScore: meta.entityFaithfulnessScore ?? null,
+      coverageScore: meta.coverageScore ?? null,
+      ragTriadScore: meta.ragTriadScore ?? null,
+      sensorScores: (meta.guardrailDecisions ?? null) as Record<string, unknown> | null,
+      citationsMap: meta.citationsMap ?? null,
+      generatedAt: meta.generatedAt ? meta.generatedAt.toISOString() : null,
     };
   }
 }

@@ -11,9 +11,12 @@ Three interchangeable backends, all selected via :class:`~harness.eval.config.Ju
 
 from __future__ import annotations
 
+import asyncio
+
 from pydantic import SecretStr
 
 from harness.eval.config import JudgeConfig, JudgeProvider
+from harness.eval.jsonio import extract_last_object
 from harness.eval.judge.base import JudgeClient, JudgeConnectionError, Messages
 
 
@@ -22,6 +25,67 @@ def _secret_value(value: object) -> str:
     if isinstance(value, SecretStr):
         return value.get_secret_value()
     return str(value)
+
+
+# Substrings that mark a *transient* backend failure worth retrying (a model
+# engine that was terminated/unloaded under load and will JIT-reload, a dropped
+# connection, a momentary 5xx/overload) — as opposed to a deterministic 4xx
+# (bad request shape, auth) that would only fail again.
+_TRANSIENT_MARKERS = (
+    "terminated",
+    "connection",
+    "reset",
+    "timeout",
+    "timed out",
+    "overloaded",
+    "unavailable",
+    "503",
+    "502",
+    "500",
+)
+
+
+def _is_transient(exc: Exception) -> bool:
+    return any(marker in str(exc).lower() for marker in _TRANSIENT_MARKERS)
+
+
+async def _create_with_retry(create_fn, kwargs: dict, *, retries: int, backoff_s: float):
+    """Call ``create_fn(**kwargs)``, retrying transient failures with linear backoff.
+
+    The backoff gives a crashed local model time to reload before the next attempt.
+    Non-transient errors raise immediately; transient ones raise only once the
+    retry budget is exhausted (the caller wraps that in ``JudgeConnectionError``).
+    """
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            return await create_fn(**kwargs)
+        except Exception as exc:  # noqa: BLE001 — re-raised below
+            last_exc = exc
+            if attempt < retries and _is_transient(exc):
+                await asyncio.sleep(backoff_s * (attempt + 1))
+                continue
+            raise
+    raise last_exc  # pragma: no cover — loop always returns or raises above
+
+
+def _pick_answer_text(content: str, reasoning: str) -> str:
+    """Choose the channel that actually carries the JSON answer.
+
+    Reasoning model families split their output differently: gpt-oss puts the
+    answer in ``content`` (reasoning separate); qwen3.5 can leave ``content`` empty
+    with the answer in ``reasoning_content``; and gemma-4 may emit its COMPLETE JSON
+    in ``reasoning_content`` while ``content`` holds only a *truncated* duplicate
+    (finish_reason=length → an unbalanced ``{`` that no parser can recover).
+
+    So prefer ``content`` only when it already contains a balanced JSON object;
+    otherwise fall back to the reasoning text, then to whatever content exists.
+    """
+    if content.strip() and extract_last_object(content) is not None:
+        return content
+    if reasoning.strip():
+        return reasoning
+    return content
 
 
 class OpenAICompatJudgeClient:
@@ -41,20 +105,48 @@ class OpenAICompatJudgeClient:
             max_retries=config.max_retries,
         )
 
-    async def complete(self, messages: Messages, *, json_mode: bool = False) -> str:
+    async def complete(
+        self,
+        messages: Messages,
+        *,
+        json_mode: bool = False,
+        temperature: float | None = None,
+        seed: int | None = None,
+    ) -> str:
         kwargs: dict = {
             "model": self.model,
             "messages": messages,
-            "temperature": self._config.temperature,
+            "temperature": self._config.temperature if temperature is None else temperature,
             "max_tokens": self._config.max_tokens,
         }
+        effective_seed = seed if seed is not None else self._config.seed
+        if effective_seed is not None:
+            kwargs["seed"] = effective_seed
         if json_mode:
-            kwargs["response_format"] = {"type": "json_object"}
+            fmt = self._config.openai_compat.json_response_format
+            # "text"/"none"/"" → omit the constraint (LM Studio rejects json_object;
+            # the prompts request JSON and parsing is tolerant). Otherwise pass through.
+            if fmt and fmt not in ("text", "none"):
+                kwargs["response_format"] = {"type": fmt}
+        # Server-specific reasoning knobs (vLLM/Azure); only sent when configured.
+        if self._config.extra_body:
+            kwargs["extra_body"] = self._config.extra_body
         try:
-            resp = await self._client.chat.completions.create(**kwargs)
-        except Exception as exc:  # transport/API failure → typed error
+            resp = await _create_with_retry(
+                self._client.chat.completions.create,
+                kwargs,
+                retries=self._config.transient_retries,
+                backoff_s=self._config.transient_retry_backoff_s,
+            )
+        except Exception as exc:  # transport/API failure (post-retry) → typed error
             raise JudgeConnectionError(f"openai_compat judge call failed: {exc}") from exc
-        return resp.choices[0].message.content or ""
+        # Reasoning models can leave ``content`` empty and strand the answer in
+        # ``reasoning_content`` (qwen3.5/gemma-4) or ``reasoning`` (gpt-oss); fall
+        # back to the reasoning text so the answer is never lost.
+        msg = resp.choices[0].message
+        content = msg.content or ""
+        reasoning = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None) or ""
+        return _pick_answer_text(content, reasoning)
 
 
 class AzureOpenAIJudgeClient:
@@ -74,20 +166,43 @@ class AzureOpenAIJudgeClient:
             max_retries=config.max_retries,
         )
 
-    async def complete(self, messages: Messages, *, json_mode: bool = False) -> str:
+    async def complete(
+        self,
+        messages: Messages,
+        *,
+        json_mode: bool = False,
+        temperature: float | None = None,
+        seed: int | None = None,
+    ) -> str:
         kwargs: dict = {
             "model": self.model,
             "messages": messages,
-            "temperature": self._config.temperature,
+            "temperature": self._config.temperature if temperature is None else temperature,
             "max_tokens": self._config.max_tokens,
         }
+        effective_seed = seed if seed is not None else self._config.seed
+        if effective_seed is not None:
+            kwargs["seed"] = effective_seed
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
+        # Server-specific reasoning knobs (e.g. reasoning_effort); only when configured.
+        if self._config.extra_body:
+            kwargs["extra_body"] = self._config.extra_body
         try:
-            resp = await self._client.chat.completions.create(**kwargs)
-        except Exception as exc:
+            resp = await _create_with_retry(
+                self._client.chat.completions.create,
+                kwargs,
+                retries=self._config.transient_retries,
+                backoff_s=self._config.transient_retry_backoff_s,
+            )
+        except Exception as exc:  # transport/API failure (post-retry) → typed error
             raise JudgeConnectionError(f"azure judge call failed: {exc}") from exc
-        return resp.choices[0].message.content or ""
+        # Same reasoning-aware fallback as the OpenAI-compatible client: prefer
+        # ``content``, else the reasoning text (``reasoning_content`` / ``reasoning``).
+        msg = resp.choices[0].message
+        content = msg.content or ""
+        reasoning = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None) or ""
+        return _pick_answer_text(content, reasoning)
 
 
 class BedrockJudgeClient:
@@ -106,15 +221,25 @@ class BedrockJudgeClient:
             self._runtime = boto3.client("bedrock-runtime", region_name=self.region)
         return self._runtime
 
-    async def complete(self, messages: Messages, *, json_mode: bool = False) -> str:
+    async def complete(
+        self,
+        messages: Messages,
+        *,
+        json_mode: bool = False,
+        temperature: float | None = None,
+        seed: int | None = None,  # Bedrock ``converse`` has no seed knob → ignored.
+    ) -> str:
         import asyncio
 
+        # The Bedrock ``converse`` API has no ``extra_body`` / reasoning-content split,
+        # so ``config.extra_body`` and the reasoning fallback do not apply here.
         system = [{"text": m["content"]} for m in messages if m["role"] == "system"]
         conversation = [
             {"role": m["role"], "content": [{"text": m["content"]}]}
             for m in messages
             if m["role"] != "system"
         ]
+        temp = self._config.temperature if temperature is None else temperature
 
         def _call() -> dict:
             return self._client().converse(
@@ -122,7 +247,7 @@ class BedrockJudgeClient:
                 system=system,
                 messages=conversation,
                 inferenceConfig={
-                    "temperature": self._config.temperature,
+                    "temperature": temp,
                     "maxTokens": self._config.max_tokens,
                 },
             )
