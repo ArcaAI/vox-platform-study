@@ -46,8 +46,45 @@ def get_ollama_provider(request: Request) -> ContentProvider:
 
 
 def get_guardian_provider(request: Request) -> GuardianLike:
-    """Retrieve the active guardian provider for the selected engine."""
+    """Retrieve the env-configured guardian provider for the selected engine."""
     return request.app.state.guardian_provider
+
+
+async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
+    """Resolve the guardian provider for the request tenant (TASK-338, Q3c).
+
+    When ``db_config_enabled`` is false (default), this returns the env-configured
+    guardian provider unchanged — behavior is identical to before. When enabled,
+    it reads the per-tenant guardrail provider/model from ``core.GlobalSetting``
+    (via the X-Tenant-Id header, with TTL cache + default-tenant/env fallback) and
+    builds a guardian provider for the resolved engine.
+    """
+    settings = request.app.state.settings
+    default_provider = request.app.state.guardian_provider
+
+    if not settings.db.db_config_enabled:
+        return default_provider
+
+    resolver = getattr(request.app.state, "tenant_config_resolver", None)
+    if resolver is None:
+        return default_provider
+
+    from guardrail.core.tenant_config import (
+        build_guardian_provider,
+        resolve_guardian_engine,
+    )
+
+    tenant_id = request.headers.get("X-Tenant-Id")
+    tenant_cfg = await resolver.resolve(tenant_id)
+
+    # Nothing admin-configured for this tenant (or its default) — keep env engine.
+    if tenant_cfg.provider is None and tenant_cfg.model is None:
+        return default_provider
+
+    provider_name, engine_cfg = resolve_guardian_engine(settings, tenant_cfg)
+    return build_guardian_provider(  # type: ignore[return-value]
+        provider_name, engine_cfg, request.app.state.http_client
+    )
 
 
 def get_gliner_provider(request: Request) -> GlinerProvider:

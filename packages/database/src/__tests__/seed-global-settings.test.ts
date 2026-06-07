@@ -27,10 +27,18 @@ const CORE_SUFFIXES = [
   'STT_VAD',
   'SMR_PROVIDER',
   'SMR_MODEL',
+  // TASK-338 — SMR Azure deployment-name (032), Guardrail provider/model/Azure
+  // (033/034/035), seeded for every tenant.
+  'SMR_AZURE_DEPLOYMENT',
+  'GUARDRAIL_PROVIDER',
+  'GUARDRAIL_MODEL',
+  'GUARDRAIL_AZURE_DEPLOYMENT',
   'UX_LOCAL_ASR_MODELS',
   'UX_LOCAL_VAD_MODELS',
   'UX_LOCAL_NOISE_SUPPRESSION_MODELS',
   'UX_SMR_PROVIDER_MODELS',
+  // TASK-338 — Guardrail provider/model catalog (044).
+  'UX_GUARDRAIL_PROVIDER_MODELS',
   'LOCKED_CONFIG_PATHS',
   // TASK-331 F4 — per-tenant admin-console menu order (`arcaai-admin`/`menuOrder`),
   // suffix 051 alongside locked-config-paths (050). Seeded for every tenant.
@@ -215,6 +223,39 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
             (s) => s.namespace === 'feature-flags' && s.key === 'enable-transcription',
           );
           expect(flag).toBeDefined();
+        });
+
+        // TASK-338 — admin-configurable Guardrail engine block.
+        it('emits the guardrail namespace block (3 settings, provider/model locked)', () => {
+          const guardrail = settingsForTenant(tenantId).filter(
+            (s) => s.namespace === 'guardrail',
+          );
+          const keys = guardrail.map((s) => s.key).sort();
+          expect(keys).toEqual([
+            'default-guardrail-model',
+            'default-guardrail-provider',
+            'guardrail-azure-deployment',
+          ]);
+
+          const provider = guardrail.find((s) => s.key === 'default-guardrail-provider');
+          const model = guardrail.find((s) => s.key === 'default-guardrail-model');
+          const azure = guardrail.find((s) => s.key === 'guardrail-azure-deployment');
+          expect(provider?.value).toBe('lm-studio');
+          expect(provider?.locked).toBe(true);
+          expect(model?.value).toBe('granite-guardian-4.1-8b');
+          expect(model?.locked).toBe(true);
+          expect(azure?.value).toBe('');
+          expect(azure?.locked).toBeFalsy();
+        });
+
+        // TASK-338 — SMR Azure deployment-name parity (non-secret, unlocked).
+        it('emits the smr-azure-deployment setting (non-secret, unlocked)', () => {
+          const azure = settingsForTenant(tenantId).find(
+            (s) => s.namespace === 'smr' && s.key === 'smr-azure-deployment',
+          );
+          expect(azure).toBeDefined();
+          expect(azure?.value).toBe('');
+          expect(azure?.locked).toBeFalsy();
         });
 
         it('emits exactly one row per declared setting ID (no dead config)', () => {

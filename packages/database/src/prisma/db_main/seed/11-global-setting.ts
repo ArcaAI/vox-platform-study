@@ -15,12 +15,13 @@ import {
  * every tenant (Global + customer tenants) so the admin panel and SDK
  * always see populated configuration.
  *
- * Every tenant gets the same 19 settings (consolidated):
+ * Every tenant gets the same 24 settings (consolidated):
  *   - general       (3) — session limits, language, timeouts
  *   - feature-flags (6) — toggles for platform capabilities
  *   - stt           (2) — speech-to-text defaults
- *   - smr           (2) — summarisation provider / model defaults
- *   - ux-constants  (4) — static model lists for UI dropdowns
+ *   - smr           (3) — summarisation provider / model / Azure deployment defaults
+ *   - guardrail     (3) — content-safety provider / model / Azure deployment defaults
+ *   - ux-constants  (5) — static model lists + provider catalogs for UI dropdowns
  *   - admin         (1) — locked config paths
  *   - arcaai-admin  (1) — admin-console menu order
  *
@@ -50,7 +51,7 @@ interface SettingDef {
 // These define the available local browser models that the SDK can use.
 // The UI reads these to populate <select> dropdowns on the Installation
 // pages (STT, VAD, Noise Filter). Seeded per-tenant so each tenant gets
-// the same consolidated set of 19 settings.
+// the same consolidated set of 24 settings.
 // =============================================================================
 
 const LOCAL_ASR_MODELS = JSON.stringify([
@@ -127,6 +128,46 @@ export const SMR_PROVIDER_MODELS = [
 const SMR_PROVIDER_MODELS_JSON = JSON.stringify(SMR_PROVIDER_MODELS);
 
 // =============================================================================
+// Guardrail Provider-Model Catalog (TASK-338) — available content-safety /
+// guardrail providers and models.
+//
+// Seeded per-tenant so the admin console can populate the Guardrail
+// provider/model selectors. Admins pick a default provider + model from this
+// catalog. Mirrors the SMR catalog shape. LM Studio (OpenAI-compatible) is the
+// default/primary local engine and MUST expose the default Granite Guardian
+// model `granite-guardian-4.1-8b` (cross-worker contract with the Guardrail
+// Python service).
+// =============================================================================
+
+export const GUARDRAIL_PROVIDER_NAMES = ['lm-studio', 'ollama', 'azure-openai'] as const;
+
+export const GUARDRAIL_PROVIDER_MODELS = [
+    {
+        provider: 'lm-studio',
+        models: [
+            { name: 'granite-guardian-4.1-8b', size: '4.9 GB' },
+            { name: 'ibm-granite/granite-guardian-3.2-5b', size: '3.1 GB' },
+            { name: 'ibm-granite/granite-guardian-3.2-3b-a800m', size: '1.9 GB' },
+        ],
+    },
+    {
+        provider: 'ollama',
+        models: [
+            { name: 'granite3-guardian:8b', size: '4.9 GB' },
+            { name: 'granite3-guardian:2b', size: '1.6 GB' },
+        ],
+    },
+    {
+        provider: 'azure-openai',
+        models: [
+            { name: 'gpt-4o-mini', size: '' },
+        ],
+    },
+] as const;
+
+const GUARDRAIL_PROVIDER_MODELS_JSON = JSON.stringify(GUARDRAIL_PROVIDER_MODELS);
+
+// =============================================================================
 // Admin Console Menu Order (TASK-331 doc-04 F4)
 //
 // Seeds the TENANT tier of the admin console's menu-order resolver
@@ -165,10 +206,15 @@ function tenantSettings(
         sttVad: string;
         smrProvider: string;
         smrModel: string;
+        smrAzureDeployment: string;
+        guardrailProvider: string;
+        guardrailModel: string;
+        guardrailAzureDeployment: string;
         uxLocalAsrModels: string;
         uxLocalVadModels: string;
         uxLocalNoiseSuppressionModels: string;
         uxSmrProviderModels: string;
+        uxGuardrailProviderModels: string;
         lockedConfigPaths: string;
         adminMenuOrder: string;
     },
@@ -333,6 +379,60 @@ function tenantSettings(
             description: 'Default LLM model slug for summarization tasks (LM Studio model name)',
             locked: true,
         },
+        {
+            // TASK-338 — Azure OpenAI deployment NAME for SMR (non-secret).
+            // The Azure API key remains env/Vault only (never a plaintext
+            // GlobalSetting); only the deployment name is DB-driven. Not locked
+            // so tenant admins can set their own Azure deployment.
+            id: ids.smrAzureDeployment,
+            tenantId,
+            namespace: 'smr',
+            name: 'SMR Azure Deployment',
+            key: 'smr-azure-deployment',
+            value: '',
+            defaultValue: '',
+            dataType: ValueType.String,
+            description: 'Azure OpenAI deployment name used by SMR when provider=azure-openai (non-secret; the API key stays in env/Vault)',
+        },
+
+        // ── guardrail (3) — TASK-338 admin-configurable Guardrail engine ──
+        {
+            id: ids.guardrailProvider,
+            tenantId,
+            namespace: 'guardrail',
+            name: 'Default Guardrail Provider',
+            key: 'default-guardrail-provider',
+            value: 'lm-studio',
+            defaultValue: 'lm-studio',
+            dataType: ValueType.String,
+            description: 'Default LLM provider for the Guardrail service (e.g., lm-studio, ollama, azure-openai)',
+            locked: true,
+        },
+        {
+            id: ids.guardrailModel,
+            tenantId,
+            namespace: 'guardrail',
+            name: 'Default Guardrail Model',
+            key: 'default-guardrail-model',
+            value: 'granite-guardian-4.1-8b',
+            defaultValue: 'granite-guardian-4.1-8b',
+            dataType: ValueType.String,
+            description: 'Default model slug for the Guardrail service (LM Studio Granite Guardian model name)',
+            locked: true,
+        },
+        {
+            // TASK-338 — Azure OpenAI deployment NAME for Guardrail (non-secret).
+            // Same key remains env/Vault posture as SMR above.
+            id: ids.guardrailAzureDeployment,
+            tenantId,
+            namespace: 'guardrail',
+            name: 'Guardrail Azure Deployment',
+            key: 'guardrail-azure-deployment',
+            value: '',
+            defaultValue: '',
+            dataType: ValueType.String,
+            description: 'Azure OpenAI deployment name used by Guardrail when provider=azure-openai (non-secret; the API key stays in env/Vault)',
+        },
 
         // ── ux-constants (3) ────────────────────────────────────────────
         {
@@ -381,6 +481,19 @@ function tenantSettings(
             defaultValue: SMR_PROVIDER_MODELS_JSON,
             dataType: ValueType.Json,
             description: 'Available text-generation providers and models for summarization (admin selects default from this catalog)',
+            locked: true,
+        },
+        {
+            // TASK-338 — Guardrail provider/model catalog mirroring the SMR one.
+            id: ids.uxGuardrailProviderModels,
+            tenantId,
+            namespace: 'ux-constants',
+            name: 'Guardrail Provider Models',
+            key: 'guardrail-provider-models',
+            value: GUARDRAIL_PROVIDER_MODELS_JSON,
+            defaultValue: GUARDRAIL_PROVIDER_MODELS_JSON,
+            dataType: ValueType.Json,
+            description: 'Available providers and models for the Guardrail content-safety service (admin selects default from this catalog)',
             locked: true,
         },
         // ── admin (1) ────────────────────────────────────────────────────
@@ -439,10 +552,15 @@ export const ALL_SETTINGS: SettingDef[] = [
         sttVad: IDS.GLOBAL_STT_VAD,
         smrProvider: IDS.GLOBAL_SMR_PROVIDER,
         smrModel: IDS.GLOBAL_SMR_MODEL,
+        smrAzureDeployment: IDS.GLOBAL_SMR_AZURE_DEPLOYMENT,
+        guardrailProvider: IDS.GLOBAL_GUARDRAIL_PROVIDER,
+        guardrailModel: IDS.GLOBAL_GUARDRAIL_MODEL,
+        guardrailAzureDeployment: IDS.GLOBAL_GUARDRAIL_AZURE_DEPLOYMENT,
         uxLocalAsrModels: IDS.GLOBAL_UX_LOCAL_ASR_MODELS,
         uxLocalVadModels: IDS.GLOBAL_UX_LOCAL_VAD_MODELS,
         uxLocalNoiseSuppressionModels: IDS.GLOBAL_UX_LOCAL_NOISE_SUPPRESSION_MODELS,
         uxSmrProviderModels: IDS.GLOBAL_UX_SMR_PROVIDER_MODELS,
+        uxGuardrailProviderModels: IDS.GLOBAL_UX_GUARDRAIL_PROVIDER_MODELS,
         lockedConfigPaths: IDS.GLOBAL_LOCKED_CONFIG_PATHS,
         adminMenuOrder: IDS.GLOBAL_ADMIN_MENU_ORDER,
     }),
@@ -460,10 +578,15 @@ export const ALL_SETTINGS: SettingDef[] = [
         sttVad: IDS.ARCAAI_STT_VAD,
         smrProvider: IDS.ARCAAI_SMR_PROVIDER,
         smrModel: IDS.ARCAAI_SMR_MODEL,
+        smrAzureDeployment: IDS.ARCAAI_SMR_AZURE_DEPLOYMENT,
+        guardrailProvider: IDS.ARCAAI_GUARDRAIL_PROVIDER,
+        guardrailModel: IDS.ARCAAI_GUARDRAIL_MODEL,
+        guardrailAzureDeployment: IDS.ARCAAI_GUARDRAIL_AZURE_DEPLOYMENT,
         uxLocalAsrModels: IDS.ARCAAI_UX_LOCAL_ASR_MODELS,
         uxLocalVadModels: IDS.ARCAAI_UX_LOCAL_VAD_MODELS,
         uxLocalNoiseSuppressionModels: IDS.ARCAAI_UX_LOCAL_NOISE_SUPPRESSION_MODELS,
         uxSmrProviderModels: IDS.ARCAAI_UX_SMR_PROVIDER_MODELS,
+        uxGuardrailProviderModels: IDS.ARCAAI_UX_GUARDRAIL_PROVIDER_MODELS,
         lockedConfigPaths: IDS.ARCAAI_LOCKED_CONFIG_PATHS,
         adminMenuOrder: IDS.ARCAAI_ADMIN_MENU_ORDER,
     }),
@@ -481,10 +604,15 @@ export const ALL_SETTINGS: SettingDef[] = [
         sttVad: IDS.FOURBITS_STT_VAD,
         smrProvider: IDS.FOURBITS_SMR_PROVIDER,
         smrModel: IDS.FOURBITS_SMR_MODEL,
+        smrAzureDeployment: IDS.FOURBITS_SMR_AZURE_DEPLOYMENT,
+        guardrailProvider: IDS.FOURBITS_GUARDRAIL_PROVIDER,
+        guardrailModel: IDS.FOURBITS_GUARDRAIL_MODEL,
+        guardrailAzureDeployment: IDS.FOURBITS_GUARDRAIL_AZURE_DEPLOYMENT,
         uxLocalAsrModels: IDS.FOURBITS_UX_LOCAL_ASR_MODELS,
         uxLocalVadModels: IDS.FOURBITS_UX_LOCAL_VAD_MODELS,
         uxLocalNoiseSuppressionModels: IDS.FOURBITS_UX_LOCAL_NOISE_SUPPRESSION_MODELS,
         uxSmrProviderModels: IDS.FOURBITS_UX_SMR_PROVIDER_MODELS,
+        uxGuardrailProviderModels: IDS.FOURBITS_UX_GUARDRAIL_PROVIDER_MODELS,
         lockedConfigPaths: IDS.FOURBITS_LOCKED_CONFIG_PATHS,
         adminMenuOrder: IDS.FOURBITS_ADMIN_MENU_ORDER,
     }),
@@ -502,10 +630,15 @@ export const ALL_SETTINGS: SettingDef[] = [
         sttVad: IDS.MUMBAI_STT_VAD,
         smrProvider: IDS.MUMBAI_SMR_PROVIDER,
         smrModel: IDS.MUMBAI_SMR_MODEL,
+        smrAzureDeployment: IDS.MUMBAI_SMR_AZURE_DEPLOYMENT,
+        guardrailProvider: IDS.MUMBAI_GUARDRAIL_PROVIDER,
+        guardrailModel: IDS.MUMBAI_GUARDRAIL_MODEL,
+        guardrailAzureDeployment: IDS.MUMBAI_GUARDRAIL_AZURE_DEPLOYMENT,
         uxLocalAsrModels: IDS.MUMBAI_UX_LOCAL_ASR_MODELS,
         uxLocalVadModels: IDS.MUMBAI_UX_LOCAL_VAD_MODELS,
         uxLocalNoiseSuppressionModels: IDS.MUMBAI_UX_LOCAL_NOISE_SUPPRESSION_MODELS,
         uxSmrProviderModels: IDS.MUMBAI_UX_SMR_PROVIDER_MODELS,
+        uxGuardrailProviderModels: IDS.MUMBAI_UX_GUARDRAIL_PROVIDER_MODELS,
         lockedConfigPaths: IDS.MUMBAI_LOCKED_CONFIG_PATHS,
         adminMenuOrder: IDS.MUMBAI_ADMIN_MENU_ORDER,
     }),
@@ -538,7 +671,7 @@ const PLATFORM_SETTINGS: SettingDef[] = [
 ];
 
 export const seedGlobalSetting = async (client: CorePrismaClient) => {
-    console.log('Seeding per-tenant Global Settings (19 settings × 4 tenants)...');
+    console.log('Seeding per-tenant Global Settings (24 settings × 4 tenants)...');
 
     for (const s of ALL_SETTINGS) {
         await client.globalSetting.upsert({

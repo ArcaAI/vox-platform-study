@@ -629,7 +629,7 @@ export class TenantService extends BaseService implements ITenantService {
         }
 
         if (config.value !== undefined) {
-          await this.validateSmrConfigValue(existingConfig.key, config.value, tenant.id);
+          await this.validateProviderModel(existingConfig.key, config.value, tenant.id);
         }
 
         // Phase 0 Item 2 (TASK-302 Stream A) — explicit allowlist.
@@ -743,28 +743,57 @@ export class TenantService extends BaseService implements ITenantService {
     return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
   }
 
-  private async validateSmrConfigValue(settingKey: string, newValue: string, tenantId: string): Promise<void> {
-    const SMR_PROVIDER_KEY = 'default-smr-provider';
-    const SMR_MODEL_KEY = 'default-smr-model';
+  /**
+   * TASK-338 — reusable provider/model validation shared by the SMR and
+   * Guardrail engines (generalised from the original `validateSmrConfigValue`).
+   *
+   * When a `default-*-provider` / `default-*-model` setting is updated, the new
+   * value is validated against that domain's per-tenant `*-provider-models`
+   * catalog so the admin console can never persist an unknown provider/model
+   * combination. It is a no-op for every other setting key, so the batch update
+   * loop can safely call it for every config. SMR behaviour and error messages
+   * are preserved verbatim; Guardrail reuses the identical logic with its own
+   * catalog + a `Guardrail` label.
+   */
+  private async validateProviderModel(settingKey: string, newValue: string, tenantId: string): Promise<void> {
+    // Each domain wires its provider/model keys to its catalog + current-provider
+    // readers. Adding a future engine is a single entry here.
+    const domains = [
+      {
+        label: 'SMR',
+        providerKey: 'default-smr-provider',
+        modelKey: 'default-smr-model',
+        loadCatalog: () => this.loadSmrCatalog(tenantId),
+        getCurrentProvider: () => this.getCurrentSmrProvider(tenantId),
+      },
+      {
+        label: 'Guardrail',
+        providerKey: 'default-guardrail-provider',
+        modelKey: 'default-guardrail-model',
+        loadCatalog: () => this.loadGuardrailCatalog(tenantId),
+        getCurrentProvider: () => this.getCurrentGuardrailProvider(tenantId),
+      },
+    ];
 
-    if (settingKey !== SMR_PROVIDER_KEY && settingKey !== SMR_MODEL_KEY) {
+    const domain = domains.find((d) => d.providerKey === settingKey || d.modelKey === settingKey);
+    if (!domain) {
       return;
     }
 
-    const catalog = await this.loadSmrCatalog(tenantId);
+    const catalog = await domain.loadCatalog();
     if (!catalog || catalog.length === 0) {
       return;
     }
 
-    if (settingKey === SMR_PROVIDER_KEY) {
+    if (settingKey === domain.providerKey) {
       const validProviders = catalog.map((entry: { provider: string }) => entry.provider);
       if (!validProviders.includes(newValue)) {
-        throw new ArgumentInvalidException(`'${newValue}' is not a valid SMR provider. ` + `Available: ${validProviders.join(', ')}`);
+        throw new ArgumentInvalidException(`'${newValue}' is not a valid ${domain.label} provider. ` + `Available: ${validProviders.join(', ')}`);
       }
     }
 
-    if (settingKey === SMR_MODEL_KEY) {
-      const currentProvider = await this.getCurrentSmrProvider(tenantId);
+    if (settingKey === domain.modelKey) {
+      const currentProvider = await domain.getCurrentProvider();
       const providerEntry = catalog.find((entry: { provider: string }) => entry.provider === currentProvider);
       if (providerEntry) {
         const validModels = providerEntry.models.map((m: { name: string }) => m.name);
@@ -777,15 +806,20 @@ export class TenantService extends BaseService implements ITenantService {
     }
   }
 
-  private async loadSmrCatalog(tenantId: string): Promise<{ provider: string; models: { name: string; size: string }[] }[] | null> {
+  /**
+   * Generic loader for a `ux-constants` provider/model catalog (SMR or
+   * Guardrail). Returns `null` when the catalog row is missing or malformed so
+   * callers treat validation as a no-op rather than blocking the update.
+   */
+  private async loadCatalog(tenantId: string, catalogKey: string): Promise<{ provider: string; models: { name: string; size: string }[] }[] | null> {
     const settings = await this.globalSettingRepository.findAll({
       where: {
         tenantId,
-        key: 'smr-provider-models',
+        key: catalogKey,
       },
     });
 
-    const catalogSetting = settings.find((s: GlobalSettingEntity) => s.key === 'smr-provider-models');
+    const catalogSetting = settings.find((s: GlobalSettingEntity) => s.key === catalogKey);
     if (!catalogSetting?.value) return null;
 
     try {
@@ -799,15 +833,40 @@ export class TenantService extends BaseService implements ITenantService {
     return null;
   }
 
-  private async getCurrentSmrProvider(tenantId: string): Promise<string> {
+  /**
+   * Generic reader for the currently-selected provider of a domain
+   * (`default-smr-provider` / `default-guardrail-provider`). Defaults to the
+   * primary local engine `lm-studio` when unset.
+   */
+  private async getCurrentProvider(tenantId: string, providerKey: string): Promise<string> {
     const settings = await this.globalSettingRepository.findAll({
       where: {
         tenantId,
-        key: 'default-smr-provider',
+        key: providerKey,
       },
     });
 
-    const providerSetting = settings.find((s: GlobalSettingEntity) => s.key === 'default-smr-provider');
+    const providerSetting = settings.find((s: GlobalSettingEntity) => s.key === providerKey);
     return providerSetting?.value?.trim() || 'lm-studio';
+  }
+
+  /** SMR provider/model catalog for this tenant (TASK-240). */
+  private loadSmrCatalog(tenantId: string) {
+    return this.loadCatalog(tenantId, 'smr-provider-models');
+  }
+
+  /** Currently-selected SMR provider for this tenant (TASK-240). */
+  private getCurrentSmrProvider(tenantId: string) {
+    return this.getCurrentProvider(tenantId, 'default-smr-provider');
+  }
+
+  /** Guardrail provider/model catalog for this tenant (TASK-338). */
+  private loadGuardrailCatalog(tenantId: string) {
+    return this.loadCatalog(tenantId, 'guardrail-provider-models');
+  }
+
+  /** Currently-selected Guardrail provider for this tenant (TASK-338). */
+  private getCurrentGuardrailProvider(tenantId: string) {
+    return this.getCurrentProvider(tenantId, 'default-guardrail-provider');
   }
 }

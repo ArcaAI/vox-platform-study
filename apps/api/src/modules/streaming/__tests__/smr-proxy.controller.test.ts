@@ -670,6 +670,140 @@ describe('SmrProxyController', () => {
     });
   });
 
+  // TASK-338 — admin-configurable Guardrail engine endpoint. Mirrors the
+  // catalog-based SMR provider listing but reads the `guardrail` namespace
+  // settings + `guardrail-provider-models` catalog, and has NO upstream fallback.
+  describe('GET /text/guardrail-providers (TASK-338)', () => {
+    const GUARDRAIL_CATALOG_JSON = JSON.stringify([
+      {
+        provider: 'lm-studio',
+        models: [
+          { name: 'granite-guardian-4.1-8b', size: '4.9 GB' },
+          { name: 'ibm-granite/granite-guardian-3.2-5b', size: '3.1 GB' },
+        ],
+      },
+      {
+        provider: 'ollama',
+        models: [{ name: 'granite3-guardian:8b', size: '4.9 GB' }],
+      },
+      {
+        provider: 'azure-openai',
+        models: [{ name: 'gpt-4o-mini', size: '' }],
+      },
+    ]);
+
+    it('should return all guardrail catalog providers with the tenant default marked', async () => {
+      mockTenantService.fetchTenantConfigs.mockResolvedValue({
+        data: [
+          { key: 'default-guardrail-provider', value: 'lm-studio' },
+          { key: 'default-guardrail-model', value: 'granite-guardian-4.1-8b' },
+          { key: 'guardrail-provider-models', value: GUARDRAIL_CATALOG_JSON },
+        ],
+        count: 3,
+        limit: 200,
+        page: 1,
+      });
+
+      const result = await controller.getGuardrailProviders();
+
+      expect(mockTenantService.fetchTenantConfigs).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        limit: 200,
+        page: 1,
+      });
+      expect(result).toHaveLength(3);
+      expect(result[0].name).toBe('lm-studio');
+      expect(result[0].models).toEqual([
+        { name: 'granite-guardian-4.1-8b', size: '4.9 GB' },
+        { name: 'ibm-granite/granite-guardian-3.2-5b', size: '3.1 GB' },
+      ]);
+
+      const lmStudio = result.find((p: any) => p.name === 'lm-studio');
+      expect(lmStudio.is_default).toBe(true);
+      expect(lmStudio.default_model).toBe('granite-guardian-4.1-8b');
+      for (const provider of result) {
+        expect(provider.is_available).toBe(true);
+      }
+    });
+
+    it('should NOT fall back to the SMR /providers upstream', async () => {
+      mockTenantService.fetchTenantConfigs.mockResolvedValue({
+        data: [],
+        count: 0,
+        limit: 200,
+        page: 1,
+      });
+
+      const result = await controller.getGuardrailProviders();
+
+      expect(result).toEqual([]);
+      expect(mockHttpService.axiosRef.get).not.toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/providers'),
+        expect.any(Object),
+      );
+    });
+
+    it('should ignore SMR settings and only read guardrail settings', async () => {
+      mockTenantService.fetchTenantConfigs.mockResolvedValue({
+        data: [
+          { key: 'default-smr-provider', value: 'ollama' },
+          { key: 'default-smr-model', value: 'granite4:latest' },
+          { key: 'default-guardrail-provider', value: 'ollama' },
+          { key: 'default-guardrail-model', value: 'granite3-guardian:8b' },
+          { key: 'guardrail-provider-models', value: GUARDRAIL_CATALOG_JSON },
+        ],
+        count: 5,
+        limit: 200,
+        page: 1,
+      });
+
+      const result = await controller.getGuardrailProviders();
+
+      const ollama = result.find((p: any) => p.name === 'ollama');
+      expect(ollama.is_default).toBe(true);
+      expect(ollama.default_model).toBe('granite3-guardian:8b');
+    });
+
+    it('should resolve global tenant config when SUPER_ADMIN passes ?tenantKey=__GLOBAL__', async () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'tenantId') return undefined;
+        if (key === 'user') return { roles: ['SUPER_ADMIN'] };
+        return undefined;
+      });
+      mockTenantService.fetchByCodeName.mockResolvedValue({ id: 'global-tenant' });
+      mockTenantService.fetchTenantConfigs.mockResolvedValue({
+        data: [
+          { key: 'default-guardrail-provider', value: 'lm-studio' },
+          { key: 'default-guardrail-model', value: 'granite-guardian-4.1-8b' },
+          { key: 'guardrail-provider-models', value: GUARDRAIL_CATALOG_JSON },
+        ],
+        count: 3,
+        limit: 200,
+        page: 1,
+      });
+
+      const result = await controller.getGuardrailProviders('__GLOBAL__');
+
+      expect(mockTenantService.fetchByCodeName).toHaveBeenCalledWith('__GLOBAL__');
+      expect(mockTenantService.fetchTenantConfigs).toHaveBeenCalledWith({
+        tenantId: 'global-tenant',
+        limit: 200,
+        page: 1,
+      });
+      expect(result.find((p: any) => p.name === 'lm-studio').is_default).toBe(true);
+    });
+
+    it('non-SUPER_ADMIN with ?tenantKey=__GLOBAL__ is FORBIDDEN', async () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'tenantId') return 'tenant-1';
+        if (key === 'user') return { roles: ['DOCTOR'] };
+        return undefined;
+      });
+
+      await expect(controller.getGuardrailProviders('__GLOBAL__')).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
   describe('POST /text/generate/assembled', () => {
     it('should reject when neither context_item_ids nor message is provided', async () => {
       await expect(
@@ -1378,7 +1512,7 @@ describe('SmrProxyController - OpenAPI/Swagger metadata', () => {
 describe('SmrProxyController - Endpoint Security', () => {
   it('should have all mutating endpoints protected', () => {
     const proto = SmrProxyController.prototype;
-    const endpoints = ['generate', 'cancelTask', 'getTaskStatus', 'streamTaskEvents', 'getProviders'];
+    const endpoints = ['generate', 'cancelTask', 'getTaskStatus', 'streamTaskEvents', 'getProviders', 'getGuardrailProviders'];
 
     for (const method of endpoints) {
       const descriptor = Object.getOwnPropertyDescriptor(proto, method);

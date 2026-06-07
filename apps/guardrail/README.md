@@ -234,6 +234,66 @@ criterion) as the final user message after the judged text. The model replies wi
 them. Medical-context validation uses a generic JSON prompt path. All engines fail open on
 timeout/error.
 
+## Per-Tenant Engine Configuration (Admin-Configurable, TASK-338)
+
+By default the engine/model are **env-only** (`GUARDRAIL_V2_PROVIDER` + the per-engine
+`GUARDRAIL_*` vars above). TASK-338 adds an **opt-in** path where the engine/model are
+resolved **per tenant at request time** from the admin console's settings in the database
+— without changing the env-only behavior for existing deployments.
+
+### Enabling DB-driven config
+
+Set `GUARDRAIL_DB_CONFIG_ENABLED=true` and point the service at the shared core DB:
+
+```bash
+# Opt in to per-tenant DB resolution (default: false → env-only behavior)
+GUARDRAIL_DB_CONFIG_ENABLED=true
+
+# Read-only connection to the shared HOPE core DB (postgres:// is normalized to asyncpg)
+GUARDRAIL_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/hope
+
+# Fallback tenant used when X-Tenant-Id is absent or the request tenant has no rows
+# (defaults to the seeded GLOBAL tenant where default guardrail config lives)
+GUARDRAIL_DEFAULT_TENANT_ID=50000000-0000-0000-0000-000000000000
+
+# Resolved-config cache TTL in seconds (default 60)
+GUARDRAIL_CONFIG_CACHE_TTL_S=60
+```
+
+When `GUARDRAIL_DB_CONFIG_ENABLED=false` (the default) the service never touches the DB and
+behaves exactly as the env-only configuration above.
+
+### How resolution works
+
+1. The caller (SMR) forwards the consultation tenant as the **`X-Tenant-Id`** request header
+   to `POST /api/medical/validate`.
+2. The service reads three rows from `core."GlobalSetting"` (SQLAlchemy + asyncpg, read-only,
+   mirroring STT-v2) for that tenant:
+
+   | namespace | key | meaning |
+   |---|---|---|
+   | `guardrail` | `default-guardrail-provider` | `lm-studio` \| `ollama` \| `azure` \| `bedrock` |
+   | `guardrail` | `default-guardrail-model` | model id / slug for the guardian model |
+   | `guardrail` | `guardrail-azure-deployment` | non-secret Azure deployment name (may be empty) |
+
+3. **Resolution order (tenant-level):** request tenant rows → default/system tenant rows →
+   env defaults (`settings.engine`). A request tenant with no guardrail rows defers entirely
+   to the default tenant.
+4. Resolved configs are held in a simple **per-tenant TTL cache (~60s)**, so steady-state
+   request latency is unaffected.
+5. The resolved **provider/model override** only the model selection; `base_url`/`api_key`
+   still come from env (the DB only stores provider, model, and the non-secret Azure
+   deployment name).
+
+DB access is **fail-safe**: any DB error resolves to "no override", so the endpoint
+transparently falls back to the env-selected engine.
+
+### Azure key vs deployment
+
+The Azure **deployment name** is DB-driven (`guardrail-azure-deployment`). The Azure **API
+key stays env/Vault** — it is never stored in a plaintext `GlobalSetting` (admin-set keys are
+blocked on TASK-302 Phase 4D).
+
 ## Architecture
 
 ```

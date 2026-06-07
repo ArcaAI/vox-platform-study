@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AdminApiError } from '../api/admin-client';
 import { useMyTenantConfigs, useTenantConfigs, useUpdateMyTenantConfigs, useUpdateTenantConfigs, type TenantConfig } from '../api/tenants';
 import { ConfigConflictModal } from './conflict-modal';
+import { GuardrailConfigSection } from './guardrail-section';
 
 function tryFormatJsonString(input: string): string {
   try {
@@ -388,6 +389,14 @@ export default function ConfigurationManagementPage() {
           </div>
         )}
       </div>
+      <GuardrailConfigSection
+        configs={configs}
+        isSuperAdmin={isSuperAdmin}
+        effectiveTenantIdentifier={effectiveTenantIdentifier || ''}
+        onSaved={() => {
+          void activeConfigsQuery.refetch();
+        }}
+      />
       <MultiColumnLayout columns={[configColumn, detailColumn]} columnStates={[configState, detailState]} height="calc(100vh - 12rem)" />
       <ConfigConflictModal
         error={conflictErr}

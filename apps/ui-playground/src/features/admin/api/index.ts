@@ -102,6 +102,8 @@ export {
 
 export { adminClient as adminClientWithOptions, type RequestOptions } from './admin-client';
 
+export { guardrailKeys, useGuardrailProviders, type GuardrailProvider } from './guardrail';
+
 export {
   promptKeys,
   useActivatePromptVersion,

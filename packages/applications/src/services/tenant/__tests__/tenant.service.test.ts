@@ -1336,6 +1336,137 @@ describe('TenantService', () => {
         });
     });
 
+    describe('updateTenantConfigs — Guardrail provider/model validation (TASK-338)', () => {
+        const GUARDRAIL_CATALOG_JSON = JSON.stringify([
+            {
+                provider: 'lm-studio',
+                models: [
+                    { name: 'granite-guardian-4.1-8b', size: '4.9 GB' },
+                    { name: 'ibm-granite/granite-guardian-3.2-5b', size: '3.1 GB' },
+                ],
+            },
+            {
+                provider: 'ollama',
+                models: [{ name: 'granite3-guardian:8b', size: '4.9 GB' }],
+            },
+            {
+                provider: 'azure-openai',
+                models: [{ name: 'gpt-4o-mini', size: '' }],
+            },
+        ]);
+
+        it('should reject an invalid default-guardrail-provider not in catalog', async () => {
+            const tenant = createMockTenantEntity({ id: 'tenant-123' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const providerSetting = createMockGlobalSettingEntity({
+                id: 'guardrail-provider-id',
+                tenantId: 'tenant-123',
+                key: 'default-guardrail-provider',
+                value: 'lm-studio',
+            });
+            mockGlobalSettingRepository.findById.mockResolvedValue(providerSetting);
+
+            const catalogSetting = createMockGlobalSettingEntity({
+                id: 'guardrail-catalog-id',
+                tenantId: 'tenant-123',
+                key: 'guardrail-provider-models',
+                value: GUARDRAIL_CATALOG_JSON,
+            });
+            mockGlobalSettingRepository.findAll.mockResolvedValue([catalogSetting]);
+
+            await expect(
+                service.updateTenantConfigs('tenant-123', [
+                    { id: 'guardrail-provider-id', value: 'invalid-provider' },
+                ]),
+            ).rejects.toThrow(/not a valid Guardrail provider/i);
+        });
+
+        it('should reject an invalid default-guardrail-model not in the selected provider catalog', async () => {
+            const tenant = createMockTenantEntity({ id: 'tenant-123' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const modelSetting = createMockGlobalSettingEntity({
+                id: 'guardrail-model-id',
+                tenantId: 'tenant-123',
+                key: 'default-guardrail-model',
+                value: 'granite-guardian-4.1-8b',
+            });
+            mockGlobalSettingRepository.findById.mockResolvedValue(modelSetting);
+
+            const catalogSetting = createMockGlobalSettingEntity({
+                id: 'guardrail-catalog-id',
+                tenantId: 'tenant-123',
+                key: 'guardrail-provider-models',
+                value: GUARDRAIL_CATALOG_JSON,
+            });
+
+            const providerSetting = createMockGlobalSettingEntity({
+                id: 'guardrail-provider-id',
+                tenantId: 'tenant-123',
+                key: 'default-guardrail-provider',
+                value: 'lm-studio',
+            });
+            mockGlobalSettingRepository.findAll.mockResolvedValue([catalogSetting, providerSetting]);
+
+            await expect(
+                service.updateTenantConfigs('tenant-123', [
+                    { id: 'guardrail-model-id', value: 'nonexistent-model' },
+                ]),
+            ).rejects.toThrow(/not a valid model/i);
+        });
+
+        it('should accept a valid guardrail provider from the catalog', async () => {
+            const tenant = createMockTenantEntity({ id: 'tenant-123' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const providerSetting = createMockGlobalSettingEntity({
+                id: 'guardrail-provider-id',
+                tenantId: 'tenant-123',
+                key: 'default-guardrail-provider',
+                value: 'lm-studio',
+                hasChanges: true,
+                changes: { value: 'ollama' },
+            });
+            mockGlobalSettingRepository.findById.mockResolvedValue(providerSetting);
+            mockGlobalSettingRepository.updateWithVersion.mockResolvedValue(providerSetting);
+
+            const catalogSetting = createMockGlobalSettingEntity({
+                id: 'guardrail-catalog-id',
+                tenantId: 'tenant-123',
+                key: 'guardrail-provider-models',
+                value: GUARDRAIL_CATALOG_JSON,
+            });
+            mockGlobalSettingRepository.findAll.mockResolvedValue([catalogSetting]);
+
+            const result = await service.updateTenantConfigs('tenant-123', [
+                { id: 'guardrail-provider-id', value: 'ollama', expectedVersion: 1 } as never,
+            ]);
+
+            expect(result.data).toHaveLength(1);
+        });
+
+        it('should reject a locked guardrail setting for a non-super-admin', async () => {
+            const tenant = createMockTenantEntity({ id: 'tenant-123' });
+            mockTenantRepository.findFirst.mockResolvedValue(tenant);
+
+            const lockedProvider = createMockGlobalSettingEntity({
+                id: 'guardrail-provider-id',
+                tenantId: 'tenant-123',
+                key: 'default-guardrail-provider',
+                value: 'lm-studio',
+                locked: true,
+            });
+            mockGlobalSettingRepository.findById.mockResolvedValue(lockedProvider);
+
+            await expect(
+                service.updateTenantConfigs('tenant-123', [
+                    { id: 'guardrail-provider-id', value: 'ollama' },
+                ]),
+            ).rejects.toThrow(/locked/i);
+        });
+    });
+
     /* =================================================================
      * TASK-258 — Tenant config provisioning, locked enforcement, and
      * identifier disambiguation. See

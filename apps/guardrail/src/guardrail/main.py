@@ -47,6 +47,34 @@ async def lifespan(app: FastAPI):
     redis_client = aioredis.from_url(settings.redis.redis_url, decode_responses=True)
     app.state.redis = redis_client
 
+    # Per-tenant config resolver (TASK-338, Q3c). Only initialized when DB-config
+    # is enabled; otherwise the env-only engine path below is used unchanged.
+    if not hasattr(app.state, "tenant_config_resolver"):
+        app.state.tenant_config_resolver = None
+    if settings.db.db_config_enabled and app.state.tenant_config_resolver is None:
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        from guardrail.core.tenant_config import TenantConfigResolver
+
+        db_engine = create_async_engine(
+            settings.db.database_url,
+            pool_size=settings.db.pool_size,
+            max_overflow=settings.db.max_overflow,
+            pool_pre_ping=True,
+        )
+        app.state.tenant_config_engine = db_engine
+        session_factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+        app.state.tenant_config_resolver = TenantConfigResolver(
+            session_factory=session_factory,
+            default_tenant_id=settings.db.default_tenant_id,
+            cache_ttl_s=settings.db.config_cache_ttl_s,
+        )
+        logger.info(
+            "guardrail.tenant_config_enabled",
+            default_tenant_id=settings.db.default_tenant_id,
+            cache_ttl_s=settings.db.config_cache_ttl_s,
+        )
+
     # Initialize the LLM engine providers based on the selected provider.
     # lm-studio (default) | azure | bedrock run over the OpenAI-compatible chat API;
     # ollama uses its native API. The content provider keeps the historical
@@ -137,6 +165,9 @@ async def lifespan(app: FastAPI):
 
     if hasattr(app.state, "redis") and app.state.redis:
         await app.state.redis.close()
+
+    if getattr(app.state, "tenant_config_engine", None) is not None:
+        await app.state.tenant_config_engine.dispose()
 
 
 def create_app() -> FastAPI:

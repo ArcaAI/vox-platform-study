@@ -47,6 +47,39 @@ GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MIN_CONFIDENCE=0.75
 To use the optional Ollama engine instead, set `GUARDRAIL_V2_PROVIDER=ollama` and configure
 the `GUARDRAIL_OLLAMA_*` block.
 
+### 1b. Per-Tenant DB Configuration (TASK-338, optional)
+
+The variables above are **env-only**. To let administrators choose the engine/model **per
+tenant** through the admin console, opt in to DB-driven resolution:
+
+```bash
+# Default: false → env-only behavior (unchanged). Set true to resolve per tenant from DB.
+GUARDRAIL_DB_CONFIG_ENABLED=true
+# Read-only connection to the shared HOPE core DB (postgres:// auto-normalized to asyncpg).
+GUARDRAIL_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/hope
+# Fallback tenant when X-Tenant-Id is absent or the request tenant has no rows.
+GUARDRAIL_DEFAULT_TENANT_ID=50000000-0000-0000-0000-000000000000
+# Resolved-config cache TTL (seconds).
+GUARDRAIL_CONFIG_CACHE_TTL_S=60
+```
+
+When enabled, the service resolves the guardian provider/model at request time by reading
+`core."GlobalSetting"` (read-only SQLAlchemy + asyncpg, mirroring STT-v2):
+
+| namespace | key | meaning |
+|---|---|---|
+| `guardrail` | `default-guardrail-provider` | `lm-studio` \| `ollama` \| `azure` \| `bedrock` |
+| `guardrail` | `default-guardrail-model` | guardian model id / slug |
+| `guardrail` | `guardrail-azure-deployment` | non-secret Azure deployment name (may be empty) |
+
+- **Tenant selection** comes from the **`X-Tenant-Id`** request header (OQ1).
+- **Resolution order:** request tenant rows → default/system tenant rows → env defaults.
+- A **~60s per-tenant TTL cache** keeps steady-state latency unaffected (OQ2).
+- `base_url`/`api_key` always come from env; the DB only carries provider, model, and the
+  non-secret Azure deployment name. The **Azure API key stays env/Vault** (never stored in a
+  plaintext `GlobalSetting`).
+- DB access is **fail-safe**: any error falls back to the env-selected engine.
+
 ### 2. Recommended Models
 
 **Default (LM Studio):**
@@ -70,6 +103,12 @@ ollama pull gemma3:latest
 ### Primary: Medical Validation
 
 **Endpoint:** `POST /api/medical/validate`
+
+**Headers (optional):**
+- `X-Tenant-Id`: consultation tenant. When `GUARDRAIL_DB_CONFIG_ENABLED=true`, this selects
+  the per-tenant guardian provider/model (see §1b). Ignored in env-only mode. SMR forwards
+  the consultation tenant here automatically.
+- `X-Service-Token`: inter-service auth token (when configured).
 
 **Request:**
 ```json

@@ -111,6 +111,13 @@ interface ProviderCatalogEntry {
   models: ProviderCatalogModel[];
 }
 
+// TASK-338 — the per-engine GlobalSetting keys that back a provider listing.
+interface ProviderSettingKeys {
+  providerKey: string;
+  modelKey: string;
+  catalogKey: string;
+}
+
 @ApiTags('text')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
@@ -271,11 +278,27 @@ export class SmrProxyController {
       .filter((model) => model.name.length > 0);
   }
 
+  // TASK-338 — the provider/model/catalog setting keys differ per engine
+  // (SMR vs Guardrail). `buildProvidersFromTenantSettings` is parameterised on
+  // these keys so the same shaping logic backs both `/providers` and
+  // `/guardrail-providers`. Defaults preserve the original SMR behaviour.
+  private static readonly SMR_PROVIDER_KEYS: ProviderSettingKeys = {
+    providerKey: 'default-smr-provider',
+    modelKey: 'default-smr-model',
+    catalogKey: 'smr-provider-models',
+  };
+
+  private static readonly GUARDRAIL_PROVIDER_KEYS: ProviderSettingKeys = {
+    providerKey: 'default-guardrail-provider',
+    modelKey: 'default-guardrail-model',
+    catalogKey: 'guardrail-provider-models',
+  };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private buildProvidersFromTenantSettings(settings: TenantSettingLike[]): any[] {
-    const defaultProvider = settings.find((setting) => setting.key === 'default-smr-provider')?.value?.trim();
-    const defaultModelRaw = settings.find((setting) => setting.key === 'default-smr-model')?.value;
-    const catalogRaw = settings.find((setting) => setting.key === 'smr-provider-models')?.value;
+  private buildProvidersFromTenantSettings(settings: TenantSettingLike[], keys: ProviderSettingKeys = SmrProxyController.SMR_PROVIDER_KEYS): any[] {
+    const defaultProvider = settings.find((setting) => setting.key === keys.providerKey)?.value?.trim();
+    const defaultModelRaw = settings.find((setting) => setting.key === keys.modelKey)?.value;
+    const catalogRaw = settings.find((setting) => setting.key === keys.catalogKey)?.value;
 
     const catalog = this.parseProviderCatalog(catalogRaw);
     if (catalog && catalog.length > 0) {
@@ -892,5 +915,34 @@ export class SmrProxyController {
       });
       return [];
     }
+  }
+
+  // TASK-338 — admin-configurable Guardrail engine. Mirrors `GET /providers`
+  // but reads the `guardrail` namespace settings + the `guardrail-provider-models`
+  // catalog. There is no upstream-service fallback: the Guardrail catalog is
+  // always seeded per-tenant, so an empty result simply means "not configured".
+  @Get('guardrail-providers')
+  @Authorize()
+  @ApiOperation({
+    summary:
+      'List configured Guardrail LLM providers/models from tenant settings. ' +
+      `SUPER_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=${GLOBAL_TENANT_KEY}.`,
+  })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async getGuardrailProviders(@Query('tenantKey') tenantKey?: string): Promise<any[]> {
+    const tenantId = await this.resolveTenantId(tenantKey);
+    const configs = await this.tenantService.fetchTenantConfigs({
+      tenantId,
+      limit: TENANT_PROVIDER_SETTINGS_LIMIT,
+      page: 1,
+    });
+
+    return this.buildProvidersFromTenantSettings(
+      configs.data.map((setting) => ({
+        key: setting.key,
+        value: setting.value,
+      })),
+      SmrProxyController.GUARDRAIL_PROVIDER_KEYS,
+    );
   }
 }

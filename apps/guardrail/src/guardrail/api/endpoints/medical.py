@@ -10,7 +10,11 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from guardrail.core.config import Settings
-from guardrail.core.dependencies import get_guardian_provider, get_settings
+from guardrail.core.dependencies import (
+    get_guardian_provider,
+    get_resolved_guardian_provider,
+    get_settings,
+)
 
 router = APIRouter()
 
@@ -48,7 +52,7 @@ class BatchMedicalValidationRequest(BaseModel):
 async def validate_medical_context(
     request: MedicalValidationRequest,
     settings: Settings = Depends(get_settings),
-    guardian_provider=Depends(get_guardian_provider),
+    guardian_provider=Depends(get_resolved_guardian_provider),
 ) -> MedicalValidationResponse:
     """
     Validate if text contains medical context using the Guardian model.
@@ -98,7 +102,7 @@ async def validate_medical_context(
 async def validate_batch_medical_context(
     request: BatchMedicalValidationRequest,
     settings: Settings = Depends(get_settings),
-    guardian_provider=Depends(get_guardian_provider),
+    guardian_provider=Depends(get_resolved_guardian_provider),
 ) -> list[MedicalValidationResponse]:
     """Validate multiple texts for medical context."""
     start_time = time.monotonic()

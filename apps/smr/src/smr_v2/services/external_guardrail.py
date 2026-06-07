@@ -25,7 +25,12 @@ class ExternalGuardrailClient:
         self.http_client = http_client
         self.base_url = settings.base_url.rstrip("/")
 
-    async def validate(self, prompt: str, system_prompt: str | None = None) -> dict[str, Any]:
+    async def validate(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
         if not self.settings.enabled:
             return {
                 "allowed": True,
@@ -39,6 +44,10 @@ class ExternalGuardrailClient:
         service_token = self.settings.service_token.get_secret_value()
         if service_token:
             headers["X-Service-Token"] = service_token
+        # Forward the consultation tenant so guardrail can resolve per-tenant
+        # provider/model from the DB (TASK-338, OQ1).
+        if tenant_id:
+            headers["X-Tenant-Id"] = tenant_id
 
         try:
             response = await self.http_client.post(
