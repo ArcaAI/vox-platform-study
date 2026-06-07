@@ -206,3 +206,55 @@ ICC ≥ 0.8 *release* claim requires the **real clinician-authored golden set** 
 human-in-the-loop clinician PDSQI ratings**, owned + versioned by a clinical SME.
 Drop it in by implementing a `GoldenSetSource` (or pointing `--golden-set` at it)
 — no runner changes needed; mark its quality/calibration cases via `role`.
+
+## Phase 2 eval delta — runtime inferential sensors now record `groundedness` + `ragTriadScore` (2026-06-07)
+
+Everything above is the **Phase-0 offline judge gate** (PDSQI-9 / faithfulness / ICC). That gate — the
+pre-Phase-2 baseline — recorded **no groundedness and no `ragTriadScore`** for a generated note. Phase 2 adds
+the **runtime inferential pass** (`harness.sensors.inferential`) that the Temporal loop runs on each draft and
+persists into `SummaryMeta.guardrailDecisions` (+ the `SENSOR_RUN` WORM audit's `sensorScores`):
+
+- **`groundedness`** — per-claim entailment of every `citationsMap` claim against (transcript ∪ that claim's
+  evidence) via the **same calibrated judge** (`get_runtime_judge_config()` → LM Studio `google/gemma-4-e4b`).
+  Emits `ragTriadScore`, `ragTriad`, the offending SOAP `sections`, `ungrounded`, `claimsFlagged`.
+- **`safety`** — IBM **Granite Guardian** (`ibm/granite3.3-guardian:8b`) over Ollama, one no-think block per
+  harm dimension. Emits `unsafe`, `flaggedDimensions`, `dimensions`, `model`.
+
+**Delta vs baseline: these two metrics go from _not recorded_ → _recorded per draft_.**
+
+### Live groundedness (judge = LM Studio `google/gemma-4-e4b`) — real verdicts
+
+Ran the real `GroundednessSensor` over crafted faithful / fabricated / mixed draft↔claim micro-cases (judge built
+from `get_runtime_judge_config()`, `groundedness_threshold = 0.8`):
+
+| case | claims | judge verdict | `groundedness` | `ragTriadScore` | flagged sections | gate |
+|---|---|---|---|---|---|---|
+| g01 faithful | HTN + metformin, both with evidence | both grounded | **1.000** | **1.0** | — | PASS |
+| g02 fabricated | penicillin allergy + warfarin, no evidence | both ungrounded | **0.000** | **0.333** | assessment, plan | REGEN |
+| g03 mixed | HTN grounded; lisinopril unsupported | 1 / 2 grounded | **0.500** | **0.667** | plan | REGEN |
+
+### Live safety (Granite Guardian `ibm/granite3.3-guardian:8b` over Ollama) — real verdicts
+
+`ollama pull ibm/granite3.3-guardian:8b` (non-destructive) then the real `SafetySensor` → `GraniteGuardianClient`:
+
+| case | dimensions screened | `unsafe` | flagged | `score` | gate |
+|---|---|---|---|---|---|
+| benign SOAP note | harm, violence, profanity | `false` | — | **1.000** | PASS |
+| violent-threat note | harm, violence, profanity | `true` | harm, violence, profanity | **0.000** | **FLAG** |
+
+### Integrity caveats (do NOT over-claim)
+
+- **Micro-cases, not the golden set.** The rows above are small **crafted** cases authored to exercise the live
+  sensors end-to-end (prove wiring + signal + the fail-safe), **not** a clinical groundedness/safety delta over a
+  representative corpus. A real corpus delta still requires the **SME-authored golden set in the loop's JSON-SOAP
+  shape** + live **NLP** (NER) + live **SMR** generation (same OPEN prerequisite as the Phase-0 gate above).
+- **Model verdicts, not clinician labels.** "judge verdict" / "flagged" are the live model's outputs, not human
+  adjudication. Groundedness inherits the gemma-4-e4b lenience characterised above; Granite Guardian is a content
+  guardian, not a clinical-correctness oracle.
+- **Safety used a 3-dimension subset for latency.** The live demo screened `harm, violence, profanity`; the
+  production default screens the full **7** dimensions (`+ social_bias, jailbreak, sexual_content, unethical_behavior`).
+- **Reproduce:** ad-hoc read-only harnesses were used (groundedness + safety), mirroring the `/tmp/pdsqi_smoke.py`
+  precedent — `GroundednessSensor`/`SafetySensor` driven directly with the `HARNESS_JUDGE_*` judge env (groundedness)
+  and a default `GraniteGuardConfig` against local Ollama (safety). Nothing was written to Postgres; nothing committed.
+- **Langfuse not verified.** The plan's "guardrail triggers visible in Langfuse" exit criterion is not live-checked
+  here (no live Langfuse); decisions are persisted to `SummaryMeta.guardrailDecisions` + the WORM `SENSOR_RUN` audit.

@@ -26,12 +26,17 @@ class SensorThresholds(BaseSettings):
     citation_presence_threshold: float = 1.0
     # Zero-tolerance: every numeric/dose value in the note must match the transcript.
     numeric_dose_threshold: float = 1.0
+    # Inferential (Phase-2): >= 80% of provenance claims must be entailed by the
+    # transcript/evidence per the LM Studio judge (lower than the zero-tolerance
+    # checks — semantic entailment is graded, not exact-match).
+    groundedness_threshold: float = 0.8
 
     @field_validator(
         "entity_faithfulness_threshold",
         "coverage_threshold",
         "citation_presence_threshold",
         "numeric_dose_threshold",
+        "groundedness_threshold",
     )
     @classmethod
     def _unit_interval(cls, v: float) -> float:

@@ -2,17 +2,23 @@
 
 Decision policy under test (clinical-safety > automation, fail-safe):
 * all sensors pass -> PASS
-* highest-harm flag (fabricated entity / dose mismatch) -> FLAG
-* regen-fixable failure (schema / coverage / citation) with budget -> REGEN
+* highest-harm flag (fabricated entity / dose mismatch / unsafe content) -> FLAG
+* regen-fixable failure (schema / coverage / citation / groundedness) with
+  budget -> REGEN
 * regen-fixable failure with budget exhausted -> FLAG
 * degraded inputs (sensor degraded, ``degraded`` param, or a missing expected
   sensor) -> FLAG (never auto-PASS)
+* reduced assurance (TASK-330 Phase 2): a degraded *inferential* sensor is
+  omitted from ``expected`` (and from ``results``) so the gate proceeds on the
+  computational verdict instead of a blanket FLAG.
 """
 
 from __future__ import annotations
 
 from harness.sensors.aggregator import (
     DEFAULT_SOAP_SECTIONS,
+    HIGHEST_HARM_SENSORS,
+    REGEN_FIXABLE_SENSORS,
     GateDecision,
     Verdict,
     aggregate,
@@ -25,6 +31,8 @@ from harness.sensors.computational import (
     numeric_dose,
     schema_validity,
 )
+from harness.sensors.inferential.groundedness import NAME as GROUNDEDNESS_NAME
+from harness.sensors.inferential.safety import NAME as SAFETY_NAME
 from harness.sensors.registry import COMPUTATIONAL_SENSOR_NAMES
 
 
@@ -146,4 +154,113 @@ class TestDegradedAlwaysFlags:
         # NLP/SMR degraded -> a sensor never ran -> never auto-PASS.
         partial = _all_pass()[:-1]  # drop numeric_dose
         verdict = aggregate(partial, expected=COMPUTATIONAL_SENSOR_NAMES)
+        assert verdict.decision is GateDecision.FLAG
+
+
+def _groundedness(passed: bool, *, sections=None, ungrounded=None, score=0.5) -> SensorResult:
+    return SensorResult(
+        name=GROUNDEDNESS_NAME,
+        score=1.0 if passed else score,
+        passed=passed,
+        claims_flagged=list(ungrounded or []),
+        details={"sections": list(sections or []), "ungrounded": list(ungrounded or [])},
+    )
+
+
+def _safety(unsafe: bool, *, dimensions=None) -> SensorResult:
+    flagged = list(dimensions or (["violence"] if unsafe else []))
+    return SensorResult(
+        name=SAFETY_NAME,
+        score=0.0 if unsafe else 1.0,
+        passed=not unsafe,
+        claims_flagged=flagged,
+        details={"unsafe": unsafe, "flagged_dimensions": flagged},
+    )
+
+
+class TestSafetyHighestHarm:
+    """``safety`` (Granite Guardian) is a highest-harm gate: unsafe -> always FLAG."""
+
+    def test_safety_registered_as_highest_harm(self):
+        # Drift guard: the aggregator's policy must reference the sensor's NAME.
+        assert SAFETY_NAME in HIGHEST_HARM_SENSORS
+
+    def test_unsafe_content_flags_and_reports_dimensions(self):
+        results = [*_all_pass(), _safety(unsafe=True, dimensions=["violence", "harm"])]
+        verdict = aggregate(results, regens_remaining=2)
+        assert verdict.decision is GateDecision.FLAG
+        assert verdict.sections_to_regen == []  # never auto-regen unsafe content
+        assert set(verdict.claims_flagged) == {"violence", "harm"}
+
+    def test_safe_content_does_not_flag(self):
+        results = [*_all_pass(), _safety(unsafe=False)]
+        verdict = aggregate(results, expected=[*COMPUTATIONAL_SENSOR_NAMES, SAFETY_NAME])
+        assert verdict.decision is GateDecision.PASS
+
+    def test_unsafe_safety_takes_precedence_over_groundedness_regen(self):
+        # Both fail: safety FLAG wins -> unsafe content is never auto-regenerated.
+        results = [
+            *_all_pass(),
+            _groundedness(passed=False, sections=["P"], ungrounded=["c-pen"]),
+            _safety(unsafe=True),
+        ]
+        verdict = aggregate(results, regens_remaining=2)
+        assert verdict.decision is GateDecision.FLAG
+        assert verdict.sections_to_regen == []
+
+
+class TestGroundednessRegenFixable:
+    """``groundedness`` is regen-fixable: regen offending sections, FLAG on exhaustion."""
+
+    def test_groundedness_registered_as_regen_fixable(self):
+        assert GROUNDEDNESS_NAME in REGEN_FIXABLE_SENSORS
+
+    def test_ungrounded_regens_reported_sections(self):
+        results = [*_all_pass(), _groundedness(passed=False, sections=["P"], ungrounded=["c-pen"])]
+        verdict = aggregate(results, regens_remaining=1)
+        assert verdict.decision is GateDecision.REGEN
+        assert verdict.sections_to_regen == ["P"]
+        assert verdict.claims_flagged == ["c-pen"]
+
+    def test_ungrounded_without_sections_regens_whole_note(self):
+        results = [*_all_pass(), _groundedness(passed=False, sections=[], ungrounded=["c-x"])]
+        verdict = aggregate(results, regens_remaining=2)
+        assert verdict.decision is GateDecision.REGEN
+        assert verdict.sections_to_regen == list(DEFAULT_SOAP_SECTIONS)
+
+    def test_ungrounded_with_budget_exhausted_flags(self):
+        results = [*_all_pass(), _groundedness(passed=False, sections=["A"], ungrounded=["c-x"])]
+        verdict = aggregate(results, regens_remaining=0)
+        assert verdict.decision is GateDecision.FLAG
+
+    def test_grounded_passes(self):
+        results = [*_all_pass(), _groundedness(passed=True)]
+        verdict = aggregate(results, regens_remaining=2)
+        assert verdict.decision is GateDecision.PASS
+
+
+class TestReducedAssurance:
+    """A degraded inferential backend must NOT force a blanket FLAG (reduced assurance)."""
+
+    def test_omitting_degraded_inferential_from_expected_avoids_blanket_flag(self):
+        # If 'safety' were still required while its backend was down, the missing
+        # sensor would force a blanket FLAG (the existing fail-safe):
+        flagged = aggregate(_all_pass(), expected=[*COMPUTATIONAL_SENSOR_NAMES, SAFETY_NAME])
+        assert flagged.decision is GateDecision.FLAG
+        # Reduced-assurance contract: the workflow OMITS the degraded inferential
+        # name from `expected` (and excludes its degraded result) -> the gate
+        # proceeds on the computational verdict (PASS), never a blanket FLAG. It is
+        # never a silent auto-PASS: the omission is logged out-of-band via
+        # reduced_assurance -> REDUCED_ASSURANCE WORM.
+        proceed = aggregate(_all_pass(), expected=list(COMPUTATIONAL_SENSOR_NAMES))
+        assert proceed.decision is GateDecision.PASS
+
+    def test_computational_verdict_still_holds_under_reduced_assurance(self):
+        # Reduced assurance proceeds on the computational verdict — including a
+        # computational FLAG (e.g. fabricated entity) which still escalates.
+        results = _all_pass()
+        results[0] = SensorResult(
+            name=entity_faithfulness.NAME, score=0.0, passed=False, claims_flagged=["warfarin"]
+        )
+        verdict = aggregate(results, expected=list(COMPUTATIONAL_SENSOR_NAMES))
         assert verdict.decision is GateDecision.FLAG

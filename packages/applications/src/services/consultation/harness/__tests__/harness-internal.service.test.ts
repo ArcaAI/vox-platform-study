@@ -256,6 +256,7 @@ describe('HarnessInternalService', () => {
             entityFaithfulnessScore: 0.95,
             coverageScore: 0.9,
             ragTriadScore: 0.92,
+            guardrailDecisions: { safety: { verdict: 'pass', harms: [] }, groundedness: { score: 0.88 } },
             promptTemplateId: 'prompt-tpl-1',
             promptVersion: '3',
             gateDecision: 'PASS',
@@ -281,6 +282,7 @@ describe('HarnessInternalService', () => {
                     coverageScore: 0.9,
                     ragTriadScore: 0.92,
                     citationsMap: { claims: [{ id: 'c1', status: 'verified' }] },
+                    guardrailDecisions: { safety: { verdict: 'pass', harms: [] }, groundedness: { score: 0.88 } },
                     modelName: 'gpt-x',
                     promptVersion: '3',
                 }),
@@ -309,7 +311,40 @@ describe('HarnessInternalService', () => {
             expect(sensorEvent.sensorScores).toEqual(
                 expect.objectContaining({ entityFaithfulness: 0.95, coverage: 0.9 }),
             );
+            // SENSOR_RUN carries the guardrail/sensor decisions alongside the sensor scores.
+            expect(sensorEvent.sensorScores).toEqual(
+                expect.objectContaining({
+                    guardrailDecisions: { safety: { verdict: 'pass', harms: [] }, groundedness: { score: 0.88 } },
+                }),
+            );
             expect(sensorEvent.gateDecision).toBe('PASS');
+        });
+
+        it('does not append a REDUCED_ASSURANCE event when reducedAssurance is not set', async () => {
+            await service.persistDraft('consultation-1', draftBody());
+
+            expect(harnessAuditService.append).toHaveBeenCalledTimes(2);
+            const actions = harnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
+            expect(actions).not.toContain(HarnessAuditAction.REDUCED_ASSURANCE);
+        });
+
+        it('appends a REDUCED_ASSURANCE WORM event when reducedAssurance is true', async () => {
+            await service.persistDraft('consultation-1', { ...draftBody(), reducedAssurance: true });
+
+            expect(harnessAuditService.append).toHaveBeenCalledTimes(3);
+            const actions = harnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
+            expect(actions).toContain(HarnessAuditAction.GENERATE);
+            expect(actions).toContain(HarnessAuditAction.SENSOR_RUN);
+            expect(actions).toContain(HarnessAuditAction.REDUCED_ASSURANCE);
+
+            const reducedEvent = harnessAuditService.append.mock.calls
+                .map((c: any[]) => c[0])
+                .find((e: any) => e.action === HarnessAuditAction.REDUCED_ASSURANCE);
+            expect(reducedEvent.sensorScores).toEqual(
+                expect.objectContaining({
+                    guardrailDecisions: { safety: { verdict: 'pass', harms: [] }, groundedness: { score: 0.88 } },
+                }),
+            );
         });
 
         it('emits SSE progress via notifyProgress when a jobId is supplied', async () => {

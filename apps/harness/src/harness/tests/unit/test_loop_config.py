@@ -7,10 +7,33 @@ path prefix, the bounded-regen budget, and the gate SLA / escalation durations.
 
 from __future__ import annotations
 
+import pytest
+
 from harness.core.config import Settings
+
+# HARNESS_* keys these tests assert *code defaults* for. Importing ``harness.main``
+# (via the test conftest) eagerly loads the gitignored dev ``.env`` into
+# ``os.environ`` (module-level ``app = create_app()`` -> ``get_settings()`` ->
+# ``_load_dotenv_into_environ()``), so a dev box that points e.g. SMR at a
+# non-standard port would otherwise leak into these default assertions.
+_DEFAULTED_ENV_KEYS = (
+    "HARNESS_SMR_BASE_URL",
+    "HARNESS_NLP_BASE_URL",
+    "HARNESS_API_BASE_URL",
+    "HARNESS_API_INTERNAL_PREFIX",
+    "HARNESS_MAX_REGEN",
+    "HARNESS_GATE_SLA_SECONDS",
+    "HARNESS_GATE_ESCALATION_SECONDS",
+)
 
 
 class TestLoopConfigDefaults:
+    @pytest.fixture(autouse=True)
+    def _hermetic_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Isolate the default assertions from any ambient ``.env`` override."""
+        for key in _DEFAULTED_ENV_KEYS:
+            monkeypatch.delenv(key, raising=False)
+
     def test_tool_service_base_urls_default_to_local_ports(self):
         s = Settings()
         assert s.smr_base_url == "http://localhost:8862"

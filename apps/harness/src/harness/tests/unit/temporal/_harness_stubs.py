@@ -15,6 +15,8 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from harness.sensors.base import NEREntity, SensorResult
+from harness.sensors.inferential import GROUNDEDNESS_NAME, SAFETY_NAME
+from harness.sensors.inferential.base import degraded_result
 from harness.sensors.registry import COMPUTATIONAL_SENSOR_NAMES
 from harness.services.api_client import (
     AssembleResponse,
@@ -31,9 +33,11 @@ from harness.temporal.models import (
     EscalateResult,
     ExtractEntitiesInput,
     GenerateInput,
+    InferentialRunOutput,
     PersistDraftInput,
     PersistEntitiesInput,
     RecordGateInput,
+    RunInferentialSensorsInput,
     RunSensorsInput,
 )
 
@@ -48,6 +52,13 @@ class StubConfig:
     nlp_fails: bool = False
     generate_fails: bool = False
     note_content: str = _OK_NOTE
+    # Inferential pass (Phase 2): one kind per ``run_inferential_sensors`` invocation
+    # (clamped to the last when there are more invocations than entries). Kinds:
+    # "SAFE" (groundedness + safety pass), "UNSAFE" (safety FLAG), "REGEN"
+    # (groundedness regen-fixable), "DEGRADED" (backend unavailable -> reduced
+    # assurance). ``inferential_fails`` makes the activity raise (infra failure).
+    inferential_verdicts: list[str] = field(default_factory=lambda: ["SAFE"])
+    inferential_fails: bool = False
 
 
 @dataclass
@@ -59,6 +70,7 @@ class StubRecorder:
     persist_draft_inputs: list[PersistDraftInput] = field(default_factory=list)
     record_inputs: list[RecordGateInput] = field(default_factory=list)
     escalate_inputs: list[EscalateInput] = field(default_factory=list)
+    inferential_inputs: list[RunInferentialSensorsInput] = field(default_factory=list)
 
 
 def _ok(name: str) -> SensorResult:
@@ -96,6 +108,87 @@ def _results_for(kind: str) -> list[SensorResult]:
             _ok("numeric_dose"),
         ]
     raise ValueError(f"unknown verdict kind: {kind}")
+
+
+def _inferential_for(kind: str) -> InferentialRunOutput:
+    """Build an inferential pass output that drives the workflow's final aggregate."""
+    if kind == "SAFE":
+        results = [
+            SensorResult(name=GROUNDEDNESS_NAME, score=1.0, passed=True),
+            SensorResult(name=SAFETY_NAME, score=1.0, passed=True),
+        ]
+        return InferentialRunOutput(
+            results=results,
+            guardrail_decisions={
+                GROUNDEDNESS_NAME: {"decision": "PASS", "passed": True},
+                SAFETY_NAME: {"decision": "PASS", "passed": True, "dimensions": {"harm": False}},
+            },
+            rag_triad_score=1.0,
+            degraded=False,
+        )
+    if kind == "UNSAFE":
+        # safety (highest-harm) fails -> always FLAG, never auto-regen.
+        results = [
+            SensorResult(name=GROUNDEDNESS_NAME, score=1.0, passed=True),
+            SensorResult(
+                name=SAFETY_NAME,
+                score=0.0,
+                passed=False,
+                claims_flagged=["violence"],
+                details={"unsafe": True, "flagged_dimensions": ["violence"]},
+            ),
+        ]
+        return InferentialRunOutput(
+            results=results,
+            guardrail_decisions={
+                GROUNDEDNESS_NAME: {"decision": "PASS", "passed": True},
+                SAFETY_NAME: {
+                    "decision": "FLAG",
+                    "passed": False,
+                    "unsafe": True,
+                    "flaggedDimensions": ["violence"],
+                },
+            },
+            rag_triad_score=1.0,
+            degraded=False,
+        )
+    if kind == "REGEN":
+        # groundedness (regen-fixable) fails, names the Plan section.
+        results = [
+            SensorResult(
+                name=GROUNDEDNESS_NAME,
+                score=0.5,
+                passed=False,
+                claims_flagged=["c-ungrounded"],
+                details={"sections": ["P"], "ungrounded": ["c-ungrounded"]},
+            ),
+            SensorResult(name=SAFETY_NAME, score=1.0, passed=True),
+        ]
+        return InferentialRunOutput(
+            results=results,
+            guardrail_decisions={
+                GROUNDEDNESS_NAME: {"decision": "REGEN", "passed": False, "sections": ["P"]},
+                SAFETY_NAME: {"decision": "PASS", "passed": True},
+            },
+            rag_triad_score=0.5,
+            degraded=False,
+        )
+    if kind == "DEGRADED":
+        # Both inferential backends down -> degraded -> reduced assurance.
+        results = [
+            degraded_result(GROUNDEDNESS_NAME, "judge offline"),
+            degraded_result(SAFETY_NAME, "granite offline"),
+        ]
+        return InferentialRunOutput(
+            results=results,
+            guardrail_decisions={
+                GROUNDEDNESS_NAME: {"decision": "DEGRADED", "degraded": True},
+                SAFETY_NAME: {"decision": "DEGRADED", "degraded": True},
+            },
+            rag_triad_score=None,
+            degraded=True,
+        )
+    raise ValueError(f"unknown inferential kind: {kind}")
 
 
 def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
@@ -161,6 +254,16 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
             soap_sections={},
         )
 
+    @activity.defn(name="run_inferential_sensors")
+    async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> InferentialRunOutput:
+        i = recorder.calls["run_inferential_sensors"]
+        recorder.calls["run_inferential_sensors"] += 1
+        recorder.inferential_inputs.append(payload)
+        if config.inferential_fails:
+            raise ApplicationError("inferential pass unavailable", non_retryable=True)
+        kind = config.inferential_verdicts[min(i, len(config.inferential_verdicts) - 1)]
+        return _inferential_for(kind)
+
     @activity.defn(name="persist_draft")
     async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
         recorder.calls["persist_draft"] += 1
@@ -185,6 +288,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         assemble_prompt,
         generate,
         run_sensors,
+        run_inferential_sensors,
         persist_draft,
         record_gate_decision,
         escalate_gate,

@@ -83,6 +83,18 @@ eval-ragas = [
     "ragas>=0.2",
 ]
 
+# Phase-2 guardrails (TASK-330): fail-closed PHI redaction (Presidio analyzer +
+# anonymizer + a clinical spaCy NER recognizer). The Granite Guardian safety
+# sensor speaks HTTP to a local Ollama, so it needs NO new dependency (it reuses
+# httpx). Kept opt-in like `eval` so the base service install stays slim; presidio
+# is imported lazily and the PHI guard fails CLOSED when it is absent. NOTE: this
+# install does NOT pull a spaCy model — the PHI agent downloads the model it needs.
+guardrails = [
+    "presidio-analyzer>=2.2.362",
+    "presidio-anonymizer>=2.2.362",
+    "spacy>=3.7",
+]
+
 lint = [
     "black>=26.1.0",
     "ruff>=0.15.7",

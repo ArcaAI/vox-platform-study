@@ -5,7 +5,7 @@
 | Ticket | TASK-330 |
 | Companion | [`README.md`](./README.md) (HLD v3) · [`research/clinical-harness/`](../../../research/clinical-harness/README.md) (research, 182 sources) |
 | Created | 2026-06-06 |
-| Status | **Review** — awaiting approval (Phase-3 gate). **No code until approved.** |
+| Status | **Phases 0–2 implemented (uncommitted)** — Phase 2 (inferential sensors + layered guardrails) **verified end-to-end 2026-06-07** (README §9; with the documented deviations under Phase 2 below). Phases 3–5 pending. |
 | Method | TDD red-green-refactor; layer order Database → Domain → Services → API → Python (`01-development-workflow.mdc`) |
 | Durability | **Temporal** (D11) · Stack | **SOTA adopt** (D12) |
 
@@ -148,9 +148,23 @@ note has an attestation event + provenance map; structured SOAP active.
 
 ---
 
-### Phase 2 — Inferential sensors + layered guardrails
+### Phase 2 — Inferential sensors + layered guardrails  ✅ implemented + verified (2026-06-07)
 **Objective:** add semantic groundedness + safety; replace SMR regex guardrails; fail-closed PHI.
 **Depends on:** Phase 1.
+
+> **Status: ✅ implemented + verified end-to-end 2026-06-07** (README §9). Evidence: harness pytest **316 ✓**,
+> applications harness **21 ✓**, apps/api harness controller+guard **12 ✓**, ReadLints/ruff clean; **live eval-delta**
+> recording groundedness + `ragTriadScore` via the calibrated `google/gemma-4-e4b` judge (faithful 1.0/1.0 PASS,
+> fabricated 0.0/0.333 REGEN, mixed 0.5/0.667 REGEN); **live safety** via Granite Guardian (benign→PASS, violent→FLAG).
+> **Intentional deviations from the task rows below:** **2.1** groundedness uses **per-claim entailment via the calibrated
+> LM-Studio judge** (`get_runtime_judge_config()`), not a separate Bespoke-MiniCheck-7B deployment; **2.2** reuses that
+> **same calibrated judge** rather than a distinct `sensors/judge/**` module (REDUCED_ASSURANCE recorded as specified);
+> **2.4** safety = **IBM Granite Guardian 3.3** over Ollama (not Llama Guard 3), and the **SMR regex-guardrail retirement is
+> DEFERRED** — `apps/smr` was out of scope for this pass (hard constraint), so `guardrails.py`/`external_guardrail.py` remain
+> on the SMR hot path and the Guardrails-AI compose layer is not yet added. **2.3** PHI fail-closed (`guards/phi/`, not
+> `guides/phi/`) + **2.5** persistence (`SummaryMeta.guardrailDecisions` + `SENSOR_RUN`/`REDUCED_ASSURANCE` WORM) landed as
+> specified. **Exit-gate caveat:** "guardrail triggers visible in **Langfuse**" is **not live-verified** here (no live
+> Langfuse in this env); the decisions are persisted to `SummaryMeta` + the WORM audit. Nothing committed.
 
 | # | Layer | Task | Files |
 |---|---|---|---|

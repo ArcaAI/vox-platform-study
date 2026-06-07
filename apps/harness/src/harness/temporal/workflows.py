@@ -9,6 +9,7 @@ loop body is a deterministic workflow and guides/generate/sensors are Activities
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -20,7 +21,7 @@ from temporalio.exceptions import ActivityError
 # payload types and the pure verdict aggregator.
 with workflow.unsafe.imports_passed_through():
     from harness.sensors.aggregator import GateDecision, aggregate
-    from harness.sensors.base import NEREntity
+    from harness.sensors.base import NEREntity, SensorResult
     from harness.sensors.registry import COMPUTATIONAL_SENSOR_NAMES
     from harness.temporal.activities import (
         PingInput,
@@ -33,6 +34,7 @@ with workflow.unsafe.imports_passed_through():
         persist_entities,
         ping_activity,
         record_gate_decision,
+        run_inferential_sensors,
         run_sensors,
     )
     from harness.temporal.models import (
@@ -46,16 +48,20 @@ with workflow.unsafe.imports_passed_through():
         PersistDraftInput,
         PersistEntitiesInput,
         RecordGateInput,
+        RunInferentialSensorsInput,
         RunSensorsInput,
     )
 
 # Retry / timeout budgets. NLP failures are tolerated (degrade -> human review),
-# so its retries are bounded short; everything else gets the standard budget.
+# so its retries are bounded short; everything else gets the standard budget. The
+# inferential pass degrades internally (never raises for backend outages), so its
+# retries cover only infra blips before the workflow falls back to reduced assurance.
 _ACTIVITY_TIMEOUT = timedelta(seconds=150)
 _ESCALATE_TIMEOUT = timedelta(seconds=30)
 _NLP_RETRY = RetryPolicy(maximum_attempts=2)
 _API_RETRY = RetryPolicy(maximum_attempts=3)
 _GENERATE_RETRY = RetryPolicy(maximum_attempts=2)
+_INFERENTIAL_RETRY = RetryPolicy(maximum_attempts=2)
 
 
 @workflow.defn
@@ -136,13 +142,21 @@ class HarnessDocWorkflow:
                 retry_policy=_API_RETRY,
             )
 
-        # 2) Bounded regen loop: assemble -> generate -> sensors -> aggregate.
+        # 2) Bounded regen loop. The five computational sensors run every iteration
+        # (cheap); once they settle, the costly inferential pass (groundedness +
+        # safety) runs ONCE and is folded into the verdict — groundedness can consume
+        # one remaining regen, safety forces a FLAG (unsafe content is never
+        # auto-regenerated). A degraded/failed inferential backend degrades to reduced
+        # assurance: the gate proceeds on the computational verdict (never auto-PASS).
         self._phase = "GENERATE"
         regens_used = 0
         verdict = None
         generated = None
         assembled = None
         sensors = None
+        guardrail_decisions: dict[str, Any] = {}
+        rag_triad_score: float | None = None
+        reduced_assurance = False
         while True:
             assembled = await workflow.execute_activity(
                 assemble_prompt,
@@ -199,19 +213,64 @@ class HarnessDocWorkflow:
                 retry_policy=_API_RETRY,
             )
 
-            verdict = aggregate(
+            # Cheap computational verdict first: regenerate on REGEN while budget
+            # remains WITHOUT paying for the inferential pass.
+            comp_verdict = aggregate(
                 sensors.results,
                 regens_remaining=inp.gate.max_regen - regens_used,
                 degraded=degraded,
                 expected=list(COMPUTATIONAL_SENSOR_NAMES),
             )
-            if verdict.decision != GateDecision.REGEN or regens_used >= inp.gate.max_regen:
-                break
-            regens_used += 1
+            if comp_verdict.decision == GateDecision.REGEN and regens_used < inp.gate.max_regen:
+                regens_used += 1
+                continue
+
+            # Computational settled -> run the inferential pass once and fold it in.
+            # An infra failure of the activity degrades to reduced assurance.
+            self._phase = "INFER"
+            inferential = None
+            try:
+                inferential = await workflow.execute_activity(
+                    run_inferential_sensors,
+                    RunInferentialSensorsInput(
+                        note_text=generated.content,
+                        transcript_text=inp.transcript_text,
+                        citations_map=sensors.citations_map,
+                    ),
+                    start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                    retry_policy=_INFERENTIAL_RETRY,
+                )
+            except ActivityError:
+                reduced_assurance = True
+
+            inferential_results: list[SensorResult] = []
+            if inferential is not None:
+                guardrail_decisions = inferential.guardrail_decisions
+                rag_triad_score = inferential.rag_triad_score
+                if inferential.degraded:
+                    reduced_assurance = True
+                # Reduced assurance: exclude a degraded inferential result (and omit
+                # it from `expected`) so the gate proceeds on the computational
+                # verdict instead of a blanket FLAG — never a silent auto-PASS.
+                inferential_results = [r for r in inferential.results if not r.degraded]
+            inferential_expected = [r.name for r in inferential_results]
+
+            verdict = aggregate(
+                list(sensors.results) + inferential_results,
+                regens_remaining=inp.gate.max_regen - regens_used,
+                degraded=degraded,
+                expected=list(COMPUTATIONAL_SENSOR_NAMES) + inferential_expected,
+            )
+            if verdict.decision == GateDecision.REGEN and regens_used < inp.gate.max_regen:
+                regens_used += 1
+                continue
+            break
 
         decision = str(verdict.decision)
 
         # 3) Persist the draft -> PENDING_REVIEW (clinician confirm-before-commit).
+        # guardrail_decisions + ragTriadScore land on SummaryMeta; reduced_assurance
+        # drives the REDUCED_ASSURANCE WORM event on apps/api.
         self._phase = "PERSIST"
         draft = await workflow.execute_activity(
             persist_draft,
@@ -224,8 +283,11 @@ class HarnessDocWorkflow:
                 model_name=generated.model or None,
                 sensor_scores=sensors.scores,
                 citations_map=sensors.citations_map,
+                guardrail_decisions=guardrail_decisions or None,
+                reduced_assurance=reduced_assurance,
                 entity_faithfulness_score=sensors.scores.get("entity_faithfulness"),
                 coverage_score=sensors.scores.get("coverage_omission"),
+                rag_triad_score=rag_triad_score,
                 prompt_template_id=assembled.prompt_template_id,
                 prompt_version=assembled.prompt_version,
                 dna_style_id=inp.dna_style_id,

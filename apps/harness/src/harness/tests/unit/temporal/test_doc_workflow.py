@@ -24,6 +24,7 @@ from harness.temporal.models import (
 )
 from harness.temporal.workflows import HarnessDocWorkflow
 from harness.tests.unit.temporal._harness_stubs import (
+    _OK_NOTE,
     StubConfig,
     StubRecorder,
     make_stub_activities,
@@ -254,6 +255,162 @@ class TestGate:
         assert result.escalations >= 1
         assert recorder.escalate_inputs[0].reason == "gate_sla_breached"
         assert recorder.calls["record_gate_decision"] == 1
+
+
+class TestInferentialPass:
+    """Phase 2: the inferential pass runs after the computational loop settles —
+    safety -> FLAG, groundedness -> one optional regen, degraded -> reduced assurance."""
+
+    @pytest.mark.asyncio
+    async def test_safe_pass_persists_guardrail_decisions_and_rag_triad(self):
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["SAFE"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["run_inferential_sensors"] == 1
+        draft = recorder.persist_draft_inputs[0]
+        assert draft.guardrail_decisions is not None
+        assert set(draft.guardrail_decisions) == {"groundedness", "safety"}
+        assert draft.guardrail_decisions["safety"]["decision"] == "PASS"
+        assert draft.rag_triad_score == 1.0
+        assert not draft.reduced_assurance
+        # The inferential activity gets the generated note + provenance to screen.
+        assert recorder.inferential_inputs[0].note_text == _OK_NOTE
+        assert "claims" in recorder.inferential_inputs[0].citations_map
+
+    @pytest.mark.asyncio
+    async def test_unsafe_safety_forces_flag_without_regen(self):
+        recorder = StubRecorder()
+        # Computational PASSes, but the safety screen flags unsafe content -> FLAG,
+        # never auto-regenerated (regen budget is untouched).
+        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["UNSAFE"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=HarnessGateConfig(max_regen=2)),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "FLAG"
+        assert result.regens_used == 0
+        assert recorder.calls["run_sensors"] == 1
+        assert recorder.calls["run_inferential_sensors"] == 1
+        draft = recorder.persist_draft_inputs[0]
+        assert draft.gate_decision == "FLAG"
+        assert draft.guardrail_decisions["safety"]["decision"] == "FLAG"
+        assert not draft.reduced_assurance
+
+    @pytest.mark.asyncio
+    async def test_groundedness_regen_consumes_one_budget_then_passes(self):
+        recorder = StubRecorder()
+        # Computational PASSes every time; the first inferential pass says REGEN
+        # (ungrounded claim) -> consume ONE regen -> second pass is clean -> PASS.
+        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["REGEN", "SAFE"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=HarnessGateConfig(max_regen=2)),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert result.regens_used == 1
+        assert recorder.calls["run_sensors"] == 2  # initial + 1 inferential-driven regen
+        assert recorder.calls["run_inferential_sensors"] == 2
+        assert recorder.calls["persist_draft"] == 1
+
+    @pytest.mark.asyncio
+    async def test_inferential_degraded_sets_reduced_assurance_and_proceeds(self):
+        recorder = StubRecorder()
+        # Judge + Granite down -> degraded inferential pass -> proceed on the
+        # computational verdict (PASS), but record reduced assurance.
+        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["DEGRADED"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["run_inferential_sensors"] == 1
+        draft = recorder.persist_draft_inputs[0]
+        # reduced_assurance=True is exactly what triggers the REDUCED_ASSURANCE WORM.
+        assert draft.reduced_assurance is True
+        assert draft.gate_decision == "PASS"
+
+    @pytest.mark.asyncio
+    async def test_inferential_activity_failure_degrades_to_reduced_assurance(self):
+        recorder = StubRecorder()
+        # An infra failure of the inferential activity must not crash the loop:
+        # degrade gracefully to reduced assurance on the computational verdict.
+        config = StubConfig(verdicts=["PASS"], inferential_fails=True)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["persist_draft"] == 1
+        assert recorder.persist_draft_inputs[0].reduced_assurance is True
 
 
 class TestDegradation:
