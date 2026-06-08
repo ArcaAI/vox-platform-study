@@ -6,7 +6,7 @@
 
 import type { ApiConfig } from '../types';
 import { AgenticError } from '../types';
-import { DEFAULT_TIMEOUT } from './constants';
+import { DEFAULT_TIMEOUT, isAdminPlanePath } from './constants';
 import type { ISDKLogger } from './logger';
 import { createTraceparent, generateSpanId } from './logger';
 import { classifyHttpError } from '../utils/errorUtils';
@@ -201,8 +201,11 @@ export class AgenticClient {
       ...((options?.headers as Record<string, string>) || {}),
     };
 
-    if (this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    // TASK-340 — admin-plane routes use the admin's own JWT during
+    // impersonation; user-plane routes keep the active token.
+    const authToken = this.resolveAuthToken(endpoint);
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
     }
     if (this.apiKey) {
       headers['X-API-Key'] = this.apiKey;
@@ -507,8 +510,11 @@ export class AgenticClient {
       'X-Request-ID': requestId,
       Accept: 'text/csv',
     };
-    if (this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    // TASK-340 — admin-plane routes use the admin's own JWT during
+    // impersonation; user-plane routes keep the active token.
+    const authToken = this.resolveAuthToken(endpoint);
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
     }
     if (this.apiKey) {
       headers['X-API-Key'] = this.apiKey;
@@ -634,8 +640,11 @@ export class AgenticClient {
       'X-Request-ID': requestId,
     };
 
-    if (this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    // TASK-340 — admin-plane routes use the admin's own JWT during
+    // impersonation; user-plane routes keep the active token.
+    const authToken = this.resolveAuthToken(endpoint);
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
     }
     if (this.apiKey) {
       headers['X-API-Key'] = this.apiKey;
@@ -766,8 +775,11 @@ export class AgenticClient {
       'X-Request-ID': requestId,
     };
 
-    if (this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    // TASK-340 — admin-plane routes use the admin's own JWT during
+    // impersonation; user-plane routes keep the active token.
+    const authToken = this.resolveAuthToken(endpoint);
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
     }
     if (this.apiKey) {
       headers['X-API-Key'] = this.apiKey;
@@ -1036,6 +1048,41 @@ export class AgenticClient {
    */
   isImpersonating(): boolean {
     return impersonationTokens.has(this);
+  }
+
+  /**
+   * TASK-340 — refresh the stashed admin token WITHOUT changing the active
+   * (impersonation) `accessToken`.
+   *
+   * During impersonation admin-plane requests are sent with the stashed admin
+   * JWT (see `resolveAuthToken`). The host's auto-refresh flow refreshes the
+   * admin token while impersonation stays active; it calls this so the stash
+   * tracks the fresh admin JWT and admin-plane requests never carry a stale
+   * one. No-op when not impersonating (it must never *start* impersonation).
+   */
+  updateImpersonationOriginalToken(token: string): void {
+    if (typeof token !== 'string' || token.length === 0) return;
+    if (impersonationTokens.has(this)) {
+      impersonationTokens.set(this, token);
+    }
+  }
+
+  /**
+   * TASK-340 — resolve the bearer token for a request to `endpoint`.
+   *
+   * While impersonating, admin-plane routes (`/admin/*`) must carry the
+   * admin's OWN JWT (stashed via `startImpersonation`) so backend RBAC sees
+   * the admin's roles — otherwise every admin interface returns 403. Every
+   * other (user-plane) route keeps the active token so the SDK acts as the
+   * impersonated user. When not impersonating, both branches return
+   * `this.accessToken`, so behavior is unchanged.
+   */
+  private resolveAuthToken(endpoint: string): string | undefined {
+    const adminToken = impersonationTokens.get(this);
+    if (adminToken && isAdminPlanePath(endpoint)) {
+      return adminToken;
+    }
+    return this.accessToken;
   }
 
   // =========================================================================

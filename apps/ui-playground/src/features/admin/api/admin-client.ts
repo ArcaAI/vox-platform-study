@@ -46,19 +46,43 @@ export interface PaginatedResponse<T> {
   page: number;
 }
 
-function getEffectiveToken(): string {
-  const { accessToken, isImpersonating, impersonationToken } = useAuthStore.getState();
-  return isImpersonating && impersonationToken ? impersonationToken : accessToken;
+/**
+ * TASK-340 — whether `path` targets the admin plane (`/admin/*`).
+ *
+ * Mirrors the API gateway's own admin-route detection
+ * (`AuthorizationGuard`, `/^\/(api\/v\d+\/)?admin\//`) and the SDK's
+ * `isAdminPlanePath`. It is duplicated here (rather than imported from
+ * `@arcaai/vox`) because this app's vitest config stubs the whole SDK, so an
+ * imported helper would resolve to `undefined` under test.
+ */
+function isAdminPlanePath(path: string): boolean {
+  return /^\/?(?:api\/v\d+\/)?admin\//.test(path);
 }
 
-function getHeaders(options?: RequestOptions): HeadersInit {
+/**
+ * TASK-340 — resolve the bearer token for a request to `path`.
+ *
+ * While impersonating, admin-plane routes (`/admin/*`) must carry the admin's
+ * OWN token so backend RBAC sees the admin's roles — otherwise every
+ * administration interface returns 403. User-plane routes (e.g.
+ * `/dna-writing-styles/*`) keep the impersonation token so playground features
+ * act as the impersonated end-user. When not impersonating, the admin token is
+ * always used (unchanged).
+ */
+function getEffectiveToken(path: string): string {
+  const { accessToken, isImpersonating, impersonationToken } = useAuthStore.getState();
+  const useImpersonation = isImpersonating && !!impersonationToken && !isAdminPlanePath(path);
+  return useImpersonation ? impersonationToken : accessToken;
+}
+
+function getHeaders(path: string, options?: RequestOptions): HeadersInit {
   const { apiKey, authMethod, tenantId } = useAuthStore.getState();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
 
   if (authMethod === 'credentials') {
-    const token = getEffectiveToken();
+    const token = getEffectiveToken(path);
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -103,7 +127,7 @@ async function request<T>(method: string, path: string, body?: unknown, options?
   const url = `${getBaseUrl()}${path}`;
   const init: RequestInit = {
     method,
-    headers: getHeaders(options),
+    headers: getHeaders(path, options),
   };
 
   if (body !== undefined) {
@@ -145,7 +169,7 @@ async function requestMultipart<T>(method: string, path: string, formData: FormD
   const headers: Record<string, string> = {};
 
   if (authMethod === 'credentials') {
-    const token = getEffectiveToken();
+    const token = getEffectiveToken(path);
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -186,7 +210,7 @@ async function requestMultipart<T>(method: string, path: string, formData: FormD
 async function stream(path: string, signal?: AbortSignal, options?: RequestOptions): Promise<Response> {
   const res = await fetch(`${getBaseUrl()}${path}`, {
     method: 'GET',
-    headers: getHeaders(options),
+    headers: getHeaders(path, options),
     signal,
   });
 

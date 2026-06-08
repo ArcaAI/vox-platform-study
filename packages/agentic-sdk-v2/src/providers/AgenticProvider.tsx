@@ -32,7 +32,7 @@ import { createSDKLogger, type SDKLogger, type ISDKLogger } from '../core/logger
 import { useStore } from 'zustand';
 import { createAgenticStore, AgenticStoreContext, type AgenticStoreApi } from '../store';
 import { DEFAULT_AUDIO_CONFIG, DEFAULT_PERSONALIZATION_CONFIG } from '../types';
-import { AUTH_ENDPOINTS, DEPARTMENT_ENDPOINTS, USER_SETTINGS_ENDPOINTS } from '../core/constants';
+import { AUTH_ENDPOINTS, DEPARTMENT_ENDPOINTS, PERSONALIZATION_ENDPOINTS, USER_SETTINGS_ENDPOINTS } from '../core/constants';
 // TASK-304 Wave 2D — single source of truth for the `arcaai-config` IDB
 // schema (now v2 with `user-preferences` and `personalization` stores).
 import { configDBGet, configDBSet, USER_PREFERENCES_STORE } from '../core/configDB';
@@ -745,8 +745,56 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
           try {
             const nextTenantConfigPromise = modelRegistry.loadTenantConfig();
             tenantConfigPromiseRef.current = nextTenantConfigPromise;
-            store.setTenantConfig(await nextTenantConfigPromise);
+            const nextTenantCfg = await nextTenantConfigPromise;
+            store.setTenantConfig(nextTenantCfg);
             store.incrementModelRegistryVersion();
+
+            // TASK-334 impersonation parity — re-apply the CASCADE tenant tier for
+            // the INCOMING identity. The mount-time init() (deps []) is the only
+            // other place that calls `configManager.setTenantConfig`, and it
+            // injects the per-user server-resolved remote ASR pipeline
+            // (`remoteConfig.pipelineId` from GET /user/me/preferences) into
+            // `stt.transcriptionPipelineId`. init() runs ONCE with the MOUNTING
+            // identity (e.g. the admin), so on a same-tab user/impersonation
+            // switch the cascade kept the previous user's tenant tier — leaving
+            // `stt.transcriptionPipelineId` empty for the switched-in user, so the
+            // consultation/clinical panels fell back to
+            // DEFAULT_TRANSCRIPTION_PIPELINE_ID (a SYSTEM pipeline that 404s for a
+            // customer tenant). Re-fetch the incoming user's resolved pipeline and
+            // rebuild the tier here. This GET is read-only and does NOT write the
+            // personalization user-pref tier, so it never races the playground's
+            // single-writer impersonation prefs (F-2 below).
+            let remotePipelineId: string | undefined;
+            try {
+              const remotePrefs = await apiClient.get<{ remoteConfig?: { pipelineId?: string } }>(
+                PERSONALIZATION_ENDPOINTS.GET_PREFERENCES,
+              );
+              remotePipelineId = remotePrefs?.remoteConfig?.pipelineId;
+            } catch (error) {
+              providerLogger.warn('Remote pipeline fetch after user switch failed', {
+                operation: 'rehydrateUserNamespace',
+                component: 'AgenticProvider',
+                error: error as Error,
+              });
+            }
+            const nextTenantOverrides: DeepPartial<AppConfig> = {};
+            const nextLockedPaths: string[] = [];
+            if (nextTenantCfg.defaultSttModel) {
+              nextTenantOverrides.stt = { defaultModel: nextTenantCfg.defaultSttModel };
+            }
+            if (nextTenantCfg.features) {
+              nextTenantOverrides.features = nextTenantCfg.features as DeepPartial<AppConfig['features']>;
+            }
+            if (nextTenantCfg.captureRawAudio !== undefined) {
+              nextTenantOverrides.audio = { ...(nextTenantOverrides.audio ?? {}), captureRawAudio: nextTenantCfg.captureRawAudio };
+            }
+            if (remotePipelineId) {
+              nextTenantOverrides.stt = { ...(nextTenantOverrides.stt ?? {}), transcriptionPipelineId: remotePipelineId };
+            }
+            if ('lockedPaths' in nextTenantCfg && Array.isArray((nextTenantCfg as Record<string, unknown>).lockedPaths)) {
+              nextLockedPaths.push(...((nextTenantCfg as Record<string, unknown>).lockedPaths as string[]));
+            }
+            configManager.setTenantConfig(nextTenantOverrides, nextLockedPaths);
           } catch (error) {
             providerLogger.warn('Tenant config reload after switch failed', {
               operation: 'rehydrateUserNamespace',
