@@ -10,21 +10,29 @@ The local development environment is fully containerized via Docker Compose. Ser
 
 | Service | Image | Port | Purpose |
 |---------|-------|------|---------|
-| PostgreSQL | `postgres:18-alpine` | 5432 | Primary relational database |
+| PostgreSQL | `timescale/timescaledb-ha:pg18-all` | 5432 | Primary relational database (PostgreSQL 18 + TimescaleDB/pgvector) |
 | Redis | `redis:8-alpine` | 6379 | Cache, job queues, pub/sub |
 | MinIO | `minio/minio` | 9000 (API), 9001 (Console) | S3-compatible object storage |
 | MinIO Setup | `minio/mc` | — | One-shot bucket creation |
 
 ### Extended Services (`docker-compose.dev.yml`)
 
-| Service | Image | Port | Purpose |
-|---------|-------|------|---------|
-| Vault | `hashicorp/vault:1.15` | 8200 | Secret management (dev mode) |
-| Vault Init | `hashicorp/vault:1.15` | — | One-shot secret provisioning |
-| Qdrant | `qdrant/qdrant:v1.16` | 6333 (HTTP), 6334 (gRPC) | Vector database for semantic search |
-| Qdrant Init | `python:3.11-slim` | — | One-shot collection setup |
+| Service | Image | Port | Profile | Purpose |
+|---------|-------|------|---------|---------|
+| Qdrant | `qdrant/qdrant:v1.16` | 6333 (HTTP), 6334 (gRPC) | (default) | Vector database for semantic search |
+| Qdrant Init | `python:3.11-slim` | — | (default) | One-shot collection setup |
+| Vault | `hashicorp/vault:1.18` | 8200 | `vault` | Secret management (dev mode) |
+| Vault Init | `hashicorp/vault:1.18` | — | `vault` | One-shot secret provisioning |
+| Temporal | `temporalio/auto-setup` | 7233 | `temporal` | Durable-workflow server for the Harness |
+| Temporal PostgreSQL | `postgres:16` | — (internal) | `temporal` | Temporal persistence (isolated from the app DB) |
+| Temporal UI | `temporalio/ui` | 8233 | `temporal` | Temporal Web UI |
+| Reranker | HF `text-embeddings-inference` | 8870 | `rag` | Cross-encoder reranker for the Harness RAG retriever |
+
+**Profiles:** Qdrant starts with `docker:dev:up:all`; Vault is gated behind the `vault` profile (also activated by `docker:dev:up:all`). The Temporal stack (`temporal` profile) and the RAG reranker (`rag` profile) are opt-in and must be started explicitly.
 
 **Note:** Kafka, Zookeeper, and Schema Registry have been removed. All event processing uses Redis (BullMQ) and PostgreSQL for audit logs.
+
+**PgBouncer:** not part of the dev/test infrastructure — it exists only as a standalone validation harness under `packages/database/tests/pgbouncer-validation/` (run via the `pnpm pgbv:*` scripts).
 
 ### Quick Start
 
@@ -61,7 +69,7 @@ docker compose -f infrastructure/docker/docker-compose.yml \
 ### PostgreSQL Configuration
 
 The default PostgreSQL instance is configured with:
-- Image: `postgres:18-alpine`
+- Image: `timescale/timescaledb-ha:pg18-all` (PostgreSQL 18 + TimescaleDB/pgvector)
 - Default database: `${POSTGRES_DB:-postgres}`
 - Default user: `${POSTGRES_USER:-postgres}`
 - Memory limit: 512 MB, shared_buffers: 64 MB
@@ -88,91 +96,37 @@ Observability tooling (Prometheus, Grafana, Loki, Promtail, cAdvisor, Node Expor
 
 ## CI/CD Pipelines
 
-The platform uses **GitHub Actions** for testing and quality gates, and **GitLab CI** for Docker image builds and deployment.
+The platform uses **GitHub Actions** for a focused release gate and **GitLab CI** for the full lint/test/build/scan/deploy pipeline.
 
-### GitHub Actions — Test Pipeline
+### GitHub Actions
 
-The orchestrator workflow (`ci.yml`) coordinates all checks:
-
-```text
-PR Opened / Push to main
-        │
-        ▼
-┌─────────────────┐
-│ Detect Changes  │  paths-filter: typescript, python, database, tests
-└────────┬────────┘
-         │
-    ┌────┴────┐
-    ▼         ▼
-┌───────┐ ┌──────────┐
-│ Lint  │ │Unit Tests│  (parallel, skip if no relevant changes)
-└───┬───┘ └────┬─────┘
-    │          │
-    └────┬─────┘
-         ▼
-┌──────────────────┐
-│Integration Tests │  (requires lint + unit success)
-└────────┬─────────┘
-         ▼  (PRs to main only)
-┌──────────────────┐
-│    E2E Tests     │
-└────────┬─────────┘
-         ▼
-┌──────────────────┐
-│   CI Summary     │  (aggregated status report)
-└──────────────────┘
-```
-
-#### Workflow Files
+`.github/workflows/` currently contains a single workflow:
 
 | File | Purpose | Trigger |
 |------|---------|---------|
-| `ci.yml` | Orchestrator | PR to main/develop, push to main |
-| `lint-format.yml` | ESLint + Prettier + Ruff | Called by orchestrator |
-| `test-unit.yml` | Vitest (TS) + pytest (Python) | Called by orchestrator |
-| `test-integration.yml` | Vitest with real DB/Redis | Called by orchestrator |
-| `test-e2e.yml` | Playwright API tests | Called by orchestrator |
+| `harness-eval.yml` | Release-blocking evaluation gate for the Clinical Documentation Harness — DeepEval (PDSQI-9 / faithfulness + judge-calibration ICC gate) and a promptfoo output-contract gate, run offline against a pinned golden set | Push/PR touching `apps/harness/**` |
 
-#### Path Filtering
+The broader lint / unit / integration / E2E checks now run through GitLab CI (below).
 
-CI skips workflows when changes don't affect relevant code:
+### GitLab CI — Full Pipeline
 
-| Filter | Paths |
-|--------|-------|
-| TypeScript | `apps/api/**/*.ts`, `packages/**/*.ts`, `packages/**/*.tsx`, `package.json`, `pnpm-lock.yaml` |
-| Python | `apps/smr/**/*.py`, `apps/stt-v2/**/*.py`, `apps/tts/**/*.py`, `apps/nlp/**/*.py`, `**/pyproject.toml` |
-| Database | `packages/database/**/*.prisma`, `packages/database/**/migrations/**` |
-| Tests | `tests/**`, `**/tests/**`, `**/*.test.ts`, `**/*.spec.ts` |
-| Docs-only | `docs/**`, `**/*.md` (skips test workflows) |
+`.gitlab-ci.yml` orchestrates the pipeline via per-stage includes under `.gitlab/ci/*.yml`:
 
-Documentation-only changes skip all test workflows.
+| Stage | Purpose |
+|-------|---------|
+| `install` | Install workspace dependencies |
+| `validate` | Lint / format / type checks |
+| `prepare` | Pre-build setup (e.g. Prisma generation) |
+| `test` | Unit / integration / E2E suites |
+| `build` | Per-service Docker image builds |
+| `scan` | Image / dependency security scanning |
+| `publish` | Push images to the registry |
+| `deploy` | Environment deployment |
+| `notify` | Pipeline notifications |
 
-#### Shared Actions
+The **build** stage (`.gitlab/ci/build.yml`) builds per-service images on a shared `warm-up-base-images` step: `build-api`, `build-ui-playground`, `build-example-ui`, `build-nlp`, `build-guardrail`, `build-smr`, `build-stt-v2`, `build-stt-v2-worker`, `build-database`.
 
-| Action | Purpose |
-|--------|---------|
-| `setup-test-env` | Configure environment variables for tests |
-| `setup-node-pnpm` | Node.js + pnpm with caching |
-| `setup-python-uv` | Python + uv with caching |
-| `build-packages` | Build packages with Prisma generation |
-
-### GitLab CI — Build & Deploy Pipeline
-
-The `.gitlab-ci.yml` handles Docker image builds for all services:
-
-| Stage | Jobs |
-|-------|------|
-| **build** | `build-api`, `build-stt`, `build-tts`, `build-smr`, `build-mlflow`, `build-admin`, `build-feedback`, `build-fedl`, `build-migration` |
-| **migrate** | Database migration jobs |
-
-**Note:** There is no `build-nlp` job — NLP is not currently built via GitLab CI.
-
-Each build job:
-- Triggers on changes to the service's source files on `main`
-- Supports `FORCE_REBUILD=true` for manual full rebuilds
-- Tags images with `{service}-{commit-sha}` and `{service}-latest` (on default branch)
-- Pushes to an internal GitLab container registry
-- Retries once (`max: 1`) on infrastructure failures (runner_system_failure, stuck_or_timeout_failure, scheduler_failure)
+Each build job triggers on changes to the service's source on `main`, supports `FORCE_REBUILD=true`, tags images with `{service}-{commit-sha}` and `{service}-latest` on the default branch, pushes to the internal GitLab registry, and retries once on infrastructure failures.
 
 ## Environment Management
 
@@ -223,9 +177,9 @@ Ports have two contexts: the `.env.dev` root defaults and the dev scripts in `pa
 |----------|------|-------------|
 | `STT_V2_PORT` | 8861 | STT v2 server port |
 | `SMR_PORT` | 8862 | SMR server port |
-| `TTS_PORT` | 8863 | TTS server port |
+| `GUARDRAIL_V2_PORT` | 8863 | Guardrail server port |
 | `NLP_PORT` | 8864 | NLP server port |
-| `FEDL_PORT` | 8865 | FedL server port |
+| `HARNESS_PORT` | 8866 | Harness server port |
 
 | Variable | Service | Description |
 |----------|---------|-------------|

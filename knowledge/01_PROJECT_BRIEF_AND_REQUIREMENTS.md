@@ -87,7 +87,6 @@ Medical doctors and healthcare professionals across diverse practice settings.
 
 - Real-time STT from doctor's speech input with speaker diarization
 - Contextual summarization based on specialty and historical data (SOAP / narrative notes)
-- Real-time TTS playback of generated notes or instructions
 - Medical entity recognition (ICD-10, SNOMED code mapping)
 - Alert generation from clinical rules or ML insights
 - Personalization of documentation style per doctor
@@ -114,13 +113,13 @@ Medical doctors and healthcare professionals across diverse practice settings.
 
 | Category | Specification |
 |----------|---------------|
-| **Latency** | STT: <800ms/chunk, Summary: <2s, TTS: <1.5s |
+| **Latency** | STT: <800ms/chunk, Summary: <2s |
 | **Availability** | 99.95% uptime |
 | **Scalability** | Horizontal auto-scaling of AI microservices |
 | **Security** | TLS 1.3, RBAC (CASL), AES-256 at rest |
 | **Compliance** | HIPAA, GDPR, NDHM adherence |
 | **Observability** | Centralized logging (Loki), metrics (Prometheus), dashboards (Grafana), tracing (OpenTelemetry) |
-| **Modularity** | Swappable STT/LLM/TTS backends via service abstraction |
+| **Modularity** | Swappable STT/LLM backends via service abstraction |
 | **Multi-tenancy** | All data scoped by `tenantId` with policy-based isolation |
 
 ---
@@ -135,10 +134,8 @@ Medical doctors and healthcare professionals across diverse practice settings.
 |---------|-------------|----------------|
 | **STT Service** | Healthcare-optimized speech-to-text (Whisper ONNX, NeMo, Azure), VAD (Silero v5), diarization (Pyannote) | <800ms per 15s chunk |
 | **SMR Service** | Adaptive summarizer — multi-LLM (Azure OpenAI, Ollama), specialty-specific prompts, SOAP/narrative generation | <2s per summary |
-| **TTS Service** | Multi-lingual text-to-speech (Azure TTS, 400+ voices, 140+ languages), batch synthesis, WebSocket streaming | <1.5s per synthesis |
 | **NLP Service** | Medical NLP — text classification, NER (medical entities), diagnosis classification, spell correction | <500ms per request |
 | **Feedback Handler** | User feedback collection, integration with reinforcement learning pipeline, privacy-compliant handling | — |
-| **Federated Learning** | MLFlow-integrated orchestrator, global coordination server + customer-deployed client nodes, zero data exfiltration | — |
 
 #### 2. Platform Infrastructure
 
@@ -158,7 +155,7 @@ Medical doctors and healthcare professionals across diverse practice settings.
 - Consultation APIs (CRUD, lifecycle management)
 - Context item APIs (transcripts, case notes, summaries, audio recordings)
 - Summary APIs (sync/async generation, job status)
-- STT/TTS proxy APIs (session management, WebSocket forwarding)
+- STT proxy APIs (session management, WebSocket forwarding)
 - NLP APIs (NER, classification, diagnosis)
 - Admin APIs (roles, policies, departments, prompts, API keys)
 - Audit log APIs (query, resource, user activity)
@@ -207,7 +204,6 @@ Medical doctors and healthcare professionals across diverse practice settings.
 ### Advanced AI
 
 - GPU-accelerated client-side processing (WebGPU, Tier 4)
-- Privacy-preserving federated learning with A/B testing
 - Extended language support (Hindi, Tamil, regional languages)
 - Drug interaction detection, symptom correlation, diagnostic suggestions
 - Clinical decision support integration
@@ -244,15 +240,14 @@ Medical doctors and healthcare professionals across diverse practice settings.
 
 ## Success Metrics
 
-### Achieved (STT/TTS Services)
+### Achieved (STT Service)
 
 | Metric | Value |
 |--------|-------|
 | STT End-to-end latency | ~100-200ms |
-| TTS Synthesis latency | <2s standard, <5s batch |
 | System availability | 99.9% with health monitoring |
-| Concurrent capacity | 50+ STT sessions, 100+ TTS sessions per instance (auto-scaling) |
-| Multi-language | English + Malayalam STT; 140+ languages TTS |
+| Concurrent capacity | 50+ STT sessions per instance (auto-scaling) |
+| Multi-language | English + Malayalam STT |
 
 ### Target Metrics (Full Platform)
 

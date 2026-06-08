@@ -65,13 +65,13 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
   }
 
   private initializeServices(): void {
+    // Mirrors the gateway health controller's downstream set
+    // (apps/api/.../health/health.controller.ts): the real services are
+    // SMR (8862), NLP (8864), STT v2 (8861), Guardrail (8863) and the
+    // Clinical Documentation Harness (8866). apps/tts and apps/fedl no
+    // longer exist; 8863 is now Guardrail. Guardrail mounts its health
+    // router under `/api` (not `/api/v1`), same as the health controller.
     this.services = [
-      {
-        name: 'Text to Speech',
-        // eslint-disable-next-line turbo/no-undeclared-env-vars
-        url: process.env.TTS_URL || 'http://localhost:8863',
-        healthEndpoint: '/api/v1/health',
-      },
       {
         name: 'Summarization',
         // eslint-disable-next-line turbo/no-undeclared-env-vars
@@ -86,6 +86,16 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
       {
         name: 'Speech to Text',
         url: process.env.STT_V2_URL || 'http://localhost:8861',
+        healthEndpoint: '/api/v1/health',
+      },
+      {
+        name: 'Guardrail',
+        url: process.env.GUARDRAIL_URL || 'http://localhost:8863',
+        healthEndpoint: '/api/health',
+      },
+      {
+        name: 'Clinical Documentation Harness',
+        url: process.env.HARNESS_URL || 'http://localhost:8866',
         healthEndpoint: '/api/v1/health',
       },
     ];
@@ -258,14 +268,15 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
   }
 
   async getSessionCounts(): Promise<SessionsResponse> {
-    // OB-13: cover all four downstream services so sessions stays aligned with
+    // Cover the real downstream services so sessions stays aligned with
     // uptime/health. Counts are static placeholders — no per-service polling.
     return {
       services: {
-        tts: { active: 0 },
         smr: { active: 0 },
         stt: { active: 0 },
         nlp: { active: 0 },
+        guardrail: { active: 0 },
+        harness: { active: 0 },
       },
       totalUsers: 0,
       refreshedAt: new Date().toISOString(),

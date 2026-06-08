@@ -338,7 +338,7 @@ Downstream service health dashboard.
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/v1/monitoring/uptime` | JWT | Get uptime data for all services |
-| GET | `/api/v1/monitoring/uptime/:service` | JWT | Get uptime for specific service (stt, tts, smr) |
+| GET | `/api/v1/monitoring/uptime/:service` | JWT | Get uptime for specific service (stt, smr, nlp) |
 | GET | `/api/v1/monitoring/heartbeats/:service` | JWT | Get heartbeat history for a service |
 | GET | `/api/v1/monitoring/sessions` | JWT | Get active session counts per service |
 
@@ -414,30 +414,6 @@ WebSocket gateway at `/ws/stt-v2/stream` for real-time audio streaming.
 
 ---
 
-## TTS Proxy
-
-Proxied to the TTS service at `TTS_URL` (port 8863) via `BaseProxyController`. Path rewrite: `/api/v1/speech` → `/api/tts`.
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/api/v1/speech/health` | API Key | TTS service health |
-| GET | `/api/v1/speech/voices` | API Key | List available voices |
-| GET | `/api/v1/speech/voices/refresh` | API Key | Refresh available voices |
-| POST | `/api/v1/speech/batch/synthesize` | API Key | Submit batch synthesis job |
-| GET | `/api/v1/speech/batch/jobs/:jobId` | API Key | Get batch job status |
-| GET | `/api/v1/speech/batch/jobs/:jobId/download` | API Key | Download batch results |
-| GET | `/api/v1/speech/batch/jobs` | API Key | List batch jobs |
-| GET | `/api/v1/speech/download/:synthesisId` | API Key | Download synthesized audio |
-| GET | `/api/v1/speech/sessions` | API Key | List TTS sessions |
-| POST | `/api/v1/speech/start_session` | API Key | Start TTS session |
-| POST | `/api/v1/speech/stop_session` | API Key | Stop TTS session |
-
-### TTS WebSocket
-
-WebSocket gateway for real-time text-to-speech streaming.
-
----
-
 ## SMR Proxy
 
 Proxied to the Summarization service at `SMR_URL` (port 8862) via `BaseProxyController`. Path rewrite: `/api/v1/text` → `` (root).
@@ -476,49 +452,6 @@ Proxied to the NLP service at `NLP_URL` (port 8864) via `BaseProxyController`. P
 ### NLP WebSocket
 
 WebSocket gateway for real-time NLP processing.
-
----
-
-## Federated Learning
-
-Proxied to the FedL service at `FEDL_URL` (port 8865) via `BaseProxyController`. Path rewrite: `/api/v1/fedl` → `/api/v1`.
-
-### Health
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/api/v1/fedl/health` | API Key | FedL service health |
-
-### Model Management
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/api/v1/fedl/models/current` | API Key | Get current global model |
-| GET | `/api/v1/fedl/models/check-update` | API Key | Check for model updates |
-| GET | `/api/v1/fedl/models/versions` | API Key | List model versions |
-| GET | `/api/v1/fedl/models/global-weights` | API Key | Get global model weights |
-| GET | `/api/v1/fedl/models/:versionId` | API Key | Get specific model version |
-| GET | `/api/v1/fedl/models/:versionId/weights` | API Key | Download LoRA adapter ONNX |
-| GET | `/api/v1/fedl/models/:versionId/metadata` | API Key | Get adapter metadata |
-| GET | `/api/v1/fedl/models/:versionId/decoder` | API Key | Download merged decoder ONNX |
-| GET | `/api/v1/fedl/models/:versionId/decoder/info` | API Key | Get decoder file info |
-
-### Weight Updates
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/api/v1/fedl/updates/submit` | API Key | Submit weight updates |
-| GET | `/api/v1/fedl/updates/status/:updateId` | API Key | Get update status |
-
-### Round Management
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/api/v1/fedl/rounds/current` | API Key | Get current round info |
-| GET | `/api/v1/fedl/rounds/history` | API Key | Get round history |
-| POST | `/api/v1/fedl/rounds/trigger` | API Key | Trigger aggregation |
-| GET | `/api/v1/fedl/rounds/:roundId/status` | API Key | Get round aggregation status |
-| GET | `/api/v1/fedl/rounds/:roundId` | API Key | Get round by ID |
 
 ---
 

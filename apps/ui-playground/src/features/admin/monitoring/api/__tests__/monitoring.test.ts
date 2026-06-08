@@ -50,7 +50,7 @@ describe('System Health (OB-01) monitoring API hooks', () => {
   });
 
   it('useServiceSessions GETs /monitoring/sessions', async () => {
-    mockGet.mockResolvedValueOnce({ services: { tts: { active: 0 }, smr: { active: 0 } }, totalUsers: 0, refreshedAt: '2026-06-06T00:00:00.000Z' });
+    mockGet.mockResolvedValueOnce({ services: { smr: { active: 0 }, stt: { active: 0 } }, totalUsers: 0, refreshedAt: '2026-06-06T00:00:00.000Z' });
 
     const { result } = renderHook(() => useServiceSessions(), { wrapper: createWrapper() });
 

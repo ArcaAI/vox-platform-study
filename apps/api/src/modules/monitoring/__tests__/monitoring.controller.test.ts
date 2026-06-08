@@ -38,10 +38,11 @@ interface UptimeResponse {
 
 interface SessionsResponse {
     services: {
-        stt: { active: number };
-        tts: { active: number };
         smr: { active: number };
+        stt: { active: number };
         nlp: { active: number };
+        guardrail: { active: number };
+        harness: { active: number };
     };
     totalUsers: number;
     refreshedAt: string;
@@ -125,7 +126,7 @@ describe('MonitoringController', () => {
             const expected: UptimeResponse = {
                 services: {
                     'Speech to Text': createMockUptime(),
-                    'Text to Speech': createMockUptime(),
+                    Guardrail: createMockUptime(),
                     Summarization: createMockUptime(),
                 },
                 refreshedAt: new Date().toISOString(),
@@ -191,10 +192,11 @@ describe('MonitoringController', () => {
         it('should delegate to monitoringService.getSessionCounts', async () => {
             const expected: SessionsResponse = {
                 services: {
-                    stt: { active: 5 },
-                    tts: { active: 0 },
                     smr: { active: 0 },
+                    stt: { active: 5 },
                     nlp: { active: 0 },
+                    guardrail: { active: 0 },
+                    harness: { active: 0 },
                 },
                 totalUsers: 5,
                 refreshedAt: new Date().toISOString(),
@@ -207,15 +209,16 @@ describe('MonitoringController', () => {
             expect(mockService.getSessionCounts).toHaveBeenCalledOnce();
         });
 
-        // TASK-336 OB-13 — sessions cover all four downstream services so the
-        // surface stays aligned with uptime/health.
-        it('returns stt and nlp session counts alongside tts/smr (OB-13)', async () => {
+        // Sessions cover the real downstream services so the surface stays
+        // aligned with uptime/health.
+        it('returns stt, nlp, guardrail and harness session counts alongside smr', async () => {
             const expected: SessionsResponse = {
                 services: {
-                    tts: { active: 0 },
                     smr: { active: 0 },
                     stt: { active: 0 },
                     nlp: { active: 0 },
+                    guardrail: { active: 0 },
+                    harness: { active: 0 },
                 },
                 totalUsers: 0,
                 refreshedAt: new Date().toISOString(),
@@ -226,6 +229,8 @@ describe('MonitoringController', () => {
 
             expect(result.services.stt).toEqual({ active: 0 });
             expect(result.services.nlp).toEqual({ active: 0 });
+            expect(result.services.guardrail).toEqual({ active: 0 });
+            expect(result.services.harness).toEqual({ active: 0 });
         });
     });
 });

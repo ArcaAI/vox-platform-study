@@ -417,25 +417,25 @@ describe('ConfigService', () => {
         it('should load service URLs from environment', () => {
             process.env.URL = 'http://api.example.com';
             process.env.STT_V2_URL = 'http://stt-v2.example.com:8012';
-            process.env.TTS_URL = 'http://tts.example.com:8003';
+            process.env.GUARDRAIL_URL = 'http://guardrail.example.com:8863';
 
             const service = createService();
 
             expect(service.config.URL).toBe('http://api.example.com');
             expect(service.config.STT_V2_URL).toBe('http://stt-v2.example.com:8012');
-            expect(service.config.TTS_URL).toBe('http://tts.example.com:8003');
+            expect(service.config.GUARDRAIL_URL).toBe('http://guardrail.example.com:8863');
         });
 
         it('should use default service URLs', () => {
             delete process.env.URL;
             delete process.env.STT_V2_URL;
-            delete process.env.TTS_URL;
+            delete process.env.GUARDRAIL_URL;
 
             const service = createService();
 
             expect(service.config.URL).toBe('http://localhost');
             expect(service.config.STT_V2_URL).toBe('http://localhost:8861');
-            expect(service.config.TTS_URL).toBe('http://localhost:8863');
+            expect(service.config.GUARDRAIL_URL).toBe('http://localhost:8863');
         });
     });
 

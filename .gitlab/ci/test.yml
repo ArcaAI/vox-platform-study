@@ -50,12 +50,12 @@
   API_URL: "http://localhost:8868"
   STT_V2_PORT: "8861"
   STT_V2_URL: "http://localhost:8861"
-  TTS_PORT: "8863"
-  TTS_URL: "http://localhost:8863"
   SMR_PORT: "8862"
   SMR_URL: "http://localhost:8862"
   NLP_PORT: "8864"
   NLP_URL: "http://localhost:8864"
+  GUARDRAIL_URL: "http://localhost:8863"
+  HARNESS_URL: "http://localhost:8866"
 
 # ── API unit tests (NestJS / Vitest) ─────────────────────────────────────────
 

@@ -73,12 +73,6 @@ export class ApiHealthController {
     // instance — the URLs do not change at runtime.
     this.downstreamServices = [
       {
-        key: 'tts',
-        name: 'Text to Speech',
-        url: this.configService.getConfigValue('TTS_URL'),
-        healthEndpoint: '/api/v1/health',
-      },
-      {
         key: 'smr',
         name: 'Summarization',
         url: this.configService.getConfigValue('SMR_URL'),
@@ -94,6 +88,19 @@ export class ApiHealthController {
         key: 'stt',
         name: 'Speech to Text',
         url: this.configService.getConfigValue('STT_V2_URL'),
+        healthEndpoint: '/api/v1/health',
+      },
+      {
+        key: 'guardrail',
+        name: 'Guardrail',
+        url: this.configService.getConfigValue('GUARDRAIL_URL'),
+        // Guardrail mounts its health router under `/api` (not `/api/v1`).
+        healthEndpoint: '/api/health',
+      },
+      {
+        key: 'harness',
+        name: 'Clinical Documentation Harness',
+        url: this.configService.getConfigValue('HARNESS_URL'),
         healthEndpoint: '/api/v1/health',
       },
     ];
@@ -174,7 +181,7 @@ export class ApiHealthController {
   // ops health is not for plain doctors.
   @Authorize(['manage', 'all'])
   @ApiOperation({ summary: 'Consolidated health check for all downstream microservices (admin only)' })
-  @ApiResponse({ status: 200, description: 'Sanitised health status of TTS, SMR, NLP, and STT services' })
+  @ApiResponse({ status: 200, description: 'Sanitised health status of SMR, NLP, STT, Guardrail, and Harness services' })
   @ApiResponse({ status: 401, description: 'Authentication required' })
   async checkServices() {
     const results = await Promise.allSettled(this.downstreamServices.map((svc) => this.probeService(svc)));
@@ -214,7 +221,7 @@ export class ApiHealthController {
   // TASK-336 OB-12 — SUPER_ADMIN (`manage all`), as for /services above.
   @Authorize(['manage', 'all'])
   @ApiOperation({ summary: 'Health check for a single downstream microservice (admin only)' })
-  @ApiParam({ name: 'serviceKey', enum: ['tts', 'smr', 'nlp', 'stt'], description: 'Service key' })
+  @ApiParam({ name: 'serviceKey', enum: ['smr', 'nlp', 'stt', 'guardrail', 'harness'], description: 'Service key' })
   @ApiResponse({ status: 200, description: 'Sanitised health status of the requested service' })
   @ApiResponse({ status: 401, description: 'Authentication required' })
   @ApiResponse({ status: 404, description: 'Unknown service key' })

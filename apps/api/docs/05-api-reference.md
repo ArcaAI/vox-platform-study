@@ -520,39 +520,7 @@ interface ProxyControllerConfig {
 
 ---
 
-### TtsController (Speech Proxy)
-
-**Location**: `src/modules/tts/tts.controller.ts`
-**Extends**: `BaseProxyController`
-**Route**: `speech` → `/api/v1/speech/**`
-
-**Proxy Configuration:**
-- **Target**: `TTS_URL || 'http://localhost:8863'`
-- **Path Rewrite**: `^/api/v1/speech` → `/api/tts`
-
----
-
-### NlpController (NLP Proxy)
-
-**Location**: `src/modules/nlp/nlp.controller.ts`
-**Extends**: `BaseProxyController`
-**Route**: `nlp` → `/api/v1/nlp/**`
-
-**Proxy Configuration:**
-- **Target**: `NLP_URL || 'http://localhost:8864'`
-- **Path Rewrite**: `^/api/v1/nlp` → `/api/v1`
-
----
-
-### FedlController (FedL Proxy)
-
-**Location**: `src/modules/fedl/fedl.controller.ts`
-**Extends**: `BaseProxyController`
-**Route**: `fedl` → `/api/v1/fedl/**`
-
-**Proxy Configuration:**
-- **Target**: `FEDL_URL || 'http://localhost:8865'`
-- **Path Rewrite**: `^/api/v1/fedl` → `/api/v1`
+> **NLP** has no gateway proxy controller — it is a downstream Python service (`:8864`) the gateway only health-monitors via `/api/v1/health/services`.
 
 ---
 
@@ -755,26 +723,6 @@ interface PaginatedQuery {
 Provides real-time STT v2 streaming.
 
 **Namespace**: `/stt-v2`
-
----
-
-### TtsGateway
-
-**Location**: `src/modules/tts/tts.gateway.ts`
-
-Provides real-time TTS streaming (port 8863).
-
-**Namespace**: `/tts`
-
----
-
-### NlpGateway
-
-**Location**: `src/modules/nlp/nlp.gateway.ts`
-
-Provides real-time NLP analysis (port 8864).
-
-**Namespace**: `/nlp`
 
 ---
 

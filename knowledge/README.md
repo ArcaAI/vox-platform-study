@@ -29,7 +29,9 @@
 | [API Gateway](./api/README.md) | NestJS | Central gateway — auth, routing, WebSocket proxy |
 | [STT V2](./stt-v2/README.md) | FastAPI | Speech-to-text — multi-model ASR, VAD, diarization |
 | [SMR V2](./smr-v2/README.md) | FastAPI | Medical summarization — multi-LLM, specialty prompts |
+| [Guardrail](./guardrail/README.md) | FastAPI | Content safety + medical-context validation (LM Studio / Granite Guardian default) |
 | [NLP](./nlp/README.md) | FastAPI | Medical NLP — classification, NER, diagnosis |
+| [Harness](./harness/README.md) | FastAPI + Temporal | Clinical documentation orchestrator — durable workflow |
 
 ### Agentic SDK
 
@@ -60,9 +62,10 @@
 
 ### UI & Frontend
 
-| Package | Description |
+| Package / App | Description |
 |---------|-------------|
 | [UI](./ui/README.md) | `@arcaai/ui` — Shared component library (shadcn/ui + ElevenLabs UI + Tailwind CSS v4) |
+| [UI Playground & Admin Console](./playground/README.md) | `apps/ui-playground` — React SDK playground that also hosts the admin console (TanStack Router, port 5175) |
 
 ### Core Infrastructure Packages
 

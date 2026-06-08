@@ -13,23 +13,27 @@ HOPE (Hybrid Agentic Medical Conversation System) is a cloud-first platform for 
 ┌───────────────────────────────▼─────────────────────────────────────────┐
 │  API GATEWAY — NestJS (Port 8868)                                       │
 │  JWT / OIDC / API Key Auth · RBAC (CASL) · Rate Limiting · WebSocket   │
-└──┬────────────┬────────────┬────────────┬───────────────────────────────┘
-   │            │            │            │
-   ▼            ▼            ▼            ▼
-┌────────┐ ┌────────┐ ┌────────┐ ┌──────────────┐
-│STT v2  │ │  TTS   │ │  SMR   │ │     NLP      │
-│FastAPI │ │FastAPI │ │FastAPI │ │   FastAPI     │
-│:8861   │ │:8863   │ │:8862   │ │   :8864      │
-└────────┘ └────────┘ └────────┘ └──────────────┘
-   │            │            │            │
-┌──▼────────────▼────────────▼────────────▼───────────────────────────────┐
-│  DATA LAYER                                                             │
-│  PostgreSQL 18 · Redis 8 (BullMQ) · MinIO (S3)                         │
-└─────────────────────────────────────────────────────────────────────────┘
+└──┬───────────┬───────────┬───────────┬───────────┬───────────────────────┘
+   │           │           │           │           │
+   ▼           ▼           ▼           ▼           ▼
+┌────────┐ ┌────────┐ ┌──────────┐ ┌────────┐ ┌──────────────────────────┐
+│STT v2  │ │  SMR   │ │Guardrail │ │  NLP   │ │ Harness (orchestrator)   │
+│FastAPI │ │FastAPI │ │ FastAPI  │ │FastAPI │ │ FastAPI + Temporal       │
+│:8861   │ │:8862   │ │ :8863    │ │ :8864  │ │ :8866                    │
+└────────┘ └────────┘ └──────────┘ └────────┘ └──────────────────────────┘
+
+   SMR calls Guardrail for medical-content validation. The Harness drives the
+   guides → generate → sensors → gate loop and reuses STT / NLP / SMR / Qdrant
+   as tools (apps/api remains the gateway and system-of-record).
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│  DATA LAYER                                                                 │
+│  PostgreSQL 18 · Redis 8 (BullMQ) · MinIO (S3)                            │
+└──────────────────────────────────────────────────────────────────────────┘
    │
 ┌──▼──────────────────────────────────────────────────────────────────────┐
 │  EXTENDED SERVICES                                                      │
-│  Vault (secrets) · Qdrant (vector DB)                                  │
+│  Vault (secrets) · Qdrant (vector DB) · Temporal (harness, opt-in)     │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -51,9 +55,10 @@ HOPE (Hybrid Agentic Medical Conversation System) is a cloud-first platform for 
 | Category | Technology | Version | Purpose |
 |----------|-----------|---------|---------|
 | STT | Python / FastAPI | 3.11+ | Speech-to-text with Whisper models |
-| TTS | Python / FastAPI | 3.11+ | Text-to-speech with medical pronunciation |
 | SMR | Python / FastAPI | 3.11+ | Summary generation via LLM |
+| Guardrail | Python / FastAPI | 3.11+ | Content safety + medical-context validation (LM Studio / Granite Guardian default) |
 | NLP | Python / FastAPI | 3.11+ | Named entity recognition (NER) |
+| Harness | Python / FastAPI + Temporal | 3.11+ | Clinical documentation orchestrator (durable workflow) |
 | Model Registry | MLflow | Latest | Model versioning and experiment tracking |
 | Inference | ONNX Runtime | Latest | Cross-platform model serving |
 
@@ -84,21 +89,19 @@ HOPE (Hybrid Agentic Medical Conversation System) is a cloud-first platform for 
 
 ## Monorepo Structure
 
-The project is a **Turborepo + pnpm** monorepo (package manager `pnpm@10.6.5`).
+The project is a **Turborepo + pnpm** monorepo (package manager `pnpm@10.31.0`).
 
 ```text
 hope-monorepo/
 ├── apps/
 │   ├── api/                 # NestJS API Gateway
-│   ├── admin/               # Admin web application
-│   ├── stt-v2/              # Python STT Service (primary)
-│   ├── stt/                 # Python STT Service (legacy)
-│   ├── tts/                 # Python TTS Service
-│   ├── smr/                 # Python SMR Service (summarization)
-│   ├── nlp/                 # Python NLP Service (NER)
-│   ├── mlflow/              # MLflow tracking server
-│   ├── feedback/            # Feedback collection service
-│   └── fedl/                # Federated learning service
+│   ├── stt-v2/              # Python STT Service (Speech-to-Text)
+│   ├── smr/                 # Python SMR Service (summarization, module smr_v2)
+│   ├── guardrail/           # Python Guardrail Service (content safety + medical validation)
+│   ├── nlp/                 # Python NLP Service (NER / classification)
+│   ├── harness/             # Python Clinical Documentation Harness (FastAPI + Temporal)
+│   ├── ui-playground/       # React SDK playground + admin console (Vite/TanStack Router)
+│   └── example/             # Minimal SDK usage example (Vite)
 ├── packages/
 │   ├── agentic-sdk-v2/      # @arcaai/vox — ReactJS SDK
 │   ├── applications/        # Business logic layer (DDD services)
@@ -110,17 +113,18 @@ hope-monorepo/
 │   ├── ui/                  # Shared UI components (shadcn/ui + ElevenLabs UI)
 │   ├── types/               # Shared TypeScript types
 │   ├── utils/               # Shared utility functions
-│   ├── federated-learning/  # Federated learning package
 │   ├── med-ner/             # Medical NER package
 │   ├── noise-filter/        # Audio noise filtering
 │   ├── pipeline/            # Processing pipeline utilities
 │   ├── room/                # Room/session management
 │   ├── stt/                 # STT client package
 │   ├── vad/                 # Voice activity detection
+│   ├── eslint-plugin-arcaai-internal/  # Internal ESLint rules
 │   └── config-*/            # Shared ESLint, TypeScript, Rollup, Tailwind configs
 ├── infrastructure/
 │   └── docker/              # Docker Compose + service configs
-├── docs/                    # Project documentation
+├── docs/                    # Project documentation (ticket implementation records)
+├── knowledge/               # Evergreen knowledge base (this folder)
 ├── turbo.json               # Build pipeline definitions
 ├── pnpm-workspace.yaml      # Workspace configuration
 └── package.json             # Root scripts and dependencies
@@ -139,7 +143,7 @@ apps/api ──────► packages/applications ──► packages/domains
 
 packages/agentic-sdk-v2 ──► packages/ui (optional)
 
-apps/stt-v2, tts, smr, nlp ─·─·─► MinIO, Qdrant (via HTTP)
+apps/stt-v2, smr, guardrail, nlp, harness ─·─·─► MinIO, Qdrant (via HTTP)
 ```
 
 | Package | Depends On | Purpose |
@@ -228,4 +232,6 @@ See [Communication Patterns](./communication.md) and [SDK Streaming Architecture
 - [Communication Patterns](./communication.md) — REST, WebSocket, SSE, Redis pub/sub, job queues
 - [Security](./security.md) — Authentication, RBAC, audit logging
 - [Infrastructure](./infrastructure.md) — Docker Compose, CI/CD, environment management
+- [Clinical Documentation Harness](../harness/README.md) — Temporal-based documentation orchestrator
+- [Guardrail](../guardrail/README.md) — Content safety & medical-context validation
 - [SDK Streaming](../agentic-sdk-v2/streaming.md) — WebSocket, SSE, and cross-tab streaming

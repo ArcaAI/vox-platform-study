@@ -8,9 +8,9 @@
  * (config-loading + validation happens once at bootstrap; modules
  * never re-read raw env at request time).
  *
- * Banned keys (the four downstream Python services + the legacy
+ * Banned keys (the live downstream Python services + the legacy
  * SMR_SERVICE_URL alias):
- *   SMR_URL, SMR_SERVICE_URL, STT_V2_URL, TTS_URL, NLP_URL
+ *   SMR_URL, SMR_SERVICE_URL, STT_V2_URL, NLP_URL, GUARDRAIL_URL, HARNESS_URL
  *
  * Everything else under `process.env.*` stays legal (NODE_ENV,
  * npm_package_version, etc.) so the rule is a tight denylist, not a
@@ -74,14 +74,19 @@ ruleTester.run('no-direct-downstream-url-env', rule, {
       errors: [{ messageId: 'directDownstreamUrlEnv', data: { name: 'STT_V2_URL' } }],
     },
     {
-      name: 'process.env.TTS_URL is flagged',
-      code: `const url = process.env.TTS_URL || 'http://localhost:8863';`,
-      errors: [{ messageId: 'directDownstreamUrlEnv', data: { name: 'TTS_URL' } }],
-    },
-    {
       name: 'process.env.NLP_URL is flagged',
       code: `const url = process.env.NLP_URL || 'http://localhost:8864';`,
       errors: [{ messageId: 'directDownstreamUrlEnv', data: { name: 'NLP_URL' } }],
+    },
+    {
+      name: 'process.env.GUARDRAIL_URL is flagged',
+      code: `const url = process.env.GUARDRAIL_URL || 'http://localhost:8863';`,
+      errors: [{ messageId: 'directDownstreamUrlEnv', data: { name: 'GUARDRAIL_URL' } }],
+    },
+    {
+      name: 'process.env.HARNESS_URL is flagged',
+      code: `const url = process.env.HARNESS_URL || 'http://localhost:8866';`,
+      errors: [{ messageId: 'directDownstreamUrlEnv', data: { name: 'HARNESS_URL' } }],
     },
     {
       name: 'bracket-style process.env["SMR_URL"] is flagged',

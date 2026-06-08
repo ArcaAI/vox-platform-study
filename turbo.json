@@ -98,6 +98,7 @@
         "NLP_SERVICE_URL_HTTP",
         "SMR_SERVICE_URL_HTTP",
         "SMR_URL",
+        "GUARDRAIL_URL",
         "HARNESS_URL",
         "TEMPORAL_ADDRESS",
         "TEMPORAL_NAMESPACE",

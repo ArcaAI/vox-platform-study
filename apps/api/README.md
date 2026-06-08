@@ -13,7 +13,7 @@ The HOPE API Gateway serves as the central entry point for all client requests i
 
 - **Multi-Authentication System**: JWT, OIDC, and API Key authentication strategies
 - **Multi-Tenant Architecture**: Organization-level data isolation with tenant-specific configurations
-- **Microservice Orchestration**: Intelligent proxying to Python AI services (STT v2, TTS, SMR, NLP, FedL) via shared `BaseProxyController`
+- **Microservice Orchestration**: Proxies the SMR text service and audio transcription to STT v2 (via the `streaming` module) and health-monitors the downstream Python services (STT v2, SMR, NLP, Guardrail, Harness)
 - **Real-Time Communication**: WebSocket support for streaming audio transcription
 - **Enterprise Security**: HIPAA-compliant audit trails, rate limiting, and CORS management
 - **Progressive Enhancement**: Cloud-first API with support for enhanced client-side capabilities
@@ -49,12 +49,12 @@ The HOPE API Gateway serves as the central entry point for all client requests i
   - Multi-device session coordination
   - Automatic session recovery and validation
 
-- **AI Service Proxying** (via shared `BaseProxyController`)
-  - **STT v2 (Speech-to-Text)**: Real-time audio transcription (`/api/v1/audio/...`)
-  - **TTS (Text-to-Speech)**: Medical report narration (`/api/v1/speech/...`)
-  - **SMR (Summarization)**: Medical conversation summarization (`/api/v1/text/...`)
-  - **NLP**: Entity extraction and medical terminology recognition (`/api/v1/nlp/...`)
-  - **FedL**: Federated learning (`/api/v1/fedl/...`)
+- **AI Service Integration**
+  - **STT v2 (Speech-to-Text)**: Real-time audio transcription via the `streaming` module (`/api/v1/audio/...`)
+  - **SMR (Summarization)**: Medical conversation summarization proxied by `SmrProxyController` in the `streaming` module (`/api/v1/text/...`)
+  - **NLP**: Entity extraction / medical terminology — downstream Python service (port 8864), health-monitored; no gateway proxy route
+  - **Guardrail**: Safety/guardrail engine (port 8863) — health-monitored downstream
+  - **Harness**: Clinical Documentation Harness (port 8866) — health-monitored downstream; admin/observability via `harness-admin` (`/api/v1/admin/harness/...`)
 
 - **Enterprise Features**
   - Multi-tenant data isolation
@@ -85,10 +85,10 @@ The HOPE API Gateway serves as the central entry point for all client requests i
                       │
         ┌─────────────┼─────────────┬─────────────┐
         ▼             ▼             ▼             ▼
-┌──────────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
-│ STT v2 :8861 │ │TTS :8863 │ │SMR :8862 │ │NLP :8864 │ │FedL :8865│
-│ (Python)     │ │ (Python) │ │ (Python) │ │ (Python) │ │ (Python) │
-└──────────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘
+┌──────────────┐ ┌────────────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐
+│ STT v2 :8861 │ │Guardrail :8863 │ │SMR :8862 │ │NLP :8864 │ │Harness :8866 │
+│ (Python)     │ │ (Python)       │ │ (Python) │ │ (Python) │ │ (Python)     │
+└──────────────┘ └────────────────┘ └──────────┘ └──────────┘ └──────────────┘
         │             │             │             │             │
         └─────────────┴─────────────┴─────────────┴─────────────┘
                       │
@@ -103,7 +103,7 @@ The HOPE API Gateway serves as the central entry point for all client requests i
 
 ### Key Components
 
-- **Controllers**: HTTP request handlers organized by domain (session, audio, speech, text, nlp, fedl, admin)
+- **Controllers**: HTTP request handlers organized by domain (session, audio, text, nlp, admin)
 - **Services**: Business logic implementation and external service integration
 - **Guards**: Authentication and authorization enforcement
 - **Decorators**: Custom metadata and parameter decorators for enhanced functionality
@@ -214,12 +214,10 @@ STT_V2_PORT=8861
 STT_V2_URL=http://localhost:8861
 SMR_PORT=8862
 SMR_URL=http://localhost:8862
-TTS_PORT=8863
-TTS_URL=http://localhost:8863
+GUARDRAIL_URL=http://localhost:8863
 NLP_PORT=8864
 NLP_URL=http://localhost:8864
-FEDL_PORT=8865
-FEDL_URL=http://localhost:8865
+HARNESS_URL=http://localhost:8866
 
 # Authentication
 SESSION_SECRET_KEY=your-session-secret-key
@@ -337,10 +335,7 @@ All public API endpoints follow the pattern `/api/v1/<domain>`:
 | Prefix | Purpose | Example |
 |--------|---------|---------|
 | `/api/v1/audio/...` | STT v2 (Speech-to-Text) | `/api/v1/audio/transcription-jobs` |
-| `/api/v1/text/...` | SMR (Summarization) | `/api/v1/text/summarize` |
-| `/api/v1/speech/...` | TTS (Text-to-Speech) | `/api/v1/speech/synthesize` |
-| `/api/v1/nlp/...` | NLP (Entity Extraction) | `/api/v1/nlp/extract_entities` |
-| `/api/v1/fedl/...` | Federated Learning | `/api/v1/fedl/...` |
+| `/api/v1/text/...` | SMR (Summarization) | `/api/v1/text/generate` |
 | `/api/v1/admin/...` | Tenant admin endpoints | `/api/v1/admin/settings` |
 | `/api/v1/user/me/...` | Current user endpoints | `/api/v1/user/me/settings` |
 | `/internal/...` | Internal service-to-service | `/internal/stt` |
@@ -381,31 +376,13 @@ GET    /api/v1/audio/ai-models                    # List AI models
 WS     /stt-v2                                    # WebSocket for real-time STT v2
 ```
 
-#### TTS Service (Speech)
-
-```
-ALL  /api/v1/speech/**                    # Proxied to TTS service (:8863)
-WS   /tts                                 # WebSocket for streaming TTS
-```
-
 #### SMR Service (Text)
 
 ```
-ALL  /api/v1/text/**                      # Proxied to SMR service (:8862)
+ALL  /api/v1/text/**                      # SmrProxyController (modules/streaming) → SMR service (:8862)
 ```
 
-#### NLP Service
-
-```
-ALL  /api/v1/nlp/**                       # Proxied to NLP service (:8864)
-WS   /nlp                                 # WebSocket for real-time NLP
-```
-
-#### FedL Service
-
-```
-ALL  /api/v1/fedl/**                      # Proxied to FedL service (:8865)
-```
+> **NLP** is a downstream Python service (`:8864`) that the gateway health-monitors via `/api/v1/health/services`; it has **no** gateway proxy route or WebSocket.
 
 #### Admin Endpoints (Tenant Administrators)
 
@@ -461,24 +438,19 @@ apps/api/
 │   ├── main.ts                    # Application entry point
 │   ├── app.module.ts              # Root module
 │   │
-│   ├── modules/                   # Feature modules
+│   ├── modules/                   # Feature modules (authoritative list: `featureModules` in app.module.ts)
 │   │   ├── audit-log/            # Audit log management     → /api/v1/admin/audit-logs
 │   │   ├── auth/                 # Authentication (JWT, OIDC)
 │   │   ├── consultation/         # Consultation lifecycle & context
 │   │   ├── department/           # Department management
-│   │   ├── fedl/                 # FedL proxy               → /api/v1/fedl
-│   │   ├── feedback/             # User feedback proxy
 │   │   ├── global-settings/      # Global settings           → /api/v1/admin/settings
+│   │   ├── harness-admin/        # Harness ops/observability → /api/v1/admin/harness/...
 │   │   ├── health/               # Health check endpoints
-│   │   ├── mlflow/               # MLflow proxy
 │   │   ├── monitoring/           # Service health monitoring
-│   │   ├── nlp/                  # NLP proxy                → /api/v1/nlp
 │   │   ├── pstudio/             # Prisma Studio             → /api/v1/admin/pstudio
 │   │   ├── rbac/                 # Role-based access control → /api/v1/admin/rbac/...
-│   │   ├── streaming/            # SMR proxy (text)          → /api/v1/text
-│   │   ├── stt-v2/              # STT v2 (audio)            → /api/v1/audio/...
+│   │   ├── streaming/            # STT v2 audio (/api/v1/audio) + SMR proxy (/api/v1/text) + STT WebSocket
 │   │   ├── tenant/               # Tenant management         → /api/v1/admin/tenants
-│   │   ├── tts/                  # TTS proxy (speech)        → /api/v1/speech
 │   │   ├── user/                 # User management
 │   │   ├── user-preferences/     # User preferences          → /api/v1/user/me
 │   │   └── user-settings/        # User settings             → /api/v1/user/me/settings

@@ -270,10 +270,12 @@ Other Prisma schema files define:
 | `notification.prisma` | `Notification` |
 | `tag.prisma` | `Tag` |
 | `media.prisma` | `Media`, `UserMedia` |
-| `fedl.prisma` | Federated learning models |
+| `fedl.prisma` | Federated learning models (legacy schema; no live `apps/fedl` service) |
 | `dna-writing-style.prisma` | `DnaWritingStyleReport` |
-| `globalSetting.prisma` | `GlobalSetting` |
+| `globalSetting.prisma` | `GlobalSetting` (also stores per-tenant guardrail engine/model config) |
 | `prompt-template.prisma` | Prompt template management |
+| `harness.prisma` | Clinical Documentation Harness workflow / provenance models |
+| `knowledge.prisma` | Knowledge ingestion / RAG documents |
 
 ## Related Documentation
 

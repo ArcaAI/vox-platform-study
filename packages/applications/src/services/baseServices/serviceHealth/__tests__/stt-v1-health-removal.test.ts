@@ -63,17 +63,18 @@ describe('STT v1 Health Check Removal (TASK-210 Phase 1)', () => {
     });
 
     describe('service list after STT v1 removal', () => {
-        it('should monitor TTS, SMR, NLP, and STT v2 (not STT v1)', async () => {
+        it('should monitor SMR, NLP, STT v2, Guardrail, Harness (not STT v1)', async () => {
             mockRedisInstance.lrange.mockResolvedValue([]);
 
             const result = await service.getUptime();
 
             const serviceNames = Object.keys(result.services);
-            expect(serviceNames).toHaveLength(4);
-            expect(serviceNames).toContain('Text to Speech');
+            expect(serviceNames).toHaveLength(5);
             expect(serviceNames).toContain('Summarization');
             expect(serviceNames).toContain('Medical NLP');
             expect(serviceNames).toContain('Speech to Text');
+            expect(serviceNames).toContain('Guardrail');
+            expect(serviceNames).toContain('Clinical Documentation Harness');
         });
 
         it('should return uptime for STT v2 (Speech to Text)', async () => {
@@ -90,21 +91,21 @@ describe('STT v1 Health Check Removal (TASK-210 Phase 1)', () => {
             expect(result!.status).toBe('unknown');
         });
 
-        it('should still return uptime for Text to Speech', async () => {
+        it('should return uptime for Guardrail', async () => {
             mockRedisInstance.lrange.mockResolvedValue([]);
-            const result = await service.getServiceUptime('Text to Speech');
+            const result = await service.getServiceUptime('Guardrail');
             expect(result).not.toBeNull();
             expect(result!.status).toBe('unknown');
         });
     });
 
     describe('health check URLs should not include STT v1', () => {
-        it('should perform health checks for all 4 services', async () => {
+        it('should perform health checks for all 5 services', async () => {
             mockFetch.mockResolvedValue({ ok: true });
 
             await service.performHealthChecks();
 
-            expect(mockFetch).toHaveBeenCalledTimes(4);
+            expect(mockFetch).toHaveBeenCalledTimes(5);
         });
 
         it('should not call any STT v1 URL (port 5003)', async () => {
@@ -118,14 +119,16 @@ describe('STT v1 Health Check Removal (TASK-210 Phase 1)', () => {
             }
         });
 
-        it('should call all service health endpoints at /api/v1/health', async () => {
+        // Guardrail mounts its health router under `/api`; the others use
+        // `/api/v1/health` (mirrors the gateway health controller).
+        it('should call all service health endpoints at /api(/v1)/health', async () => {
             mockFetch.mockResolvedValue({ ok: true });
 
             await service.performHealthChecks();
 
             const calledUrls = mockFetch.mock.calls.map((call: any[]) => call[0] as string);
             for (const url of calledUrls) {
-                expect(url).toMatch(/\/api\/v1\/health$/);
+                expect(url).toMatch(/\/api\/(v1\/)?health$/);
             }
         });
     });
@@ -136,11 +139,11 @@ describe('STT v1 Health Check Removal (TASK-210 Phase 1)', () => {
             expect(mockFetch).not.toHaveBeenCalled();
         });
 
-        // TASK-336 OB-13 — sessions now expose an `stt` (STT v2) key alongside
-        // tts/smr/nlp for surface consistency. This does NOT reintroduce the
+        // Sessions expose an `stt` (STT v2) key alongside smr/nlp/guardrail/
+        // harness for surface consistency. This does NOT reintroduce the
         // removed STT v1 *polling* (see "should not make any fetch calls"); the
         // count is a static placeholder produced without any network call.
-        it('should include stt (STT v2) as a static, non-polled session count (OB-13)', async () => {
+        it('should include stt (STT v2) as a static, non-polled session count', async () => {
             const result = await service.getSessionCounts();
             expect(result.services).toHaveProperty('stt');
             expect(result.services.stt.active).toBe(0);
@@ -151,10 +154,11 @@ describe('STT v1 Health Check Removal (TASK-210 Phase 1)', () => {
             expect(result.totalUsers).toBe(0);
         });
 
-        it('should include tts and smr with zero active counts', async () => {
+        it('should include smr, guardrail and harness with zero active counts', async () => {
             const result = await service.getSessionCounts();
-            expect(result.services.tts.active).toBe(0);
             expect(result.services.smr.active).toBe(0);
+            expect(result.services.guardrail.active).toBe(0);
+            expect(result.services.harness.active).toBe(0);
         });
 
         it('should include a valid ISO refreshedAt timestamp', async () => {

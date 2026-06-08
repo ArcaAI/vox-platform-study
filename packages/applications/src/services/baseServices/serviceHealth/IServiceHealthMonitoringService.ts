@@ -3,9 +3,9 @@ import { HeartbeatRecord, ServiceUptime, SessionsResponse, UptimeResponse } from
 /**
  * Interface for microservice health monitoring.
  *
- * Tracks the health, uptime, and session counts of downstream
- * Python microservices (STT, TTS, SMR) via periodic health checks
- * and Redis-backed heartbeat storage.
+ * Tracks the health, uptime, and session counts of the downstream
+ * services (SMR, NLP, STT v2, Guardrail, Harness) via periodic health
+ * checks and Redis-backed heartbeat storage.
  */
 export interface IServiceHealthMonitoringService {
   /**

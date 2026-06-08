@@ -2,8 +2,8 @@
  * ServiceHealthMonitoringService Unit Tests
  *
  * Tests the microservice health monitoring service that tracks heartbeats,
- * uptime, and session counts for downstream Python services
- * (TTS, SMR, NLP, STT v2).
+ * uptime, and session counts for the real downstream services
+ * (SMR, NLP, STT v2, Guardrail, Harness).
  *
  * Mocking strategy: We mock ioredis at module level so the constructor
  * returns a controllable mock instance. We also mock global fetch.
@@ -89,18 +89,19 @@ describe('ServiceHealthMonitoringService', () => {
     // ========================================================================
 
     describe('getUptime', () => {
-        it('should return uptime data for all 4 monitored services', async () => {
+        it('should return uptime data for all 5 monitored services', async () => {
             mockRedisInstance.lrange.mockResolvedValue([]);
 
             const result = await service.getUptime();
 
             expect(result).toHaveProperty('services');
             expect(result).toHaveProperty('refreshedAt');
-            expect(Object.keys(result.services)).toHaveLength(4);
-            expect(result.services).toHaveProperty('Text to Speech');
+            expect(Object.keys(result.services)).toHaveLength(5);
             expect(result.services).toHaveProperty('Summarization');
             expect(result.services).toHaveProperty('Medical NLP');
             expect(result.services).toHaveProperty('Speech to Text');
+            expect(result.services).toHaveProperty('Guardrail');
+            expect(result.services).toHaveProperty('Clinical Documentation Harness');
         });
 
         it('should return unknown status when no heartbeats exist', async () => {
@@ -108,9 +109,9 @@ describe('ServiceHealthMonitoringService', () => {
 
             const result = await service.getUptime();
 
-            expect(result.services['Text to Speech'].status).toBe('unknown');
-            expect(result.services['Text to Speech'].uptime).toBe(0);
-            expect(result.services['Text to Speech'].responseTime).toBe(0);
+            expect(result.services['Guardrail'].status).toBe('unknown');
+            expect(result.services['Guardrail'].uptime).toBe(0);
+            expect(result.services['Guardrail'].responseTime).toBe(0);
         });
 
         it('should return healthy status when all recent heartbeats are up', async () => {
@@ -122,8 +123,8 @@ describe('ServiceHealthMonitoringService', () => {
 
             const result = await service.getUptime();
 
-            expect(result.services['Text to Speech'].status).toBe('healthy');
-            expect(result.services['Text to Speech'].uptime).toBe(100);
+            expect(result.services['Guardrail'].status).toBe('healthy');
+            expect(result.services['Guardrail'].uptime).toBe(100);
         });
 
         it('should return down status when all recent heartbeats are down', async () => {
@@ -135,8 +136,8 @@ describe('ServiceHealthMonitoringService', () => {
 
             const result = await service.getUptime();
 
-            expect(result.services['Text to Speech'].status).toBe('down');
-            expect(result.services['Text to Speech'].uptime).toBe(0);
+            expect(result.services['Guardrail'].status).toBe('down');
+            expect(result.services['Guardrail'].uptime).toBe(0);
         });
 
         it('should return degraded status when heartbeats are mixed', async () => {
@@ -148,7 +149,7 @@ describe('ServiceHealthMonitoringService', () => {
 
             const result = await service.getUptime();
 
-            expect(result.services['Text to Speech'].status).toBe('degraded');
+            expect(result.services['Guardrail'].status).toBe('degraded');
         });
 
         it('should calculate uptime percentage correctly', async () => {
@@ -162,7 +163,7 @@ describe('ServiceHealthMonitoringService', () => {
 
             const result = await service.getUptime();
 
-            expect(result.services['Text to Speech'].uptime).toBe(50);
+            expect(result.services['Guardrail'].uptime).toBe(50);
         });
 
         it('should include refreshedAt as an ISO timestamp', async () => {
@@ -183,7 +184,7 @@ describe('ServiceHealthMonitoringService', () => {
         it('should return uptime for a valid service name', async () => {
             mockRedisInstance.lrange.mockResolvedValue([createHeartbeatJson('up', 50)]);
 
-            const result = await service.getServiceUptime('Text to Speech');
+            const result = await service.getServiceUptime('Guardrail');
 
             expect(result).not.toBeNull();
             expect(result!.status).toBe('healthy');
@@ -202,7 +203,7 @@ describe('ServiceHealthMonitoringService', () => {
                 createHeartbeatJson('up', 60),
             ]);
 
-            const result = await service.getServiceUptime('Text to Speech');
+            const result = await service.getServiceUptime('Guardrail');
 
             expect(result!.heartbeats).toHaveLength(2);
             expect(result!.heartbeats[0].status).toBe('up');
@@ -214,7 +215,7 @@ describe('ServiceHealthMonitoringService', () => {
                 createHeartbeatJson('up', 100),
             ]);
 
-            const result = await service.getServiceUptime('Text to Speech');
+            const result = await service.getServiceUptime('Guardrail');
 
             expect(result!.responseTime).toBe(42);
         });
@@ -231,7 +232,7 @@ describe('ServiceHealthMonitoringService', () => {
                 createHeartbeatJson('down', 0),
             ]);
 
-            const result = await service.getHeartbeatHistory('Text to Speech');
+            const result = await service.getHeartbeatHistory('Guardrail');
 
             expect(result).toHaveLength(2);
             expect(result[0]).toHaveProperty('timestamp');
@@ -244,7 +245,7 @@ describe('ServiceHealthMonitoringService', () => {
         it('should return empty array when Redis lrange fails', async () => {
             mockRedisInstance.lrange.mockRejectedValue(new Error('Redis timeout'));
 
-            const result = await service.getHeartbeatHistory('Text to Speech');
+            const result = await service.getHeartbeatHistory('Guardrail');
 
             expect(result).toEqual([]);
         });
@@ -255,7 +256,7 @@ describe('ServiceHealthMonitoringService', () => {
             const freshService = new ServiceHealthMonitoringService(mockConfig as any);
             await freshService.onModuleInit();
 
-            const result = await freshService.getHeartbeatHistory('Text to Speech');
+            const result = await freshService.getHeartbeatHistory('Guardrail');
 
             expect(result).toEqual([]);
         });
@@ -272,19 +273,21 @@ describe('ServiceHealthMonitoringService', () => {
             expect(result).toHaveProperty('services');
             expect(result).toHaveProperty('totalUsers');
             expect(result).toHaveProperty('refreshedAt');
-            expect(result.services.tts.active).toBe(0);
             expect(result.services.smr.active).toBe(0);
+            expect(result.services.guardrail.active).toBe(0);
             expect(result.totalUsers).toBe(0);
         });
 
-        // TASK-336 OB-13 — sessions now cover all four downstream services
-        // (tts, smr, stt, nlp), matching the uptime/health surfaces. The
+        // Sessions cover the real downstream services (smr, stt, nlp,
+        // guardrail, harness), matching the uptime/health surfaces. The
         // counts stay static zeros (no per-service polling — see no-fetch test).
-        it('should include stt and nlp session counts (OB-13)', async () => {
+        it('should include stt, nlp, guardrail and harness session counts', async () => {
             const result = await service.getSessionCounts();
 
             expect(result.services.stt.active).toBe(0);
             expect(result.services.nlp.active).toBe(0);
+            expect(result.services.guardrail.active).toBe(0);
+            expect(result.services.harness.active).toBe(0);
         });
 
         it('should not poll downstream services for session counts (no fetch)', async () => {
@@ -311,17 +314,19 @@ describe('ServiceHealthMonitoringService', () => {
 
             await service.performHealthChecks();
 
-            expect(mockFetch).toHaveBeenCalledTimes(4);
+            expect(mockFetch).toHaveBeenCalledTimes(5);
         });
 
-        it('should fetch all service health endpoints at /api/v1/health', async () => {
+        // Guardrail mounts its health router under `/api`; the other services
+        // use `/api/v1/health` (mirrors the gateway health controller).
+        it('should fetch all service health endpoints at /api(/v1)/health', async () => {
             mockFetch.mockResolvedValue({ ok: true });
 
             await service.performHealthChecks();
 
             const calledUrls = mockFetch.mock.calls.map((c: any[]) => c[0] as string);
             for (const url of calledUrls) {
-                expect(url).toMatch(/^http:\/\/localhost:\d+\/api\/v1\/health$/);
+                expect(url).toMatch(/^http:\/\/localhost:\d+\/api\/(v1\/)?health$/);
             }
         });
 
@@ -437,7 +442,7 @@ describe('ServiceHealthMonitoringService', () => {
                 createHeartbeatJson('down', 0),
             ]);
 
-            const result = await service.getServiceUptime('Text to Speech');
+            const result = await service.getServiceUptime('Guardrail');
 
             expect(result!.status).toBe('healthy');
             expect(result!.uptime).toBe(50);
@@ -446,7 +451,7 @@ describe('ServiceHealthMonitoringService', () => {
         it('should handle single heartbeat correctly', async () => {
             mockRedisInstance.lrange.mockResolvedValue([createHeartbeatJson('down', 0)]);
 
-            const result = await service.getServiceUptime('Text to Speech');
+            const result = await service.getServiceUptime('Guardrail');
 
             expect(result!.status).toBe('down');
             expect(result!.uptime).toBe(0);
@@ -458,7 +463,7 @@ describe('ServiceHealthMonitoringService', () => {
                 createHeartbeatJson('down', 0),
             ]);
 
-            const result = await service.getServiceUptime('Text to Speech');
+            const result = await service.getServiceUptime('Guardrail');
 
             expect(result!.status).toBe('degraded');
             expect(result!.uptime).toBe(50);
@@ -471,7 +476,7 @@ describe('ServiceHealthMonitoringService', () => {
                 createHeartbeatJson('down', 0),
             ]);
 
-            const result = await service.getServiceUptime('Text to Speech');
+            const result = await service.getServiceUptime('Guardrail');
 
             // 2/3 = 66.666... should round to 66.67
             expect(result!.uptime).toBe(66.67);
@@ -485,7 +490,7 @@ describe('ServiceHealthMonitoringService', () => {
                 createHeartbeatJson('up', 55),
             ]);
 
-            const result = await service.getServiceUptime('Text to Speech');
+            const result = await service.getServiceUptime('Guardrail');
 
             expect(result!.uptime).toBe(100);
             expect(result!.status).toBe('healthy');

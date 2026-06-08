@@ -139,19 +139,13 @@ export class ConfigService implements IConfigService, OnModuleInit {
       URL: process.env.URL || 'http://localhost',
       STT_V2_URL: process.env.STT_V2_URL || 'http://localhost:8861',
       // eslint-disable-next-line turbo/no-undeclared-env-vars
-      TTS_PORT: process.env.TTS_PORT || '8863',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
-      TTS_URL: process.env.TTS_URL || 'http://localhost:8863',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
       SMR_PORT: process.env.SMR_PORT || '8862',
       SMR_URL: process.env.SMR_URL || 'http://localhost:8862',
       // eslint-disable-next-line turbo/no-undeclared-env-vars
       NLP_PORT: process.env.NLP_PORT || '8864',
       NLP_URL: process.env.NLP_URL || 'http://localhost:8864',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
-      FEDL_PORT: process.env.FEDL_PORT || '8865',
-      // eslint-disable-next-line turbo/no-undeclared-env-vars
-      FEDL_URL: process.env.FEDL_URL || 'http://localhost:8865',
+      GUARDRAIL_URL: process.env.GUARDRAIL_URL || 'http://localhost:8863',
+      HARNESS_URL: process.env.HARNESS_URL || 'http://localhost:8866',
 
       // MQTT
       // eslint-disable-next-line turbo/no-undeclared-env-vars
