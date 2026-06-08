@@ -33,6 +33,15 @@ export class AddContextRequest {
   @IsOptional()
   @IsEnum(ContextItemSource)
   source?: ContextItemSource;
+
+  @ApiPropertyOptional({
+    description:
+      'Free-form JSON metadata persisted on the context item. Convention: for lab/exam ATTACHMENTs set `{ "subType": "LAB_RESULT" }` (no new enum) so the clinical playground can render and fold the result into the live summary.',
+    example: { subType: 'LAB_RESULT' },
+  })
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>;
 }
 
 /**

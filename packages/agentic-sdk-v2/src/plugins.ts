@@ -66,6 +66,16 @@ export { PluginManager, type PluginEventCallbacks, type PluginManagerState } fro
 export { TranscriptionPipeline, createTranscriptionPipeline } from './core/TranscriptionPipeline';
 
 /**
+ * createProcessedAudioTap exposes the GENUINE post-noise-filter audio as a
+ * recordable MediaStream (the same RNNoise NoiseFilterProcessor the pipeline
+ * uses), for consumers that need the real processed PCM without driving the
+ * full pipeline (e.g. dual capture on a backend-STT path). Opt-in; throws when
+ * RNNoise is unavailable so callers can fall back.
+ */
+export { createProcessedAudioTap } from './core/ProcessedAudioTap';
+export type { ProcessedAudioTap, ProcessedAudioTapOptions } from './core/ProcessedAudioTap';
+
+/**
  * KnowledgePipeline handles text processing:
  * Transcription → NER → SpellCheck → Summary
  */

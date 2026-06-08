@@ -28,6 +28,7 @@ import re
 import httpx
 
 from harness.core.config import SafetyGuardConfig
+from harness.core.llm_concurrency import governed_request
 
 
 class GraniteServiceError(RuntimeError):
@@ -128,9 +129,17 @@ class GraniteGuardianClient:
                 "temperature": 0.0,
                 "stream": False,
             }
-        try:
+        async def _send() -> httpx.Response:
             resp = await client.post(url, json=body)
             resp.raise_for_status()
+            return resp
+
+        # Share the per-endpoint governor with the judge + embeddings client (the
+        # guardian runs on the same LM Studio box during the concurrent inferential
+        # pass); rate-limit-aware retry recovers a terminated/overloaded engine before
+        # the safety screen degrades.
+        try:
+            resp = await governed_request(self._base_url, _send)
         except httpx.HTTPError as exc:
             raise GraniteServiceError(f"granite guardian request failed: {exc}") from exc
         content = self._extract_content(resp.json())

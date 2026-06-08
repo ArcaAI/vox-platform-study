@@ -4,6 +4,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   ConsultationRepository,
   ConsultationFactory,
+  ConsultationStatus,
   DepartmentRepository,
   ResourceType,
   SysEventType,
@@ -675,6 +676,67 @@ export class ConsultationService extends BaseService implements IConsultationSer
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,
       data: { action: 'updateConsultation', fields: Object.keys(request ?? {}) },
+    });
+
+    return ConsultationDtoMapper.toResponseWithContext(consultation);
+  }
+
+  // ============================================
+  // Clinical Workflow Playground (WS2) — recording lifecycle
+  //
+  // Unlike close/reopen (which use the legacy `metadata.status` JSON), the
+  // recording lifecycle writes the typed `status` COLUMN promoted in TASK-330
+  // — the same column the harness attestation gate writes (RECORDING →
+  // PENDING_REVIEW → SIGNED). The DTO mapper treats a non-OPEN column value as
+  // canonical, so `ConsultationResponse.status` reflects RECORDING immediately.
+  // The LiveDocumentationService session is started/stopped by the controller
+  // around these status transitions.
+  // ============================================
+
+  /**
+   * Flip the consultation's `status` column to RECORDING.
+   */
+  async startRecording(id: string): Promise<ConsultationResponse> {
+    return this.setRecordingStatus(id, ConsultationStatus.RECORDING, 'startRecording');
+  }
+
+  /**
+   * Revert the consultation's `status` column to OPEN when recording stops.
+   * The harness later promotes a recorded consult to PENDING_REVIEW.
+   */
+  async stopRecording(id: string): Promise<ConsultationResponse> {
+    return this.setRecordingStatus(id, ConsultationStatus.OPEN, 'stopRecording');
+  }
+
+  /**
+   * Shared recording-status writer: tenant-asserted load, write the typed
+   * `status` column, persist, and broadcast `ResourceUpdated`.
+   */
+  private async setRecordingStatus(
+    id: string,
+    target: ConsultationStatus,
+    action: 'startRecording' | 'stopRecording',
+  ): Promise<ConsultationResponse> {
+    if (!this.tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const consultation = await this.consultationRepository.findWithRelations(id);
+    if (!consultation) {
+      throw new NotFoundException('Consultation not found');
+    }
+    assertEqualTenants(consultation, { tenantId: this.tenantId });
+
+    consultation.status = target;
+    if (this.requestUserId) {
+      consultation.updatedBy = this.requestUserId;
+    }
+
+    await this.consultationRepository.update(id, consultation);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: id,
+      data: { action, status: target },
     });
 
     return ConsultationDtoMapper.toResponseWithContext(consultation);

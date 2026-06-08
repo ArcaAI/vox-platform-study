@@ -29,6 +29,15 @@ export enum ConsultationPipelineEvent {
   /** Emitted when a transcript context item is created from STT output */
   TranscriptionCreated = 'consultation.transcription.created',
 
+  /**
+   * Emitted when a non-transcript context item (WORKNOTE / CASE_NOTE /
+   * ATTACHMENT / PRE_SUMMARY ...) is added to a consultation via the context
+   * add path. Consumed by LiveDocumentationService so notes/labs/files added
+   * mid-visit are folded into the running live summary. Does NOT drive the
+   * harness pipeline.
+   */
+  ContextAdded = 'consultation.context.added',
+
   /** Emitted when an async summary job completes successfully */
   SummaryGenerated = 'consultation.summary.generated',
 
@@ -85,6 +94,28 @@ export interface TranscriptionCreatedPayload extends ConsultationPipelineEventBa
 
   /** Source of the transcription: streaming (WebSocket) or batch (file upload) */
   transcriptionSource: 'streaming' | 'batch';
+}
+
+/**
+ * Payload for `ConsultationPipelineEvent.ContextAdded`.
+ *
+ * Emitted by ContextService.addContext after any non-transcript context item
+ * is persisted. Carries a short content preview + the optional lab/exam
+ * `metadata.subType` so the LiveDocumentationService can fold the note/lab/file
+ * into the running summary without an extra DB round-trip.
+ */
+export interface ContextAddedPayload extends ConsultationPipelineEventBase {
+  /** The created context item id */
+  contextItemId: string;
+
+  /** The context item type (e.g., WORKNOTE, CASE_NOTE, ATTACHMENT) */
+  contextType: string;
+
+  /** Optional `metadata.subType` label (e.g., 'LAB_RESULT' for lab/exam attachments) */
+  subType?: string;
+
+  /** First ~2k chars of text content, when present (notes); absent for media-only attachments */
+  contentPreview?: string;
 }
 
 /**
@@ -254,6 +285,7 @@ export const DEFAULT_PIPELINE_CONFIG: ConsultationPipelineConfig = {
  */
 export type ConsultationPipelineEventPayloadMap = {
   [ConsultationPipelineEvent.TranscriptionCreated]: TranscriptionCreatedPayload;
+  [ConsultationPipelineEvent.ContextAdded]: ContextAddedPayload;
   [ConsultationPipelineEvent.SummaryGenerated]: SummaryGeneratedPayload;
   [ConsultationPipelineEvent.NerExtracted]: NerExtractedPayload;
   [ConsultationPipelineEvent.PipelineCompleted]: PipelineCompletedPayload;

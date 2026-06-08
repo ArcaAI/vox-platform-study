@@ -32,6 +32,10 @@ export class ContextItemEntity extends BaseTenantEntity {
   private _content?: IContextItemEntity['content'];
   private _mediaId?: IContextItemEntity['mediaId'];
   private _dnaWritingStyleId?: IContextItemEntity['dnaWritingStyleId'];
+  // Clinical Workflow Playground — round-trips the `_metadata` JSONB column so
+  // ATTACHMENT lab/exam results can carry a `metadata.subType = 'LAB_RESULT'`
+  // convention (no new enum). Mirrors the column already on BaseDataModel.
+  private _metaData?: IContextItemEntity['metaData'];
   private _qdrantSynced: IContextItemEntity['qdrantSynced'];
   private _qdrantSyncedAt?: IContextItemEntity['qdrantSyncedAt'];
   private _Consultation?: IContextItemEntity['Consultation'];
@@ -49,6 +53,7 @@ export class ContextItemEntity extends BaseTenantEntity {
     this._content = init.content;
     this._mediaId = init.mediaId;
     this._dnaWritingStyleId = init.dnaWritingStyleId;
+    this._metaData = init.metaData;
     this._qdrantSynced = init.qdrantSynced ?? false;
     this._qdrantSyncedAt = init.qdrantSyncedAt;
     this._Consultation = init.Consultation;
@@ -112,6 +117,14 @@ export class ContextItemEntity extends BaseTenantEntity {
 
   set dnaWritingStyleId(value: IContextItemEntity['dnaWritingStyleId']) {
     this.setProperty('dnaWritingStyleId', value);
+  }
+
+  get metaData(): IContextItemEntity['metaData'] {
+    return this._metaData;
+  }
+
+  set metaData(value: IContextItemEntity['metaData']) {
+    this.setProperty('metaData', value);
   }
 
   get qdrantSynced(): IContextItemEntity['qdrantSynced'] {

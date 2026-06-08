@@ -12,6 +12,8 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
+from harness.core.llm_concurrency import governed_request
+
 
 class SmrServiceError(RuntimeError):
     """The SMR service was unreachable or returned a non-2xx response."""
@@ -78,9 +80,16 @@ class SmrClient:
             body["context"] = context
 
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
-            try:
+
+            async def _send() -> httpx.Response:
                 resp = await client.post(url, json=body)
                 resp.raise_for_status()
+                return resp
+
+            # Per-endpoint governor (the SMR/Ollama box): bounded rate-limit-aware
+            # retry on a transient generation failure before the loop's own retry.
+            try:
+                resp = await governed_request(self._base_url, _send)
             except httpx.HTTPError as exc:
                 raise SmrServiceError(f"smr generate failed: {exc}") from exc
             data = resp.json()

@@ -87,6 +87,73 @@ class TestSensorRunner:
         verdict = aggregate(out.results, regens_remaining=2, expected=COMPUTATIONAL_SENSOR_NAMES)
         assert verdict.decision == GateDecision.REGEN
 
+    def test_markdown_soap_note_attaches_section_cited_knowledge_chunk_ids(self):
+        # Real-path defense: gemma3 may emit a MARKDOWN SOAP note (not the requested
+        # JSON). The citationsMap must still parse the section headers so the inline
+        # StrictCitations [[kb:]] markers attach to the substantive Plan claims (the
+        # ▁-bearing, BIO-tokenized entities the live NLP returns).
+        note = (
+            "**Subjective:** Elevated home blood pressure readings.\n\n"
+            "**Plan:** Start amlodipine 5 mg once daily [[kb:kc-htn]] for hypertension. "
+            "Target blood pressure below 130/80 mmHg [[kb:kc-htn]]."
+        )
+        note_entities = [
+            NEREntity(text="\u2581amlodipine", type="B-MEDICATION", start=20, end=31),
+            NEREntity(text="\u2581130", type="B-LAB_VALUE", start=80, end=84),
+            NEREntity(text="/", type="I-LAB_VALUE", start=84, end=85),
+            NEREntity(text="80", type="I-LAB_VALUE", start=85, end=87),
+            NEREntity(text="\u2581mmHg", type="I-LAB_VALUE", start=87, end=92),
+        ]
+        out = run_computational_sensors(
+            note_text=note,
+            transcript_text="",
+            note_entities=note_entities,
+            transcript_entities=[],
+            response_format=_RESPONSE_FORMAT,
+            retrieved_chunk_ids=["kc-htn"],
+        )
+        claims = out.citations_map["claims"]
+        texts = {c["text"] for c in claims}
+        # Subword lab tokens aggregate into one value claim (no unit-token flood).
+        assert "130/80 mmHg" in texts
+        amlodipine = next(c for c in claims if c["text"] == "amlodipine")
+        bp_value = next(c for c in claims if c["text"] == "130/80 mmHg")
+        # Markdown sections resolve to Plan, so the cited chunk id attaches.
+        assert amlodipine["section"] == "P"
+        assert amlodipine["knowledgeChunkIds"] == ["kc-htn"]
+        assert bp_value["section"] == "P"
+        assert bp_value["knowledgeChunkIds"] == ["kc-htn"]
+
+    def test_markdown_parenthetical_letter_headers_attach_chunk_ids(self):
+        # Live gemma-4-e4b emits SOAP headers as "**SUBJECTIVE (S)**" — the section
+        # letter in parens, bold, and NO trailing colon — not "**Subjective:**". The
+        # header parse must still split these so the inline StrictCitations [[kb:]]
+        # markers attach per section (otherwise citation_verify sees total=0 even
+        # though the note is full of explicit citations).
+        note = (
+            "**SUBJECTIVE (S)**\n"
+            "Elevated home blood pressure readings around 150/95 [[kb:kc-htn]].\n\n"
+            "**ASSESSMENT (A)**\n"
+            "Stage 2 Hypertension.\n\n"
+            "**PLAN (P)**\n"
+            "Initiate amlodipine 5 mg once daily [[kb:kc-htn]] as first-line therapy."
+        )
+        note_entities = [
+            NEREntity(text="\u2581amlodipine", type="B-MEDICATION", start=0, end=11),
+        ]
+        out = run_computational_sensors(
+            note_text=note,
+            transcript_text="",
+            note_entities=note_entities,
+            transcript_entities=[],
+            response_format=_RESPONSE_FORMAT,
+            retrieved_chunk_ids=["kc-htn"],
+        )
+        claims = out.citations_map["claims"]
+        amlodipine = next(c for c in claims if c["text"] == "amlodipine")
+        assert amlodipine["section"] == "P"
+        assert amlodipine["knowledgeChunkIds"] == ["kc-htn"]
+
     def test_fabricated_note_entity_aggregates_to_flag(self):
         note, transcript, _note_entities, transcript_entities = _grounded_inputs()
         # A medication that never appears in the transcript = fabrication.

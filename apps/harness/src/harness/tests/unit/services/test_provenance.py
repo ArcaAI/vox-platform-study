@@ -156,3 +156,125 @@ class TestKnowledgeChunkCitations:
         )
         # No retrieval context -> markers are ignored, the field stays empty.
         assert cmap["claims"][0]["knowledgeChunkIds"] == []
+
+
+# ── TASK-330 ▁-attribution fix: section matching + subword claim aggregation ────
+# The live NLP ``/classify/tokens`` returns per-TOKEN BIO entities (``B-``/``I-``
+# tags) whose surface carries the SentencePiece "▁" (U+2581) word-boundary marker.
+# Two interacting defects this guards against:
+#   (1) ``_derive_section`` compared the ▁-bearing normalized entity against plain
+#       section text -> never matched -> every claim collapsed to the default "A",
+#       so the StrictCitations chunk id (attributed section-level) never attached.
+#   (2) one claim per subword token fragmented "5 mg once daily" / "130/80 mmHg"
+#       into unit tokens, flooding citation_verify with bare-token "claims".
+# Fix: strip ▁ on the matching path, and aggregate a ``B-``/bare token with its
+# trailing CONTIGUOUS ``I-*`` tokens into one coherent phrase-claim.
+class TestSubwordAttribution:
+    @staticmethod
+    def _amlodipine_plan_tokens():
+        """Live-shaped BIO tokens for 'amlodipine 5 mg once daily' (offsets contiguous)."""
+        return [
+            NEREntity(text="\u2581amlodipine", type="B-MEDICATION", start=25, end=36),
+            NEREntity(text="\u25815", type="B-DOSAGE", start=36, end=38),
+            NEREntity(text="\u2581mg", type="I-DOSAGE", start=38, end=41),
+            NEREntity(text="\u2581once", type="I-DOSAGE", start=41, end=46),
+            NEREntity(text="\u2581daily", type="I-DOSAGE", start=46, end=52),
+        ]
+
+    def test_marker_bearing_entity_resolves_to_real_section_not_default_A(self):
+        cmap = build_citations_map(
+            soap_sections={
+                "subjective": "Blood pressure has been elevated.",
+                "plan": "Start amlodipine 5 mg once daily.",
+            },
+            note_entities=[
+                NEREntity(text="\u2581amlodipine", type="B-MEDICATION", start=6, end=17)
+            ],
+            transcript_entities=[],
+            transcript_text="",
+        )
+        # ▁amlodipine lives in the Plan; it must NOT collapse to the default "A".
+        assert cmap["claims"][0]["section"] == "P"
+
+    def test_contiguous_bio_subwords_aggregate_into_one_phrase_claim(self):
+        cmap = build_citations_map(
+            soap_sections={"plan": "Start amlodipine 5 mg once daily."},
+            note_entities=self._amlodipine_plan_tokens(),
+            transcript_entities=[],
+            transcript_text="",
+        )
+        texts = [c["text"] for c in cmap["claims"]]
+        # B-DOSAGE + 3×I-DOSAGE collapse to one claim; the B-MEDICATION stays separate.
+        assert "amlodipine" in texts
+        assert "5 mg once daily" in texts
+        # No per-subword fragment claims survive.
+        for fragment in ("mg", "once", "daily"):
+            assert fragment not in texts
+
+    def test_lab_value_subwords_do_not_flood_into_unit_token_claims(self):
+        cmap = build_citations_map(
+            soap_sections={"plan": "Target blood pressure below 130/80 mmHg."},
+            note_entities=[
+                NEREntity(text="\u2581130", type="B-LAB_VALUE", start=28, end=32),
+                NEREntity(text="/", type="I-LAB_VALUE", start=32, end=33),
+                NEREntity(text="80", type="I-LAB_VALUE", start=33, end=35),
+                NEREntity(text="\u2581mmHg", type="I-LAB_VALUE", start=35, end=40),
+            ],
+            transcript_entities=[],
+            transcript_text="",
+        )
+        # The 4 subword tokens detokenize to a single coherent value claim.
+        assert [c["text"] for c in cmap["claims"]] == ["130/80 mmHg"]
+
+    def test_b_token_starts_a_new_claim_even_when_offset_contiguous(self):
+        # Two adjacent B- entities (touching offsets) must NOT merge — a B- marker
+        # is a new entity, so a comma-separated list stays as distinct claims.
+        cmap = build_citations_map(
+            soap_sections={"plan": "salt reduction, weight loss."},
+            note_entities=[
+                NEREntity(text="\u2581salt", type="B-THERAPEUTIC", start=0, end=5),
+                NEREntity(text="\u2581reduction", type="I-THERAPEUTIC", start=5, end=15),
+                NEREntity(text="\u2581weight", type="B-THERAPEUTIC", start=15, end=22),
+                NEREntity(text="\u2581loss", type="I-THERAPEUTIC", start=22, end=27),
+            ],
+            transcript_entities=[],
+            transcript_text="",
+        )
+        texts = [c["text"] for c in cmap["claims"]]
+        assert texts == ["salt reduction", "weight loss"]
+
+    def test_aggregated_plan_claim_carries_section_cited_chunk_id(self):
+        cmap = build_citations_map(
+            soap_sections={
+                "plan": "Start amlodipine 5 mg once daily [[kb:kc-htn]] for hypertension.",
+            },
+            note_entities=self._amlodipine_plan_tokens(),
+            transcript_entities=[],
+            transcript_text="",
+            retrieved_chunk_ids=["kc-htn"],
+        )
+        # Section resolves to P (▁ stripped) so the section-cited id attaches to the
+        # substantive medication/dosage claims — not dropped on the default "A".
+        amlodipine = next(c for c in cmap["claims"] if c["text"] == "amlodipine")
+        assert amlodipine["section"] == "P"
+        assert amlodipine["knowledgeChunkIds"] == ["kc-htn"]
+        assert all(c["knowledgeChunkIds"] == ["kc-htn"] for c in cmap["claims"])
+
+    def test_marker_bearing_entity_grounds_against_plain_transcript(self):
+        # Evidence matching must also be ▁-insensitive: a ▁-bearing note entity is
+        # grounded by the plain-text transcript mention (no marker in the quote).
+        cmap = build_citations_map(
+            soap_sections={"plan": "Start amlodipine."},
+            note_entities=[
+                NEREntity(text="\u2581amlodipine", type="B-MEDICATION", start=6, end=17)
+            ],
+            transcript_entities=[
+                NEREntity(text="\u2581amlodipine", type="B-MEDICATION", start=14, end=25)
+            ],
+            transcript_text="I will start amlodipine today.",
+            transcript_context_item_id="ctx-t1",
+        )
+        claim = cmap["claims"][0]
+        assert claim["status"] == "verified"
+        assert claim["evidence"][0]["quote"] == "amlodipine"
+        assert "\u2581" not in claim["evidence"][0]["quote"]

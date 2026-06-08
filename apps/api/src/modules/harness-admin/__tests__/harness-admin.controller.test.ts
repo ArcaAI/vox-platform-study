@@ -103,6 +103,26 @@ describe('HarnessAdminController — read tenant scoping', () => {
     expect(observabilityService.listAuditEvents).toHaveBeenCalledWith('t1', expect.anything());
   });
 
+  it('forwards the consultation, action, and date-range audit filters to the service', async () => {
+    const { controller, observabilityService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    await controller.listAudit({
+      consultationId: 'c1',
+      action: 'GATE_DECISION',
+      from: '2026-02-01T00:00:00.000Z',
+      to: '2026-02-28T23:59:59.999Z',
+      limit: '25',
+      offset: '50',
+    });
+    expect(observabilityService.listAuditEvents).toHaveBeenCalledWith('t1', {
+      consultationId: 'c1',
+      action: 'GATE_DECISION',
+      from: '2026-02-01T00:00:00.000Z',
+      to: '2026-02-28T23:59:59.999Z',
+      limit: 25,
+      offset: 50,
+    });
+  });
+
   it('rejects a tenant admin targeting another tenant via ?tenantId', async () => {
     const { controller } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
     await expect(controller.listAudit({ tenantId: 't2' })).rejects.toBeInstanceOf(ForbiddenException);

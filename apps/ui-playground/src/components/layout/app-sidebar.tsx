@@ -1,7 +1,7 @@
 import { useAdminPreferences } from '@/features/admin/hooks/use-admin-preferences';
 import { useAuthStore } from '@/store/auth-store';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail } from '@arcaai/ui/sidebar';
-import { BookOpen, Brain, Dna, Download, FileText, Fingerprint, Headphones, LayoutDashboard, MessageSquare, ShieldCheck, Zap } from 'lucide-react';
+import { BookOpen, Brain, Dna, Download, FileText, Fingerprint, Headphones, LayoutDashboard, MessageSquare, ShieldCheck, Stethoscope, Zap } from 'lucide-react';
 import { useMemo } from 'react';
 import { buildAdminNavItems } from './admin-nav-items';
 import { DraggableNavGroup } from './draggable-nav-group';
@@ -73,6 +73,12 @@ const playgroundItems: NavItem[] = [
     title: 'Clinician Review',
     url: '/clinical-review',
     icon: ShieldCheck,
+    badge: 'NEW',
+  },
+  {
+    title: 'Clinical Workspace',
+    url: '/clinical-workspace',
+    icon: Stethoscope,
     badge: 'NEW',
   },
 ];

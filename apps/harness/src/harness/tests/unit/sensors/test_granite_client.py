@@ -152,6 +152,30 @@ class TestFailures:
             await _client(handler, harm_criteria=["harm"]).screen("x")
 
     @pytest.mark.asyncio
+    async def test_terminated_400_is_retried_via_governor(self, monkeypatch):
+        # The guardian shares the LM Studio box with the judge: a burst-induced
+        # 'terminated' 400 must be retried (governor) so the safety screen recovers
+        # instead of degrading. (Governor retry is neutralised suite-wide, so enable
+        # it explicitly for this case.)
+        from harness.core.llm_concurrency import reset_endpoint_limiters
+
+        monkeypatch.setenv("HARNESS_LLM_MAX_ATTEMPTS", "3")
+        monkeypatch.setenv("HARNESS_LLM_BACKOFF_BASE_S", "0")
+        monkeypatch.setenv("HARNESS_LLM_BACKOFF_JITTER_S", "0")
+        reset_endpoint_limiters()
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return httpx.Response(400, json={"error": "terminated"})
+            return _openai_response("no")
+
+        result = await _client(handler, harm_criteria=["harm"]).screen("x")
+        assert calls["n"] == 2  # retried the terminated 400, then succeeded
+        assert result == {"harm": False}
+
+    @pytest.mark.asyncio
     async def test_missing_score_tag_raises_parse_error(self):
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(

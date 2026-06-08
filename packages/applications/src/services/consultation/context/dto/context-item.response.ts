@@ -227,6 +227,12 @@ export class ContextItemResponse {
   @ApiPropertyOptional({ description: 'DNA Writing Style ID' })
   dnaWritingStyleId?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Free-form JSON metadata. Convention: lab/exam ATTACHMENTs carry `{ "subType": "LAB_RESULT" }` (Clinical Workflow Playground WS5).',
+  })
+  metadata?: Record<string, unknown>;
+
   @ApiProperty({ description: 'Current version number of the context item' })
   currentVersionNumber: number;
 

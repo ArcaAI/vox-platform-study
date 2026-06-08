@@ -31,10 +31,17 @@ import {
   CreateTagRequest,
   TagResponse,
   TagDtoMapper,
+  LiveDocumentationService,
+  StartRecordingRequest,
+  StopRecordingRequest,
+  RecordingStateResponse,
 } from '@arcaai/applications';
-import { Controller, Body, Param, Inject, Query, ForbiddenException, NotFoundException, UnauthorizedException, Logger } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery, ApiResponse } from '@nestjs/swagger';
+import { Controller, Body, Param, Inject, Query, ForbiddenException, NotFoundException, UnauthorizedException, Logger, Get, Sse, type MessageEvent } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
+import type { Observable } from 'rxjs';
 import { ApiEndpoint, Authorize } from '../../decorators';
+import { TenantOwnedResource } from '../../common';
+import { StreamScope } from '../auth';
 import { ClsService } from 'nestjs-cls';
 import type { IActiveUserContext } from '@arcaai/applications';
 import { ChainSummaryService } from '@arcaai/applications';
@@ -135,6 +142,8 @@ export class ConsultationController {
     private readonly globalSettingRepository: GlobalSettingRepository,
     @Inject(ITagService)
     private readonly tagService: ITagService,
+    // Clinical Workflow Playground (WS1/WS2) — per-consultation realtime watcher.
+    private readonly liveDocumentationService: LiveDocumentationService,
   ) {}
 
   private getDoctorId(): string {
@@ -405,6 +414,79 @@ export class ConsultationController {
   async reopen(@Param('id') id: string): Promise<ConsultationResponse> {
     await this.verifyConsultationOwnership(id);
     return this.consultationService.reopenConsultation(id);
+  }
+
+  // ─── Recording lifecycle + live summary (Clinical Workflow Playground) ───
+  //
+  // WS2 — recording/start flips Consultation.status → RECORDING and starts the
+  // per-consultation LiveDocumentationService session; recording/stop tears the
+  // session down (optionally persisting a PRE_SUMMARY snapshot) and reverts the
+  // status to OPEN (the harness later promotes it to PENDING_REVIEW).
+  // WS1 — live-summary/stream relays the Redis pub/sub channel
+  // `consultation:live-summary:{id}` to the client over SSE, mirroring the
+  // consultation job-updates stream (auth via @TenantOwnedResource pre-stream
+  // guard + @StreamScope ticket).
+
+  @ApiEndpoint({
+    returnedModel: RecordingStateResponse,
+    method: HttpMethod.POST,
+    path: ':id/recording/start',
+    by: ['id'],
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiResponse({ status: 404, description: 'Consultation not found' })
+  async startRecording(@Param('id') id: string, @Body() request: StartRecordingRequest): Promise<RecordingStateResponse> {
+    await this.verifyConsultationOwnership(id);
+    const consultation = await this.consultationService.startRecording(id);
+    this.liveDocumentationService.start({
+      consultationId: id,
+      tenantId: this.cls.get('tenantId') ?? '',
+      userId: this.getDoctorId(),
+      sessionId: request?.sessionId,
+    });
+    return {
+      consultationId: id,
+      status: consultation.status ?? 'RECORDING',
+      recording: true,
+      sessionId: request?.sessionId,
+      sseUrl: `/consultations/${id}/live-summary/stream`,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  @ApiEndpoint({
+    returnedModel: RecordingStateResponse,
+    method: HttpMethod.POST,
+    path: ':id/recording/stop',
+    by: ['id'],
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiResponse({ status: 404, description: 'Consultation not found' })
+  async stopRecording(@Param('id') id: string, @Body() request: StopRecordingRequest): Promise<RecordingStateResponse> {
+    await this.verifyConsultationOwnership(id);
+    await this.liveDocumentationService.stop(id, { persistSnapshot: request?.persistSnapshot });
+    const consultation = await this.consultationService.stopRecording(id);
+    return {
+      consultationId: id,
+      status: consultation.status ?? 'OPEN',
+      recording: false,
+      sseUrl: `/consultations/${id}/live-summary/stream`,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  @Get(':id/live-summary/stream')
+  @Sse()
+  @TenantOwnedResource({ modelName: 'Consultation', paramName: 'id' })
+  @StreamScope({ namespace: 'consultation_live_summary', param: 'id' })
+  @ApiOperation({
+    summary: 'Stream the running live summary for an in-progress consultation via SSE',
+    description:
+      'Server-Sent Events stream relaying the Redis channel `consultation:live-summary:{id}`. Each event is a LiveSummaryEventDto JSON. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_live_summary:<id>`. The terminal event carries `closed: true` when recording stops.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  streamLiveSummary(@Param('id') id: string): Observable<MessageEvent> {
+    return this.liveDocumentationService.subscribeToLiveSummary(id);
   }
 
   // ─── Timeline ────────────────────────────────────────────────────

@@ -32,6 +32,12 @@ const MAX_AUDIT_PAGE = 200;
 
 export interface ListAuditEventsOptions {
   consultationId?: string;
+  /** Filter to a single `HarnessAuditAction` (e.g. `GATE_DECISION`). */
+  action?: string;
+  /** Inclusive lower bound on `createdAt` (ISO-8601 instant). */
+  from?: string;
+  /** Inclusive upper bound on `createdAt` (ISO-8601 instant). */
+  to?: string;
   limit?: number;
   offset?: number;
 }
@@ -69,13 +75,26 @@ export class HarnessObservabilityService {
 
   /**
    * A page of the tenant's audit trail (newest-first) + the integrity verdict
-   * over the WHOLE chain. Optionally narrowed to one consultation.
+   * over the WHOLE chain. Optionally narrowed by consultation, action, and an
+   * inclusive `createdAt` date range. The verdict always covers the full chain
+   * (it is chain-global), while `total`/`items` reflect the applied filters.
    */
   async listAuditEvents(tenantId: string, options: ListAuditEventsOptions = {}): Promise<HarnessAuditListResponse> {
     const chain = await this.auditRepository.getChainForTenant(tenantId);
     const verification = this.verifyChainEntities(chain);
 
-    const filtered = options.consultationId ? chain.filter((e) => e.consultationId === options.consultationId) : chain;
+    const fromMs = parseInstant(options.from);
+    const toMs = parseInstant(options.to);
+    const filtered = chain.filter((e) => {
+      if (options.consultationId && e.consultationId !== options.consultationId) return false;
+      if (options.action && e.action !== options.action) return false;
+      if (fromMs !== undefined || toMs !== undefined) {
+        const ts = toDate(e.createdAt).getTime();
+        if (fromMs !== undefined && ts < fromMs) return false;
+        if (toMs !== undefined && ts > toMs) return false;
+      }
+      return true;
+    });
     const total = filtered.length;
 
     const limit = clamp(options.limit ?? DEFAULT_AUDIT_PAGE, 1, MAX_AUDIT_PAGE);
@@ -212,6 +231,13 @@ export class HarnessObservabilityService {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+/** Parse an ISO-8601 instant to epoch-ms; `undefined` for empty/invalid input. */
+function parseInstant(value?: string): number | undefined {
+  if (!value) return undefined;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? undefined : ms;
 }
 
 function toDate(value: Date | string): Date {

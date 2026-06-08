@@ -150,4 +150,19 @@ describe('HarnessWorkflowsPage', () => {
     fireEvent.click(screen.getByTestId('workflows-signal'));
     expect(screen.getByTestId('signal-dialog')).toBeInTheDocument();
   });
+
+  it('Reset restores the status + consultation filters to their defaults', () => {
+    h.state.workflows = { data: { items: [], nextPageToken: null }, isLoading: false, isFetching: false, refetch: vi.fn() };
+    render(<HarnessWorkflowsPage />);
+
+    const consultation = screen.getByLabelText('Consultation ID') as HTMLInputElement;
+    fireEvent.change(consultation, { target: { value: 'c-123' } });
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'RUNNING' } });
+    fireEvent.click(screen.getByTestId('workflows-apply'));
+
+    fireEvent.click(screen.getByTestId('workflows-reset'));
+
+    expect((screen.getByLabelText('Consultation ID') as HTMLInputElement).value).toBe('');
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('__all__');
+  });
 });

@@ -32,7 +32,8 @@ import { AdminApiError } from '../../api/admin-client';
 import { ConfirmDialog } from '../../components';
 import { useCancelWorkflow, useHarnessWorkflows, useSignalWorkflow, useTerminateWorkflow, type HarnessWorkflowSummary } from '../api/harness';
 import { EmptyState } from '../components/empty-state';
-import { formatDateTime, formatDuration, shortId } from '../lib/format';
+import { RelativeTime } from '../components/relative-time';
+import { formatDuration, shortId } from '../lib/format';
 
 const PAGE_SIZE = 50;
 const POLL_MS = 15000;
@@ -100,6 +101,13 @@ export default function HarnessWorkflowsPage() {
     setPageToken(undefined);
     setHistory([]);
     setConsultationId(consultationDraft);
+  };
+  const resetFilters = () => {
+    setStatus(ALL);
+    setConsultationDraft('');
+    setConsultationId('');
+    setPageToken(undefined);
+    setHistory([]);
   };
   const onStatusChange = (next: string) => {
     setStatus(next);
@@ -212,9 +220,14 @@ export default function HarnessWorkflowsPage() {
             }}
           />
         </div>
-        <Button onClick={applyFilters} data-testid="workflows-apply">
-          Apply
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={applyFilters} data-testid="workflows-apply">
+            Apply
+          </Button>
+          <Button variant="outline" onClick={resetFilters} data-testid="workflows-reset">
+            Reset
+          </Button>
+        </div>
       </div>
 
       {/* Results */}
@@ -269,7 +282,9 @@ export default function HarnessWorkflowsPage() {
                       <TableCell className="text-right tabular-nums">{formatDuration(wf.slaSeconds)}</TableCell>
                       <TableCell className="text-right tabular-nums">{wf.regenCount ?? '—'}</TableCell>
                       <TableCell className="text-right tabular-nums">{wf.escalations ?? '—'}</TableCell>
-                      <TableCell className="whitespace-nowrap text-sm">{formatDateTime(wf.startedAt)}</TableCell>
+                      <TableCell className="whitespace-nowrap text-sm">
+                        <RelativeTime iso={wf.startedAt} />
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
                           <Button

@@ -65,6 +65,14 @@ with workflow.unsafe.imports_passed_through():
 # inferential pass degrades internally (never raises for backend outages), so its
 # retries cover only infra blips before the workflow falls back to reduced assurance.
 _ACTIVITY_TIMEOUT = timedelta(seconds=150)
+# The inferential pass makes MANY sequential model calls (groundedness + citation_verify
+# per claim, plus the per-dimension safety screen). Under the LLM concurrency governor
+# (HARNESS_LLM_MAX_CONCURRENCY, default 1) these run effectively serialized so the
+# shared LM Studio box is never bursted — correct, but slower wall-clock than the
+# generic 150s budget allows once a draft carries dozens of claims (a single cold
+# local judge call is ~10-20s). Give this one activity a generous start-to-close so
+# the governed (burst-safe) pass completes instead of timing out into reduced assurance.
+_INFERENTIAL_TIMEOUT = timedelta(seconds=900)
 _ESCALATE_TIMEOUT = timedelta(seconds=30)
 _NLP_RETRY = RetryPolicy(maximum_attempts=2)
 _API_RETRY = RetryPolicy(maximum_attempts=3)
@@ -318,7 +326,7 @@ class HarnessDocWorkflow:
                         groundedness_threshold=groundedness_threshold,
                         safety_enabled=safety_enabled,
                     ),
-                    start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                    start_to_close_timeout=_INFERENTIAL_TIMEOUT,
                     retry_policy=_INFERENTIAL_RETRY,
                 )
             except ActivityError:

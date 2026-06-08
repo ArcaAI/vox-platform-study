@@ -39,6 +39,9 @@ export type TenantOwnedResourceModelName =
   | 'TenantStorageConfig'
   | 'UserVoiceProfile'
   | 'ConsultationJob'
+  // Clinical Workflow Playground (WS1): pre-stream tenant check for the
+  // live-summary SSE route — repo.findById(id), tenant-scoped.
+  | 'Consultation'
   | 'TranscriptionJob'
   // TASK-310 W7.A.9 (AC-3): opaque STT-V2 streaming session. The
   // interceptor resolves the sessionId → tenantId mapping through

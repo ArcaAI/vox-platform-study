@@ -1,5 +1,6 @@
 import {
   Badge,
+  Button,
   Card,
   CardContent,
   CardDescription,
@@ -13,12 +14,21 @@ import {
   TableHeader,
   TableRow,
 } from '@arcaai/ui';
-import { AlertTriangle, ClipboardCheck, FlaskConical, Inbox, ScrollText, TimerReset } from 'lucide-react';
+import { AlertCircle, AlertTriangle, ClipboardCheck, FlaskConical, Inbox, RefreshCw, ScrollText, TimerReset } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuthStore } from '@/store/auth-store';
 import { cn } from '@/lib/utils';
+import { AdminApiError } from '../../api/admin-client';
 import { useHarnessAudit, useHarnessEvalRuns, useHarnessGateQueue, type EvalRunResponse } from '../api/harness';
 import { EmptyState } from '../components/empty-state';
+import { ErrorState } from '../components/error-state';
 import { formatDateTime, formatDuration, shortId } from '../lib/format';
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof AdminApiError) return error.message;
+  if (error instanceof Error) return error.message;
+  return fallback;
+}
 
 function StatCard({
   label,
@@ -27,6 +37,7 @@ function StatCard({
   icon: Icon,
   tone,
   loading,
+  error,
 }: {
   label: string;
   value: string | number;
@@ -34,6 +45,7 @@ function StatCard({
   icon: typeof Inbox;
   tone?: 'default' | 'warning' | 'danger';
   loading?: boolean;
+  error?: boolean;
 }) {
   const toneClass = tone === 'danger' ? 'text-red-600 dark:text-red-400' : tone === 'warning' ? 'text-amber-600 dark:text-amber-400' : '';
   return (
@@ -45,6 +57,11 @@ function StatCard({
       <CardContent>
         {loading ? (
           <Skeleton className="h-8 w-16" />
+        ) : error ? (
+          <div className="text-muted-foreground flex items-center gap-1.5 text-sm" data-testid="stat-error">
+            <AlertCircle className="text-destructive size-4" aria-hidden />
+            Failed to load
+          </div>
         ) : (
           <>
             <div className={cn('text-2xl font-bold tabular-nums', toneClass)}>{value}</div>
@@ -72,21 +89,38 @@ function latestScoreSummary(run?: EvalRunResponse): string {
 export default function HarnessOverviewPage() {
   const tenantId = useAuthStore((s) => s.tenantId);
 
-  const gate = useHarnessGateQueue(tenantId || undefined);
-  const audit = useHarnessAudit({ tenantId: tenantId || undefined, limit: 5, offset: 0 });
-  const evals = useHarnessEvalRuns({ tenantId: tenantId || undefined, limit: 1, page: 1 });
+  // One shared toast id collapses concurrent failures (the three panels share a
+  // backend) into a single notice, alongside each panel's inline error state.
+  const onQueryError = (error: unknown) => toast.error(errorMessage(error, 'Failed to load harness data.'), { id: 'harness-overview-error' });
+
+  const gate = useHarnessGateQueue(tenantId || undefined, { onError: onQueryError });
+  const audit = useHarnessAudit({ tenantId: tenantId || undefined, limit: 5, offset: 0 }, { onError: onQueryError });
+  const evals = useHarnessEvalRuns({ tenantId: tenantId || undefined, limit: 1, page: 1 }, { onError: onQueryError });
 
   const latestRun = evals.data?.items?.[0];
   const queueItems = gate.data?.items ?? [];
   const auditItems = audit.data?.items ?? [];
 
+  const isFetching = gate.isFetching || audit.isFetching || evals.isFetching;
+  const refreshAll = () => {
+    void gate.refetch();
+    void audit.refetch();
+    void evals.refetch();
+  };
+
   return (
     <section aria-label="Harness overview">
-      <div className="mb-4">
-        <h2 className="text-xl font-semibold tracking-tight">Overview</h2>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Live health of the clinical documentation loop: the clinician gate queue, recent WORM audit activity, and the latest eval scores.
-        </p>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight">Overview</h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Live health of the clinical documentation loop: the clinician gate queue, recent WORM audit activity, and the latest eval scores.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={refreshAll} disabled={isFetching} data-testid="overview-refresh">
+          <RefreshCw className={cn('mr-2 size-4', isFetching && 'animate-spin')} />
+          Refresh
+        </Button>
       </div>
 
       {/* KPI row */}
@@ -96,6 +130,7 @@ export default function HarnessOverviewPage() {
           value={gate.data?.total ?? 0}
           icon={ClipboardCheck}
           loading={gate.isLoading}
+          error={gate.isError}
           hint="Consultations PENDING_REVIEW"
         />
         <StatCard
@@ -104,6 +139,7 @@ export default function HarnessOverviewPage() {
           icon={AlertTriangle}
           tone={(gate.data?.slaBreachedCount ?? 0) > 0 ? 'danger' : 'default'}
           loading={gate.isLoading}
+          error={gate.isError}
           hint={`SLA ${formatDuration(gate.data?.gateSlaSeconds)}`}
         />
         <StatCard
@@ -112,6 +148,7 @@ export default function HarnessOverviewPage() {
           icon={TimerReset}
           tone={(gate.data?.escalatedCount ?? 0) > 0 ? 'warning' : 'default'}
           loading={gate.isLoading}
+          error={gate.isError}
           hint={`Escalates after ${formatDuration(gate.data?.gateEscalationSeconds)}`}
         />
         <StatCard
@@ -119,6 +156,7 @@ export default function HarnessOverviewPage() {
           value={latestScoreSummary(latestRun)}
           icon={FlaskConical}
           loading={evals.isLoading}
+          error={evals.isError}
           hint={latestRun?.modelName ?? 'No runs yet'}
         />
       </div>
@@ -137,6 +175,8 @@ export default function HarnessOverviewPage() {
                   <Skeleton key={i} className="h-8 w-full" />
                 ))}
               </div>
+            ) : gate.isError ? (
+              <ErrorState description={errorMessage(gate.error, 'Could not load the gate queue.')} />
             ) : queueItems.length === 0 ? (
               <EmptyState icon={Inbox} title="Queue is clear" description="No consultations are currently awaiting clinician review." />
             ) : (
@@ -193,6 +233,8 @@ export default function HarnessOverviewPage() {
                   <Skeleton key={i} className="h-8 w-full" />
                 ))}
               </div>
+            ) : audit.isError ? (
+              <ErrorState description={errorMessage(audit.error, 'Could not load recent audit activity.')} />
             ) : auditItems.length === 0 ? (
               <EmptyState
                 icon={ScrollText}

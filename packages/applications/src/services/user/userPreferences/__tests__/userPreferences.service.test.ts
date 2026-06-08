@@ -328,6 +328,49 @@ describe('UserPreferencesService', () => {
             expect(result.remoteConfig?.pipelineId).toBe('admin-pipeline');
             expect(result.remoteConfig?.assignedBy).toBe('admin');
         });
+
+        // Bugfix (impersonate doctor2): the admin override pointed at a
+        // SYSTEM-owned catalog pipeline (…0002). SYSTEM pipelines are shared-READ
+        // to every tenant (so findById resolves them), but they are NOT usable
+        // for a customer tenant's streaming session — the streaming guard
+        // (pipelineService.getById) rejects any pipeline whose tenantId != caller.
+        // The resolver must therefore skip such an override and fall through to
+        // the tenant's OWN default so the doctor still gets a working pipeline.
+        it('should ignore a SYSTEM-catalog admin override and fall through to the tenant default', async () => {
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
+            mockUserSettingsRepository.findByUserKeyNamespace.mockImplementation(
+                (_userId: string, key: string, namespace: string) => {
+                    if (namespace === 'arcaai-admin' && key === 'assigned-pipeline') {
+                        return Promise.resolve(
+                            createMockEntity({
+                                key: 'assigned-pipeline',
+                                value: '81000000-0000-0000-0001-000000000002',
+                                namespace: 'arcaai-admin',
+                            }),
+                        );
+                    }
+                    return Promise.resolve(null);
+                },
+            );
+            // Shared-read resolves the SYSTEM row (tenantId = SYSTEM_TENANT_ID).
+            mockAsrPipelineRepository.findById.mockResolvedValue({
+                name: 'Turbo Pipeline',
+                tenantId: '00000000-0000-0000-0000-000000000000',
+            });
+            // The caller's own tenant HAS a default pipeline.
+            mockAsrPipelineRepository.findDefault.mockResolvedValue({
+                id: '81000000-0000-0000-0001-000000000401',
+                name: 'Global Production Pipeline',
+            });
+
+            const result = await service.getPreferences();
+
+            expect(result.remoteConfig).toEqual({
+                pipelineId: '81000000-0000-0000-0001-000000000401',
+                pipelineName: 'Global Production Pipeline',
+                assignedBy: 'tenant-default',
+            });
+        });
     });
 
     // TASK-331 doc-03 Q2 — AsrPipeline.isDefault supersedes the GlobalSetting
