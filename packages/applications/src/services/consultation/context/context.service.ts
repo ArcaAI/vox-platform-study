@@ -24,6 +24,7 @@ import { BaseService, assertParentInScope } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { IContextService } from './IContextService';
 import { ContextDtoMapper } from './context.dto.mapper';
+import { ConsultationPipelineEvent, ContextAddedPayload } from '../events';
 import {
   AddAudioRecordingRequest,
   AddContextRequest,
@@ -42,6 +43,14 @@ import {
   UpdateContextRequest,
   VersionDiffResponse,
 } from './dto';
+
+/**
+ * Context item types that trigger a `ConsultationPipelineEvent.ContextAdded`
+ * fan-out for the live-documentation watcher (Clinical Workflow Playground WS2).
+ * Human-authored notes / attachments only — transcripts and AI summaries are
+ * excluded.
+ */
+const LIVE_CONTEXT_TYPES = new Set<ContextItemType>([ContextItemType.WORKNOTE, ContextItemType.CASE_NOTE, ContextItemType.ATTACHMENT]);
 
 @Injectable()
 export class ContextService extends BaseService implements IContextService {
@@ -97,6 +106,13 @@ export class ContextService extends BaseService implements IContextService {
       createdBy: userId ?? undefined,
     });
 
+    // Clinical Workflow Playground (WS5) — persist optional free-form metadata
+    // (e.g. `{ subType: 'LAB_RESULT' }` on ATTACHMENTs). Set before create so it
+    // is included in the entity's toObject() payload.
+    if (request.metadata) {
+      contextItem.metaData = request.metadata;
+    }
+
     const saved = await this.contextItemRepository.create(contextItem);
 
     // Create initial version (v1) for audit trail completeness.
@@ -112,6 +128,26 @@ export class ContextService extends BaseService implements IContextService {
       createdAt: saved.createdAt,
       data: { consultationId, type: request.type },
     });
+
+    // Clinical Workflow Playground (WS2) — fan a lightweight ContextAdded event
+    // out to the LiveDocumentationService so notes / labs / files added
+    // mid-visit are folded into the running live summary. Restricted to the
+    // human-authored note/attachment types; TRANSCRIPT already drives the
+    // harness pipeline via TranscriptionCreated and AI summaries are not live
+    // inputs.
+    if (LIVE_CONTEXT_TYPES.has(request.type)) {
+      const subType = typeof request.metadata?.subType === 'string' ? (request.metadata.subType as string) : undefined;
+      this.eventEmitter.emit(ConsultationPipelineEvent.ContextAdded, {
+        consultationId,
+        tenantId,
+        userId: userId ?? undefined,
+        timestamp: saved.createdAt.toISOString(),
+        contextItemId: saved.id,
+        contextType: request.type,
+        subType,
+        contentPreview: request.content ? request.content.slice(0, 2000) : undefined,
+      } satisfies ContextAddedPayload);
+    }
 
     return ContextDtoMapper.toResponse(saved);
   }

@@ -24,11 +24,20 @@ import {
   TableRow,
 } from '@arcaai/ui';
 import { FlaskConical } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuthStore } from '@/store/auth-store';
 import { cn } from '@/lib/utils';
+import { AdminApiError } from '../../api/admin-client';
 import { useHarnessEvalRun, useHarnessEvalRuns, type EvalRunResponse } from '../api/harness';
 import { EmptyState } from '../components/empty-state';
+import { ErrorState } from '../components/error-state';
 import { formatDateTime, shortId } from '../lib/format';
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof AdminApiError) return error.message;
+  if (error instanceof Error) return error.message;
+  return fallback;
+}
 
 const PAGE_SIZE = 20;
 
@@ -97,12 +106,15 @@ export default function HarnessEvalsPage() {
   const [goldenSetId, setGoldenSetId] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data, isLoading, isFetching } = useHarnessEvalRuns({
-    tenantId: tenantId || undefined,
-    goldenSetId: goldenSetId.trim() || undefined,
-    page,
-    limit: PAGE_SIZE,
-  });
+  const { data, isLoading, isFetching, isError, error } = useHarnessEvalRuns(
+    {
+      tenantId: tenantId || undefined,
+      goldenSetId: goldenSetId.trim() || undefined,
+      page,
+      limit: PAGE_SIZE,
+    },
+    { onError: (e) => toast.error(errorMessage(e, 'Failed to load eval runs.')) },
+  );
 
   const runs = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -121,7 +133,8 @@ export default function HarnessEvalsPage() {
   };
 
   const showSkeleton = isLoading && runs.length === 0;
-  const showEmpty = !isLoading && runs.length === 0;
+  const showError = isError && runs.length === 0;
+  const showEmpty = !isLoading && !isError && runs.length === 0;
   const nextDisabled = page * PAGE_SIZE >= total;
 
   return (
@@ -155,7 +168,7 @@ export default function HarnessEvalsPage() {
         </div>
       </div>
 
-      {!showSkeleton && !showEmpty && <TrendCard runs={runs} />}
+      {!showSkeleton && !showError && !showEmpty && <TrendCard runs={runs} />}
 
       {/* Results */}
       <div className="rounded-md border" data-testid="evals-results">
@@ -165,6 +178,8 @@ export default function HarnessEvalsPage() {
               <Skeleton key={i} className="h-10 w-full" />
             ))}
           </div>
+        ) : showError ? (
+          <ErrorState description={errorMessage(error, 'Eval runs could not be loaded for this tenant.')} />
         ) : showEmpty ? (
           <EmptyState icon={FlaskConical} title="No eval runs" description="Golden-set evaluations for this tenant will appear here once they run." />
         ) : (
@@ -221,7 +236,13 @@ export default function HarnessEvalsPage() {
         <SheetContent className="w-full overflow-hidden sm:max-w-2xl" data-testid="evals-detail-drawer">
           <SheetHeader>
             <SheetTitle>Eval run</SheetTitle>
-            <SheetDescription>{detail.data ? `${detail.data.modelName} · ${detail.data.goldenSetId}` : 'Loading…'}</SheetDescription>
+            {detail.data ? (
+              <SheetDescription>{`${detail.data.modelName} · ${detail.data.goldenSetId}`}</SheetDescription>
+            ) : (
+              <SheetDescription asChild>
+                <Skeleton className="mt-1 h-4 w-48" data-testid="evals-detail-desc-skeleton" />
+              </SheetDescription>
+            )}
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-8rem)] px-4 pb-6">
             {detail.isLoading ? (

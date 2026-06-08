@@ -27,6 +27,14 @@ const GLOBAL_SETTING_KEYS = {
   DEFAULT_STT_PIPELINE: 'default-stt-pipeline',
 } as const;
 
+/**
+ * Reserved SYSTEM tenant that owns the shared, platform-wide ASR pipeline
+ * catalog (seed/06-stt.ts DEFAULT_ASR_PIPELINES). Mirrors `SYSTEM_TENANT_ID`
+ * in the tenant-scope Prisma extension; duplicated here as a literal so this
+ * service carries no dependency on the database package.
+ */
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
 const PREFERENCE_KEYS = {
   WORKFLOW_MODE: 'workflowMode',
   LANGUAGE: 'language',
@@ -257,12 +265,25 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
     const adminOverride = await this.userSettingsRepository.findByUserKeyNamespace(userId, ADMIN_KEYS.ASSIGNED_PIPELINE, ADMIN_NAMESPACE);
 
     if (adminOverride?.value) {
-      const pipeline = await this.resolvePipelineName(adminOverride.value);
-      return {
-        pipelineId: adminOverride.value,
-        pipelineName: pipeline?.name,
-        assignedBy: 'admin',
-      };
+      const pipeline = await this.resolvePipelineMeta(adminOverride.value);
+
+      // A SYSTEM-catalog pipeline is shared-READ to every tenant (so the lookup
+      // above resolves it via the tenant-scope extension's SYSTEM inheritance)
+      // but is NOT usable for a customer tenant's streaming session: the
+      // streaming guard (pipelineService.getById / assertPipelineOwnership)
+      // rejects any pipeline whose tenantId != caller. Honouring such an
+      // override surfaces a hard "Pipeline … not found" 404 on session start,
+      // so skip it and fall through to the tenant's own default pipeline.
+      const isUnusableSystemPipeline =
+        pipeline?.tenantId === SYSTEM_TENANT_ID && this.tenantId !== SYSTEM_TENANT_ID;
+
+      if (!isUnusableSystemPipeline) {
+        return {
+          pipelineId: adminOverride.value,
+          pipelineName: pipeline?.name,
+          assignedBy: 'admin',
+        };
+      }
     }
 
     // 2. Prefer the tenant's default pipeline (AsrPipeline.isDefault).
@@ -282,7 +303,7 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
     const defaultPipelineId = this.appSettingsService.getValueFromCache(GLOBAL_SETTING_KEYS.DEFAULT_STT_PIPELINE);
 
     if (defaultPipelineId) {
-      const pipeline = await this.resolvePipelineName(defaultPipelineId);
+      const pipeline = await this.resolvePipelineMeta(defaultPipelineId);
       return {
         pipelineId: defaultPipelineId,
         pipelineName: pipeline?.name,
@@ -308,12 +329,18 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
     }
   }
 
-  private async resolvePipelineName(pipelineId: string): Promise<{ name: string } | null> {
+  /**
+   * Resolve a pipeline's display name AND owning tenant by id. `tenantId` lets
+   * callers distinguish a SYSTEM-catalog pipeline (shared-read, but not usable
+   * for a customer tenant's streaming session) from one the tenant truly owns.
+   * Returns `null` when the pipeline cannot be resolved (deleted / not found).
+   */
+  private async resolvePipelineMeta(pipelineId: string): Promise<{ name: string; tenantId: string } | null> {
     try {
       const pipeline = await this.asrPipelineRepository.findById(pipelineId);
-      return pipeline ? { name: pipeline.name } : null;
+      return pipeline ? { name: pipeline.name, tenantId: pipeline.tenantId } : null;
     } catch {
-      this.logger.warn(`Failed to resolve pipeline name for ID: ${pipelineId}`);
+      this.logger.warn(`Failed to resolve pipeline for ID: ${pipelineId}`);
       return null;
     }
   }

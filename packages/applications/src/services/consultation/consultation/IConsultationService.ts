@@ -102,6 +102,20 @@ export abstract class IConsultationService {
    * (appointmentDate / departmentId / metadata-merge / status).
    */
   abstract updateConsultation(id: string, request: UpdateConsultationRequest): Promise<ConsultationResponse>;
+
+  /**
+   * Clinical Workflow Playground (WS2) — flip the typed `status` COLUMN to
+   * RECORDING. No auto-transition exists today; the harness later promotes a
+   * recorded consult to PENDING_REVIEW once a draft note is generated. The
+   * LiveDocumentationService session is started by the controller around this.
+   */
+  abstract startRecording(id: string): Promise<ConsultationResponse>;
+
+  /**
+   * Clinical Workflow Playground (WS2) — revert the `status` COLUMN to OPEN
+   * when recording stops (the harness later promotes it to PENDING_REVIEW).
+   */
+  abstract stopRecording(id: string): Promise<ConsultationResponse>;
 }
 
 export const IConsultationServiceToken = Symbol('IConsultationService');

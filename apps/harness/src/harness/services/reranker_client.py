@@ -17,6 +17,8 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict
 
+from harness.core.llm_concurrency import governed_request
+
 
 class RerankerServiceError(RuntimeError):
     """The reranker backend was unreachable or returned a non-2xx response."""
@@ -52,9 +54,16 @@ class RerankerClient:
         url = f"{self._base_url}/rerank"
         body = {"query": query, "texts": list(texts), "return_text": False}
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
-            try:
+
+            async def _send() -> httpx.Response:
                 resp = await client.post(url, json=body)
                 resp.raise_for_status()
+                return resp
+
+            # Per-endpoint governor (its own TEI box): bounded retry on a transient
+            # 5xx/connection blip before the retriever degrades to empty context.
+            try:
+                resp = await governed_request(self._base_url, _send)
             except httpx.HTTPError as exc:
                 raise RerankerServiceError(f"rerank request failed: {exc}") from exc
             data = resp.json()

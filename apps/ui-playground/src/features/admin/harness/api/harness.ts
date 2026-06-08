@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
+import { useMutation, useQuery, useQueryClient, type UseQueryOptions, type UseQueryResult } from '@tanstack/react-query';
 import { adminClient, type RequestOptions } from '../../api/admin-client';
 
 // ---------------------------------------------------------------------------
@@ -232,6 +233,12 @@ export interface SignalWorkflowRequest {
 export interface AuditListParams {
   tenantId?: string;
   consultationId?: string;
+  /** A single `HarnessAuditAction` (e.g. `GATE_DECISION`); server-side filter. */
+  action?: string;
+  /** Inclusive lower bound on `createdAt` (ISO-8601 instant); server-side filter. */
+  from?: string;
+  /** Inclusive upper bound on `createdAt` (ISO-8601 instant); server-side filter. */
+  to?: string;
   limit?: number;
   offset?: number;
 }
@@ -306,7 +313,14 @@ export const harnessApi = {
 
   listAudit: (params: AuditListParams) =>
     adminClient.get<HarnessAuditListResponse>(
-      `${BASE}/audit${qs({ consultationId: params.consultationId, limit: params.limit, offset: params.offset })}`,
+      `${BASE}/audit${qs({
+        consultationId: params.consultationId,
+        action: params.action,
+        from: params.from,
+        to: params.to,
+        limit: params.limit,
+        offset: params.offset,
+      })}`,
       tenantOpts(params.tenantId),
     ),
 
@@ -349,6 +363,23 @@ export const harnessApi = {
 
 type QueryOpts<T> = Omit<UseQueryOptions<T>, 'queryKey' | 'queryFn'>;
 
+/**
+ * React Query v5 removed the per-`useQuery` `onError` callback. `QueryWithError`
+ * restores an opt-in `onError` for the observability hooks so the Overview /
+ * Audit / Evals pages can `toast.error` on a failed fetch (in addition to the
+ * inline error state). It fires once per distinct error, not on every render.
+ */
+type QueryWithError<T> = QueryOpts<T> & { onError?: (error: unknown) => void };
+
+function useOnQueryError<T>(query: UseQueryResult<T>, onError?: (error: unknown) => void): void {
+  const callbackRef = useRef(onError);
+  callbackRef.current = onError;
+  const { isError, error } = query;
+  useEffect(() => {
+    if (isError) callbackRef.current?.(error);
+  }, [isError, error]);
+}
+
 export function useHarnessPolicy(tenantId?: string, options?: QueryOpts<HarnessPolicyResponse>) {
   return useQuery({
     queryKey: harnessKeys.policy(tenantId),
@@ -365,20 +396,26 @@ export function useGlobalHarnessPolicy(options?: QueryOpts<HarnessPolicyResponse
   });
 }
 
-export function useHarnessAudit(params: AuditListParams, options?: QueryOpts<HarnessAuditListResponse>) {
-  return useQuery({
+export function useHarnessAudit(params: AuditListParams, options?: QueryWithError<HarnessAuditListResponse>) {
+  const { onError, ...queryOptions } = options ?? {};
+  const query = useQuery({
     queryKey: harnessKeys.audit(params),
     queryFn: () => harnessApi.listAudit(params),
-    ...options,
+    ...queryOptions,
   });
+  useOnQueryError(query, onError);
+  return query;
 }
 
-export function useHarnessEvalRuns(params: EvalRunListParams, options?: QueryOpts<EvalRunListResponse>) {
-  return useQuery({
+export function useHarnessEvalRuns(params: EvalRunListParams, options?: QueryWithError<EvalRunListResponse>) {
+  const { onError, ...queryOptions } = options ?? {};
+  const query = useQuery({
     queryKey: harnessKeys.evalRuns(params),
     queryFn: () => harnessApi.listEvalRuns(params),
-    ...options,
+    ...queryOptions,
   });
+  useOnQueryError(query, onError);
+  return query;
 }
 
 export function useHarnessEvalRun(id: string | undefined, tenantId?: string, options?: QueryOpts<EvalRunDetailResponse>) {
@@ -390,12 +427,15 @@ export function useHarnessEvalRun(id: string | undefined, tenantId?: string, opt
   });
 }
 
-export function useHarnessGateQueue(tenantId?: string, options?: QueryOpts<GateQueueResponse>) {
-  return useQuery({
+export function useHarnessGateQueue(tenantId?: string, options?: QueryWithError<GateQueueResponse>) {
+  const { onError, ...queryOptions } = options ?? {};
+  const query = useQuery({
     queryKey: harnessKeys.gateQueue(tenantId),
     queryFn: () => harnessApi.getGateQueue(tenantId),
-    ...options,
+    ...queryOptions,
   });
+  useOnQueryError(query, onError);
+  return query;
 }
 
 export function useHarnessWorkflows(params: WorkflowListParams, options?: QueryOpts<HarnessWorkflowListResult>) {

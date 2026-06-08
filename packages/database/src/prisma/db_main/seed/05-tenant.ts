@@ -81,6 +81,11 @@ export const TENANT_FRONTEND_CONFIGS = [
         vad: true,
         voiceEnrollment: false,
         diarization: false,
+        // Clinical Workflow Playground (WS6) — enable dual-capture for the Global
+        // demo tenant. Effective SDK enablement is this column AND the platform
+        // capability `enable-local-raw-capture` (also flipped to true in the
+        // platform-settings seed). Other tenants keep the column default (false).
+        captureRawAudio: true,
         configJson: {},
     },
     {

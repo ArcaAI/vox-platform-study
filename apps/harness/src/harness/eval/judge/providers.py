@@ -15,6 +15,7 @@ import asyncio
 
 from pydantic import SecretStr
 
+from harness.core.llm_concurrency import limit_endpoint
 from harness.eval.config import JudgeConfig, JudgeProvider
 from harness.eval.jsonio import extract_last_object
 from harness.eval.judge.base import JudgeClient, JudgeConnectionError, Messages
@@ -39,6 +40,12 @@ _TRANSIENT_MARKERS = (
     "timed out",
     "overloaded",
     "unavailable",
+    # Rate limits: the OpenAI SDK already retries 429s honoring ``Retry-After`` (see
+    # ``JudgeConfig.max_retries``); these markers add a belt-and-braces retry if one
+    # still surfaces as an exception after the SDK budget is spent.
+    "rate limit",
+    "too many requests",
+    "429",
     "503",
     "502",
     "500",
@@ -49,9 +56,15 @@ def _is_transient(exc: Exception) -> bool:
     return any(marker in str(exc).lower() for marker in _TRANSIENT_MARKERS)
 
 
-async def _create_with_retry(create_fn, kwargs: dict, *, retries: int, backoff_s: float):
+async def _create_with_retry(
+    create_fn, kwargs: dict, *, retries: int, backoff_s: float, base_url: str
+):
     """Call ``create_fn(**kwargs)``, retrying transient failures with linear backoff.
 
+    Each attempt runs under the shared per-endpoint concurrency governor
+    (:func:`harness.core.llm_concurrency.limit_endpoint`, keyed by ``base_url``), so
+    the inferential pass's concurrent judge calls never burst the LM Studio box past
+    its admin-set cap — the slot is held only for the call itself, not the backoff.
     The backoff gives a crashed local model time to reload before the next attempt.
     Non-transient errors raise immediately; transient ones raise only once the
     retry budget is exhausted (the caller wraps that in ``JudgeConnectionError``).
@@ -59,7 +72,8 @@ async def _create_with_retry(create_fn, kwargs: dict, *, retries: int, backoff_s
     last_exc: Exception | None = None
     for attempt in range(retries + 1):
         try:
-            return await create_fn(**kwargs)
+            async with limit_endpoint(base_url):
+                return await create_fn(**kwargs)
         except Exception as exc:  # noqa: BLE001 — re-raised below
             last_exc = exc
             if attempt < retries and _is_transient(exc):
@@ -137,6 +151,7 @@ class OpenAICompatJudgeClient:
                 kwargs,
                 retries=self._config.transient_retries,
                 backoff_s=self._config.transient_retry_backoff_s,
+                base_url=self._config.openai_compat.base_url,
             )
         except Exception as exc:  # transport/API failure (post-retry) → typed error
             raise JudgeConnectionError(f"openai_compat judge call failed: {exc}") from exc
@@ -194,6 +209,7 @@ class AzureOpenAIJudgeClient:
                 kwargs,
                 retries=self._config.transient_retries,
                 backoff_s=self._config.transient_retry_backoff_s,
+                base_url=self._config.azure.endpoint,
             )
         except Exception as exc:  # transport/API failure (post-retry) → typed error
             raise JudgeConnectionError(f"azure judge call failed: {exc}") from exc

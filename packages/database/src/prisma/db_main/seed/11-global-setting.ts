@@ -661,7 +661,11 @@ const PLATFORM_SETTINGS: SettingDef[] = [
         namespace: 'feature-flags',
         name: 'Enable Local Raw Capture',
         key: 'enable-local-raw-capture',
-        value: 'false',
+        // Clinical Workflow Playground (WS6) — platform capability turned ON so
+        // the Global demo tenant's `TenantFrontendConfig.captureRawAudio = true`
+        // becomes effective (GET /tenant/me/config returns the AND of the two).
+        // `defaultValue` stays 'false' so a reset reverts to the locked default.
+        value: 'true',
         defaultValue: 'false',
         dataType: ValueType.Boolean,
         description:

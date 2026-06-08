@@ -111,15 +111,21 @@ export class HarnessAdminController {
   @ApiOperation({ summary: 'List the WORM audit trail (newest-first) + the chain-integrity verdict' })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.' })
   @ApiQuery({ name: 'consultationId', required: false, description: 'Narrow to a single consultation.' })
+  @ApiQuery({ name: 'action', required: false, description: 'Narrow to a single HarnessAuditAction (e.g. GATE_DECISION).' })
+  @ApiQuery({ name: 'from', required: false, description: 'Inclusive lower bound on createdAt (ISO-8601 instant).' })
+  @ApiQuery({ name: 'to', required: false, description: 'Inclusive upper bound on createdAt (ISO-8601 instant).' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Page size (1–200, default 50).' })
   @ApiQuery({ name: 'offset', required: false, type: Number, description: 'Offset into the newest-first list.' })
   @ApiResponse({ status: 200, type: HarnessAuditListResponse })
   async listAudit(
-    @Query() query: { tenantId?: string; consultationId?: string; limit?: string; offset?: string },
+    @Query() query: { tenantId?: string; consultationId?: string; action?: string; from?: string; to?: string; limit?: string; offset?: string },
   ): Promise<HarnessAuditListResponse> {
     const tenantId = this.resolveReadTenantId(query.tenantId);
     return this.observabilityService.listAuditEvents(tenantId, {
       consultationId: query.consultationId,
+      action: query.action,
+      from: query.from,
+      to: query.to,
       limit: query.limit !== undefined ? Number(query.limit) : undefined,
       offset: query.offset !== undefined ? Number(query.offset) : undefined,
     });

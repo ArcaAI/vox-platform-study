@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   Badge,
   Button,
@@ -24,18 +24,28 @@ import {
   TableRow,
 } from '@arcaai/ui';
 import { ScrollText, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuthStore } from '@/store/auth-store';
 import { cn } from '@/lib/utils';
+import { AdminApiError } from '../../api/admin-client';
 import { useHarnessAudit, type HarnessAuditEventResponse } from '../api/harness';
 import { EmptyState } from '../components/empty-state';
+import { ErrorState } from '../components/error-state';
+import { RelativeTime } from '../components/relative-time';
 import { formatDateTime, shortId } from '../lib/format';
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof AdminApiError) return error.message;
+  if (error instanceof Error) return error.message;
+  return fallback;
+}
 
 const PAGE_SIZE = 25;
 const ALL = '__all__';
 
 // HarnessAuditAction enum (packages/domains/.../HarnessAuditAction.ts). The
-// server filters only by consultationId + pagination, so action/date are
-// applied client-side over the loaded page.
+// server filters by consultationId, action, and an inclusive createdAt range, so
+// all four filters are applied server-side via the audit query params.
 const ACTION_OPTIONS = [
   'GENERATE',
   'SENSOR_RUN',
@@ -90,52 +100,64 @@ function ChainBadge({
   );
 }
 
-function startOfDay(date?: string) {
-  return date ? new Date(`${date}T00:00:00.000`).getTime() : undefined;
+/** A `YYYY-MM-DD` input → the local start-of-day instant as ISO (server lower bound). */
+function startOfDayIso(date?: string): string | undefined {
+  if (!date) return undefined;
+  const d = new Date(`${date}T00:00:00.000`);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
 }
-function endOfDay(date?: string) {
-  return date ? new Date(`${date}T23:59:59.999`).getTime() : undefined;
+/** A `YYYY-MM-DD` input → the local end-of-day instant as ISO (server upper bound). */
+function endOfDayIso(date?: string): string | undefined {
+  if (!date) return undefined;
+  const d = new Date(`${date}T23:59:59.999`);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
 export default function HarnessAuditPage() {
   const tenantId = useAuthStore((s) => s.tenantId);
 
-  // Draft filters (the consultationId is server-backed; action/date are client-side).
+  // Draft filters edit freely; "Apply" commits them to the applied filters that
+  // drive the server query (consultationId + action + createdAt range), so all
+  // filtering happens server-side rather than over the loaded page.
   const [consultationDraft, setConsultationDraft] = useState('');
+  const [actionDraft, setActionDraft] = useState<string>(ALL);
+  const [fromDraft, setFromDraft] = useState('');
+  const [toDraft, setToDraft] = useState('');
+
   const [consultationId, setConsultationId] = useState('');
   const [action, setAction] = useState<string>(ALL);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [page, setPage] = useState(0);
 
-  const { data, isLoading, isFetching } = useHarnessAudit({
-    tenantId: tenantId || undefined,
-    consultationId: consultationId.trim() || undefined,
-    limit: PAGE_SIZE,
-    offset: page * PAGE_SIZE,
-  });
+  const { data, isLoading, isFetching, isError, error } = useHarnessAudit(
+    {
+      tenantId: tenantId || undefined,
+      consultationId: consultationId.trim() || undefined,
+      action: action === ALL ? undefined : action,
+      from: startOfDayIso(from),
+      to: endOfDayIso(to),
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
+    },
+    { onError: (e) => toast.error(errorMessage(e, 'Failed to load the audit trail.')) },
+  );
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
 
-  const filtered = useMemo(() => {
-    const fromMs = startOfDay(from);
-    const toMs = endOfDay(to);
-    return items.filter((event) => {
-      if (action !== ALL && event.action !== action) return false;
-      const ts = new Date(event.createdAt).getTime();
-      if (fromMs !== undefined && ts < fromMs) return false;
-      if (toMs !== undefined && ts > toMs) return false;
-      return true;
-    });
-  }, [items, action, from, to]);
-
   const applyFilters = () => {
     setPage(0);
     setConsultationId(consultationDraft);
+    setAction(actionDraft);
+    setFrom(fromDraft);
+    setTo(toDraft);
   };
   const resetFilters = () => {
     setConsultationDraft('');
+    setActionDraft(ALL);
+    setFromDraft('');
+    setToDraft('');
     setConsultationId('');
     setAction(ALL);
     setFrom('');
@@ -146,7 +168,8 @@ export default function HarnessAuditPage() {
   const [detail, setDetail] = useState<HarnessAuditEventResponse | null>(null);
 
   const showSkeleton = isLoading && items.length === 0;
-  const showEmpty = !isLoading && filtered.length === 0;
+  const showError = isError && items.length === 0;
+  const showEmpty = !isLoading && !isError && items.length === 0;
   const nextDisabled = (page + 1) * PAGE_SIZE >= total;
 
   return (
@@ -182,7 +205,7 @@ export default function HarnessAuditPage() {
         </div>
         <div className="flex flex-col gap-1">
           <Label>Action</Label>
-          <Select value={action} onValueChange={setAction}>
+          <Select value={actionDraft} onValueChange={setActionDraft}>
             <SelectTrigger data-testid="audit-action-select">
               <SelectValue placeholder="All actions" />
             </SelectTrigger>
@@ -198,11 +221,21 @@ export default function HarnessAuditPage() {
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor="harness-audit-from">From</Label>
-          <Input id="harness-audit-from" type="date" value={from} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFrom(e.target.value)} />
+          <Input
+            id="harness-audit-from"
+            type="date"
+            value={fromDraft}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFromDraft(e.target.value)}
+          />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor="harness-audit-to">To</Label>
-          <Input id="harness-audit-to" type="date" value={to} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTo(e.target.value)} />
+          <Input
+            id="harness-audit-to"
+            type="date"
+            value={toDraft}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setToDraft(e.target.value)}
+          />
         </div>
         <div className="flex items-end gap-2">
           <Button onClick={applyFilters} className="flex-1" data-testid="audit-apply">
@@ -222,6 +255,8 @@ export default function HarnessAuditPage() {
               <Skeleton key={i} className="h-10 w-full" />
             ))}
           </div>
+        ) : showError ? (
+          <ErrorState description={errorMessage(error, 'The audit trail could not be loaded for this tenant.')} />
         ) : showEmpty ? (
           <EmptyState icon={ScrollText} title="No audit events" description="No WORM events match the current filters for this tenant." />
         ) : (
@@ -237,9 +272,11 @@ export default function HarnessAuditPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((event) => (
+              {items.map((event) => (
                 <TableRow key={event.id} className="cursor-pointer" data-testid="audit-row" onClick={() => setDetail(event)}>
-                  <TableCell className="whitespace-nowrap">{formatDateTime(event.createdAt)}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    <RelativeTime iso={event.createdAt} />
+                  </TableCell>
                   <TableCell>
                     <Badge variant="outline" className={cn('text-xs', ACTION_COLOR[event.action] ?? 'bg-muted')}>
                       {event.action}

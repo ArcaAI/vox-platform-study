@@ -5,13 +5,22 @@
  *
  * @vitest-environment jsdom
  */
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const state = vi.hoisted(() => ({ audit: {} as Record<string, unknown> }));
+const state = vi.hoisted(() => ({ audit: {} as Record<string, unknown>, auditSpy: vi.fn() }));
 
 vi.mock('../api/harness', () => ({
-  useHarnessAudit: () => state.audit,
+  useHarnessAudit: (params: unknown, options: unknown) => {
+    state.auditSpy(params, options);
+    return state.audit;
+  },
+}));
+
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+
+vi.mock('../../api/admin-client', () => ({
+  AdminApiError: class AdminApiError extends Error {},
 }));
 
 vi.mock('@/store/auth-store', () => ({
@@ -76,6 +85,7 @@ const event = {
 describe('HarnessAuditPage', () => {
   beforeEach(() => {
     state.audit = {};
+    state.auditSpy.mockReset();
   });
 
   it('shows skeletons while loading', () => {
@@ -89,6 +99,50 @@ describe('HarnessAuditPage', () => {
     render(<HarnessAuditPage />);
     expect(screen.getByTestId('harness-empty')).toBeInTheDocument();
     expect(screen.getByText('No audit events')).toBeInTheDocument();
+  });
+
+  it('shows an inline error state (not a misleading empty state) when the query fails', () => {
+    state.audit = { data: undefined, isLoading: false, isFetching: false, isError: true, error: new Error('nope') };
+    render(<HarnessAuditPage />);
+    expect(screen.getByTestId('harness-error')).toBeInTheDocument();
+    expect(screen.queryByTestId('harness-empty')).not.toBeInTheDocument();
+  });
+
+  it('wires an onError toast callback into the audit query', () => {
+    state.audit = { data: { items: [], total: 0, verification: { valid: true, brokenAtIndex: null } }, isLoading: false, isFetching: false };
+    render(<HarnessAuditPage />);
+    const [, options] = state.auditSpy.mock.calls.at(-1) as [unknown, { onError?: unknown }];
+    expect(typeof options.onError).toBe('function');
+  });
+
+  it('commits the action + date-range filters to the server query on Apply', () => {
+    state.audit = { data: { items: [], total: 0, verification: { valid: true, brokenAtIndex: null } }, isLoading: false, isFetching: false };
+    render(<HarnessAuditPage />);
+
+    // The single mocked <select> is the action filter; the date inputs are labelled.
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'GATE_DECISION' } });
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-02-01' } });
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-02-28' } });
+    fireEvent.click(screen.getByTestId('audit-apply'));
+
+    const [params] = state.auditSpy.mock.calls.at(-1) as [{ action?: string; from?: string; to?: string }, unknown];
+    expect(params.action).toBe('GATE_DECISION');
+    expect(params.from).toBe(new Date('2026-02-01T00:00:00.000').toISOString());
+    expect(params.to).toBe(new Date('2026-02-28T23:59:59.999').toISOString());
+  });
+
+  it('clears applied filters on Reset', () => {
+    state.audit = { data: { items: [], total: 0, verification: { valid: true, brokenAtIndex: null } }, isLoading: false, isFetching: false };
+    render(<HarnessAuditPage />);
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'GATE_DECISION' } });
+    fireEvent.click(screen.getByTestId('audit-apply'));
+    fireEvent.click(screen.getByTestId('audit-reset'));
+
+    const [params] = state.auditSpy.mock.calls.at(-1) as [{ action?: string; from?: string; to?: string }, unknown];
+    expect(params.action).toBeUndefined();
+    expect(params.from).toBeUndefined();
+    expect(params.to).toBeUndefined();
   });
 
   it('renders rows and a verified chain badge', () => {

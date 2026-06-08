@@ -14,6 +14,7 @@ stay hermetic/offline; they cover both the OpenAI-compatible and Azure clients.
 
 from __future__ import annotations
 
+import asyncio
 import types
 
 import pytest
@@ -181,6 +182,36 @@ async def test_non_transient_error_is_not_retried(build_client):
     with pytest.raises(JudgeConnectionError):
         await client.complete([{"role": "user", "content": "hi"}])
     assert captured["attempts"] == 1  # no retry on a non-transient error
+
+
+@pytest.mark.asyncio
+async def test_judge_respects_shared_endpoint_concurrency_cap(monkeypatch):
+    # The inferential pass fans groundedness + citation_verify out concurrently over
+    # ONE judge client hitting one LM Studio box. With the governor cap=2, the gather
+    # may still fan out, but no more than 2 calls are ever in flight — so the box is
+    # never bursted (the root cause of the DEGRADED citation_verify/safety).
+    from harness.core.llm_concurrency import reset_endpoint_limiters
+
+    monkeypatch.setenv("HARNESS_LLM_MAX_CONCURRENCY", "2")
+    reset_endpoint_limiters()
+    client = _openai_compat()
+    state = {"in_flight": 0, "peak": 0}
+
+    async def create(**kwargs):  # noqa: ANN003
+        state["in_flight"] += 1
+        state["peak"] = max(state["peak"], state["in_flight"])
+        try:
+            await asyncio.sleep(0.02)  # hold the slot long enough to overlap
+            msg = types.SimpleNamespace(content='{"supported": true}')
+            return types.SimpleNamespace(choices=[types.SimpleNamespace(message=msg)])
+        finally:
+            state["in_flight"] -= 1
+
+    client._client.chat.completions.create = create
+    await asyncio.gather(
+        *(client.complete([{"role": "user", "content": "hi"}]) for _ in range(8))
+    )
+    assert state["peak"] == 2  # fanned out 8, capped at 2 in flight
 
 
 @pytest.mark.parametrize("build_client", CLIENT_BUILDERS)

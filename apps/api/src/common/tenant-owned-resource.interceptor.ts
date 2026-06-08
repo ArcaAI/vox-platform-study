@@ -20,6 +20,9 @@
  *                           `entity.tenantId === cls.tenantId` (TASK-318 R5).
  *   - `TranscriptionJob`  — repo.findById(id); assert
  *                           `entity.tenantId === cls.tenantId`.
+ *   - `Consultation`      — repo.findById(id); assert
+ *                           `entity.tenantId === cls.tenantId` (Clinical
+ *                           Workflow Playground WS1 — live-summary SSE).
  *   - `ConsultationJob`   — `jobService.getJobStatus(jobId)`; status struct
  *                           carries `tenantId` after W3.3. Assert
  *                           `status.tenantId === cls.tenantId`.
@@ -40,7 +43,13 @@ import { ClsService } from 'nestjs-cls';
 import { Observable } from 'rxjs';
 import { DataNotFoundException } from '@arcaai/exceptions';
 import { IConsultationJobService, type IActiveUserContext } from '@arcaai/applications';
-import { TenantBucketRepository, TenantStorageConfigRepository, TranscriptionJobRepository, UserVoiceProfileRepository } from '@arcaai/domains';
+import {
+  ConsultationRepository,
+  TenantBucketRepository,
+  TenantStorageConfigRepository,
+  TranscriptionJobRepository,
+  UserVoiceProfileRepository,
+} from '@arcaai/domains';
 import { StreamSessionTenantBindingService } from './stream-session-tenant-binding.service';
 import { TENANT_OWNED_RESOURCE_KEY, type TenantOwnedResourceOptions } from './tenant-owned-resource.decorator';
 
@@ -56,6 +65,9 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
     private readonly tenantStorageConfigRepository: TenantStorageConfigRepository,
     private readonly userVoiceProfileRepository: UserVoiceProfileRepository,
     private readonly transcriptionJobRepository: TranscriptionJobRepository,
+    // Clinical Workflow Playground (WS1): drives the `Consultation` resolver
+    // branch (pre-stream tenant check for the live-summary SSE route).
+    private readonly consultationRepository: ConsultationRepository,
     @Inject(IConsultationJobService)
     private readonly consultationJobService: IConsultationJobService,
     // TASK-310 W7.A.9 (AC-3): drives the `StreamSession` resolver branch.
@@ -117,6 +129,11 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
         return;
       case 'TranscriptionJob':
         await this.assertTenantScoped(() => this.transcriptionJobRepository.findById(paramValue), callerTenantId);
+        return;
+      case 'Consultation':
+        // Clinical Workflow Playground (WS1): the consultation row carries
+        // `tenantId`, so the standard tenant-scoped assertion applies.
+        await this.assertTenantScoped(() => this.consultationRepository.findById(paramValue), callerTenantId);
         return;
       case 'ConsultationJob':
         await this.assertConsultationJob(opts, paramValue, callerTenantId);

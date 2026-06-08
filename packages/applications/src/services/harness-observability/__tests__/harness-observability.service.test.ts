@@ -39,6 +39,15 @@ function buildChain() {
   return [e1, e2, e3];
 }
 
+/** A valid 3-event chain with explicit (Jan/Feb/Mar 2026) timestamps for range filtering. */
+function buildDatedChain() {
+  const base = { tenantId: TENANT, modelName: 'gpt', modelVersion: '1', sensorScores: {}, citations: [] };
+  const e1 = HarnessAuditEventFactory.CreateHarnessAuditEvent({ ...base, consultationId: 'c1', action: HarnessAuditAction.GENERATE, prevHash: GENESIS_PREV_HASH, createdAt: new Date('2026-01-15T00:00:00.000Z') });
+  const e2 = HarnessAuditEventFactory.CreateHarnessAuditEvent({ ...base, consultationId: 'c1', action: HarnessAuditAction.GATE_DECISION, gateDecision: 'APPROVE', prevHash: e1.hash, createdAt: new Date('2026-02-15T00:00:00.000Z') });
+  const e3 = HarnessAuditEventFactory.CreateHarnessAuditEvent({ ...base, consultationId: 'c2', action: HarnessAuditAction.GENERATE, prevHash: e2.hash, createdAt: new Date('2026-03-15T00:00:00.000Z') });
+  return [e1, e2, e3];
+}
+
 describe('HarnessObservabilityService', () => {
   let service: HarnessObservabilityService;
 
@@ -81,6 +90,59 @@ describe('HarnessObservabilityService', () => {
 
       expect(result.verification.valid).toBe(false);
       expect(result.verification.brokenAtIndex).toBe(1);
+    });
+
+    it('narrows by action while the verdict still covers the full chain', async () => {
+      const [e1, e2, e3] = buildChain();
+      auditRepository.getChainForTenant.mockResolvedValue([e1, e2, e3]);
+
+      const generates = await service.listAuditEvents(TENANT, { action: HarnessAuditAction.GENERATE });
+      expect(generates.total).toBe(2);
+      expect(generates.items.map((i) => i.id)).toEqual([e3.id, e1.id]);
+      // Verdict is chain-global: still valid even though the page is filtered.
+      expect(generates.verification.valid).toBe(true);
+
+      const gateDecisions = await service.listAuditEvents(TENANT, { action: HarnessAuditAction.GATE_DECISION });
+      expect(gateDecisions.total).toBe(1);
+      expect(gateDecisions.items.map((i) => i.id)).toEqual([e2.id]);
+    });
+
+    it('narrows by an inclusive createdAt date range', async () => {
+      const [e1, e2, e3] = buildDatedChain();
+      auditRepository.getChainForTenant.mockResolvedValue([e1, e2, e3]);
+
+      // from excludes Jan (e1); to excludes Mar (e3) → only Feb (e2).
+      const ranged = await service.listAuditEvents(TENANT, {
+        from: '2026-02-01T00:00:00.000Z',
+        to: '2026-02-28T23:59:59.999Z',
+      });
+      expect(ranged.total).toBe(1);
+      expect(ranged.items.map((i) => i.id)).toEqual([e2.id]);
+
+      // from only: Feb + Mar.
+      const fromOnly = await service.listAuditEvents(TENANT, { from: '2026-02-01T00:00:00.000Z' });
+      expect(fromOnly.items.map((i) => i.id)).toEqual([e3.id, e2.id]);
+
+      // Boundary is inclusive: a `to` exactly on e3's timestamp keeps e3.
+      const inclusiveTo = await service.listAuditEvents(TENANT, { to: '2026-03-15T00:00:00.000Z' });
+      expect(inclusiveTo.total).toBe(3);
+    });
+
+    it('combines consultation + action filters', async () => {
+      const [e1, e2, e3] = buildChain();
+      auditRepository.getChainForTenant.mockResolvedValue([e1, e2, e3]);
+
+      const result = await service.listAuditEvents(TENANT, { consultationId: 'c1', action: HarnessAuditAction.GENERATE });
+      expect(result.total).toBe(1);
+      expect(result.items.map((i) => i.id)).toEqual([e1.id]);
+    });
+
+    it('ignores an unparseable date bound rather than filtering everything out', async () => {
+      const [e1, e2, e3] = buildChain();
+      auditRepository.getChainForTenant.mockResolvedValue([e1, e2, e3]);
+
+      const result = await service.listAuditEvents(TENANT, { from: 'not-a-date' });
+      expect(result.total).toBe(3);
     });
   });
 

@@ -1727,13 +1727,19 @@ export const seedUser = async (client: CorePrismaClient) => {
     console.log('Seeding admin pipeline assignments...');
 
     const adminPipelineAssignments = [
-        // Jane Doe gets assigned the Turbo pipeline by admin
+        // Jane Doe gets assigned the Turbo pipeline by admin. Must reference a
+        // pipeline OWNED BY HER TENANT (Global / SEED_TENANT_ID): admin overrides
+        // resolve first in resolveRemoteConfig, and SYSTEM-tenant pipelines
+        // (…0001-…0007) are not shared-read into customer tenants, so a SYSTEM id
+        // here would 404 ("Pipeline … not found") on stream-session start. Use the
+        // Global tenant's own Turbo pipeline (06-stt GLOBAL_TENANT_ASR_PIPELINES,
+        // id …0402) instead of the SYSTEM Turbo (…0002).
         {
             id: '81000000-0000-0000-0000-000000000031',
             userId: SEED_USER_IDS.DOCTOR2,
             name: 'Admin: Assigned Pipeline',
             key: 'assigned-pipeline',
-            value: '81000000-0000-0000-0001-000000000002', // Turbo Pipeline
+            value: '81000000-0000-0000-0001-000000000402', // Global tenant Turbo Pipeline
             dataType: ValueType.String,
             namespace: 'arcaai-admin',
         },

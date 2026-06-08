@@ -29,7 +29,7 @@ import httpx
 
 from harness.core.config import get_settings
 from harness.guides.retrieval.prompt import build_strict_citations_block
-from harness.sensors.base import NEREntity, SensorContext
+from harness.sensors.base import SensorContext
 from harness.sensors.config import SensorThresholds
 from harness.sensors.inferential import CitationVerifySensor
 from harness.services.nlp_client import NlpClient
@@ -73,20 +73,6 @@ _GEN_SYSTEM = (
     "measurement, symptom, or history (e.g. today's readings) — the reference "
     "does not support those."
 )
-
-
-def _clean_entities(ents: list[NEREntity]) -> list[NEREntity]:
-    """Strip the SentencePiece word-boundary marker (U+2581) the live NLP service
-    prepends to tokens. The provenance builder cleans it from claim *text* but the
-    section-matching path (``normalized``/``_derive_section``) compares against
-    section text that never contains it; stripping here makes section attribution
-    correct (otherwise every entity falls through to the default section)."""
-    out: list[NEREntity] = []
-    for e in ents:
-        text = " ".join(e.text.replace("\u2581", " ").split())
-        if text:
-            out.append(NEREntity(text=text, type=e.type, start=e.start, end=e.end))
-    return out
 
 
 async def _generate_soap(block: str) -> dict:
@@ -139,11 +125,14 @@ async def main() -> None:
     cited_inline = any(f"[[kb:{cid}]]" in note_text for cid in chunk_ids)
     print(f"  -> note contains a valid [[kb:<retrieved id>]] marker: {cited_inline}")
 
-    # 4) NER over note + transcript (REAL NlpClient, :8864).
+    # 4) NER over note + transcript (REAL NlpClient, :8864). The raw subword/▁
+    # tokens are passed straight through — build_citations_map now strips the
+    # SentencePiece marker and aggregates the BIO subwords itself (the in-script
+    # workaround that used to do this is gone, so this exercises the real fix).
     nlp = NlpClient(settings.nlp_base_url, timeout=settings.nlp_timeout_s)
-    note_entities = _clean_entities(await nlp.classify_tokens(note_text, language="en"))
-    transcript_entities = _clean_entities(await nlp.classify_tokens(TRANSCRIPT, language="en"))
-    print("\n=== 4. NER (real NLP, SentencePiece marker stripped) ===")
+    note_entities = await nlp.classify_tokens(note_text, language="en")
+    transcript_entities = await nlp.classify_tokens(TRANSCRIPT, language="en")
+    print("\n=== 4. NER (real NLP, raw ▁ subwords — harness strips + aggregates) ===")
     print(f"  note_entities={len(note_entities)} transcript_entities={len(transcript_entities)}")
 
     # 5) Strict citation parse -> citations_map (REAL).

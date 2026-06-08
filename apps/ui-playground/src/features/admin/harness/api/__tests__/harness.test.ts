@@ -18,6 +18,7 @@ import {
   useUpdateHarnessPolicy,
   useUpdateGlobalHarnessPolicy,
   useHarnessAudit,
+  useHarnessEvalRuns,
   useHarnessGateQueue,
   useHarnessWorkflows,
   useCancelWorkflow,
@@ -104,6 +105,28 @@ describe('harnessApi raw client functions', () => {
     mockGet.mockResolvedValueOnce(AUDIT);
     await harnessApi.listAudit({});
     expect(mockGet).toHaveBeenCalledWith('/admin/harness/audit', undefined);
+  });
+
+  it('listAudit forwards the server-side action + ISO date-range filters', async () => {
+    mockGet.mockResolvedValueOnce(AUDIT);
+    await harnessApi.listAudit({
+      tenantId: 't1',
+      consultationId: 'c1',
+      action: 'GATE_DECISION',
+      from: '2026-02-01T00:00:00.000Z',
+      to: '2026-02-28T23:59:59.999Z',
+      limit: 25,
+      offset: 0,
+    });
+    const [url, opts] = mockGet.mock.calls[0] as [string, unknown];
+    expect(opts).toEqual({ tenantId: 't1' });
+    const query = new URL(`http://x${url}`).searchParams;
+    expect(query.get('consultationId')).toBe('c1');
+    expect(query.get('action')).toBe('GATE_DECISION');
+    expect(query.get('from')).toBe('2026-02-01T00:00:00.000Z');
+    expect(query.get('to')).toBe('2026-02-28T23:59:59.999Z');
+    expect(query.get('limit')).toBe('25');
+    expect(query.get('offset')).toBe('0');
   });
 
   it('listEvalRuns builds the goldenSetId/page/limit query string', async () => {
@@ -224,5 +247,43 @@ describe('harness React Query hooks', () => {
     signal.result.current.mutate({ workflowId: 'wf1', signalName: 'approve', tenantId: 't1' });
     await waitFor(() => expect(signal.result.current.isSuccess).toBe(true));
     expect(mockPost).toHaveBeenCalledWith('/admin/harness/workflows/wf1/signal', { signalName: 'approve', payload: undefined }, { tenantId: 't1' });
+  });
+});
+
+// React Query v5 dropped the per-`useQuery` onError; the observability hooks
+// re-add an opt-in callback (used by the pages to toast on a failed fetch).
+describe('harness observability hooks fire onError on failure', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('useHarnessAudit calls onError when the request rejects', async () => {
+    mockGet.mockRejectedValueOnce(new Error('boom'));
+    const onError = vi.fn();
+    const { result } = renderHook(() => useHarnessAudit({ tenantId: 't1' }, { onError }), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it('useHarnessGateQueue calls onError when the request rejects', async () => {
+    mockGet.mockRejectedValueOnce(new Error('boom'));
+    const onError = vi.fn();
+    const { result } = renderHook(() => useHarnessGateQueue('t1', { onError }), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it('useHarnessEvalRuns calls onError when the request rejects', async () => {
+    mockGet.mockRejectedValueOnce(new Error('boom'));
+    const onError = vi.fn();
+    const { result } = renderHook(() => useHarnessEvalRuns({ tenantId: 't1' }, { onError }), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call onError on a successful fetch', async () => {
+    mockGet.mockResolvedValueOnce(AUDIT);
+    const onError = vi.fn();
+    const { result } = renderHook(() => useHarnessAudit({ tenantId: 't1' }, { onError }), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(onError).not.toHaveBeenCalled();
   });
 });

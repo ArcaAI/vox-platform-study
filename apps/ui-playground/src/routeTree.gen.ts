@@ -22,6 +22,7 @@ import { Route as AuthenticatedIntroductionIndexRouteImport } from './routes/_au
 import { Route as AuthenticatedInstallationIndexRouteImport } from './routes/_authenticated/installation/index'
 import { Route as AuthenticatedDnaWritingStyleIndexRouteImport } from './routes/_authenticated/dna-writing-style/index'
 import { Route as AuthenticatedConsultationIndexRouteImport } from './routes/_authenticated/consultation/index'
+import { Route as AuthenticatedClinicalWorkspaceIndexRouteImport } from './routes/_authenticated/clinical-workspace/index'
 import { Route as AuthenticatedSummarizationSummaryRouteImport } from './routes/_authenticated/summarization/summary'
 import { Route as AuthenticatedSummarizationPreSummaryRouteImport } from './routes/_authenticated/summarization/pre-summary'
 import { Route as AuthenticatedPlaygroundOverviewRouteImport } from './routes/_authenticated/playground/overview'
@@ -122,6 +123,12 @@ const AuthenticatedConsultationIndexRoute =
   AuthenticatedConsultationIndexRouteImport.update({
     id: '/consultation/',
     path: '/consultation/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedClinicalWorkspaceIndexRoute =
+  AuthenticatedClinicalWorkspaceIndexRouteImport.update({
+    id: '/clinical-workspace/',
+    path: '/clinical-workspace/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedSummarizationSummaryRoute =
@@ -343,6 +350,7 @@ export interface FileRoutesByFullPath {
   '/playground/overview': typeof AuthenticatedPlaygroundOverviewRoute
   '/summarization/pre-summary': typeof AuthenticatedSummarizationPreSummaryRoute
   '/summarization/summary': typeof AuthenticatedSummarizationSummaryRoute
+  '/clinical-workspace/': typeof AuthenticatedClinicalWorkspaceIndexRoute
   '/consultation/': typeof AuthenticatedConsultationIndexRoute
   '/dna-writing-style/': typeof AuthenticatedDnaWritingStyleIndexRoute
   '/installation/': typeof AuthenticatedInstallationIndexRoute
@@ -387,6 +395,7 @@ export interface FileRoutesByTo {
   '/playground/overview': typeof AuthenticatedPlaygroundOverviewRoute
   '/summarization/pre-summary': typeof AuthenticatedSummarizationPreSummaryRoute
   '/summarization/summary': typeof AuthenticatedSummarizationSummaryRoute
+  '/clinical-workspace': typeof AuthenticatedClinicalWorkspaceIndexRoute
   '/consultation': typeof AuthenticatedConsultationIndexRoute
   '/dna-writing-style': typeof AuthenticatedDnaWritingStyleIndexRoute
   '/installation': typeof AuthenticatedInstallationIndexRoute
@@ -434,6 +443,7 @@ export interface FileRoutesById {
   '/_authenticated/playground/overview': typeof AuthenticatedPlaygroundOverviewRoute
   '/_authenticated/summarization/pre-summary': typeof AuthenticatedSummarizationPreSummaryRoute
   '/_authenticated/summarization/summary': typeof AuthenticatedSummarizationSummaryRoute
+  '/_authenticated/clinical-workspace/': typeof AuthenticatedClinicalWorkspaceIndexRoute
   '/_authenticated/consultation/': typeof AuthenticatedConsultationIndexRoute
   '/_authenticated/dna-writing-style/': typeof AuthenticatedDnaWritingStyleIndexRoute
   '/_authenticated/installation/': typeof AuthenticatedInstallationIndexRoute
@@ -481,6 +491,7 @@ export interface FileRouteTypes {
     | '/playground/overview'
     | '/summarization/pre-summary'
     | '/summarization/summary'
+    | '/clinical-workspace/'
     | '/consultation/'
     | '/dna-writing-style/'
     | '/installation/'
@@ -525,6 +536,7 @@ export interface FileRouteTypes {
     | '/playground/overview'
     | '/summarization/pre-summary'
     | '/summarization/summary'
+    | '/clinical-workspace'
     | '/consultation'
     | '/dna-writing-style'
     | '/installation'
@@ -571,6 +583,7 @@ export interface FileRouteTypes {
     | '/_authenticated/playground/overview'
     | '/_authenticated/summarization/pre-summary'
     | '/_authenticated/summarization/summary'
+    | '/_authenticated/clinical-workspace/'
     | '/_authenticated/consultation/'
     | '/_authenticated/dna-writing-style/'
     | '/_authenticated/installation/'
@@ -683,6 +696,13 @@ declare module '@tanstack/react-router' {
       path: '/consultation'
       fullPath: '/consultation/'
       preLoaderRoute: typeof AuthenticatedConsultationIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/clinical-workspace/': {
+      id: '/_authenticated/clinical-workspace/'
+      path: '/clinical-workspace'
+      fullPath: '/clinical-workspace/'
+      preLoaderRoute: typeof AuthenticatedClinicalWorkspaceIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/summarization/summary': {
@@ -960,6 +980,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPlaygroundOverviewRoute: typeof AuthenticatedPlaygroundOverviewRoute
   AuthenticatedSummarizationPreSummaryRoute: typeof AuthenticatedSummarizationPreSummaryRoute
   AuthenticatedSummarizationSummaryRoute: typeof AuthenticatedSummarizationSummaryRoute
+  AuthenticatedClinicalWorkspaceIndexRoute: typeof AuthenticatedClinicalWorkspaceIndexRoute
   AuthenticatedConsultationIndexRoute: typeof AuthenticatedConsultationIndexRoute
   AuthenticatedDnaWritingStyleIndexRoute: typeof AuthenticatedDnaWritingStyleIndexRoute
   AuthenticatedInstallationIndexRoute: typeof AuthenticatedInstallationIndexRoute
@@ -1001,6 +1022,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedSummarizationPreSummaryRoute,
   AuthenticatedSummarizationSummaryRoute:
     AuthenticatedSummarizationSummaryRoute,
+  AuthenticatedClinicalWorkspaceIndexRoute:
+    AuthenticatedClinicalWorkspaceIndexRoute,
   AuthenticatedConsultationIndexRoute: AuthenticatedConsultationIndexRoute,
   AuthenticatedDnaWritingStyleIndexRoute:
     AuthenticatedDnaWritingStyleIndexRoute,
