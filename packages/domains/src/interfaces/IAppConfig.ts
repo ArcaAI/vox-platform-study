@@ -19,14 +19,12 @@ export interface IAppConfig {
   PORT: string;
   URL: string;
   STT_V2_URL: string;
-  TTS_PORT: string;
-  TTS_URL: string;
   SMR_PORT: string;
   SMR_URL: string;
   NLP_PORT: string;
   NLP_URL: string;
-  FEDL_PORT: string;
-  FEDL_URL: string;
+  GUARDRAIL_URL: string;
+  HARNESS_URL: string;
 
   //=========== MQTT ============//
   MQTT_HOST: string;

@@ -64,9 +64,9 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 
 #### Route Standardization (TASK-210)
 - [x] **Global Prefix**: Changed from `api` to `api/v1` with internal route exclusion
-- [x] **BaseProxyController**: Shared abstract base class for proxy controllers (SMR, TTS, NLP, FedL)
+- [x] **BaseProxyController**: Shared abstract proxy base class in `src/shared/` (the live `SmrProxyController` is hand-written and does not extend it; there is no NLP proxy controller)
 - [x] **STT v1 Removal**: Removed legacy STT v1 module (controller, gateway, module)
-- [x] **Port Standardization**: All services on 886x range (API=8868, STT v2=8861, SMR=8862, TTS=8863, NLP=8864, FedL=8865)
+- [x] **Port Standardization**: All services on 886x range (API=8868, STT v2=8861, SMR=8862, Guardrail=8863, NLP=8864, Harness=8866)
 
 ### 🟡 Planned
 
@@ -139,20 +139,13 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 - [x] **SttInternalController**: Internal STT endpoints (`/internal/stt`)
 
 > **Note**: STT v1 (`SttController`, `SttGateway`) was removed in TASK-210 Phase 1.
-
-#### TTS Service (Speech) — Port 8863
-- [x] **TtsController** (extends `BaseProxyController`): Proxy to TTS service (`/api/v1/speech`)
-- [x] **TtsGateway**: WebSocket gateway for streaming TTS (`/tts`)
+> **Note**: The legacy TTS (`apps/tts`, port 8863) and FedL (`apps/fedl`, port 8865) services and their gateway proxy controllers/gateways have been removed. Port 8863 is now Guardrail and the Clinical Documentation Harness owns 8866.
 
 #### SMR Service (Text) — Port 8862
 - [x] **SmrProxyController** (in `streaming` module): Proxy to SMR service at `/api/v1/text`
 
 #### NLP Service — Port 8864
-- [x] **NlpController** (extends `BaseProxyController`): Proxy to NLP service (`/api/v1/nlp`)
-- [x] **NlpGateway**: WebSocket gateway for real-time NLP (`/nlp`)
-
-#### FedL Service — Port 8865
-- [x] **FedlController** (extends `BaseProxyController`): Proxy to FedL service (`/api/v1/fedl`)
+- NLP is a downstream Python service (`:8864`); the gateway has **no** NLP proxy controller or WebSocket gateway. It is health-monitored via `/api/v1/health/services`.
 
 #### Admin Endpoints
 - [x] **GlobalSettingsController**: Global settings management (`/api/v1/admin/settings`)

@@ -131,10 +131,10 @@ module.exports = {
             // bootstrap (config.service.ts) instead of per-request. The
             // `arcaai-internal/no-direct-downstream-url-env` rule fires on
             // both dot (`process.env.SMR_URL`) and bracket
-            // (`process.env['SMR_URL']`) access for the five known
+            // (`process.env['SMR_URL']`) access for the known
             // downstream URL keys (SMR_URL, SMR_SERVICE_URL, STT_V2_URL,
-            // TTS_URL, NLP_URL). Other env reads (NODE_ENV,
-            // npm_package_version, ...) stay legal.
+            // NLP_URL, GUARDRAIL_URL, HARNESS_URL). Other env reads
+            // (NODE_ENV, npm_package_version, ...) stay legal.
             //
             // Scope mirrors `no-controller-direct-prisma`: `**/modules/**/*.ts`
             // — the only consumer with that path shape is `apps/api`. The

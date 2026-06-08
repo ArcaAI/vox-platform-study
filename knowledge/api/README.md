@@ -30,13 +30,13 @@ Client (Web / Mobile / SDK)
 │  └────────────┘  └──────────────┘  └─────────────────┘  │
 │                         │                                │
 │  Feature Modules        ▼                                │
-│  ┌─────────┐ ┌─────┐ ┌─────┐ ┌─────┐ ┌──────────────┐  │
-│  │ Session  │ │ STT │ │ TTS │ │ SMR │ │  NLP + more  │  │
-│  └─────────┘ └─────┘ └─────┘ └─────┘ └──────────────┘  │
+│  ┌─────────┐ ┌─────┐ ┌─────┐ ┌────────┐ ┌────────────┐  │
+│  │ Consult  │ │ STT │ │ SMR │ │Harness │ │ NLP + more │  │
+│  └─────────┘ └─────┘ └─────┘ └────────┘ └────────────┘  │
 └──────────────────────┬───────────────────────────────────┘
           ┌────────────┼────────────┬────────────┐
           ▼            ▼            ▼            ▼
-   STT Service   TTS Service  SMR Service  NLP Service
+   STT Service   SMR Service  Guardrail    NLP Service
    (Python)      (Python)     (Python)     (Python)
           │            │            │            │
           └────────────┴────────────┴────────────┘
@@ -58,41 +58,57 @@ The application is composed of **common infrastructure modules** and **feature m
 | `ConfigModule` | `@arcaai/applications` | Typed environment configuration |
 | `LoggingServiceModule` | `@arcaai/applications` | Structured JSON logging |
 | `RedisServiceModule` | `@arcaai/applications` | Redis connections and BullMQ queues |
+| `BlobStorageModule` | `@arcaai/applications` | Provider-agnostic blob storage (S3/MinIO/Azure); registered once via `forRoot()` as a single app-wide provider factory |
 | `ObservabilityModule` | `@arcaai/applications` | Highlight, OpenTelemetry |
 | `AuditLogServiceModule` | `@arcaai/applications` | Event-driven audit logging |
+| `AuditRetentionServiceModule` | `@arcaai/applications` | Scheduled `AuditLog` retention purge (bounds table growth) |
 | `AuthorizationModule` | `@arcaai/applications` | CASL-based policy authorization |
+| `RateLimitServiceModule` | `@arcaai/applications` | DB-backed rate-limit settings; exposes `IRateLimitSettingsService` (live limits for the throttler guard) and `IRateLimitAdminService` (admin endpoint) |
 | `SysEventServiceModule` | `@arcaai/applications` | System event bus |
 | `CommonServiceModule` | `@arcaai/applications` | Shared utilities |
 | `ClsModule` | `nestjs-cls` | Continuation-local storage for request context |
 | `ScheduleModule` | `@nestjs/schedule` | Cron jobs and intervals |
 | `EventEmitterModule` | `@nestjs/event-emitter` | In-process event emitter |
 | `GracefulShutdownModule` | Local | Coordinated shutdown with drain delay |
+| `ThrottleConfigModule` | Local | Global `@nestjs/throttler` config in `modules/throttle/` — named tiers (`default`/`strict`/`heavy`/`relaxed`) over Redis or in-memory storage; exports `TieredThrottlerGuard` |
+| `JwtAuthGuardModule` | Local | `@Global` module (defined in `app.module.ts`) registering `JWT_AUTH_GUARD` so `UnifiedAuthGuard` resolves the JWT strategy across feature modules |
+| `VaultPrismaFactoryModule` | Local | `vault-prisma.module.ts` — binds `VAULT_PRISMA_FACTORY` to a Vault-backed PrismaClient when `SECRETS_PROVIDER=vault` + `PG_DYNAMIC_CREDS=true`; a no-op factory otherwise |
+| `VaultRotationWorkerModule` | Local | `workers/` — leader-elected worker that tails the Vault audit log to invalidate rotated DB credentials; self-gated by `SECRETS_PROVIDER=vault` + `VAULT_AUDIT_LOG_PATH` |
+| `TenantContextProviderModule` | Local | `database/` — wires `ClsService` into the `tenantScopeFilter` Prisma extension so queries are tenant-scoped from the active request context |
+| `TenantOwnedResourceModule` | Local | `common/` — registers the global `TenantOwnedResourceInterceptor` that enforces cross-tenant resource ownership |
 
 **Feature Modules:**
 
+> **Note:** The gateway's module layout has been reorganized. Several proxies were consolidated (e.g. the SMR proxy now lives in `modules/streaming/smr-proxy.controller.ts`) and the standalone TTS, FedL, and Feedback proxy modules were removed. New modules were added (`harness-admin`, `pipeline`, `queue-admin`, `storage`, `storage-access-key`, `tenant-bucket`, `tenant-frontend-config`, `tenant-storage-config`, `voice-profile`, `api-key`, `admin-rate-limit`, `internal`). The authoritative list is the `featureModules` array in `app.module.ts` — most modules live under `apps/api/src/modules/`, but a few (e.g. `KnowledgeServiceModule`) are sourced from `@arcaai/applications`.
+
 | Module | Path | Purpose |
 |--------|------|---------|
-| `AuthModule` | `modules/auth/` | JWT login/logout, session management |
+| `RateLimitAdminModule` | `modules/admin-rate-limit/` | Admin configuration of API rate limits (`/admin/rate-limit`) |
+| `ApiKeyModule` | `modules/api-key/` | API key issuance, rotation, and scope management (`/admin/api-keys`) |
 | `AuditLogModule` | `modules/audit-log/` | Audit log query endpoints |
-| `ConsultationModule` | `modules/consultation/` | Consultation lifecycle, context items, summaries, jobs, timeline |
+| `AuthModule` | `modules/auth/` | JWT login/logout, session management |
+| `ConsultationModule` | `modules/consultation/` | Consultation lifecycle, context items, summaries, jobs, timeline, harness-internal callbacks |
 | `DepartmentModule` | `modules/department/` | Department CRUD with hierarchy |
 | `DnaWritingStyleModule` | `modules/dna-writing-style/` | AI writing-style profile generation and management |
-| `FedlModule` | `modules/fedl/` | Federated learning proxy |
-| `FeedbackModule` | `modules/feedback/` | User feedback proxy |
-| `GlobalSettingsModule` | `modules/global-settings/` | Platform-wide settings |
-| `HealthModule` | `modules/health/` | Health, readiness, liveness, startup probes |
-| `MonitoringModule` | `modules/monitoring/` | Downstream service health dashboards |
-| `NlpModule` | `modules/nlp/` | NLP proxy + WebSocket gateway |
+| `HarnessAdminModule` | `modules/harness-admin/` | Clinical Documentation Harness admin/ops integration |
+| `HealthModule` | `modules/health/` | Health, readiness, liveness, startup probes + consolidated downstream service health |
+| `InternalModule` | `modules/internal/` | Internal STT service-to-service endpoints (excluded from the `/api/v1` prefix) |
+| `KnowledgeServiceModule` | `@arcaai/applications` (not under `modules/`) | Institutional-RAG knowledge ingestion — BullMQ worker registering the `IngestKnowledgeDocument` queue + processor (worker-only; no REST controllers) |
+| `MonitoringModule` | `modules/monitoring/` | Downstream service uptime/heartbeat dashboards |
+| `PipelineModule` | `modules/pipeline/` | Audio pipeline configuration (admin + public) and tenant assignment |
 | `PromptManagementModule` | `modules/prompt-management/` | Prompt template CRUD with versioning |
-| `RbacModule` | `modules/rbac/` | Roles, policies, permission checks |
-| `SmrModule` | `modules/smr/` | Summarization proxy |
-| `SttV2Module` | `modules/stt-v2/` | STT v2 pipelines, AI models, transcription jobs, streaming |
-| `TenantModule` | `modules/tenant/` | Tenant management |
-| `TtsModule` | `modules/tts/` | TTS proxy + WebSocket gateway |
-| `UserPreferencesModule` | `modules/user-preferences/` | SDK-synced user preferences |
-| `UsersModule` | `modules/user/` | User CRUD |
-| `UserSettingsModule` | `modules/user-settings/` | Per-user settings |
 | `PrismaStudioModule` | `modules/pstudio/` | Embedded Prisma Studio database browser (dev/staging only) |
+| `QueueAdminModule` | `modules/queue-admin/` | BullMQ queue and scheduler administration |
+| `RbacModule` | `modules/rbac/` | Roles, policies, permission checks |
+| `StorageModule` | `modules/storage/` | Object storage upload/download and metadata |
+| `StorageAccessKeyModule` | `modules/storage-access-key/` | Per-tenant storage access key management |
+| `StreamingModule` | `modules/streaming/` | Consolidated STT/SMR surface — SMR text proxy, transcription jobs, STT WebSocket gateway |
+| `TenantModule` | `modules/tenant/` | Tenant management |
+| `TenantBucketModule` | `modules/tenant-bucket/` | Per-tenant storage bucket provisioning |
+| `TenantFrontendConfigModule` | `modules/tenant-frontend-config/` | Per-tenant frontend/pipeline configuration |
+| `TenantStorageConfigModule` | `modules/tenant-storage-config/` | Per-tenant storage backend configuration |
+| `UserModule` | `modules/user/` | User CRUD plus per-user settings, preferences, roles, and departments |
+| `VoiceProfileModule` | `modules/voice-profile/` | Speaker voice-profile enrollment and management |
 
 ### Guard & Authorization Chain
 
@@ -200,10 +216,12 @@ All environment variables are documented in [configuration.md](./configuration.m
 | Application | `NODE_ENV`, `PORT`, `URL` |
 | Database | `DB_CONNECTION_STRING`, `DB_CONNECTION_STRING_DIRECT` |
 | Redis | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASS` |
-| Microservices | `STT_V2_URL`, `SMR_URL`, `TTS_URL`, `NLP_URL`, `FEDL_URL` |
+| Microservices | `STT_V2_URL`, `SMR_URL`, `NLP_URL`, `GUARDRAIL_URL`, `HARNESS_URL` |
 | Auth | `SESSION_SECRET_KEY` |
 | Observability | `SENTRY_DSN_API`, `HIGHLIGHT_PROJECT_ID`, `OTEL_*` |
 | Logging | `LOG_LEVEL`, `LOG_FILE_ENABLED`, `LOG_FILE_PATH` |
+
+> **Microservice URLs:** The gateway proxies to STT v2 (`8861`), SMR (`8862`), Guardrail (`8863`), NLP (`8864`), and Harness (`8866`). The former TTS and FedL services no longer exist — `TTS_URL`/`FEDL_URL` are not gateway config, and port `8863` now serves the Guardrail service (`GUARDRAIL_URL`).
 
 ## Module Reference
 

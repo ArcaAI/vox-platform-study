@@ -173,10 +173,11 @@ Located in `/docs/` (project root):
 
 ### Service Documentation
 
-- [STT Service](../../stt/README.md) - Speech-to-Text service
-- [TTS Service](../../tts/README.md) - Text-to-Speech service
+- [STT Service](../../stt-v2/README.md) - Speech-to-Text service
 - [SMR Service](../../smr/README.md) - Medical summarization service
+- [Guardrail Service](../../guardrail/README.md) - Safety/guardrail engine (port 8863)
 - [NLP Service](../../nlp/README.md) - Natural Language Processing service
+- [Harness Service](../../harness/README.md) - Clinical Documentation Harness (port 8866)
 
 ### Infrastructure Documentation
 

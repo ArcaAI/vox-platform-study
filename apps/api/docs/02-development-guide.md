@@ -113,9 +113,9 @@ REDIS_PASS=
 # Python Services (local)
 STT_V2_URL=http://localhost:8861
 SMR_URL=http://localhost:8862
-TTS_URL=http://localhost:8863
+GUARDRAIL_URL=http://localhost:8863
 NLP_URL=http://localhost:8864
-FEDL_URL=http://localhost:8865
+HARNESS_URL=http://localhost:8866
 
 # Session
 SESSION_SECRET_KEY=dev-secret-key-change-in-production

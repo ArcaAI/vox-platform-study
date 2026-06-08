@@ -32,10 +32,11 @@ const createMockHttpService = () => ({
 const createMockConfigService = () => ({
     getConfigValue: vi.fn((key: string) => {
         const map: Record<string, string> = {
-            TTS_URL: 'http://localhost:8863',
             SMR_URL: 'http://localhost:8862',
             NLP_URL: 'http://localhost:8864',
             STT_V2_URL: 'http://localhost:8861',
+            GUARDRAIL_URL: 'http://localhost:8863',
+            HARNESS_URL: 'http://localhost:8866',
         };
         return map[key];
     }),
@@ -124,45 +125,51 @@ describe('ApiHealthController', () => {
     });
 
     describe('GET /health/services', () => {
-        const ttsHealthy = { data: { status: 'healthy', service: 'tts', version: '1.0.0', uptime_seconds: 100, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
         const smrHealthy = { data: { status: 'healthy', service: 'smr', version: '2.0.0', uptime_seconds: 200, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
         const nlpHealthy = { data: { status: 'healthy', service: 'nlp', version: '1.0.0', uptime_seconds: 300, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
         const sttHealthy = { data: { status: 'healthy', service: 'stt-v2', version: '1.0.0', uptime_seconds: 400, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
+        const guardrailHealthy = { data: { status: 'healthy', service: 'guardrail', version: '1.0.0', uptime_seconds: 500, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
+        const harnessHealthy = { data: { status: 'healthy', service: 'harness', version: '0.1.0', uptime_seconds: 600, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
 
-        it('should return health status for all 4 downstream services', async () => {
+        it('should return health status for all 5 downstream services', async () => {
             mockHttpService.axiosRef.get
-                .mockResolvedValueOnce(ttsHealthy)
                 .mockResolvedValueOnce(smrHealthy)
                 .mockResolvedValueOnce(nlpHealthy)
-                .mockResolvedValueOnce(sttHealthy);
+                .mockResolvedValueOnce(sttHealthy)
+                .mockResolvedValueOnce(guardrailHealthy)
+                .mockResolvedValueOnce(harnessHealthy);
 
             const result = await controller.checkServices();
 
             expect(result.status).toBe('healthy');
-            expect(result.services).toHaveProperty('tts');
             expect(result.services).toHaveProperty('smr');
             expect(result.services).toHaveProperty('nlp');
             expect(result.services).toHaveProperty('stt');
-            expect(result.services.tts.status).toBe('healthy');
+            expect(result.services).toHaveProperty('guardrail');
+            expect(result.services).toHaveProperty('harness');
             expect(result.services.smr.status).toBe('healthy');
             expect(result.services.nlp.status).toBe('healthy');
             expect(result.services.stt.status).toBe('healthy');
+            expect(result.services.guardrail.status).toBe('healthy');
+            expect(result.services.harness.status).toBe('healthy');
         });
 
         it('should return degraded when some services are down', async () => {
             mockHttpService.axiosRef.get
-                .mockResolvedValueOnce(ttsHealthy)
+                .mockResolvedValueOnce(smrHealthy)
                 .mockRejectedValueOnce(new Error('ECONNREFUSED'))
-                .mockResolvedValueOnce(nlpHealthy)
-                .mockResolvedValueOnce(sttHealthy);
+                .mockResolvedValueOnce(sttHealthy)
+                .mockResolvedValueOnce(guardrailHealthy)
+                .mockResolvedValueOnce(harnessHealthy);
 
             const result = await controller.checkServices();
 
             expect(result.status).toBe('degraded');
-            expect(result.services.tts.status).toBe('healthy');
-            expect(result.services.smr.status).toBe('down');
-            expect(result.services.nlp.status).toBe('healthy');
+            expect(result.services.smr.status).toBe('healthy');
+            expect(result.services.nlp.status).toBe('down');
             expect(result.services.stt.status).toBe('healthy');
+            expect(result.services.guardrail.status).toBe('healthy');
+            expect(result.services.harness.status).toBe('healthy');
         });
 
         it('should return unhealthy when all services are down', async () => {
@@ -171,14 +178,15 @@ describe('ApiHealthController', () => {
             const result = await controller.checkServices();
 
             expect(result.status).toBe('unhealthy');
-            expect(result.services.tts.status).toBe('down');
             expect(result.services.smr.status).toBe('down');
             expect(result.services.nlp.status).toBe('down');
             expect(result.services.stt.status).toBe('down');
+            expect(result.services.guardrail.status).toBe('down');
+            expect(result.services.harness.status).toBe('down');
         });
 
         it('should include timestamp in response', async () => {
-            mockHttpService.axiosRef.get.mockResolvedValue(ttsHealthy);
+            mockHttpService.axiosRef.get.mockResolvedValue(smrHealthy);
 
             const result = await controller.checkServices();
 
@@ -188,45 +196,49 @@ describe('ApiHealthController', () => {
 
         it('should include service-name response data from healthy services (sanitised — no version)', async () => {
             mockHttpService.axiosRef.get
-                .mockResolvedValueOnce(ttsHealthy)
                 .mockResolvedValueOnce(smrHealthy)
                 .mockResolvedValueOnce(nlpHealthy)
-                .mockResolvedValueOnce(sttHealthy);
+                .mockResolvedValueOnce(sttHealthy)
+                .mockResolvedValueOnce(guardrailHealthy)
+                .mockResolvedValueOnce(harnessHealthy);
 
             const result = await controller.checkServices();
 
             // TASK-307 W5.1 / AC-15 / E-3 — version and checks are stripped
             // from the public response to avoid leaking downstream service
             // versions / internal probe details (per audit finding C-8).
-            expect(result.services.tts.service).toBe('tts');
             expect(result.services.smr.service).toBe('smr');
-            expect(result.services.tts).not.toHaveProperty('version');
+            expect(result.services.guardrail.service).toBe('guardrail');
             expect(result.services.smr).not.toHaveProperty('version');
+            expect(result.services.guardrail).not.toHaveProperty('version');
         });
 
         it('should include error message for down services', async () => {
             mockHttpService.axiosRef.get
-                .mockResolvedValueOnce(ttsHealthy)
+                .mockResolvedValueOnce(smrHealthy)
                 .mockRejectedValueOnce(new Error('Connection refused'))
-                .mockResolvedValueOnce(nlpHealthy)
-                .mockResolvedValueOnce(sttHealthy);
+                .mockResolvedValueOnce(sttHealthy)
+                .mockResolvedValueOnce(guardrailHealthy)
+                .mockResolvedValueOnce(harnessHealthy);
 
             const result = await controller.checkServices();
 
-            expect(result.services.smr.error).toBe('Connection refused');
+            expect(result.services.nlp.error).toBe('Connection refused');
         });
 
         it('should call correct health endpoints for each service', async () => {
-            mockHttpService.axiosRef.get.mockResolvedValue(ttsHealthy);
+            mockHttpService.axiosRef.get.mockResolvedValue(smrHealthy);
 
             await controller.checkServices();
 
             const calledUrls = mockHttpService.axiosRef.get.mock.calls.map((c: any[]) => c[0]);
-            expect(calledUrls).toHaveLength(4);
-            expect(calledUrls[0]).toMatch(/localhost:8863\/api\/v1\/health$/);
-            expect(calledUrls[1]).toMatch(/localhost:8862\/api\/v1\/health$/);
-            expect(calledUrls[2]).toMatch(/localhost:8864\/api\/v1\/health$/);
-            expect(calledUrls[3]).toMatch(/localhost:8861\/api\/v1\/health$/);
+            expect(calledUrls).toHaveLength(5);
+            expect(calledUrls[0]).toMatch(/localhost:8862\/api\/v1\/health$/);
+            expect(calledUrls[1]).toMatch(/localhost:8864\/api\/v1\/health$/);
+            expect(calledUrls[2]).toMatch(/localhost:8861\/api\/v1\/health$/);
+            // Guardrail mounts health under /api (not /api/v1).
+            expect(calledUrls[3]).toMatch(/localhost:8863\/api\/health$/);
+            expect(calledUrls[4]).toMatch(/localhost:8866\/api\/v1\/health$/);
         });
     });
 
@@ -285,15 +297,15 @@ describe('ApiHealthController', () => {
         it('should never throw 500/502 when a known service is down', async () => {
             mockHttpService.axiosRef.get.mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
-            const result = await controller.checkServiceByKey('tts');
+            const result = await controller.checkServiceByKey('guardrail');
 
             expect(result.status).toBe('down');
-            expect(result.service).toBe('Text to Speech');
+            expect(result.service).toBe('Guardrail');
             expect(result.error).toBeDefined();
         });
 
-        it('should accept all four valid service keys', async () => {
-            for (const key of ['tts', 'smr', 'nlp', 'stt']) {
+        it('should accept all five valid service keys', async () => {
+            for (const key of ['smr', 'nlp', 'stt', 'guardrail', 'harness']) {
                 mockHttpService.axiosRef.get.mockResolvedValueOnce(smrHealthy);
                 const result = await controller.checkServiceByKey(key);
                 expect(result.status).toBeDefined();

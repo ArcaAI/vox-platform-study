@@ -34,7 +34,7 @@ export interface ServiceSessionCount {
   active: number;
 }
 
-/** `GET /monitoring/sessions` (the backend reports tts + smr today; OB-13). */
+/** `GET /monitoring/sessions` (the backend reports smr, stt, nlp, guardrail, harness). */
 export interface SessionsResponse {
   services: Record<string, ServiceSessionCount>;
   totalUsers: number;

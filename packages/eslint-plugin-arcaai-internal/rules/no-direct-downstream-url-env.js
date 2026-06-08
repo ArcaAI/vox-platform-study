@@ -10,9 +10,9 @@
  *   const url = process.env['STT_V2_URL'];                         // ERROR
  *   const url = this.configService.getConfigValue('SMR_URL');     // OK
  *
- * The rule is a tight denylist on the five known downstream URL
- * keys — other env reads (NODE_ENV, npm_package_version, ...) stay
- * legal. Scope is wired in `packages/config-eslint/base.js` via an
+ * The rule is a tight denylist on the known downstream URL keys —
+ * other env reads (NODE_ENV, npm_package_version, ...) stay legal.
+ * Scope is wired in `packages/config-eslint/base.js` via an
  * `overrides` block for the modules glob, mirroring the
  * `no-controller-direct-prisma` precedent (W6.4).
  */
@@ -22,8 +22,9 @@ const BANNED_KEYS = new Set([
   'SMR_URL',
   'SMR_SERVICE_URL',
   'STT_V2_URL',
-  'TTS_URL',
   'NLP_URL',
+  'GUARDRAIL_URL',
+  'HARNESS_URL',
 ]);
 
 function isProcessEnvBase(object) {

@@ -4,7 +4,7 @@
 
 The HOPE platform exposes APIs through a central NestJS API Gateway and multiple Python FastAPI microservices. This document provides a comprehensive inventory of all API endpoints, cross-cutting concerns (rate limiting, OpenAPI docs, versioning), and service-to-service communication patterns.
 
-**Total Applications**: 8 backend services (1 NestJS gateway + 7 Python microservices)  
+**Total Applications**: 6 backend services (1 NestJS gateway + 5 Python microservices: STT, SMR, Guardrail, NLP, Harness)  
 **Total API Endpoints**: ~289  
 **API Versioning**: URI-based (`/api/v1/`) via NestJS `enableVersioning()`  
 **Swagger UI**: Available at `/docs` (non-production only)
@@ -36,13 +36,13 @@ The HOPE platform exposes APIs through a central NestJS API Gateway and multiple
                   │  └─────────────────────┘    │
                   └──┬────┬────┬────┬────┬──────┘
                      │    │    │    │    │
-          ┌──────────┘    │    │    │    └──────────┐
-          ▼               ▼    ▼    ▼               ▼
-     ┌─────────┐   ┌────┐ ┌────┐ ┌────┐     ┌──────────┐
-     │ STT-v2  │   │TTS │ │SMR │ │NLP │     │ FedL     │
-     │ :8861   │   │:8863│ │:8862│ │:8864│     │ :8865  │
-     │ Python  │   │    │ │    │ │    │     │ Feedback │
-     └────┬────┘   └────┘ └────┘ └────┘     └──────────┘
+       ┌────────┬─────────┴───┬──────────┬──────────┐
+       ▼        ▼             ▼          ▼          ▼
+  ┌─────────┐ ┌────────┐ ┌──────────┐ ┌──────┐ ┌──────────┐
+  │ STT-v2  │ │  SMR   │ │Guardrail │ │ NLP  │ │ Harness  │
+  │ :8861   │ │ :8862  │ │  :8863   │ │:8864 │ │  :8866   │
+  │ Python  │ │ Python │ │  Python  │ │Python│ │  Python  │
+  └────┬────┘ └────────┘ └──────────┘ └──────┘ └──────────┘
           │
           │ Redis Streams (audio/results)
           │ HTTP callbacks (/internal/stt/*)
@@ -53,18 +53,17 @@ The HOPE platform exposes APIs through a central NestJS API Gateway and multiple
 ```
 
 ### Frontend Apps
-- `apps/admin` (React/Vite) - Admin Dashboard UI
+- `apps/ui-playground` (React 19 / Vite / TanStack Router) - SDK playground + admin console (port 5175)
+- `apps/example` (React / Vite) - Minimal SDK integration example
 - `packages/agentic-sdk-v2/` - Agentic SDK V2 (`@arcaai/vox`)
 
 ### Backend Services
-- `apps/api` (NestJS) - Main API Gateway
-- `apps/stt-v2` (FastAPI) - Speech-to-Text Service
-- `apps/tts` (FastAPI) - Text-to-Speech Service
-- `apps/smr` (FastAPI) - Summary/LLM Generation Service
-- `apps/nlp` (FastAPI) - NLP Classification Service
-- `apps/fedl` (FastAPI) - Federated Learning Service
-- `apps/mlflow` (FastAPI) - MLflow/DNA Writing Style Service
-- `apps/feedback` (FastAPI) - Feedback Collection Service
+- `apps/api` (NestJS) - Main API Gateway (port 8868)
+- `apps/stt-v2` (FastAPI) - Speech-to-Text Service (port 8861)
+- `apps/smr` (FastAPI) - Summarization / LLM Generation Service (port 8862)
+- `apps/guardrail` (FastAPI) - Content Safety / Medical Validation Service (port 8863)
+- `apps/nlp` (FastAPI) - Medical NLP Service (port 8864)
+- `apps/harness` (FastAPI) - Clinical Documentation Harness (port 8866)
 
 ---
 
@@ -134,9 +133,8 @@ All routes are protected by a single `UnifiedAuthGuard` from `@arcaai/applicatio
 
 | Pattern | Used Between | Transport |
 |---------|-------------|-----------|
-| HTTP Proxy (`http-proxy-middleware`) | Gateway -> TTS, SMR, NLP, FedL | HTTP |
-| HTTP Direct (`HttpService`) | Gateway -> Feedback, STT-v2 sessions | HTTP |
-| WebSocket Proxy | Gateway -> STT v2, TTS, NLP | WebSocket |
+| HTTP Proxy / Direct | Gateway -> SMR, NLP, Harness, STT-v2 sessions | HTTP |
+| WebSocket Proxy | Gateway -> STT v2, NLP | WebSocket |
 | Redis Streams | Gateway <-> STT-v2 (audio streaming) | Redis |
 | Redis Pub/Sub | Job status updates (SSE) | Redis |
 | BullMQ | DNA generation, consultation summaries | Redis-backed queue |
@@ -309,15 +307,12 @@ All routes are protected by a single `UnifiedAuthGuard` from `@arcaai/applicatio
 | AI Models | PATCH | `/api/v1/ai-models/:id` | Update model |
 | AI Models | DELETE | `/api/v1/ai-models/:id` | Delete model |
 
-### 1.8 Service Proxies (TTS, SMR, NLP, FedL)
+### 1.8 Service Proxies (SMR, NLP)
+
+> **Removed:** The gateway no longer exposes TTS or FedL proxies — there is no `apps/tts` or `apps/fedl` service in this repo.
 
 | Module | Method | Path | Description |
 |--------|--------|------|-------------|
-| TTS | GET | `/tts/health` | TTS health check |
-| TTS | GET | `/tts/voices` | Get available voices |
-| TTS | POST | `/tts/batch/synthesize` | Batch synthesis |
-| TTS | GET | `/tts/batch/jobs/:jobId` | Batch job status |
-| TTS | GET | `/tts/download/:synthesisId` | Download audio |
 | SMR | GET | `/text/api/v2/health` | SMR health check |
 | SMR | POST | `/text/api/v2/generate` | Generate text |
 | SMR | GET | `/text/api/v2/tasks/:taskId` | Task status |
@@ -329,11 +324,6 @@ All routes are protected by a single `UnifiedAuthGuard` from `@arcaai/applicatio
 | NLP | POST | `/nlp/classify/tokens` | Token classification |
 | NLP | POST | `/nlp/correct` | Spelling correction |
 | NLP | POST | `/nlp/suggest` | Medical suggestions |
-| FedL | GET | `/fedl/health` | FedL health check |
-| FedL | GET | `/fedl/models/current` | Current model |
-| FedL | GET | `/fedl/models/check-update` | Check updates |
-| FedL | POST | `/fedl/updates/submit` | Submit weights |
-| FedL | POST | `/fedl/rounds/trigger` | Trigger aggregation |
 
 ### 1.9 Infrastructure
 
@@ -397,22 +387,7 @@ Embedded database browser for admin users. Conditionally enabled via `ENABLE_PRI
 
 ## 3. TTS Service (FastAPI) - `apps/tts`
 
-**Technology**: FastAPI, Python, Azure Cognitive Services  
-**Role**: Text-to-Speech synthesis  
-**Total Endpoints**: 10
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Service info |
-| GET | `/api/health` | Health check |
-| GET | `/api/tts/voices` | Available voices |
-| POST | `/api/tts/synthesize` | TTS synthesis |
-| POST | `/api/tts/stream` | Streaming synthesis |
-| GET | `/api/tts/batch/status/{job_id}` | Batch job status |
-| GET | `/api/tts/download/{synthesis_id}` | Download audio |
-| GET | `/test` | Test page |
-| WebSocket | `/ws/tts` | Real-time TTS |
-| Static | `/static/*` | Static files |
+> **Removed:** There is no `apps/tts` service in this repo, and the gateway no longer proxies it. Port 8863 is now used by the Guardrail service.
 
 ---
 
@@ -454,35 +429,13 @@ Embedded database browser for admin users. Conditionally enabled via `ENABLE_PRI
 
 ## 6. FedL Service (FastAPI) - `apps/fedl`
 
-**Technology**: FastAPI, Python, Federated Learning  
-**Role**: Federated learning for model updates  
-**Total Endpoints**: 18
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Service info |
-| GET | `/health` | Basic health |
-| GET | `/api/v1/health` | API health |
-| GET | `/api/v1/models/global-weights` | Global model weights |
-| GET | `/api/v1/models/current` | Current model version |
-| GET | `/api/v1/models/check-update` | Check for updates |
-| GET | `/api/v1/models/versions` | List model versions |
-| GET | `/api/v1/models/{version_id}` | Get model version |
-| GET | `/api/v1/models/{version_id}/weights` | Download weights |
-| GET | `/api/v1/models/{version_id}/metadata` | Adapter metadata |
-| GET | `/api/v1/models/{version_id}/decoder` | Download decoder |
-| GET | `/api/v1/models/{version_id}/decoder/info` | Decoder info |
-| GET | `/api/v1/rounds/current` | Current round |
-| GET | `/api/v1/rounds/history` | Round history |
-| POST | `/api/v1/rounds/trigger` | Trigger aggregation |
-| GET | `/api/v1/rounds/{round_id}/status` | Round status |
-| GET | `/api/v1/rounds/{round_id}` | Get round |
-| POST | `/api/v1/updates/submit` | Submit weight updates |
-| GET | `/api/v1/updates/status/{update_id}` | Update status |
+> **Removed:** There is no `apps/fedl` service in this repo.
 
 ---
 
 ## 7. MLflow Service (FastAPI) - `apps/mlflow`
+
+> **Removed:** There is no `apps/mlflow` service in this repo. DNA writing-style functionality is now served via the API gateway's `DnaWritingStyleModule`. This section is retained for historical reference only.
 
 **Technology**: FastAPI, Python, MLflow, Celery, Qdrant  
 **Role**: ML experiment tracking, prompt management, DNA writing style  
@@ -540,6 +493,8 @@ Embedded database browser for admin users. Conditionally enabled via `ENABLE_PRI
 
 ## 8. Feedback Service (FastAPI) - `apps/feedback`
 
+> **Removed:** There is no `apps/feedback` service in this repo. This section is retained for historical reference only.
+
 **Technology**: FastAPI, Python, InfluxDB  
 **Role**: Collect user feedback and interaction metrics  
 **Total Endpoints**: 5
@@ -560,13 +515,11 @@ Embedded database browser for admin users. Conditionally enabled via `ENABLE_PRI
 |---------|------------|-----------|------|
 | API Gateway | NestJS | ~180 | Central gateway, business logic |
 | STT-V2 | FastAPI | 16 | Speech-to-text |
-| TTS | FastAPI | 10 | Text-to-speech |
 | SMR | FastAPI | 6 | LLM text generation |
 | NLP | FastAPI | 8 | Medical NLP |
-| FedL | FastAPI | 18 | Federated learning |
 | MLflow | FastAPI | 46 | ML tracking, DNA styles |
 | Feedback | FastAPI | 5 | Metrics collection |
-| **Total** | - | **~289** | - |
+| **Total** | - | **~261** | - |
 
 ---
 
@@ -589,7 +542,7 @@ All client-facing endpoints require JWT authentication unless otherwise noted.
 | Transcription Jobs | `/api/v1/transcription-jobs/*` | `default` |
 | ASR Pipelines | `/api/v1/pipelines/*` | `default` |
 | AI Models | `/api/v1/ai-models/*` | `default` |
-| Service Proxies | `/api/v1/{stt,tts,text,nlp,fedl}/*` | `default` |
+| Service Proxies | `/api/v1/{stt,text,nlp}/*` | `default` |
 
 ### Internal APIs (Service-to-service, `/internal/`)
 
@@ -660,9 +613,9 @@ These endpoints are not versioned to remain accessible for Kubernetes probes and
 |----------|---------|---------------|
 | `STT_V2_URL` | `http://localhost:8861` | STT v2 Python service |
 | `SMR_URL` | `http://localhost:8862` | SMR Python service |
-| `TTS_URL` | `http://localhost:8863` | TTS Python service |
+| `GUARDRAIL_URL` | `http://localhost:8863` | Guardrail Python service |
 | `NLP_URL` | `http://localhost:8864` | NLP Python service |
-| `FEDL_URL` | `http://localhost:8865` | FedL Python service |
+| `HARNESS_URL` | `http://localhost:8866` | Clinical Documentation Harness Python service |
 | `FEEDBACK_SERVICE_URL_HTTP` | `http://localhost:5015` | Feedback Python service |
 | `FEEDBACK_API_KEY` | - | API key for Feedback service calls |
 

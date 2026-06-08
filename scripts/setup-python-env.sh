@@ -7,6 +7,7 @@
 #   - smr-v2  (Summary Agent / SMR v2)
 #   - nlp     (Medical NLP)
 #   - harness (Clinical Documentation Harness orchestrator — TASK-330)
+#   - guardrail (AI content-safety / medical-context validation — TASK-338)
 #
 # Usage:
 #   ./scripts/setup-python-env.sh              # Full setup (check + create + install)
@@ -438,6 +439,17 @@ install_dependencies() {
         print_warn "harness pyproject.toml not found at $harness_dir — skipping"
     fi
 
+    # --- guardrail ---
+    print_header "  4e: guardrail (Content Safety / Medical Validation)"
+    local guardrail_dir="$PROJECT_ROOT/apps/guardrail"
+    if [[ -f "$guardrail_dir/pyproject.toml" ]]; then
+        print_step "Installing guardrail dependencies..."
+        "${CR[@]}" pip install -e "${guardrail_dir}[dev,test]"
+        print_ok "guardrail installed"
+    else
+        print_warn "guardrail pyproject.toml not found at $guardrail_dir — skipping"
+    fi
+
     # -----------------------------------------------------------------------
     # Deduplicate OpenMP (libomp) — CRITICAL for macOS
     # -----------------------------------------------------------------------
@@ -579,18 +591,23 @@ print_summary() {
     echo "    ${CYAN}conda activate $CONDA_ENV_NAME${NC}"
     echo ""
     echo "  ${BOLD}Run services from monorepo root:${NC}"
-    echo "    ${CYAN}pnpm dev:stt-v2${NC}    — STT v2 on port 8001"
-    echo "    ${CYAN}pnpm dev:smr-v2${NC}    — SMR v2 on port 5006"
+    echo "    ${CYAN}pnpm dev:stt-v2${NC}      — STT v2 on port 8861"
+    echo "    ${CYAN}pnpm dev:smr-v2${NC}      — SMR v2 on port 8862"
+    echo "    ${CYAN}pnpm dev:guardrail${NC}   — Guardrail on port 8863"
+    echo "    ${CYAN}pnpm dev:nlp${NC}         — NLP on port 8864"
+    echo "    ${CYAN}pnpm dev:harness${NC}     — Harness on port 8866"
     echo ""
     echo "  ${BOLD}Run services directly:${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn stt_v2.main:app --reload --app-dir apps/stt-v2/src${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn smr_v2.main:app --reload --app-dir apps/smr/src${NC}"
+    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn guardrail.main:app --reload --app-dir apps/guardrail/src${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn nlp.main:app --reload --app-dir apps/nlp/src${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn harness.main:app --reload --app-dir apps/harness/src${NC}"
     echo ""
     echo "  ${BOLD}Run tests:${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/stt-v2/tests/ -v${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/smr/tests/ -v${NC}"
+    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/smr/src/smr_v2/tests/ -v${NC}"
+    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/guardrail/src/guardrail/tests/ -v${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/nlp/tests/ -v${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/harness/src/harness/tests/ -v${NC}"
     echo ""

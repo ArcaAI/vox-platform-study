@@ -21,7 +21,7 @@
 
 ## Introduction
 
-The HOPE API Gateway provides a comprehensive REST API for managing medical conversation sessions, real-time audio transcription, text-to-speech synthesis, and medical text analysis. This guide provides practical examples for integrating with the API.
+The HOPE API Gateway provides a comprehensive REST API for managing medical conversation sessions, real-time audio transcription, and medical text analysis. This guide provides practical examples for integrating with the API.
 
 ### Base URLs
 
@@ -425,69 +425,6 @@ X-API-Key: your-api-key
 
 ---
 
-### Text-to-Speech (Speech) Service
-
-> TTS endpoints are proxied to the TTS service on port 8863 via `/api/v1/speech/...`.
-
-#### Synthesize Speech
-
-```http
-POST /api/v1/speech/synthesize
-Content-Type: application/json
-X-API-Key: your-api-key
-```
-
-**Request Body:**
-```json
-{
-  "text": "The patient's blood pressure is 120 over 80.",
-  "voice": "en-US-Neural2-F",
-  "language": "en-US",
-  "format": "mp3"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "audioUrl": "https://storage.hope.com/audio/tts_abc123.mp3",
-  "duration": 3.5,
-  "format": "mp3",
-  "expiresAt": "2024-01-16T10:30:00.000Z"
-}
-```
-
-#### List Available Voices
-
-```http
-GET /api/v1/speech/voices?language=en-US
-X-API-Key: your-api-key
-```
-
-**Response (200 OK):**
-```json
-{
-  "voices": [
-    {
-      "id": "en-US-Neural2-F",
-      "name": "English US Female Neural",
-      "language": "en-US",
-      "gender": "FEMALE",
-      "type": "NEURAL"
-    },
-    {
-      "id": "en-US-Neural2-M",
-      "name": "English US Male Neural",
-      "language": "en-US",
-      "gender": "MALE",
-      "type": "NEURAL"
-    }
-  ]
-}
-```
-
----
-
 ### Medical Summarization (Text) Service
 
 > SMR endpoints are proxied to the SMR service on port 8862 via `/api/v1/text/...`.
@@ -535,57 +472,6 @@ X-API-Key: your-api-key
     }
   ],
   "generatedAt": "2024-01-15T10:35:00.000Z"
-}
-```
-
----
-
-### Natural Language Processing (NLP) Service
-
-> NLP endpoints are proxied to the NLP service on port 8864 via `/api/v1/nlp/...`.
-
-#### Extract Medical Entities
-
-```http
-POST /api/v1/nlp/extract_entities
-Content-Type: application/json
-X-API-Key: your-api-key
-```
-
-**Request Body:**
-```json
-{
-  "text": "Patient diagnosed with Type 2 Diabetes Mellitus. Prescribed Metformin 500mg twice daily.",
-  "language": "en"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "entities": [
-    {
-      "text": "Type 2 Diabetes Mellitus",
-      "type": "DISEASE",
-      "start": 23,
-      "end": 47,
-      "confidence": 0.98,
-      "metadata": {
-        "icd10": "E11"
-      }
-    },
-    {
-      "text": "Metformin",
-      "type": "MEDICATION",
-      "start": 59,
-      "end": 68,
-      "confidence": 0.96,
-      "metadata": {
-        "genericName": "Metformin",
-        "dosage": "500mg"
-      }
-    }
-  ]
 }
 ```
 

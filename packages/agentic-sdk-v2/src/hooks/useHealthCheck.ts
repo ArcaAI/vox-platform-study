@@ -9,8 +9,8 @@
  *   3. GET /health/services  – Consolidated downstream service health
  *
  * The /health/services response is flattened so each downstream service
- * (tts, smr, nlp, stt) appears as a top-level entry in the services map
- * alongside 'api' and 'apiLive'.
+ * (smr, nlp, stt, guardrail, harness) appears as a top-level entry in the
+ * services map alongside 'api' and 'apiLive'.
  */
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';

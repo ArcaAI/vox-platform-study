@@ -13,13 +13,18 @@
  *   #4 No vacuous guards: all if-guards converted to hard existence assertions
  *   #5 TDD-first: tests written and verified RED before implementation
  *
- * Target port assignments:
+ * Target port assignments (current 886x topology):
  *   API Gateway = 8868 (PORT)
  *   STT v2      = 8861 (STT_V2_PORT / STT_V2_URL)
  *   SMR v2      = 8862 (SMR_PORT / SMR_URL)
- *   TTS         = 8863 (TTS_PORT / TTS_URL)
+ *   Guardrail   = 8863 (GUARDRAIL_URL)
  *   NLP         = 8864 (NLP_PORT / NLP_URL)
- *   FedL        = 8865 (FEDL_PORT / FEDL_URL)
+ *   Harness     = 8866 (HARNESS_URL)
+ *
+ * apps/tts and apps/fedl have been fully removed: the legacy TTS_PORT/TTS_URL
+ * (8863) and FEDL_PORT/FEDL_URL (8865) config keys no longer exist anywhere
+ * (IAppConfig, ConfigService, env files). 8863 is now Guardrail; the Clinical
+ * Documentation Harness owns 8866.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -140,42 +145,31 @@ describe('Phase 7: API Gateway port standardization (8868)', () => {
     });
 });
 
-// ─── 3. TTS Port (8863) ─────────────────────────────────────────────────────
+// ─── 3. Guardrail Port (8863) ────────────────────────────────────────────────
+// apps/tts was removed; 8863 is now Guardrail (GUARDRAIL_URL). TTS_PORT/TTS_URL
+// no longer exist in any env file.
 
-describe('Phase 7: TTS port standardization (8863)', () => {
-    const envFilesWithTts = ['.env', '.env.dev', '.env.production', '.env.test', '.env.example'];
+describe('Phase 7: Guardrail port standardization (8863)', () => {
+    const envFilesWithGuardrail = ['.env', '.env.dev', '.env.production', '.env.test', '.env.example', 'apps/api/.env.example', 'apps/api/.env.production'];
 
-    for (const file of envFilesWithTts) {
+    for (const file of envFilesWithGuardrail) {
         const fullPath = path.join(PROJECT_ROOT, file);
         if (!fs.existsSync(fullPath)) continue;
 
-        it(`${file}: TTS_PORT should be 8863`, () => {
+        it(`${file}: GUARDRAIL_URL should use port 8863`, () => {
             const content = readEnvFile(file);
-            expect(getEnvValue(content, 'TTS_PORT')).toBe('8863');
-        });
-
-        it(`${file}: TTS_URL should use port 8863`, () => {
-            const content = readEnvFile(file);
-            const url = getEnvValue(content, 'TTS_URL');
+            const url = getEnvValue(content, 'GUARDRAIL_URL');
             if (url !== null) {
                 expect(url).toMatch(/8863/);
             }
         });
+
+        it(`${file}: should not define legacy TTS_PORT/TTS_URL`, () => {
+            const content = readEnvFile(file);
+            expect(envVarExists(content, 'TTS_PORT')).toBe(false);
+            expect(envVarExists(content, 'TTS_URL')).toBe(false);
+        });
     }
-
-    it('apps/api/.env.example TTS_PORT should be 8863', () => {
-        const content = readEnvFile('apps/api/.env.example');
-        if (envVarExists(content, 'TTS_PORT')) {
-            expect(getEnvValue(content, 'TTS_PORT')).toBe('8863');
-        }
-    });
-
-    it('apps/api/.env.example TTS_URL should use port 8863', () => {
-        const content = readEnvFile('apps/api/.env.example');
-        if (envVarExists(content, 'TTS_URL')) {
-            expect(getEnvValue(content, 'TTS_URL')).toMatch(/8863/);
-        }
-    });
 });
 
 // ─── 4. SMR Port (8862) ─────────────────────────────────────────────────────
@@ -251,28 +245,30 @@ describe('Phase 7: STT v2 port standardization (8861)', () => {
     });
 });
 
-// ─── 7. FedL Port (8865) ────────────────────────────────────────────────────
+// ─── 7. Harness Port (8866) ──────────────────────────────────────────────────
+// apps/fedl was removed; the Clinical Documentation Harness (HARNESS_URL) owns
+// 8866. FEDL_PORT/FEDL_URL no longer exist in any env file.
 
-describe('Phase 7: FedL port standardization (8865)', () => {
-    const envFilesWithFedl = ['.env', '.env.dev', '.env.example'];
+describe('Phase 7: Harness port standardization (8866)', () => {
+    const envFilesWithHarness = ['.env', '.env.dev', '.env.test', '.env.production', '.env.example', 'apps/api/.env.example', 'apps/api/.env.production'];
 
-    for (const file of envFilesWithFedl) {
+    for (const file of envFilesWithHarness) {
         const fullPath = path.join(PROJECT_ROOT, file);
         if (!fs.existsSync(fullPath)) continue;
 
-        it(`${file}: FEDL_PORT should be 8865`, () => {
+        it(`${file}: HARNESS_URL should use port 8866`, () => {
             const content = readEnvFile(file);
-            expect(getEnvValue(content, 'FEDL_PORT')).toBe('8865');
+            const url = getEnvValue(content, 'HARNESS_URL');
+            if (url !== null) {
+                expect(url).toMatch(/8866/);
+            }
         });
 
-        if (file === '.env') {
-            it(`${file} should have FEDL_URL with port 8865`, () => {
-                const content = readEnvFile(file);
-                if (envVarExists(content, 'FEDL_URL')) {
-                    expect(getEnvValue(content, 'FEDL_URL')).toMatch(/8865/);
-                }
-            });
-        }
+        it(`${file}: should not define legacy FEDL_PORT/FEDL_URL`, () => {
+            const content = readEnvFile(file);
+            expect(envVarExists(content, 'FEDL_PORT')).toBe(false);
+            expect(envVarExists(content, 'FEDL_URL')).toBe(false);
+        });
     }
 });
 
@@ -291,14 +287,10 @@ describe('Phase 7: No stale old-port references in env files', () => {
 
     const stalePortPatterns = [
         { port: '5002', context: 'old API port', vars: ['PORT', 'API_PORT', 'API_URL'] },
-        { port: '5004', context: 'old TTS port', vars: ['TTS_PORT', 'TTS_URL'] },
         { port: '5006', context: 'old SMR port', vars: ['SMR_PORT', 'SMR_URL', 'SUMMARY_AGENT_PORT'] },
         { port: '5005', context: 'old NLP port', vars: ['NLP_PORT', 'NLP_URL'] },
-        { port: '5021', context: 'old FedL port', vars: ['FEDL_PORT'] },
-        { port: '8000', context: 'old FedL default', vars: ['FEDL_URL'] },
         { port: '8001', context: 'old STT v2 port', vars: ['STT_V2_PORT', 'STT_V2_URL'] },
         { port: '8002', context: 'old STT v2 port', vars: ['STT_V2_URL'] },
-        { port: '8003', context: 'old TTS port in api env', vars: ['TTS_URL'] },
     ];
 
     for (const envFile of envFiles) {
@@ -334,16 +326,60 @@ describe('Phase 7: ServiceHealthMonitoring default URLs use 886x ports', () => {
         'packages/applications/src/services/baseServices/serviceHealth/serviceHealthMonitoring.service.ts',
     );
 
-    it('TTS default URL should use port 8863', () => {
+    it('Guardrail default URL should use port 8863', () => {
         const source = readFile(healthServicePath);
         expect(source).toMatch(/http:\/\/localhost:8863/);
         expect(source).not.toMatch(/http:\/\/localhost:5004/);
+    });
+
+    it('Harness default URL should use port 8866', () => {
+        const source = readFile(healthServicePath);
+        expect(source).toMatch(/http:\/\/localhost:8866/);
     });
 
     it('SMR default URL should use port 8862', () => {
         const source = readFile(healthServicePath);
         expect(source).toMatch(/http:\/\/localhost:8862/);
         expect(source).not.toMatch(/http:\/\/localhost:5006/);
+    });
+
+    it('should no longer monitor a TTS default URL', () => {
+        const source = readFile(healthServicePath);
+        expect(source).not.toMatch(/process\.env\.TTS_URL/);
+        expect(source).not.toMatch(/Text to Speech/);
+    });
+});
+
+// ─── 10b. Gateway downstream topology — Guardrail (8863) + Harness (8866) ────
+// The API gateway health controller probes the REAL downstream services. TTS
+// (apps/tts) and FedL (apps/fedl) no longer exist; 8863 is now Guardrail and
+// the Clinical Documentation Harness listens on 8866. Both resolve via the
+// typed IConfigService.getConfigValue(...) — same pattern as STT/SMR/NLP.
+
+describe('Phase 7: Gateway downstream config (Guardrail 8863, Harness 8866)', () => {
+    const configServicePath = path.resolve(
+        PROJECT_ROOT,
+        'packages/applications/src/services/baseServices/_meta/config/config.service.ts',
+    );
+    const interfacePath = path.resolve(
+        PROJECT_ROOT,
+        'packages/domains/src/interfaces/IAppConfig.ts',
+    );
+
+    it('ConfigService GUARDRAIL_URL default should use port 8863', () => {
+        const source = readFile(configServicePath);
+        expect(source).toMatch(/GUARDRAIL_URL.*\|\|.*http:\/\/localhost:8863/);
+    });
+
+    it('ConfigService HARNESS_URL default should use port 8866', () => {
+        const source = readFile(configServicePath);
+        expect(source).toMatch(/HARNESS_URL.*\|\|.*http:\/\/localhost:8866/);
+    });
+
+    it('IAppConfig should declare GUARDRAIL_URL and HARNESS_URL', () => {
+        const content = readFile(interfacePath);
+        expect(content).toMatch(/^\s*GUARDRAIL_URL\s*:/m);
+        expect(content).toMatch(/^\s*HARNESS_URL\s*:/m);
     });
 });
 
@@ -365,14 +401,10 @@ describe('Phase 7: ConfigService default values use 886x ports', () => {
         expect(source).toMatch(/STT_V2_URL.*\|\|.*http:\/\/localhost:8861/);
     });
 
-    it('TTS_URL default should use port 8863', () => {
+    it('should no longer define TTS_URL/TTS_PORT defaults', () => {
         const source = readFile(configServicePath);
-        expect(source).toMatch(/TTS_URL.*\|\|.*http:\/\/localhost:8863/);
-    });
-
-    it('TTS_PORT default should be 8863', () => {
-        const source = readFile(configServicePath);
-        expect(source).toMatch(/TTS_PORT.*\|\|.*['"]8863['"]/);
+        expect(source).not.toMatch(/TTS_URL/);
+        expect(source).not.toMatch(/TTS_PORT/);
     });
 
     it('should not contain old port 5002 as default', () => {
@@ -407,20 +439,27 @@ describe('Phase 7: IAppConfig interface has all service URL/port properties', ()
     const requiredProperties = [
         'PORT',
         'STT_V2_URL',
-        'TTS_PORT',
-        'TTS_URL',
         'SMR_PORT',
         'SMR_URL',
         'NLP_PORT',
         'NLP_URL',
-        'FEDL_PORT',
-        'FEDL_URL',
+        'GUARDRAIL_URL',
+        'HARNESS_URL',
     ];
 
     for (const prop of requiredProperties) {
         it(`should contain ${prop} property`, () => {
             const content = readFile(interfacePath);
             expect(content).toMatch(new RegExp(`^\\s*${prop}\\s*[?:]`, 'm'));
+        });
+    }
+
+    const removedProperties = ['TTS_PORT', 'TTS_URL', 'FEDL_PORT', 'FEDL_URL'];
+
+    for (const prop of removedProperties) {
+        it(`should NOT contain removed ${prop} property`, () => {
+            const content = readFile(interfacePath);
+            expect(content).not.toMatch(new RegExp(`^\\s*${prop}\\s*[?:]`, 'm'));
         });
     }
 });
@@ -438,8 +477,8 @@ describe('Phase 7: ConfigService loads all new env vars', () => {
         'SMR_URL',
         'NLP_PORT',
         'NLP_URL',
-        'FEDL_PORT',
-        'FEDL_URL',
+        'GUARDRAIL_URL',
+        'HARNESS_URL',
     ];
 
     for (const envVar of requiredEnvVarReferences) {
@@ -455,7 +494,6 @@ describe('Phase 7: ConfigService loads all new env vars', () => {
 describe('Phase 7: Env file structural integrity', () => {
     const structuralChecks = [
         { file: '.env', portVar: 'API_PORT', urlVar: 'API_URL' },
-        { file: '.env', portVar: 'TTS_PORT', urlVar: 'TTS_URL' },
         { file: '.env', portVar: 'SMR_PORT', urlVar: 'SMR_URL' },
         { file: '.env', portVar: 'NLP_PORT', urlVar: 'NLP_URL' },
     ];
@@ -519,9 +557,9 @@ describe('Phase 7: apps/api env files port alignment', () => {
 // ─── 16. .env.production Uses Service Hostnames (Not localhost) ─────────────
 
 describe('Phase 7: .env.production uses service hostnames', () => {
-    it('TTS_URL should use service hostname (not localhost)', () => {
+    it('GUARDRAIL_URL should use service hostname (not localhost)', () => {
         const content = readEnvFile('.env.production');
-        const url = getEnvValue(content, 'TTS_URL');
+        const url = getEnvValue(content, 'GUARDRAIL_URL');
         if (url) {
             expect(url).toMatch(/8863/);
         }
@@ -559,9 +597,9 @@ describe('Phase 7a: Port uniqueness across all services', () => {
         'API Gateway': 8868,
         'STT v2': 8861,
         'SMR': 8862,
-        'TTS': 8863,
+        'Guardrail': 8863,
         'NLP': 8864,
-        'FedL': 8865,
+        'Harness': 8866,
     };
 
     const ports = Object.values(portAssignments);
@@ -588,7 +626,7 @@ describe('Phase 7a: Port uniqueness across all services', () => {
 // ─── 19. Port range validation — 886x in valid range, no infra collisions ──
 
 describe('Phase 7a: Port range validation', () => {
-    const servicePorts = [8868, 8861, 8862, 8863, 8864, 8865];
+    const servicePorts = [8868, 8861, 8862, 8863, 8864, 8866];
     const infraPorts = [5432, 6379, 9092, 9000, 6333, 1883, 4317];
 
     for (const port of servicePorts) {
@@ -614,9 +652,9 @@ describe('Phase 7a: Port range validation', () => {
 
 describe('Phase 7a: URL format validation in env files', () => {
     const urlVarsToCheck = [
-        { file: '.env', vars: ['API_URL', 'TTS_URL', 'SMR_URL', 'NLP_URL'] },
-        { file: '.env.dev', vars: ['API_URL', 'STT_V2_URL', 'TTS_URL', 'SMR_URL', 'NLP_URL'] },
-        { file: '.env.test', vars: ['API_URL', 'TTS_URL', 'SMR_URL', 'NLP_URL'] },
+        { file: '.env', vars: ['API_URL', 'GUARDRAIL_URL', 'SMR_URL', 'NLP_URL'] },
+        { file: '.env.dev', vars: ['API_URL', 'STT_V2_URL', 'GUARDRAIL_URL', 'HARNESS_URL', 'SMR_URL', 'NLP_URL'] },
+        { file: '.env.test', vars: ['API_URL', 'STT_V2_URL', 'GUARDRAIL_URL', 'HARNESS_URL', 'SMR_URL', 'NLP_URL'] },
     ];
 
     for (const { file, vars } of urlVarsToCheck) {
@@ -657,9 +695,9 @@ describe('Phase 7a: Cross-file consistency (ConfigService defaults)', () => {
 
     const portMap: Record<string, string> = {
         '8862': 'SMR_URL',
-        '8863': 'TTS_URL',
+        '8863': 'GUARDRAIL_URL',
         '8864': 'NLP_URL',
-        '8865': 'FEDL_URL',
+        '8866': 'HARNESS_URL',
         '8861': 'STT_V2_URL',
     };
 
@@ -709,11 +747,11 @@ describe('Phase 7a: .env.production uses service hostnames for Docker/K8s', () =
         expect(url).toMatch(/\/\/api:/);
     });
 
-    it('TTS_URL should use service hostname "tts"', () => {
+    it('GUARDRAIL_URL should use service hostname "guardrail"', () => {
         const content = readEnvFile('.env.production');
-        const url = getEnvValue(content, 'TTS_URL');
+        const url = getEnvValue(content, 'GUARDRAIL_URL');
         expect(url).not.toBeNull();
-        expect(url).toMatch(/\/\/tts:/);
+        expect(url).toMatch(/\/\/guardrail:/);
     });
 
     it('SMR_URL should use service hostname "smr"', () => {
@@ -729,6 +767,13 @@ describe('Phase 7a: .env.production uses service hostnames for Docker/K8s', () =
         expect(url).not.toBeNull();
         expect(url).toMatch(/\/\/nlp:/);
     });
+
+    it('HARNESS_URL should use service hostname "harness"', () => {
+        const content = readEnvFile('.env.production');
+        const url = getEnvValue(content, 'HARNESS_URL');
+        expect(url).not.toBeNull();
+        expect(url).toMatch(/\/\/harness:/);
+    });
 });
 
 // ─── 26. Complete 886x port inventory — canonical mapping ───────────────────
@@ -737,9 +782,9 @@ describe('Phase 7a: Complete 886x port inventory', () => {
     const canonicalPorts: Record<string, number> = {
         'STT_V2': 8861,
         'SMR': 8862,
-        'TTS': 8863,
+        'GUARDRAIL': 8863,
         'NLP': 8864,
-        'FEDL': 8865,
+        'HARNESS': 8866,
         'API': 8868,
     };
 
@@ -775,15 +820,16 @@ describe('Phase 7a: Hard existence assertions for critical env vars', () => {
         expect(envVarExists(content, 'STT_V2_URL')).toBe(true);
     });
 
-    it('.env.dev must define FEDL_URL', () => {
+    it('.env.dev must define GUARDRAIL_URL and HARNESS_URL', () => {
         const content = readEnvFile('.env.dev');
-        expect(envVarExists(content, 'FEDL_URL')).toBe(true);
+        expect(envVarExists(content, 'GUARDRAIL_URL')).toBe(true);
+        expect(envVarExists(content, 'HARNESS_URL')).toBe(true);
     });
 
     if (envFileExists('.env')) {
-        it('.env must define FEDL_URL', () => {
+        it('.env must define GUARDRAIL_URL', () => {
             const content = readEnvFile('.env');
-            expect(envVarExists(content, 'FEDL_URL')).toBe(true);
+            expect(envVarExists(content, 'GUARDRAIL_URL')).toBe(true);
         });
     }
 
@@ -797,7 +843,7 @@ describe('Phase 7a: Hard existence assertions for critical env vars', () => {
         expect(envVarExists(content, 'STT_V2_URL')).toBe(true);
     });
 
-    const criticalVars = ['PORT', 'TTS_PORT', 'TTS_URL', 'SMR_PORT', 'SMR_URL', 'NLP_PORT', 'NLP_URL'];
+    const criticalVars = ['PORT', 'GUARDRAIL_URL', 'HARNESS_URL', 'SMR_PORT', 'SMR_URL', 'NLP_PORT', 'NLP_URL'];
     const criticalFiles = ['.env.dev', '.env.test'];
 
     for (const file of criticalFiles) {
@@ -821,8 +867,8 @@ describe('Phase 7a: ConfigService new property defaults are string types', () =>
         'packages/applications/src/services/baseServices/_meta/config/config.service.ts',
     );
 
-    const portVars = ['SMR_PORT', 'NLP_PORT', 'FEDL_PORT'];
-    const urlVars = ['SMR_URL', 'NLP_URL', 'FEDL_URL'];
+    const portVars = ['SMR_PORT', 'NLP_PORT'];
+    const urlVars = ['SMR_URL', 'NLP_URL', 'GUARDRAIL_URL', 'HARNESS_URL'];
 
     for (const varName of portVars) {
         it(`${varName} default should be a quoted string (not a number)`, () => {
@@ -849,7 +895,7 @@ describe('Phase 7a: IAppConfig new properties are required (not optional)', () =
         'packages/domains/src/interfaces/IAppConfig.ts',
     );
 
-    const requiredNewProps = ['SMR_PORT', 'SMR_URL', 'NLP_PORT', 'NLP_URL', 'FEDL_PORT', 'FEDL_URL'];
+    const requiredNewProps = ['SMR_PORT', 'SMR_URL', 'NLP_PORT', 'NLP_URL', 'GUARDRAIL_URL', 'HARNESS_URL'];
 
     for (const prop of requiredNewProps) {
         it(`${prop} should be required (no ? modifier)`, () => {

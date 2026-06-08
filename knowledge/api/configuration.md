@@ -51,15 +51,12 @@ A template is provided at `apps/api/.env.example`.
 | `STT_V2_URL` | No | `http://localhost:8861` | STT v2 service base URL |
 | `SMR_PORT` | No | `8862` | SMR service port |
 | `SMR_URL` | No | `http://localhost:8862` | SMR service base URL |
-| `TTS_PORT` | No | `8863` | TTS service port |
-| `TTS_URL` | Yes | `http://localhost:8863` | TTS service base URL |
 | `NLP_PORT` | No | `8864` | NLP service port |
 | `NLP_URL` | No | `http://localhost:8864` | NLP service base URL |
-| `FEDL_PORT` | No | `8865` | Federated learning service port |
-| `FEDL_URL` | No | `http://localhost:8865` | Federated learning service URL |
-| `FEEDBACK_SERVICE_URL_HTTP` | No | — | Feedback service URL override |
-| `FEEDBACK_URL` | No | `http://localhost:5015` | Feedback service URL fallback |
-| `FEEDBACK_API_KEY` | No | — | API key for internal feedback service calls |
+| `GUARDRAIL_V2_PORT` | No | `8863` | Guardrail service port |
+| `HARNESS_PORT` | No | `8866` | Clinical Documentation Harness port |
+
+> **Removed services:** The former TTS and FedL services no longer exist — `TTS_PORT`/`TTS_URL` (8863) and `FEDL_PORT`/`FEDL_URL` (8865) have been removed from the gateway config. Port 8863 now serves the Guardrail service (`GUARDRAIL_URL`).
 
 ---
 
@@ -172,9 +169,9 @@ REDIS_PASS=redis-password
 
 STT_V2_URL=http://localhost:8861
 SMR_URL=http://localhost:8862
-TTS_URL=http://localhost:8863
+GUARDRAIL_URL=http://localhost:8863
 NLP_URL=http://localhost:8864
-FEDL_URL=http://localhost:8865
+HARNESS_URL=http://localhost:8866
 
 MQTT_HOST=localhost
 MQTT_PORT=1883

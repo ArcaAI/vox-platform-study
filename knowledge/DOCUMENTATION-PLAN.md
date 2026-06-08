@@ -60,6 +60,8 @@ knowledge/
 ├── smr-v2/                        ← Summarization Service V2
 ├── stt-v2/                        ← Speech-to-Text Service V2
 ├── nlp/                           ← NLP Service
+├── guardrail/                     ← Guardrail Service (content safety + medical validation)
+├── harness/                       ← Clinical Documentation Harness (FastAPI + Temporal)
 ├── agentic-sdk-v2/                ← @arcaai/vox SDK
 │
 ├── applications/                  ← @arcaai/applications package
@@ -69,6 +71,7 @@ knowledge/
 ├── logger/                        ← @arcaai/logger
 │
 ├── ui/                            ← @arcaai/ui (shared component library)
+├── playground/                    ← apps/ui-playground (SDK playground + admin console)
 │
 ├── med-ner/                       ← @arcaai/med-ner plugin
 ├── noise-filter/                  ← @arcaai/noise-filter plugin
@@ -226,7 +229,7 @@ After all workstreams are complete, a **final review pass** should:
 |----------|---------------------------|
 | `README.md` | System overview diagram, tech stack summary, deployment topology, service dependency map |
 | `data-model.md` | Prisma schema overview, entity relationships, soft-delete pattern, multi-tenancy model |
-| `communication.md` | HTTP REST (API↔services), WebSocket (real-time STT/TTS), Redis (job queues, caching), event-driven patterns |
+| `communication.md` | HTTP REST (API↔services), WebSocket (real-time STT), Redis (job queues, caching), event-driven patterns |
 | `security.md` | JWT + OIDC + API Key auth flows, RBAC policy model (CASL), tenant isolation, audit logging |
 | `infrastructure.md` | Docker Compose (dev + test), GitHub Actions CI, GitLab CI, environment variable management, Vault integration |
 
@@ -235,7 +238,7 @@ After all workstreams are complete, a **final review pass** should:
 | Document | Content to Extract/Create |
 |----------|---------------------------|
 | `README.md` | NestJS gateway overview, module structure, multi-auth (JWT/OIDC/API Key), RBAC guards, microservice proxy pattern, WebSocket gateways, rate limiting |
-| `api-reference.md` | All REST endpoints grouped by module (auth, user, consultation, STT, SMR, TTS, NLP, monitoring), request/response schemas |
+| `api-reference.md` | All REST endpoints grouped by module (auth, user, consultation, STT, SMR, NLP, harness, monitoring), request/response schemas |
 | `configuration.md` | Full env var table from `apps/api/` |
 
 ### `knowledge/smr-v2/`
@@ -261,6 +264,18 @@ After all workstreams are complete, a **final review pass** should:
 | `README.md` | Medical NLP overview, text classification (11 emotions), token classification (Medical NER), medical diagnosis (41 diseases), text correction (SymSpell), multi-language support |
 | `api-reference.md` | REST + WebSocket endpoints |
 
+### `knowledge/guardrail/`
+
+| Document | Content to Extract/Create |
+|----------|---------------------------|
+| `README.md` | Content-safety + medical-context validation overview, LLM engine selection (LM Studio / Granite Guardian default, Ollama/Azure/Bedrock), SMR integration, per-tenant DB config, endpoints |
+
+### `knowledge/harness/`
+
+| Document | Content to Extract/Create |
+|----------|---------------------------|
+| `README.md` | Clinical Documentation Harness overview, Temporal workflow/activity mapping, guides→generate→sensors→gate loop, tool reuse (STT/NLP/SMR/Qdrant), config, internal endpoints |
+
 ### `knowledge/agentic-sdk-v2/`
 
 | Document | Content to Extract/Create |
@@ -275,6 +290,13 @@ After all workstreams are complete, a **final review pass** should:
 | Document | Content to Extract/Create |
 |----------|---------------------------|
 | `README.md` | Component library overview, shadcn/ui configuration (Vega style, green theme, Tabler icons), component catalog (40+ shadcn, 17 ElevenLabs, domain-specific), hooks, testing (Playwright CT), Storybook, build pipeline |
+
+### `knowledge/playground/`
+
+| Document | Content to Extract/Create |
+|----------|---------------------------|
+| `README.md` | `apps/ui-playground` overview — SDK playground + admin console (under `src/features/admin/*`), TanStack Router, port 5175 |
+| `01..05_*.md` | Per-surface guides (auth/impersonation, consultation, audio/transcription, pre-summary/summary, DNA writing style) |
 
 ### `knowledge/applications/`
 

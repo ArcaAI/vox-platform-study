@@ -117,7 +117,7 @@ export default function SystemHealthPage() {
               </div>
               {services.data && <HealthBadge status={services.data.status} />}
             </div>
-            <CardDescription>Consolidated probe of TTS, SMR, NLP, and STT (GET /health/services).</CardDescription>
+            <CardDescription>Consolidated probe of SMR, NLP, STT, Guardrail, and Harness (GET /health/services).</CardDescription>
           </CardHeader>
           <CardContent>
             {services.isLoading ? (

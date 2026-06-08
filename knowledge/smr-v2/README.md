@@ -1,6 +1,6 @@
 # SMR Service (Summarization V2)
 
-The HOPE Summarization Service (SMR) is a FastAPI-based microservice that generates structured medical summaries from doctor-patient conversation transcripts. It integrates with multiple LLM providers (Azure OpenAI, Ollama, Langflow), offers synchronous and asynchronous processing modes, supports specialty-specific prompt templates, and includes enterprise-grade observability.
+The HOPE Summarization Service (SMR) is a FastAPI-based microservice that generates structured medical summaries from doctor-patient conversation transcripts. It integrates with multiple LLM providers (OpenAI-compatible engines such as **LM Studio** — the default local engine — plus Ollama, Azure OpenAI, and AWS Bedrock), optionally validates clinical content through the external Guardrail service, offers synchronous and asynchronous processing modes, supports specialty-specific prompt templates, and includes enterprise-grade observability.
 
 ## Architecture
 
@@ -30,9 +30,10 @@ The HOPE Summarization Service (SMR) is a FastAPI-based microservice that genera
 │         │    ┌────┴────┐      ┌─────┴──────┐   │                │
 │         │    │LLM Layer│      │Celery Tasks│   │                │
 │         │    │         │      └─────┬──────┘   │                │
-│         │    │• Azure  │            │          │                │
+│         │    │•LMStudio│            │          │                │
 │         │    │• Ollama │            │          │                │
-│         │    │• Langflow│           │          │                │
+│         │    │• Azure  │            │          │                │
+│         │    │• Bedrock│            │          │                │
 │         │    └─────────┘            │          │                │
 │         └───────────────────────────┘          │                │
 └──────────────────┬───────────────────┬─────────┘                │
@@ -46,15 +47,25 @@ The HOPE Summarization Service (SMR) is a FastAPI-based microservice that genera
 
 ### LLM Provider Abstraction
 
-The service defines an abstract `LLMService` interface with concrete implementations:
+The service defines an `LLMProvider` protocol with concrete implementations registered in a `ProviderRegistry`:
 
-| Provider | Class | Success Rate | Key Feature |
-|----------|-------|-------------|-------------|
-| **Azure OpenAI** | `AzureOpenAIService` | ~99.9 % | Strict JSON schema, structured outputs, GPT-4 |
-| **Ollama** | `OllamaService` | 80–95 % | Open-source models, local inference, JSON repair |
-| **Langflow** | `LangflowService` | — | Flow-based orchestration, external agent integration |
+| Provider | Class | Registry Key(s) | Key Feature |
+|----------|-------|-----------------|-------------|
+| **OpenAI-compatible** (LM Studio) | `OpenAICompatProvider` | `lm-studio`, `openai_compat` | Default local engine; any OpenAI-compatible endpoint |
+| **Ollama** | `OllamaProvider` | `ollama` | Open-source models, local inference, JSON repair |
+| **Azure OpenAI** | `AzureOpenAIProvider` | `azure-openai`, `azure` | Strict JSON schema, structured outputs |
+| **AWS Bedrock** | `BedrockProvider` | `bedrock` | Managed foundation models (Anthropic, etc.) |
 
-The active provider is selected via `SUMMARY_SERVICE_PROVIDER` (accepts `azure_openai`, `ollama`, or `langflow`).
+Each provider is enabled independently via `SMR_V2_<PROVIDER>_ENABLED` flags. The provider is selected **per request** through the `provider` field (default `lm-studio`); the requested key must be registered or the service returns `PROVIDER_NOT_FOUND`.
+
+### External Guardrail Validation
+
+When `SMR_V2_EXTERNAL_GUARDRAIL_ENABLED=true`, SMR validates clinical content against the [Guardrail service](../guardrail/README.md) before generation. The `ExternalGuardrailClient` calls `POST {GUARDRAIL_BASE_URL}/api/medical/validate`, forwarding:
+
+- `X-Service-Token` — service-to-service auth
+- `X-Tenant-Id` — lets Guardrail resolve the per-tenant provider/model from the database
+
+Configuration lives under the `SMR_V2_EXTERNAL_GUARDRAIL_` prefix (`base_url` default `http://localhost:8863`, `require_medical`, `include_reasoning`, `timeout_s`, and `fail_open` to control fail-open vs. fail-closed behavior). When disabled, validation is skipped and all content is treated as allowed.
 
 ### Sync vs. Async Processing
 
@@ -87,7 +98,11 @@ Visit type normalization maps many common terms (e.g., "new", "first", "initial"
 
 Each template generates a JSON-enforced prompt pair (system + user) that guides the LLM to produce structured clinical documentation.
 
-### Celery Worker Architecture
+### Worker Architecture
+
+> **Updated (SMR V2):** SMR V2 no longer uses Celery. Asynchronous jobs are handled by an in-process async task manager (`services/task_manager.py`) with per-provider queues, semaphores, circuit breakers, and rate limiters; FastAPI `BackgroundTasks` drives execution. The legacy Celery worker description below is retained for historical context only.
+
+#### Celery Worker Architecture (legacy)
 
 ```
 run_celery_worker.py

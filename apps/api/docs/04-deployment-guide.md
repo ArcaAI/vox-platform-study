@@ -91,7 +91,7 @@ This guide covers deploying the HOPE API Gateway to various environments. The AP
 **Outbound Access:**
 - PostgreSQL (typically port 5432)
 - Redis (typically port 6379)
-- Python microservices (STT v2=8861, SMR=8862, TTS=8863, NLP=8864, FedL=8865)
+- Python microservices (STT v2=8861, SMR=8862, Guardrail=8863, NLP=8864, Harness=8866)
 - External APIs (HTTPS 443)
 
 ---
@@ -164,17 +164,15 @@ STT_V2_URL=http://stt-service:8861
 SMR_PORT=8862
 SMR_URL=http://smr-service:8862
 
-# TTS (Text-to-Speech)
-TTS_PORT=8863
-TTS_URL=http://tts-service:8863
+# Guardrail (Safety Engine)
+GUARDRAIL_URL=http://guardrail-service:8863
 
 # NLP (Natural Language Processing)
 NLP_PORT=8864
 NLP_URL=http://nlp-service:8864
 
-# FedL (Federated Learning)
-FEDL_PORT=8865
-FEDL_URL=http://fedl-service:8865
+# Harness (Clinical Documentation Harness)
+HARNESS_URL=http://harness-service:8866
 ```
 
 #### Security & Authentication
@@ -454,7 +452,7 @@ server {
         proxy_request_buffering off;
     }
 
-    # WebSocket Support (STT v2, TTS, NLP)
+    # WebSocket Support (STT v2, NLP)
     location /stt-v2 {
         proxy_pass http://api_backend;
         proxy_http_version 1.1;
@@ -1020,8 +1018,6 @@ INFO [Bootstrap] Graceful shutdown enabled with timeout: 30000ms, drain delay: 5
 INFO [GracefulShutdownService] Shutdown signal received - stopping acceptance of new requests
 INFO [GracefulShutdownService] Waiting 5000ms for load balancer to drain traffic
 INFO [SttV2Gateway] STT v2 Gateway shutting down, closing 2 connections
-INFO [TtsGateway] TTS Gateway shutting down, closing 1 connections
-INFO [NlpGateway] NLP Gateway shutting down, closing 0 connections
 INFO [GracefulShutdownService] Application shutdown complete
 ```
 

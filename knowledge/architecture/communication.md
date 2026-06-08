@@ -47,10 +47,11 @@ The HOPE platform uses multiple communication patterns to balance low-latency in
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                     PYTHON MICROSERVICES                                 │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐               │
-│  │STT v2:8861│  │TTS :8863│  │ SMR :8862│  │ NLP :8864│               │
+│  │STT v2:8861│  │ SMR :8862│  │Guard:8863│  │ NLP :8864│               │
 │  │ WebSocket│  │ HTTP     │  │ HTTP     │  │ HTTP     │               │
 │  │ HTTP     │  │          │  │          │  │          │               │
 │  └──────────┘  └──────────┘  └──────────┘  └──────────┘               │
+│  Harness :8866 (FastAPI + Temporal) orchestrates the above as tools.   │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -382,7 +383,10 @@ The `SmrProxyController` (`@Controller('text')`) proxies all SMR requests with J
 | `/text/tasks/:id/cancel` | `SMR_SERVICE_URL/api/v2/tasks/:id/cancel` | JWT |
 | `/text/tasks/:id/stream` | `SMR_SERVICE_URL/api/v2/tasks/:id/stream` (SSE) | JWT |
 | `/text/providers` | `SMR_SERVICE_URL/api/v2/providers` | JWT |
+| `/text/guardrail-providers` | Gateway-resolved tenant guardrail catalog | JWT |
 | `/text/health` | `SMR_SERVICE_URL/api/v2/health` | JWT |
+
+> **SMR → Guardrail (service-to-service):** Independently of the gateway proxy, the SMR service calls the Guardrail service per generate via `ExternalGuardrailClient` → `POST GUARDRAIL_URL/api/medical/validate` (forwarding `X-Service-Token` and `X-Tenant-Id`) when `SMR_V2_EXTERNAL_GUARDRAIL_ENABLED=true`.
 
 ### Vite Dev Proxy Configuration
 
