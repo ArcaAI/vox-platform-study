@@ -14,7 +14,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as React from 'react';
-import { render, waitFor } from '@testing-library/react';
+import { render, waitFor, act } from '@testing-library/react';
 import type { AgenticStoreApi } from '../../store/agenticStore';
 
 vi.mock('@arcaai/noise-filter', () => ({
@@ -165,5 +165,55 @@ describe('TASK-334 I-1 — remote pipeline-id population', () => {
     await waitFor(() => expect(store.getState().configReady).toBe(true), { timeout: 2000 });
 
     expect(store.getState().resolvedConfig?.stt?.transcriptionPipelineId).toBeUndefined();
+  });
+
+  // ===========================================================================
+  // Impersonation parity — a same-tab user switch must re-resolve the pipeline.
+  //
+  // mount-time init() (deps []) is the ONLY place that injected
+  // remoteConfig.pipelineId into the cascade tenant tier, and it runs ONCE with
+  // the MOUNTING identity (the admin). On impersonation `effectiveUserId`
+  // changes and the *second* effect re-hydrates the namespace — but it used to
+  // only refresh `store.tenantConfig` (display) and never re-applied the cascade
+  // tenant tier, so `resolvedConfig.stt.transcriptionPipelineId` kept the
+  // admin's (empty) value and the panel fell back to the hardcoded SYSTEM
+  // DEFAULT pipeline → cross-tenant 404. The switch must re-fetch the incoming
+  // user's resolved pipeline and re-apply it.
+  // ===========================================================================
+  it('re-applies the impersonated user resolved pipeline to the cascade on a same-tab user switch', async () => {
+    // Mount as an ADMIN with NO assigned pipeline (remoteConfig empty).
+    handler = async (url) => {
+      if (url.endsWith('/auth/me')) return jsonResponse({ id: 'admin-1', tenantId: 'tenant-1' });
+      if (url.includes('/tenant/me')) return jsonResponse({ defaultSttModel: 'whisper-base', features: {} });
+      if (url.includes('/user/me/preferences')) return jsonResponse({});
+      return jsonResponse({});
+    };
+
+    const store = await renderProvider();
+    await waitFor(() => expect(store.getState().configReady).toBe(true), { timeout: 2000 });
+    expect(store.getState().resolvedConfig?.stt?.transcriptionPipelineId).toBeUndefined();
+
+    // Impersonate a doctor whose server-resolved pipeline is tenant-owned.
+    const DOCTOR_PIPELINE = 'pipe-doctor-streamable';
+    handler = async (url) => {
+      if (url.endsWith('/auth/me')) return jsonResponse({ id: 'doctor-2', tenantId: 'tenant-1' });
+      if (url.includes('/tenant/me')) return jsonResponse({ defaultSttModel: 'whisper-base', features: {} });
+      if (url.includes('/user/me/preferences')) {
+        return jsonResponse({ remoteConfig: { pipelineId: DOCTOR_PIPELINE, assignedBy: 'admin' } });
+      }
+      return jsonResponse({});
+    };
+
+    act(() => {
+      (store.getState() as unknown as { setImpersonatedUser: (u: unknown) => void }).setImpersonatedUser({
+        id: 'doctor-2',
+        tenantId: 'tenant-1',
+      });
+    });
+
+    await waitFor(
+      () => expect(store.getState().resolvedConfig?.stt?.transcriptionPipelineId).toBe(DOCTOR_PIPELINE),
+      { timeout: 2000 },
+    );
   });
 });

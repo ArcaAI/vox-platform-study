@@ -5,6 +5,28 @@
  */
 
 // =============================================================================
+// Route classification (TASK-340)
+// =============================================================================
+
+/**
+ * Whether `path` targets the **admin plane** (`/admin/*`).
+ *
+ * Mirrors the API gateway's own admin-route detection
+ * (`AuthorizationGuard`, `/^\/(api\/v\d+\/)?admin\//`). The optional
+ * `api/vN/` segment is tolerated even though SDK endpoint constants omit the
+ * gateway prefix (the `baseUrl` carries it) — this keeps the predicate correct
+ * if a fully-qualified path is ever passed.
+ *
+ * Used to decide, during impersonation, whether a request must carry the
+ * admin's own JWT (admin plane) or the impersonation JWT (user plane). The
+ * leading slash and any query string are irrelevant to the match.
+ */
+export function isAdminPlanePath(path: string): boolean {
+  if (typeof path !== 'string') return false;
+  return /^\/?(?:api\/v\d+\/)?admin\//.test(path);
+}
+
+// =============================================================================
 // API Endpoints
 // =============================================================================
 

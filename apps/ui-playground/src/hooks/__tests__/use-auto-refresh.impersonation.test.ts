@@ -12,12 +12,16 @@
 import { useAuthStore } from '@/store/auth-store';
 
 const mockUpdateAccessToken = vi.fn();
+const mockUpdateImpersonationOriginalToken = vi.fn();
 const mockSetOnUnauthorized = vi.fn();
 const mockPostFn = vi.fn();
 const mockGetAccessToken = vi.fn();
 const mockApiClient = {
     setOnUnauthorized: mockSetOnUnauthorized,
     updateAccessToken: mockUpdateAccessToken,
+    // TASK-340 — the refresh listener keeps the SDK's stashed admin token fresh
+    // during impersonation so admin-plane SDK requests don't use a stale token.
+    updateImpersonationOriginalToken: mockUpdateImpersonationOriginalToken,
     post: mockPostFn,
     getAccessToken: mockGetAccessToken,
 };
@@ -107,6 +111,10 @@ describe('useAutoRefresh — impersonation 401 handling (TASK-235)', () => {
         expect(mockUpdateAccessToken).toHaveBeenCalledWith('fresh-impersonation-token');
 
         expect(useAuthStore.getState().impersonationToken).toBe('fresh-impersonation-token');
+
+        // TASK-340 — the refreshed admin token is mirrored into the SDK stash so
+        // admin-plane SDK requests keep a fresh admin JWT mid-impersonation.
+        expect(mockUpdateImpersonationOriginalToken).toHaveBeenCalledWith('fresh-admin-token');
 
         fetchSpy.mockRestore();
     });

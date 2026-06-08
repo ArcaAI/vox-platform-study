@@ -91,8 +91,17 @@ export function useAutoRefresh(): void {
     }
 
     const syncListener = (newToken: string) => {
-      if (!useAuthStore.getState().isImpersonating) {
-        apiClientRef.current?.updateAccessToken(newToken);
+      const client = apiClientRef.current;
+      if (!client) return;
+      if (useAuthStore.getState().isImpersonating) {
+        // TASK-340 — during impersonation the SDK client's accessToken holds
+        // the impersonation JWT (must NOT be overwritten here), but admin-plane
+        // requests are routed to the stashed admin JWT. Keep that stash fresh so
+        // SDK-backed admin screens don't send a stale/expired admin token after
+        // a refresh.
+        client.updateImpersonationOriginalToken(newToken);
+      } else {
+        client.updateAccessToken(newToken);
       }
     };
 
