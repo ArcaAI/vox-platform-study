@@ -228,8 +228,10 @@ export const seedApiKey = async (client: CorePrismaClient) => {
       console.log(`    Preview: ${maskSecret(rawKey)}`);
       console.log('');
 
+      // Upsert by primary key (not keyHash) so re-seeding after an API_KEY_PEPPER
+      // change updates the existing row's hash in place instead of colliding on id.
       await client.apiKey.upsert({
-        where: { keyHash },
+        where: { id: apiKeyData.id },
         update: {
           ...apiKeyData,
           keyName,
