@@ -94,8 +94,16 @@ def pytest_configure(config):
     # Override HUGGINGFACE_CACHE_DIR when the .env / production default
     # (/models/hf-cache) doesn't exist.  This allows tests to use the
     # HF_HOME path or the standard ~/.cache/huggingface/hub fallback.
-    configured = os.environ.get("HUGGINGFACE_CACHE_DIR", "/models/hf-cache")
-    if not Path(configured).is_dir():
+    #
+    # NOTE: an *empty* HUGGINGFACE_CACHE_DIR must be treated as unset. The
+    # deepeval pytest plugin loads the repo-root .env (which ships an empty
+    # ``HUGGINGFACE_CACHE_DIR=``) before this hook runs, and ``Path("")``
+    # normalises to the cwd — so ``Path("").is_dir()`` is True and a naive
+    # guard would leave the empty value in place, collapsing the model
+    # cache dir to '' and breaking every model load with
+    # ``[Errno 2] No such file or directory: ''``.
+    configured = (os.environ.get("HUGGINGFACE_CACHE_DIR") or "").strip()
+    if not configured or not Path(configured).is_dir():
         hf_cache = os.environ.get("HF_HOME") or str(
             Path.home() / ".cache" / "huggingface" / "hub"
         )
@@ -245,14 +253,78 @@ def _get_test_platform() -> str:
     return _get_platform_type()
 
 
+# Default ASR model exercised by every ``@pytest.mark.ml`` e2e test.
+_ASR_MODEL_REPO = "openai/whisper-large-v3-turbo"
+
+
+def _asr_model_available() -> bool:
+    """Return True when the default ASR model is present in a local HF cache.
+
+    ``@pytest.mark.ml`` e2e tests load ``openai/whisper-large-v3-turbo`` for
+    real inference. Those weights live in the resolved HuggingFace cache, which
+    in local/dev setups commonly sits on an external volume referenced by
+    ``HF_HOME``/``HUGGINGFACE_CACHE_DIR``. When that volume isn't mounted (or
+    the cache dir was injected empty by deepeval's load_dotenv of the repo-root
+    .env), the model can't be loaded and every ML test would otherwise 500 with
+    a ``ModelLoadError``. Probe the candidate cache dirs on the filesystem (no
+    network, no download) so those tests can be skipped cleanly with a clear
+    reason instead.
+    """
+    from pathlib import Path
+
+    repo_dirname = f"models--{_ASR_MODEL_REPO.replace('/', '--')}"
+    seen: set[str] = set()
+    candidates = [
+        (os.environ.get("HUGGINGFACE_CACHE_DIR") or "").strip(),
+        (os.environ.get("HF_HOME") or "").strip(),
+        str(Path.home() / ".cache" / "huggingface" / "hub"),
+    ]
+    for base in candidates:
+        if not base or base in seen:
+            continue
+        seen.add(base)
+        try:
+            snapshots = Path(base) / repo_dirname / "snapshots"
+            if snapshots.is_dir() and any(snapshots.iterdir()):
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def pytest_collection_modifyitems(config, items):
     """Auto-skip tests based on platform markers and TEST_PLATFORM env var.
 
     This hook runs after test collection and before test execution.
-    It automatically skips tests that don't match the current platform.
+    It automatically skips tests that don't match the current platform, and
+    skips ML inference tests when the ASR model isn't available locally.
     """
     test_platform = _get_test_platform()
     current_platform = _get_platform_type()
+
+    # Gate real-inference E2E tests on actual model availability, independent
+    # of the platform selection (even TEST_PLATFORM=all): without the weights
+    # they can only 500. This converts environment-driven failures (e.g. an
+    # unmounted model cache volume) into clean, clearly-labelled skips.
+    #
+    # Scope to ``tests/e2e/`` only: unit/integration ML tests mock the model
+    # loaders (``patch(...)``) and don't touch real weights, so they must keep
+    # running regardless of whether the cache is populated on disk.
+    if not _asr_model_available():
+        skip_no_model = pytest.mark.skip(
+            reason=(
+                f"ASR model '{_ASR_MODEL_REPO}' not found in the local HuggingFace "
+                "cache (checked HUGGINGFACE_CACHE_DIR, HF_HOME, "
+                "~/.cache/huggingface/hub); skipping real-inference E2E tests"
+            )
+        )
+        e2e_path_fragment = os.sep + "e2e" + os.sep
+        for item in items:
+            if "ml" not in {marker.name for marker in item.iter_markers()}:
+                continue
+            item_path = str(getattr(item, "path", None) or getattr(item, "fspath", ""))
+            if e2e_path_fragment in item_path:
+                item.add_marker(skip_no_model)
 
     # If TEST_PLATFORM=all, run everything
     if test_platform == "all":

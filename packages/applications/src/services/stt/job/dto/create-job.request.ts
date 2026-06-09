@@ -1,6 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsNumber, IsBoolean, IsUUID, Min, Max } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsNumber, IsBoolean, IsUUID, Matches, Min, Max } from 'class-validator';
 import { TranscriptionJobType } from '@arcaai/domains';
+
+/**
+ * TASK-298 D-19 pipeline-id contract: a `pipelineId` is a slug
+ * (`general-consult`) OR a UUID-shaped id. The platform's seeded pipelines use
+ * deterministic, non-RFC-versioned UUIDs (e.g. `81000000-0000-0000-0001-000000000001`),
+ * which a strict `@IsUUID(7)` rejects. Mirror the HTTP-boundary DTOs
+ * (apps/api transcription-job.dto.ts) which validate against this same pattern.
+ */
+export const PIPELINE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]*$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 export class CreateJobRequest {
   @ApiProperty({
@@ -12,12 +21,14 @@ export class CreateJobRequest {
   jobType: TranscriptionJobType;
 
   @ApiProperty({
-    description: 'Pipeline ID to use for transcription',
+    description: 'Pipeline ID (slug or UUID) to use for transcription',
     example: '01234567-89ab-cdef-0123-456789abcdef',
   })
   @IsString()
   @IsNotEmpty()
-  @IsUUID(7)
+  @Matches(PIPELINE_ID_PATTERN, {
+    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (TASK-298 D-19)',
+  })
   pipelineId: string;
 
   @ApiPropertyOptional({

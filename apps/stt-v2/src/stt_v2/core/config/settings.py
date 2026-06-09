@@ -140,13 +140,29 @@ class Settings(BaseSettings):
 
     # HuggingFace
     huggingface_cache_dir: str = Field(
-        default_factory=lambda: os.environ.get("HF_HOME", "/models/hf-cache"),
+        default_factory=lambda: os.environ.get("HF_HOME") or "/models/hf-cache",
         description="HuggingFace model cache directory",
     )
     huggingface_token: str | None = Field(
         default=None,
         description="HuggingFace API token (optional)",
     )
+
+    @field_validator("huggingface_cache_dir", mode="before")
+    @classmethod
+    def _resolve_huggingface_cache_dir(cls, v: object) -> str:
+        """Never let the HuggingFace cache dir collapse to an empty string.
+
+        An explicitly-empty value (e.g. ``HUGGINGFACE_CACHE_DIR=`` in a .env
+        file, or an env var set to ``""``) must be treated as *unset*. If it
+        is allowed through, ``os.makedirs("")`` in the model loaders raises
+        ``FileNotFoundError: [Errno 2] No such file or directory: ''`` and
+        every model load fails. Fall back to ``HF_HOME`` (then the production
+        default) when the configured value is missing or blank.
+        """
+        if v is None or not str(v).strip():
+            return os.environ.get("HF_HOME") or "/models/hf-cache"
+        return str(v).strip()
 
     # Azure Speech (cloud ASR engine)
     azure_speech_key: str | None = Field(
