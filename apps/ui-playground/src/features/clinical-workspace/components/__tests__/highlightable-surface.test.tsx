@@ -40,6 +40,32 @@ describe('HighlightableSurface', () => {
     expect(marks[0].textContent).toContain('cough');
   });
 
+  it('renders the stored color on a manual mark while staying distinct from AI marks', () => {
+    render(
+      <HighlightableSurface
+        text="cough and fever"
+        highlights={[hl({ exact: 'cough', startOffset: 0, endOffset: 5, color: '#22c55e' })]}
+        data-testid="surface"
+      />,
+    );
+
+    const mark = screen.getByTestId('surface').querySelector('mark[data-manual-highlight="true"]') as HTMLElement;
+    expect(mark).not.toBeNull();
+    // The stored color paints the mark background…
+    expect(mark.style.backgroundColor).toBeTruthy();
+    // …but the dotted underline is preserved so manual marks stay distinguishable
+    // from the solid amber AI-entity marks.
+    expect(mark.className).toContain('decoration-dotted');
+  });
+
+  it('falls back to the default manual styling when no color is stored', () => {
+    render(<HighlightableSurface text="cough and fever" highlights={[hl({ exact: 'cough', startOffset: 0, endOffset: 5 })]} data-testid="surface" />);
+
+    const mark = screen.getByTestId('surface').querySelector('mark[data-manual-highlight="true"]') as HTMLElement;
+    expect(mark.style.backgroundColor).toBeFalsy();
+    expect(mark.className).toContain('bg-sky');
+  });
+
   it('drops orphaned highlights (exact text gone) without throwing', () => {
     render(
       <HighlightableSurface

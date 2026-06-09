@@ -64,6 +64,7 @@ export function ReviewScreen({ data, onApprove }: ReviewScreenProps) {
         return {
           contextItemId: transcript.contextItemId,
           label: transcript.label,
+          text: transcript.text,
           segments: buildTranscriptHighlights(transcript.text, spans),
           hasHighlight: spans.length > 0,
         };
@@ -146,7 +147,7 @@ export function ReviewScreen({ data, onApprove }: ReviewScreenProps) {
           <SoapNotePanel sections={sections} selectedClaimId={selectedClaimId} onSelect={setSelectedClaimId} />
         </div>
         <div className="lg:sticky lg:top-4 lg:self-start">
-          <TranscriptPane panes={panes} selectedClaim={selectedClaim} />
+          <TranscriptPane panes={panes} selectedClaim={selectedClaim} consultationId={data.consultationId} />
         </div>
       </div>
     </div>

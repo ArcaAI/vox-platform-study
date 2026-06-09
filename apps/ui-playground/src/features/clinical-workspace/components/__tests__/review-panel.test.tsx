@@ -62,6 +62,15 @@ vi.mock('@arcaai/vox', () => ({
   useArcaStore: (selector: any) => selector({ apiClient: { __fake: true } }),
 }));
 
+// TASK-344 — the drafted SOAP body is wrapped in a connected manual-highlight
+// surface. Stub it so this test asserts the SUMMARY wiring without the
+// `:id/highlights` React Query hooks.
+vi.mock('../highlightable-surface', () => ({
+  ManualHighlightSurface: (props: any) => (
+    <div data-testid="summary-surface" data-target-kind={props.targetKind} data-source-id={props.sourceContextItemId} data-text={props.text} />
+  ),
+}));
+
 vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: h.invalidateQueries }),
 }));
@@ -204,6 +213,22 @@ describe('ReviewPanel — provenance → click-to-inspect data', () => {
     const data = h.reviewScreenProps.mock.calls.at(-1)![0].data;
     expect(data.citationsMap.claims).toHaveLength(1);
     expect(data.citationsMap.claims[0].id).toBe('ok');
+  });
+});
+
+describe('ReviewPanel — manual highlighting (TASK-344)', () => {
+  it('wires the drafted SOAP body to a SUMMARY manual-highlight surface', () => {
+    renderPanel();
+
+    const surface = screen.getByTestId('summary-surface');
+    expect(surface.getAttribute('data-target-kind')).toBe('SUMMARY');
+    expect(surface.getAttribute('data-source-id')).toBe(NOTE_ID);
+    expect(surface.getAttribute('data-text')).toBe('S: chest pain\nO: BP 150/95');
+  });
+
+  it('does not render the SOAP highlight surface before a draft exists', () => {
+    renderPanel({ noteContextItemId: null });
+    expect(screen.queryByTestId('summary-surface')).toBeNull();
   });
 });
 

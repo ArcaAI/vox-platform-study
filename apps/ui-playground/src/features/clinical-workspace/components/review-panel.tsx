@@ -26,6 +26,7 @@ import { approveNote, updateSummaryContent } from '../api/clinical-workspace.api
 import { clinicalWorkspaceKeys, useProvenanceQuery } from '../api/queries';
 import type { DraftWaitStatus } from '../lib/draft-polling';
 import { mapProvenanceToReviewData } from '../lib/provenance';
+import { ManualHighlightSurface } from './highlightable-surface';
 
 interface ReviewPanelProps {
   consultationId: string;
@@ -232,6 +233,28 @@ export function ReviewPanel({ consultationId, noteContextItemId, noteContent, tr
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* TASK-344 — the drafted SOAP body is a persisted manual-highlight surface
+          (targetKind: 'SUMMARY'). Doctors select-to-highlight key findings; marks
+          are saved against the draft note and stay visually distinct from the
+          AI-provenance evidence rendered inside the review screen below. */}
+      {noteContent && (
+        <Card>
+          <CardContent className="space-y-2 p-4">
+            <h3 className="text-sm font-medium">Highlight key findings</h3>
+            <p className="text-muted-foreground -mt-1 text-xs leading-snug">
+              Select text in the drafted note to highlight it. Highlights are saved to this consultation and are separate from the AI evidence below.
+            </p>
+            <ManualHighlightSurface
+              consultationId={consultationId}
+              targetKind="SUMMARY"
+              sourceContextItemId={noteContextItemId}
+              text={noteContent}
+              data-testid="summary-highlightable"
+            />
+          </CardContent>
+        </Card>
+      )}
 
       <ReviewScreen data={data} onApprove={handleApprove} />
     </div>

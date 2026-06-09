@@ -770,4 +770,91 @@ describe('LiveDocumentationService', () => {
       ).not.toThrow();
     });
   });
+
+  // ------------------------------------------------------------------
+  // TASK-344: OCR enrichment re-emits ContextAdded for the SAME
+  // contextItemId once it has extracted text. The add path UPSERTS by
+  // contextItemId so the attachment yields exactly ONE running-summary
+  // note that is updated in place — no harmless-but-confusing duplicate.
+  // ------------------------------------------------------------------
+  describe('context note upsert on OCR re-emit (TASK-344)', () => {
+    type TrackedNote = { contextItemId: string; text: string };
+    /** Peek at the in-flight session's keyed context notes (internal state). */
+    const trackedNotes = (service: LiveDocumentationService, consultationId: string): TrackedNote[] =>
+      (service as unknown as { sessions: Map<string, { contextNotes: TrackedNote[] }> }).sessions.get(consultationId)!.contextNotes;
+
+    /** Pull the prompt sent to SMR `/generate` on the most recent flush. */
+    const lastSmrPrompt = (httpMock: ReturnType<typeof buildHttpMock>): string => {
+      const calls = httpMock.axiosRef.post.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/generate'));
+      return calls.length ? String((calls[calls.length - 1][1] as { prompt?: string }).prompt ?? '') : '';
+    };
+
+    it('updates the existing note in place when ContextAdded re-fires for the same contextItemId (no duplicate)', async () => {
+      const { service, httpMock } = buildDeps();
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      // 1) Initial attachment add — scanned lab with no client-side text layer, so
+      // the live preview is just the filename-label placeholder.
+      service.handleContextAdded({
+        consultationId: CID,
+        tenantId: TENANT,
+        timestamp: new Date().toISOString(),
+        contextItemId: 'ctx-attach-1',
+        contextType: 'ATTACHMENT',
+        subType: 'LAB_RESULT',
+        contentPreview: 'lab-scan.pdf (no text layer)',
+      });
+
+      // 2) OCR enrichment re-emits ContextAdded for the SAME contextItemId, now
+      // carrying the extracted text.
+      service.handleContextAdded({
+        consultationId: CID,
+        tenantId: TENANT,
+        timestamp: new Date().toISOString(),
+        contextItemId: 'ctx-attach-1',
+        contextType: 'ATTACHMENT',
+        subType: 'LAB_RESULT',
+        contentPreview: 'Hemoglobin 13.5 g/dL; WBC 6.2',
+      });
+
+      // Exactly ONE note for that attachment, reflecting the enriched content.
+      const notes = trackedNotes(service, CID);
+      expect(notes).toHaveLength(1);
+      expect(notes[0].contextItemId).toBe('ctx-attach-1');
+      expect(notes[0].text).toContain('Hemoglobin 13.5 g/dL; WBC 6.2');
+      expect(notes[0].text).not.toContain('lab-scan.pdf (no text layer)');
+
+      // The enriched (not the stale placeholder) content reaches the SMR prompt once.
+      await service.flush(CID, { force: true });
+      const prompt = lastSmrPrompt(httpMock);
+      expect(prompt).toContain('Hemoglobin 13.5 g/dL; WBC 6.2');
+      expect(prompt).not.toContain('lab-scan.pdf (no text layer)');
+    });
+
+    it('still appends a new note for a distinct contextItemId (non-duplicate path unchanged)', () => {
+      const { service } = buildDeps();
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      service.handleContextAdded({
+        consultationId: CID,
+        tenantId: TENANT,
+        timestamp: new Date().toISOString(),
+        contextItemId: 'ctx-note-a',
+        contextType: 'CASE_NOTE',
+        contentPreview: 'Allergic to penicillin',
+      });
+      service.handleContextAdded({
+        consultationId: CID,
+        tenantId: TENANT,
+        timestamp: new Date().toISOString(),
+        contextItemId: 'ctx-note-b',
+        contextType: 'CASE_NOTE',
+        contentPreview: 'Reports chest pain',
+      });
+
+      const notes = trackedNotes(service, CID);
+      expect(notes).toHaveLength(2);
+      expect(notes.map((n) => n.contextItemId)).toEqual(['ctx-note-a', 'ctx-note-b']);
+    });
+  });
 });
