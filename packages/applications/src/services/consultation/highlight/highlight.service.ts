@@ -1,0 +1,121 @@
+import { ConsultationRepository, HighlightFactory, HighlightRepository, ResourceType, SysEventType } from '@arcaai/domains';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ClsService } from 'nestjs-cls';
+import { BaseService, assertParentInScope } from '../../../common';
+import { IActiveUserContext } from '../../../interfaces';
+import { IHighlightService } from './IHighlightService';
+import { HighlightDtoMapper } from './highlight.dto.mapper';
+import { CreateHighlightRequest, HighlightResponse } from './dto';
+
+/**
+ * TASK-344 Workstream B — durable manual-doctor highlighting.
+ *
+ * Highlights are a SEPARATE aggregate from NamedEntity so doctor-authored marks
+ * never pollute the AI NER taxonomy / aggregation. Each operation is tenant
+ * scoped through `assertParentInScope` (throws NotFound — never Forbidden — on a
+ * cross-tenant / missing parent so the response cannot leak the existence of a
+ * foreign-tenant resource), mirroring `ContextService`.
+ */
+@Injectable()
+export class HighlightService extends BaseService implements IHighlightService {
+  constructor(
+    private readonly highlightRepository: HighlightRepository,
+    private readonly consultationRepository: ConsultationRepository,
+    protected override readonly eventEmitter: EventEmitter2,
+    protected override readonly clsService: ClsService<IActiveUserContext>,
+  ) {
+    super(eventEmitter, clsService, ResourceType.Highlight);
+  }
+
+  /**
+   * Create a manual highlight anchored to one of the consultation's persisted
+   * surfaces. Verifies the parent consultation lives in the caller's tenant,
+   * persists via the factory, then broadcasts `ResourceCreated`.
+   */
+  async createHighlight(consultationId: string, request: CreateHighlightRequest): Promise<HighlightResponse> {
+    const tenantId = this.tenantId;
+    const userId = this.requestUserId;
+
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    await assertParentInScope(this.consultationRepository, consultationId, tenantId);
+
+    const highlight = HighlightFactory.CreateHighlight({
+      tenantId,
+      consultationId,
+      targetKind: request.targetKind,
+      exact: request.exact,
+      startOffset: request.startOffset,
+      endOffset: request.endOffset,
+      sourceContextItemId: request.sourceContextItemId,
+      prefix: request.prefix,
+      suffix: request.suffix,
+      color: request.color,
+      label: request.label,
+      note: request.note,
+      createdBy: userId ?? undefined,
+    });
+
+    // Defense-in-depth: the cross-field span invariant (endOffset >= startOffset,
+    // non-empty exact) cannot be expressed with per-field class-validator rules.
+    highlight.validate();
+
+    const saved = await this.highlightRepository.create(highlight);
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: saved.id,
+      responsibleEntityId: userId ?? undefined,
+      createdAt: saved.createdAt,
+      data: { consultationId, targetKind: request.targetKind },
+    });
+
+    return HighlightDtoMapper.toResponse(saved);
+  }
+
+  /**
+   * List all (non-deleted) highlights for a consultation, tenant-scoped. The
+   * parent-in-scope check ensures a foreign-tenant consultationId returns
+   * NotFound rather than another tenant's marks.
+   */
+  async getHighlights(consultationId: string): Promise<HighlightResponse[]> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    await assertParentInScope(this.consultationRepository, consultationId, tenantId);
+
+    const highlights = await this.highlightRepository.findByConsultation(consultationId);
+    return highlights.map(HighlightDtoMapper.toResponse);
+  }
+
+  /**
+   * Soft-delete a highlight via `Repository.softDelete` (sets resourceStatus =
+   * DELETED). The highlight is asserted to live in the caller's tenant AND to be
+   * anchored to the consultation in the route, so a cross-tenant or
+   * cross-consultation id surfaces as NotFound. Broadcasts `ResourceDeleted`.
+   */
+  async deleteHighlight(consultationId: string, highlightId: string): Promise<void> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const highlight = await assertParentInScope(this.highlightRepository, highlightId, tenantId);
+    if (highlight.consultationId !== consultationId) {
+      throw new NotFoundException('Resource not found');
+    }
+
+    const userId = this.requestUserId ?? 'system';
+    await this.highlightRepository.softDelete(highlightId, userId);
+
+    this.broadcastSysEvent(SysEventType.ResourceDeleted, {
+      resourceId: highlightId,
+      responsibleEntityId: this.requestUserId ?? undefined,
+      data: { consultationId, targetKind: highlight.targetKind },
+    });
+  }
+}

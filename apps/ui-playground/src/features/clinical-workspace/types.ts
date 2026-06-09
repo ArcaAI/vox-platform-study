@@ -200,3 +200,52 @@ export interface SummaryApprovalResponseDto {
   approvedBy: string;
   approvedAt: string;
 }
+
+// =============================================================================
+// Manual highlights — /consultations/:id/highlights (TASK-344 Workstream B)
+//
+// Doctor-authored highlights anchored to a PERSISTED surface via W3C dual
+// selectors. A separate aggregate from the AI NER entities (LiveSummaryEntity)
+// so manual marks never pollute the NER taxonomy. Mirrors:
+//   - highlight/dto/create-highlight.request.ts
+//   - highlight/dto/highlight.response.ts
+// =============================================================================
+
+/** Which persisted surface a manual highlight is anchored to. */
+export type HighlightTargetKind = 'TRANSCRIPT' | 'CASE_NOTE' | 'WORKNOTE' | 'SUMMARY';
+
+/** POST /consultations/:id/highlights body (mirrors CreateHighlightRequest). */
+export interface CreateHighlightRequest {
+  targetKind: HighlightTargetKind;
+  /** W3C TextQuoteSelector exact — the selected text span. */
+  exact: string;
+  /** W3C TextPositionSelector offsets into the surface's plain text. */
+  startOffset: number;
+  endOffset: number;
+  /** The persisted ContextItem id this highlight anchors to (when applicable). */
+  sourceContextItemId?: string;
+  prefix?: string;
+  suffix?: string;
+  color?: string;
+  label?: string;
+  note?: string;
+}
+
+/** A manual highlight as returned by the highlights endpoints (mirrors HighlightResponse). */
+export interface WorkspaceHighlight {
+  id: string;
+  consultationId: string;
+  sourceContextItemId?: string;
+  targetKind: HighlightTargetKind;
+  exact: string;
+  prefix?: string;
+  suffix?: string;
+  startOffset: number;
+  endOffset: number;
+  color?: string;
+  label?: string;
+  note?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}

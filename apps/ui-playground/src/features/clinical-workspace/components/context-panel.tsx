@@ -25,7 +25,8 @@ import { addContextItem, deleteContextItem } from '../api/clinical-workspace.api
 import { clinicalWorkspaceKeys, useContextItemsQuery } from '../api/queries';
 import { LAB_RESULT_SUBTYPE, STORAGE_BUCKET } from '../constants';
 import { extractTextFromFile } from '../lib/extract-text';
-import type { WorkspaceContextType } from '../types';
+import type { HighlightTargetKind, WorkspaceContextType } from '../types';
+import { ManualHighlightSurface } from './highlightable-surface';
 
 interface ContextPanelProps {
   consultationId: string;
@@ -41,6 +42,27 @@ const TYPE_LABEL: Record<string, string> = {
   MODIFIED_SUMMARY: 'Edited summary',
   SIGNED_NOTE: 'Signed note',
 };
+
+/**
+ * TASK-344 Workstream B — which persisted note types support manual doctor
+ * highlighting (text surfaces only; attachments/audio carry no anchorable text).
+ */
+function highlightTargetForType(type: WorkspaceContextType): HighlightTargetKind | null {
+  switch (type) {
+    case 'CASE_NOTE':
+      return 'CASE_NOTE';
+    case 'WORKNOTE':
+      return 'WORKNOTE';
+    case 'TRANSCRIPT':
+      return 'TRANSCRIPT';
+    case 'RAW_SUMMARY':
+    case 'MODIFIED_SUMMARY':
+    case 'SIGNED_NOTE':
+      return 'SUMMARY';
+    default:
+      return null;
+  }
+}
 
 export function ContextPanel({ consultationId }: ContextPanelProps) {
   const apiClient = useArcaStore((s: { apiClient: AgenticClient | null }) => s.apiClient);
@@ -224,26 +246,44 @@ export function ContextPanel({ consultationId }: ContextPanelProps) {
               <p className="text-muted-foreground text-sm">No context added yet. Add a case note, work note, or lab/exam result above.</p>
             ) : (
               <ul className="space-y-1.5 pr-2" data-testid="context-list">
-                {items.map((it) => (
-                  <li key={it.id} className="flex items-center gap-2 rounded-md border p-2 text-sm">
-                    <Badge variant="outline" className="shrink-0 text-[10px]">
-                      {TYPE_LABEL[it.type] ?? it.type}
-                    </Badge>
-                    <span className="flex-1 truncate">{it.content}</span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="size-6 shrink-0 p-0"
-                      aria-label="Remove context"
-                      data-testid={`remove-context-${it.id}`}
-                      disabled={removingId === it.id}
-                      onClick={() => void removeItem(it.id)}
-                    >
-                      {removingId === it.id ? <Loader2 className="size-3 animate-spin" /> : <Trash2 className="size-3" />}
-                    </Button>
-                  </li>
-                ))}
+                {items.map((it) => {
+                  // TASK-344 Workstream B — persisted text notes become highlightable
+                  // surfaces (select-to-highlight + remove); attachments/audio stay
+                  // as a compact truncated row.
+                  const highlightTarget = highlightTargetForType(it.type);
+                  return (
+                    <li key={it.id} className="rounded-md border p-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="shrink-0 text-[10px]">
+                          {TYPE_LABEL[it.type] ?? it.type}
+                        </Badge>
+                        {!highlightTarget && <span className="flex-1 truncate">{it.content}</span>}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="ml-auto size-6 shrink-0 p-0"
+                          aria-label="Remove context"
+                          data-testid={`remove-context-${it.id}`}
+                          disabled={removingId === it.id}
+                          onClick={() => void removeItem(it.id)}
+                        >
+                          {removingId === it.id ? <Loader2 className="size-3 animate-spin" /> : <Trash2 className="size-3" />}
+                        </Button>
+                      </div>
+                      {highlightTarget && (
+                        <ManualHighlightSurface
+                          consultationId={consultationId}
+                          targetKind={highlightTarget}
+                          sourceContextItemId={it.id}
+                          text={it.content}
+                          className="mt-1.5"
+                          data-testid={`highlightable-${it.id}`}
+                        />
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </ScrollArea>

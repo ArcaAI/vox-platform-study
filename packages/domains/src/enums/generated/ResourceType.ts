@@ -9,6 +9,7 @@ export enum ResourceType {
   ContextItem = 'ContextItem',
   ContextItemVersion = 'ContextItemVersion',
   Department = 'Department',
+  Highlight = 'Highlight',
   GlobalSetting = 'GlobalSetting',
   IntegrationPackage = 'IntegrationPackage',
   IntegrationItem = 'IntegrationItem',

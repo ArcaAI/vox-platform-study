@@ -8,7 +8,7 @@ import { IRedisCacheService } from '../../baseServices/redis';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
 import { mapSmrGenerateResponse } from '../summary/smr-v2-generate';
-import { ConsultationPipelineEvent, type ContextAddedPayload } from '../events';
+import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemovedPayload } from '../events';
 import {
   LiveDocEngineConfigResponse,
   LiveDocSessionStatsResponse,
@@ -57,7 +57,13 @@ interface LiveSession {
   userId?: string;
   sessionId?: string;
   transcriptParts: string[];
-  contextNotes: string[];
+  /**
+   * Live-folded notes/labs/files, keyed by their `contextItemId` so a
+   * soft-delete (TASK-342 GAP #3d) can drop the exact entry. Insertion order is
+   * preserved, so the assembled notes block stays byte-identical to the prior
+   * `string[]` representation on the add-only path.
+   */
+  contextNotes: { contextItemId: string; text: string }[];
   pendingSegments: number;
   segmentCounter: number;
   lastSegmentId?: string;
@@ -356,8 +362,27 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     const label = payload.subType ? `[${payload.subType}] ` : '';
     const note = (payload.contentPreview ?? '').trim();
-    session.contextNotes.push(note ? `${label}${note}` : `${label}${payload.contextType} added`);
+    const text = note ? `${label}${note}` : `${label}${payload.contextType} added`;
+    session.contextNotes.push({ contextItemId: payload.contextItemId, text });
     this.scheduleFlush(session);
+  }
+
+  /**
+   * Context-remove reaction (TASK-342 GAP #3d): a note/lab/file soft-deleted
+   * mid-visit is dropped from the running summary's notes by `contextItemId`, so
+   * the next flush no longer re-injects it. No-op when the session or the note
+   * isn't tracked; only schedules a flush when an entry was actually removed.
+   */
+  @OnEvent(ConsultationPipelineEvent.ContextRemoved)
+  handleContextRemoved(payload: ContextRemovedPayload): void {
+    const session = this.sessions.get(payload.consultationId);
+    if (!session) return;
+
+    const before = session.contextNotes.length;
+    session.contextNotes = session.contextNotes.filter((n) => n.contextItemId !== payload.contextItemId);
+    if (session.contextNotes.length !== before) {
+      this.scheduleFlush(session);
+    }
   }
 
   // ------------------------------------------------------------------
@@ -379,7 +404,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     this.clearTimer(session);
 
     const transcript = session.transcriptParts.join(' ').trim();
-    const notes = session.contextNotes.join('\n').trim();
+    const notes = session.contextNotes.map((n) => n.text).join('\n').trim();
     if (!transcript && !notes) return null;
 
     // Min-interval throttle (P0-A): coalesce a burst into a single trailing re-run so

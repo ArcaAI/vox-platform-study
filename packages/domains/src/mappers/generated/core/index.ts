@@ -19,6 +19,7 @@ export * from './GoldenSetEntityMapper';
 export * from './HarnessAuditEventEntityMapper';
 export * from './HarnessPolicyChangeEntityMapper';
 export * from './HarnessPolicyEntityMapper';
+export * from './HighlightEntityMapper';
 export * from './KnowledgeChunkEntityMapper';
 export * from './KnowledgeDocumentEntityMapper';
 export * from './MediaEntityMapper';

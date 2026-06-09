@@ -19,6 +19,7 @@ export * from './GoldenSetRepository';
 export * from './HarnessAuditEventRepository';
 export * from './HarnessPolicyChangeRepository';
 export * from './HarnessPolicyRepository';
+export * from './HighlightRepository';
 export * from './KnowledgeChunkRepository';
 export * from './KnowledgeDocumentRepository';
 // TASK-302 Phase 4 — sibling file that patches GlobalSettingRepository

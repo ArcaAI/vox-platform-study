@@ -481,4 +481,58 @@ describe('PromptAssemblyService', () => {
             expect(result.userPrompt).not.toContain('ATTACHMENTS');
         });
     });
+
+    // ── Doctor highlights injection (TASK-344 Workstream B) ──
+    describe('doctor highlights injection (TASK-344 Workstream B)', () => {
+        it('appends a doctor highlights block when the template has no placeholder', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient reports chest pain radiating to the left arm.',
+                conversationLanguage: 'English',
+                highlights: ['[highlight] chest pain', '[highlight] radiating to the left arm'],
+            });
+
+            expect(result.userPrompt).toContain('DOCTOR HIGHLIGHTS');
+            expect(result.userPrompt).toContain('chest pain');
+            expect(result.userPrompt).toContain('radiating to the left arm');
+        });
+
+        it('substitutes the {doctor_highlights} placeholder without duplicating the block', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Highlights: {doctor_highlights}\nLang: {conversation_language}.' }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'revisit',
+                transcript: 'Visit transcript.',
+                conversationLanguage: 'English',
+                highlights: ['[highlight] severe cough'],
+            });
+
+            expect(result.userPrompt).toContain('severe cough');
+            expect(result.userPrompt).not.toContain('{doctor_highlights}');
+            expect(result.userPrompt).not.toContain('--- DOCTOR HIGHLIGHTS');
+        });
+
+        it('adds no highlights section when none are provided', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'revisit',
+                transcript: 'Patient reports chest pain.',
+                conversationLanguage: 'English',
+            });
+
+            expect(result.userPrompt).not.toContain('DOCTOR HIGHLIGHTS');
+        });
+    });
 });

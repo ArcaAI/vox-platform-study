@@ -7,7 +7,7 @@
 | **Name**      | Clinical Workspace Durable-Context Integration (close the durable-layer gaps so a live visit produces an authoritative SOAP that reflects mid-visit doctor context)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | **Created**   | 2026-06-09                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | **Updated**   | 2026-06-09                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| **Status**    | **Completed** (live E2E pending GPU/model host — R1; GAP #3d live-drop-out and GAP #5 heavy-OCR deferred as noted)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Status**    | **Completed** (live E2E pending GPU/model host — R1; GAP #5 heavy-OCR deferred as noted; GAP #3d live-drop-out implemented 2026-06-09)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | **Cross-ref** | [TASK-330](../TASK-330-Clinical-Documentation-Harness/README.md) (Harness — owns assemble/draft/prompt), [TASK-339](../TASK-339-Clinical-Workflow-Playground/README.md) (cockpit + `LiveDocumentationService`), [TASK-340](../TASK-340-Live-SOAP-Hardening/README.md) (realtime engine hardening), [TASK-341](../TASK-341-Clinical-Workspace-Realtime-Admin-Live/README.md) (UI consolidation + admin live console — does **not** close these gaps)                                                                                                                                                                                                        |
 | **Migration** | **None required.** Verified `model ContextItem` (`packages/database/src/prisma/db_main/consultation.prisma:70-125`) already carries `resourceStatus ResourceStatusType @default(ENABLED)` + `resourceStatusUpdatedAt` + `resourceStatusUpdatedBy` (lines 106-108) and `metaData` JSONB (`_metadata`, line 72) + `mediaId` (line 96). Soft-delete (GAP #3) is a `resourceStatus → DELETED` state change via the existing base `Repository.softDelete` — **no `deletedAt` column to add**. Harness-context folding (GAP #2) and live propagation reuse existing columns. GAP #5 extracted text reuses `content`/`metaData`. No new Prisma model/enum/column. |
 
@@ -227,7 +227,7 @@ Completion checklist (per workflow): all new/modified tests pass (paste output),
 
 ## 5. Implementation Summary
 
-Implemented GAP #1–#5 + R2 + R3 (Services → API → Frontend, strict TDD). GAP #3d (live drop-out), GAP #5 heavy OCR, and R1 (live E2E) remain deferred with rationale (see **Remaining / Deferred** below). All gates GREEN (see **Verification Evidence**).
+Implemented GAP #1–#5 + R2 + R3 (Services → API → Frontend, strict TDD), plus **GAP #3d** (live drop-out) on 2026-06-09. GAP #5 heavy OCR and R1 (live E2E) remain deferred with rationale (see **Remaining / Deferred** below). All gates GREEN (see **Verification Evidence**).
 
 ### 5.1 GAP #1 — Persist a transcript from streaming finalize (CRITICAL)
 
@@ -255,6 +255,17 @@ End-to-end soft-delete. **New endpoint: `DELETE /consultations/:id/context/:cont
 - **API** — `@Delete(':id/context/:contextId')` on `apps/api/src/modules/consultation/consultation.controller.ts` next to `updateContext`: `verifyConsultationOwnership(id)` → `contextService.deleteContext(contextId)` → `OkResponseDto`. Same ownership pattern as the sibling write routes; `OkResponseDto` shape mirrors `deleteSummaryTag`.
 - **Frontend** — `WORKSPACE_ENDPOINTS.contextItem(id, contextId)` (`clinical-workspace/constants.ts`); `deleteContextItem(client, consultationId, contextId)` → `client.delete(...)` (`api/clinical-workspace.api.ts`); a per-row remove control (`Trash2`, with `Loader2` while in flight) on each "Added context" `<li>` in `components/context-panel.tsx` that calls delete → `toast` → invalidates `clinicalWorkspaceKeys.context`.
 - **Tests** — `context.service.test.ts` (softDelete + broadcast + cross-tenant/missing → NotFound), `consultation.controller.test.ts` (route wiring + ownership), new `context-panel.test.tsx` (remove control renders per row; click calls delete + invalidate + success toast; failure toast on error).
+
+#### GAP #3d — Live drop-out of a soft-deleted context note (implemented 2026-06-09, Services-only, strict TDD)
+
+A note/case-note/work-note/lab removed mid-visit now leaves the **in-flight** live summary on the next SMR tick — closing the one residual from the original GAP #3 chunk (which deferred this as a scope-expanding refactor).
+
+- **Event** — `consultation/events/consultation.events.ts`: new `ConsultationPipelineEvent.ContextRemoved = 'consultation.context.removed'` + `ContextRemovedPayload` (mirrors `ContextAddedPayload`'s base traceability shape, carrying `{ consultationId, tenantId, userId?, timestamp, contextItemId }`) + the `ConsultationPipelineEventPayloadMap` entry.
+- **Emit on delete** — `context.service.ts` `deleteContext`: after the soft-delete + `SysEvent.ResourceDeleted` broadcast, emits `ConsultationPipelineEvent.ContextRemoved` via the same `EventEmitter2` used by `addContext`, **gated to `LIVE_CONTEXT_TYPES`** (WORKNOTE / CASE_NOTE / ATTACHMENT) so only live-tracked items are announced — symmetric with the `addContext` `ContextAdded` fan-out (TRANSCRIPT / AI summaries are never folded into the live notes, so they are not announced).
+- **Re-key live notes** — `live-documentation.service.ts`: `LiveSession.contextNotes` changed from `string[]` to `{ contextItemId: string; text: string }[]`. `handleContextAdded` now stores the id alongside the same formatted `text`; `flush` reads `contextNotes.map((n) => n.text).join('\n')`. Insertion order is preserved, so the assembled "Clinician notes / labs:" block is **byte-identical** to the prior `string[]` on the add-only path (asserted by a no-regression test).
+- **handleContextRemoved** — `live-documentation.service.ts`: new `@OnEvent(ConsultationPipelineEvent.ContextRemoved) handleContextRemoved(payload)` filters the matching `contextItemId` out of `session.contextNotes` (no-op when the session or note id isn't tracked) and calls `scheduleFlush` only when an entry was actually removed, so the next live SMR tick reflects the removal.
+- **Residual (unchanged, acceptable):** a note already folded into the in-memory `runningSummary` persists there until the session restarts (the incremental prompt instructs the model to keep prior content unless contradicted). The fix stops *re-injecting* the removed note's text on subsequent flushes; the **durable/authoritative SOAP already excluded it** via GAP #2 (`resourceStatus: ENABLED`).
+- **Tests** — `consultation.events.test.ts` (enum value + count 6→7 + payload-map entry), `context.service.test.ts` (`deleteContext` emits `ContextRemoved` for a live type; does **not** emit for TRANSCRIPT), `live-documentation.service.test.ts` (add-only prompt unchanged; add→remove drops the note from the next prompt while keeping the others; `handleContextRemoved` no-op for untracked session/note).
 
 ### 5.4 GAP #4 — Doctor influence on the LIVE summary mid-visit (Option b)
 
@@ -291,7 +302,7 @@ The Review surface already rendered a timed-out state with a "Check again" retry
 
 ### 5.8 Deviations / deferrals
 
-- **GAP #3d (live drop-out) — DEFERRED (documented).** The optional `@OnEvent(ContextRemoved) handleContextRemoved` in `live-documentation.service.ts` requires re-keying `LiveSession.contextNotes` (currently a `string[]`) by `contextItemId` plus a new `ConsultationPipelineEvent.ContextRemoved` event + emitter wiring + prompt-builder changes — a non-trivial, scope-expanding refactor. It is safe to defer: the **durable/authoritative SOAP already excludes soft-deleted items** because GAP #2's assemble reads live DB state (`resourceStatus: ENABLED`). The only residual is that within an *active* live session an already-folded note remains in the in-memory running summary until the session restarts. To avoid dead code, the `ContextRemoved` event was intentionally **not** added in this chunk. (Revisit alongside GAP #4/#5.)
+- **GAP #3d (live drop-out) — IMPLEMENTED (2026-06-09, see §5.3 "GAP #3d").** `ConsultationPipelineEvent.ContextRemoved` + `ContextRemovedPayload` added; `ContextService.deleteContext` fans the event out (gated to the live-tracked types, mirroring `addContext`); `LiveSession.contextNotes` was re-keyed `string[]` → `{ contextItemId; text }[]` (insertion order preserved ⇒ add-path prompt byte-identical) and `LiveDocumentationService.handleContextRemoved` drops the matching entry + schedules a flush. Residual (unchanged): a note already folded into the in-memory running summary persists there until the session restarts — the *next* flush simply stops re-injecting the removed note; the durable SOAP already excluded it via GAP #2.
 - **R3 (Review "no transcript" state) — IMPLEMENTED this chunk (§5.7).** The Review timed-out + retry affordance pre-existed (TASK-339 FU2); R3 added the explicit zero-transcript variant (`review-no-transcript`) for the GAP #1 failure mode. `draft-polling.ts` decision logic was already correct and left unchanged (surgical-change rule).
 - **GAP #4 Option (a) seed/pin — NOT built (documented future option).** Only the surgical Option (b) (docs + cockpit hint) was implemented per the plan; the seed/pin endpoint + engine change remains an explicitly optional enhancement (§5.4).
 - **GAP #5 heavy OCR — DEFERRED (follow-up PR).** Only the threading seam + lightweight (txt/csv/md/json) extractor shipped; scanned-PDF / image / Office-doc OCR (a new dependency or a Python service) is a separate follow-up. Binary uploads fall back to the filename label until then (§5.5).
@@ -329,11 +340,21 @@ The Review surface already rendered a timed-out state with a "Check again" retry
 | Frontend | `apps/ui-playground/.../clinical-workspace/components/review-panel.tsx` | R3: explicit "no transcript captured" timeout variant + retry |
 | Frontend (test) | `apps/ui-playground/.../clinical-workspace/components/__tests__/review-panel.test.tsx` | R3: zero-transcript timeout test |
 
+### Files changed (this chunk: GAP #3d — live drop-out)
+
+| Layer | File | Change |
+| --- | --- | --- |
+| Services | `packages/applications/.../consultation/events/consultation.events.ts` | `ConsultationPipelineEvent.ContextRemoved` + `ContextRemovedPayload` + payload-map entry |
+| Services (test) | `packages/applications/.../consultation/events/__tests__/consultation.events.test.ts` | enum value + count 6→7 + payload-map entry |
+| Services | `packages/applications/.../consultation/context/context.service.ts` | `deleteContext` emits `ContextRemoved` (gated to `LIVE_CONTEXT_TYPES`) |
+| Services (test) | `packages/applications/.../consultation/context/__tests__/context.service.test.ts` | emits `ContextRemoved` for live type; not for TRANSCRIPT |
+| Services | `packages/applications/.../consultation/live-documentation/live-documentation.service.ts` | re-key `contextNotes` → `{ contextItemId; text }[]`; `handleContextAdded`/`flush` updated; new `handleContextRemoved` |
+| Services (test) | `packages/applications/.../consultation/live-documentation/__tests__/live-documentation.service.test.ts` | add-only no-regression; add→remove drop-out; no-op for untracked |
+
 ### Remaining / Deferred
 
 Status is now **Completed** for the integration scope. The following are **explicitly deferred** (each safe to defer; rationale above):
 
-- **GAP #3d — live drop-out (`handleContextRemoved`).** The durable/authoritative SOAP already excludes soft-deleted items (GAP #2 assemble reads `resourceStatus: ENABLED`); only the in-memory running summary of an *active* live session retains an already-folded note until the session restarts. A precise fix requires re-keying `LiveSession.contextNotes` by `contextItemId` + a new `ConsultationPipelineEvent.ContextRemoved` (emitter + handler). Deferred to avoid dead code.
 - **GAP #5 heavy OCR.** Scanned-PDF / image / Office-doc text extraction (new dependency or Python OCR service). The threading seam + lightweight (txt/csv/md/json) extractor shipped this chunk; heavy OCR is a follow-up PR. Binary uploads fall back to the filename label until then.
 - **R1 — real live STT/SMR/NLP E2E smoke.** Blocked on a GPU/LM-Studio host + a mounted NLP model cache (STT 8861 / SMR 8862 / NLP 8864 were down during TASK-339/340/341). Matches the TASK-340/341 posture.
 
@@ -361,6 +382,23 @@ TDD evidence (RED → GREEN), this chunk:
 
 **No unrelated failures observed.** The mixed working tree's TASK-343 auth-guard files (`jwtauth.guard.ts`, `decorators.ts`, `unified-auth.guard.ts`, `smr-proxy.controller.ts`, etc.) and the Python Docker/uv standardization changes (`apps/*/Dockerfile`, `*/uv.lock`, `pyproject.toml`, `.gitlab/ci/build.yml`) were **untouched** and surfaced no failures in any gate. (The `AuthorizationGuard` "refused admin route" log lines in the applications run are expected output from passing TASK-343 tests, not failures.)
 
+### Verification Evidence (GAP #3d — captured 2026-06-09, zsh, Services-only)
+
+GAP #3d touched only `packages/applications` (no api / ui-playground / Python change), so only those gates were re-run:
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| Applications build | `pnpm build --filter @arcaai/applications` | **PASS** — `Tasks: 7 successful, 7 total` (~10s) |
+| Applications unit tests | `pnpm --filter @arcaai/applications test:unit` | **PASS** — `Test Files 209 passed \| 1 skipped (210)`, `Tests 4947 passed \| 4 skipped (4951)` (+6 GAP #3d) |
+| Lint | `ReadLints` on all 6 changed files | **PASS** — no linter errors |
+
+TDD evidence (RED → GREEN), GAP #3d (targeted run of the 3 changed test files):
+
+- **RED** — `5 failed \| 218 passed (223)`: events `should export exactly 7 event types` (got 6) + `ContextRemoved` enum `undefined`; `context.service` `deleteContext` did not emit `consultation.context.removed`; `live-documentation` `handleContextRemoved is not a function` (removal + no-op tests). The add-only **no-regression guard passed in RED**, proving the re-key keeps the add-path prompt byte-identical.
+- **GREEN** — `223 passed (223)` after adding the event/payload/map, the gated `deleteContext` emit, the `contextNotes` re-key, and `handleContextRemoved`.
+
+No api / ui-playground / Python gates were run — none of those layers were touched (Services-only chunk, per plan). **No unrelated (TASK-343 / Python-standardization) failures**; those files were left untouched.
+
 ---
 
 ## 6. Change History
@@ -378,5 +416,6 @@ TDD evidence (RED → GREEN), this chunk:
 | 2026-06-09 | **R2** implemented — `capture-panel.tsx` drops the silent SYSTEM-tenant `DEFAULT_TRANSCRIPTION_PIPELINE_ID` fallback; blocks Start with an actionable error when no tenant pipeline resolves (no cross-tenant 404). | `capture-panel.tsx` (+test) |
 | 2026-06-09 | **R3** implemented — Review surface renders an explicit "No transcript was captured" state (with retry) when the draft poll times out with zero transcripts, distinct from the "draft still generating" timeout. | `review-panel.tsx` (+test) |
 | 2026-06-09 | **Final gates GREEN** — applications/api/ui-playground builds; applications (`4941 passed/4 skipped`) + ui-playground (`1196 passed`) unit tests; `ReadLints` clean; Python STT N/A this chunk (no stt-v2 change). Status → **Completed** (R1 live E2E pending GPU/model host; GAP #3d live-drop-out + GAP #5 heavy-OCR deferred as noted). No unrelated (TASK-343 / Python-standardization) failures. | this file |
+| 2026-06-09 | **GAP #3d** implemented (Services-only, strict TDD) — live drop-out of a soft-deleted context note from the in-flight live summary. New `ConsultationPipelineEvent.ContextRemoved` (+`ContextRemovedPayload`+map); `deleteContext` emits it (gated to `LIVE_CONTEXT_TYPES`, mirroring `addContext`); `LiveSession.contextNotes` re-keyed `string[]`→`{ contextItemId, text }[]` (insertion order preserved ⇒ add-path prompt byte-identical, asserted); new `@OnEvent(ContextRemoved) handleContextRemoved` drops the matching entry + `scheduleFlush`. Gates GREEN: applications build `7/7`; applications unit `4947 passed/4 skipped` (+6); `ReadLints` clean. TDD RED→GREEN `5 failed→223 passed` (3 targeted files). No unrelated failures. | `consultation.events.ts` (+test), `context.service.ts` (+test), `live-documentation.service.ts` (+test) |
 
 

@@ -120,6 +120,11 @@ const createMockJobService = () => ({
     notifyComplete: vi.fn().mockResolvedValue(undefined),
 });
 
+// TASK-344 Workstream B — manual doctor highlights threaded into assemble.
+const createMockHighlightRepository = () => ({
+    findByConsultation: vi.fn().mockResolvedValue([]),
+});
+
 describe('HarnessInternalService', () => {
     let service: HarnessInternalService;
     let cls: ReturnType<typeof createMockClsService>;
@@ -131,6 +136,7 @@ describe('HarnessInternalService', () => {
     let promptTemplateRepository: ReturnType<typeof createMockPromptTemplateRepository>;
     let harnessAuditService: ReturnType<typeof createMockHarnessAuditService>;
     let jobService: ReturnType<typeof createMockJobService>;
+    let highlightRepository: ReturnType<typeof createMockHighlightRepository>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -143,6 +149,7 @@ describe('HarnessInternalService', () => {
         promptTemplateRepository = createMockPromptTemplateRepository();
         harnessAuditService = createMockHarnessAuditService();
         jobService = createMockJobService();
+        highlightRepository = createMockHighlightRepository();
 
         service = new HarnessInternalService(
             contextItemRepository as any,
@@ -154,6 +161,7 @@ describe('HarnessInternalService', () => {
             harnessAuditService as any,
             cls as any,
             jobService as any,
+            highlightRepository as any,
         );
     });
 
@@ -294,6 +302,36 @@ describe('HarnessInternalService', () => {
 
             expect(promptAssemblyService.assemble).toHaveBeenCalledWith(
                 expect.objectContaining({ clinicianNotes: [], attachments: [] }),
+            );
+        });
+
+        it('folds the doctor\'s manual highlights into the assembled prompt (TASK-344 Workstream B)', async () => {
+            highlightRepository.findByConsultation.mockResolvedValue([
+                { id: 'hl-1', exact: 'chest pain' },
+                { id: 'hl-2', exact: 'radiating to the left arm' },
+                { id: 'hl-3', exact: '   ' }, // blank → filtered out
+            ]);
+
+            await service.assemble('consultation-1', { tenantId: 'tenant-1' });
+
+            expect(highlightRepository.findByConsultation).toHaveBeenCalledWith('consultation-1');
+            expect(promptAssemblyService.assemble).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    highlights: expect.arrayContaining([
+                        expect.stringContaining('chest pain'),
+                        expect.stringContaining('radiating to the left arm'),
+                    ]),
+                }),
+            );
+            const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+            expect(call.highlights).toHaveLength(2); // blank entry dropped
+        });
+
+        it('threads an empty highlights array when none exist', async () => {
+            await service.assemble('consultation-1', { tenantId: 'tenant-1' });
+
+            expect(promptAssemblyService.assemble).toHaveBeenCalledWith(
+                expect.objectContaining({ highlights: [] }),
             );
         });
     });

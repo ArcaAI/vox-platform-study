@@ -47,8 +47,14 @@ const queryState = vi.hoisted(() => ({
 vi.mock('../../api/queries', () => ({
   clinicalWorkspaceKeys: {
     context: (id: string) => ['clinical-workspace', 'context', id],
+    highlights: (id: string) => ['clinical-workspace', 'highlights', id],
   },
   useContextItemsQuery: () => ({ data: queryState.items, isLoading: queryState.isLoading }),
+  // TASK-344 Workstream B — persisted notes render a ManualHighlightSurface,
+  // which consumes these hooks; stub them so the panel mounts.
+  useHighlightsQuery: () => ({ data: [] }),
+  useCreateHighlightMutation: () => ({ mutate: vi.fn() }),
+  useDeleteHighlightMutation: () => ({ mutate: vi.fn() }),
 }));
 
 const invalidateQueries = vi.fn();

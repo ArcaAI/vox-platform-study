@@ -38,6 +38,15 @@ export enum ConsultationPipelineEvent {
    */
   ContextAdded = 'consultation.context.added',
 
+  /**
+   * Emitted when a live-tracked context item (WORKNOTE / CASE_NOTE /
+   * ATTACHMENT) is soft-deleted via the context delete path (TASK-342 GAP #3d).
+   * Consumed by LiveDocumentationService so a note/lab/file removed mid-visit
+   * drops out of the in-flight running summary. Does NOT drive the harness
+   * pipeline (the durable assemble already excludes soft-deleted items).
+   */
+  ContextRemoved = 'consultation.context.removed',
+
   /** Emitted when an async summary job completes successfully */
   SummaryGenerated = 'consultation.summary.generated',
 
@@ -119,6 +128,19 @@ export interface ContextAddedPayload extends ConsultationPipelineEventBase {
 
   /** First ~2k chars of text content, when present (notes); absent for media-only attachments */
   contentPreview?: string;
+}
+
+/**
+ * Payload for `ConsultationPipelineEvent.ContextRemoved`.
+ *
+ * Emitted by ContextService.deleteContext after a live-tracked context item is
+ * soft-deleted. Mirrors the {@link ContextAddedPayload} traceability shape but
+ * carries only the `contextItemId` — the LiveDocumentationService uses it to
+ * drop the matching entry from the in-flight running summary's notes.
+ */
+export interface ContextRemovedPayload extends ConsultationPipelineEventBase {
+  /** The soft-deleted context item id */
+  contextItemId: string;
 }
 
 /**
@@ -289,6 +311,7 @@ export const DEFAULT_PIPELINE_CONFIG: ConsultationPipelineConfig = {
 export type ConsultationPipelineEventPayloadMap = {
   [ConsultationPipelineEvent.TranscriptionCreated]: TranscriptionCreatedPayload;
   [ConsultationPipelineEvent.ContextAdded]: ContextAddedPayload;
+  [ConsultationPipelineEvent.ContextRemoved]: ContextRemovedPayload;
   [ConsultationPipelineEvent.SummaryGenerated]: SummaryGeneratedPayload;
   [ConsultationPipelineEvent.NerExtracted]: NerExtractedPayload;
   [ConsultationPipelineEvent.PipelineCompleted]: PipelineCompletedPayload;

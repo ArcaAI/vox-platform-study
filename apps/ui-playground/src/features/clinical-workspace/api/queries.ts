@@ -7,17 +7,18 @@
  * the thin api wrappers.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery, type UseQueryOptions, type UseQueryResult } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryOptions, type UseQueryResult } from '@tanstack/react-query';
 import { useArcaStore, type AgenticClient } from '@arcaai/vox';
-import { fetchContextItems, fetchProvenance, fetchRecordings } from './clinical-workspace.api';
+import { createHighlight, deleteHighlight, fetchContextItems, fetchHighlights, fetchProvenance, fetchRecordings } from './clinical-workspace.api';
 import { selectLatestNote } from '../lib/artifacts';
 import { type DraftWaitStatus, draftWaitStatus, nextDraftPollInterval } from '../lib/draft-polling';
-import type { AudioRecordingItem, SummaryProvenanceResponse, WorkspaceContextItem } from '../types';
+import type { AudioRecordingItem, CreateHighlightRequest, SummaryProvenanceResponse, WorkspaceContextItem, WorkspaceHighlight } from '../types';
 
 export const clinicalWorkspaceKeys = {
   context: (consultationId: string) => ['clinical-workspace', 'context', consultationId] as const,
   recordings: (consultationId: string) => ['clinical-workspace', 'recordings', consultationId] as const,
   provenance: (consultationId: string, noteId: string) => ['clinical-workspace', 'provenance', consultationId, noteId] as const,
+  highlights: (consultationId: string) => ['clinical-workspace', 'highlights', consultationId] as const,
 };
 
 type ContextQueryOptions = Pick<UseQueryOptions<WorkspaceContextItem[]>, 'refetchInterval'>;
@@ -47,6 +48,42 @@ export function useProvenanceQuery(consultationId: string | null, noteContextIte
     queryKey: clinicalWorkspaceKeys.provenance(consultationId ?? 'none', noteContextItemId ?? 'none'),
     queryFn: () => fetchProvenance(apiClient!, consultationId!, noteContextItemId!),
     enabled: !!apiClient && !!consultationId && !!noteContextItemId,
+  });
+}
+
+// ─── Manual highlights (TASK-344 Workstream B, Phase 2) ──────────────────────
+
+/** Load the consultation's persisted manual highlights (rendered on load). */
+export function useHighlightsQuery(consultationId: string | null): UseQueryResult<WorkspaceHighlight[]> {
+  const apiClient = useArcaStore((s: { apiClient: AgenticClient | null }) => s.apiClient);
+  return useQuery({
+    queryKey: clinicalWorkspaceKeys.highlights(consultationId ?? 'none'),
+    queryFn: () => fetchHighlights(apiClient!, consultationId!),
+    enabled: !!apiClient && !!consultationId,
+  });
+}
+
+/** Create a manual highlight, then invalidate the highlights cache. */
+export function useCreateHighlightMutation(consultationId: string | null): UseMutationResult<WorkspaceHighlight, Error, CreateHighlightRequest> {
+  const apiClient = useArcaStore((s: { apiClient: AgenticClient | null }) => s.apiClient);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateHighlightRequest) => createHighlight(apiClient!, consultationId!, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: clinicalWorkspaceKeys.highlights(consultationId ?? 'none') });
+    },
+  });
+}
+
+/** Soft-delete a manual highlight, then invalidate the highlights cache. */
+export function useDeleteHighlightMutation(consultationId: string | null): UseMutationResult<unknown, Error, string> {
+  const apiClient = useArcaStore((s: { apiClient: AgenticClient | null }) => s.apiClient);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (highlightId: string) => deleteHighlight(apiClient!, consultationId!, highlightId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: clinicalWorkspaceKeys.highlights(consultationId ?? 'none') });
+    },
   });
 }
 

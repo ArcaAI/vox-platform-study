@@ -11,6 +11,7 @@ import {
   PromptTemplateRepository,
   ConsultationStatus,
   HarnessAuditAction,
+  HighlightRepository,
 } from '@arcaai/domains';
 import { HarnessAuditService } from '../../harness-audit';
 import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt-assembly.service';
@@ -55,6 +56,10 @@ export class HarnessInternalService {
     // Optional so unit fixtures can omit it. Production DI supplies it via
     // ConsultationJobServiceModule; draft SSE progress is best-effort either way.
     @Optional() @Inject(IConsultationJobService) private readonly jobService?: IConsultationJobService,
+    // TASK-344 Workstream B — optional so existing unit fixtures keep their
+    // constructor arity; production DI supplies it via CoreDatabaseModule. The
+    // manual-highlight SOAP feed is best-effort enrichment either way.
+    @Optional() @Inject(HighlightRepository) private readonly highlightRepository?: HighlightRepository,
   ) {}
 
   /**
@@ -147,6 +152,16 @@ export class HarnessInternalService {
         })
         .filter((c): c is string => !!c);
 
+      // TASK-344 Workstream B — thread the doctor's manual highlight spans into
+      // the authoritative SOAP prompt, labeled `[highlight]` alongside the GAP #2
+      // clinician notes. Best-effort: optional repo + soft-deleted rows already
+      // excluded by the repository's resourceStatus filter. A SEPARATE aggregate
+      // from NamedEntity, so manual marks never pollute the NER aggregation.
+      const highlightEntities = this.highlightRepository ? await this.highlightRepository.findByConsultation(consultationId) : [];
+      const highlights = highlightEntities
+        .filter((h) => h.exact?.trim())
+        .map((h) => `[highlight] ${h.exact.trim()}`);
+
       const assembled = await this.promptAssemblyService.assemble({
         departmentId: consultation?.departmentId ?? undefined,
         promptType: consultation?.parentConsultationId ? 'revisit' : 'new-patient',
@@ -157,6 +172,7 @@ export class HarnessInternalService {
         nerEntities,
         clinicianNotes,
         attachments,
+        highlights,
       });
 
       const promptTemplateId = assembled.promptId ?? null;

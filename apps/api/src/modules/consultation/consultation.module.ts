@@ -10,6 +10,8 @@ import {
   HarnessInternalServiceModule,
   HarnessPolicyServiceModule,
   LiveDocumentationServiceModule,
+  // TASK-344 Workstream B — manual doctor highlighting.
+  HighlightServiceModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { ConsultationController } from './consultation.controller';
@@ -33,6 +35,8 @@ import { HarnessInternalController } from './harness-internal.controller';
     HarnessPolicyServiceModule,
     // Clinical Workflow Playground (WS1/WS2) — live-summary watcher + recording lifecycle.
     LiveDocumentationServiceModule,
+    // TASK-344 Workstream B — manual doctor highlighting.
+    HighlightServiceModule,
   ],
   controllers: [ConsultationController, AdminConsultationController, ConsultationJobController, HarnessInternalController],
 })

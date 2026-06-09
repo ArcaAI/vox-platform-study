@@ -19,6 +19,7 @@ export * from './GoldenSetModel';
 export * from './HarnessAuditEventModel';
 export * from './HarnessPolicyChangeModel';
 export * from './HarnessPolicyModel';
+export * from './HighlightModel';
 export * from './KnowledgeChunkModel';
 export * from './KnowledgeDocumentModel';
 export * from './MediaModel';

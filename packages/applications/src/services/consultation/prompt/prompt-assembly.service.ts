@@ -119,6 +119,13 @@ export interface PromptAssemblyParams {
    * appended to the prompt.
    */
   attachments?: string[];
+  /**
+   * TASK-344 Workstream B — the doctor's manual highlight spans for the
+   * consultation (each entry already labeled by the caller, e.g. `[highlight] …`).
+   * Serialised into {doctor_highlights} and/or appended so the clinician-flagged
+   * spans reach the authoritative SOAP. A SEPARATE concern from NER entities.
+   */
+  highlights?: string[];
 }
 
 export interface AssembledPrompt {
@@ -192,6 +199,15 @@ export class PromptAssemblyService {
       userPrompt += `\n\n--- ATTACHMENTS (lab / exam results) ---\n${attachmentsBlock}`;
     }
 
+    // TASK-344 Workstream B — fold the doctor's manually highlighted spans into
+    // the authoritative-SOAP prompt. Same pattern as NER / clinician notes: if
+    // the template consumed {doctor_highlights} the block is already present,
+    // else append it under a labeled section.
+    const highlightsBlock = variables.doctor_highlights ?? '';
+    if (highlightsBlock && !userPrompt.includes(highlightsBlock)) {
+      userPrompt += `\n\n--- DOCTOR HIGHLIGHTS (clinician-flagged spans) ---\n${highlightsBlock}`;
+    }
+
     const promptConfig = this.extractPromptConfig(template);
     const hyperparameters = promptConfig?.hyperparameters ?? {};
     const outputSchema = promptConfig?.outputSchema ?? null;
@@ -228,6 +244,9 @@ export class PromptAssemblyService {
       // when none) so templates referencing them never leave a placeholder.
       clinician_notes: serializeTextBlock(params.clinicianNotes),
       attachments: serializeTextBlock(params.attachments),
+      // TASK-344 Workstream B — always define {doctor_highlights} (empty when
+      // none) so templates referencing it never leave a literal placeholder.
+      doctor_highlights: serializeTextBlock(params.highlights),
     };
 
     if (params.preSummaryText) {
