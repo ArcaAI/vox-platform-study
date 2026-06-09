@@ -31,6 +31,13 @@ vi.mock('@arcaai/ui/button', () => ({ Button: ({ children, ...p }: any) => <butt
 vi.mock('@arcaai/ui/scroll-area', () => ({ ScrollArea: ({ children, ...p }: any) => <div {...p}>{children}</div> }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+// TASK-344 — with a consultationId the transcript pane mounts the connected
+// manual-highlight surface (when no claim is selected). Stub it so this screen
+// test stays focused on claim→evidence wiring and doesn't pull the query hooks.
+vi.mock('../../highlightable-surface', () => ({
+  ManualHighlightSurface: (props: any) => <div data-testid="manual-surface" data-target-kind={props.targetKind} data-source-id={props.sourceContextItemId} />,
+}));
+
 vi.mock('@arcaai/vox', () => ({
   selectClaimsNeedingAttention: vi.fn(),
   groupClaimsBySection: vi.fn(),

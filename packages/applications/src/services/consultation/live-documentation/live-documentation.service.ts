@@ -363,7 +363,17 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const label = payload.subType ? `[${payload.subType}] ` : '';
     const note = (payload.contentPreview ?? '').trim();
     const text = note ? `${label}${note}` : `${label}${payload.contextType} added`;
-    session.contextNotes.push({ contextItemId: payload.contextItemId, text });
+
+    // UPSERT by contextItemId (TASK-344): the OCR enrichment processor re-emits
+    // ContextAdded for the SAME contextItemId once it has extracted text. Update the
+    // existing note in place (preserving insertion order) instead of appending a
+    // duplicate, so one attachment yields exactly one running-summary note.
+    const existing = session.contextNotes.find((n) => n.contextItemId === payload.contextItemId);
+    if (existing) {
+      existing.text = text;
+    } else {
+      session.contextNotes.push({ contextItemId: payload.contextItemId, text });
+    }
     this.scheduleFlush(session);
   }
 

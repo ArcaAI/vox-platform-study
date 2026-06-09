@@ -3,10 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@arcaai/ui/card';
 import { ScrollArea } from '@arcaai/ui/scroll-area';
 import type { CitationClaim, HighlightSegment } from '@arcaai/vox';
 import { AlertTriangle, FileText } from 'lucide-react';
+import { ManualHighlightSurface } from '../highlightable-surface';
 
 export interface TranscriptHighlightPane {
   contextItemId: string;
   label?: string;
+  /** The transcript's plain text (anchor coordinate space for manual highlights). */
+  text?: string;
   segments: HighlightSegment[];
   /** True when the selected claim cites this transcript. */
   hasHighlight: boolean;
@@ -16,6 +19,13 @@ interface TranscriptPaneProps {
   panes: TranscriptHighlightPane[];
   /** The currently selected claim (drives the highlight + notices), or null. */
   selectedClaim: CitationClaim | null;
+  /**
+   * TASK-344 — when provided (and no claim is being inspected), the transcript
+   * becomes a persisted manual-highlight surface (`targetKind: 'TRANSCRIPT'`).
+   * When a claim is selected the pane reverts to the read-only AI-provenance
+   * evidence view, so manual marks never collide with the amber evidence spans.
+   */
+  consultationId?: string;
 }
 
 function renderSegments(segments: HighlightSegment[]) {
@@ -35,7 +45,7 @@ function renderSegments(segments: HighlightSegment[]) {
  * cites (resolved by char-offset upstream) are highlighted in the source
  * transcript; claims without provenance surface an explicit warning instead.
  */
-export function TranscriptPane({ panes, selectedClaim }: TranscriptPaneProps) {
+export function TranscriptPane({ panes, selectedClaim, consultationId }: TranscriptPaneProps) {
   const hasSelection = !!selectedClaim;
   const selectedHasEvidence = hasSelection && selectedClaim.evidence.length > 0;
 
@@ -64,20 +74,36 @@ export function TranscriptPane({ panes, selectedClaim }: TranscriptPaneProps) {
           </div>
         )}
 
-        {panes.map((pane) => (
-          <div key={pane.contextItemId} className="flex flex-col gap-1.5">
-            {pane.label && (
-              <span className="text-muted-foreground font-mono text-[10px]">
-                {pane.label} · {pane.contextItemId}
-              </span>
-            )}
-            <ScrollArea className="h-[28rem] rounded-md border">
-              <p className={cn('p-3 text-sm leading-relaxed whitespace-pre-wrap', hasSelection && !pane.hasHighlight && 'text-muted-foreground')}>
-                {renderSegments(pane.segments)}
-              </p>
-            </ScrollArea>
-          </div>
-        ))}
+        {panes.map((pane) => {
+          // Manual highlighting is offered only while no claim is being inspected;
+          // selecting a claim swaps back to the read-only AI-provenance evidence.
+          const manualEnabled = !hasSelection && !!consultationId;
+          return (
+            <div key={pane.contextItemId} className="flex flex-col gap-1.5">
+              {pane.label && (
+                <span className="text-muted-foreground font-mono text-[10px]">
+                  {pane.label} · {pane.contextItemId}
+                </span>
+              )}
+              <ScrollArea className="h-[28rem] rounded-md border">
+                {manualEnabled ? (
+                  <ManualHighlightSurface
+                    consultationId={consultationId!}
+                    targetKind="TRANSCRIPT"
+                    sourceContextItemId={pane.contextItemId}
+                    text={pane.text ?? pane.segments.map((s) => s.text).join('')}
+                    className="p-3"
+                    data-testid={`transcript-highlightable-${pane.contextItemId}`}
+                  />
+                ) : (
+                  <p className={cn('p-3 text-sm leading-relaxed whitespace-pre-wrap', hasSelection && !pane.hasHighlight && 'text-muted-foreground')}>
+                    {renderSegments(pane.segments)}
+                  </p>
+                )}
+              </ScrollArea>
+            </div>
+          );
+        })}
       </CardContent>
     </Card>
   );

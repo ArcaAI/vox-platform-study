@@ -25,6 +25,15 @@ vi.mock('@arcaai/ui/scroll-area', () => ({
   ScrollArea: ({ children, ...p }: any) => <div {...p}>{children}</div>,
 }));
 
+// TASK-344 — the transcript becomes a manual-highlight surface when no claim is
+// inspected. Stub the connected surface so this stays a presentational test and
+// we can assert the target-kind/source wiring without the React Query hooks.
+vi.mock('../../highlightable-surface', () => ({
+  ManualHighlightSurface: (props: any) => (
+    <div data-testid="manual-surface" data-target-kind={props.targetKind} data-source-id={props.sourceContextItemId} data-text={props.text} />
+  ),
+}));
+
 import { TranscriptPane, type TranscriptHighlightPane } from '../transcript-pane';
 import type { CitationClaim } from '@arcaai/vox';
 
@@ -87,6 +96,39 @@ describe('TranscriptPane', () => {
     render(<TranscriptPane panes={[plainPane]} selectedClaim={null} />);
 
     expect(screen.getByText(/select a claim to highlight/i)).toBeInTheDocument();
+    expect(screen.getByText('full transcript text')).toBeInTheDocument();
+  });
+});
+
+describe('TranscriptPane — manual highlighting (TASK-344)', () => {
+  const manualPane: TranscriptHighlightPane = {
+    contextItemId: 'tx1',
+    label: 'Live transcription',
+    text: 'full transcript text',
+    segments: [{ text: 'full transcript text', highlighted: false }],
+    hasHighlight: false,
+  };
+
+  it('renders a TRANSCRIPT manual-highlight surface when no claim is selected and a consultationId is provided', () => {
+    render(<TranscriptPane panes={[manualPane]} selectedClaim={null} consultationId="c1" />);
+
+    const surface = screen.getByTestId('manual-surface');
+    expect(surface.getAttribute('data-target-kind')).toBe('TRANSCRIPT');
+    expect(surface.getAttribute('data-source-id')).toBe('tx1');
+    expect(surface.getAttribute('data-text')).toBe('full transcript text');
+  });
+
+  it('shows provenance evidence (not the manual surface) once a claim is selected', () => {
+    render(<TranscriptPane panes={[highlightedPane]} selectedClaim={claim()} consultationId="c1" />);
+
+    expect(screen.queryByTestId('manual-surface')).toBeNull();
+    expect(document.querySelectorAll('[data-highlight="true"]')).toHaveLength(1);
+  });
+
+  it('stays presentational (no manual surface) when no consultationId is provided', () => {
+    render(<TranscriptPane panes={[manualPane]} selectedClaim={null} />);
+
+    expect(screen.queryByTestId('manual-surface')).toBeNull();
     expect(screen.getByText('full transcript text')).toBeInTheDocument();
   });
 });

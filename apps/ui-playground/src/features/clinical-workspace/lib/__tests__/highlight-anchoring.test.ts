@@ -4,11 +4,12 @@
  * Covers anchor computation, re-attachment tiers (position → quote → fuzzy →
  * orphaned), the never-throw contract, and render-segment building.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import {
   ANCHOR_CONTEXT_LEN,
   buildHighlightSegments,
   computeAnchor,
+  computeAnchorFromSelection,
   reattachAnchor,
   resolveHighlights,
   type HighlightAnchor,
@@ -150,5 +151,97 @@ describe('resolveHighlights', () => {
     expect(resolved).toHaveLength(1);
     expect(text.slice(resolved[0].position.start, resolved[0].position.end)).toBe('cough');
     expect(resolved[0].match).toBe('quote');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOM selection → anchor. jsdom's Range.toString is partial, so the offset probe
+// (`offsetOfPoint` measures `range.toString().length` from the container start
+// to a DOM point) is made deterministic by stubbing Range.prototype.toString for
+// a single-text-node container: the internally-created range always ends at
+// (textNode, charOffset), so the prefix length is just that offset.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('computeAnchorFromSelection', () => {
+  const TEXT = 'The patient reports severe chest pain radiating to the left arm.';
+  let container: HTMLParagraphElement;
+  const originalToString = Range.prototype.toString;
+
+  beforeEach(() => {
+    Range.prototype.toString = function (this: Range): string {
+      return String(this.endContainer.textContent ?? '').slice(0, this.endOffset);
+    };
+    container = document.createElement('p');
+    container.textContent = TEXT;
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    Range.prototype.toString = originalToString;
+    container.remove();
+  });
+
+  /** A minimal Selection over `[start, end)` of the container's single text node. */
+  function selectionOver(start: number, end: number, opts: { collapsed?: boolean; rangeCount?: number } = {}): Selection {
+    const textNode = container.firstChild as Text;
+    const range = document.createRange();
+    range.setStart(textNode, start);
+    range.setEnd(textNode, end);
+    return {
+      rangeCount: opts.rangeCount ?? 1,
+      isCollapsed: opts.collapsed ?? start === end,
+      getRangeAt: () => range,
+    } as unknown as Selection;
+  }
+
+  it('builds the exact + bounded prefix/suffix + char offsets from a DOM selection', () => {
+    const start = TEXT.indexOf('chest pain');
+    const end = start + 'chest pain'.length;
+
+    const anchor = computeAnchorFromSelection(container, selectionOver(start, end))!;
+
+    expect(anchor).not.toBeNull();
+    expect(anchor.quote.exact).toBe('chest pain');
+    expect(anchor.position).toEqual({ start, end });
+    expect(anchor.quote.prefix).toBe(TEXT.slice(Math.max(0, start - ANCHOR_CONTEXT_LEN), start));
+    expect(anchor.quote.prefix!.length).toBeLessThanOrEqual(ANCHOR_CONTEXT_LEN);
+    expect(anchor.quote.suffix).toBe(TEXT.slice(end, end + ANCHOR_CONTEXT_LEN));
+  });
+
+  it('normalizes a range whose measured points are descending (defensive min/max)', () => {
+    const start = TEXT.indexOf('severe');
+    const end = start + 'severe'.length;
+    const textNode = container.firstChild as Text;
+
+    // A real DOM Range always self-orders, so feed a hand-built range with the
+    // start/end points reversed to exercise the helper's defensive min/max.
+    const reversed = { startContainer: textNode, startOffset: end, endContainer: textNode, endOffset: start } as unknown as Range;
+    const selection = { rangeCount: 1, isCollapsed: false, getRangeAt: () => reversed } as unknown as Selection;
+
+    const anchor = computeAnchorFromSelection(container, selection)!;
+
+    expect(anchor.quote.exact).toBe('severe');
+    expect(anchor.position).toEqual({ start, end });
+  });
+
+  it('returns null for collapsed / empty / no-range selections (never throws)', () => {
+    const at = TEXT.indexOf('patient');
+    expect(computeAnchorFromSelection(container, selectionOver(at, at, { collapsed: true }))).toBeNull();
+    expect(computeAnchorFromSelection(container, selectionOver(at, at + 3, { rangeCount: 0 }))).toBeNull();
+    expect(computeAnchorFromSelection(container, null)).toBeNull();
+    expect(computeAnchorFromSelection(null, selectionOver(at, at + 3))).toBeNull();
+  });
+
+  it('returns null when the selection falls outside the container', () => {
+    const outside = document.createElement('p');
+    outside.textContent = 'some other surface entirely';
+    document.body.appendChild(outside);
+    const outsideText = outside.firstChild as Text;
+    const range = document.createRange();
+    range.setStart(outsideText, 0);
+    range.setEnd(outsideText, 4);
+    const selection = { rangeCount: 1, isCollapsed: false, getRangeAt: () => range } as unknown as Selection;
+
+    expect(computeAnchorFromSelection(container, selection)).toBeNull();
+    outside.remove();
   });
 });
