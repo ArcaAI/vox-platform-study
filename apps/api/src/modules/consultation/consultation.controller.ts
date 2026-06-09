@@ -35,6 +35,10 @@ import {
   StartRecordingRequest,
   StopRecordingRequest,
   RecordingStateResponse,
+  // TASK-344 Workstream B — manual doctor highlighting.
+  IHighlightService,
+  CreateHighlightRequest,
+  HighlightResponse,
 } from '@arcaai/applications';
 import {
   Controller,
@@ -157,6 +161,9 @@ export class ConsultationController {
     private readonly tagService: ITagService,
     // Clinical Workflow Playground (WS1/WS2) — per-consultation realtime watcher.
     private readonly liveDocumentationService: LiveDocumentationService,
+    // TASK-344 Workstream B — manual doctor highlighting.
+    @Inject(IHighlightService)
+    private readonly highlightService: IHighlightService,
   ) {}
 
   private getDoctorId(): string {
@@ -643,6 +650,59 @@ export class ConsultationController {
   async deleteContext(@Param('id') id: string, @Param('contextId') contextId: string): Promise<OkResponseDto> {
     await this.verifyConsultationOwnership(id);
     await this.contextService.deleteContext(contextId);
+    return new OkResponseDto();
+  }
+
+  // ─── Manual Highlights (TASK-344 Workstream B) ───────────────────
+  // Doctor-authored highlights anchored to a persisted surface (transcript /
+  // case note / work note / summary) via W3C dual selectors. A SEPARATE
+  // aggregate from NamedEntity so manual marks never pollute the AI NER
+  // aggregation. Writes are ownership-guarded; reads use the broader access
+  // guard, mirroring the Context Item routes above.
+
+  @ApiEndpoint({
+    returnedModel: HighlightResponse,
+    method: HttpMethod.POST,
+    path: ':id/highlights',
+    by: ['id'],
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async createHighlight(@Param('id') id: string, @Body() request: CreateHighlightRequest): Promise<HighlightResponse> {
+    await this.verifyConsultationOwnership(id);
+    return this.highlightService.createHighlight(id, request);
+  }
+
+  @ApiEndpoint({
+    returnedModel: HighlightResponse,
+    multi: true,
+    path: ':id/highlights',
+    by: ['id'],
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async getHighlights(@Param('id') id: string): Promise<HighlightResponse[]> {
+    await this.verifyConsultationAccess(id);
+    return this.highlightService.getHighlights(id);
+  }
+
+  @ApiEndpoint({
+    returnedModel: OkResponseDto,
+    method: HttpMethod.DELETE,
+    path: ':id/highlights/:highlightId',
+    by: ['id', 'highlightId'],
+    additionalData: {
+      schema: {
+        type: 'object',
+        properties: {
+          ok: { type: 'boolean' },
+        },
+      },
+    },
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiParam({ name: 'highlightId', description: 'Highlight ID' })
+  async deleteHighlight(@Param('id') id: string, @Param('highlightId') highlightId: string): Promise<OkResponseDto> {
+    await this.verifyConsultationOwnership(id);
+    await this.highlightService.deleteHighlight(id, highlightId);
     return new OkResponseDto();
   }
 

@@ -46,6 +46,9 @@ model Consultation {
 
     // Relations
     ContextItems ContextItem[]
+    // TASK-344 Workstream B — manual doctor highlights anchored to this
+    // consultation's persisted surfaces (virtual relation; FK lives on Highlight).
+    Highlights   Highlight[]
 
     // Indexes (no unique constraint - allows multiple visits same doctor/day)
     @@index([tenantId], name: "Consultation_tenantId_idx")
@@ -395,6 +398,67 @@ model ContextItemVersion {
     @@index([contextItemId, versionNumber], name: "ContextItemVersion_item_version_idx")
     // Unique: one version number per context item
     @@unique([contextItemId, versionNumber])
+    @@schema("core")
+}
+
+// =============================================================================
+// HIGHLIGHT (TASK-344 Workstream B — Manual doctor highlighting)
+// Durable, per-tenant, soft-deletable doctor-authored highlight anchored to a
+// persisted ContextItem (transcript / case note / work note / summary) via W3C
+// dual selectors (TextQuoteSelector exact/prefix/suffix + TextPositionSelector
+// start/end). Separate model from NamedEntity so manual marks NEVER pollute the
+// AI NER aggregation.
+// =============================================================================
+
+model Highlight {
+    // Meta fields
+    metaData Json?  @map("_metadata") @db.JsonB
+    version  Int    @default(1) @map("_version")
+    id       String @id @default(uuid(7))
+
+    // Multi-tenant
+    tenantId String
+
+    // Parent consultation
+    consultationId String
+    Consultation   Consultation @relation(fields: [consultationId], references: [id])
+
+    // Anchor target — the persisted ContextItem this highlight is anchored to
+    // (soft reference, same pattern as ContextItem.mediaId / dnaWritingStyleId).
+    // Nullable for a possible future "live ephemeral promoted on stop". The
+    // targetKind discriminates WHICH persisted surface the mark lives on.
+    sourceContextItemId String?
+    targetKind          HighlightTargetKind
+
+    // W3C Web Annotation dual selectors:
+    //  - TextQuoteSelector  : exact + ~32-char prefix/suffix (robust to re-flow)
+    //  - TextPositionSelector: startOffset/endOffset (precise but brittle)
+    exact       String  @db.Text
+    prefix      String? @db.Text
+    suffix      String? @db.Text
+    startOffset Int
+    endOffset   Int
+
+    // Presentation
+    color String?
+    label String?
+    note  String? @db.Text
+
+    // Resource status + Audit
+    resourceStatus          ResourceStatusType @default(ENABLED)
+    resourceStatusUpdatedAt DateTime?
+    resourceStatusUpdatedBy String?
+    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
+    updatedBy               String?
+    createdAt               DateTime @default(now())
+    updatedAt               DateTime @updatedAt
+
+    // Indexes
+    @@index([tenantId], name: "Highlight_tenantId_idx")
+    @@index([consultationId], name: "Highlight_consultationId_idx")
+    @@index([sourceContextItemId], name: "Highlight_sourceContextItemId_idx")
+    // Tenant-leading composite for per-consultation reads (TASK-305 A.4 pattern).
+    @@index([tenantId, consultationId], name: "Highlight_tenant_consultation_idx")
     @@schema("core")
 }
 

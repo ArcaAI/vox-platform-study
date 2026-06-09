@@ -19,6 +19,7 @@ export * from './GoldenSetFactory';
 export * from './HarnessAuditEventFactory';
 export * from './HarnessPolicyChangeFactory';
 export * from './HarnessPolicyFactory';
+export * from './HighlightFactory';
 export * from './KnowledgeChunkFactory';
 export * from './KnowledgeDocumentFactory';
 export * from './MediaFactory';

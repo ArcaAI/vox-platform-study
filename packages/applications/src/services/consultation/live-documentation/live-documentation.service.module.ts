@@ -7,6 +7,7 @@ import { RedisCacheModule } from '../../baseServices/redis';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingSessionServiceModule } from '../../stt/streaming/streamingSession.service.module';
 import { LiveDocumentationService } from './live-documentation.service';
+import { OcrEnrichmentProcessor } from '../ocr/ocr-enrichment.processor';
 
 /**
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
@@ -19,10 +20,16 @@ import { LiveDocumentationService } from './live-documentation.service';
  * - RedisCacheModule   → publish/setex the running summary to `consultation:live-summary:{id}`
  * - RedisSubscriberService → dedicated subscriber connection for the SSE relay
  * - StreamingSessionServiceModule → StreamingAudioBridgeService for `stt:result:{sessionId}`
+ *
+ * TASK-344 (Workstream A2) — also hosts {@link OcrEnrichmentProcessor}, the
+ * event-driven heavy-OCR enrichment handler. It shares this module's
+ * `ContextAdded` reaction wiring and DI (HttpModule → NLP `/extract`,
+ * CoreDatabaseModule → ContextItemRepository, EventEmitterModule → re-emit;
+ * IBlobStorageService + ClsService are global), so no new module is needed.
  */
 @Module({
   imports: [HttpModule, ConfigModule, CoreDatabaseModule, EventEmitterModule, RedisCacheModule.register(), StreamingSessionServiceModule],
-  providers: [LiveDocumentationService, RedisSubscriberService],
+  providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor],
   exports: [LiveDocumentationService],
 })
 export class LiveDocumentationServiceModule {}

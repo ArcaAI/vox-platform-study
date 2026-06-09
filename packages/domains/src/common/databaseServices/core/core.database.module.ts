@@ -24,6 +24,7 @@ import { GoldenSetRepository } from '../../../repositories/generated/core/Golden
 import { HarnessAuditEventRepository } from '../../../repositories/generated/core/HarnessAuditEventRepository';
 import { HarnessPolicyChangeRepository } from '../../../repositories/generated/core/HarnessPolicyChangeRepository';
 import { HarnessPolicyRepository } from '../../../repositories/generated/core/HarnessPolicyRepository';
+import { HighlightRepository } from '../../../repositories/generated/core/HighlightRepository';
 import { KnowledgeChunkRepository } from '../../../repositories/generated/core/KnowledgeChunkRepository';
 import { KnowledgeDocumentRepository } from '../../../repositories/generated/core/KnowledgeDocumentRepository';
 import { MediaRepository } from '../../../repositories/generated/core/MediaRepository';
@@ -82,6 +83,8 @@ const repositories = [
   AudioRecordingRepository,
   SummaryMetaRepository,
   NamedEntityRepository,
+  // TASK-344 Workstream B — manual doctor highlighting
+  HighlightRepository,
   // Core domain
   GlobalSettingRepository,
   MediaRepository,

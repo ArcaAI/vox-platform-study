@@ -1005,6 +1005,47 @@ describe('ContextService', () => {
                 })
             );
         });
+
+        it('emits ConsultationPipelineEvent.ContextRemoved for live drop-out (TASK-342 GAP #3d)', async () => {
+            const existing = createMockContextItemEntity({
+                id: 'context-item-id-1',
+                consultationId: 'consultation-1',
+                type: 'CASE_NOTE',
+            });
+            mockContextItemRepository.findById.mockResolvedValue(existing);
+            mockContextItemRepository.softDelete.mockResolvedValue(existing);
+
+            await service.deleteContext('context-item-id-1');
+
+            // GAP #3d: deleting a live-tracked note/lab/file must signal the
+            // LiveDocumentationService so it drops out of the in-flight running
+            // summary on the next flush.
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                'consultation.context.removed',
+                expect.objectContaining({
+                    consultationId: 'consultation-1',
+                    contextItemId: 'context-item-id-1',
+                    tenantId: 'tenant-1',
+                })
+            );
+        });
+
+        it('does NOT emit ContextRemoved for non-live context types (e.g. TRANSCRIPT) (TASK-342 GAP #3d)', async () => {
+            const existing = createMockContextItemEntity({
+                id: 'context-item-id-1',
+                consultationId: 'consultation-1',
+                type: 'TRANSCRIPT',
+            });
+            mockContextItemRepository.findById.mockResolvedValue(existing);
+            mockContextItemRepository.softDelete.mockResolvedValue(existing);
+
+            await service.deleteContext('context-item-id-1');
+
+            expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+                'consultation.context.removed',
+                expect.anything()
+            );
+        });
     });
 
     // ============================================

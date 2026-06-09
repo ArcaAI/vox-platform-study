@@ -1,5 +1,7 @@
 export * from './consultation';
 export * from './context';
+// TASK-344 Workstream B — manual doctor highlighting.
+export * from './highlight';
 export * from './summary';
 export * from './jobs';
 export * from './events';

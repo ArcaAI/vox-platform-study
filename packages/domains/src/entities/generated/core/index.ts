@@ -19,6 +19,7 @@ export * from './GoldenSetEntity';
 export * from './HarnessAuditEventEntity';
 export * from './HarnessPolicyChangeEntity';
 export * from './HarnessPolicyEntity';
+export * from './HighlightEntity';
 export * from './KnowledgeChunkEntity';
 export * from './KnowledgeDocumentEntity';
 export * from './MediaEntity';

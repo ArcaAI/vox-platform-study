@@ -37,6 +37,11 @@ dependencies = [
     "numpy>=2.0.0",
     "pandas>=2.1.0",
     "scikit-learn>=1.3.0",
+    # --- Document extraction / OCR (TASK-344 A2) ---
+    # PyMuPDF for cheap PDF text-layer extraction; RapidOCR (PaddleOCR on ONNX,
+    # CPU-only) for scanned pages/images. Route, don't OCR everything.
+    "pymupdf>=1.24.0",
+    "rapidocr-onnxruntime>=1.3.0",
     # --- Async / HTTP ---
     "aiofiles>=25.1.0",
     "python-multipart>=0.0.22",
@@ -141,6 +146,10 @@ follow_untyped_imports = false
 
 [[tool.mypy.overrides]]
 module = ["prometheus_fastapi_instrumentator", "prometheus_fastapi_instrumentator.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["fitz", "fitz.*", "rapidocr_onnxruntime", "rapidocr_onnxruntime.*"]
 ignore_missing_imports = true
 
 # pytest configuration

@@ -13,12 +13,14 @@ import type {
   AddAudioRecordingRequest,
   AddContextRequest,
   AudioRecordingItem,
+  CreateHighlightRequest,
   CreateStreamSessionResponse,
   RecordingStateResponse,
   StreamTicketResponse,
   SummaryApprovalResponseDto,
   SummaryProvenanceResponse,
   WorkspaceContextItem,
+  WorkspaceHighlight,
 } from '../types';
 
 /** Start the consultation recording (status → RECORDING). */
@@ -89,4 +91,21 @@ export function approveNote(client: AgenticClient, consultationId: string, conte
 /** Edit the draft note content before signing. */
 export function updateSummaryContent(client: AgenticClient, consultationId: string, summaryId: string, content: string): Promise<unknown> {
   return client.patch<unknown>(WORKSPACE_ENDPOINTS.summaryUpdate(consultationId, summaryId), { content });
+}
+
+// ─── Manual highlights (TASK-344 Workstream B) ───────────────────────────────
+
+/** List the consultation's manual doctor highlights. */
+export function fetchHighlights(client: AgenticClient, consultationId: string): Promise<WorkspaceHighlight[]> {
+  return client.get<WorkspaceHighlight[]>(WORKSPACE_ENDPOINTS.highlights(consultationId));
+}
+
+/** Persist a manual highlight anchored to a persisted surface. */
+export function createHighlight(client: AgenticClient, consultationId: string, body: CreateHighlightRequest): Promise<WorkspaceHighlight> {
+  return client.post<WorkspaceHighlight>(WORKSPACE_ENDPOINTS.highlights(consultationId), body);
+}
+
+/** Soft-delete a manual highlight. */
+export function deleteHighlight(client: AgenticClient, consultationId: string, highlightId: string): Promise<unknown> {
+  return client.delete<unknown>(WORKSPACE_ENDPOINTS.highlight(consultationId, highlightId));
 }

@@ -674,4 +674,100 @@ describe('LiveDocumentationService', () => {
       expect(service.isActive(CID)).toBe(true);
     });
   });
+
+  // ------------------------------------------------------------------
+  // GAP #3d (TASK-342): live drop-out of a soft-deleted context note.
+  // contextNotes are re-keyed by contextItemId so a removed note can be
+  // dropped precisely from the in-flight running summary.
+  // ------------------------------------------------------------------
+  describe('context drop-out (GAP #3d)', () => {
+    /** Pull the prompt sent to SMR `/generate` on the most recent flush. */
+    const lastSmrPrompt = (httpMock: ReturnType<typeof buildHttpMock>): string => {
+      const calls = httpMock.axiosRef.post.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/generate'));
+      return calls.length ? String((calls[calls.length - 1][1] as { prompt?: string }).prompt ?? '') : '';
+    };
+
+    it('threads an added context note into the SMR prompt unchanged (add-only, no regression)', async () => {
+      const { service, httpMock } = buildDeps();
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      service.handleContextAdded({
+        consultationId: CID,
+        tenantId: TENANT,
+        timestamp: new Date().toISOString(),
+        contextItemId: 'ctx-note-1',
+        contextType: 'CASE_NOTE',
+        contentPreview: 'Patient reports chest pain',
+      });
+
+      await service.flush(CID, { force: true });
+
+      // The add path must produce the SAME notes block as before the re-key:
+      // the prompt carries the note text verbatim under the clinician-notes label.
+      expect(lastSmrPrompt(httpMock)).toContain('Clinician notes / labs:\nPatient reports chest pain');
+    });
+
+    it('drops a removed note from the SMR prompt on the next flush, keeping the others', async () => {
+      const { service, httpMock } = buildDeps();
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      service.handleContextAdded({
+        consultationId: CID,
+        tenantId: TENANT,
+        timestamp: new Date().toISOString(),
+        contextItemId: 'ctx-keep',
+        contextType: 'CASE_NOTE',
+        contentPreview: 'Allergic to penicillin',
+      });
+      service.handleContextAdded({
+        consultationId: CID,
+        tenantId: TENANT,
+        timestamp: new Date().toISOString(),
+        contextItemId: 'ctx-remove',
+        contextType: 'CASE_NOTE',
+        contentPreview: 'Patient reports chest pain',
+      });
+
+      await service.flush(CID, { force: true });
+      const before = lastSmrPrompt(httpMock);
+      expect(before).toContain('Allergic to penicillin');
+      expect(before).toContain('Patient reports chest pain');
+
+      // Soft-delete fan-out for the second note (ConsultationPipelineEvent.ContextRemoved).
+      service.handleContextRemoved({
+        consultationId: CID,
+        tenantId: TENANT,
+        timestamp: new Date().toISOString(),
+        contextItemId: 'ctx-remove',
+      });
+
+      await service.flush(CID, { force: true });
+      const after = lastSmrPrompt(httpMock);
+      expect(after).toContain('Allergic to penicillin');
+      expect(after).not.toContain('Patient reports chest pain');
+    });
+
+    it('handleContextRemoved is a no-op for an untracked session / note id', () => {
+      const { service } = buildDeps();
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      expect(() =>
+        service.handleContextRemoved({
+          consultationId: 'unknown-consultation',
+          tenantId: TENANT,
+          timestamp: new Date().toISOString(),
+          contextItemId: 'whatever',
+        }),
+      ).not.toThrow();
+
+      expect(() =>
+        service.handleContextRemoved({
+          consultationId: CID,
+          tenantId: TENANT,
+          timestamp: new Date().toISOString(),
+          contextItemId: 'never-added',
+        }),
+      ).not.toThrow();
+    });
+  });
 });

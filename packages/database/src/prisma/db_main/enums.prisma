@@ -241,6 +241,19 @@ enum ContextItemSource {
     @@schema("core")
 }
 
+// TASK-344 Workstream B — which persisted surface a manual doctor highlight is
+// anchored to. Distinct from ContextItemType so manual marks never pollute the
+// AI NER / context-item taxonomy. The live caption transcript is ephemeral
+// (client-only) until Stop; durable highlights anchor to persisted items only.
+enum HighlightTargetKind {
+    TRANSCRIPT           // Post-stop persisted transcript ContextItem
+    CASE_NOTE            // Case note ContextItem
+    WORKNOTE             // Work note ContextItem
+    SUMMARY              // AI draft / signed summary ContextItem
+
+    @@schema("core")
+}
+
 
 // =============================================================================
 // STT SERVICE ENUMS

@@ -46,6 +46,10 @@ export const WORKSPACE_ENDPOINTS = {
   summaryProvenance: (id: string, ctxId: string) => `/consultations/${encodeURIComponent(id)}/summary/${encodeURIComponent(ctxId)}/provenance`,
   summaryApprove: (id: string, ctxId: string) => `/consultations/${encodeURIComponent(id)}/summary/${encodeURIComponent(ctxId)}/approve`,
   summaryUpdate: (id: string, summaryId: string) => `/consultations/${encodeURIComponent(id)}/summary/${encodeURIComponent(summaryId)}`,
+  // TASK-344 Workstream B — manual doctor highlights.
+  highlights: (id: string) => `/consultations/${encodeURIComponent(id)}/highlights`,
+  highlight: (id: string, highlightId: string) =>
+    `/consultations/${encodeURIComponent(id)}/highlights/${encodeURIComponent(highlightId)}`,
 } as const;
 
 /** Context item types that represent a drafted/signed clinical note. */

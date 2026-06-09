@@ -24,7 +24,7 @@ import { BaseService, assertParentInScope } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { IContextService } from './IContextService';
 import { ContextDtoMapper } from './context.dto.mapper';
-import { ConsultationPipelineEvent, ContextAddedPayload } from '../events';
+import { ConsultationPipelineEvent, ContextAddedPayload, ContextRemovedPayload } from '../events';
 import {
   AddAudioRecordingRequest,
   AddContextRequest,
@@ -245,6 +245,22 @@ export class ContextService extends BaseService implements IContextService {
       responsibleEntityId: this.requestUserId ?? undefined,
       data: { consultationId: contextItem.consultationId, type: contextItem.type },
     });
+
+    // TASK-342 GAP #3d — live drop-out. Mirror the `addContext` ContextAdded
+    // fan-out: when a live-tracked note/lab/file (WORKNOTE / CASE_NOTE /
+    // ATTACHMENT) is removed, signal the LiveDocumentationService so the matching
+    // entry leaves the in-flight running summary on the next flush. Other types
+    // (TRANSCRIPT, AI summaries) are never folded into the live notes, so they
+    // are not announced — matching the add path.
+    if (LIVE_CONTEXT_TYPES.has(contextItem.type)) {
+      this.eventEmitter.emit(ConsultationPipelineEvent.ContextRemoved, {
+        consultationId: contextItem.consultationId,
+        tenantId,
+        userId: this.requestUserId ?? undefined,
+        timestamp: new Date().toISOString(),
+        contextItemId,
+      } satisfies ContextRemovedPayload);
+    }
   }
 
   // ============================================

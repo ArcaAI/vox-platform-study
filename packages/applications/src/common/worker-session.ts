@@ -19,7 +19,9 @@ export type WorkerSessionKind =
   // TASK-330 Phase 1 (Lane G) — inbound harness gate adapter (entities/assemble/draft).
   | 'harness-internal'
   // TASK-330 Phase 3 — institutional-RAG knowledge ingestion worker.
-  | 'ingest-knowledge';
+  | 'ingest-knowledge'
+  // TASK-344 Workstream A2 — server-side OCR enrichment @OnEvent handler.
+  | 'ocr-enrichment';
 
 /**
  * Init shape for `createWorkerSession`.

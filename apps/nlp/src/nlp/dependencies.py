@@ -1,6 +1,7 @@
 from typing import cast
 
 from nlp.core.websocket_manager import WebSocketManager
+from nlp.services.document_extractor import DocumentExtractor
 from nlp.services.medical_suggester import MedicalSuggester
 from nlp.services.text_classifier import TextClassifier, TransformerTextClassifier
 from nlp.services.text_corrector import SymSpellCorrector, TextCorrector
@@ -35,3 +36,9 @@ def get_websocket_manager() -> WebSocketManager:
     if globals().get("_websocket_manager_instance") is None:
         globals()["_websocket_manager_instance"] = WebSocketManager()
     return cast(WebSocketManager, globals()["_websocket_manager_instance"])
+
+
+def get_document_extractor() -> DocumentExtractor:
+    if globals().get("_document_extractor_instance") is None:
+        globals()["_document_extractor_instance"] = DocumentExtractor()
+    return cast(DocumentExtractor, globals()["_document_extractor_instance"])
