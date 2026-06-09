@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime
+from typing import Any, cast
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -29,11 +30,11 @@ _startup_time = time.monotonic()
 
 
 def _settings(request: Request) -> Settings:
-    return request.app.state.settings
+    return cast(Settings, request.app.state.settings)
 
 
 @router.get("/health")
-async def health_check(request: Request) -> dict:
+async def health_check(request: Request) -> dict[str, Any]:
     """Detailed health check.
 
     Reports process liveness and surfaces the configured Temporal substrate
@@ -42,7 +43,7 @@ async def health_check(request: Request) -> dict:
     """
     settings = _settings(request)
 
-    checks: dict[str, dict] = {
+    checks: dict[str, dict[str, Any]] = {
         "process": {"status": "healthy"},
         "temporal": {
             "status": "configured",
@@ -63,13 +64,13 @@ async def health_check(request: Request) -> dict:
 
 
 @router.get("/health/live")
-async def liveness() -> dict:
+async def liveness() -> dict[str, str]:
     """Kubernetes liveness probe — always 200 if the process is running."""
     return {"status": "healthy"}
 
 
 @router.get("/health/ready", response_model=None)
-async def readiness(request: Request) -> dict | JSONResponse:
+async def readiness(request: Request) -> dict[str, Any] | JSONResponse:
     """Kubernetes readiness probe — requires a reachable Temporal frontend."""
     settings = _settings(request)
     try:

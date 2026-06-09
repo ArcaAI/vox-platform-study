@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
 
 from guardrail.core.dependencies import get_job_processor
+from guardrail.services.job_processor import JobProcessor
 
 router = APIRouter()
 
@@ -37,7 +38,7 @@ class JobList(BaseModel):
 @router.get("/jobs/status/{job_id}", response_model=JobStatus)
 async def get_job_status(
     job_id: str = Path(..., description="Job ID to retrieve"),
-    job_processor=Depends(get_job_processor),
+    job_processor: JobProcessor = Depends(get_job_processor),
 ) -> JobStatus:
     """Get the status of a specific guardrail analysis job."""
     try:
@@ -65,7 +66,7 @@ async def list_jobs(
     status: str | None = None,
     limit: int = 50,
     offset: int = 0,
-    job_processor=Depends(get_job_processor),
+    job_processor: JobProcessor = Depends(get_job_processor),
 ) -> JobList:
     """List guardrail analysis jobs with optional filtering."""
     try:
@@ -87,7 +88,7 @@ async def list_jobs(
 @router.delete("/jobs/cancel/{job_id}", response_model=dict[str, str])
 async def cancel_job(
     job_id: str = Path(..., description="Job ID to cancel"),
-    job_processor=Depends(get_job_processor),
+    job_processor: JobProcessor = Depends(get_job_processor),
 ) -> dict[str, str]:
     """Cancel a pending or processing guardrail analysis job."""
     try:
@@ -117,7 +118,7 @@ async def cancel_job(
 @router.get("/jobs/result/{job_id}", response_model=dict[str, Any])
 async def get_job_result(
     job_id: str = Path(..., description="Job ID to retrieve result for"),
-    job_processor=Depends(get_job_processor),
+    job_processor: JobProcessor = Depends(get_job_processor),
 ) -> dict[str, Any]:
     """Get the result of a completed guardrail analysis job."""
     try:
@@ -141,7 +142,7 @@ async def get_job_result(
                 detail=f"No result available for job {job_id}",
             )
 
-        return job_status["result"]
+        return cast("dict[str, Any]", job_status["result"])
 
     except HTTPException:
         raise
@@ -154,7 +155,7 @@ async def get_job_result(
 
 @router.get("/jobs/stats", response_model=dict[str, Any])
 async def get_job_stats(
-    job_processor=Depends(get_job_processor),
+    job_processor: JobProcessor = Depends(get_job_processor),
 ) -> dict[str, Any]:
     """Get statistics about guardrail analysis jobs."""
     try:

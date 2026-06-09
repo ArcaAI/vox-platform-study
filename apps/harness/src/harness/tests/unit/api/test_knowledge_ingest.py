@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 from qdrant_client import models
 
 import harness.api.endpoints.knowledge as knowledge
@@ -61,8 +62,8 @@ class _FakeStore:
 
 def _settings(internal_token: str = "ingest-secret", shared_token: str = "") -> Settings:
     return Settings(
-        internal_service_token=internal_token,
-        service_token=shared_token,
+        internal_service_token=SecretStr(internal_token),
+        service_token=SecretStr(shared_token),
         log_level="debug",
     )
 

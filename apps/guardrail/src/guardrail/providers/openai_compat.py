@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -236,7 +236,7 @@ class OpenAICompatProvider:
     ) -> list[dict[str, Any]]:
         """Analyze multiple texts concurrently."""
         tasks = [self.analyze_content(text, guardrail_type) for text in texts]
-        return await asyncio.gather(*tasks, return_exceptions=True)
+        return cast(list[dict[str, Any]], await asyncio.gather(*tasks, return_exceptions=True))
 
     async def health_check(self) -> dict[str, Any]:
         """Check the OpenAI-compatible service health via the models listing."""
@@ -437,7 +437,7 @@ class OpenAICompatGuardianProvider:
     ) -> list[dict[str, Any]]:
         """Validate multiple texts for medical context."""
         tasks = [self.validate_medical_context(text) for text in texts]
-        return await asyncio.gather(*tasks, return_exceptions=True)
+        return cast(list[dict[str, Any]], await asyncio.gather(*tasks, return_exceptions=True))
 
     async def health_check(self) -> dict[str, Any]:
         """Check guardian service health via the models listing."""

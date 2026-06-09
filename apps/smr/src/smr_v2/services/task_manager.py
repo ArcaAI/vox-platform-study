@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import structlog
 
@@ -100,7 +100,7 @@ class TaskManager:
             {"data": chunk.model_dump_json()},
             maxlen=self._stream_max_len,
         )
-        return msg_id
+        return cast(str, msg_id)
 
     async def get_chunks(self, task_id: str, after_id: str | None = None) -> list[StreamChunk]:
         start = f"({after_id}" if after_id else "-"

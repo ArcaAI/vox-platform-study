@@ -19,10 +19,11 @@ and hermetic — they never load a model.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
-from harness.core.config import PhiConfig
+from harness.core.config import PhiConfig, Settings
 from harness.guards.phi import PhiEgressBlocked, PhiRedactor, RedactionResult
 
 # A crafted clinical line carrying four distinct PHI types.
@@ -38,18 +39,21 @@ def _settings(
     fail_closed: bool = True,
     providers: tuple[str, ...] = ("azure", "bedrock"),
     enabled: bool = True,
-) -> SimpleNamespace:
+) -> Settings:
     """A ``settings``-shaped stand-in exposing the real :class:`PhiConfig`.
 
     Values are passed explicitly so the test is deterministic regardless of any
     ``HARNESS_PHI_*`` in the environment.
     """
-    return SimpleNamespace(
-        phi=PhiConfig(
-            enabled=enabled,
-            fail_closed=fail_closed,
-            cloud_egress_providers=list(providers),
-        )
+    return cast(
+        Settings,
+        SimpleNamespace(
+            phi=PhiConfig(
+                enabled=enabled,
+                fail_closed=fail_closed,
+                cloud_egress_providers=list(providers),
+            )
+        ),
     )
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
 
 from guardrail.core.config import Settings
@@ -14,19 +15,24 @@ from guardrail.core.dependencies import (
     get_redis,
     get_settings,
 )
+from guardrail.providers.gliner import GlinerProvider
+from guardrail.providers.ollama import OllamaProvider
+from guardrail.providers.openai_compat import OpenAICompatProvider
 
 router = APIRouter()
+
+ContentProvider = OllamaProvider | OpenAICompatProvider
 
 
 @router.get("/health", response_model=dict[str, Any])
 async def health_check(
     settings: Settings = Depends(get_settings),
-    ollama_provider=Depends(get_ollama_provider),
-    gliner_provider=Depends(get_gliner_provider),
-    redis=Depends(get_redis),
+    ollama_provider: ContentProvider = Depends(get_ollama_provider),
+    gliner_provider: GlinerProvider = Depends(get_gliner_provider),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict[str, Any]:
     """Comprehensive health check for all services."""
-    health_status = {
+    health_status: dict[str, Any] = {
         "status": "healthy",
         "timestamp": datetime.now(UTC).isoformat(),
         "version": "1.0.0",
@@ -66,8 +72,8 @@ async def health_check(
 
 @router.get("/health/ready", response_model=dict[str, Any])
 async def readiness_check(
-    gliner_provider=Depends(get_gliner_provider),
-    redis=Depends(get_redis),
+    gliner_provider: GlinerProvider = Depends(get_gliner_provider),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict[str, Any]:
     """Readiness check - service is ready to accept traffic."""
     try:

@@ -64,7 +64,7 @@ from smr_v2.models.responses import (
 )
 from smr_v2.models.stream import StreamChunk
 from smr_v2.models.task import TaskStatus
-from smr_v2.providers.base import ProviderNotFoundError, ProviderRegistry
+from smr_v2.providers.base import LLMProvider, ProviderNotFoundError, ProviderRegistry
 from smr_v2.services.circuit_breaker import CircuitBreaker, CircuitState
 from smr_v2.services.external_guardrail import ExternalGuardrailClient
 from smr_v2.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
@@ -415,8 +415,8 @@ def _update_cb_metric(provider_name: str, cb: CircuitBreaker) -> None:
 
 
 async def _run_streaming_generation(
-    task_manager,
-    provider,
+    task_manager: TaskManager,
+    provider: LLMProvider,
     task_id: str,
     request_body: GenerateRequest,
     *,
@@ -424,7 +424,7 @@ async def _run_streaming_generation(
     model: str = "default",
     shutdown_manager: ShutdownManager | None = None,
     circuit_breakers: dict[str, CircuitBreaker] | None = None,
-):
+) -> None:
     from smr_v2.core.metrics import TTFT_SECONDS
 
     resolved_model = model or request_body.model or "default"

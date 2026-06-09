@@ -1,3 +1,4 @@
+import { ConsultationStatus } from '@arcaai/domains';
 import { OpenConsultationRequest, UpdateConsultationRequest, ConsultationResponse, PaginatedConsultationResponse } from './dto';
 
 /**
@@ -76,6 +77,7 @@ export abstract class IConsultationService {
     patientId?: string;
     doctorId?: string;
     departmentId?: string;
+    status?: ConsultationStatus;
   }): Promise<PaginatedConsultationResponse>;
 
   /**

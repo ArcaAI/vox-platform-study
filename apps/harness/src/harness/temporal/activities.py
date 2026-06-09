@@ -14,6 +14,7 @@ runtime (allowed in activities) and construct a client per call.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -455,7 +456,7 @@ async def escalate_gate(payload: EscalateInput) -> EscalateResult:
 
 
 # Registered on the worker alongside ``ping_activity``.
-DOCUMENT_ACTIVITIES = [
+DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
     fetch_policy,
     extract_entities,
     persist_entities,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from typing import Any
 
 
 class QueueFullError(Exception):
@@ -14,7 +15,7 @@ class QueueFullError(Exception):
 class QueueItem:
     priority: int
     request_id: str = field(compare=False)
-    future: asyncio.Future = field(compare=False)
+    future: asyncio.Future[Any] = field(compare=False)
 
 
 class ProviderQueue:
@@ -32,7 +33,7 @@ class ProviderQueue:
     def is_full(self) -> bool:
         return self._queue.full()
 
-    async def enqueue(self, priority: int, future: asyncio.Future, request_id: str) -> None:
+    async def enqueue(self, priority: int, future: asyncio.Future[Any], request_id: str) -> None:
         if self._queue.full():
             raise QueueFullError(f"Queue is full ({self._max_size})")
         item = QueueItem(priority=priority, request_id=request_id, future=future)

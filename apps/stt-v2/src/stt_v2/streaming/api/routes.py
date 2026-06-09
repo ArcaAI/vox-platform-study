@@ -9,7 +9,7 @@ All endpoints require the streaming module to be initialized
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from fastapi import APIRouter, HTTPException
@@ -21,12 +21,15 @@ from stt_v2.streaming.api.schemas import (
     StreamingSessionResponse,
 )
 
+if TYPE_CHECKING:
+    from stt_v2.streaming.session_manager import SessionManager
+
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/internal/streaming")
 
 
-def _require_session_manager():
+def _require_session_manager() -> SessionManager:
     """Return the SessionManager or raise 503 if streaming is not initialized."""
     mgr = get_session_manager()
     if mgr is None:

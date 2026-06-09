@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from smr_v2.core.dependencies import get_task_manager
@@ -15,7 +17,7 @@ router = APIRouter(tags=["tasks"])
 async def get_task(
     task_id: str,
     task_manager: TaskManager = Depends(get_task_manager),
-) -> dict:
+) -> dict[str, Any]:
     state = await task_manager.get_task(task_id)
     if state is None:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
@@ -26,7 +28,7 @@ async def get_task(
 async def cancel_task(
     task_id: str,
     task_manager: TaskManager = Depends(get_task_manager),
-) -> dict:
+) -> dict[str, Any]:
     state = await task_manager.cancel_task(task_id)
     if state is None:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")

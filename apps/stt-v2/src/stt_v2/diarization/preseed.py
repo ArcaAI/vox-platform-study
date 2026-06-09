@@ -115,8 +115,8 @@ async def preseed_speaker(
             )
             metadata = None
 
-        profile_id: str | None = metadata.get("profile_id") if metadata else None  # type: ignore[assignment]
-        model_id: str | None = metadata.get("model_id") if metadata else None  # type: ignore[assignment]
+        profile_id: str | None = metadata.get("profile_id") if metadata else None
+        model_id: str | None = metadata.get("model_id") if metadata else None
 
         logger.info(
             "Pre-seed: resolved user=%s display_name=%r embedding_dim=%d (%s)",

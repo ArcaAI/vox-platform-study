@@ -30,7 +30,7 @@ dedicated Silero VAD v5 ONNX singleton service for backward compatibility.
 
 import io
 import logging
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -236,7 +236,7 @@ class AudioPreprocessor:
 
             audio_io = io.BytesIO(audio_bytes)
             samples, sr = librosa.load(audio_io, sr=None)
-            return samples, sr
+            return samples, cast(int, sr)
 
     def _resample(self, samples: np.ndarray, original_sr: int, target_sr: int) -> np.ndarray:
         """Resample audio to target sample rate."""
@@ -249,7 +249,7 @@ class AudioPreprocessor:
             ratio = target_sr / original_sr
             new_length = int(len(samples) * ratio)
             indices = np.linspace(0, len(samples) - 1, new_length)
-            return np.interp(indices, np.arange(len(samples)), samples)
+            return cast(np.ndarray, np.interp(indices, np.arange(len(samples)), samples))
 
     def _normalize(self, samples: np.ndarray) -> np.ndarray:
         """Normalize audio to [-1, 1] range."""

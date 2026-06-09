@@ -9,7 +9,7 @@ adapter is trivial.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -126,7 +126,7 @@ class GoldenCase(BaseModel):
     reference_note: str | None = None
     contexts: list[str] | None = None
     clinician_pdsqi: PDSQIScore | None = None
-    metadata: dict = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _non_empty(self) -> GoldenCase:
@@ -181,7 +181,7 @@ class EvalCaseResult(BaseModel):
     case_id: str
     pdsqi: PDSQIResult | None = None
     faithfulness: FaithfulnessResult | None = None
-    extra: dict = Field(default_factory=dict)
+    extra: dict[str, Any] = Field(default_factory=dict)
 
 
 class EvalRunResult(BaseModel):

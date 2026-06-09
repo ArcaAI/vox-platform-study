@@ -682,6 +682,61 @@ describe('StreamingAudioBridgeService', () => {
     });
 
     // ===================================================================
+    // Shared-session teardown (TASK-340 P1-B)
+    //
+    // The captions WS gateway AND LiveDocumentationService both subscribe to
+    // the SAME stt:result:{sessionId}. The old impl keyed activeSubscriptions
+    // by sessionId, so the 2nd subscribe overwrote the 1st and a single
+    // teardown aborted only one reader loop — leaking the other.
+    // ===================================================================
+
+    describe('shared-session teardown (two subscribers, one sessionId)', () => {
+        beforeEach(async () => {
+            await service.connect();
+            // Both readers block on XREAD (null = timeout); the delay yields a
+            // macrotask each loop so the abort + assertions can interleave.
+            mockXread.mockImplementation(() => new Promise((r) => setTimeout(() => r(null), 5)));
+        });
+
+        afterEach(() => {
+            mockXread.mockReset();
+            mockXread.mockResolvedValue(null);
+        });
+
+        it('aborts every reader for a session on unsubscribeFromResults (no leaked reader)', async () => {
+            const completed = { a: false, b: false };
+            const subA = service.subscribeToResults('shared').subscribe({ complete: () => { completed.a = true; } });
+            const subB = service.subscribeToResults('shared').subscribe({ complete: () => { completed.b = true; } });
+
+            // A single session-level teardown must abort BOTH readers.
+            service.unsubscribeFromResults('shared');
+            await new Promise((r) => setTimeout(r, 60));
+
+            expect(completed.a).toBe(true);
+            expect(completed.b).toBe(true);
+
+            subA.unsubscribe();
+            subB.unsubscribe();
+        });
+
+        it('explicit teardown still reaches remaining readers after one subscriber self-unsubscribes', async () => {
+            const completed = { b: false };
+            const subA = service.subscribeToResults('shared').subscribe({ next: () => {} });
+            const subB = service.subscribeToResults('shared').subscribe({ complete: () => { completed.b = true; } });
+
+            // A leaves on its own first; this must NOT orphan B from a later
+            // session-level teardown (old impl deleted the shared map entry here).
+            subA.unsubscribe();
+            await new Promise((r) => setTimeout(r, 20));
+
+            service.unsubscribeFromResults('shared');
+            await new Promise((r) => setTimeout(r, 60));
+
+            expect(completed.b).toBe(true);
+        });
+    });
+
+    // ===================================================================
     // Error handling
     // ===================================================================
 

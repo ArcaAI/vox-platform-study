@@ -24,7 +24,7 @@ forward-compat but is not passed to this API version.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict
 from qdrant_client import QdrantClient, models
@@ -74,7 +74,9 @@ class KnowledgeQdrantStore:
         self._collection = collection
         self._dense_name = dense_name
         self._sparse_name = sparse_name
-        self._client = client if client is not None else QdrantClient(url=url, timeout=timeout)
+        self._client = (
+            client if client is not None else QdrantClient(url=url, timeout=cast(int, timeout))
+        )
 
     def upsert_chunks(self, items: list[UpsertItem]) -> int:
         """Upsert one named dense+sparse point per chunk; returns the count."""

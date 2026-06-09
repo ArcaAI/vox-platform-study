@@ -9,7 +9,7 @@
  *
  * The provenance → review-data mapping is the unit-tested `mapProvenanceToReviewData`.
  */
-import { ReviewScreen } from '@/features/clinical-review/components';
+import { ReviewScreen } from './review';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Card, CardContent } from '@arcaai/ui/card';
@@ -168,7 +168,13 @@ export function ReviewPanel({ consultationId, noteContextItemId, noteContent, tr
             {data.status}
           </Badge>
         )}
-        <Dialog open={editOpen} onOpenChange={(open) => { setEditOpen(open); if (open) setDraft(noteContent ?? ''); }}>
+        <Dialog
+          open={editOpen}
+          onOpenChange={(open) => {
+            setEditOpen(open);
+            if (open) setDraft(noteContent ?? '');
+          }}
+        >
           <DialogTrigger asChild>
             <Button variant="outline" size="sm" className="ml-auto gap-1.5" disabled={signed} data-testid="review-edit-trigger">
               <Pencil className="size-3.5" />

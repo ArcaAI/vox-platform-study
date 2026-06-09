@@ -11,7 +11,10 @@ The actual transcription is performed by the inference path in
 
 import logging
 
-from azure.cognitiveservices.speech import OutputFormat, SpeechConfig
+from azure.cognitiveservices.speech import (
+    OutputFormat,
+    SpeechConfig,
+)
 
 from ..core.config.settings import get_settings
 from ..core.exceptions import CloudASRAuthError
@@ -146,7 +149,7 @@ class AzureSpeechLoader(BaseModelLoader):
         is effectively a no-op.
         """
         if loaded_model.model is not None:
-            loaded_model.model = None  # type: ignore[assignment]
+            loaded_model.model = None
         logger.info("Azure Speech handle released: %s", loaded_model.model_slug)
 
     def estimate_memory(self, model_config: AiModelConfig) -> int:

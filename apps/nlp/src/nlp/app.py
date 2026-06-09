@@ -24,7 +24,7 @@ def get_app() -> FastAPI:
     )
 
     @app.get("/", include_in_schema=False)
-    async def root():
+    async def root() -> JSONResponse:
         return JSONResponse({"service": "Medical Entity Recognition & NLP", "version": "1.0.0"})
 
     app.add_middleware(

@@ -122,10 +122,18 @@ export function ArtifactsPanel({ consultationId }: ArtifactsPanelProps) {
             </ArtifactSection>
 
             <ArtifactSection icon={<FileText className="size-4" />} title="Transcript" count={grouped.transcript!.length}>
-              <ul className="space-y-1.5">{grouped.transcript!.map((i) => <ContextRow key={i.id} item={i} />)}</ul>
+              <ul className="space-y-1.5">
+                {grouped.transcript!.map((i) => (
+                  <ContextRow key={i.id} item={i} />
+                ))}
+              </ul>
             </ArtifactSection>
 
-            <ArtifactSection icon={<ShieldCheck className="size-4" />} title="Drafts & signed notes" count={grouped.summary!.length + grouped.note!.filter((i) => i.type === 'SIGNED_NOTE').length}>
+            <ArtifactSection
+              icon={<ShieldCheck className="size-4" />}
+              title="Drafts & signed notes"
+              count={grouped.summary!.length + grouped.note!.filter((i) => i.type === 'SIGNED_NOTE').length}
+            >
               <ul className="space-y-1.5">
                 {[...grouped.summary!, ...grouped.note!.filter((i) => i.type === 'SIGNED_NOTE')].map((i) => (
                   <ContextRow key={i.id} item={i} />
@@ -133,12 +141,26 @@ export function ArtifactsPanel({ consultationId }: ArtifactsPanelProps) {
               </ul>
             </ArtifactSection>
 
-            <ArtifactSection icon={<StickyNote className="size-4" />} title="Notes" count={grouped.note!.filter((i) => i.type !== 'SIGNED_NOTE').length}>
-              <ul className="space-y-1.5">{grouped.note!.filter((i) => i.type !== 'SIGNED_NOTE').map((i) => <ContextRow key={i.id} item={i} />)}</ul>
+            <ArtifactSection
+              icon={<StickyNote className="size-4" />}
+              title="Notes"
+              count={grouped.note!.filter((i) => i.type !== 'SIGNED_NOTE').length}
+            >
+              <ul className="space-y-1.5">
+                {grouped
+                  .note!.filter((i) => i.type !== 'SIGNED_NOTE')
+                  .map((i) => (
+                    <ContextRow key={i.id} item={i} />
+                  ))}
+              </ul>
             </ArtifactSection>
 
             <ArtifactSection icon={<FlaskConical className="size-4" />} title="Attachments & labs" count={grouped.attachment!.length}>
-              <ul className="space-y-1.5">{grouped.attachment!.map((i) => <ContextRow key={i.id} item={i} />)}</ul>
+              <ul className="space-y-1.5">
+                {grouped.attachment!.map((i) => (
+                  <ContextRow key={i.id} item={i} />
+                ))}
+              </ul>
             </ArtifactSection>
           </>
         )}

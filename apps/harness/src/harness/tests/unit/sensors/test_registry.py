@@ -7,6 +7,8 @@ contexts and aggregate the results end-to-end (PASS / REGEN / FLAG).
 
 from __future__ import annotations
 
+from typing import Any
+
 from harness.sensors.aggregator import GateDecision, aggregate
 from harness.sensors.base import Sensor, SensorContext
 from harness.sensors.config import SensorThresholds
@@ -40,7 +42,7 @@ def _run_all(ctx: SensorContext):
 
 class TestWiredPipeline:
     def _clean_ctx(self, **over) -> SensorContext:
-        base = {
+        base: dict[str, Any] = {
             "note_text": "Patient has hypertension. Continue lisinopril 10 mg daily.",
             "soap_sections": valid_soap(),
             "soap_schema": soap_schema(),

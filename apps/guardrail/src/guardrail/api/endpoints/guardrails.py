@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 
 from guardrail.core.config import Settings
 from guardrail.core.dependencies import get_gliner_provider, get_job_processor, get_settings
+from guardrail.providers.gliner import GlinerProvider
+from guardrail.services.job_processor import JobProcessor
 
 router = APIRouter()
 
@@ -56,7 +58,7 @@ class BatchGuardrailRequest(BaseModel):
 async def analyze_content(
     request: GuardrailRequest,
     settings: Settings = Depends(get_settings),
-    gliner_provider=Depends(get_gliner_provider),
+    gliner_provider: GlinerProvider = Depends(get_gliner_provider),
 ) -> GuardrailResponse:
     """Analyze content for safety issues in real-time."""
     start_time = time.monotonic()
@@ -97,7 +99,7 @@ async def analyze_content(
 async def analyze_batch(
     request: BatchGuardrailRequest,
     settings: Settings = Depends(get_settings),
-    gliner_provider=Depends(get_gliner_provider),
+    gliner_provider: GlinerProvider = Depends(get_gliner_provider),
 ) -> list[GuardrailResponse]:
     """Analyze multiple texts for safety issues."""
     start_time = time.monotonic()
@@ -159,7 +161,7 @@ async def analyze_batch(
 @router.post("/guardrail/analyze/async", response_model=dict[str, str])
 async def analyze_content_async(
     request: GuardrailRequest,
-    job_processor=Depends(get_job_processor),
+    job_processor: JobProcessor = Depends(get_job_processor),
 ) -> dict[str, str]:
     """Submit content for asynchronous guardrail analysis."""
     try:

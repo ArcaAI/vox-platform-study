@@ -33,10 +33,10 @@ from __future__ import annotations
 import asyncio
 import os
 import random
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import TypeVar
 from urllib.parse import urlsplit
@@ -135,7 +135,7 @@ def reset_endpoint_limiters() -> None:
 
 
 @asynccontextmanager
-async def limit_endpoint(base_url: str, max_concurrency: int | None = None):
+async def limit_endpoint(base_url: str, max_concurrency: int | None = None) -> AsyncIterator[None]:
     """Hold the shared per-endpoint slot for the duration of one call."""
     cap = (
         max_concurrency
@@ -221,8 +221,8 @@ def _retry_after_seconds(exc: Exception) -> float | None:
     if when is None:
         return None
     if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
-    return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())
+        when = when.replace(tzinfo=UTC)
+    return max(0.0, (when - datetime.now(UTC)).total_seconds())
 
 
 def is_retryable(exc: Exception) -> bool:
@@ -241,7 +241,7 @@ def is_retryable(exc: Exception) -> bool:
 def _backoff_delay(attempt: int, cfg: LlmGovernorConfig) -> float:
     """Exponential backoff (capped) + uniform jitter, for retry ``attempt`` (0-based)."""
     base = min(cfg.backoff_max_s, cfg.backoff_base_s * (2**attempt))
-    return base + random.uniform(0.0, cfg.jitter_s)
+    return float(base + random.uniform(0.0, cfg.jitter_s))
 
 
 async def governed_request(

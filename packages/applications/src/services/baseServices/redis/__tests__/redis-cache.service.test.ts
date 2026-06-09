@@ -71,6 +71,9 @@ describe('RedisCacheService', () => {
             lpush: vi.fn().mockResolvedValue(1),
             rpush: vi.fn().mockResolvedValue(1),
             hset: vi.fn().mockResolvedValue(1),
+            sadd: vi.fn().mockResolvedValue(1),
+            srem: vi.fn().mockResolvedValue(1),
+            smembers: vi.fn().mockResolvedValue(['m1', 'm2']),
             quit: vi.fn().mockResolvedValue('OK'),
             status: 'ready',
         };
@@ -512,6 +515,60 @@ describe('RedisCacheService', () => {
             await new Promise((r) => setImmediate(r));
 
             await expect(service.hset('hash', 'field', 'value')).resolves.not.toThrow();
+        });
+    });
+
+    // Live admin console — cross-instance active-session set ops.
+    describe('set operations (sadd / srem / smembers)', () => {
+        async function initConnected(): Promise<RedisCacheService> {
+            (Redis as unknown as Mock).mockImplementation(function () {
+                return mockRedisInstance;
+            });
+            mockRedisInstance.on = vi.fn().mockImplementation((event: string, cb: Function) => {
+                if (event === 'connect') {
+                    setImmediate(() => cb());
+                }
+                return mockRedisInstance;
+            });
+            const svc = new RedisCacheService(mockConfigService);
+            await svc.onModuleInit();
+            await new Promise((r) => setImmediate(r));
+            return svc;
+        }
+
+        it('returns safe defaults when not connected', async () => {
+            service = new RedisCacheService();
+            await service.onModuleInit();
+
+            expect(await service.sadd('s', 'm')).toBe(0);
+            expect(await service.srem('s', 'm')).toBe(0);
+            expect(await service.smembers('s')).toEqual([]);
+            expect(mockRedisInstance.sadd).not.toHaveBeenCalled();
+            expect(mockRedisInstance.srem).not.toHaveBeenCalled();
+            expect(mockRedisInstance.smembers).not.toHaveBeenCalled();
+        });
+
+        it('delegates sadd / srem / smembers to Redis when connected', async () => {
+            service = await initConnected();
+
+            await service.sadd('live-doc:active:t1', 'c-1');
+            await service.srem('live-doc:active:t1', 'c-1');
+            const members = await service.smembers('live-doc:active:t1');
+
+            expect(mockRedisInstance.sadd).toHaveBeenCalledWith('live-doc:active:t1', 'c-1');
+            expect(mockRedisInstance.srem).toHaveBeenCalledWith('live-doc:active:t1', 'c-1');
+            expect(members).toEqual(['m1', 'm2']);
+        });
+
+        it('returns safe defaults and does not throw when Redis set ops error', async () => {
+            service = await initConnected();
+            mockRedisInstance.sadd.mockRejectedValueOnce(new Error('boom'));
+            mockRedisInstance.srem.mockRejectedValueOnce(new Error('boom'));
+            mockRedisInstance.smembers.mockRejectedValueOnce(new Error('boom'));
+
+            expect(await service.sadd('s', 'm')).toBe(0);
+            expect(await service.srem('s', 'm')).toBe(0);
+            expect(await service.smembers('s')).toEqual([]);
         });
     });
 

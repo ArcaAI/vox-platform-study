@@ -14,7 +14,7 @@ shorter ``/internal/harness``).
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
@@ -96,7 +96,7 @@ class ApiClient:
         internal_prefix: str = "/internal/harness",
         service_token: str = "",
         timeout: float = 30.0,
-        transport: httpx.BaseTransport | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._prefix = "/" + internal_prefix.strip("/")
@@ -117,7 +117,7 @@ class ApiClient:
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
                 raise ApiServiceError(f"apps/api {path} failed: {exc}") from exc
-            return resp.json()
+            return cast("dict[str, Any]", resp.json())
 
     async def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
@@ -126,7 +126,7 @@ class ApiClient:
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
                 raise ApiServiceError(f"apps/api {path} failed: {exc}") from exc
-            return resp.json()
+            return cast("dict[str, Any]", resp.json())
 
     async def get_policy(self, tenant_id: str) -> dict[str, Any]:
         """Read the effective harness policy for ``tenant_id`` (Phase-6 worker fetch).

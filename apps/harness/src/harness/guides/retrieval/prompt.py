@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from typing import Any
 
 from harness.sensors.base import dedupe
 
@@ -32,7 +33,7 @@ _INSTRUCTION = (
 )
 
 
-def build_strict_citations_block(chunks: Iterable) -> str:
+def build_strict_citations_block(chunks: Iterable[Any]) -> str:
     """Render retrieved chunks as a StrictCitations Knowledge Context block.
 
     Each chunk is expected to expose ``chunk_id`` and ``text`` (the retriever's

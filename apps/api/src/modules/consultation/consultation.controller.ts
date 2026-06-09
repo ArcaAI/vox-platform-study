@@ -36,7 +36,20 @@ import {
   StopRecordingRequest,
   RecordingStateResponse,
 } from '@arcaai/applications';
-import { Controller, Body, Param, Inject, Query, ForbiddenException, NotFoundException, UnauthorizedException, Logger, Get, Sse, type MessageEvent } from '@nestjs/common';
+import {
+  Controller,
+  Body,
+  Param,
+  Inject,
+  Query,
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+  Logger,
+  Get,
+  Sse,
+  type MessageEvent,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import type { Observable } from 'rxjs';
 import { ApiEndpoint, Authorize } from '../../decorators';

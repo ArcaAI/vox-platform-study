@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import math
 import statistics
+from typing import Any
 
 from harness.eval.jsonio import extract_last_object, strip_reasoning
 from harness.eval.judge.base import JudgeClient, JudgeParseError
@@ -60,7 +61,7 @@ def aggregate_scores(scores: list[PDSQIScore]) -> PDSQIScore:
     if len(scores) == 1:
         return scores[0]
 
-    fields: dict[str, int | None] = {}
+    fields: dict[str, Any] = {}
     for dim in _REQUIRED_LIKERT:
         values = [getattr(s, dim) for s in scores]
         fields[dim] = _clamp_likert(_round_half_up(statistics.median(values)))
@@ -80,7 +81,7 @@ def aggregate_scores(scores: list[PDSQIScore]) -> PDSQIScore:
     return PDSQIScore(**fields, justifications=dict(representative.justifications))
 
 
-def _closest_sample(scores: list[PDSQIScore], aggregate: dict[str, int | None]) -> PDSQIScore:
+def _closest_sample(scores: list[PDSQIScore], aggregate: dict[str, Any]) -> PDSQIScore:
     """The sample with the smallest L1 distance to the aggregate Likert vector."""
 
     def distance(score: PDSQIScore) -> int:
@@ -197,7 +198,7 @@ class PDSQI9Judge:
 
         normalized = {str(k).strip().lower(): v for k, v in obj.items()}
 
-        fields: dict[str, int | None] = {}
+        fields: dict[str, Any] = {}
         justifications: dict[str, str] = {}
         for dim in PDSQI_DIMENSIONS:
             if dim not in normalized:

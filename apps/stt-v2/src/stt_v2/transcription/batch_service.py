@@ -20,7 +20,7 @@ import threading
 import time
 import wave
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from azure.cognitiveservices.speech import (
@@ -827,7 +827,7 @@ class BatchTranscriptionService:
 
     @staticmethod
     def _normalize_whisper_offsets(
-        offsets: list[dict],
+        offsets: list[dict[str, Any]],
         time_offset: float = 0.0,
     ) -> list[dict[str, Any]]:
         """Convert Whisper offset format to standard word timestamp dicts.
@@ -897,7 +897,7 @@ class BatchTranscriptionService:
     @staticmethod
     def _decode_whisper_text(processor: Any, generated_ids: Any) -> str:
         """Decode generated token IDs into plain text."""
-        return processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
+        return cast(str, processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip())
 
     @staticmethod
     def _inspect_processor_language_support(processor: Any) -> tuple[bool, bool]:
@@ -969,7 +969,7 @@ class BatchTranscriptionService:
         ):
             processor_kwargs["language"] = language
 
-        return processor(samples, **processor_kwargs)
+        return cast(dict[str, Any], processor(samples, **processor_kwargs))
 
     def _generate_english_translation(
         self,
@@ -1282,8 +1282,8 @@ class BatchTranscriptionService:
                     time_offset = sub_start_global
                     for wt in sub_result.word_timestamps:
                         if isinstance(wt, dict):
-                            wt["start"] = wt.get("start", wt.get("start_time", 0.0)) + time_offset
-                            wt["end"] = wt.get("end", wt.get("end_time", 0.0)) + time_offset
+                            wt["start"] = cast(float, wt.get("start", wt.get("start_time", 0.0))) + time_offset
+                            wt["end"] = cast(float, wt.get("end", wt.get("end_time", 0.0))) + time_offset
                             wt["start_time"] = wt["start"]
                             wt["end_time"] = wt["end"]
                             seg_word_ts.append(wt)
@@ -1362,8 +1362,8 @@ class BatchTranscriptionService:
 
                 for wt in seg_result.word_timestamps:
                     if isinstance(wt, dict):
-                        wt["start"] = wt.get("start", wt.get("start_time", 0.0)) + time_offset
-                        wt["end"] = wt.get("end", wt.get("end_time", 0.0)) + time_offset
+                        wt["start"] = cast(float, wt.get("start", wt.get("start_time", 0.0))) + time_offset
+                        wt["end"] = cast(float, wt.get("end", wt.get("end_time", 0.0))) + time_offset
                         wt["start_time"] = wt["start"]
                         wt["end_time"] = wt["end"]
                         seg_word_ts.append(wt)
@@ -1983,14 +1983,14 @@ class BatchTranscriptionService:
             else:
                 combined = None
 
-            content: list[dict] = []
+            content: list[dict[str, Any]] = []
             if combined:
                 content.append({"type": "text", "text": combined})
             content.append({"type": "audio", "audio": chunk_array, "sample_rate": sample_rate})
 
             messages = [{"role": "user", "content": content}]
 
-            def _sync_generate(msgs=messages, chunk=chunk_array):
+            def _sync_generate(msgs: Any = messages, chunk: Any = chunk_array) -> str:
                 inputs = prepare_chat_inputs(
                     processor, msgs, lm_model.device, dtype=lm_model.dtype,
                 )
@@ -2002,7 +2002,7 @@ class BatchTranscriptionService:
                     outputs = lm_model.generate(**inputs, max_new_tokens=max_new_tokens)
 
                 generated = outputs[0, inputs["input_ids"].shape[-1]:]
-                text = processor.decode(generated, skip_special_tokens=True).strip()
+                text: str = processor.decode(generated, skip_special_tokens=True).strip()
                 return text
 
             text = await asyncio.to_thread(_sync_generate)
@@ -2587,9 +2587,9 @@ class BatchTranscriptionService:
                 if isinstance(wt, dict):
                     word_timestamps.append(
                         WordTimestamp(
-                            word=wt.get("text", wt.get("word", "")),
-                            start_time=wt.get("start", wt.get("start_time", 0.0)),
-                            end_time=wt.get("end", wt.get("end_time", 0.0)),
+                            word=cast(str, wt.get("text", wt.get("word", ""))),
+                            start_time=cast(float, wt.get("start", wt.get("start_time", 0.0))),
+                            end_time=cast(float, wt.get("end", wt.get("end_time", 0.0))),
                             confidence=wt.get("confidence", 1.0),
                         )
                     )

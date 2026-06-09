@@ -26,7 +26,7 @@ class JobProcessor:
         gliner_provider: GlinerProvider,
         max_concurrent: int = 4,
     ) -> None:
-        self.redis = redis
+        self.redis: Any = redis
         self.gliner_provider = gliner_provider
         self.max_concurrent = max_concurrent
         self.processing = False
@@ -97,7 +97,7 @@ class JobProcessor:
     async def get_job_status(self, job_id: str) -> dict[str, Any] | None:
         """Get the status of a specific job."""
 
-        status_data = await self.redis.hgetall(f"{self.status_key_prefix}{job_id}")
+        status_data: dict[str, Any] = await self.redis.hgetall(f"{self.status_key_prefix}{job_id}")
 
         if not status_data:
             return None

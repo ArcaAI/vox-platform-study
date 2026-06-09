@@ -18,11 +18,13 @@ class ProviderNotFoundError(KeyError):
 class LLMProvider(Protocol):
     """Contract that every LLM provider must satisfy."""
 
-    async def generate(self, request: GenerateRequest) -> tuple[str, dict]:
+    # NOTE: usage dict is intentionally unparameterized here — the public
+    # contract is asserted as tuple[str, dict] by the protocol-contract test.
+    async def generate(self, request: GenerateRequest) -> tuple[str, dict]:  # type: ignore[type-arg]
         """Non-streaming generation. Returns (content, usage_dict)."""
         ...
 
-    async def generate_stream(self, request: GenerateRequest) -> AsyncIterator[StreamChunk]:
+    def generate_stream(self, request: GenerateRequest) -> AsyncIterator[StreamChunk]:
         """Streaming generation. Yields StreamChunk objects."""
         ...
 

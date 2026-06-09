@@ -12,6 +12,7 @@ point (which calls ``main()`` directly).  No guard flag needed.
 """
 
 import asyncio
+from typing import Any
 
 import structlog
 from dramatiq.middleware import Middleware
@@ -22,7 +23,7 @@ logger = structlog.get_logger(__name__)
 class WorkerInitMiddleware(Middleware):
     """Initialize required services when a worker process boots."""
 
-    def after_process_boot(self, broker):
+    def after_process_boot(self, broker: Any) -> None:
         """Called immediately after a child process is forked by the dramatiq CLI."""
         logger.info("WorkerInitMiddleware: initializing services for worker process")
         from stt_v2.worker import initialize_services
@@ -30,7 +31,7 @@ class WorkerInitMiddleware(Middleware):
         asyncio.run(initialize_services())
         logger.info("WorkerInitMiddleware: services initialized")
 
-    def before_worker_shutdown(self, broker, worker):
+    def before_worker_shutdown(self, broker: Any, worker: Any) -> None:
         """Called before the worker process shuts down."""
         logger.info("WorkerInitMiddleware: cleaning up services")
         from stt_v2.worker import cleanup_services

@@ -22,6 +22,7 @@ import argparse
 import asyncio
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import structlog
 
@@ -34,6 +35,10 @@ from harness.eval.golden.sources import (
     default_golden_set_source,
 )
 from harness.eval.models import EvalRunResult, GoldenSet
+
+if TYPE_CHECKING:
+    from harness.eval.judge.pdsqi import PDSQI9Judge
+    from harness.eval.metrics.faithfulness import FaithfulnessEvaluator
 
 logger = structlog.get_logger(__name__)
 
@@ -123,8 +128,8 @@ def apply_gate(
 async def run_and_gate(
     source: GoldenSetSource,
     *,
-    judge=None,  # type: ignore[no-untyped-def]
-    faithfulness=None,  # type: ignore[no-untyped-def]
+    judge: PDSQI9Judge | None = None,
+    faithfulness: FaithfulnessEvaluator | None = None,
     config: EvalConfig | None = None,
 ) -> EvalRunResult:
     """Score the golden set, compute calibration (if possible), apply the gate."""
@@ -174,8 +179,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def main(
     argv: list[str] | None = None,
     *,
-    judge=None,  # type: ignore[no-untyped-def]
-    faithfulness=None,  # type: ignore[no-untyped-def]
+    judge: PDSQI9Judge | None = None,
+    faithfulness: FaithfulnessEvaluator | None = None,
 ) -> int:
     """CLI entrypoint. Returns 0 when the gate passes, 1 when it fails.
 

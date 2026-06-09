@@ -119,7 +119,7 @@ class StubClaimVerifier:
 
 def pdsqi_score_json(**overrides: object) -> str:
     """A well-formed PDSQI-9 *score-only* JSON response."""
-    base = {
+    base: dict[str, object] = {
         "citation": 4,
         "accurate": 5,
         "thorough": 4,

@@ -5,6 +5,7 @@ import io
 import logging
 from collections.abc import AsyncGenerator
 from datetime import timedelta
+from typing import Literal, cast
 
 from ..core.config.settings import get_settings
 from ..core.exceptions import StorageError
@@ -450,7 +451,7 @@ class BlobService:
             tenant_id=tenant_id,
             consultation_id=consultation_id,
             job_id=job_id,
-            format=format,
+            format=cast(Literal["txt", "json", "vtt", "srt"], format),
         )
 
         content_types = {
@@ -670,7 +671,7 @@ class BlobService:
         try:
             client = get_minio_client()
             stat = client.client.stat_object(bucket, path)
-            return stat.size
+            return stat.size or 0
         except Exception:
             return 0
 

@@ -66,11 +66,7 @@ export function LiveSummaryPanel({ event, status, error, lastUpdatedAt }: LiveSu
   const sectionViews = useMemo(() => {
     if (!event) return [];
     const sections =
-      event.sections.length > 0
-        ? event.sections
-        : event.runningSummary
-          ? [{ title: 'Running Summary', content: event.runningSummary }]
-          : [];
+      event.sections.length > 0 ? event.sections : event.runningSummary ? [{ title: 'Running Summary', content: event.runningSummary }] : [];
     return buildSoapSectionViews(event.runningSummary, sections, event.entities);
   }, [event]);
 

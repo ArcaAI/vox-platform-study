@@ -10,7 +10,15 @@ import {
   SecretsService,
   createJwt,
 } from '@arcaai/applications';
-import { EventTypes, ResourceStatusType, RoleRepository, TenantRepository, UserRepository, UserRoleAssignmentRepository } from '@arcaai/domains';
+import {
+  ConsultationRepository,
+  EventTypes,
+  ResourceStatusType,
+  RoleRepository,
+  TenantRepository,
+  UserRepository,
+  UserRoleAssignmentRepository,
+} from '@arcaai/domains';
 import {
   BadRequestException,
   Body,
@@ -20,6 +28,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  NotFoundException,
   Post,
   Request,
   UnauthorizedException,
@@ -84,6 +93,9 @@ export class AuthController {
     // EventEmitter2 is globally provided via EventEmitterModule (same source the
     // ImpersonationAuditInterceptor uses for the per-request rows).
     private readonly eventEmitter: EventEmitter2,
+    // TASK-341 B4 — mint-time tenant-ownership check for live-summary stream
+    // tickets (defense-in-depth alongside the SSE route's @TenantOwnedResource).
+    private readonly consultationRepository: ConsultationRepository,
   ) {}
 
   /**
@@ -730,7 +742,17 @@ export class AuthController {
     if (!user?.id) {
       throw new UnauthorizedException('User context not available');
     }
-    const tenantId = user.tenantId ?? this.clsService.get('tenantId') ?? null;
+    // TASK-341 B4 — the ACTIVE (CLS) tenant wins so a super-admin's selected
+    // `X-Tenant-Id` propagates into the ticket (`??` would have kept an empty-
+    // string JWT tenant); fall back to the JWT tenant, then null.
+    const tenantId = this.clsService.get('tenantId') || user.tenantId || null;
+
+    // TASK-341 B4 — defense-in-depth: a `consultation_live_summary:<id>` ticket
+    // may only be minted for a consultation in the caller's (active) tenant. The
+    // SSE route is `@TenantOwnedResource`, but the ticket bypasses that
+    // interceptor, so we re-check ownership here before issuing.
+    await this.assertLiveSummaryScopeOwnership(body.scope, tenantId);
+
     const issued = await this.streamTicketService.issueTicket({
       userId: user.id,
       tenantId,
@@ -745,6 +767,34 @@ export class AuthController {
       expiresAt: issued.expiresAt,
       scope: issued.scope,
     };
+  }
+
+  /**
+   * TASK-341 B4 — for a `consultation_live_summary:<id>` ticket scope, verify the
+   * consultation belongs to the caller's active tenant before minting. A missing
+   * OR cross-tenant consultation both yield 404 (no existence leak), matching the
+   * SSE route's `@TenantOwnedResource` semantics. Non-live scopes pass through
+   * untouched. The explicit tenant match is belt-and-suspenders for super-admins
+   * whose `findById` may not be auto-scoped by the Prisma tenant extension.
+   */
+  private async assertLiveSummaryScopeOwnership(scope: string, activeTenantId: string | null): Promise<void> {
+    const prefix = 'consultation_live_summary:';
+    if (!scope || !scope.startsWith(prefix)) {
+      return;
+    }
+    const consultationId = scope.slice(prefix.length);
+    let consultationTenantId: string | null | undefined;
+    if (consultationId) {
+      try {
+        const consultation = await this.consultationRepository.findById(consultationId);
+        consultationTenantId = consultation?.tenantId;
+      } catch {
+        consultationTenantId = undefined;
+      }
+    }
+    if (consultationTenantId === undefined || consultationTenantId === null || (activeTenantId !== null && consultationTenantId !== activeTenantId)) {
+      throw new NotFoundException('Consultation not found');
+    }
   }
 
   @Post('revoke-impersonation')

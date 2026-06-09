@@ -63,8 +63,10 @@ def _build_judge(mode: str) -> PDSQI9Judge:
             for dim in ("citation", "accurate", "thorough", "useful", "organized"):
                 setattr(inverted, dim, 6 - getattr(clinician, dim))
             mapping[key] = _score_to_json(inverted)
+    default_score = gs.cases[0].clinician_pdsqi
+    assert default_score is not None
     return PDSQI9Judge(
-        MappingJudgeClient(mapping, default=_score_to_json(gs.cases[0].clinician_pdsqi)),
+        MappingJudgeClient(mapping, default=_score_to_json(default_score)),
         output_mode=OutputMode.SCORE,
     )
 
@@ -73,8 +75,8 @@ async def _collect_pairs(mode: str):
     gs = default_golden_set_source().load()
     runner = GoldenSetRunner(judge=_build_judge(mode))
     result = await runner.run(gs)
-    judge_scores = [cr.pdsqi.score for cr in result.case_results]
-    clinician_scores = [c.clinician_pdsqi for c in gs.cases]
+    judge_scores = [cr.pdsqi.score for cr in result.case_results if cr.pdsqi is not None]
+    clinician_scores = [c.clinician_pdsqi for c in gs.cases if c.clinician_pdsqi is not None]
     return pdsqi_likert_pairs(judge_scores, clinician_scores)
 
 

@@ -110,6 +110,30 @@ export interface IRedisCacheService {
   hset(key: string, field: string, value: string): Promise<void>;
 
   /**
+   * Add a member to a Redis set (SADD). Idempotent — re-adding an existing
+   * member is a no-op.
+   * @param key - Set key
+   * @param member - Member to add
+   * @returns Number of members added (0 if already present or not connected)
+   */
+  sadd(key: string, member: string): Promise<number>;
+
+  /**
+   * Remove a member from a Redis set (SREM).
+   * @param key - Set key
+   * @param member - Member to remove
+   * @returns Number of members removed (0 if absent or not connected)
+   */
+  srem(key: string, member: string): Promise<number>;
+
+  /**
+   * Read all members of a Redis set (SMEMBERS).
+   * @param key - Set key
+   * @returns Array of members (empty if missing or not connected)
+   */
+  smembers(key: string): Promise<string[]>;
+
+  /**
    * Increment a key's integer value by 1 (INCR)
    * @param key - Cache key
    * @returns The value after increment, or 0 if not connected
@@ -668,6 +692,69 @@ export class RedisCacheService implements IRedisCacheService, OnModuleInit, OnMo
         field,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  /**
+   * Add a member to a Redis set (SADD).
+   *
+   * Used to track the live cross-instance set of active consultations per
+   * tenant (`live-doc:active:{tenantId}`) for the admin live console.
+   */
+  async sadd(key: string, member: string): Promise<number> {
+    if (!this.isConnected()) {
+      return 0;
+    }
+
+    try {
+      return await this.redis!.sadd(key, member);
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to sadd to set',
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 0;
+    }
+  }
+
+  /**
+   * Remove a member from a Redis set (SREM).
+   */
+  async srem(key: string, member: string): Promise<number> {
+    if (!this.isConnected()) {
+      return 0;
+    }
+
+    try {
+      return await this.redis!.srem(key, member);
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to srem from set',
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 0;
+    }
+  }
+
+  /**
+   * Read all members of a Redis set (SMEMBERS).
+   */
+  async smembers(key: string): Promise<string[]> {
+    if (!this.isConnected()) {
+      return [];
+    }
+
+    try {
+      return await this.redis!.smembers(key);
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to read set members',
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
     }
   }
 }

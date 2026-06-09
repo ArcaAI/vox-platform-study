@@ -125,7 +125,7 @@ class TransformerTokenClassifier(TokenClassifier):
                 model_version=self.version,
             )
 
-    def _to_entities(self, pipeline_results: list[dict]) -> list[Entity]:
+    def _to_entities(self, pipeline_results: list[dict[str, Any]]) -> list[Entity]:
         """Convert pipeline results to MedicalEntity objects"""
         entities = []
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from fastapi import Request
 
@@ -27,27 +27,27 @@ if TYPE_CHECKING:
 
 def get_settings(request: Request) -> Settings:
     """Retrieve settings from app.state (set during lifespan)."""
-    return request.app.state.settings
+    return cast("Settings", request.app.state.settings)
 
 
 def get_http_client(request: Request) -> httpx.AsyncClient:
     """Retrieve shared httpx AsyncClient from app.state."""
-    return request.app.state.http_client
+    return cast("httpx.AsyncClient", request.app.state.http_client)
 
 
 def get_redis(request: Request) -> aioredis.Redis:
     """Retrieve shared Redis client from app.state."""
-    return request.app.state.redis
+    return cast("aioredis.Redis", request.app.state.redis)
 
 
 def get_ollama_provider(request: Request) -> ContentProvider:
     """Retrieve the active content-analysis provider for the selected engine."""
-    return request.app.state.ollama_provider
+    return cast("ContentProvider", request.app.state.ollama_provider)
 
 
 def get_guardian_provider(request: Request) -> GuardianLike:
     """Retrieve the env-configured guardian provider for the selected engine."""
-    return request.app.state.guardian_provider
+    return cast("GuardianLike", request.app.state.guardian_provider)
 
 
 async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
@@ -60,7 +60,7 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
     builds a guardian provider for the resolved engine.
     """
     settings = request.app.state.settings
-    default_provider = request.app.state.guardian_provider
+    default_provider: GuardianLike = request.app.state.guardian_provider
 
     if not settings.db.db_config_enabled:
         return default_provider
@@ -89,9 +89,9 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
 
 def get_gliner_provider(request: Request) -> GlinerProvider:
     """Retrieve GLiNER provider from app.state."""
-    return request.app.state.gliner_provider
+    return cast("GlinerProvider", request.app.state.gliner_provider)
 
 
 def get_job_processor(request: Request) -> JobProcessor:
     """Retrieve job processor from app.state."""
-    return request.app.state.job_processor
+    return cast("JobProcessor", request.app.state.job_processor)

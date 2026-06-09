@@ -11,7 +11,9 @@ router = APIRouter(prefix="/diagnosis", tags=["NLP REST Diagnosis"])
 
 
 @router.post("/suggestions", response_model=DiagnosisSuggestionResponse)
-async def get_diagnosis_suggestions(request: DiagnosisSuggestionRequest, service: MedicalSuggester = Depends(get_medical_suggester)):
+async def get_diagnosis_suggestions(
+    request: DiagnosisSuggestionRequest, service: MedicalSuggester = Depends(get_medical_suggester)
+) -> DiagnosisSuggestionResponse:
     try:
         if not service.is_initialized:
             raise HTTPException(status_code=503, detail="Medical suggester service not available")

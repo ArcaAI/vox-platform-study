@@ -1,12 +1,14 @@
 """Custom exception hierarchy for STT Service V2."""
 
+from typing import Any
+
 
 class STTServiceError(Exception):
     """Base exception for STT service."""
 
     error_code: str = "STT_ERROR"
 
-    def __init__(self, message: str, details: dict | None = None) -> None:
+    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
         super().__init__(message)
         self.message = message
         self.details = details or {}

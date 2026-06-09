@@ -244,9 +244,11 @@ describe('Policy Seed Data', () => {
     });
 
     describe('Default Policies', () => {
-        it('should define 18 policies', () => {
-            // TASK-331 doc-09 — +1 for the new `prompt-template-read` policy.
-            expect(DEFAULT_POLICIES.length).toBe(18);
+        it('should define 20 policies', () => {
+            // TASK-331 doc-09 — +1 for the `prompt-template-read` policy.
+            // TASK-330 Phase 6 — +2 for the clinical documentation harness
+            // policies (`harness-platform-manage`, `harness-tenant-manage`).
+            expect(DEFAULT_POLICIES.length).toBe(20);
         });
 
         it('should include system-full-access policy', () => {
@@ -293,6 +295,19 @@ describe('Policy Seed Data', () => {
             const auditPolicy = DEFAULT_POLICIES.find((p) => p.name === 'audit-log-read');
             expect(auditPolicy).toBeDefined();
             expect(auditPolicy?.scope).toBe(PolicyScope.TENANT);
+        });
+
+        // TASK-330 Phase 6 — clinical documentation harness RBAC policies.
+        it('should include harness-platform-manage policy (GLOBAL)', () => {
+            const policy = DEFAULT_POLICIES.find((p) => p.name === 'harness-platform-manage');
+            expect(policy).toBeDefined();
+            expect(policy?.scope).toBe(PolicyScope.GLOBAL);
+        });
+
+        it('should include harness-tenant-manage policy (TENANT)', () => {
+            const policy = DEFAULT_POLICIES.find((p) => p.name === 'harness-tenant-manage');
+            expect(policy).toBeDefined();
+            expect(policy?.scope).toBe(PolicyScope.TENANT);
         });
 
         it('should have unique policy names', () => {

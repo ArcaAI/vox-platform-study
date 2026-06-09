@@ -7,8 +7,13 @@ configured once across the API gateway, the worker, and the FastAPI app.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+if TYPE_CHECKING:
+    from harness.eval.config import JudgeConfig
 
 
 class TemporalConfig(BaseSettings):
@@ -290,7 +295,7 @@ def get_settings() -> Settings:
     return Settings()
 
 
-def get_runtime_judge_config():  # noqa: ANN201 — return type is eval.JudgeConfig (lazy import)
+def get_runtime_judge_config() -> JudgeConfig:
     """Reuse the eval ``JudgeConfig`` (``HARNESS_JUDGE_*``) at harness runtime.
 
     Phase 2's groundedness + reasoning judge is the **same** calibrated judge the

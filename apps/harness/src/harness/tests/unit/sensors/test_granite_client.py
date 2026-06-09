@@ -16,6 +16,7 @@ the stubbed-``httpx.MockTransport`` style of ``services/test_api_client``.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import httpx
 import pytest
@@ -29,7 +30,7 @@ from harness.sensors.inferential.granite_client import (
 
 
 def _cfg(**overrides) -> SafetyGuardConfig:
-    base = {
+    base: dict[str, Any] = {
         "enabled": True,
         "provider": "lm-studio",
         "base_url": "http://lmstudio:1234/v1",

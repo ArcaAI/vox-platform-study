@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 from enum import StrEnum
+from typing import Any, cast
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -132,7 +133,7 @@ class JudgeConfig(BaseSettings):
     # NO effect on LM Studio (where a large ``max_tokens`` + reading reasoning text is
     # the only reliable lever), so this stays off by default. Accepts a JSON string
     # from the environment (``HARNESS_JUDGE_EXTRA_BODY='{"reasoning_effort":"low"}'``).
-    extra_body: dict | None = None
+    extra_body: dict[str, Any] | None = None
     # Selects how the prompt asks the model to reason (consumed by the judge prompts):
     # "auto" (let the model decide), "think" (encourage an explicit reasoning pass), or
     # "none" (instruct it to answer directly). Distinct from ``suppress_reasoning`` so
@@ -146,7 +147,7 @@ class JudgeConfig(BaseSettings):
 
     @field_validator("extra_body", mode="before")
     @classmethod
-    def _parse_extra_body(cls, v: object) -> dict | None:
+    def _parse_extra_body(cls, v: object) -> dict[str, Any] | None:
         """Accept a JSON string (env) or a dict; blank/None → None.
 
         ``HARNESS_JUDGE_EXTRA_BODY='{"reasoning_effort":"low"}'`` arrives as a string
@@ -159,8 +160,8 @@ class JudgeConfig(BaseSettings):
             stripped = v.strip()
             if not stripped:
                 return None
-            return json.loads(stripped)
-        return v
+            return cast("dict[str, Any]", json.loads(stripped))
+        return cast("dict[str, Any] | None", v)
 
     @field_validator("reasoning_mode")
     @classmethod

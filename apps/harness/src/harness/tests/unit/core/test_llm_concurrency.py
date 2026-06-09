@@ -13,7 +13,6 @@ import asyncio
 
 import pytest
 
-from harness.core import llm_concurrency as gov
 from harness.core.llm_concurrency import (
     LlmGovernorConfig,
     endpoint_key,
@@ -286,5 +285,5 @@ async def test_backoff_is_bounded_and_jittered(monkeypatch):
         await governed_request("http://localhost:1234/v1", op, config=cfg)
     # 4 backoffs (5 attempts): exponential 1,2,4,4 (capped at max) + [0,jitter).
     assert len(slept) == 4
-    for delay, expected_base in zip(slept, [1.0, 2.0, 4.0, 4.0]):
+    for delay, expected_base in zip(slept, [1.0, 2.0, 4.0, 4.0], strict=False):
         assert expected_base <= delay <= expected_base + cfg.jitter_s

@@ -94,10 +94,7 @@ export class HarnessOpsClient {
     // empty `X-Service-Token`, which the harness-side guard rejects (fail-closed).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
-    this.baseUrl =
-      this.configService.get<string>('HARNESS_BASE_URL') ??
-      this.configService.get<string>('HARNESS_URL') ??
-      'http://localhost:8866';
+    this.baseUrl = this.configService.get<string>('HARNESS_BASE_URL') ?? this.configService.get<string>('HARNESS_URL') ?? 'http://localhost:8866';
   }
 
   async listWorkflows(params: ListWorkflowsParams = {}): Promise<HarnessWorkflowListResult> {

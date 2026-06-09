@@ -6,6 +6,7 @@ FastAPI application with lifespan-managed shared resources.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import httpx
@@ -20,7 +21,7 @@ logger = get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Manage shared resources: httpx client, Redis, providers."""
     settings: Settings = app.state.settings
 
@@ -74,9 +75,9 @@ async def lifespan(app: FastAPI):
     # LM Studio (OpenAI-compatible) is the primary/default local LLM engine.
     if settings.openai_compat.enabled and "lm-studio" not in registry.list_providers():
         from smr_v2.providers.openai_compat import OpenAICompatProvider
-        provider_instance = OpenAICompatProvider(settings.openai_compat)
-        registry.register("lm-studio", provider_instance)
-        registry.register("openai_compat", provider_instance)  # backward-compatible alias
+        lm_provider = OpenAICompatProvider(settings.openai_compat)
+        registry.register("lm-studio", lm_provider)
+        registry.register("openai_compat", lm_provider)  # backward-compatible alias
         logger.info("smr_v2.provider_registered", provider="lm-studio", base_url=settings.openai_compat.base_url)
 
     # Ollama is an optional, lower-priority local LLM engine.
@@ -87,9 +88,9 @@ async def lifespan(app: FastAPI):
 
     if settings.azure.enabled and "azure-openai" not in registry.list_providers():
         from smr_v2.providers.azure_openai import AzureOpenAIProvider
-        provider_instance = AzureOpenAIProvider(settings.azure)
-        registry.register("azure-openai", provider_instance)
-        registry.register("azure", provider_instance)  # backward-compatible alias
+        azure_provider = AzureOpenAIProvider(settings.azure)
+        registry.register("azure-openai", azure_provider)
+        registry.register("azure", azure_provider)  # backward-compatible alias
         logger.info("smr_v2.provider_registered", provider="azure-openai")
 
     if settings.bedrock.enabled and "bedrock" not in registry.list_providers():

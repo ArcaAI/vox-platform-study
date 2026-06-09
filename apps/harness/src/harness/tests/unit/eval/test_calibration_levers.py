@@ -16,12 +16,14 @@ All deterministic and offline (stub judge clients) — no live LLM.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from harness.eval.config import JudgeConfig
 from harness.eval.golden import GoldenSetRunner
 from harness.eval.judge import OutputMode, PDSQI9Judge, resolve_prompt
-from harness.eval.judge.base import JudgeConnectionError
+from harness.eval.judge.base import JudgeConnectionError, JudgeParseError
 from harness.eval.judge.pdsqi import aggregate_scores
 from harness.eval.metrics.faithfulness import FaithfulnessEvaluator
 from harness.eval.models import GoldenCase, GoldenSet, PDSQIScore
@@ -36,7 +38,7 @@ from ._stubs import (
 
 
 def _score(**over: int) -> PDSQIScore:
-    base = {
+    base: dict[str, Any] = {
         "citation": 4, "accurate": 5, "thorough": 4, "useful": 5, "organized": 4,
         "comprehensible": 5, "succinct": 4, "synthesized": 4,
         "abstraction": 1, "voice_summ": 0, "voice_note": 0,
@@ -120,7 +122,7 @@ class TestRoleAwareAggregation:
 
         judge = PDSQI9Judge(StubJudgeClient(respond), output_mode=OutputMode.SCORE)
         runner = GoldenSetRunner(judge=judge, tolerate_judge_errors=False)
-        with pytest.raises(Exception):
+        with pytest.raises(JudgeParseError):
             await runner.run(_mixed_lane_set())
 
     @pytest.mark.asyncio

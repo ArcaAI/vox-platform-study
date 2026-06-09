@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from math import gcd
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -205,7 +205,7 @@ class StreamingDenoiser:
             result = denoised_16k
         else:
             result = (1.0 - self._strength) * original_for_blend + self._strength * denoised_16k
-        return result.astype(np.float32)
+        return cast(np.ndarray, result.astype(np.float32))
 
     def reset(self) -> None:
         """Clear ring buffer and recreate RNNoise instance."""

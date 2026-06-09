@@ -18,10 +18,10 @@ def compute_max_new_tokens(duration_s: float, *, minimum: int = 64) -> int:
 
 def prepare_chat_inputs(
     processor: Any,
-    messages: list[dict],
+    messages: list[dict[str, Any]],
     device: Any,
     dtype: Any | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Apply chat template and move tensors to device.
 
     Args:

@@ -237,4 +237,10 @@ export const adminClient = {
   deleteWithBody: <T>(path: string, body: unknown, options?: RequestOptions) => request<T>('DELETE', path, body, options),
   upload: <T>(path: string, formData: FormData, options?: RequestOptions) => requestMultipart<T>('POST', path, formData, options),
   stream,
+  /**
+   * The admin-plane base URL (`apiBaseUrl` incl. `/api/v1`). Exposed for SSE
+   * consumers that build an absolute `EventSource` URL (which can't set headers
+   * and so authenticates with a `?ticket=` instead) — TASK-341 B5.
+   */
+  getBaseUrl: () => getBaseUrl(),
 };

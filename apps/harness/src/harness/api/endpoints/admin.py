@@ -24,7 +24,7 @@ outage degrades to a memo + client-side tenant filter (it never 500s the list).
 from __future__ import annotations
 
 import base64
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from google.protobuf.json_format import MessageToDict
@@ -106,7 +106,7 @@ def _status_name(execution: Any) -> str:
 
 def _tenant_from_sa(execution: Any) -> str | None:
     try:
-        return execution.typed_search_attributes.get(HARNESS_TENANT_ID_KEY)
+        return cast("str | None", execution.typed_search_attributes.get(HARNESS_TENANT_ID_KEY))
     except Exception:  # noqa: BLE001 — search attribute may be unavailable; degrade
         return None
 
@@ -172,7 +172,7 @@ def _search_attributes(tenant_id: str | None) -> dict[str, Any] | None:
 async def _safe_phase(handle: Any) -> str | None:
     """Best-effort ``HarnessDocWorkflow.phase`` query (tolerate closed/not-found)."""
     try:
-        return await handle.query("phase")
+        return cast("str | None", await handle.query("phase"))
     except Exception:  # noqa: BLE001 — closed/missing workflow has no live query
         return None
 

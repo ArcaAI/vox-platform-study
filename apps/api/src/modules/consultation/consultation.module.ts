@@ -34,11 +34,6 @@ import { HarnessInternalController } from './harness-internal.controller';
     // Clinical Workflow Playground (WS1/WS2) — live-summary watcher + recording lifecycle.
     LiveDocumentationServiceModule,
   ],
-  controllers: [
-    ConsultationController,
-    AdminConsultationController,
-    ConsultationJobController,
-    HarnessInternalController,
-  ],
+  controllers: [ConsultationController, AdminConsultationController, ConsultationJobController, HarnessInternalController],
 })
 export class ConsultationModule {}

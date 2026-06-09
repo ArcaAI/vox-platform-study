@@ -4,6 +4,8 @@ import asyncio
 import json
 import logging
 import os
+from collections.abc import Coroutine
+from typing import Any
 
 import dramatiq
 
@@ -41,7 +43,7 @@ def transcribe_file(
     code_switching: bool | None = None,
     audio_bucket_name: str | None = None,
     user_id: str | None = None,
-    storage: dict | None = None,
+    storage: dict[str, Any] | None = None,
 ) -> None:
     """
     Dramatiq actor for batch file transcription.
@@ -105,7 +107,7 @@ async def _transcribe_file_async(
     code_switching: bool | None = None,
     audio_bucket_name: str | None = None,
     user_id: str | None = None,
-    storage: dict | None = None,
+    storage: dict[str, Any] | None = None,
 ) -> None:
     """Async implementation of file transcription.
 
@@ -175,7 +177,7 @@ async def _transcribe_file_async(
         await _check_cancelled()
 
         # Step 4: Run transcription with progress + chunk callbacks
-        _pending_progress_tasks: list[asyncio.Task] = []
+        _pending_progress_tasks: list[asyncio.Task[Any]] = []
         _progress_publish_lock = asyncio.Lock()
         _last_progress_scheduled = -1
         _last_cancel_check_progress = -1
@@ -227,7 +229,7 @@ async def _transcribe_file_async(
             """Publish each partial transcript chunk for real-time SSE."""
             await publisher.publish_chunk(job_id, chunk)
 
-        def _schedule_progress_task(coro: object) -> None:
+        def _schedule_progress_task(coro: Coroutine[Any, Any, Any]) -> None:
             """Schedule an async progress task and track it for later awaiting."""
             task = asyncio.create_task(coro)
             _pending_progress_tasks.append(task)
@@ -385,7 +387,7 @@ async def _transcribe_file_async(
 
 
 async def _fail_job(
-    api_client: object,
+    api_client: Any,
     publisher: TranscriptionEventPublisher,
     job_id: str,
     error_message: str,

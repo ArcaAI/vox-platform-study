@@ -251,7 +251,7 @@ class SessionManager:
         audio_bucket_name: str | None = None,
         user_id: str | None = None,
         language: str | None = None,
-        storage: dict | None = None,
+        storage: dict[str, Any] | None = None,
     ) -> StreamSession | None:
         """Create a new streaming session.
 
@@ -1104,7 +1104,7 @@ class SessionManager:
             prompt: str | None = None,
         ) -> dict[str, Any]:
             def _sync() -> dict[str, Any]:
-                content: list[dict] = []
+                content: list[dict[str, Any]] = []
                 if captured_initial_prompt:
                     content.append({"type": "text", "text": captured_initial_prompt})
                 content.append({"type": "audio", "audio": samples, "sample_rate": sample_rate})
@@ -2071,11 +2071,11 @@ class SessionManager:
         now = datetime.utcnow()
         to_reap: list[str] = []
 
-        for session_id, session in list(self._sessions.items()):
-            if session.status != SessionStatus.ACTIVE:
+        for session_id, active_session in list(self._sessions.items()):
+            if active_session.status != SessionStatus.ACTIVE:
                 continue
             try:
-                last = datetime.fromisoformat(session.last_activity)
+                last = datetime.fromisoformat(active_session.last_activity)
                 idle_seconds = (now - last).total_seconds()
                 if idle_seconds > timeout_s:
                     to_reap.append(session_id)

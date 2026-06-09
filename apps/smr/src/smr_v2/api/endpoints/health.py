@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime
+from typing import Any
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
@@ -26,7 +27,7 @@ _SERVICE_VERSION = "2.0.0"
 _startup_time = time.monotonic()
 
 
-async def _check_redis(redis_client: aioredis.Redis | None) -> dict:
+async def _check_redis(redis_client: aioredis.Redis | None) -> dict[str, Any]:
     """Ping Redis and return a health check result."""
     start = time.monotonic()
     try:
@@ -49,9 +50,9 @@ async def _check_redis(redis_client: aioredis.Redis | None) -> dict:
 async def health_check(
     registry: ProviderRegistry = Depends(get_provider_registry),
     redis_client: aioredis.Redis = Depends(get_redis),
-) -> dict:
+) -> dict[str, Any]:
     """Detailed health check with per-provider component status."""
-    checks: dict[str, dict] = {}
+    checks: dict[str, dict[str, Any]] = {}
 
     redis_result = await _check_redis(redis_client)
     checks["redis"] = redis_result
@@ -90,7 +91,7 @@ async def health_check(
 
 
 @router.get("/health/live")
-async def liveness() -> dict:
+async def liveness() -> dict[str, str]:
     """Kubernetes liveness probe — always returns 200 if the process is running."""
     return {"status": "healthy"}
 
@@ -99,7 +100,7 @@ async def liveness() -> dict:
 async def readiness(
     registry: ProviderRegistry = Depends(get_provider_registry),
     redis_client: aioredis.Redis = Depends(get_redis),
-) -> dict:
+) -> dict[str, Any] | JSONResponse:
     """Kubernetes readiness probe — requires Redis + at least one healthy provider."""
     redis_result = await _check_redis(redis_client)
     if redis_result["status"] != "healthy":

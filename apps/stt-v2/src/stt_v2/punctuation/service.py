@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from typing import Any
+from typing import Any, cast
 
 import structlog
 
@@ -121,7 +121,7 @@ async def punctuate_batch(
         None,
         lambda: model.punctuate(texts, batch_size=batch_size),
     )
-    return results
+    return cast(list[str], results)
 
 
 def punctuate_sync(
@@ -132,7 +132,7 @@ def punctuate_sync(
         return texts
 
     model = get_model(model_name)
-    return model.punctuate(texts, batch_size=batch_size)
+    return cast(list[str], model.punctuate(texts, batch_size=batch_size))
 
 
 def shutdown() -> None:

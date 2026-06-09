@@ -24,6 +24,7 @@ Usage:
 
 import asyncio
 import signal
+from types import FrameType
 
 from stt_v2.core.config.settings import get_settings
 from stt_v2.core.logging import get_logger, setup_logging
@@ -174,7 +175,7 @@ def main() -> None:
     # Create worker with configuration
     worker = Worker(
         broker=current_broker,
-        queues=["stt_batch", "default"],
+        queues={"stt_batch", "default"},
         worker_threads=settings.worker_threads,
         worker_timeout=settings.worker_poll_timeout_ms,
     )
@@ -186,7 +187,7 @@ def main() -> None:
     interrupt_count = 0
 
     # Setup signal handlers for graceful shutdown
-    def handle_signal(signum: int, frame) -> None:
+    def handle_signal(signum: int, frame: FrameType | None) -> None:
         nonlocal interrupt_count
         interrupt_count += 1
         signame = signal.Signals(signum).name

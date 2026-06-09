@@ -108,9 +108,14 @@ no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 warn_return_any = true
+# Test modules rely on pytest fixtures and many intentionally-untyped helpers;
+# under the strict settings above they produce many no-untyped-def diagnostics
+# with no runtime value. Type-check production code only — pytest still runs the
+# full suite (testpaths below) unchanged.
+exclude = "/tests/"
 
 [[tool.mypy.overrides]]
-module = ["prometheus_client", "prometheus_fastapi_instrumentator"]
+module = ["prometheus_client", "prometheus_fastapi_instrumentator", "gliner2_onnx"]
 ignore_missing_imports = true
 
 # pytest configuration

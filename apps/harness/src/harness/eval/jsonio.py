@@ -151,7 +151,7 @@ def loads_json(text: str) -> object:
     if obj is not None and arr is not None:
         # Prefer whichever starts earlier; an object that *contains* the array
         # (e.g. ``{"claims": [...]}``) starts first and wins.
-        candidate = obj if cleaned.find(obj) <= cleaned.find(arr) else arr
+        candidate: str | None = obj if cleaned.find(obj) <= cleaned.find(arr) else arr
     else:
         candidate = obj or arr
     if candidate is None:

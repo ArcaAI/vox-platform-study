@@ -143,7 +143,9 @@ export function CapturePanel({ consultationId, recording, onRecordingStarted, on
             </span>
           )}
 
-          {realtime.isStreaming && <span className="text-muted-foreground text-xs tabular-nums">{(realtime.bytesSent / 1024).toFixed(0)} KB sent</span>}
+          {realtime.isStreaming && (
+            <span className="text-muted-foreground text-xs tabular-nums">{(realtime.bytesSent / 1024).toFixed(0)} KB sent</span>
+          )}
 
           {realtime.error && (
             <span className="text-destructive flex items-center gap-1 text-xs">
@@ -167,11 +169,7 @@ export function CapturePanel({ consultationId, recording, onRecordingStarted, on
                 </p>
               ) : (
                 realtime.transcripts.map((entry) => (
-                  <p
-                    key={entry.id}
-                    data-final={entry.isFinal}
-                    className={entry.isFinal ? 'text-sm' : 'text-muted-foreground text-sm italic'}
-                  >
+                  <p key={entry.id} data-final={entry.isFinal} className={entry.isFinal ? 'text-sm' : 'text-muted-foreground text-sm italic'}>
                     {entry.speakerLabel && <span className="text-muted-foreground mr-1 font-medium">{entry.speakerLabel}:</span>}
                     {entry.text}
                   </p>

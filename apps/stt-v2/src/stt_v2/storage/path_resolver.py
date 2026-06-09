@@ -3,7 +3,7 @@
 import logging
 import re
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class StoragePathResolver:
         self.chunk_bucket = chunk_bucket
         self.model_bucket = model_bucket
         self._tenant_bucket_cache: dict[str, str] = {}
-        self._tenant_storage_cache: dict[str, dict] = {}
+        self._tenant_storage_cache: dict[str, dict[str, Any]] = {}
 
     def audio_path(
         self,
@@ -461,7 +461,7 @@ class StoragePathResolver:
         cache_key = f"{tenant_id}:{bucket_type}"
         self._tenant_bucket_cache[cache_key] = bucket_name
 
-    def set_tenant_storage(self, tenant_id: str, descriptor: dict) -> None:
+    def set_tenant_storage(self, tenant_id: str, descriptor: dict[str, Any]) -> None:
         """Register a per-tenant storage provider descriptor.
 
         Mirrors :meth:`set_tenant_bucket`.  When the descriptor carries a
@@ -478,7 +478,7 @@ class StoragePathResolver:
         if bucket:
             self.set_tenant_bucket(tenant_id, "audio", bucket)
 
-    def resolve_tenant_storage(self, tenant_id: str) -> dict | None:
+    def resolve_tenant_storage(self, tenant_id: str) -> dict[str, Any] | None:
         """Return the registered storage descriptor for a tenant, if any.
 
         Args:

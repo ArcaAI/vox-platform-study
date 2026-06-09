@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
+import { ConsultationStatus } from '@arcaai/domains';
 import { AdminConsultationController } from '../admin-consultation.controller';
 
 // TASK-319 F1 — admin (tenant-wide) consultation surface.
@@ -49,6 +50,22 @@ describe('AdminConsultationController', () => {
       expect(mockConsultationService.listConsultationsForTenant).toHaveBeenCalledWith(
         expect.objectContaining({ page: 1, pageSize: 10 }),
       );
+    });
+
+    // TASK-341 B2 — optional ?status=RECORDING filter (admin live console).
+    it('forwards a valid ?status filter (e.g. RECORDING)', async () => {
+      mockConsultationService.listConsultationsForTenant.mockResolvedValue({ data: [], count: 0, page: 1, limit: 10 });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await controller.list({ status: 'RECORDING' } as any);
+      expect(mockConsultationService.listConsultationsForTenant).toHaveBeenCalledWith(
+        expect.objectContaining({ status: ConsultationStatus.RECORDING }),
+      );
+    });
+
+    it('rejects an invalid ?status value with BadRequestException', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await expect(controller.list({ status: 'NOPE' } as any)).rejects.toThrow(BadRequestException);
+      expect(mockConsultationService.listConsultationsForTenant).not.toHaveBeenCalled();
     });
   });
 

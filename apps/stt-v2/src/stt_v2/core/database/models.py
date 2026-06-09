@@ -5,6 +5,7 @@ All write operations go through the API Gateway.
 """
 
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
@@ -136,7 +137,7 @@ class AsrPipelineRead(Base):
     resource_status: Mapped[str] = mapped_column("resourceStatus", ResourceStatusType)
     tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=[])
     # Note: 'metadata' is reserved by SQLAlchemy DeclarativeBase, use 'extra_metadata' instead
-    extra_metadata: Mapped[dict | None] = mapped_column("_metadata", JSONB)
+    extra_metadata: Mapped[dict[str, Any] | None] = mapped_column("_metadata", JSONB)
     version: Mapped[int] = mapped_column("_version", Integer, default=1)
     created_at: Mapped[datetime] = mapped_column("createdAt", DateTime)
     updated_at: Mapped[datetime] = mapped_column("updatedAt", DateTime)
@@ -170,7 +171,7 @@ class AiModelRead(Base):
     resource_status: Mapped[str] = mapped_column("resourceStatus", ResourceStatusType)
     tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=[])
     # Note: 'metadata' is reserved by SQLAlchemy DeclarativeBase, use 'extra_metadata' instead
-    extra_metadata: Mapped[dict | None] = mapped_column("_metadata", JSONB)
+    extra_metadata: Mapped[dict[str, Any] | None] = mapped_column("_metadata", JSONB)
     version: Mapped[int] = mapped_column("_version", Integer, default=1)
     created_at: Mapped[datetime] = mapped_column("createdAt", DateTime)
     updated_at: Mapped[datetime] = mapped_column("updatedAt", DateTime)

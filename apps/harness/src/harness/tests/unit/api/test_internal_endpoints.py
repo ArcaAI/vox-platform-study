@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 
 from harness.core.config import Settings
 from harness.main import create_app
@@ -24,7 +25,7 @@ _HEADERS = {"X-Service-Token": _TOKEN}
 
 
 def _build(service_token: str = _TOKEN):
-    settings = Settings(service_token=service_token, log_level="debug")
+    settings = Settings(service_token=SecretStr(service_token), log_level="debug")
     app = create_app(settings_override=settings)
 
     handle = MagicMock()

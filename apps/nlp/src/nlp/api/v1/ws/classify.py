@@ -17,7 +17,7 @@ async def websocket_classify_token(
     session_id: str,
     service: TokenClassifier = Depends(get_token_classifier),
     ws_manager: WebSocketManager = Depends(get_websocket_manager),
-):
+) -> None:
     try:
         await ws_manager.handle_connection(websocket=websocket, session_id=session_id, process=service.process)
 
@@ -33,7 +33,7 @@ async def websocket_classify_text(
     session_id: str,
     service: TextClassifier = Depends(get_text_classifier),
     ws_manager: WebSocketManager = Depends(get_websocket_manager),
-):
+) -> None:
     try:
         await ws_manager.handle_connection(websocket=websocket, session_id=session_id, process=service.process)
     except WebSocketDisconnect:

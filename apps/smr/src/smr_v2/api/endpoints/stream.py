@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
@@ -28,7 +30,7 @@ async def stream_task(
     if state is None:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
 
-    async def event_generator():
+    async def event_generator() -> AsyncIterator[dict[str, str]]:
         cursor = last_event_id or "0-0"
         while True:
             if await request.is_disconnected():

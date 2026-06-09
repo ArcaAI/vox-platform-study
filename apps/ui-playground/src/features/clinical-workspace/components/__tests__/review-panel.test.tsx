@@ -32,7 +32,7 @@ const h = vi.hoisted(() => ({
 
 // Stub the reused review screen: capture the props (the mapped review data) and
 // expose a minimal approve trigger so we can assert the sign-off wiring.
-vi.mock('@/features/clinical-review/components', () => ({
+vi.mock('../review', () => ({
   ReviewScreen: (props: any) => {
     h.reviewScreenProps(props);
     return (

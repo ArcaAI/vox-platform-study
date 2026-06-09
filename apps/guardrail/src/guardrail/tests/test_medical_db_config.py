@@ -34,7 +34,7 @@ class _StubResolver:
 
 
 def _env_provider(settings: Settings) -> OpenAICompatGuardianProvider:
-    return OpenAICompatGuardianProvider(settings=settings.engine, http_client=object())
+    return OpenAICompatGuardianProvider(settings=settings.engine, http_client=object())  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio
@@ -51,7 +51,7 @@ async def test_db_config_disabled_returns_env_provider() -> None:
             GuardrailTenantConfig(provider="ollama", model="should-not-be-used")
         ),
     )
-    resolved = await get_resolved_guardian_provider(_FakeRequest(state))
+    resolved = await get_resolved_guardian_provider(_FakeRequest(state))  # type: ignore[arg-type]
 
     # Disabled -> env provider returned unchanged, resolver never consulted.
     assert resolved is env_provider
@@ -73,7 +73,7 @@ async def test_db_config_enabled_overrides_model_from_tenant() -> None:
         tenant_config_resolver=resolver,
     )
     request = _FakeRequest(state, headers={"X-Tenant-Id": "tenant-123"})
-    resolved = await get_resolved_guardian_provider(request)
+    resolved = await get_resolved_guardian_provider(request)  # type: ignore[arg-type]
 
     assert resolved is not env_provider
     assert resolved.model == "tenant-guardian-x"
@@ -93,7 +93,7 @@ async def test_db_config_enabled_empty_config_returns_env_provider() -> None:
         http_client=object(),
         tenant_config_resolver=resolver,
     )
-    resolved = await get_resolved_guardian_provider(_FakeRequest(state))
+    resolved = await get_resolved_guardian_provider(_FakeRequest(state))  # type: ignore[arg-type]
 
     assert resolved is env_provider
 
@@ -110,6 +110,6 @@ async def test_db_config_enabled_but_no_resolver_returns_env_provider() -> None:
         http_client=object(),
         tenant_config_resolver=None,
     )
-    resolved = await get_resolved_guardian_provider(_FakeRequest(state))
+    resolved = await get_resolved_guardian_provider(_FakeRequest(state))  # type: ignore[arg-type]
 
     assert resolved is env_provider

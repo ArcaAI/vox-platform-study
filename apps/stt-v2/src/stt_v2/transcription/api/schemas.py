@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
@@ -63,7 +65,7 @@ class TranscriptionResponse(BaseModel):
     segments: list[SegmentResponse] = Field(default_factory=list)
 
     timing: TimingMetricsResponse | None = None
-    metadata: dict = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     # Storage URIs (populated when audio is persisted)
     raw_audio_uri: str | None = None
@@ -76,4 +78,4 @@ class ErrorResponse(BaseModel):
 
     error_code: str
     message: str
-    details: dict = Field(default_factory=dict)
+    details: dict[str, Any] = Field(default_factory=dict)

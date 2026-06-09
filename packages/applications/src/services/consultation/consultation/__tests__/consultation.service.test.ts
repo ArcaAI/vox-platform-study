@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConsultationService } from '../consultation.service';
 import { ConsultationDtoMapper } from '../consultation.dto.mapper';
-import { SysEventType, ResourceStatusType } from '@arcaai/domains';
+import { SysEventType, ResourceStatusType, ConsultationStatus } from '@arcaai/domains';
 
 // Mock ClsService
 const mockClsService = {
@@ -976,6 +976,25 @@ describe('ConsultationService', () => {
             );
             expect(mockConsultationRepository.count).toHaveBeenCalledWith({
                 filters: { tenantId: 'tenant-1', patientId: 'patient-9', doctorId: 'doctor-7', departmentId: 'dept-3' },
+            });
+        });
+
+        // TASK-341 B2 — admin live console filters the tenant list to in-progress
+        // recordings (?status=RECORDING) to find the consultations that may have a
+        // live-documentation session.
+        it('applies an optional status filter (e.g. RECORDING)', async () => {
+            mockConsultationRepository.findPaginatedWithRelations.mockResolvedValue([]);
+            mockConsultationRepository.count.mockResolvedValue(0);
+
+            await service.listConsultationsForTenant({ page: 1, pageSize: 10, status: ConsultationStatus.RECORDING });
+
+            expect(mockConsultationRepository.findPaginatedWithRelations).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    filters: { tenantId: 'tenant-1', status: ConsultationStatus.RECORDING },
+                }),
+            );
+            expect(mockConsultationRepository.count).toHaveBeenCalledWith({
+                filters: { tenantId: 'tenant-1', status: ConsultationStatus.RECORDING },
             });
         });
 

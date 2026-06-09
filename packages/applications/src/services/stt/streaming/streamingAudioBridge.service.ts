@@ -29,8 +29,15 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
   private connected = false;
 
-  /** Active result subscriptions (sessionId → abort controller) */
-  private readonly activeSubscriptions = new Map<string, { abort: boolean }>();
+  /**
+   * Active result subscriptions, keyed by `sessionId` → a **set** of per-reader
+   * abort flags. The captions WS gateway and `LiveDocumentationService` both
+   * subscribe to the same `stt:result:{sessionId}`, so a single sessionId can
+   * have multiple independent readers; each gets its own controller so they
+   * tear down independently (TASK-340 P1-B). A `Set` (not a single value) is
+   * what prevents the 2nd subscriber from clobbering the 1st.
+   */
+  private readonly activeSubscriptions = new Map<string, Set<{ abort: boolean }>>();
 
   constructor(@Optional() @Inject(IConfigService) private readonly configService?: IConfigService) {}
 
@@ -77,10 +84,11 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   }
 
   async disconnect(): Promise<void> {
-    // Abort all active subscriptions
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for (const [sessionId, ctrl] of this.activeSubscriptions) {
-      ctrl.abort = true;
+    // Abort every active reader across all sessions.
+    for (const controllers of this.activeSubscriptions.values()) {
+      for (const ctrl of controllers) {
+        ctrl.abort = true;
+      }
     }
     this.activeSubscriptions.clear();
 
@@ -188,7 +196,13 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   subscribeToResults(sessionId: string): Observable<StreamingTranscriptMessage> {
     const subject = new Subject<StreamingTranscriptMessage>();
     const ctrl = { abort: false };
-    this.activeSubscriptions.set(sessionId, ctrl);
+
+    let controllers = this.activeSubscriptions.get(sessionId);
+    if (!controllers) {
+      controllers = new Set();
+      this.activeSubscriptions.set(sessionId, controllers);
+    }
+    controllers.add(ctrl);
 
     const streamKey = `stt:result:${sessionId}`;
 
@@ -204,19 +218,30 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
     return subject.asObservable().pipe(
       finalize(() => {
+        // Tear down ONLY this subscriber's reader; siblings on the same
+        // sessionId keep running until their own unsubscribe / teardown.
         ctrl.abort = true;
-        this.activeSubscriptions.delete(sessionId);
+        const set = this.activeSubscriptions.get(sessionId);
+        set?.delete(ctrl);
+        if (set && set.size === 0) {
+          this.activeSubscriptions.delete(sessionId);
+        }
       }),
     );
   }
 
   /**
-   * Unsubscribe from results for a session.
+   * Unsubscribe from results for a session — aborts EVERY reader bound to it.
+   * Used by the captions WS gateway on disconnect/close to fully end the STT
+   * session. (LiveDocumentationService no longer calls this; it relies on its
+   * own Observable unsubscribe so it never cross-aborts the captions reader.)
    */
   unsubscribeFromResults(sessionId: string): void {
-    const ctrl = this.activeSubscriptions.get(sessionId);
-    if (ctrl) {
-      ctrl.abort = true;
+    const controllers = this.activeSubscriptions.get(sessionId);
+    if (controllers) {
+      for (const ctrl of controllers) {
+        ctrl.abort = true;
+      }
       this.activeSubscriptions.delete(sessionId);
     }
   }

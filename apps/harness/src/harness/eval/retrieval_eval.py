@@ -42,7 +42,7 @@ import asyncio
 import json
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict
 from qdrant_client import QdrantClient, models
@@ -255,7 +255,7 @@ async def run_eval(fixture: dict[str, Any], *, top_k_rerank: int = 5) -> dict[st
 
 
 def load_fixture(path: str | Path) -> dict[str, Any]:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    return cast("dict[str, Any]", json.loads(Path(path).read_text(encoding="utf-8")))
 
 
 def _run(argv: list[str] | None = None) -> int:
