@@ -8,6 +8,22 @@ import { StreamTicketService } from '../modules/auth/stream-ticket.service';
 import type { RequestWithAuth } from '../types/request-with-auth';
 
 /**
+ * Request-scoped marker holding the stream ticket already consumed + validated
+ * on an earlier guard pass for THIS request.
+ *
+ * `UnifiedAuthGuard` is applied BOTH as the global `APP_GUARD` (TASK-307 W4b)
+ * and via `@Authorize()`'s `@UseGuards(UnifiedAuthGuard)`, so its `canActivate`
+ * — and therefore this guard's `canActivate` — runs twice per request. Stream
+ * tickets are single-use (`StreamTicketService.consumeTicket` does GET+DEL), so
+ * without this marker the first pass consumes the ticket and the second pass
+ * 401s on the now-deleted key. The marker is scoped to the request object, so
+ * cross-request ticket reuse still fails as intended.
+ */
+const CONSUMED_STREAM_TICKET = Symbol('consumedStreamTicket');
+
+type RequestWithConsumedTicket = RequestWithAuth & { [CONSUMED_STREAM_TICKET]?: string };
+
+/**
  * JwtAuthGuard (TASK-263 W0-1 extension)
  *
  * Two authentication paths:
@@ -67,7 +83,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     return null;
   }
 
-  private async handleTicketAuth(context: ExecutionContext, request: RequestWithAuth, ticket: string): Promise<boolean> {
+  private async handleTicketAuth(context: ExecutionContext, request: RequestWithConsumedTicket, ticket: string): Promise<boolean> {
+    // Reuse a ticket already consumed earlier in THIS request: `UnifiedAuthGuard`
+    // runs twice per request (global APP_GUARD + @Authorize()'s @UseGuards), and
+    // the single-use ticket would be rejected on the second pass. The first pass
+    // populated `request.user` + CLS, so a repeat pass for the same ticket
+    // short-circuits without re-consuming.
+    if (request[CONSUMED_STREAM_TICKET] === ticket) {
+      return true;
+    }
+
     const stored = await this.streamTicketService.consumeTicket(ticket);
     if (!stored) {
       this.logger.warn({ message: 'Stream ticket invalid or already consumed' });
@@ -122,6 +147,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       ...(stored.impersonatedBy ? { impersonatedBy: stored.impersonatedBy } : {}),
     };
     request.user = restoredUser as UserSession;
+
+    // Mark the ticket consumed for this request so the second guard pass (see
+    // CONSUMED_STREAM_TICKET) reuses this result instead of re-consuming.
+    request[CONSUMED_STREAM_TICKET] = ticket;
 
     // Make the restored user visible to CLS-aware interceptors
     // (ImpersonationAuditInterceptor, BaseService.tenantId, etc.). Wrapped in

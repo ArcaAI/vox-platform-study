@@ -336,6 +336,35 @@ class TestAPIGatewayClientMethods:
             # Test that response is returned correctly
             assert result["contextItemId"] == "ctx-123"
 
+    @pytest.mark.asyncio
+    async def test_create_transcript_without_job_id_omits_jobid_and_keys_by_consultation(
+        self, client
+    ):
+        """TASK-342 GAP #1 — streaming transcripts have no TranscriptionJob, so
+        the payload must omit ``jobId`` and key the transcript by
+        ``consultationId`` + ``tenantId`` (with the streaming source label)."""
+        captured_payload = None
+
+        async def capture_request(method, path, json=None, params=None):
+            nonlocal captured_payload
+            captured_payload = json
+            return {"contextItemId": "ctx-stream-1"}
+
+        with patch.object(client, "_request", side_effect=capture_request):
+            result = await client.create_transcript(
+                transcript_text="Live consult transcript",
+                consultation_id="c-stream",
+                tenant_id="t-stream",
+                transcription_source="streaming",
+            )
+
+            assert "jobId" not in captured_payload
+            assert captured_payload["transcriptText"] == "Live consult transcript"
+            assert captured_payload["consultationId"] == "c-stream"
+            assert captured_payload["tenantId"] == "t-stream"
+            assert captured_payload["transcriptionSource"] == "streaming"
+            assert result["contextItemId"] == "ctx-stream-1"
+
     # =========================================================================
     # Audio Recording Creation - Test complete payload
     # =========================================================================

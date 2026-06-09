@@ -71,6 +71,30 @@ export function ReviewPanel({ consultationId, noteContextItemId, noteContent, tr
       );
     }
     if (draftStatus === 'timed-out') {
+      // TASK-342 R3 — distinguish "nothing was captured" from "harness still
+      // running". When the poll times out with no transcript persisted (the GAP #1
+      // failure mode), say so plainly with a retry instead of an open-ended
+      // "still generating" message that never resolves.
+      if (transcripts.length === 0) {
+        return (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center gap-3 py-12 text-center" data-testid="review-no-transcript">
+              <AlertCircle className="text-muted-foreground size-6" />
+              <p className="text-sm font-medium">No transcript was captured for this visit</p>
+              <p className="text-muted-foreground max-w-sm text-sm">
+                The documentation harness needs a transcript to draft the SOAP note. Record (or re-record) the visit so a transcript is captured, then
+                check again.
+              </p>
+              {onRefreshDraft && (
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={onRefreshDraft} data-testid="review-no-transcript-refresh">
+                  <RefreshCw className="size-3.5" />
+                  Check again
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        );
+      }
       return (
         <Card>
           <CardContent className="flex flex-col items-center justify-center gap-3 py-12 text-center" data-testid="review-timeout">

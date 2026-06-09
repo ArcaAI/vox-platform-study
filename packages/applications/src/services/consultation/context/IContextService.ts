@@ -19,6 +19,8 @@ export abstract class IContextService {
   // Context Item CRUD
   abstract addContext(consultationId: string, request: AddContextRequest): Promise<ContextItemResponse>;
   abstract updateContext(contextItemId: string, request: UpdateContextRequest): Promise<ContextItemResponse>;
+  // TASK-342 GAP #3 — soft-delete a context item (notes / case-notes / files).
+  abstract deleteContext(contextItemId: string): Promise<void>;
 
   // Audio Recording
   abstract addAudioRecording(consultationId: string, request: AddAudioRecordingRequest): Promise<ContextItemResponse>;

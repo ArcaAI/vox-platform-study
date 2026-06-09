@@ -3,7 +3,7 @@
 **Ticket**: TASK-250
 **Type**: Infrastructure / Refactor
 **Created**: 2026-03-30
-**Updated**: 2026-03-30
+**Updated**: 2026-06-09
 **Status**: In Progress
 
 ---
@@ -574,9 +574,105 @@ Update to reflect:
 
 ---
 
+## Addendum (2026-06-09): Phase 5 — uv Workspace + Single Shared Lock
+
+### Why this phase
+
+Phases 1–4 aligned the three services' `pyproject.toml` version *ranges*, but each
+service still owned its **own** `uv.lock`. Those locks drifted to incompatible
+*resolved* versions, which broke `uv sync --frozen` Docker builds at runtime:
+
+| Symptom | Root cause |
+|---------|-----------|
+| `ModuleNotFoundError: No module named 'gliner2_onnx'` (guardrail) | dep declared but not in the frozen lock |
+| `ValueError: Tokenizer class TokenizersBackend does not exist` | `transformers < 5.0` resolved in lock (guardrail `5.5.0`, nlp `4.52.4`) while code needs `5.5.x` |
+
+Range alignment is not enough — only a **single resolved lock** shared by every
+service guarantees identical versions and prevents recurrence. This phase also
+extends coverage from 3 services to **all 5** Python services (adds `guardrail`
+and `harness`, which were not in the original audit).
+
+### What changed
+
+1. **uv workspace root** — new root `pyproject.toml` declaring
+   `[tool.uv.workspace]` with all 5 members (`apps/guardrail`, `apps/nlp`,
+   `apps/smr`, `apps/harness`, `apps/stt-v2`). A **single root `uv.lock`**
+   (revision 3) now governs every service. Resolved shared versions:
+   `transformers 5.5.4`, `gliner2-onnx 0.1.1`, `torch 2.8.0`,
+   `onnxruntime 1.26.0`, `optimum 2.1.0`.
+2. **stt-v2 `ml` vs `nemo` conflict** — `nemo-toolkit[asr]` hard-requires
+   `transformers < 4.58`, which can never co-resolve with the `ml`/`ml-gpu`
+   pin of `transformers == 5.5.4`. Declared `[tool.uv].conflicts`
+   (`ml ⊥ nemo`, `ml-gpu ⊥ nemo`) so uv resolves them as independent install
+   profiles inside the one lock. As a result `transformers` legitimately
+   resolves to **two** versions: `5.5.4` mainline and `4.57.6` *only* inside the
+   isolated nemo profile (by design — not drift).
+3. **`hope-python-base` upgraded** — `uv 0.8.13 → 0.11.7` (required to read the
+   revision-3 lock); added `libgomp1` (onnxruntime runtime dep) and `curl`
+   (HEALTHCHECKs). Collapsed to a single image used as BOTH the builder stage
+   (uv present) and the runtime stage (non-root `hope:hope`, UID/GID 1001).
+4. **All 5 service Dockerfiles** — now build from the **repo-root context** and
+   install via `uv sync --frozen --package <svc>` against the single root lock.
+   Base image parameterized with `ARG BASE_IMAGE` (defaults to
+   `hope-python-base:latest` locally; CI injects the registry-qualified tag).
+   `guardrail`/`smr`/`harness`/`nlp` use `hope-python-base` for both stages;
+   `stt-v2` CPU stages use it too, while GPU stages keep the `nvidia/cuda` base
+   (uv there also bumped to 0.11.7).
+5. **venv cleanup fix** — the previous cleanup deleted any dir named
+   `docs`/`doc`/`tests`, which removed real importable submodules (e.g.
+   `botocore/docs`) and broke `smr` at runtime. Cleanup now strips **only**
+   bytecode (`__pycache__`, `*.pyc`, `*.pyo`) and `*.egg-info`.
+6. **`Dockerfile.apple`** — dropped the now-removed `uv.lock` from its `COPY`
+   (it fresh-resolves via `uv pip install`; local pytest-only, per-app context).
+7. **Per-service locks removed** — `apps/{guardrail,nlp,smr,harness,stt-v2}/uv.lock`
+   deleted; the root workspace lock is the single source of truth.
+8. **CI (`.gitlab/ci/build.yml`)** — added a `build-python-base` job (builds +
+   pushes the shared base); every Python service job now sets
+   `DOCKER_CONTEXT: "."`, `needs: build-python-base`, and passes
+   `--build-arg BASE_IMAGE=$REGISTRY/$CI_PROJECT_PATH/hope-python-base:$CI_COMMIT_SHA`.
+   Added the previously-missing `build-harness` job. `stt-v2` jobs use root
+   context with no `BASE_IMAGE` (GPU stages use `nvidia/cuda`).
+
+### Validation
+
+| Service | Build | Import check |
+|---------|:-----:|:------------:|
+| guardrail | ✅ | ✅ |
+| smr | ✅ | ✅ |
+| harness | ✅ | ✅ |
+| nlp | ✅ | ✅ |
+| stt-v2 (CPU runtime) | ✅ | ✅ |
+| stt-v2 (GPU `ml-runtime`/`worker`) | ⏳ adapted; needs a GPU CI runner to validate | — |
+
+### Notes / out of scope
+
+- `transformers` resolving to two versions is **intentional** (mainline `5.5.4`
+  vs the isolated nemo profile `4.57.6`).
+- Pre-existing typo `sqlalchemy[asyncpg]` in `apps/guardrail/pyproject.toml`
+  (`asyncpg` is a standalone package, not a sqlalchemy extra) left as-is.
+
+### Files changed (Phase 5)
+
+| File | Action | Description |
+|------|--------|-------------|
+| `pyproject.toml` (root) | Created | uv workspace root (5 members) + `[tool.uv].conflicts` |
+| `uv.lock` (root) | Created | Single workspace lock (revision 3) for all services |
+| `infrastructure/docker/python-base/Dockerfile` | Modified | uv 0.11.7, `libgomp1`, `curl`, single builder+runtime image |
+| `apps/guardrail/Dockerfile` | Modified | Root context + workspace lock + `ARG BASE_IMAGE` |
+| `apps/nlp/Dockerfile` | Modified | Root context + workspace lock + `ARG BASE_IMAGE` |
+| `apps/smr/Dockerfile` | Modified | Root context + workspace lock + `ARG BASE_IMAGE`; cleanup fix |
+| `apps/harness/Dockerfile` | Modified | Root context + workspace lock + `ARG BASE_IMAGE` |
+| `apps/stt-v2/docker/Dockerfile` | Modified | CPU stages → base + workspace lock; GPU stages root context, uv 0.11.7 |
+| `apps/stt-v2/docker/Dockerfile.apple` | Modified | Dropped removed `uv.lock` from COPY |
+| `.gitlab/ci/build.yml` | Modified | `build-python-base` + `build-harness` jobs; root context + `BASE_IMAGE` args |
+| `apps/{guardrail,nlp,smr,harness,stt-v2}/uv.lock` | Deleted | Superseded by root workspace lock |
+
+---
+
 ## Change History
 
 | Date | Description | Files Modified |
 |------|-------------|---------------|
 | 2026-03-30 | Initial ticket creation with full audit and implementation plan | `docs/implementation/TASK-250-*/README.md` |
 | 2026-03-30 | Implementation: Phases 1-4 complete | 18 files (see Implementation Summary) |
+| 2026-06-09 | Phase 5: uv workspace + single shared lock across all 5 Python services; `hope-python-base` upgraded (uv 0.11.7); root-context builds; CI `build-python-base`/`build-harness`; per-service locks removed | See "Addendum (2026-06-09)" |

@@ -621,6 +621,31 @@ export class ConsultationController {
     return this.contextService.updateContext(contextId, request);
   }
 
+  // TASK-342 GAP #3 — soft-delete a context item (note / case-note / work-note
+  // / attachment). Ownership-guarded like the other write routes; the service
+  // performs the tenant-scoped soft-delete + ResourceDeleted broadcast.
+  @ApiEndpoint({
+    returnedModel: OkResponseDto,
+    method: HttpMethod.DELETE,
+    path: ':id/context/:contextId',
+    by: ['id', 'contextId'],
+    additionalData: {
+      schema: {
+        type: 'object',
+        properties: {
+          ok: { type: 'boolean' },
+        },
+      },
+    },
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiParam({ name: 'contextId', description: 'Context Item ID' })
+  async deleteContext(@Param('id') id: string, @Param('contextId') contextId: string): Promise<OkResponseDto> {
+    await this.verifyConsultationOwnership(id);
+    await this.contextService.deleteContext(contextId);
+    return new OkResponseDto();
+  }
+
   @ApiEndpoint({
     returnedModel: ContextItemVersionResponse,
     multi: true,

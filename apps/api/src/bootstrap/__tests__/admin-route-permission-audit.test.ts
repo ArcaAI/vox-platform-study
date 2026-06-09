@@ -35,9 +35,12 @@ import { Authorize, CanManage, Public } from '../../decorators';
  * triggers full module initialisation (DB, Redis, secrets); `compile()`
  * is sufficient for metadata discovery.
  *
- * `Authorize`/`CanXxx` decorators apply `@UseGuards(UnifiedAuthGuard)`,
- * which Nest tries to instantiate at compile time. We stub the guard so
- * the testing module compiles without the full auth-stack DI graph
+ * TASK-343 — `Authorize`/`CanXxx` are now metadata-only (they no longer
+ * apply `@UseGuards(UnifiedAuthGuard)`), so the `.overrideGuard(UnifiedAuthGuard)`
+ * below is a defensive no-op: the boot audit reads METADATA
+ * (`REQUIRED_PERMISSIONS_KEY` / `SKIP_AUTH_KEY`), not guards. It is retained so
+ * that if a controller in a future test re-applies the guard directly, the
+ * testing module still compiles without the full auth-stack DI graph
  * (Reflector, IApiKeyService, PolicyEngine, ClsService, ...).
  */
 async function buildAppFromControllers(controllers: Array<new (...args: unknown[]) => unknown>) {

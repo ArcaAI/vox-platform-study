@@ -7,7 +7,8 @@
  * tenants. The panel must resolve the per-user/tenant pipeline from the SDK
  * config (`resolvedConfig.stt.transcriptionPipelineId`, populated by
  * AgenticProvider from `remoteConfig.pipelineId`), exactly like the sibling
- * ConsultationRecordingPanel, falling back to the constant only as a last resort.
+ * ConsultationRecordingPanel, and block Start with an actionable error when none
+ * resolves (TASK-342 R2 — no silent cross-tenant SYSTEM-default fallback).
  *
  * `@arcaai/vox` + `@arcaai/ui/*` are blanked by the ui-playground vitest config,
  * so the bits the panel touches are re-mocked here. The consent gate and dual
@@ -26,8 +27,6 @@ vi.mock('@arcaai/ui/card', () => ({
   CardContent: ({ children, ...p }: any) => <div {...p}>{children}</div>,
 }));
 vi.mock('@arcaai/ui/scroll-area', () => ({ ScrollArea: ({ children, ...p }: any) => <div {...p}>{children}</div> }));
-
-vi.mock('@/features/audio/constants', () => ({ DEFAULT_TRANSCRIPTION_PIPELINE_ID: 'pipe-default' }));
 
 // Stub the consent gate so the test can acknowledge consent with one click.
 vi.mock('../consent-banner', () => ({
@@ -101,6 +100,7 @@ vi.mock('@arcaai/vox', () => ({
 }));
 
 import { CapturePanel } from '../capture-panel';
+import { toast } from 'sonner';
 
 function renderPanel(props: Partial<React.ComponentProps<typeof CapturePanel>> = {}) {
   return render(
@@ -148,13 +148,16 @@ describe('CapturePanel pipeline resolution (Pipeline-not-found bugfix)', () => {
     expect(realtime.start).toHaveBeenCalledWith({ pipelineId: 'pipe-x', consultationId: 'c-1' });
   });
 
-  it('falls back to the default pipeline when config has no resolved id', () => {
+  it('blocks Start with an actionable error when no pipeline id resolves (no silent SYSTEM default) — TASK-342 R2', () => {
     configState.resolvedConfig = { stt: {} };
     renderPanel();
 
     fireEvent.click(screen.getByTestId('ack-consent'));
     fireEvent.click(screen.getByTestId('capture-start'));
 
-    expect(realtime.start).toHaveBeenCalledWith({ pipelineId: 'pipe-default', consultationId: 'c-1' });
+    // No cross-tenant SYSTEM-default fallback: the session is never started, and
+    // the doctor gets an actionable error instead of a 404 "Pipeline not found".
+    expect(realtime.start).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/pipeline/i));
   });
 });

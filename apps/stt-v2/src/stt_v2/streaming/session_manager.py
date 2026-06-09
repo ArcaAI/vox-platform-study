@@ -1645,6 +1645,58 @@ class SessionManager:
                 error=str(exc),
             )
 
+    async def _persist_streaming_transcript(self, session: StreamSession) -> None:
+        """Persist a streaming-session transcript as a TRANSCRIPT context item.
+
+        TASK-342 GAP #1 — streaming sessions have no TranscriptionJob, so the
+        transcript is keyed directly to the consultation (+ tenant). Persisting
+        it fires ``TranscriptionCreated`` on the API side, which triggers the
+        harness auto-draft pipeline. The API enforces idempotency (a finalize
+        retry will not double-create the transcript or re-trigger the harness).
+
+        No-op unless the session has a ``consultation_id`` and a non-empty final
+        transcript. All failures are logged and swallowed so finalization is
+        never blocked.
+        """
+        consultation_id = session.consultation_id
+        if not consultation_id:
+            logger.warning(
+                "streaming finalize has no consultation_id; skipping transcript persistence",
+                session_id=session.session_id,
+            )
+            return
+
+        transcript_text = session.build_transcript_text()
+        if not transcript_text:
+            logger.info(
+                "streaming finalize produced no final transcript text; skipping persistence",
+                session_id=session.session_id,
+                consultation_id=consultation_id,
+            )
+            return
+
+        try:
+            gateway = self._get_api_client()
+            result = await gateway.create_transcript(
+                transcript_text=transcript_text,
+                consultation_id=consultation_id,
+                tenant_id=session.tenant_id,
+                transcription_source="streaming",
+            )
+            logger.info(
+                "Streaming transcript persisted",
+                session_id=session.session_id,
+                consultation_id=consultation_id,
+                context_item_id=(result or {}).get("contextItemId"),
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to persist streaming transcript (non-fatal)",
+                session_id=session.session_id,
+                consultation_id=consultation_id,
+                error=str(exc),
+            )
+
     async def _finalize_session(self, session: StreamSession) -> None:
         """Finalize a session — mark finalizing, upload recordings, close, and clean up.
 
@@ -1774,6 +1826,11 @@ class SessionManager:
                 await self._register_dual_capture(
                     session, raw_audio_uri, processed_audio_uri
                 )
+
+                # TASK-342 GAP #1 — persist the streaming transcript (no jobId)
+                # so the harness auto-drafts the SOAP. Self-guarded (needs a
+                # consultation_id + non-empty final text); never blocks close.
+                await self._persist_streaming_transcript(session)
         except Exception as exc:
             logger.error(
                 "Session finalization failed; will still attempt close",

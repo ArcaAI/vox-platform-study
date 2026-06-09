@@ -298,6 +298,23 @@ class StreamSession:
             wf.writeframes(pcm)
         return buf.getvalue()
 
+    def build_transcript_text(self) -> str:
+        """Build the plain-text transcript from accumulated final segments.
+
+        TASK-342 GAP #1 — this is the text persisted as the streaming
+        ``TRANSCRIPT`` context item (the harness re-loads it server-side to
+        auto-draft the SOAP). Only final segments are included; interim
+        (partial) hypotheses are skipped.
+
+        Returns:
+            Space-joined transcript text (empty string when no final segments).
+        """
+        return " ".join(
+            r.text.strip()
+            for r in self.results
+            if r.is_final and r.text and r.text.strip()
+        )
+
     def build_transcript_json(self) -> bytes:
         """Build a JSON transcript from accumulated results.
 

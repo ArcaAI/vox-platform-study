@@ -225,6 +225,40 @@ describe('JwtAuthGuard', () => {
             expect(mockSuperCanActivate).toHaveBeenCalledWith(context);
         });
 
+        it('memoises the consumed ticket per request so a repeated guard pass does not re-consume the single-use ticket', async () => {
+            // `UnifiedAuthGuard` is applied BOTH as the global APP_GUARD and via
+            // `@Authorize()`'s `@UseGuards(UnifiedAuthGuard)`, so this guard's
+            // canActivate runs twice per request. Stream tickets are single-use
+            // (consumeTicket does GET+DEL), so without per-request memoisation the
+            // first pass consumes the ticket and the second pass 401s on the now-
+            // deleted key. Simulate the two passes against the SAME request object.
+            const request: MockRequest = {
+                query: { ticket: 'tkt-1' },
+                params: { jobId: 'job-1' },
+            };
+            const context = createMockContext(request);
+            whenScopeMetadataIs({ namespace: 'consultation_job', param: 'jobId' });
+            // Single-use semantics: the FIRST consume returns the stored ticket;
+            // any subsequent consume of the same ticket returns null (the base
+            // mock from createMockTicketService() already resolves null).
+            streamTicketService.consumeTicket.mockResolvedValueOnce({
+                userId: 'user-1',
+                tenantId: 'tenant-1',
+                scope: 'consultation_job:job-1',
+                exp: Date.now() + 30_000,
+            });
+
+            const first = await guard.canActivate(context);
+            const second = await guard.canActivate(context);
+
+            expect(first).toBe(true);
+            expect(second).toBe(true);
+            // The single-use ticket must be consumed exactly once across both passes.
+            expect(streamTicketService.consumeTicket).toHaveBeenCalledTimes(1);
+            expect(streamTicketService.consumeTicket).toHaveBeenCalledWith('tkt-1');
+            expect(request.user).toEqual({ id: 'user-1', tenantId: 'tenant-1' });
+        });
+
         it('handles ticket presented as an array (Express query parsing artefact) by taking the first value', async () => {
             const request: MockRequest = {
                 query: { ticket: ['tkt-1', 'tkt-2'] },

@@ -137,6 +137,12 @@ export class ContextService extends BaseService implements IContextService {
     // inputs.
     if (LIVE_CONTEXT_TYPES.has(request.type)) {
       const subType = typeof request.metadata?.subType === 'string' ? (request.metadata.subType as string) : undefined;
+      // TASK-342 GAP #5 — for uploaded lab/exam files the client extracts the
+      // file's text (txt / csv / md / json) into `metadata.extractedText`; thread
+      // the real contents into the live summary instead of the "Lab/exam result:
+      // <name>" filename label. Falls back to `content` when nothing was extracted.
+      const extractedText = typeof request.metadata?.extractedText === 'string' ? (request.metadata.extractedText as string) : undefined;
+      const preview = extractedText ?? request.content;
       this.eventEmitter.emit(ConsultationPipelineEvent.ContextAdded, {
         consultationId,
         tenantId,
@@ -145,7 +151,7 @@ export class ContextService extends BaseService implements IContextService {
         contextItemId: saved.id,
         contextType: request.type,
         subType,
-        contentPreview: request.content ? request.content.slice(0, 2000) : undefined,
+        contentPreview: preview ? preview.slice(0, 2000) : undefined,
       } satisfies ContextAddedPayload);
     }
 
@@ -210,6 +216,35 @@ export class ContextService extends BaseService implements IContextService {
     });
 
     return ContextDtoMapper.toResponse(updated);
+  }
+
+  /**
+   * Soft-delete a context item (TASK-342 GAP #3).
+   *
+   * Removes a note / case-note / work-note / attachment via the base
+   * `Repository.softDelete` (sets `resourceStatus = DELETED`). Every
+   * `ContextItemRepository` read filters `resourceStatus: ENABLED`, so the
+   * item drops out of `getContextItems` and the harness assemble automatically
+   * — no hard delete. `assertParentInScope` enforces tenant ownership and
+   * throws `NotFoundException` for both missing and cross-tenant items so the
+   * response never reveals a foreign-tenant context item.
+   */
+  async deleteContext(contextItemId: string): Promise<void> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const contextItem = await assertParentInScope(this.contextItemRepository, contextItemId, tenantId);
+
+    const userId = this.requestUserId ?? 'system';
+    await this.contextItemRepository.softDelete(contextItemId, userId);
+
+    this.broadcastSysEvent(SysEventType.ResourceDeleted, {
+      resourceId: contextItemId,
+      responsibleEntityId: this.requestUserId ?? undefined,
+      data: { consultationId: contextItem.consultationId, type: contextItem.type },
+    });
   }
 
   // ============================================

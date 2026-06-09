@@ -43,6 +43,7 @@ const mockContextItemRepository = {
     findWithAllRelations: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    softDelete: vi.fn(),
 };
 
 // Mock ContextItemVersionRepository
@@ -562,6 +563,32 @@ describe('ContextService', () => {
             expect(result.id).toBe('new-attachment-id');
         });
 
+        it('threads extracted lab/exam text (not the filename label) into the live ContextAdded preview (TASK-342 GAP #5)', async () => {
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
+            const newContextItem = createMockContextItemEntity({
+                id: 'new-attachment-id',
+                type: ContextItemType.ATTACHMENT,
+                content: 'Lab/exam result: cbc.txt',
+                requiresContent: false,
+            });
+            mockContextItemRepository.create.mockResolvedValue(newContextItem);
+
+            await service.addContext('consultation-1', {
+                type: ContextItemType.ATTACHMENT,
+                content: 'Lab/exam result: cbc.txt',
+                mediaId: 'media-1',
+                metadata: { subType: 'LAB_RESULT', fileName: 'cbc.txt', extractedText: 'WBC 11.2 x10^9/L (high)' },
+            });
+
+            // GAP #5: the live-summary watcher must receive the EXTRACTED contents,
+            // not the "Lab/exam result: <name>" filename label, so the file's text
+            // actually reaches the running summary.
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                'consultation.context.added',
+                expect.objectContaining({ contentPreview: 'WBC 11.2 x10^9/L (high)' }),
+            );
+        });
+
         it('should create context item for transcript type with content', async () => {
             mockConsultationRepository.findById.mockResolvedValue({ id: 'consultation-1', tenantId: 'tenant-1' });
             const newContextItem = createMockContextItemEntity({
@@ -925,6 +952,58 @@ describe('ContextService', () => {
 
             // Content should remain unchanged when undefined
             expect(existingItem.content).toBe('Original content');
+        });
+    });
+
+    // ============================================
+    // deleteContext Tests (TASK-342 GAP #3)
+    // ============================================
+
+    describe('deleteContext', () => {
+        it('should throw BadRequestException when tenant ID is not available', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'tenantId') return null;
+                if (key === 'user') return { id: 'user-id-1' };
+                return null;
+            });
+
+            await expect(service.deleteContext('context-item-id-1')).rejects.toThrow(BadRequestException);
+        });
+
+        it('should throw NotFoundException when context item not found', async () => {
+            mockContextItemRepository.findById.mockResolvedValue(null);
+
+            await expect(service.deleteContext('non-existent')).rejects.toThrow(NotFoundException);
+            expect(mockContextItemRepository.softDelete).not.toHaveBeenCalled();
+        });
+
+        it('should throw NotFoundException when the item belongs to another tenant', async () => {
+            const foreign = createMockContextItemEntity({ id: 'context-item-id-1', tenantId: 'tenant-OTHER' });
+            mockContextItemRepository.findById.mockResolvedValue(foreign);
+
+            await expect(service.deleteContext('context-item-id-1')).rejects.toThrow(NotFoundException);
+            expect(mockContextItemRepository.softDelete).not.toHaveBeenCalled();
+        });
+
+        it('soft-deletes the item and broadcasts ResourceDeleted', async () => {
+            const existing = createMockContextItemEntity({
+                id: 'context-item-id-1',
+                consultationId: 'consultation-1',
+                type: 'CASE_NOTE',
+            });
+            mockContextItemRepository.findById.mockResolvedValue(existing);
+            mockContextItemRepository.softDelete.mockResolvedValue(existing);
+
+            await service.deleteContext('context-item-id-1');
+
+            expect(mockContextItemRepository.softDelete).toHaveBeenCalledWith('context-item-id-1', 'user-id-1');
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceDeleted,
+                expect.objectContaining({
+                    resourceId: 'context-item-id-1',
+                    data: expect.objectContaining({ consultationId: 'consultation-1', type: 'CASE_NOTE' }),
+                })
+            );
         });
     });
 

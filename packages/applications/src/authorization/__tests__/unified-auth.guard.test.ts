@@ -788,4 +788,147 @@ describe('UnifiedAuthGuard', () => {
             );
         });
     });
+
+    // ─── 14. TASK-343 — Idempotency (single enforcement per request) ──
+    describe('TASK-343 idempotency', () => {
+        it('memoises the success path: two canActivate calls on one request build the CASL ability once and return true twice', async () => {
+            const context = createMockContext();
+            const mockAbility = createMockAbility({ 'read:User': true });
+            const mockUser = { id: 'jwt-user-1', tenantId: 'tenant-1' };
+
+            (reflector.getAllAndOverride as any).mockImplementation((key: string) => {
+                if (key === REQUIRED_PERMISSIONS_KEY) return [{ action: 'read', subject: 'User' }];
+                if (key === PERMISSION_MODE_KEY) return 'AND';
+                return undefined;
+            });
+            clsService.get.mockImplementation((key: string) => (key === 'user' ? mockUser : undefined));
+            (policyEngine.buildAbility as any).mockResolvedValue(mockAbility);
+
+            const first = await guard.canActivate(context);
+            const second = await guard.canActivate(context);
+
+            expect(first).toBe(true);
+            expect(second).toBe(true);
+            // The expensive work (CASL build + JWT pass) runs EXACTLY once across
+            // both passes — the 2nd pass short-circuits on the request-scoped memo.
+            expect(policyEngine.buildAbility).toHaveBeenCalledTimes(1);
+            expect(jwtAuthGuard.canActivate).toHaveBeenCalledTimes(1);
+        });
+
+        it('does NOT memoise across different requests (each fresh request re-authenticates)', async () => {
+            const mockAbility = createMockAbility({ 'read:User': true });
+            const mockUser = { id: 'jwt-user-1', tenantId: 'tenant-1' };
+
+            (reflector.getAllAndOverride as any).mockImplementation((key: string) => {
+                if (key === REQUIRED_PERMISSIONS_KEY) return [{ action: 'read', subject: 'User' }];
+                if (key === PERMISSION_MODE_KEY) return 'AND';
+                return undefined;
+            });
+            clsService.get.mockImplementation((key: string) => (key === 'user' ? mockUser : undefined));
+            (policyEngine.buildAbility as any).mockResolvedValue(mockAbility);
+
+            await guard.canActivate(createMockContext());
+            await guard.canActivate(createMockContext());
+
+            // Two distinct request objects → two independent authentications.
+            expect(policyEngine.buildAbility).toHaveBeenCalledTimes(2);
+        });
+    });
+
+    // ─── 15. TASK-343 — Swallowed JWT error is now logged ─────────────
+    describe('TASK-343 swallowed-error diagnostics', () => {
+        it('logs a swallowed UnauthorizedException at DEBUG while the client still gets the generic 401', async () => {
+            const context = createMockContext();
+            apiKeyService.extractApiKeyFromRequest.mockReturnValue(null);
+            jwtAuthGuard.canActivate.mockRejectedValue(new UnauthorizedException('jwt expired'));
+
+            const debugSpy = vi.spyOn((guard as any).logger, 'debug').mockImplementation(() => undefined);
+            const warnSpy = vi.spyOn((guard as any).logger, 'warn').mockImplementation(() => undefined);
+
+            await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
+            await expect(guard.canActivate(context)).rejects.toThrow(
+                'Authentication required. Provide a valid JWT (Authorization: Bearer) or API key (X-API-Key).',
+            );
+
+            // The underlying reason is logged (was previously swallowed by `catch {}`).
+            expect(debugSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    message: 'JWT/ticket auth failed; falling through to 401',
+                    reason: 'jwt expired',
+                }),
+            );
+            // An expected auth failure is debug noise — NOT escalated to the
+            // "unexpected error" warn branch.
+            expect(warnSpy).not.toHaveBeenCalledWith(
+                expect.objectContaining({ message: 'Unexpected error during JWT auth' }),
+            );
+        });
+
+        it('logs an unexpected (non-UnauthorizedException) JWT error at WARN', async () => {
+            const context = createMockContext();
+            apiKeyService.extractApiKeyFromRequest.mockReturnValue(null);
+            jwtAuthGuard.canActivate.mockRejectedValue(new Error('redis down'));
+
+            const warnSpy = vi.spyOn((guard as any).logger, 'warn').mockImplementation(() => undefined);
+
+            await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
+
+            expect(warnSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    message: 'Unexpected error during JWT auth',
+                    reason: 'redis down',
+                }),
+            );
+        });
+    });
+
+    // ─── 16. TASK-343 — 403 (permission denied) ≠ 401 (unauthenticated) ─
+    describe('TASK-343 403 stays distinct from 401', () => {
+        it('throws ForbiddenException (403), NOT UnauthorizedException, when JWT succeeds but CASL denies', async () => {
+            const context = createMockContext();
+            apiKeyService.extractApiKeyFromRequest.mockReturnValue(null);
+            jwtAuthGuard.canActivate.mockResolvedValue(true);
+            const mockAbility = createMockAbility({ 'read:User': false });
+            const mockUser = { id: 'jwt-user-1', tenantId: 'tenant-1' };
+
+            (reflector.getAllAndOverride as any).mockImplementation((key: string) => {
+                if (key === REQUIRED_PERMISSIONS_KEY) return [{ action: 'read', subject: 'User' }];
+                if (key === PERMISSION_MODE_KEY) return 'AND';
+                return undefined;
+            });
+            clsService.get.mockImplementation((key: string) => (key === 'user' ? mockUser : undefined));
+            (policyEngine.buildAbility as any).mockResolvedValue(mockAbility);
+
+            let caught: unknown;
+            try {
+                await guard.canActivate(context);
+                expect.fail('should have thrown a ForbiddenException');
+            } catch (error) {
+                caught = error;
+            }
+
+            // The un-awaited `return this.handleJwtPostAuth(...)` lets the 403
+            // escape the JWT `catch` instead of being masked as the generic 401.
+            expect(caught).toBeInstanceOf(ForbiddenException);
+            expect(caught).not.toBeInstanceOf(UnauthorizedException);
+            expect((caught as ForbiddenException).getStatus()).toBe(403);
+        });
+
+        it('throws UnauthorizedException (401) when no credentials authenticate', async () => {
+            const context = createMockContext();
+            apiKeyService.extractApiKeyFromRequest.mockReturnValue(null);
+            jwtAuthGuard.canActivate.mockRejectedValue(new UnauthorizedException('bad token'));
+
+            let caught: unknown;
+            try {
+                await guard.canActivate(context);
+                expect.fail('should have thrown an UnauthorizedException');
+            } catch (error) {
+                caught = error;
+            }
+
+            expect(caught).toBeInstanceOf(UnauthorizedException);
+            expect((caught as UnauthorizedException).getStatus()).toBe(401);
+        });
+    });
 });

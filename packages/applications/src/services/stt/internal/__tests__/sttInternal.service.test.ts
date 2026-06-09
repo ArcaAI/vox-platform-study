@@ -232,6 +232,7 @@ const mockContextItemRepository = {
     findById: vi.fn(),
     create: vi.fn(),
     findAudioRecordings: vi.fn(),
+    findTranscripts: vi.fn(),
 };
 
 const mockMediaRepository = {
@@ -966,6 +967,89 @@ describe('SttInternalService', () => {
                 transcriptText: 'Final transcription',
             });
             expect(job.contextItemId).toBe('context-item-123');
+        });
+    });
+
+    // =========================================================================
+    // TASK-342 GAP #1 — streaming finalize persists a TRANSCRIPT with NO jobId.
+    // The transcript is keyed directly to the consultation (+ tenant) so the
+    // harness auto-draft pipeline triggers after a live consultation.
+    // =========================================================================
+    describe('createTranscript (no-job streaming path)', () => {
+        it('persists a TRANSCRIPT keyed to the consultation without touching the job repo', async () => {
+            const contextItem = createMockContextItemEntity({ id: 'stream-ctx-1' });
+            mockContextItemRepository.findTranscripts.mockResolvedValue([]);
+            mockContextItemRepository.create.mockResolvedValue(contextItem);
+
+            const result = await service.createTranscript({
+                consultationId: 'consultation-stream-1',
+                tenantId: 'tenant-stream-1',
+                transcriptText: 'Live consultation transcript.',
+                transcriptionSource: 'streaming',
+            });
+
+            expect(result.contextItemId).toBe('stream-ctx-1');
+            // No job lookup / update on the streaming path
+            expect(mockJobRepository.findById).not.toHaveBeenCalled();
+            expect(mockJobRepository.update).not.toHaveBeenCalled();
+
+            const created = mockContextItemRepository.create.mock.calls[0][0];
+            expect(created.type).toBe('TRANSCRIPT');
+            expect(created.consultationId).toBe('consultation-stream-1');
+            expect(created.tenantId).toBe('tenant-stream-1');
+        });
+
+        it('emits TranscriptionCreated once with the streaming source and no jobId', async () => {
+            const contextItem = createMockContextItemEntity({ id: 'stream-ctx-2' });
+            mockContextItemRepository.findTranscripts.mockResolvedValue([]);
+            mockContextItemRepository.create.mockResolvedValue(contextItem);
+
+            await service.createTranscript({
+                consultationId: 'consultation-stream-2',
+                tenantId: 'tenant-stream-2',
+                transcriptText: 'one two three',
+                transcriptionSource: 'streaming',
+            });
+
+            const pipelineCalls = mockEventEmitter.emit.mock.calls.filter(
+                (c: any[]) => c[0] === 'consultation.transcription.created',
+            );
+            expect(pipelineCalls).toHaveLength(1);
+            const payload = pipelineCalls[0][1];
+            expect(payload.consultationId).toBe('consultation-stream-2');
+            expect(payload.tenantId).toBe('tenant-stream-2');
+            expect(payload.contextItemId).toBe('stream-ctx-2');
+            expect(payload.transcriptionSource).toBe('streaming');
+            expect(payload.jobId).toBeUndefined();
+        });
+
+        it('throws BadRequestException when neither jobId nor consultationId is provided', async () => {
+            await expect(
+                service.createTranscript({
+                    tenantId: 'tenant-stream-3',
+                    transcriptText: 'orphan transcript',
+                } as any),
+            ).rejects.toThrow(BadRequestException);
+            expect(mockContextItemRepository.create).not.toHaveBeenCalled();
+        });
+
+        it('is idempotent — skips create + emit when a transcript already exists for the consultation', async () => {
+            const existing = createMockContextItemEntity({ id: 'existing-transcript' });
+            mockContextItemRepository.findTranscripts.mockResolvedValue([existing]);
+
+            const result = await service.createTranscript({
+                consultationId: 'consultation-stream-4',
+                tenantId: 'tenant-stream-4',
+                transcriptText: 'duplicate finalize',
+                transcriptionSource: 'streaming',
+            });
+
+            expect(result.contextItemId).toBe('existing-transcript');
+            expect(mockContextItemRepository.create).not.toHaveBeenCalled();
+            const pipelineCalls = mockEventEmitter.emit.mock.calls.filter(
+                (c: any[]) => c[0] === 'consultation.transcription.created',
+            );
+            expect(pipelineCalls).toHaveLength(0);
         });
     });
 });

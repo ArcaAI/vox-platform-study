@@ -25,7 +25,6 @@ import {
   SKIP_AUTH_KEY,
   PERMISSION_MODE_KEY,
 } from '../authorization.guard';
-import { UnifiedAuthGuard } from '../unified-auth.guard';
 
 const GUARDS_METADATA = '__guards__';
 
@@ -135,16 +134,19 @@ describe('Authorization Decorators', () => {
       expect(permissions).toEqual([{ action: 'manage', subject: 'User' }]);
     });
 
-    it('should apply UnifiedAuthGuard', () => {
+    it('should NOT attach a route-level guard (metadata-only; global APP_GUARD enforces)', () => {
       const decorator = Authorize(['read', 'User']);
       const target = {};
       const descriptor = { value: () => {} };
       
       (decorator as any)(target, 'testMethod', descriptor);
       
+      // TASK-343 — @Authorize() is metadata-only. The global UnifiedAuthGuard
+      // (APP_GUARD) reads REQUIRED_PERMISSIONS_KEY; the decorator must NOT
+      // re-apply @UseGuards(UnifiedAuthGuard), which previously ran the guard
+      // (and its CASL + Redis work) twice per request.
       const guards = Reflect.getMetadata(GUARDS_METADATA, descriptor.value);
-      expect(guards).toBeDefined();
-      expect(guards).toContain(UnifiedAuthGuard);
+      expect(guards).toBeUndefined();
     });
   });
 
@@ -166,16 +168,16 @@ describe('Authorization Decorators', () => {
       expect(mode).toBe('OR');
     });
 
-    it('should apply UnifiedAuthGuard', () => {
+    it('should NOT attach a route-level guard (metadata-only; global APP_GUARD enforces)', () => {
       const decorator = AuthorizeAny(['manage', 'User'], ['read', 'AuditLog']);
       const target = {};
       const descriptor = { value: () => {} };
       
       (decorator as any)(target, 'testMethod', descriptor);
       
+      // TASK-343 — like @Authorize(), @AuthorizeAny() is metadata-only.
       const guards = Reflect.getMetadata(GUARDS_METADATA, descriptor.value);
-      expect(guards).toBeDefined();
-      expect(guards).toContain(UnifiedAuthGuard);
+      expect(guards).toBeUndefined();
     });
   });
 

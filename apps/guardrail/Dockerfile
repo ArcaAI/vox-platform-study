@@ -2,102 +2,82 @@
 # ── Guardrail Service ────────────────────────────────────────────────────────
 # Multi-stage build: builder → production
 #
-# Key notes:
-#   - libgomp1 required by onnxruntime at runtime
-#   - GLiNER ONNX model downloads from HuggingFace on first boot (~150 MB)
-#     Mount a persistent volume at /app/.hf-cache to avoid re-downloading
-#   - HEALTHCHECK start-period=120s to allow model download on first start
+# Built from the REPO ROOT context so it can consume the single uv workspace
+# lock (/uv.lock). This guarantees guardrail resolves the SAME dependency
+# versions as every other HOPE Python service (transformers 5.5.4,
+# gliner2-onnx 0.1.1, onnxruntime, ...) — no per-service drift.
 #
-# Build:
-#   docker build --target production -t guardrail .
+# Requires hope-python-base first:
+#   docker build -t hope-python-base infrastructure/docker/python-base/
+#
+# Build (from repo root):
+#   docker build -f apps/guardrail/Dockerfile --target production -t guardrail .
+#
+# Notes:
+#   - libgomp1 (onnxruntime runtime dep) + curl (healthcheck) come from the base.
+#   - GLiNER ONNX model downloads from HuggingFace on first boot (~150 MB).
+#     Mount a persistent volume at /app/.hf-cache to avoid re-downloading.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Stage 1: builder — install Python packages into a portable venv ──────────
-FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim AS builder
+# Base image is parameterized so CI can inject the registry-qualified tag while
+# local builds default to the locally-built `hope-python-base:latest`.
+ARG BASE_IMAGE=hope-python-base:latest
 
-WORKDIR /app
+# ── Stage 1: builder — resolve guardrail's deps from the workspace lock ───────
+FROM ${BASE_IMAGE} AS builder
 
-# System lib needed by onnxruntime at build + runtime
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
-        libgomp1
-
-# Layer 1: Install all declared deps (cached unless pyproject.toml changes).
-# A minimal source stub is created so uv can resolve the package metadata
-# without the full source tree.
+# Layer 1: install ONLY guardrail's dependencies (cached unless the workspace
+# lock or any member manifest changes). All member manifests must be present for
+# uv to validate the workspace, but `--no-install-project` installs deps only.
+COPY pyproject.toml uv.lock ./
+COPY apps/guardrail/pyproject.toml ./apps/guardrail/
+COPY apps/nlp/pyproject.toml ./apps/nlp/
+COPY apps/smr/pyproject.toml ./apps/smr/
+COPY apps/harness/pyproject.toml ./apps/harness/
+COPY apps/stt-v2/pyproject.toml ./apps/stt-v2/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=README.md,target=README.md \
-    mkdir -p src/guardrail && \
-    echo '__version__ = "1.0.0"' > src/guardrail/__init__.py && \
-    touch src/guardrail/py.typed && \
-    uv venv /app/.venv && \
-    uv pip install --python /app/.venv/bin/python --no-cache -e .
+    uv sync --frozen --package guardrail --no-dev --no-install-project --no-editable
 
-# Layer 2: Copy real source + reinstall package only (deps already cached).
-COPY pyproject.toml README.md ./
-COPY src/ ./src/
+# Layer 2: copy guardrail source + install the package itself (deps cached above).
+COPY apps/guardrail/README.md ./apps/guardrail/
+COPY apps/guardrail/src ./apps/guardrail/src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --python /app/.venv/bin/python --no-cache --no-deps -e .
+    uv sync --frozen --package guardrail --no-dev --no-editable
 
-# Strip debug symbols and purge test/doc artefacts to slim the venv
-RUN find /app/.venv/lib -type d \( \
-        -name "__pycache__" -o -name "*.egg-info" \
-        -o -name "tests" -o -name "test" \
-        -o -name "docs" -o -name "doc" \
-    \) -exec rm -rf {} + 2>/dev/null || true \
-    && find /app/.venv/lib \( \
-        -name "*.pyc" -o -name "*.pyo" \
-    \) -type f -delete 2>/dev/null || true
+# Slim the venv: drop bytecode + egg-info only. Do NOT delete dirs named
+# "docs"/"doc"/"tests" — some packages ship real importable submodules with
+# those names (e.g. botocore.docs).
+RUN find /app/.venv/lib -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
+    && find /app/.venv/lib -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true \
+    && find /app/.venv/lib \( -name "*.pyc" -o -name "*.pyo" \) -type f -delete 2>/dev/null || true
 
 # ── Stage 2: production runtime ───────────────────────────────────────────────
-FROM python:3.11-slim-bookworm AS production
+FROM ${BASE_IMAGE} AS production
 
 LABEL maintainer="HOPE Team" \
     service="guardrail" \
-    description="HOPE Guardrail Service — GLiNER ONNX content safety + Ollama medical validation" \
     org.opencontainers.image.title="HOPE Guardrail Service" \
-    org.opencontainers.image.description="AI-powered content safety and medical context validation"
+    org.opencontainers.image.description="GLiNER ONNX content safety + medical context validation"
 
-# libgomp1 required by onnxruntime; curl for HEALTHCHECK
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
-        libgomp1 \
-        curl \
-    && rm -rf /var/lib/apt/lists/*
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONPATH="/app/src" \
-    PATH="/app/.venv/bin:$PATH" \
-    # HuggingFace model cache — mount a volume at this path for persistence
+ENV PYTHONPATH="/app/src" \
     HF_HOME="/app/.hf-cache" \
-    # Set to 1 to block all HF downloads (useful for air-gapped envs)
     TRANSFORMERS_OFFLINE=0 \
     GUARDRAIL_HOST=0.0.0.0 \
     GUARDRAIL_PORT=8863
 
-WORKDIR /app
+# Copy the resolved venv (includes guardrail + all deps) and the source.
+COPY --from=builder --chown=hope:hope /app/.venv /app/.venv
+COPY --chown=hope:hope apps/guardrail/src ./src
 
-# Copy venv from builder (includes all deps + installed package)
-COPY --from=builder --chown=root:root /app/.venv /app/.venv
+# HuggingFace model cache dir (mount a volume here for persistence).
+RUN mkdir -p /app/.hf-cache && chown -R hope:hope /app/.hf-cache
 
-# Copy application source (editable install resolves here via .pth)
-COPY --chown=root:root src/ ./src/
+USER hope
 
-# Non-root user + HuggingFace model cache directory
-RUN useradd --create-home --shell /bin/bash guardrail \
-    && mkdir -p /app/.hf-cache \
-    && chown -R guardrail:guardrail /app
-
-USER guardrail
-
-# Longer start-period: first boot downloads the GLiNER ONNX model (~150 MB)
+# Longer start-period: first boot downloads the GLiNER ONNX model (~150 MB).
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
     CMD curl -f http://localhost:${GUARDRAIL_PORT}/api/health/live || exit 1
 
 EXPOSE 8863
 
-CMD ["/app/.venv/bin/python", "-m", "guardrail.main"]
+CMD ["python", "-m", "guardrail.main"]

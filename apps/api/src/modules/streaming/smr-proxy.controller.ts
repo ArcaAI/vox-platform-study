@@ -34,13 +34,11 @@ import {
   Query,
   Res,
   UnauthorizedException,
-  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { AxiosError } from 'axios';
 import type { Response } from 'express';
 import { ClsService } from 'nestjs-cls';
-import { JwtAuthGuard } from '../../guards';
 
 interface SmrResponseFormat {
   type: 'text' | 'json' | 'json_schema';
@@ -118,9 +116,13 @@ interface ProviderSettingKeys {
   catalogKey: string;
 }
 
+// TASK-343 — the class-level `@UseGuards(JwtAuthGuard)` was removed: every
+// method already carries `@Authorize()`, and the global `UnifiedAuthGuard`
+// (`APP_GUARD`) authenticates (JWT + stream-ticket path) once per request. The
+// redundant class guard previously made `text/*` routes run the JWT path a
+// third time.
 @ApiTags('text')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
 @Controller('text')
 export class SmrProxyController {
   private readonly logger = new Logger(SmrProxyController.name);

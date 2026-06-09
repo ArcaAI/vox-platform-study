@@ -27,7 +27,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /uvx /bin/
 
-COPY pyproject.toml uv.lock README.md ./
+# Local-only pytest image (per-app context). Resolves fresh via `uv pip install`
+# (it does not consume a lockfile); the authoritative lock is the root workspace
+# uv.lock used by the CI Dockerfiles.
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -86,7 +89,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /uvx /bin/
 
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
 
 RUN --mount=type=cache,target=/root/.cache/uv \

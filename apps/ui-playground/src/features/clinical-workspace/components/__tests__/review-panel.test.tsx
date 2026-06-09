@@ -249,11 +249,24 @@ describe('ReviewPanel — non-data states', () => {
     expect(h.reviewScreenProps).not.toHaveBeenCalled();
   });
 
-  it('shows a timed-out state with a manual "check again" action', () => {
+  it('shows a timed-out state with a manual "check again" action (transcript exists, draft slow)', () => {
     const onRefreshDraft = vi.fn();
     renderPanel({ noteContextItemId: null, draftStatus: 'timed-out', onRefreshDraft });
     expect(screen.getByTestId('review-timeout')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('review-timeout-refresh'));
+    expect(onRefreshDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an explicit "no transcript captured" state with a retry when it times out with zero transcripts (TASK-342 R3)', () => {
+    const onRefreshDraft = vi.fn();
+    renderPanel({ noteContextItemId: null, draftStatus: 'timed-out', transcripts: [], onRefreshDraft });
+
+    const panel = screen.getByTestId('review-no-transcript');
+    expect(panel).toBeInTheDocument();
+    expect(panel.textContent).toMatch(/no transcript/i);
+    // Distinct from the "draft still generating" timeout, and recoverable (no spinner).
+    expect(screen.queryByTestId('review-timeout')).toBeNull();
+    fireEvent.click(screen.getByTestId('review-no-transcript-refresh'));
     expect(onRefreshDraft).toHaveBeenCalledTimes(1);
   });
 

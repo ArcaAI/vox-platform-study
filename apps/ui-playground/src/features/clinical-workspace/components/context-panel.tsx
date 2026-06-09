@@ -18,12 +18,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/tabs';
 import { Textarea } from '@arcaai/ui/textarea';
 import { useArcaStore, useStorage, type AgenticClient } from '@arcaai/vox';
 import { useQueryClient } from '@tanstack/react-query';
-import { FileText, FlaskConical, Loader2, Paperclip, StickyNote, Upload, X } from 'lucide-react';
+import { FileText, FlaskConical, Loader2, Paperclip, StickyNote, Trash2, Upload, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { addContextItem } from '../api/clinical-workspace.api';
+import { addContextItem, deleteContextItem } from '../api/clinical-workspace.api';
 import { clinicalWorkspaceKeys, useContextItemsQuery } from '../api/queries';
 import { LAB_RESULT_SUBTYPE, STORAGE_BUCKET } from '../constants';
+import { extractTextFromFile } from '../lib/extract-text';
 import type { WorkspaceContextType } from '../types';
 
 interface ContextPanelProps {
@@ -51,6 +52,7 @@ export function ContextPanel({ consultationId }: ContextPanelProps) {
   const [workNote, setWorkNote] = useState('');
   const [labFile, setLabFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const labInputRef = useRef<HTMLInputElement>(null);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: clinicalWorkspaceKeys.context(consultationId) });
@@ -75,11 +77,16 @@ export function ContextPanel({ consultationId }: ContextPanelProps) {
     setSubmitting(true);
     try {
       const { key } = await storage.uploadFile(STORAGE_BUCKET, labFile);
+      // TASK-342 GAP #5 — extract trivially-readable file text (txt / csv / md /
+      // json) in-browser so the CONTENTS, not just the filename, reach the live
+      // summary + harness assemble. Binary / scanned files yield no text and fall
+      // back to the filename label (heavy OCR is a deferred follow-up).
+      const extractedText = await extractTextFromFile(labFile);
       await addContextItem(apiClient, consultationId, {
         type: 'ATTACHMENT',
         content: `Lab/exam result: ${labFile.name}`,
         mediaId: key,
-        metadata: { subType: LAB_RESULT_SUBTYPE, fileName: labFile.name },
+        metadata: { subType: LAB_RESULT_SUBTYPE, fileName: labFile.name, ...(extractedText ? { extractedText } : {}) },
       });
       toast.success('Lab/exam result added');
       setLabFile(null);
@@ -92,6 +99,20 @@ export function ContextPanel({ consultationId }: ContextPanelProps) {
     }
   };
 
+  const removeItem = async (id: string) => {
+    if (!apiClient) return;
+    setRemovingId(id);
+    try {
+      await deleteContextItem(apiClient, consultationId, id);
+      toast.success('Context removed');
+      void invalidate();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove context');
+    } finally {
+      setRemovingId(null);
+    }
+  };
+
   const items = contextQuery.data ?? [];
 
   return (
@@ -101,6 +122,13 @@ export function ContextPanel({ consultationId }: ContextPanelProps) {
           <FileText className="text-muted-foreground size-4" />
           <h3 className="text-sm font-medium">Mid-visit context</h3>
         </div>
+        {/* TASK-342 GAP #4 — make the mid-visit influence model explicit: case &
+            work notes propagate into the LIVE summary as they're added; to edit the
+            summary text directly, finalize (Stop) and edit the draft in Review. */}
+        <p className="text-muted-foreground -mt-1 text-xs leading-snug" data-testid="mid-visit-influence-hint">
+          Case &amp; work notes flow into the live summary as you add them. To edit the note text directly, finalize (Stop) and edit the draft in
+          Review.
+        </p>
 
         <Tabs defaultValue="case-note">
           <TabsList className="grid w-full grid-cols-3">
@@ -201,7 +229,19 @@ export function ContextPanel({ consultationId }: ContextPanelProps) {
                     <Badge variant="outline" className="shrink-0 text-[10px]">
                       {TYPE_LABEL[it.type] ?? it.type}
                     </Badge>
-                    <span className="truncate">{it.content}</span>
+                    <span className="flex-1 truncate">{it.content}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="size-6 shrink-0 p-0"
+                      aria-label="Remove context"
+                      data-testid={`remove-context-${it.id}`}
+                      disabled={removingId === it.id}
+                      onClick={() => void removeItem(it.id)}
+                    >
+                      {removingId === it.id ? <Loader2 className="size-3 animate-spin" /> : <Trash2 className="size-3" />}
+                    </Button>
                   </li>
                 ))}
               </ul>

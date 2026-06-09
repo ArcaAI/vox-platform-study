@@ -50,7 +50,14 @@ export class SttInternalService extends BaseService implements ISttInternalServi
    * Create a transcript context item from completed transcription
    */
   async createTranscript(dto: CreateTranscriptRequest): Promise<{ contextItemId: string }> {
-    // Find the job
+    // TASK-342 GAP #1 — streaming finalize has no TranscriptionJob. When no
+    // jobId is supplied, persist the transcript keyed directly to the
+    // consultation (+ tenant) and skip the job lookup / setContextItem link-back.
+    if (!dto.jobId) {
+      return this.createStreamingTranscript(dto);
+    }
+
+    // Find the job (batch path)
     const job = await this.jobRepository.findById(dto.jobId);
     if (!job) {
       throw new NotFoundException(`Job ${dto.jobId} not found`);
@@ -98,6 +105,62 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       jobId: dto.jobId,
       wordCount: dto.transcriptText ? dto.transcriptText.split(/\s+/).filter(Boolean).length : undefined,
       transcriptionSource: dto.transcriptionSource ?? 'batch',
+    } satisfies TranscriptionCreatedPayload);
+
+    return { contextItemId: savedContextItem.id };
+  }
+
+  /**
+   * TASK-342 GAP #1 — persist a streaming-session transcript that has no
+   * TranscriptionJob. Keyed directly to the consultation (+ tenant) and
+   * idempotent so a finalize retry does not double-create the transcript or
+   * re-trigger the harness auto-draft pipeline.
+   */
+  private async createStreamingTranscript(
+    dto: CreateTranscriptRequest,
+  ): Promise<{ contextItemId: string }> {
+    const consultationId = dto.consultationId;
+    if (!consultationId) {
+      throw new BadRequestException(
+        'consultationId is required to create a transcript without a jobId',
+      );
+    }
+
+    // Idempotency guard: if a transcript already exists for this consultation,
+    // return it without creating a duplicate or re-emitting the pipeline event.
+    const existing = await this.contextItemRepository.findTranscripts(consultationId);
+    if (existing.length > 0) {
+      return { contextItemId: existing[0].id };
+    }
+
+    const contextItem = ContextItemFactory.CreateContextItem({
+      tenantId: dto.tenantId || undefined,
+      consultationId,
+      type: ContextItemType.TRANSCRIPT,
+      source: ContextItemSource.TRANSCRIPTION,
+      content: dto.transcriptText,
+    });
+
+    const savedContextItem = await this.contextItemRepository.create(contextItem);
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: savedContextItem.id,
+      data: {
+        type: 'TRANSCRIPT',
+        consultationId,
+      },
+    });
+
+    // Emit pipeline event to trigger the harness auto-draft (GAP #1).
+    this.eventEmitter.emit(ConsultationPipelineEvent.TranscriptionCreated, {
+      consultationId,
+      tenantId: dto.tenantId || '',
+      timestamp: new Date().toISOString(),
+      contextItemId: savedContextItem.id,
+      wordCount: dto.transcriptText
+        ? dto.transcriptText.split(/\s+/).filter(Boolean).length
+        : undefined,
+      transcriptionSource: dto.transcriptionSource ?? 'streaming',
     } satisfies TranscriptionCreatedPayload);
 
     return { contextItemId: savedContextItem.id };

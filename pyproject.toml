@@ -1,0 +1,45 @@
+# =============================================================================
+# HOPE Python Workspace (virtual root)
+# =============================================================================
+# Single source of truth for ALL Python service dependency resolution.
+#
+# This is a uv *workspace* root: it owns ONE lockfile (`uv.lock`) covering every
+# member service, so every service resolves identical versions (e.g. a single
+# transformers/torch/onnxruntime/gliner2-onnx version across the monorepo).
+# This mirrors the shared local conda env (`arcaenv`) and prevents the
+# per-service version drift that previously broke Docker `uv --frozen` builds.
+#
+# Local development still uses conda `arcaenv` (see scripts/setup-python-env.sh).
+# Docker images consume this single lock via `uv sync --frozen --package <svc>`.
+#
+# Regenerate the lock after changing any member's dependencies:
+#   uv lock
+# =============================================================================
+
+[tool.uv.workspace]
+members = [
+    "apps/guardrail",
+    "apps/nlp",
+    "apps/smr",
+    "apps/harness",
+    "apps/stt-v2",
+]
+
+# stt-v2's `nemo` extra pulls nemo-toolkit, which hard-requires transformers
+# 4.57.x, while its `ml`/`ml-gpu` extras pin transformers==5.5.4. These can never
+# be installed together (this is the long-standing stt-v2 ml-vs-nemo conflict).
+# Declaring them as conflicting extras lets uv resolve each as an independent
+# install profile within the single lock (e.g. `uv sync --extra ml` vs
+# `--extra nemo`) instead of trying to co-resolve them and failing.
+# `ml-gpu` self-references `ml`, so ml and ml-gpu are NOT mutually conflicting.
+[tool.uv]
+conflicts = [
+    [
+        { package = "stt-v2", extra = "ml" },
+        { package = "stt-v2", extra = "nemo" },
+    ],
+    [
+        { package = "stt-v2", extra = "ml-gpu" },
+        { package = "stt-v2", extra = "nemo" },
+    ],
+]
