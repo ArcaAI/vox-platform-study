@@ -27,6 +27,7 @@ golden set with the computational sensors and prints a per-case table.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -47,7 +48,7 @@ def harness_draft_to_golden_case(
     target_specialty: str = "General Medicine",
     reference_note: str | None = None,
     contexts: Sequence[str] | None = None,
-    metadata: dict | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> GoldenCase:
     """Adapt a harness loop draft into an eval-harness :class:`GoldenCase`.
 
@@ -85,7 +86,7 @@ def score_draft_with_sensors(
     transcript_text: str,
     note_entities: Sequence[NEREntity] = (),
     transcript_entities: Sequence[NEREntity] = (),
-    response_format: dict | None = None,
+    response_format: dict[str, Any] | None = None,
     thresholds: SensorThresholds | None = None,
 ) -> SensorEvalCaseResult:
     """Score one draft with the five computational sensors + fold the verdict.

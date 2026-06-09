@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -180,7 +180,7 @@ class GuardianProvider:
         import asyncio
 
         tasks = [self.validate_medical_context(text) for text in texts]
-        return await asyncio.gather(*tasks, return_exceptions=True)
+        return cast(list[dict[str, Any]], await asyncio.gather(*tasks, return_exceptions=True))
 
     async def health_check(self) -> dict[str, Any]:
         """Check guardian service health."""

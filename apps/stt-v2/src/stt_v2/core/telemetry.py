@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
@@ -22,6 +23,9 @@ from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 _TRACER_VERSION = "2.0.0"
 
@@ -76,7 +80,7 @@ def setup_telemetry_logs(
 
 
 def setup_telemetry(
-    app,
+    app: FastAPI,
     *,
     endpoint: str = "http://localhost:4317",
     service_name: str = "stt-v2",

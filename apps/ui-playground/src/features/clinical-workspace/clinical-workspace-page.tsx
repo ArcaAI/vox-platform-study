@@ -86,11 +86,7 @@ function ClinicalWorkspaceInner() {
 
   return (
     <div className="space-y-4">
-      <WorkspaceHeader
-        consultationId={flow.consultationId}
-        recording={flow.recording}
-        onReset={() => setResetOpen(true)}
-      />
+      <WorkspaceHeader consultationId={flow.consultationId} recording={flow.recording} onReset={() => setResetOpen(true)} />
 
       <Tabs value={tab} onValueChange={(value) => setTab(value as WorkspaceTab)}>
         <TabsList>

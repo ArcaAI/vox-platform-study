@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 from temporalio.client import WorkflowExecutionStatus
 from temporalio.service import RPCError, RPCStatusCode
 
@@ -132,7 +133,7 @@ class _FakeClient:
 
 
 def _settings(token: str = "") -> Settings:
-    return Settings(service_token=token, log_level="debug")
+    return Settings(service_token=SecretStr(token), log_level="debug")
 
 
 @pytest_asyncio.fixture

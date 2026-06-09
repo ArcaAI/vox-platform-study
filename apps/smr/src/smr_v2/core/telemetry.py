@@ -6,20 +6,28 @@ that does ``from smr_v2.core.telemetry import get_tracer`` or
 ``from smr_v2.core.telemetry import setup_telemetry``.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, cast
+
 from smr_v2.core.observability import get_tracer, setup_opentelemetry
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+    from opentelemetry.sdk.trace import TracerProvider
 
 __all__ = ["get_tracer", "setup_telemetry", "setup_opentelemetry"]
 
 
 def setup_telemetry(
-    app,
+    app: FastAPI,
     *,
     endpoint: str = "http://localhost:4317",
     service_name: str = "smr-v2",
     service_namespace: str = "hope",
     deployment_environment: str = "production",
     insecure: bool = True,
-):
+) -> TracerProvider:
     """Legacy wrapper — delegates to setup_opentelemetry.
 
     Returns the TracerProvider for backward compatibility.
@@ -33,4 +41,4 @@ def setup_telemetry(
         insecure=insecure,
         logs_enabled=False,
     )
-    return app.state.tracer_provider
+    return cast("TracerProvider", app.state.tracer_provider)

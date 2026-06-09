@@ -9,7 +9,7 @@ from pathlib import Path
 class JsonFormatter(logging.Formatter):
     """Custom JSON formatter for structured logging with OTel trace correlation."""
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
         """Format log record as JSON with traceId/spanId from OTel LoggingInstrumentor."""
         log_data = {
             "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),

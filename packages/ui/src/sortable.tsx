@@ -8,4 +8,11 @@
 // `@arcaai/ui/sortable` to this file; type-check resolves the same
 // names through the built `dist/index.d.ts` barrel, which already
 // re-exports the diceui registry.
-export { Sortable, SortableContent, SortableItem, SortableItemHandle, SortableOverlay, type SortableProps } from './components/registries/diceui/sortable';
+export {
+  Sortable,
+  SortableContent,
+  SortableItem,
+  SortableItemHandle,
+  SortableOverlay,
+  type SortableProps,
+} from './components/registries/diceui/sortable';

@@ -43,7 +43,7 @@ async def integration_client() -> AsyncGenerator[tuple[AsyncClient, FastAPI, Rec
     settings = Settings(metrics_enabled=False)
     redis_client = fakeredis.aioredis.FakeRedis(decode_responses=True)
     provider = RecordingProvider()
-    processor = JobProcessor(redis=redis_client, gliner_provider=provider, max_concurrent=2)
+    processor = JobProcessor(redis=redis_client, gliner_provider=provider, max_concurrent=2)  # type: ignore[arg-type]
 
     app = FastAPI()
     app.state.settings = settings

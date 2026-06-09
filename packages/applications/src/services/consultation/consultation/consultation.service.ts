@@ -497,19 +497,23 @@ export class ConsultationService extends BaseService implements IConsultationSer
     patientId?: string;
     doctorId?: string;
     departmentId?: string;
+    status?: ConsultationStatus;
   }): Promise<PaginatedConsultationResponse> {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    const { page, pageSize, patientId, doctorId, departmentId } = params;
+    const { page, pageSize, patientId, doctorId, departmentId, status } = params;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filters: any = { tenantId };
     if (patientId) filters.patientId = patientId;
     if (doctorId) filters.doctorId = doctorId;
     if (departmentId) filters.departmentId = departmentId;
+    // TASK-341 B2 — optional lifecycle-status filter (indexed by [tenantId, status]);
+    // the admin live console uses ?status=RECORDING to find in-progress recordings.
+    if (status) filters.status = status;
 
     const [consultations, count] = await Promise.all([
       this.consultationRepository.findPaginatedWithRelations({
@@ -522,7 +526,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     ]);
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
-      data: { scope: 'tenant', page, pageSize, patientId, doctorId, departmentId, count },
+      data: { scope: 'tenant', page, pageSize, patientId, doctorId, departmentId, status, count },
     });
 
     return {

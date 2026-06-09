@@ -11,6 +11,7 @@ to ``RetrievedPoint`` value objects. Tenant isolation is enforced in the filter.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import MagicMock
 
 from qdrant_client import models
@@ -27,8 +28,9 @@ def _store(client: MagicMock) -> KnowledgeQdrantStore:
     return KnowledgeQdrantStore("http://qdrant:6333", "knowledge_chunks", client=client)
 
 
-def _match_values(flt: models.Filter) -> dict[str, str]:
-    return {c.key: c.match.value for c in flt.must}
+def _match_values(flt: models.Filter) -> dict[str, object]:
+    conditions = cast("list[models.FieldCondition]", flt.must or [])
+    return {c.key: cast("models.MatchValue", c.match).value for c in conditions}
 
 
 class TestUpsert:

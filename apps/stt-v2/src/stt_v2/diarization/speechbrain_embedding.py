@@ -22,7 +22,9 @@ class SpeechBrainEmbeddingService(EmbeddingService):
 
     def _load_model_sync(self, model_id: str, settings: Any) -> None:
         try:
-            from speechbrain.inference.speaker import EncoderClassifier
+            from speechbrain.inference.speaker import (
+                EncoderClassifier,
+            )
             from speechbrain.utils.fetching import FetchConfig
 
             device = _resolve_device(settings.diarization_device)

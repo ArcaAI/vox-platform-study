@@ -8,7 +8,7 @@
  * the If-Match-over-body version precedence forwarded to the policy service.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { HarnessAdminController } from '../harness-admin.controller';
 
 type Ctx = { user?: { roles?: string[] | null; tenantId?: string } | null; tenantId?: string };
@@ -36,14 +36,21 @@ function makeController(ctx: Ctx) {
     terminateWorkflow: vi.fn().mockResolvedValue({ requested: true }),
     signalWorkflow: vi.fn().mockResolvedValue({ requested: true }),
   };
+  const liveDocumentationService = {
+    getActiveSessions: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    getSessionStats: vi.fn().mockResolvedValue(null),
+    getEngineConfig: vi.fn().mockResolvedValue({ enabled: true, envDefault: true, source: 'env-default' }),
+    setEngineEnabled: vi.fn().mockResolvedValue({ enabled: false, envDefault: true, source: 'redis-override' }),
+  };
   const cls = { get: vi.fn((key: string) => (ctx as Record<string, unknown>)[key]) };
   const controller = new HarnessAdminController(
     policyService as never,
     observabilityService as never,
     opsClient as never,
     cls as never,
+    liveDocumentationService as never,
   );
-  return { controller, policyService, observabilityService, opsClient };
+  return { controller, policyService, observabilityService, opsClient, liveDocumentationService };
 }
 
 describe('HarnessAdminController — policy', () => {
@@ -180,5 +187,74 @@ describe('HarnessAdminController — workflow ops ownership', () => {
     opsClient.describeWorkflow.mockResolvedValue({ workflowId: 'wf-1', tenantId: 't2' });
     await expect(controller.cancelWorkflow('wf-1', {} as never)).rejects.toBeInstanceOf(ForbiddenException);
     expect(opsClient.cancelWorkflow).not.toHaveBeenCalled();
+  });
+});
+
+// TASK-341 B2/B3 — admin live console: monitoring (tenant-scoped) + kill-switch (super-admin).
+describe('HarnessAdminController — live sessions (TENANT_ADMIN, tenant-scoped)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('lists the caller tenant active sessions', async () => {
+    const { controller, liveDocumentationService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    liveDocumentationService.getActiveSessions.mockResolvedValue({ items: [{ consultationId: 'c1', tenantId: 't1' }], total: 1 });
+
+    const result = await controller.listLiveSessions({});
+    expect(liveDocumentationService.getActiveSessions).toHaveBeenCalledWith('t1');
+    expect(result.total).toBe(1);
+  });
+
+  it('pins a tenant admin to their own tenant (rejects ?tenantId targeting another tenant)', async () => {
+    const { controller } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    await expect(controller.listLiveSessions({ tenantId: 't2' })).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('lets a super-admin target a tenant via ?tenantId', async () => {
+    const { controller, liveDocumentationService } = makeController({ user: SUPER });
+    await controller.listLiveSessions({ tenantId: 't9' });
+    expect(liveDocumentationService.getActiveSessions).toHaveBeenCalledWith('t9');
+  });
+
+  it('returns a single session scoped to the caller tenant', async () => {
+    const { controller, liveDocumentationService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    liveDocumentationService.getSessionStats.mockResolvedValue({ consultationId: 'c1', tenantId: 't1' });
+
+    const result = await controller.getLiveSession('c1', {});
+    expect(liveDocumentationService.getSessionStats).toHaveBeenCalledWith('t1', 'c1');
+    expect(result).toMatchObject({ consultationId: 'c1' });
+  });
+
+  it('404s when the session stats are absent / cross-tenant', async () => {
+    const { controller, liveDocumentationService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    liveDocumentationService.getSessionStats.mockResolvedValue(null);
+    await expect(controller.getLiveSession('c-missing', {})).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('HarnessAdminController — live engine kill-switch (SUPER_ADMIN / global-scope)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('getLiveConfig is forbidden for a tenant admin', async () => {
+    const { controller, liveDocumentationService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    await expect(controller.getLiveConfig()).rejects.toBeInstanceOf(ForbiddenException);
+    expect(liveDocumentationService.getEngineConfig).not.toHaveBeenCalled();
+  });
+
+  it('getLiveConfig is allowed for a super-admin', async () => {
+    const { controller, liveDocumentationService } = makeController({ user: SUPER });
+    const resp = { enabled: true, envDefault: true, source: 'env-default' };
+    liveDocumentationService.getEngineConfig.mockResolvedValue(resp);
+    await expect(controller.getLiveConfig()).resolves.toBe(resp);
+  });
+
+  it('updateLiveConfig is forbidden for a tenant admin and never toggles', async () => {
+    const { controller, liveDocumentationService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    await expect(controller.updateLiveConfig({ enabled: false } as never)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(liveDocumentationService.setEngineEnabled).not.toHaveBeenCalled();
+  });
+
+  it('updateLiveConfig toggles the kill-switch for a super-admin, carrying the actor + reason', async () => {
+    const { controller, liveDocumentationService } = makeController({ user: { roles: ['SUPER_ADMIN'], id: 'admin-7' } as never });
+    await controller.updateLiveConfig({ enabled: false, reason: 'incident' } as never);
+    expect(liveDocumentationService.setEngineEnabled).toHaveBeenCalledWith(false, { userId: 'admin-7', reason: 'incident' });
   });
 });

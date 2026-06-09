@@ -8,9 +8,14 @@ import {
   HarnessPolicyService,
   IActiveUserContext,
   isSuperAdmin,
+  LiveDocEngineConfigResponse,
+  LiveDocSessionsListResponse,
+  LiveDocSessionStatsResponse,
+  LiveDocumentationService,
   UpdateHarnessPolicyRequest,
+  UpdateLiveDocEngineConfigRequest,
 } from '@arcaai/applications';
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
@@ -46,6 +51,7 @@ export class HarnessAdminController {
     private readonly observabilityService: HarnessObservabilityService,
     private readonly opsClient: HarnessOpsClient,
     private readonly cls: ClsService<IActiveUserContext>,
+    private readonly liveDocumentationService: LiveDocumentationService,
   ) {}
 
   // ───────────────────────── Policy ─────────────────────────
@@ -69,11 +75,19 @@ export class HarnessAdminController {
       "is REQUIRED and CAS'es against the row `_version`; drift → 412, missing → 428. Every edit appends a WORM " +
       '`HarnessPolicyChange` (before/after) in the same transaction.',
   })
-  @ApiHeader({ name: 'If-Match', description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"1"`).', required: true, example: '"1"' })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"1"`).',
+    required: true,
+    example: '"1"',
+  })
   @ApiResponse({ status: 200, type: HarnessPolicyResponse })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
-  async updatePolicy(@Body() request: UpdateHarnessPolicyRequest, @ExpectedVersion() expectedFromHeader: number | undefined): Promise<HarnessPolicyResponse> {
+  async updatePolicy(
+    @Body() request: UpdateHarnessPolicyRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<HarnessPolicyResponse> {
     return this.policyService.updatePolicy(request, expectedFromHeader ?? request.expectedVersion);
   }
 
@@ -94,12 +108,20 @@ export class HarnessAdminController {
     summary: 'Update the platform GLOBAL-DEFAULT harness policy (super-admin only)',
     description: 'Same OCC + WORM semantics as `PATCH policy`, targeting the SYSTEM-tenant GLOBAL-DEFAULT row. Restricted to platform super-admins.',
   })
-  @ApiHeader({ name: 'If-Match', description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"1"`).', required: true, example: '"1"' })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"1"`).',
+    required: true,
+    example: '"1"',
+  })
   @ApiResponse({ status: 200, type: HarnessPolicyResponse })
   @ApiResponse({ status: 403, description: 'Forbidden — platform (super-admin) privileges required.' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
-  async updateGlobalPolicy(@Body() request: UpdateHarnessPolicyRequest, @ExpectedVersion() expectedFromHeader: number | undefined): Promise<HarnessPolicyResponse> {
+  async updateGlobalPolicy(
+    @Body() request: UpdateHarnessPolicyRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<HarnessPolicyResponse> {
     this.assertPlatform();
     return this.policyService.updateGlobalDefault(request, expectedFromHeader ?? request.expectedVersion);
   }
@@ -235,6 +257,57 @@ export class HarnessAdminController {
     return this.opsClient.signalWorkflow(id, { tenantId: ownerTenantId, signalName: body.signalName, payload: body.payload });
   }
 
+  // ───────────────────────── Live console (TASK-341) ─────────────────────────
+
+  @Get('live/sessions')
+  @Authorize(['read', 'HarnessWorkflow'])
+  @ApiOperation({ summary: 'List the active live-documentation sessions (PHI-safe stats) for the caller tenant' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.' })
+  @ApiResponse({ status: 200, type: LiveDocSessionsListResponse })
+  async listLiveSessions(@Query() query: { tenantId?: string }): Promise<LiveDocSessionsListResponse> {
+    const tenantId = this.resolveReadTenantId(query.tenantId);
+    return this.liveDocumentationService.getActiveSessions(tenantId);
+  }
+
+  @Get('live/sessions/:id')
+  @Authorize(['read', 'HarnessWorkflow'])
+  @ApiOperation({ summary: "Get one live-documentation session's latest PHI-safe stats" })
+  @ApiParam({ name: 'id', description: 'Consultation id under live documentation' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
+  @ApiResponse({ status: 200, type: LiveDocSessionStatsResponse })
+  @ApiResponse({ status: 404, description: 'No active session for the tenant (absent or expired).' })
+  async getLiveSession(@Param('id') id: string, @Query() query: { tenantId?: string }): Promise<LiveDocSessionStatsResponse> {
+    const tenantId = this.resolveReadTenantId(query.tenantId);
+    const stats = await this.liveDocumentationService.getSessionStats(tenantId, id);
+    if (!stats) throw new NotFoundException('No active live-documentation session for this consultation.');
+    return stats;
+  }
+
+  @Get('live/config')
+  @Authorize(['read', 'HarnessPolicy'])
+  @ApiOperation({ summary: 'Read the live-documentation engine kill-switch (super-admin / global scope)' })
+  @ApiResponse({ status: 200, type: LiveDocEngineConfigResponse })
+  @ApiResponse({ status: 403, description: 'Forbidden — platform (super-admin) privileges required.' })
+  async getLiveConfig(): Promise<LiveDocEngineConfigResponse> {
+    this.assertLiveConfigAdmin();
+    return this.liveDocumentationService.getEngineConfig();
+  }
+
+  @Patch('live/config')
+  @Authorize(['manage', 'HarnessPolicy'])
+  @ApiOperation({
+    summary: 'Toggle the live-documentation engine kill-switch (super-admin / global scope)',
+    description:
+      'Persists a Redis override that survives restart and fans out to all API instances (no redeploy). ' +
+      '`enabled: false` engages the kill-switch — new `start()` calls are refused while in-flight sessions drain.',
+  })
+  @ApiResponse({ status: 200, type: LiveDocEngineConfigResponse })
+  @ApiResponse({ status: 403, description: 'Forbidden — platform (super-admin) privileges required.' })
+  async updateLiveConfig(@Body() body: UpdateLiveDocEngineConfigRequest): Promise<LiveDocEngineConfigResponse> {
+    this.assertLiveConfigAdmin();
+    return this.liveDocumentationService.setEngineEnabled(body.enabled, { userId: this.cls.get('user')?.id, reason: body.reason });
+  }
+
   // ───────────────────────── Helpers ─────────────────────────
 
   /** Resolve the effective read tenant: tenant admins → own tenant; super-admins → `?tenantId=` (or CLS tenant). */
@@ -269,6 +342,13 @@ export class HarnessAdminController {
   private assertPlatform(): void {
     if (!isSuperAdmin(this.cls.get('user'))) {
       throw new ForbiddenException('Editing the harness global-default policy requires platform (super-admin) privileges.');
+    }
+  }
+
+  /** Platform (super-admin) gate for the live-documentation engine kill-switch (global scope). */
+  private assertLiveConfigAdmin(): void {
+    if (!isSuperAdmin(this.cls.get('user'))) {
+      throw new ForbiddenException('Reading or toggling the live-documentation engine kill-switch requires platform (super-admin) privileges.');
     }
   }
 

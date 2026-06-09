@@ -17,6 +17,7 @@ deterministic, reproducible, and require no LLM calls.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 
@@ -98,9 +99,9 @@ def _weight_matrix(categories: list[float], weights: str) -> np.ndarray:
         return np.eye(q)
     diff = np.abs(cats[:, None] - cats[None, :]) / span
     if weights == "linear":
-        return 1.0 - diff
+        return cast(np.ndarray, 1.0 - diff)
     if weights == "quadratic":
-        return 1.0 - diff**2
+        return cast(np.ndarray, 1.0 - diff**2)
     raise ValueError(f"unknown weights: {weights!r} (use identity|linear|quadratic)")
 
 

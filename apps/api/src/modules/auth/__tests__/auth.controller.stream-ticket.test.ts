@@ -6,7 +6,7 @@
  * caller is identified by the existing JWT context (ClsService).
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { UnauthorizedException } from '@nestjs/common';
+import { NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
 import { RequestMethod } from '@nestjs/common';
 import { AuthController } from '../auth.controller';
@@ -21,6 +21,7 @@ function buildController(opts: {
     revoke: ReturnType<typeof vi.fn>;
     isRevoked: ReturnType<typeof vi.fn>;
   };
+  consultationRepository?: { findById: ReturnType<typeof vi.fn> };
 } = {}) {
   const cls = opts.cls ?? { get: () => null };
   const streamTicketService =
@@ -33,6 +34,7 @@ function buildController(opts: {
       revoke: vi.fn(),
       isRevoked: vi.fn().mockResolvedValue(false),
     };
+  const consultationRepository = opts.consultationRepository ?? { findById: vi.fn() };
 
   return {
     controller: new AuthController(
@@ -48,9 +50,14 @@ function buildController(opts: {
       streamTicketService as never, // streamTicketService
       jwtRevocationService as never, // jwtRevocationService
       {} as never, // secretsService (TASK-307 W2.3; not exercised by stream-ticket paths)
+      {} as never, // refreshTokenService
+      {} as never, // userDepartmentService
+      {} as never, // eventEmitter
+      consultationRepository as never, // consultationRepository (TASK-341 B4)
     ),
     streamTicketService,
     jwtRevocationService,
+    consultationRepository,
   };
 }
 
@@ -145,5 +152,94 @@ describe('AuthController.issueStreamTicket', () => {
     const method = Reflect.getMetadata(METHOD_METADATA, AuthController.prototype.issueStreamTicket);
     expect(path).toBe('stream-ticket');
     expect(method).toBe(RequestMethod.POST);
+  });
+
+  // TASK-341 B4 — defense-in-depth at mint time for live-summary tickets.
+  // The SSE route is @TenantOwnedResource, but a ticket bypasses that
+  // interceptor, so a `consultation_live_summary:<id>` ticket may only be
+  // minted for a consultation in the caller's (active) tenant.
+  describe('live-summary scope ownership (TASK-341 B4)', () => {
+    it('mints a live-summary ticket when the consultation belongs to the caller tenant', async () => {
+      const issueTicket = vi.fn(async () => ({ ticket: 'tkt', expiresAt: 1, scope: 'consultation_live_summary:c-1' }));
+      const findById = vi.fn().mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        consultationRepository: { findById },
+      });
+
+      await controller.issueStreamTicket({ scope: 'consultation_live_summary:c-1' });
+
+      expect(findById).toHaveBeenCalledWith('c-1');
+      expect(issueTicket).toHaveBeenCalledWith({
+        userId: 'user-1',
+        tenantId: 'tenant-1',
+        scope: 'consultation_live_summary:c-1',
+        impersonatedBy: null,
+      });
+    });
+
+    it('throws NotFoundException and never mints when the consultation is missing', async () => {
+      const issueTicket = vi.fn();
+      const findById = vi.fn().mockRejectedValue(new Error('not found'));
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        consultationRepository: { findById },
+      });
+
+      await expect(controller.issueStreamTicket({ scope: 'consultation_live_summary:missing' })).rejects.toThrow(NotFoundException);
+      expect(issueTicket).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException (no existence leak) when the consultation belongs to another tenant', async () => {
+      const issueTicket = vi.fn();
+      const findById = vi.fn().mockResolvedValue({ id: 'c-9', tenantId: 'tenant-OTHER' });
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        consultationRepository: { findById },
+      });
+
+      await expect(controller.issueStreamTicket({ scope: 'consultation_live_summary:c-9' })).rejects.toThrow(NotFoundException);
+      expect(issueTicket).not.toHaveBeenCalled();
+    });
+
+    it("propagates a super-admin's selected X-Tenant-Id into the ticket and checks ownership against it", async () => {
+      const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope: 'consultation_live_summary:c-2' }));
+      const findById = vi.fn().mockResolvedValue({ id: 'c-2', tenantId: 'selected-tenant' });
+      const { controller } = buildController({
+        cls: {
+          get: (key: string) => {
+            if (key === 'user') return { id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] };
+            if (key === 'tenantId') return 'selected-tenant';
+            return null;
+          },
+        },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        consultationRepository: { findById },
+      });
+
+      await controller.issueStreamTicket({ scope: 'consultation_live_summary:c-2' });
+
+      expect(issueTicket).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'admin-1', tenantId: 'selected-tenant', scope: 'consultation_live_summary:c-2' }),
+      );
+    });
+
+    it('does NOT perform an ownership lookup for non-live scopes (e.g. consultation_job)', async () => {
+      const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope: 'consultation_job:job-1' }));
+      const findById = vi.fn();
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        consultationRepository: { findById },
+      });
+
+      await controller.issueStreamTicket({ scope: 'consultation_job:job-1' });
+
+      expect(findById).not.toHaveBeenCalled();
+      expect(issueTicket).toHaveBeenCalled();
+    });
   });
 });

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import structlog
@@ -222,7 +222,7 @@ class StreamingPreprocessor:
         ratio = self._target_sr / self.sample_rate
         n_out = int(len(frame) * ratio)
         indices = np.linspace(0, len(frame) - 1, n_out)
-        return np.interp(indices, np.arange(len(frame)), frame).astype(np.float32)
+        return cast(np.ndarray, np.interp(indices, np.arange(len(frame)), frame).astype(np.float32))
 
     async def feed(self, pcm_data: bytes) -> list[AudioUtterance]:
         """Feed raw PCM bytes (16-bit signed LE). Returns 0+ complete utterances.
@@ -425,10 +425,13 @@ class StreamingPreprocessor:
             return self._run_energy_fallback(frame)
 
         try:
-            return self._vad_service.process_chunk(
-                chunk=frame,
-                session_state=self._vad_state,
-                threshold=self._threshold,
+            return cast(
+                float,
+                self._vad_service.process_chunk(
+                    chunk=frame,
+                    session_state=self._vad_state,
+                    threshold=self._threshold,
+                ),
             )
         except Exception as exc:
             logger.warning(

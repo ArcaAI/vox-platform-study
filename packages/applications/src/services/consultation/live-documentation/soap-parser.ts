@@ -86,6 +86,71 @@ export function parseSoapSections(raw: string): LiveSummarySectionDto[] {
 }
 
 /**
+ * SOAP `response_format` (json_schema) for the live SMR call (TASK-340 P0-C).
+ *
+ * Forwarded to `/api/v1/generate` so a json-schema-capable provider returns a
+ * deterministic `{ subjective, objective, assessment, plan }` object instead of
+ * free text. {@link parseSoapJson} parses that deterministically; if the
+ * provider ignores it and returns prose, the caller falls back to the regex
+ * {@link parseSoapSections}. Mirrors the harness/PromptAssembly responseFormat
+ * shape (`{ type, json_schema, strict }`).
+ */
+export const LIVE_SOAP_RESPONSE_FORMAT = {
+  type: 'json_schema' as const,
+  strict: true,
+  json_schema: {
+    title: 'LiveSOAPNote',
+    type: 'object',
+    properties: {
+      subjective: { type: 'string' },
+      objective: { type: 'string' },
+      assessment: { type: 'string' },
+      plan: { type: 'string' },
+    },
+    required: ['subjective', 'objective', 'assessment', 'plan'],
+  },
+};
+
+/** Strip a leading/trailing markdown code fence (```/```json) that models often add. */
+function stripCodeFence(text: string): string {
+  const fenced = text.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i);
+  return fenced ? fenced[1].trim() : text;
+}
+
+/**
+ * Deterministically parse a SOAP **JSON** payload (from `response_format:
+ * json_schema`) into the four ordered sections. Returns `null` when the input
+ * is not a SOAP-shaped JSON object so the caller can fall back to the regex
+ * {@link parseSoapSections}. Lenient on missing keys (empty content) and key
+ * casing; requires at least one recognised SOAP key to claim the JSON path.
+ */
+export function parseSoapJson(raw: string): LiveSummarySectionDto[] | null {
+  const text = (raw ?? '').trim();
+  if (!text) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripCodeFence(text));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+
+  const record = parsed as Record<string, unknown>;
+  const byLowerKey = new Map(Object.keys(record).map((key) => [key.toLowerCase(), key]));
+  const read = (title: SoapTitle): string => {
+    const sourceKey = byLowerKey.get(title.toLowerCase());
+    const value = sourceKey ? record[sourceKey] : undefined;
+    return typeof value === 'string' ? value.trim() : '';
+  };
+
+  const hasAnySoapKey = SOAP_SECTION_TITLES.some((title) => byLowerKey.has(title.toLowerCase()));
+  if (!hasAnySoapKey) return null;
+
+  return SOAP_SECTION_TITLES.map((title) => ({ title, content: read(title) }));
+}
+
+/**
  * Reconstitute the flat running summary from the parsed sections. This is the
  * canonical text the NLP entity offsets are computed against, so the frontend
  * can map each global offset back into the section that renders it.

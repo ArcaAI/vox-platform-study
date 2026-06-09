@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedVoiceProfileRouteImport } from './routes/_authenticated/voice-profile'
-import { Route as AuthenticatedClinicalReviewRouteImport } from './routes/_authenticated/clinical-review'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors404RouteImport } from './routes/(errors)/404'
 import { Route as errors403RouteImport } from './routes/(errors)/403'
@@ -52,6 +51,7 @@ import { Route as AuthenticatedAdminHarnessIndexRouteImport } from './routes/_au
 import { Route as AuthenticatedAdminHarnessWorkflowsRouteImport } from './routes/_authenticated/admin/harness/workflows'
 import { Route as AuthenticatedAdminHarnessPolicyRouteImport } from './routes/_authenticated/admin/harness/policy'
 import { Route as AuthenticatedAdminHarnessOverviewRouteImport } from './routes/_authenticated/admin/harness/overview'
+import { Route as AuthenticatedAdminHarnessLiveRouteImport } from './routes/_authenticated/admin/harness/live'
 import { Route as AuthenticatedAdminHarnessEvalsRouteImport } from './routes/_authenticated/admin/harness/evals'
 import { Route as AuthenticatedAdminHarnessAuditRouteImport } from './routes/_authenticated/admin/harness/audit'
 
@@ -68,12 +68,6 @@ const AuthenticatedVoiceProfileRoute =
   AuthenticatedVoiceProfileRouteImport.update({
     id: '/voice-profile',
     path: '/voice-profile',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedClinicalReviewRoute =
-  AuthenticatedClinicalReviewRouteImport.update({
-    id: '/clinical-review',
-    path: '/clinical-review',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const errors500Route = errors500RouteImport.update({
@@ -303,6 +297,12 @@ const AuthenticatedAdminHarnessOverviewRoute =
     path: '/overview',
     getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
   } as any)
+const AuthenticatedAdminHarnessLiveRoute =
+  AuthenticatedAdminHarnessLiveRouteImport.update({
+    id: '/live',
+    path: '/live',
+    getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
+  } as any)
 const AuthenticatedAdminHarnessEvalsRoute =
   AuthenticatedAdminHarnessEvalsRouteImport.update({
     id: '/evals',
@@ -323,7 +323,6 @@ export interface FileRoutesByFullPath {
   '/403': typeof errors403Route
   '/404': typeof errors404Route
   '/500': typeof errors500Route
-  '/clinical-review': typeof AuthenticatedClinicalReviewRoute
   '/voice-profile': typeof AuthenticatedVoiceProfileRoute
   '/admin/harness': typeof AuthenticatedAdminHarnessRouteRouteWithChildren
   '/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
@@ -357,6 +356,7 @@ export interface FileRoutesByFullPath {
   '/introduction/': typeof AuthenticatedIntroductionIndexRoute
   '/admin/harness/audit': typeof AuthenticatedAdminHarnessAuditRoute
   '/admin/harness/evals': typeof AuthenticatedAdminHarnessEvalsRoute
+  '/admin/harness/live': typeof AuthenticatedAdminHarnessLiveRoute
   '/admin/harness/overview': typeof AuthenticatedAdminHarnessOverviewRoute
   '/admin/harness/policy': typeof AuthenticatedAdminHarnessPolicyRoute
   '/admin/harness/workflows': typeof AuthenticatedAdminHarnessWorkflowsRoute
@@ -368,7 +368,6 @@ export interface FileRoutesByTo {
   '/403': typeof errors403Route
   '/404': typeof errors404Route
   '/500': typeof errors500Route
-  '/clinical-review': typeof AuthenticatedClinicalReviewRoute
   '/voice-profile': typeof AuthenticatedVoiceProfileRoute
   '/': typeof AuthenticatedIndexRoute
   '/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
@@ -402,6 +401,7 @@ export interface FileRoutesByTo {
   '/introduction': typeof AuthenticatedIntroductionIndexRoute
   '/admin/harness/audit': typeof AuthenticatedAdminHarnessAuditRoute
   '/admin/harness/evals': typeof AuthenticatedAdminHarnessEvalsRoute
+  '/admin/harness/live': typeof AuthenticatedAdminHarnessLiveRoute
   '/admin/harness/overview': typeof AuthenticatedAdminHarnessOverviewRoute
   '/admin/harness/policy': typeof AuthenticatedAdminHarnessPolicyRoute
   '/admin/harness/workflows': typeof AuthenticatedAdminHarnessWorkflowsRoute
@@ -415,7 +415,6 @@ export interface FileRoutesById {
   '/(errors)/403': typeof errors403Route
   '/(errors)/404': typeof errors404Route
   '/(errors)/500': typeof errors500Route
-  '/_authenticated/clinical-review': typeof AuthenticatedClinicalReviewRoute
   '/_authenticated/voice-profile': typeof AuthenticatedVoiceProfileRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/admin/harness': typeof AuthenticatedAdminHarnessRouteRouteWithChildren
@@ -450,6 +449,7 @@ export interface FileRoutesById {
   '/_authenticated/introduction/': typeof AuthenticatedIntroductionIndexRoute
   '/_authenticated/admin/harness/audit': typeof AuthenticatedAdminHarnessAuditRoute
   '/_authenticated/admin/harness/evals': typeof AuthenticatedAdminHarnessEvalsRoute
+  '/_authenticated/admin/harness/live': typeof AuthenticatedAdminHarnessLiveRoute
   '/_authenticated/admin/harness/overview': typeof AuthenticatedAdminHarnessOverviewRoute
   '/_authenticated/admin/harness/policy': typeof AuthenticatedAdminHarnessPolicyRoute
   '/_authenticated/admin/harness/workflows': typeof AuthenticatedAdminHarnessWorkflowsRoute
@@ -464,7 +464,6 @@ export interface FileRouteTypes {
     | '/403'
     | '/404'
     | '/500'
-    | '/clinical-review'
     | '/voice-profile'
     | '/admin/harness'
     | '/admin/audio-pipelines'
@@ -498,6 +497,7 @@ export interface FileRouteTypes {
     | '/introduction/'
     | '/admin/harness/audit'
     | '/admin/harness/evals'
+    | '/admin/harness/live'
     | '/admin/harness/overview'
     | '/admin/harness/policy'
     | '/admin/harness/workflows'
@@ -509,7 +509,6 @@ export interface FileRouteTypes {
     | '/403'
     | '/404'
     | '/500'
-    | '/clinical-review'
     | '/voice-profile'
     | '/'
     | '/admin/audio-pipelines'
@@ -543,6 +542,7 @@ export interface FileRouteTypes {
     | '/introduction'
     | '/admin/harness/audit'
     | '/admin/harness/evals'
+    | '/admin/harness/live'
     | '/admin/harness/overview'
     | '/admin/harness/policy'
     | '/admin/harness/workflows'
@@ -555,7 +555,6 @@ export interface FileRouteTypes {
     | '/(errors)/403'
     | '/(errors)/404'
     | '/(errors)/500'
-    | '/_authenticated/clinical-review'
     | '/_authenticated/voice-profile'
     | '/_authenticated/'
     | '/_authenticated/admin/harness'
@@ -590,6 +589,7 @@ export interface FileRouteTypes {
     | '/_authenticated/introduction/'
     | '/_authenticated/admin/harness/audit'
     | '/_authenticated/admin/harness/evals'
+    | '/_authenticated/admin/harness/live'
     | '/_authenticated/admin/harness/overview'
     | '/_authenticated/admin/harness/policy'
     | '/_authenticated/admin/harness/workflows'
@@ -626,13 +626,6 @@ declare module '@tanstack/react-router' {
       path: '/voice-profile'
       fullPath: '/voice-profile'
       preLoaderRoute: typeof AuthenticatedVoiceProfileRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/clinical-review': {
-      id: '/_authenticated/clinical-review'
-      path: '/clinical-review'
-      fullPath: '/clinical-review'
-      preLoaderRoute: typeof AuthenticatedClinicalReviewRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/(errors)/500': {
@@ -908,6 +901,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminHarnessOverviewRouteImport
       parentRoute: typeof AuthenticatedAdminHarnessRouteRoute
     }
+    '/_authenticated/admin/harness/live': {
+      id: '/_authenticated/admin/harness/live'
+      path: '/live'
+      fullPath: '/admin/harness/live'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessLiveRouteImport
+      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute
+    }
     '/_authenticated/admin/harness/evals': {
       id: '/_authenticated/admin/harness/evals'
       path: '/evals'
@@ -928,6 +928,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedAdminHarnessRouteRouteChildren {
   AuthenticatedAdminHarnessAuditRoute: typeof AuthenticatedAdminHarnessAuditRoute
   AuthenticatedAdminHarnessEvalsRoute: typeof AuthenticatedAdminHarnessEvalsRoute
+  AuthenticatedAdminHarnessLiveRoute: typeof AuthenticatedAdminHarnessLiveRoute
   AuthenticatedAdminHarnessOverviewRoute: typeof AuthenticatedAdminHarnessOverviewRoute
   AuthenticatedAdminHarnessPolicyRoute: typeof AuthenticatedAdminHarnessPolicyRoute
   AuthenticatedAdminHarnessWorkflowsRoute: typeof AuthenticatedAdminHarnessWorkflowsRoute
@@ -938,6 +939,7 @@ const AuthenticatedAdminHarnessRouteRouteChildren: AuthenticatedAdminHarnessRout
   {
     AuthenticatedAdminHarnessAuditRoute: AuthenticatedAdminHarnessAuditRoute,
     AuthenticatedAdminHarnessEvalsRoute: AuthenticatedAdminHarnessEvalsRoute,
+    AuthenticatedAdminHarnessLiveRoute: AuthenticatedAdminHarnessLiveRoute,
     AuthenticatedAdminHarnessOverviewRoute:
       AuthenticatedAdminHarnessOverviewRoute,
     AuthenticatedAdminHarnessPolicyRoute: AuthenticatedAdminHarnessPolicyRoute,
@@ -952,7 +954,6 @@ const AuthenticatedAdminHarnessRouteRouteWithChildren =
   )
 
 interface AuthenticatedRouteRouteChildren {
-  AuthenticatedClinicalReviewRoute: typeof AuthenticatedClinicalReviewRoute
   AuthenticatedVoiceProfileRoute: typeof AuthenticatedVoiceProfileRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedAdminHarnessRouteRoute: typeof AuthenticatedAdminHarnessRouteRouteWithChildren
@@ -988,7 +989,6 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
-  AuthenticatedClinicalReviewRoute: AuthenticatedClinicalReviewRoute,
   AuthenticatedVoiceProfileRoute: AuthenticatedVoiceProfileRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedAdminHarnessRouteRoute:

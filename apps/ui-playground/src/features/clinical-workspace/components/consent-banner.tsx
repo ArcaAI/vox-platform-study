@@ -28,8 +28,8 @@ export function ConsentBanner({ acknowledged, onAcknowledgedChange, recording }:
           </span>
           <Mic className="size-4 text-emerald-700 dark:text-emerald-400" />
           <p className="text-sm">
-            <span className="font-medium">Recording in progress.</span> The patient has been informed and consented to this visit being recorded
-            and transcribed for documentation.
+            <span className="font-medium">Recording in progress.</span> The patient has been informed and consented to this visit being recorded and
+            transcribed for documentation.
           </p>
           <Badge variant="outline" className="ml-auto gap-1 border-emerald-500/40 text-emerald-700 dark:text-emerald-400">
             <ShieldCheck className="size-3.5" />

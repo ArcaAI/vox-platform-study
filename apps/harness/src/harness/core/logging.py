@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import MutableMapping
+from typing import Any, cast
 
 import structlog
 
 
-def _add_otel_context(logger: object, method_name: str, event_dict: dict) -> dict:
+def _add_otel_context(
+    logger: object, method_name: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
     """Inject OpenTelemetry trace context into every log entry.
 
     When OTel is not active the import succeeds but ``get_current_span()``
@@ -77,4 +81,4 @@ def setup_logging(log_level: str = "info") -> None:
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     """Get a bound logger instance."""
-    return structlog.get_logger(name)
+    return cast("structlog.stdlib.BoundLogger", structlog.get_logger(name))

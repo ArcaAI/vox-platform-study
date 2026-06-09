@@ -30,7 +30,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
-from typing import Any
+from typing import Any, cast
 
 import structlog
 
@@ -197,7 +197,7 @@ class _GlobalMinioProvider(BlobStorageProvider):
     def get_bytes(self, bucket: str, key: str) -> bytes:
         response = self._raw().get_object(bucket, key)
         try:
-            return response.read()
+            return cast(bytes, response.read())
         finally:
             response.close()
             response.release_conn()

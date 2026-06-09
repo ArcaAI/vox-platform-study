@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -22,7 +24,7 @@ class CreateStreamingSessionRequest(BaseModel):
         default=None,
         description="Tenant-scoped audio bucket name. Defaults to 'hope-audio' if not provided.",
     )
-    storage: dict | None = Field(
+    storage: dict[str, Any] | None = Field(
         default=None,
         description=(
             "Optional per-tenant storage provider descriptor (provider, bucket, "

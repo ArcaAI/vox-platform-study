@@ -1,6 +1,7 @@
 """MinIO client wrapper for object storage operations."""
 
 from io import BytesIO
+from typing import Any
 
 import structlog
 import urllib3
@@ -28,7 +29,7 @@ class MinIOClient:
         secure: bool = False,
         cert_check: bool = True,
     ) -> None:
-        client_kwargs = {
+        client_kwargs: dict[str, Any] = {
             "endpoint": endpoint,
             "access_key": access_key,
             "secret_key": secret_key,
@@ -139,7 +140,7 @@ class MinIOClient:
         except S3Error:
             return False
 
-    def get_object_info(self, bucket_name: str, object_name: str) -> dict:
+    def get_object_info(self, bucket_name: str, object_name: str) -> dict[str, Any]:
         """Get object metadata."""
         try:
             stat = self._client.stat_object(bucket_name, object_name)

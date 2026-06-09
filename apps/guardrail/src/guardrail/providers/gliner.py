@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Any, cast
 
 from guardrail.core.config import GlinerConfig
 from guardrail.core.logging import get_logger
@@ -52,7 +52,7 @@ class GlinerProvider:
 
         if not config.enabled:
             logger.info("gliner.disabled", model_id=config.model_id)
-            self.runtime = None
+            self.runtime: Any = None
             self._executor = None
             return
 
@@ -173,7 +173,7 @@ class GlinerProvider:
     ) -> list[dict[str, Any]]:
         """Analyze multiple texts concurrently via the thread pool."""
         tasks = [self.analyze_content(text, guardrail_type) for text in texts]
-        return await asyncio.gather(*tasks, return_exceptions=True)
+        return cast(list[dict[str, Any]], await asyncio.gather(*tasks, return_exceptions=True))
 
     def health_check(self) -> dict[str, Any]:
         """Synchronous health check — model is loaded on startup."""

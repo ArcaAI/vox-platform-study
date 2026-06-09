@@ -14,7 +14,7 @@ import asyncio
 import logging
 import threading
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 def _resolve_hf_token(settings: Any) -> str | None:
     """Resolve HuggingFace auth token from settings or local cache."""
-    token = settings.huggingface_token
+    token: str | None = settings.huggingface_token
     if not token:
         try:
             from huggingface_hub import get_token as hf_get_token
@@ -190,7 +190,7 @@ class EmbeddingService(ABC):
                 waveform = torch.from_numpy(samples).float().unsqueeze(0)
                 embedding = self._run_inference_sync(waveform, sample_rate)
                 if hasattr(embedding, "tolist"):
-                    return embedding.flatten().tolist()
+                    return cast(list[float], embedding.flatten().tolist())
                 return list(embedding.flatten())
             except Exception as e:
                 raise EmbeddingExtractionError(f"Embedding extraction failed: {e}") from e

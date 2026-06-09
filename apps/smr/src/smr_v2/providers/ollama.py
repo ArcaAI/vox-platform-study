@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import structlog
@@ -15,10 +16,13 @@ from smr_v2.models.provider import ModelInfo, ProviderInfo
 from smr_v2.models.requests import GenerateRequest
 from smr_v2.models.stream import StreamChunk
 
+if TYPE_CHECKING:
+    from opentelemetry.trace import Tracer
+
 logger = structlog.get_logger(__name__)
 
 
-def _get_tracer():
+def _get_tracer() -> Tracer:
     return get_tracer(__name__)
 
 
@@ -34,9 +38,9 @@ class OllamaProvider:
     def _resolve_model(self, request: GenerateRequest) -> str:
         return request.model or self._default_model
 
-    def _build_payload(self, request: GenerateRequest, *, stream: bool) -> dict:
+    def _build_payload(self, request: GenerateRequest, *, stream: bool) -> dict[str, Any]:
         resolved = resolve_request_defaults(request)
-        payload: dict = {
+        payload: dict[str, Any] = {
             "model": self._resolve_model(request),
             "prompt": request.prompt,
             "stream": stream,
@@ -57,7 +61,7 @@ class OllamaProvider:
 
         return payload
 
-    async def generate(self, request: GenerateRequest) -> tuple[str, dict]:
+    async def generate(self, request: GenerateRequest) -> tuple[str, dict[str, Any]]:
         resolved = resolve_request_defaults(request)
         with _get_tracer().start_as_current_span(
             "gen_ai.generate",

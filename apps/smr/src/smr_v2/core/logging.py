@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import logging
 import sys
+from typing import TYPE_CHECKING, cast
 
 import structlog
 
+if TYPE_CHECKING:
+    from structlog.typing import EventDict, WrappedLogger
+
 
 def _add_otel_context(
-    logger: object, method_name: str, event_dict: dict
-) -> dict:
+    logger: WrappedLogger, method_name: str, event_dict: EventDict
+) -> EventDict:
     """Inject OpenTelemetry trace context into every log entry.
 
     When OTel is not active the import succeeds but ``get_current_span()``
@@ -80,4 +84,4 @@ def setup_logging(log_level: str = "info") -> None:
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     """Get a bound logger instance."""
-    return structlog.get_logger(name)
+    return cast("structlog.stdlib.BoundLogger", structlog.get_logger(name))

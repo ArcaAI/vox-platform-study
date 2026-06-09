@@ -1,5 +1,6 @@
 import os
 from enum import IntEnum, StrEnum
+from typing import Any
 
 import dotenv
 from pydantic import Field
@@ -65,7 +66,7 @@ class NLPServiceConfig(BaseSettings):
     class Config:
         env_prefix = "NLP_"
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         kwargs.setdefault("name", os.getenv("OTEL_SERVICE_NAME", os.getenv("SERVICE_NAME", "nlp")))
         kwargs.setdefault("version", os.getenv("OTEL_SERVICE_VERSION", os.getenv("SERVICE_VERSION", "0.1.0")))
         kwargs.setdefault("namespace", os.getenv("OTEL_SERVICE_NAMESPACE", os.getenv("SERVICE_NAMESPACE", "hope")))
@@ -229,7 +230,7 @@ class TextCorrectorConfig(BaseSettings):
 class Settings:
     """Main settings container for dual-model architecture"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.service = NLPServiceConfig()
         self.text_classification = TextClassificationConfig()
         self.token_classification = TokenClassificationConfig()

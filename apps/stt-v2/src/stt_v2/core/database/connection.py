@@ -26,7 +26,7 @@ settings = get_settings()
 # Store engines per event loop to handle Dramatiq workers
 # Each worker thread gets its own event loop via asyncio.run()
 _engines: dict[int, AsyncEngine] = {}
-_session_factories: dict[int, async_sessionmaker] = {}
+_session_factories: dict[int, async_sessionmaker[AsyncSession]] = {}
 _initialized = False
 
 
@@ -39,7 +39,7 @@ def _get_loop_id() -> int:
         return 0
 
 
-def _get_or_create_engine() -> tuple[AsyncEngine, async_sessionmaker]:
+def _get_or_create_engine() -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
     """Get or create an engine for the current event loop."""
     loop_id = _get_loop_id()
 

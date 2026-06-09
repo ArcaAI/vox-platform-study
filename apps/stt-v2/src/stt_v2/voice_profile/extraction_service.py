@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -32,8 +33,8 @@ class ExtractionService:
 
     def __init__(
         self,
-        embedding_service,
-        vad_service,
+        embedding_service: Any,
+        vad_service: Any,
         *,
         min_cross_sample_similarity: float | None = None,
         expected_embedding_dim: int | None = None,

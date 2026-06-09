@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from symspellpy import SymSpell, Verbosity  # type: ignore[import-untyped]
+from symspellpy import SymSpell, Verbosity
 
 from nlp.core.config import TextCorrectorConfig
 from nlp.core.logging import get_logger
@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 class TextCorrector(ABC):
     """Abstract class for spelling corrector"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.is_initialized = False
 
     @abstractmethod

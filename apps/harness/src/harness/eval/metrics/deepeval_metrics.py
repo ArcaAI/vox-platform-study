@@ -17,7 +17,7 @@ second model configuration and nothing is hardcoded.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from harness.eval.config import JudgeConfig
 from harness.eval.judge.base import JudgeClient
@@ -61,12 +61,12 @@ def _run_sync(coro: Any) -> str:
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(coro)
+        return cast(str, asyncio.run(coro))
 
     import concurrent.futures
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(lambda: asyncio.run(coro)).result()
+        return cast(str, pool.submit(lambda: asyncio.run(coro)).result())
 
 
 def build_deepeval_model(
@@ -95,7 +95,7 @@ def build_deepeval_model(
             # Base __init__ calls load_model(); _client must already be set.
             super().__init__(model=jc.model)
 
-        def load_model(self) -> JudgeClient:
+        def load_model(self, *args: Any, **kwargs: Any) -> Any:
             return self._client
 
         def get_model_name(self) -> str:
@@ -199,9 +199,9 @@ def _default_geval_params() -> list[Any]:
     ``LLMTestCaseParams`` for older deepeval.
     """
     try:
-        from deepeval.test_case import SingleTurnParams as Params  # type: ignore[attr-defined]
+        from deepeval.test_case import SingleTurnParams as Params
     except ImportError:  # pragma: no cover - older deepeval
-        from deepeval.test_case import LLMTestCaseParams as Params
+        from deepeval.test_case import LLMTestCaseParams as Params  # type: ignore[no-redef]
 
     return [Params.INPUT, Params.ACTUAL_OUTPUT]
 

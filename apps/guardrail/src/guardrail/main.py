@@ -6,21 +6,28 @@ FastAPI application with Ollama integration and job queue processing.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import cast
 
 import httpx
 import redis.asyncio as aioredis
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from guardrail.core.config import Settings, get_settings
+from guardrail.core.config import (
+    OllamaConfig,
+    OpenAICompatConfig,
+    Settings,
+    get_settings,
+)
 from guardrail.core.logging import get_logger, setup_logging
 
 logger = get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Manage shared resources: httpx client, Redis, Ollama provider."""
     settings: Settings = app.state.settings
 
@@ -84,13 +91,13 @@ async def lifespan(app: FastAPI):
         if settings.provider == "ollama":
             from guardrail.providers.ollama import OllamaProvider
             app.state.ollama_provider = OllamaProvider(
-                settings=engine_cfg,
+                settings=cast(OllamaConfig, engine_cfg),
                 http_client=http_client,
             )
         else:
             from guardrail.providers.openai_compat import OpenAICompatProvider
             app.state.ollama_provider = OpenAICompatProvider(
-                settings=engine_cfg,
+                settings=cast(OpenAICompatConfig, engine_cfg),
                 http_client=http_client,
                 use_granite=(settings.provider == "lm-studio"),
             )
@@ -106,13 +113,13 @@ async def lifespan(app: FastAPI):
         if settings.provider == "ollama":
             from guardrail.providers.guardian import GuardianProvider
             app.state.guardian_provider = GuardianProvider(
-                settings=engine_cfg,
+                settings=cast(OllamaConfig, engine_cfg),
                 http_client=http_client,
             )
         else:
             from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
             app.state.guardian_provider = OpenAICompatGuardianProvider(
-                settings=engine_cfg,
+                settings=cast(OpenAICompatConfig, engine_cfg),
                 http_client=http_client,
             )
         logger.info(
@@ -207,11 +214,10 @@ def create_app() -> FastAPI:
 
     # Metrics endpoint
     if settings.metrics_enabled:
-        from fastapi import Response
         from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
         @app.get("/metrics")
-        async def metrics():
+        async def metrics() -> Response:
             return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     return app

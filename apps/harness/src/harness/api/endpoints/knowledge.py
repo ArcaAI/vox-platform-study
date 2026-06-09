@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import secrets
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -48,7 +48,7 @@ _POINT_NS = uuid.uuid5(uuid.NAMESPACE_URL, "hope:harness:knowledge_chunks")
 
 
 def _settings(request: Request) -> Settings:
-    return request.app.state.settings
+    return cast(Settings, request.app.state.settings)
 
 
 def require_internal_service_token(

@@ -10,6 +10,7 @@ release-blocking in CI.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -31,7 +32,7 @@ from ._stubs import StubJudgeClient, pdsqi_score_json
 
 
 def _score(**over: int) -> PDSQIScore:
-    base = {
+    base: dict[str, Any] = {
         "citation": 4,
         "accurate": 5,
         "thorough": 4,

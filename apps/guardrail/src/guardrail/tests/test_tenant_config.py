@@ -37,7 +37,7 @@ class _StubResolver(TenantConfigResolver):
     """Resolver whose DB layer is replaced by an in-memory map + call counter."""
 
     def __init__(self, data: dict[str, dict[str, str]], **kwargs) -> None:
-        super().__init__(session_factory=lambda: None, **kwargs)  # type: ignore[arg-type]
+        super().__init__(session_factory=lambda: None, **kwargs)  # type: ignore[arg-type, return-value]
         self._data = data
         self.calls: list[str] = []
         self.raise_on: set[str] = set()
@@ -309,7 +309,7 @@ def test_build_guardian_provider_ollama() -> None:
 def test_global_setting_read_maps_prisma_columns() -> None:
     table = GlobalSettingRead.__table__
     assert table.schema == "core"
-    assert table.name == "GlobalSetting"
+    assert table.name == "GlobalSetting"  # type: ignore[attr-defined]
     # Prisma column names (camelCase) the SQLAlchemy model maps onto.
     colnames = {c.name for c in table.columns}
     assert {"id", "tenantId", "key", "namespace", "value", "dataType", "resourceStatus"} <= colnames

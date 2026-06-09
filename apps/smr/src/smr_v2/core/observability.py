@@ -7,6 +7,7 @@ Manages traces, logs, and auto-instrumentation.  Replaces the traces-only
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING, Any
 
 from opentelemetry import trace
 from opentelemetry._logs import set_logger_provider
@@ -23,7 +24,10 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 try:
     from opentelemetry.instrumentation.logging import LoggingInstrumentor
 except ImportError:
-    LoggingInstrumentor = None
+    LoggingInstrumentor = None  # type: ignore[assignment, misc]
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 _TRACER_VERSION = "2.0.0"
 
@@ -41,7 +45,7 @@ _EXCLUDED_URLS = (
 )
 
 
-def _phi_sanitization_hook(span, scope):
+def _phi_sanitization_hook(span: Any, scope: dict[str, Any]) -> None:
     """Redact potentially sensitive request/response body attributes."""
     if not span.is_recording():
         return
@@ -51,7 +55,7 @@ def _phi_sanitization_hook(span, scope):
 
 
 def setup_opentelemetry(
-    app,
+    app: FastAPI,
     *,
     endpoint: str = "http://localhost:4317",
     service_name: str = "smr-v2",
@@ -114,7 +118,7 @@ def setup_opentelemetry(
     )
 
 
-def shutdown_opentelemetry(app) -> None:
+def shutdown_opentelemetry(app: FastAPI) -> None:
     """Flush and shut down all OTel providers, then uninstrument."""
     logger = logging.getLogger(__name__)
 

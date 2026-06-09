@@ -75,7 +75,7 @@ class HuggingFaceLoader(BaseModelLoader):
                 model_config.slug, memory_mb,
             )
 
-            extra = {
+            extra: dict[str, Any] = {
                 "source_uri": model_config.source_uri,
                 "revision": model_config.source_revision,
             }
@@ -144,7 +144,7 @@ class HuggingFaceLoader(BaseModelLoader):
         feature_extractor = None
         is_multimodal_lm = False
 
-        common_kwargs = {
+        common_kwargs: dict[str, Any] = {
             "cache_dir": cache_dir,
             "revision": revision,
             "token": token,

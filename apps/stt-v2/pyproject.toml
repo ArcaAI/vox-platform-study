@@ -157,6 +157,9 @@ dev = [
     "black>=26.1.0",
     "ruff>=0.15.7",
     "mypy>=1.19.1",
+    # Type stubs for mypy strict checking (used by py:stt-v2:typecheck)
+    "types-PyYAML>=6.0.12",
+    "types-psutil>=7.0.0",
     # Pre-commit hooks
     "pre-commit>=4.5.1",
 ]
@@ -217,8 +220,14 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_return_any = true
 
+# Third-party ML / audio / infra packages that ship no type stubs or py.typed
+# marker. `pnpm py:stt-v2:typecheck` loads this config via `--config-file`, so
+# these overrides apply and silence the otherwise-missing imports. Packages that
+# now have real stubs installed (PyYAML -> types-PyYAML, psutil -> types-psutil)
+# are intentionally NOT listed here so mypy type-checks their usage against the
+# stubs.
 [[tool.mypy.overrides]]
-module = ["transformers", "torch", "torchaudio", "soundfile", "librosa", "minio", "dramatiq", "nemo_toolkit", "pyannote.*", "qdrant_client.*", "azure.*", "speechbrain.*", "optimum.*"]
+module = ["transformers", "torch", "torchaudio", "soundfile", "librosa", "minio", "dramatiq", "nemo_toolkit", "nemo", "nemo.*", "pyannote.*", "qdrant_client.*", "azure.*", "speechbrain.*", "optimum.*", "pyrnnoise", "onnxruntime", "cadence", "accelerate", "flash_attn"]
 ignore_missing_imports = true
 
 # pytest configuration

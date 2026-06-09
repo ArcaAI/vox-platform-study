@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from typing import Any, cast
 
 import structlog
 
@@ -28,8 +29,8 @@ _SETUP_DONE = False
 def _add_otel_context(
     _logger: object,
     _method_name: str,
-    event_dict: dict,
-) -> dict:
+    event_dict: dict[str, Any],
+) -> dict[str, Any]:
     """Structlog processor that injects OpenTelemetry traceId/spanId."""
     try:
         if trace is None:
@@ -51,7 +52,7 @@ def _add_otel_context(
     return event_dict
 
 
-_shared_processors: list = [
+_shared_processors: list[Any] = [
     structlog.contextvars.merge_contextvars,
     structlog.stdlib.add_logger_name,
     structlog.stdlib.add_log_level,
@@ -110,4 +111,4 @@ def setup_logging(log_level: str = "info") -> None:
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     """Get a bound logger instance."""
-    return structlog.get_logger(name)
+    return cast("structlog.stdlib.BoundLogger", structlog.get_logger(name))

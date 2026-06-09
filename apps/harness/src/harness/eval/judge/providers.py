@@ -12,6 +12,8 @@ Three interchangeable backends, all selected via :class:`~harness.eval.config.Ju
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 from pydantic import SecretStr
 
@@ -57,8 +59,13 @@ def _is_transient(exc: Exception) -> bool:
 
 
 async def _create_with_retry(
-    create_fn, kwargs: dict, *, retries: int, backoff_s: float, base_url: str
-):
+    create_fn: Callable[..., Awaitable[Any]],
+    kwargs: dict[str, Any],
+    *,
+    retries: int,
+    backoff_s: float,
+    base_url: str,
+) -> Any:
     """Call ``create_fn(**kwargs)``, retrying transient failures with linear backoff.
 
     Each attempt runs under the shared per-endpoint concurrency governor
@@ -80,6 +87,7 @@ async def _create_with_retry(
                 await asyncio.sleep(backoff_s * (attempt + 1))
                 continue
             raise
+    assert last_exc is not None  # pragma: no cover — loop always sets last_exc
     raise last_exc  # pragma: no cover — loop always returns or raises above
 
 
@@ -127,7 +135,7 @@ class OpenAICompatJudgeClient:
         temperature: float | None = None,
         seed: int | None = None,
     ) -> str:
-        kwargs: dict = {
+        kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "temperature": self._config.temperature if temperature is None else temperature,
@@ -189,7 +197,7 @@ class AzureOpenAIJudgeClient:
         temperature: float | None = None,
         seed: int | None = None,
     ) -> str:
-        kwargs: dict = {
+        kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "temperature": self._config.temperature if temperature is None else temperature,
@@ -228,9 +236,9 @@ class BedrockJudgeClient:
         self._config = config
         self.model = config.model
         self.region = config.bedrock.region
-        self._runtime = None  # boto3 client constructed lazily on first call
+        self._runtime: Any = None  # boto3 client constructed lazily on first call
 
-    def _client(self):  # type: ignore[no-untyped-def]
+    def _client(self) -> Any:
         if self._runtime is None:
             import boto3
 
@@ -257,8 +265,8 @@ class BedrockJudgeClient:
         ]
         temp = self._config.temperature if temperature is None else temperature
 
-        def _call() -> dict:
-            return self._client().converse(
+        def _call() -> dict[str, Any]:
+            response = self._client().converse(
                 modelId=self.model,
                 system=system,
                 messages=conversation,
@@ -267,12 +275,13 @@ class BedrockJudgeClient:
                     "maxTokens": self._config.max_tokens,
                 },
             )
+            return cast("dict[str, Any]", response)
 
         try:
             resp = await asyncio.to_thread(_call)
         except Exception as exc:
             raise JudgeConnectionError(f"bedrock judge call failed: {exc}") from exc
-        return resp["output"]["message"]["content"][0]["text"]
+        return cast(str, resp["output"]["message"]["content"][0]["text"])
 
 
 def build_judge_client(config: JudgeConfig | None = None) -> JudgeClient:

@@ -247,11 +247,23 @@ def aggregate(results: list[InferentialCaseResult]) -> dict[str, Any]:
     # Agreement (calibration lane only): does live groundedness drop where the
     # curated `accurate` label is low, and context_relevance where `citation` is low?
     calib = [r for r in results if r.role == "calibration" and r.groundedness is not None]
-    low_acc = [r.groundedness for r in calib if (r.accurate_label or 5) <= 2]
-    high_acc = [r.groundedness for r in calib if (r.accurate_label or 0) >= 4]
+    low_acc = [
+        r.groundedness for r in calib if (r.accurate_label or 5) <= 2 and r.groundedness is not None
+    ]
+    high_acc = [
+        r.groundedness for r in calib if (r.accurate_label or 0) >= 4 and r.groundedness is not None
+    ]
     calib_ctx = [r for r in results if r.role == "calibration" and r.context_relevance is not None]
-    low_cite = [r.context_relevance for r in calib_ctx if (r.citation_label or 5) <= 1]
-    high_cite = [r.context_relevance for r in calib_ctx if (r.citation_label or 0) >= 3]
+    low_cite = [
+        r.context_relevance
+        for r in calib_ctx
+        if (r.citation_label or 5) <= 1 and r.context_relevance is not None
+    ]
+    high_cite = [
+        r.context_relevance
+        for r in calib_ctx
+        if (r.citation_label or 0) >= 3 and r.context_relevance is not None
+    ]
 
     return {
         "n_cases": len(results),

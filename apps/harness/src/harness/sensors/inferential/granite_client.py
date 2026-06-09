@@ -24,6 +24,7 @@ degrade-don't-guess signal, so an unverifiable safety screen never auto-PASSes.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 import httpx
 
@@ -86,7 +87,7 @@ class GraniteGuardianClient:
         self,
         config: SafetyGuardConfig,
         *,
-        transport: httpx.BaseTransport | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._provider = config.provider
         self._base_url = config.base_url.rstrip("/")
@@ -148,7 +149,7 @@ class GraniteGuardianClient:
             raise GraniteParseError(f"no <score> verdict for risk {criterion!r}: {content[:120]!r}")
         return match.group(1).lower() == "yes"
 
-    def _extract_content(self, data: dict) -> str:
+    def _extract_content(self, data: dict[str, Any]) -> str:
         """Read the verdict text from the engine-specific response envelope."""
         if self._provider == "ollama":
             # Ollama ``/api/chat`` -> ``message.content``; ``/api/generate`` -> ``response``.

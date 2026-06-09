@@ -181,7 +181,7 @@ class WebSocketManager:
             logger.error(f"Failed to send message to session {session.session_id}: {str(e)}")
             raise
 
-    async def _send_error(self, session: WebSocketSession, error_code: str, error_message: str, details: dict | None = None) -> None:
+    async def _send_error(self, session: WebSocketSession, error_code: str, error_message: str, details: dict[str, Any] | None = None) -> None:
         error_msg = WebSocketMessage(
             type=WebSocketMessageType.ERROR,
             session_id=session.session_id,

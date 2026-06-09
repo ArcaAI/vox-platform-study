@@ -7,7 +7,7 @@
  * `runningSummary` (the text NLP highlights are offset against) from sections.
  */
 import { describe, it, expect } from 'vitest';
-import { SOAP_SECTION_TITLES, buildRunningSummary, parseSoapSections } from '../soap-parser';
+import { SOAP_SECTION_TITLES, buildRunningSummary, parseSoapJson, parseSoapSections } from '../soap-parser';
 
 describe('parseSoapSections', () => {
   it('parses a well-formed SOAP note into the four canonical sections in order', () => {
@@ -73,6 +73,54 @@ describe('parseSoapSections', () => {
   it('returns an empty array for blank input', () => {
     expect(parseSoapSections('')).toEqual([]);
     expect(parseSoapSections('   \n  ')).toEqual([]);
+  });
+});
+
+describe('parseSoapJson (TASK-340 P0-C — deterministic json_schema parse)', () => {
+  it('parses a SOAP JSON object into the four ordered sections', () => {
+    const raw = JSON.stringify({
+      subjective: 'Chest pain since morning.',
+      objective: 'BP 150/95.',
+      assessment: 'Hypertensive episode.',
+      plan: 'Amlodipine 5mg.',
+    });
+
+    const sections = parseSoapJson(raw);
+
+    expect(sections).not.toBeNull();
+    expect(sections!.map((s) => s.title)).toEqual(['Subjective', 'Objective', 'Assessment', 'Plan']);
+    expect(sections![0].content).toBe('Chest pain since morning.');
+    expect(sections![3].content).toBe('Amlodipine 5mg.');
+  });
+
+  it('strips a ```json code fence before parsing (models often wrap output)', () => {
+    const raw = ['```json', '{ "subjective": "A", "objective": "", "assessment": "", "plan": "D" }', '```'].join('\n');
+
+    const sections = parseSoapJson(raw);
+
+    expect(sections!.map((s) => s.title)).toEqual(['Subjective', 'Objective', 'Assessment', 'Plan']);
+    expect(sections![0].content).toBe('A');
+    expect(sections![1].content).toBe('');
+    expect(sections![3].content).toBe('D');
+  });
+
+  it('tolerates partial SOAP JSON (missing keys → empty content)', () => {
+    const sections = parseSoapJson('{ "subjective": "Headache." }');
+    expect(sections!.map((s) => s.title)).toEqual(['Subjective', 'Objective', 'Assessment', 'Plan']);
+    expect(sections![0].content).toBe('Headache.');
+    expect(sections![2].content).toBe('');
+  });
+
+  it('returns null for unstructured (non-JSON) text so the caller can fall back to regex', () => {
+    expect(parseSoapJson('Subjective: Headache.\nPlan: Ibuprofen.')).toBeNull();
+    expect(parseSoapJson('Pt on amlodipine for HTN.')).toBeNull();
+  });
+
+  it('returns null for blank input, arrays, and JSON objects without SOAP keys', () => {
+    expect(parseSoapJson('')).toBeNull();
+    expect(parseSoapJson('   ')).toBeNull();
+    expect(parseSoapJson('[1, 2, 3]')).toBeNull();
+    expect(parseSoapJson('{ "foo": "bar" }')).toBeNull();
   });
 });
 

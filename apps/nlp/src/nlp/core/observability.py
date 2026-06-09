@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from fastapi import FastAPI
 from opentelemetry import metrics, trace
@@ -30,7 +31,7 @@ from nlp.core.logging import get_logger
 logger = get_logger("observability")
 
 
-def _phi_sanitization_hook(span, scope):
+def _phi_sanitization_hook(span: trace.Span, scope: dict[str, Any]) -> None:
     """Strip attributes that could contain PHI from OTel spans."""
     if span and span.is_recording():
         for attr in ("http.request.body", "http.response.body"):

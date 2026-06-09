@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
  */
 const TABS: { to: string; label: string }[] = [
   { to: '/admin/harness/overview', label: 'Overview' },
+  { to: '/admin/harness/live', label: 'Live' },
   { to: '/admin/harness/workflows', label: 'Workflows' },
   { to: '/admin/harness/policy', label: 'Policy' },
   { to: '/admin/harness/audit', label: 'Audit' },

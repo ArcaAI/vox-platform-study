@@ -17,6 +17,7 @@ Endpoint
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import structlog
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -29,7 +30,7 @@ from ...core.exceptions import (
 )
 from ...pipeline.config_reader import get_pipeline_reader
 from ..batch_service import get_batch_service
-from ..dto import TimingMetrics
+from ..dto import TimingMetrics, TranscriptionResult
 from .schemas import (
     ErrorResponse,
     SegmentResponse,
@@ -180,7 +181,7 @@ async def transcribe_audio(
     return _build_response(result)
 
 
-def _build_response(result) -> TranscriptionResponse:
+def _build_response(result: TranscriptionResult) -> TranscriptionResponse:
     """Convert a ``TranscriptionResult`` dataclass to the API response model."""
     from ..dto import TimingMetrics as TimingMetricsDC
 
@@ -206,7 +207,7 @@ def _build_response(result) -> TranscriptionResponse:
         )
 
     # Serialise metadata — drop "timing" key since it is now top-level
-    metadata_clean: dict = {}
+    metadata_clean: dict[str, Any] = {}
     for k, v in result.metadata.items():
         if k == "timing":
             continue

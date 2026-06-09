@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 
 from harness.eval.ci import judge_clinician_icc
 from harness.eval.golden import (

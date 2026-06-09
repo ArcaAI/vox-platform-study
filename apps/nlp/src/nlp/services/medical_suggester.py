@@ -7,6 +7,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipe
 
 from nlp.core.config import MedicalSuggesterConfig
 from nlp.schemas.classification import TokenClassificationRequest
+from nlp.schemas.common import Entity
 from nlp.schemas.diagnosis import (
     DiagnosisSuggestion,
     DiagnosisSuggestionRequest,
@@ -140,7 +141,7 @@ class MedicalSuggester:
             logger.error(f"Failed to generate medical suggestions: {str(e)}")
             raise
 
-    def _filter_relevant_entities(self, entities: list, min_confidence: float) -> list:
+    def _filter_relevant_entities(self, entities: list[Entity], min_confidence: float) -> list[Entity]:
         """Filter entities that are relevant for disease prediction"""
         relevant_entity_types = {
             "B-SIGN_SYMPTOM",
@@ -172,7 +173,7 @@ class MedicalSuggester:
 
         return filtered_entities
 
-    def _create_symptom_text(self, entities: list) -> str:
+    def _create_symptom_text(self, entities: list[Entity]) -> str:
         """Create a coherent symptom description from extracted entities"""
         if not entities:
             return ""

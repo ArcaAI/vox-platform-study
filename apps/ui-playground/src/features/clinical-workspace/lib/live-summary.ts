@@ -78,11 +78,7 @@ export function buildEntityHighlights(text: string, entities: LiveSummaryEntity[
  * slots in order (unpopulated ones render as empty placeholders). Otherwise the
  * given sections (e.g. the single "Running Summary" fallback) pass through.
  */
-export function buildSoapSectionViews(
-  runningSummary: string,
-  sections: LiveSummarySection[],
-  entities: LiveSummaryEntity[],
-): SoapSectionView[] {
+export function buildSoapSectionViews(runningSummary: string, sections: LiveSummarySection[], entities: LiveSummaryEntity[]): SoapSectionView[] {
   const isSoap = sections.some((s) => SOAP_TITLE_SET.has(s.title));
   const ordered: LiveSummarySection[] = isSoap
     ? SOAP_SECTION_TITLES.map((title) => sections.find((s) => s.title === title) ?? { title, content: '' })
@@ -105,14 +101,7 @@ export function buildSoapSectionViews(
     cursor = windowEnd;
 
     const localEntities = entities
-      .filter(
-        (e) =>
-          Number.isInteger(e.start) &&
-          Number.isInteger(e.end) &&
-          e.start >= windowStart &&
-          e.end <= windowEnd &&
-          e.start < e.end,
-      )
+      .filter((e) => Number.isInteger(e.start) && Number.isInteger(e.end) && e.start >= windowStart && e.end <= windowEnd && e.start < e.end)
       .map((e) => ({ ...e, start: e.start - windowStart, end: e.end - windowStart }));
 
     return { title: section.title, content, populated: true, segments: buildEntityHighlights(content, localEntities) };

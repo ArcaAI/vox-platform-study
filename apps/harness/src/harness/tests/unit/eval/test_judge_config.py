@@ -123,7 +123,7 @@ class TestJsonResponseFormat:
             msg = types.SimpleNamespace(content='{"supported": true}')
             return types.SimpleNamespace(choices=[types.SimpleNamespace(message=msg)])
 
-        client._client.chat.completions.create = fake_create  # type: ignore[attr-defined]
+        client._client.chat.completions.create = fake_create  # type: ignore[method-assign,attr-defined]
         return captured
 
     @pytest.mark.asyncio

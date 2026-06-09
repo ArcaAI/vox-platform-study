@@ -42,6 +42,8 @@ interface MockRepoSet {
   tenantStorageConfig: { findById: ReturnType<typeof vi.fn> };
   userVoiceProfile: { findById: ReturnType<typeof vi.fn> };
   transcriptionJob: { findById: ReturnType<typeof vi.fn> };
+  // Clinical Workflow Playground (WS1): backs the `Consultation` resolver branch.
+  consultation: { findById: ReturnType<typeof vi.fn> };
 }
 
 interface MockServices {
@@ -77,6 +79,9 @@ function buildHarness(opts: {
     transcriptionJob: {
       findById: vi.fn(),
     },
+    consultation: {
+      findById: vi.fn(),
+    },
   };
 
   const services: MockServices = {
@@ -95,6 +100,7 @@ function buildHarness(opts: {
     repos.tenantStorageConfig as never,
     repos.userVoiceProfile as never,
     repos.transcriptionJob as never,
+    repos.consultation as never,
     services.consultationJob as never,
     services.streamSessionTenantBinding as never,
   );

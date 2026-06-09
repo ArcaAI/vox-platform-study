@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from fastapi import Request
 
@@ -24,27 +24,27 @@ if TYPE_CHECKING:
 
 def get_settings(request: Request) -> Settings:
     """Retrieve settings from app.state (set during lifespan)."""
-    return request.app.state.settings
+    return cast("Settings", request.app.state.settings)
 
 
 def get_http_client(request: Request) -> httpx.AsyncClient:
     """Retrieve shared httpx AsyncClient from app.state."""
-    return request.app.state.http_client
+    return cast("httpx.AsyncClient", request.app.state.http_client)
 
 
 def get_redis(request: Request) -> aioredis.Redis:
     """Retrieve shared Redis client from app.state."""
-    return request.app.state.redis
+    return cast("aioredis.Redis", request.app.state.redis)
 
 
 def get_provider_registry(request: Request) -> ProviderRegistry:
     """Retrieve provider registry from app.state."""
-    return request.app.state.provider_registry
+    return cast("ProviderRegistry", request.app.state.provider_registry)
 
 
 def get_task_manager(request: Request) -> TaskManager:
     """Retrieve task manager from app.state."""
-    return request.app.state.task_manager
+    return cast("TaskManager", request.app.state.task_manager)
 
 
 def get_generation_audit_logger(request: Request) -> GenerationAuditLogger:
@@ -56,12 +56,12 @@ def get_generation_audit_logger(request: Request) -> GenerationAuditLogger:
 
 def get_circuit_breakers(request: Request) -> dict[str, CircuitBreaker]:
     """Retrieve per-provider circuit breakers from app.state."""
-    return request.app.state.circuit_breakers
+    return cast("dict[str, CircuitBreaker]", request.app.state.circuit_breakers)
 
 
 def get_shutdown_manager(request: Request) -> ShutdownManager | None:
     """Retrieve shutdown manager from app.state."""
-    return request.app.state.shutdown_manager
+    return cast("ShutdownManager | None", request.app.state.shutdown_manager)
 
 
 def get_rate_limiters(request: Request) -> dict[str, RateLimitTracker]:

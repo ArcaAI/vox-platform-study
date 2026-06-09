@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from openai import APIConnectionError, APIError, APITimeoutError, AsyncOpenAI
@@ -14,10 +15,13 @@ from smr_v2.models.provider import ModelInfo, ProviderInfo
 from smr_v2.models.requests import GenerateRequest
 from smr_v2.models.stream import StreamChunk
 
+if TYPE_CHECKING:
+    from opentelemetry.trace import Tracer
+
 logger = structlog.get_logger(__name__)
 
 
-def _get_tracer():
+def _get_tracer() -> Tracer:
     return get_tracer(__name__)
 
 
@@ -37,14 +41,14 @@ class OpenAICompatProvider:
     def _resolve_model(self, request: GenerateRequest) -> str:
         return request.model or self._default_model
 
-    def _build_messages(self, request: GenerateRequest) -> list[dict]:
+    def _build_messages(self, request: GenerateRequest) -> list[dict[str, str]]:
         messages = []
         if request.system_prompt:
             messages.append({"role": "system", "content": request.system_prompt})
         messages.append({"role": "user", "content": request.prompt})
         return messages
 
-    async def generate(self, request: GenerateRequest) -> tuple[str, dict]:
+    async def generate(self, request: GenerateRequest) -> tuple[str, dict[str, Any]]:
         resolved = resolve_request_defaults(request)
         with _get_tracer().start_as_current_span(
             "gen_ai.generate",
@@ -56,7 +60,7 @@ class OpenAICompatProvider:
                 "gen_ai.request.max_tokens": resolved["max_tokens"],
             },
         ) as span:
-            kwargs: dict = {
+            kwargs: dict[str, Any] = {
                 "model": self._resolve_model(request),
                 "messages": self._build_messages(request),
                 "temperature": resolved["temperature"],
@@ -103,7 +107,7 @@ class OpenAICompatProvider:
                 "gen_ai.request.max_tokens": resolved["max_tokens"],
             },
         ) as span:
-            kwargs: dict = {
+            kwargs: dict[str, Any] = {
                 "model": self._resolve_model(request),
                 "messages": self._build_messages(request),
                 "temperature": resolved["temperature"],

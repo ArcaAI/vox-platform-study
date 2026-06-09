@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends
 
 from smr_v2.core.dependencies import get_provider_registry
@@ -14,7 +16,7 @@ router = APIRouter(tags=["providers"])
 @router.get("/providers", response_model=list[ProviderInfo])
 async def list_providers(
     registry: ProviderRegistry = Depends(get_provider_registry),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     results = []
     for name in registry.list_providers():
         provider = registry.get(name)

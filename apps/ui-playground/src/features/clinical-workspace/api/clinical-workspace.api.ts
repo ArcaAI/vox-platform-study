@@ -57,11 +57,7 @@ export function addContextItem(client: AgenticClient, consultationId: string, bo
 }
 
 /** Register a dual-capture (raw + processed) audio recording. */
-export function registerDualRecording(
-  client: AgenticClient,
-  consultationId: string,
-  body: AddAudioRecordingRequest,
-): Promise<WorkspaceContextItem> {
+export function registerDualRecording(client: AgenticClient, consultationId: string, body: AddAudioRecordingRequest): Promise<WorkspaceContextItem> {
   return client.post<WorkspaceContextItem>(WORKSPACE_ENDPOINTS.recordings(consultationId), body);
 }
 

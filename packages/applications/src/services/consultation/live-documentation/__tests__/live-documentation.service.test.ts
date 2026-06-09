@@ -10,12 +10,22 @@
  *   - interim (non-final) segments are ignored
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { Subject } from 'rxjs';
 import { LiveDocumentationService } from '../live-documentation.service';
 
 const CID = 'consultation-001';
 const TENANT = 'tenant-abc';
 const CHANNEL = `consultation:live-summary:${CID}`;
+
+/** A promise whose resolution is deferred to the test body (overlap simulation). */
+function makeDeferred<T = void>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
 
 function buildHttpMock() {
   return {
@@ -33,14 +43,29 @@ function buildHttpMock() {
   };
 }
 
-function buildDeps(httpMock = buildHttpMock()) {
+interface BuildDepsOpts {
+  /** `LIVE_DOC_*` config overrides (read by the constructor via ConfigService.get). */
+  config?: Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  redisSubscriber?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  contextItemRepository?: any;
+}
+
+function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
   const cacheService = {
     get: vi.fn().mockResolvedValue(null),
+    set: vi.fn().mockResolvedValue(undefined),
     setex: vi.fn().mockResolvedValue(undefined),
     publish: vi.fn().mockResolvedValue(undefined),
     del: vi.fn().mockResolvedValue(undefined),
+    eval: vi.fn().mockResolvedValue('OK'),
+    sadd: vi.fn().mockResolvedValue(1),
+    srem: vi.fn().mockResolvedValue(1),
+    smembers: vi.fn().mockResolvedValue([]),
+    expire: vi.fn().mockResolvedValue(true),
   };
-  const redisSubscriber = {
+  const redisSubscriber = opts.redisSubscriber ?? {
     subscribeToChannel: vi.fn(),
     unsubscribeFromChannel: vi.fn(),
   };
@@ -48,11 +73,13 @@ function buildDeps(httpMock = buildHttpMock()) {
     subscribeToResults: vi.fn().mockReturnValue({ subscribe: vi.fn().mockReturnValue({ unsubscribe: vi.fn() }) }),
     unsubscribeFromResults: vi.fn(),
   };
-  const contextItemRepository = {
+  const contextItemRepository = opts.contextItemRepository ?? {
     create: vi.fn().mockResolvedValue({ id: 'ctx-pre-1' }),
+    update: vi.fn().mockResolvedValue({ id: 'ctx-pre-1' }),
     findTranscripts: vi.fn().mockResolvedValue([]),
   };
-  const configService = { get: vi.fn().mockReturnValue(undefined) };
+  const config = opts.config ?? {};
+  const configService = { get: vi.fn().mockImplementation((key: string) => config[key]) };
 
   const service = new LiveDocumentationService(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -265,6 +292,386 @@ describe('LiveDocumentationService', () => {
 
       sub.unsubscribe();
       expect(redisSubscriber.unsubscribeFromChannel).toHaveBeenCalledWith(CHANNEL);
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // P0-A: overlapping generations, abort, throttle
+  // ------------------------------------------------------------------
+  describe('overlapping flushes (P0-A)', () => {
+    it('drops a stale in-flight generation when a newer flush supersedes it (no out-of-order publish)', async () => {
+      const deferred = makeDeferred();
+      let smrCalls = 0;
+      const httpMock = {
+        axiosRef: {
+          post: vi.fn().mockImplementation((url: string) => {
+            if (url.includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
+            if (url.includes('/generate')) {
+              smrCalls += 1;
+              if (smrCalls === 1) return deferred.promise.then(() => ({ data: { summary: 'STALE first' } }));
+              return Promise.resolve({ data: { summary: 'FRESH second' } });
+            }
+            return Promise.resolve({ data: {} });
+          }),
+        },
+      };
+      const { service, cacheService } = buildDeps(httpMock, { config: { LIVE_DOC_MIN_INTERVAL_MS: '0' } });
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      service.ingestSegment(CID, { text: 'first', isFinal: true, segmentId: 's1' });
+      const p1 = service.flush(CID); // generation 1 — SMR hangs
+      service.ingestSegment(CID, { text: 'second', isFinal: true, segmentId: 's2' });
+      const p2 = service.flush(CID); // generation 2 — supersedes; SMR resolves immediately
+      await p2;
+
+      deferred.resolve(); // release the stale first call AFTER the fresh one published
+      await p1;
+
+      const publishedSummaries = cacheService.publish.mock.calls
+        .map((c: unknown[]) => JSON.parse(c[1] as string))
+        .filter((p: { closed?: boolean }) => p.closed !== true)
+        .map((p: { runningSummary: string }) => p.runningSummary);
+      expect(publishedSummaries).toContain('FRESH second');
+      expect(publishedSummaries).not.toContain('STALE first');
+      // last non-terminal payload reflects the fresh generation
+      expect(publishedSummaries.at(-1)).toBe('FRESH second');
+    });
+
+    it('throttles live SMR calls to at most one per LIVE_DOC_MIN_INTERVAL_MS', async () => {
+      vi.useFakeTimers();
+      const { service, httpMock } = buildDeps(buildHttpMock(), { config: { LIVE_DOC_MIN_INTERVAL_MS: '4000' } });
+      const generateCalls = () => httpMock.axiosRef.post.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/generate')).length;
+
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'a', isFinal: true, segmentId: 's1' });
+      await service.flush(CID);
+      expect(generateCalls()).toBe(1);
+
+      // A 2nd flush inside the window must be throttled (scheduled, no SMR call yet).
+      service.ingestSegment(CID, { text: 'b', isFinal: true, segmentId: 's2' });
+      await service.flush(CID);
+      expect(generateCalls()).toBe(1);
+
+      // Once the window elapses, the scheduled trailing flush fires.
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(generateCalls()).toBe(2);
+    });
+
+    it('passes an abort signal to the SMR and NLP calls so in-flight work can be cancelled', async () => {
+      const { service, httpMock } = buildDeps();
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
+      await service.flush(CID);
+
+      const smrCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/generate'))!;
+      const nlpCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/classify/tokens'))!;
+      expect((smrCall[2] as { signal?: unknown }).signal).toBeDefined();
+      expect((nlpCall[2] as { signal?: unknown }).signal).toBeDefined();
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // P0-B: incremental prompt + bounded SMR params
+  // ------------------------------------------------------------------
+  describe('bounded transcript cost (P0-B)', () => {
+    it('sends an incremental prompt (prior note + new delta only) on subsequent flushes', async () => {
+      const { service, httpMock } = buildDeps(buildHttpMock(), { config: { LIVE_DOC_MIN_INTERVAL_MS: '0' } });
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      service.ingestSegment(CID, { text: 'Patient reports cough', isFinal: true, segmentId: 's1' });
+      await service.flush(CID); // first flush — full transcript
+      service.ingestSegment(CID, { text: 'and mild fever', isFinal: true, segmentId: 's2' });
+      await service.flush(CID); // second flush — incremental
+
+      const generateCalls = httpMock.axiosRef.post.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/generate'));
+      const secondPrompt = generateCalls[1][1].prompt as string;
+      expect(secondPrompt).toContain('and mild fever'); // new delta
+      expect(secondPrompt).toContain('Pt on amlodipine for HTN.'); // prior SOAP note carried forward
+      expect(secondPrompt).not.toContain('Patient reports cough'); // old transcript NOT re-sent verbatim
+    });
+
+    it('sets bounded live SMR params (max_tokens, lower timeout, provider/model) and a SOAP response_format', async () => {
+      const { service, httpMock } = buildDeps(buildHttpMock(), {
+        config: {
+          LIVE_DOC_SMR_MAX_TOKENS: '1500',
+          LIVE_DOC_SMR_TIMEOUT_MS: '20000',
+          LIVE_DOC_SMR_PROVIDER: 'openai',
+          LIVE_DOC_SMR_MODEL: 'fast-model',
+        },
+      });
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
+      await service.flush(CID);
+
+      const smrCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/generate'))!;
+      const body = smrCall[1] as { max_tokens?: number; provider?: string; model?: string; response_format?: { type?: string } };
+      const config = smrCall[2] as { timeout?: number };
+      expect(body.max_tokens).toBe(1500);
+      expect(body.provider).toBe('openai');
+      expect(body.model).toBe('fast-model');
+      expect(body.response_format?.type).toBe('json_schema');
+      expect(config.timeout).toBe(20000);
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // P0-C: deterministic json_schema SOAP parse in the flush path
+  // ------------------------------------------------------------------
+  describe('deterministic SOAP parse (P0-C)', () => {
+    it('parses a SOAP JSON SMR response into the four ordered sections (no regex dependency)', async () => {
+      const httpMock = {
+        axiosRef: {
+          post: vi.fn().mockImplementation((url: string) => {
+            if (url.includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
+            if (url.includes('/generate')) {
+              return Promise.resolve({
+                data: { summary: JSON.stringify({ subjective: 'S text', objective: 'O text', assessment: 'A text', plan: 'P text' }) },
+              });
+            }
+            return Promise.resolve({ data: {} });
+          }),
+        },
+      };
+      const { service } = buildDeps(httpMock);
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'chest pain', isFinal: true, segmentId: 's1' });
+
+      const payload = await service.flush(CID);
+      expect(payload!.sections.map((s) => s.title)).toEqual(['Subjective', 'Objective', 'Assessment', 'Plan']);
+      expect(payload!.sections[0].content).toBe('S text');
+      expect(payload!.sections[3].content).toBe('P text');
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // P1-A: resilient subset — cross-instance stop + control teardown
+  // ------------------------------------------------------------------
+  describe('cross-instance resilience (P1-A)', () => {
+    it('publishes a terminal closed event, frees the lock, and signals teardown even with no local session', async () => {
+      const { service, cacheService } = buildDeps();
+      const result = await service.stop('other-cid');
+
+      expect(result).toBeNull();
+      const publishes = cacheService.publish.mock.calls.map((c: unknown[]) => [c[0] as string, JSON.parse(c[1] as string)]);
+      // terminal closed on the main channel
+      expect(publishes.some(([ch, p]: [string, { closed?: boolean }]) => ch === 'consultation:live-summary:other-cid' && p.closed === true)).toBe(true);
+      // stop signal on the control channel (so an owner on another instance tears down)
+      expect(publishes.some(([ch, p]: [string, { type?: string }]) => ch === 'consultation:live-summary:other-cid:control' && p.type === 'stop')).toBe(true);
+      // owner lock released
+      expect(cacheService.del).toHaveBeenCalledWith('consultation:live-summary:other-cid:lock');
+    });
+
+    it('tears down the local session when a cross-instance stop signal arrives on the control channel', async () => {
+      const control$ = new Subject<string>();
+      const redisSubscriber = {
+        subscribeToChannel: vi.fn().mockResolvedValue(control$.asObservable()),
+        unsubscribeFromChannel: vi.fn(),
+      };
+      const { service } = buildDeps(buildHttpMock(), { redisSubscriber });
+      service.start({ consultationId: CID, tenantId: TENANT });
+      // let the async control-channel subscription establish
+      await new Promise((r) => setTimeout(r, 10));
+      expect(service.isActive(CID)).toBe(true);
+
+      control$.next(JSON.stringify({ type: 'stop' }));
+      await new Promise((r) => setTimeout(r, 10));
+
+      expect(service.isActive(CID)).toBe(false);
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // P1-C: throttled durable snapshot (single upserted ContextItem)
+  // ------------------------------------------------------------------
+  describe('durable snapshot (P1-C)', () => {
+    it('persists a single upserted PRE_SUMMARY snapshot (create once, then updates the same row), throttled', async () => {
+      vi.useFakeTimers();
+      const created: Array<{ type: string; metaData?: Record<string, unknown> }> = [];
+      const repo = {
+        create: vi.fn().mockImplementation((entity: { type: string; metaData?: Record<string, unknown> }) => {
+          created.push(entity);
+          return Promise.resolve(entity);
+        }),
+        update: vi.fn().mockImplementation((_id: string, entity: unknown) => Promise.resolve(entity)),
+        findTranscripts: vi.fn().mockResolvedValue([]),
+      };
+      const { service } = buildDeps(buildHttpMock(), {
+        config: { LIVE_DOC_MIN_INTERVAL_MS: '0', LIVE_DOC_DURABLE_SNAPSHOT_MS: '1000' },
+        contextItemRepository: repo,
+      });
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      // First flush at T0 is inside the durable window (baseline set at start) → no write.
+      service.ingestSegment(CID, { text: 'a', isFinal: true, segmentId: 's1' });
+      await service.flush(CID);
+      expect(repo.create).toHaveBeenCalledTimes(0);
+
+      // Cross the window → first durable write = create.
+      vi.advanceTimersByTime(1200);
+      service.ingestSegment(CID, { text: 'b', isFinal: true, segmentId: 's2' });
+      await service.flush(CID);
+      expect(repo.create).toHaveBeenCalledTimes(1);
+      expect(created[0].type).toBe('PRE_SUMMARY');
+      expect(created[0].metaData).toMatchObject({ subType: 'LIVE_SOAP_SNAPSHOT' });
+
+      // Cross again → upsert the SAME row (update, not a 2nd create).
+      vi.advanceTimersByTime(1200);
+      service.ingestSegment(CID, { text: 'c', isFinal: true, segmentId: 's3' });
+      await service.flush(CID);
+      expect(repo.create).toHaveBeenCalledTimes(1);
+      expect(repo.update).toHaveBeenCalledTimes(1);
+
+      // Final-on-stop finalizes the same row (update), never a 2nd create.
+      await service.stop(CID, { persistSnapshot: true });
+      expect(repo.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // P2: kill-switch + metrics
+  // ------------------------------------------------------------------
+  describe('safety rails + observability (P2)', () => {
+    it('does not start a watcher session when LIVE_DOC_ENABLED is false (kill-switch)', () => {
+      const { service } = buildDeps(buildHttpMock(), { config: { LIVE_DOC_ENABLED: 'false' } });
+      service.start({ consultationId: CID, tenantId: TENANT });
+      expect(service.isActive(CID)).toBe(false);
+    });
+
+    it('emits a structured flush metrics log (latency + counts, no transcript text)', async () => {
+      const logSpy = vi.spyOn(Logger.prototype, 'log');
+      const { service } = buildDeps();
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'Patient on amlodipine', isFinal: true, segmentId: 's1' });
+      await service.flush(CID);
+
+      const flushLog = logSpy.mock.calls.find((c) => (c[0] as { message?: string })?.message === 'Live summary flush');
+      expect(flushLog).toBeDefined();
+      const fields = flushLog![0] as Record<string, unknown>;
+      expect(fields).toHaveProperty('smrLatencyMs');
+      expect(fields).toHaveProperty('flushCount');
+      expect(JSON.stringify(fields)).not.toContain('Patient on amlodipine');
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // B1 (TASK-341): per-session stats published to Redis for the admin
+  // live console — `live-doc:stats:{cid}` snapshot + `live-doc:active:{tenant}` set.
+  // ------------------------------------------------------------------
+  describe('admin live stats publish/clear (B1)', () => {
+    const STATS_KEY = `live-doc:stats:${CID}`;
+    const ACTIVE_SET = `live-doc:active:${TENANT}`;
+
+    it('writes a PHI-safe stats snapshot + adds the id to the tenant active set on each flush', async () => {
+      const { service, cacheService } = buildDeps();
+      service.start({ consultationId: CID, tenantId: TENANT, sessionId: 'stt-1' });
+      service.ingestSegment(CID, { text: 'Patient on amlodipine', isFinal: true, segmentId: 'seg-9' });
+
+      await service.flush(CID);
+
+      const statsCall = cacheService.setex.mock.calls.find((c: unknown[]) => c[0] === STATS_KEY);
+      expect(statsCall).toBeDefined();
+      const snapshot = JSON.parse(statsCall![2] as string);
+      expect(snapshot.consultationId).toBe(CID);
+      expect(snapshot.tenantId).toBe(TENANT);
+      expect(snapshot.sessionId).toBe('stt-1');
+      expect(snapshot.flushCount).toBe(1);
+      expect(snapshot).toHaveProperty('smrLatencyMs');
+      expect(snapshot).toHaveProperty('entityCount');
+      expect(typeof snapshot.lastUpdatedAt).toBe('string');
+      // PHI-safe: no transcript / summary text in the snapshot.
+      expect(JSON.stringify(snapshot)).not.toContain('Patient on amlodipine');
+      expect(JSON.stringify(snapshot)).not.toContain('Pt on amlodipine for HTN.');
+
+      expect(cacheService.sadd).toHaveBeenCalledWith(ACTIVE_SET, CID);
+    });
+
+    it('clears the stats snapshot + removes the id from the active set on stop', async () => {
+      const { service, cacheService } = buildDeps();
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
+
+      await service.stop(CID);
+
+      expect(cacheService.del).toHaveBeenCalledWith(STATS_KEY);
+      expect(cacheService.srem).toHaveBeenCalledWith(ACTIVE_SET, CID);
+    });
+
+    it('getActiveSessions reads the active set + per-session stats, tenant-isolated', async () => {
+      const { service, cacheService } = buildDeps();
+      cacheService.smembers.mockResolvedValue([CID]);
+      cacheService.get.mockImplementation((key: string) =>
+        key === STATS_KEY
+          ? Promise.resolve(JSON.stringify({ consultationId: CID, tenantId: TENANT, flushCount: 4, lastUpdatedAt: 'now' }))
+          : Promise.resolve(null),
+      );
+
+      const result = await service.getActiveSessions(TENANT);
+
+      expect(cacheService.smembers).toHaveBeenCalledWith(ACTIVE_SET);
+      expect(result.total).toBe(1);
+      expect(result.items[0]).toMatchObject({ consultationId: CID, tenantId: TENANT, flushCount: 4 });
+    });
+
+    it('getActiveSessions self-heals an orphaned set member whose stats expired', async () => {
+      const { service, cacheService } = buildDeps();
+      cacheService.smembers.mockResolvedValue([CID]);
+      cacheService.get.mockResolvedValue(null); // stats key expired / process crashed
+
+      const result = await service.getActiveSessions(TENANT);
+
+      expect(result.total).toBe(0);
+      expect(cacheService.srem).toHaveBeenCalledWith(ACTIVE_SET, CID);
+    });
+
+    it('getSessionStats returns null for a cross-tenant stats snapshot', async () => {
+      const { service, cacheService } = buildDeps();
+      cacheService.get.mockResolvedValue(JSON.stringify({ consultationId: CID, tenantId: 'other-tenant', flushCount: 1 }));
+
+      const result = await service.getSessionStats(TENANT, CID);
+      expect(result).toBeNull();
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // B3 (TASK-341): runtime kill-switch — env default + Redis override.
+  // ------------------------------------------------------------------
+  describe('runtime kill-switch (B3)', () => {
+    const CONFIG_KEY = 'live-doc:config:enabled';
+
+    it('getEngineConfig reports the env default when no Redis override is set', async () => {
+      const { service, cacheService } = buildDeps(buildHttpMock(), { config: { LIVE_DOC_ENABLED: 'true' } });
+      cacheService.get.mockResolvedValue(null);
+
+      const config = await service.getEngineConfig();
+      expect(config).toMatchObject({ enabled: true, envDefault: true, source: 'env-default' });
+    });
+
+    it('setEngineEnabled(false) persists a Redis override that disables NEW sessions at runtime', async () => {
+      const { service, cacheService } = buildDeps(buildHttpMock(), { config: { LIVE_DOC_ENABLED: 'true' } });
+
+      const result = await service.setEngineEnabled(false, { userId: 'admin-1', reason: 'incident' });
+
+      expect(result).toMatchObject({ enabled: false, envDefault: true, source: 'redis-override', updatedBy: 'admin-1' });
+      const writeCall = cacheService.set.mock.calls.find((c: unknown[]) => c[0] === CONFIG_KEY);
+      expect(writeCall).toBeDefined();
+      expect(JSON.parse(writeCall![1] as string)).toMatchObject({ enabled: false, updatedBy: 'admin-1' });
+
+      // Runtime effect: a new session must NOT start while the override is OFF.
+      service.start({ consultationId: CID, tenantId: TENANT });
+      expect(service.isActive(CID)).toBe(false);
+    });
+
+    it('setEngineEnabled(true) re-enables sessions even when the env default is false', async () => {
+      const { service } = buildDeps(buildHttpMock(), { config: { LIVE_DOC_ENABLED: 'false' } });
+
+      // Env default OFF → start is a no-op.
+      service.start({ consultationId: CID, tenantId: TENANT });
+      expect(service.isActive(CID)).toBe(false);
+
+      await service.setEngineEnabled(true, { userId: 'admin-1' });
+
+      service.start({ consultationId: CID, tenantId: TENANT });
+      expect(service.isActive(CID)).toBe(true);
     });
   });
 });

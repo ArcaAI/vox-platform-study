@@ -17,7 +17,7 @@ connected lazily, so it can be mocked in tests.
 from __future__ import annotations
 
 import secrets
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -42,7 +42,7 @@ HARNESS_TENANT_ID_KEY = SearchAttributeKey.for_keyword(HARNESS_TENANT_ID_ATTR)
 
 
 def _settings(request: Request) -> Settings:
-    return request.app.state.settings
+    return cast(Settings, request.app.state.settings)
 
 
 def require_service_token(

@@ -4,9 +4,11 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import Any, cast
 
 import structlog
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from stt_v2.core.config.settings import get_settings
@@ -41,9 +43,9 @@ class ComponentHealth:
 
 
 @router.get("/health")
-async def health_check() -> dict:
+async def health_check() -> dict[str, Any]:
     """Detailed health check with component status."""
-    checks: dict[str, dict] = {}
+    checks: dict[str, dict[str, Any]] = {}
     overall_status = HealthStatus.HEALTHY
 
     db_health = await _check_database()
@@ -83,16 +85,14 @@ async def health_check() -> dict:
 
 
 @router.get("/health/live")
-async def liveness_check() -> dict:
+async def liveness_check() -> dict[str, str]:
     """Kubernetes liveness probe — always returns 200 if the process is running."""
     return {"status": "healthy"}
 
 
 @router.get("/health/ready", response_model=None)
-async def readiness_check():
+async def readiness_check() -> JSONResponse | dict[str, str]:
     """Kubernetes readiness probe — verifies critical dependencies are available."""
-    from fastapi.responses import JSONResponse
-
     for check_fn in [_check_database, _check_minio, _check_redis]:
         result = await check_fn()
         if result.status == HealthStatus.UNHEALTHY:
@@ -105,18 +105,18 @@ async def readiness_check():
 
 # Backward-compatible aliases for existing Kubernetes probe configs
 @router.get("/ready")
-async def readiness_check_legacy() -> dict:
+async def readiness_check_legacy() -> dict[str, str]:
     """Legacy readiness path — redirects to /health/ready."""
-    return await readiness_check()
+    return cast(dict[str, str], await readiness_check())
 
 
 @router.get("/live")
-async def liveness_check_legacy() -> dict:
+async def liveness_check_legacy() -> dict[str, str]:
     """Legacy liveness path — redirects to /health/live."""
     return await liveness_check()
 
 
-def _component_to_dict(component: ComponentHealth) -> dict:
+def _component_to_dict(component: ComponentHealth) -> dict[str, Any]:
     """Convert ComponentHealth to dict for checks map."""
     result = {
         "status": component.status.value,
@@ -212,7 +212,7 @@ async def _check_redis() -> ComponentHealth:
             await owned_client.aclose()
 
 
-def _check_streaming() -> dict:
+def _check_streaming() -> dict[str, Any]:
     """Check streaming module status (informational, non-blocking).
 
     Returns a component dict with streaming session counts and capacity.
@@ -249,7 +249,7 @@ def _check_streaming() -> dict:
 
 
 @internal_router.get("/cache/stats")
-async def get_cache_stats() -> dict:
+async def get_cache_stats() -> dict[str, Any]:
     """
     Get model cache statistics.
 
@@ -283,7 +283,7 @@ async def get_cache_stats() -> dict:
 
 
 @internal_router.post("/cache/clear")
-async def clear_cache() -> dict:
+async def clear_cache() -> dict[str, Any]:
     """
     Clear the model cache.
 
@@ -308,7 +308,7 @@ async def clear_cache() -> dict:
 
 
 @internal_router.get("/cache/model/{slug}")
-async def get_cached_model_info(slug: str) -> dict:
+async def get_cached_model_info(slug: str) -> dict[str, Any]:
     """
     Get info about a specific cached model.
 
@@ -346,7 +346,7 @@ async def get_cached_model_info(slug: str) -> dict:
 
 
 @internal_router.get("/pipelines/loaded")
-async def get_loaded_pipelines() -> dict:
+async def get_loaded_pipelines() -> dict[str, Any]:
     """
     Get list of pipelines with loaded models.
 
@@ -394,7 +394,7 @@ async def get_loaded_pipelines() -> dict:
 
 
 @internal_router.get("/sessions")
-async def get_streaming_sessions() -> dict:
+async def get_streaming_sessions() -> dict[str, Any]:
     """
     Get active Redis-Streams streaming sessions.
     """
@@ -426,7 +426,7 @@ async def get_streaming_sessions() -> dict:
 
 
 @internal_router.get("/streaming/status")
-async def get_streaming_status() -> dict:
+async def get_streaming_status() -> dict[str, Any]:
     """
     Get streaming module status including execution profile, capacity,
     and active sessions.
@@ -453,7 +453,7 @@ async def get_streaming_status() -> dict:
 
 
 @internal_router.post("/sessions/cleanup")
-async def cleanup_sessions(max_age_seconds: int = 3600) -> dict:
+async def cleanup_sessions(max_age_seconds: int = 3600) -> dict[str, Any]:
     """
     Clean up expired streaming sessions.
 

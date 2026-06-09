@@ -126,7 +126,11 @@ export function ContextPanel({ consultationId }: ContextPanelProps) {
               className="min-h-20 resize-none"
               data-testid="case-note-input"
             />
-            <Button size="sm" disabled={submitting || !caseNote.trim()} onClick={() => void addNote('CASE_NOTE', caseNote, () => setCaseNote(''), 'Case note added')}>
+            <Button
+              size="sm"
+              disabled={submitting || !caseNote.trim()}
+              onClick={() => void addNote('CASE_NOTE', caseNote, () => setCaseNote(''), 'Case note added')}
+            >
               {submitting ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : null}
               Add case note
             </Button>
@@ -140,7 +144,11 @@ export function ContextPanel({ consultationId }: ContextPanelProps) {
               className="min-h-20 resize-none"
               data-testid="work-note-input"
             />
-            <Button size="sm" disabled={submitting || !workNote.trim()} onClick={() => void addNote('WORKNOTE', workNote, () => setWorkNote(''), 'Work note added')}>
+            <Button
+              size="sm"
+              disabled={submitting || !workNote.trim()}
+              onClick={() => void addNote('WORKNOTE', workNote, () => setWorkNote(''), 'Work note added')}
+            >
               {submitting ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : null}
               Add work note
             </Button>

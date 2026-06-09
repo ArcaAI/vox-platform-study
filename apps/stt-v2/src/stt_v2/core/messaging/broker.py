@@ -18,7 +18,7 @@ settings = get_settings()
 _broker: RedisBroker | None = None
 
 
-def should_retry(retries_so_far: int, exception: Exception) -> bool:
+def should_retry(retries_so_far: int, exception: BaseException) -> bool:
     """Determine if a job should be retried based on exception type."""
     # Never retry non-retryable exceptions
     if isinstance(exception, NON_RETRYABLE_EXCEPTIONS):

@@ -32,6 +32,10 @@ class PyannoteEmbeddingService(EmbeddingService):
 
             token = _resolve_hf_token(settings)
             model = Model.from_pretrained(model_id, use_auth_token=token)
+            if model is None:
+                raise EmbeddingExtractionError(
+                    f"Failed to load pyannote model (returned None): {model_id}"
+                )
             self._inference = Inference(model, window="whole")
 
             device = _resolve_device(settings.diarization_device)

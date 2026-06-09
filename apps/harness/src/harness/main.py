@@ -9,6 +9,7 @@ lifespan that best-effort connects to the Temporal frontend.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -21,7 +22,7 @@ logger = get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Manage shared resources: logging + a best-effort Temporal client."""
     settings: Settings = app.state.settings
 

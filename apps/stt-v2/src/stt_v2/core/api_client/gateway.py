@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from functools import lru_cache
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import structlog
@@ -52,8 +52,8 @@ class APIGatewayClient:
         self,
         method: str,
         path: str,
-        json: dict | None = None,
-        params: dict | None = None,
+        json: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Make an HTTP request to the API Gateway."""
         client = await self._get_client()
@@ -68,7 +68,7 @@ class APIGatewayClient:
             )
 
             response.raise_for_status()
-            return response.json()
+            return cast(dict[str, Any], response.json())
         except httpx.HTTPStatusError as e:
             logger.error(
                 "API Gateway request failed",
@@ -156,7 +156,7 @@ class APIGatewayClient:
         self,
         job_id: str,
         result_text: str,
-        result_metadata: dict | None = None,
+        result_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Mark a transcription job as COMPLETED with results.
 
@@ -210,7 +210,7 @@ class APIGatewayClient:
             "GET",
             f"/internal/stt/jobs/{job_id}/status",
         )
-        return result.get("status", "UNKNOWN")
+        return cast(str, result.get("status", "UNKNOWN"))
 
     # =========================================================================
     # Legacy Status Update (kept for backward compatibility)
@@ -257,7 +257,7 @@ class APIGatewayClient:
         self,
         job_id: str,
         transcript_text: str,
-        metadata: dict | None = None,
+        metadata: dict[str, Any] | None = None,
         consultation_id: str | None = None,
     ) -> dict[str, Any]:
         """Create a transcript context item for a completed job.

@@ -1,5 +1,6 @@
 import { IConsultationService, ConsultationResponse, PaginatedConsultationResponse, PaginatedQuery, HttpMethod } from '@arcaai/applications';
-import { Controller, Param, Inject, Query, NotFoundException } from '@nestjs/common';
+import { ConsultationStatus } from '@arcaai/domains';
+import { BadRequestException, Controller, Param, Inject, Query, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { ApiEndpoint, CanManage } from '../../decorators';
 
@@ -42,8 +43,14 @@ export class AdminConsultationController {
   @ApiQuery({ name: 'patientId', required: false, type: String })
   @ApiQuery({ name: 'doctorId', required: false, type: String })
   @ApiQuery({ name: 'departmentId', required: false, type: String })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ConsultationStatus,
+    description: 'Filter by lifecycle status (e.g. RECORDING for in-progress live sessions).',
+  })
   async list(
-    @Query() query: PaginatedQuery & { patientId?: string; doctorId?: string; departmentId?: string },
+    @Query() query: PaginatedQuery & { patientId?: string; doctorId?: string; departmentId?: string; status?: string },
   ): Promise<PaginatedConsultationResponse> {
     return this.consultationService.listConsultationsForTenant({
       page: Number(query.page) || 1,
@@ -51,7 +58,17 @@ export class AdminConsultationController {
       patientId: query.patientId,
       doctorId: query.doctorId,
       departmentId: query.departmentId,
+      status: this.parseStatus(query.status),
     });
+  }
+
+  /** Validate the optional `?status` query against the enum (avoids leaking a raw Prisma enum error). */
+  private parseStatus(status?: string): ConsultationStatus | undefined {
+    if (status === undefined || status === '') return undefined;
+    if (!Object.values(ConsultationStatus).includes(status as ConsultationStatus)) {
+      throw new BadRequestException(`Invalid status filter. Expected one of: ${Object.values(ConsultationStatus).join(', ')}.`);
+    }
+    return status as ConsultationStatus;
   }
 
   @ApiEndpoint({

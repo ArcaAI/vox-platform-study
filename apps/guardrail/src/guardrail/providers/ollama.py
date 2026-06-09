@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -169,7 +169,7 @@ class OllamaProvider:
     ) -> list[dict[str, Any]]:
         """Analyze multiple texts concurrently."""
         tasks = [self.analyze_content(text, guardrail_type) for text in texts]
-        return await asyncio.gather(*tasks, return_exceptions=True)
+        return cast(list[dict[str, Any]], await asyncio.gather(*tasks, return_exceptions=True))
 
     async def health_check(self) -> dict[str, Any]:
         """Check Ollama service health."""

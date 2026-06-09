@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from typing import Any
 
 import pytest
 from temporalio.client import WorkflowFailureError
@@ -33,7 +34,7 @@ from harness.tests.unit.temporal._harness_stubs import (
 
 
 def _input(**kw) -> HarnessDocWorkflowInput:
-    base = {
+    base: dict[str, Any] = {
         "consultation_id": "c-1",
         "tenant_id": "t-1",
         "user_id": "u-1",

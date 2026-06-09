@@ -7,7 +7,7 @@ import random
 
 def calculate_backoff(attempt: int, base_delay: float = 1.0, max_delay: float = 60.0) -> float:
     """Exponential backoff with jitter, capped at max_delay."""
-    delay = min(base_delay * (2 ** attempt), max_delay)
+    delay: float = min(base_delay * (2 ** attempt), max_delay)
     jitter = random.uniform(0.0, delay * 0.1)
     return min(delay + jitter, max_delay)
 
