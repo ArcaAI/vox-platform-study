@@ -356,7 +356,55 @@ The Review surface already rendered a timed-out state with a "Check again" retry
 Status is now **Completed** for the integration scope. The following are **explicitly deferred** (each safe to defer; rationale above):
 
 - **GAP #5 heavy OCR.** Scanned-PDF / image / Office-doc text extraction (new dependency or Python OCR service). The threading seam + lightweight (txt/csv/md/json) extractor shipped this chunk; heavy OCR is a follow-up PR. Binary uploads fall back to the filename label until then.
-- **R1 — real live STT/SMR/NLP E2E smoke.** Blocked on a GPU/LM-Studio host + a mounted NLP model cache (STT 8861 / SMR 8862 / NLP 8864 were down during TASK-339/340/341). Matches the TASK-340/341 posture.
+- **R1 — real live STT/SMR/NLP E2E smoke.** Infra blocker **retired 2026-06-09** — all six services were brought up healthy and the non-mic legs (manual highlighting CRUD, NLP OCR, SMR summarization) were exercised **live**; see **R1 — Live Bring-Up & Smoke** below. The only remaining step is the **mic-driven** live consultation, which needs a human at the browser + microphone (cannot run headlessly).
+
+### R1 — Live Bring-Up & Smoke (2026-06-09, INFRA/INTEGRATION)
+
+The original deferral blocker (GPU/LM-Studio host + NLP model cache) is **retired**. Host: Apple-Silicon **MPS (48 GB unified)**; HF cache mounted at `/Volumes/aillusion/huggingface` (Whisper, `pyannote/wespeaker…`, Medical-NER, emotion classifier all present, HF token configured); **LM Studio** at `http://localhost:1234/v1` (rich model set incl. `medgemma-27b-text-it`, `mlx-community/medgemma-1.5-4b-it`, `gemma-4-*`, `granite-guardian-4.1-8b`) + Ollama at `:11434`.
+
+**Brought up + health** (all `GET …/api/v1/health → 200`; ui `GET / → 200`):
+
+| Service | Port | Health | Notes |
+| --- | --- | --- | --- |
+| STT-v2 | 8861 | 200 | MPS; Silero VAD v5 + Pyannote `wespeaker-voxceleb-resnet34-LM` loaded from cache. **`ai4bharat/Cadence` punctuation model is HF-gated (403) → punctuation restoration disabled (non-fatal).** |
+| SMR | 8862 | 200 | OpenAI-compat provider → LM Studio (`GET /v1/models` OK). |
+| NLP | 8864 | 200 | transformer models loaded from cache. |
+| Harness | 8866 | 200 | Temporal connected (`localhost:7233`, ns `default`, queue `harness-task-queue`); RAG retrieval left **off**. |
+| API gateway | 8868 | 200 | NestJS; Vault AppRole login OK. |
+| ui-playground | 5175 | 200 | Vite dev server. |
+
+Docker infra (pre-existing): Postgres, Redis (`:6379`), MinIO, Temporal (+UI `:8233`) all up.
+
+**Exercised live (with evidence):**
+
+1. **Manual highlighting (API CRUD) — PROVEN.** Real login (`arcaai_doctor` / tenant key `ARCAAI`) → `POST /consultations/90000000-0000-0000-0001-000000000001/highlights` **201** → `GET` returns the row → `DELETE` **200** `{ok:true}` → `GET` **200** `[]` (soft-delete). Ownership enforced (the consultation's `doctorId` matches the JWT `sub`).
+2. **OCR enrichment (NLP `POST /api/v1/extract`) — PROVEN.** Text-layer PDF → `{"ocrUsed":false}`; image PNG → `{"ocrUsed":true}` with the embedded text recovered.
+3. **Realtime summarization (SMR `POST /api/v1/generate`) — PROVEN.** A consultation snippet returned a coherent SOAP note via `mlx-community/medgemma-1.5-4b-it` (status `completed`, real token usage). **Caveat:** gemma-4 QAT "thinking" models (`gemma-4-e4b-it-qat`, `-e2b-it-qat`) return an **empty `content`** (all tokens go to a reasoning channel) — use a non-thinking instruct model (`medgemma-*`) for usable notes.
+
+**Remaining blocker (one, needs a human):** the **mic → STT(WS) → harness(Temporal) → SMR → NLP → API → UI** live consultation requires a person at `http://localhost:5175` with a **microphone**. Everything upstream is up, healthy, and individually exercised — this is now a hands-on QA step, not an infra gap.
+
+**Finish-R1 runbook** (conda `arcaenv`; the SMR/Harness env overrides are required because the checked-in defaults point at absent `llama3.2`/`gemma3`, and SMR's default `gemma-4-e4b-it-qat` returns empty content):
+
+```bash
+# 1) In LM Studio (:1234) load a non-thinking instruct chat model
+#    (mlx-community/medgemma-1.5-4b-it or medgemma-27b-text-it) and
+#    granite-guardian-4.1-8b (safety guard). Then bring up the services:
+pnpm dev:stt-v2
+SMR_V2_OPENAI_COMPAT_ENABLED=true SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL=mlx-community/medgemma-1.5-4b-it pnpm dev:smr-v2
+pnpm dev:nlp
+HARNESS_SMR_BASE_URL=http://localhost:8862 HARNESS_SMR_PROVIDER=lm-studio HARNESS_SMR_MODEL=mlx-community/medgemma-1.5-4b-it HARNESS_RETRIEVAL_ENABLED=false pnpm dev:harness
+pnpm dev:api
+pnpm dev:ui-playground
+# 2) Log in at http://localhost:5175 as arcaai_doctor / password123 (tenant key ARCAAI),
+#    open Clinical Workspace → pick a REMOTE workflow pipeline → Record → speak a short
+#    clinical vignette → watch live captions + Live SOAP → add a Case/Work note + upload a
+#    lab → Stop → confirm the harness draft appears in Review with the note/lab reflected
+#    and a TRANSCRIPT persisted.
+# 3) (Optional RAG) HARNESS_RETRIEVAL_ENABLED=true with Qdrant (:6333), bge-m3 embeddings
+#    in LM Studio, and the hope-reranker TEI on :8870; then ingest a tenant corpus.
+```
+
+> Services left **running** after this session (stop with `lsof -ti tcp:8861,8862,8864,8866,8868,5175 | xargs kill`; Docker infra stays up).
 
 ### Verification Evidence (FINAL — captured 2026-06-09, zsh)
 
@@ -417,5 +465,6 @@ No api / ui-playground / Python gates were run — none of those layers were tou
 | 2026-06-09 | **R3** implemented — Review surface renders an explicit "No transcript was captured" state (with retry) when the draft poll times out with zero transcripts, distinct from the "draft still generating" timeout. | `review-panel.tsx` (+test) |
 | 2026-06-09 | **Final gates GREEN** — applications/api/ui-playground builds; applications (`4941 passed/4 skipped`) + ui-playground (`1196 passed`) unit tests; `ReadLints` clean; Python STT N/A this chunk (no stt-v2 change). Status → **Completed** (R1 live E2E pending GPU/model host; GAP #3d live-drop-out + GAP #5 heavy-OCR deferred as noted). No unrelated (TASK-343 / Python-standardization) failures. | this file |
 | 2026-06-09 | **GAP #3d** implemented (Services-only, strict TDD) — live drop-out of a soft-deleted context note from the in-flight live summary. New `ConsultationPipelineEvent.ContextRemoved` (+`ContextRemovedPayload`+map); `deleteContext` emits it (gated to `LIVE_CONTEXT_TYPES`, mirroring `addContext`); `LiveSession.contextNotes` re-keyed `string[]`→`{ contextItemId, text }[]` (insertion order preserved ⇒ add-path prompt byte-identical, asserted); new `@OnEvent(ContextRemoved) handleContextRemoved` drops the matching entry + `scheduleFlush`. Gates GREEN: applications build `7/7`; applications unit `4947 passed/4 skipped` (+6); `ReadLints` clean. TDD RED→GREEN `5 failed→223 passed` (3 targeted files). No unrelated failures. | `consultation.events.ts` (+test), `context.service.ts` (+test), `live-documentation.service.ts` (+test) |
+| 2026-06-09 | **R1 live bring-up (INFRA/INTEGRATION)** — retired the GPU/model-host blocker: STT 8861 / SMR 8862 / NLP 8864 / Harness 8866 / API 8868 / ui 5175 all brought up **healthy** on an MPS host with the HF cache + LM Studio. Exercised live: **highlighting** CRUD (login `arcaai_doctor`@`ARCAAI` → POST 201 → GET → DELETE → GET []), **NLP `/extract`** (text-PDF + image-OCR), **SMR `/generate`** (real SOAP note via `medgemma-1.5-4b-it`). Documented blockers (mic-driven E2E needs a human; gemma-4 QAT empty `content`; STT `Cadence` punctuation HF-gated) + finish-R1 runbook. No app code changed (env-only launch overrides). | this file (R1 — Live Bring-Up & Smoke) |
 
 
