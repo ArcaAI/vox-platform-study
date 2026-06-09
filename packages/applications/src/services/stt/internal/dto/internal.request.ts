@@ -6,14 +6,17 @@ import { JsonValue } from '@arcaai/domains';
  * Request from STT-v2 service to create a transcript context item
  */
 export class CreateTranscriptRequest {
-  @ApiProperty({
-    description: 'Transcription job ID',
+  // TASK-342 GAP #1 — streaming sessions have NO TranscriptionJob, so `jobId`
+  // is optional. When absent the caller MUST supply `consultationId` (+
+  // `tenantId`) and the transcript is keyed directly to the consultation.
+  @ApiPropertyOptional({
+    description: 'Transcription job ID (batch path). Omit for streaming sessions, which have no job.',
     example: '01234567-89ab-cdef-0123-456789abcdef',
   })
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @IsUUID(7)
-  jobId: string;
+  jobId?: string;
 
   @ApiProperty({
     description: 'Transcription text',
@@ -30,12 +33,19 @@ export class CreateTranscriptRequest {
   metadata?: JsonValue;
 
   @ApiPropertyOptional({
-    description: 'Consultation ID to add the transcript to',
+    description: 'Consultation ID to add the transcript to. Required when jobId is absent.',
   })
   @IsString()
   @IsOptional()
   @IsUUID(7)
   consultationId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Owning tenant ID. Required when jobId is absent (no job to derive it from).',
+  })
+  @IsString()
+  @IsOptional()
+  tenantId?: string;
 
   @ApiPropertyOptional({
     description: 'Source of the transcription: streaming (WebSocket) or batch (file upload)',

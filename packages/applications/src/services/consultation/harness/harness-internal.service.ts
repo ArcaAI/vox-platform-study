@@ -117,6 +117,36 @@ export class HarnessInternalService {
 
       const nerEntities = await this.loadNerEntities(consultationId);
 
+      // TASK-342 GAP #2 — fold the doctor's case-notes / work-notes / attachments
+      // into the authoritative-SOAP prompt. Read entities directly from the
+      // repository (reads already filter resourceStatus = ENABLED, so soft-deleted
+      // items drop out). Work notes are labeled `[work note]`; attachments use the
+      // extracted text when present (GAP #5), else the stored filename label.
+      const [caseNotes, workNotes, attachmentItems] = await Promise.all([
+        this.contextItemRepository.findCaseNotes(consultationId),
+        this.contextItemRepository.findWorknotes(consultationId),
+        this.contextItemRepository.findAttachments(consultationId),
+      ]);
+
+      const clinicianNotes = [
+        ...caseNotes
+          .filter((n) => n.content?.trim())
+          .map((n) => `[case note] ${n.content!.trim()}`),
+        ...workNotes
+          .filter((n) => n.content?.trim())
+          .map((n) => `[work note] ${n.content!.trim()}`),
+      ];
+      const attachments = attachmentItems
+        .map((a) => {
+          // TASK-342 GAP #5 — prefer the extracted file text (txt / csv / md /
+          // json, threaded onto `metaData.extractedText` at upload); fall back to
+          // the stored "Lab/exam result: <name>" filename label when none exists.
+          const meta = a.metaData as Record<string, unknown> | undefined;
+          const extracted = typeof meta?.extractedText === 'string' ? meta.extractedText.trim() : '';
+          return extracted || a.content?.trim() || '';
+        })
+        .filter((c): c is string => !!c);
+
       const assembled = await this.promptAssemblyService.assemble({
         departmentId: consultation?.departmentId ?? undefined,
         promptType: consultation?.parentConsultationId ? 'revisit' : 'new-patient',
@@ -125,6 +155,8 @@ export class HarnessInternalService {
         dnaStyleId: dto.dnaStyleId,
         explicitTemplate: dto.template,
         nerEntities,
+        clinicianNotes,
+        attachments,
       });
 
       const promptTemplateId = assembled.promptId ?? null;

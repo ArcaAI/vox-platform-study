@@ -412,4 +412,73 @@ describe('PromptAssemblyService', () => {
             expect(result.userPrompt).not.toContain('RECOGNIZED CLINICAL ENTITIES');
         });
     });
+
+    // ── Clinician notes + attachments injection (TASK-342 GAP #2) ──
+    describe('clinician notes + attachments injection (TASK-342 GAP #2)', () => {
+        it('appends clinician notes and attachments blocks when the template has no placeholders', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'revisit',
+                transcript: 'Patient reports chest pain.',
+                conversationLanguage: 'English',
+                clinicianNotes: [
+                    '[case note] Patient anxious about results',
+                    '[work note] Order troponin',
+                ],
+                attachments: ['Troponin 0.9 ng/mL (elevated)'],
+            });
+
+            expect(result.userPrompt).toContain('CLINICIAN NOTES');
+            expect(result.userPrompt).toContain('Patient anxious about results');
+            expect(result.userPrompt).toContain('Order troponin');
+            expect(result.userPrompt).toContain('ATTACHMENTS');
+            expect(result.userPrompt).toContain('Troponin 0.9 ng/mL (elevated)');
+        });
+
+        it('substitutes {clinician_notes} and {attachments} placeholders without duplicating blocks', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({
+                    content:
+                        'Notes: {clinician_notes}\nAttachments: {attachments}\nLang: {conversation_language}.',
+                }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'revisit',
+                transcript: 'Visit transcript.',
+                conversationLanguage: 'English',
+                clinicianNotes: ['[case note] Follow up in 2 weeks'],
+                attachments: ['CBC within normal limits'],
+            });
+
+            expect(result.userPrompt).toContain('Follow up in 2 weeks');
+            expect(result.userPrompt).toContain('CBC within normal limits');
+            expect(result.userPrompt).not.toContain('{clinician_notes}');
+            expect(result.userPrompt).not.toContain('{attachments}');
+            // Consumed by placeholders → no duplicated appended sections.
+            expect(result.userPrompt).not.toContain('--- CLINICIAN NOTES');
+            expect(result.userPrompt).not.toContain('--- ATTACHMENTS');
+        });
+
+        it('does not add clinician notes / attachments sections when none are provided', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'revisit',
+                transcript: 'Patient reports chest pain.',
+                conversationLanguage: 'English',
+            });
+
+            expect(result.userPrompt).not.toContain('CLINICIAN NOTES');
+            expect(result.userPrompt).not.toContain('ATTACHMENTS');
+        });
+    });
 });

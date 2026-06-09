@@ -59,6 +59,9 @@ const createMockClsService = () => {
 
 const createMockContextItemRepository = () => ({
     findTranscripts: vi.fn().mockResolvedValue([{ id: 'tx-1', content: 'Patient reports chest pain. BP 120/80.' }]),
+    findCaseNotes: vi.fn().mockResolvedValue([]),
+    findWorknotes: vi.fn().mockResolvedValue([]),
+    findAttachments: vi.fn().mockResolvedValue([]),
     create: vi.fn().mockResolvedValue({ id: 'ctx-draft-1', content: 'S: ...' }),
 });
 
@@ -235,6 +238,62 @@ describe('HarnessInternalService', () => {
 
             expect(promptAssemblyService.assemble).toHaveBeenCalledWith(
                 expect.objectContaining({ explicitTemplate: 'Cardiology-Report' }),
+            );
+        });
+
+        it('folds case notes, work notes, and attachments into the assembled prompt (TASK-342 GAP #2)', async () => {
+            contextItemRepository.findCaseNotes.mockResolvedValue([
+                { id: 'cn-1', content: 'Patient anxious about results' },
+            ]);
+            contextItemRepository.findWorknotes.mockResolvedValue([
+                { id: 'wn-1', content: 'Order troponin' },
+            ]);
+            contextItemRepository.findAttachments.mockResolvedValue([
+                { id: 'at-1', content: 'Troponin 0.9 ng/mL (elevated)' },
+            ]);
+
+            await service.assemble('consultation-1', { tenantId: 'tenant-1' });
+
+            expect(contextItemRepository.findCaseNotes).toHaveBeenCalledWith('consultation-1');
+            expect(contextItemRepository.findWorknotes).toHaveBeenCalledWith('consultation-1');
+            expect(contextItemRepository.findAttachments).toHaveBeenCalledWith('consultation-1');
+
+            expect(promptAssemblyService.assemble).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    clinicianNotes: expect.arrayContaining([
+                        expect.stringContaining('Patient anxious about results'),
+                        expect.stringContaining('Order troponin'),
+                    ]),
+                    attachments: expect.arrayContaining([
+                        expect.stringContaining('Troponin 0.9 ng/mL (elevated)'),
+                    ]),
+                }),
+            );
+        });
+
+        it('prefers an attachment\'s extracted text over the filename label (TASK-342 GAP #5)', async () => {
+            contextItemRepository.findAttachments.mockResolvedValue([
+                {
+                    id: 'at-1',
+                    content: 'Lab/exam result: cbc.txt',
+                    metaData: { subType: 'LAB_RESULT', extractedText: 'WBC 11.2 x10^9/L (high); Hgb 13.1 g/dL' },
+                },
+            ]);
+
+            await service.assemble('consultation-1', { tenantId: 'tenant-1' });
+
+            const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+            // The extracted file CONTENTS reach the authoritative prompt …
+            expect(call.attachments).toEqual(expect.arrayContaining([expect.stringContaining('WBC 11.2 x10^9/L (high)')]));
+            // … and the bare "Lab/exam result: <name>" label is not threaded when text exists.
+            expect(call.attachments).not.toEqual(expect.arrayContaining([expect.stringContaining('Lab/exam result: cbc.txt')]));
+        });
+
+        it('threads empty notes/attachments arrays when none exist', async () => {
+            await service.assemble('consultation-1', { tenantId: 'tenant-1' });
+
+            expect(promptAssemblyService.assemble).toHaveBeenCalledWith(
+                expect.objectContaining({ clinicianNotes: [], attachments: [] }),
             );
         });
     });

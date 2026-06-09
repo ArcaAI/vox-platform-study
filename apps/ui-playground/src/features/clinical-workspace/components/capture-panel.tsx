@@ -12,7 +12,6 @@
  * Recording state changes are reported up so the flow machine + live-summary SSE
  * subscription stay in lockstep.
  */
-import { DEFAULT_TRANSCRIPTION_PIPELINE_ID } from '@/features/audio/constants';
 import { useRealtimeTranscription } from '@/hooks/use-realtime-transcription';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
@@ -55,10 +54,12 @@ export function CapturePanel({ consultationId, recording, onRecordingStarted, on
 
   // Resolve the remote transcription pipeline: explicit prop > the user/tenant
   // cascade-resolved config (AgenticProvider injects the per-user remote pipeline
-  // into stt.transcriptionPipelineId) > system default. The hardcoded default is
-  // SYSTEM-tenant-owned and is NOT shared-read into customer tenants, so using it
-  // for a customer-tenant doctor yields a "Pipeline … not found" on session start.
-  const resolvedPipelineId = pipelineId ?? resolvedConfig?.stt?.transcriptionPipelineId ?? DEFAULT_TRANSCRIPTION_PIPELINE_ID;
+  // into stt.transcriptionPipelineId). TASK-342 R2 — there is intentionally NO
+  // hardcoded fallback: the old DEFAULT_TRANSCRIPTION_PIPELINE_ID is SYSTEM-tenant-
+  // owned and is NOT shared-read into customer tenants, so silently using it for a
+  // customer-tenant doctor produced a cross-tenant "Pipeline … not found" 404 on
+  // session start. When nothing resolves, handleStart blocks with an actionable error.
+  const resolvedPipelineId = pipelineId ?? resolvedConfig?.stt?.transcriptionPipelineId;
 
   // Once the STT session is live, bind the recording to it and notify the flow.
   useEffect(() => {
@@ -85,6 +86,12 @@ export function CapturePanel({ consultationId, recording, onRecordingStarted, on
   const handleStart = useCallback(async () => {
     if (!consentAck) {
       toast.error('Please confirm patient consent before recording');
+      return;
+    }
+    // TASK-342 R2 — block Start (rather than silently 404 mid-session) when no
+    // tenant-scoped transcription pipeline is configured for this doctor.
+    if (!resolvedPipelineId) {
+      toast.error('No transcription pipeline is configured for your account. Ask an administrator to assign one before recording.');
       return;
     }
     setIntent('starting');

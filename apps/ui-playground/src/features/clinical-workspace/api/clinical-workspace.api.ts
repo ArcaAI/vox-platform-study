@@ -56,6 +56,11 @@ export function addContextItem(client: AgenticClient, consultationId: string, bo
   return client.post<WorkspaceContextItem>(WORKSPACE_ENDPOINTS.context(consultationId), { source: 'USER', ...body });
 }
 
+/** Soft-delete a mid-visit context item (case note, work note, attachment, …). */
+export function deleteContextItem(client: AgenticClient, consultationId: string, contextId: string): Promise<unknown> {
+  return client.delete<unknown>(WORKSPACE_ENDPOINTS.contextItem(consultationId, contextId));
+}
+
 /** Register a dual-capture (raw + processed) audio recording. */
 export function registerDualRecording(client: AgenticClient, consultationId: string, body: AddAudioRecordingRequest): Promise<WorkspaceContextItem> {
   return client.post<WorkspaceContextItem>(WORKSPACE_ENDPOINTS.recordings(consultationId), body);

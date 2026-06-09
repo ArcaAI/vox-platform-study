@@ -40,6 +40,8 @@ export const WORKSPACE_ENDPOINTS = {
   streamSession: '/audio/transcription-jobs/stream/session',
   streamTicket: '/auth/stream-ticket',
   context: (id: string) => `/consultations/${encodeURIComponent(id)}/context`,
+  contextItem: (id: string, contextId: string) =>
+    `/consultations/${encodeURIComponent(id)}/context/${encodeURIComponent(contextId)}`,
   recordings: (id: string) => `/consultations/${encodeURIComponent(id)}/recordings`,
   summaryProvenance: (id: string, ctxId: string) => `/consultations/${encodeURIComponent(id)}/summary/${encodeURIComponent(ctxId)}/provenance`,
   summaryApprove: (id: string, ctxId: string) => `/consultations/${encodeURIComponent(id)}/summary/${encodeURIComponent(ctxId)}/approve`,

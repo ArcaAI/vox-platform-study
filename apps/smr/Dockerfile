@@ -1,50 +1,60 @@
 # syntax=docker/dockerfile:1
-# ── SMR Service ─────────────────────────────────────────────────────────────
+# ── SMR Service (smr-v2) ─────────────────────────────────────────────────────
 # Multi-stage build: builder → production
 #
-# Requires hope-python-base image to be built first:
+# Built from the REPO ROOT context so it consumes the single uv workspace lock
+# (/uv.lock), resolving identical dependency versions as every other HOPE Python
+# service.
+#
+# Requires hope-python-base first:
 #   docker build -t hope-python-base infrastructure/docker/python-base/
 #
-# Build targets:
-#   docker build --target production -t smr .
+# Build (from repo root):
+#   docker build -f apps/smr/Dockerfile --target production -t smr .
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Stage 1: Builder — install Python packages into a portable venv ─────────
-FROM hope-python-base:latest AS builder
+# Base image is parameterized so CI can inject the registry-qualified tag while
+# local builds default to the locally-built `hope-python-base:latest`.
+ARG BASE_IMAGE=hope-python-base:latest
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-dev --no-install-project --no-editable
+# ── Stage 1: builder ─────────────────────────────────────────────────────────
+FROM ${BASE_IMAGE} AS builder
 
+# Layer 1: install ONLY smr-v2's deps from the workspace lock (cached unless the
+# lock or any member manifest changes).
 COPY pyproject.toml uv.lock ./
-COPY src/ ./src/
+COPY apps/smr/pyproject.toml ./apps/smr/
+COPY apps/guardrail/pyproject.toml ./apps/guardrail/
+COPY apps/nlp/pyproject.toml ./apps/nlp/
+COPY apps/harness/pyproject.toml ./apps/harness/
+COPY apps/stt-v2/pyproject.toml ./apps/stt-v2/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-editable
+    uv sync --frozen --package smr-v2 --no-dev --no-install-project --no-editable
 
-RUN find /app/.venv \( \
-        -name "*.pyc" -o -name "*.pyo" -o -name "__pycache__" \
-        -o -name "*.egg-info" -o -name "tests" -o -name "test" \
-        -o -name "docs" -o -name "doc" -o -name "examples" -o -name "benchmarks" \
-    \) -type d -exec rm -rf {} + 2>/dev/null || true \
-    && find /app/.venv \( \
-        -name "*.pyc" -o -name "*.pyo" \
-        -o -name "*.pyi" -o -name "py.typed" \
-    \) -type f -delete 2>/dev/null || true \
-    && find /app/.venv -name "*.so" -exec strip --strip-unneeded {} + 2>/dev/null || true
+# Layer 2: copy source + install the package itself.
+COPY apps/smr/README.md ./apps/smr/
+COPY apps/smr/src ./apps/smr/src
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --package smr-v2 --no-dev --no-editable
 
-# ── Stage 2: Production ────────────────────────────────────────────────────
-FROM hope-python-base:latest AS production
+# Slim the venv: drop bytecode + egg-info only. Do NOT delete dirs named
+# "docs"/"doc"/"tests" — some packages ship real importable submodules with
+# those names (e.g. botocore.docs).
+RUN find /app/.venv/lib -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
+    && find /app/.venv/lib -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true \
+    && find /app/.venv/lib \( -name "*.pyc" -o -name "*.pyo" \) -type f -delete 2>/dev/null || true
+
+# ── Stage 2: production ──────────────────────────────────────────────────────
+FROM ${BASE_IMAGE} AS production
 
 LABEL maintainer="HOPE Team" \
     service="apps-smr" \
     version="2.0.0" \
-    description="HOPE Text Generation Service (SMR v2)" \
     org.opencontainers.image.title="HOPE SMR Service" \
     org.opencontainers.image.description="Multi-provider text generation service" \
     org.opencontainers.image.version="2.0.0"
 
-ENV PYTHONPATH="/app/.venv/lib/python3.11/site-packages:/app/src" \
+ENV PYTHONPATH="/app/src" \
     ENVIRONMENT=production \
     LOG_LEVEL=info \
     SMR_V2_OTEL_ENABLED=false \
@@ -56,7 +66,7 @@ ENV PYTHONPATH="/app/.venv/lib/python3.11/site-packages:/app/src" \
     SMR_V2_OTEL_LOGS_ENABLED=true
 
 COPY --from=builder --chown=hope:hope /app/.venv /app/.venv
-COPY --chown=hope:hope src/ /app/src/
+COPY --chown=hope:hope apps/smr/src ./src
 
 USER hope
 

@@ -255,30 +255,45 @@ class APIGatewayClient:
 
     async def create_transcript(
         self,
-        job_id: str,
         transcript_text: str,
+        job_id: str | None = None,
         metadata: dict[str, Any] | None = None,
         consultation_id: str | None = None,
+        tenant_id: str | None = None,
+        transcription_source: str | None = None,
     ) -> dict[str, Any]:
-        """Create a transcript context item for a completed job.
+        """Create a transcript context item.
 
         Calls NestJS ``POST /internal/stt/transcripts`` which expects
         a ``CreateTranscriptRequest`` body.
 
+        Two callers (TASK-342 GAP #1):
+          * batch/file: pass ``job_id`` — tenant/creator are derived from the job.
+          * streaming finalize: pass ``consultation_id`` + ``tenant_id`` and omit
+            ``job_id`` (streaming sessions have no TranscriptionJob).
+
         Args:
-            job_id: Transcription job ID.
             transcript_text: Full transcript text.
+            job_id: Transcription job ID (batch path). Omit for streaming.
             metadata: Optional metadata (word timestamps, confidence, etc.).
-            consultation_id: Optional consultation to associate the transcript with.
+            consultation_id: Consultation to associate the transcript with.
+                Required when ``job_id`` is omitted.
+            tenant_id: Owning tenant ID. Required when ``job_id`` is omitted.
+            transcription_source: ``"streaming"`` or ``"batch"`` (event label).
         """
         payload: dict[str, Any] = {
-            "jobId": job_id,
             "transcriptText": transcript_text,
         }
+        if job_id:
+            payload["jobId"] = job_id
         if metadata is not None:
             payload["metadata"] = metadata
         if consultation_id:
             payload["consultationId"] = consultation_id
+        if tenant_id:
+            payload["tenantId"] = tenant_id
+        if transcription_source:
+            payload["transcriptionSource"] = transcription_source
 
         return await self._request(
             "POST",

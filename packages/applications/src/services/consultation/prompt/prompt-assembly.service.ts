@@ -55,6 +55,20 @@ function serializeNerEntities(entities: NerEntityForPrompt[]): string {
     .join('\n');
 }
 
+/**
+ * Serialises a list of free-text items (clinician notes / attachment contents)
+ * into a compact block — one entry per line, blanks dropped. TASK-342 GAP #2.
+ */
+function serializeTextBlock(items?: string[]): string {
+  if (!items?.length) {
+    return '';
+  }
+  return items
+    .map((item) => item?.trim())
+    .filter((item): item is string => !!item)
+    .join('\n');
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -93,6 +107,18 @@ export interface PromptAssemblyParams {
    * so NER output actually reaches the LLM.
    */
   nerEntities?: NerEntityForPrompt[];
+  /**
+   * TASK-342 GAP #2 — the doctor's case-notes / work-notes for the consultation
+   * (each entry already labeled by the caller, e.g. `[case note] …`). Serialised
+   * into {clinician_notes} and/or appended so they reach the authoritative SOAP.
+   */
+  clinicianNotes?: string[];
+  /**
+   * TASK-342 GAP #2 — uploaded lab/exam attachment contents (extracted text when
+   * available, else the filename label). Serialised into {attachments} and/or
+   * appended to the prompt.
+   */
+  attachments?: string[];
 }
 
 export interface AssembledPrompt {
@@ -153,6 +179,19 @@ export class PromptAssemblyService {
       userPrompt += `\n\n--- RECOGNIZED CLINICAL ENTITIES (from NER) ---\n${nerBlock}`;
     }
 
+    // TASK-342 GAP #2 — fold the doctor's case/work notes and attachment
+    // contents into the authoritative-SOAP prompt. Same pattern as NER: if the
+    // template consumed the placeholder the block is already present, else append.
+    const clinicianNotesBlock = variables.clinician_notes ?? '';
+    if (clinicianNotesBlock && !userPrompt.includes(clinicianNotesBlock)) {
+      userPrompt += `\n\n--- CLINICIAN NOTES (case / work notes) ---\n${clinicianNotesBlock}`;
+    }
+
+    const attachmentsBlock = variables.attachments ?? '';
+    if (attachmentsBlock && !userPrompt.includes(attachmentsBlock)) {
+      userPrompt += `\n\n--- ATTACHMENTS (lab / exam results) ---\n${attachmentsBlock}`;
+    }
+
     const promptConfig = this.extractPromptConfig(template);
     const hyperparameters = promptConfig?.hyperparameters ?? {};
     const outputSchema = promptConfig?.outputSchema ?? null;
@@ -185,6 +224,10 @@ export class PromptAssemblyService {
       // TASK-330 Phase 1 — always define {ner_entities} (empty when none) so
       // templates referencing it never leave a literal placeholder behind.
       ner_entities: serializeNerEntities(params.nerEntities ?? []),
+      // TASK-342 GAP #2 — always define the notes/attachments variables (empty
+      // when none) so templates referencing them never leave a placeholder.
+      clinician_notes: serializeTextBlock(params.clinicianNotes),
+      attachments: serializeTextBlock(params.attachments),
     };
 
     if (params.preSummaryText) {

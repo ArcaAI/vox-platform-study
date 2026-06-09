@@ -52,6 +52,7 @@ function createMockContextService() {
         getSharedContext: vi.fn(),
         getTranscriptions: vi.fn(),
         updateContext: vi.fn(),
+        deleteContext: vi.fn(),
         getVersionHistory: vi.fn(),
         getVersion: vi.fn(),
         getAggregateNamedEntities: vi.fn(),
@@ -380,6 +381,17 @@ describe('ConsultationController', () => {
                 const result = await controller.addContext(CONSULTATION_OWN, {} as any);
 
                 expect(result).toEqual({ id: 'ctx-1' });
+            });
+
+            it('deleteContext soft-deletes via the context service when caller is the owner (TASK-342 GAP #3)', async () => {
+                const { controller, consultationService, contextService } = buildController();
+                consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
+                contextService.deleteContext.mockResolvedValue(undefined);
+
+                const result = await controller.deleteContext(CONSULTATION_OWN, 'ctx-1');
+
+                expect(contextService.deleteContext).toHaveBeenCalledWith('ctx-1');
+                expect(result).toEqual({ ok: true });
             });
 
             it('addRecording threads raw/processed media ids to the context service (TASK-329 X8)', async () => {
@@ -737,6 +749,10 @@ describe('ConsultationController', () => {
 
         it('updateContext should enforce ownership', async () => {
             await expect(controller.updateContext(CONSULTATION_OWN, 'ctx-1', {} as any)).rejects.toThrow(ForbiddenException);
+        });
+
+        it('deleteContext should enforce ownership', async () => {
+            await expect(controller.deleteContext(CONSULTATION_OWN, 'ctx-1')).rejects.toThrow(ForbiddenException);
         });
 
         it('generateSummary should enforce ownership', async () => {

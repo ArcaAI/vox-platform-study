@@ -1,7 +1,6 @@
-import { SetMetadata, UseGuards, applyDecorators, createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { SetMetadata, applyDecorators, createParamDecorator, ExecutionContext } from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY, PERMISSION_MODE_KEY, RequiredPermission, PermissionMode } from './authorization.guard';
-import { UnifiedAuthGuard } from './unified-auth.guard';
 
 /**
  * Mark route as public (no authentication or authorization required)
@@ -37,7 +36,12 @@ export const SetPermissionMode = (mode: PermissionMode) => SetMetadata(PERMISSIO
 
 /**
  * Require specific permissions for a route (AND logic - all required)
- * Combines authentication guard + authorization guard + permission metadata
+ *
+ * Metadata-only (TASK-343): sets `REQUIRED_PERMISSIONS_KEY` + `PERMISSION_MODE_KEY`
+ * and tags Swagger with `@ApiBearerAuth()`. Enforcement is handled by the global
+ * `UnifiedAuthGuard` (`APP_GUARD`) reading this metadata — this decorator no
+ * longer re-applies `@UseGuards(UnifiedAuthGuard)`, which previously caused the
+ * guard (and its CASL + Redis work) to run twice per request.
  *
  * @param permissions - Array of [action, subject] tuples
  *
@@ -59,7 +63,6 @@ export function Authorize(...permissions: [string, string][]) {
   return applyDecorators(
     SetMetadata(REQUIRED_PERMISSIONS_KEY, required),
     SetMetadata(PERMISSION_MODE_KEY, 'AND' as PermissionMode),
-    UseGuards(UnifiedAuthGuard),
     ApiBearerAuth(),
   );
 }
@@ -67,6 +70,9 @@ export function Authorize(...permissions: [string, string][]) {
 /**
  * Require ANY of the specified permissions (OR logic)
  * At least one permission must be satisfied
+ *
+ * Metadata-only (TASK-343): like {@link Authorize}, enforcement is delegated to
+ * the global `UnifiedAuthGuard` (`APP_GUARD`); no route-level guard is attached.
  *
  * @param permissions - Array of [action, subject] tuples
  *
@@ -86,7 +92,6 @@ export function AuthorizeAny(...permissions: [string, string][]) {
   return applyDecorators(
     SetMetadata(REQUIRED_PERMISSIONS_KEY, required),
     SetMetadata(PERMISSION_MODE_KEY, 'OR' as PermissionMode),
-    UseGuards(UnifiedAuthGuard),
     ApiBearerAuth(),
   );
 }

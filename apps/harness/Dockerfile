@@ -2,53 +2,62 @@
 # ── Harness Service ─────────────────────────────────────────────────────────
 # Multi-stage build: builder → production
 #
-# Requires hope-python-base image to be built first:
+# Built from the REPO ROOT context so it consumes the single uv workspace lock
+# (/uv.lock), resolving identical dependency versions as every other HOPE Python
+# service.
+#
+# Requires hope-python-base first:
 #   docker build -t hope-python-base infrastructure/docker/python-base/
 #
-# Build targets:
-#   docker build --target production -t harness .
+# Build (from repo root):
+#   docker build -f apps/harness/Dockerfile --target production -t harness .
 #
 # NOTE: This service hosts BOTH the FastAPI HTTP surface (default ENTRYPOINT)
 #       and a Temporal worker (override the command to run the worker):
 #   docker run harness python -m harness.temporal.worker
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Stage 1: Builder — install Python packages into a portable venv ─────────
-FROM hope-python-base:latest AS builder
+# Base image is parameterized so CI can inject the registry-qualified tag while
+# local builds default to the locally-built `hope-python-base:latest`.
+ARG BASE_IMAGE=hope-python-base:latest
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-dev --no-install-project --no-editable
+# ── Stage 1: builder ─────────────────────────────────────────────────────────
+FROM ${BASE_IMAGE} AS builder
 
+# Layer 1: install ONLY harness's deps from the workspace lock.
 COPY pyproject.toml uv.lock ./
-COPY src/ ./src/
+COPY apps/harness/pyproject.toml ./apps/harness/
+COPY apps/guardrail/pyproject.toml ./apps/guardrail/
+COPY apps/nlp/pyproject.toml ./apps/nlp/
+COPY apps/smr/pyproject.toml ./apps/smr/
+COPY apps/stt-v2/pyproject.toml ./apps/stt-v2/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-editable
+    uv sync --frozen --package harness --no-dev --no-install-project --no-editable
 
-RUN find /app/.venv \( \
-        -name "*.pyc" -o -name "*.pyo" -o -name "__pycache__" \
-        -o -name "*.egg-info" -o -name "tests" -o -name "test" \
-        -o -name "docs" -o -name "doc" -o -name "examples" -o -name "benchmarks" \
-    \) -type d -exec rm -rf {} + 2>/dev/null || true \
-    && find /app/.venv \( \
-        -name "*.pyc" -o -name "*.pyo" \
-        -o -name "*.pyi" -o -name "py.typed" \
-    \) -type f -delete 2>/dev/null || true \
-    && find /app/.venv -name "*.so" -exec strip --strip-unneeded {} + 2>/dev/null || true
+# Layer 2: copy source + install the package itself.
+COPY apps/harness/README.md ./apps/harness/
+COPY apps/harness/src ./apps/harness/src
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --package harness --no-dev --no-editable
 
-# ── Stage 2: Production ────────────────────────────────────────────────────
-FROM hope-python-base:latest AS production
+# Slim the venv: drop bytecode + egg-info only. Do NOT delete dirs named
+# "docs"/"doc"/"tests" — some packages ship real importable submodules with
+# those names (e.g. botocore.docs).
+RUN find /app/.venv/lib -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
+    && find /app/.venv/lib -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true \
+    && find /app/.venv/lib \( -name "*.pyc" -o -name "*.pyo" \) -type f -delete 2>/dev/null || true
+
+# ── Stage 2: production ──────────────────────────────────────────────────────
+FROM ${BASE_IMAGE} AS production
 
 LABEL maintainer="HOPE Team" \
     service="apps-harness" \
     version="0.1.0" \
-    description="HOPE Clinical Documentation Harness (TASK-330)" \
     org.opencontainers.image.title="HOPE Harness Service" \
     org.opencontainers.image.description="Bounded clinical-documentation loop on Temporal" \
     org.opencontainers.image.version="0.1.0"
 
-ENV PYTHONPATH="/app/.venv/lib/python3.11/site-packages:/app/src" \
+ENV PYTHONPATH="/app/src" \
     ENVIRONMENT=production \
     LOG_LEVEL=info \
     HARNESS_OTEL_ENABLED=false \
@@ -63,7 +72,7 @@ ENV PYTHONPATH="/app/.venv/lib/python3.11/site-packages:/app/src" \
     TEMPORAL_TASK_QUEUE=harness-task-queue
 
 COPY --from=builder --chown=hope:hope /app/.venv /app/.venv
-COPY --chown=hope:hope src/ /app/src/
+COPY --chown=hope:hope apps/harness/src ./src
 
 USER hope
 

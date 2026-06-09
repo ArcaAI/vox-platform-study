@@ -86,8 +86,11 @@ export interface TranscriptionCreatedPayload extends ConsultationPipelineEventBa
   /** The created context item ID (TRANSCRIPT type) */
   contextItemId: string;
 
-  /** The STT transcription job ID that produced this transcript */
-  jobId: string;
+  /**
+   * The STT transcription job ID that produced this transcript.
+   * Optional — streaming sessions (TASK-342 GAP #1) have no TranscriptionJob.
+   */
+  jobId?: string;
 
   /** Word count of the transcript (for logging/metrics) */
   wordCount?: number;

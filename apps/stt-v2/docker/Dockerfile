@@ -2,49 +2,64 @@
 # STT Service V2 Dockerfile
 # Multi-stage build for optimized production image
 #
+# Built from the REPO ROOT context so the CPU stages can consume the single uv
+# workspace lock (/uv.lock):
+#   docker build -f apps/stt-v2/docker/Dockerfile --target runtime    -t stt-v2:api .
+#   docker build -f apps/stt-v2/docker/Dockerfile --target ml-runtime -t stt-v2:ml .
+#   docker build -f apps/stt-v2/docker/Dockerfile --target worker     -t stt-v2:worker .
+#
 # Build targets:
-#   - runtime:    Lightweight API server (no ML dependencies, CPU only)
-#   - ml-runtime: Full ML inference stack (CUDA GPU with automatic CPU fallback)
+#   - runtime:    Lightweight API server (no ML dependencies, CPU only)  → workspace lock
+#   - ml-runtime: Full ML inference stack (CUDA GPU with CPU fallback)    → GPU override install
 #   - worker:     Dramatiq worker extending ml-runtime
 #
-# Requires hope-python-base image to be built first (for CPU stages):
+# Requires hope-python-base first (for CPU stages):
 #   docker build -t hope-python-base infrastructure/docker/python-base/
 #
-# GPU/CPU behavior:
-#   ml-runtime and worker auto-detect GPU at runtime via torch.cuda.is_available().
-#   Run with `--gpus all` on NVIDIA hosts; omit for CPU-only fallback.
-#
-# Build examples:
-#   docker build -f docker/Dockerfile --target runtime    -t stt-v2:api .
-#   docker build -f docker/Dockerfile --target ml-runtime -t stt-v2:ml .
-#   docker build -f docker/Dockerfile --target worker     -t stt-v2:worker .
+# CPU vs GPU dependency sourcing:
+#   - CPU `runtime` installs stt-v2's BASE deps from the unified workspace lock,
+#     so it stays version-consistent with every other HOPE Python service.
+#   - GPU `ml-runtime`/`worker` install stt-v2[ml-gpu]/[nemo] with a Dockerfile
+#     override that skips redundant nvidia-* wheels (the CUDA libs come from the
+#     nvidia/cuda base image). This GPU path is NOT covered by `uv sync --frozen`
+#     and must be validated on a GPU CI runner.
+
+# Base image is parameterized so CI can inject the registry-qualified tag while
+# local builds default to the locally-built `hope-python-base:latest`.
+ARG BASE_IMAGE=hope-python-base:latest
 
 # =============================================================================
-# Stage 1: Builder — install base Python packages (CPU-only, no ML)
+# Stage 1: Builder — base Python packages from the workspace lock (CPU, no ML)
 # =============================================================================
-FROM hope-python-base:latest AS builder
+FROM ${BASE_IMAGE} AS builder
 
+# Layer 1: install ONLY stt-v2's base deps from the workspace lock.
+COPY pyproject.toml uv.lock ./
+COPY apps/stt-v2/pyproject.toml ./apps/stt-v2/
+COPY apps/guardrail/pyproject.toml ./apps/guardrail/
+COPY apps/nlp/pyproject.toml ./apps/nlp/
+COPY apps/smr/pyproject.toml ./apps/smr/
+COPY apps/harness/pyproject.toml ./apps/harness/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=README.md,target=README.md \
-    uv sync --frozen --no-install-project --no-dev --no-editable
+    uv sync --frozen --package stt-v2 --no-dev --no-install-project --no-editable
 
-COPY pyproject.toml uv.lock README.md ./
-COPY src/ ./src/
+# Layer 2: copy source + install the package itself.
+COPY apps/stt-v2/README.md ./apps/stt-v2/
+COPY apps/stt-v2/src ./apps/stt-v2/src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-editable
+    uv sync --frozen --package stt-v2 --no-dev --no-editable
+
+RUN find /app/.venv/lib -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
+    && find /app/.venv/lib -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true \
+    && find /app/.venv/lib \( -name "*.pyc" -o -name "*.pyo" \) -type f -delete 2>/dev/null || true
 
 # =============================================================================
 # Stage 2: ML Builder — unified ML packages (CUDA-capable, CPU fallback)
 # =============================================================================
 # Uses the CUDA runtime base so compiled extensions link against system CUDA.
-# The cudnn-runtime variant includes cuDNN 9 in the base layer, which
-# avoids pip downloading nvidia-cudnn-cu12 (658 MB) separately.
-#
-# PyTorch auto-detects GPU at runtime:
-#   - With --gpus all: torch.cuda.is_available() == True  → GPU inference
-#   - Without --gpus:  torch.cuda.is_available() == False → CPU fallback
+# Installs stt-v2[ml-gpu]/[nemo] directly (fresh resolve) with an override that
+# skips nvidia-* wheels already provided by the base image. transformers/optimum
+# are pinned by stt-v2's pyproject ([ml]) so they match the workspace lock.
 # =============================================================================
 FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04 AS ml-builder
 
@@ -60,14 +75,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN python3.11 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.7 /uv /uvx /bin/
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_NO_INSTALLER_METADATA=1
 
-COPY pyproject.toml uv.lock README.md ./
-COPY src/ ./src/
+# Only stt-v2's own files are needed here (GPU stages fresh-resolve the package).
+COPY apps/stt-v2/pyproject.toml apps/stt-v2/README.md ./
+COPY apps/stt-v2/src ./src
 
 # Generate overrides that tell uv to skip most nvidia-* pip packages and triton.
 #
@@ -137,8 +153,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN find /opt/venv \( \
         -name "__pycache__" \
         -o -name "*.egg-info" \
-        -o -name "tests" -o -name "test" \
-        -o -name "docs" -o -name "doc" -o -name "examples" -o -name "benchmarks" \
     \) -type d -exec rm -rf {} + 2>/dev/null || true \
     && find /opt/venv \( \
         -name "*.pyc" -o -name "*.pyo" \
@@ -152,7 +166,7 @@ RUN find /opt/venv \( \
 # =============================================================================
 # Stage 3: Runtime — lightweight API server (CPU only, no ML deps)
 # =============================================================================
-FROM hope-python-base:latest AS runtime
+FROM ${BASE_IMAGE} AS runtime
 
 LABEL org.opencontainers.image.title="stt-v2" \
     org.opencontainers.image.description="High-availability Speech-to-Text service"
@@ -163,7 +177,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get install -y --no-install-recommends libsndfile1 ffmpeg
 
 COPY --from=builder --chown=hope:hope /app/.venv /app/.venv
-COPY --chown=hope:hope src/ ./src/
+COPY --chown=hope:hope apps/stt-v2/src ./src
 
 ENV PYTHONPATH=/app/src
 
@@ -197,7 +211,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && mkdir -p /models && chown -R hope:hope /app /models
 
 COPY --from=ml-builder --chown=hope:hope /opt/venv /opt/venv
-COPY --chown=hope:hope src/ ./src/
+COPY --chown=hope:hope apps/stt-v2/src ./src
 
 USER hope
 

@@ -228,6 +228,29 @@ class TestBuildTranscriptJson:
         assert "speaker_id" not in segments[1]
         assert segments[1]["word_timestamps"][0]["word"] == "World"
 
+    def test_build_transcript_text_joins_final_segments(self):
+        """TASK-342 GAP #1 — build_transcript_text() returns the plain-text
+        transcript (final segments only) used to persist the streaming
+        TRANSCRIPT context item."""
+        from stt_v2.streaming.schemas import SegmentResult
+
+        session = _make_session()
+        session.add_result(
+            SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True)
+        )
+        session.add_result(
+            SegmentResult(text="partial", start_time=1.0, end_time=1.2, is_final=False)
+        )
+        session.add_result(
+            SegmentResult(text="world", start_time=1.2, end_time=2.0, is_final=True)
+        )
+
+        assert session.build_transcript_text() == "Hello world"
+
+    def test_build_transcript_text_empty_when_no_final_segments(self):
+        session = _make_session()
+        assert session.build_transcript_text() == ""
+
     def test_returns_utf8_bytes(self):
         session = _make_session()
         data = session.build_transcript_json()
@@ -729,6 +752,104 @@ class TestFinalizeSessionDualCapture:
 
         mock_gateway.create_media.assert_not_awaited()
         mock_gateway.create_audio_recording.assert_not_awaited()
+
+
+class TestFinalizeTranscriptPersistence:
+    """TASK-342 GAP #1 — _finalize_session persists a streaming TRANSCRIPT
+    (no jobId, keyed by consultation + tenant) so the harness auto-drafts the
+    SOAP after a live consultation. All failures are non-fatal."""
+
+    @staticmethod
+    def _blob_mock():
+        mock_blob = MagicMock()
+        mock_blob.upload_streaming_raw_chunk = AsyncMock(return_value="s3://b/chunk")
+        mock_blob.upload_streaming_raw_complete = AsyncMock(return_value="s3://b/raw.wav")
+        mock_blob.upload_streaming_processed_complete = AsyncMock(
+            return_value="s3://b/proc.wav"
+        )
+        mock_blob.upload_streaming_transcript = AsyncMock(
+            return_value="s3://b/transcript.json"
+        )
+        mock_blob.upload_streaming_metadata = AsyncMock(
+            return_value="s3://b/metadata.json"
+        )
+        return mock_blob
+
+    @pytest.mark.asyncio
+    async def test_finalize_persists_streaming_transcript(self):
+        from stt_v2.streaming.schemas import SegmentResult
+
+        mgr = _make_manager()
+        session = _make_session(consultation_id="c1")
+        session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
+        session.add_result(
+            SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True)
+        )
+        session.add_result(
+            SegmentResult(text="world", start_time=1.0, end_time=2.0, is_final=True)
+        )
+
+        mgr._sessions[session.session_id] = session
+        mgr._blob_service = self._blob_mock()
+        mgr.remove_session = AsyncMock()
+
+        mock_gateway = MagicMock()
+        mock_gateway.create_transcript = AsyncMock(
+            return_value={"contextItemId": "ctx-1"}
+        )
+        mgr._get_api_client = MagicMock(return_value=mock_gateway)
+
+        await mgr._finalize_session(session)
+
+        mock_gateway.create_transcript.assert_awaited_once()
+        kwargs = mock_gateway.create_transcript.await_args.kwargs
+        assert kwargs["consultation_id"] == "c1"
+        assert kwargs["tenant_id"] == "t1"
+        assert kwargs["transcript_text"] == "Hello world"
+        assert kwargs.get("transcription_source") == "streaming"
+        assert kwargs.get("job_id") is None
+
+    @pytest.mark.asyncio
+    async def test_finalize_skips_transcript_without_consultation(self):
+        from stt_v2.streaming.schemas import SegmentResult
+
+        mgr = _make_manager()
+        session = _make_session(consultation_id=None)
+        session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
+        session.add_result(
+            SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True)
+        )
+
+        mgr._sessions[session.session_id] = session
+        mgr._blob_service = self._blob_mock()
+        mgr.remove_session = AsyncMock()
+
+        mock_gateway = MagicMock()
+        mock_gateway.create_transcript = AsyncMock()
+        mgr._get_api_client = MagicMock(return_value=mock_gateway)
+
+        await mgr._finalize_session(session)
+
+        mock_gateway.create_transcript.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_finalize_skips_transcript_when_no_final_text(self):
+        mgr = _make_manager()
+        session = _make_session(consultation_id="c1")
+        session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
+        # No final results → empty transcript text.
+
+        mgr._sessions[session.session_id] = session
+        mgr._blob_service = self._blob_mock()
+        mgr.remove_session = AsyncMock()
+
+        mock_gateway = MagicMock()
+        mock_gateway.create_transcript = AsyncMock()
+        mgr._get_api_client = MagicMock(return_value=mock_gateway)
+
+        await mgr._finalize_session(session)
+
+        mock_gateway.create_transcript.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
