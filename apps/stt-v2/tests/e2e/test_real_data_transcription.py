@@ -256,6 +256,37 @@ diarization:
 # =============================================================================
 
 
+# Preprocessing models that only the *full* pipeline (tests #2 and #4) needs.
+# The basic pipeline (tests #1 and #3) requires only the ASR weights.
+_FULL_PIPELINE_MODELS = ("snakers4/silero-vad", "nickolay/rnnoise")
+
+
+def _skip_if_full_pipeline_models_missing() -> None:
+    """Skip a full-pipeline test when its VAD/denoise weights are not cached.
+
+    The full pipeline layers Silero VAD (``snakers4/silero-vad``) and RNNoise
+    (``nickolay/rnnoise``) on top of the ASR model. When those repos are absent
+    from the local HuggingFace cache the worker attempts an on-demand network
+    download mid-test; offline that surfaces as a ``ModelLoadError`` HTTP 500.
+    Probe the resolved cache dir on the filesystem (no network) and skip with a
+    precise reason instead of failing.
+    """
+    from stt_v2.core.config.settings import get_settings
+
+    cache_dir = Path(get_settings().huggingface_cache_dir)
+    missing = [
+        repo
+        for repo in _FULL_PIPELINE_MODELS
+        if not (cache_dir / f"models--{repo.replace('/', '--')}").is_dir()
+    ]
+    if missing:
+        pytest.skip(
+            "Full-pipeline preprocessing models are not in the local HuggingFace "
+            f"cache ({cache_dir}): {', '.join(missing)}. VAD + denoise weights are "
+            "required for this test; skipping to avoid an on-demand model download."
+        )
+
+
 def _load_audio_file(audio_path: Path) -> bytes:
     """Load a real audio file from fixtures directory."""
     if not audio_path.exists():
@@ -1996,6 +2027,8 @@ class TestRealDataTranscription:
         3. Processed audio (VAD-merged speech segments) stored to MinIO
         4. Transcript exported to MinIO and local JSON file
         """
+        _skip_if_full_pipeline_models_missing()
+
         yaml_config = _pipeline_yaml_onnx_full_pipeline()
         job_id = "test-rd-002"
         consultation_id = "test-consult-ml-full-001"
@@ -2350,6 +2383,8 @@ class TestRealDataTranscription:
         3. Processed audio (VAD-merged speech segments) stored to MinIO
         4. Transcript exported to MinIO and local JSON file
         """
+        _skip_if_full_pipeline_models_missing()
+
         yaml_config = _pipeline_yaml_onnx_full_pipeline()
         job_id = "test-rd-004"
         consultation_id = "test-consult-en-full-001"

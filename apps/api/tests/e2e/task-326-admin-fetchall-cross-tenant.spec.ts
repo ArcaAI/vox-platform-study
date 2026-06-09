@@ -13,12 +13,20 @@
  * and now also carries the controller-layer guard; a TENANT_ADMIN must only
  * see their own tenant's rows, SUPER_ADMIN sees across tenants.
  *
- * Probe model (mirrors task-307-storage-cross-tenant): a TENANT_ADMIN logs
- * into `__GLOBAL__` and a SUPER_ADMIN logs into a customer tenant (ARCAAI).
+ * Probe model: a TENANT_ADMIN logs into `__GLOBAL__` (tenant-scoped) and a
+ * SUPER_ADMIN logs in with NO tenant scope — the platform-wide operator view.
  * Because the seed ships multiple customer tenants each with their own users,
  * the cross-tenant operator view (SUPER_ADMIN) MUST be strictly larger than
  * the single-tenant admin view — if the X2 scope regresses, the two views
  * collapse to the same set and these assertions fail.
+ *
+ * NOTE (TASK-336 AC-07): a SUPER_ADMIN that authenticates INTO a tenant
+ * (login `tenantKey`, or a console `x-tenant-id` selection) is INTENTIONALLY
+ * scoped to that tenant on `/admin/{users,audit-logs}` — the cross-tenant view
+ * is the no-tenant-scope mode (mirrors `AuditLogController.exportCsv`'s
+ * `includeTenant = isSuperAdmin && !callerTenantId`). The sibling
+ * task-307-storage spec relies on the inverse (an ARCAAI-scoped super_admin
+ * sees only ARCAAI's buckets), so the operator here must omit the tenantKey.
  */
 import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
@@ -35,7 +43,11 @@ const fetchPaginated = async (
 ): Promise<{ status: number; body: PaginatedBody }> => {
     const res = await request.get(path, {
         headers: { Authorization: `Bearer ${token}` },
-        params: { page: '1', pageSize: '200' },
+        // Admin-plane list endpoints (UserController/AuditLogController) bind the
+        // shared `PaginatedQuery` DTO, whose page-size key is `limit` — NOT the
+        // RBAC-only `pageSize` (see apps/ui-playground roles.ts AC-04, TASK-336).
+        // The global ValidationPipe (forbidNonWhitelisted) 400s any other key.
+        params: { page: '1', limit: '200' },
     });
     const body = res.status() === 200 ? ((await res.json()) as PaginatedBody) : { data: [], count: 0 };
     return { status: res.status(), body };
@@ -50,8 +62,11 @@ test.describe('TASK-326 X2/X5 — admin fetchAll cross-tenant isolation', () => 
         expect(ta, 'tenant_admin login (__GLOBAL__) failed').toBeTruthy();
         tenantAdminToken = ta!.token;
 
-        const sa = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
-        expect(sa, 'super_admin login (ARCAAI) failed').toBeTruthy();
+        // Cross-tenant operator: omit tenantKey so the JWT carries no tenantId
+        // (TASK-336 AC-07 — a tenant-scoped super-admin would collapse to that
+        // tenant's rows and defeat the cross-tenant comparison below).
+        const sa = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
+        expect(sa, 'super_admin login (cross-tenant operator) failed').toBeTruthy();
         superAdminToken = sa!.token;
     });
 

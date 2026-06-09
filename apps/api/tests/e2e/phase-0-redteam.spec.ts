@@ -100,7 +100,10 @@ test.describe('Phase 0 — Item 3: privilege escalation via admin/users', () => 
     superAdminRoleId = roles.find((r: { name: string }) => r.name === 'SUPER_ADMIN')?.id;
     expect(superAdminRoleId, 'SUPER_ADMIN role id not discoverable').toBeDefined();
 
-    const usersResp = await request.get('/api/v1/admin/users?page=1&limit=10', {
+    // This super-admin session has NO tenant scope, so `/admin/users` returns the
+    // full cross-tenant set (now 33+ seeded users incl. per-tenant admins). Use a
+    // page large enough to include `nurse`; a small page (e.g. limit=10) drops it.
+    const usersResp = await request.get('/api/v1/admin/users?page=1&limit=200', {
       headers: { Authorization: `Bearer ${adminToken}` },
     });
     const users = (await usersResp.json()).data;

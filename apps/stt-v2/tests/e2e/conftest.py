@@ -281,11 +281,18 @@ async def real_audio_client():
     os.environ["DEBUG"] = "true"
     # Use HF_HOME when the production default /models/hf-cache doesn't exist
     # (only present inside Docker containers).
-    if not Path(os.environ.get("HUGGINGFACE_CACHE_DIR", "/models/hf-cache")).is_dir():
+    #
+    # Treat an empty HUGGINGFACE_CACHE_DIR as unset: ``Path("").is_dir()`` is
+    # True (it normalises to the cwd), so a naive guard would keep an empty
+    # value (injected by deepeval's load_dotenv of the repo-root .env) and
+    # collapse the model cache dir to ''. Use direct assignment (not
+    # setdefault) so an already-set empty value is overwritten.
+    _hf_cache_dir = (os.environ.get("HUGGINGFACE_CACHE_DIR") or "").strip()
+    if not _hf_cache_dir or not Path(_hf_cache_dir).is_dir():
         _hf_default = os.environ.get("HF_HOME") or str(
             Path.home() / ".cache" / "huggingface" / "hub"
         )
-        os.environ.setdefault("HUGGINGFACE_CACHE_DIR", _hf_default)
+        os.environ["HUGGINGFACE_CACHE_DIR"] = _hf_default
     # Limit DB pool to avoid TooManyConnectionsError on test PostgreSQL
     # (max_connections=20).  Each event-loop creates its own engine, so
     # keep the per-engine pool small.

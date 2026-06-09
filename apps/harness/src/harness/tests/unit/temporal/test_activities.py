@@ -314,7 +314,12 @@ class _FakeRetriever:
 class TestRetrieveContext:
     @pytest.mark.asyncio
     async def test_disabled_flag_returns_empty_without_calling_backends(self, env, monkeypatch):
-        # Default settings have retrieval disabled -> no retriever is built/called.
+        # Hermetic: force retrieval OFF regardless of the ambient dev ``.env`` (which
+        # sets ``HARNESS_RETRIEVAL_ENABLED=true``). The activity reads the flag via the
+        # real ``get_settings()`` -> ``_load_dotenv_into_environ()``, which never
+        # overrides an already-set env var, so the disabled path runs deterministically.
+        monkeypatch.setenv("HARNESS_RETRIEVAL_ENABLED", "false")
+
         def _boom(_settings):  # pragma: no cover - must not run
             raise AssertionError("retriever must not be built when retrieval is disabled")
 
