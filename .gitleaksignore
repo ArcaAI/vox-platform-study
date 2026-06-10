@@ -67,3 +67,15 @@
 # hope-redis-password rule has a capture group `(REDIS_PASS|REDIS_URL)`, so the
 # allowlist's secret-target sees the var name, not the value. Fingerprint pin:
 infrastructure/docker/configs/vault/dev-init.sh:hope-redis-password:84
+
+# ─── TASK-348 — .env.test e2e JWT placeholder (NOT a real credential) ────────
+#
+# Category: PLACEHOLDER (safe). Reviewed by the TASK-348 security audit
+# (Verified Safe #7): `.env.test` is the tracked test-env reference; the value
+# `test-jwt-secret-key-for-e2e-only-not-for-production-aaaa` is an explicitly
+# labeled test-only signing key required by the e2e auth sign-path
+# (SecretsService.getSecretSync('JWT_SECRET_KEY')). Same allowlist-bypass root
+# cause as the dev-init.sh entry above: hope-jwt-secret's capture group
+# `(JWT_SECRET_KEY|...)` makes the allowlist's secret-target see the var name,
+# so the `not-for-prod` regex never fires. Fingerprint pin:
+.env.test:hope-jwt-secret:86
