@@ -6,7 +6,7 @@
 | **Title** | `Highlight` model missing from `TENANT_SCOPED_MODELS` (drift-guard failure) |
 | **Created** | 2026-06-10 |
 | **Updated** | 2026-06-10 |
-| **Status** | Pending |
+| **Status** | Completed |
 | **Type** | bugfix (multi-tenancy hardening) |
 | **Origin** | Discovered during TASK-348 Phase 5 verification (pre-existing at HEAD; §5.2 of TASK-348 README) |
 | **Related tickets** | TASK-344 (introduced the `Highlight` model), TASK-305 (tenant-scope extension + drift guard) |
@@ -58,10 +58,64 @@ Estimated scope: ~1-line product change + verification; the value is in step 3/4
 
 ## 4. Implementation Summary
 
-_Not started._
+Completed 2026-06-10. One-line product change + one legitimate test-tripwire bump; zero call-site changes required.
+
+### 4.1 Files changed
+
+| File | Change |
+|---|---|
+| `packages/database/src/extensions/tenant-scope.ts` | Added `'Highlight'` to `TENANT_SCOPED_MODELS`; section comment `// consultation.prisma (6)` → `(7)`. |
+| `packages/database/src/extensions/__tests__/tenant-scope.test.ts` | Count tripwire `expect(TENANT_SCOPED_MODELS.size).toBe(40)` → `41` + test title + history comment, following the documented pattern used for every prior addition (28→29→31→36→38→40). The drift-guard test itself passes **unchanged**. |
+
+### 4.2 RED → GREEN evidence
+
+RED (HEAD, before fix) — `pnpm --filter @arcaai/database exec vitest run src/extensions/__tests__/tenant-scope.test.ts`:
+
+```
+FAIL src/extensions/__tests__/tenant-scope.test.ts
+  > TENANT_SCOPED_MODELS stays in sync with the Prisma schema
+  > lists every schema tenantId model in TENANT_SCOPED_MODELS (drift = [])
+AssertionError: expected [ 'Highlight' ] to deeply equal []
+Tests  1 failed | 64 passed (65)
+```
+
+GREEN (after fix), same command: `Tests 65 passed (65)`.
+
+Full scoped suites — `pnpm --filter @arcaai/database --filter @arcaai/domains --filter @arcaai/applications test` (each package's vitest config excludes `integration/**`):
+
+```
+@arcaai/database      Test Files  20 passed (20)            Tests   803 passed (803)
+@arcaai/domains       Test Files  90 passed | 2 skipped     Tests  1186 passed | 2 skipped | 9 todo
+@arcaai/applications  Test Files 213 passed | 1 skipped     Tests  5002 passed | 4 skipped
+```
+
+ReadLints on both modified files: no linter errors.
+
+### 4.3 Call-site audit (AC-3) — no breakage, zero changes
+
+Every Highlight query path routes through the shared `Repository` base (`packages/domains/src/common/repository.ts`) against the extended client — the same path every other tenant-scoped model already takes, so injection composes identically:
+
+| Call site | Path | Why injection is safe |
+|---|---|---|
+| `HighlightService.createHighlight` (`packages/applications/src/services/consultation/highlight/highlight.service.ts`) | `HighlightFactory.CreateHighlight({ tenantId: this.tenantId, … })` → `repository.create` | Factory sets `data.tenantId` from the same CLS context the extension reads; the create handler's equality assert passes. |
+| `HighlightService.getHighlights` → `HighlightRepository.findByConsultation` | `findMany({ where: { consultationId } })` | Injection adds `tenantId` to `where` — exactly the intended hardening; service already guards via `assertParentInScope(consultationRepository, …)`. |
+| `HighlightService.deleteHighlight` | `assertParentInScope(highlightRepository, …)` → `findById` (`findUnique({ where: { id } })`), then `softDelete` (`update({ where: { id } })`) | Extended-where-unique merge; the row is asserted in-tenant before the update, so the injected filter still matches. Identical to the Consultation/ContextItem paths in production. |
+| `HarnessInternalService.assemble` (`packages/applications/src/services/consultation/harness/harness-internal.service.ts:160`) | `highlightRepository.findByConsultation` | Runs inside `cls.run()` with `cls.set('tenantId', dto.tenantId)` (line 113–115) — tenant context present. |
+
+Non-matches confirmed unrelated: `baseServices/logging/transports/highlight.transport.ts` + `apps/api/.../stream-ticket.service.ts` (Highlight.io observability vendor), `live-documentation.service.ts:448` (comment prose), seed `07-prompt-template.ts` (prompt copy). No direct `prisma.highlight.*` usage exists anywhere outside `HighlightRepository`. Seed/CLI paths run with no provider registered → documented super-admin pass-through, unaffected. Unit tests in domains/applications mock repositories, so none touch the extension.
+
+### 4.4 RLS finding (AC-4) — documented follow-up, not implemented here
+
+- **No RLS policy covers `core."Highlight"`** — and none covers any other table either: grep for `ENABLE ROW LEVEL SECURITY` / `CREATE POLICY` across all 17 migrations in `packages/database/src/prisma/db_main/migrations/` returns nothing (matches exist only in docs/research/e2e prose).
+- This is consistent with TASK-305's README: **Phase C (RLS) was deferred to TASK-302** (depends on the `hope_tenant_user`/`hope_platform_admin` role split + PgBouncer decision). DB-level RLS is repo-wide absent by recorded decision, not a Highlight-specific omission.
+- **Follow-up**: when TASK-302/Phase C lands, `core."Highlight"` must be included in the RLS policy set (clinician-authored marks over transcripts — PHI-adjacent; the Phase C.2 list of 7 PHI tables predates this model).
+- Correction to §2: TASK-344 *does* have a migration on disk (`20260609203500_task_344_add_highlight/migration.sql` — purely additive, no RLS statements); the "applied via `db push`" note in the TASK-344 README describes how the ops apply happened, not a missing migration file.
+
+Until then, Highlight tenant isolation rests on the two application layers, both now in place: service guards (`assertParentInScope`, TASK-344) + tenant-scope extension injection (this ticket).
 
 ## 5. Change History
 
 | Date | Description | Files |
 |---|---|---|
 | 2026-06-10 | Ticket opened from TASK-348 Phase 5 findings (pre-existing root-suite failure characterized; security-relevant). | This README |
+| 2026-06-10 | Fix implemented: `Highlight` added to `TENANT_SCOPED_MODELS` (consultation.prisma section 6→7); count tripwire 40→41. Drift guard green; database/domains/applications unit suites green (803 / 1186 / 5002). Call-site audit found zero breakages (no code changes outside the extension + its test). RLS audit: no policies exist repo-wide (TASK-305 Phase C deferred to TASK-302); Highlight recorded as a required table for that rollout. Status → Completed. | `packages/database/src/extensions/tenant-scope.ts`, `packages/database/src/extensions/__tests__/tenant-scope.test.ts`, this README |

@@ -80,7 +80,7 @@ function captureExtensionConfig(opts: {
 // ---------------------------------------------------------------------------
 
 describe('TENANT_SCOPED_MODELS allow-list', () => {
-  it('contains the 40 tenant-scoped models currently defined in db_main/*.prisma', () => {
+  it('contains the 41 tenant-scoped models currently defined in db_main/*.prisma', () => {
     // The allow-list tracks SCHEMA TRUTH (every model here has a tenantId
     // scalar), not the audit's 30-name wish-list. The User* identity tables
     // are intentionally excluded — `User` is global by design (§B6 /
@@ -93,9 +93,10 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // HarnessAuditEvent → 36. TASK-330 Phase 3 added the institutional-RAG
     // KnowledgeDocument + KnowledgeChunk → 38. TASK-330 Phase 6 added the
     // editable harness policy HarnessPolicy + append-only HarnessPolicyChange
-    // → 40. (The drift guard below is the durable check; this count stays as a
-    // quick human-readable tripwire.)
-    expect(TENANT_SCOPED_MODELS.size).toBe(40);
+    // → 40. TASK-349 added Highlight (TASK-344 model, caught by the drift
+    // guard below) → 41. (The drift guard below is the durable check; this
+    // count stays as a quick human-readable tripwire.)
+    expect(TENANT_SCOPED_MODELS.size).toBe(41);
   });
 
   it('includes every PHI-bearing model', () => {
