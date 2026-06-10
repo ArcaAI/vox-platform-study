@@ -20,6 +20,7 @@ logger = structlog.get_logger(__name__)
 
 _models: dict[str, Any] = {}
 _default_model_name: str | None = None
+_enabled: bool = True
 _lock = threading.Lock()
 
 
@@ -64,9 +65,24 @@ def _load_model(model_name: str) -> Any:
 
 
 def initialize() -> None:
-    """Load the default punctuation model. Called once during app startup."""
-    global _default_model_name
+    """Load the default punctuation model. Called once during app startup.
+
+    When ``PUNCTUATION_ENABLED`` is false (the default) the Cadence model is
+    never touched: we log a single INFO line and return. This keeps the boot
+    log free of Cadence's internal ``FATAL: Error loading model`` traceback,
+    which it prints whenever its loader runs under an incompatible
+    transformers version.
+    """
+    global _default_model_name, _enabled
     settings = get_settings()
+    _enabled = bool(settings.punctuation_enabled)
+    if not _enabled:
+        logger.info(
+            "Punctuation restoration disabled (PUNCTUATION_ENABLED=false); "
+            "Cadence model not loaded"
+        )
+        return
+
     _default_model_name = settings.punctuation_model_name
 
     with _lock:
@@ -96,7 +112,7 @@ def get_model(model_name: str | None = None) -> Any:
 
 async def punctuate(text: str, model_name: str | None = None) -> str:
     """Punctuate a single text string. Runs sync model in executor."""
-    if not text.strip():
+    if not _enabled or not text.strip():
         return text
 
     model = get_model(model_name)
@@ -112,7 +128,7 @@ async def punctuate_batch(
     texts: list[str], batch_size: int = 8, model_name: str | None = None,
 ) -> list[str]:
     """Punctuate a list of texts. Runs sync model in executor."""
-    if not texts:
+    if not _enabled or not texts:
         return texts
 
     model = get_model(model_name)
@@ -128,7 +144,7 @@ def punctuate_sync(
     texts: list[str], batch_size: int = 8, model_name: str | None = None,
 ) -> list[str]:
     """Punctuate a list of texts synchronously (for batch pipeline)."""
-    if not texts:
+    if not _enabled or not texts:
         return texts
 
     model = get_model(model_name)

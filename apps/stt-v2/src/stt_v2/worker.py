@@ -98,6 +98,7 @@ async def initialize_services() -> None:
         logger.info("Punctuation service initialized")
     except Exception as e:
         logger.warning(f"Punctuation service initialization failed (non-fatal): {e}")
+        logger.debug("Punctuation initialization error detail", exc_info=True)
 
     logger.info("All worker services initialized successfully")
 

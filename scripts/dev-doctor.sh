@@ -1,0 +1,143 @@
+#!/bin/bash
+# ============================================================================
+# TASK-346 — Local dev-stack doctor (read-only)
+# ============================================================================
+# Answers "why is X broken?" in one shot: probes every service port/health
+# endpoint, docker infra containers, LM Studio / Ollama, Temporal, the
+# harness Temporal worker process, and runs the STT API-key preflight
+# (placeholder detection — never prints the key).
+#
+# USAGE:
+#   pnpm dev:doctor
+#
+# EXIT CODE: 1 if any REQUIRED check fails (required = clinical-workspace
+# services + postgres/redis/temporal/LM Studio), 0 otherwise. Optional
+# components (guardrail, ollama, vault, qdrant, minio, temporal-ui,
+# reranker) only WARN.
+# ============================================================================
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+FAILURES=0
+WARNINGS=0
+
+pass() { printf "${GREEN}%-6s${NC} %-34s %s\n" "PASS" "$1" "${2:-}"; }
+fail() { printf "${RED}%-6s${NC} %-34s %s\n" "FAIL" "$1" "${2:-}"; FAILURES=$((FAILURES + 1)); }
+warn() { printf "${YELLOW}%-6s${NC} %-34s %s\n" "WARN" "$1" "${2:-}"; WARNINGS=$((WARNINGS + 1)); }
+
+# http_check <required|optional> <label> <url> [expected-detail]
+http_check() {
+    local req="$1" label="$2" url="$3" code
+    code="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 "$url" 2>/dev/null)" || code="000"
+    if [ "${code:0:1}" = "2" ] || [ "${code:0:1}" = "3" ]; then
+        pass "$label" "$url → $code"
+    elif [ "$req" = "required" ]; then
+        fail "$label" "$url → $code"
+    else
+        warn "$label" "$url → $code (optional)"
+    fi
+}
+
+# tcp_check <required|optional> <label> <host> <port>
+tcp_check() {
+    local req="$1" label="$2" host="$3" port="$4"
+    if nc -z -w 2 "$host" "$port" >/dev/null 2>&1; then
+        pass "$label" "$host:$port reachable"
+    elif [ "$req" = "required" ]; then
+        fail "$label" "$host:$port unreachable"
+    else
+        warn "$label" "$host:$port unreachable (optional)"
+    fi
+}
+
+# docker_check <required|optional> <container-name>
+docker_check() {
+    local req="$1" name="$2" state
+    state="$(docker inspect -f '{{.State.Status}}' "$name" 2>/dev/null)" || state="absent"
+    if [ "$state" = "running" ]; then
+        pass "docker:$name" "running"
+    elif [ "$req" = "required" ]; then
+        fail "docker:$name" "$state"
+    else
+        warn "docker:$name" "$state (optional)"
+    fi
+}
+
+echo -e "${CYAN}━━ HOPE dev doctor ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+echo -e "${CYAN}── Docker infrastructure ────────────────────────────────────────${NC}"
+docker_check required hope-postgres
+docker_check required hope-redis
+docker_check required hope-temporal
+docker_check optional hope-temporal-ui
+docker_check optional hope-vault
+docker_check optional hope-qdrant
+docker_check optional hope-minio
+docker_check optional hope-reranker
+
+echo -e "${CYAN}── Infrastructure endpoints ─────────────────────────────────────${NC}"
+tcp_check required "postgres" localhost "${POSTGRES_PORT:-5432}"
+tcp_check required "redis" localhost "${REDIS_PORT:-6379}"
+tcp_check required "temporal (gRPC)" localhost "${TEMPORAL_PORT:-7233}"
+http_check optional "temporal-ui" "http://localhost:${TEMPORAL_UI_PORT:-8233}/"
+http_check optional "vault" "http://localhost:8200/v1/sys/health"
+http_check optional "qdrant" "http://localhost:6333/healthz"
+http_check optional "minio" "http://localhost:9000/minio/health/live"
+http_check optional "reranker" "http://localhost:8870/health"
+
+echo -e "${CYAN}── LLM engines ──────────────────────────────────────────────────${NC}"
+http_check required "lm-studio" "http://localhost:1234/v1/models"
+http_check optional "ollama" "http://localhost:11434/"
+
+echo -e "${CYAN}── HOPE services ────────────────────────────────────────────────${NC}"
+http_check required "api (8868)" "http://localhost:${API_PORT:-8868}/api/v1/health"
+http_check required "stt (8861)" "http://localhost:${STT_PORT:-8861}/api/v1/health"
+http_check required "smr (8862)" "http://localhost:${SMR_PORT:-8862}/api/v1/health"
+http_check required "nlp (8864)" "http://localhost:${NLP_PORT:-8864}/api/v1/health"
+http_check required "harness (8866)" "http://localhost:${HARNESS_PORT:-8866}/api/v1/health"
+http_check required "ui-playground (5175)" "http://localhost:${UI_PORT:-5175}/"
+# guardrail mounts its routers under /api (no version segment), unlike the rest
+http_check optional "guardrail (8863)" "http://localhost:${GUARDRAIL_PORT:-8863}/api/health"
+
+# SMR must not just be up — it must have at least one LLM provider registered
+# (the silent live-summary killer: SMR up, zero providers, every generate 404s).
+providers="$(curl -s --connect-timeout 2 --max-time 5 "http://localhost:${SMR_PORT:-8862}/api/v1/providers" 2>/dev/null)" || providers=""
+if printf '%s' "$providers" | grep -q '"name"'; then
+    # top-level provider entries are the ones carrying a display_name
+    pass "smr providers registered" "$(printf '%s' "$providers" | grep -oE '"name":"[^"]*","display_name"' | cut -d'"' -f4 | sort -u | tr '\n' ' ')"
+else
+    fail "smr providers registered" "none — start SMR via 'pnpm dev:smr-v2' (registers the LM Studio provider)"
+fi
+
+# Harness Temporal worker — no port; it is a worker process polling the task
+# queue. conda-run wrapper + python child may both match; >0 means alive.
+worker_count="$(pgrep -f 'harness\.temporal\.worker' 2>/dev/null | wc -l | tr -d ' ')"
+if [ "${worker_count:-0}" -gt 0 ]; then
+    pass "harness worker process" "$worker_count matching process(es)"
+else
+    fail "harness worker process" "not running — start with 'pnpm dev:harness:worker'"
+fi
+
+echo -e "${CYAN}── Preflight ────────────────────────────────────────────────────${NC}"
+if out="$("$SCRIPT_DIR/dev-service.sh" --check-stt-key 2>&1)"; then
+    pass "stt API_GATEWAY_KEY" "$(printf '%s' "$out" | head -n1 | sed 's/\x1b\[[0-9;]*m//g')"
+else
+    fail "stt API_GATEWAY_KEY" "placeholder/missing — see: ./scripts/dev-service.sh --check-stt-key"
+fi
+
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+if [ "$FAILURES" -gt 0 ]; then
+    echo -e "${RED}$FAILURES required check(s) failed${NC}, $WARNINGS optional warning(s)."
+    exit 1
+fi
+echo -e "${GREEN}All required checks passed${NC} ($WARNINGS optional warning(s))."

@@ -6,6 +6,9 @@ import {
   HarnessPersistEntitiesRequest,
   HarnessPolicyResponse,
   HarnessPolicyService,
+  HarnessProgressAck,
+  HarnessProgressRequest,
+  HarnessProgressService,
   IActiveUserContext,
 } from '@arcaai/applications';
 import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
@@ -42,6 +45,8 @@ export class HarnessInternalController {
     // HarnessPolicyServiceModule imported by ConsultationModule.
     private readonly harnessPolicyService: HarnessPolicyService,
     private readonly cls: ClsService<IActiveUserContext>,
+    // TASK-345 — live harness activity feed; ephemeral Redis publish, no CLS needed.
+    private readonly harnessProgressService: HarnessProgressService,
   ) {}
 
   @Get('policy')
@@ -88,5 +93,17 @@ export class HarnessInternalController {
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   async recordGateDecision(@Param('id') id: string, @Body() dto: HarnessGateDecisionRequest) {
     return this.harnessInternalService.recordGateDecision(id, dto);
+  }
+
+  // TASK-345 — the workflow's `report_progress` activity posts one stage event
+  // here per phase; the service folds it into the full-state snapshot and
+  // publishes to `consultation:harness-progress:{id}` for the browser SSE
+  // relay. Best-effort by contract: always acks ({ ok: boolean }), never 5xxs
+  // the workflow over a progress hiccup.
+  @Post('consultations/:id/progress')
+  @ApiOperation({ summary: 'Publish a harness workflow progress stage to the live UI feed (ephemeral, best-effort)' })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async reportProgress(@Param('id') id: string, @Body() dto: HarnessProgressRequest): Promise<HarnessProgressAck> {
+    return this.harnessProgressService.reportProgress(id, dto);
   }
 }

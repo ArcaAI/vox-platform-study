@@ -79,4 +79,35 @@ describe('HarnessInternalController', () => {
         expect(mockService.recordGateDecision).toHaveBeenCalledWith('consultation-1', dto);
         expect(result).toEqual({ recorded: true });
     });
+
+    // TASK-345 — live harness activity/progress feed.
+    describe('POST consultations/:id/progress', () => {
+        const mockProgressService = { reportProgress: vi.fn() };
+
+        const buildController = () =>
+            new HarnessInternalController(
+                mockService as any,
+                undefined as any, // harnessPolicyService (unused by progress route)
+                undefined as any, // cls (unused by progress route)
+                mockProgressService as any,
+            );
+
+        it('delegates to HarnessProgressService.reportProgress(consultationId, dto)', async () => {
+            mockProgressService.reportProgress.mockResolvedValue({ ok: true });
+            const dto = { tenantId: 't-1', jobId: 'harness-doc-1', stage: 'drafting_note', label: 'Drafting note', ordinal: 4, total: 5 };
+
+            const result = await buildController().reportProgress('consultation-1', dto as any);
+
+            expect(mockProgressService.reportProgress).toHaveBeenCalledWith('consultation-1', dto);
+            expect(result).toEqual({ ok: true });
+        });
+
+        it('relays the best-effort { ok: false } ack without throwing (progress must never fail the workflow)', async () => {
+            mockProgressService.reportProgress.mockResolvedValue({ ok: false });
+
+            const result = await buildController().reportProgress('consultation-1', { tenantId: 't-1', stage: 'generating' } as any);
+
+            expect(result).toEqual({ ok: false });
+        });
+    });
 });

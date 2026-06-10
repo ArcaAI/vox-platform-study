@@ -39,6 +39,8 @@ import {
   IHighlightService,
   CreateHighlightRequest,
   HighlightResponse,
+  // TASK-345 — live harness activity/progress feed.
+  HarnessProgressService,
 } from '@arcaai/applications';
 import {
   Controller,
@@ -164,6 +166,8 @@ export class ConsultationController {
     // TASK-344 Workstream B — manual doctor highlighting.
     @Inject(IHighlightService)
     private readonly highlightService: IHighlightService,
+    // TASK-345 — live harness activity/progress feed (SSE relay).
+    private readonly harnessProgressService: HarnessProgressService,
   ) {}
 
   private getDoctorId(): string {
@@ -507,6 +511,23 @@ export class ConsultationController {
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   streamLiveSummary(@Param('id') id: string): Observable<MessageEvent> {
     return this.liveDocumentationService.subscribeToLiveSummary(id);
+  }
+
+  // TASK-345 — relays `consultation:harness-progress:{id}` (published by the
+  // internal POST /internal/harness/consultations/:id/progress route) so the
+  // review panel can show the live stage checklist while the draft generates.
+  @Get(':id/harness-progress/stream')
+  @Sse()
+  @TenantOwnedResource({ modelName: 'Consultation', paramName: 'id' })
+  @StreamScope({ namespace: 'consultation_harness_progress', param: 'id' })
+  @ApiOperation({
+    summary: 'Stream live harness draft-generation progress for a consultation via SSE',
+    description:
+      'Server-Sent Events stream relaying the Redis channel `consultation:harness-progress:{id}`. Each event is a HarnessProgressEventDto JSON carrying the full accumulated stage list (no PHI). Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_harness_progress:<id>`. The terminal event carries `closed: true` when the draft is persisted.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  streamHarnessProgress(@Param('id') id: string): Observable<MessageEvent> {
+    return this.harnessProgressService.subscribeToProgress(id);
   }
 
   // ─── Timeline ────────────────────────────────────────────────────

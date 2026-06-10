@@ -64,6 +64,8 @@ from harness.temporal.models import (
     PersistDraftInput,
     PersistEntitiesInput,
     RecordGateInput,
+    ReportProgressInput,
+    ReportProgressResult,
     RetrieveContextInput,
     RetrievedContext,
     RunInferentialSensorsInput,
@@ -117,6 +119,21 @@ def _api_client(settings: Settings) -> ApiClient:
         internal_prefix=settings.api_internal_prefix,
         service_token=settings.service_token.get_secret_value(),
         timeout=settings.api_timeout_s,
+    )
+
+
+# Progress reporting is fire-and-forget (TASK-345): a dedicated short HTTP
+# timeout so a wedged API never holds a stage transition hostage for the full
+# standard budget.
+_PROGRESS_HTTP_TIMEOUT_S = 5.0
+
+
+def _progress_api_client(settings: Settings) -> ApiClient:
+    return ApiClient(
+        settings.api_base_url,
+        internal_prefix=settings.api_internal_prefix,
+        service_token=settings.service_token.get_secret_value(),
+        timeout=min(_PROGRESS_HTTP_TIMEOUT_S, settings.api_timeout_s),
     )
 
 
@@ -441,6 +458,37 @@ async def record_gate_decision(payload: RecordGateInput) -> RecordGateResponse:
 
 
 @activity.defn
+async def report_progress(payload: ReportProgressInput) -> ReportProgressResult:
+    """Publish one workflow stage event to the live UI feed (TASK-345).
+
+    Fire-and-forget by contract: ALL errors are swallowed (logged + ``reported=False``)
+    so a down progress pipeline can never fail — or even retry-delay — the loop.
+    """
+    settings = get_settings()
+    try:
+        resp = await _progress_api_client(settings).report_progress(
+            payload.consultation_id,
+            tenant_id=payload.tenant_id,
+            stage=payload.stage,
+            label=payload.label,
+            ordinal=payload.ordinal,
+            total=payload.total,
+            job_id=payload.job_id,
+        )
+        return ReportProgressResult(reported=bool(resp.ok))
+    except Exception as exc:  # noqa: BLE001 — best-effort by design, never raise
+        activity.logger.warning(
+            "harness.report_progress.failed",
+            extra={
+                "consultation_id": payload.consultation_id,
+                "stage": payload.stage,
+                "error": str(exc),
+            },
+        )
+        return ReportProgressResult(reported=False)
+
+
+@activity.defn
 async def escalate_gate(payload: EscalateInput) -> EscalateResult:
     """Escalate an un-signed gate past its SLA (fail-safe: log + flag, keep waiting)."""
     activity.logger.warning(
@@ -468,4 +516,5 @@ DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
     persist_draft,
     record_gate_decision,
     escalate_gate,
+    report_progress,
 ]

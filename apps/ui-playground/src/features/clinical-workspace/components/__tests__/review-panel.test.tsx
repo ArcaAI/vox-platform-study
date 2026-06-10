@@ -28,6 +28,9 @@ const h = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
   reviewScreenProps: vi.fn(),
   provenanceState: { data: undefined as any, isLoading: false, isError: false, refetch: vi.fn() },
+  // TASK-345 — live harness progress feed (hook stubbed; reducer covered in lib tests).
+  progressState: { stages: [] as any[], total: undefined as number | undefined, closed: false, status: 'idle', error: null },
+  useHarnessProgress: vi.fn(),
 }));
 
 // Stub the reused review screen: capture the props (the mapped review data) and
@@ -56,6 +59,13 @@ vi.mock('../../api/queries', () => ({
     provenance: (id: string, noteId: string) => ['prov', id, noteId],
   },
   useProvenanceQuery: () => h.provenanceState,
+}));
+
+vi.mock('../../hooks/use-harness-progress', () => ({
+  useHarnessProgress: (opts: any) => {
+    h.useHarnessProgress(opts);
+    return h.progressState;
+  },
 }));
 
 vi.mock('@arcaai/vox', () => ({
@@ -164,6 +174,7 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof ReviewPanel>
 beforeEach(() => {
   vi.clearAllMocks();
   h.provenanceState = { data: provenance, isLoading: false, isError: false, refetch: vi.fn() };
+  h.progressState = { stages: [], total: undefined, closed: false, status: 'idle', error: null };
 });
 
 describe('ReviewPanel — provenance → click-to-inspect data', () => {
@@ -293,6 +304,50 @@ describe('ReviewPanel — non-data states', () => {
     expect(screen.queryByTestId('review-timeout')).toBeNull();
     fireEvent.click(screen.getByTestId('review-no-transcript-refresh'));
     expect(onRefreshDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the live stage checklist instead of the static text when progress events arrive (TASK-345)', () => {
+    h.progressState = {
+      stages: [
+        { stage: 'extracting_information', label: 'Extracting key information', ordinal: 1, status: 'completed', attempt: 1, at: 't1' },
+        { stage: 'assembling_context', label: 'Assembling context', ordinal: 2, status: 'completed', attempt: 1, at: 't2' },
+        { stage: 'drafting_note', label: 'Drafting the note', ordinal: 3, status: 'active', attempt: 2, at: 't3' },
+      ],
+      total: 5,
+      closed: false,
+      status: 'open',
+      error: null,
+    };
+    renderPanel({ noteContextItemId: null, draftStatus: 'generating' });
+
+    // The subscription is keyed by consultationId and active only while generating.
+    expect(h.useHarnessProgress).toHaveBeenCalledWith(expect.objectContaining({ consultationId: CONSULTATION_ID, enabled: true }));
+
+    const list = screen.getByTestId('review-progress-list');
+    expect(list).toBeInTheDocument();
+    // Live checklist replaces the static placeholder…
+    expect(screen.queryByText('Generating the SOAP draft…')).toBeNull();
+
+    const done = screen.getByTestId('review-progress-stage-extracting_information');
+    expect(done.getAttribute('data-status')).toBe('completed');
+    const active = screen.getByTestId('review-progress-stage-drafting_note');
+    expect(active.getAttribute('data-status')).toBe('active');
+    expect(active.textContent).toContain('Drafting the note');
+    // Regen pass is communicated on the active stage.
+    expect(active.textContent).toMatch(/pass 2/i);
+  });
+
+  it('keeps the static "Generating the SOAP draft…" fallback when no progress events arrive (TASK-345)', () => {
+    renderPanel({ noteContextItemId: null, draftStatus: 'generating' });
+
+    expect(screen.getByTestId('review-generating')).toBeInTheDocument();
+    expect(screen.getByText('Generating the SOAP draft…')).toBeInTheDocument();
+    expect(screen.queryByTestId('review-progress-list')).toBeNull();
+  });
+
+  it('does not subscribe to harness progress outside the generating state (TASK-345)', () => {
+    renderPanel({ noteContextItemId: null });
+    expect(h.useHarnessProgress).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
   });
 
   it('shows a skeleton while provenance loads', () => {

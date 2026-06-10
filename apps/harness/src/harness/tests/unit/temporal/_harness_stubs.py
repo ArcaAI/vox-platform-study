@@ -41,6 +41,8 @@ from harness.temporal.models import (
     PersistDraftInput,
     PersistEntitiesInput,
     RecordGateInput,
+    ReportProgressInput,
+    ReportProgressResult,
     RetrieveContextInput,
     RetrievedContext,
     RunInferentialSensorsInput,
@@ -73,6 +75,9 @@ class StubConfig:
     # makes the stub raise (endpoint unavailable) so the workflow degrades to the
     # code defaults — i.e. unchanged Phase 1-3 behaviour for the existing tests.
     policy: HarnessPolicy | None = None
+    # TASK-345 progress feed: make the ``report_progress`` stub raise (progress
+    # pipeline down) — the workflow must shrug it off and complete normally.
+    progress_fails: bool = False
 
 
 @dataclass
@@ -89,6 +94,7 @@ class StubRecorder:
     retrieve_inputs: list[RetrieveContextInput] = field(default_factory=list)
     generate_inputs: list[GenerateInput] = field(default_factory=list)
     run_sensors_inputs: list[RunSensorsInput] = field(default_factory=list)
+    progress_inputs: list[ReportProgressInput] = field(default_factory=list)
 
 
 def _ok(name: str) -> SensorResult:
@@ -323,6 +329,14 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         recorder.escalate_inputs.append(payload)
         return EscalateResult(escalated=True)
 
+    @activity.defn(name="report_progress")
+    async def report_progress(payload: ReportProgressInput) -> ReportProgressResult:
+        recorder.calls["report_progress"] += 1
+        recorder.progress_inputs.append(payload)
+        if config.progress_fails:
+            raise ApplicationError("progress pipeline down", non_retryable=True)
+        return ReportProgressResult(reported=True)
+
     return [
         fetch_policy,
         extract_entities,
@@ -335,4 +349,5 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         persist_draft,
         record_gate_decision,
         escalate_gate,
+        report_progress,
     ]

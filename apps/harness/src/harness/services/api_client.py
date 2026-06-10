@@ -57,6 +57,12 @@ class RecordGateResponse(BaseModel):
     recorded: bool = False
 
 
+class ReportProgressResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    ok: bool = False
+
+
 def _entity_payload(entity: NEREntity, context_item_id: str | None) -> dict[str, Any]:
     """Map a Lane H ``NEREntity`` to Lane G's camelCase ``HarnessEntityItem``.
 
@@ -264,3 +270,33 @@ class ApiClient:
         )
         data = await self._post(f"/consultations/{consultation_id}/gate-decision", body)
         return RecordGateResponse(recorded=bool(data.get("recorded", False)))
+
+    async def report_progress(
+        self,
+        consultation_id: str,
+        *,
+        tenant_id: str,
+        stage: str,
+        label: str | None = None,
+        ordinal: int | None = None,
+        total: int | None = None,
+        job_id: str | None = None,
+    ) -> ReportProgressResponse:
+        """Publish one workflow stage event to the live progress feed (TASK-345).
+
+        Raises :class:`ApiServiceError` like every other method; the
+        ``report_progress`` *activity* is the layer that swallows errors —
+        progress is best-effort and must never fail the workflow.
+        """
+        body = _prune(
+            {
+                "tenantId": tenant_id,
+                "jobId": job_id,
+                "stage": stage,
+                "label": label,
+                "ordinal": ordinal,
+                "total": total,
+            }
+        )
+        data = await self._post(f"/consultations/{consultation_id}/progress", body)
+        return ReportProgressResponse(ok=bool(data.get("ok", False)))
