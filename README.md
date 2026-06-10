@@ -66,20 +66,33 @@ For the full setup guide including Python services, environment files, and testi
 | Command | Description |
 |---------|-------------|
 | `pnpm dev:stack` | Start the full clinical-workspace stack (API, STT, SMR, NLP, harness + worker, UI) |
+| `pnpm dev:stack -- smr worker` | Start a subset of the stack (any of: api, stt, smr, guardrail, nlp, harness, worker, ui) |
+| `pnpm dev:stack down` | Stop services previously spawned by `dev:stack` (pidfile-based; no-op if none) |
+| `DRY_RUN=1 pnpm dev:stack` | Print the launch plan without starting anything |
 | `pnpm dev:doctor` | Health-check all services, docker infra, LLM engines, and the STT key |
 | `pnpm infra:up` | Start docker infra incl. Vault + Temporal profiles |
+| `pnpm infra:down` | Stop docker infra |
+| `pnpm infra:status` | Show docker infra container status |
+| `pnpm infra:logs` | Follow docker infra logs |
 | `pnpm dev:api` | Start API Gateway (development) |
 | `pnpm dev:stt-v2` | Start STT-v2 service (no reload; `:watch` for scoped reload) |
 | `pnpm dev:smr-v2` | Start SMR-v2 service with the LM Studio provider registered |
 | `pnpm dev:nlp` | Start NLP service |
+| `pnpm dev:guardrail` | Start Guardrail service |
+| `pnpm dev:harness` | Start the harness API service |
 | `pnpm dev:harness:worker` | Start the harness Temporal worker |
+| `pnpm dev:<service>:watch` | Scoped-reload variant (stt-v2, smr-v2, guardrail, nlp, harness) |
 | `pnpm build` | Build all packages and apps |
 | `pnpm test:unit` | Run TypeScript unit tests |
 | `pnpm ok` | Full reset: push DB, seed, build everything |
 | `pnpm db:studio` | Open Prisma Studio |
 | `pnpm gen:token` | Generate a dev JWT token |
 
-See [knowledge/SETUP.md](knowledge/SETUP.md) for the complete script reference.
+Python dev services bind `127.0.0.1` by default; export `HOST=0.0.0.0` to expose one on the LAN deliberately.
+
+See [knowledge/SETUP.md](knowledge/SETUP.md) for the complete script reference, and
+[docs/implementation/TASK-346-Local-Dev-Service-Scripts/README.md](docs/implementation/TASK-346-Local-Dev-Service-Scripts/README.md)
+for the dev-script design (defaults, env precedence, preflight checks).
 
 ## Documentation
 

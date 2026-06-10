@@ -168,9 +168,7 @@ class HarnessPolicy(BaseModel):
             smr_model=data.get("smrModel"),
             max_regen=_get("maxRegen", defaults.max_regen),
             gate_sla_seconds=_get("gateSlaSeconds", defaults.gate_sla_seconds),
-            gate_escalation_seconds=_get(
-                "gateEscalationSeconds", defaults.gate_escalation_seconds
-            ),
+            gate_escalation_seconds=_get("gateEscalationSeconds", defaults.gate_escalation_seconds),
             tool_allowlist=data.get("toolAllowlist"),
             version=_get("version", defaults.version),
         )
@@ -400,6 +398,12 @@ HARNESS_PROGRESS_STAGES: tuple[tuple[str, str], ...] = (
 # the SSE stream (`closed: true`). Emitted after the draft persists.
 HARNESS_PROGRESS_TERMINAL_STAGE = "completed"
 HARNESS_PROGRESS_TERMINAL_LABEL = "Draft ready for review"
+
+# Failure terminal pseudo-stage (TASK-348 / MAJ-1): emitted best-effort when
+# the workflow fails, so the API marks the active stage `failed` and closes
+# the SSE stream instead of freezing on a stale `active` snapshot.
+HARNESS_PROGRESS_FAILED_STAGE = "failed"
+HARNESS_PROGRESS_FAILED_LABEL = "Documentation generation failed"
 
 
 class ReportProgressInput(BaseModel):

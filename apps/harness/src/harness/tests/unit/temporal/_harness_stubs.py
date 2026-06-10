@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
@@ -95,6 +96,9 @@ class StubRecorder:
     generate_inputs: list[GenerateInput] = field(default_factory=list)
     run_sensors_inputs: list[RunSensorsInput] = field(default_factory=list)
     progress_inputs: list[ReportProgressInput] = field(default_factory=list)
+    # TASK-348 / MAJ-9: the schedule_to_close_timeout each report_progress
+    # emission was scheduled with (None = unbounded queue wait).
+    progress_schedule_to_close: list[timedelta | None] = field(default_factory=list)
 
 
 def _ok(name: str) -> SensorResult:
@@ -333,8 +337,12 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
     async def report_progress(payload: ReportProgressInput) -> ReportProgressResult:
         recorder.calls["report_progress"] += 1
         recorder.progress_inputs.append(payload)
+        recorder.progress_schedule_to_close.append(activity.info().schedule_to_close_timeout)
         if config.progress_fails:
-            raise ApplicationError("progress pipeline down", non_retryable=True)
+            # RETRYABLE on purpose (TASK-348 / TG-2): the workflow's
+            # _PROGRESS_RETRY pins maximum_attempts=1, so each emission must be
+            # attempted EXACTLY once even though the server would retry this.
+            raise ApplicationError("progress pipeline down")
         return ReportProgressResult(reported=True)
 
     return [

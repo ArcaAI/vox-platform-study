@@ -12,7 +12,7 @@
  * `lib/live-summary.ts` (no `@arcaai/vox` runtime dependency).
  */
 
-export type HarnessProgressStageStatus = 'completed' | 'active' | 'pending';
+export type HarnessProgressStageStatus = 'completed' | 'active' | 'pending' | 'failed';
 
 export interface HarnessProgressStage {
   stage: string;
@@ -42,7 +42,9 @@ export type HarnessProgressMessage =
   | { kind: 'heartbeat' }
   | { kind: 'invalid' };
 
-const STAGE_STATUSES: ReadonlySet<string> = new Set(['completed', 'active', 'pending']);
+// 'failed' arrives on the failure terminal event (TASK-348 / MAJ-1 contract:
+// stage key "failed", closed:true). Unknown statuses still coerce to pending.
+const STAGE_STATUSES: ReadonlySet<string> = new Set(['completed', 'active', 'pending', 'failed']);
 
 function isHeartbeat(value: Record<string, unknown>): boolean {
   if (value.type === 'heartbeat' || value.heartbeat === true) return true;
@@ -53,24 +55,25 @@ function isHeartbeat(value: Record<string, unknown>): boolean {
 
 /** Coerce a parsed payload into a well-formed `HarnessProgressEvent`. */
 export function normalizeHarnessProgressEvent(raw: Record<string, unknown>): HarnessProgressEvent {
-  const stages: HarnessProgressStage[] = Array.isArray(raw.stages)
-    ? (raw.stages as unknown[])
-        .map((entry, index) => {
-          if (typeof entry !== 'object' || entry === null) return null;
-          const s = entry as Record<string, unknown>;
-          if (typeof s.stage !== 'string' || !s.stage) return null;
-          return {
-            stage: s.stage,
-            label: typeof s.label === 'string' && s.label ? s.label : s.stage,
-            ordinal: typeof s.ordinal === 'number' && Number.isFinite(s.ordinal) ? s.ordinal : index + 1,
-            status: typeof s.status === 'string' && STAGE_STATUSES.has(s.status) ? (s.status as HarnessProgressStageStatus) : 'pending',
-            attempt: typeof s.attempt === 'number' && Number.isFinite(s.attempt) && s.attempt >= 1 ? s.attempt : 1,
-            at: typeof s.at === 'string' ? s.at : '',
-          };
-        })
-        .filter((s): s is HarnessProgressStage => s !== null)
-        .sort((a, b) => a.ordinal - b.ordinal)
-    : [];
+  // Dedupe-last keyed on `stage` (MIN-7): duplicate keys in a malformed payload
+  // would otherwise become duplicate React keys in the checklist.
+  const byStage = new Map<string, HarnessProgressStage>();
+  if (Array.isArray(raw.stages)) {
+    (raw.stages as unknown[]).forEach((entry, index) => {
+      if (typeof entry !== 'object' || entry === null) return;
+      const s = entry as Record<string, unknown>;
+      if (typeof s.stage !== 'string' || !s.stage) return;
+      byStage.set(s.stage, {
+        stage: s.stage,
+        label: typeof s.label === 'string' && s.label ? s.label : s.stage,
+        ordinal: typeof s.ordinal === 'number' && Number.isFinite(s.ordinal) ? s.ordinal : index + 1,
+        status: typeof s.status === 'string' && STAGE_STATUSES.has(s.status) ? (s.status as HarnessProgressStageStatus) : 'pending',
+        attempt: typeof s.attempt === 'number' && Number.isFinite(s.attempt) && s.attempt >= 1 ? s.attempt : 1,
+        at: typeof s.at === 'string' ? s.at : '',
+      });
+    });
+  }
+  const stages: HarnessProgressStage[] = [...byStage.values()].sort((a, b) => a.ordinal - b.ordinal);
 
   return {
     consultationId: typeof raw.consultationId === 'string' ? raw.consultationId : '',

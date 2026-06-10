@@ -235,6 +235,28 @@ cp .env.example .env.dev
 | `DIARIZATION_SIMILARITY_THRESHOLD` | Speaker matching threshold (0.0–1.0) | `0.7`                |
 | `DIARIZATION_DEVICE`               | Inference device (auto, cuda, cpu)   | `auto`               |
 
+#### Punctuation Restoration (Cadence)
+
+| Variable                     | Description                                       | Default   |
+| ---------------------------- | ------------------------------------------------- | --------- |
+| `PUNCTUATION_ENABLED`        | Global kill-switch for Cadence punctuation        | `false`   |
+| `PUNCTUATION_MODEL_NAME`     | `Cadence` (1B) or `Cadence-Fast` (270M)           | `Cadence` |
+| `PUNCTUATION_MODEL_CACHE_DIR`| Weights cache dir (empty = HF default cache)      | -         |
+| `PUNCTUATION_DEVICE`         | Inference device (`cpu`, `cuda`, `auto`)          | `auto`    |
+| `PUNCTUATION_MAX_LENGTH`     | Max sequence length / sliding window width        | `300`     |
+
+`PUNCTUATION_ENABLED` defaults to `false`: the production Whisper pipelines
+already emit punctuation/casing, and `cadence-punctuation 1.1.0` cannot load
+under the pinned transformers 5.x. With the flag off the Cadence model is never
+loaded, keeping the boot log free of its `FATAL` traceback.
+
+**Precedence**: the global flag wins over per-pipeline YAML
+`postprocessing.punctuation.enabled: true`. When the kill-switch is off (or the
+model fails to load at startup), pipelines that request punctuation get their
+text passed through unchanged and the service logs a one-time warning at the
+first suppressed call. Enable the flag only with a transformers/cadence
+combination that is known to load the model.
+
 #### Worker & Inference
 
 | Variable              | Description                         | Default           |

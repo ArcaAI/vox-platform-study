@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsNumber, IsObject, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsNumber, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
@@ -230,33 +230,69 @@ export interface HarnessDraftResponse {
  */
 export const HARNESS_PROGRESS_TERMINAL_STAGE = 'completed';
 
+/**
+ * Failure terminal pseudo-stage (TASK-348 / MAJ-1): the workflow emits this
+ * best-effort when the document loop fails. The service marks the currently
+ * active stage `failed`, freezes the rest, and closes the feed (`closed: true`)
+ * so the SSE stream ends instead of replaying a lying `active` snapshot.
+ * Mirrors `HARNESS_PROGRESS_FAILED_STAGE` in apps/harness `models.py`.
+ */
+export const HARNESS_PROGRESS_FAILED_STAGE = 'failed';
+
+/**
+ * The fixed server-side stage catalog (TASK-348 / MAJ-6 — ENH-4 mirror of
+ * `HARNESS_PROGRESS_STAGES` in apps/harness `models.py`). Both sides deploy
+ * from this repo: adding a workflow stage requires updating BOTH catalogs, or
+ * the internal endpoint rejects the unknown key (fail-closed payload bound).
+ */
+export const HARNESS_PROGRESS_STAGE_KEYS = [
+  'extracting_information',
+  'assembling_context',
+  'drafting_note',
+  'running_safety_sensors',
+  'finalizing_draft',
+] as const;
+
+// TASK-348 / MAJ-6: payload bounds. The snapshot is rebroadcast to every SSE
+// subscriber, so each field is capped at the validation pipe and `stage` is
+// pinned to the fixed server-side catalog (both sides ship from this repo —
+// a new workflow stage lands by updating both catalog mirrors together).
 export class HarnessProgressRequest {
   @ApiProperty({ description: 'Tenant the harness is acting on behalf of' })
   @IsString()
+  @MaxLength(256)
   tenantId: string;
 
-  @ApiPropertyOptional({ description: 'Harness job id minted at start (ops/log correlation only)' })
+  @ApiPropertyOptional({ description: 'Harness job id minted at start (run identity for the fold + ops/log correlation)' })
   @IsOptional()
   @IsString()
+  @MaxLength(256)
   jobId?: string;
 
-  @ApiProperty({ description: 'Workflow stage key (e.g. drafting_note); `completed` closes the feed' })
+  @ApiProperty({ description: 'Workflow stage key (e.g. drafting_note); `completed`/`failed` close the feed' })
   @IsString()
+  @MaxLength(128)
+  @IsIn([...HARNESS_PROGRESS_STAGE_KEYS, HARNESS_PROGRESS_TERMINAL_STAGE, HARNESS_PROGRESS_FAILED_STAGE])
   stage: string;
 
   @ApiPropertyOptional({ description: 'Human-readable stage label rendered by the UI' })
   @IsOptional()
   @IsString()
+  @MaxLength(256)
   label?: string;
 
   @ApiPropertyOptional({ description: '1-based position of the stage in the run' })
   @IsOptional()
   @IsNumber()
+  @Min(1)
+  @Max(50)
   ordinal?: number;
 
   @ApiPropertyOptional({ description: 'Total number of stages in the run' })
   @IsOptional()
   @IsNumber()
+  @Min(1)
+  @Max(50)
   total?: number;
 }
 
@@ -264,7 +300,7 @@ export interface HarnessProgressAck {
   ok: boolean;
 }
 
-export type HarnessProgressStageStatus = 'completed' | 'active' | 'pending';
+export type HarnessProgressStageStatus = 'completed' | 'active' | 'pending' | 'failed';
 
 export interface HarnessProgressStageDto {
   stage: string;
@@ -285,6 +321,12 @@ export interface HarnessProgressStageDto {
  */
 export interface HarnessProgressEventDto {
   consultationId: string;
+  /**
+   * Tenant the run belongs to (TASK-348 / MIN-5). Folded from the internal
+   * request for ops correlation; the SSE route is independently tenant-guarded
+   * (`@TenantOwnedResource`), so this is informational, not an access check.
+   */
+  tenantId?: string;
   jobId?: string;
   total?: number;
   stages: HarnessProgressStageDto[];

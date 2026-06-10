@@ -94,8 +94,8 @@ async def initialize_services() -> None:
     try:
         from stt_v2.punctuation import service as punctuation_service
 
-        await asyncio.to_thread(punctuation_service.initialize)
-        logger.info("Punctuation service initialized")
+        if await asyncio.to_thread(punctuation_service.initialize):
+            logger.info("Punctuation service initialized")
     except Exception as e:
         logger.warning(f"Punctuation service initialization failed (non-fatal): {e}")
         logger.debug("Punctuation initialization error detail", exc_info=True)

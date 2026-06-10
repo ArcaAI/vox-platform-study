@@ -110,4 +110,53 @@ describe('normalizeHarnessProgressEvent', () => {
     expect(normalized.stages.map((s) => s.stage)).toEqual(['a', 'b']);
     expect(normalized.stages[1].status).toBe('pending');
   });
+
+  // TASK-348 MIN-7 — duplicate stage keys would become duplicate React keys in
+  // the checklist; the normalizer must dedupe-last before sorting.
+  it('dedupes duplicate stage keys keeping the last entry (MIN-7)', () => {
+    const normalized = normalizeHarnessProgressEvent(
+      event({
+        stages: [
+          stage({ stage: 'drafting_note', ordinal: 3, status: 'active', attempt: 1 }),
+          stage({ stage: 'extracting_information', ordinal: 1, status: 'completed' }),
+          stage({ stage: 'drafting_note', ordinal: 3, status: 'completed', attempt: 2 }),
+        ],
+      }) as Record<string, unknown>,
+    );
+
+    expect(normalized.stages.map((s) => s.stage)).toEqual(['extracting_information', 'drafting_note']);
+    const drafting = normalized.stages.find((s) => s.stage === 'drafting_note')!;
+    // Last occurrence wins.
+    expect(drafting.status).toBe('completed');
+    expect(drafting.attempt).toBe(2);
+    // No duplicate keys remain.
+    expect(new Set(normalized.stages.map((s) => s.stage)).size).toBe(normalized.stages.length);
+  });
+
+  // TASK-348 — pinned wire contract for the failure terminal event (MAJ-1
+  // backend counterpart): "failed" is a KNOWN status; unknown values still
+  // coerce to pending (covered above).
+  it('preserves the failed stage status from the failure terminal event', () => {
+    const message = reduceHarnessProgressMessage(
+      JSON.stringify(
+        event({
+          closed: true,
+          stages: [
+            stage({ stage: 'extracting_information', ordinal: 1, status: 'completed' }),
+            stage({ stage: 'failed', label: 'Documentation generation failed', ordinal: 6, status: 'failed' }),
+            stage({ stage: 'persisting_draft', ordinal: 5, status: 'pending' }),
+          ],
+        }),
+      ),
+    );
+
+    expect(message.kind).toBe('closed');
+    if (message.kind !== 'closed') throw new Error('expected closed');
+    const failed = message.event.stages.find((s) => s.stage === 'failed')!;
+    expect(failed.status).toBe('failed');
+    expect(failed.label).toBe('Documentation generation failed');
+    // Completed stages stay completed; pending stay pending.
+    expect(message.event.stages.find((s) => s.stage === 'extracting_information')!.status).toBe('completed');
+    expect(message.event.stages.find((s) => s.stage === 'persisting_draft')!.status).toBe('pending');
+  });
 });

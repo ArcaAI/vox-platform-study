@@ -29,7 +29,7 @@ const h = vi.hoisted(() => ({
   reviewScreenProps: vi.fn(),
   provenanceState: { data: undefined as any, isLoading: false, isError: false, refetch: vi.fn() },
   // TASK-345 — live harness progress feed (hook stubbed; reducer covered in lib tests).
-  progressState: { stages: [] as any[], total: undefined as number | undefined, closed: false, status: 'idle', error: null },
+  progressState: { stages: [] as any[], total: undefined as number | undefined, closed: false, status: 'idle', error: null as string | null },
   useHarnessProgress: vi.fn(),
 }));
 
@@ -343,6 +343,115 @@ describe('ReviewPanel — non-data states', () => {
     expect(screen.getByTestId('review-generating')).toBeInTheDocument();
     expect(screen.getByText('Generating the SOAP draft…')).toBeInTheDocument();
     expect(screen.queryByTestId('review-progress-list')).toBeNull();
+  });
+
+  it('falls back to the static block + "live progress unavailable" note when the stream dies, never a frozen checklist (TASK-348 MAJ-4)', () => {
+    h.progressState = {
+      stages: [
+        { stage: 'extracting_information', label: 'Extracting key information', ordinal: 1, status: 'completed', attempt: 1, at: 't1' },
+        { stage: 'drafting_note', label: 'Drafting the note', ordinal: 3, status: 'active', attempt: 1, at: 't3' },
+      ],
+      total: 5,
+      closed: false,
+      status: 'error',
+      error: 'Harness progress stream disconnected',
+    };
+    renderPanel({ noteContextItemId: null, draftStatus: 'generating' });
+
+    // Stale stages must NOT render as a live checklist…
+    expect(screen.queryByTestId('review-progress-list')).toBeNull();
+    // …the static generating block returns, with an explicit unavailability note.
+    expect(screen.getByTestId('review-generating')).toBeInTheDocument();
+    expect(screen.getByText('Generating the SOAP draft…')).toBeInTheDocument();
+    expect(screen.getByTestId('review-progress-unavailable').textContent).toMatch(/live progress is unavailable/i);
+  });
+
+  it('keeps the live checklist during a transient reconnect (status connecting, TASK-348 MAJ-4)', () => {
+    h.progressState = {
+      stages: [{ stage: 'extracting_information', label: 'Extracting key information', ordinal: 1, status: 'completed', attempt: 1, at: 't1' }],
+      total: 5,
+      closed: false,
+      status: 'connecting',
+      error: null,
+    };
+    renderPanel({ noteContextItemId: null, draftStatus: 'generating' });
+
+    expect(screen.getByTestId('review-progress-list')).toBeInTheDocument();
+    expect(screen.queryByTestId('review-progress-unavailable')).toBeNull();
+  });
+
+  it('renders the failed terminal state distinctly: failure note + failed stage marker (TASK-348 MAJ-1 contract)', () => {
+    h.progressState = {
+      stages: [
+        { stage: 'extracting_information', label: 'Extracting key information', ordinal: 1, status: 'completed', attempt: 1, at: 't1' },
+        { stage: 'assembling_context', label: 'Assembling context', ordinal: 2, status: 'completed', attempt: 1, at: 't2' },
+        { stage: 'drafting_note', label: 'Drafting the note', ordinal: 3, status: 'pending', attempt: 1, at: '' },
+        { stage: 'failed', label: 'Documentation generation failed', ordinal: 6, status: 'failed', attempt: 1, at: 't4' },
+      ],
+      total: 5,
+      closed: true,
+      status: 'closed',
+      error: null,
+    };
+    renderPanel({ noteContextItemId: null, draftStatus: 'generating' });
+
+    // Failure note (not the static "generating…" copy, not the error fallback).
+    expect(screen.getByTestId('review-progress-failed')).toBeInTheDocument();
+    expect(screen.queryByTestId('review-progress-unavailable')).toBeNull();
+
+    // The failed pseudo-stage renders with a distinct marker; completed stages stay completed.
+    const failedRow = screen.getByTestId('review-progress-stage-failed');
+    expect(failedRow.getAttribute('data-status')).toBe('failed');
+    expect(failedRow.textContent).toContain('Documentation generation failed');
+    expect(screen.getAllByRole('img', { name: 'failed' }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByTestId('review-progress-stage-extracting_information').getAttribute('data-status')).toBe('completed');
+
+    // Terminal: the region is no longer busy.
+    expect(screen.getByTestId('review-progress-list').getAttribute('aria-busy')).toBe('false');
+  });
+
+  it('renders "Step N of total" and pre-renders placeholder rows up to total (TASK-348 MIN-9)', () => {
+    h.progressState = {
+      stages: [
+        { stage: 'extracting_information', label: 'Extracting key information', ordinal: 1, status: 'completed', attempt: 1, at: 't1' },
+        { stage: 'assembling_context', label: 'Assembling context', ordinal: 2, status: 'active', attempt: 1, at: 't2' },
+      ],
+      total: 5,
+      closed: false,
+      status: 'open',
+      error: null,
+    };
+    renderPanel({ noteContextItemId: null, draftStatus: 'generating' });
+
+    expect(screen.getByTestId('review-progress-step').textContent).toBe('Step 2 of 5');
+
+    // The checklist doesn't grow one row at a time: 2 real + 3 placeholders.
+    expect(screen.getAllByTestId('review-progress-placeholder')).toHaveLength(3);
+    expect(screen.getByTestId('review-progress-list').querySelectorAll('li')).toHaveLength(5);
+  });
+
+  it('announces the checklist politely with accessible status icons (TASK-348 MIN-8)', () => {
+    h.progressState = {
+      stages: [
+        { stage: 'extracting_information', label: 'Extracting key information', ordinal: 1, status: 'completed', attempt: 1, at: 't1' },
+        { stage: 'drafting_note', label: 'Drafting the note', ordinal: 3, status: 'active', attempt: 1, at: 't3' },
+      ],
+      total: 3,
+      closed: false,
+      status: 'open',
+      error: null,
+    };
+    renderPanel({ noteContextItemId: null, draftStatus: 'generating' });
+
+    const list = screen.getByTestId('review-progress-list');
+    expect(list.getAttribute('role')).toBe('status');
+    expect(list.getAttribute('aria-live')).toBe('polite');
+    expect(list.getAttribute('aria-busy')).toBe('true');
+
+    // Status icons carry reliable accessible names (role="img" + label).
+    expect(screen.getAllByRole('img', { name: 'completed' })).toHaveLength(1);
+    expect(screen.getAllByRole('img', { name: 'in progress' })).toHaveLength(1);
+    expect(screen.getAllByRole('img', { name: 'pending' })).toHaveLength(1); // the placeholder row
   });
 
   it('does not subscribe to harness progress outside the generating state (TASK-345)', () => {

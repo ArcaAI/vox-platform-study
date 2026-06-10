@@ -13,10 +13,12 @@ def _reset_models():
     service._models.clear()
     service._default_model_name = None
     service._enabled = True
+    service._suppression_warned = False
     yield
     service._models.clear()
     service._default_model_name = None
     service._enabled = True
+    service._suppression_warned = False
 
 
 class TestInitialize:
@@ -48,6 +50,28 @@ class TestInitialize:
         service.initialize()
 
         assert service._models["Cadence-Fast"] is existing_model
+
+    @patch("stt_v2.punctuation.service.get_settings")
+    def test_initialize_returns_true_when_model_loaded(self, mock_settings):
+        """TASK-348 MIN-12: callers condition their 'initialized' log on the outcome."""
+        settings = MagicMock()
+        settings.punctuation_model_name = "Cadence-Fast"
+        settings.punctuation_model_cache_dir = None
+        settings.punctuation_device = "cpu"
+        settings.punctuation_max_length = 300
+        mock_settings.return_value = settings
+
+        with patch.dict("sys.modules", {"cadence": MagicMock(PunctuationModel=MagicMock())}):
+            assert service.initialize() is True
+
+    @patch("stt_v2.punctuation.service.get_settings")
+    def test_initialize_returns_true_when_already_initialized(self, mock_settings):
+        service._models["Cadence-Fast"] = MagicMock()
+        settings = MagicMock()
+        settings.punctuation_model_name = "Cadence-Fast"
+        mock_settings.return_value = settings
+
+        assert service.initialize() is True
 
     @patch("stt_v2.punctuation.service.logger.info")
     @patch("stt_v2.punctuation.service.get_settings")
@@ -89,6 +113,112 @@ class TestInitialize:
         assert not monkey_patch_calls
 
 
+class TestInitializeFailure:
+    """MIN-10 (TASK-348): a failed model load must flip the service to
+    disabled/passthrough. Leaving ``_enabled=True`` after a failed
+    ``initialize()`` makes every subsequent utterance re-attempt the failing
+    Cadence load (latent crash-loop, dodged today only because the global
+    default is off)."""
+
+    @staticmethod
+    def _enabled_settings():
+        settings = MagicMock()
+        settings.punctuation_enabled = True
+        settings.punctuation_model_name = "Cadence"
+        settings.punctuation_model_cache_dir = None
+        settings.punctuation_device = "cpu"
+        settings.punctuation_max_length = 300
+        return settings
+
+    @patch(
+        "stt_v2.punctuation.service._load_model",
+        side_effect=RuntimeError("cadence load failed"),
+    )
+    @patch("stt_v2.punctuation.service.get_settings")
+    def test_failed_initialize_disables_punctuation(self, mock_settings, mock_load):
+        mock_settings.return_value = self._enabled_settings()
+
+        with pytest.raises(RuntimeError, match="cadence load failed"):
+            service.initialize()
+
+        assert service._enabled is False
+        assert service._models == {}
+        assert service._default_model_name is None
+
+    @pytest.mark.asyncio
+    @patch(
+        "stt_v2.punctuation.service._load_model",
+        side_effect=RuntimeError("cadence load failed"),
+    )
+    @patch("stt_v2.punctuation.service.get_settings")
+    async def test_punctuate_passthrough_no_reload_after_failed_initialize(
+        self, mock_settings, mock_load
+    ):
+        mock_settings.return_value = self._enabled_settings()
+        with pytest.raises(RuntimeError):
+            service.initialize()
+
+        result = await service.punctuate("hello world how are you")
+
+        assert result == "hello world how are you"
+        # one attempt from initialize() -- punctuate() must NOT retry the load
+        assert mock_load.call_count == 1
+
+    @pytest.mark.asyncio
+    @patch(
+        "stt_v2.punctuation.service._load_model",
+        side_effect=RuntimeError("cadence load failed"),
+    )
+    @patch("stt_v2.punctuation.service.get_settings")
+    async def test_punctuate_batch_passthrough_no_reload_after_failed_initialize(
+        self, mock_settings, mock_load
+    ):
+        mock_settings.return_value = self._enabled_settings()
+        with pytest.raises(RuntimeError):
+            service.initialize()
+
+        result = await service.punctuate_batch(["hello", "world"])
+
+        assert result == ["hello", "world"]
+        assert mock_load.call_count == 1
+
+    @patch(
+        "stt_v2.punctuation.service._load_model",
+        side_effect=RuntimeError("cadence load failed"),
+    )
+    @patch("stt_v2.punctuation.service.get_settings")
+    def test_punctuate_sync_passthrough_no_reload_after_failed_initialize(
+        self, mock_settings, mock_load
+    ):
+        mock_settings.return_value = self._enabled_settings()
+        with pytest.raises(RuntimeError):
+            service.initialize()
+
+        result = service.punctuate_sync(["hello", "world"])
+
+        assert result == ["hello", "world"]
+        assert mock_load.call_count == 1
+
+    @pytest.mark.asyncio
+    @patch(
+        "stt_v2.punctuation.service._load_model",
+        side_effect=RuntimeError("cadence load failed"),
+    )
+    @patch("stt_v2.punctuation.service.get_settings")
+    async def test_repeated_calls_never_reattempt_load(self, mock_settings, mock_load):
+        """The crash-loop regression guard: many utterances, still one load attempt."""
+        mock_settings.return_value = self._enabled_settings()
+        with pytest.raises(RuntimeError):
+            service.initialize()
+
+        for _ in range(5):
+            assert await service.punctuate("hello world") == "hello world"
+            assert service.punctuate_sync(["hello"]) == ["hello"]
+            assert await service.punctuate_batch(["hello"]) == ["hello"]
+
+        assert mock_load.call_count == 1
+
+
 class TestPunctuationDisabled:
     """When PUNCTUATION_ENABLED is false, Cadence must never be loaded and all
     punctuation entry points must pass text through unchanged. This keeps the
@@ -108,6 +238,22 @@ class TestPunctuationDisabled:
         model_cls.assert_not_called()
         assert service._models == {}
         assert service._enabled is False
+
+    @patch("stt_v2.punctuation.service.logger")
+    @patch("stt_v2.punctuation.service.get_settings")
+    def test_initialize_returns_false_and_logs_disabled_message(self, mock_settings, mock_logger):
+        """TASK-348 TG-5/MIN-12: the disabled path logs the disabled message and
+        returns False so callers don't log a contradictory 'initialized' line."""
+        settings = MagicMock()
+        settings.punctuation_enabled = False
+        mock_settings.return_value = settings
+
+        result = service.initialize()
+
+        assert result is False
+        info_messages = [c.args[0] for c in mock_logger.info.call_args_list if c.args]
+        assert any("Punctuation restoration disabled" in m for m in info_messages)
+        assert not any("Punctuation service initialized" in m for m in info_messages)
 
     @pytest.mark.asyncio
     @patch("stt_v2.punctuation.service.get_settings")
@@ -143,6 +289,51 @@ class TestPunctuationDisabled:
         result = service.punctuate_sync(["hello", "world"])
 
         assert result == ["hello", "world"]
+
+
+class TestSuppressionWarning:
+    """TASK-348 MIN-11: the global kill-switch silently overrides per-pipeline
+    `punctuation.enabled: true` YAML. A pipeline-requested punctuation call that
+    gets suppressed must emit exactly one warning per process documenting the
+    precedence -- not zero (silent) and not one per utterance (log spam)."""
+
+    @staticmethod
+    def _suppression_warnings(mock_logger):
+        return [
+            c
+            for c in mock_logger.warning.call_args_list
+            if c.args and "suppressed" in c.args[0].lower()
+        ]
+
+    @pytest.mark.asyncio
+    @patch("stt_v2.punctuation.service.logger")
+    @patch("stt_v2.punctuation.service.get_settings")
+    async def test_suppressed_pipeline_request_warns_exactly_once(self, mock_settings, mock_logger):
+        settings = MagicMock()
+        settings.punctuation_enabled = False
+        mock_settings.return_value = settings
+        service.initialize()
+
+        # Callers only invoke these entry points when the pipeline YAML
+        # requested punctuation -- repeat across all three entry points.
+        await service.punctuate("hello world")
+        await service.punctuate("hello again")
+        service.punctuate_sync(["hello"])
+        await service.punctuate_batch(["hello", "world"])
+
+        assert len(self._suppression_warnings(mock_logger)) == 1
+
+    @pytest.mark.asyncio
+    @patch("stt_v2.punctuation.service.logger")
+    async def test_no_suppression_warning_when_enabled(self, mock_logger):
+        mock_model = MagicMock()
+        mock_model.punctuate.return_value = ["Hello."]
+        service._default_model_name = "Cadence-Fast"
+        service._models["Cadence-Fast"] = mock_model
+
+        await service.punctuate("hello")
+
+        assert self._suppression_warnings(mock_logger) == []
 
 
 class TestGetModel:

@@ -747,11 +747,12 @@ export class AuthController {
     // string JWT tenant); fall back to the JWT tenant, then null.
     const tenantId = this.clsService.get('tenantId') || user.tenantId || null;
 
-    // TASK-341 B4 — defense-in-depth: a `consultation_live_summary:<id>` ticket
-    // may only be minted for a consultation in the caller's (active) tenant. The
-    // SSE route is `@TenantOwnedResource`, but the ticket bypasses that
-    // interceptor, so we re-check ownership here before issuing.
-    await this.assertLiveSummaryScopeOwnership(body.scope, tenantId);
+    // TASK-341 B4 / TASK-348 MIN-1 — defense-in-depth: any consultation-id-keyed
+    // `consultation_*:<id>` ticket may only be minted for a consultation in the
+    // caller's (active) tenant. The SSE routes are `@TenantOwnedResource`, but
+    // the ticket bypasses that interceptor, so we re-check ownership here
+    // before issuing.
+    await this.assertConsultationScopeOwnership(body.scope, tenantId);
 
     const issued = await this.streamTicketService.issueTicket({
       userId: user.id,
@@ -770,19 +771,34 @@ export class AuthController {
   }
 
   /**
-   * TASK-341 B4 — for a `consultation_live_summary:<id>` ticket scope, verify the
-   * consultation belongs to the caller's active tenant before minting. A missing
-   * OR cross-tenant consultation both yield 404 (no existence leak), matching the
-   * SSE route's `@TenantOwnedResource` semantics. Non-live scopes pass through
-   * untouched. The explicit tenant match is belt-and-suspenders for super-admins
-   * whose `findById` may not be auto-scoped by the Prisma tenant extension.
+   * Stream-ticket scopes under `consultation_*` whose suffix is NOT a
+   * consultation id, exempted from the mint-time consultation-ownership check.
+   * `consultation_job:<jobId>` is keyed by jobId — its ownership is enforced by
+   * the job routes' `@TenantOwnedResource('ConsultationJob', 'jobId')` guard.
+   * Every OTHER `consultation_*` namespace (current or future) is
+   * ownership-checked fail-closed below.
    */
-  private async assertLiveSummaryScopeOwnership(scope: string, activeTenantId: string | null): Promise<void> {
-    const prefix = 'consultation_live_summary:';
-    if (!scope || !scope.startsWith(prefix)) {
+  private static readonly NON_CONSULTATION_ID_SCOPES: ReadonlySet<string> = new Set(['consultation_job']);
+
+  /**
+   * TASK-341 B4 / TASK-348 MIN-1 — for any consultation-id-keyed
+   * `consultation_*:<id>` ticket scope (live-summary, harness-progress, and any
+   * future sibling), verify the consultation belongs to the caller's active
+   * tenant before minting. A missing OR cross-tenant consultation both yield
+   * 404 (no existence leak), matching the SSE routes' `@TenantOwnedResource`
+   * semantics. Non-consultation scopes pass through untouched. The explicit
+   * tenant match is belt-and-suspenders for super-admins whose `findById` may
+   * not be auto-scoped by the Prisma tenant extension.
+   */
+  private async assertConsultationScopeOwnership(scope: string, activeTenantId: string | null): Promise<void> {
+    const match = /^(consultation_[a-z0-9_]+):(.*)$/.exec(scope ?? '');
+    if (!match) {
       return;
     }
-    const consultationId = scope.slice(prefix.length);
+    const [, namespace, consultationId] = match;
+    if (AuthController.NON_CONSULTATION_ID_SCOPES.has(namespace)) {
+      return;
+    }
     let consultationTenantId: string | null | undefined;
     if (consultationId) {
       try {
