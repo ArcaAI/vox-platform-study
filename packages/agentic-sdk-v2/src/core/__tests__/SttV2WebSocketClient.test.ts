@@ -318,6 +318,22 @@ describe('SttV2WebSocketClient', () => {
       expect(lastMockWs!.sent[0]).toBe(pcmBuffer);
     });
 
+    it('sends an Int16Array view as-is — zero copy (TASK-351 P0-5)', async () => {
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      const pcmView = new Int16Array([100, -200, 300]);
+      const sent = client.sendAudioFrame(pcmView);
+
+      expect(sent).toBe(true);
+      expect(lastMockWs!.sent).toHaveLength(1);
+      // The exact view object reaches ws.send — no intermediate ArrayBuffer
+      // slice/copy on the per-frame hot path.
+      expect(lastMockWs!.sent[0]).toBe(pcmView);
+      expect((lastMockWs!.sent[0] as Int16Array).byteLength).toBe(pcmView.byteLength);
+    });
+
     it('should throw when not connected', () => {
       const pcm = new ArrayBuffer(100);
       expect(() => client.sendAudioFrame(pcm)).toThrow(/not connected/i);

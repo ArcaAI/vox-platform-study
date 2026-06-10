@@ -1,5 +1,7 @@
 """Unit tests for Model Cache."""
 
+import asyncio
+import dataclasses
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -639,6 +641,146 @@ class TestModelCacheEdgeCases:
         assert stats.hits == 3
         assert stats.misses == 1
         assert stats.hit_rate == pytest.approx(0.75)
+
+
+class TestModelCacheSingleFlight:
+    """TASK-351 P0-3 (H1) — concurrent get_or_load for the same slug must
+    load the model exactly once (single-flight), instead of the pre-fix
+    TOCTOU where every concurrent session loaded its own copy (N× VRAM,
+    N× load latency)."""
+
+    @pytest.fixture
+    def cache(self):
+        return ModelCache(
+            max_memory_mb=5000,
+            max_models=5,
+            ttl_seconds=3600,
+        )
+
+    @pytest.fixture
+    def model_config(self):
+        return AiModelConfig(
+            id="m-1",
+            tenant_id="t-1",
+            slug="whisper-singleflight",
+            name="Whisper Single Flight",
+            description="Test model",
+            task_type=ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+            source=AiModelSource.HUGGINGFACE,
+            source_uri="openai/whisper-tiny",
+            source_revision=None,
+            format=AiModelFormat.SAFETENSOR,
+            memory_size_mb=80,
+            compute_type="float32",
+            download_status=AiModelDownloadStatus.DOWNLOADED,
+            local_path=None,
+            downloaded_at=datetime.utcnow(),
+            file_size_mb=80,
+            checksum=None,
+            tags=[],
+        )
+
+    def _make_loaded(self, slug: str) -> LoadedModel:
+        return LoadedModel(
+            model_id=f"m-{slug}",
+            model_slug=slug,
+            model=MagicMock(),
+            format=AiModelFormat.SAFETENSOR,
+            memory_mb=80,
+            device="cpu",
+        )
+
+    @pytest.mark.asyncio
+    async def test_concurrent_get_or_load_loads_once(self, cache, model_config):
+        """5 concurrent callers for the same slug → exactly ONE loader.load."""
+        load_calls = 0
+        loaded = self._make_loaded(model_config.slug)
+
+        async def slow_load(config):
+            nonlocal load_calls
+            load_calls += 1
+            await asyncio.sleep(0.05)  # Simulate the expensive load
+            return loaded
+
+        loader = MagicMock()
+        loader.load = AsyncMock(side_effect=slow_load)
+        with patch.object(cache, "_get_loader", return_value=loader):
+            results = await asyncio.gather(*(cache.get_or_load(model_config) for _ in range(5)))
+
+        assert load_calls == 1
+        assert all(r is loaded for r in results)
+        # And the model is cached for subsequent calls.
+        assert await cache.get(model_config.slug) is loaded
+
+    @pytest.mark.asyncio
+    async def test_failed_load_is_not_poisoned(self, cache, model_config):
+        """A failed load clears the in-flight slot so the next call retries."""
+        attempts = 0
+        loaded = self._make_loaded(model_config.slug)
+
+        async def flaky_load(config):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError("download interrupted")
+            return loaded
+
+        loader = MagicMock()
+        loader.load = AsyncMock(side_effect=flaky_load)
+        with patch.object(cache, "_get_loader", return_value=loader):
+            with pytest.raises(RuntimeError, match="download interrupted"):
+                await cache.get_or_load(model_config)
+
+            # Retry succeeds — the failed future was not left in-flight.
+            result = await cache.get_or_load(model_config)
+
+        assert attempts == 2
+        assert result is loaded
+
+    @pytest.mark.asyncio
+    async def test_concurrent_failure_propagates_to_all_waiters(self, cache, model_config):
+        """When the owning load fails, every concurrent waiter sees the error."""
+
+        async def failing_load(config):
+            await asyncio.sleep(0.02)
+            raise RuntimeError("oom")
+
+        loader = MagicMock()
+        loader.load = AsyncMock(side_effect=failing_load)
+        with patch.object(cache, "_get_loader", return_value=loader):
+            results = await asyncio.gather(
+                *(cache.get_or_load(model_config) for _ in range(3)),
+                return_exceptions=True,
+            )
+
+        assert len(results) == 3
+        assert all(isinstance(r, RuntimeError) for r in results)
+        # Only one actual load attempt was made for the whole burst.
+        assert loader.load.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_different_slugs_load_concurrently(self, cache, model_config):
+        """Single-flight is per-slug: different models still load in parallel."""
+        in_flight = 0
+        max_in_flight = 0
+
+        async def tracked_load(config):
+            nonlocal in_flight, max_in_flight
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+            await asyncio.sleep(0.03)
+            in_flight -= 1
+            return self._make_loaded(config.slug)
+
+        other_config = dataclasses.replace(model_config, slug="whisper-other", id="m-2")
+
+        loader = MagicMock()
+        loader.load = AsyncMock(side_effect=tracked_load)
+        with patch.object(cache, "_get_loader", return_value=loader):
+            await asyncio.gather(cache.get_or_load(model_config), cache.get_or_load(other_config))
+
+        assert loader.load.await_count == 2
+        assert max_in_flight == 2  # Loads for DIFFERENT slugs overlap
 
 
 class TestCacheEntryEdgeCases:

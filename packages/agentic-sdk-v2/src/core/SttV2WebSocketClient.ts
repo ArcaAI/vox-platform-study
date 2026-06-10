@@ -331,19 +331,24 @@ export class SttV2WebSocketClient {
   }
 
   /**
-   * Send raw PCM audio buffer (Int16 LE, mono).
+   * Send raw PCM audio (Int16 LE, mono) as a binary frame.
+   *
+   * Accepts an `ArrayBuffer` or any `ArrayBufferView` (e.g. `Int16Array`) —
+   * `WebSocket.send` handles views natively, so callers can pass their
+   * typed-array view directly without slice-copying the underlying buffer
+   * (TASK-351 P0-5, zero-copy hot path).
    *
    * TASK-298 D-15: drops the frame and emits a backpressure event when
    * `ws.bufferedAmount` exceeds the configured high-watermark. Returns
    * `false` when the frame was dropped, `true` otherwise.
    */
-  sendAudioFrame(buffer: ArrayBuffer): boolean {
+  sendAudioFrame(data: ArrayBuffer | ArrayBufferView): boolean {
     this.requireConnection();
     if (this.shouldDropForBufferedAmount()) {
       this.dropFrameDueToBackpressure('buffered_amount_high');
       return false;
     }
-    this.ws!.send(buffer);
+    this.ws!.send(data);
     return true;
   }
 

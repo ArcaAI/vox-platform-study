@@ -5,6 +5,7 @@ import type { IncomingMessage } from 'http';
 import type { Subscription } from 'rxjs';
 import type WebSocket from 'ws';
 import type { Server } from 'ws';
+import { StreamSessionTenantBindingService } from '../../common';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 
 /**
@@ -45,6 +46,12 @@ export const WS_GENERIC_AUTH_REASON = 'Authentication failed';
  */
 export const RESUME_BUFFER_SIZE = 200;
 
+/**
+ * TASK-351 P0-2 (C5) — fallback when no session meta was bound (legacy
+ * clients / Redis blip at handshake). Matches the historical hardcoded rate.
+ */
+export const DEFAULT_SAMPLE_RATE = 16000;
+
 /** Buffered transcript ready for replay. */
 interface BufferedTranscript {
   seq: number;
@@ -63,6 +70,13 @@ interface SessionInfo {
   userId: string;
   /** Tenant id from the consumed stream ticket (TASK-298 D-1). */
   tenantId: string | null;
+  /**
+   * Session-negotiated audio sample rate, read from the session meta bound
+   * by `createStreamSession` (TASK-351 P0-2 / C5). Defaults to 16000.
+   */
+  sampleRate: number;
+  /** Frames whose async Redis write failed (TASK-351 P0-2 / C1). */
+  droppedAudioFrames: number;
   resultSubscription?: Subscription;
 }
 
@@ -78,6 +92,9 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly sessionService: StreamingSessionService,
     private readonly bridgeService: StreamingAudioBridgeService,
     private readonly streamTicketService: StreamTicketService,
+    // TASK-351 P0-2 (C5): reads the session meta (negotiated sampleRate)
+    // bound by `createStreamSession`.
+    private readonly sessionBinding: StreamSessionTenantBindingService,
   ) {}
 
   async handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {
@@ -129,6 +146,24 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
+    // TASK-351 P0-2 (C5) — read the negotiated sampleRate bound at session
+    // creation. Best-effort: a missing/corrupt record or a Redis blip falls
+    // back to the historical 16000 and never rejects the handshake.
+    let sampleRate: number = DEFAULT_SAMPLE_RATE;
+    try {
+      const meta = await this.sessionBinding.lookupSessionMeta(sessionId);
+      if (meta) {
+        sampleRate = meta.sampleRate;
+      }
+    } catch (err) {
+      this.logger.warn({
+        message: 'Session meta lookup failed — defaulting sampleRate',
+        sessionId,
+        sampleRate,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
     const session: SessionInfo = {
       sessionId,
       connectedAt: new Date(),
@@ -137,6 +172,8 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       resumeBuffer: [],
       userId: stored.userId,
       tenantId: stored.tenantId,
+      sampleRate,
+      droppedAudioFrames: 0,
     };
 
     this.sessions.set(client, session);
@@ -220,6 +257,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.logger.log({
         message: 'WebSocket client disconnected',
         sessionId: session.sessionId,
+        droppedAudioFrames: session.droppedAudioFrames,
         activeSessions: this.sessions.size,
       });
 
@@ -241,17 +279,8 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     if (Buffer.isBuffer(rawData)) {
-      try {
-        session.binarySeq++;
-        await this.bridgeService.writeAudioFrame(session.sessionId, session.binarySeq, rawData, 16000, 'pcm_s16le', false);
-      } catch (err) {
-        this.logger.error({
-          message: 'Error forwarding binary audio frame',
-          sessionId: session.sessionId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        this.sendError(client, 'BRIDGE_ERROR', 'Failed to forward audio frame');
-      }
+      session.binarySeq++;
+      this.forwardAudioFrame(client, session, session.binarySeq, rawData);
       return;
     }
 
@@ -271,7 +300,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         case 'audio': {
           const seq = typeof msg.seq === 'number' ? msg.seq : ++session.binarySeq;
           const data = Buffer.from(String(msg.data), 'base64');
-          await this.bridgeService.writeAudioFrame(session.sessionId, seq, data, 16000, 'pcm_s16le', false);
+          this.forwardAudioFrame(client, session, seq, data);
           break;
         }
 
@@ -307,6 +336,29 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
       this.sendError(client, 'INTERNAL_ERROR', 'Failed to process message');
     }
+  }
+
+  /**
+   * TASK-351 P0-2 (C1) — forward an audio frame WITHOUT awaiting the Redis
+   * ack. ioredis preserves per-connection command order, so XADD ordering
+   * (and the audio-before-finalize ordering relied on by `stop`) is
+   * unaffected; awaiting each ack only added per-frame promise/microtask
+   * overhead at 10–125 frames/s/session. Failures are counted on the
+   * session and surfaced to the client as BRIDGE_ERROR — the SDK's
+   * `lastSeq` resume protocol handles recovery.
+   */
+  private forwardAudioFrame(client: WebSocket, session: SessionInfo, seq: number, data: Buffer): void {
+    this.bridgeService.writeAudioFrame(session.sessionId, seq, data, session.sampleRate, 'pcm_s16le', false).catch((err) => {
+      session.droppedAudioFrames++;
+      this.logger.error({
+        message: 'Error forwarding audio frame',
+        sessionId: session.sessionId,
+        seq,
+        droppedAudioFrames: session.droppedAudioFrames,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      this.sendError(client, 'BRIDGE_ERROR', 'Failed to forward audio frame');
+    });
   }
 
   getActiveSessionCount(): number {

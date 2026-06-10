@@ -119,6 +119,9 @@ class SessionManager:
                 getattr(_settings, "streaming_inference_stop_timeout_s", 30.0)
             )
             self._snapshot_interval_s = _settings.streaming_snapshot_interval_s
+            self._partial_window_s = float(
+                getattr(_settings, "streaming_partial_window_s", 8.0)
+            )
         except Exception:
             self._reaper_interval_s = 300
             self._session_timeout_s = 60
@@ -128,6 +131,7 @@ class SessionManager:
             self._inference_drain_timeout_s = 60.0
             self._inference_stop_timeout_s = 30.0
             self._snapshot_interval_s = 30.0
+            self._partial_window_s = 8.0
 
     # ------------------------------------------------------------------
     # Properties
@@ -148,6 +152,43 @@ class SessionManager:
     @property
     def profile(self) -> ExecutionProfile:
         return self._profile
+
+    # ------------------------------------------------------------------
+    # Preprocessor wiring
+    # ------------------------------------------------------------------
+
+    def _build_preprocessor_vad_kwargs(self, pipeline_config: Any) -> dict[str, Any]:
+        """Build StreamingPreprocessor kwargs from pipeline + profile + settings.
+
+        Shared by session creation and crash recovery (TASK-351 P0-4):
+
+        - Pipeline YAML wins when its VAD config is present (per-pipeline
+          override, unchanged behavior).
+        - Without a pipeline VAD config, ``min_silence_duration_ms`` follows
+          the hardware profile (500 ms on every profile) instead of the
+          preprocessor's legacy hardcoded 700 ms (H4 — shaves ~200 ms off
+          every final's latency floor).
+        - The partial decode window is settings-driven and always wired (C2).
+        """
+        kwargs: dict[str, Any] = {
+            "partial_window_s": self._partial_window_s,
+        }
+        if pipeline_config and pipeline_config.preprocessing.vad.enabled:
+            vad_cfg = pipeline_config.preprocessing.vad
+            kwargs["threshold"] = vad_cfg.threshold
+            kwargs["min_speech_duration_ms"] = vad_cfg.min_speech_duration_ms
+            kwargs["min_silence_duration_ms"] = vad_cfg.min_silence_duration_ms
+            if hasattr(vad_cfg, "pre_speech_context_ms"):
+                kwargs["pre_speech_context_ms"] = vad_cfg.pre_speech_context_ms
+            if hasattr(vad_cfg, "force_emit_after_ms"):
+                kwargs["max_utterance_duration_ms"] = vad_cfg.force_emit_after_ms
+            if hasattr(vad_cfg, "force_emit_lookback_ms"):
+                kwargs["force_emit_lookback_ms"] = vad_cfg.force_emit_lookback_ms
+            if hasattr(vad_cfg, "force_emit_overlap_ms"):
+                kwargs["force_emit_overlap_ms"] = vad_cfg.force_emit_overlap_ms
+        else:
+            kwargs["min_silence_duration_ms"] = self._profile.vad_silence_threshold_ms
+        return kwargs
 
     # ------------------------------------------------------------------
     # Startup / Shutdown
@@ -317,22 +358,11 @@ class SessionManager:
             # Load VAD service from pipeline config (B1: Wire VAD)
             vad_service = await self._load_vad_service(pipeline_config, session_id)
 
-            # Create streaming preprocessor (VAD + utterance extraction)
-            vad_kwargs: dict[str, Any] = {}
+            # Create streaming preprocessor (VAD + utterance extraction).
+            # TASK-351 P0-4 — kwargs built by the shared helper (YAML wins,
+            # profile silence default, settings-driven partial window).
             vad_enabled = bool(pipeline_config and pipeline_config.preprocessing.vad.enabled)
-            if vad_enabled:
-                vad_cfg = pipeline_config.preprocessing.vad
-                vad_kwargs["threshold"] = vad_cfg.threshold
-                vad_kwargs["min_speech_duration_ms"] = vad_cfg.min_speech_duration_ms
-                vad_kwargs["min_silence_duration_ms"] = vad_cfg.min_silence_duration_ms
-                if hasattr(vad_cfg, "pre_speech_context_ms"):
-                    vad_kwargs["pre_speech_context_ms"] = vad_cfg.pre_speech_context_ms
-                if hasattr(vad_cfg, "force_emit_after_ms"):
-                    vad_kwargs["max_utterance_duration_ms"] = vad_cfg.force_emit_after_ms
-                if hasattr(vad_cfg, "force_emit_lookback_ms"):
-                    vad_kwargs["force_emit_lookback_ms"] = vad_cfg.force_emit_lookback_ms
-                if hasattr(vad_cfg, "force_emit_overlap_ms"):
-                    vad_kwargs["force_emit_overlap_ms"] = vad_cfg.force_emit_overlap_ms
+            vad_kwargs = self._build_preprocessor_vad_kwargs(pipeline_config)
 
             target_sr = (
                 pipeline_config.preprocessing.target_sample_rate
@@ -1943,18 +1973,14 @@ class SessionManager:
                         pipeline_config, meta.session_id
                     )
 
-                    # Build preprocessor with VAD config from pipeline
-                    vad_kwargs: dict[str, Any] = {}
+                    # Build preprocessor with VAD config from pipeline.
+                    # TASK-351 P0-4 — same shared helper as session creation,
+                    # so recovered sessions get identical VAD/partial wiring
+                    # (including force-emit settings, previously dropped here).
                     vad_enabled = bool(
                         pipeline_config and pipeline_config.preprocessing.vad.enabled
                     )
-                    if vad_enabled:
-                        vad_cfg = pipeline_config.preprocessing.vad
-                        vad_kwargs["threshold"] = vad_cfg.threshold
-                        vad_kwargs["min_speech_duration_ms"] = vad_cfg.min_speech_duration_ms
-                        vad_kwargs["min_silence_duration_ms"] = vad_cfg.min_silence_duration_ms
-                        if hasattr(vad_cfg, "pre_speech_context_ms"):
-                            vad_kwargs["pre_speech_context_ms"] = vad_cfg.pre_speech_context_ms
+                    vad_kwargs = self._build_preprocessor_vad_kwargs(pipeline_config)
 
                     target_sr = (
                         pipeline_config.preprocessing.target_sample_rate

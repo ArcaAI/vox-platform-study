@@ -47,6 +47,20 @@ export interface AudioCaptureHandle {
 export type AudioFrameCallback = (frame: Float32Array) => void;
 
 /**
+ * Options for {@link createAudioCapture}.
+ */
+export interface AudioCaptureOptions {
+  /**
+   * Coalesced frame size in ms on the worklet path (TASK-351 P0-1). Quanta
+   * accumulate in the worklet and are posted as one frame per `frameMs`,
+   * cutting message rate ~10–30× vs per-quantum posting. Defaults to 80.
+   * Ignored on the `ScriptProcessorNode` fallback (its 4096-sample buffer is
+   * already ~85 ms at 48 kHz).
+   */
+  frameMs?: number;
+}
+
+/**
  * Determine whether `AudioWorklet` is usable on this `AudioContext`.
  *
  * The `navigator.audioWorklet` global check is unreliable in some test
@@ -75,12 +89,13 @@ export async function createAudioCapture(
   audioContext: AudioContext,
   track: MediaStreamTrack,
   onFrame: AudioFrameCallback,
+  options?: AudioCaptureOptions,
 ): Promise<AudioCaptureHandle> {
   const stream = new MediaStream([track]);
   const sourceNode = audioContext.createMediaStreamSource(stream);
 
   if (isAudioWorkletUsable(audioContext)) {
-    return setupWorkletCapture(audioContext, sourceNode, onFrame);
+    return setupWorkletCapture(audioContext, sourceNode, onFrame, options);
   }
 
   if (!warnedAboutScriptProcessor) {
@@ -99,9 +114,10 @@ async function setupWorkletCapture(
   audioContext: AudioContext,
   sourceNode: MediaStreamAudioSourceNode,
   onFrame: AudioFrameCallback,
+  options?: AudioCaptureOptions,
 ): Promise<AudioCaptureHandle> {
   await registerSTTCaptureWorklet(audioContext);
-  const workletNode = createSTTCaptureWorkletNode(audioContext);
+  const workletNode = createSTTCaptureWorkletNode(audioContext, { frameMs: options?.frameMs });
 
   workletNode.port.onmessage = (event: MessageEvent<Float32Array>) => {
     const frame = event.data;

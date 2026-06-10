@@ -150,10 +150,30 @@ describe('StreamingBackendSTTProvider — TASK-298 D-4', () => {
       await provider.processAudio(samples, 48000);
 
       expect(wsClient.sendAudioFrame).toHaveBeenCalledTimes(1);
-      const [buffer] = wsClient.sendAudioFrame.mock.calls[0]!;
-      expect(buffer).toBeInstanceOf(ArrayBuffer);
-      // Buffer length should be a multiple of 2 bytes per sample.
-      expect((buffer as ArrayBuffer).byteLength % 2).toBe(0);
+      const [frame] = wsClient.sendAudioFrame.mock.calls[0]!;
+      // TASK-351 P0-5 — the Int16 view is forwarded directly (no
+      // ArrayBuffer.slice copy on the per-frame hot path).
+      expect(ArrayBuffer.isView(frame)).toBe(true);
+      expect(frame).toBeInstanceOf(Int16Array);
+      // Frame length should be a multiple of 2 bytes per sample.
+      expect((frame as Int16Array).byteLength % 2).toBe(0);
+    });
+
+    it('forwards the Int16 view without slice-copying its buffer (TASK-351 P0-5)', async () => {
+      // 16 kHz input → no resampling; conversion yields exactly 4 samples.
+      const samples = new Float32Array([0.0, 0.5, -0.5, 1.0]);
+      await provider.processAudio(samples, 16000);
+
+      const [frame] = wsClient.sendAudioFrame.mock.calls[0]!;
+      const view = frame as Int16Array;
+      expect(view).toBeInstanceOf(Int16Array);
+      expect(view.length).toBe(4);
+      expect(view.byteLength).toBe(8);
+      // The view spans its entire backing buffer — no oversized source
+      // buffer was retained and no slice copy was made.
+      expect(view.byteOffset).toBe(0);
+      expect(view.buffer.byteLength).toBe(view.byteLength);
+      expect(Array.from(view)).toEqual([0, 16383, -16384, 32767]);
     });
 
     it('is a no-op when not in the processing state', async () => {

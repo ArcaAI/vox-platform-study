@@ -138,6 +138,13 @@ export {
   type AudioBufferManagerOptions,
   type AudioBufferStats,
   DEFAULT_BUFFER_OPTIONS,
+
+  // Audio Capture (TASK-351 P0-5 — worklet path with coalesced frames)
+  createAudioCapture,
+  isAudioWorkletUsable,
+  type AudioCaptureHandle,
+  type AudioCaptureOptions,
+  type AudioFrameCallback,
 } from './core/index.js';
 
 // ============================================================================

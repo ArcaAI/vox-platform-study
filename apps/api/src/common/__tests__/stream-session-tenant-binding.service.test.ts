@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { STREAM_SESSION_TENANT_KEY_PREFIX, StreamSessionTenantBindingService } from '../stream-session-tenant-binding.service';
+import {
+  STREAM_SESSION_META_KEY_PREFIX,
+  STREAM_SESSION_TENANT_KEY_PREFIX,
+  StreamSessionTenantBindingService,
+} from '../stream-session-tenant-binding.service';
 
 /**
  * TASK-310 W7.A.9 (AC-3) — StreamSessionTenantBindingService.
@@ -74,5 +78,44 @@ describe('StreamSessionTenantBindingService (TASK-310 W7.A.9 / AC-3)', () => {
   it('lookup() guards against empty / whitespace sessionIds', async () => {
     expect(await service.lookup('')).toBeNull();
     expect(await service.lookup('   ')).toBeNull();
+  });
+
+  // ===========================================================================
+  // TASK-351 P0-2 (C5) — session meta (negotiated sampleRate) carried from
+  // `createStreamSession` to the WS gateway under a sibling TTL-bounded key.
+  // ===========================================================================
+  describe('session meta (TASK-351 P0-2 / C5)', () => {
+    it('bindSessionMeta() writes a TTL-bounded JSON meta record', async () => {
+      await service.bindSessionMeta('sess-meta', { sampleRate: 48000 }, 600);
+
+      const key = `${STREAM_SESSION_META_KEY_PREFIX}sess-meta`;
+      expect(cache.mock.setex).toHaveBeenCalledWith(key, 600, JSON.stringify({ sampleRate: 48000 }));
+    });
+
+    it('lookupSessionMeta() round-trips the bound meta', async () => {
+      await service.bindSessionMeta('sess-meta-rt', { sampleRate: 44100 });
+
+      expect(await service.lookupSessionMeta('sess-meta-rt')).toEqual({ sampleRate: 44100 });
+    });
+
+    it('lookupSessionMeta() returns null for an unbound sessionId', async () => {
+      expect(await service.lookupSessionMeta('never-bound')).toBeNull();
+    });
+
+    it('lookupSessionMeta() returns null for corrupt or invalid records', async () => {
+      cache.store.set(`${STREAM_SESSION_META_KEY_PREFIX}sess-corrupt`, 'not-json{');
+      cache.store.set(`${STREAM_SESSION_META_KEY_PREFIX}sess-bad-rate`, JSON.stringify({ sampleRate: 'high' }));
+      cache.store.set(`${STREAM_SESSION_META_KEY_PREFIX}sess-neg-rate`, JSON.stringify({ sampleRate: -1 }));
+
+      expect(await service.lookupSessionMeta('sess-corrupt')).toBeNull();
+      expect(await service.lookupSessionMeta('sess-bad-rate')).toBeNull();
+      expect(await service.lookupSessionMeta('sess-neg-rate')).toBeNull();
+    });
+
+    it('meta methods guard against empty / whitespace sessionIds', async () => {
+      await service.bindSessionMeta('   ', { sampleRate: 48000 });
+      expect(cache.mock.setex).not.toHaveBeenCalled();
+      expect(await service.lookupSessionMeta('')).toBeNull();
+    });
   });
 });

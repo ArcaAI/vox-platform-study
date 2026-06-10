@@ -14,4 +14,6 @@ export {
   StreamSessionTenantBindingService,
   STREAM_SESSION_TENANT_KEY_PREFIX,
   STREAM_SESSION_TENANT_DEFAULT_TTL_SECONDS,
+  STREAM_SESSION_META_KEY_PREFIX,
+  type StreamSessionMeta,
 } from './stream-session-tenant-binding.service';

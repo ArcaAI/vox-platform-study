@@ -78,9 +78,13 @@ const createMockStreamTicketService = () => ({
 // TASK-310 W7.A.9 (AC-3): the controller now binds on session create and
 // clears on close. Tests stub the binding so we can assert the dependency
 // is invoked (and used in the new annotation contract).
+// TASK-351 P0-2 (C5): the controller also persists session meta (sampleRate)
+// so the WS gateway can forward frames at the negotiated rate.
 const createMockStreamSessionTenantBinding = () => ({
     bind: vi.fn().mockResolvedValue(undefined),
+    bindSessionMeta: vi.fn().mockResolvedValue(undefined),
     lookup: vi.fn().mockResolvedValue(null),
+    lookupSessionMeta: vi.fn().mockResolvedValue(null),
     clear: vi.fn().mockResolvedValue(undefined),
 });
 
@@ -311,6 +315,41 @@ describe('TranscriptionJobController', () => {
                 ticketExpiresAt: expect.any(Number),
                 voiceProfileSeeded: true,
             });
+        });
+
+        // TASK-351 P0-2 (C5) — the negotiated sampleRate must be persisted as
+        // session meta so the WS gateway forwards frames at the real rate
+        // instead of the previously hardcoded 16000.
+        it('persists the negotiated sampleRate as session meta for the gateway (TASK-351 C5)', async () => {
+            mockSessionService.createSession.mockResolvedValue({
+                sessionId: 'sess-meta',
+                status: 'active',
+                maxConcurrent: 5,
+                currentActive: 1,
+            });
+
+            await controller.createStreamSession({ pipelineId: 'pipe-1', sampleRate: 48000 } as any);
+
+            expect(mockStreamSessionTenantBinding.bindSessionMeta).toHaveBeenCalledWith(
+                'sess-meta',
+                expect.objectContaining({ sampleRate: 48000 }),
+            );
+        });
+
+        it('defaults the session-meta sampleRate to 16000 when the client omits it (TASK-351 C5)', async () => {
+            mockSessionService.createSession.mockResolvedValue({
+                sessionId: 'sess-meta-default',
+                status: 'active',
+                maxConcurrent: 5,
+                currentActive: 1,
+            });
+
+            await controller.createStreamSession({ pipelineId: 'pipe-1' } as any);
+
+            expect(mockStreamSessionTenantBinding.bindSessionMeta).toHaveBeenCalledWith(
+                'sess-meta-default',
+                expect.objectContaining({ sampleRate: 16000 }),
+            );
         });
 
         it('should resolve and forward tenant audioBucketName when available', async () => {

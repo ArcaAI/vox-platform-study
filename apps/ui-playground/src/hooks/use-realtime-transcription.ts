@@ -1,7 +1,9 @@
 import { recordSpeakerObservation, resolveSpeakerLabel } from '@/features/audio/lib/speaker-profiles';
 import { upsertTranscriptEntry } from '@/features/audio/lib/transcript-state';
+import { createByteCounter, type ByteCounterHandle } from '@/lib/byte-counter';
 import type { TranscriptEntry } from '@/store/audio-store';
 import { usePlaygroundStore } from '@/store/playground-store';
+import { createAudioCapture, float32ToInt16, type AudioCaptureHandle } from '@arcaai/stt';
 import {
   StreamingSessionManager,
   SttV2WebSocketClient,
@@ -67,7 +69,12 @@ export interface UseRealtimeTranscriptionReturn {
   voiceProfileSeeded: boolean | null;
   transcripts: TranscriptEntry[];
   error: string | null;
-  bytesSent: number;
+  /**
+   * TASK-351 P0-6 (H7) — subscribable byte counter. Lives outside React
+   * state so 250ms streaming commits no longer re-render the transcript
+   * subtree; render it with `<LiveByteCount handle={bytesSent} />`.
+   */
+  bytesSent: ByteCounterHandle;
   reconnectAttempts: number;
   inputStream: MediaStream | null;
   start: (options: RealtimeStartOptions) => Promise<void>;
@@ -85,17 +92,20 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
   const [voiceProfileSeeded, setVoiceProfileSeeded] = useState<boolean | null>(null);
   const [transcripts, setTranscripts] = useState<TranscriptEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [bytesSent, setBytesSent] = useState(0);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
+
+  // TASK-351 P0-6 — bytes counter as an external store (no re-renders here).
+  const byteCounterRef = useRef(createByteCounter());
 
   const sessionManagerRef = useRef<StreamingSessionManager | null>(null);
   const wsClientRef = useRef<SttV2WebSocketClient | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const ownsMediaStreamRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const silentGainRef = useRef<GainNode | null>(null);
+  // TASK-351 P0-5 — capture runs through @arcaai/stt's AudioWorklet utility
+  // (coalesced ~80ms frames off the main thread; ScriptProcessor only as the
+  // utility's internal fallback).
+  const captureHandleRef = useRef<AudioCaptureHandle | null>(null);
   const statusRef = useRef<RealtimeStatus>('idle');
   const seqRef = useRef(0);
   const transcriptIdRef = useRef(0);
@@ -108,17 +118,9 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
   }, [status]);
 
   const cleanupAudio = useCallback(() => {
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current = null;
-    }
-    if (sourceNodeRef.current) {
-      sourceNodeRef.current.disconnect();
-      sourceNodeRef.current = null;
-    }
-    if (silentGainRef.current) {
-      silentGainRef.current.disconnect();
-      silentGainRef.current = null;
+    if (captureHandleRef.current) {
+      captureHandleRef.current.destroy();
+      captureHandleRef.current = null;
     }
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close().catch(() => {});
@@ -155,11 +157,16 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
         const sessionManager = new StreamingSessionManager(apiClient, childLogger);
         sessionManagerRef.current = sessionManager;
 
+        // TASK-351 C5 — the negotiated sampleRate is part of the session
+        // contract; the gateway tags every forwarded frame with it.
+        const sampleRate = options.sampleRate ?? 16000;
+
         const sessionResponse = await sessionManager.createSession({
           pipelineId: options.pipelineId,
           consultationId: options.consultationId,
           microphoneId: options.microphoneId,
           language: options.language,
+          sampleRate,
         });
 
         setSessionId(sessionResponse.sessionId);
@@ -297,9 +304,8 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
         seqRef.current = 0;
         pendingBytesRef.current = 0;
         bytesCommitAtRef.current = 0;
-        setBytesSent(0);
+        byteCounterRef.current.reset();
 
-        const sampleRate = options.sampleRate ?? 16000;
         const hasDeviceId = options.deviceId != null && options.deviceId.trim().length > 0;
         const stream = options.stream
           ? options.stream
@@ -322,28 +328,21 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
         mediaStreamRef.current = stream;
         ownsMediaStreamRef.current = !options.stream;
 
+        const [audioTrack] = stream.getAudioTracks();
+        if (!audioTrack) {
+          throw new Error('Input stream has no audio track');
+        }
+
         const audioContext = new AudioContext({ sampleRate });
         audioContextRef.current = audioContext;
 
-        const source = audioContext.createMediaStreamSource(stream);
-        sourceNodeRef.current = source;
-        const processor = audioContext.createScriptProcessor(4096, 1, 1);
-        processorRef.current = processor;
-        const silentGain = audioContext.createGain();
-        silentGain.gain.value = 0;
-        silentGainRef.current = silentGain;
-
-        processor.onaudioprocess = (event) => {
+        // TASK-351 P0-5 — SDK worklet capture: coalesced ~80ms Float32 frames
+        // off the main thread; the Int16 view is sent zero-copy.
+        captureHandleRef.current = await createAudioCapture(audioContext, audioTrack, (frame) => {
           if (!wsClient.isConnected()) return;
 
-          const inputData = event.inputBuffer.getChannelData(0);
-          const pcm16 = new Int16Array(inputData.length);
-          for (let i = 0; i < inputData.length; i++) {
-            const s = Math.max(-1, Math.min(1, inputData[i]));
-            pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-          }
-
-          wsClient.sendAudioFrame(pcm16.buffer);
+          const pcm16 = float32ToInt16(frame);
+          wsClient.sendAudioFrame(pcm16);
           seqRef.current += 1;
           pendingBytesRef.current += pcm16.byteLength;
           const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -351,13 +350,9 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
             const delta = pendingBytesRef.current;
             pendingBytesRef.current = 0;
             bytesCommitAtRef.current = now;
-            setBytesSent((prev) => prev + delta);
+            byteCounterRef.current.add(delta);
           }
-        };
-
-        source.connect(processor);
-        processor.connect(silentGain);
-        silentGain.connect(audioContext.destination);
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to start streaming';
         setError(msg);
@@ -393,7 +388,7 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
     setSessionId(null);
     setVoiceProfileSeeded(null);
     setStatus('idle');
-    setBytesSent(0);
+    byteCounterRef.current.reset();
     setReconnectAttempts(0);
   }, [cleanupAudio]);
 
@@ -410,7 +405,7 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
     voiceProfileSeeded,
     transcripts,
     error,
-    bytesSent,
+    bytesSent: byteCounterRef.current.handle,
     reconnectAttempts,
     inputStream: mediaStreamRef.current,
     start,

@@ -41,6 +41,9 @@ _SPLIT_ENERGY_RATIO = 0.3
 
 _PARTIAL_INTERVAL_S = 1.0
 _PARTIAL_MIN_AUDIO_S = 0.5
+# TASK-351 P0-4 (C2) — tail window decoded for partials. Bounds per-partial
+# decode cost on long utterances; finals always carry the full buffer.
+_DEFAULT_PARTIAL_WINDOW_S = 8.0
 
 
 @dataclass
@@ -110,6 +113,7 @@ class StreamingPreprocessor:
         pre_speech_context_ms: int = _PRE_SPEECH_CONTEXT_MS,
         force_emit_lookback_ms: int = _FORCE_EMIT_LOOKBACK_MS,
         force_emit_overlap_ms: int = _FORCE_EMIT_OVERLAP_MS,
+        partial_window_s: float = _DEFAULT_PARTIAL_WINDOW_S,
     ) -> None:
         self.session_id = session_id
         self.sample_rate = sample_rate
@@ -156,6 +160,7 @@ class StreamingPreprocessor:
         # Partial tail window and force-emit split config
         self._force_emit_lookback_ms = force_emit_lookback_ms
         self._force_emit_overlap_ms = force_emit_overlap_ms
+        self._partial_window_s = partial_window_s
 
         # VAD session state (LSTM hidden state)
         self._vad_state = VADSessionState(
@@ -484,6 +489,10 @@ class StreamingPreprocessor:
         Returns an ``AudioUtterance(is_final=False)`` containing a
         tail-window snapshot of the current buffer, or ``None`` if
         conditions are not yet met.  The buffer is *not* cleared.
+
+        TASK-351 P0-4 (C2): the snapshot is bounded to the last
+        ``partial_window_s`` seconds so per-partial decode cost stops growing
+        with utterance length. Finals are unaffected (full buffer).
         """
         state = self._state
 
@@ -499,14 +508,33 @@ class StreamingPreprocessor:
         if buffer_duration_s < _PARTIAL_MIN_AUDIO_S:
             return None
 
-        samples = np.concatenate(state.utterance_buffer)
+        # Bound the snapshot to the tail window (whole frames from the end).
+        max_window_samples = max(1, int(self._partial_window_s * self._target_sr))
+        window_frames: list[np.ndarray] = []
+        window_samples = 0
+        for frame in reversed(state.utterance_buffer):
+            if window_samples + len(frame) > max_window_samples and window_frames:
+                break
+            window_frames.append(frame)
+            window_samples += len(frame)
+            if window_samples >= max_window_samples:
+                break
+        window_frames.reverse()
+
+        samples = np.concatenate(window_frames)
 
         end_time = state.total_samples_fed / self._target_sr
+        trimmed = len(window_frames) < len(state.utterance_buffer)
+        start_time = (
+            end_time - (len(samples) / self._target_sr)
+            if trimmed
+            else state.utterance_start_time
+        )
 
         partial = AudioUtterance(
             samples=samples,
             sample_rate=self._target_sr,
-            start_time=state.utterance_start_time,
+            start_time=start_time,
             end_time=end_time,
             utterance_index=state.utterance_count,
             is_final=False,
