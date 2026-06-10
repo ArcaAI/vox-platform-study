@@ -51,13 +51,14 @@ import { PrismaClient } from '../generated/core-prisma-client/client.js';
  * tenant-injected like every other tenant-scoped model.
  */
 export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
-  // consultation.prisma (6)
+  // consultation.prisma (7)
   'Consultation',
   'ContextItem',
   'ContextItemVersion',
   'AudioRecording',
   'SummaryMeta',
   'NamedEntity',
+  'Highlight', // doctor-authored highlight (TASK-344); scoped by TASK-349
   // audit.prisma (1)
   'AuditLog',
   // webhook.prisma (1)
