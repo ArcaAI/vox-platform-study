@@ -37,6 +37,19 @@ import { IRedisCacheService } from '@arcaai/applications';
 export const STREAM_SESSION_TENANT_KEY_PREFIX = 'stream-session-tenant:';
 export const STREAM_SESSION_TENANT_DEFAULT_TTL_SECONDS = 24 * 60 * 60; // 24h
 
+/**
+ * TASK-351 P0-2 (C5) — sibling key carrying gateway-relevant session meta
+ * (currently the negotiated audio sampleRate). Written by
+ * `createStreamSession`, read once by the WS gateway at handshake so audio
+ * frames are forwarded at the rate the client actually negotiated instead
+ * of a hardcoded 16000.
+ */
+export const STREAM_SESSION_META_KEY_PREFIX = 'stream-session-meta:';
+
+export interface StreamSessionMeta {
+  sampleRate: number;
+}
+
 @Injectable()
 export class StreamSessionTenantBindingService {
   private readonly logger = new Logger(StreamSessionTenantBindingService.name);
@@ -59,6 +72,41 @@ export class StreamSessionTenantBindingService {
       return null;
     }
     return raw;
+  }
+
+  /**
+   * TASK-351 P0-2 (C5) — persist session meta (negotiated sampleRate) under
+   * a TTL-bounded sibling key. Same lifetime/posture as `bind()`.
+   */
+  async bindSessionMeta(sessionId: string, meta: StreamSessionMeta, ttlSeconds: number = STREAM_SESSION_TENANT_DEFAULT_TTL_SECONDS): Promise<void> {
+    if (!this.isValidSessionId(sessionId)) {
+      return;
+    }
+    await this.cache.setex(this.metaKey(sessionId), Math.max(1, Math.floor(ttlSeconds)), JSON.stringify(meta));
+  }
+
+  /**
+   * Returns the bound session meta, or null for missing / corrupt / invalid
+   * records (the gateway falls back to 16000 — graceful, never throws on
+   * bad data).
+   */
+  async lookupSessionMeta(sessionId: string): Promise<StreamSessionMeta | null> {
+    if (!this.isValidSessionId(sessionId)) {
+      return null;
+    }
+    const raw = await this.cache.get(this.metaKey(sessionId));
+    if (typeof raw !== 'string' || raw.length === 0) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(raw) as Partial<StreamSessionMeta>;
+      if (typeof parsed?.sampleRate === 'number' && Number.isFinite(parsed.sampleRate) && parsed.sampleRate > 0) {
+        return { sampleRate: parsed.sampleRate };
+      }
+    } catch {
+      // Corrupt record — treated as absent.
+    }
+    return null;
   }
 
   async clear(sessionId: string): Promise<void> {
@@ -84,5 +132,9 @@ export class StreamSessionTenantBindingService {
 
   private key(sessionId: string): string {
     return `${STREAM_SESSION_TENANT_KEY_PREFIX}${sessionId}`;
+  }
+
+  private metaKey(sessionId: string): string {
+    return `${STREAM_SESSION_META_KEY_PREFIX}${sessionId}`;
   }
 }

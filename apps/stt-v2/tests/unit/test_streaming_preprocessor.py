@@ -943,6 +943,100 @@ class TestPartialEmission:
         assert len(partials) == 0
         assert len(finals) >= 1
 
+    # ---------------------------------------------------------------------
+    # TASK-351 P0-4 (C2) — bounded partial decode window.
+    # ---------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_partial_snapshot_bounded_to_window(self):
+        """Partials carry at most ``partial_window_s`` seconds of tail audio
+        even when the utterance keeps growing (pre-fix: full-buffer snapshot,
+        O(n²) decode per utterance)."""
+        vad = _make_vad_service(probability=1.0)
+        window_s = 2.0
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            partial_window_s=window_s,
+        )
+
+        all_utts = []
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            call_count = [0]
+
+            def advancing():
+                call_count[0] += 1
+                return call_count[0] * 0.05
+
+            mock_time.monotonic = advancing
+
+            # Feed 6 s of continuous speech in 100 ms chunks.
+            for _ in range(60):
+                pcm = _make_speech_pcm(100)
+                utts = await pp.feed(pcm)
+                all_utts.extend(utts)
+
+        partials = [u for u in all_utts if not u.is_final]
+        assert len(partials) >= 3
+
+        max_window_samples = int(window_s * 16000)
+        for p in partials:
+            assert len(p.samples) <= max_window_samples
+            # Timing stays consistent with the (possibly trimmed) snapshot.
+            assert p.end_time - p.start_time == pytest.approx(
+                len(p.samples) / 16000, abs=0.05
+            )
+
+        # Late partials (buffer > window) are actually trimmed to the window.
+        late = partials[-1]
+        assert len(late.samples) >= int((window_s - 0.5) * 16000)
+
+    @pytest.mark.asyncio
+    async def test_final_unaffected_by_partial_window(self):
+        """The FINAL utterance still contains the full buffered audio even
+        when partials were window-trimmed."""
+        speech_frames = int(4000 / 32)  # 4 s of speech
+        vad = _make_alternating_vad(
+            speech_prob=1.0, silence_prob=0.0, speech_frames=speech_frames,
+        )
+        window_s = 2.0
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_silence_duration_ms=300,
+            partial_window_s=window_s,
+        )
+
+        all_utts = []
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            call_count = [0]
+
+            def advancing():
+                call_count[0] += 1
+                return call_count[0] * 0.05
+
+            mock_time.monotonic = advancing
+
+            pcm = _make_speech_pcm(6000)
+            utts = await pp.feed(pcm)
+            all_utts.extend(utts)
+
+        partials = [u for u in all_utts if not u.is_final]
+        finals = [u for u in all_utts if u.is_final]
+
+        assert len(finals) >= 1
+        # Final carries the FULL utterance — more than the partial window.
+        assert len(finals[0].samples) > int(window_s * 16000)
+        if partials:
+            assert len(finals[0].samples) > max(len(p.samples) for p in partials)
+
+    def test_partial_window_default_is_8s(self):
+        """Default window matches the settings default (8 s)."""
+        pp = StreamingPreprocessor(session_id="s1")
+        assert pp._partial_window_s == pytest.approx(8.0)
+
     @pytest.mark.asyncio
     async def test_partial_shares_utterance_index_with_final(self):
         """Partial and final for same speech have same utterance_index."""

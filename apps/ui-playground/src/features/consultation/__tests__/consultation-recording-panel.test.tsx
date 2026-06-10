@@ -47,7 +47,8 @@ const realtime = vi.hoisted(() => ({
   voiceProfileSeeded: null as boolean | null,
   transcripts: [] as Array<Record<string, unknown>>,
   error: null as string | null,
-  bytesSent: 0,
+  // TASK-351 P0-6 — bytesSent is a subscribable handle, not a number.
+  bytesSent: { subscribe: () => () => {}, getSnapshot: () => 0 },
   inputStream: null as unknown,
   start: vi.fn(),
   stop: vi.fn(),
@@ -122,7 +123,7 @@ describe('ConsultationRecordingPanel (TASK-329 P2)', () => {
     realtime.voiceProfileSeeded = null;
     realtime.transcripts = [];
     realtime.error = null;
-    realtime.bytesSent = 0;
+    realtime.bytesSent = { subscribe: () => () => {}, getSnapshot: () => 0 };
     realtime.inputStream = null;
     realtime.start = vi.fn().mockResolvedValue(undefined);
     realtime.stop = vi.fn().mockResolvedValue(undefined);

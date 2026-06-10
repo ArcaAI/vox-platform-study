@@ -44,7 +44,8 @@ const realtime = vi.hoisted(() => ({
   sessionId: null as string | null,
   inputStream: null as unknown,
   transcripts: [] as Array<Record<string, unknown>>,
-  bytesSent: 0,
+  // TASK-351 P0-6 — bytesSent is a subscribable handle, not a number.
+  bytesSent: { subscribe: () => () => {}, getSnapshot: () => 0 },
   error: null as string | null,
   start: vi.fn(),
   stop: vi.fn(),

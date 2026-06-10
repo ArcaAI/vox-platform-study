@@ -307,33 +307,39 @@ export class TranscriptionJobController {
     const sessionId = uuidv7();
     const tenantId = this.getTenantId();
     const user = this.cls.get('user');
+    const sampleRate = body.sampleRate ?? 16000;
 
     // TASK-298 D-2 — assert tenant ownership of the requested pipeline
     // BEFORE we forward to STT-V2 (which is itself defended by D-3).
-    await this.assertPipelineOwnership(body.pipelineId);
-
-    // Resolve the tenant's default audio bucket (configured purpose → legacy
-    // slug) so STT-v2 writes audio to the tenant's bucket instead of the global
-    // 'hope-audio', plus a storage descriptor for DEDICATED (S3/Azure) tenants.
-    let audioBucketName: string | undefined;
-    let storage: StorageDescriptor | null = null;
-    try {
-      const tenantBucket =
-        (await this.tenantBucketService.getBucketByPurpose(TenantBucketPurpose.AUDIO)) ?? (await this.tenantBucketService.getBucketBySlug('audio'));
-      audioBucketName = tenantBucket?.name;
-      if (audioBucketName) {
-        storage = await this.blobStorage.resolveDescriptor(audioBucketName);
+    // TASK-351 P0-2 (M6) — the ownership check and the bucket resolution are
+    // independent reads, so they run in parallel; a rejected ownership check
+    // still rejects the whole step before anything is forwarded to STT-V2.
+    //
+    // Bucket resolution: the tenant's default audio bucket (configured
+    // purpose → legacy slug) so STT-v2 writes audio to the tenant's bucket
+    // instead of the global 'hope-audio', plus a storage descriptor for
+    // DEDICATED (S3/Azure) tenants.
+    const resolveAudioBucket = async (): Promise<{ audioBucketName: string | undefined; storage: StorageDescriptor | null }> => {
+      try {
+        const tenantBucket =
+          (await this.tenantBucketService.getBucketByPurpose(TenantBucketPurpose.AUDIO)) ?? (await this.tenantBucketService.getBucketBySlug('audio'));
+        const audioBucketName = tenantBucket?.name;
+        const storage = audioBucketName ? await this.blobStorage.resolveDescriptor(audioBucketName) : null;
+        return { audioBucketName, storage };
+      } catch (err) {
+        this.logger.warn(`Failed to resolve tenant audio bucket for streaming: ${err}`);
+        return { audioBucketName: undefined, storage: null };
       }
-    } catch (err) {
-      this.logger.warn(`Failed to resolve tenant audio bucket for streaming: ${err}`);
-    }
+    };
+
+    const [, { audioBucketName, storage }] = await Promise.all([this.assertPipelineOwnership(body.pipelineId), resolveAudioBucket()]);
 
     const sessionPayload = {
       sessionId,
       tenantId,
       pipelineId: body.pipelineId,
       consultationId: body.consultationId,
-      sampleRate: body.sampleRate ?? 16000,
+      sampleRate,
       language: body.language,
       userId: user?.id,
       audioBucketName,
@@ -346,20 +352,25 @@ export class TranscriptionJobController {
       throw new ServiceUnavailableException('STT-V2 streaming service at capacity');
     }
 
-    // TASK-310 W7.A.9 (AC-3): persist the sessionId → tenantId mapping so
-    // the global `TenantOwnedResourceInterceptor` can 404 cross-tenant
-    // probes against `DELETE /stream/session/:sessionId`. Default 24h TTL
-    // matches the longest reasonable streaming-session lifetime.
-    await this.streamSessionTenantBinding.bind(result.sessionId, tenantId);
-
-    // TASK-298 D-1 — mint a one-shot stream ticket scoped to this session.
-    // The SDK appends it to the WS URL; the gateway consumes it on first
-    // open and rejects (4401) every subsequent attempt.
-    const issuedTicket = await this.streamTicketService.issueTicket({
-      userId: user?.id ?? '',
-      tenantId,
-      scope: `stt_session:${result.sessionId}`,
-    });
+    // Three independent writes (TASK-351 P0-2 / M6 — parallelized):
+    //  - TASK-310 W7.A.9 (AC-3): persist the sessionId → tenantId mapping so
+    //    the global `TenantOwnedResourceInterceptor` can 404 cross-tenant
+    //    probes against `DELETE /stream/session/:sessionId`. Default 24h TTL
+    //    matches the longest reasonable streaming-session lifetime.
+    //  - TASK-351 P0-2 (C5): persist session meta (negotiated sampleRate) so
+    //    the WS gateway forwards audio at the real rate, not hardcoded 16000.
+    //  - TASK-298 D-1: mint a one-shot stream ticket scoped to this session.
+    //    The SDK appends it to the WS URL; the gateway consumes it on first
+    //    open and rejects (4401) every subsequent attempt.
+    const [issuedTicket] = await Promise.all([
+      this.streamTicketService.issueTicket({
+        userId: user?.id ?? '',
+        tenantId,
+        scope: `stt_session:${result.sessionId}`,
+      }),
+      this.streamSessionTenantBinding.bind(result.sessionId, tenantId),
+      this.streamSessionTenantBinding.bindSessionMeta(result.sessionId, { sampleRate }),
+    ]);
 
     // TASK-296 preseed contract — capture voiceProfileSeeded if the
     // streaming service surfaces it.

@@ -1,3 +1,4 @@
+import { LiveByteCount } from '@/components/live-byte-count';
 import { recordSpeakerObservation, resolveSpeakerLabel } from '@/features/audio/lib/speaker-profiles';
 import { upsertTranscriptEntry } from '@/features/audio/lib/transcript-state';
 import { encodeWavBlob } from '@/features/audio/lib/wav-encoder';
@@ -15,15 +16,14 @@ import { Button } from '@arcaai/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/card';
 import { LiveWaveform } from '@arcaai/ui/components/elevenlabs/live-waveform';
 import { Progress } from '@arcaai/ui/progress';
-import { ScrollArea } from '@arcaai/ui/scroll-area';
 import { createVAD } from '@arcaai/vad';
 import { Brain, Download, HardDrive, Languages, Mic, MicOff, Plug, RefreshCw, Server, Trash2, Wifi, WifiOff } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { DEFAULT_TRANSCRIPTION_PIPELINE_ID } from '../constants';
-import { AudioTranscriptItem } from './audio-transcript-item';
 import { DiarizationSeedingIndicator } from './diarization-seeding-indicator';
 import { LiveSpectrogram } from './live-spectrogram';
+import { TranscriptList } from './transcript-list';
 
 type ExtendedTranscriptionResult = TranscriptionResult & {
   speakerConfidence?: number;
@@ -299,58 +299,6 @@ function useTranscriptSegmentPlayback() {
   };
 }
 
-function TranscriptList({
-  entries,
-  emptyMessage,
-  onPlaySegment,
-  activeSegmentId,
-}: {
-  entries: TranscriptEntry[];
-  emptyMessage: string;
-  onPlaySegment?: (entry: TranscriptEntry) => void;
-  activeSegmentId?: string | null;
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const frameId = requestAnimationFrame(() => {
-      const viewport = scrollRef.current?.querySelector('[data-slot="scroll-area-viewport"]');
-      if (viewport) {
-        viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' });
-      }
-    });
-
-    return () => {
-      cancelAnimationFrame(frameId);
-    };
-  }, [entries.length]);
-
-  return (
-    <ScrollArea className="h-96 rounded-lg border" ref={scrollRef}>
-      {entries.length === 0 ? (
-        <div className="flex h-full flex-col items-center justify-center py-16 text-center">
-          <Languages className="text-muted-foreground mb-3 size-10" />
-          <p className="text-muted-foreground text-sm">{emptyMessage}</p>
-        </div>
-      ) : (
-        <div className="space-y-1 p-2">
-          {entries.map((entry) => (
-            <AudioTranscriptItem
-              key={entry.id}
-              entry={entry}
-              onPlaySegment={onPlaySegment}
-              isActiveSegment={activeSegmentId === entry.id}
-              showSegmentBadge
-              showTimingDetails
-              showWordTimestamps
-            />
-          ))}
-        </div>
-      )}
-    </ScrollArea>
-  );
-}
-
 function WsStatusBadge({ status }: { status: string }) {
   const variants: Record<string, { variant: 'default' | 'destructive' | 'outline' | 'secondary'; icon: typeof Wifi }> = {
     idle: { variant: 'outline', icon: WifiOff },
@@ -527,7 +475,7 @@ function BackendSocketTranscript() {
           {realtime.sessionId && <code className="bg-muted rounded px-1.5 text-[10px]">{realtime.sessionId.slice(0, 16)}</code>}
           <DiarizationSeedingIndicator seeded={realtime.voiceProfileSeeded} />
           <span className="text-muted-foreground text-[10px]">
-            {formatBytes(realtime.bytesSent)} sent | {finalCount} segments | {wordCount} words
+            <LiveByteCount handle={realtime.bytesSent} format={formatBytes} /> sent | {finalCount} segments | {wordCount} words
           </span>
           {segmentPlayback.hasRecordedAudio && (
             <Badge variant="secondary" className="text-[10px]">

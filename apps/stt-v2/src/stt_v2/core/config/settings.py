@@ -414,6 +414,15 @@ class Settings(BaseSettings):
             "At 30ms/frame this retains ~60 seconds of audio."
         ),
     )
+    streaming_partial_window_s: float = Field(
+        default=8.0,
+        description=(
+            "Tail window (seconds) of the current utterance decoded for "
+            "PARTIAL transcripts. Bounds per-partial decode cost on long "
+            "utterances; finals always decode the full utterance "
+            "(TASK-351 P0-4 / C2)."
+        ),
+    )
     streaming_result_stream_expire_s: int = Field(
         default=3600,
         description="TTL (seconds) for Redis stream keys after session closes (1 hour).",

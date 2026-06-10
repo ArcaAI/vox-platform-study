@@ -86,6 +86,11 @@ class ModelCache:
         self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
         self._lock = asyncio.Lock()
 
+        # TASK-351 P0-3 (H1) — single-flight: slug → future of the load in
+        # progress. Concurrent get_or_load callers for the same slug await
+        # the same future instead of each loading their own copy.
+        self._inflight: dict[str, asyncio.Future[LoadedModel]] = {}
+
         # Statistics
         self._hits = 0
         self._misses = 0
@@ -118,33 +123,43 @@ class ModelCache:
             LoadedModel if cached, None otherwise
         """
         async with self._lock:
-            if model_slug not in self._cache:
-                self._misses += 1
-                return None
+            return await self._get_locked(model_slug)
 
-            entry = self._cache[model_slug]
+    async def _get_locked(self, model_slug: str) -> LoadedModel | None:
+        """Cache lookup body. Caller MUST hold `self._lock`."""
+        if model_slug not in self._cache:
+            self._misses += 1
+            return None
 
-            # Check TTL
-            if entry.age_seconds > self._ttl_seconds:
-                logger.info(f"Model {model_slug} expired (age={entry.age_seconds:.0f}s)")
-                await self._evict_entry(model_slug)
-                self._misses += 1
-                return None
+        entry = self._cache[model_slug]
 
-            # Update LRU order (move to end)
-            self._cache.move_to_end(model_slug)
+        # Check TTL
+        if entry.age_seconds > self._ttl_seconds:
+            logger.info(f"Model {model_slug} expired (age={entry.age_seconds:.0f}s)")
+            await self._evict_entry(model_slug)
+            self._misses += 1
+            return None
 
-            # Update access stats
-            entry.last_accessed = datetime.utcnow()
-            entry.access_count += 1
-            self._hits += 1
+        # Update LRU order (move to end)
+        self._cache.move_to_end(model_slug)
 
-            logger.debug(f"Cache hit for model {model_slug}")
-            return entry.model
+        # Update access stats
+        entry.last_accessed = datetime.utcnow()
+        entry.access_count += 1
+        self._hits += 1
+
+        logger.debug(f"Cache hit for model {model_slug}")
+        return entry.model
 
     async def get_or_load(self, model_config: AiModelConfig) -> LoadedModel:
         """
-        Get model from cache or load it.
+        Get model from cache or load it — single-flight per slug
+        (TASK-351 P0-3 / H1).
+
+        The expensive `loader.load()` runs OUTSIDE the cache lock (so cache
+        hits for other models are never blocked behind a load), but
+        concurrent callers for the same slug share one load via an in-flight
+        future instead of each loading their own copy.
 
         Args:
             model_config: Model configuration
@@ -152,23 +167,50 @@ class ModelCache:
         Returns:
             LoadedModel
         """
-        # Try cache first
-        cached = await self.get(model_config.slug)
-        if cached is not None:
-            return cached
+        slug = model_config.slug
 
-        # Load model
-        loader = self._get_loader(model_config.format)
-        if loader is None:
-            raise ModelLoadError(f"No loader available for format: {model_config.format}")
+        async with self._lock:
+            cached = await self._get_locked(slug)
+            if cached is not None:
+                return cached
 
-        logger.info(f"Loading model {model_config.slug} (format={model_config.format})")
-        model = await loader.load(model_config)
+            existing = self._inflight.get(slug)
+            if existing is None:
+                future: asyncio.Future[LoadedModel] = asyncio.get_running_loop().create_future()
+                self._inflight[slug] = future
+                is_owner = True
+            else:
+                future = existing
+                is_owner = False
 
-        # Cache the loaded model
-        await self.put(model_config.slug, model)
+        if not is_owner:
+            # Shield so one waiter's cancellation cannot cancel the shared load.
+            return await asyncio.shield(future)
 
-        return model
+        try:
+            loader = self._get_loader(model_config.format)
+            if loader is None:
+                raise ModelLoadError(f"No loader available for format: {model_config.format}")
+
+            logger.info(f"Loading model {slug} (format={model_config.format})")
+            model = await loader.load(model_config)
+
+            # Cache the loaded model
+            await self.put(slug, model)
+        except BaseException as exc:
+            if not future.done():
+                future.set_exception(exc)
+                # Mark the exception as retrieved so the event loop does not
+                # log "exception was never retrieved" when no waiter exists.
+                future.exception()
+            raise
+        else:
+            if not future.done():
+                future.set_result(model)
+            return model
+        finally:
+            async with self._lock:
+                self._inflight.pop(slug, None)
 
     async def get_or_load_from_ref(
         self,

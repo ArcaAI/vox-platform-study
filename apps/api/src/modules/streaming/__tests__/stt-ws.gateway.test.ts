@@ -19,8 +19,10 @@ const createMockSessionService = () => ({
 
 const createMockBridgeService = () => ({
     connect: vi.fn(),
-    writeAudioFrame: vi.fn(),
-    writeControlCommand: vi.fn(),
+    // The real methods are async — the mocks must return promises because the
+    // gateway chains `.catch()` on the (fire-and-forget) frame writes.
+    writeAudioFrame: vi.fn().mockResolvedValue(undefined),
+    writeControlCommand: vi.fn().mockResolvedValue(undefined),
     subscribeToResults: vi.fn().mockReturnValue(new Subject().asObservable()),
     unsubscribeFromResults: vi.fn(),
 });
@@ -41,6 +43,17 @@ const createMockStreamTicketService = () => ({
     }),
 });
 
+// TASK-351 P0-2 (C5) — the gateway reads the session-negotiated sampleRate
+// from the session meta written by `createStreamSession`. Default: no meta
+// bound → gateway falls back to 16000.
+const createMockSessionBinding = () => ({
+    bind: vi.fn().mockResolvedValue(undefined),
+    bindSessionMeta: vi.fn().mockResolvedValue(undefined),
+    lookup: vi.fn().mockResolvedValue('tenant-abc'),
+    lookupSessionMeta: vi.fn().mockResolvedValue(null),
+    clear: vi.fn().mockResolvedValue(undefined),
+});
+
 // Helper — build a request URL with both sessionId and ticket so the new
 // auth gate accepts the connection.
 const buildReq = (sessionId: string, ticket = 'valid-ticket'): { url: string } => ({
@@ -52,12 +65,14 @@ describe('SttWsGateway', () => {
     let mockSessionService: ReturnType<typeof createMockSessionService>;
     let mockBridgeService: ReturnType<typeof createMockBridgeService>;
     let mockStreamTicketService: ReturnType<typeof createMockStreamTicketService>;
+    let mockSessionBinding: ReturnType<typeof createMockSessionBinding>;
 
     beforeEach(() => {
         vi.clearAllMocks();
         mockSessionService = createMockSessionService();
         mockBridgeService = createMockBridgeService();
         mockStreamTicketService = createMockStreamTicketService();
+        mockSessionBinding = createMockSessionBinding();
         // Make consumeTicket return a scope matching whatever sessionId the
         // caller used — see `buildReq` above. By default we look at the URL
         // the calling test built and synthesize a matching scope.
@@ -78,6 +93,7 @@ describe('SttWsGateway', () => {
             mockSessionService as any,
             mockBridgeService as any,
             mockStreamTicketService as any,
+            mockSessionBinding as any,
         );
         vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
         vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
@@ -436,6 +452,120 @@ describe('SttWsGateway', () => {
                 'pcm_s16le',
                 false,
             );
+        });
+    });
+
+    // =========================================================================
+    // TASK-351 P0-2 — session-negotiated sampleRate (C5) + non-blocking audio
+    // ingestion (C1).
+    // =========================================================================
+    describe('TASK-351 P0-2 — negotiated sampleRate + non-blocking ingestion', () => {
+        it('forwards the session-negotiated sampleRate on binary frames (C5)', async () => {
+            mockSessionBinding.lookupSessionMeta.mockResolvedValueOnce({ sampleRate: 48000 });
+            const client = createMockSocket();
+            setValidTicketFor('sess-sr-bin');
+            await gateway.handleConnection(client as any, buildReq('sess-sr-bin') as any);
+
+            const binaryData = Buffer.from([0x01, 0x02]);
+            await gateway.handleMessage(client as any, binaryData as any);
+
+            expect(mockSessionBinding.lookupSessionMeta).toHaveBeenCalledWith('sess-sr-bin');
+            expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith(
+                'sess-sr-bin',
+                expect.any(Number),
+                binaryData,
+                48000,
+                'pcm_s16le',
+                false,
+            );
+        });
+
+        it('forwards the session-negotiated sampleRate on JSON audio frames (C5)', async () => {
+            mockSessionBinding.lookupSessionMeta.mockResolvedValueOnce({ sampleRate: 44100 });
+            const client = createMockSocket();
+            setValidTicketFor('sess-sr-json');
+            await gateway.handleConnection(client as any, buildReq('sess-sr-json') as any);
+
+            await gateway.handleMessage(
+                client as any,
+                JSON.stringify({ type: 'audio', seq: 7, data: 'YWJjZA==' }),
+            );
+
+            expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith(
+                'sess-sr-json',
+                7,
+                expect.any(Buffer),
+                44100,
+                'pcm_s16le',
+                false,
+            );
+        });
+
+        it('defaults the sampleRate to 16000 when no session meta is bound', async () => {
+            // Default mock: lookupSessionMeta → null.
+            const client = createMockSocket();
+            setValidTicketFor('sess-sr-default');
+            await gateway.handleConnection(client as any, buildReq('sess-sr-default') as any);
+
+            await gateway.handleMessage(client as any, Buffer.from([0x01]) as any);
+
+            expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith(
+                'sess-sr-default',
+                expect.any(Number),
+                expect.any(Buffer),
+                16000,
+                'pcm_s16le',
+                false,
+            );
+        });
+
+        it('still accepts the connection (sampleRate 16000) when the meta lookup throws', async () => {
+            mockSessionBinding.lookupSessionMeta.mockRejectedValueOnce(new Error('redis blip'));
+            const client = createMockSocket();
+            setValidTicketFor('sess-sr-err');
+            await gateway.handleConnection(client as any, buildReq('sess-sr-err') as any);
+
+            expect(client.close).not.toHaveBeenCalled();
+
+            await gateway.handleMessage(client as any, Buffer.from([0x01]) as any);
+
+            expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith(
+                'sess-sr-err',
+                expect.any(Number),
+                expect.any(Buffer),
+                16000,
+                'pcm_s16le',
+                false,
+            );
+        });
+
+        it('does not block frame ingestion on the Redis ack (C1)', async () => {
+            // The XADD never resolves — ingestion must complete regardless.
+            mockBridgeService.writeAudioFrame.mockReturnValue(new Promise(() => {}));
+            const client = createMockSocket();
+            setValidTicketFor('sess-noblock');
+            await gateway.handleConnection(client as any, buildReq('sess-noblock') as any);
+
+            const outcome = await Promise.race([
+                gateway.handleMessage(client as any, Buffer.from([0x01]) as any).then(() => 'resolved'),
+                new Promise((resolve) => setTimeout(() => resolve('pending'), 25)),
+            ]);
+
+            expect(outcome).toBe('resolved');
+            expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledTimes(1);
+        });
+
+        it('reports BRIDGE_ERROR to the client when the async frame write fails', async () => {
+            mockBridgeService.writeAudioFrame.mockRejectedValue(new Error('redis down'));
+            const client = createMockSocket();
+            setValidTicketFor('sess-drop');
+            await gateway.handleConnection(client as any, buildReq('sess-drop') as any);
+
+            await gateway.handleMessage(client as any, Buffer.from([0x01]) as any);
+            // Let the fire-and-forget rejection handler run.
+            await new Promise((resolve) => setImmediate(resolve));
+
+            expect(client.send).toHaveBeenCalledWith(expect.stringContaining('BRIDGE_ERROR'));
         });
     });
 

@@ -1,14 +1,22 @@
 /**
  * @arcaai/stt - STT Capture AudioWorklet Loader
  *
- * Provides an `AudioWorkletProcessor` that forwards raw mono Float32 frames
- * from the audio graph to the main thread. Replaces the deprecated
+ * Provides an `AudioWorkletProcessor` that forwards mono Float32 audio from
+ * the audio graph to the main thread. Replaces the deprecated
  * `ScriptProcessorNode` capture path used by `STTProcessor`.
  *
- * Backpressure: the worklet posts each `process()` quantum's worth of samples
- * with the underlying `ArrayBuffer` in the transfer list. When the main
- * thread sends `{ type: 'setEnabled', enabled: false }`, frame emission is
- * suspended so the message queue cannot grow during pause / VAD gating.
+ * Frame coalescing (TASK-351 P0-1 / C4): instead of posting every 128-sample
+ * render quantum (~2.7 ms at 48 kHz → ~375 messages/s), quanta accumulate in
+ * a preallocated buffer and are posted as one coalesced frame every
+ * `frameMs` (default 80 ms → ~12 messages/s). This cuts main-thread message
+ * pressure and, downstream, the WS/Redis frame rate by ~10–30× without
+ * perceptible latency (80 ms ≪ the 1 s partial cadence).
+ *
+ * Backpressure: when the main thread sends
+ * `{ type: 'setEnabled', enabled: false }`, the pending remainder is flushed
+ * and emission is suspended so the message queue cannot grow during pause /
+ * VAD gating. `{ type: 'flush' }` forces the remainder out (e.g. before
+ * stop) so trailing audio is never lost.
  *
  * Uses `@arcaai/room`'s `createWorkletLoader` for blob-URL + registration
  * caching, matching the pattern already used by `@arcaai/vad` and
@@ -23,22 +31,67 @@ import { createWorkletLoader } from '@arcaai/room';
 export const STT_CAPTURE_PROCESSOR_NAME = 'stt-capture-worklet-processor';
 
 /**
+ * Default coalesced frame size in milliseconds (TASK-351 P0-1).
+ */
+export const DEFAULT_STT_CAPTURE_FRAME_MS = 80;
+
+/**
+ * Options for {@link createSTTCaptureWorkletNode}.
+ */
+export interface STTCaptureWorkletNodeOptions {
+  /** Coalesced frame size in ms. Defaults to {@link DEFAULT_STT_CAPTURE_FRAME_MS}. */
+  frameMs?: number;
+}
+
+/**
  * Inline AudioWorklet source. Worklet runs in the audio rendering thread, so
  * it must be defined as a string and registered via `addModule(blob)` — it
- * cannot reach back into module scope.
+ * cannot reach back into module scope. `sampleRate` is an
+ * `AudioWorkletGlobalScope` global.
  */
 function generateWorkletSource(): string {
   return `
 class STTCaptureProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
     this.enabled = true;
+
+    const processorOptions = (options && options.processorOptions) || {};
+    const frameMs =
+      typeof processorOptions.frameMs === 'number' && processorOptions.frameMs > 0
+        ? processorOptions.frameMs
+        : ${DEFAULT_STT_CAPTURE_FRAME_MS};
+
+    // Preallocated accumulation buffer. One allocation per posted frame
+    // (the transfer list detaches the buffer) instead of one per quantum.
+    this.targetSamples = Math.max(128, Math.round((sampleRate * frameMs) / 1000));
+    this.buffer = new Float32Array(this.targetSamples);
+    this.filled = 0;
+
     this.port.onmessage = (event) => {
       const message = event.data;
-      if (message && message.type === 'setEnabled') {
-        this.enabled = !!message.enabled;
+      if (!message) {
+        return;
+      }
+      if (message.type === 'setEnabled') {
+        const enabled = !!message.enabled;
+        if (this.enabled && !enabled) {
+          this.flushRemainder();
+        }
+        this.enabled = enabled;
+      } else if (message.type === 'flush') {
+        this.flushRemainder();
       }
     };
+  }
+
+  flushRemainder() {
+    if (this.filled === 0) {
+      return;
+    }
+    const frame = this.buffer.slice(0, this.filled);
+    this.filled = 0;
+    this.port.postMessage(frame, [frame.buffer]);
   }
 
   process(inputs) {
@@ -52,11 +105,20 @@ class STTCaptureProcessor extends AudioWorkletProcessor {
       return true;
     }
 
-    // Copy into a freshly-allocated buffer so it can be transferred without
-    // detaching the rendering thread's input view (which the host owns).
-    const frame = new Float32Array(channel.length);
-    frame.set(channel);
-    this.port.postMessage(frame, [frame.buffer]);
+    let offset = 0;
+    while (offset < channel.length) {
+      const take = Math.min(this.targetSamples - this.filled, channel.length - offset);
+      this.buffer.set(channel.subarray(offset, offset + take), this.filled);
+      this.filled += take;
+      offset += take;
+
+      if (this.filled === this.targetSamples) {
+        const frame = this.buffer;
+        this.buffer = new Float32Array(this.targetSamples);
+        this.filled = 0;
+        this.port.postMessage(frame, [frame.buffer]);
+      }
+    }
     return true;
   }
 }
@@ -93,7 +155,10 @@ export function isSTTCaptureWorkletRegistered(audioContext: AudioContext): boole
  *
  * @throws if the worklet has not been registered for the given context.
  */
-export function createSTTCaptureWorkletNode(audioContext: AudioContext): AudioWorkletNode {
+export function createSTTCaptureWorkletNode(
+  audioContext: AudioContext,
+  options?: STTCaptureWorkletNodeOptions,
+): AudioWorkletNode {
   if (!loader.isRegistered(audioContext)) {
     throw new Error('[STT-Capture] Worklet not registered. Call registerSTTCaptureWorklet first.');
   }
@@ -102,7 +167,9 @@ export function createSTTCaptureWorkletNode(audioContext: AudioContext): AudioWo
     numberOfInputs: 1,
     numberOfOutputs: 1,
     outputChannelCount: [1],
-    processorOptions: {},
+    processorOptions: {
+      frameMs: options?.frameMs ?? DEFAULT_STT_CAPTURE_FRAME_MS,
+    },
   });
 }
 

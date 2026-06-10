@@ -12,6 +12,7 @@
  * Recording state changes are reported up so the flow machine + live-summary SSE
  * subscription stay in lockstep.
  */
+import { LiveByteCount } from '@/components/live-byte-count';
 import { useRealtimeTranscription } from '@/hooks/use-realtime-transcription';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
@@ -33,6 +34,8 @@ interface CapturePanelProps {
   onRecordingStopped: (state: RecordingStateResponse) => void;
   pipelineId?: string;
 }
+
+const formatKbSent = (bytes: number) => `${(bytes / 1024).toFixed(0)} KB sent`;
 
 const DUAL_CAPTURE_LABEL: Record<string, string> = {
   idle: '',
@@ -151,7 +154,9 @@ export function CapturePanel({ consultationId, recording, onRecordingStarted, on
           )}
 
           {realtime.isStreaming && (
-            <span className="text-muted-foreground text-xs tabular-nums">{(realtime.bytesSent / 1024).toFixed(0)} KB sent</span>
+            <span className="text-muted-foreground text-xs tabular-nums">
+              <LiveByteCount handle={realtime.bytesSent} format={formatKbSent} />
+            </span>
           )}
 
           {realtime.error && (

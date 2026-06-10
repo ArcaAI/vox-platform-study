@@ -1,3 +1,4 @@
+import { LiveByteCount } from '@/components/live-byte-count';
 import { DiarizationSeedingIndicator } from '@/features/audio/components/diarization-seeding-indicator';
 import { DEFAULT_TRANSCRIPTION_PIPELINE_ID } from '@/features/audio/constants';
 import { useRealtimeTranscription } from '@/hooks/use-realtime-transcription';
@@ -16,6 +17,8 @@ interface ConsultationRecordingPanelProps {
   /** Override the transcription pipeline used for the live session. */
   pipelineId?: string;
 }
+
+const formatKbSent = (bytes: number) => `${(bytes / 1024).toFixed(0)} KB sent`;
 
 const RECORDING_STATUS_LABEL: Record<string, string> = {
   idle: 'Idle',
@@ -169,7 +172,9 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId }: Consu
           <DiarizationSeedingIndicator seeded={realtime.voiceProfileSeeded} />
 
           {realtime.isStreaming && (
-            <span className="text-muted-foreground text-xs tabular-nums">{(realtime.bytesSent / 1024).toFixed(0)} KB sent</span>
+            <span className="text-muted-foreground text-xs tabular-nums">
+              <LiveByteCount handle={realtime.bytesSent} format={formatKbSent} />
+            </span>
           )}
 
           {realtime.error && (

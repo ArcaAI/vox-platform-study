@@ -76,17 +76,20 @@ function makeAudioContext(opts: FakeContextOptions): AudioContext {
   return ctx as unknown as AudioContext;
 }
 
+let lastWorkletNodeOptions: AudioWorkletNodeOptions | undefined;
+
 function setupAudioWorkletNodeMock(): void {
   class MockAudioWorkletNode {
     port: FakeWorkletPort;
     connect = vi.fn();
     disconnect = vi.fn();
 
-    constructor(_ctx: AudioContext, _name: string, _options?: AudioWorkletNodeOptions) {
+    constructor(_ctx: AudioContext, _name: string, options?: AudioWorkletNodeOptions) {
       this.port = {
         onmessage: null,
         postMessage: vi.fn(),
       };
+      lastWorkletNodeOptions = options;
       lastWorkletNode = this as unknown as FakeWorkletNode;
     }
   }
@@ -105,6 +108,7 @@ describe('C-3: AudioWorklet capture with ScriptProcessor fallback', () => {
   beforeEach(() => {
     originalWorkletNode = (globalThis as unknown as { AudioWorkletNode?: typeof AudioWorkletNode }).AudioWorkletNode;
     lastWorkletNode = null;
+    lastWorkletNodeOptions = undefined;
     lastScriptProcessor = null;
     __resetScriptProcessorWarning();
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -187,6 +191,26 @@ describe('C-3: AudioWorklet capture with ScriptProcessor fallback', () => {
       handle.destroy();
 
       expect(lastWorkletNode!.disconnect).toHaveBeenCalled();
+    });
+
+    it('defaults frameMs to 80 in the worklet processorOptions (TASK-351 P0-1)', async () => {
+      setupAudioWorkletNodeMock();
+      const ctx = makeAudioContext({ withAudioWorklet: true });
+      const track = {} as unknown as MediaStreamTrack;
+
+      await createAudioCapture(ctx, track, () => {});
+
+      expect(lastWorkletNodeOptions?.processorOptions).toMatchObject({ frameMs: 80 });
+    });
+
+    it('plumbs a custom frameMs to the worklet processorOptions (TASK-351 P0-1)', async () => {
+      setupAudioWorkletNodeMock();
+      const ctx = makeAudioContext({ withAudioWorklet: true });
+      const track = {} as unknown as MediaStreamTrack;
+
+      await createAudioCapture(ctx, track, () => {}, { frameMs: 40 });
+
+      expect(lastWorkletNodeOptions?.processorOptions).toMatchObject({ frameMs: 40 });
     });
   });
 

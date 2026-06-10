@@ -74,8 +74,8 @@ export interface StreamingWsClientLike {
   connect(url: string): Promise<void>;
   /** Reports the most recent connection state. */
   isConnected(): boolean;
-  /** Send a binary PCM frame (Int16 LE, mono). */
-  sendAudioFrame(buffer: ArrayBuffer): boolean | void;
+  /** Send a binary PCM frame (Int16 LE, mono). Accepts a typed-array view. */
+  sendAudioFrame(data: ArrayBuffer | ArrayBufferView): boolean | void;
   /** Tell the server we have finished streaming audio for this turn. */
   sendStop(): void;
   /** Close the WebSocket gracefully. */
@@ -203,9 +203,10 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     }
     const resampled = prepareFloat32ForWhisper(audio, sampleRate);
     const int16 = float32ToInt16(resampled);
-    const buffer = int16.buffer.slice(int16.byteOffset, int16.byteOffset + int16.byteLength) as ArrayBuffer;
     this.totalAudioProcessed += resampled.length / 16000;
-    this.wsClient.sendAudioFrame(buffer);
+    // TASK-351 P0-5 — forward the view directly; `WebSocket.send` accepts
+    // typed arrays natively, so the previous ArrayBuffer.slice copy is gone.
+    this.wsClient.sendAudioFrame(int16);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
