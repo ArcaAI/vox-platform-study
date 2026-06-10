@@ -227,7 +227,7 @@ describe('AuthController.issueStreamTicket', () => {
       );
     });
 
-    it('does NOT perform an ownership lookup for non-live scopes (e.g. consultation_job)', async () => {
+    it('does NOT perform an ownership lookup for jobId-keyed scopes (consultation_job)', async () => {
       const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope: 'consultation_job:job-1' }));
       const findById = vi.fn();
       const { controller } = buildController({
@@ -240,6 +240,83 @@ describe('AuthController.issueStreamTicket', () => {
 
       expect(findById).not.toHaveBeenCalled();
       expect(issueTicket).toHaveBeenCalled();
+    });
+  });
+
+  // TASK-348 / MIN-1 — the mint-time ownership assertion must cover EVERY
+  // consultation-id-keyed scope, not just live-summary: the SSE route's
+  // @TenantOwnedResource guard still blocks a cross-tenant stream, but the
+  // ticket must not be mintable in the first place (defense-in-depth parity).
+  describe('generalized consultation scope ownership (TASK-348 MIN-1)', () => {
+    it('mints a harness-progress ticket when the consultation belongs to the caller tenant', async () => {
+      const issueTicket = vi.fn(async () => ({ ticket: 'tkt', expiresAt: 1, scope: 'consultation_harness_progress:c-1' }));
+      const findById = vi.fn().mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        consultationRepository: { findById },
+      });
+
+      await controller.issueStreamTicket({ scope: 'consultation_harness_progress:c-1' });
+
+      expect(findById).toHaveBeenCalledWith('c-1');
+      expect(issueTicket).toHaveBeenCalledWith(
+        expect.objectContaining({ scope: 'consultation_harness_progress:c-1', tenantId: 'tenant-1' }),
+      );
+    });
+
+    it("throws NotFoundException and never mints a harness-progress ticket for another tenant's consultation", async () => {
+      const issueTicket = vi.fn();
+      const findById = vi.fn().mockResolvedValue({ id: 'c-9', tenantId: 'tenant-OTHER' });
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        consultationRepository: { findById },
+      });
+
+      await expect(controller.issueStreamTicket({ scope: 'consultation_harness_progress:c-9' })).rejects.toThrow(NotFoundException);
+      expect(issueTicket).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException and never mints when the harness-progress consultation is missing', async () => {
+      const issueTicket = vi.fn();
+      const findById = vi.fn().mockRejectedValue(new Error('not found'));
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        consultationRepository: { findById },
+      });
+
+      await expect(controller.issueStreamTicket({ scope: 'consultation_harness_progress:missing' })).rejects.toThrow(NotFoundException);
+      expect(issueTicket).not.toHaveBeenCalled();
+    });
+
+    it('fail-closed: an UNKNOWN consultation_* scope is ownership-checked (no unchecked namespace can ship)', async () => {
+      const issueTicket = vi.fn();
+      // The id is treated as a consultation id; an unresolvable one must 404.
+      const findById = vi.fn().mockResolvedValue(null);
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        consultationRepository: { findById },
+      });
+
+      await expect(controller.issueStreamTicket({ scope: 'consultation_future_feed:c-1' })).rejects.toThrow(NotFoundException);
+      expect(findById).toHaveBeenCalledWith('c-1');
+      expect(issueTicket).not.toHaveBeenCalled();
+    });
+
+    it('fail-closed: a consultation-id-keyed scope with an EMPTY id is rejected', async () => {
+      const issueTicket = vi.fn();
+      const findById = vi.fn();
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        consultationRepository: { findById },
+      });
+
+      await expect(controller.issueStreamTicket({ scope: 'consultation_harness_progress:' })).rejects.toThrow(NotFoundException);
+      expect(issueTicket).not.toHaveBeenCalled();
     });
   });
 });

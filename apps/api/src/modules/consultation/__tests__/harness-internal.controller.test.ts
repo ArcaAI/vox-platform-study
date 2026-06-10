@@ -5,7 +5,7 @@
  * route to HarnessInternalService and is class-guarded by HarnessServiceTokenGuard.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { GUARDS_METADATA, HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { SKIP_AUTH_KEY } from '@arcaai/applications';
 import { HarnessInternalController } from '../harness-internal.controller';
 import { HarnessServiceTokenGuard } from '../harness-service-token.guard';
@@ -108,6 +108,14 @@ describe('HarnessInternalController', () => {
             const result = await buildController().reportProgress('consultation-1', { tenantId: 't-1', stage: 'generating' } as any);
 
             expect(result).toEqual({ ok: false });
+        });
+
+        it('responds 200 (not 201): nothing is created — the ack can carry { ok: false } (TASK-348 / MIN-4)', () => {
+            const statusCode = Reflect.getMetadata(
+                HTTP_CODE_METADATA,
+                HarnessInternalController.prototype.reportProgress,
+            ) as number | undefined;
+            expect(statusCode).toBe(200);
         });
     });
 });

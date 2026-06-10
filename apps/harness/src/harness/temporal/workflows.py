@@ -42,6 +42,8 @@ with workflow.unsafe.imports_passed_through():
     )
     from harness.temporal.models import (
         DEFAULT_GROUNDEDNESS_THRESHOLD,
+        HARNESS_PROGRESS_FAILED_LABEL,
+        HARNESS_PROGRESS_FAILED_STAGE,
         HARNESS_PROGRESS_STAGES,
         HARNESS_PROGRESS_TERMINAL_LABEL,
         HARNESS_PROGRESS_TERMINAL_STAGE,
@@ -150,8 +152,18 @@ class HarnessDocWorkflow:
         The activity swallows its own errors; this wrapper additionally absorbs
         timeouts/cancellation so a dead progress pipeline can NEVER fail the loop.
         """
+        # Replay-compat gate (TASK-348 / CRIT-1): executions whose history was
+        # recorded before TASK-345 carry no report_progress events. patched()
+        # keeps them deterministic on replay (returns False -> emit nothing for
+        # the rest of that run) while new executions record the marker and emit.
+        # Collapse to workflow.deprecate_patch() once no pre-TASK-345 runs can
+        # still be in flight. Verified by test_replay_compat.py.
+        if not workflow.patched("task-345-harness-progress"):
+            return
         if stage == HARNESS_PROGRESS_TERMINAL_STAGE:
             label, ordinal = HARNESS_PROGRESS_TERMINAL_LABEL, _PROGRESS_TOTAL
+        elif stage == HARNESS_PROGRESS_FAILED_STAGE:
+            label, ordinal = HARNESS_PROGRESS_FAILED_LABEL, _PROGRESS_TOTAL
         else:
             label, ordinal = _PROGRESS_LABELS[stage], _PROGRESS_ORDINALS[stage]
         try:
@@ -167,6 +179,11 @@ class HarnessDocWorkflow:
                     total=_PROGRESS_TOTAL,
                 ),
                 start_to_close_timeout=_PROGRESS_TIMEOUT,
+                # MAJ-9 (TASK-348): bound queue wait + execution. start_to_close
+                # alone leaves a saturated task queue free to stall each stage
+                # transition for the workflow-task default; schedule-to-close
+                # caps the whole emission (pickup + run) at the same 10s budget.
+                schedule_to_close_timeout=_PROGRESS_TIMEOUT,
                 retry_policy=_PROGRESS_RETRY,
             )
         except ActivityError:
@@ -174,6 +191,25 @@ class HarnessDocWorkflow:
 
     @workflow.run
     async def run(self, inp: HarnessDocWorkflowInput) -> HarnessDocWorkflowResult:
+        try:
+            return await self._run(inp)
+        except Exception:
+            # MAJ-1 (TASK-348): without a terminal event the feed freezes on the
+            # last `active` stage (and the Redis snapshot lies for its full TTL)
+            # whenever the loop fails. Emit a best-effort `failed` terminal so
+            # the API closes the SSE stream, then ALWAYS re-raise — an SMR
+            # failure must still fail the workflow, never be swallowed.
+            # `except Exception` deliberately excludes cancellation
+            # (asyncio.CancelledError is a BaseException): a cancelled run is
+            # not a failed run. The emission goes through _report_progress
+            # (patch-gated for pre-TASK-345 histories) AND its own
+            # workflow.patched gate so TASK-345-era in-flight executions that
+            # fail after this deploys stay deterministic on replay.
+            if workflow.patched("task-348-failure-terminal"):
+                await self._report_progress(inp, HARNESS_PROGRESS_FAILED_STAGE)
+            raise
+
+    async def _run(self, inp: HarnessDocWorkflowInput) -> HarnessDocWorkflowResult:
         # 0) Live policy injection (Phase 6). Read ONCE at the start in an activity
         # (I/O stays out of the deterministic body) and thread the result through.
         # A failed fetch degrades to the code defaults — never crash the loop, and

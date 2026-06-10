@@ -21,7 +21,29 @@ logger = structlog.get_logger(__name__)
 _models: dict[str, Any] = {}
 _default_model_name: str | None = None
 _enabled: bool = True
+_suppression_warned: bool = False
 _lock = threading.Lock()
+
+
+def _warn_suppressed_once() -> None:
+    """Warn (once per process) that a pipeline-requested punctuation call was
+    suppressed by the global kill-switch.
+
+    The runtime entry points are only invoked when a pipeline's YAML config
+    has ``punctuation.enabled: true``, so reaching them while the service is
+    disabled means the global flag is overriding the pipeline config.
+    """
+    global _suppression_warned
+    if _suppression_warned:
+        return
+    _suppression_warned = True
+    logger.warning(
+        "Pipeline config requests punctuation but it is suppressed: "
+        "PUNCTUATION_ENABLED is false (or the Cadence model failed to load). "
+        "The global kill-switch takes precedence over per-pipeline "
+        "'punctuation.enabled: true'; text passes through unpunctuated "
+        "(warned once per process)"
+    )
 
 
 def _load_model(model_name: str) -> Any:
@@ -64,14 +86,23 @@ def _load_model(model_name: str) -> Any:
     return model
 
 
-def initialize() -> None:
+def initialize() -> bool:
     """Load the default punctuation model. Called once during app startup.
 
     When ``PUNCTUATION_ENABLED`` is false (the default) the Cadence model is
-    never touched: we log a single INFO line and return. This keeps the boot
-    log free of Cadence's internal ``FATAL: Error loading model`` traceback,
-    which it prints whenever its loader runs under an incompatible
+    never touched: we log a single INFO line and return ``False``. This keeps
+    the boot log free of Cadence's internal ``FATAL: Error loading model``
+    traceback, which it prints whenever its loader runs under an incompatible
     transformers version.
+
+    Returns ``True`` only when punctuation is enabled and the model is
+    actually loaded, so callers can condition their "initialized" log line
+    on the real outcome.
+
+    If the model load fails, the service flips itself to disabled so every
+    runtime call degrades to passthrough instead of re-attempting the failing
+    load per utterance; the exception is re-raised so the caller logs the
+    failure once.
     """
     global _default_model_name, _enabled
     settings = get_settings()
@@ -81,15 +112,21 @@ def initialize() -> None:
             "Punctuation restoration disabled (PUNCTUATION_ENABLED=false); "
             "Cadence model not loaded"
         )
-        return
+        return False
 
     _default_model_name = settings.punctuation_model_name
 
     with _lock:
         if _default_model_name in _models:
             logger.warning("Punctuation model already initialized, skipping")
-            return
-        _models[_default_model_name] = _load_model(_default_model_name)
+            return True
+        try:
+            _models[_default_model_name] = _load_model(_default_model_name)
+        except Exception:
+            _enabled = False
+            _default_model_name = None
+            raise
+    return True
 
 
 def get_model(model_name: str | None = None) -> Any:
@@ -112,7 +149,10 @@ def get_model(model_name: str | None = None) -> Any:
 
 async def punctuate(text: str, model_name: str | None = None) -> str:
     """Punctuate a single text string. Runs sync model in executor."""
-    if not _enabled or not text.strip():
+    if not _enabled:
+        _warn_suppressed_once()
+        return text
+    if not text.strip():
         return text
 
     model = get_model(model_name)
@@ -128,7 +168,10 @@ async def punctuate_batch(
     texts: list[str], batch_size: int = 8, model_name: str | None = None,
 ) -> list[str]:
     """Punctuate a list of texts. Runs sync model in executor."""
-    if not _enabled or not texts:
+    if not _enabled:
+        _warn_suppressed_once()
+        return texts
+    if not texts:
         return texts
 
     model = get_model(model_name)
@@ -144,7 +187,10 @@ def punctuate_sync(
     texts: list[str], batch_size: int = 8, model_name: str | None = None,
 ) -> list[str]:
     """Punctuate a list of texts synchronously (for batch pipeline)."""
-    if not _enabled or not texts:
+    if not _enabled:
+        _warn_suppressed_once()
+        return texts
+    if not texts:
         return texts
 
     model = get_model(model_name)

@@ -60,35 +60,94 @@ export function ReviewPanel({ consultationId, noteContextItemId, noteContent, tr
     // Recording stopped → the harness is drafting asynchronously; poll-driven
     // waiting states keep the clinician informed instead of a bare empty panel.
     if (draftStatus === 'generating') {
+      // TASK-348 MAJ-4 — a dead stream (retries exhausted) must not present its
+      // stale stages as live progress; fall back to the static block + note.
+      const liveUnavailable = progress.status === 'error' && !progress.closed;
       // Live stage checklist while progress events arrive; static text + skeleton
       // is the graceful fallback when none do (progress pipeline down).
-      if (progress.stages.length > 0) {
+      if (!liveUnavailable && progress.stages.length > 0) {
+        // TASK-348 — the harness emits a terminal 'failed' pseudo-stage when a
+        // run dies (MAJ-1 contract); render it distinctly instead of freezing.
+        const failedStage = progress.stages.find((stage: HarnessProgressStage) => stage.status === 'failed');
+        const activeStage = progress.stages.find((stage: HarnessProgressStage) => stage.status === 'active');
+        const placeholderCount = Math.max(0, (progress.total ?? 0) - progress.stages.length);
         return (
           <Card>
             <CardContent className="flex flex-col items-center justify-center gap-3 py-12 text-center" data-testid="review-generating">
-              <Sparkles className="text-violet-500 size-6 animate-pulse" />
-              <p className="text-sm font-medium">Drafting the SOAP note…</p>
-              <p className="text-muted-foreground max-w-sm text-sm">Live progress from the documentation harness. This updates automatically.</p>
-              <ul className="w-full max-w-sm space-y-2 pt-2 text-left" data-testid="review-progress-list">
-                {progress.stages.map((stage: HarnessProgressStage) => (
-                  <li
-                    key={stage.stage}
-                    className="flex items-center gap-2 text-sm"
-                    data-testid={`review-progress-stage-${stage.stage}`}
-                    data-status={stage.status}
-                  >
-                    {stage.status === 'completed' && <Check className="size-4 shrink-0 text-emerald-500" aria-label="completed" />}
-                    {stage.status === 'active' && <Loader2 className="text-violet-500 size-4 shrink-0 animate-spin" aria-label="in progress" />}
-                    {stage.status === 'pending' && <Circle className="text-muted-foreground/40 size-4 shrink-0" aria-label="pending" />}
-                    <span className={stage.status === 'pending' ? 'text-muted-foreground' : stage.status === 'active' ? 'font-medium' : ''}>
-                      {stage.label}
-                    </span>
-                    {stage.status === 'active' && stage.attempt > 1 && (
-                      <span className="text-muted-foreground ml-auto text-xs">pass {stage.attempt}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              {failedStage ? (
+                <AlertCircle className="text-destructive size-6" aria-hidden="true" />
+              ) : (
+                <Sparkles className="text-violet-500 size-6 animate-pulse" aria-hidden="true" />
+              )}
+              <p className="text-sm font-medium">{failedStage ? 'Documentation generation failed' : 'Drafting the SOAP note…'}</p>
+              {failedStage ? (
+                <p className="text-destructive max-w-sm text-sm" data-testid="review-progress-failed">
+                  The documentation harness couldn&apos;t finish this draft. The steps below show how far it got.
+                </p>
+              ) : (
+                <p className="text-muted-foreground max-w-sm text-sm">Live progress from the documentation harness. This updates automatically.</p>
+              )}
+              {!failedStage && activeStage && progress.total !== undefined && (
+                <p className="text-muted-foreground text-xs" data-testid="review-progress-step">
+                  Step {activeStage.ordinal} of {progress.total}
+                </p>
+              )}
+              {/* TASK-348 MIN-8 — announce stage transitions to screen readers.
+                  The live region wraps the list so the <ul> keeps its list role. */}
+              <div
+                className="w-full max-w-sm"
+                data-testid="review-progress-list"
+                role="status"
+                aria-live="polite"
+                {...{ 'aria-busy': progress.closed ? 'false' : 'true' }}
+              >
+                <ul className="space-y-2 pt-2 text-left">
+                  {progress.stages.map((stage: HarnessProgressStage) => (
+                    <li
+                      key={stage.stage}
+                      className="flex items-center gap-2 text-sm"
+                      data-testid={`review-progress-stage-${stage.stage}`}
+                      data-status={stage.status}
+                    >
+                      {stage.status === 'completed' && <Check role="img" aria-label="completed" className="size-4 shrink-0 text-emerald-500" />}
+                      {stage.status === 'active' && (
+                        <Loader2 role="img" aria-label="in progress" className="text-violet-500 size-4 shrink-0 animate-spin" />
+                      )}
+                      {stage.status === 'pending' && <Circle role="img" aria-label="pending" className="text-muted-foreground/40 size-4 shrink-0" />}
+                      {stage.status === 'failed' && <AlertCircle role="img" aria-label="failed" className="text-destructive size-4 shrink-0" />}
+                      <span
+                        className={
+                          stage.status === 'pending'
+                            ? 'text-muted-foreground'
+                            : stage.status === 'active'
+                              ? 'font-medium'
+                              : stage.status === 'failed'
+                                ? 'text-destructive font-medium'
+                                : ''
+                        }
+                      >
+                        {stage.label}
+                      </span>
+                      {stage.status === 'active' && stage.attempt > 1 && (
+                        <span className="text-muted-foreground ml-auto text-xs">pass {stage.attempt}</span>
+                      )}
+                    </li>
+                  ))}
+                  {/* TASK-348 MIN-9 — pre-render the remaining steps up to `total`
+                      so the checklist doesn't grow one row at a time. */}
+                  {Array.from({ length: placeholderCount }, (_, i) => (
+                    <li
+                      key={`placeholder-${i}`}
+                      className="flex items-center gap-2 text-sm"
+                      data-testid="review-progress-placeholder"
+                      data-status="pending"
+                    >
+                      <Circle role="img" aria-label="pending" className="text-muted-foreground/40 size-4 shrink-0" />
+                      <span className="text-muted-foreground">Upcoming step</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </CardContent>
           </Card>
         );
@@ -101,6 +160,11 @@ export function ReviewPanel({ consultationId, noteContextItemId, noteContent, tr
             <p className="text-muted-foreground max-w-sm text-sm">
               The documentation harness is drafting the note with sentence-level provenance. This updates automatically — no need to refresh.
             </p>
+            {liveUnavailable && (
+              <p className="text-muted-foreground max-w-sm text-xs" data-testid="review-progress-unavailable">
+                Live progress is unavailable right now — drafting continues in the background.
+              </p>
+            )}
             <div className="w-full max-w-sm space-y-2 pt-2">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-4 w-5/6" />

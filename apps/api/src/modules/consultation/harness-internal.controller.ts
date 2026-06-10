@@ -11,7 +11,7 @@ import {
   HarnessProgressService,
   IActiveUserContext,
 } from '@arcaai/applications';
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiExcludeController, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Public } from '../../decorators';
@@ -101,6 +101,9 @@ export class HarnessInternalController {
   // relay. Best-effort by contract: always acks ({ ok: boolean }), never 5xxs
   // the workflow over a progress hiccup.
   @Post('consultations/:id/progress')
+  // TASK-348 / MIN-4: nothing is created — the ack is best-effort and can be
+  // `{ ok: false }`, so the default POST 201 would misreport the outcome.
+  @HttpCode(200)
   @ApiOperation({ summary: 'Publish a harness workflow progress stage to the live UI feed (ephemeral, best-effort)' })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   async reportProgress(@Param('id') id: string, @Body() dto: HarnessProgressRequest): Promise<HarnessProgressAck> {

@@ -23,6 +23,11 @@
 #   STT_PORT (8861), SMR_PORT (8862), GUARDRAIL_PORT (8863), NLP_PORT (8864),
 #   HARNESS_PORT (8866)
 #
+# BIND ADDRESS:
+#   Services bind 127.0.0.1 by default — these are PHI-processing dev
+#   services and must not listen on the LAN by accident. To expose one
+#   deliberately (e.g. testing from a phone), export HOST=0.0.0.0.
+#
 # MACHINE-SPECIFIC MODEL:
 #   LM_STUDIO_MODEL (default: gemma-4-e4b-it-qat) feeds both the SMR default
 #   model and the harness worker's HARNESS_SMR_MODEL. Export it in your shell
@@ -43,7 +48,7 @@ NC='\033[0m'
 CONDA_ENV="${CONDA_ENV:-arcaenv}"
 
 usage() {
-    sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,35p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # ----------------------------------------------------------------------------
@@ -125,6 +130,9 @@ fi
 # Per-service env defaults (user env always wins) + command
 # ----------------------------------------------------------------------------
 : "${LM_STUDIO_MODEL:=gemma-4-e4b-it-qat}"
+# Loopback by default; export HOST=0.0.0.0 to expose on the LAN (deliberate
+# opt-in — PHI-processing dev services must not be LAN-reachable by accident).
+: "${HOST:=127.0.0.1}"
 
 ENV_REPORT=()   # KEY=VALUE lines for --print (non-secret only)
 CMD=()
@@ -167,34 +175,34 @@ apply_harness_env() {
 case "$SERVICE" in
     stt)
         : "${STT_PORT:=8861}"
-        ENV_REPORT+=("STT_PORT=$STT_PORT")
-        CMD=(uvicorn stt_v2.main:app --host 0.0.0.0 --port "$STT_PORT" --app-dir apps/stt-v2/src)
+        ENV_REPORT+=("HOST=$HOST" "STT_PORT=$STT_PORT")
+        CMD=(uvicorn stt_v2.main:app --host "$HOST" --port "$STT_PORT" --app-dir apps/stt-v2/src)
         RELOAD_DIR="apps/stt-v2/src"
         ;;
     smr)
         : "${SMR_PORT:=8862}"
         apply_smr_env
-        ENV_REPORT+=("SMR_PORT=$SMR_PORT")
-        CMD=(uvicorn smr_v2.main:app --host 0.0.0.0 --port "$SMR_PORT" --app-dir apps/smr/src)
+        ENV_REPORT+=("HOST=$HOST" "SMR_PORT=$SMR_PORT")
+        CMD=(uvicorn smr_v2.main:app --host "$HOST" --port "$SMR_PORT" --app-dir apps/smr/src)
         RELOAD_DIR="apps/smr/src"
         ;;
     nlp)
         : "${NLP_PORT:=8864}"
-        ENV_REPORT+=("NLP_PORT=$NLP_PORT")
-        CMD=(uvicorn --factory nlp.app:get_app --host 0.0.0.0 --port "$NLP_PORT" --app-dir apps/nlp/src)
+        ENV_REPORT+=("HOST=$HOST" "NLP_PORT=$NLP_PORT")
+        CMD=(uvicorn --factory nlp.app:get_app --host "$HOST" --port "$NLP_PORT" --app-dir apps/nlp/src)
         RELOAD_DIR="apps/nlp/src"
         ;;
     guardrail)
         : "${GUARDRAIL_PORT:=8863}"
-        ENV_REPORT+=("GUARDRAIL_PORT=$GUARDRAIL_PORT")
-        CMD=(uvicorn guardrail.main:app --host 0.0.0.0 --port "$GUARDRAIL_PORT" --app-dir apps/guardrail/src)
+        ENV_REPORT+=("HOST=$HOST" "GUARDRAIL_PORT=$GUARDRAIL_PORT")
+        CMD=(uvicorn guardrail.main:app --host "$HOST" --port "$GUARDRAIL_PORT" --app-dir apps/guardrail/src)
         RELOAD_DIR="apps/guardrail/src"
         ;;
     harness)
         : "${HARNESS_PORT:=8866}"
         apply_harness_env
-        ENV_REPORT+=("HARNESS_PORT=$HARNESS_PORT")
-        CMD=(uvicorn harness.main:app --host 0.0.0.0 --port "$HARNESS_PORT" --app-dir apps/harness/src)
+        ENV_REPORT+=("HOST=$HOST" "HARNESS_PORT=$HARNESS_PORT")
+        CMD=(uvicorn harness.main:app --host "$HOST" --port "$HARNESS_PORT" --app-dir apps/harness/src)
         RELOAD_DIR="apps/harness/src"
         ;;
     worker)

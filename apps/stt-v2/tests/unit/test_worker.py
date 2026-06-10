@@ -3,6 +3,7 @@
 Tests cover worker initialization and cleanup functions.
 """
 
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -194,6 +195,86 @@ class TestWorkerNewServiceInitialization:
                 await initialize_services()
                 # Diarization should still have been called
                 mock_embedding.initialize.assert_called_once()
+
+
+class TestWorkerPunctuationLogging:
+    """TASK-348 TG-5/MIN-12: worker boot-log contract for the punctuation service
+    (mirrors the FastAPI lifespan contract in test_main.py)."""
+
+    @contextmanager
+    def _quiet_worker_init(self):
+        """Patch all non-punctuation services to initialize without warnings."""
+        mock_vad = MagicMock()
+        mock_vad.initialize = AsyncMock()
+        mock_embedding = MagicMock()
+        mock_embedding.initialize = AsyncMock()
+
+        with patch("stt_v2.worker.configure_broker", return_value=MagicMock()):
+            with (
+                patch(
+                    "stt_v2.core.database.connection.initialize_database",
+                    new_callable=AsyncMock,
+                ),
+                patch(
+                    "stt_v2.core.storage.minio_client.initialize_minio",
+                    new_callable=AsyncMock,
+                ),
+                patch("stt_v2.vad.silero_service.get_vad_service", return_value=mock_vad),
+                patch(
+                    "stt_v2.diarization.embedding_service.get_embedding_service",
+                    return_value=mock_embedding,
+                ),
+                patch("stt_v2.worker.logger") as mock_logger,
+            ):
+                yield mock_logger
+
+    @staticmethod
+    def _info_messages(mock_logger):
+        return [c.args[0] for c in mock_logger.info.call_args_list if c.args]
+
+    @pytest.mark.asyncio
+    async def test_failed_punctuation_init_logs_one_warning_and_debug_detail(self):
+        with self._quiet_worker_init() as mock_logger:
+            with patch(
+                "stt_v2.punctuation.service.initialize",
+                side_effect=RuntimeError("cadence load failed"),
+            ):
+                from stt_v2.worker import initialize_services
+
+                await initialize_services()
+
+        warning_calls = mock_logger.warning.call_args_list
+        assert len(warning_calls) == 1
+        assert "Punctuation service initialization failed" in warning_calls[0].args[0]
+
+        debug_exc_info_calls = [
+            c for c in mock_logger.debug.call_args_list if c.kwargs.get("exc_info") is True
+        ]
+        assert len(debug_exc_info_calls) == 1
+
+        assert "Punctuation service initialized" not in self._info_messages(mock_logger)
+
+    @pytest.mark.asyncio
+    async def test_disabled_punctuation_does_not_log_initialized(self):
+        with self._quiet_worker_init() as mock_logger:
+            with patch("stt_v2.punctuation.service.initialize", return_value=False):
+                from stt_v2.worker import initialize_services
+
+                await initialize_services()
+
+        assert "Punctuation service initialized" not in self._info_messages(mock_logger)
+        assert mock_logger.warning.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_loaded_punctuation_logs_initialized(self):
+        with self._quiet_worker_init() as mock_logger:
+            with patch("stt_v2.punctuation.service.initialize", return_value=True):
+                from stt_v2.worker import initialize_services
+
+                await initialize_services()
+
+        assert "Punctuation service initialized" in self._info_messages(mock_logger)
+        assert mock_logger.warning.call_count == 0
 
 
 class TestWorkerNewServiceCleanup:

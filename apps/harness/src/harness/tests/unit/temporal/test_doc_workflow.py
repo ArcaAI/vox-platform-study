@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -785,6 +786,87 @@ class TestProgressFeed:
         # WITHOUT degradation (progress is non-clinical).
         assert result.decision == "PASS"
         assert result.approved is True
-        assert recorder.calls["report_progress"] >= 1
+        # TASK-348 / TG-2: the stub raises a RETRYABLE error, so the EXACT
+        # per-stage count pins _PROGRESS_RETRY's maximum_attempts=1 — any
+        # retry budget creep would multiply this count (5 stages + terminal).
+        assert recorder.calls["report_progress"] == 6
         assert recorder.calls["persist_draft"] == 1
         assert recorder.persist_draft_inputs[0].reduced_assurance is False
+
+    @pytest.mark.asyncio
+    async def test_progress_emissions_bound_total_queue_plus_exec_time(self):
+        """TASK-348 / MAJ-9: every emission carries schedule_to_close_timeout.
+
+        start_to_close alone leaves the queue wait unbounded — a saturated
+        activity slot could stall each stage transition. The schedule-to-close
+        bound caps queue + execution at 10s per emission.
+        """
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                await handle.result()
+
+        assert len(recorder.progress_schedule_to_close) == 6
+        assert all(t == timedelta(seconds=10) for t in recorder.progress_schedule_to_close)
+
+    @pytest.mark.asyncio
+    async def test_workflow_failure_emits_terminal_failed_event_then_propagates(self):
+        """TASK-348 / MAJ-1: on workflow failure the feed must not freeze.
+
+        SMR exhausts its retries -> the workflow MUST still fail (no draft is
+        ever persisted on SMR failure), but a best-effort terminal `failed`
+        event is emitted first so the API closes the SSE feed instead of
+        leaving an `active` stage lying for the snapshot TTL.
+        """
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], generate_fails=True)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                # The original failure still propagates — never swallowed.
+                with pytest.raises(WorkflowFailureError):
+                    await handle.result()
+
+        # No draft on SMR failure (unchanged degradation contract).
+        assert recorder.calls["persist_draft"] == 0
+        # The feed got a terminal `failed` event after the stages that ran.
+        stages = [p.stage for p in recorder.progress_inputs]
+        assert stages == [
+            "extracting_information",
+            "assembling_context",
+            "drafting_note",
+            "failed",
+        ]
+        # Pinned wire contract (the API fold + UI build against exactly this).
+        failed = recorder.progress_inputs[-1]
+        assert failed.label == "Documentation generation failed"
+        assert failed.ordinal == 5
+        assert failed.total == 5
+        assert failed.consultation_id == "c-1"
+        assert failed.tenant_id == "t-1"
+        assert failed.job_id == "job-1"
