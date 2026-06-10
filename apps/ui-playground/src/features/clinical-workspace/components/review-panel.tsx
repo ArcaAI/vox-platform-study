@@ -19,12 +19,14 @@ import { Skeleton } from '@arcaai/ui/skeleton';
 import { Textarea } from '@arcaai/ui/textarea';
 import { useArcaStore, type AgenticClient, type SummaryApprovalResponse, type TranscriptSource } from '@arcaai/vox';
 import { useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Loader2, Pencil, RefreshCw, Sparkles } from 'lucide-react';
+import { AlertCircle, Check, Circle, Loader2, Pencil, RefreshCw, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { approveNote, updateSummaryContent } from '../api/clinical-workspace.api';
 import { clinicalWorkspaceKeys, useProvenanceQuery } from '../api/queries';
+import { useHarnessProgress } from '../hooks/use-harness-progress';
 import type { DraftWaitStatus } from '../lib/draft-polling';
+import type { HarnessProgressStage } from '../lib/harness-progress';
 import { mapProvenanceToReviewData } from '../lib/provenance';
 import { ManualHighlightSurface } from './highlightable-surface';
 
@@ -46,6 +48,10 @@ export function ReviewPanel({ consultationId, noteContextItemId, noteContent, tr
   const queryClient = useQueryClient();
   const provenanceQuery = useProvenanceQuery(consultationId, noteContextItemId);
 
+  // TASK-345 — live harness activity feed: subscribe (SSE) only while the
+  // draft-generation wait state is active; stages replace the static text below.
+  const progress = useHarnessProgress({ consultationId, enabled: !noteContextItemId && draftStatus === 'generating' });
+
   const [editOpen, setEditOpen] = useState(false);
   const [draft, setDraft] = useState(noteContent ?? '');
   const [saving, setSaving] = useState(false);
@@ -54,6 +60,39 @@ export function ReviewPanel({ consultationId, noteContextItemId, noteContent, tr
     // Recording stopped → the harness is drafting asynchronously; poll-driven
     // waiting states keep the clinician informed instead of a bare empty panel.
     if (draftStatus === 'generating') {
+      // Live stage checklist while progress events arrive; static text + skeleton
+      // is the graceful fallback when none do (progress pipeline down).
+      if (progress.stages.length > 0) {
+        return (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center gap-3 py-12 text-center" data-testid="review-generating">
+              <Sparkles className="text-violet-500 size-6 animate-pulse" />
+              <p className="text-sm font-medium">Drafting the SOAP note…</p>
+              <p className="text-muted-foreground max-w-sm text-sm">Live progress from the documentation harness. This updates automatically.</p>
+              <ul className="w-full max-w-sm space-y-2 pt-2 text-left" data-testid="review-progress-list">
+                {progress.stages.map((stage: HarnessProgressStage) => (
+                  <li
+                    key={stage.stage}
+                    className="flex items-center gap-2 text-sm"
+                    data-testid={`review-progress-stage-${stage.stage}`}
+                    data-status={stage.status}
+                  >
+                    {stage.status === 'completed' && <Check className="size-4 shrink-0 text-emerald-500" aria-label="completed" />}
+                    {stage.status === 'active' && <Loader2 className="text-violet-500 size-4 shrink-0 animate-spin" aria-label="in progress" />}
+                    {stage.status === 'pending' && <Circle className="text-muted-foreground/40 size-4 shrink-0" aria-label="pending" />}
+                    <span className={stage.status === 'pending' ? 'text-muted-foreground' : stage.status === 'active' ? 'font-medium' : ''}>
+                      {stage.label}
+                    </span>
+                    {stage.status === 'active' && stage.attempt > 1 && (
+                      <span className="text-muted-foreground ml-auto text-xs">pass {stage.attempt}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        );
+      }
       return (
         <Card>
           <CardContent className="flex flex-col items-center justify-center gap-3 py-12 text-center" data-testid="review-generating">

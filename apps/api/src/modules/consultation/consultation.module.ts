@@ -12,6 +12,8 @@ import {
   LiveDocumentationServiceModule,
   // TASK-344 Workstream B — manual doctor highlighting.
   HighlightServiceModule,
+  // TASK-345 — live harness activity/progress feed.
+  HarnessProgressServiceModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { ConsultationController } from './consultation.controller';
@@ -37,6 +39,8 @@ import { HarnessInternalController } from './harness-internal.controller';
     LiveDocumentationServiceModule,
     // TASK-344 Workstream B — manual doctor highlighting.
     HighlightServiceModule,
+    // TASK-345 — harness progress publish (internal POST) + SSE relay (stream route).
+    HarnessProgressServiceModule,
   ],
   controllers: [ConsultationController, AdminConsultationController, ConsultationJobController, HarnessInternalController],
 })

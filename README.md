@@ -65,10 +65,14 @@ For the full setup guide including Python services, environment files, and testi
 
 | Command | Description |
 |---------|-------------|
+| `pnpm dev:stack` | Start the full clinical-workspace stack (API, STT, SMR, NLP, harness + worker, UI) |
+| `pnpm dev:doctor` | Health-check all services, docker infra, LLM engines, and the STT key |
+| `pnpm infra:up` | Start docker infra incl. Vault + Temporal profiles |
 | `pnpm dev:api` | Start API Gateway (development) |
-| `pnpm dev:stt-v2` | Start STT-v2 service |
-| `pnpm dev:smr-v2` | Start SMR-v2 service |
+| `pnpm dev:stt-v2` | Start STT-v2 service (no reload; `:watch` for scoped reload) |
+| `pnpm dev:smr-v2` | Start SMR-v2 service with the LM Studio provider registered |
 | `pnpm dev:nlp` | Start NLP service |
+| `pnpm dev:harness:worker` | Start the harness Temporal worker |
 | `pnpm build` | Build all packages and apps |
 | `pnpm test:unit` | Run TypeScript unit tests |
 | `pnpm ok` | Full reset: push DB, seed, build everything |

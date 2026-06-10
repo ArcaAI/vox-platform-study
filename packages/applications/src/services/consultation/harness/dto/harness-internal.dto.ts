@@ -221,6 +221,78 @@ export interface HarnessDraftResponse {
 }
 
 // ---------------------------------------------------------------------------
+// progress (TASK-345 — live harness activity feed)
+// ---------------------------------------------------------------------------
+
+/**
+ * Stage key the harness sends to close the feed: the service marks every stage
+ * completed and publishes a terminal `closed: true` event (ends the SSE relay).
+ */
+export const HARNESS_PROGRESS_TERMINAL_STAGE = 'completed';
+
+export class HarnessProgressRequest {
+  @ApiProperty({ description: 'Tenant the harness is acting on behalf of' })
+  @IsString()
+  tenantId: string;
+
+  @ApiPropertyOptional({ description: 'Harness job id minted at start (ops/log correlation only)' })
+  @IsOptional()
+  @IsString()
+  jobId?: string;
+
+  @ApiProperty({ description: 'Workflow stage key (e.g. drafting_note); `completed` closes the feed' })
+  @IsString()
+  stage: string;
+
+  @ApiPropertyOptional({ description: 'Human-readable stage label rendered by the UI' })
+  @IsOptional()
+  @IsString()
+  label?: string;
+
+  @ApiPropertyOptional({ description: '1-based position of the stage in the run' })
+  @IsOptional()
+  @IsNumber()
+  ordinal?: number;
+
+  @ApiPropertyOptional({ description: 'Total number of stages in the run' })
+  @IsOptional()
+  @IsNumber()
+  total?: number;
+}
+
+export interface HarnessProgressAck {
+  ok: boolean;
+}
+
+export type HarnessProgressStageStatus = 'completed' | 'active' | 'pending';
+
+export interface HarnessProgressStageDto {
+  stage: string;
+  label: string;
+  ordinal: number;
+  status: HarnessProgressStageStatus;
+  /** How many times the stage has been (re)entered — >1 communicates a regen pass. */
+  attempt: number;
+  /** ISO timestamp of the stage's last activation. */
+  at: string;
+}
+
+/**
+ * The full-state progress event published on
+ * `consultation:harness-progress:{consultationId}` (and stored as the late-join
+ * snapshot). Every SSE message carries the complete folded state, so clients
+ * stay stateless. Carries NO PHI — stage keys/labels/timestamps only.
+ */
+export interface HarnessProgressEventDto {
+  consultationId: string;
+  jobId?: string;
+  total?: number;
+  stages: HarnessProgressStageDto[];
+  updatedAt: string;
+  closed: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // gate-decision
 // ---------------------------------------------------------------------------
 

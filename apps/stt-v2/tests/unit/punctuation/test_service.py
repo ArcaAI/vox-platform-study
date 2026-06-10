@@ -12,9 +12,11 @@ def _reset_models():
     """Reset the module-level model registry before and after each test."""
     service._models.clear()
     service._default_model_name = None
+    service._enabled = True
     yield
     service._models.clear()
     service._default_model_name = None
+    service._enabled = True
 
 
 class TestInitialize:
@@ -85,6 +87,62 @@ class TestInitialize:
             and call.args[0] == "Monkey-patched gemma3 mask creation for bidirectional attention"
         ]
         assert not monkey_patch_calls
+
+
+class TestPunctuationDisabled:
+    """When PUNCTUATION_ENABLED is false, Cadence must never be loaded and all
+    punctuation entry points must pass text through unchanged. This keeps the
+    boot log free of Cadence's FATAL traceback under the pinned transformers
+    5.x (incompatible with cadence-punctuation 1.1.0)."""
+
+    @patch("stt_v2.punctuation.service.get_settings")
+    def test_initialize_skips_cadence_when_disabled(self, mock_settings):
+        settings = MagicMock()
+        settings.punctuation_enabled = False
+        mock_settings.return_value = settings
+
+        model_cls = MagicMock()
+        with patch.dict("sys.modules", {"cadence": MagicMock(PunctuationModel=model_cls)}):
+            service.initialize()
+
+        model_cls.assert_not_called()
+        assert service._models == {}
+        assert service._enabled is False
+
+    @pytest.mark.asyncio
+    @patch("stt_v2.punctuation.service.get_settings")
+    async def test_punctuate_passthrough_when_disabled(self, mock_settings):
+        settings = MagicMock()
+        settings.punctuation_enabled = False
+        mock_settings.return_value = settings
+
+        service.initialize()
+        result = await service.punctuate("hello world how are you")
+
+        assert result == "hello world how are you"
+
+    @pytest.mark.asyncio
+    @patch("stt_v2.punctuation.service.get_settings")
+    async def test_punctuate_batch_passthrough_when_disabled(self, mock_settings):
+        settings = MagicMock()
+        settings.punctuation_enabled = False
+        mock_settings.return_value = settings
+
+        service.initialize()
+        result = await service.punctuate_batch(["hello", "world"])
+
+        assert result == ["hello", "world"]
+
+    @patch("stt_v2.punctuation.service.get_settings")
+    def test_punctuate_sync_passthrough_when_disabled(self, mock_settings):
+        settings = MagicMock()
+        settings.punctuation_enabled = False
+        mock_settings.return_value = settings
+
+        service.initialize()
+        result = service.punctuate_sync(["hello", "world"])
+
+        assert result == ["hello", "world"]
 
 
 class TestGetModel:

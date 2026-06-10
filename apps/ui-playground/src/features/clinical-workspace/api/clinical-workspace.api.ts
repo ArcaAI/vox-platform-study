@@ -53,6 +53,13 @@ export function buildLiveSummaryStreamUrl(client: AgenticClient, consultationId:
   return `${base}${path}?ticket=${encodeURIComponent(ticket)}`;
 }
 
+/** Build the authenticated harness-progress SSE URL (TASK-345, `?ticket=` appended). */
+export function buildHarnessProgressStreamUrl(client: AgenticClient, consultationId: string, ticket: string): string {
+  const base = client.getBaseUrl();
+  const path = WORKSPACE_ENDPOINTS.harnessProgressStream(consultationId);
+  return `${base}${path}?ticket=${encodeURIComponent(ticket)}`;
+}
+
 /** Add a mid-visit context item (case note, work note, attachment, …). */
 export function addContextItem(client: AgenticClient, consultationId: string, body: AddContextRequest): Promise<WorkspaceContextItem> {
   return client.post<WorkspaceContextItem>(WORKSPACE_ENDPOINTS.context(consultationId), { source: 'USER', ...body });

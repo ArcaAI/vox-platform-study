@@ -261,6 +261,70 @@ class TestGetPolicy:
             await client.get_policy("t-1")
 
 
+class TestReportProgress:
+    """TASK-345 — live progress feed: the workflow's ``report_progress`` activity
+    posts one stage event per phase to the internal progress endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_report_progress_posts_camelcase_stage_event_with_token(self):
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json={"ok": True})
+
+        client = _client(handler)
+        result = await client.report_progress(
+            "c-1",
+            tenant_id="t-1",
+            stage="drafting_note",
+            label="Drafting the note",
+            ordinal=3,
+            total=5,
+            job_id="harness-doc-1",
+        )
+
+        req = seen["request"]
+        assert req.method == "POST"
+        assert str(req.url) == "http://api:8868/internal/harness/consultations/c-1/progress"
+        assert req.headers["X-Service-Token"] == "svc-token"
+        body = json.loads(req.content)
+        assert body == {
+            "tenantId": "t-1",
+            "jobId": "harness-doc-1",
+            "stage": "drafting_note",
+            "label": "Drafting the note",
+            "ordinal": 3,
+            "total": 5,
+        }
+        assert result.ok is True
+
+    @pytest.mark.asyncio
+    async def test_report_progress_prunes_optional_fields(self):
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json={"ok": True})
+
+        client = _client(handler)
+        await client.report_progress("c-1", tenant_id="t-1", stage="completed")
+
+        body = json.loads(seen["request"].content)
+        assert body == {"tenantId": "t-1", "stage": "completed"}
+
+    @pytest.mark.asyncio
+    async def test_report_progress_raises_on_upstream_error(self):
+        # The client raises like every other method; the ACTIVITY is the layer
+        # that swallows (progress must never fail the workflow).
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, json={"error": "redis down"})
+
+        client = _client(handler)
+        with pytest.raises(ApiServiceError):
+            await client.report_progress("c-1", tenant_id="t-1", stage="drafting_note")
+
+
 class TestConfigurablePrefix:
     @pytest.mark.asyncio
     async def test_prefix_is_configurable_for_lane_g_actual_mount(self):

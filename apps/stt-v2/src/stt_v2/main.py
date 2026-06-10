@@ -185,7 +185,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await _aio.to_thread(punctuation_service.initialize)
         logger.info("Punctuation service initialized")
     except Exception as exc:
-        logger.warning("Punctuation service initialization failed (non-fatal)", error=str(exc))
+        logger.warning(
+            "Punctuation service initialization failed (non-fatal); "
+            "continuing without punctuation",
+            error=str(exc),
+        )
+        logger.debug("Punctuation initialization error detail", exc_info=True)
 
     logger.info("STT Service V2 started successfully")
 

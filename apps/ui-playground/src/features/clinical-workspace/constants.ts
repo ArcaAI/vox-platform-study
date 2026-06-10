@@ -32,11 +32,18 @@ export function liveSummaryScope(consultationId: string): string {
   return `consultation_live_summary:${consultationId}`;
 }
 
+/** SSE scope for the harness-progress stream ticket (TASK-345). */
+export function harnessProgressScope(consultationId: string): string {
+  return `consultation_harness_progress:${consultationId}`;
+}
+
 /** API path builders (relative to the SDK apiClient base URL). */
 export const WORKSPACE_ENDPOINTS = {
   startRecording: (id: string) => `/consultations/${encodeURIComponent(id)}/recording/start`,
   stopRecording: (id: string) => `/consultations/${encodeURIComponent(id)}/recording/stop`,
   liveSummaryStream: (id: string) => `/consultations/${encodeURIComponent(id)}/live-summary/stream`,
+  // TASK-345 — live harness draft-generation progress.
+  harnessProgressStream: (id: string) => `/consultations/${encodeURIComponent(id)}/harness-progress/stream`,
   streamSession: '/audio/transcription-jobs/stream/session',
   streamTicket: '/auth/stream-ticket',
   context: (id: string) => `/consultations/${encodeURIComponent(id)}/context`,

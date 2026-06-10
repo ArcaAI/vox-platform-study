@@ -32,6 +32,7 @@ from harness.temporal.models import (
     PersistDraftInput,
     PersistEntitiesInput,
     RecordGateInput,
+    ReportProgressInput,
     RetrieveContextInput,
     RunInferentialSensorsInput,
     RunSensorsInput,
@@ -382,6 +383,67 @@ class TestEscalateGate:
             EscalateInput(consultation_id="c-1", tenant_id="t-1", reason="gate_sla_breached"),
         )
         assert result.escalated is True
+
+
+class _FakeProgressApi:
+    """Stand-in ApiClient for report_progress: records calls (or raises)."""
+
+    def __init__(self, *, error: Exception | None = None) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self._error = error
+
+    async def report_progress(self, consultation_id: str, **kw: Any):
+        self.calls.append({"consultation_id": consultation_id, **kw})
+        if self._error is not None:
+            raise self._error
+        from harness.services.api_client import ReportProgressResponse
+
+        return ReportProgressResponse(ok=True)
+
+
+class TestReportProgress:
+    """TASK-345 — fire-and-forget: forwards the stage event, swallows ALL errors."""
+
+    @pytest.mark.asyncio
+    async def test_forwards_stage_event_to_api_client(self, env, monkeypatch):
+        fake = _FakeProgressApi()
+        monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)
+        result = await env.run(
+            activities.report_progress,
+            ReportProgressInput(
+                consultation_id="c-1",
+                tenant_id="t-1",
+                job_id="job-1",
+                stage="running_safety_sensors",
+                label="Running safety sensors",
+                ordinal=4,
+                total=5,
+            ),
+        )
+        assert result.reported is True
+        call = fake.calls[0]
+        assert call["consultation_id"] == "c-1"
+        assert call["tenant_id"] == "t-1"
+        assert call["job_id"] == "job-1"
+        assert call["stage"] == "running_safety_sensors"
+        assert call["label"] == "Running safety sensors"
+        assert call["ordinal"] == 4
+        assert call["total"] == 5
+
+    @pytest.mark.asyncio
+    async def test_api_failure_is_swallowed_and_reported_false(self, env, monkeypatch):
+        from harness.services.api_client import ApiServiceError
+
+        fake = _FakeProgressApi(error=ApiServiceError("api down"))
+        monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)
+        result = await env.run(
+            activities.report_progress,
+            ReportProgressInput(
+                consultation_id="c-1", tenant_id="t-1", stage="drafting_note",
+                label="Drafting the note", ordinal=3, total=5,
+            ),
+        )
+        assert result.reported is False  # swallowed — never raises into the workflow
 
 
 def _infer_input(**kw: Any) -> RunInferentialSensorsInput:

@@ -35,12 +35,16 @@ with workflow.unsafe.imports_passed_through():
         persist_entities,
         ping_activity,
         record_gate_decision,
+        report_progress,
         retrieve_context,
         run_inferential_sensors,
         run_sensors,
     )
     from harness.temporal.models import (
         DEFAULT_GROUNDEDNESS_THRESHOLD,
+        HARNESS_PROGRESS_STAGES,
+        HARNESS_PROGRESS_TERMINAL_LABEL,
+        HARNESS_PROGRESS_TERMINAL_STAGE,
         ApprovalSignal,
         AssembleInput,
         EscalateInput,
@@ -54,6 +58,7 @@ with workflow.unsafe.imports_passed_through():
         PersistDraftInput,
         PersistEntitiesInput,
         RecordGateInput,
+        ReportProgressInput,
         RetrieveContextInput,
         RetrievedContext,
         RunInferentialSensorsInput,
@@ -81,6 +86,15 @@ _INFERENTIAL_RETRY = RetryPolicy(maximum_attempts=2)
 # Retrieval degrades internally (never raises for backend outages); its retries
 # cover only infra blips before the workflow falls back to an empty context.
 _RETRIEVAL_RETRY = RetryPolicy(maximum_attempts=2)
+# Progress feed (TASK-345): fire-and-forget — one attempt, tiny budget. The
+# activity already swallows its own errors; the workflow-side try/except is the
+# second belt for timeouts/cancellation.
+_PROGRESS_TIMEOUT = timedelta(seconds=10)
+_PROGRESS_RETRY = RetryPolicy(maximum_attempts=1)
+# (key, label) -> 1-based ordinal lookup for the emission helper.
+_PROGRESS_ORDINALS = {key: i + 1 for i, (key, _label) in enumerate(HARNESS_PROGRESS_STAGES)}
+_PROGRESS_LABELS = dict(HARNESS_PROGRESS_STAGES)
+_PROGRESS_TOTAL = len(HARNESS_PROGRESS_STAGES)
 
 
 @workflow.defn
@@ -130,6 +144,34 @@ class HarnessDocWorkflow:
         """Current loop phase (for ops/tests; does not affect determinism)."""
         return self._phase
 
+    async def _report_progress(self, inp: HarnessDocWorkflowInput, stage: str) -> None:
+        """Emit one stage event to the live UI feed (TASK-345). Best-effort only.
+
+        The activity swallows its own errors; this wrapper additionally absorbs
+        timeouts/cancellation so a dead progress pipeline can NEVER fail the loop.
+        """
+        if stage == HARNESS_PROGRESS_TERMINAL_STAGE:
+            label, ordinal = HARNESS_PROGRESS_TERMINAL_LABEL, _PROGRESS_TOTAL
+        else:
+            label, ordinal = _PROGRESS_LABELS[stage], _PROGRESS_ORDINALS[stage]
+        try:
+            await workflow.execute_activity(
+                report_progress,
+                ReportProgressInput(
+                    consultation_id=inp.consultation_id,
+                    tenant_id=inp.tenant_id,
+                    job_id=inp.job_id,
+                    stage=stage,
+                    label=label,
+                    ordinal=ordinal,
+                    total=_PROGRESS_TOTAL,
+                ),
+                start_to_close_timeout=_PROGRESS_TIMEOUT,
+                retry_policy=_PROGRESS_RETRY,
+            )
+        except ActivityError:
+            pass  # progress is non-clinical — never block or degrade the loop
+
     @workflow.run
     async def run(self, inp: HarnessDocWorkflowInput) -> HarnessDocWorkflowResult:
         # 0) Live policy injection (Phase 6). Read ONCE at the start in an activity
@@ -137,6 +179,8 @@ class HarnessDocWorkflow:
         # A failed fetch degrades to the code defaults — never crash the loop, and
         # this is NOT a clinical degradation (it does not set reduced_assurance).
         self._phase = "POLICY"
+        # Progress stage 1 covers the policy fetch + transcript NER that follow.
+        await self._report_progress(inp, "extracting_information")
         policy: HarnessPolicy | None = None
         try:
             policy = await workflow.execute_activity(
@@ -206,6 +250,8 @@ class HarnessDocWorkflow:
         # degraded retrieval (backend down) yields an empty context and flags reduced
         # assurance; it never raises into the loop.
         self._phase = "RETRIEVE"
+        # Progress stage 2 covers institutional retrieval + prompt assembly.
+        await self._report_progress(inp, "assembling_context")
         reduced_assurance = False
         try:
             retrieved = await workflow.execute_activity(
@@ -236,6 +282,9 @@ class HarnessDocWorkflow:
         guardrail_decisions: dict[str, Any] = {}
         rag_triad_score: float | None = None
         while True:
+            # Progress stage 3 — re-emitted on every regen iteration (the fold on
+            # the API side re-activates it and bumps the attempt counter).
+            await self._report_progress(inp, "drafting_note")
             assembled = await workflow.execute_activity(
                 assemble_prompt,
                 AssembleInput(
@@ -283,6 +332,8 @@ class HarnessDocWorkflow:
             except ActivityError:
                 degraded = True
 
+            # Progress stage 4 covers the computational + inferential sensor pass.
+            await self._report_progress(inp, "running_safety_sensors")
             sensors = await workflow.execute_activity(
                 run_sensors,
                 RunSensorsInput(
@@ -361,6 +412,8 @@ class HarnessDocWorkflow:
         # guardrail_decisions + ragTriadScore land on SummaryMeta; reduced_assurance
         # drives the REDUCED_ASSURANCE WORM event on apps/api.
         self._phase = "PERSIST"
+        # Progress stage 5 — the draft is being persisted (PENDING_REVIEW).
+        await self._report_progress(inp, "finalizing_draft")
         draft = await workflow.execute_activity(
             persist_draft,
             PersistDraftInput(
@@ -386,6 +439,11 @@ class HarnessDocWorkflow:
             start_to_close_timeout=_ACTIVITY_TIMEOUT,
             retry_policy=_API_RETRY,
         )
+
+        # Terminal progress event: the draft exists — the feed folds to
+        # all-completed and the SSE stream closes. The gate/sign-off wait below
+        # is intentionally NOT part of the generation feed.
+        await self._report_progress(inp, HARNESS_PROGRESS_TERMINAL_STAGE)
 
         # 4) Clinician gate: approval signal raced against a durable SLA timer.
         self._phase = "GATE"

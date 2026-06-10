@@ -380,3 +380,41 @@ class EscalateResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     escalated: bool = False
+
+
+# ---------------------------------------------------------------------------
+# TASK-345 — live progress feed
+# ---------------------------------------------------------------------------
+
+# Stage catalog: (key, label) in run order; ordinal = index + 1. The keys/labels
+# are the public UI contract relayed verbatim over SSE — no PHI, ever.
+HARNESS_PROGRESS_STAGES: tuple[tuple[str, str], ...] = (
+    ("extracting_information", "Extracting key information"),
+    ("assembling_context", "Assembling context"),
+    ("drafting_note", "Drafting the note"),
+    ("running_safety_sensors", "Running safety sensors"),
+    ("finalizing_draft", "Finalizing the draft"),
+)
+
+# Terminal pseudo-stage: tells the API to mark everything completed and close
+# the SSE stream (`closed: true`). Emitted after the draft persists.
+HARNESS_PROGRESS_TERMINAL_STAGE = "completed"
+HARNESS_PROGRESS_TERMINAL_LABEL = "Draft ready for review"
+
+
+class ReportProgressInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    tenant_id: str
+    stage: str
+    label: str
+    ordinal: int
+    total: int
+    job_id: str | None = None
+
+
+class ReportProgressResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reported: bool = False

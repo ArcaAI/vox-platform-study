@@ -674,3 +674,117 @@ class TestDegradation:
 
         # Never silently downgrade: no draft on SMR failure.
         assert recorder.calls["persist_draft"] == 0
+
+
+class TestProgressFeed:
+    """TASK-345 — the workflow emits one ``report_progress`` event per stage.
+
+    Progress is fire-and-forget: stage events thread consultation/tenant/job ids,
+    regen iterations re-emit the drafting/sensor stages, and a dead progress
+    pipeline must never fail (or even degrade) the document loop.
+    """
+
+    @pytest.mark.asyncio
+    async def test_happy_path_emits_ordered_stage_sequence(self):
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        stages = [p.stage for p in recorder.progress_inputs]
+        assert stages == [
+            "extracting_information",
+            "assembling_context",
+            "drafting_note",
+            "running_safety_sensors",
+            "finalizing_draft",
+            "completed",
+        ]
+        first = recorder.progress_inputs[0]
+        assert first.consultation_id == "c-1"
+        assert first.tenant_id == "t-1"
+        assert first.job_id == "job-1"
+        assert first.label == "Extracting key information"
+        assert first.ordinal == 1
+        assert first.total == 5
+        ordinals = [p.ordinal for p in recorder.progress_inputs[:-1]]
+        assert ordinals == [1, 2, 3, 4, 5]
+        assert all(p.total == 5 for p in recorder.progress_inputs)
+
+    @pytest.mark.asyncio
+    async def test_regen_re_emits_drafting_and_sensor_stages(self):
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["REGEN", "PASS"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=HarnessGateConfig(max_regen=2)),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.regens_used == 1
+        stages = [p.stage for p in recorder.progress_inputs]
+        assert stages == [
+            "extracting_information",
+            "assembling_context",
+            "drafting_note",
+            "running_safety_sensors",
+            "drafting_note",  # regen iteration re-enters the loop
+            "running_safety_sensors",
+            "finalizing_draft",
+            "completed",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_progress_pipeline_failure_never_fails_the_workflow(self):
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], progress_fails=True)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        # Every emission raised, yet the loop completed and the draft persisted
+        # WITHOUT degradation (progress is non-clinical).
+        assert result.decision == "PASS"
+        assert result.approved is True
+        assert recorder.calls["report_progress"] >= 1
+        assert recorder.calls["persist_draft"] == 1
+        assert recorder.persist_draft_inputs[0].reduced_assurance is False
