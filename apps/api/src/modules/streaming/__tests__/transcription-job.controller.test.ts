@@ -607,7 +607,9 @@ describe('TranscriptionJobController', () => {
     // EU-07 (TASK-336) — the create endpoints (`create` / `createBatch` /
     // `createStreaming`) previously accepted `@Body() dto: any`, bypassing the
     // global ValidationPipe. They now bind to typed request DTOs so malformed
-    // input (bad enum, non-UUID ids, missing required fields) is rejected.
+    // input (bad enum, malformed ids, missing required fields) is rejected.
+    // Note (TASK-298 D-19 / TASK-350): `CreateJobRequest.pipelineId` accepts
+    // slug-or-UUID via PIPELINE_ID_PATTERN, so a plain slug is valid input.
     // These tests lock the validation contract those endpoints rely on.
     // ------------------------------------------------------------------------
     describe('EU-07 — create endpoints use typed, validated request DTOs', () => {
@@ -623,12 +625,26 @@ describe('TranscriptionJobController', () => {
             expect(await validate(dto)).toHaveLength(0);
         });
 
-        it('CreateJobRequest rejects an invalid jobType and a non-UUID pipelineId', async () => {
-            const dto = plainToInstance(CreateJobRequest, { jobType: 'NOT_A_TYPE', pipelineId: 'not-a-uuid' });
+        // TASK-350 — probe must fail BOTH branches of PIPELINE_ID_PATTERN
+        // (slug `[A-Za-z0-9][A-Za-z0-9-]*` or UUID): spaces and '!' do.
+        // The old probe 'not-a-uuid' is a valid slug under TASK-298 D-19.
+        it('CreateJobRequest rejects an invalid jobType and a non-slug, non-UUID pipelineId', async () => {
+            const dto = plainToInstance(CreateJobRequest, { jobType: 'NOT_A_TYPE', pipelineId: 'not a uuid!' });
             const errors = await validate(dto);
             const failedProps = errors.map((e) => e.property);
             expect(failedProps).toContain('jobType');
             expect(failedProps).toContain('pipelineId');
+        });
+
+        // TASK-350 — pin the widened TASK-298 D-19 contract itself: a plain
+        // slug pipelineId must keep passing CreateJobRequest validation.
+        it('CreateJobRequest accepts a valid slug pipelineId (TASK-298 D-19)', async () => {
+            const dto = plainToInstance(CreateJobRequest, {
+                jobType: 'BATCH',
+                pipelineId: 'general-consult',
+                mediaId: VALID_UUID_V7_B,
+            });
+            expect(await validate(dto)).toHaveLength(0);
         });
 
         it('CreateBatchJobRequest requires both pipelineId and mediaId', async () => {
