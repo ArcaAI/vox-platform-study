@@ -12,6 +12,7 @@ from ..core.exceptions import ModelLoadError
 from ..pipeline.dto import AiModelConfig, AiModelFormat, InlineModelDef, ModelRef, ModelTaskType
 from .azure_speech_loader import AzureSpeechLoader
 from .base_loader import BaseModelLoader, LoadedModel
+from .faster_whisper_loader import FasterWhisperLoader
 from .huggingface_loader import HuggingFaceLoader
 from .nemo_loader import NeMoLoader
 from .onnx_loader import ONNXLoader
@@ -103,7 +104,9 @@ class ModelCache:
             AiModelFormat.ONNX: ONNXLoader(),
             AiModelFormat.ONNX_OPTIMUM: ONNXLoader(),  # HuggingFace Optimum ONNX uses same loader
             AiModelFormat.NEMO: NeMoLoader(),
-            AiModelFormat.CTRANSLATE2: HuggingFaceLoader(),  # CTranslate2 handled by HuggingFace loader for now
+            AiModelFormat.CTRANSLATE2: HuggingFaceLoader(),  # Legacy alias — transformers path
+            # TASK-351 P1-2 — faster-whisper on CTranslate2 (lazy import)
+            AiModelFormat.FASTER_WHISPER: FasterWhisperLoader(),
             AiModelFormat.AZURE_SPEECH: AzureSpeechLoader(),  # Cloud-based Azure Cognitive Services
         }
 

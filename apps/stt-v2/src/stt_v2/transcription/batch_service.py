@@ -962,11 +962,11 @@ class BatchTranscriptionService:
             processor, "return_attention_mask"
         ):
             processor_kwargs["return_attention_mask"] = True
-        if (
-            supports_language
-            and language is not None
-            and (requires_language or not code_switching)
-        ):
+        # TASK-351 P2-1 — a configured language is always pinned (passed to
+        # the processor), including when code_switching is enabled
+        # (code_switching is retained in the signature for call-site
+        # compatibility but no longer gates the language kwarg).
+        if supports_language and language is not None:
             processor_kwargs["language"] = language
 
         return cast(dict[str, Any], processor(samples, **processor_kwargs))
@@ -1817,9 +1817,10 @@ class BatchTranscriptionService:
                     "return_timestamps": True,
                 }
 
-                # When code-switching is enabled, omit language to let
-                # Whisper auto-detect per generation, enabling multilingual output.
-                if not code_switching and lang is not None:
+                # TASK-351 P2-1 — a configured language is always pinned
+                # (passed to the engine), including when code_switching is
+                # enabled. language: null + code_switching keeps auto-LID.
+                if lang is not None:
                     generate_kwargs["language"] = lang
 
                 no_repeat_ngram_size = getattr(config, "no_repeat_ngram_size", None)
@@ -2133,12 +2134,18 @@ class BatchTranscriptionService:
             "return_timestamps": False,
         }
 
-        if code_switching:
-            # Code-switching mode: omit language to let Whisper auto-detect
-            # per chunk, enabling multilingual transcription.
-            logger.info("Code-switching enabled — language will be auto-detected per chunk")
-        elif lang is not None:
+        # TASK-351 P2-1 — a configured language is always pinned (passed to
+        # the engine), including when code_switching is enabled. language:
+        # null + code_switching keeps auto-LID.
+        if lang is not None:
             generate_kwargs["language"] = lang
+            if code_switching:
+                logger.info(
+                    "Code-switching enabled with pinned matrix language '%s'",
+                    lang,
+                )
+        elif code_switching:
+            logger.info("Code-switching enabled — language will be auto-detected per chunk")
 
         no_repeat_ngram_size = getattr(config, "no_repeat_ngram_size", None)
         if isinstance(no_repeat_ngram_size, int) and no_repeat_ngram_size > 0:

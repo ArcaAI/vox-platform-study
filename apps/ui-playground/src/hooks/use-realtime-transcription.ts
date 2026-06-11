@@ -192,6 +192,29 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
         wsClientRef.current = wsClient;
 
         wsClient.onTranscript((result: WsTranscriptResult) => {
+          // TASK-351 P1-1 follow-up — gloss results never create a row:
+          // attach the English translation to the entry that carries the
+          // same utteranceIndex, or drop the gloss silently.
+          if (result.resultType === 'gloss') {
+            const glossText = typeof result.englishText === 'string' ? result.englishText.trim() : '';
+            const glossIndex =
+              typeof result.utteranceIndex === 'number' && Number.isFinite(result.utteranceIndex) ? result.utteranceIndex : undefined;
+            if (!glossText || glossIndex == null) {
+              return;
+            }
+            setTranscripts((prev) => {
+              for (let i = prev.length - 1; i >= 0; i--) {
+                if (prev[i]!.utteranceIndex === glossIndex) {
+                  const next = [...prev];
+                  next[i] = { ...next[i]!, englishText: glossText };
+                  return next;
+                }
+              }
+              return prev;
+            });
+            return;
+          }
+
           const sanitizedText = sanitizeTranscriptText(result.text);
           if (!sanitizedText) {
             return;
@@ -223,12 +246,23 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
           const wordTimestamps: TranscriptEntry['wordTimestamps'] =
             result.isFinal && result.wordTimestamps && result.wordTimestamps.length > 0 ? result.wordTimestamps : undefined;
           const inferenceTime = typeof result.inference === 'number' && Number.isFinite(result.inference) ? result.inference : 0;
+          // TASK-351 P1-1 — committed-prefix length on partials (additive).
+          const stableChars =
+            !result.isFinal && typeof result.stableChars === 'number' && Number.isFinite(result.stableChars) && result.stableChars >= 0
+              ? Math.min(result.stableChars, sanitizedText.length)
+              : undefined;
+          // TASK-351 P1-1 follow-up — utterance ordinal, kept on the entry so
+          // a later gloss can find its segment.
+          const utteranceIndex =
+            typeof result.utteranceIndex === 'number' && Number.isFinite(result.utteranceIndex) ? result.utteranceIndex : undefined;
           const entry: TranscriptEntry = {
             id: `ws-${transcriptIdRef.current}`,
             segment: segmentCounterRef.current,
             text: sanitizedText,
             timestamp: Date.now(),
             isFinal: result.isFinal,
+            stableChars,
+            utteranceIndex,
             speaker: speakerId,
             speakerLabel,
             speakerConfidence,

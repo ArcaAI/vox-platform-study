@@ -1505,9 +1505,12 @@ inference:
         result = parser.validate(spec)
         assert result.valid is True
 
-    def test_validate_code_switching_with_language_warns(self, parser, caplog):
-        """Parse YAML with language: en and code_switching: true, validate -> result.valid is True, caplog contains warning."""
-        caplog.set_level(logging.WARNING)
+    def test_validate_code_switching_with_language_pins_language(self, parser, caplog):
+        """TASK-351 P2-1 — language + code_switching means PINNED matrix
+        language with CS enabled: valid, info log, and NO warning (the
+        earlier 'set language to null' advisory is deliberately superseded).
+        """
+        caplog.set_level(logging.INFO)
         yaml_content = """
 version: "1.0"
 models:
@@ -1519,8 +1522,18 @@ inference:
         spec = parser.parse(yaml_content)
         result = parser.validate(spec)
         assert result.valid is True
-        assert any("code_switching" in rec.message for rec in caplog.records)
-        assert any("language" in rec.message for rec in caplog.records)
+        cs_warnings = [
+            rec
+            for rec in caplog.records
+            if rec.levelno >= logging.WARNING and "code_switching" in rec.message
+        ]
+        assert len(cs_warnings) == 0
+        info_records = [
+            rec
+            for rec in caplog.records
+            if rec.levelno == logging.INFO and "code_switching" in rec.message
+        ]
+        assert any("pinned" in rec.message.lower() for rec in info_records)
 
     def test_validate_code_switching_without_language_no_warning(self, parser, caplog):
         """Parse YAML with code_switching: true and language: null, validate -> no warning about code_switching."""
@@ -2032,3 +2045,68 @@ diarization:
         with caplog.at_level(logging.WARNING):
             parser.parse(yaml_content)
         assert "Unknown top-level" not in caplog.text
+
+
+class TestYamlParserStreamingSection:
+    """TASK-351 P1-1 — per-pipeline `streaming.commit_policy` gate."""
+
+    @pytest.fixture
+    def parser(self):
+        return PipelineYamlParser()
+
+    def test_default_commit_policy_is_none(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.streaming.commit_policy == "none"
+
+    def test_parse_local_agreement_2(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+streaming:
+  commit_policy: local_agreement_2
+"""
+        spec = parser.parse(yaml_content)
+        assert spec.streaming.commit_policy == "local_agreement_2"
+
+    def test_streaming_is_a_known_top_level_key(self, parser, caplog):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+streaming:
+  commit_policy: none
+"""
+        with caplog.at_level(logging.WARNING):
+            parser.parse(yaml_content)
+        assert "Unknown top-level" not in caplog.text
+
+    def test_invalid_commit_policy_fails_validation(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+streaming:
+  commit_policy: bogus_policy
+"""
+        spec = parser.parse(yaml_content)
+        result = parser.validate(spec)
+        assert result.valid is False
+        assert any("streaming.commit_policy" == e.field for e in result.errors)
+
+    def test_valid_commit_policy_passes_validation(self, parser):
+        yaml_content = """
+version: "1.0"
+models:
+  asr: whisper-large-v3
+streaming:
+  commit_policy: local_agreement_2
+"""
+        spec = parser.parse(yaml_content)
+        result = parser.validate(spec)
+        assert result.valid is True

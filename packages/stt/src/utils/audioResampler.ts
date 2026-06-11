@@ -2,7 +2,11 @@
  * @arcaai/stt - Audio Resampler
  *
  * Utilities for resampling audio to 16kHz mono for Whisper processing.
- * Core resampling is delegated to @arcaai/room's resampleAudio.
+ *
+ * The Whisper capture path uses an anti-aliased Kaiser-windowed-sinc
+ * polyphase resampler (TASK-351 P2-4). The legacy linear-interpolation
+ * resampler (delegating to @arcaai/room's resampleAudio) remains exported
+ * for backward compatibility.
  */
 
 import { resampleAudio } from '@arcaai/room';
@@ -11,6 +15,237 @@ import { resampleAudio } from '@arcaai/room';
  * Target sample rate for Whisper models.
  */
 export const WHISPER_SAMPLE_RATE = 16000;
+
+// ---------------------------------------------------------------------------
+// Windowed-sinc anti-aliased resampling (TASK-351 P2-4)
+//
+// Linear interpolation performs no low-pass filtering, so when downsampling
+// (e.g. a 48 kHz capture to Whisper's 16 kHz) any content above the target
+// Nyquist folds back into the speech band as aliasing, degrading consonant
+// recognition. The polyphase decimator below low-passes at ~0.45× the target
+// rate (7.2 kHz for 16 kHz output) with a Kaiser window before decimating.
+// ---------------------------------------------------------------------------
+
+/** Taps per polyphase branch — each output sample costs about this many MACs. */
+const SINC_TAPS_PER_BRANCH = 32;
+
+/** Kaiser window shape parameter (β = 9 → ≈90 dB design stopband attenuation). */
+const KAISER_BETA = 9;
+
+/** Low-pass cutoff as a fraction of the smaller of the two sample rates. */
+const SINC_CUTOFF_RATIO = 0.45;
+
+/** Above this many polyphase branches, fall back to direct kernel evaluation. */
+const MAX_POLYPHASE_BRANCHES = 1024;
+
+/** Maximum number of cached filter banks (rate pairs are stable per session). */
+const SINC_BANK_CACHE_LIMIT = 8;
+
+interface SincFilterBank {
+  /** Interpolation factor — number of polyphase branches (toRate / gcd). */
+  branches: number;
+  /** Decimation step in the virtual upsampled domain (fromRate / gcd). */
+  step: number;
+  /** Offset of the prototype kernel centre in virtual samples. */
+  center: number;
+  /** Per-branch taps (unit DC gain); taps[r][j] weights input[anchor - j]. */
+  taps: Float32Array[];
+}
+
+/** Cached filter banks keyed by `${fromRate}->${toRate}`. */
+const sincBankCache = new Map<string, SincFilterBank>();
+
+function gcd(a: number, b: number): number {
+  while (b !== 0) {
+    const t = a % b;
+    a = b;
+    b = t;
+  }
+  return a;
+}
+
+/** Modified Bessel function of the first kind, order zero (power series). */
+function besselI0(x: number): number {
+  const quarterXSq = (x * x) / 4;
+  let sum = 1;
+  let term = 1;
+  for (let k = 1; k <= 64; k++) {
+    term *= quarterXSq / (k * k);
+    sum += term;
+    if (term < sum * 1e-12) {
+      break;
+    }
+  }
+  return sum;
+}
+
+function sinc(x: number): number {
+  if (x === 0) {
+    return 1;
+  }
+  const px = Math.PI * x;
+  return Math.sin(px) / px;
+}
+
+/**
+ * Design a Kaiser-windowed-sinc polyphase filter bank for an integer rate
+ * pair. The prototype low-pass is designed at the virtual upsampled rate
+ * `fromRate × branches` with an odd tap count so the kernel centre falls on
+ * an integer virtual sample.
+ */
+function designSincBank(fromRate: number, toRate: number): SincFilterBank {
+  const divisor = gcd(fromRate, toRate);
+  const branches = toRate / divisor;
+  const step = fromRate / divisor;
+
+  const protoLength = SINC_TAPS_PER_BRANCH * Math.max(branches, step) + 1;
+  const center = (protoLength - 1) / 2;
+  // Cutoff in cycles per virtual sample (0.45 × min Nyquist of the two rates).
+  const cutoff = (SINC_CUTOFF_RATIO * Math.min(fromRate, toRate)) / (fromRate * branches);
+  const i0Beta = besselI0(KAISER_BETA);
+
+  const proto = new Float64Array(protoLength);
+  for (let n = 0; n < protoLength; n++) {
+    const t = n - center;
+    const ratio = t / center;
+    const window = besselI0(KAISER_BETA * Math.sqrt(Math.max(0, 1 - ratio * ratio))) / i0Beta;
+    proto[n] = window * 2 * cutoff * sinc(2 * cutoff * t);
+  }
+
+  // Polyphase split: branch r collects proto[r], proto[r + branches], …
+  // Each branch is normalized to unit DC gain so constant signals (and the
+  // passband level) survive identically for every output phase.
+  const taps: Float32Array[] = [];
+  for (let r = 0; r < branches; r++) {
+    const branchLength = Math.ceil((protoLength - r) / branches);
+    const branch = new Float32Array(branchLength);
+    let sum = 0;
+    for (let j = 0; j < branchLength; j++) {
+      sum += proto[r + j * branches]!;
+    }
+    const gain = sum !== 0 ? 1 / sum : 1;
+    for (let j = 0; j < branchLength; j++) {
+      branch[j] = proto[r + j * branches]! * gain;
+    }
+    taps.push(branch);
+  }
+
+  return { branches, step, center, taps };
+}
+
+function getSincBank(fromRate: number, toRate: number): SincFilterBank {
+  const key = `${fromRate}->${toRate}`;
+  const cached = sincBankCache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const bank = designSincBank(fromRate, toRate);
+  if (sincBankCache.size >= SINC_BANK_CACHE_LIMIT) {
+    // Safety valve only — real sessions use one or two rate pairs.
+    const oldest = sincBankCache.keys().next().value;
+    if (oldest !== undefined) {
+      sincBankCache.delete(oldest);
+    }
+  }
+  sincBankCache.set(key, bank);
+  return bank;
+}
+
+function resampleWithBank(input: Float32Array, bank: SincFilterBank, outputLength: number): Float32Array {
+  const { branches, step, center, taps } = bank;
+  const output = new Float32Array(outputLength);
+  const inputLength = input.length;
+
+  for (let m = 0; m < outputLength; m++) {
+    // Virtual-domain position of this output sample shifted by the kernel
+    // centre; `anchor` is the newest input sample under the kernel, so the
+    // output stays time-aligned with input position m × step / branches.
+    const v = m * step + center;
+    const anchor = Math.floor(v / branches);
+    const branch = taps[v - anchor * branches]!;
+
+    // Out-of-range input indices contribute zero (edge zero-padding).
+    const jStart = anchor >= inputLength ? anchor - inputLength + 1 : 0;
+    const jEnd = Math.min(branch.length, anchor + 1);
+    let acc = 0;
+    for (let j = jStart; j < jEnd; j++) {
+      acc += branch[j]! * input[anchor - j]!;
+    }
+    output[m] = acc;
+  }
+
+  return output;
+}
+
+/**
+ * Direct windowed-sinc evaluation for rate pairs that do not reduce to a
+ * small rational ratio (e.g. non-integer rates). Slower than the polyphase
+ * bank but handles arbitrary ratios; weights are renormalized per output
+ * sample, which preserves DC gain even at the buffer edges.
+ */
+function resampleSincDirect(input: Float32Array, fromRate: number, toRate: number, outputLength: number): Float32Array {
+  const ratio = fromRate / toRate;
+  const halfSpan = (SINC_TAPS_PER_BRANCH / 2) * Math.max(1, ratio);
+  const cutoff = (SINC_CUTOFF_RATIO * Math.min(fromRate, toRate)) / fromRate;
+  const i0Beta = besselI0(KAISER_BETA);
+  const output = new Float32Array(outputLength);
+
+  for (let m = 0; m < outputLength; m++) {
+    const position = m * ratio;
+    const kStart = Math.max(0, Math.ceil(position - halfSpan));
+    const kEnd = Math.min(input.length - 1, Math.floor(position + halfSpan));
+    let acc = 0;
+    let weightSum = 0;
+    for (let k = kStart; k <= kEnd; k++) {
+      const t = k - position;
+      const x = t / halfSpan;
+      const weight = (besselI0(KAISER_BETA * Math.sqrt(Math.max(0, 1 - x * x))) / i0Beta) * sinc(2 * cutoff * t);
+      acc += weight * input[k]!;
+      weightSum += weight;
+    }
+    output[m] = weightSum !== 0 ? acc / weightSum : 0;
+  }
+
+  return output;
+}
+
+/**
+ * Resample audio with an anti-aliasing Kaiser-windowed-sinc polyphase filter
+ * (TASK-351 P2-4).
+ *
+ * Unlike {@link resampleLinear}, this path low-passes the signal below the
+ * target Nyquist before decimation (≈7.2 kHz cutoff for a 16 kHz target), so
+ * high-frequency content is attenuated instead of folding back into the
+ * speech band as aliasing. Integer rate pairs that reduce to a small rational
+ * ratio use a cached polyphase filter bank (≈32–97 taps per output sample
+ * depending on the ratio); other rate pairs fall back to direct windowed-sinc
+ * evaluation.
+ *
+ * @param inputSamples - Input audio samples
+ * @param inputSampleRate - Sample rate of input audio
+ * @param outputSampleRate - Desired output sample rate
+ * @returns Resampled audio samples (same array identity when rates match)
+ */
+export function resampleSinc(inputSamples: Float32Array, inputSampleRate: number, outputSampleRate: number): Float32Array {
+  if (inputSampleRate === outputSampleRate) {
+    return inputSamples;
+  }
+
+  const outputLength = Math.round((inputSamples.length * outputSampleRate) / inputSampleRate);
+  if (outputLength <= 0) {
+    return new Float32Array(0);
+  }
+
+  if (Number.isInteger(inputSampleRate) && Number.isInteger(outputSampleRate)) {
+    const branches = outputSampleRate / gcd(inputSampleRate, outputSampleRate);
+    if (branches <= MAX_POLYPHASE_BRANCHES) {
+      return resampleWithBank(inputSamples, getSincBank(inputSampleRate, outputSampleRate), outputLength);
+    }
+  }
+
+  return resampleSincDirect(inputSamples, inputSampleRate, outputSampleRate, outputLength);
+}
 
 /**
  * Resample audio using linear interpolation.
@@ -96,7 +331,9 @@ export function prepareAudioForWhisper(audioBuffer: AudioBuffer): Float32Array {
   }
 
   if (inputSampleRate !== WHISPER_SAMPLE_RATE) {
-    return resampleLinear(monoAudio, inputSampleRate, WHISPER_SAMPLE_RATE);
+    // TASK-351 P2-4 — anti-aliased path (linear interpolation folded >8 kHz
+    // content into the speech band and hurt Whisper consonant accuracy).
+    return resampleSinc(monoAudio, inputSampleRate, WHISPER_SAMPLE_RATE);
   }
 
   return monoAudio;
@@ -113,7 +350,9 @@ export function prepareFloat32ForWhisper(samples: Float32Array, sampleRate: numb
   if (sampleRate === WHISPER_SAMPLE_RATE) {
     return samples;
   }
-  return resampleLinear(samples, sampleRate, WHISPER_SAMPLE_RATE);
+  // TASK-351 P2-4 — anti-aliased path (linear interpolation folded >8 kHz
+  // content into the speech band and hurt Whisper consonant accuracy).
+  return resampleSinc(samples, sampleRate, WHISPER_SAMPLE_RATE);
 }
 
 /**

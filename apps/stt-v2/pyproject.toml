@@ -133,6 +133,10 @@ ml = [
     "optimum==2.1.0",
     "transformers==5.5.4",
     "torchvision>=0.23.0,<0.24.0",
+    # faster-whisper / CTranslate2 ASR engine (TASK-351 P1-2).
+    # Lazy-imported in stt_v2.models.faster_whisper_loader — only needed at
+    # runtime for pipelines with `engine: faster_whisper`.
+    "faster-whisper==1.2.1",
 ]
 
 nemo = [
@@ -227,7 +231,7 @@ warn_return_any = true
 # are intentionally NOT listed here so mypy type-checks their usage against the
 # stubs.
 [[tool.mypy.overrides]]
-module = ["transformers", "torch", "torchaudio", "soundfile", "librosa", "minio", "dramatiq", "nemo_toolkit", "nemo", "nemo.*", "pyannote.*", "qdrant_client.*", "azure.*", "speechbrain.*", "optimum.*", "pyrnnoise", "onnxruntime", "cadence", "accelerate", "flash_attn"]
+module = ["transformers", "torch", "torchaudio", "soundfile", "librosa", "minio", "dramatiq", "nemo_toolkit", "nemo", "nemo.*", "pyannote.*", "qdrant_client.*", "azure.*", "speechbrain.*", "optimum.*", "pyrnnoise", "onnxruntime", "cadence", "accelerate", "flash_attn", "faster_whisper"]
 ignore_missing_imports = true
 
 # pytest configuration

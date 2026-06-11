@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,10 +34,66 @@ _MAX_SEGMENT_TEXT_CHARS = 1200
 
 _HALLUCINATION_RMS_THRESHOLD = 0.01
 _HALLUCINATION_SHORT_WORD_COUNT = 3
-_FILLER_PATTERN = re.compile(
-    r"^\s*(?:uh|um|ah|oh|hmm|huh|mhm|mm|oh\s*,?\s*man|\.\..+|,|\s)*\.?\s*$",
-    re.IGNORECASE,
+# TASK-351 P2-3 — ceiling for the post-final English-gloss translate pass.
+_GLOSS_TIMEOUT_S = 15.0
+# TASK-351 P2-2 — default budget a final may wait for Cadence-Fast
+# punctuation before the raw text is published (settings-overridable).
+_PUNCTUATION_TIMEOUT_S = 0.4
+
+_BASE_FILLER_FORMS: tuple[str, ...] = (
+    "uh",
+    "um",
+    "ah",
+    "oh",
+    "hmm",
+    "huh",
+    "mhm",
+    "mm",
+    r"oh\s*,?\s*man",
 )
+
+# TASK-351 P2-1 — common Malayalam filler/disfluency forms. Whisper often
+# emits these for breath/near-silence in Malayalam audio; on their own they
+# carry no content. Multi-character real words never match because the
+# pattern must consume the whole string from filler alternates alone.
+_MALAYALAM_FILLER_FORMS: tuple[str, ...] = (
+    "ഉം",
+    "ഉഉം",
+    "ഉംം",
+    "ആ",
+    "ആഹ്",
+    "അ",
+    "അഹ്",
+    "ഏ",
+    "ഓ",
+    "ഹാ",
+    "ഹും",
+    "ഹ്ം",
+    "മ്മ്",
+)
+
+
+def build_filler_pattern(extra_forms: Sequence[str] | None = None) -> re.Pattern[str]:
+    """Build the hallucination filler pattern.
+
+    Matches strings consisting solely of filler/disfluency tokens,
+    punctuation, and whitespace. ``extra_forms`` appends additional regex
+    alternates (TASK-351 P2-1 — configurable via the
+    ``streaming_extra_filler_patterns`` setting).
+    """
+    forms: list[str] = [*_BASE_FILLER_FORMS, *_MALAYALAM_FILLER_FORMS]
+    for form in extra_forms or ():
+        stripped = form.strip()
+        if stripped:
+            forms.append(stripped)
+    alternation = "|".join(forms)
+    return re.compile(
+        rf"^\s*(?:{alternation}|\.\..+|,|\s)*\.?\s*$",
+        re.IGNORECASE,
+    )
+
+
+_FILLER_PATTERN = build_filler_pattern()
 _DEVANAGARI_SCRIPT_RE = re.compile(r"[\u0900-\u097F]")
 
 
@@ -79,6 +136,8 @@ class StreamingInferenceWorker:
         max_segment_text_chars: int | None = None,
         hallucination_rms_threshold: float | None = None,
         hallucination_short_word_count: int | None = None,
+        gloss_callable: Any = None,
+        gloss_timeout_s: float | None = None,
     ) -> None:
         self._publisher = result_publisher
         self._asr_pipeline = asr_pipeline
@@ -91,6 +150,11 @@ class StreamingInferenceWorker:
             if postprocessing_config
             else None
         )
+        # TASK-351 P2-2 — direct Cadence-Fast punctuation (finals-only,
+        # time-boxed, raw-text fallback).
+        self._uses_cadence_fast: bool = self._resolve_uses_cadence_fast()
+        self._punctuation_timeout_s: float = self._resolve_punctuation_timeout()
+        self._punctuation_fallback_warned: bool = False
         self._hallucination_max_wps: float = (
             float(max_words_per_second)
             if isinstance(max_words_per_second, (int, float))
@@ -115,6 +179,16 @@ class StreamingInferenceWorker:
             and not isinstance(hallucination_short_word_count, bool)
             else _HALLUCINATION_SHORT_WORD_COUNT
         )
+        self._filler_pattern = self._resolve_filler_pattern()
+        # TASK-351 P2-3 — opt-in English gloss (task=translate after finals).
+        self._gloss_callable = gloss_callable
+        self._gloss_timeout_s: float = (
+            float(gloss_timeout_s)
+            if isinstance(gloss_timeout_s, (int, float))
+            and not isinstance(gloss_timeout_s, bool)
+            else _GLOSS_TIMEOUT_S
+        )
+        self._gloss_tasks: set[asyncio.Task[None]] = set()
         self._punctuation_model: Any = None
         self._previous_text: str = ""
         self._initial_prompt: str | None = initial_prompt
@@ -125,6 +199,77 @@ class StreamingInferenceWorker:
             self._prev_text_context_words = max(0, prev_text_context_words)
         else:
             self._prev_text_context_words = InferenceConfig().prev_text_context_words
+
+    def _resolve_uses_cadence_fast(self) -> bool:
+        """TASK-351 P2-2 — does the effective punctuation model resolve to
+        the direct-load ``cadence-fast`` option (exact name match)?
+
+        Per-pipeline ``punctuation.model`` wins; when it is unset the global
+        ``punctuation_model_name`` setting decides. Wrapper spellings
+        ('Cadence', 'Cadence-Fast') never match — they keep legacy behavior.
+        """
+        if not self._punctuation_config or not self._punctuation_config.enabled:
+            return False
+        try:
+            from stt_v2.punctuation.cadence_fast import MODEL_NAME as cadence_fast_name
+        except Exception:
+            return False
+        model = self._punctuation_config.model
+        if model:
+            return bool(model == cadence_fast_name)
+        try:
+            from stt_v2.core.config.settings import get_settings
+
+            return bool(get_settings().punctuation_model_name == cadence_fast_name)
+        except Exception:
+            return False
+
+    @staticmethod
+    def _resolve_punctuation_timeout() -> float:
+        """Resolve the Cadence-Fast punctuation budget (TASK-351 P2-2).
+
+        ``streaming_punctuation_timeout_s`` bounds how long a final may wait
+        for punctuation before the raw text is published. Invalid or
+        unavailable settings fall back to the built-in default.
+        """
+        try:
+            from stt_v2.core.config.settings import get_settings
+
+            value = get_settings().streaming_punctuation_timeout_s
+        except Exception:
+            return _PUNCTUATION_TIMEOUT_S
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and float(value) > 0
+        ):
+            return float(value)
+        return _PUNCTUATION_TIMEOUT_S
+
+    @staticmethod
+    def _resolve_filler_pattern() -> re.Pattern[str]:
+        """Resolve the hallucination filler pattern, including configured extras.
+
+        TASK-351 P2-1 — ``streaming_extra_filler_patterns`` (pipe-separated
+        regex alternates) extends the built-in English + Malayalam forms.
+        Invalid patterns or unavailable settings fall back to the default.
+        """
+        try:
+            from stt_v2.core.config.settings import get_settings
+
+            raw = get_settings().streaming_extra_filler_patterns
+        except Exception:
+            return _FILLER_PATTERN
+        if not raw or not isinstance(raw, str):
+            return _FILLER_PATTERN
+        try:
+            return build_filler_pattern(raw.split("|"))
+        except re.error as exc:
+            logger.warning(
+                "Invalid streaming_extra_filler_patterns — using defaults",
+                error=str(exc),
+            )
+            return _FILLER_PATTERN
 
     @property
     def has_pipeline(self) -> bool:
@@ -212,7 +357,10 @@ class StreamingInferenceWorker:
             else:
                 self._previous_text = ""
 
-        # Step 2b: Punctuation restoration (postprocessor)
+        # Step 2b: Punctuation restoration (postprocessor). Runs before the
+        # final is published AND before the P2-3 gloss task snapshots
+        # result.text, so the gloss republish carries the punctuated final.
+        # The cadence-fast path is finals-only and time-boxed (TASK-351 P2-2).
         if self._punctuation_config and self._punctuation_config.enabled:
             logger.debug(
                 "Restoring punctuation on transcript",
@@ -220,7 +368,7 @@ class StreamingInferenceWorker:
                 component="POSTPROCESSOR",
                 utterance_index=utterance.utterance_index,
             )
-            text = await self._apply_punctuation(text)
+            text = await self._apply_punctuation(text, is_final=utterance.is_final)
 
         # Remove disfluencies
         if self._postprocessing_config and self._postprocessing_config.remove_disfluencies:
@@ -258,6 +406,7 @@ class StreamingInferenceWorker:
             is_final=utterance.is_final,
             word_timestamps=word_timestamps,
             inference_ms=round(elapsed * 1000, 1),
+            utterance_index=utterance.utterance_index,
         )
 
         # Step 3: Speaker Diarization
@@ -303,7 +452,77 @@ class StreamingInferenceWorker:
                     error=str(exc),
                 )
 
+        # Step 5: TASK-351 P2-3 — opt-in English gloss. Fire-and-forget
+        # AFTER the final is published so final latency is unaffected;
+        # failures/timeouts are swallowed inside _publish_gloss.
+        if (
+            utterance.is_final
+            and self._gloss_callable is not None
+            and self._publisher is not None
+            and result.text.strip()
+        ):
+            gloss_task = asyncio.create_task(
+                self._publish_gloss(session_id, utterance, result),
+                name=f"gloss-{session_id}-{utterance.utterance_index}",
+            )
+            self._gloss_tasks.add(gloss_task)
+            gloss_task.add_done_callback(self._gloss_tasks.discard)
+
         return result
+
+    async def _publish_gloss(
+        self,
+        session_id: str,
+        utterance: AudioUtterance,
+        final_result: SegmentResult,
+    ) -> None:
+        """TASK-351 P2-3 — translate pass + follow-up ``type: gloss`` result.
+
+        Runs after the final has already been published. Every failure or
+        timeout is swallowed with a log — the gloss must never block or
+        delay the session.
+        """
+        try:
+            raw = self._gloss_callable(utterance.samples, utterance.sample_rate)
+            if hasattr(raw, "__await__"):
+                out = await asyncio.wait_for(raw, timeout=self._gloss_timeout_s)
+            else:
+                out = raw
+
+            if isinstance(out, dict):
+                english = str(out.get("text") or "")
+            elif isinstance(out, str):
+                english = out
+            else:
+                english = ""
+            english = self._sanitize_text(english)
+            if not english.strip():
+                return
+
+            gloss = SegmentResult(
+                text=final_result.text,
+                english_text=english,
+                start_time=final_result.start_time,
+                end_time=final_result.end_time,
+                is_final=True,
+                utterance_index=utterance.utterance_index,
+                result_type="gloss",
+            )
+            if self._publisher is not None:
+                await self._publisher.publish(gloss)
+                logger.info(
+                    "English gloss published",
+                    session_id=session_id,
+                    utterance_index=utterance.utterance_index,
+                    gloss_len=len(english),
+                )
+        except Exception as exc:
+            logger.warning(
+                "Streaming gloss failed (non-fatal)",
+                session_id=session_id,
+                utterance_index=utterance.utterance_index,
+                error=str(exc),
+            )
 
     async def _run_inference(self, utterance: AudioUtterance) -> _InferenceResult:
         """Run the ASR pipeline on utterance samples.
@@ -539,7 +758,7 @@ class StreamingInferenceWorker:
         if not stripped:
             return False  # already empty, nothing to filter
 
-        if _FILLER_PATTERN.match(stripped):
+        if self._filler_pattern.match(stripped):
             return True
 
         word_count = len(stripped.split())
@@ -556,12 +775,21 @@ class StreamingInferenceWorker:
 
         return False
 
-    async def _apply_punctuation(self, text: str) -> str:
-        """Postprocessor: Punctuation restoration using Cadence."""
+    async def _apply_punctuation(self, text: str, is_final: bool = True) -> str:
+        """Postprocessor: Punctuation restoration.
+
+        Legacy registry models (Cadence wrapper) punctuate partials and
+        finals, unchanged. The direct ``cadence-fast`` model (TASK-351 P2-2)
+        is finals-only and time-boxed: partials pass through untouched, and
+        on timeout or error the raw text is returned so the final's publish
+        latency budget holds.
+        """
         if not text.strip():
             return text
         if not self._punctuation_config or not self._punctuation_config.enabled:
             return text
+        if self._uses_cadence_fast:
+            return await self._apply_cadence_fast_punctuation(text, is_final)
 
         try:
             from stt_v2.punctuation import service as punctuation_service
@@ -583,6 +811,56 @@ class StreamingInferenceWorker:
                 exc_info=True,
             )
             return text
+
+    async def _apply_cadence_fast_punctuation(self, text: str, is_final: bool) -> str:
+        """TASK-351 P2-2 — finals-only, time-boxed Cadence-Fast punctuation.
+
+        Partials are never punctuated. The model call runs in the executor
+        (off the hot path) wrapped in ``asyncio.wait_for``; on timeout or
+        any exception the RAW text is returned so the final still publishes
+        within its latency budget.
+        """
+        if not is_final:
+            return text
+        model_name = (
+            self._punctuation_config.model if self._punctuation_config else None
+        )
+        try:
+            from stt_v2.punctuation import service as punctuation_service
+
+            raw_result = await asyncio.wait_for(
+                punctuation_service.punctuate(text, model_name=model_name),
+                timeout=self._punctuation_timeout_s,
+            )
+        except TimeoutError:
+            self._note_punctuation_fallback(reason="timeout")
+            return text
+        except Exception:
+            self._note_punctuation_fallback(reason="error", exc_info=True)
+            return text
+
+        result = self._normalize_punctuation_output(raw_result)
+        if result != text:
+            logger.debug(
+                "Punctuation applied",
+                model=model_name or "cadence-fast",
+                before=text,
+                after=result,
+            )
+        return result
+
+    def _note_punctuation_fallback(self, reason: str, exc_info: bool = False) -> None:
+        """Log the raw-text fallback: warn once per session, then debug."""
+        log = (
+            logger.debug if self._punctuation_fallback_warned else logger.warning
+        )
+        self._punctuation_fallback_warned = True
+        log(
+            "Cadence-Fast punctuation unavailable; publishing raw final text",
+            reason=reason,
+            timeout_s=self._punctuation_timeout_s,
+            exc_info=exc_info,
+        )
 
     @staticmethod
     def _normalize_punctuation_output(text: str) -> str:
@@ -644,4 +922,5 @@ class StreamingInferenceWorker:
             speaker_id=None,
             speaker_confidence=0.0,
             inference_ms=round(elapsed * 1000, 1),
+            utterance_index=utterance.utterance_index,
         )

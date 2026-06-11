@@ -201,6 +201,26 @@ export interface WsTranscriptResult {
   /** Whether this is a final (committed) transcript */
   isFinal: boolean;
   /**
+   * Committed-prefix length of `text` on partial results (TASK-351 P1-1).
+   * Characters before this index passed stt-v2's local-agreement gate and
+   * will not be revised; the remainder is a tentative tail. Optional for
+   * backward compat with older servers that don't emit the field.
+   */
+  stableChars?: number;
+  /**
+   * Utterance ordinal stamped on every segment result (TASK-351 P1-1
+   * follow-up). Gloss results reuse the index of the final they translate,
+   * which is how clients pair a gloss to its segment. Optional for
+   * backward compat with older servers.
+   */
+  utteranceIndex?: number;
+  /**
+   * Result kind (TASK-351 P1-1 follow-up): 'segment' (default — absence
+   * means segment) or 'gloss', a follow-up English translation published
+   * after the real final with `englishText` and the same `utteranceIndex`.
+   */
+  resultType?: 'segment' | 'gloss';
+  /**
    * Monotonic server-assigned sequence number (TASK-298 D-17). Used by the
    * client to track `lastReceivedSeq` for the resume handshake. Optional for
    * backward compat with older servers that don't tag transcripts.

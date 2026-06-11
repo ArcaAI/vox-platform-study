@@ -48,3 +48,62 @@ class TestSessionManagerAsrCallable:
         assert len(result["word_timestamps"]) == 2
         assert result["word_timestamps"][0]["word"] == "Xin"
         assert result["word_timestamps"][0]["start"] == 0.5
+
+    @staticmethod
+    def _make_mock_asr_model():
+        fake_output = torch.tensor([[1, 2, 3]])
+        mock_model = MagicMock()
+        mock_model.dtype = torch.float32
+        mock_model.generate.return_value = fake_output
+
+        mock_processor = MagicMock()
+        mock_processor.batch_decode.return_value = ["text"]
+        mock_processor.decode.return_value = {"offsets": []}
+
+        mock_asr_model = MagicMock()
+        mock_asr_model.model = mock_model
+        mock_asr_model.processor = mock_processor
+        mock_asr_model.feature_extractor = None
+        mock_asr_model.device = torch.device("cpu")
+        return mock_asr_model, mock_model
+
+    @pytest.mark.asyncio
+    async def test_code_switching_with_language_pins_language(self):
+        """TASK-351 P2-1 — CS + language set means PINNED matrix language:
+        the language kwarg must reach generate() (previously omitted)."""
+        from stt_v2.streaming.session_manager import SessionManager
+
+        mgr = MagicMock(spec=SessionManager)
+        mock_asr_model, mock_model = self._make_mock_asr_model()
+
+        run_inference = SessionManager._make_asr_callable(
+            mgr,
+            asr_model=mock_asr_model,
+            inference_config=MagicMock(
+                beam_size=1, code_switching=True, language="ml"
+            ),
+        )
+        await run_inference(np.zeros(16000, dtype=np.float32), 16000)
+
+        gen_kwargs = mock_model.generate.call_args.kwargs
+        assert gen_kwargs["language"] == "ml"
+
+    @pytest.mark.asyncio
+    async def test_code_switching_without_language_keeps_auto_lid(self):
+        """language: null + code_switching keeps auto-LID (no language kwarg)."""
+        from stt_v2.streaming.session_manager import SessionManager
+
+        mgr = MagicMock(spec=SessionManager)
+        mock_asr_model, mock_model = self._make_mock_asr_model()
+
+        run_inference = SessionManager._make_asr_callable(
+            mgr,
+            asr_model=mock_asr_model,
+            inference_config=MagicMock(
+                beam_size=1, code_switching=True, language=None
+            ),
+        )
+        await run_inference(np.zeros(16000, dtype=np.float32), 16000)
+
+        gen_kwargs = mock_model.generate.call_args.kwargs
+        assert "language" not in gen_kwargs

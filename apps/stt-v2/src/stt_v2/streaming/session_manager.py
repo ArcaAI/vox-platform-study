@@ -30,6 +30,7 @@ from stt_v2.core.config.settings import get_settings
 from stt_v2.pipeline.dto import DualCaptureConfig
 from stt_v2.storage.blob_service import BlobService
 from stt_v2.streaming.capacity_guard import CapacityGuard
+from stt_v2.streaming.commit_policy import LocalAgreementPolicy
 from stt_v2.streaming.denoiser import StreamingDenoiser
 from stt_v2.streaming.execution_profile import ExecutionProfile
 from stt_v2.streaming.inference import StreamingInferenceWorker
@@ -38,6 +39,8 @@ from stt_v2.streaming.redis_streams import (
     ControlListener,
     IngestionConsumer,
     ResultPublisher,
+    audio_stream_key,
+    session_meta_key,
     worker_key,
 )
 from stt_v2.streaming.schemas import (
@@ -88,6 +91,9 @@ class SessionManager:
         self._inference_tasks: dict[str, asyncio.Task[None]] = {}
         self._partial_tasks: dict[str, asyncio.Task[None]] = {}
         self._final_published_gates: dict[str, asyncio.Event] = {}
+        # TASK-351 P1-1 — per-session LocalAgreement-2 commit policies
+        # (only sessions whose pipeline enables streaming.commit_policy).
+        self._commit_policies: dict[str, LocalAgreementPolicy] = {}
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._reaper_task: asyncio.Task[None] | None = None
         self._snapshot_task: asyncio.Task[None] | None = None
@@ -99,6 +105,8 @@ class SessionManager:
         self._processed_chunk_offsets: dict[str, int] = {}
         # Per-session resolved dual-capture flags (raw/processed registration).
         self._dual_capture: dict[str, DualCaptureConfig] = {}
+        # TASK-351 P1-3 — monotonic timestamp of the last XTRIM per session.
+        self._last_audio_trim_at: dict[str, float] = {}
         self._running = False
 
         # Cache settings values at init time to avoid calling get_settings()
@@ -122,6 +130,9 @@ class SessionManager:
             self._partial_window_s = float(
                 getattr(_settings, "streaming_partial_window_s", 8.0)
             )
+            self._audio_trim_interval_s = float(
+                getattr(_settings, "streaming_audio_trim_interval_s", 30.0)
+            )
         except Exception:
             self._reaper_interval_s = 300
             self._session_timeout_s = 60
@@ -132,6 +143,7 @@ class SessionManager:
             self._inference_stop_timeout_s = 30.0
             self._snapshot_interval_s = 30.0
             self._partial_window_s = 8.0
+            self._audio_trim_interval_s = 30.0
 
     # ------------------------------------------------------------------
     # Properties
@@ -189,6 +201,27 @@ class SessionManager:
         else:
             kwargs["min_silence_duration_ms"] = self._profile.vad_silence_threshold_ms
         return kwargs
+
+    def _make_commit_policy(self, pipeline_config: Any) -> LocalAgreementPolicy | None:
+        """Build a LocalAgreement-2 policy when the pipeline enables it.
+
+        TASK-351 P1-1 — gated by ``streaming.commit_policy``; strict
+        equality so MagicMock pipeline configs (unit tests) and unknown
+        values keep the policy off (wire format unchanged).
+        """
+        if pipeline_config is None:
+            return None
+        streaming_cfg = getattr(pipeline_config, "streaming", None)
+        policy_name = getattr(streaming_cfg, "commit_policy", None)
+        if policy_name == "local_agreement_2":
+            return LocalAgreementPolicy()
+        return None
+
+    def _reset_commit_policy(self, session_id: str) -> None:
+        """Reset the commit policy when an utterance finalizes (if enabled)."""
+        policy = self._commit_policies.get(session_id)
+        if policy is not None:
+            policy.reset()
 
     # ------------------------------------------------------------------
     # Startup / Shutdown
@@ -275,6 +308,7 @@ class SessionManager:
         self._inference_workers.clear()
         self._inference_queues.clear()
         self._inference_tasks.clear()
+        self._commit_policies.clear()
 
         logger.info("SessionManager stopped", worker_id=self._worker_id)
 
@@ -486,6 +520,11 @@ class SessionManager:
                 inference_cfg, "hallucination_short_word_count", None
             )
 
+            # TASK-351 P2-3 — opt-in English gloss (None unless enabled)
+            gloss_pipeline = await self._load_gloss_pipeline(
+                pipeline_config, session_id
+            )
+
             inference_worker = StreamingInferenceWorker(
                 result_publisher=publisher,
                 asr_pipeline=asr_pipeline,
@@ -500,6 +539,7 @@ class SessionManager:
                 max_segment_text_chars=max_segment_text_chars,
                 hallucination_rms_threshold=hallucination_rms_threshold,
                 hallucination_short_word_count=hallucination_short_word_count,
+                gloss_callable=gloss_pipeline,
             )
 
             self._register_inference_runtime(session, inference_worker)
@@ -510,11 +550,17 @@ class SessionManager:
             self._preprocessors[session_id] = preprocessor
             self._inference_workers[session_id] = inference_worker
 
+            # TASK-351 P1-1 — per-session commit policy (off by default)
+            commit_policy = self._make_commit_policy(pipeline_config)
+            if commit_policy is not None:
+                self._commit_policies[session_id] = commit_policy
+
             # Wire up Redis consumers and listeners
             consumer = IngestionConsumer(
                 redis=self._redis,
                 session_id=session_id,
                 on_frame=self._make_frame_handler(session, preprocessor),
+                on_batch=self._make_batch_handler(session),
             )
             control_listener = ControlListener(
                 redis=self._redis,
@@ -644,8 +690,10 @@ class SessionManager:
         self._cancel_partial(session_id)
         self._partial_tasks.pop(session_id, None)
         self._final_published_gates.pop(session_id, None)
+        self._commit_policies.pop(session_id, None)
         self._sessions.pop(session_id, None)
         self._last_snapshot_at.pop(session_id, None)
+        self._last_audio_trim_at.pop(session_id, None)
         self._chunk_indices.pop(session_id, None)
         self._processed_chunk_indices.pop(session_id, None)
         self._chunk_offsets.pop(session_id, None)
@@ -811,13 +859,90 @@ class SessionManager:
         )
         return asr_pipeline, initial_prompt
 
+    async def _load_gloss_pipeline(
+        self,
+        pipeline_config: Any,
+        session_id: str,
+    ) -> StreamingAsrCallable | None:
+        """TASK-351 P2-3 — build the opt-in English-gloss callable.
+
+        Reuses the cached ASR model (single-flight ``get_or_load``, so this
+        never loads twice). Returns ``None`` unless
+        ``inference.streaming_english_gloss`` is enabled and the engine
+        supports ``task=translate``. Failures disable the gloss with a
+        warning — they never block session creation.
+        """
+        if pipeline_config is None:
+            return None
+        inference_config = getattr(pipeline_config, "inference", None)
+        # Strict identity check: only an explicit boolean True enables the
+        # gloss (guards against mock/duck-typed configs in tests).
+        if getattr(inference_config, "streaming_english_gloss", False) is not True:
+            return None
+        try:
+            from stt_v2.models import get_model_cache
+            from stt_v2.pipeline.dto import ModelTaskType
+
+            model_cache = get_model_cache()
+            asr_model = await model_cache.get_or_load_from_ref(
+                model_ref=pipeline_config.models.asr,
+                task_type=ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+            )
+            return self._make_gloss_callable(asr_model, inference_config)
+        except Exception as exc:
+            logger.warning(
+                "Failed to build streaming gloss pipeline — gloss disabled",
+                session_id=session_id,
+                error=str(exc),
+            )
+            return None
+
+    def _make_gloss_callable(
+        self,
+        asr_model: Any,
+        inference_config: Any,
+    ) -> StreamingAsrCallable | None:
+        """TASK-351 P2-3 — ``task=translate`` callable on the same cached model.
+
+        Returns ``None`` when the gloss flag is off or the engine cannot
+        translate (NeMo, Azure, multimodal LM).
+        """
+        from stt_v2.pipeline.dto import AiModelFormat
+
+        if getattr(inference_config, "streaming_english_gloss", False) is not True:
+            return None
+
+        fmt = getattr(asr_model, "format", None)
+        if fmt in (AiModelFormat.NEMO, AiModelFormat.AZURE_SPEECH):
+            logger.warning(
+                "streaming_english_gloss is not supported for engine %s — "
+                "gloss disabled",
+                fmt,
+            )
+            return None
+        extra = getattr(asr_model, "extra", None)
+        if isinstance(extra, dict) and extra.get("multimodal_lm") is True:
+            logger.warning(
+                "streaming_english_gloss is not supported for multimodal LM "
+                "pipelines — gloss disabled",
+            )
+            return None
+
+        return self._make_asr_callable(asr_model, inference_config, task="translate")
+
     def _make_asr_callable(
         self,
         asr_model: Any,
         inference_config: Any,
         initial_prompt: str | None = None,
+        task: str = "transcribe",
     ) -> StreamingAsrCallable:
-        """Create a standalone callable ASR pipeline for streaming inference"""
+        """Create a standalone callable ASR pipeline for streaming inference.
+
+        ``task="translate"`` (TASK-351 P2-3) builds the English-gloss variant
+        on the same loaded model (Whisper-family engines only — the gloss
+        caller filters out NeMo/Azure/multimodal before requesting it).
+        """
         import torch
 
         from stt_v2.models.base_loader import LoadedModel
@@ -854,6 +979,29 @@ class SessionManager:
                 )
 
             return run_nemo_inference
+
+        if loaded_model.format == AiModelFormat.FASTER_WHISPER:
+            # TASK-351 P1-2 — faster-whisper/CTranslate2 engine.
+            from stt_v2.streaming.faster_whisper_asr import FasterWhisperAsrAdapter
+
+            fw_adapter = FasterWhisperAsrAdapter(
+                loaded_model,
+                inference_config,
+                batch_size=getattr(self._profile, "asr_max_batch_size", None),
+                task=task,
+            )
+
+            async def run_faster_whisper_inference(
+                samples: np.ndarray,
+                sample_rate: int,
+                *,
+                prompt: str | None = None,
+            ) -> dict[str, Any]:
+                return await asyncio.to_thread(
+                    fw_adapter, samples, sample_rate, prompt=prompt
+                )
+
+            return run_faster_whisper_inference
 
         if loaded_model.format == AiModelFormat.AZURE_SPEECH:
             from stt_v2.models.azure_speech_loader import normalize_language_for_azure
@@ -923,7 +1071,6 @@ class SessionManager:
             model_dtype = torch.float32
 
         # Pre-build static generate kwargs from pipeline config
-        code_switching = getattr(inference_config, "code_switching", False)
         lang = getattr(inference_config, "language", None)
         processor_signature: inspect.Signature | None
         try:
@@ -953,12 +1100,20 @@ class SessionManager:
             )
 
         static_kwargs: dict[str, Any] = {
-            "task": "transcribe",
+            "task": task,
             "return_timestamps": True,
         }
 
-        if not code_switching and lang is not None:
+        # TASK-351 P2-1 — a configured language is always pinned (passed to
+        # the engine), including when code_switching is enabled. language:
+        # null + code_switching keeps auto-LID.
+        if lang is not None:
             static_kwargs["language"] = lang
+
+        if task == "translate":
+            # TASK-351 P2-3 — mirror the batch English-translation pass:
+            # force the English output token for the gloss decode.
+            static_kwargs["language"] = "en"
 
         no_repeat_ngram_size = getattr(inference_config, "no_repeat_ngram_size", None)
         if isinstance(no_repeat_ngram_size, int) and no_repeat_ngram_size > 0:
@@ -1021,8 +1176,9 @@ class SessionManager:
                         "ASR processor requires inference language, but "
                         "inference_config.language is not set."
                     )
-                if processor_requires_language or not code_switching:
-                    processor_language = lang
+                # TASK-351 P2-1 — pinned language also flows to processors
+                # that accept it, regardless of code_switching.
+                processor_language = lang
 
             processor_kwargs: dict[str, Any] = {
                 "sampling_rate": sample_rate,
@@ -1323,6 +1479,12 @@ class SessionManager:
 
                 result = await worker.process_partial(session_id, utterance)
                 if result.text.strip() and publisher is not None:
+                    # TASK-351 P1-1 — LocalAgreement-2: annotate the partial
+                    # with the committed (stable) prefix length.
+                    policy = self._commit_policies.get(session_id)
+                    if policy is not None:
+                        committed, _tentative = policy.update(result.text)
+                        result.stable_chars = len(committed)
                     await publisher.publish(result)
             except asyncio.CancelledError:
                 pass  # Expected when cancelled by a final utterance
@@ -1337,6 +1499,54 @@ class SessionManager:
         self._partial_tasks[session_id] = asyncio.create_task(
             _run_partial(), name=f"partial-{session_id}"
         )
+
+    def _make_batch_handler(self, session: StreamSession) -> Any:
+        """Create the per-batch callback for the ingestion consumer.
+
+        TASK-351 P1-3 — after each processed ``XREAD`` batch:
+        1. Persist the last processed entry ID into the session hash so
+           crash recovery resumes from it instead of replaying from 0-0.
+        2. Periodically ``XTRIM MINID`` the consumed portion of the audio
+           stream (the result stream is never trimmed here).
+
+        All Redis errors are swallowed (logged) — hygiene must never
+        disrupt audio processing.
+        """
+        session_id = session.session_id
+
+        async def _on_batch(last_id: str) -> None:
+            session.metadata.last_stream_id = last_id
+            try:
+                await self._redis.hset(
+                    session_meta_key(session_id), "last_stream_id", last_id
+                )
+            except Exception as exc:
+                logger.debug(
+                    "Failed to persist last_stream_id (non-fatal)",
+                    session_id=session_id,
+                    error=str(exc),
+                )
+
+            if self._audio_trim_interval_s <= 0:
+                return
+            now = time.monotonic()
+            last_trim = self._last_audio_trim_at.get(session_id)
+            if last_trim is not None and now - last_trim < self._audio_trim_interval_s:
+                return
+            self._last_audio_trim_at[session_id] = now
+            try:
+                await self._redis.xtrim(
+                    audio_stream_key(session_id), minid=last_id, approximate=True
+                )
+            except Exception as exc:
+                logger.debug(
+                    "Audio stream trim failed (non-fatal)",
+                    session_id=session_id,
+                    minid=last_id,
+                    error=str(exc),
+                )
+
+        return _on_batch
 
     def _make_frame_handler(
         self,
@@ -1374,6 +1584,8 @@ class SessionManager:
                 for utt in utterances:
                     if utt.is_final:
                         self._cancel_partial(session.session_id)
+                        # TASK-351 P1-1 — next utterance starts a fresh policy
+                        self._reset_commit_policy(session.session_id)
                         # Block partials for next utterance until this final publishes
                         gate = self._final_published_gates.get(session.session_id)
                         if gate is not None:
@@ -1510,6 +1722,9 @@ class SessionManager:
 
             if final_utt is None:
                 return
+
+            # TASK-351 P1-1 — flushed final closes the current utterance
+            self._reset_commit_policy(session.session_id)
 
             queue = self._inference_queues.get(session.session_id)
             if queue is not None:
@@ -2045,6 +2260,11 @@ class SessionManager:
                         recovery_inference_cfg, "max_words_per_second", None
                     )
 
+                    # TASK-351 P2-3 — rebuild the opt-in gloss callable
+                    recovery_gloss_pipeline = await self._load_gloss_pipeline(
+                        pipeline_config, meta.session_id
+                    )
+
                     inference_worker = StreamingInferenceWorker(
                         result_publisher=publisher,
                         asr_pipeline=asr_pipeline,
@@ -2058,6 +2278,7 @@ class SessionManager:
                         speaker_identifier=None,  # Recovery loses session state
                         prev_text_context_words=prev_text_context_words,
                         max_words_per_second=max_words_per_second,
+                        gloss_callable=recovery_gloss_pipeline,
                     )
 
                     # TODO: Replay last ~2 s of audio from Redis Stream to
@@ -2066,13 +2287,12 @@ class SessionManager:
 
                     self._register_inference_runtime(session, inference_worker)
 
-                    # Wire up consumers — resume from last processed entry
-                    last_id = "0-0"
-                    if meta.last_seq >= 0:
-                        # We can't directly map last_seq to a Redis Stream ID
-                        # without additional tracking, so we read from the start
-                        # and skip already-processed entries via seq comparison.
-                        last_id = "0-0"
+                    # Wire up consumers — resume from the last processed
+                    # stream entry ID persisted in the session hash
+                    # (TASK-351 P1-3). Sessions created before this field
+                    # existed (or that never processed a batch) replay
+                    # from the beginning as before.
+                    last_id = meta.last_stream_id or "0-0"
 
                     consumer = IngestionConsumer(
                         redis=self._redis,
@@ -2080,6 +2300,7 @@ class SessionManager:
                         on_frame=self._make_frame_handler(
                             session, preprocessor
                         ),
+                        on_batch=self._make_batch_handler(session),
                         last_id=last_id,
                     )
                     control_listener = ControlListener(
@@ -2099,6 +2320,11 @@ class SessionManager:
                     self._publishers[meta.session_id] = publisher
                     self._preprocessors[meta.session_id] = preprocessor
                     self._inference_workers[meta.session_id] = inference_worker
+
+                    # TASK-351 P1-1 — re-arm commit policy on recovery
+                    recovered_policy = self._make_commit_policy(pipeline_config)
+                    if recovered_policy is not None:
+                        self._commit_policies[meta.session_id] = recovered_policy
 
                     await consumer.start()
                     await control_listener.start()

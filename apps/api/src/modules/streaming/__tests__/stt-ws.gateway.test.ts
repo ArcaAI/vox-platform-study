@@ -54,6 +54,12 @@ const createMockSessionBinding = () => ({
     clear: vi.fn().mockResolvedValue(undefined),
 });
 
+// TASK-351 P1-3 (M6 part 2) — parks session ids whose upstream removal
+// failed on disconnect so they can be retried with backoff.
+const createMockRemovalRetry = () => ({
+    enqueue: vi.fn(),
+});
+
 // Helper — build a request URL with both sessionId and ticket so the new
 // auth gate accepts the connection.
 const buildReq = (sessionId: string, ticket = 'valid-ticket'): { url: string } => ({
@@ -66,6 +72,7 @@ describe('SttWsGateway', () => {
     let mockBridgeService: ReturnType<typeof createMockBridgeService>;
     let mockStreamTicketService: ReturnType<typeof createMockStreamTicketService>;
     let mockSessionBinding: ReturnType<typeof createMockSessionBinding>;
+    let mockRemovalRetry: ReturnType<typeof createMockRemovalRetry>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -73,6 +80,7 @@ describe('SttWsGateway', () => {
         mockBridgeService = createMockBridgeService();
         mockStreamTicketService = createMockStreamTicketService();
         mockSessionBinding = createMockSessionBinding();
+        mockRemovalRetry = createMockRemovalRetry();
         // Make consumeTicket return a scope matching whatever sessionId the
         // caller used — see `buildReq` above. By default we look at the URL
         // the calling test built and synthesize a matching scope.
@@ -94,6 +102,7 @@ describe('SttWsGateway', () => {
             mockBridgeService as any,
             mockStreamTicketService as any,
             mockSessionBinding as any,
+            mockRemovalRetry as any,
         );
         vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
         vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
@@ -362,6 +371,32 @@ describe('SttWsGateway', () => {
 
             expect(mockBridgeService.unsubscribeFromResults).toHaveBeenCalledWith('sess-789');
         });
+
+        // TASK-351 P1-3 (M6 part 2) — a failed fire-and-forget removeSession
+        // used to leave the Python session leaked until the 60s inactivity
+        // reaper. The failure now parks the session id on a retry queue.
+        it('enqueues a removal retry when the upstream removeSession fails on disconnect (TASK-351 P1-3 / M6)', async () => {
+            mockSessionService.removeSession.mockRejectedValueOnce(new Error('stt-v2 down'));
+            const client = createMockSocket();
+            setValidTicketFor('sess-leak');
+            await gateway.handleConnection(client as any, buildReq('sess-leak') as any);
+
+            gateway.handleDisconnect(client as any);
+            await new Promise((resolve) => setImmediate(resolve));
+
+            expect(mockRemovalRetry.enqueue).toHaveBeenCalledWith('sess-leak');
+        });
+
+        it('does not enqueue a removal retry when removeSession succeeds on disconnect', async () => {
+            const client = createMockSocket();
+            setValidTicketFor('sess-clean');
+            await gateway.handleConnection(client as any, buildReq('sess-clean') as any);
+
+            gateway.handleDisconnect(client as any);
+            await new Promise((resolve) => setImmediate(resolve));
+
+            expect(mockRemovalRetry.enqueue).not.toHaveBeenCalled();
+        });
     });
 
     describe('handleMessage', () => {
@@ -619,6 +654,101 @@ describe('SttWsGateway', () => {
             expect(second.seq).toBe(2);
         });
 
+        // TASK-351 P1-1 — stableChars (committed-prefix length) is an
+        // additive bridge field; the gateway must forward it untouched on
+        // the WS transcript message and omit it when absent.
+        it('forwards stableChars on the relayed transcript when present (TASK-351 P1-1)', async () => {
+            const resultSubject = new Subject();
+            mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
+
+            const client = createMockSocket();
+            setValidTicketFor('sess-stable');
+            await gateway.handleConnection(client as any, buildReq('sess-stable') as any);
+
+            resultSubject.next({
+                type: 'transcript',
+                text: 'hello tentative',
+                startTime: 0,
+                endTime: 1,
+                isFinal: false,
+                stableChars: 5,
+            });
+
+            const sent = JSON.parse((client.send as any).mock.calls[0][0]);
+            expect(sent.stableChars).toBe(5);
+        });
+
+        // TASK-351 P1-1 follow-up — gloss results (post-final English
+        // translations) ride the same relay; their additive fields must
+        // survive the `{ ...msg, seq }` spread untouched.
+        it('forwards gloss results with resultType/englishText/utteranceIndex intact (TASK-351 follow-up)', async () => {
+            const resultSubject = new Subject();
+            mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
+
+            const client = createMockSocket();
+            setValidTicketFor('sess-gloss');
+            await gateway.handleConnection(client as any, buildReq('sess-gloss') as any);
+
+            resultSubject.next({
+                type: 'transcript',
+                text: 'xin chào',
+                startTime: 0,
+                endTime: 1.5,
+                isFinal: true,
+                resultType: 'gloss',
+                englishText: 'hello',
+                utteranceIndex: 3,
+            });
+
+            const sent = JSON.parse((client.send as any).mock.calls[0][0]);
+            expect(sent.resultType).toBe('gloss');
+            expect(sent.englishText).toBe('hello');
+            expect(sent.utteranceIndex).toBe(3);
+            expect(sent.isFinal).toBe(true);
+            expect(sent.seq).toBe(1);
+        });
+
+        it('omits utteranceIndex and resultType from the relayed transcript when absent', async () => {
+            const resultSubject = new Subject();
+            mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
+
+            const client = createMockSocket();
+            setValidTicketFor('sess-no-utt');
+            await gateway.handleConnection(client as any, buildReq('sess-no-utt') as any);
+
+            resultSubject.next({
+                type: 'transcript',
+                text: 'legacy result',
+                startTime: 0,
+                endTime: 1,
+                isFinal: true,
+            });
+
+            const sent = JSON.parse((client.send as any).mock.calls[0][0]);
+            expect('utteranceIndex' in sent).toBe(false);
+            expect('resultType' in sent).toBe(false);
+        });
+
+        it('omits stableChars from the relayed transcript when absent', async () => {
+            const resultSubject = new Subject();
+            mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
+
+            const client = createMockSocket();
+            setValidTicketFor('sess-no-stable');
+            await gateway.handleConnection(client as any, buildReq('sess-no-stable') as any);
+
+            resultSubject.next({
+                type: 'transcript',
+                text: 'plain partial',
+                startTime: 0,
+                endTime: 1,
+                isFinal: false,
+            });
+
+            const sent = JSON.parse((client.send as any).mock.calls[0][0]);
+            expect('stableChars' in sent).toBe(false);
+        });
+
         it('handles resume handshake by replaying buffered transcripts after lastSeq', async () => {
             const resultSubject = new Subject();
             mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
@@ -700,6 +830,174 @@ describe('SttWsGateway', () => {
             const failed = replyCalls.find((c: any) => c.type === 'resume_failed');
             expect(failed).toBeDefined();
             expect(failed.reason).toBe('unknown_session');
+        });
+    });
+
+    // =========================================================================
+    // TASK-351 P1-4 — WS egress backpressure (H6).
+    //
+    // Contract: when the client socket's `bufferedAmount` exceeds the 512 KiB
+    // threshold, PARTIAL transcripts are dropped (per-session counter + log)
+    // while FINAL transcripts are queued (bounded) and flushed IN ORDER once
+    // the socket drains below the threshold. Normal delivery resumes after the
+    // drain. Disconnect logs include the dropped-partial count (mirror of the
+    // droppedAudioFrames pattern). Tests pin the spec values (512 KiB / 200),
+    // not the exported constants, so a silent constant change fails loudly.
+    // =========================================================================
+    describe('TASK-351 P1-4 — WS egress backpressure (H6)', () => {
+        const THRESHOLD_BYTES = 512 * 1024;
+        const FINAL_QUEUE_LIMIT = 200;
+        /** Generous wait for the drain-poll flush (poll cadence is sub-100ms). */
+        const FLUSH_WAIT_MS = 150;
+
+        const partialMsg = (text: string) => ({ type: 'transcript', text, startTime: 0, endTime: 1, isFinal: false });
+        const finalMsg = (text: string) => ({ type: 'transcript', text, startTime: 0, endTime: 1, isFinal: true });
+
+        const sentMessages = (client: ReturnType<typeof createMockSocket>) =>
+            (client.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0] as string));
+
+        const connectWithSubject = async (sessionId: string) => {
+            const resultSubject = new Subject();
+            mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
+            const client = createMockSocket() as ReturnType<typeof createMockSocket> & { bufferedAmount: number };
+            client.bufferedAmount = 0;
+            setValidTicketFor(sessionId);
+            await gateway.handleConnection(client as any, buildReq(sessionId) as any);
+            (client.send as ReturnType<typeof vi.fn>).mockClear();
+            return { client, resultSubject };
+        };
+
+        it('drops partial transcripts while bufferedAmount exceeds the 512 KiB threshold', async () => {
+            const { client, resultSubject } = await connectWithSubject('sess-bp-partial');
+
+            client.bufferedAmount = THRESHOLD_BYTES + 1;
+            resultSubject.next(partialMsg('p1'));
+            resultSubject.next(partialMsg('p2'));
+
+            expect(client.send).not.toHaveBeenCalled();
+            gateway.handleDisconnect(client as any);
+        });
+
+        it('records the dropped-partial count in the disconnect log (mirrors droppedAudioFrames)', async () => {
+            const logSpy = vi.spyOn(Logger.prototype, 'log');
+            const { client, resultSubject } = await connectWithSubject('sess-bp-count');
+
+            client.bufferedAmount = THRESHOLD_BYTES + 1;
+            resultSubject.next(partialMsg('p1'));
+            resultSubject.next(partialMsg('p2'));
+            resultSubject.next(partialMsg('p3'));
+
+            logSpy.mockClear();
+            gateway.handleDisconnect(client as any);
+
+            expect(logSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    message: 'WebSocket client disconnected',
+                    droppedPartialResults: 3,
+                }),
+            );
+        });
+
+        it('queues finals while over threshold and flushes them in order after the socket drains', async () => {
+            const { client, resultSubject } = await connectWithSubject('sess-bp-final');
+
+            client.bufferedAmount = THRESHOLD_BYTES + 1;
+            resultSubject.next(finalMsg('f1'));
+            resultSubject.next(finalMsg('f2'));
+
+            // Over threshold: nothing goes out yet — finals are NEVER dropped.
+            expect(client.send).not.toHaveBeenCalled();
+
+            client.bufferedAmount = 0;
+            await new Promise((resolve) => setTimeout(resolve, FLUSH_WAIT_MS));
+
+            const sent = sentMessages(client);
+            expect(sent.map((m) => m.text)).toEqual(['f1', 'f2']);
+            expect(sent.map((m) => m.seq)).toEqual([1, 2]);
+            gateway.handleDisconnect(client as any);
+        });
+
+        it('resumes normal delivery once drained and the queued finals are flushed', async () => {
+            const { client, resultSubject } = await connectWithSubject('sess-bp-resume');
+
+            client.bufferedAmount = THRESHOLD_BYTES + 1;
+            resultSubject.next(finalMsg('f1'));
+            expect(client.send).not.toHaveBeenCalled();
+
+            client.bufferedAmount = 0;
+            await new Promise((resolve) => setTimeout(resolve, FLUSH_WAIT_MS));
+
+            resultSubject.next(partialMsg('p-after'));
+            resultSubject.next(finalMsg('f-after'));
+
+            const sent = sentMessages(client);
+            expect(sent.map((m) => m.text)).toEqual(['f1', 'p-after', 'f-after']);
+            gateway.handleDisconnect(client as any);
+        });
+
+        it('bounds the final queue at 200 and logs an error on overflow (never silent)', async () => {
+            const errorSpy = vi.spyOn(Logger.prototype, 'error');
+            errorSpy.mockClear();
+            const { client, resultSubject } = await connectWithSubject('sess-bp-overflow');
+
+            client.bufferedAmount = THRESHOLD_BYTES + 1;
+            for (let i = 1; i <= FINAL_QUEUE_LIMIT + 1; i++) {
+                resultSubject.next(finalMsg(`f${i}`));
+            }
+
+            expect(errorSpy).toHaveBeenCalled();
+
+            client.bufferedAmount = 0;
+            await new Promise((resolve) => setTimeout(resolve, FLUSH_WAIT_MS));
+
+            const sent = sentMessages(client);
+            expect(sent).toHaveLength(FINAL_QUEUE_LIMIT);
+            // The newest final survives; the oldest was the one dropped (loudly).
+            expect(sent[sent.length - 1].text).toBe(`f${FINAL_QUEUE_LIMIT + 1}`);
+            gateway.handleDisconnect(client as any);
+        });
+
+        // TASK-351 P1-1 follow-up — gloss results arrive with isFinal: true,
+        // so the egress policy must queue them like any final (never drop),
+        // and their additive fields must survive the queue+flush round trip.
+        it('treats gloss results as finals under backpressure — queued, never dropped (TASK-351 follow-up)', async () => {
+            const { client, resultSubject } = await connectWithSubject('sess-bp-gloss');
+
+            client.bufferedAmount = THRESHOLD_BYTES + 1;
+            resultSubject.next({ ...finalMsg('xin chào'), resultType: 'gloss', englishText: 'hello', utteranceIndex: 2 });
+
+            // Queued, not dropped: nothing sent yet, but nothing lost either.
+            expect(client.send).not.toHaveBeenCalled();
+
+            client.bufferedAmount = 0;
+            await new Promise((resolve) => setTimeout(resolve, FLUSH_WAIT_MS));
+
+            const sent = sentMessages(client);
+            expect(sent).toHaveLength(1);
+            expect(sent[0].text).toBe('xin chào');
+            expect(sent[0].resultType).toBe('gloss');
+            expect(sent[0].englishText).toBe('hello');
+            expect(sent[0].utteranceIndex).toBe(2);
+
+            // And the dropped-partial counter is untouched by gloss traffic.
+            const logSpy = vi.spyOn(Logger.prototype, 'log');
+            logSpy.mockClear();
+            gateway.handleDisconnect(client as any);
+            expect(logSpy).toHaveBeenCalledWith(
+                expect.objectContaining({ droppedPartialResults: 0 }),
+            );
+        });
+
+        it('delivers partials and finals immediately when bufferedAmount is below the threshold', async () => {
+            const { client, resultSubject } = await connectWithSubject('sess-bp-normal');
+
+            client.bufferedAmount = 1024;
+            resultSubject.next(partialMsg('p1'));
+            resultSubject.next(finalMsg('f1'));
+
+            const sent = sentMessages(client);
+            expect(sent.map((m) => m.text)).toEqual(['p1', 'f1']);
+            gateway.handleDisconnect(client as any);
         });
     });
 });

@@ -28,16 +28,33 @@ const mockXread = vi.fn().mockResolvedValue(null);
 const mockQuit = vi.fn().mockResolvedValue('OK');
 
 /**
+ * TASK-351 P1-3 (H5) — every `new Redis()` call is recorded here with
+ * per-instance spies (delegating to the shared fns above, so the aggregate
+ * assertions of older tests keep working). This lets tests assert WHICH
+ * connection issued an XREAD — the structural property behind the
+ * per-subscriber-reader fix.
+ */
+interface MockRedisInstance {
+    xadd: ReturnType<typeof vi.fn>;
+    xread: ReturnType<typeof vi.fn>;
+    quit: ReturnType<typeof vi.fn>;
+}
+
+const mockRedisInstances: MockRedisInstance[] = [];
+
+/**
  * Create a mock Redis constructor that returns an object with our mock methods.
  * We need a real constructor function (not an arrow function) so `new Redis()`
  * works correctly in both threads and forks pool modes.
  */
 function MockRedis() {
-    return {
-        xadd: mockXadd,
-        xread: mockXread,
-        quit: mockQuit,
+    const instance: MockRedisInstance = {
+        xadd: vi.fn((...args: unknown[]) => mockXadd(...args)),
+        xread: vi.fn((...args: unknown[]) => mockXread(...args)),
+        quit: vi.fn((...args: unknown[]) => mockQuit(...args)),
     };
+    mockRedisInstances.push(instance);
+    return instance;
 }
 
 vi.mock('ioredis', () => {
@@ -71,6 +88,7 @@ describe('StreamingAudioBridgeService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mockRedisInstances.length = 0;
         configService = createMockConfigService();
         service = new StreamingAudioBridgeService(configService);
     });
@@ -516,6 +534,158 @@ describe('StreamingAudioBridgeService', () => {
             });
         });
 
+        // TASK-351 P1-1 — additive stable_chars relay (committed-prefix length
+        // emitted by stt-v2 on partial results). Absent field must leave the
+        // message exactly as today.
+        it('maps stable_chars to stableChars when present (TASK-351 P1-1)', async () => {
+            mockXread
+                .mockResolvedValueOnce([
+                    ['stt:result:s-1', [
+                        ['1-0', [
+                            'text', 'hello tentative tail',
+                            'stable_chars', '5',
+                            'start_time', '0',
+                            'end_time', '1.5',
+                            'is_final', '0',
+                        ]],
+                    ]],
+                ])
+                .mockResolvedValue(null);
+
+            const obs = service.subscribeToResults('s-1');
+            const result = await firstValueFrom(obs.pipe(take(1)));
+
+            expect(result.stableChars).toBe(5);
+            expect(result.isFinal).toBe(false);
+        });
+
+        it('omits stableChars when stable_chars is absent (older stt-v2 unchanged)', async () => {
+            mockXread
+                .mockResolvedValueOnce([
+                    ['stt:result:s-1', [
+                        ['1-0', ['text', 'plain partial', 'start_time', '0', 'end_time', '1', 'is_final', '0']],
+                    ]],
+                ])
+                .mockResolvedValue(null);
+
+            const obs = service.subscribeToResults('s-1');
+            const result = await firstValueFrom(obs.pipe(take(1)));
+
+            expect('stableChars' in result).toBe(false);
+        });
+
+        it('omits stableChars when stable_chars is not a valid non-negative integer', async () => {
+            mockXread
+                .mockResolvedValueOnce([
+                    ['stt:result:s-1', [
+                        ['1-0', ['text', 'junk field', 'stable_chars', 'not-a-number', 'start_time', '0', 'end_time', '1', 'is_final', '0']],
+                    ]],
+                ])
+                .mockResolvedValue(null);
+
+            const obs = service.subscribeToResults('s-1');
+            const result = await firstValueFrom(obs.pipe(take(1)));
+
+            expect('stableChars' in result).toBe(false);
+        });
+
+        // TASK-351 P1-1 follow-up — utterance_index + type ('segment'|'gloss')
+        // are additive wire fields; gloss results carry the final's
+        // utterance_index plus english_text.
+        it('maps a gloss result (type/utterance_index/english_text) onto the transcript message', async () => {
+            mockXread
+                .mockResolvedValueOnce([
+                    ['stt:result:s-1', [
+                        ['1-0', [
+                            'type', 'gloss',
+                            'text', 'xin chào',
+                            'english_text', 'hello',
+                            'utterance_index', '3',
+                            'start_time', '0',
+                            'end_time', '1.5',
+                            'is_final', '1',
+                        ]],
+                    ]],
+                ])
+                .mockResolvedValue(null);
+
+            const obs = service.subscribeToResults('s-1');
+            const result = await firstValueFrom(obs.pipe(take(1)));
+
+            expect(result).toEqual({
+                type: 'transcript',
+                text: 'xin chào',
+                englishText: 'hello',
+                utteranceIndex: 3,
+                resultType: 'gloss',
+                startTime: 0,
+                endTime: 1.5,
+                isFinal: true,
+            });
+        });
+
+        it('maps type=segment and utterance_index on ordinary partials', async () => {
+            mockXread
+                .mockResolvedValueOnce([
+                    ['stt:result:s-1', [
+                        ['1-0', [
+                            'type', 'segment',
+                            'text', 'partial words',
+                            'utterance_index', '0',
+                            'start_time', '0',
+                            'end_time', '0.8',
+                            'is_final', '0',
+                        ]],
+                    ]],
+                ])
+                .mockResolvedValue(null);
+
+            const obs = service.subscribeToResults('s-1');
+            const result = await firstValueFrom(obs.pipe(take(1)));
+
+            expect(result.resultType).toBe('segment');
+            expect(result.utteranceIndex).toBe(0);
+        });
+
+        it('omits utteranceIndex and resultType when the wire fields are absent (older stt-v2 unchanged)', async () => {
+            mockXread
+                .mockResolvedValueOnce([
+                    ['stt:result:s-1', [
+                        ['1-0', ['text', 'legacy entry', 'start_time', '0', 'end_time', '1', 'is_final', '1']],
+                    ]],
+                ])
+                .mockResolvedValue(null);
+
+            const obs = service.subscribeToResults('s-1');
+            const result = await firstValueFrom(obs.pipe(take(1)));
+
+            expect('utteranceIndex' in result).toBe(false);
+            expect('resultType' in result).toBe(false);
+        });
+
+        it('ignores malformed utterance_index and unknown type values', async () => {
+            mockXread
+                .mockResolvedValueOnce([
+                    ['stt:result:s-1', [
+                        ['1-0', [
+                            'type', 'banana',
+                            'text', 'junk wire fields',
+                            'utterance_index', 'not-a-number',
+                            'start_time', '0',
+                            'end_time', '1',
+                            'is_final', '0',
+                        ]],
+                    ]],
+                ])
+                .mockResolvedValue(null);
+
+            const obs = service.subscribeToResults('s-1');
+            const result = await firstValueFrom(obs.pipe(take(1)));
+
+            expect('utteranceIndex' in result).toBe(false);
+            expect('resultType' in result).toBe(false);
+        });
+
         it('should handle isFinal=0 as false', async () => {
             mockXread
                 .mockResolvedValueOnce([
@@ -598,7 +768,10 @@ describe('StreamingAudioBridgeService', () => {
             expect(results[0].text).toBe('hello');
         });
 
-        it('should use XREAD with COUNT 100 and BLOCK 2000 (COUNT before BLOCK per ioredis types)', async () => {
+        // TASK-351 P1-3 (H5): BLOCK deliberately reduced 2000 → 500 so an
+        // unsubscribe/abort is honored within ≤500ms instead of up to 2s.
+        // (This assertion previously pinned BLOCK 2000.)
+        it('should use XREAD with COUNT 100 and BLOCK 500 (COUNT before BLOCK per ioredis types)', async () => {
             mockXread.mockResolvedValueOnce(null);
 
             const obs = service.subscribeToResults('s-1');
@@ -611,7 +784,7 @@ describe('StreamingAudioBridgeService', () => {
 
             expect(mockXread).toHaveBeenCalledWith(
                 'COUNT', 100,
-                'BLOCK', 2000,
+                'BLOCK', 500,
                 'STREAMS', 'stt:result:s-1', '0-0',
             );
 
@@ -635,11 +808,96 @@ describe('StreamingAudioBridgeService', () => {
             await lastValueFrom(obs.pipe(toArray()));
 
             // Second XREAD should use lastId from first result
+            // (BLOCK 500 per TASK-351 P1-3 — see comment above).
             expect(mockXread).toHaveBeenCalledWith(
                 'COUNT', 100,
-                'BLOCK', 2000,
+                'BLOCK', 500,
                 'STREAMS', 'stt:result:s-1', '100-1',
             );
+        });
+    });
+
+    // ===================================================================
+    // TASK-351 P1-3 (H5) — per-subscriber reader connections
+    //
+    // The old implementation funneled every session's blocking XREAD
+    // through ONE shared ioredis connection, serializing all result reads
+    // behind whichever session blocked first (up to BLOCK ms each cycle).
+    // Each subscriber now gets its own reader connection, quit on teardown.
+    // ===================================================================
+
+    describe('TASK-351 P1-3 (H5) — per-subscriber reader connections', () => {
+        beforeEach(async () => {
+            await service.connect();
+        });
+
+        afterEach(() => {
+            mockXread.mockReset();
+            mockXread.mockResolvedValue(null);
+        });
+
+        it('issues concurrent XREADs on distinct connections (no serialization on one blocked read)', async () => {
+            // Block every XREAD until the test releases it — on a single
+            // shared connection a real Redis would serialize the second
+            // session's read behind the first blocked one.
+            const resolvers: Array<(v: null) => void> = [];
+            mockXread.mockImplementation(() => new Promise<null>((resolve) => resolvers.push(resolve)));
+
+            const subA = service.subscribeToResults('s-A').subscribe({ next: () => {} });
+            const subB = service.subscribeToResults('s-B').subscribe({ next: () => {} });
+
+            await vi.waitFor(() => {
+                const readers = mockRedisInstances.filter((i) => i.xread.mock.calls.length > 0);
+                expect(readers.length).toBeGreaterThanOrEqual(2);
+            });
+
+            service.unsubscribeFromResults('s-A');
+            service.unsubscribeFromResults('s-B');
+            resolvers.forEach((resolve) => resolve(null));
+            subA.unsubscribe();
+            subB.unsubscribe();
+        });
+
+        it('quits the per-subscriber reader connection on teardown (no connection leak)', async () => {
+            mockXread.mockImplementation(() => new Promise((r) => setTimeout(() => r(null), 5)));
+
+            const sub = service.subscribeToResults('s-leak').subscribe({ next: () => {} });
+            await vi.waitFor(() => {
+                expect(mockRedisInstances.some((i) => i.xread.mock.calls.length > 0)).toBe(true);
+            });
+            const reader = mockRedisInstances.find((i) => i.xread.mock.calls.length > 0)!;
+
+            service.unsubscribeFromResults('s-leak');
+
+            await vi.waitFor(() => {
+                expect(reader.quit).toHaveBeenCalled();
+            });
+            sub.unsubscribe();
+        });
+
+        it('honors unsubscribe within one BLOCK window (abort ≤ 500ms)', async () => {
+            // Each blocked read returns after 50ms — the abort must take
+            // effect right after the in-flight read returns, never later.
+            mockXread.mockImplementation(() => new Promise((r) => setTimeout(() => r(null), 50)));
+            let completed = false;
+            const sub = service.subscribeToResults('s-abort').subscribe({
+                complete: () => {
+                    completed = true;
+                },
+            });
+
+            await vi.waitFor(() => {
+                expect(mockXread).toHaveBeenCalled();
+            });
+            service.unsubscribeFromResults('s-abort');
+
+            await new Promise((r) => setTimeout(r, 120));
+            expect(completed).toBe(true);
+
+            const callsAfter = mockXread.mock.calls.length;
+            await new Promise((r) => setTimeout(r, 120));
+            expect(mockXread.mock.calls.length).toBe(callsAfter);
+            sub.unsubscribe();
         });
     });
 

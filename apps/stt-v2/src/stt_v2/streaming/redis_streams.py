@@ -80,6 +80,12 @@ class IngestionConsumer:
         The session to consume audio for.
     on_frame:
         Async callback invoked for each decoded ``AudioFrame``.
+    on_batch:
+        Optional async callback invoked once per processed ``XREAD`` batch
+        with the last processed stream entry ID (TASK-351 P1-3 — used to
+        persist the resume position and trim the consumed audio stream).
+        Errors raised by the callback are logged and never stop the
+        consumer.
     last_id:
         Redis Stream entry ID to resume from (default ``"0-0"`` = start).
     block_ms:
@@ -93,10 +99,12 @@ class IngestionConsumer:
         on_frame: Callable[[AudioFrame], Coroutine[Any, Any, None]],
         last_id: str = "0-0",
         block_ms: int = 5000,
+        on_batch: Callable[[str], Coroutine[Any, Any, None]] | None = None,
     ) -> None:
         self._redis = redis
         self._session_id = session_id
         self._on_frame = on_frame
+        self._on_batch = on_batch
         self._last_id = last_id
         self._block_ms = block_ms
         self._running = False
@@ -150,6 +158,7 @@ class IngestionConsumer:
                     continue  # timeout, no new entries
 
                 # entries format: [[stream_name, [(entry_id, fields), ...]]]
+                processed_any = False
                 for _stream_name, messages in entries:
                     for entry_id, fields in messages:
                         try:
@@ -168,6 +177,20 @@ class IngestionConsumer:
                             self._last_id = (
                                 entry_id.decode() if isinstance(entry_id, bytes) else entry_id
                             )
+                            processed_any = True
+
+                # TASK-351 P1-3 — report the batch position for resume
+                # tracking and audio stream trimming. Never fatal.
+                if processed_any and self._on_batch is not None:
+                    try:
+                        await self._on_batch(self._last_id)
+                    except Exception as exc:
+                        logger.warning(
+                            "on_batch callback failed (non-fatal)",
+                            session_id=self._session_id,
+                            last_id=self._last_id,
+                            error=str(exc),
+                        )
         except asyncio.CancelledError:
             logger.debug("IngestionConsumer cancelled", session_id=self._session_id)
         finally:

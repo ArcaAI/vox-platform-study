@@ -6,7 +6,7 @@
 | **Title** | Realtime transcription pipeline: performance remediation + code-switched Malayalam-English quality levers |
 | **Created** | 2026-06-11 |
 | **Updated** | 2026-06-11 |
-| **Status** | In Progress (plan approved 2026-06-11; executing wave by wave) |
+| **Status** | Review (P0 + P1 + P2 implementation complete 2026-06-11; GPU-host validation pending — see §4.5) |
 | **Decisions** | D-1: **Option B — faster-whisper/CTranslate2 engine migration** (user-selected). D-2: **Option A — Cadence-Fast direct-load spike first** (user-selected). |
 | **Type** | refactor / performance optimization (no schema migrations) |
 | **Origin** | Full-pipeline review (client SDK → API gateway → Redis Streams → STT-v2), 2026-06-11; companion canvas `realtime-transcription-review` |
@@ -560,6 +560,103 @@ Session-negotiated `sampleRate` persisted as session meta and stamped on every f
 
 No Prisma migrations. Wire protocol unchanged (sampleRate field was already part of the session-create body).
 
+### 4.2 Wave P1 — completed 2026-06-11
+
+Executed by two parallel exclusive-ownership lanes (stt-v2 Python lane; TS gateway/SDK lane) with the cross-lane wire contract (`stable_chars`) pinned up front. Findings closed: **C2 (commit policy proper), C3 (via D-1 engine migration), H2, H3 (stream trim — RAM spill stays deferred per plan), H5, H6, M6 (removal retry)**. AC-7…AC-9 pinned by unit tests.
+
+#### P1-1 · LocalAgreement-2 commit policy + stableChars relay (C2, AC-7)
+
+- Python: new `streaming/commit_policy.py` — pure `LocalAgreementPolicy` (n=2): token-level comparison on normalized tokens, commits the longest common prefix of consecutive partial hypotheses, monotonic committed count, `reset()` on finalization. Per-session instances in `SessionManager`; `_fire_partial` → `policy.update(text)` → `SegmentResult.stable_chars = len(committed)`. Committed *surface text* always comes from the latest hypothesis, so punctuation/casing refinements still propagate inside the committed region.
+- Gate: per-pipeline `streaming.commit_policy: local_agreement_2 | none` (default **none**) — off ⇒ wire format byte-identical. **Finals carry no `stable_chars`** (implicitly 100 % stable; final payload unchanged).
+- TS relay (additive, absence-tolerant at every hop): bridge maps `stable_chars` → `stableChars` (guarded parse); gateway forwards via spread; SDK `WsTranscriptResult.stableChars` with dual-casing normalize; playground renders partials as normal-styled committed prefix + dimmed tentative tail (`text-muted-foreground/70 italic`), clamped to the sanitized text length.
+
+#### P1-2 · faster-whisper/CTranslate2 engine (C3 per D-1 Option B, AC-9)
+
+- New `engine: FASTER_WHISPER` enum member (legacy `CTRANSLATE2` alias keeps the transformers loader — zero behavior change for existing pipelines), validated against `VALID_CT2_COMPUTE_TYPES`.
+- `streaming/faster_whisper_asr.py` — adapter with the same ASR-callable contract (samples, sample_rate, prompt → text/word_timestamps/language), per-segment error isolation, honoring `code_switching`/`language` semantics and a `task` param (reused by P2-3 gloss). CT2 conversion runbook lives in the adapter docstring.
+- `models/faster_whisper_loader.py` — **lazy** `import faster_whisper` (suite passes without the package), device/compute-type resolution honoring `ExecutionProfile.asr_compute_type` with CPU coercions (`float16/bfloat16→float32`, `int8_float16/int8_bfloat16→int8`, `mps→cpu`), prebuilt `BatchedInferencePipeline` carried in `LoadedModel.extra`; single-flight cache integration (P0-3) applies.
+- Session-manager routing for Whisper-family pipelines when configured; batch size from `ExecutionProfile.asr_max_batch_size`; NeMo/Azure untouched. `faster-whisper==1.2.1` pinned in the `ml` extra (not installed locally; tests fully mocked). Real-model smoke + harness numbers on the GPU host gate per-pipeline enablement.
+
+#### P1-3 · Redis stream hygiene (H2, H3-trim, H5, M6-pt2, AC-8)
+
+- Python: `SessionMetadata.last_stream_id` persisted to the session hash after each processed `XREAD` batch (new `IngestionConsumer(on_batch=…)` hook); crash recovery resumes from it (the `0-0` replay survives only for first-start/legacy sessions). `XTRIM MINID ~ <last_id>` on `stt:audio:{sid}` only, throttled by `streaming_audio_trim_interval_s` (default 30 s; `0` disables); result stream never trimmed; all hygiene errors swallowed with logs.
+- TS bridge: dedicated ioredis reader connection per result subscriber (one blocked XREAD no longer serializes sessions), `BLOCK 2000 → 500` (abort honored ≤ 500 ms), readers quit on teardown/disconnect.
+- Removal retry: new `apps/api/.../session-removal-retry.service.ts` — failed disconnect-time `removeSession` enqueues onto Redis SET `stt:session-removal:retry` (24 h TTL, best-effort), exponential backoff 1 s base × 5 bounded attempts, exhaustion logged for ops (STT-v2's 60 s reaper stays the backstop).
+
+#### P1-4 · WS egress backpressure (H6)
+
+`relayResult` egress policy in the gateway: when `client.bufferedAmount` > **512 KiB** (`STT_WS_EGRESS_HIGH_WATERMARK_BYTES`) — partials dropped *before* seq-tagging (per-session `droppedPartialResults`, no resume-buffer pollution), finals queued in order (bounded at 200; overflow evicts the **oldest** with `logger.error`, counted in `droppedFinalResults`), 50 ms flush poll runs only while finals are queued. Partials are also dropped while any finals are queued so a newer partial can never overtake an older final. Disconnect logs include both drop counters (mirrors `droppedAudioFrames`).
+
+### 4.3 Wave P2 — completed 2026-06-11
+
+Findings closed: **M1, M2, M3, M4, M5, M7**; D-2 resolved **GO** via spike evidence; AC-10 pinned; AC-11 harness delivered (GPU-host baseline run pending).
+
+#### P2-5 · Latency replay harness (AC-11) — landed first, per plan
+
+- New `apps/stt-v2/tests/integration/test_streaming_latency_harness.py` + executable `scripts/stt-latency-replay.sh` (new files only — no existing stt-v2 file touched). Wire-format-exact: HTTP session bootstrap, `stt:audio/control/result:{sid}` streams, gateway field set; feeds a WAV at realtime pace (80 ms frames); measures **TTFW**, **partial cadence** (mean/p50/p95), **final lag** vs the 800 ms SLA using Redis server-clock timestamps; emits JSON (`LATENCY_REPORT_PATH`); `pytest.skip`s cleanly when Redis/stt-v2 unreachable. Deterministic synthetic fixture by default; `LATENCY_WAV_PATH` overrides with real speech.
+- Locally validated: collection/ruff/black clean, deterministic-fixture test passed, byte-exact wire round-trip against live dev Redis, clean skip with stt-v2 down. **Baseline + post-change numbers must be captured on the GPU host** via `./scripts/stt-latency-replay.sh`.
+- Deliberately deferred from the plan: per-stage Prometheus histograms (`vad_confirm_ms`, `inference_queue_wait_ms`, `publish_ms`) — would have touched lane-owned files; tracked as follow-up.
+
+#### P2-1 · Code-switch decoding contract (M1, M5, M7, AC-10)
+
+- **Pinned-language semantics**: `language: X` + `code_switching: true` now passes the language token in **all** kwargs builders (streaming static kwargs + processor path; batch transformers/ONNX; faster-whisper adapter); parser emits an info log ("pinned matrix language") instead of the old warning. `language: null` + CS keeps auto-LID.
+- **NeMo guard**: `is_valid_language_for_engine` accepts only the Parakeet-v3 set for NEMO (silent Whisper-set fallback removed); `validate()` hard-errors on unsupported `inference.language` + NEMO. ⚠️ Existing `ml`+NEMO pipeline YAMLs that previously validated silently now fail — deliberate (M7).
+- **Malayalam fillers**: `_FILLER_PATTERN` rebuilt via `build_filler_pattern(extra_forms)` with 13 Malayalam filler/disfluency forms (ഉം, ആ, അ, ഏ, ഓ, ഹാ, ഹും, …); real Malayalam text verified not to match. New setting `streaming_extra_filler_patterns` (pipe-separated alternates, default empty; invalid extras fall back with a warning).
+- Test updates to pinned-behavior tests were made deliberately with TASK-351 citations (TASK-350 lesson).
+
+#### P2-2 · Indic punctuation: Cadence-Fast direct load (M2, D-2)
+
+- **Spike (GO)** — evidence in `spike-cadence-fast.md` + reproducible `scripts/spike-cadence-fast.py`: `ai4bharat/Cadence-Fast` loads under the pinned `transformers==5.5.4` via `AutoModel` + `trust_remote_code=True` **with `tie_word_embeddings=False`** (required on 5.x — the remote code's `Sequential` lm_head breaks weight-tying finalization otherwise) and post-load `config.use_bidirectional_attention = True` (restores intended non-causal masking). Warm CPU inference **60–95 ms per final**, ~1.1 GB RSS, 268M params, MIT license; correct outputs on Malayalam / code-switched clinical / English samples; Malayalam correctly uses `. , ?` (no danda). No missing deps, no env changes.
+- **Production wiring** — new `punctuation/cadence_fast.py` (direct loader with pinned revision, warmup inference, `threading.Lock` single-flight forwards; wrapper-compatible `punctuate(texts, batch_size)` so the batch path works too); `punctuation/service.py` routes the exact model name `cadence-fast` to it (wrapper spellings keep legacy semantics, including partial punctuation) and resolves/lazy-loads **inside the executor** (first-use load can't block the event loop); `streaming/inference.py` runs cadence-fast **finals-only** under `asyncio.wait_for` (`streaming_punctuation_timeout_s`, default **0.4 s**) with raw-text fallback (warn once per session, then debug). Existing danda normalization already correct for Malayalam — pinned by tests, no change needed.
+- Gloss interaction: punctuation runs **before** the gloss snapshot, so the gloss translates the punctuated final (on timeout both see the raw text) — test-pinned.
+- Config: per-pipeline `postprocessing.punctuation.model: cadence-fast` or global `PUNCTUATION_MODEL_NAME=cadence-fast`; `PUNCTUATION_ENABLED=false` kill-switch precedence preserved; default behavior unchanged (off).
+
+#### P2-3 · Streaming English gloss, opt-in (M3)
+
+- Python: `inference.streaming_english_gloss` (default **false**). After a final publishes, a fire-and-forget task runs `task=translate` via the **same cached model** (single-flight cache re-fetch; transformers branch sets `task=translate`+`language=en`; FW adapter `task` param) and publishes a follow-up `SegmentResult` with `type: gloss`, `english_text`, `is_final: true`, and the **same `utterance_index`** as the final. 15 s ceiling; failures/timeouts/empty outputs swallowed with a log; final publish latency provably unaffected (event-gated test). NeMo/Azure/multimodal engines → warn + gloss disabled. `utterance_index` is now stamped on **every** partial/final so consumers can correlate.
+- TS relay (additive): bridge maps `utterance_index` → `utteranceIndex`, wire `type` → `resultType: 'segment' | 'gloss'` (unknown values omitted; `english_text → englishText` already existed); gateway needed **pins only** (spread forwards; gloss `isFinal: true` ⇒ queued-never-dropped under P1-4 backpressure — test-pinned); SDK dual-casing normalize (envelope `type: 'transcript'` can never leak into `resultType`); playground merges gloss `englishText` into the matching entry by `utteranceIndex` (no new row; unmatched gloss dropped) and renders it as a muted secondary line.
+
+#### P2-4 · Anti-aliased resampler (M4)
+
+- `packages/stt/src/utils/audioResampler.ts`: Kaiser-windowed-sinc polyphase decimator (β = 9, ~7.2 kHz cutoff, 97 taps for 48 k→16 k, filter banks cached per rate pair) now backs `prepareFloat32ForWhisper`; `resampleLinear` stays exported for compatibility but is off the Whisper capture path.
+- Measured (test-pinned): 10 kHz tone folded alias attenuated **100.1 dB** (48 kHz) / **95.0 dB** (44.1 kHz) vs the linear baseline — far beyond the ≥ 40 dB acceptance bar; 1 kHz passband amplitude error 0.0000 dB.
+- `packages/vad`'s TASK-271 helper left untouched (different streaming semantics); recommendation recorded: promote the kernel to `@arcaai/room` if shared use emerges.
+
+### 4.4 New config surface & wire additions (P1+P2 consolidated)
+
+| Kind | Name | Default |
+|---|---|---|
+| Pipeline YAML | `streaming.commit_policy: local_agreement_2 \| none` | `none` |
+| Pipeline YAML | `engine: FASTER_WHISPER` (+ CT2 compute-type validation) | — |
+| Pipeline YAML | `inference.streaming_english_gloss` | `false` |
+| Pipeline YAML | `postprocessing.punctuation.model: cadence-fast` | wrapper path |
+| Env (stt-v2) | `STREAMING_AUDIO_TRIM_INTERVAL_S` | `30` (`0` disables) |
+| Env (stt-v2) | `STREAMING_EXTRA_FILLER_PATTERNS` | `""` |
+| Env (stt-v2) | `STREAMING_PUNCTUATION_TIMEOUT_S` | `0.4` |
+| Env (api) | `STT_WS_EGRESS_HIGH_WATERMARK_BYTES` | `524288` |
+| Redis key | `stt:session-removal:retry` (SET, 24 h TTL) | — |
+| Dependency | `faster-whisper==1.2.1` (stt-v2 `ml` extra, GPU host) | not installed locally |
+
+Wire additions (all additive; old SDK clients unaffected): `stable_chars`/`stableChars` (partials only, policy on), `utterance_index`/`utteranceIndex` (all segment results), `type: gloss` results with `english_text`/`englishText`. Ops note: the bridge now opens one extra Redis connection per active result subscriber.
+
+### 4.5 Wave P1+P2 verification evidence (AC-12)
+
+| Suite / build | Result |
+|---|---|
+| `apps/stt-v2` pytest unit (full, `arcaenv`) | **2071 passed** (baseline 1903; +168 across P1/P2) |
+| `apps/api` full vitest suite | **1752 passed** / streaming module **168** after gloss relay |
+| `packages/applications` streaming suites | **61 passed** |
+| `packages/agentic-sdk-v2` vitest (full) | **3349 passed** |
+| `apps/ui-playground` vitest (full) | **1296 passed** |
+| `packages/stt` vitest (full) | **401 passed** |
+| `ruff` + `mypy` on all touched stt-v2 files | clean |
+| ui-playground `tsc --noEmit` | 3 errors — identical pre-existing baseline |
+| Root `pnpm test:unit` (all TS packages, all lanes combined) | **13816 passed** / 687 files (TASK-350 baseline: 13742 / 685) |
+| `pnpm build --filter @arcaai/stt --filter @arcaai/vox --filter @arcaai/applications` | 13/13 tasks OK |
+| `pnpm build:api` | 8/8 tasks OK |
+
+**Still pending (GPU host)**: P2-5 harness baseline + post-change JSON (AC-11 numbers into this section); real-model faster-whisper smoke; per-pipeline enablement of `commit_policy` / `FASTER_WHISPER` / `cadence-fast` / gloss after on-host validation. Deferred: H3 RAM spill (plan note), per-stage Prometheus histograms (P2-5 scope cut), vad/room resampler promotion.
+
 ## 5. Change History
 
 | Date | Description | Files |
@@ -567,3 +664,4 @@ No Prisma migrations. Wire protocol unchanged (sampleRate field was already part
 | 2026-06-11 | Ticket opened. Full findings register (5 Critical / 8 High / 7 Medium, all file:line-verified) and phased P0/P1/P2 TDD implementation plan written from the 2026-06-11 pipeline review. Decision gates D-1 (GPU serving strategy) and D-2 (Indic punctuation deployment) defined. Awaiting plan approval. | This README |
 | 2026-06-11 | Plan approved (full plan, wave-by-wave reporting). D-1 resolved: **Option B — faster-whisper/CTranslate2 migration** (P1-2 rewritten accordingly). D-2 resolved: **Option A — Cadence-Fast direct-load spike first**. Status → In Progress; Wave P0 started. | This README |
 | 2026-06-11 | **Wave P0 completed** (P0-1…P0-6; closes C1, C2-bounding, C4, C5, H1, H4, H7, M6-parallel-awaits; H8 re-verified as already O(1)). Full evidence in §4.1. | `packages/stt` (worklet, audioCapture, provider, barrel), `packages/agentic-sdk-v2` (SttV2WebSocketClient), `apps/ui-playground` (use-realtime-transcription, transcript-panel/-list, transcript-state, byte-counter, live-byte-count, capture/consultation panels), `apps/api` (stt-ws.gateway, transcription-job.controller, stream-session-tenant-binding), `apps/stt-v2` (cache.py, preprocessor.py, session_manager.py, settings.py) + tests |
+| 2026-06-11 | **Waves P1 + P2 implemented in parallel** by five exclusive-ownership agent lanes (stt-v2 Python; TS gateway/SDK; resampler; D-2 spike; latency harness) + two follow-ups (P2-2 wiring after spike GO; gloss/utteranceIndex TS relay). Closes **C2, C3, H2, H3-trim, H5, H6, M1–M7**. D-2 resolved **GO** (Cadence-Fast direct load on transformers 5.5.4). Evidence §4.2–§4.5. Status → Review pending GPU-host validation. | `apps/stt-v2` (commit_policy.py, faster_whisper_asr.py, faster_whisper_loader.py, cadence_fast.py, session_manager.py, schemas.py, redis_streams.py, inference.py, punctuation/service.py, dto.py, yaml_parser.py, batch_service.py, settings.py, pyproject.toml; tests/integration harness — new files), `apps/api` (stt-ws.gateway, session-removal-retry.service — new, streaming.module), `packages/applications` (streamingAudioBridge.service, streaming-session.dto), `packages/agentic-sdk-v2` (stt-v2 types, SttV2WebSocketClient), `apps/ui-playground` (audio-store, use-realtime-transcription, audio-transcript-item), `packages/stt` (audioResampler), `scripts/` (spike-cadence-fast.py, stt-latency-replay.sh), spike findings doc + ~70 new/updated test files |

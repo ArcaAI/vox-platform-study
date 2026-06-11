@@ -1303,6 +1303,217 @@ describe('SttV2WebSocketClient', () => {
       client.disconnect();
     });
 
+    // TASK-351 P1-1 — stableChars (committed-prefix length on partials) is
+    // additive and dual-cased like the other normalized fields.
+    it('should normalize stableChars from camelCase payloads (TASK-351 P1-1)', async () => {
+      const mockLogger = createMockLogger();
+      const client = new SttV2WebSocketClient(mockLogger);
+
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+
+      const transcriptCb = vi.fn();
+      client.onTranscript(transcriptCb);
+
+      lastMockWs!.simulateMessage(JSON.stringify({
+        type: 'transcript',
+        text: 'hello tentative tail',
+        startTime: 0.5,
+        endTime: 1.5,
+        isFinal: false,
+        stableChars: 5,
+      }));
+
+      expect(transcriptCb).toHaveBeenCalledWith(
+        expect.objectContaining({ stableChars: 5, isFinal: false }),
+      );
+
+      client.disconnect();
+    });
+
+    it('should normalize stable_chars from snake_case payloads (TASK-351 P1-1)', async () => {
+      const mockLogger = createMockLogger();
+      const client = new SttV2WebSocketClient(mockLogger);
+
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+
+      const transcriptCb = vi.fn();
+      client.onTranscript(transcriptCb);
+
+      lastMockWs!.simulateMessage(JSON.stringify({
+        type: 'transcript',
+        text: 'hello tentative tail',
+        start_time: 0.5,
+        end_time: 1.5,
+        is_final: '0',
+        stable_chars: 7,
+      }));
+
+      expect(transcriptCb).toHaveBeenCalledWith(
+        expect.objectContaining({ stableChars: 7 }),
+      );
+
+      client.disconnect();
+    });
+
+    it('should omit stableChars when neither casing is present (older servers)', async () => {
+      const mockLogger = createMockLogger();
+      const client = new SttV2WebSocketClient(mockLogger);
+
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+
+      const transcriptCb = vi.fn();
+      client.onTranscript(transcriptCb);
+
+      lastMockWs!.simulateMessage(JSON.stringify({
+        type: 'transcript',
+        text: 'plain partial',
+        startTime: 0,
+        endTime: 1,
+        isFinal: false,
+      }));
+
+      expect(transcriptCb).toHaveBeenCalledTimes(1);
+      const normalized = transcriptCb.mock.calls[0][0];
+      expect('stableChars' in normalized).toBe(false);
+
+      client.disconnect();
+    });
+
+    // TASK-351 P1-1 follow-up — utteranceIndex + resultType are additive and
+    // dual-cased; gloss results ride the normal transcript relay with the
+    // gateway's camelCase field names.
+    it('should normalize utteranceIndex and resultType from gateway (camelCase) payloads (TASK-351 follow-up)', async () => {
+      const mockLogger = createMockLogger();
+      const client = new SttV2WebSocketClient(mockLogger);
+
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+
+      const transcriptCb = vi.fn();
+      client.onTranscript(transcriptCb);
+
+      lastMockWs!.simulateMessage(JSON.stringify({
+        type: 'transcript',
+        text: 'xin chào',
+        startTime: 0,
+        endTime: 1.5,
+        isFinal: true,
+        resultType: 'gloss',
+        englishText: 'hello',
+        utteranceIndex: 4,
+      }));
+
+      expect(transcriptCb).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resultType: 'gloss',
+          englishText: 'hello',
+          utteranceIndex: 4,
+          isFinal: true,
+        }),
+      );
+
+      client.disconnect();
+    });
+
+    it('should normalize utterance_index from snake_case payloads (TASK-351 follow-up)', async () => {
+      const mockLogger = createMockLogger();
+      const client = new SttV2WebSocketClient(mockLogger);
+
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+
+      const transcriptCb = vi.fn();
+      client.onTranscript(transcriptCb);
+
+      lastMockWs!.simulateMessage(JSON.stringify({
+        type: 'transcript',
+        text: 'snake payload',
+        start_time: 0,
+        end_time: 1,
+        is_final: '0',
+        utterance_index: 7,
+      }));
+
+      expect(transcriptCb).toHaveBeenCalledWith(
+        expect.objectContaining({ utteranceIndex: 7 }),
+      );
+
+      client.disconnect();
+    });
+
+    // The wire-level result kind field is `type` (segment|gloss). It cannot
+    // ride the WS envelope (whose `type` is 'transcript'), so the wire-shape
+    // acceptance is pinned against normalizeTranscript directly.
+    it('should accept the wire `type` field as resultType in normalizeTranscript (TASK-351 follow-up)', () => {
+      const normalize = (
+        SttV2WebSocketClient as unknown as {
+          normalizeTranscript(msg: Record<string, unknown>): WsTranscriptResult | null;
+        }
+      ).normalizeTranscript;
+
+      const normalized = normalize({
+        type: 'gloss',
+        text: 'xin chào',
+        start_time: 0,
+        end_time: 1.5,
+        is_final: true,
+        english_text: 'hello',
+        utterance_index: 3,
+      });
+
+      expect(normalized).not.toBeNull();
+      expect(normalized!.resultType).toBe('gloss');
+      expect(normalized!.englishText).toBe('hello');
+      expect(normalized!.utteranceIndex).toBe(3);
+
+      // The WS envelope's own `type: 'transcript'` must NOT leak into
+      // resultType — only segment/gloss are accepted.
+      const envelope = normalize({
+        type: 'transcript',
+        text: 'plain',
+        start_time: 0,
+        end_time: 1,
+        is_final: true,
+      });
+      expect(envelope).not.toBeNull();
+      expect('resultType' in envelope!).toBe(false);
+    });
+
+    it('should omit utteranceIndex and resultType when neither casing is present (older servers)', async () => {
+      const mockLogger = createMockLogger();
+      const client = new SttV2WebSocketClient(mockLogger);
+
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+
+      const transcriptCb = vi.fn();
+      client.onTranscript(transcriptCb);
+
+      lastMockWs!.simulateMessage(JSON.stringify({
+        type: 'transcript',
+        text: 'legacy payload',
+        startTime: 0,
+        endTime: 1,
+        isFinal: true,
+      }));
+
+      expect(transcriptCb).toHaveBeenCalledTimes(1);
+      const normalized = transcriptCb.mock.calls[0][0];
+      expect('utteranceIndex' in normalized).toBe(false);
+      expect('resultType' in normalized).toBe(false);
+
+      client.disconnect();
+    });
+
     it('should reject status messages missing required fields', async () => {
       const mockLogger = createMockLogger();
       const client = new SttV2WebSocketClient(mockLogger);

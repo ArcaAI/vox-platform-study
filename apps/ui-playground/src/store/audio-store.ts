@@ -30,6 +30,25 @@ export interface TranscriptEntry {
   text: string;
   timestamp: number;
   isFinal: boolean;
+  /**
+   * TASK-351 P1-1 — committed-prefix length of `text` on partial entries
+   * (stt-v2 local-agreement gate). The transcript item renders the prefix
+   * normally and the tentative tail dimmed. Absent on finals and on older
+   * stt-v2 results.
+   */
+  stableChars?: number;
+  /**
+   * TASK-351 P1-1 follow-up — utterance ordinal stamped by stt-v2 on every
+   * segment result. Used to pair a follow-up gloss (English translation)
+   * with the final it translates. Absent on older stt-v2 results.
+   */
+  utteranceIndex?: number;
+  /**
+   * TASK-351 P1-1 follow-up — English gloss merged from a post-final
+   * `resultType: 'gloss'` result with the same `utteranceIndex`. Rendered
+   * as a subtle secondary line under the transcript text.
+   */
+  englishText?: string;
   speaker?: string;
   speakerLabel?: string;
   speakerConfidence?: number;

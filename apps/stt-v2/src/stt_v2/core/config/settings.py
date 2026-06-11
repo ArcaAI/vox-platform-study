@@ -414,6 +414,31 @@ class Settings(BaseSettings):
             "At 30ms/frame this retains ~60 seconds of audio."
         ),
     )
+    streaming_audio_trim_interval_s: float = Field(
+        default=30.0,
+        description=(
+            "Minimum interval (seconds) between XTRIM MINID calls on the "
+            "consumed portion of stt:audio:{session_id} (TASK-351 P1-3). "
+            "0 disables consumed-portion trimming (MAXLEN bound still applies)."
+        ),
+    )
+    streaming_extra_filler_patterns: str = Field(
+        default="",
+        description=(
+            "Pipe-separated extra regex alternates appended to the streaming "
+            "hallucination filler pattern (TASK-351 P2-1). Default empty — "
+            "built-in English + Malayalam filler forms only."
+        ),
+    )
+    streaming_punctuation_timeout_s: float = Field(
+        default=0.4,
+        description=(
+            "Max seconds a streaming FINAL waits for Cadence-Fast "
+            "punctuation before the raw text is published (TASK-351 P2-2; "
+            "0.3-0.5 s recommended). Applies only when the punctuation "
+            "model resolves to 'cadence-fast'."
+        ),
+    )
     streaming_partial_window_s: float = Field(
         default=8.0,
         description=(
@@ -497,12 +522,15 @@ class Settings(BaseSettings):
             "transformers/cadence combination that is known to load the "
             "model — e.g. an Indic ASR path whose engine does not "
             "self-punctuate, running transformers <5 in a dedicated "
-            "environment."
+            "environment — or with the direct-load 'cadence-fast' option "
+            "(TASK-351 P2-2), which works under the pinned transformers 5.x."
         ),
     )
     punctuation_model_name: str = Field(
         default="Cadence",
-        description="Default punctuation model: 'Cadence' (1B) or 'Cadence-Fast' (270M). "
+        description="Default punctuation model: 'Cadence' (1B) or 'Cadence-Fast' "
+        "(270M) via the cadence-punctuation wrapper, or 'cadence-fast' for the "
+        "direct transformers load (TASK-351 P2-2; works under transformers 5.x). "
         "Can be overridden per-pipeline via YAML.",
     )
     punctuation_model_cache_dir: str | None = Field(
