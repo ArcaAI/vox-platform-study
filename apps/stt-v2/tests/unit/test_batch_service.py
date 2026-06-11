@@ -3831,8 +3831,10 @@ class TestCodeSwitchingInference:
         return loaded_model
 
     @pytest.mark.asyncio
-    async def test_optimum_onnx_code_switching_omits_language(self, service):
-        """When code_switching=True, language should NOT be in generate_kwargs."""
+    async def test_optimum_onnx_code_switching_pins_language(self, service):
+        """TASK-351 P2-1 — code_switching with a set language now PINS the
+        matrix language: it must be passed to generate_kwargs (previously
+        omitted for auto-detect)."""
         pipeline_config = create_complete_pipeline_config(language="en")
         pipeline_config.spec.inference.code_switching = True
 
@@ -3851,7 +3853,7 @@ class TestCodeSwitchingInference:
                 )
 
         transcribe_call_kwargs = loaded_model.model.generate.call_args_list[0][1]
-        assert "language" not in transcribe_call_kwargs
+        assert transcribe_call_kwargs["language"] == "en"
 
     @pytest.mark.asyncio
     async def test_transformers_code_switching_adds_english_segment(self, service):
@@ -3943,8 +3945,10 @@ class TestCodeSwitchingInference:
         return loaded_model
 
     @pytest.mark.asyncio
-    async def test_transformers_code_switching_omits_language(self, service):
-        """When code_switching=True, language should NOT be in generate() kwargs."""
+    async def test_transformers_code_switching_pins_language(self, service):
+        """TASK-351 P2-1 — code_switching with a set language now PINS the
+        matrix language: it must be passed to generate() kwargs (previously
+        omitted for auto-detect)."""
         pipeline_config = create_complete_pipeline_config(language="fr")
         pipeline_config.spec.inference.code_switching = True
 
@@ -3956,7 +3960,7 @@ class TestCodeSwitchingInference:
             await service._run_transformers_inference(samples, 16000, loaded_model, config, None)
 
         transcribe_call_kwargs = loaded_model.model.generate.call_args_list[0][1]
-        assert "language" not in transcribe_call_kwargs
+        assert transcribe_call_kwargs["language"] == "fr"
 
     @pytest.mark.asyncio
     async def test_transformers_no_code_switching_includes_language(self, service):

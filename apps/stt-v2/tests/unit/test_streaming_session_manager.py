@@ -133,3 +133,88 @@ class TestFirePartial:
         await session_manager.remove_session("sess-1")
 
         assert "sess-1" not in session_manager._partial_tasks
+
+
+class TestFirePartialCommitPolicy:
+    """TASK-351 P1-1 — LocalAgreement-2 wiring in the partial publish flow."""
+
+    @pytest.mark.asyncio
+    async def test_consecutive_partials_publish_stable_chars(self, session_manager):
+        """'hello wor' → 'hello world how' must publish stable_chars 0 then 5."""
+        from stt_v2.streaming.commit_policy import LocalAgreementPolicy
+
+        session_manager._commit_policies["sess-1"] = LocalAgreementPolicy()
+
+        worker = AsyncMock(spec=StreamingInferenceWorker)
+        publisher = AsyncMock(spec=ResultPublisher)
+
+        worker.process_partial = AsyncMock(
+            return_value=_make_segment_result(is_final=False, text="hello wor")
+        )
+        session_manager._fire_partial("sess-1", _make_utterance(index=0), worker, publisher)
+        await asyncio.sleep(0.05)
+
+        worker.process_partial = AsyncMock(
+            return_value=_make_segment_result(is_final=False, text="hello world how")
+        )
+        session_manager._fire_partial("sess-1", _make_utterance(index=0), worker, publisher)
+        await asyncio.sleep(0.05)
+
+        published = [c.args[0] for c in publisher.publish.await_args_list]
+        assert len(published) == 2
+        assert published[0].text == "hello wor"
+        assert published[0].stable_chars == 0
+        assert published[1].text == "hello world how"
+        # "hello" is the agreed prefix between the two hypotheses
+        assert published[1].stable_chars == len("hello")
+
+    @pytest.mark.asyncio
+    async def test_policy_off_publishes_no_stable_chars(self, session_manager):
+        """Without a commit policy the wire format is unchanged."""
+        worker = AsyncMock(spec=StreamingInferenceWorker)
+        worker.process_partial = AsyncMock(
+            return_value=_make_segment_result(is_final=False, text="hello wor")
+        )
+        publisher = AsyncMock(spec=ResultPublisher)
+
+        session_manager._fire_partial("sess-1", _make_utterance(), worker, publisher)
+        await asyncio.sleep(0.05)
+
+        published = publisher.publish.await_args_list[0].args[0]
+        assert published.stable_chars is None
+        assert "stable_chars" not in published.to_redis_dict()
+
+    @pytest.mark.asyncio
+    async def test_final_utterance_resets_policy(self, session_manager):
+        """A final utterance routed via the frame handler resets the policy."""
+        from stt_v2.streaming.commit_policy import LocalAgreementPolicy
+        from stt_v2.streaming.schemas import AudioEncoding, AudioFrame, SessionStatus
+
+        policy = LocalAgreementPolicy()
+        policy.update("hello world")
+        policy.update("hello world again")
+        assert policy.committed_text != ""
+        session_manager._commit_policies["sess-1"] = policy
+
+        session = MagicMock()
+        session.session_id = "sess-1"
+        session.status = SessionStatus.ACTIVE
+        session.persist_if_needed = AsyncMock(return_value=False)
+        session.record_frame = MagicMock()
+
+        preprocessor = AsyncMock()
+        preprocessor.feed = AsyncMock(return_value=[_make_utterance(is_final=True)])
+        preprocessor.drain_processed_samples = MagicMock(return_value=b"")
+
+        queue = asyncio.Queue()
+        session_manager._inference_queues["sess-1"] = queue
+
+        handler = session_manager._make_frame_handler(session, preprocessor)
+        frame = AudioFrame(
+            seq=1, sr=16000, enc=AudioEncoding.PCM_S16LE, ch=1,
+            data=b"\x00" * 320, final=False, ts=0.0,
+        )
+        await handler(frame)
+
+        assert policy.committed_text == ""
+        assert policy.tentative_text == ""

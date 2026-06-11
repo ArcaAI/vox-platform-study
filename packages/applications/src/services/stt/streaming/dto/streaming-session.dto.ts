@@ -110,6 +110,24 @@ export interface StreamingTranscriptMessage {
   endTime: number;
   /** Whether this is a finalized segment */
   isFinal: boolean;
+  /**
+   * TASK-351 P1-1 — committed-prefix length of `text` on partial results
+   * (stt-v2 local-agreement gate). Absent on finals and on older stt-v2
+   * workers that don't emit the field.
+   */
+  stableChars?: number;
+  /**
+   * TASK-351 P1-1 follow-up — utterance ordinal stamped by stt-v2 on every
+   * segment result; gloss results carry the same index as the final they
+   * translate. Absent on older workers.
+   */
+  utteranceIndex?: number;
+  /**
+   * TASK-351 P1-1 follow-up — result kind from the wire `type` field:
+   * 'segment' (default; absence means segment) or 'gloss' (a post-final
+   * English translation carrying `englishText`).
+   */
+  resultType?: 'segment' | 'gloss';
   /** English translation for code-switching output, if available */
   englishText?: string;
   /** Speaker identifier from diarization, if available */

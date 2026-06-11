@@ -140,6 +140,18 @@ class SegmentResult:
 
     Timestamps are session-relative (offset by the utterance start time).
     Confidence is ``None`` for Whisper (no per-word confidence available).
+
+    ``stable_chars`` (TASK-351 P1-1, additive) is set on partial results
+    when the LocalAgreement-2 commit policy is enabled: the first
+    ``stable_chars`` characters of ``text`` are committed (stable across
+    subsequent partials). ``None`` (field omitted on the wire) when the
+    policy is off and on final results.
+
+    ``utterance_index`` (TASK-351 P2-3, additive) carries the utterance
+    ordinal so follow-up results (e.g. the English gloss) can be correlated
+    with their final. ``result_type`` (wire field ``type``) is ``"segment"``
+    for regular partials/finals and ``"gloss"`` for the opt-in follow-up
+    English-translation result.
     """
 
     text: str
@@ -151,17 +163,22 @@ class SegmentResult:
     is_final: bool = False
     word_timestamps: list[dict[str, Any]] = field(default_factory=list)
     inference_ms: float = 0.0
+    stable_chars: int | None = None
+    utterance_index: int | None = None
+    result_type: str = "segment"
 
     def to_redis_dict(self) -> dict[str, str]:
         """Serialize to Redis Stream field dict for ``XADD``."""
         d: dict[str, str] = {
-            "type": "segment",
+            "type": self.result_type or "segment",
             "text": self.text,
             "start_time": str(round(self.start_time, 4)),
             "end_time": str(round(self.end_time, 4)),
             "is_final": "1" if self.is_final else "0",
             "inference_ms": str(round(self.inference_ms, 1)),
         }
+        if self.utterance_index is not None:
+            d["utterance_index"] = str(self.utterance_index)
         if self.speaker_id:
             d["speaker_id"] = self.speaker_id
             d["speaker_confidence"] = str(round(self.speaker_confidence, 4))
@@ -172,6 +189,8 @@ class SegmentResult:
                 self.word_timestamps,
                 ensure_ascii=False,
             )
+        if self.stable_chars is not None:
+            d["stable_chars"] = str(self.stable_chars)
         return d
 
     @classmethod
@@ -199,6 +218,12 @@ class SegmentResult:
             except (json.JSONDecodeError, TypeError):
                 pass
 
+        raw_stable_chars = _get("stable_chars")
+        stable_chars = int(raw_stable_chars) if raw_stable_chars else None
+
+        raw_utterance_index = _get("utterance_index")
+        utterance_index = int(raw_utterance_index) if raw_utterance_index else None
+
         return cls(
             text=_get("text"),
             english_text=_get("english_text") or None,
@@ -209,6 +234,9 @@ class SegmentResult:
             is_final=_get("is_final") == "1",
             word_timestamps=word_timestamps,
             inference_ms=float(_get("inference_ms") or "0"),
+            stable_chars=stable_chars,
+            utterance_index=utterance_index,
+            result_type=_get("type") or "segment",
         )
 
 
@@ -271,6 +299,9 @@ class SessionMetadata:
     total_duration_seconds: float = 0.0
     utterance_count: int = 0
     last_seq: int = -1
+    # TASK-351 P1-3 — last processed audio stream entry ID; crash recovery
+    # resumes XREAD from here instead of replaying from 0-0.
+    last_stream_id: str | None = None
     sample_rate: int = 16000
     pipeline_config_json: str = ""  # serialized PreprocessingConfig
     closed_at: str | None = None  # ISO-8601 (set when status=closed)
@@ -306,6 +337,8 @@ class SessionMetadata:
             "pipeline_config_json": self.pipeline_config_json,
             "diarization": "1" if self.diarization else "0",
         }
+        if self.last_stream_id:
+            d["last_stream_id"] = self.last_stream_id
         if self.closed_at:
             d["closed_at"] = self.closed_at
         if self.raw_audio_uri:
@@ -336,6 +369,7 @@ class SessionMetadata:
         consultation_id = _get("consultation_id") or None
         microphone_id = _get("microphone_id") or None
         user_id = _get("user_id") or None
+        last_stream_id = _get("last_stream_id") or None
         closed_at = _get("closed_at") or None
         raw_audio_uri = _get("raw_audio_uri") or None
         processed_audio_uri = _get("processed_audio_uri") or None
@@ -357,6 +391,7 @@ class SessionMetadata:
             total_duration_seconds=float(_get("total_duration_seconds") or "0"),
             utterance_count=int(_get("utterance_count") or "0"),
             last_seq=int(_get("last_seq") or "-1"),
+            last_stream_id=last_stream_id,
             sample_rate=int(_get("sample_rate") or "16000"),
             pipeline_config_json=_get("pipeline_config_json"),
             closed_at=closed_at,

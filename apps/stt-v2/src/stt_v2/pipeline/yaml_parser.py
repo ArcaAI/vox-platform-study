@@ -7,7 +7,11 @@ from typing import Any
 import yaml
 
 from .dto import (
+    VALID_CT2_COMPUTE_TYPES,
     VALID_ONNX_QUANTIZATIONS,
+    VALID_PARAKEET_V3_LANGUAGES,
+    VALID_STREAMING_COMMIT_POLICIES,
+    AiModelFormat,
     DenoiseConfig,
     DiarizationConfig,
     DualCaptureConfig,
@@ -18,10 +22,12 @@ from .dto import (
     PostprocessingConfig,
     PreprocessingConfig,
     PunctuationConfig,
+    StreamingConfig,
     TimestampConfig,
     VadConfig,
     ValidationResult,
     is_valid_language_code,
+    is_valid_language_for_engine,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,6 +54,7 @@ class PipelineYamlParser:
             "inference",
             "postprocessing",
             "diarization",
+            "streaming",
         }
     )
 
@@ -108,6 +115,10 @@ class PipelineYamlParser:
         diarization_data = data.get("diarization", {})
         diarization = self._parse_diarization(diarization_data)
 
+        # Parse streaming (optional, use defaults) — TASK-351 P1-1
+        streaming_data = data.get("streaming", {})
+        streaming = self._parse_streaming(streaming_data)
+
         return PipelineSpec(
             version=version,
             models=models,
@@ -115,6 +126,7 @@ class PipelineYamlParser:
             inference=inference,
             postprocessing=postprocessing,
             diarization=diarization,
+            streaming=streaming,
         )
 
     def validate(self, spec: PipelineSpec) -> ValidationResult:
@@ -192,6 +204,24 @@ class PipelineYamlParser:
                         f"models.{role}.quantization",
                         f"Invalid quantization '{q}'. "
                         f"Valid values: {', '.join(VALID_ONNX_QUANTIZATIONS)}",
+                    )
+
+        # TASK-351 P1-2 — FASTER_WHISPER compute-type compatibility:
+        # CTranslate2 accepts a wider/different set than the generic engines.
+        for role, model_ref in spec.models.get_all_refs():
+            if (
+                model_ref.is_inline
+                and model_ref.inline
+                and model_ref.inline.engine == AiModelFormat.FASTER_WHISPER
+                and model_ref.inline.compute_type
+            ):
+                ct = model_ref.inline.compute_type
+                if ct not in VALID_CT2_COMPUTE_TYPES:
+                    result.add_error(
+                        f"models.{role}.compute_type",
+                        f"Invalid CTranslate2 compute_type '{ct}' for "
+                        f"engine FASTER_WHISPER. "
+                        f"Valid values: {', '.join(VALID_CT2_COMPUTE_TYPES)}",
                     )
 
         # Preprocessing validation
@@ -281,13 +311,35 @@ class PipelineYamlParser:
                     f"Use an ISO 639-1 code (e.g. 'en', 'ml') or BCP-47 tag (e.g. 'en-US').",
                 )
 
-        # Code-switching + language hint advisory
+        # TASK-351 P2-1 — code_switching with a fixed language means PINNED
+        # matrix language with code-switching enabled (deliberate semantics
+        # change: the earlier warning advised `language: null`; the language
+        # is now passed through to the engine). language: null + CS keeps
+        # auto-LID.
         if spec.inference.code_switching and spec.inference.language is not None:
-            logger.warning(
-                "code_switching is enabled together with a fixed language '%s'. "
-                "For best results, set language to null (auto-detect) when "
-                "code-switching is enabled.",
+            logger.info(
+                "code_switching enabled with pinned matrix language '%s' — "
+                "the language is passed to the engine; code-switched segments "
+                "remain in their spoken language.",
                 spec.inference.language,
+            )
+
+        # TASK-351 P2-1 — hard guard: the NEMO (Parakeet) engine only
+        # supports the Parakeet-v3 language set (e.g. 'ml' is Whisper-only).
+        if (
+            spec.inference.language is not None
+            and asr_ref.is_inline
+            and asr_ref.inline
+            and asr_ref.inline.engine == AiModelFormat.NEMO
+            and not is_valid_language_for_engine(
+                spec.inference.language, AiModelFormat.NEMO
+            )
+        ):
+            result.add_error(
+                "inference.language",
+                f"Language '{spec.inference.language}' is not supported by the "
+                f"NEMO (Parakeet) engine. Supported: "
+                f"{', '.join(sorted(VALID_PARAKEET_V3_LANGUAGES))}",
             )
 
         # initial_prompt must be a valid UUID if present
@@ -299,6 +351,14 @@ class PipelineYamlParser:
                     "inference.initial_prompt",
                     f"initial_prompt must be a valid UUID, got '{spec.inference.initial_prompt}'",
                 )
+
+        # Streaming validation (TASK-351 P1-1)
+        if spec.streaming.commit_policy not in VALID_STREAMING_COMMIT_POLICIES:
+            result.add_error(
+                "streaming.commit_policy",
+                f"Invalid commit_policy '{spec.streaming.commit_policy}'. "
+                f"Valid values: {', '.join(VALID_STREAMING_COMMIT_POLICIES)}",
+            )
 
         # Diarization validation
         if spec.diarization.low_threshold >= spec.diarization.high_threshold:
@@ -484,6 +544,10 @@ class PipelineYamlParser:
         if "hallucination_short_word_count" in data and data["hallucination_short_word_count"] is not None:
             kwargs["hallucination_short_word_count"] = int(data["hallucination_short_word_count"])
 
+        # TASK-351 P2-3 — opt-in streaming English gloss flag.
+        if "streaming_english_gloss" in data:
+            kwargs["streaming_english_gloss"] = bool(data["streaming_english_gloss"])
+
         return InferenceConfig(**kwargs)
 
     @staticmethod
@@ -533,6 +597,14 @@ class PipelineYamlParser:
             remove_disfluencies=data.get("remove_disfluencies", False),
             lowercase=data.get("lowercase", False),
             dual_capture=dual_capture,
+        )
+
+    def _parse_streaming(self, data: dict[str, Any]) -> StreamingConfig:
+        """Parse streaming section (TASK-351 P1-1)."""
+        if not isinstance(data, dict):
+            data = {}
+        return StreamingConfig(
+            commit_policy=str(data.get("commit_policy", "none")),
         )
 
     def _parse_diarization(self, data: dict[str, Any]) -> DiarizationConfig:

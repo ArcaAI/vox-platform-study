@@ -26,6 +26,7 @@ class TestSessionManagerDenoiserWiring:
         mgr._preprocessors = {}
         mgr._inference_workers = {}
         mgr._dual_capture = {}
+        mgr._commit_policies = {}
 
         pipeline_config = MagicMock()
         pipeline_config.preprocessing.vad.enabled = True
@@ -70,6 +71,7 @@ class TestSessionManagerDenoiserWiring:
             mgr._register_inference_runtime = MagicMock()
             mgr._make_frame_handler = MagicMock(return_value=lambda x: None)
             mgr._make_control_handler = MagicMock(return_value=lambda x: None)
+            mgr._make_commit_policy = MagicMock(return_value=None)
             mgr.remove_session = AsyncMock()
 
             await SessionManager.create_session(
@@ -101,6 +103,7 @@ class TestSessionManagerDenoiserWiring:
         mgr._preprocessors = {}
         mgr._inference_workers = {}
         mgr._dual_capture = {}
+        mgr._commit_policies = {}
 
         pipeline_config = MagicMock()
         pipeline_config.preprocessing.vad.enabled = True
@@ -139,6 +142,7 @@ class TestSessionManagerDenoiserWiring:
             mgr._register_inference_runtime = MagicMock()
             mgr._make_frame_handler = MagicMock(return_value=lambda x: None)
             mgr._make_control_handler = MagicMock(return_value=lambda x: None)
+            mgr._make_commit_policy = MagicMock(return_value=None)
             mgr.remove_session = AsyncMock()
 
             await SessionManager.create_session(
@@ -169,6 +173,7 @@ class TestSessionManagerDenoiserWiring:
         mgr._preprocessors = {}
         mgr._inference_workers = {}
         mgr._dual_capture = {}
+        mgr._commit_policies = {}
 
         pipeline_config = MagicMock()
         pipeline_config.preprocessing.vad.enabled = True
@@ -217,6 +222,7 @@ class TestSessionManagerDenoiserWiring:
             mgr._register_inference_runtime = MagicMock()
             mgr._make_frame_handler = MagicMock(return_value=lambda x: None)
             mgr._make_control_handler = MagicMock(return_value=lambda x: None)
+            mgr._make_commit_policy = MagicMock(return_value=None)
             mgr.remove_session = AsyncMock()
             mgr._preseed_speaker = AsyncMock()
 

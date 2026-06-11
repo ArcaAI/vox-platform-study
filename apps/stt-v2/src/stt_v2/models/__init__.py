@@ -12,6 +12,7 @@ from .cache import (
     clear_model_cache,
     get_model_cache,
 )
+from .faster_whisper_loader import FasterWhisperLoader
 from .huggingface_loader import HuggingFaceLoader
 from .nemo_adapter import NemoAsrAdapter
 from .nemo_loader import NeMoLoader
@@ -23,6 +24,7 @@ __all__ = [
     "LoadedModel",
     # Loaders
     "AzureSpeechLoader",
+    "FasterWhisperLoader",
     "HuggingFaceLoader",
     "ONNXLoader",
     "NeMoLoader",

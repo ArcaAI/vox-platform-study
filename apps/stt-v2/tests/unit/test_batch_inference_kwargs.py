@@ -40,7 +40,6 @@ def _assemble_generate_kwargs(
     Keep this in sync with the Transformers/ONNX call sites whenever the
     inline logic changes.
     """
-    code_switching = getattr(config, "code_switching", False)
     lang = getattr(config, "language", None)
 
     generate_kwargs: dict[str, Any] = {
@@ -48,7 +47,10 @@ def _assemble_generate_kwargs(
         "return_timestamps": return_timestamps,
     }
 
-    if not code_switching and lang is not None:
+    # TASK-351 P2-1 — a configured language is always pinned (passed to the
+    # engine), including when code_switching is enabled. language: null +
+    # code_switching keeps auto-LID.
+    if lang is not None:
         generate_kwargs["language"] = lang
 
     no_repeat_ngram_size = getattr(config, "no_repeat_ngram_size", None)
@@ -205,6 +207,35 @@ class TestOnnxBeamSizeTemperature:
         kwargs = _assemble_generate_kwargs(config, return_timestamps=False)
         assert "do_sample" not in kwargs
         assert "temperature" not in kwargs
+
+
+# =========================================================================
+# Code-switch language pinning (TASK-351 P2-1)
+# =========================================================================
+
+
+class TestCodeSwitchLanguagePinning:
+    """CS + language set now pins the matrix language for the engine."""
+
+    def test_cs_with_language_passes_language(self):
+        config = _make_config(language="ml", code_switching=True)
+        kwargs = _assemble_generate_kwargs(config, return_timestamps=True)
+        assert kwargs["language"] == "ml"
+
+    def test_cs_without_language_keeps_auto_lid(self):
+        config = _make_config(language=None, code_switching=True)
+        kwargs = _assemble_generate_kwargs(config, return_timestamps=True)
+        assert "language" not in kwargs
+
+    def test_no_cs_with_language_still_pinned(self):
+        config = _make_config(language="en", code_switching=False)
+        kwargs = _assemble_generate_kwargs(config, return_timestamps=True)
+        assert kwargs["language"] == "en"
+
+    def test_no_cs_without_language_omits_language(self):
+        config = _make_config(language=None, code_switching=False)
+        kwargs = _assemble_generate_kwargs(config, return_timestamps=True)
+        assert "language" not in kwargs
 
 
 # =========================================================================

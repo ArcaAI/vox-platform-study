@@ -35,7 +35,10 @@ class AiModelFormat(StrEnum):
     PYTORCH = "PYTORCH"
     # Special formats for specific engines
     ONNX_OPTIMUM = "ONNX_OPTIMUM"  # HuggingFace Optimum ONNX
-    CTRANSLATE2 = "CTRANSLATE2"  # CTranslate2 (faster-whisper)
+    CTRANSLATE2 = "CTRANSLATE2"  # CTranslate2 (legacy alias, loads via transformers)
+    # faster-whisper on CTranslate2 (TASK-351 P1-2). hf_model_id is a
+    # CT2-converted model repo/path, loaded via FasterWhisperLoader.
+    FASTER_WHISPER = "FASTER_WHISPER"
     # Cloud-based engines (no local model, API-driven)
     AZURE_SPEECH = "AZURE_SPEECH"  # Azure Cognitive Services Speech
 
@@ -195,7 +198,25 @@ _INITIAL_PROMPT_CAPABLE_ENGINES: set[AiModelFormat] = {
     AiModelFormat.ONNX,
     AiModelFormat.ONNX_OPTIMUM,
     AiModelFormat.CTRANSLATE2,
+    AiModelFormat.FASTER_WHISPER,
 }
+
+
+# CTranslate2-supported compute types (TASK-351 P1-2). Used to validate
+# models.asr.compute_type when engine is FASTER_WHISPER. Device-specific
+# coercion (e.g. float16 on CPU) happens at load time.
+VALID_CT2_COMPUTE_TYPES: list[str] = [
+    "auto",
+    "default",
+    "int8",
+    "int8_float16",
+    "int8_bfloat16",
+    "int8_float32",
+    "int16",
+    "float16",
+    "bfloat16",
+    "float32",
+]
 
 
 def engine_supports_initial_prompt(engine: AiModelFormat) -> bool:
@@ -207,10 +228,10 @@ def is_valid_language_for_engine(code: str, engine: AiModelFormat) -> bool:
         return False
     primary = code.split("-")[0].lower()
     if engine == AiModelFormat.NEMO:
-        return (
-            primary in VALID_PARAKEET_V3_LANGUAGES
-            or primary in VALID_WHISPER_LANGUAGES
-        )
+        # TASK-351 P2-1 — NEMO (Parakeet) supports only the Parakeet-v3
+        # language set. The earlier Whisper-set fallback masked unsupported
+        # languages (e.g. 'ml' is Whisper-only) until runtime.
+        return primary in VALID_PARAKEET_V3_LANGUAGES
     return primary in VALID_WHISPER_LANGUAGES
 
 
@@ -340,6 +361,9 @@ class ModelRef:
                 "HUGGINGFACE": AiModelFormat.SAFETENSOR,
                 "CTRANSLATE2": AiModelFormat.CTRANSLATE2,
                 "CT2": AiModelFormat.CTRANSLATE2,
+                # TASK-351 P1-2 — accepts `faster_whisper` / `faster-whisper`
+                "FASTER_WHISPER": AiModelFormat.FASTER_WHISPER,
+                "FASTER-WHISPER": AiModelFormat.FASTER_WHISPER,
                 "OPTIMUM": AiModelFormat.ONNX_OPTIMUM,
                 "AZURE_SPEECH": AiModelFormat.AZURE_SPEECH,
                 "AZURE": AiModelFormat.AZURE_SPEECH,
@@ -512,6 +536,10 @@ class InferenceConfig:
     max_segment_text_chars: int = 1200
     hallucination_rms_threshold: float = 0.01
     hallucination_short_word_count: int = 3
+    # TASK-351 P2-3 — opt-in streaming English gloss: after a final
+    # publishes, run a low-priority task=translate pass on the same cached
+    # model and publish a follow-up `type: gloss` result.
+    streaming_english_gloss: bool = False
 
 
 @dataclass
@@ -541,6 +569,23 @@ class PostprocessingConfig:
     dual_capture: DualCaptureConfig = field(default_factory=DualCaptureConfig)
 
 
+# Valid values for streaming.commit_policy (TASK-351 P1-1).
+VALID_STREAMING_COMMIT_POLICIES: list[str] = ["none", "local_agreement_2"]
+
+
+@dataclass
+class StreamingConfig:
+    """Streaming-specific pipeline configuration (TASK-351).
+
+    ``commit_policy`` gates the LocalAgreement-2 partial stabilizer:
+    - ``"none"`` (default): partials publish unchanged, no ``stable_chars``.
+    - ``"local_agreement_2"``: partials carry the additive ``stable_chars``
+      field marking the committed (stable) prefix.
+    """
+
+    commit_policy: str = "none"
+
+
 @dataclass
 class PipelineSpec:
     """Full pipeline specification parsed from YAML."""
@@ -551,6 +596,7 @@ class PipelineSpec:
     inference: InferenceConfig
     postprocessing: PostprocessingConfig
     diarization: DiarizationConfig = field(default_factory=DiarizationConfig)
+    streaming: StreamingConfig = field(default_factory=StreamingConfig)
 
     def __post_init__(self) -> None:
         """Inherit inference-level defaults into inline models that lack them."""

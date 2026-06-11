@@ -644,6 +644,30 @@ export class SttV2WebSocketClient {
       normalized.seq = msg.seq;
     }
 
+    // TASK-351 P1-1: committed-prefix length on partials (dual-cased like
+    // the other fields; additive — absent on older servers).
+    const rawStableChars =
+      typeof msg.stableChars === 'number' ? msg.stableChars : typeof msg.stable_chars === 'number' ? msg.stable_chars : undefined;
+    if (typeof rawStableChars === 'number' && Number.isFinite(rawStableChars) && rawStableChars >= 0) {
+      normalized.stableChars = Math.floor(rawStableChars);
+    }
+
+    // TASK-351 P1-1 follow-up: utterance ordinal (dual-cased, additive).
+    const rawUtteranceIndex =
+      typeof msg.utteranceIndex === 'number' ? msg.utteranceIndex : typeof msg.utterance_index === 'number' ? msg.utterance_index : undefined;
+    if (typeof rawUtteranceIndex === 'number' && Number.isFinite(rawUtteranceIndex) && rawUtteranceIndex >= 0) {
+      normalized.utteranceIndex = Math.floor(rawUtteranceIndex);
+    }
+
+    // TASK-351 P1-1 follow-up: result kind — the gateway relays it as
+    // `resultType`; raw wire payloads carry it as `type` (segment|gloss).
+    // The WS envelope's own `type: 'transcript'` fails the guard, so only
+    // genuine segment/gloss markers are accepted.
+    const rawResultType = typeof msg.resultType === 'string' ? msg.resultType : typeof msg.type === 'string' ? msg.type : undefined;
+    if (rawResultType === 'segment' || rawResultType === 'gloss') {
+      normalized.resultType = rawResultType;
+    }
+
     const englishText = typeof msg.englishText === 'string' ? msg.englishText : typeof msg.english_text === 'string' ? msg.english_text : undefined;
     if (englishText && englishText.trim().length > 0) {
       normalized.englishText = englishText;

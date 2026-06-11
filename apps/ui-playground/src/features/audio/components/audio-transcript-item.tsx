@@ -68,7 +68,19 @@ function AudioTranscriptItemInner({
         </span>
       </div>
       <div className="flex-1">
-        <p className={entry.isFinal ? 'text-sm' : 'text-muted-foreground text-sm italic'}>{entry.text}</p>
+        {/* TASK-351 P1-1 — partials with a stable prefix render the committed
+            text normally and only the tentative tail dimmed. */}
+        {!entry.isFinal && typeof entry.stableChars === 'number' && entry.stableChars > 0 ? (
+          <p className="text-sm">
+            {entry.text.slice(0, entry.stableChars)}
+            <span className="text-muted-foreground/70 italic">{entry.text.slice(entry.stableChars)}</span>
+          </p>
+        ) : (
+          <p className={entry.isFinal ? 'text-sm' : 'text-muted-foreground text-sm italic'}>{entry.text}</p>
+        )}
+        {/* TASK-351 P1-1 follow-up — English gloss merged from a post-final
+            gloss result; a subtle secondary line, only when present. */}
+        {entry.englishText && <p className="text-muted-foreground mt-0.5 text-xs">{entry.englishText}</p>}
         {showTimingDetails && entry.isFinal && (
           <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-2 text-[10px]">
             <span className="font-mono">

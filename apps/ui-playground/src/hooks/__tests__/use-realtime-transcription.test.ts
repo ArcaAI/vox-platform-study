@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import type { WsTranscriptResult } from '@arcaai/vox';
 import { useRealtimeTranscription } from '../use-realtime-transcription';
 
 const mockRefs = vi.hoisted(() => ({
@@ -12,6 +13,9 @@ const mockRefs = vi.hoisted(() => ({
     sendStop: vi.fn(),
     isConnected: vi.fn().mockReturnValue(true),
     disconnectHandler: null as (() => void) | null,
+    // TASK-351 P1-1 — captured onTranscript callback so tests can inject
+    // WS transcript results.
+    transcriptHandler: null as ((result: WsTranscriptResult) => void) | null,
     // TASK-351 P0-5 — SDK worklet capture utility mock.
     createAudioCapture: vi.fn(),
     captureOnFrame: null as ((frame: Float32Array) => void) | null,
@@ -29,7 +33,9 @@ vi.mock('@arcaai/vox', async (importOriginal) => {
     }
 
     class MockSttV2WebSocketClient {
-        onTranscript = vi.fn();
+        onTranscript = vi.fn((cb: (result: WsTranscriptResult) => void) => {
+            mockRefs.transcriptHandler = cb;
+        });
         onReconnect = vi.fn();
         onReconnectFailed = vi.fn();
         onWsError = vi.fn();
@@ -95,6 +101,7 @@ function makeStream(): MediaStream {
 beforeEach(() => {
     vi.clearAllMocks();
     mockRefs.disconnectHandler = null;
+    mockRefs.transcriptHandler = null;
     mockRefs.captureOnFrame = null;
     lastAudioContext = null;
     // Re-arm return values that individual tests override (clearAllMocks
@@ -316,6 +323,153 @@ describe('useRealtimeTranscription', () => {
             });
 
             expect(mockRefs.captureDestroy).toHaveBeenCalled();
+        });
+    });
+
+    describe('TASK-351 P1-1 — stableChars passthrough to TranscriptEntry', () => {
+        async function startStreaming() {
+            const { result } = renderHook(() => useRealtimeTranscription());
+            await act(async () => {
+                await result.current.start({
+                    pipelineId: 'pipeline-1',
+                    stream: makeStream(),
+                });
+            });
+            return result;
+        }
+
+        it('maps stableChars from the WS result onto the transcript entry', async () => {
+            const result = await startStreaming();
+            expect(mockRefs.transcriptHandler).not.toBeNull();
+
+            act(() => {
+                mockRefs.transcriptHandler!({
+                    type: 'transcript',
+                    text: 'hello tentative tail',
+                    startTime: 0,
+                    endTime: 1.2,
+                    isFinal: false,
+                    stableChars: 5,
+                });
+            });
+
+            expect(result.current.transcripts).toHaveLength(1);
+            expect(result.current.transcripts[0]!.stableChars).toBe(5);
+        });
+
+        it('leaves stableChars undefined when the WS result omits it (older stt-v2)', async () => {
+            const result = await startStreaming();
+
+            act(() => {
+                mockRefs.transcriptHandler!({
+                    type: 'transcript',
+                    text: 'plain partial',
+                    startTime: 0,
+                    endTime: 1,
+                    isFinal: false,
+                });
+            });
+
+            expect(result.current.transcripts).toHaveLength(1);
+            expect(result.current.transcripts[0]!.stableChars).toBeUndefined();
+        });
+    });
+
+    describe('TASK-351 P1-1 follow-up — gloss results merge by utteranceIndex', () => {
+        async function startStreaming() {
+            const { result } = renderHook(() => useRealtimeTranscription());
+            await act(async () => {
+                await result.current.start({
+                    pipelineId: 'pipeline-1',
+                    stream: makeStream(),
+                });
+            });
+            return result;
+        }
+
+        it('merges a gloss into the matching entry without creating a new row', async () => {
+            const result = await startStreaming();
+
+            act(() => {
+                mockRefs.transcriptHandler!({
+                    type: 'transcript',
+                    text: 'xin chào',
+                    startTime: 0,
+                    endTime: 1.5,
+                    isFinal: true,
+                    utteranceIndex: 3,
+                });
+            });
+            expect(result.current.transcripts).toHaveLength(1);
+            expect(result.current.transcripts[0]!.utteranceIndex).toBe(3);
+            expect(result.current.transcripts[0]!.englishText).toBeUndefined();
+
+            act(() => {
+                mockRefs.transcriptHandler!({
+                    type: 'transcript',
+                    text: 'xin chào',
+                    startTime: 0,
+                    endTime: 1.5,
+                    isFinal: true,
+                    resultType: 'gloss',
+                    englishText: 'hello',
+                    utteranceIndex: 3,
+                });
+            });
+
+            expect(result.current.transcripts).toHaveLength(1);
+            expect(result.current.transcripts[0]!.englishText).toBe('hello');
+            expect(result.current.transcripts[0]!.text).toBe('xin chào');
+        });
+
+        it('drops a gloss silently when no entry matches its utteranceIndex', async () => {
+            const result = await startStreaming();
+
+            act(() => {
+                mockRefs.transcriptHandler!({
+                    type: 'transcript',
+                    text: 'xin chào',
+                    startTime: 0,
+                    endTime: 1.5,
+                    isFinal: true,
+                    utteranceIndex: 3,
+                });
+            });
+
+            act(() => {
+                mockRefs.transcriptHandler!({
+                    type: 'transcript',
+                    text: 'orphan gloss',
+                    startTime: 0,
+                    endTime: 1.5,
+                    isFinal: true,
+                    resultType: 'gloss',
+                    englishText: 'orphan',
+                    utteranceIndex: 99,
+                });
+            });
+
+            // No new row, and the unrelated entry is untouched.
+            expect(result.current.transcripts).toHaveLength(1);
+            expect(result.current.transcripts[0]!.englishText).toBeUndefined();
+        });
+
+        it('drops a gloss without an utteranceIndex instead of rendering it as a row', async () => {
+            const result = await startStreaming();
+
+            act(() => {
+                mockRefs.transcriptHandler!({
+                    type: 'transcript',
+                    text: 'unpaired gloss',
+                    startTime: 0,
+                    endTime: 1,
+                    isFinal: true,
+                    resultType: 'gloss',
+                    englishText: 'unpaired',
+                });
+            });
+
+            expect(result.current.transcripts).toHaveLength(0);
         });
     });
 });

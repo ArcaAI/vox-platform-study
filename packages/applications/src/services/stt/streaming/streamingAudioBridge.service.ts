@@ -5,6 +5,13 @@ import { IConfigService } from '../../baseServices/_meta/config';
 import { StreamingTranscriptMessage } from './dto';
 
 /**
+ * TASK-351 P1-3 (H5) — XREAD BLOCK window in milliseconds. 500 (down from
+ * 2000) so a subscriber abort/unsubscribe is honored within ≤ 500 ms: the
+ * abort flag is only observed between blocking reads.
+ */
+export const RESULT_STREAM_BLOCK_MS = 500;
+
+/**
  * StreamingAudioBridgeService
  *
  * Bridges WebSocket audio from the API Gateway to STT-V2 via Redis Streams:
@@ -26,6 +33,21 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
   /** Dedicated ioredis for stream reads (XREAD) — blocking calls */
   private readerRedis: Redis | null = null;
+
+  /**
+   * Redis connection options captured at `connect()` so each subscriber can
+   * get its own reader connection (TASK-351 P1-3 / H5).
+   */
+  private redisConfig: { host: string; port: number; password?: string } | null = null;
+
+  /**
+   * Live per-subscriber reader connections (TASK-351 P1-3 / H5). A blocking
+   * XREAD monopolizes its ioredis connection, so sharing one reader across
+   * sessions serialized every result stream behind whichever session blocked
+   * first. One connection per subscriber lets reads proceed in parallel;
+   * each is quit by its own read loop on teardown.
+   */
+  private readonly subscriberReaders = new Set<Redis>();
 
   private connected = false;
 
@@ -79,6 +101,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       lazyConnect: false,
     });
 
+    this.redisConfig = { host: config.host, port: config.port, password: config.password };
     this.connected = true;
     this.logger.log({ message: 'Audio bridge Redis connections established' });
   }
@@ -92,6 +115,14 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     }
     this.activeSubscriptions.clear();
 
+    // Proactively quit per-subscriber readers (TASK-351 P1-3). Their read
+    // loops also self-quit after the ≤500ms BLOCK window; the double quit
+    // is harmless and caught.
+    for (const reader of this.subscriberReaders) {
+      void reader.quit().catch(() => {});
+    }
+    this.subscriberReaders.clear();
+
     if (this.writerRedis) {
       await this.writerRedis.quit().catch(() => {});
       this.writerRedis = null;
@@ -100,6 +131,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       await this.readerRedis.quit().catch(() => {});
       this.readerRedis = null;
     }
+    this.redisConfig = null;
     this.connected = false;
   }
 
@@ -206,15 +238,22 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
     const streamKey = `stt:result:${sessionId}`;
 
-    // Start reading in background
-    this.readResultStream(streamKey, subject, ctrl).catch((error) => {
-      this.logger.error({
-        message: 'Result stream reader error',
-        sessionId,
-        error: error instanceof Error ? error.message : String(error),
+    // TASK-351 P1-3 (H5) — each subscriber reads on its OWN connection so
+    // concurrent sessions never serialize behind one blocked XREAD. When the
+    // bridge is not connected, no reader starts (the observable simply never
+    // emits — same posture as before).
+    const reader = this.createSubscriberReader();
+    if (reader) {
+      // Start reading in background
+      this.readResultStream(streamKey, subject, ctrl, reader).catch((error) => {
+        this.logger.error({
+          message: 'Result stream reader error',
+          sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        subject.error(error);
       });
-      subject.error(error);
-    });
+    }
 
     return subject.asObservable().pipe(
       finalize(() => {
@@ -250,80 +289,132 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   // Private: result stream reader
   // ------------------------------------------------------------------
 
-  private async readResultStream(streamKey: string, subject: Subject<StreamingTranscriptMessage>, ctrl: { abort: boolean }): Promise<void> {
-    if (!this.readerRedis) return;
-
-    let lastId = '0-0';
-
-    while (!ctrl.abort) {
-      try {
-        // XREAD with 2-second blocking timeout
-        const result = await this.readerRedis.xread('COUNT', 100, 'BLOCK', 2000, 'STREAMS', streamKey, lastId);
-
-        if (!result || ctrl.abort) continue;
-
-        for (const [, entries] of result) {
-          for (const [entryId, fields] of entries) {
-            lastId = entryId;
-
-            // Parse fields array into key-value pairs
-            const data: Record<string, string> = {};
-            for (let i = 0; i < fields.length; i += 2) {
-              data[fields[i]] = fields[i + 1];
-            }
-
-            // Check if this is a status entry (session closed)
-            if (data.type === 'status') {
-              if (data.status === 'closed' || data.status === 'finalizing') {
-                subject.complete();
-                return;
-              }
-              continue;
-            }
-
-            // Emit transcript segment
-            const speakerId = data.speaker_id || undefined;
-            const speakerConfidence = data.speaker_confidence ? parseFloat(data.speaker_confidence) : undefined;
-            const englishText = data.english_text || data.englishText || undefined;
-
-            // Parse word-level timestamps from Redis JSON field
-            let wordTimestamps: StreamingTranscriptMessage['wordTimestamps'] | undefined;
-            if (data.word_timestamps_json) {
-              try {
-                const parsed = JSON.parse(data.word_timestamps_json);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                  wordTimestamps = parsed;
-                }
-              } catch {
-                // Malformed JSON -- skip wordTimestamps
-              }
-            }
-
-            subject.next({
-              type: 'transcript',
-              text: data.text || '',
-              startTime: parseFloat(data.start_time || '0'),
-              endTime: parseFloat(data.end_time || '0'),
-              isFinal: data.is_final === '1',
-              ...(englishText ? { englishText } : {}),
-              ...(speakerId ? { speakerId } : {}),
-              ...(speakerConfidence != null && !isNaN(speakerConfidence) ? { speakerConfidence } : {}),
-              ...(wordTimestamps ? { wordTimestamps } : {}),
-            });
-          }
-        }
-      } catch (error) {
-        if (ctrl.abort) return;
-        this.logger.warn({
-          message: 'XREAD error, retrying',
-          streamKey,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        // Brief pause before retry
-        await new Promise((r) => setTimeout(r, 500));
-      }
+  /**
+   * TASK-351 P1-3 (H5) — dedicated reader connection for one subscriber.
+   * Returns null when the bridge is not connected (Redis unconfigured).
+   */
+  private createSubscriberReader(): Redis | null {
+    if (!this.connected || !this.redisConfig) {
+      return null;
     }
+    const reader = new Redis({
+      host: this.redisConfig.host,
+      port: this.redisConfig.port,
+      password: this.redisConfig.password,
+      maxRetriesPerRequest: null, // XREAD blocks
+      lazyConnect: false,
+    });
+    this.subscriberReaders.add(reader);
+    return reader;
+  }
 
-    subject.complete();
+  private async readResultStream(streamKey: string, subject: Subject<StreamingTranscriptMessage>, ctrl: { abort: boolean }, reader: Redis): Promise<void> {
+    try {
+      let lastId = '0-0';
+
+      while (!ctrl.abort) {
+        try {
+          // Blocking XREAD on this subscriber's own connection. BLOCK is
+          // 500ms (TASK-351 P1-3) so the abort flag is honored ≤ 500ms.
+          const result = await reader.xread('COUNT', 100, 'BLOCK', RESULT_STREAM_BLOCK_MS, 'STREAMS', streamKey, lastId);
+
+          if (!result || ctrl.abort) continue;
+
+          for (const [, entries] of result) {
+            for (const [entryId, fields] of entries) {
+              lastId = entryId;
+
+              // Parse fields array into key-value pairs
+              const data: Record<string, string> = {};
+              for (let i = 0; i < fields.length; i += 2) {
+                data[fields[i]] = fields[i + 1];
+              }
+
+              // Check if this is a status entry (session closed)
+              if (data.type === 'status') {
+                if (data.status === 'closed' || data.status === 'finalizing') {
+                  subject.complete();
+                  return;
+                }
+                continue;
+              }
+
+              // Emit transcript segment
+              const speakerId = data.speaker_id || undefined;
+              const speakerConfidence = data.speaker_confidence ? parseFloat(data.speaker_confidence) : undefined;
+              const englishText = data.english_text || data.englishText || undefined;
+
+              // TASK-351 P1-1 — additive committed-prefix length on partials.
+              // Only relayed when present and a valid non-negative integer.
+              let stableChars: number | undefined;
+              if (data.stable_chars != null && data.stable_chars !== '') {
+                const parsedStable = Number.parseInt(data.stable_chars, 10);
+                if (Number.isFinite(parsedStable) && parsedStable >= 0) {
+                  stableChars = parsedStable;
+                }
+              }
+
+              // TASK-351 P1-1 follow-up — utterance ordinal on every segment
+              // result (gloss results reuse the translated final's index).
+              let utteranceIndex: number | undefined;
+              if (data.utterance_index != null && data.utterance_index !== '') {
+                const parsedUtterance = Number.parseInt(data.utterance_index, 10);
+                if (Number.isFinite(parsedUtterance) && parsedUtterance >= 0) {
+                  utteranceIndex = parsedUtterance;
+                }
+              }
+
+              // TASK-351 P1-1 follow-up — wire `type` is 'segment' (default,
+              // may be absent on old workers) or 'gloss'; anything else is
+              // ignored so unknown future kinds stay additive.
+              const resultType = data.type === 'segment' || data.type === 'gloss' ? data.type : undefined;
+
+              // Parse word-level timestamps from Redis JSON field
+              let wordTimestamps: StreamingTranscriptMessage['wordTimestamps'] | undefined;
+              if (data.word_timestamps_json) {
+                try {
+                  const parsed = JSON.parse(data.word_timestamps_json);
+                  if (Array.isArray(parsed) && parsed.length > 0) {
+                    wordTimestamps = parsed;
+                  }
+                } catch {
+                  // Malformed JSON -- skip wordTimestamps
+                }
+              }
+
+              subject.next({
+                type: 'transcript',
+                text: data.text || '',
+                startTime: parseFloat(data.start_time || '0'),
+                endTime: parseFloat(data.end_time || '0'),
+                isFinal: data.is_final === '1',
+                ...(stableChars != null ? { stableChars } : {}),
+                ...(utteranceIndex != null ? { utteranceIndex } : {}),
+                ...(resultType ? { resultType } : {}),
+                ...(englishText ? { englishText } : {}),
+                ...(speakerId ? { speakerId } : {}),
+                ...(speakerConfidence != null && !isNaN(speakerConfidence) ? { speakerConfidence } : {}),
+                ...(wordTimestamps ? { wordTimestamps } : {}),
+              });
+            }
+          }
+        } catch (error) {
+          if (ctrl.abort) return;
+          this.logger.warn({
+            message: 'XREAD error, retrying',
+            streamKey,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          // Brief pause before retry
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
+
+      subject.complete();
+    } finally {
+      // TASK-351 P1-3 — this subscriber's dedicated connection dies with it.
+      this.subscriberReaders.delete(reader);
+      await reader.quit().catch(() => {});
+    }
   }
 }
