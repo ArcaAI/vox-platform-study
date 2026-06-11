@@ -9,6 +9,7 @@ import {
     SEED_API_KEY_RAW,
     SEED_USER_IDS,
 } from './00-constants';
+import { resolveApiKeyPepper } from './api-key-pepper';
 
 /**
  * TASK-331 doc-08 F5 — dev/test gate predicate (single source of truth).
@@ -33,11 +34,13 @@ export function maskSecret(rawKey: string): string {
 }
 
 /**
- * Hash an API key using SHA-256
- * This must match the hashing in ApiKeyService
+ * Hash an API key — HMAC-SHA256 when a pepper is provided, plain SHA-256
+ * otherwise. This must match `ApiKeyService.hashKey`. TASK-352: the pepper
+ * is resolved once per seed run via `resolveApiKeyPepper` (env first, then
+ * Vault KV when SECRETS_PROVIDER=vault) so seeded hashes always match what
+ * the running API computes at validation time.
  */
-function hashApiKey(rawKey: string): string {
-  const pepper = process.env.API_KEY_PEPPER;
+function hashApiKey(rawKey: string, pepper?: string): string {
   if (pepper) {
     return createHmac('sha256', pepper).update(rawKey).digest('hex');
   }
@@ -211,12 +214,22 @@ export const seedApiKey = async (client: CorePrismaClient) => {
 
   console.log('Seeding API keys...');
 
+  // TASK-352 — resolve OUTSIDE the try/catch: in vault mode a resolution
+  // failure must abort the seed loudly, not be swallowed by the catch below
+  // (plain-SHA hashes seeded in vault mode 401 against the running API).
+  const pepper = await resolveApiKeyPepper();
+  console.log(
+    pepper
+      ? '  Key hashing: HMAC-SHA256 with API_KEY_PEPPER (matches runtime validation)'
+      : '  Key hashing: plain SHA-256 (no API_KEY_PEPPER configured)'
+  );
+
   try {
     console.log('\n📋 Development API Keys (raw values defined in seed/00-constants.ts):');
     console.log('─'.repeat(60));
 
     for (const { rawKey, keyName, ...apiKeyData } of DEFAULT_API_KEYS) {
-      const keyHash = hashApiKey(rawKey);
+      const keyHash = hashApiKey(rawKey, pepper);
       const keyPrefix = extractPrefix(rawKey);
       const keyChecksum = extractChecksum(rawKey);
 
