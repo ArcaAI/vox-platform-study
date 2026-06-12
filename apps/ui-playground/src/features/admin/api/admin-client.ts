@@ -54,9 +54,16 @@ export interface PaginatedResponse<T> {
  * `isAdminPlanePath`. It is duplicated here (rather than imported from
  * `@arcaai/vox`) because this app's vitest config stubs the whole SDK, so an
  * imported helper would resolve to `undefined` under test.
+ *
+ * TASK-353 — also matches the admin-only surfaces OUTSIDE the `/admin/`
+ * prefix: `/monitoring/*` (whole controller is `manage:all`, TASK-336 OB-12)
+ * and `/health/services[/:serviceKey]` (`manage:all`). Without these, the
+ * system-health page sent the impersonation token and every call 403'd
+ * while impersonating. The unrestricted `/health`, `/health/live` and
+ * `/health/ready` probes are deliberately NOT matched.
  */
 function isAdminPlanePath(path: string): boolean {
-  return /^\/?(?:api\/v\d+\/)?admin\//.test(path);
+  return /^\/?(?:api\/v\d+\/)?(?:admin\/|monitoring\/|health\/services(?:[/?]|$))/.test(path);
 }
 
 /**

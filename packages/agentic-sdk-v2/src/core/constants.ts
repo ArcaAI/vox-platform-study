@@ -9,13 +9,21 @@
 // =============================================================================
 
 /**
- * Whether `path` targets the **admin plane** (`/admin/*`).
+ * Whether `path` targets the **admin plane**.
  *
- * Mirrors the API gateway's own admin-route detection
- * (`AuthorizationGuard`, `/^\/(api\/v\d+\/)?admin\//`). The optional
- * `api/vN/` segment is tolerated even though SDK endpoint constants omit the
- * gateway prefix (the `baseUrl` carries it) — this keeps the predicate correct
- * if a fully-qualified path is ever passed.
+ * Covers `/admin/*` (mirrors the API gateway's own admin-route detection,
+ * `AuthorizationGuard`, `/^\/(api\/v\d+\/)?admin\//`) PLUS the admin-only
+ * surfaces that live OUTSIDE the `/admin/` prefix (TASK-353):
+ *
+ * - `/monitoring/*` — whole controller is `@Authorize(['manage', 'all'])`
+ *   (TASK-336 OB-12).
+ * - `/health/services[/:serviceKey]` — `manage:all`; the other `/health/*`
+ *   probes (`/health`, `/health/live`, `/health/ready`) are unrestricted and
+ *   deliberately NOT matched.
+ *
+ * The optional `api/vN/` segment is tolerated even though SDK endpoint
+ * constants omit the gateway prefix (the `baseUrl` carries it) — this keeps
+ * the predicate correct if a fully-qualified path is ever passed.
  *
  * Used to decide, during impersonation, whether a request must carry the
  * admin's own JWT (admin plane) or the impersonation JWT (user plane). The
@@ -23,7 +31,7 @@
  */
 export function isAdminPlanePath(path: string): boolean {
   if (typeof path !== 'string') return false;
-  return /^\/?(?:api\/v\d+\/)?admin\//.test(path);
+  return /^\/?(?:api\/v\d+\/)?(?:admin\/|monitoring\/|health\/services(?:[/?]|$))/.test(path);
 }
 
 // =============================================================================
