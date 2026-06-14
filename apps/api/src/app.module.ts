@@ -47,6 +47,7 @@ import { HealthModule } from './modules/health/health.module';
 import { InternalModule } from './modules/internal/internal.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
 import { PipelineModule } from './modules/pipeline/pipeline.module';
+import { AiModelModule } from './modules/ai-model/ai-model.module';
 import { PromptManagementModule } from './modules/prompt-management/prompt-management.module';
 import { PrismaStudioModule, shouldEnablePrismaStudio } from './modules/pstudio/pstudio.module';
 import { QueueAdminModule } from './modules/queue-admin/queue-admin.module';
@@ -247,6 +248,7 @@ const featureModules: any[] = [
   StorageAccessKeyModule,
   StreamingModule,
   PipelineModule,
+  AiModelModule,
   TenantModule,
   TenantBucketModule,
   TenantStorageConfigModule,

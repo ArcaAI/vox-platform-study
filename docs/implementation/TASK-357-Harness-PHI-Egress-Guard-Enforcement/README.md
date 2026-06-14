@@ -6,13 +6,13 @@
 | **Title** | Enforce the fail-closed PHI egress guard on cloud-bound harness payloads |
 | **Created** | 2026-06-14 |
 | **Updated** | 2026-06-14 |
-| **Status** | **Pending** — planning doc; awaiting plan approval (Phase-3 gate) before any code |
+| **Status** | **Completed** — guard enforced at the cloud-bound harness call sites (TDD; full harness suite green) |
 | **Type** | security / bugfix-gap |
 | **Affected areas** | `apps/harness` (Temporal activities, SMR/judge/Granite call paths, core config), harness policy contract (`HarnessPolicy.phi_enabled/phi_fail_closed`) |
 | **Spawned from** | TASK-355 §8 observation #1 + [TASK-355 Appendix 04](../TASK-355-Harness-Latency-Optimization/04-gating-inventory.md) "PHI guard — wired but NOT in the execution path" |
 | **Strong dependency for** | **TASK-356** (Admin-Managed Models & Workflows) — the admin surface that can assign a cloud provider per tenant is the exact trigger that makes this gap exploitable |
 
-> Planning document. **No code is changed by this ticket yet.** It documents the gap, grounds it in the live code, and proposes a TDD implementation plan for approval. Status stays **Pending** until the plan is approved.
+> Implemented 2026-06-14 via TDD (plan §4 approved). The fail-closed guard is now enforced at the SMR/judge/Granite cloud-egress boundaries; local providers are byte-identical (replay fixtures stay green). See the **Implementation Summary** (§4A) for what was built and how each AC is met.
 
 ---
 
@@ -221,6 +221,87 @@ TASK-356 owner once this number is known.
 
 ---
 
+## 4A. Implementation Summary (2026-06-14)
+
+Built end-to-end via TDD (RED → GREEN → REFACTOR). The fail-closed `PhiRedactor` is now enforced at
+a single, replay-safe chokepoint per cloud-bound activity; local providers (the default) are an
+identity no-op.
+
+### Files created
+
+- **`apps/harness/src/harness/guards/phi/egress.py`** — the chokepoint.
+  - `ensure_egress_safe(text, *, provider, settings, phi_enabled, phi_fail_closed, redactor=None)` —
+    per-string gate: bypass when `phi_enabled` is false or `provider is None`; otherwise delegate to
+    `PhiRedactor.ensure_safe_for_cloud` (no-op for local, fail-closed redact+confirm for cloud). When
+    the snapshotted `phi_fail_closed` differs from `settings.phi.fail_closed` it `model_copy`s the
+    settings so the **effective policy** governs without mutating shared state.
+  - `ensure_inferential_egress_safe(...)` — fans the gate across the whole inferential payload: the
+    Granite-screened **note** (safety provider) and the judge premise — **transcript + every claim
+    hypothesis/evidence quote + knowledge chunks** (judge provider). Each field is gated against *its
+    own* consumer's provider; when neither consumer is cloud it returns the inputs unchanged
+    (identity → byte-identical replay, no Presidio cost).
+- **`apps/harness/src/harness/tests/unit/guards/test_phi_egress.py`** — 13 helper unit tests.
+- **`apps/harness/src/harness/tests/unit/temporal/test_activities_phi_egress.py`** — 8 activity-wiring tests.
+
+### Files modified
+
+- **`guards/phi/__init__.py`** — barrel-export the two helpers.
+- **`temporal/models.py`** — add `phi_enabled` / `phi_fail_closed` (default `True`) to `GenerateInput`
+  and `RunInferentialSensorsInput` (optional, safe defaults ⇒ replay-safe; TASK-355 Slice-5d precedent).
+- **`temporal/activities.py`** — add the `_phi_redactor()` factory (monkeypatchable, like the other
+  client factories); wire `generate` (redact prompt + system prompt before SMR; a block re-raises and
+  fails the workflow — no draft persisted) and `run_inferential_sensors` (redact via
+  `ensure_inferential_egress_safe` before the judge/Granite calls; a block **degrades** the whole pass
+  to reduced assurance). Reused the existing `get_runtime_judge_config()` read for both the guard's
+  judge-provider resolution and the entailment batch size (net zero extra config reads).
+- **`temporal/workflows.py`** — snapshot `phi_enabled` / `phi_fail_closed` at workflow start (policy
+  branch + code-default branch) and thread them into both `GenerateInput` sites and both
+  `RunInferentialSensorsInput` sites.
+
+### How each AC is met
+
+- **AC-1** — `generate` redacts prompt/system-prompt; `run_inferential_sensors` redacts note +
+  transcript + claim hypotheses/evidence + chunks; all via `ensure_safe_for_cloud` for cloud
+  providers only. (Tests T2, T6, `test_cloud_redacts_every_field`, `test_redacts_only_the_cloud_consumer_payload`.)
+- **AC-2** — fail-closed `PhiEgressBlocked` blocks the call: `generate` re-raises (workflow fails, no
+  draft), the inferential pass degrades (groundedness/citation_verify/safety → DEGRADED, reduced
+  assurance). Granite/SMR are never called on a block. (Tests T1, T5, `test_cloud_block_degrades_whole_pass_and_skips_granite`.)
+- **AC-3** — local providers pass through unchanged; the inferential all-local path returns the
+  identical input objects → replay fixtures replay byte-identical. (Tests T3, `test_local_providers_no_redaction`, `test_all_local_is_identity_noop`, replay-compat suite = T8.)
+- **AC-4** — `phi_enabled=false` bypasses entirely; the snapshotted `phi_fail_closed` overrides
+  `settings.phi.fail_closed`. (Tests T4, `test_policy_fail_closed_false_overrides_settings_true` / `…_true_overrides_settings_false`.)
+- **AC-5** — every block emits a structured `harness.phi_egress.blocked` warning (`provider` / `reason`
+  / `stage`); the inferential degrade reason (`"phi egress blocked …"`) surfaces in
+  `guardrailDecisions` (the existing reduced-assurance/WORM audit path — no new schema). (Test T7.)
+- **AC-6** — covered by the full T1–T8 matrix above.
+
+### Verification (actual)
+
+- **Full harness suite:** `conda run -n arcaenv python -m pytest` → **593 passed** (incl. 21 new tests
+  and the 5 replay-compat fixtures, all green).
+- **ruff:** clean on all changed files. **mypy:** clean on all TASK-357 files. **black:** clean on all
+  TASK-357 lines.
+
+### Deviations from the plan
+
+1. The helper takes the two policy **booleans** (`phi_enabled` / `phi_fail_closed`) rather than a
+   `policy` object, to keep `guards/` decoupled from `temporal/` models — functionally identical to §4.1.
+2. Inferential redaction was extended beyond "premise/note" to also cover the per-claim
+   hypotheses + evidence quotes + knowledge chunks, since those are part of the judge's cloud-bound
+   premise (`groundedness.py`) — required to fully satisfy AC-1. Still a single activity-boundary chokepoint.
+
+### Overlap with concurrent tickets (TASK-355 / TASK-356)
+
+`temporal/activities.py`, `temporal/workflows.py`, and `temporal/models.py` carry uncommitted
+TASK-355/356 working-tree changes. All TASK-357 edits are additive/surgical (locate-by-name). Pre-existing
+non-TASK-357 lint debt in those files was left **untouched** for the owning agents: one black-noncompliant
+line in `_build_assurance_publisher` (TASK-355) and four mypy findings in the optimistic-delivery helpers
+(`_deliver_early`/`_regen_compute` missing annotations, an `inferential_results` redefinition, a
+`Verdict | None` attribute access). TASK-359 also edits `run_inferential_sensors`; the guard insertion is a
+contiguous block right after `settings`/`judge_config` to ease that merge.
+
+---
+
 ## 5. Risks & invariants
 
 - **Latency:** redaction adds Presidio cost **only** on cloud runs (local path untouched). Acceptable;
@@ -238,3 +319,4 @@ TASK-356 owner once this number is known.
 | Date | Change | Files |
 |---|---|---|
 | 2026-06-14 | Planning ticket created (no code). Spawned from TASK-355 §8 observation #1 + Appendix 04 "PHI guard" section; grounded in live code (`guards/phi/redactor.py`, `temporal/activities.py`, `core/config.py`, `temporal/models.py`); strong dependency relationship to TASK-356 documented. Status = Pending, awaiting plan approval. | `docs/implementation/TASK-357-Harness-PHI-Egress-Guard-Enforcement/README.md` |
+| 2026-06-14 | **Implemented (TDD), Status → Completed.** Added the `guards/phi/egress.py` chokepoint (`ensure_egress_safe` + `ensure_inferential_egress_safe`); enforced it in `generate` (block re-raises → workflow fails) and `run_inferential_sensors` (block degrades the pass); added `phi_enabled`/`phi_fail_closed` to `GenerateInput`/`RunInferentialSensorsInput`, snapshotted them at workflow start, and threaded them into all four activity call sites; structured `harness.phi_egress.blocked` logging. 21 new tests; full harness suite 593 passed; replay fixtures green; ruff/mypy/black clean on changed files. | `apps/harness/src/harness/guards/phi/egress.py` (new), `apps/harness/src/harness/guards/phi/__init__.py`, `apps/harness/src/harness/temporal/models.py`, `apps/harness/src/harness/temporal/activities.py`, `apps/harness/src/harness/temporal/workflows.py`, `apps/harness/src/harness/tests/unit/guards/test_phi_egress.py` (new), `apps/harness/src/harness/tests/unit/temporal/test_activities_phi_egress.py` (new) |

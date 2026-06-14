@@ -23,6 +23,7 @@ export class AiModelDtoMapper {
       fileSizeMb: entity.fileSizeMb,
       checksum: entity.checksum,
       resourceStatus: entity.resourceStatus,
+      version: entity.version,
       tags: entity.tags || [],
       tenantId: entity.tenantId || '',
       createdAt: entity.createdAt,

@@ -230,4 +230,104 @@ describe('FrontendPipelineTab (TASK-331 doc-03 #1)', () => {
     expect(toggle).toBeDisabled();
     expect(screen.getByTestId('captureRawAudio-hint')).toBeInTheDocument();
   });
+
+  // TASK-356 Phase 4 (UI-T1) — admin controls for the new audio-console fields:
+  // transcription mode (LOCAL/BACKEND), the doctor-override lock, and the audio
+  // capture mode. They hydrate from config and flow back through the save payload.
+  it('TASK-356 — hydrates transcriptionMode / lock / captureMode from config and saves them (lock toggled on)', async () => {
+    mockIsGlobalScope = true;
+    mockTenantId = 'tenant-356';
+    const save = vi.fn().mockResolvedValue({ version: 8 });
+    const hook = {
+      ...baseHook(),
+      config: {
+        tenantId: 'tenant-356',
+        asrModel: '',
+        noiseCancel: false,
+        vad: false,
+        voiceEnrollment: false,
+        diarization: false,
+        captureRawAudio: false,
+        platformRawCaptureCapable: true,
+        transcriptionMode: 'LOCAL',
+        transcriptionModeLocked: false,
+        captureMode: 'RAW_ONLY',
+        configJson: {},
+        version: 7,
+      },
+      save,
+    };
+    useTenantFrontendConfig.mockReturnValue(hook);
+
+    render(<FrontendPipelineTab />);
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // Hydration: the effective mode + capture mode are reflected in the selects.
+    const selectValues = screen.getAllByTestId('select').map((s) => s.getAttribute('data-value'));
+    expect(selectValues).toContain('LOCAL');
+    expect(selectValues).toContain('RAW_ONLY');
+
+    // The lock switch reflects the (unlocked) hydrated state, then we lock it.
+    const lock = await screen.findByRole('switch', { name: 'Lock transcription mode (doctors cannot override)' });
+    expect(lock).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(lock);
+
+    fireEvent.click(screen.getByTestId('frontend-pipeline-save'));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transcriptionMode: 'LOCAL',
+        transcriptionModeLocked: true,
+        captureMode: 'RAW_ONLY',
+        expectedVersion: 7,
+      }),
+      'tenant-356',
+    );
+  });
+
+  it('TASK-356 back-compat — a config WITHOUT the new fields saves BACKEND + unlocked + null captureMode', async () => {
+    mockIsGlobalScope = true;
+    mockTenantId = 'tenant-legacy';
+    const save = vi.fn().mockResolvedValue({ version: 2 });
+    const hook = {
+      ...baseHook(),
+      config: {
+        tenantId: 'tenant-legacy',
+        asrModel: '',
+        noiseCancel: false,
+        vad: false,
+        voiceEnrollment: false,
+        diarization: false,
+        captureRawAudio: false,
+        platformRawCaptureCapable: true,
+        configJson: {},
+        version: 1,
+      },
+      save,
+    };
+    useTenantFrontendConfig.mockReturnValue(hook);
+
+    render(<FrontendPipelineTab />);
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    fireEvent.click(screen.getByTestId('frontend-pipeline-save'));
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transcriptionMode: 'BACKEND',
+        transcriptionModeLocked: false,
+        captureMode: null,
+        expectedVersion: 1,
+      }),
+      'tenant-legacy',
+    );
+  });
 });

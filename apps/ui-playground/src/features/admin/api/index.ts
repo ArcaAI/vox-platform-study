@@ -151,3 +151,16 @@ export {
   type UpdateAudioPipelineInput,
   type YamlValidationResult,
 } from './audio-pipelines';
+
+export {
+  aiModelKeys,
+  useAiModel,
+  useAiModels,
+  useCreateAiModel,
+  useDeleteAiModel,
+  useUpdateAiModel,
+  type AiModel,
+  type CreateAiModelInput,
+  type PaginatedAiModels,
+  type UpdateAiModelInput,
+} from './ai-models';

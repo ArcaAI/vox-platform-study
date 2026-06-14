@@ -65,6 +65,8 @@ export async function buildTenantServiceTestHarness(): Promise<TenantServiceTest
   const tenantService = new TenantService(
     repoStub, repoStub, repoStub, repoStub, repoStub,
     dbStub, bucketStub, eventEmitter, clsStub,
+    // TASK-356 Phase 1 — appended AiModelRepository (clone-per-tenant).
+    repoStub,
   );
 
   return {

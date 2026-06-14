@@ -100,6 +100,12 @@ export interface TranscriptionPipelineConfig {
     location: 'browser' | 'backend' | 'auto' | 'skip';
     /** Provider type */
     provider?: 'local' | 'backend' | 'auto';
+    /**
+     * TASK-356 Phase 4 — server-resolved EFFECTIVE transcription mode. When set,
+     * it is authoritative and `resolveSTTRuntimeProvider()` honors it ahead of
+     * `provider`/`location`/`sttSocket` (LOCAL → browser, BACKEND → remote).
+     */
+    transcriptionMode?: 'LOCAL' | 'BACKEND';
     /** Language */
     language?: string;
     /** Model ID for local processing */

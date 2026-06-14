@@ -6,11 +6,11 @@
 | **Title** | Admin-managed AI models & workflows + per-tenant default models |
 | **Created** | 2026-06-14 |
 | **Updated** | 2026-06-14 |
-| **Status** | In Progress — audit + deep-dive complete, **design decisions resolved**, implementation plan ready for approval |
+| **Status** | **In Progress** — Phase 1 (Catalog plane) + Phase 4 (Audio console) **implemented & integration-verified** (2026-06-14). Phases 2, 3, 5, 6 still outstanding. Cloud-provider model **activation** (Phase 2/3) remains **gated on TASK-357** (PHI egress guard). The full 6-phase ticket is not complete. |
 | **Type** | feature (admin platform + configuration) |
 | **Builds on** | TASK-233 (Administration Section), TASK-302 (System Config / Vault), TASK-328/331/336 (AsrPipeline admin + GLOBAL_ADMIN + shared-read), TASK-338 (admin-configurable SMR/Guardrail engine), TASK-330/355 (HarnessPolicy + optimistic delivery), TASK-294 (prompt-template scopes), TASK-299 (DNA writing style), TASK-332 (local raw capture) |
 
-> Review/audit + design addendum. **No code has been changed.** It documents the current state across architecture → data model → API → UI, performs a gap analysis against the requested capability, and proposes an implementation design. The **Decisions** in §7 were taken collaboratively and are now **resolved** — this doc is the Plan-gate artifact before code is written.
+> Review/audit + design addendum — **now also the implementation record for Phases 1 & 4.** It documents the current state across architecture → data model → API → UI, performs a gap analysis against the requested capability, and proposes an implementation design. The **Decisions** in §7 were taken collaboratively and are **resolved**. Phase 1 (Catalog plane) and Phase 4 (Audio console) have since been **implemented in parallel and integration-verified together** (see **§8 Implementation Summary**); Phases 2, 3, 5, 6 remain outstanding. Plan-gate artifacts: [`phase-1-catalog-plane-plan.md`](./phase-1-catalog-plane-plan.md) · [`phase-4-audio-console-plan.md`](./phase-4-audio-console-plan.md).
 
 ---
 
@@ -320,9 +320,69 @@ Set it as the tenant default (`isDefault` + `default-stt-pipeline`/`batch_pipeli
 
 ---
 
-## 8. Change History
+## 8. Implementation Summary — Phase 1 (Catalog plane) + Phase 4 (Audio console)
+
+> **Implemented & integration-verified 2026-06-14.** The two phases were planned separately, share a **single additive DB migration**, were implemented **in parallel**, and then **verified together** in one integrated working tree. Phases 2, 3, 5, 6 are **not** implemented. Cloud-provider model **activation** (Phase 2/3 default wiring + SMR gateway) remains **gated on TASK-357** (PHI egress guard).
+>
+> Plan-gate artifacts: [`phase-1-catalog-plane-plan.md`](./phase-1-catalog-plane-plan.md) · [`phase-4-audio-console-plan.md`](./phase-4-audio-console-plan.md)
+
+### 8.1 What shipped
+
+- **Phase 1 — Catalog plane (admin-managed AI-model registry).** Exposes the pre-existing `AiModelService` CRUD through a new `admin/ai-models` surface with optimistic concurrency (`If-Match`), clones the SYSTEM catalog into every tenant (on-create + idempotent backfill), and corrects/extends the catalog seed. Closes G-1/G-2/G-5.
+- **Phase 4 — Audio workflow console (Pillar A).** Re-homes the previously runtime-inert `TenantFrontendConfig` so it drives the runtime: tenant **transcription mode + lock** (resolved server-side), a tenant **`CaptureMode`** enum with a pure translation layer, and **diarization exposed in the backend pipeline editor form**. The clinical workspace now branches on a resolved `LOCAL`/`BACKEND` mode. Closes G-6/G-7/G-8/G-9.
+
+### 8.2 Per-layer changes & key files
+
+| Layer | Phase 1 — Catalog plane | Phase 4 — Audio console |
+|---|---|---|
+| **DB / migration** | `AiModelFormat += CTRANSLATE2, FASTER_WHISPER, MLX, GGUF`; `ModelTaskType += GUARDRAIL` (`enums.prisma`) | `enum TranscriptionMode {LOCAL,BACKEND}`, `enum CaptureMode {RAW_AND_PROCESSED,RAW_ONLY,PROCESSED_ONLY,NONE}` (`enums.prisma`); `TenantFrontendConfig += transcriptionMode (default BACKEND), transcriptionModeLocked (default false), captureMode (nullable)` (`tenant.prisma`) |
+| **Domain (generated)** | `enums/generated/AiModelFormat.ts`, `ModelTaskType.ts` (+ `index.ts`) | `enums/generated/TranscriptionMode.ts`, `CaptureMode.ts` (+ `index.ts`); `TenantFrontendConfig{Entity,Factory,Model}.ts` |
+| **Applications** | `stt/model/aiModel.service.ts` (adds OCC via `updateWithVersion` + **exact-`tenantId`** list filter), `dto/update-model.request.ts` (`expectedVersion`), `dto/model.response.ts` (`version`), `aiModel.dto.mapper.ts`, `IAiModelService.ts`; `tenant/tenant.service.ts` (`provisionTenantModelCatalog` clone-per-tenant, D-5) | `tenant-frontend-config/` (`dto/upsert-…request.ts`, `dto/…response.ts`, `…dto.mapper.ts`, `…service.ts`, **`capture-mode.translation.ts`**, `index.ts`); `user/userPreferences/userPreferences.service.ts` (**`resolveEffectiveTranscriptionMode`** server-side cascade) + `dto/user-preferences.response.ts` |
+| **API** | `modules/ai-model/ai-model-admin.controller.ts` (`admin/ai-models`, class-level `@Authorize(['manage','AiModel'])`, `@RequiresIfMatch()` OCC), `ai-model.module.ts`, `app.module.ts` (register) | `modules/tenant-frontend-config/tenant-frontend-config-admin.controller.ts` (carries the 3 new fields), `modules/tenant/my-tenant.controller.ts` (raw-capture row derived from `captureMode`) |
+| **UI (ui-playground)** | `features/admin/ai-models/index.tsx`, `features/admin/api/ai-models.ts` (+ `api/index.ts` re-export), `routes/_authenticated/admin/ai-models.tsx`, `components/layout/admin-nav-items.tsx` + `features/admin/hooks/use-admin-preferences.ts` (nav entry) | `features/admin/audio-pipelines/frontend-pipeline-tab.tsx` (mode + lock + capture selects), `pipeline-config-editor.tsx` (diarization form section), `features/clinical-workspace/components/capture-panel.tsx` (LOCAL/BACKEND branch) |
+| **SDK (`@arcaai/vox`)** | — | `core/ConfigSchema.ts` (`stt.transcriptionMode`, **admin-owned** permission), `providers/AgenticProvider.tsx` (injects resolved mode), `types/{config,frontend-pipeline-config,pipeline,index}.ts` |
+| **Seed** | `seed/06-stt.ts` (medgemma `format → MLX`; register **granite-guardian-4.1-8b** `taskType=GUARDRAIL`, `format=GGUF`; `backfillCustomerTenantAiModels`), `seed/01-policy.ts` (`tenant-full-access` grant `manage AiModel`) | (no Phase-4 seed change) |
+
+**Single shared migration (additive):** `packages/database/src/prisma/db_main/migrations/20260614120000_task_356_catalog_audio_foundation/migration.sql` — contains only `CREATE TYPE`, `ALTER TYPE … ADD VALUE IF NOT EXISTS`, and `ALTER TABLE … ADD COLUMN`. **No `DROP` / `RENAME` / `DELETE` / column removal.**
+
+### 8.3 Decisions applied
+
+- **`ModelTaskType.GUARDRAIL` added** (Q-1 rec) — granite is typed precisely rather than reusing `TEXT_GENERATION`.
+- **granite-guardian-4.1-8b `format = GGUF`** (Q-2 rec) — `format` is descriptive metadata (llama.cpp/GGUF); serving stays provider-based.
+- **medgemma `lms-medgemma-1.5-4b-mlx` `format` corrected `SAFETENSOR → MLX`** (G-5).
+- **Exact-`tenantId` catalog visibility** (Q-3 rec) — the tenant admin grid lists only the tenant's own rows (the clones); the SYSTEM master is not merged in via shared-read.
+- **Kept the `TenantFrontendConfig` model name** (no rename) — additive columns only (Phase 4 §3).
+- **Server-side effective transcription-mode resolver** in `UserPreferencesService` with the **lock authoritative server-side**; the SDK only surfaces it as the admin-owned `stt.transcriptionMode` so the user cascade cannot flip it (D-8 / Phase 4 §6).
+- **Clone-per-tenant on creation + idempotent existing-tenant backfill** (D-5).
+- **`captureMode` nullable** for back-compat (R-6): `null` = inherit today's per-surface capture behavior until an admin opts in.
+
+### 8.4 Integration verification evidence (Step 1, captured 2026-06-14)
+
+Per-package / filtered commands were used deliberately (not `turbo`) to isolate the pre-existing TASK-352 `@arcaai/database` typecheck error (see §8.5).
+
+| Package | Command(s) | Result |
+|---|---|---|
+| `@arcaai/domains` | `build` (tsc) + `test` | build clean; **1186 passed / 2 skipped / 9 todo** (90 files) |
+| `@arcaai/applications` | `tsc --noEmit -p tsconfig.json` + `test:unit` | typecheck clean; **5119 passed / 4 skipped** (217 files) — **key cross-lane integration point** |
+| `apps/api` | vitest `ai-model-admin` + `tenant-frontend-config-admin` + `my-tenant` | **37 passed** (3 files) |
+| `apps/ui-playground` | vitest `ai-models` + `audio-pipelines` + `admin-nav-items` + `capture-panel` | **56 passed** (9 files) |
+| `@arcaai/vox` | `build` (tsup) + `test` | build clean; **3369 passed** (180 files) |
+| `@arcaai/database` | `prisma migrate diff` (live dev DB → schema, read-only) + filtered seed vitest | **"No difference detected" (exit 0 — in-sync)**; migration additive; **295 seed tests passed** |
+| (all changed source) | `ReadLints` | **no linter errors** |
+
+**No integration fix was required** — the combined tree is green. Both lanes appended to shared barrels (`domains/src/enums/generated/index.ts`, `applications/.../tenant-frontend-config/index.ts`, `ui-playground/.../admin/api/index.ts`) and shared registrations (`app.module.ts`) without conflict.
+
+### 8.5 Out-of-scope observations (NOT TASK-356; left untouched)
+
+- **TASK-352** — `@arcaai/database` `tsc` `TS2493` in `seed/__tests__/api-key-pepper.test.ts:143` (`Tuple type '[]' … has no element at index '0'`). Pre-existing; this is exactly why per-package/filtered commands (not `turbo`) were used for verification. Not fixed.
+- **TASK-351** — `@arcaai/vox` `tsc --noEmit` `TS2352` cast in `core/__tests__/SttV2WebSocketClient.test.ts:334` (`Int16Array`/`SharedArrayBuffer` lib typing). Pre-existing (file unmodified since Jun 11), test-only, and **not** surfaced by the SDK's actual gates (`build` = tsup, `test` = vitest, both green). Not fixed.
+
+---
+
+## 9. Change History
 
 | Date | Change | Files |
 |---|---|---|
 | 2026-06-14 | Initial review/audit + design addendum created (no code changes). | `docs/implementation/TASK-356-Admin-Managed-Models-Workflows/README.md` |
 | 2026-06-14 | Deep-dive across audio pipeline, capture/storage, prompts/realtime, DNA edit-capture; finalized architecture (3 planes + 1 resolver + 2 workflow consoles); resolved D-1/D-2/D-4/D-5/D-6/D-7 + added D-8/D-9/D-10; re-phased plan. | same |
+| 2026-06-14 | **Planned → foundation → parallel implementation → integration verify.** Authored the Phase 1 (`phase-1-catalog-plane-plan.md`) and Phase 4 (`phase-4-audio-console-plan.md`) TDD plan-gate docs; landed a single additive shared DB foundation migration (`20260614120000_task_356_catalog_audio_foundation`); implemented Phase 1 (Catalog plane) and Phase 4 (Audio console) **in parallel**; then ran a combined integration verification (domains/applications/api/ui/SDK/database — all green, no fix needed, migration in-sync & additive) and recorded the **§8 Implementation Summary**. Status → Phase 1 + 4 implemented & verified; Phases 2/3/5/6 outstanding (Phase 2/3 activation gated on TASK-357). | `…/README.md`, `phase-1-catalog-plane-plan.md`, `phase-4-audio-console-plan.md` (+ DB/domain/applications/api/ui/SDK source per §8.2) |

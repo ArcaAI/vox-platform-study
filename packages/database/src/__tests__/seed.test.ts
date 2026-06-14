@@ -17,7 +17,7 @@
  * - Cross-reference integrity across all seed entities
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 import { DEFAULT_POLICIES, PolicyScope } from '../prisma/db_main/seed/01-policy';
 import { SYSTEM_ROLES, TENANT_EXTENDABLE_ROLES, DEFAULT_ROLES } from '../prisma/db_main/seed/03-role';
@@ -37,6 +37,8 @@ import {
     ModelCategory,
     ModelTaskType,
     ModelType,
+    backfillCustomerTenantAiModels,
+    CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL,
 } from '../prisma/db_main/seed/06-stt';
 import { TENANT_FRONTEND_CONFIGS } from '../prisma/db_main/seed/05-tenant';
 import {
@@ -261,6 +263,17 @@ describe('Policy Seed Data', () => {
             const tenantFullAccess = DEFAULT_POLICIES.find((p) => p.name === 'tenant-full-access');
             expect(tenantFullAccess).toBeDefined();
             expect(tenantFullAccess?.scope).toBe(PolicyScope.TENANT);
+        });
+
+        // TASK-356 Phase 1 — tenant admins self-serve their own tenant's clone
+        // of the SYSTEM AI model catalog (tenant-scoped `manage AiModel`).
+        it('should grant tenant-scoped manage AiModel in tenant-full-access', () => {
+            const tenantFullAccess = DEFAULT_POLICIES.find((p) => p.name === 'tenant-full-access');
+            const rule = tenantFullAccess?.rules.find((r) => r.subject === 'AiModel');
+            expect(rule).toBeDefined();
+            const actions = Array.isArray(rule?.action) ? rule?.action : [rule?.action];
+            expect(actions).toContain('manage');
+            expect(JSON.stringify(rule?.conditions)).toContain('${context.tenantId}');
         });
 
         it('should include prompt-template-manage policy', () => {
@@ -963,6 +976,23 @@ describe('STT Seed Data', () => {
                 const parakeet = DEFAULT_AI_MODELS.find((m) => m.slug === 'parakeet-ctc-1.1b');
                 expect(parakeet).toBeDefined();
                 expect(parakeet?.format).toBe(AiModelFormat.NEMO);
+            });
+        });
+
+        describe('Guardrail Models (TASK-356 Phase 1)', () => {
+            it('exposes the GUARDRAIL task type + GGUF/MLX formats in the seed enum mirrors', () => {
+                expect(ModelTaskType.GUARDRAIL).toBe('GUARDRAIL');
+                expect(AiModelFormat.GGUF).toBe('GGUF');
+                expect(AiModelFormat.MLX).toBe('MLX');
+            });
+
+            it('registers granite-guardian-4.1-8b under the SYSTEM tenant as a GUARDRAIL/GGUF model', () => {
+                const granite = DEFAULT_AI_MODELS.find((m) => m.slug === 'granite-guardian-4.1-8b');
+                expect(granite).toBeDefined();
+                expect(granite?.tenantId).toBe(SYSTEM_TENANT_ID);
+                expect(granite?.taskType).toBe(ModelTaskType.GUARDRAIL);
+                expect(granite?.format).toBe(AiModelFormat.GGUF);
+                expect(granite?.category).toBe(ModelCategory.NLP);
             });
         });
 
@@ -1882,6 +1912,12 @@ describe('SMR v2 LLM Models Seed Data', () => {
                 expect(model.tags).toContain('openai-compat');
             });
         });
+
+        it('should mark lms-medgemma-1.5-4b-mlx as an MLX-format model (TASK-356 Phase 1 fix)', () => {
+            const medgemma = smrModels.find((m) => m.slug === 'lms-medgemma-1.5-4b-mlx');
+            expect(medgemma).toBeDefined();
+            expect(medgemma?.format).toBe(AiModelFormat.MLX);
+        });
     });
 
     describe('Azure OpenAI Models', () => {
@@ -1996,6 +2032,56 @@ describe('STT Local Processing Models Seed Data', () => {
         it('should have at least 4 local processing models', () => {
             expect(localModels.length).toBeGreaterThanOrEqual(4);
         });
+    });
+});
+
+// =============================================================================
+// CUSTOMER-TENANT AI MODEL CATALOG BACKFILL (TASK-356 Phase 1, D-5)
+// =============================================================================
+
+describe('Customer-tenant AI model catalog backfill', () => {
+    const makeMockClient = (findFirstImpl: () => unknown) => {
+        const created: Array<{ data: Record<string, unknown> }> = [];
+        const client = {
+            aiModel: {
+                findFirst: vi.fn(async () => findFirstImpl()),
+                create: vi.fn(async (args: { data: Record<string, unknown> }) => {
+                    created.push(args);
+                    return args.data;
+                }),
+            },
+        };
+        return { client, created };
+    };
+
+    it('targets the global + three customer tenants (not the SYSTEM tenant)', () => {
+        expect(CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL).toHaveLength(4);
+        expect(CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL).not.toContain(SYSTEM_TENANT_ID);
+    });
+
+    it('clones every SYSTEM model into each customer tenant with a fresh id (no SYSTEM id/tenant leak)', async () => {
+        const { client, created } = makeMockClient(() => null); // nothing exists yet
+        const result = await backfillCustomerTenantAiModels(client as never);
+
+        const expectedCount = DEFAULT_AI_MODELS.length * CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL.length;
+        expect(result.count).toBe(expectedCount);
+        expect(client.aiModel.create).toHaveBeenCalledTimes(expectedCount);
+
+        created.forEach(({ data }) => {
+            // Fresh id (uuid(7) default) — never carries the SYSTEM row id.
+            expect(data).not.toHaveProperty('id');
+            // Bound to a customer tenant, never the SYSTEM tenant.
+            expect(data.tenantId).not.toBe(SYSTEM_TENANT_ID);
+            expect(CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL).toContain(data.tenantId);
+        });
+    });
+
+    it('is idempotent — skips slugs the tenant already owns', async () => {
+        const { client } = makeMockClient(() => ({ id: 'already-exists' }));
+        const result = await backfillCustomerTenantAiModels(client as never);
+
+        expect(result.count).toBe(0);
+        expect(client.aiModel.create).not.toHaveBeenCalled();
     });
 });
 

@@ -582,6 +582,17 @@ export class TranscriptionPipeline {
   // =========================================================================
 
   private resolveSTTRuntimeProvider(): STTRuntimeProvider {
+    // TASK-356 Phase 4 — the server-resolved EFFECTIVE transcription mode is
+    // authoritative (admin-owned, with the tenant lock + workflowMode cascade
+    // already applied upstream). It wins over provider/location/sttSocket.
+    const transcriptionMode = this.config.stt.transcriptionMode;
+    if (transcriptionMode === 'LOCAL') {
+      return 'local';
+    }
+    if (transcriptionMode === 'BACKEND') {
+      return 'remote';
+    }
+
     const configuredProvider = this.config.stt.provider ?? 'auto';
     if (configuredProvider === 'local') {
       return 'local';

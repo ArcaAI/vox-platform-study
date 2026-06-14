@@ -13,7 +13,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UserPreferencesService } from '../userPreferences.service';
-import { ValueType, ResourceStatusType } from '@arcaai/domains';
+import { ValueType, ResourceStatusType, TranscriptionMode } from '@arcaai/domains';
 
 const mockClsService = {
     get: vi.fn(),
@@ -88,6 +88,12 @@ const mockUserSettingsRepository = {
     create: vi.fn(),
 };
 
+// TASK-356 Phase 4 (A8/A-T6) — tenant frontend config drives the effective
+// transcription mode + lock resolved server-side in getPreferences().
+const mockTenantFrontendConfigRepository = {
+    findByTenant: vi.fn(),
+};
+
 vi.mock('@arcaai/domains', async () => {
     const actual = await vi.importActual('@arcaai/domains');
     return {
@@ -125,6 +131,9 @@ describe('UserPreferencesService', () => {
         mockAsrPipelineRepository.findById.mockResolvedValue(null);
         mockAsrPipelineRepository.findDefault.mockResolvedValue(null);
         mockVoiceProfileRepository.findActiveByUserId.mockResolvedValue(null);
+        // Default: tenant has no frontend config row → effective mode falls back
+        // to the schema default (BACKEND), unlocked.
+        mockTenantFrontendConfigRepository.findByTenant.mockResolvedValue(null);
 
         service = new UserPreferencesService(
             mockUserSettingsRepository as any,
@@ -133,6 +142,7 @@ describe('UserPreferencesService', () => {
             mockClsService as any,
             mockEventEmitter as any,
             mockVoiceProfileRepository as any,
+            mockTenantFrontendConfigRepository as any,
         );
     });
 
@@ -463,6 +473,92 @@ describe('UserPreferencesService', () => {
                 pipelineName: 'Global Default Pipeline',
                 assignedBy: 'tenant-default',
             });
+        });
+    });
+
+    // TASK-356 Phase 4 (A8/A9, A-T6) — the effective transcription mode + lock is
+    // resolved SERVER-SIDE in getPreferences(), mirroring the remoteConfig
+    // cascade. Precedence: locked ⇒ tenant default wins (user ignored); unlocked
+    // ⇒ doctor workflowMode overrides; otherwise fall back to the tenant default.
+    describe('effective transcription mode (TASK-356)', () => {
+        const withWorkflowMode = (mode: 'local' | 'remote') =>
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([
+                createMockEntity({ key: 'workflowMode', value: mode }),
+            ]);
+
+        it('locked tenant default wins over a conflicting workflowMode=local (→ BACKEND, locked)', async () => {
+            withWorkflowMode('local');
+            mockTenantFrontendConfigRepository.findByTenant.mockResolvedValue({
+                transcriptionMode: TranscriptionMode.BACKEND,
+                transcriptionModeLocked: true,
+            });
+
+            const result = await service.getPreferences();
+
+            expect(result.transcriptionMode).toBe('BACKEND');
+            expect(result.transcriptionModeLocked).toBe(true);
+        });
+
+        it('locked tenant default wins over a conflicting workflowMode=remote (→ LOCAL, locked)', async () => {
+            withWorkflowMode('remote');
+            mockTenantFrontendConfigRepository.findByTenant.mockResolvedValue({
+                transcriptionMode: TranscriptionMode.LOCAL,
+                transcriptionModeLocked: true,
+            });
+
+            const result = await service.getPreferences();
+
+            expect(result.transcriptionMode).toBe('LOCAL');
+            expect(result.transcriptionModeLocked).toBe(true);
+        });
+
+        it('unlocked + workflowMode=local overrides the tenant default (→ LOCAL)', async () => {
+            withWorkflowMode('local');
+            mockTenantFrontendConfigRepository.findByTenant.mockResolvedValue({
+                transcriptionMode: TranscriptionMode.BACKEND,
+                transcriptionModeLocked: false,
+            });
+
+            const result = await service.getPreferences();
+
+            expect(result.transcriptionMode).toBe('LOCAL');
+            expect(result.transcriptionModeLocked).toBe(false);
+        });
+
+        it('unlocked + workflowMode=remote overrides the tenant default (→ BACKEND)', async () => {
+            withWorkflowMode('remote');
+            mockTenantFrontendConfigRepository.findByTenant.mockResolvedValue({
+                transcriptionMode: TranscriptionMode.LOCAL,
+                transcriptionModeLocked: false,
+            });
+
+            const result = await service.getPreferences();
+
+            expect(result.transcriptionMode).toBe('BACKEND');
+            expect(result.transcriptionModeLocked).toBe(false);
+        });
+
+        it('unlocked + no workflowMode falls back to the tenant default (→ LOCAL)', async () => {
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
+            mockTenantFrontendConfigRepository.findByTenant.mockResolvedValue({
+                transcriptionMode: TranscriptionMode.LOCAL,
+                transcriptionModeLocked: false,
+            });
+
+            const result = await service.getPreferences();
+
+            expect(result.transcriptionMode).toBe('LOCAL');
+            expect(result.transcriptionModeLocked).toBe(false);
+        });
+
+        it('defaults to BACKEND / unlocked when the tenant has no frontend config row (back-compat)', async () => {
+            mockUserSettingsRepository.findByUserAndNamespace.mockResolvedValue([]);
+            mockTenantFrontendConfigRepository.findByTenant.mockResolvedValue(null);
+
+            const result = await service.getPreferences();
+
+            expect(result.transcriptionMode).toBe('BACKEND');
+            expect(result.transcriptionModeLocked).toBe(false);
         });
     });
 

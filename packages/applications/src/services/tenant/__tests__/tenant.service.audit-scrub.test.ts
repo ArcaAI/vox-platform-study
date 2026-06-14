@@ -79,6 +79,8 @@ describe('TenantService — audit-log secret scrubbing (Phase 0 Item 4)', () => 
       buckets as never,
       events as never,
       cls as never,
+      // TASK-356 Phase 1 — model-catalog clone repo (unused by this suite).
+      { findAll: async () => [] } as never,
     );
   });
 

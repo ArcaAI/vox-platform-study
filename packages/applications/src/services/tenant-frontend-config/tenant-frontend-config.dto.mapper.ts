@@ -19,6 +19,9 @@ export class TenantFrontendConfigDtoMapper {
       diarization: entity.diarization,
       captureRawAudio: entity.captureRawAudio,
       platformRawCaptureCapable,
+      transcriptionMode: entity.transcriptionMode,
+      transcriptionModeLocked: entity.transcriptionModeLocked,
+      captureMode: entity.captureMode ?? null,
       // The frozen column is `Json?`; we model its shape with the typed
       // FrontendPipelineConfigJson interface (TASK-328 A6 — no `any`).
       configJson: (entity.configJson as FrontendPipelineConfigJson | null | undefined) ?? null,

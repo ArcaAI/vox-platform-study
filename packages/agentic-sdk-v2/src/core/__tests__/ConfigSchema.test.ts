@@ -283,4 +283,30 @@ describe('ConfigSchema', () => {
             expect(getUserEditableFields()).not.toContain('stt.transcriptionPipelineId');
         });
     });
+
+    // =========================================================================
+    // TASK-356 Phase 4 — stt.transcriptionMode (server-resolved effective mode)
+    // =========================================================================
+    describe('TASK-356: stt.transcriptionMode', () => {
+        it('should be undefined by default (no system default)', () => {
+            expect(SYSTEM_DEFAULTS.stt.transcriptionMode).toBeUndefined();
+            expect(v.parse(SttConfigSchema, {}).transcriptionMode).toBeUndefined();
+        });
+
+        it.each(['LOCAL', 'BACKEND'] as const)('should PRESERVE %s through parse', (mode) => {
+            const parsed = v.parse(AppConfigSchema, { stt: { transcriptionMode: mode } });
+            expect(parsed.stt.transcriptionMode).toBe(mode);
+        });
+
+        it('should reject an unknown transcriptionMode value', () => {
+            expect(() => v.parse(SttConfigSchema, { transcriptionMode: 'CLOUD' })).toThrow();
+        });
+
+        it('should declare an admin-permission entry so user prefs cannot override it', () => {
+            expect(CONFIG_PERMISSIONS['stt.transcriptionMode']).toBeDefined();
+            expect(getFieldPermission('stt.transcriptionMode')).toBe('admin');
+            expect(canUserEditField('stt.transcriptionMode', new Set())).toBe(false);
+            expect(getUserEditableFields()).not.toContain('stt.transcriptionMode');
+        });
+    });
 });

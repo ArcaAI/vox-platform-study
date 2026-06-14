@@ -146,3 +146,34 @@ describe('PluginManager.getTranscriptionPipelineConfig (TASK-298 D-4)', () => {
     expect(cfg.stt.streamingTransport).toBeUndefined();
   });
 });
+
+// TASK-356 Phase 4 — the server-resolved EFFECTIVE transcription mode (injected
+// by AgenticProvider into resolvedConfig.stt.transcriptionMode) must reach the
+// pipeline config so TranscriptionPipeline.resolveSTTRuntimeProvider() honors it.
+describe('PluginManager — transcriptionMode passthrough (TASK-356)', () => {
+  it('forwards stt.transcriptionMode into the pipeline config when set', () => {
+    const manager = new PluginManager(
+      { stt: { enabled: true, provider: 'backend', transcriptionMode: 'LOCAL' } },
+      createMockLogger(),
+      makeApiClient(),
+      false,
+    );
+
+    const cfg = manager.getTranscriptionPipelineConfig();
+
+    expect(cfg.stt.transcriptionMode).toBe('LOCAL');
+  });
+
+  it('leaves transcriptionMode undefined when the resolved config has none (back-compat)', () => {
+    const manager = new PluginManager(
+      { stt: { enabled: true, provider: 'backend' } },
+      createMockLogger(),
+      makeApiClient(),
+      false,
+    );
+
+    const cfg = manager.getTranscriptionPipelineConfig();
+
+    expect(cfg.stt.transcriptionMode).toBeUndefined();
+  });
+});

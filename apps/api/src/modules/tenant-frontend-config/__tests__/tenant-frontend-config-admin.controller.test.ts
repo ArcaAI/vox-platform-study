@@ -47,5 +47,28 @@ describe('TenantFrontendConfigAdminController', () => {
       await controller.upsert(body as any, 7, 't-2');
       expect(mockService.upsert).toHaveBeenCalledWith({ vad: false, expectedVersion: 7 }, 't-2');
     });
+
+    // TASK-356 Phase 4 (API-T1) — the new audio-console fields ride the existing
+    // UpsertTenantFrontendConfigRequest DTO; the controller forwards them to the
+    // service unchanged (no signature change, gating unchanged).
+    it('round-trips the new transcriptionMode / transcriptionModeLocked / captureMode fields through the service', async () => {
+      const body = {
+        transcriptionMode: 'LOCAL',
+        transcriptionModeLocked: true,
+        captureMode: 'RAW_ONLY',
+        expectedVersion: 2,
+      };
+      mockService.upsert.mockResolvedValue({ id: 'c1', ...body, version: 3 });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await controller.upsert(body as any, undefined, 't-9');
+      expect(mockService.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transcriptionMode: 'LOCAL',
+          transcriptionModeLocked: true,
+          captureMode: 'RAW_ONLY',
+        }),
+        't-9',
+      );
+    });
   });
 });

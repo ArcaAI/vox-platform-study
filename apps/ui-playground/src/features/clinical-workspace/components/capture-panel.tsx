@@ -18,7 +18,7 @@ import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
 import { Card, CardContent } from '@arcaai/ui/card';
 import { ScrollArea } from '@arcaai/ui/scroll-area';
-import { useArcaConfig, useArcaStore, type AgenticClient } from '@arcaai/vox';
+import { useArcaAudio, useArcaConfig, useArcaStore, type AgenticClient } from '@arcaai/vox';
 import { AlertCircle, Layers, Loader2, Mic, Square } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -48,12 +48,20 @@ const DUAL_CAPTURE_LABEL: Record<string, string> = {
 export function CapturePanel({ consultationId, recording, onRecordingStarted, onRecordingStopped, pipelineId }: CapturePanelProps) {
   const apiClient = useArcaStore((s: { apiClient: AgenticClient | null }) => s.apiClient);
   const realtime = useRealtimeTranscription();
+  const localAudio = useArcaAudio();
   const dual = useDualCapture(consultationId);
   const { resolvedConfig } = useArcaConfig();
 
   const [consentAck, setConsentAck] = useState(false);
   const [intent, setIntent] = useState<'idle' | 'starting' | 'recording' | 'stopping'>('idle');
   const recordingStartedRef = useRef(false);
+
+  // TASK-356 Phase 4 — the EFFECTIVE transcription mode resolved server-side
+  // (UserPreferences cascade: tenant lock ⇒ tenant default; else the doctor's
+  // workflowMode) and injected by AgenticProvider into resolvedConfig.stt. LOCAL
+  // runs the browser pipeline (no STT-WS session, no pipelineId); BACKEND keeps
+  // the existing WS path. Undefined ⇒ BACKEND (back-compat default).
+  const isLocalTranscription = resolvedConfig?.stt?.transcriptionMode === 'LOCAL';
 
   // Resolve the remote transcription pipeline: explicit prop > the user/tenant
   // cascade-resolved config (AgenticProvider injects the per-user remote pipeline
@@ -63,6 +71,23 @@ export function CapturePanel({ consultationId, recording, onRecordingStarted, on
   // customer-tenant doctor produced a cross-tenant "Pipeline … not found" 404 on
   // session start. When nothing resolves, handleStart blocks with an actionable error.
   const resolvedPipelineId = pipelineId ?? resolvedConfig?.stt?.transcriptionPipelineId;
+
+  // Unified live-capture view: the LOCAL browser pipeline and the BACKEND STT-WS
+  // path expose streaming state + transcript chunks through different hooks.
+  const isStreaming = isLocalTranscription ? localAudio.isCapturing : realtime.isStreaming;
+  const captureError = isLocalTranscription
+    ? localAudio.error instanceof Error
+      ? localAudio.error.message
+      : null
+    : realtime.error;
+  const transcriptEntries = isLocalTranscription
+    ? localAudio.transcriptSegments.map((seg, i) => ({
+        id: `local-${i}`,
+        isFinal: seg.isFinal,
+        speakerLabel: seg.speakerLabel,
+        text: seg.text,
+      }))
+    : realtime.transcripts;
 
   // Once the STT session is live, bind the recording to it and notify the flow.
   useEffect(() => {
@@ -91,6 +116,30 @@ export function CapturePanel({ consultationId, recording, onRecordingStarted, on
       toast.error('Please confirm patient consent before recording');
       return;
     }
+
+    // TASK-356 Phase 4 — LOCAL mode: drive the SDK browser pipeline. It needs no
+    // STT-WS session and no `pipelineId`, so the remote-pipeline guard below is
+    // skipped. The recording is correlated WITHOUT a sessionId.
+    if (isLocalTranscription) {
+      setIntent('starting');
+      try {
+        await localAudio.start({ consultationId });
+        if (apiClient && !recordingStartedRef.current) {
+          recordingStartedRef.current = true;
+          const state = await startRecording(apiClient, consultationId);
+          setIntent('recording');
+          onRecordingStarted(state);
+        } else {
+          setIntent('recording');
+        }
+      } catch (err) {
+        recordingStartedRef.current = false;
+        setIntent('idle');
+        toast.error(err instanceof Error ? err.message : 'Failed to start recording');
+      }
+      return;
+    }
+
     // TASK-342 R2 — block Start (rather than silently 404 mid-session) when no
     // tenant-scoped transcription pipeline is configured for this doctor.
     if (!resolvedPipelineId) {
@@ -104,14 +153,19 @@ export function CapturePanel({ consultationId, recording, onRecordingStarted, on
       setIntent('idle');
       toast.error(err instanceof Error ? err.message : 'Failed to start recording');
     }
-  }, [consentAck, realtime, resolvedPipelineId, consultationId]);
+  }, [consentAck, isLocalTranscription, localAudio, apiClient, realtime, resolvedPipelineId, consultationId, onRecordingStarted]);
 
   const handleStop = useCallback(async () => {
     if (!apiClient) return;
     setIntent('stopping');
     // Flush dual-capture blobs while the mic tracks are still live.
     await dual.stopAndPersist();
-    await realtime.stop();
+    // Stop the active capture path (LOCAL browser pipeline or BACKEND STT-WS).
+    if (isLocalTranscription) {
+      await localAudio.stop();
+    } else {
+      await realtime.stop();
+    }
     try {
       const state = await stopRecording(apiClient, consultationId, true);
       onRecordingStopped(state);
@@ -121,7 +175,7 @@ export function CapturePanel({ consultationId, recording, onRecordingStarted, on
       recordingStartedRef.current = false;
       setIntent('idle');
     }
-  }, [apiClient, dual, realtime, consultationId, onRecordingStopped]);
+  }, [apiClient, dual, isLocalTranscription, localAudio, realtime, consultationId, onRecordingStopped]);
 
   const busy = intent === 'starting' || intent === 'stopping';
   const dualLabel = DUAL_CAPTURE_LABEL[dual.status];
@@ -153,16 +207,16 @@ export function CapturePanel({ consultationId, recording, onRecordingStarted, on
             </span>
           )}
 
-          {realtime.isStreaming && (
+          {!isLocalTranscription && realtime.isStreaming && (
             <span className="text-muted-foreground text-xs tabular-nums">
               <LiveByteCount handle={realtime.bytesSent} format={formatKbSent} />
             </span>
           )}
 
-          {realtime.error && (
+          {captureError && (
             <span className="text-destructive flex items-center gap-1 text-xs">
               <AlertCircle className="size-3.5" />
-              {realtime.error}
+              {captureError}
             </span>
           )}
         </CardContent>
@@ -175,12 +229,12 @@ export function CapturePanel({ consultationId, recording, onRecordingStarted, on
           </div>
           <ScrollArea className="min-h-0 flex-1">
             <div className="space-y-1.5 p-4" data-testid="capture-transcript">
-              {realtime.transcripts.length === 0 ? (
+              {transcriptEntries.length === 0 ? (
                 <p className="text-muted-foreground text-sm">
-                  {realtime.isStreaming ? 'Listening… speak to see the live transcript.' : 'Start recording to capture the live transcript.'}
+                  {isStreaming ? 'Listening… speak to see the live transcript.' : 'Start recording to capture the live transcript.'}
                 </p>
               ) : (
-                realtime.transcripts.map((entry) => (
+                transcriptEntries.map((entry) => (
                   <p key={entry.id} data-final={entry.isFinal} className={entry.isFinal ? 'text-sm' : 'text-muted-foreground text-sm italic'}>
                     {entry.speakerLabel && <span className="text-muted-foreground mr-1 font-medium">{entry.speakerLabel}:</span>}
                     {entry.text}

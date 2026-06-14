@@ -14,6 +14,7 @@ import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSetti
 import { ITenantFrontendConfigService } from './ITenantFrontendConfigService';
 import { TenantFrontendConfigResponse, UpsertTenantFrontendConfigRequest } from './dto';
 import { TenantFrontendConfigDtoMapper } from './tenant-frontend-config.dto.mapper';
+import { captureModeToLocalRawCapture } from './capture-mode.translation';
 
 /**
  * TASK-332 — platform-capability flag for local raw-stream dual-capture. A
@@ -65,7 +66,16 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
   async resolveEffectiveLocalRawCapture(tenantId: string): Promise<boolean> {
     if (!this.platformRawCaptureCapable()) return false;
     const config = await this.configRepository.findByTenant(tenantId);
-    return config?.captureRawAudio === true;
+    if (!config) return false;
+
+    // TASK-356 Phase 4 (A7) — when the tenant has set a `captureMode`, the
+    // translation layer is the source of truth for the local raw flag. When
+    // `captureMode` is null (no tenant override) we fall back to the legacy
+    // `captureRawAudio` column so TASK-332-configured tenants keep today's
+    // behaviour (back-compat, R-6).
+    const fromCaptureMode = captureModeToLocalRawCapture(config.captureMode);
+    if (fromCaptureMode !== null) return fromCaptureMode;
+    return config.captureRawAudio === true;
   }
 
   /** The locked platform capability (single SYSTEM_TENANT_ID GlobalSetting). */
@@ -88,6 +98,9 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
         voiceEnrollment: saved.voiceEnrollment,
         diarization: saved.diarization,
         captureRawAudio: saved.captureRawAudio,
+        transcriptionMode: saved.transcriptionMode,
+        transcriptionModeLocked: saved.transcriptionModeLocked,
+        captureMode: saved.captureMode ?? null,
       },
     });
 
@@ -103,6 +116,11 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
       voiceEnrollment: dto.voiceEnrollment ?? false,
       diarization: dto.diarization ?? false,
       captureRawAudio: dto.captureRawAudio ?? false,
+      // TASK-356 Phase 4 — the factory defaults transcriptionMode=BACKEND,
+      // transcriptionModeLocked=false, captureMode=null when these are omitted.
+      transcriptionMode: dto.transcriptionMode,
+      transcriptionModeLocked: dto.transcriptionModeLocked,
+      captureMode: dto.captureMode ?? null,
       configJson: (dto.configJson ?? null) as Record<string, unknown> | null,
       createdBy: this.requestUserId ?? undefined,
     });
@@ -117,6 +135,12 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
     if (dto.voiceEnrollment !== undefined) entity.voiceEnrollment = dto.voiceEnrollment;
     if (dto.diarization !== undefined) entity.diarization = dto.diarization;
     if (dto.captureRawAudio !== undefined) entity.captureRawAudio = dto.captureRawAudio;
+    // TASK-356 Phase 4 — captureMode is nullable: `null` is a meaningful value
+    // (clears the tenant override), so we only skip the assignment when the
+    // field is entirely absent from the payload.
+    if (dto.transcriptionMode !== undefined) entity.transcriptionMode = dto.transcriptionMode;
+    if (dto.transcriptionModeLocked !== undefined) entity.transcriptionModeLocked = dto.transcriptionModeLocked;
+    if (dto.captureMode !== undefined) entity.captureMode = dto.captureMode;
     if (dto.configJson !== undefined) entity.configJson = (dto.configJson ?? null) as Record<string, unknown> | null;
     entity.updatedBy = this.requestUserId ?? undefined;
 

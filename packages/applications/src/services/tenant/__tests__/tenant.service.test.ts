@@ -73,6 +73,13 @@ const mockAsrPipelineRepository = {
     count: vi.fn(),
 };
 
+// Mock AiModelRepository — TASK-356 Phase 1 clone-per-tenant (D-5).
+const mockAiModelRepository = {
+    findAll: vi.fn(),
+    isSlugUnique: vi.fn(),
+    create: vi.fn(),
+};
+
 // Mock CoreDatabaseService.
 // TASK-302 Stream D Phase C (C.4) — `updateTenantConfigs` now wraps the
 // per-row CAS loop in `databaseService.baseClient.$transaction(callback)`
@@ -250,6 +257,18 @@ vi.mock('@arcaai/domains', async () => {
                 toObject: vi.fn().mockReturnValue({ ...data }),
             })),
         },
+        // TASK-356 Phase 1 — AiModel catalog clone-per-tenant (D-5).
+        AiModelFactory: {
+            CreateAiModel: vi.fn((data) => ({
+                ...data,
+                id: `cloned-${data.slug}`,
+                resourceStatus: (actual as any).ResourceStatusType?.ENABLED ?? 'ENABLED',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                deletedAt: null,
+                toObject: vi.fn().mockReturnValue({ ...data }),
+            })),
+        },
     };
 });
 
@@ -287,6 +306,13 @@ describe('TenantService', () => {
         // `saved.createdAt`. Individual tests override this as needed.
         mockDepartmentRepository.create.mockImplementation(async (entity: any) => entity);
 
+        // TASK-356 Phase 1 — default: empty SYSTEM catalog so the model-clone
+        // provisioning step is a no-op for the existing create tests. The clone
+        // tests below override `findAll` with SYSTEM rows.
+        mockAiModelRepository.findAll.mockResolvedValue([]);
+        mockAiModelRepository.isSlugUnique.mockResolvedValue(true);
+        mockAiModelRepository.create.mockImplementation(async (entity: any) => entity);
+
         // Create service instance with mocks
         service = new TenantService(
             mockTenantRepository as any,
@@ -298,6 +324,7 @@ describe('TenantService', () => {
             mockTenantBucketService as any,
             mockEventEmitter as any,
             mockClsService as any,
+            mockAiModelRepository as any,
         );
     });
 
@@ -319,6 +346,70 @@ describe('TenantService', () => {
             expect(result.id).toBe('new-tenant-id');
             expect(result.key).toBe('NEW_TENANT');
             expect(result.name).toBe('New Tenant');
+        });
+
+        // TASK-356 Phase 1 (D-5) — clone-per-tenant model catalog.
+        const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+        const makeSystemModel = (slug: string, over: Record<string, unknown> = {}) => ({
+            id: `sys-${slug}`,
+            tenantId: SYSTEM_TENANT_ID,
+            name: `Model ${slug}`,
+            slug,
+            description: 'sys model',
+            category: 'NLP',
+            taskType: 'SUMMARIZATION',
+            modelType: 'BASE_MODEL',
+            source: 'LOCAL',
+            sourceUri: `uri/${slug}`,
+            sourceRevision: 'main',
+            format: 'GGUF',
+            memorySizeMb: 100,
+            computeType: 'quantized',
+            tags: ['x'],
+            ...over,
+        });
+
+        it('clones the SYSTEM AiModel catalog into the new tenant', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+            mockAiModelRepository.findAll.mockResolvedValue([makeSystemModel('a'), makeSystemModel('b')]);
+            mockAiModelRepository.isSlugUnique.mockResolvedValue(true);
+
+            await service.create({ key: 'NEW', name: 'New' });
+
+            // Reads the SYSTEM-owned master catalog.
+            expect(mockAiModelRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({ where: expect.objectContaining({ tenantId: SYSTEM_TENANT_ID }) }),
+            );
+            // One clone per SYSTEM row, each bound to the NEW tenant (never SYSTEM).
+            expect(mockAiModelRepository.create).toHaveBeenCalledTimes(2);
+            const clonedTenantIds = mockAiModelRepository.create.mock.calls.map((c: any[]) => c[0].tenantId);
+            expect(clonedTenantIds).toEqual(['new-tenant-id', 'new-tenant-id']);
+        });
+
+        it('clone is idempotent — skips slugs already present in the tenant', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+            mockAiModelRepository.findAll.mockResolvedValue([makeSystemModel('a'), makeSystemModel('b')]);
+            // 'a' already cloned (not unique) → skipped; 'b' is new → cloned.
+            mockAiModelRepository.isSlugUnique.mockImplementation(async (_t: string, slug: string) => slug !== 'a');
+
+            await service.create({ key: 'NEW', name: 'New' });
+
+            expect(mockAiModelRepository.create).toHaveBeenCalledTimes(1);
+            expect(mockAiModelRepository.create.mock.calls[0][0].slug).toBe('b');
+        });
+
+        it('clone failure does not abort tenant creation', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+            mockAiModelRepository.findAll.mockRejectedValue(new Error('db down'));
+
+            const result = await service.create({ key: 'NEW', name: 'New' });
+
+            // The model-catalog provisioning ran but its failure was swallowed.
+            expect(mockAiModelRepository.findAll).toHaveBeenCalled();
+            expect(result.id).toBe('new-tenant-id');
         });
 
         it('should emit ResourceCreated event with complete event data', async () => {

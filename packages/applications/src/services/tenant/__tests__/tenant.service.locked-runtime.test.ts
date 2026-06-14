@@ -186,6 +186,8 @@ describe('TenantService — locked-field runtime plumbing (TASK-258 Agent D)', (
             mockTenantBucketService as never,
             mockEventEmitter as never,
             mockClsService as never,
+            // TASK-356 Phase 1 — model-catalog clone repo (no-op for this suite).
+            { findAll: async () => [] } as never,
         );
     });
 

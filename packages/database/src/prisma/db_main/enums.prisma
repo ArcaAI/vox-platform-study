@@ -118,6 +118,7 @@ enum ModelTaskType {
     TEXT2TEXT_GENERATION
     FILL_MASK
     SENTENCE_SIMILARITY
+    GUARDRAIL            // TASK-356 — safety/guardrail screening (granite-guardian)
 
     // Audio
     TEXT_TO_SPEECH
@@ -274,6 +275,10 @@ enum AiModelFormat {
     ONNX                 // ONNX Runtime
     NEMO                 // NVIDIA NeMo
     PYTORCH              // Raw PyTorch (.pt, .pth)
+    CTRANSLATE2          // TASK-356 — CTranslate2 (faster-whisper CT2 / quantized)
+    FASTER_WHISPER       // TASK-356 — faster-whisper engine artifacts
+    MLX                  // TASK-356 — Apple-silicon MLX (LM Studio)
+    GGUF                 // TASK-356 — llama.cpp / quantized GGUF
 
     @@schema("core")
 }
@@ -301,6 +306,26 @@ enum TranscriptionJobStatus {
     FAILED               // Failed (may retry)
     CANCELLED            // Manually cancelled
     DEAD                 // Max retries exceeded
+
+    @@schema("core")
+}
+
+// TASK-356 Phase 4 — tenant default transcription mode (local SDK pipeline vs
+// backend STT-v2). Overridable per-user only when transcriptionModeLocked=false.
+enum TranscriptionMode {
+    LOCAL                // Browser-side SDK transcription pipeline
+    BACKEND              // Backend STT-v2 pipeline (WebSocket)
+
+    @@schema("core")
+}
+
+// TASK-356 Phase 4 — tenant audio capture mode (maps onto backend pipeline-YAML
+// dual_capture booleans and the local captureRawAudio flag).
+enum CaptureMode {
+    RAW_AND_PROCESSED    // Capture raw + processed
+    RAW_ONLY             // Capture raw only
+    PROCESSED_ONLY       // Capture processed only
+    NONE                 // Capture neither
 
     @@schema("core")
 }

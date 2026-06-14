@@ -285,6 +285,10 @@ class HarnessDocWorkflow:
             sensor_thresholds = policy.to_sensor_thresholds()
             groundedness_threshold = policy.groundedness_threshold
             safety_enabled = policy.safety_enabled
+            # TASK-357: snapshot the PHI egress policy alongside the other guard
+            # toggles so the activity-side guard is deterministic across replay.
+            phi_enabled = policy.phi_enabled
+            phi_fail_closed = policy.phi_fail_closed
             # The workflow input wins over the policy default when it specifies a model.
             smr_provider = inp.smr_provider or policy.smr_provider
             smr_model = inp.smr_model or policy.smr_model
@@ -293,6 +297,9 @@ class HarnessDocWorkflow:
             sensor_thresholds = None
             groundedness_threshold = DEFAULT_GROUNDEDNESS_THRESHOLD
             safety_enabled = True
+            # TASK-357: no policy ⇒ the fail-closed code defaults govern the guard.
+            phi_enabled = True
+            phi_fail_closed = True
             smr_provider = inp.smr_provider
             smr_model = inp.smr_model
 
@@ -407,6 +414,8 @@ class HarnessDocWorkflow:
                     hyperparameters=assembled.hyperparameters,
                     provider=smr_provider,
                     model=smr_model,
+                    phi_enabled=phi_enabled,
+                    phi_fail_closed=phi_fail_closed,
                 ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
                 retry_policy=_GENERATE_RETRY,
@@ -478,6 +487,8 @@ class HarnessDocWorkflow:
                         knowledge_chunks=knowledge_chunks,
                         groundedness_threshold=groundedness_threshold,
                         safety_enabled=safety_enabled,
+                        phi_enabled=phi_enabled,
+                        phi_fail_closed=phi_fail_closed,
                     ),
                     start_to_close_timeout=_INFERENTIAL_TIMEOUT,
                     heartbeat_timeout=_INFERENTIAL_HEARTBEAT_TIMEOUT,
@@ -582,6 +593,8 @@ class HarnessDocWorkflow:
                         hyperparameters=asm_.hyperparameters,
                         provider=smr_provider,
                         model=smr_model,
+                        phi_enabled=phi_enabled,
+                        phi_fail_closed=phi_fail_closed,
                     ),
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_GENERATE_RETRY,
@@ -661,6 +674,8 @@ class HarnessDocWorkflow:
                             knowledge_chunks=knowledge_chunks,
                             groundedness_threshold=groundedness_threshold,
                             safety_enabled=safety_enabled,
+                            phi_enabled=phi_enabled,
+                            phi_fail_closed=phi_fail_closed,
                             # TASK-355 Phase D Slice 5d (Q5) — the optimistic ASSURANCE
                             # pass streams each claim verdict live to apps/api as it
                             # resolves (data-only activity-input fields; the activity

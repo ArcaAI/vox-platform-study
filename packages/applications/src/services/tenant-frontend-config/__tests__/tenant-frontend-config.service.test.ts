@@ -290,4 +290,115 @@ describe('TenantFrontendConfigService', () => {
       });
     });
   });
+
+  // ===========================================================================
+  // TASK-356 Phase 4 — transcription mode + lock + capture mode
+  // ===========================================================================
+  describe('TASK-356 audio-console fields', () => {
+    it('persists transcriptionMode / transcriptionModeLocked / captureMode on create', async () => {
+      const { TranscriptionMode, CaptureMode } = await import('@arcaai/domains');
+      mockConfigRepository.findByTenant.mockResolvedValue(null);
+      mockConfigRepository.create.mockImplementation(async (entity: any) => entity);
+
+      await service.upsert({
+        transcriptionMode: TranscriptionMode.LOCAL,
+        transcriptionModeLocked: true,
+        captureMode: CaptureMode.RAW_ONLY,
+      });
+
+      const created = mockConfigRepository.create.mock.calls[0][0];
+      expect(created.transcriptionMode).toBe(TranscriptionMode.LOCAL);
+      expect(created.transcriptionModeLocked).toBe(true);
+      expect(created.captureMode).toBe(CaptureMode.RAW_ONLY);
+    });
+
+    it('defaults transcriptionMode=BACKEND, locked=false, captureMode=null when omitted on create', async () => {
+      const { TranscriptionMode } = await import('@arcaai/domains');
+      mockConfigRepository.findByTenant.mockResolvedValue(null);
+      mockConfigRepository.create.mockImplementation(async (entity: any) => entity);
+
+      await service.upsert({ noiseCancel: true });
+
+      const created = mockConfigRepository.create.mock.calls[0][0];
+      expect(created.transcriptionMode).toBe(TranscriptionMode.BACKEND);
+      expect(created.transcriptionModeLocked).toBe(false);
+      expect(created.captureMode).toBeNull();
+    });
+
+    it('updates only the supplied new fields on the update branch (OCC)', async () => {
+      const { TenantFrontendConfigFactory, TranscriptionMode, CaptureMode } = await import('@arcaai/domains');
+      const existing = TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1' });
+      mockConfigRepository.findByTenant.mockResolvedValue(existing);
+      mockConfigRepository.updateWithVersion.mockImplementation(async (_id: string, entity: any) => entity);
+
+      await service.upsert({ transcriptionMode: TranscriptionMode.LOCAL, transcriptionModeLocked: true, captureMode: CaptureMode.NONE, expectedVersion: 1 });
+
+      expect(existing.transcriptionMode).toBe(TranscriptionMode.LOCAL);
+      expect(existing.transcriptionModeLocked).toBe(true);
+      expect(existing.captureMode).toBe(CaptureMode.NONE);
+      expect(mockConfigRepository.updateWithVersion).toHaveBeenCalledWith(existing.id, existing, 1);
+    });
+
+    it('carries the new fields in the broadcastSysEvent payload', async () => {
+      const { TranscriptionMode, CaptureMode } = await import('@arcaai/domains');
+      mockConfigRepository.findByTenant.mockResolvedValue(null);
+      mockConfigRepository.create.mockImplementation(async (entity: any) => entity);
+
+      await service.upsert({ transcriptionMode: TranscriptionMode.LOCAL, transcriptionModeLocked: true, captureMode: CaptureMode.PROCESSED_ONLY });
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        SysEventType.ResourceCreated,
+        expect.objectContaining({
+          data: expect.objectContaining({
+            transcriptionMode: TranscriptionMode.LOCAL,
+            transcriptionModeLocked: true,
+            captureMode: CaptureMode.PROCESSED_ONLY,
+          }),
+        }),
+      );
+    });
+
+    describe('resolveEffectiveLocalRawCapture — captureMode overrides the legacy column', () => {
+      it.each([
+        { captureMode: 'RAW_AND_PROCESSED', expected: true },
+        { captureMode: 'RAW_ONLY', expected: true },
+        { captureMode: 'PROCESSED_ONLY', expected: false },
+        { captureMode: 'NONE', expected: false },
+      ])('derives the local raw flag from captureMode=$captureMode → $expected (ignoring captureRawAudio)', async ({ captureMode, expected }) => {
+        const { TenantFrontendConfigFactory, CaptureMode } = await import('@arcaai/domains');
+        mockAppSettings.getValueWithDefault.mockReturnValue(true);
+        mockConfigRepository.findByTenant.mockResolvedValue(
+          // captureRawAudio is the OPPOSITE of the derived value to prove captureMode wins.
+          TenantFrontendConfigFactory.CreateTenantFrontendConfig({
+            tenantId: 'tenant-1',
+            captureRawAudio: !expected,
+            captureMode: CaptureMode[captureMode as keyof typeof CaptureMode],
+          }),
+        );
+
+        expect(await service.resolveEffectiveLocalRawCapture('tenant-1')).toBe(expected);
+      });
+
+      it('falls back to the legacy captureRawAudio column when captureMode is null', async () => {
+        const { TenantFrontendConfigFactory } = await import('@arcaai/domains');
+        mockAppSettings.getValueWithDefault.mockReturnValue(true);
+        mockConfigRepository.findByTenant.mockResolvedValue(
+          TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1', captureRawAudio: true, captureMode: null }),
+        );
+
+        expect(await service.resolveEffectiveLocalRawCapture('tenant-1')).toBe(true);
+      });
+
+      it('still returns false when the platform capability is OFF even with captureMode=RAW_ONLY', async () => {
+        const { TenantFrontendConfigFactory, CaptureMode } = await import('@arcaai/domains');
+        mockAppSettings.getValueWithDefault.mockReturnValue(false);
+        mockConfigRepository.findByTenant.mockResolvedValue(
+          TenantFrontendConfigFactory.CreateTenantFrontendConfig({ tenantId: 'tenant-1', captureMode: CaptureMode.RAW_ONLY }),
+        );
+
+        expect(await service.resolveEffectiveLocalRawCapture('tenant-1')).toBe(false);
+        expect(mockConfigRepository.findByTenant).not.toHaveBeenCalled();
+      });
+    });
+  });
 });

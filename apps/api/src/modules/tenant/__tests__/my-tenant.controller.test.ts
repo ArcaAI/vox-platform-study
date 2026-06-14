@@ -227,6 +227,31 @@ describe('MyTenantController', () => {
             expect(result.count).toBe(1);
         });
 
+        // TASK-356 Phase 4 (API-T2) — the raw-capture row now reflects the
+        // captureMode-derived value (resolveEffectiveLocalRawCapture is backed by
+        // captureMode in A7, with a legacy captureRawAudio fallback). The
+        // controller surface is unchanged: it faithfully surfaces whatever the
+        // service resolves. The effective TRANSCRIPTION MODE is NOT surfaced here
+        // (no double-source) — it rides the UserPreferences response (A8/A9).
+        it('TASK-356 — raw-capture row tracks the captureMode-derived value and does NOT add a transcription-mode row', async () => {
+            tenantService = createMockTenantService();
+            clsService = createMockClsService('tenant-uuid-356');
+            // Simulate captureMode=RAW_ONLY → resolveEffectiveLocalRawCapture true.
+            const frontendConfig = createMockFrontendConfigService(true);
+
+            tenantService.fetchTenantConfigs.mockResolvedValue({ data: [], count: 0, limit: 200, page: 1 });
+
+            controller = new MyTenantController(tenantService as any, frontendConfig as any, clsService as any);
+            const result = await controller.myConfig();
+
+            expect(frontendConfig.resolveEffectiveLocalRawCapture).toHaveBeenCalledWith('tenant-uuid-356');
+            const rawRow = result.data.find((c) => c.key === 'enable-local-raw-capture');
+            expect(rawRow?.value).toBe('true');
+            // No double-source: transcription mode is not injected as a config row here.
+            expect(result.data.some((c) => /transcription/i.test(c.key))).toBe(false);
+            expect(result.count).toBe(1);
+        });
+
         it('should throw BadRequestException when no tenantId and not super admin', async () => {
             tenantService = createMockTenantService();
             clsService = createMockClsService(undefined, { roles: ['DOCTOR'] });

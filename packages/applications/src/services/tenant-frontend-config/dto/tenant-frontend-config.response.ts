@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ResourceStatusType } from '@arcaai/domains';
+import { CaptureMode, ResourceStatusType, TranscriptionMode } from '@arcaai/domains';
 import { FrontendPipelineConfigJson } from './frontend-pipeline-config';
 
 /**
@@ -41,6 +41,16 @@ export class TenantFrontendConfigResponse {
   // with a hint when this is false. Not persisted on TenantFrontendConfig.
   @ApiProperty({ description: 'Whether the platform capability for local raw capture is enabled (admin UI disables the toggle when false)' })
   platformRawCaptureCapable: boolean;
+
+  // TASK-356 Phase 4 — tenant default transcription mode + lock + capture mode.
+  @ApiProperty({ description: 'Tenant default transcription mode (LOCAL or BACKEND)', enum: TranscriptionMode })
+  transcriptionMode: TranscriptionMode;
+
+  @ApiProperty({ description: 'Whether the transcription mode is locked (doctors cannot override it)' })
+  transcriptionModeLocked: boolean;
+
+  @ApiPropertyOptional({ description: 'Tenant audio capture mode (null = no tenant override; legacy captureRawAudio applies)', enum: CaptureMode, nullable: true })
+  captureMode?: CaptureMode | null;
 
   @ApiPropertyOptional({ description: 'Typed advanced configuration (see FrontendPipelineConfigJson)' })
   configJson?: FrontendPipelineConfigJson | null;

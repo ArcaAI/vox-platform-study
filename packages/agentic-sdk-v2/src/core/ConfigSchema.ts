@@ -49,6 +49,12 @@ export const SttConfigSchema = v.object({
   // `undefined` → the caller falls back to its own default. Populating this from
   // the tenant/user remote-config cascade is tracked in TASK-334.
   transcriptionPipelineId: v.optional(v.string()),
+  // TASK-356 Phase 4 — EFFECTIVE transcription mode resolved SERVER-SIDE in
+  // UserPreferencesService (locked ⇒ tenant default; unlocked ⇒ doctor's
+  // workflowMode). Surfaced through the cascade as admin-owned (see
+  // CONFIG_PERMISSIONS) so user prefs can't flip it; the clinical workspace
+  // reads it to branch LOCAL vs BACKEND. Optional: `undefined` → legacy behavior.
+  transcriptionMode: v.optional(v.picklist(['LOCAL', 'BACKEND'])),
 });
 
 export const UiConfigSchema = v.object({
@@ -114,6 +120,10 @@ export const CONFIG_PERMISSIONS: Record<string, ConfigFieldMeta> = {
   // TASK-333 — which remote pipeline a user runs is admin/tenant-assigned, so the
   // resolved id is admin-owned (user prefs can't override it via the cascade).
   'stt.transcriptionPipelineId': { permission: 'admin', section: 'stt', key: 'transcriptionPipelineId', label: 'Transcription Pipeline' },
+  // TASK-356 — the effective transcription mode is resolved server-side and is
+  // authoritative; admin-owned so the cascade's stripLockedAndAdminPaths keeps
+  // user prefs from flipping it.
+  'stt.transcriptionMode': { permission: 'admin', section: 'stt', key: 'transcriptionMode', label: 'Transcription Mode' },
 
   'ui.theme': { permission: 'user', section: 'ui', key: 'theme', label: 'Theme' },
   'ui.density': { permission: 'user', section: 'ui', key: 'density', label: 'UI Density' },

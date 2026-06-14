@@ -2,6 +2,7 @@ import {
   Activity,
   Building2,
   ClipboardList,
+  Cpu,
   Database,
   Dna,
   FileText,
@@ -48,6 +49,8 @@ const TENANT_SCOPED_ADMIN_IDS = new Set([
   'prompts',
   'departments',
   'audio-pipelines',
+  // TASK-356 Phase 1 — tenant AI model catalog (a clone of the SYSTEM catalog).
+  'ai-models',
   'storage',
   'configurations',
   'audit-logs',
@@ -76,6 +79,8 @@ export function buildAdminNavItems(opts: {
       { id: 'prompts', title: 'Prompts', url: '/admin/prompts', icon: FileText, badge: 'NEW' },
       { id: 'departments', title: 'Departments', url: '/admin/departments', icon: Hospital, badge: 'NEW' },
       { id: 'audio-pipelines', title: 'Audio Pipelines', url: '/admin/audio-pipelines', icon: Workflow, badge: 'NEW' },
+      // TASK-356 Phase 1 — tenant-scoped AI model catalog.
+      { id: 'ai-models', title: 'AI Models', url: '/admin/ai-models', icon: Cpu, badge: 'NEW' },
       { id: 'storage', title: 'Storage', url: '/admin/storage', icon: HardDrive },
       { id: 'configurations', title: 'Configurations', url: '/admin/configurations', icon: Settings2 },
       { id: 'audit-logs', title: 'Audit Logs', url: '/admin/audit-logs', icon: ScrollText },

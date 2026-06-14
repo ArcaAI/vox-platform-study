@@ -325,6 +325,50 @@ describe('TranscriptionPipeline', () => {
         pipeline.start({ track: mockTrack, audioContext: mockAudioContext })
       ).rejects.toThrow('stt.sttSocket or stt.streamingTransport is required when STT provider resolves to backend/remote');
     });
+
+    // TASK-356 Phase 4 — the server-resolved transcriptionMode is authoritative
+    // and overrides provider/location/sttSocket in resolveSTTRuntimeProvider.
+    it('honors transcriptionMode=BACKEND over provider=local (resolves remote → fails fast without a socket)', async () => {
+      const pipeline = new TranscriptionPipeline(
+        {
+          noiseFilter: { enabled: false, location: 'skip' },
+          vad: { enabled: false, location: 'browser' },
+          stt: {
+            enabled: true,
+            location: 'browser',
+            provider: 'local',
+            transcriptionMode: 'BACKEND',
+          },
+        },
+        mockLogger
+      );
+
+      await expect(
+        pipeline.start({ track: mockTrack, audioContext: mockAudioContext })
+      ).rejects.toThrow('stt.sttSocket or stt.streamingTransport is required when STT provider resolves to backend/remote');
+    });
+
+    it('honors transcriptionMode=LOCAL over provider=backend (resolves local → builds the local STT stage)', async () => {
+      const pipeline = new TranscriptionPipeline(
+        {
+          noiseFilter: { enabled: false, location: 'skip' },
+          vad: { enabled: false, location: 'browser' },
+          stt: {
+            enabled: true,
+            location: 'backend',
+            provider: 'backend',
+            transcriptionMode: 'LOCAL',
+          },
+        },
+        mockLogger
+      );
+
+      await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
+
+      // Resolved to local → the local @arcaai/stt stage is constructed and no
+      // sttSocket-required error is thrown.
+      expect(createSTT).toHaveBeenCalled();
+    });
   });
 
   describe('stop', () => {
