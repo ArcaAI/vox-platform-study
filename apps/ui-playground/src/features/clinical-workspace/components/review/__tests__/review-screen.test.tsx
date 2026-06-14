@@ -206,3 +206,44 @@ describe('ReviewScreen — approve & sign', () => {
     expect(screen.queryByTestId('note-signed-badge')).toBeNull();
   });
 });
+
+// TASK-355 Phase D Slice 6c — optimistic delivery: assurance runs concurrently
+// with review. Q5 true-live per-claim counter; Q2a early-sign ENABLED + hint;
+// Q4 one-click override to sign past a terminal safety FLAG.
+describe('ReviewScreen — assurance pending + safety flag (TASK-355 Phase D)', () => {
+  it('shows the pending banner with a live N-of-M counter and keeps sign enabled (Q5/Q2a)', () => {
+    render(
+      <ReviewScreen data={data} onApprove={vi.fn().mockResolvedValue(approvalResult)} assurance={{ pending: true, resolved: 1, total: 3, safetyFlag: false }} />,
+    );
+
+    expect(screen.getByTestId('assurance-pending-banner')).toBeInTheDocument();
+    expect(screen.getByTestId('assurance-pending-banner').textContent).toMatch(/1 of 3/);
+
+    // Q2a — approve stays ENABLED, with an informational early-sign hint.
+    const approve = screen.getByTestId('approve-note-button') as HTMLButtonElement;
+    expect(approve).toBeInTheDocument();
+    expect(approve.disabled).toBe(false);
+    expect(screen.getByTestId('assurance-early-sign-hint')).toBeInTheDocument();
+  });
+
+  it('on a terminal safety FLAG shows a destructive alert and a one-click override sign (Q4)', async () => {
+    const onApprove = vi.fn().mockResolvedValue(approvalResult);
+    render(<ReviewScreen data={data} onApprove={onApprove} assurance={{ pending: false, resolved: 3, total: 3, safetyFlag: true }} />);
+
+    expect(screen.getByTestId('assurance-safety-flag')).toBeInTheDocument();
+    const approve = screen.getByTestId('approve-note-button');
+    expect(approve.textContent).toMatch(/acknowledge risk & sign/i);
+
+    fireEvent.click(approve);
+    expect(onApprove).toHaveBeenCalledWith('note-1', { overrideSafetyFlag: true });
+    expect(await screen.findByTestId('note-signed-badge')).toBeInTheDocument();
+  });
+
+  it('signs normally (no override) when assurance is clean', async () => {
+    const onApprove = vi.fn().mockResolvedValue(approvalResult);
+    render(<ReviewScreen data={data} onApprove={onApprove} assurance={{ pending: false, resolved: 3, total: 3, safetyFlag: false }} />);
+
+    fireEvent.click(screen.getByTestId('approve-note-button'));
+    expect(onApprove).toHaveBeenCalledWith('note-1');
+  });
+});

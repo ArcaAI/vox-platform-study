@@ -24,6 +24,7 @@ from harness.sensors.registry import COMPUTATIONAL_SENSOR_NAMES
 from harness.services.api_client import (
     AssembleResponse,
     DraftResponse,
+    FinalizeAssuranceResponse,
     PersistEntitiesResponse,
     RecordGateResponse,
 )
@@ -31,11 +32,13 @@ from harness.services.sensor_runner import SensorRunOutput
 from harness.services.smr_client import SmrGenerationResult
 from harness.temporal.models import (
     AssembleInput,
+    EditSignal,
     EntitiesResult,
     EscalateInput,
     EscalateResult,
     ExtractEntitiesInput,
     FetchPolicyInput,
+    FinalizeAssuranceInput,
     GenerateInput,
     HarnessPolicy,
     InferentialRunOutput,
@@ -60,6 +63,11 @@ class StubConfig:
     verdicts: list[str] = field(default_factory=lambda: ["PASS"])
     nlp_fails: bool = False
     generate_fails: bool = False
+    # TASK-354 (replay fixture): make ``persist_draft`` raise so the workflow reaches the
+    # TASK-348 failure-terminal path AFTER the inferential pass has run. Used to capture a
+    # post-TASK-348 history that exercises BOTH patch gates and includes the
+    # ``run_inferential_sensors`` command for the replay-compat suite.
+    persist_draft_fails: bool = False
     note_content: str = _OK_NOTE
     # Inferential pass (Phase 2): one kind per ``run_inferential_sensors`` invocation
     # (clamped to the last when there are more invocations than entries). Kinds:
@@ -86,9 +94,16 @@ class StubRecorder:
     """Captures what the workflow drove (call counts + payloads)."""
 
     calls: Counter = field(default_factory=Counter)
+    # TASK-355 Phase D (Slice 4a): ordered call trace so tests can assert the
+    # optimistic REORDER (early persist BEFORE the inferential pass, "completed"
+    # progress BEFORE assurance, finalize AFTER). Progress entries are
+    # ``progress:<stage>``; activities are recorded by name.
+    call_order: list[str] = field(default_factory=list)
     fetch_policy_inputs: list[FetchPolicyInput] = field(default_factory=list)
     persist_entities_inputs: list[PersistEntitiesInput] = field(default_factory=list)
     persist_draft_inputs: list[PersistDraftInput] = field(default_factory=list)
+    # TASK-355 Phase D (Slice 4a): the finalize_assurance payloads (optimistic path).
+    finalize_inputs: list[FinalizeAssuranceInput] = field(default_factory=list)
     record_inputs: list[RecordGateInput] = field(default_factory=list)
     escalate_inputs: list[EscalateInput] = field(default_factory=list)
     inferential_inputs: list[RunInferentialSensorsInput] = field(default_factory=list)
@@ -99,6 +114,16 @@ class StubRecorder:
     # TASK-348 / MAJ-9: the schedule_to_close_timeout each report_progress
     # emission was scheduled with (None = unbounded queue wait).
     progress_schedule_to_close: list[timedelta | None] = field(default_factory=list)
+    # TASK-355 Phase D (Slice 4b): edit-injection hook. To test the signal-driven
+    # edit-during-assurance path (Q3) deterministically with instant stubs, the
+    # run_inferential_sensors stub fires an ``edit`` signal back at the running
+    # workflow from INSIDE its Nth invocation — so the signal lands while that
+    # assurance pass is in flight, exactly the race the workflow must handle. The
+    # test sets the handle (built from the known workflow id, pre-start) + the
+    # 0-based invocation index to inject on + the payload.
+    edit_signal_handle: object | None = None
+    edit_on_inferential_index: int | None = None
+    edit_payload: EditSignal | None = None
 
 
 def _ok(name: str) -> SensorResult:
@@ -309,7 +334,18 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
     async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> InferentialRunOutput:
         i = recorder.calls["run_inferential_sensors"]
         recorder.calls["run_inferential_sensors"] += 1
+        recorder.call_order.append("run_inferential_sensors")
         recorder.inferential_inputs.append(payload)
+        # TASK-355 Slice 4b: fire a clinician EDIT back at the workflow DURING this
+        # assurance pass (the signal is recorded mid-activity, so it is buffered and
+        # delivered when the workflow resumes after this activity completes —
+        # deterministic on replay). Drives the Q3 re-bind/re-run path.
+        if (
+            recorder.edit_signal_handle is not None
+            and recorder.edit_on_inferential_index == i
+            and recorder.edit_payload is not None
+        ):
+            await recorder.edit_signal_handle.signal("edit", recorder.edit_payload)
         if config.inferential_fails:
             raise ApplicationError("inferential pass unavailable", non_retryable=True)
         kind = config.inferential_verdicts[min(i, len(config.inferential_verdicts) - 1)]
@@ -318,8 +354,21 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
     @activity.defn(name="persist_draft")
     async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
         recorder.calls["persist_draft"] += 1
+        recorder.call_order.append("persist_draft")
         recorder.persist_draft_inputs.append(payload)
+        if config.persist_draft_fails:
+            raise ApplicationError("persist draft unavailable", non_retryable=True)
         return DraftResponse(context_item_id="ctx-draft-1")
+
+    @activity.defn(name="finalize_assurance")
+    async def finalize_assurance(payload: FinalizeAssuranceInput) -> FinalizeAssuranceResponse:
+        # TASK-355 Phase D (Slice 4a): second phase of optimistic delivery — apps/api
+        # backfills the early SummaryMeta + flips to PENDING_REVIEW. The stub just
+        # records the payload so tests can assert the verdict that was finalized.
+        recorder.calls["finalize_assurance"] += 1
+        recorder.call_order.append("finalize_assurance")
+        recorder.finalize_inputs.append(payload)
+        return FinalizeAssuranceResponse(recorded=True, context_item_id=payload.context_item_id)
 
     @activity.defn(name="record_gate_decision")
     async def record_gate_decision(payload: RecordGateInput) -> RecordGateResponse:
@@ -336,6 +385,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
     @activity.defn(name="report_progress")
     async def report_progress(payload: ReportProgressInput) -> ReportProgressResult:
         recorder.calls["report_progress"] += 1
+        recorder.call_order.append(f"progress:{payload.stage}")
         recorder.progress_inputs.append(payload)
         recorder.progress_schedule_to_close.append(activity.info().schedule_to_close_timeout)
         if config.progress_fails:
@@ -355,6 +405,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         run_sensors,
         run_inferential_sensors,
         persist_draft,
+        finalize_assurance,
         record_gate_decision,
         escalate_gate,
         report_progress,

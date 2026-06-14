@@ -17,6 +17,7 @@ from harness.core.llm_concurrency import (
     LlmGovernorConfig,
     endpoint_key,
     endpoint_semaphore,
+    get_llm_governor_config,
     governed_request,
     is_retryable,
     reset_endpoint_limiters,
@@ -265,6 +266,67 @@ def test_is_retryable_classification():
     assert is_retryable(Exception("Connection reset by peer"))
     assert not is_retryable(_http_error("x", status_code=400, body="plain bad request"))
     assert not is_retryable(_http_error("x", status_code=401))
+
+
+# --------------------------------------------------------------------------- #
+# per-call wall-clock timeout (TASK-354 Defect A)
+# --------------------------------------------------------------------------- #
+
+
+def test_request_timeout_default_is_120():
+    # Safety net for the raised HARNESS_LLM_MAX_CONCURRENCY (TASK-355 Phase A): a hung
+    # call must be bounded by default, not only when an operator opts in.
+    assert LlmGovernorConfig().request_timeout_s == 120.0
+
+
+def test_get_llm_governor_config_reads_request_timeout(monkeypatch):
+    monkeypatch.setenv("HARNESS_LLM_REQUEST_TIMEOUT_S", "42")
+    assert get_llm_governor_config().request_timeout_s == 42.0
+
+
+def test_is_retryable_treats_timeout_as_transient():
+    # A per-call timeout is a transient hang, retried within the budget like any 5xx.
+    # ``asyncio.timeout`` raises a bare builtin ``TimeoutError`` (empty message) on 3.11+
+    # — ``asyncio.TimeoutError`` is the same class — so marker-matching alone would miss it.
+    assert is_retryable(TimeoutError("llm request exceeded 120s per-call timeout"))
+    assert is_retryable(TimeoutError())
+
+
+@pytest.mark.asyncio
+async def test_request_timeout_aborts_hung_operation_and_retries_then_raises():
+    # A call that never responds is cut at request_timeout_s, classified transient, and
+    # retried up to max_attempts before re-raising (caller's degrade owns the outcome).
+    cfg = LlmGovernorConfig(
+        max_concurrency=1,
+        max_attempts=3,
+        backoff_base_s=0.0,
+        backoff_max_s=0.0,
+        jitter_s=0.0,
+        request_timeout_s=0.05,
+    )
+    state = {"attempts": 0}
+
+    async def hung():
+        state["attempts"] += 1
+        await asyncio.sleep(30)
+
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(
+            governed_request("http://localhost:1234/v1", hung, config=cfg), timeout=5.0
+        )
+    assert state["attempts"] == 3  # retried within max_attempts before giving up
+
+
+@pytest.mark.asyncio
+async def test_request_timeout_zero_disables_the_bound():
+    # A non-positive timeout disables the wall-clock bound (a finite call still completes).
+    cfg = LlmGovernorConfig(max_concurrency=1, max_attempts=1, request_timeout_s=0.0)
+
+    async def quick():
+        await asyncio.sleep(0)
+        return "ok"
+
+    assert await governed_request("http://localhost:1234/v1", quick, config=cfg) == "ok"
 
 
 @pytest.mark.asyncio

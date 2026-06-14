@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { SummaryService } from '../summary.service';
 import { SysEventType, ContextItemVersionFactory, HarnessAuditAction, ConsultationStatus } from '@arcaai/domains';
 
@@ -112,10 +112,17 @@ const createMockHarnessAuditService = () => ({
 const createMockHarnessGatewayService = () => ({
     start: vi.fn().mockResolvedValue({ workflowId: 'wf-1' }),
     signalApproval: vi.fn().mockResolvedValue({ ok: true }),
+    // TASK-355 Phase D (Slice 5c) — updateSummary forwards a clinician edit of an
+    // optimistically-delivered draft to the harness best-effort.
+    signalEdit: vi.fn().mockResolvedValue({ ok: true }),
 });
 
 const createMockSummaryMetaRepository = () => ({
     create: vi.fn(),
+    // TASK-355 Phase D — the sign-off assurance guard reads the draft's meta.
+    // Default null = no harness assurance meta = guard is a no-op (legacy/manual
+    // summaries sign through unchanged).
+    findByContextItem: vi.fn().mockResolvedValue(null),
 });
 
 const createMockNamedEntityRepository = () => ({
@@ -1523,6 +1530,183 @@ describe('SummaryService', () => {
         });
 
         // ===================================================================
+        // TASK-355 Phase D — RELAXED sign-off governance (Slice 5b)
+        //
+        // Clinician-autonomy + full-audit model (doc 08 §7.1):
+        //   Q2a — signing BEFORE assurance completes is allowed with NO ack; the
+        //         sign proceeds and a SIGNED_BEFORE_ASSURANCE WORM annotation is
+        //         appended so the late-verdict path can correlate.
+        //   Q4  — signing PAST a completed safety FLAG is allowed only via an
+        //         explicit one-click override flag (`overrideSafetyFlag`), recorded
+        //         as a SAFETY_OVERRIDE WORM event (no free-text). Without the flag
+        //         a safety FLAG still hard-blocks.
+        // Legacy/non-harness summaries (no meta) and clean assured drafts (no
+        // safety FLAG) sign through unchanged, with NO extra annotations.
+        // ===================================================================
+        describe('approveSummary — Phase D assurance guard (TASK-355)', () => {
+            let mockHarnessAuditService: ReturnType<typeof createMockHarnessAuditService>;
+            let gatedService: SummaryService;
+
+            const makeFinalSummary = () => ({
+                id: 'ctx-item-123',
+                tenantId: 'tenant-1',
+                consultationId: 'consultation-1',
+                type: 'RAW_SUMMARY',
+                content: 'S: ... O: ... A: ... P: ...',
+                isFinalSummary: true,
+                isSummary: true,
+                currentVersionNumber: 2,
+                updatedBy: null as string | null,
+                toObject: vi.fn().mockReturnValue({}),
+                changes: {},
+            });
+
+            beforeEach(() => {
+                mockHarnessAuditService = createMockHarnessAuditService();
+                gatedService = new SummaryService(
+                    mockContextItemRepository as any,
+                    mockConsultationRepository as any,
+                    mockSummaryMetaRepository as any,
+                    mockNamedEntityRepository as any,
+                    mockHttpService as any,
+                    mockConfigService as any,
+                    mockEventEmitter as any,
+                    mockClsService as any,
+                    mockContextItemVersionRepository as any,
+                    mockPromptAssemblyService as any,
+                    undefined, // secretsService
+                    undefined, // userProfileRepository
+                    mockHarnessAuditService as any,
+                );
+                mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
+                mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
+                mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'consultation-1',
+                    tenantId: 'tenant-1',
+                    status: ConsultationStatus.PENDING_REVIEW,
+                    updatedBy: null,
+                });
+                mockConsultationRepository.update.mockResolvedValue({ id: 'consultation-1' });
+            });
+
+            it('Q2a — ALLOWS sign-off while assurance is pending (no ack) and records a SIGNED_BEFORE_ASSURANCE annotation', async () => {
+                mockSummaryMetaRepository.findByContextItem.mockResolvedValue({
+                    id: 'sm-1',
+                    assuranceCompletedAt: null,
+                    guardrailDecisions: null,
+                });
+
+                const result = await gatedService.approveSummary('ctx-item-123');
+
+                // The note IS signed (clinician autonomy) — Q2a is frictionless.
+                expect(result.approvalStatus).toBe('APPROVED');
+                expect(ContextItemVersionFactory.CreateSignedNoteVersion).toHaveBeenCalledTimes(1);
+                expect(mockConsultationRepository.update).toHaveBeenCalledWith(
+                    'consultation-1',
+                    expect.objectContaining({ status: ConsultationStatus.SIGNED }),
+                );
+                // …but the WORM trail records BOTH the attestation AND that the sign
+                // preceded assurance, so the late-verdict path can correlate.
+                const actions = mockHarnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
+                expect(actions).toContain(HarnessAuditAction.ATTEST);
+                expect(actions).toContain(HarnessAuditAction.SIGNED_BEFORE_ASSURANCE);
+                expect(actions).not.toContain(HarnessAuditAction.SAFETY_OVERRIDE);
+            });
+
+            it('Q4 — HARD-REJECTS sign-off past a safety FLAG WITHOUT the override flag (object shape)', async () => {
+                mockSummaryMetaRepository.findByContextItem.mockResolvedValue({
+                    id: 'sm-1',
+                    assuranceCompletedAt: new Date(),
+                    guardrailDecisions: { safety: { decision: 'FLAG' } },
+                });
+
+                await expect(gatedService.approveSummary('ctx-item-123')).rejects.toThrow(ConflictException);
+                expect(ContextItemVersionFactory.CreateSignedNoteVersion).not.toHaveBeenCalled();
+                expect(mockHarnessAuditService.append).not.toHaveBeenCalled();
+            });
+
+            it('Q4 — HARD-REJECTS sign-off past a safety FLAG WITHOUT the override flag (string shape)', async () => {
+                mockSummaryMetaRepository.findByContextItem.mockResolvedValue({
+                    id: 'sm-1',
+                    assuranceCompletedAt: new Date(),
+                    guardrailDecisions: { safety: 'FLAG' },
+                });
+
+                await expect(gatedService.approveSummary('ctx-item-123')).rejects.toThrow(ConflictException);
+            });
+
+            it('Q4 — ALLOWS sign-off past a completed safety FLAG via one-click override + records a SAFETY_OVERRIDE WORM event', async () => {
+                mockSummaryMetaRepository.findByContextItem.mockResolvedValue({
+                    id: 'sm-1',
+                    assuranceCompletedAt: new Date(),
+                    guardrailDecisions: { safety: { decision: 'FLAG' } },
+                    gateDecision: 'FLAG',
+                });
+
+                const result = await gatedService.approveSummary('ctx-item-123', { overrideSafetyFlag: true });
+
+                expect(result.approvalStatus).toBe('APPROVED');
+                expect(ContextItemVersionFactory.CreateSignedNoteVersion).toHaveBeenCalledTimes(1);
+                expect(mockConsultationRepository.update).toHaveBeenCalledWith(
+                    'consultation-1',
+                    expect.objectContaining({ status: ConsultationStatus.SIGNED }),
+                );
+                const actions = mockHarnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
+                expect(actions).toContain(HarnessAuditAction.SAFETY_OVERRIDE);
+                expect(actions).toContain(HarnessAuditAction.ATTEST);
+                // A completed safety FLAG means assurance landed, so this is NOT a
+                // before-assurance sign — no SIGNED_BEFORE_ASSURANCE annotation.
+                expect(actions).not.toContain(HarnessAuditAction.SIGNED_BEFORE_ASSURANCE);
+            });
+
+            it('Q4 — the SAFETY_OVERRIDE WORM append is FAIL-CLOSED (override audit failure rejects the sign)', async () => {
+                mockSummaryMetaRepository.findByContextItem.mockResolvedValue({
+                    id: 'sm-1',
+                    assuranceCompletedAt: new Date(),
+                    guardrailDecisions: { safety: { decision: 'FLAG' } },
+                });
+                // Fail the very first audit append (the SAFETY_OVERRIDE event).
+                mockHarnessAuditService.append.mockRejectedValueOnce(new Error('audit chain unavailable'));
+
+                await expect(
+                    gatedService.approveSummary('ctx-item-123', { overrideSafetyFlag: true }),
+                ).rejects.toThrow();
+                // The consultation must NOT be flipped to SIGNED when the override audit fails.
+                expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+            });
+
+            it('ALLOWS sign-off when assured and safety is not FLAG (a groundedness FLAG alone does NOT block, no extra annotations)', async () => {
+                mockSummaryMetaRepository.findByContextItem.mockResolvedValue({
+                    id: 'sm-1',
+                    assuranceCompletedAt: new Date(),
+                    guardrailDecisions: { safety: { verdict: 'pass' }, groundedness: { decision: 'FLAG' } },
+                });
+
+                const result = await gatedService.approveSummary('ctx-item-123');
+
+                expect(result.approvalStatus).toBe('APPROVED');
+                expect(ContextItemVersionFactory.CreateSignedNoteVersion).toHaveBeenCalledTimes(1);
+                expect(mockConsultationRepository.update).toHaveBeenCalledWith(
+                    'consultation-1',
+                    expect.objectContaining({ status: ConsultationStatus.SIGNED }),
+                );
+                const actions = mockHarnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
+                expect(actions).not.toContain(HarnessAuditAction.SAFETY_OVERRIDE);
+                expect(actions).not.toContain(HarnessAuditAction.SIGNED_BEFORE_ASSURANCE);
+            });
+
+            it('ALLOWS sign-off for legacy/non-harness summaries that have no SummaryMeta', async () => {
+                mockSummaryMetaRepository.findByContextItem.mockResolvedValue(null);
+
+                const result = await gatedService.approveSummary('ctx-item-123');
+
+                expect(result.approvalStatus).toBe('APPROVED');
+                expect(ContextItemVersionFactory.CreateSignedNoteVersion).toHaveBeenCalledTimes(1);
+            });
+        });
+
+        // ===================================================================
         // TASK-330 Phase 1 (Lane G) — best-effort harness sign-off signal
         //
         // AFTER the SIGNED_NOTE + ATTEST + status=SIGNED writes (the WORM trail
@@ -1632,6 +1816,109 @@ describe('SummaryService', () => {
                 await signalingService.approveSummary('ctx-item-123');
 
                 expect(mockHarnessGateway.signalApproval).not.toHaveBeenCalled();
+            });
+        });
+
+        // ===================================================================
+        // TASK-355 Phase D (Slice 5c) — updateSummary edit-signal SENDER.
+        //
+        // A clinician edit of an optimistically-delivered draft that is STILL
+        // under assurance (DRAFT_PENDING_SENSORS) is forwarded to the running
+        // harness workflow's `edit` signal so assurance re-binds + re-runs on the
+        // edited version (Q3) and silent regen-if-untouched is disabled (Q1).
+        // Best-effort: the MODIFIED_SUMMARY version write is the source of truth;
+        // a signal failure never rolls back the edit. Edits outside that window
+        // (any other consultation status) do NOT signal.
+        // ===================================================================
+        describe('updateSummary — harness edit signal (TASK-355 Slice 5c)', () => {
+            let mockHarnessGateway: ReturnType<typeof createMockHarnessGatewayService>;
+            let editService: SummaryService;
+
+            beforeEach(() => {
+                mockHarnessGateway = createMockHarnessGatewayService();
+                editService = new SummaryService(
+                    mockContextItemRepository as any,
+                    mockConsultationRepository as any,
+                    mockSummaryMetaRepository as any,
+                    mockNamedEntityRepository as any,
+                    mockHttpService as any,
+                    mockConfigService as any,
+                    mockEventEmitter as any,
+                    mockClsService as any,
+                    mockContextItemVersionRepository as any,
+                    mockPromptAssemblyService as any,
+                    undefined, // secretsService
+                    undefined, // userProfileRepository
+                    undefined, // harnessAuditService
+                    mockHarnessGateway as any, // harnessGatewayService (Lane G)
+                );
+                mockContextItemRepository.findById.mockResolvedValue(
+                    createMockContextItem({
+                        id: 'ctx-edit-1',
+                        consultationId: 'consultation-1',
+                        content: 'old content',
+                        currentVersionNumber: 1,
+                    }),
+                );
+                mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
+                mockContextItemVersionRepository.create.mockResolvedValue({ id: 'edited-version-1' });
+                mockContextItemRepository.update.mockImplementation((_id: string, item: unknown) =>
+                    Promise.resolve({ ...(item as object), createdAt: new Date(), updatedAt: new Date() }),
+                );
+            });
+
+            it('forwards the edit (content + new versionId + editor) when the draft is still DRAFT_PENDING_SENSORS', async () => {
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'consultation-1',
+                    tenantId: 'tenant-1',
+                    status: ConsultationStatus.DRAFT_PENDING_SENSORS,
+                });
+
+                await editService.updateSummary('ctx-edit-1', { content: 'S: edited subjective ... P: edited plan' });
+
+                expect(mockHarnessGateway.signalEdit).toHaveBeenCalledTimes(1);
+                expect(mockHarnessGateway.signalEdit).toHaveBeenCalledWith(
+                    'consultation-1',
+                    expect.objectContaining({
+                        content: 'S: edited subjective ... P: edited plan',
+                        contextItemVersionId: 'edited-version-1',
+                        editedBy: 'user-1',
+                    }),
+                );
+            });
+
+            it('does NOT signal when the consultation is not in DRAFT_PENDING_SENSORS', async () => {
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'consultation-1',
+                    tenantId: 'tenant-1',
+                    status: ConsultationStatus.PENDING_REVIEW,
+                });
+
+                await editService.updateSummary('ctx-edit-1', { content: 'edited' });
+
+                expect(mockHarnessGateway.signalEdit).not.toHaveBeenCalled();
+            });
+
+            it('does NOT signal when there is no consultation record', async () => {
+                mockConsultationRepository.findById.mockResolvedValue(null);
+
+                await editService.updateSummary('ctx-edit-1', { content: 'edited' });
+
+                expect(mockHarnessGateway.signalEdit).not.toHaveBeenCalled();
+            });
+
+            it('still completes the edit when the harness edit signal throws (best-effort, not rolled back)', async () => {
+                mockConsultationRepository.findById.mockResolvedValue({
+                    id: 'consultation-1',
+                    tenantId: 'tenant-1',
+                    status: ConsultationStatus.DRAFT_PENDING_SENSORS,
+                });
+                mockHarnessGateway.signalEdit.mockRejectedValue(new Error('harness unreachable'));
+
+                const result = await editService.updateSummary('ctx-edit-1', { content: 'edited' });
+
+                expect(result).toBeDefined();
+                expect(mockContextItemVersionRepository.create).toHaveBeenCalledTimes(1);
             });
         });
 

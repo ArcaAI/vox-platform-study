@@ -17,6 +17,10 @@ const statusVariant: Record<string, 'default' | 'secondary' | 'outline' | 'destr
   TRANSCRIBING: 'secondary',
   SUMMARIZING: 'secondary',
   REVIEW: 'outline',
+  // TASK-355 — full clinical lifecycle (Phase D optimistic delivery adds DRAFT_PENDING_SENSORS).
+  PENDING_REVIEW: 'outline',
+  DRAFT_PENDING_SENSORS: 'secondary',
+  SIGNED: 'default',
   CLOSED: 'secondary',
   CANCELLED: 'destructive',
   active: 'default',

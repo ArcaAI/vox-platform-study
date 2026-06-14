@@ -29,6 +29,9 @@ export interface CreateSummaryMetaProps extends BaseEntityFactoryCreateProps {
   guardrailDecisions?: ISummaryMetaEntity['guardrailDecisions'];
   attestationRef?: ISummaryMetaEntity['attestationRef'];
   modelName?: ISummaryMetaEntity['modelName'];
+  // TASK-355 Phase D — two-phase (optimistic) assurance state
+  gateDecision?: ISummaryMetaEntity['gateDecision'];
+  assuranceCompletedAt?: ISummaryMetaEntity['assuranceCompletedAt'];
   tenantId: ISummaryMetaEntity['tenantId'];
 
   createdAt?: ISummaryMetaEntity['createdAt'];
@@ -72,6 +75,8 @@ export class SummaryMetaFactory {
       guardrailDecisions: props.guardrailDecisions ?? null,
       attestationRef: props.attestationRef ?? null,
       modelName: props.modelName ?? null,
+      gateDecision: props.gateDecision ?? null,
+      assuranceCompletedAt: props.assuranceCompletedAt ?? null,
       tenantId: props.tenantId,
     });
   }

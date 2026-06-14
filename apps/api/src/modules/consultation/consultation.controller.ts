@@ -19,6 +19,7 @@ import {
   GenerateSummaryRequest,
   GeneratePreSummaryRequest,
   UpdateSummaryRequest,
+  SummaryApprovalRequest,
   SummaryResponse,
   SummaryProvenanceResponse,
   AggregateNerResponse,
@@ -41,6 +42,8 @@ import {
   HighlightResponse,
   // TASK-345 — live harness activity/progress feed.
   HarnessProgressService,
+  // TASK-355 Phase D Slice 5d — live per-claim assurance feed.
+  HarnessAssuranceService,
 } from '@arcaai/applications';
 import {
   Controller,
@@ -168,6 +171,8 @@ export class ConsultationController {
     private readonly highlightService: IHighlightService,
     // TASK-345 — live harness activity/progress feed (SSE relay).
     private readonly harnessProgressService: HarnessProgressService,
+    // TASK-355 Phase D Slice 5d — live per-claim assurance feed (SSE relay).
+    private readonly harnessAssuranceService: HarnessAssuranceService,
   ) {}
 
   private getDoctorId(): string {
@@ -528,6 +533,25 @@ export class ConsultationController {
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   streamHarnessProgress(@Param('id') id: string): Observable<MessageEvent> {
     return this.harnessProgressService.subscribeToProgress(id);
+  }
+
+  // TASK-355 Phase D Slice 5d — relays `consultation:harness-assurance:{id}`
+  // (published per-claim by the internal POST .../assurance-event route and closed
+  // by .../assurance) so the review panel can stream each verdict live, enable
+  // sign-off when assurance lands, and surface a safety flag / amendment alert.
+  // Its OWN @StreamScope namespace: a progress ticket must not read verdicts.
+  @Get(':id/harness-assurance/stream')
+  @Sse()
+  @TenantOwnedResource({ modelName: 'Consultation', paramName: 'id' })
+  @StreamScope({ namespace: 'consultation_harness_assurance', param: 'id' })
+  @ApiOperation({
+    summary: 'Stream live harness assurance (per-claim verdicts) for a consultation via SSE',
+    description:
+      'Server-Sent Events stream relaying the Redis channel `consultation:harness-assurance:{id}`. Each event is a HarnessAssuranceEventDto JSON carrying the full accumulated claim-verdict list (no PHI — ids, sensor keys, verdict labels only). Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_harness_assurance:<id>`. The terminal `assurance_complete` event carries `closed: true` plus the aggregate gateDecision, safetyFlag, and postSignAlert.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  streamHarnessAssurance(@Param('id') id: string): Observable<MessageEvent> {
+    return this.harnessAssuranceService.subscribeToAssurance(id);
   }
 
   // ─── Timeline ────────────────────────────────────────────────────
@@ -1121,9 +1145,14 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiParam({ name: 'contextItemId', description: 'Summary Context Item ID' })
-  async approveSummary(@Param('id') id: string, @Param('contextItemId') contextItemId: string): Promise<SummaryApprovalResponseDto> {
+  async approveSummary(
+    @Param('id') id: string,
+    @Param('contextItemId') contextItemId: string,
+    // TASK-355 Phase D Slice 6a — optional one-click safety-flag override (Q4).
+    @Body() body?: SummaryApprovalRequest,
+  ): Promise<SummaryApprovalResponseDto> {
     await this.verifyConsultationOwnership(id);
-    const result = await this.summaryService.approveSummary(contextItemId);
+    const result = await this.summaryService.approveSummary(contextItemId, { overrideSafetyFlag: body?.overrideSafetyFlag });
     return new SummaryApprovalResponseDto(result);
   }
 

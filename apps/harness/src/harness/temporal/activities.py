@@ -14,6 +14,8 @@ runtime (allowed in activities) and construct a client per call.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import itertools
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -39,10 +41,12 @@ from harness.sensors.inferential import (
     SafetySensor,
 )
 from harness.sensors.inferential.base import degraded_result
+from harness.sensors.inferential.groundedness import ClaimVerdictCallback
 from harness.services.api_client import (
     ApiClient,
     AssembleResponse,
     DraftResponse,
+    FinalizeAssuranceResponse,
     PersistEntitiesResponse,
     RecordGateResponse,
 )
@@ -58,6 +62,7 @@ from harness.temporal.models import (
     EscalateResult,
     ExtractEntitiesInput,
     FetchPolicyInput,
+    FinalizeAssuranceInput,
     GenerateInput,
     HarnessPolicy,
     InferentialRunOutput,
@@ -343,6 +348,25 @@ def _safety_decision(result: SensorResult) -> dict[str, Any]:
     }
 
 
+# Heartbeat cadence for the long inferential pass (TASK-354 Defect A). The workflow sets
+# ``heartbeat_timeout=60s`` on ``run_inferential_sensors``; a beat well inside that window
+# lets Temporal detect a dead worker / hung attempt promptly (~60s) instead of waiting out
+# the 900s ``start_to_close``. 15s gives ample margin under the 60s cap.
+_HEARTBEAT_INTERVAL_S = 15.0
+
+
+async def _heartbeat_periodically() -> None:
+    """Emit an ``activity.heartbeat()`` immediately, then every ``_HEARTBEAT_INTERVAL_S``.
+
+    Runs as a background task for the lifetime of ``run_inferential_sensors`` so a hung
+    judge/guardian pass (or a dead worker) is surfaced to Temporal via the heartbeat
+    timeout. Cancelled in the activity's ``finally`` once the pass returns.
+    """
+    while True:
+        activity.heartbeat()
+        await asyncio.sleep(_HEARTBEAT_INTERVAL_S)
+
+
 def _assemble_inferential_output(results: list[SensorResult]) -> InferentialRunOutput:
     """Fold the inferential sensor results into the activity's typed output."""
     by_name = {r.name: r for r in results}
@@ -371,6 +395,50 @@ def _assemble_inferential_output(results: list[SensorResult]) -> InferentialRunO
     )
 
 
+def _build_assurance_publisher(
+    settings: Settings,
+    payload: RunInferentialSensorsInput,
+    ctx: SensorContext,
+) -> ClaimVerdictCallback | None:
+    """Build the Q5 per-claim live publisher, or ``None`` when not streaming.
+
+    TASK-355 Phase D Slice 5d: returns a best-effort ``on_claim`` callback only when
+    the optimistic ASSURANCE pass asked for ``live_assurance`` AND the routing ids are
+    present. It reuses the short-timeout, fire-and-forget progress client and swallows
+    every error — the live feed can never degrade the durable assurance pass. ``total``
+    mirrors the sensor's emission contract (one event per non-empty-text claim) so the
+    UI sees a stable N-of-M counter.
+    """
+    if not (payload.live_assurance and payload.consultation_id and payload.tenant_id):
+        return None
+
+    consultation_id = payload.consultation_id
+    tenant_id = payload.tenant_id
+    job_id = payload.job_id
+    total = sum(1 for c in ctx.claims() if str(c.get("text") or "").strip())
+    ordinals = itertools.count(1)
+
+    async def _publish(claim_ref: str, supported: bool) -> None:
+        try:
+            await _progress_api_client(settings).report_assurance_event(
+                consultation_id,
+                tenant_id=tenant_id,
+                claim_id=claim_ref,
+                sensor=GROUNDEDNESS_NAME,
+                verdict="grounded" if supported else "ungrounded",
+                ordinal=next(ordinals),
+                total=total,
+                job_id=job_id,
+            )
+        except Exception as exc:  # noqa: BLE001 — live feed is fire-and-forget
+            activity.logger.warning(
+                "harness.assurance_event.failed",
+                extra={"consultation_id": consultation_id, "claim_id": claim_ref, "error": str(exc)},
+            )
+
+    return _publish
+
+
 @activity.defn
 async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> InferentialRunOutput:
     """Run the costly inferential sensors (groundedness + safety) once, concurrently.
@@ -389,34 +457,61 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
         knowledge_chunks=payload.knowledge_chunks,
     )
 
+    # TASK-354 Defect A: heartbeat for the whole pass (the costly, many-call part) so a
+    # hung attempt / dead worker is detected at heartbeat_timeout (60s) instead of the
+    # 900s start_to_close. Cancelled in ``finally`` once the pass returns either way.
+    heartbeat = asyncio.create_task(_heartbeat_periodically())
     try:
-        judge = _build_runtime_judge()
-    except Exception as exc:  # noqa: BLE001 — un-buildable judge degrades, never raises
-        reason = f"inferential judge unavailable: {exc}"
-        degraded = [
-            degraded_result(GROUNDEDNESS_NAME, reason),
-            degraded_result(CITATION_VERIFY_NAME, reason),
-        ]
-        # Phase 6: a disabled safety guard contributes no safety result at all.
-        if payload.safety_enabled:
-            degraded.append(degraded_result(SAFETY_NAME, reason))
-        return _assemble_inferential_output(degraded)
+        try:
+            judge = _build_runtime_judge()
+        except Exception as exc:  # noqa: BLE001 — un-buildable judge degrades, never raises
+            reason = f"inferential judge unavailable: {exc}"
+            degraded = [
+                degraded_result(GROUNDEDNESS_NAME, reason),
+                degraded_result(CITATION_VERIFY_NAME, reason),
+            ]
+            # Phase 6: a disabled safety guard contributes no safety result at all.
+            if payload.safety_enabled:
+                degraded.append(degraded_result(SAFETY_NAME, reason))
+            return _assemble_inferential_output(degraded)
 
-    thresholds = SensorThresholds()
-    # Phase 6: the groundedness pass threshold is policy-driven; the safety screen
-    # is skipped entirely when the policy disables the safety guard.
-    groundedness = GroundednessSensor(threshold=payload.groundedness_threshold)
-    citation_verify = CitationVerifySensor(threshold=thresholds.citation_verify_threshold)
-    tasks = [groundedness.arun(ctx, judge=judge), citation_verify.arun(ctx, judge=judge)]
-    if payload.safety_enabled:
-        tasks.append(SafetySensor(_granite_client(settings)).arun(ctx, judge=judge))
-    results = list(await asyncio.gather(*tasks))
-    return _assemble_inferential_output(results)
+        thresholds = SensorThresholds()
+        # Phase 6: the groundedness pass threshold is policy-driven; the safety screen
+        # is skipped entirely when the policy disables the safety guard.
+        # TASK-355 R-5: claim batching is env-driven (HARNESS_JUDGE_ENTAILMENT_BATCH_SIZE);
+        # default 1 keeps the legacy one-call-per-claim path. Read from the same judge
+        # config the runtime judge is built from.
+        groundedness = GroundednessSensor(
+            threshold=payload.groundedness_threshold,
+            batch_size=get_runtime_judge_config().entailment_batch_size,
+        )
+        citation_verify = CitationVerifySensor(threshold=thresholds.citation_verify_threshold)
+        # TASK-355 Phase D Slice 5d (Q5) — stream each groundedness claim verdict to
+        # apps/api as it resolves (optimistic ASSURANCE pass only). Best-effort: the
+        # callback swallows every error so the live feed can NEVER degrade the pass.
+        on_claim = _build_assurance_publisher(settings, payload, ctx)
+        tasks = [
+            groundedness.arun(ctx, judge=judge, on_claim=on_claim),
+            citation_verify.arun(ctx, judge=judge),
+        ]
+        if payload.safety_enabled:
+            tasks.append(SafetySensor(_granite_client(settings)).arun(ctx, judge=judge))
+        results = list(await asyncio.gather(*tasks))
+        return _assemble_inferential_output(results)
+    finally:
+        heartbeat.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await heartbeat
 
 
 @activity.defn
 async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
-    """Persist the generated draft (ContextItem + SummaryMeta + PENDING_REVIEW)."""
+    """Persist the generated draft (ContextItem + SummaryMeta + PENDING_REVIEW).
+
+    TASK-355 Phase D: ``payload.phase == "DRAFT_PENDING_SENSORS"`` switches apps/api
+    to the optimistic early persist (verdict withheld, GENERATE-only audit); absent
+    (legacy) keeps the single-shot persist (full scores, straight to PENDING_REVIEW).
+    """
     settings = get_settings()
     return await _api_client(settings).persist_draft(
         payload.consultation_id,
@@ -438,6 +533,38 @@ async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
         dna_style_id=payload.dna_style_id,
         gate_decision=payload.gate_decision,
         is_auto_generated=payload.is_auto_generated,
+        phase=payload.phase,
+    )
+
+
+@activity.defn
+async def finalize_assurance(payload: FinalizeAssuranceInput) -> FinalizeAssuranceResponse:
+    """Backfill the early-persisted draft with the inferential verdict (TASK-355 Phase D).
+
+    Second phase of optimistic delivery: apps/api stamps the inferential scores +
+    gate verdict + ``assuranceCompletedAt`` onto the early ``SummaryMeta``, flips
+    ``DRAFT_PENDING_SENSORS → PENDING_REVIEW``, and records the deferred ``SENSOR_RUN``
+    (+ ``REDUCED_ASSURANCE``) WORM audit. Idempotent on the apps/api side (a retry
+    re-stamps the same verdict without regressing state).
+    """
+    settings = get_settings()
+    return await _api_client(settings).finalize_assurance(
+        payload.consultation_id,
+        tenant_id=payload.tenant_id,
+        context_item_id=payload.context_item_id,
+        context_item_version_id=payload.context_item_version_id,
+        user_id=payload.user_id,
+        job_id=payload.job_id,
+        sensor_scores=payload.sensor_scores,
+        citations_map=payload.citations_map,
+        guardrail_decisions=payload.guardrail_decisions,
+        reduced_assurance=payload.reduced_assurance,
+        rag_triad_score=payload.rag_triad_score,
+        gate_decision=payload.gate_decision,
+        model_name=payload.model_name,
+        model_version=payload.model_version,
+        prompt_template_id=payload.prompt_template_id,
+        prompt_version=payload.prompt_version,
     )
 
 
@@ -514,6 +641,7 @@ DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
     run_sensors,
     run_inferential_sensors,
     persist_draft,
+    finalize_assurance,
     record_gate_decision,
     escalate_gate,
     report_progress,

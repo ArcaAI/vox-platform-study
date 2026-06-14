@@ -806,6 +806,34 @@ describe('ConsultationController', () => {
     });
 
     // ═══════════════════════════════════════════════════════════════════════
+    // TASK-355 Phase D Slice 6a — safety-flag override plumbing (Q4)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    describe('approveSummary — overrideSafetyFlag plumbing (TASK-355 Q4)', () => {
+        const approval = { contextItemId: 'ctx-1', approvalStatus: 'SIGNED', approvedBy: DOCTOR_A, approvedAt: '2026-06-14T00:00:00.000Z' };
+
+        it('forwards overrideSafetyFlag from the request body to the summary service', async () => {
+            const { controller, consultationService, summaryService } = buildController();
+            consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
+            summaryService.approveSummary.mockResolvedValue(approval);
+
+            await controller.approveSummary(CONSULTATION_OWN, 'ctx-1', { overrideSafetyFlag: true });
+
+            expect(summaryService.approveSummary).toHaveBeenCalledWith('ctx-1', { overrideSafetyFlag: true });
+        });
+
+        it('passes overrideSafetyFlag undefined when no body is supplied (default sign)', async () => {
+            const { controller, consultationService, summaryService } = buildController();
+            consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
+            summaryService.approveSummary.mockResolvedValue(approval);
+
+            await controller.approveSummary(CONSULTATION_OWN, 'ctx-1');
+
+            expect(summaryService.approveSummary).toHaveBeenCalledWith('ctx-1', { overrideSafetyFlag: undefined });
+        });
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════
     // TASK-322 — lifecycle endpoints (close / reopen / update) wiring
     // ═══════════════════════════════════════════════════════════════════════
 

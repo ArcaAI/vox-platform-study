@@ -20,7 +20,9 @@ from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from harness.temporal.models import (
+    HARNESS_DRAFT_PHASE_EARLY,
     ApprovalSignal,
+    EditSignal,
     HarnessDocWorkflowInput,
     HarnessGateConfig,
     HarnessPolicy,
@@ -54,6 +56,19 @@ def _approval() -> ApprovalSignal:
         context_item_version_id="v-1",
         attestation_hash="h-1",
     )
+
+
+# TASK-355 Phase D — the optimistic gate (4a flag ON); 4b assurance signals are
+# patch-gated, not flag-gated, so they are intrinsic to the optimistic path.
+def _opt_gate(**kw) -> HarnessGateConfig:
+    kw.setdefault("optimistic_delivery_enabled", True)
+    kw.setdefault("max_regen", 2)
+    return HarnessGateConfig(**kw)
+
+
+# A distinct edited note so tests can prove assurance re-bound to the clinician's
+# edited version (run_inferential_sensors.note_text changes on the re-run).
+_EDITED_NOTE = '{"subjective": "s-edited", "objective": "o", "assessment": "a", "plan": "p-edited"}'
 
 
 async def _env() -> WorkflowEnvironment:
@@ -621,6 +636,452 @@ class TestPolicyInjection:
         assert recorder.run_sensors_inputs[0].thresholds is None
         assert recorder.inferential_inputs[0].safety_enabled is True
         assert recorder.persist_draft_inputs[0].reduced_assurance is False
+
+
+class TestOptimisticDelivery:
+    """TASK-355 Phase D (Slice 4a) — optimistic two-phase delivery.
+
+    Flag ON (+ patch marker): the computational loop settles, the readable draft is
+    DELIVERED early (``persist_draft`` with ``phase=DRAFT_PENDING_SENSORS``, verdict
+    withheld) and the terminal ``completed`` progress fires BEFORE the costly
+    inferential pass runs as ASSURANCE; ``finalize_assurance`` then backfills the
+    verdict. Flag OFF (default): the legacy single-phase path is unchanged.
+    """
+
+    @staticmethod
+    def _opt_gate(**kw) -> HarnessGateConfig:
+        kw.setdefault("optimistic_delivery_enabled", True)
+        kw.setdefault("max_regen", 2)
+        return HarnessGateConfig(**kw)
+
+    @pytest.mark.asyncio
+    async def test_flag_on_delivers_early_then_finalizes_assurance(self):
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["SAFE"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=self._opt_gate()),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert result.approved is True
+        assert recorder.calls["persist_draft"] == 1
+        assert recorder.calls["run_inferential_sensors"] == 1
+        assert recorder.calls["finalize_assurance"] == 1
+        assert recorder.calls["record_gate_decision"] == 1
+
+        # Early persist: readable draft, verdict + RAG-triad WITHHELD until assurance.
+        draft = recorder.persist_draft_inputs[0]
+        assert draft.phase == HARNESS_DRAFT_PHASE_EARLY
+        assert draft.gate_decision is None
+        assert draft.guardrail_decisions is None
+        assert draft.rag_triad_score is None
+
+        # Finalize carries the folded verdict against the early-persisted draft.
+        fin = recorder.finalize_inputs[0]
+        assert fin.context_item_id == "ctx-draft-1"
+        assert fin.gate_decision == "PASS"
+        assert set(fin.guardrail_decisions) == {"groundedness", "safety"}
+        assert fin.guardrail_decisions["safety"]["decision"] == "PASS"
+        assert fin.rag_triad_score == 1.0
+        assert not fin.reduced_assurance
+
+        # The REORDER: deliver -> assure -> finalize (never assure-then-deliver).
+        order = [
+            c
+            for c in recorder.call_order
+            if c in {"persist_draft", "run_inferential_sensors", "finalize_assurance"}
+        ]
+        assert order == ["persist_draft", "run_inferential_sensors", "finalize_assurance"]
+
+    @pytest.mark.asyncio
+    async def test_flag_survives_policy_rebuild_and_activates_optimistic(self):
+        """Production path: with a policy present the gate is REBUILT from the policy
+        knobs at the top of ``_run``. The optimistic flag is NOT a policy knob, so the
+        snapshotted ``inp.gate`` value (env -> document:start) must be carried over the
+        policy merge — otherwise the env kill-switch would silently never activate the
+        optimistic path in prod. Read from the deterministic workflow input (never env),
+        so it stays replay-safe."""
+        recorder = StubRecorder()
+        # Policy present (the common production case) drives the line-274 rebuild branch.
+        policy = HarnessPolicy(max_regen=2)
+        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["SAFE"], policy=policy)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=self._opt_gate()),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        # The rebuild branch ran (a policy was fetched)...
+        assert recorder.calls["fetch_policy"] == 1
+        # ...and the optimistic path STILL activated despite the policy merge.
+        assert recorder.calls["finalize_assurance"] == 1
+        assert recorder.persist_draft_inputs[0].phase == HARNESS_DRAFT_PHASE_EARLY
+        order = [
+            c
+            for c in recorder.call_order
+            if c in {"persist_draft", "run_inferential_sensors", "finalize_assurance"}
+        ]
+        assert order == ["persist_draft", "run_inferential_sensors", "finalize_assurance"]
+
+    @pytest.mark.asyncio
+    async def test_flag_on_completes_feed_before_running_assurance(self):
+        """Perceived-latency invariant: the feed folds to ``completed`` BEFORE the
+        slow inferential pass — that is the whole point of optimistic delivery."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["SAFE"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=self._opt_gate()),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                await handle.result()
+
+        # The drafting feed is unchanged (same 6 stages); inferential now runs after.
+        stages = [p.stage for p in recorder.progress_inputs]
+        assert stages == [
+            "extracting_information",
+            "assembling_context",
+            "drafting_note",
+            "running_safety_sensors",
+            "finalizing_draft",
+            "completed",
+        ]
+        assert recorder.call_order.index("progress:completed") < recorder.call_order.index(
+            "run_inferential_sensors"
+        )
+
+    @pytest.mark.asyncio
+    async def test_flag_off_keeps_legacy_single_phase(self):
+        """Default (flag off) ⇒ legacy: assure-then-persist, no finalize, no phase."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["SAFE"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=HarnessGateConfig(max_regen=2)),  # optimistic OFF (default)
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["finalize_assurance"] == 0
+        assert recorder.calls["persist_draft"] == 1
+        draft = recorder.persist_draft_inputs[0]
+        assert draft.phase is None
+        assert draft.gate_decision == "PASS"
+        assert draft.guardrail_decisions is not None  # legacy folds inferential into persist
+        order = [
+            c for c in recorder.call_order if c in {"persist_draft", "run_inferential_sensors"}
+        ]
+        assert order == ["run_inferential_sensors", "persist_draft"]
+
+    @pytest.mark.asyncio
+    async def test_flag_on_unsafe_safety_delivers_then_finalizes_flag(self):
+        """A delivered draft is still delivered early even when assurance will FLAG;
+        the FLAG lands in finalize (it gates sign-off, not delivery)."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["UNSAFE"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=self._opt_gate()),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "FLAG"
+        assert result.regens_used == 0
+        # Delivered early despite the eventual FLAG.
+        assert recorder.persist_draft_inputs[0].phase == HARNESS_DRAFT_PHASE_EARLY
+        fin = recorder.finalize_inputs[0]
+        assert fin.gate_decision == "FLAG"
+        assert fin.guardrail_decisions["safety"]["decision"] == "FLAG"
+
+    @pytest.mark.asyncio
+    async def test_flag_on_inferential_degraded_finalizes_reduced_assurance(self):
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["DEGRADED"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=self._opt_gate()),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["finalize_assurance"] == 1
+        assert recorder.finalize_inputs[0].reduced_assurance is True
+        assert recorder.finalize_inputs[0].gate_decision == "PASS"
+
+    @pytest.mark.asyncio
+    async def test_flag_on_inferential_failure_still_finalizes_no_stuck_state(self):
+        """Finalise-on-degrade (I6): an inferential infra failure must NOT leave the
+        consultation stuck in DRAFT_PENDING_SENSORS — finalize still runs (reduced
+        assurance) so apps/api flips to PENDING_REVIEW."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"], inferential_fails=True)
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=self._opt_gate()),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert recorder.calls["persist_draft"] == 1  # draft was delivered
+        assert recorder.calls["finalize_assurance"] == 1  # still finalised
+        assert recorder.finalize_inputs[0].reduced_assurance is True
+
+
+class TestAssuranceSignals:
+    """TASK-355 Phase D (Slice 4b) — signal-driven assurance dynamics.
+
+    Built ON the optimistic path (4a) and gated by a SECOND patch marker
+    (``task-355-assurance-signals``). Two LOCKED governance behaviours:
+
+    * **Q1 regen-if-untouched** — after early delivery, a REGEN-fixable assurance
+      verdict silently regenerates + re-delivers the draft ONCE (budget
+      permitting) *only while the clinician has not touched it*; once edited, a
+      REGEN-fixable verdict surfaces as a FLAG instead (never swap an edited note).
+    * **Q3 edit-re-runs** — a clinician ``edit`` signal during the assurance pass
+      re-binds assurance to the edited version and re-runs it (assurance only — the
+      clinician owns the edited content, so it is never re-generated/re-delivered);
+      the verdict binds to the edited version.
+    """
+
+    @pytest.mark.asyncio
+    async def test_regen_if_untouched_regenerates_redelivers_then_finalizes(self):
+        """Q1 — untouched REGEN verdict ⇒ one silent regen + re-deliver, then re-assure."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS", "PASS"], inferential_verdicts=["REGEN", "SAFE"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=_opt_gate()),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        assert result.regens_used == 1
+        # regen-if-untouched: a SECOND generation + a SECOND (re-)delivery happened.
+        assert recorder.calls["generate"] == 2
+        assert recorder.calls["run_inferential_sensors"] == 2
+        assert recorder.calls["persist_draft"] == 2  # early deliver + regen re-deliver
+        assert recorder.calls["finalize_assurance"] == 1
+        # both deliveries are EARLY (verdict withheld until finalize).
+        assert all(p.phase == HARNESS_DRAFT_PHASE_EARLY for p in recorder.persist_draft_inputs)
+        # final verdict is the re-assured PASS; bound to the original draft (no edit).
+        fin = recorder.finalize_inputs[0]
+        assert fin.gate_decision == "PASS"
+        assert fin.context_item_version_id is None
+        # ORDER: deliver -> assure(REGEN) -> re-deliver -> assure(SAFE) -> finalize
+        order = [
+            c
+            for c in recorder.call_order
+            if c in {"persist_draft", "run_inferential_sensors", "finalize_assurance"}
+        ]
+        assert order == [
+            "persist_draft",
+            "run_inferential_sensors",
+            "persist_draft",
+            "run_inferential_sensors",
+            "finalize_assurance",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_regen_budget_exhausted_untouched_finalizes_flag(self):
+        """Q1 — REGEN that never settles is bounded by max_regen, then FLAGs (no infinite swap)."""
+        recorder = StubRecorder()
+        config = StubConfig(
+            verdicts=["PASS", "PASS", "PASS"],
+            inferential_verdicts=["REGEN", "REGEN", "REGEN"],
+        )
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=_opt_gate(max_regen=2)),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        # 2 regens consumed, then the unresolved REGEN escalates to FLAG.
+        assert result.decision == "FLAG"
+        assert result.regens_used == 2
+        assert recorder.calls["generate"] == 3  # initial + 2 regens
+        assert recorder.calls["run_inferential_sensors"] == 3
+        assert recorder.calls["persist_draft"] == 3  # early + 2 re-deliveries
+        assert recorder.finalize_inputs[0].gate_decision == "FLAG"
+
+    @pytest.mark.asyncio
+    async def test_edit_disables_silent_regen_surfaces_flag(self):
+        """Q1 — once edited, a REGEN verdict does NOT regenerate; it converts to a FLAG."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS", "PASS"], inferential_verdicts=["REGEN", "REGEN"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            wf_id = f"harness-doc-{uuid.uuid4()}"
+            recorder.edit_signal_handle = env.client.get_workflow_handle(wf_id)
+            recorder.edit_on_inferential_index = 0
+            recorder.edit_payload = EditSignal(
+                content=_EDITED_NOTE, context_item_version_id="ver-edit-1", edited_by="doc-9"
+            )
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=_opt_gate()),
+                    id=wf_id,
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        # REGEN converted to FLAG — no silent swap of an edited note.
+        assert result.decision == "FLAG"
+        assert result.regens_used == 0
+        assert recorder.calls["generate"] == 1  # NO re-generation
+        assert recorder.calls["persist_draft"] == 1  # NO re-delivery
+        assert recorder.calls["run_inferential_sensors"] == 2  # original + re-run on edit
+        # assurance re-bound to the edited content + version.
+        assert recorder.inferential_inputs[1].note_text == _EDITED_NOTE
+        fin = recorder.finalize_inputs[0]
+        assert fin.gate_decision == "FLAG"
+        assert fin.context_item_version_id == "ver-edit-1"
+
+    @pytest.mark.asyncio
+    async def test_edit_during_assurance_rebinds_and_reruns(self):
+        """Q3 — an edit during assurance re-binds + re-runs (assurance only), binds to edit."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS", "PASS"], inferential_verdicts=["SAFE", "SAFE"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            wf_id = f"harness-doc-{uuid.uuid4()}"
+            recorder.edit_signal_handle = env.client.get_workflow_handle(wf_id)
+            recorder.edit_on_inferential_index = 0
+            recorder.edit_payload = EditSignal(
+                content=_EDITED_NOTE, context_item_version_id="ver-edit-1"
+            )
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=_opt_gate()),
+                    id=wf_id,
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        # An edit re-runs ASSURANCE only — never re-generates or re-delivers.
+        assert recorder.calls["generate"] == 1
+        assert recorder.calls["persist_draft"] == 1
+        assert recorder.calls["run_inferential_sensors"] == 2  # original + edited re-run
+        assert recorder.inferential_inputs[0].note_text != _EDITED_NOTE  # first ran on generated
+        assert recorder.inferential_inputs[1].note_text == _EDITED_NOTE  # re-run on edited
+        fin = recorder.finalize_inputs[0]
+        assert fin.gate_decision == "PASS"
+        assert fin.context_item_version_id == "ver-edit-1"
 
 
 class TestDegradation:

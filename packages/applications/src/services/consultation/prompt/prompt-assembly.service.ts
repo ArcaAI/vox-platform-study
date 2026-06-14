@@ -11,6 +11,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PromptResolutionService, PromptResolutionTier } from './prompt-resolution.service';
 import { PromptTemplateRepository, DnaWritingStyleReportRepository } from '@arcaai/domains';
 
@@ -150,11 +151,24 @@ export interface AssembledPrompt {
 export class PromptAssemblyService {
   private readonly logger = new Logger(PromptAssemblyService.name);
 
+  // TASK-355 Phase C (R-6) — warm-start kill-switch (HARNESS_WARM_START_ENABLED,
+  // default OFF). Load-bearing gate: when OFF the {pre_summary_text} append-fallback
+  // below does not fire, so neither the harness path nor the legacy
+  // SummaryService.generateSummary() path injects a prior draft (the legacy latent
+  // no-op is preserved). Cached at construction, matching live-documentation/ocr.
+  private readonly warmStartEnabled: boolean;
+
   constructor(
     private readonly promptResolutionService: PromptResolutionService,
     private readonly promptTemplateRepository: PromptTemplateRepository,
     private readonly dnaWritingStyleRepository: DnaWritingStyleReportRepository,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    const raw = String(this.configService.get('HARNESS_WARM_START_ENABLED') ?? '')
+      .trim()
+      .toLowerCase();
+    this.warmStartEnabled = raw === 'true' || raw === '1';
+  }
 
   async assemble(params: PromptAssemblyParams): Promise<AssembledPrompt> {
     const resolved = await this.promptResolutionService.resolve({
@@ -206,6 +220,28 @@ export class PromptAssemblyService {
     const highlightsBlock = variables.doctor_highlights ?? '';
     if (highlightsBlock && !userPrompt.includes(highlightsBlock)) {
       userPrompt += `\n\n--- DOCTOR HIGHLIGHTS (clinician-flagged spans) ---\n${highlightsBlock}`;
+    }
+
+    // TASK-355 Phase C (R-6) — warm-start refinement, gated behind the kill-switch
+    // (default OFF). When enabled: if the template consumed {pre_summary_text} the
+    // block is already present; otherwise append it under a refinement-instruction
+    // header (the seed templates declare the variable but never inline the
+    // placeholder, so without this fallback the snapshot silently never reaches the
+    // LLM). The transcript stays authoritative: the model REFINES this prior draft,
+    // it does not treat it as ground truth. When the flag is OFF this block does not
+    // fire, restoring exact pre-Phase-C behavior on the harness AND legacy paths.
+    if (this.warmStartEnabled) {
+      const preSummaryBlock = variables.pre_summary_text ?? '';
+      if (preSummaryBlock && !userPrompt.includes(preSummaryBlock)) {
+        userPrompt +=
+          `\n\n--- PRIOR DRAFT (running SOAP note from the live session) ---\n` +
+          `${preSummaryBlock}\n\n` +
+          `INSTRUCTION: Refine and correct the PRIOR DRAFT above into the final note. ` +
+          `Do not regenerate from scratch — preserve correct content and revise only where ` +
+          `the transcript, recognized entities, or clinician notes indicate. ` +
+          `The full transcript remains the single source of truth; if the prior draft ` +
+          `conflicts with the transcript, follow the transcript.`;
+      }
     }
 
     const promptConfig = this.extractPromptConfig(template);

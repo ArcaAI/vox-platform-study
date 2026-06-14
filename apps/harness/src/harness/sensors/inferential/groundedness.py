@@ -21,14 +21,27 @@ is treated conservatively as ungrounded.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from harness.eval.jsonio import loads_json
 from harness.eval.judge.base import JudgeClient
 from harness.sensors.base import SensorContext, SensorResult, dedupe
 from harness.sensors.inferential.base import degraded_result
+from harness.sensors.inferential.entailment_batch import (
+    batch_entailment_messages,
+    chunk,
+    parse_batch_verdicts,
+)
 
 NAME = "groundedness"
+
+# TASK-355 Phase D Slice 5d (Q5) — invoked AS EACH per-claim verdict resolves, so
+# the activity can stream it live: ``on_claim(claim_ref, supported)``. Best-effort —
+# the sensor swallows any callback error so a broken live feed never degrades the pass.
+ClaimVerdictCallback = Callable[[str, bool], Awaitable[None]]
 
 # SOAP full-name -> single-letter section code (matches provenance + the aggregator's
 # DEFAULT_SOAP_SECTIONS so an emitted ``sections`` entry can drive a targeted regen).
@@ -123,44 +136,139 @@ def _vacuous_pass() -> SensorResult:
 
 
 class GroundednessSensor:
-    """Score = entailed claims / total claims, via the injected judge."""
+    """Score = entailed claims / total claims, via the injected judge.
+
+    ``batch_size`` (TASK-355 R-5): with ``<= 1`` the sensor keeps the legacy
+    one-call-per-claim path byte-for-byte; with ``>= 2`` it states the shared
+    transcript premise ONCE and labels claims in ``ceil(N / batch_size)`` JSON-array
+    calls fired concurrently — far fewer long-prefill judge calls. Both paths feed
+    the identical aggregation, so a consistent judge yields identical verdicts; the
+    array parser degrades any ambiguous item to *ungrounded* (never looser).
+    """
 
     name = NAME
 
-    def __init__(self, threshold: float = 0.8) -> None:
+    def __init__(self, threshold: float = 0.8, batch_size: int = 1) -> None:
         self.threshold = threshold
+        self.batch_size = batch_size
 
-    async def arun(self, ctx: SensorContext, *, judge: JudgeClient) -> SensorResult:
+    async def arun(
+        self,
+        ctx: SensorContext,
+        *,
+        judge: JudgeClient,
+        on_claim: ClaimVerdictCallback | None = None,
+    ) -> SensorResult:
         claims = ctx.claims()
         if not claims:
             return _vacuous_pass()
 
+        try:
+            if self.batch_size and self.batch_size > 1:
+                # Batching is the env-gated, clinically-rejected path: no live feed.
+                verdicts = await self._verdicts_batched(ctx, claims, judge=judge)
+            else:
+                verdicts = await self._verdicts_per_claim(ctx, claims, judge=judge, on_claim=on_claim)
+        except Exception as exc:  # noqa: BLE001 — backend failure degrades, never raises
+            return degraded_result(NAME, f"groundedness judge unavailable: {exc}")
+
+        return self._aggregate(claims, verdicts)
+
+    async def _verdicts_per_claim(
+        self,
+        ctx: SensorContext,
+        claims: list[dict[str, Any]],
+        *,
+        judge: JudgeClient,
+        on_claim: ClaimVerdictCallback | None = None,
+    ) -> dict[str, bool]:
+        """One focused judge call per claim, fired CONCURRENTLY (TASK-355 R-4).
+
+        Each call sends the byte-identical single-claim prompt the serial path used —
+        so verdicts are framing-equivalent to today's production loop (unlike claim
+        *batching*, which changes the judge's framing and can loosen a borderline
+        verdict). The only speedup source is concurrency: ``asyncio.gather`` over the
+        per-endpoint governor lets LM Studio's continuous batching + shared-transcript
+        prefix-KV cache overlap the calls. Verdict keyed by claim ref; a backend error
+        propagates to ``arun`` (degrade), an unparseable verdict is conservative
+        ungrounded.
+        """
+
+        async def _verdict(claim: dict[str, Any]) -> tuple[str, bool] | None:
+            hypothesis = str(claim.get("text") or "").strip()
+            if not hypothesis:
+                return None  # empty claim asserts nothing -> aggregated as grounded
+            messages = _entailment_messages(_premise(ctx, claim), hypothesis)
+            raw = await judge.complete(messages, json_mode=True, temperature=0.0)
+            ref = _claim_ref(claim)
+            try:
+                supported = _is_supported(raw)
+            except ValueError:
+                supported = False  # unparseable -> conservative ungrounded
+            # Q5 live feed: stream this verdict the moment it resolves. Best-effort
+            # — a callback failure must never change the verdict or degrade the pass.
+            if on_claim is not None:
+                with contextlib.suppress(Exception):
+                    await on_claim(ref, supported)
+            return ref, supported
+
+        pairs = await asyncio.gather(*(_verdict(c) for c in claims))
+        return {ref: supported for pair in pairs if pair is not None for ref, supported in (pair,)}
+
+    async def _verdicts_batched(
+        self, ctx: SensorContext, claims: list[dict[str, Any]], *, judge: JudgeClient
+    ) -> dict[str, bool]:
+        """Few JSON-array calls over the shared transcript premise, run concurrently.
+
+        Each claim carries its own evidence quotes inline so per-claim semantics are
+        preserved; verdicts are keyed by claim ref and merged across groups.
+        """
+        premise = ctx.transcript_text
+        verifiable = [c for c in claims if str(c.get("text") or "").strip()]
+        groups = chunk(verifiable, self.batch_size)
+
+        async def _run_group(group: list[dict[str, Any]]) -> dict[str, bool]:
+            items = [
+                {
+                    "id": _claim_ref(c),
+                    "hypothesis": str(c.get("text") or "").strip(),
+                    "evidence": _evidence_quotes(c),
+                }
+                for c in group
+            ]
+            ids = [str(it["id"]) for it in items]
+            raw = await judge.complete(
+                batch_entailment_messages(premise, items), json_mode=True, temperature=0.0
+            )
+            return parse_batch_verdicts(raw, ids)
+
+        verdict_maps = await asyncio.gather(*(_run_group(g) for g in groups))
+        verdicts: dict[str, bool] = {}
+        for verdict_map in verdict_maps:
+            verdicts.update(verdict_map)
+        return verdicts
+
+    def _aggregate(
+        self, claims: list[dict[str, Any]], verdicts: dict[str, bool]
+    ) -> SensorResult:
+        """Fold per-claim verdicts (in claim order) into the RAG-triad result.
+
+        A claim is grounded iff it has no hypothesis (asserts nothing) or its verdict
+        is ``True``; a missing verdict is conservative ungrounded.
+        """
         grounded: list[str] = []
         ungrounded: list[str] = []
         ungrounded_sections: list[str] = []
-        try:
-            for claim in claims:
-                ref = _claim_ref(claim)
-                hypothesis = str(claim.get("text") or "").strip()
-                if not hypothesis:
-                    # An empty claim asserts nothing -> nothing to fabricate.
-                    grounded.append(ref)
-                    continue
-                messages = _entailment_messages(_premise(ctx, claim), hypothesis)
-                raw = await judge.complete(messages, json_mode=True, temperature=0.0)
-                try:
-                    supported = _is_supported(raw)
-                except ValueError:
-                    supported = False  # unparseable -> not confirmed grounded (conservative)
-                if supported:
-                    grounded.append(ref)
-                else:
-                    ungrounded.append(ref)
-                    code = _section_code(claim.get("section"))
-                    if code:
-                        ungrounded_sections.append(code)
-        except Exception as exc:  # noqa: BLE001 — backend failure degrades, never raises
-            return degraded_result(NAME, f"groundedness judge unavailable: {exc}")
+        for claim in claims:
+            ref = _claim_ref(claim)
+            hypothesis = str(claim.get("text") or "").strip()
+            if not hypothesis or verdicts.get(ref, False):
+                grounded.append(ref)
+                continue
+            ungrounded.append(ref)
+            code = _section_code(claim.get("section"))
+            if code:
+                ungrounded_sections.append(code)
 
         total = len(claims)
         groundedness = len(grounded) / total

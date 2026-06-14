@@ -37,6 +37,11 @@ export function harnessProgressScope(consultationId: string): string {
   return `consultation_harness_progress:${consultationId}`;
 }
 
+/** SSE scope for the harness-assurance stream ticket (TASK-355 Phase D Slice 6b). */
+export function harnessAssuranceScope(consultationId: string): string {
+  return `consultation_harness_assurance:${consultationId}`;
+}
+
 /** API path builders (relative to the SDK apiClient base URL). */
 export const WORKSPACE_ENDPOINTS = {
   startRecording: (id: string) => `/consultations/${encodeURIComponent(id)}/recording/start`,
@@ -44,6 +49,8 @@ export const WORKSPACE_ENDPOINTS = {
   liveSummaryStream: (id: string) => `/consultations/${encodeURIComponent(id)}/live-summary/stream`,
   // TASK-345 — live harness draft-generation progress.
   harnessProgressStream: (id: string) => `/consultations/${encodeURIComponent(id)}/harness-progress/stream`,
+  // TASK-355 Phase D Slice 6b — live per-claim assurance (verdicts) feed.
+  harnessAssuranceStream: (id: string) => `/consultations/${encodeURIComponent(id)}/harness-assurance/stream`,
   streamSession: '/audio/transcription-jobs/stream/session',
   streamTicket: '/auth/stream-ticket',
   context: (id: string) => `/consultations/${encodeURIComponent(id)}/context`,

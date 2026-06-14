@@ -89,12 +89,20 @@ describe('PromptAssemblyService', () => {
         mockDnaWritingStyleRepository.findById.mockResolvedValue(createMockDnaStyle());
     });
 
-    async function getService() {
+    // TASK-355 Phase C (R-6) — warm-start is gated behind HARNESS_WARM_START_ENABLED
+    // (default OFF). Construct with a ConfigService mock; pass `true` to enable.
+    async function getService(warmStartEnabled = false) {
         const { PromptAssemblyService } = await import('../prompt-assembly.service');
+        const configService = {
+            get: vi.fn((key: string) =>
+                key === 'HARNESS_WARM_START_ENABLED' ? (warmStartEnabled ? 'true' : undefined) : undefined,
+            ),
+        };
         return new PromptAssemblyService(
             mockPromptResolutionService as any,
             mockPromptTemplateRepository as any,
             mockDnaWritingStyleRepository as any,
+            configService as any,
         );
     }
 
@@ -533,6 +541,89 @@ describe('PromptAssemblyService', () => {
             });
 
             expect(result.userPrompt).not.toContain('DOCTOR HIGHLIGHTS');
+        });
+    });
+
+    // ── Pre-summary warm-start injection (TASK-355 Phase C — R-6) ──
+    // The harness warm-starts `generate` from the live SOAP snapshot. Mirrors
+    // the NER / notes / highlights fallback: the seed templates DECLARE
+    // {pre_summary_text} in their variables map but never INLINE the placeholder
+    // in content, so without an append-fallback the snapshot would silently never
+    // reach the LLM (the latent no-op the legacy path also suffered).
+    describe('pre-summary warm-start injection (TASK-355 Phase C R-6)', () => {
+        it('appends the prior-draft block + refinement instruction when the template has no {pre_summary_text} placeholder', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
+            );
+            service = await getService(true); // warm-start ON
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient reports chest pain.',
+                conversationLanguage: 'English',
+                preSummaryText: 'S: chest pain O: BP 120/80 A: stable P: review',
+            });
+
+            // Proves the latent no-op is fixed: the snapshot text reaches the prompt …
+            expect(result.userPrompt).toContain('S: chest pain O: BP 120/80 A: stable P: review');
+            // … under a refinement-instruction header that keeps the transcript authoritative.
+            expect(result.userPrompt).toContain('PRIOR DRAFT');
+            expect(result.userPrompt).toContain('Refine');
+            expect(result.userPrompt).toContain('source of truth');
+        });
+
+        it('substitutes {pre_summary_text} without duplicating the prior-draft block', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Prior: {pre_summary_text}. Lang: {conversation_language}.' }),
+            );
+            service = await getService(true); // warm-start ON
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'revisit',
+                transcript: 'Visit transcript.',
+                conversationLanguage: 'English',
+                preSummaryText: 'S: running soap draft',
+            });
+
+            expect(result.userPrompt).toContain('S: running soap draft');
+            expect(result.userPrompt).not.toContain('{pre_summary_text}');
+            // Consumed by the placeholder → no duplicated appended section.
+            expect(result.userPrompt).not.toContain('--- PRIOR DRAFT');
+        });
+
+        it('adds no prior-draft section when preSummaryText is absent (cold path unchanged)', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
+            );
+            service = await getService(true); // warm-start ON
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient reports chest pain.',
+                conversationLanguage: 'English',
+            });
+
+            expect(result.userPrompt).not.toContain('PRIOR DRAFT');
+        });
+
+        // ── Kill-switch OFF (default) — the load-bearing legacy gate ──
+        it('does NOT append the prior-draft block when the flag is OFF (default), even with pre_summary_text present', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
+            );
+            service = await getService(); // flag OFF (prod default)
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient reports chest pain.',
+                conversationLanguage: 'English',
+                preSummaryText: 'S: chest pain O: BP 120/80 A: stable P: review',
+            });
+
+            // Prod default == pre-Phase-C: the append-fallback is neutralized, so
+            // neither the harness nor the legacy SummaryService path injects it.
+            expect(result.userPrompt).not.toContain('PRIOR DRAFT');
+            expect(result.userPrompt).not.toContain('S: chest pain O: BP 120/80 A: stable P: review');
         });
     });
 });

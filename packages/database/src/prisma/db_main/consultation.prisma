@@ -252,6 +252,14 @@ model SummaryMeta {
     attestationRef          String? // ref to the attestation (ContextItemVersion id / audit hash)
     modelName               String? // model that produced the scored summary
 
+    // TASK-355 Phase D — two-phase (optimistic) assurance. Both nullable/additive.
+    // The early draft persist writes neither (gateDecision=null ⇒ DRAFT_PENDING_SENSORS);
+    // finalize_assurance writes both ONCE the inferential verdict is computed (WORM
+    // truthfulness: a gate decision is recorded only when it exists). The sign-off guard
+    // reads assuranceCompletedAt (must be set) + guardrailDecisions.safety (must not FLAG).
+    gateDecision         String?   // 'PASS' | 'REGEN' | 'FLAG' — mirrors harness GateDecision; written only when computed
+    assuranceCompletedAt DateTime? // null = assurance pending (DRAFT_PENDING_SENSORS); set = assurance finalised (verdict recorded)
+
     // Timestamps
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt

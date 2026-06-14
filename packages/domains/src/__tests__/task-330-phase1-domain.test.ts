@@ -26,9 +26,10 @@ import { NamedEntity } from '../models/generated/core/NamedEntityModel';
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
 describe('TASK-330 Phase 1 — enums', () => {
-  it('ConsultationStatus has exactly the 6 lifecycle states', () => {
+  it('ConsultationStatus has exactly the 7 lifecycle states', () => {
+    // TASK-355 Phase D added DRAFT_PENDING_SENSORS (optimistic two-phase delivery).
     expect(new Set(Object.values(ConsultationStatus))).toEqual(
-      new Set(['OPEN', 'RECORDING', 'PENDING_REVIEW', 'SIGNED', 'CLOSED', 'REOPENED']),
+      new Set(['OPEN', 'RECORDING', 'DRAFT_PENDING_SENSORS', 'PENDING_REVIEW', 'SIGNED', 'CLOSED', 'REOPENED']),
     );
   });
 

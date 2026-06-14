@@ -24,6 +24,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { approveNote, updateSummaryContent } from '../api/clinical-workspace.api';
 import { clinicalWorkspaceKeys, useProvenanceQuery } from '../api/queries';
+import { useHarnessAssurance } from '../hooks/use-harness-assurance';
 import { useHarnessProgress } from '../hooks/use-harness-progress';
 import type { DraftWaitStatus } from '../lib/draft-polling';
 import type { HarnessProgressStage } from '../lib/harness-progress';
@@ -51,6 +52,15 @@ export function ReviewPanel({ consultationId, noteContextItemId, noteContent, tr
   // TASK-345 — live harness activity feed: subscribe (SSE) only while the
   // draft-generation wait state is active; stages replace the static text below.
   const progress = useHarnessProgress({ consultationId, enabled: !noteContextItemId && draftStatus === 'generating' });
+
+  // TASK-355 Phase D Slice 6c — optimistic delivery: once a draft exists, the
+  // assurance pass runs concurrently with review. Subscribe to the per-claim
+  // verdict feed (Q5 true-live). On the legacy path the harness never publishes,
+  // so this stays silent and every Phase-D branch below stays dormant.
+  const assurance = useHarnessAssurance({ consultationId, enabled: !!noteContextItemId });
+  const assurancePending = !!noteContextItemId && !assurance.closed && assurance.claims.length > 0;
+  const safetyFlagActive = assurance.closed && (assurance.safetyFlag || assurance.gateDecision === 'FLAG');
+  const showPostSignAlert = assurance.closed && assurance.postSignAlert;
 
   const [editOpen, setEditOpen] = useState(false);
   const [draft, setDraft] = useState(noteContent ?? '');
@@ -261,9 +271,12 @@ export function ReviewPanel({ consultationId, noteContextItemId, noteContent, tr
     transcripts,
   });
 
-  const handleApprove = async (noteId: string): Promise<SummaryApprovalResponse> => {
+  const handleApprove = async (noteId: string, options?: { overrideSafetyFlag?: boolean }): Promise<SummaryApprovalResponse> => {
     if (!apiClient) throw new Error('SDK not initialized');
-    const dto = await approveNote(apiClient, consultationId, noteId);
+    // Only forward the override when present so the legacy 3-arg POST is unchanged.
+    const dto = options?.overrideSafetyFlag
+      ? await approveNote(apiClient, consultationId, noteId, options)
+      : await approveNote(apiClient, consultationId, noteId);
     void queryClient.invalidateQueries({ queryKey: clinicalWorkspaceKeys.context(consultationId) });
     void queryClient.invalidateQueries({ queryKey: clinicalWorkspaceKeys.provenance(consultationId, noteId) });
     return dto as unknown as SummaryApprovalResponse;
@@ -294,6 +307,17 @@ export function ReviewPanel({ consultationId, noteContextItemId, noteContent, tr
         {data.status && (
           <Badge variant="outline" className="text-[10px]">
             {data.status}
+          </Badge>
+        )}
+        {/* TASK-355 Phase D — the draft is delivered while assurance still runs. */}
+        {assurancePending && (
+          <Badge
+            variant="outline"
+            className="gap-1 border-amber-500/40 text-[10px] text-amber-700 dark:text-amber-400"
+            data-testid="review-status-pending"
+          >
+            <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+            Verifying
           </Badge>
         )}
         <Dialog
@@ -359,7 +383,28 @@ export function ReviewPanel({ consultationId, noteContextItemId, noteContent, tr
         </Card>
       )}
 
-      <ReviewScreen data={data} onApprove={handleApprove} />
+      {/* TASK-355 Phase D (Q2b) — a safety concern landed AFTER an early sign.
+          The signed note is immutable and stands; surface an amendment/follow-up
+          alert (the backend recorded a post-sign FLAG annotation). */}
+      {showPostSignAlert && (
+        <Card className="border-destructive/50">
+          <CardContent className="flex items-start gap-3 p-4" data-testid="review-post-sign-alert" role="alert">
+            <AlertCircle className="text-destructive mt-0.5 size-5 shrink-0" aria-hidden="true" />
+            <div className="space-y-0.5">
+              <p className="text-destructive text-sm font-medium">A safety concern was found after this note was signed</p>
+              <p className="text-muted-foreground text-sm">
+                The signed note stands and cannot be changed. Review the flag and create an amendment or follow-up note if clinically warranted.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <ReviewScreen
+        data={data}
+        onApprove={handleApprove}
+        assurance={{ pending: assurancePending, resolved: assurance.claims.length, total: assurance.total, safetyFlag: safetyFlagActive }}
+      />
     </div>
   );
 }

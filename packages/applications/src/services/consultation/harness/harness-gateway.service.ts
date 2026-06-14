@@ -38,6 +38,22 @@ export interface HarnessApprovalSignal {
 }
 
 /**
+ * Edit signal payload forwarded to the harness (TASK-355 Phase D, Slice 5c) when
+ * a clinician edits an optimistically-delivered draft that is still
+ * `DRAFT_PENDING_SENSORS`. The workflow re-binds + re-runs assurance on the
+ * edited content (Q3) and disables the silent regen-if-untouched path (Q1). Like
+ * `signalApproval` this is a best-effort notification — the apps/api version
+ * write is the source of truth.
+ */
+export interface HarnessEditSignal {
+  /** The edited note the assurance pass must re-screen (required). */
+  content: string;
+  /** The apps/api MODIFIED_SUMMARY version the verdict must bind to. */
+  contextItemVersionId?: string;
+  editedBy?: string;
+}
+
+/**
  * HarnessGatewayService (TASK-330 Phase 1 — Lane G).
  *
  * The OUTBOUND half of the apps/api <-> apps/harness gate adapter. Uses Nest
@@ -98,6 +114,23 @@ export class HarnessGatewayService {
     });
 
     this.logger.log({ message: 'Harness approval signal sent', consultationId });
+    return response.data;
+  }
+
+  /**
+   * Forward a clinician edit of an optimistically-delivered draft to the harness
+   * so the running workflow re-binds + re-runs assurance on the edited content
+   * (Q3) and disables the silent regen-if-untouched path (Q1). Best-effort: the
+   * apps/api MODIFIED_SUMMARY version write is the source of truth.
+   */
+  async signalEdit(consultationId: string, payload: HarnessEditSignal): Promise<unknown> {
+    const url = `${this.harnessUrl}/api/v1/internal/workflows/${consultationId}/signal/edit`;
+
+    const response = await this.httpService.axiosRef.post(url, { ...payload }, {
+      headers: await this.buildHeaders(),
+    });
+
+    this.logger.log({ message: 'Harness edit signal sent', consultationId });
     return response.data;
   }
 

@@ -23,6 +23,7 @@ degrade-don't-guess signal, so an unverifiable safety screen never auto-PASSes.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any
 
@@ -30,6 +31,7 @@ import httpx
 
 from harness.core.config import SafetyGuardConfig
 from harness.core.llm_concurrency import governed_request
+from harness.eval.judge.base import JudgeConnectionError, Messages
 
 
 class GraniteServiceError(RuntimeError):
@@ -98,14 +100,22 @@ class GraniteGuardianClient:
         self._transport = transport
 
     async def screen(self, text: str) -> dict[str, bool]:
-        """Screen ``text`` across every configured harm dimension (unsafe => True)."""
-        dimensions: dict[str, bool] = {}
+        """Screen ``text`` across every configured harm dimension (unsafe => True).
+
+        TASK-355 R-4: Granite evaluates one risk per inference, so the per-dimension
+        calls are independent — fan them out with ``asyncio.gather`` over a shared
+        client (the per-endpoint governor bounds true concurrency). ``gather`` returns
+        results in input order, so the verdict mapping (and dict key order) is
+        identical to the former serial loop; any one failure still raises
+        :class:`GraniteServiceError` so the safety screen degrades, never guesses.
+        """
         if not self._criteria:
-            return dimensions
+            return {}
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
-            for criterion in self._criteria:
-                dimensions[criterion] = await self._classify(client, criterion, text)
-        return dimensions
+            verdicts = await asyncio.gather(
+                *(self._classify(client, criterion, text) for criterion in self._criteria)
+            )
+        return dict(zip(self._criteria, verdicts, strict=True))
 
     async def _classify(self, client: httpx.AsyncClient, criterion: str, text: str) -> bool:
         # Canonical BYOC protocol: the note-to-judge is the assistant message, the
@@ -141,7 +151,10 @@ class GraniteGuardianClient:
         # the safety screen degrades.
         try:
             resp = await governed_request(self._base_url, _send)
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, TimeoutError) as exc:
+            # TimeoutError = the per-call wall-clock timeout (TASK-354) fired after the
+            # governor exhausted its retries; surface it as the same degrade-don't-guess
+            # signal as any transport failure so the safety screen self-degrades.
             raise GraniteServiceError(f"granite guardian request failed: {exc}") from exc
         content = self._extract_content(resp.json())
         match = _SCORE_RE.search(content)
@@ -155,6 +168,128 @@ class GraniteGuardianClient:
             # Ollama ``/api/chat`` -> ``message.content``; ``/api/generate`` -> ``response``.
             return (data.get("message") or {}).get("content") or data.get("response") or ""
         # OpenAI-compatible ``/v1/chat/completions`` -> ``choices[0].message.content``.
+        choices = data.get("choices") or []
+        if not choices:
+            return ""
+        return (choices[0].get("message") or {}).get("content") or ""
+
+
+# --- TASK-355 R-8a: Granite Guardian *groundedness* mode as a drop-in judge ----------
+
+
+def _groundedness_block(premise: str, *, no_think: bool) -> str:
+    """BYOC groundedness criterion (``yes`` => the statement is NOT supported by ``premise``)."""
+    open_tag = "<guardian><no-think>" if no_think else "<guardian>"
+    return (
+        f"{open_tag}{_GUARDIAN_INSTRUCTION}\n\n"
+        f"### Context:\n{premise}\n\n"
+        "### Criteria: The last assistant's statement contains ANY detail — a clinical fact, "
+        "a measurement, dose, date, or duration, OR a patient demographic such as age or sex — "
+        "that is not explicitly stated in, nor directly entailed by, the Context above. Every "
+        "such detail must be verifiable from the Context; an unsupported detail meets the "
+        "criteria even if the rest of the statement is supported.\n\n"
+        "### Scoring Schema: If the statement is not fully supported by the Context, return "
+        "'yes'; otherwise, return 'no'."
+    )
+
+
+def _split_premise_hypothesis(messages: Messages) -> tuple[str, str]:
+    """Recover ``(premise, hypothesis)`` from the sensors' entailment envelope.
+
+    The groundedness/citation sensors send a fixed user message
+    ``"PREMISE:\\n{premise}\\n\\nHYPOTHESIS:\\n{hypothesis}"`` (see
+    ``groundedness._entailment_messages``). This adapter is deliberately bound to that
+    envelope so the swap stays a drop-in (no sensor/protocol change). With the markers
+    absent the whole user text is the hypothesis with an empty premise — which Granite
+    scores as ungrounded (conservative)."""
+    user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+    marker = "\n\nHYPOTHESIS:\n"
+    if marker in user:
+        premise_part, hypothesis = user.split(marker, 1)
+        premise = premise_part.split("PREMISE:\n", 1)[-1]
+        return premise.strip(), hypothesis.strip()
+    return "", user.strip()
+
+
+class GraniteGroundednessJudge:
+    """R-8a: IBM Granite Guardian *groundedness* mode exposed as a ``JudgeClient``.
+
+    Drop-in replacement for the reasoning entailment judge on the groundedness +
+    citation-verify sensors: it reframes their ``PREMISE/HYPOTHESIS`` envelope as a single
+    no-think Granite groundedness BYOC call (premise = Context, hypothesis = the assistant
+    statement) and returns the sensors' own ``{"supported": bool}`` JSON, so the sensor
+    code and its conservative parser are unchanged. ``<score>no</score>`` (no ungroundedness
+    risk) => supported; ``<score>yes</score>`` or an unparseable verdict => not supported
+    (conservative ungrounded); a transport failure raises :class:`JudgeConnectionError` so
+    the sensor degrades, never auto-PASSes.
+
+    Why R-8a: Granite Guardian is ALREADY resident (safety), emits a single verdict token
+    (no reasoning trace — the dominant gemma per-call cost), and ranks #3 on LLM-AggreFact
+    (not a weaker judge). Trust still requires the offline parity gate
+    (``harness.eval.inferential_judge_parity``) before it may gate a clinical pass.
+    """
+
+    def __init__(
+        self,
+        config: SafetyGuardConfig,
+        *,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        self._provider = config.provider
+        self._base_url = config.base_url.rstrip("/")
+        self.model = config.model
+        self._no_think = config.no_think
+        self._timeout = config.timeout_s
+        self._transport = transport
+
+    async def complete(
+        self,
+        messages: Messages,
+        *,
+        json_mode: bool = False,
+        temperature: float | None = None,
+        seed: int | None = None,
+    ) -> str:
+        premise, hypothesis = _split_premise_hypothesis(messages)
+        supported = await self._screen(premise, hypothesis)
+        return '{"supported": true}' if supported else '{"supported": false}'
+
+    async def _screen(self, premise: str, hypothesis: str) -> bool:
+        messages = [
+            {"role": "assistant", "content": hypothesis},
+            {"role": "user", "content": _groundedness_block(premise, no_think=self._no_think)},
+        ]
+        if self._provider == "ollama":
+            url = f"{self._base_url}/api/chat"
+            body: dict[str, Any] = {
+                "model": self.model,
+                "messages": messages,
+                "stream": False,
+                "options": {"temperature": 0.0},
+            }
+        else:
+            url = _chat_completions_url(self._base_url)
+            body = {"model": self.model, "messages": messages, "temperature": 0.0, "stream": False}
+
+        async def _send() -> httpx.Response:
+            async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
+                resp = await client.post(url, json=body)
+                resp.raise_for_status()
+                return resp
+
+        try:
+            resp = await governed_request(self._base_url, _send)
+        except (httpx.HTTPError, TimeoutError) as exc:
+            raise JudgeConnectionError(f"granite groundedness request failed: {exc}") from exc
+        match = _SCORE_RE.search(self._content(resp.json()))
+        if match is None:
+            return False  # unparseable verdict -> conservative ungrounded (never a degrade)
+        # 'yes' = ungroundedness risk present => NOT supported; 'no' = grounded => supported.
+        return match.group(1).lower() == "no"
+
+    def _content(self, data: dict[str, Any]) -> str:
+        if self._provider == "ollama":
+            return (data.get("message") or {}).get("content") or data.get("response") or ""
         choices = data.get("choices") or []
         if not choices:
             return ""

@@ -41,6 +41,12 @@ class HarnessGateConfig(BaseModel):
     max_regen: int = 2
     gate_sla_seconds: float = 86_400.0
     gate_escalation_seconds: float = 43_200.0
+    # TASK-355 Phase D (Slice 4a) — optimistic two-phase delivery. Snapshotted at
+    # workflow start (the behaviour key) so it stays deterministic across replay;
+    # the durable ``workflow.patched("task-355-optimistic-delivery")`` marker is the
+    # separate replay key. BOTH must be set for the optimistic path to run. Default
+    # False ⇒ the legacy single-phase path, byte-identical to pre-Phase-D history.
+    optimistic_delivery_enabled: bool = False
 
 
 class HarnessDocWorkflowInput(BaseModel):
@@ -75,6 +81,30 @@ class ApprovalSignal(BaseModel):
     attestation_hash: str | None = None
     clinician_id: str | None = None
     decision: str | None = None
+
+
+class EditSignal(BaseModel):
+    """Clinician edited the optimistically delivered draft (TASK-355 Phase D, Slice 4b).
+
+    apps/api sends this when the clinician edits the draft WHILE it is still
+    ``DRAFT_PENDING_SENSORS`` (assurance running). The workflow re-binds the
+    assurance pass to the edited content and re-runs it (Q3), and — because the
+    note is no longer the machine-generated draft — permanently DISABLES the
+    silent regen-if-untouched path (Q1): from the first edit on, a REGEN verdict
+    surfaces as flags instead of swapping the note under the clinician's eyes.
+
+    ``content`` is the edited note the assurance pass must screen;
+    ``context_item_version_id`` is the apps/api MODIFIED_SUMMARY version the
+    verdict binds to (threaded into ``finalize_assurance`` so apps/api stamps the
+    verdict on the right version). Only meaningful on the optimistic path; ignored
+    by the legacy single-phase loop (which has no post-delivery assurance window).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    content: str
+    context_item_version_id: str | None = None
+    edited_by: str | None = None
 
 
 class HarnessDocWorkflowResult(BaseModel):
@@ -306,6 +336,16 @@ class RunInferentialSensorsInput(BaseModel):
     # ``safety_enabled=False`` skips the Granite safety screen entirely.
     groundedness_threshold: float = DEFAULT_GROUNDEDNESS_THRESHOLD
     safety_enabled: bool = True
+    # TASK-355 Phase D Slice 5d (Q5) — live per-claim assurance feed. Populated ONLY
+    # at the optimistic ASSURANCE call site; when ``live_assurance`` is True and the
+    # ids are present, the activity streams each groundedness claim verdict to apps/api
+    # as it resolves. Optional with safe defaults ⇒ the legacy call site (and any
+    # pre-5d replay history) schedules the activity exactly as before; the per-claim
+    # publish lives entirely in (non-deterministic) activity code, so it is replay-safe.
+    live_assurance: bool = False
+    consultation_id: str | None = None
+    tenant_id: str | None = None
+    job_id: str | None = None
 
 
 class InferentialRunOutput(BaseModel):
@@ -324,6 +364,13 @@ class InferentialRunOutput(BaseModel):
     guardrail_decisions: dict[str, Any] = Field(default_factory=dict)
     rag_triad_score: float | None = None
     degraded: bool = False
+
+
+# TASK-355 Phase D (Slice 4a) — the early-persist phase discriminator. Mirrors the
+# apps/api ``HARNESS_DRAFT_PHASE.EARLY`` (``HarnessDraftRequest.phase``): the harness
+# sends this value on the optimistic early persist so apps/api withholds the verdict
+# (status ``DRAFT_PENDING_SENSORS``, GENERATE-only audit). Absent ⇒ legacy single-shot.
+HARNESS_DRAFT_PHASE_EARLY = "DRAFT_PENDING_SENSORS"
 
 
 class PersistDraftInput(BaseModel):
@@ -350,6 +397,48 @@ class PersistDraftInput(BaseModel):
     dna_style_id: str | None = None
     gate_decision: str | None = None
     is_auto_generated: bool | None = None
+    # TASK-355 Phase D (Slice 4a) — optimistic delivery discriminator. None (legacy)
+    # ⇒ single-shot persist (full scores, PENDING_REVIEW). ``DRAFT_PENDING_SENSORS``
+    # ⇒ early persist: readable draft now, verdict withheld, assurance deferred to
+    # ``finalize_assurance``.
+    phase: str | None = None
+
+
+class FinalizeAssuranceInput(BaseModel):
+    """Inputs for the Phase-D ``finalize_assurance`` activity (Slice 4a, second phase).
+
+    The optimistic path delivers the readable draft early (``persist_draft`` with
+    ``phase=DRAFT_PENDING_SENSORS``) and then runs the costly inferential pass as
+    assurance. This payload carries the resulting verdict to apps/api, which
+    backfills the early ``SummaryMeta`` (inferential scores + ``gateDecision`` +
+    ``assuranceCompletedAt``), flips ``DRAFT_PENDING_SENSORS → PENDING_REVIEW``, and
+    records the deferred ``SENSOR_RUN`` (+ ``REDUCED_ASSURANCE``) WORM audit.
+    ``context_item_id`` is the RAW_SUMMARY persisted in the early phase (the target).
+
+    TASK-355 Slice 4b: ``context_item_version_id`` is set when a clinician EDIT
+    re-bound assurance to an edited MODIFIED_SUMMARY version (None ⇒ the verdict
+    binds to the originally delivered draft). apps/api stamps the verdict on that
+    version so a late edit is assured against the note the clinician actually has.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    tenant_id: str
+    user_id: str | None = None
+    job_id: str | None = None
+    context_item_id: str
+    context_item_version_id: str | None = None
+    sensor_scores: dict[str, Any] | None = None
+    citations_map: dict[str, Any] | None = None
+    guardrail_decisions: dict[str, Any] | None = None
+    reduced_assurance: bool | None = None
+    rag_triad_score: float | None = None
+    gate_decision: str | None = None
+    model_name: str | None = None
+    model_version: str | None = None
+    prompt_template_id: str | None = None
+    prompt_version: str | None = None
 
 
 class RecordGateInput(BaseModel):

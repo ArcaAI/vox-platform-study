@@ -18,7 +18,10 @@ from __future__ import annotations
 
 from harness.sensors.inferential.citation_verify import NAME as CITATION_VERIFY_NAME
 from harness.sensors.inferential.citation_verify import CitationVerifySensor
-from harness.sensors.inferential.granite_client import GraniteGuardianClient
+from harness.sensors.inferential.granite_client import (
+    GraniteGroundednessJudge,
+    GraniteGuardianClient,
+)
 from harness.sensors.inferential.groundedness import NAME as GROUNDEDNESS_NAME
 from harness.sensors.inferential.groundedness import GroundednessSensor
 from harness.sensors.inferential.safety import NAME as SAFETY_NAME
@@ -32,4 +35,5 @@ __all__ = [
     "CitationVerifySensor",
     "CITATION_VERIFY_NAME",
     "GraniteGuardianClient",
+    "GraniteGroundednessJudge",
 ]
