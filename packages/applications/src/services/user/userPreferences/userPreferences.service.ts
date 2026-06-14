@@ -6,6 +6,8 @@ import {
   UserSettingsFactory,
   AsrPipelineRepository,
   UserVoiceProfileRepository,
+  TenantFrontendConfigRepository,
+  TranscriptionMode,
   ValueType,
   ResourceType,
   SysEventType,
@@ -84,6 +86,13 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
      * dependency. In production wiring it is always provided by `UserPreferencesServiceModule`.
      */
     @Optional() private readonly voiceProfileRepository?: UserVoiceProfileRepository,
+    /**
+     * TASK-356 Phase 4 (A8/A10) — the tenant-scoped frontend config carries the
+     * default transcription mode + lock. Optional for the same test-construction
+     * reason as `voiceProfileRepository`; provided in production via
+     * `CoreDatabaseModule` (already imported by `UserPreferencesServiceModule`).
+     */
+    @Optional() private readonly tenantFrontendConfigRepository?: TenantFrontendConfigRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.UserSettings);
   }
@@ -103,6 +112,11 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
 
     const response: UserPreferencesResponse = {
       updatedAt: new Date().toISOString(),
+      // TASK-356 Phase 4 (A8) — back-compat defaults (BACKEND / unlocked). The
+      // effective values are resolved below and overwrite these; initializing
+      // here keeps the response valid even if resolution is ever short-circuited.
+      transcriptionMode: 'BACKEND',
+      transcriptionModeLocked: false,
     };
 
     let latestUpdate = new Date(0);
@@ -167,10 +181,47 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
     // Resolve read-only remoteConfig from admin settings
     response.remoteConfig = await this.resolveRemoteConfig(userId);
 
+    // TASK-356 Phase 4 (A8) — resolve the EFFECTIVE transcription mode + lock
+    // server-side (mirrors the remoteConfig cascade). Uses the workflowMode
+    // already aggregated above.
+    const effectiveMode = await this.resolveEffectiveTranscriptionMode(response.workflowMode);
+    response.transcriptionMode = effectiveMode.transcriptionMode;
+    response.transcriptionModeLocked = effectiveMode.transcriptionModeLocked;
+
     // Resolve read-only activeVoiceProfile from UserVoiceProfile
     response.activeVoiceProfile = await this.resolveActiveVoiceProfile(userId);
 
     return response;
+  }
+
+  /**
+   * Resolve the EFFECTIVE transcription mode + lock for the current user/tenant.
+   *
+   * Precedence (server-authoritative, TASK-356 §6 / D-8):
+   *   1. tenant `transcriptionModeLocked` → tenant `transcriptionMode` wins; the
+   *      doctor's `workflowMode` is ignored.
+   *   2. unlocked + the doctor set `workflowMode` → `'local'`→LOCAL, `'remote'`→BACKEND.
+   *   3. unlocked + no `workflowMode` → fall back to the tenant default.
+   *
+   * Defaults to `BACKEND` / unlocked when the tenant has no frontend config row
+   * (matches the schema default + today's hard-wired BACKEND clinical workspace).
+   */
+  private async resolveEffectiveTranscriptionMode(
+    workflowMode: 'local' | 'remote' | undefined,
+  ): Promise<{ transcriptionMode: 'LOCAL' | 'BACKEND'; transcriptionModeLocked: boolean }> {
+    const tenantId = this.tenantId;
+    const tenantCfg =
+      tenantId && this.tenantFrontendConfigRepository ? await this.tenantFrontendConfigRepository.findByTenant(tenantId) : null;
+
+    const tenantMode: 'LOCAL' | 'BACKEND' = tenantCfg?.transcriptionMode === TranscriptionMode.LOCAL ? 'LOCAL' : 'BACKEND';
+    const locked = tenantCfg?.transcriptionModeLocked ?? false;
+
+    if (locked) {
+      return { transcriptionMode: tenantMode, transcriptionModeLocked: true };
+    }
+    if (workflowMode === 'local') return { transcriptionMode: 'LOCAL', transcriptionModeLocked: false };
+    if (workflowMode === 'remote') return { transcriptionMode: 'BACKEND', transcriptionModeLocked: false };
+    return { transcriptionMode: tenantMode, transcriptionModeLocked: false };
   }
 
   async updatePreferences(request: UpdateUserPreferencesRequest): Promise<UserPreferencesResponse> {

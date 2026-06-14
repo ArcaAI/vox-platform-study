@@ -44,7 +44,9 @@ export class TenantFrontendConfigAdminController {
       'Create-or-update (one row per tenant). Optimistic concurrency applies on UPDATE only: ' +
       'supply the row version you last read via the `If-Match` header (RFC 7232) or the body ' +
       '`expectedVersion`. The header wins when both are present. First-time creation needs no ' +
-      'version. On drift the response is `412 Precondition Failed`.',
+      'version. On drift the response is `412 Precondition Failed`. ' +
+      'TASK-356 — the body may also carry `transcriptionMode` (LOCAL|BACKEND), `transcriptionModeLocked`, ' +
+      'and `captureMode` (RAW_AND_PROCESSED|RAW_ONLY|PROCESSED_ONLY|NONE; null clears the override).',
   })
   @ApiHeader({
     name: 'If-Match',

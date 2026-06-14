@@ -119,6 +119,18 @@ export class UserPreferencesResponse {
   })
   custom?: Record<string, unknown>;
 
+  // TASK-356 Phase 4 — read-only EFFECTIVE transcription mode + lock, resolved
+  // server-side (locked ⇒ tenant default wins; unlocked ⇒ workflowMode
+  // overrides). The SDK re-projects this into `resolvedConfig.stt.transcriptionMode`.
+  @ApiProperty({
+    description: 'Effective transcription mode resolved server-side (read-only)',
+    enum: ['LOCAL', 'BACKEND'],
+  })
+  transcriptionMode!: 'LOCAL' | 'BACKEND';
+
+  @ApiProperty({ description: 'Whether the tenant has locked the transcription mode (read-only)' })
+  transcriptionModeLocked!: boolean;
+
   @ApiProperty({ description: 'Last sync timestamp' })
   updatedAt!: string;
 }

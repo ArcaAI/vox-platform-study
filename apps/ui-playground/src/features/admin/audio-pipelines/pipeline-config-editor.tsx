@@ -64,6 +64,14 @@ interface PipelineConfig {
       capture_processed: boolean;
     };
   };
+  // TASK-356 Phase 4 — speaker diarization (already read by the STT-v2 yaml_parser;
+  // surfaced here in the structured form). A subset of the parser's fields.
+  diarization: {
+    enabled: boolean;
+    max_speakers: number;
+    high_threshold: number;
+    low_threshold: number;
+  };
 }
 
 interface PipelineConfigEditorProps {
@@ -100,6 +108,7 @@ export const DEFAULT_CONFIG: PipelineConfig = {
     lowercase: false,
     dual_capture: { enabled: false, capture_processed: false },
   },
+  diarization: { enabled: false, max_speakers: 2, high_threshold: 0.7, low_threshold: 0.4 },
 };
 
 // ---------------------------------------------------------------------------
@@ -624,6 +633,64 @@ function VisualForm({
                 onCheckedChange={(v) => onFieldChange(['postprocessing', 'dual_capture', 'capture_processed'], v)}
                 disabled={readOnly}
               />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Diarization (TASK-356 Phase 4) */}
+      <div>
+        <SectionHeader title="Diarization" description="Speaker separation in the transcript" />
+        <div className="flex flex-col gap-3">
+          <ToggleRow
+            id="diar-enabled"
+            label="Diarization"
+            checked={config.diarization.enabled}
+            onCheckedChange={(v) => onFieldChange(['diarization', 'enabled'], v)}
+            disabled={readOnly}
+          />
+          {config.diarization.enabled && (
+            <div className="border-muted flex flex-col gap-2.5 border-l-2 pl-4">
+              <FieldRow label="Max Speakers" htmlFor="diar-max-speakers">
+                <Input
+                  id="diar-max-speakers"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={config.diarization.max_speakers}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onNumericInput(['diarization', 'max_speakers'], e)}
+                  readOnly={readOnly}
+                  className="h-8"
+                />
+              </FieldRow>
+              <FieldRow label="High Threshold" htmlFor="diar-high-threshold">
+                <Input
+                  id="diar-high-threshold"
+                  type="number"
+                  inputMode="decimal"
+                  step={0.05}
+                  min={0}
+                  max={1}
+                  value={config.diarization.high_threshold}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onNumericInput(['diarization', 'high_threshold'], e)}
+                  readOnly={readOnly}
+                  className="h-8"
+                />
+              </FieldRow>
+              <FieldRow label="Low Threshold" htmlFor="diar-low-threshold">
+                <Input
+                  id="diar-low-threshold"
+                  type="number"
+                  inputMode="decimal"
+                  step={0.05}
+                  min={0}
+                  max={1}
+                  value={config.diarization.low_threshold}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onNumericInput(['diarization', 'low_threshold'], e)}
+                  readOnly={readOnly}
+                  className="h-8"
+                />
+              </FieldRow>
             </div>
           )}
         </div>

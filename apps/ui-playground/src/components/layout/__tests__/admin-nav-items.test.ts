@@ -100,7 +100,8 @@ describe('buildAdminNavItems (TASK-327 T5)', () => {
       expect(disabledIds(items).sort()).toEqual(
         // TASK-336 OB-02 — `jobs` is tenant-scoped (needs a selected tenant).
         // TASK-330 Phase 6 — `harness` is tenant-scoped too.
-        ['audio-pipelines', 'audit-logs', 'configurations', 'departments', 'dna-reports', 'harness', 'jobs', 'prompts', 'storage'].sort(),
+        // TASK-356 Phase 1 — `ai-models` (tenant model catalog) is tenant-scoped.
+        ['ai-models', 'audio-pipelines', 'audit-logs', 'configurations', 'departments', 'dna-reports', 'harness', 'jobs', 'prompts', 'storage'].sort(),
       );
       // Overview / Tenants / Users / Prisma Studio + the global-scope ops
       // surfaces (System Health, Rate Limits, Queues & Jobs) remain reachable

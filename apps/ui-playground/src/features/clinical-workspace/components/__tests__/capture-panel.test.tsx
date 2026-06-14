@@ -58,6 +58,18 @@ const dual = vi.hoisted(() => ({
   stopAndPersist: vi.fn(),
 }));
 
+// TASK-356 Phase 4 — the LOCAL transcription path drives the SDK browser
+// pipeline via useArcaAudio (no STT-WS session, no pipelineId requirement).
+const localAudio = vi.hoisted(() => ({
+  isCapturing: false,
+  currentTranscript: '',
+  transcriptSegments: [] as Array<Record<string, unknown>>,
+  level: 0,
+  error: null as unknown,
+  start: vi.fn(),
+  stop: vi.fn(),
+}));
+
 const configState = vi.hoisted(() => ({ resolvedConfig: null as any }));
 
 vi.mock('@/hooks/use-realtime-transcription', () => ({
@@ -98,6 +110,15 @@ vi.mock('../../api/clinical-workspace.api', () => ({
 vi.mock('@arcaai/vox', () => ({
   useArcaStore: (selector: any) => selector({ apiClient: { __fake: true } }),
   useArcaConfig: () => ({ resolvedConfig: configState.resolvedConfig }),
+  useArcaAudio: () => ({
+    isCapturing: localAudio.isCapturing,
+    currentTranscript: localAudio.currentTranscript,
+    transcriptSegments: localAudio.transcriptSegments,
+    level: localAudio.level,
+    error: localAudio.error,
+    start: localAudio.start,
+    stop: localAudio.stop,
+  }),
 }));
 
 import { CapturePanel } from '../capture-panel';
@@ -127,6 +148,11 @@ describe('CapturePanel pipeline resolution (Pipeline-not-found bugfix)', () => {
     dual.status = 'idle';
     dual.isCapturing = false;
     configState.resolvedConfig = null;
+    localAudio.isCapturing = false;
+    localAudio.currentTranscript = '';
+    localAudio.transcriptSegments = [];
+    localAudio.start = vi.fn().mockResolvedValue(undefined);
+    localAudio.stop = vi.fn().mockResolvedValue(undefined);
   });
 
   it('uses the resolved remote pipeline id from config when no prop is given', () => {
@@ -160,5 +186,85 @@ describe('CapturePanel pipeline resolution (Pipeline-not-found bugfix)', () => {
     // the doctor gets an actionable error instead of a 404 "Pipeline not found".
     expect(realtime.start).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/pipeline/i));
+  });
+});
+
+// TASK-356 Phase 4 (UI-T3) — the panel branches on the server-resolved effective
+// transcription mode (resolvedConfig.stt.transcriptionMode). BACKEND keeps the
+// existing STT-WS path (pipelineId required); LOCAL drives the SDK browser
+// pipeline with NO pipelineId requirement.
+describe('CapturePanel transcription-mode branch (TASK-356 Phase 4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    realtime.isStreaming = false;
+    realtime.sessionId = null;
+    realtime.inputStream = null;
+    realtime.transcripts = [];
+    realtime.error = null;
+    realtime.start = vi.fn().mockResolvedValue(undefined);
+    realtime.stop = vi.fn().mockResolvedValue(undefined);
+    dual.status = 'idle';
+    dual.isCapturing = false;
+    configState.resolvedConfig = null;
+    localAudio.isCapturing = false;
+    localAudio.transcriptSegments = [];
+    localAudio.start = vi.fn().mockResolvedValue(undefined);
+    localAudio.stop = vi.fn().mockResolvedValue(undefined);
+  });
+
+  it('LOCAL — starts the SDK browser pipeline (no pipelineId) and does NOT open an STT-WS session', async () => {
+    configState.resolvedConfig = { stt: { transcriptionMode: 'LOCAL' } };
+    renderPanel();
+
+    fireEvent.click(screen.getByTestId('ack-consent'));
+    fireEvent.click(screen.getByTestId('capture-start'));
+
+    await Promise.resolve();
+
+    // Browser pipeline started; no `pipelineId` is required or forwarded.
+    expect(localAudio.start).toHaveBeenCalledTimes(1);
+    const startArg = localAudio.start.mock.calls[0]?.[0] ?? {};
+    expect(startArg.pipelineId).toBeUndefined();
+    // The remote STT-WS path is NOT taken.
+    expect(realtime.start).not.toHaveBeenCalled();
+  });
+
+  it('LOCAL — does NOT block on a missing transcription pipeline (no remote pipeline needed)', () => {
+    // No transcriptionPipelineId resolves, but LOCAL needs none.
+    configState.resolvedConfig = { stt: { transcriptionMode: 'LOCAL' } };
+    renderPanel();
+
+    fireEvent.click(screen.getByTestId('ack-consent'));
+    fireEvent.click(screen.getByTestId('capture-start'));
+
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(localAudio.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('LOCAL — correlates the recording without an STT-WS session id', async () => {
+    const { startRecording } = await import('../../api/clinical-workspace.api');
+    configState.resolvedConfig = { stt: { transcriptionMode: 'LOCAL' } };
+    const onRecordingStarted = vi.fn();
+    renderPanel({ onRecordingStarted });
+
+    fireEvent.click(screen.getByTestId('ack-consent'));
+    fireEvent.click(screen.getByTestId('capture-start'));
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // startRecording is called with NO sessionId (local pipeline has no WS session).
+    expect(startRecording).toHaveBeenCalledWith({ __fake: true }, 'c-1');
+  });
+
+  it('BACKEND — an explicit BACKEND mode keeps the STT-WS path with the resolved pipelineId', () => {
+    configState.resolvedConfig = { stt: { transcriptionMode: 'BACKEND', transcriptionPipelineId: 'pipe-remote' } };
+    renderPanel();
+
+    fireEvent.click(screen.getByTestId('ack-consent'));
+    fireEvent.click(screen.getByTestId('capture-start'));
+
+    expect(realtime.start).toHaveBeenCalledWith({ pipelineId: 'pipe-remote', consultationId: 'c-1' });
+    expect(localAudio.start).not.toHaveBeenCalled();
   });
 });

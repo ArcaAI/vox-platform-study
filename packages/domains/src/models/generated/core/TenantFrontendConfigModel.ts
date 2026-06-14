@@ -13,6 +13,9 @@ export class TenantFrontendConfig extends BaseTenantDataModel {
   public voiceEnrollment: boolean;
   public diarization: boolean;
   public captureRawAudio: boolean;
+  public transcriptionMode: Enums.TranscriptionMode;
+  public transcriptionModeLocked: boolean;
+  public captureMode: Enums.CaptureMode | null;
   public configJson: any | null;
 
   public resourceStatus: Enums.ResourceStatusType;
@@ -27,6 +30,9 @@ export class TenantFrontendConfig extends BaseTenantDataModel {
     this.voiceEnrollment = data.voiceEnrollment;
     this.diarization = data.diarization;
     this.captureRawAudio = data.captureRawAudio;
+    this.transcriptionMode = data.transcriptionMode;
+    this.transcriptionModeLocked = data.transcriptionModeLocked;
+    this.captureMode = data.captureMode;
     this.configJson = data.configJson;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;

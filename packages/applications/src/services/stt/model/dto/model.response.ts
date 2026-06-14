@@ -59,6 +59,11 @@ export class ModelResponse {
   @ApiProperty({ description: 'Resource status', enum: ResourceStatusType })
   resourceStatus: ResourceStatusType;
 
+  // TASK-356 Phase 1 — OCC version surfaced so the global `ETagInterceptor`
+  // can stamp `ETag: "<version>"` (the `If-Match` source on PATCH).
+  @ApiProperty({ description: 'Optimistic-concurrency row version', example: 7 })
+  version: number;
+
   @ApiProperty({ description: 'Tags', type: [String] })
   tags: string[];
 

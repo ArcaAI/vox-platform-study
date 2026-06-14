@@ -7,4 +7,8 @@ export enum AiModelFormat {
   ONNX = 'ONNX',
   NEMO = 'NEMO',
   PYTORCH = 'PYTORCH',
+  CTRANSLATE2 = 'CTRANSLATE2',
+  FASTER_WHISPER = 'FASTER_WHISPER',
+  MLX = 'MLX',
+  GGUF = 'GGUF',
 }

@@ -53,6 +53,13 @@ model TenantFrontendConfig {
     // SDK flag is platformCapability(GlobalSetting) AND this column, computed
     // server-side in GET /tenant/me/config.
     captureRawAudio Boolean @default(false)
+    // TASK-356 Phase 4 — tenant default transcription mode + lock, and audio
+    // capture mode. transcriptionMode defaults to BACKEND (preserves today's
+    // hard-wired clinical-workspace behavior); captureMode is nullable so existing
+    // tenants keep current per-surface capture behavior until an admin opts in (R-6).
+    transcriptionMode       TranscriptionMode @default(BACKEND)
+    transcriptionModeLocked Boolean           @default(false)
+    captureMode             CaptureMode?
     configJson      Json?   @db.JsonB
 
     // resource status fields

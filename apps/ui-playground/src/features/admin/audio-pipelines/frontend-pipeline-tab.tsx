@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { useTenantFrontendConfig, type FrontendPipelineConfigJson, type UpsertTenantFrontendConfigInput } from '@arcaai/vox';
+import {
+  useTenantFrontendConfig,
+  type CaptureMode,
+  type FrontendPipelineConfigJson,
+  type TranscriptionMode,
+  type UpsertTenantFrontendConfigInput,
+} from '@arcaai/vox';
 import { Building2, Loader2, RefreshCw, Save, SlidersHorizontal } from 'lucide-react';
 
 import { Badge } from '@arcaai/ui/badge';
@@ -45,6 +51,21 @@ const ASR_MODEL_OPTIONS = [
 
 const NOISE_LEVELS = ['low', 'medium', 'high'] as const;
 
+// TASK-356 Phase 4 — tenant-scoped transcription mode + audio capture mode.
+const TRANSCRIPTION_MODE_OPTIONS: { value: TranscriptionMode; label: string }[] = [
+  { value: 'BACKEND', label: 'Backend (server-side STT)' },
+  { value: 'LOCAL', label: 'Local (browser-side STT)' },
+];
+
+// `''` is the sentinel for "no tenant override" — the legacy `captureRawAudio`
+// column then governs per-surface capture (R-6 back-compat).
+const CAPTURE_MODE_OPTIONS: { value: CaptureMode; label: string }[] = [
+  { value: 'RAW_AND_PROCESSED', label: 'Raw + processed' },
+  { value: 'RAW_ONLY', label: 'Raw only' },
+  { value: 'PROCESSED_ONLY', label: 'Processed only' },
+  { value: 'NONE', label: 'None' },
+];
+
 interface FormState {
   asrModel: string;
   noiseCancel: boolean;
@@ -52,6 +73,9 @@ interface FormState {
   voiceEnrollment: boolean;
   diarization: boolean;
   captureRawAudio: boolean;
+  transcriptionMode: TranscriptionMode;
+  transcriptionModeLocked: boolean;
+  captureMode: CaptureMode | '';
   configJson: FrontendPipelineConfigJson;
 }
 
@@ -62,6 +86,9 @@ const EMPTY_FORM: FormState = {
   voiceEnrollment: false,
   diarization: false,
   captureRawAudio: false,
+  transcriptionMode: 'BACKEND',
+  transcriptionModeLocked: false,
+  captureMode: '',
   configJson: {},
 };
 
@@ -111,6 +138,9 @@ export function FrontendPipelineTab() {
         voiceEnrollment: config.voiceEnrollment,
         diarization: config.diarization,
         captureRawAudio: config.captureRawAudio ?? false,
+        transcriptionMode: config.transcriptionMode ?? 'BACKEND',
+        transcriptionModeLocked: config.transcriptionModeLocked ?? false,
+        captureMode: config.captureMode ?? '',
         configJson: config.configJson ?? {},
       });
     } else if (loadedOnce) {
@@ -137,6 +167,10 @@ export function FrontendPipelineTab() {
         voiceEnrollment: form.voiceEnrollment,
         diarization: form.diarization,
         captureRawAudio: form.captureRawAudio,
+        transcriptionMode: form.transcriptionMode,
+        transcriptionModeLocked: form.transcriptionModeLocked,
+        // `''` (no override) clears the tenant capture mode → legacy column applies.
+        captureMode: form.captureMode === '' ? null : form.captureMode,
         configJson: form.configJson,
         // OCC: on update we MUST echo the version we read; on first create the
         // row has no version yet, so omit it.
@@ -263,6 +297,73 @@ export function FrontendPipelineTab() {
                   }
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* TASK-356 — Transcription & capture mode */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Transcription &amp; capture mode</CardTitle>
+              <CardDescription>
+                Tenant default for where speech-to-text runs and which audio streams are captured.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="transcriptionMode">Transcription mode</Label>
+                  <Select
+                    value={form.transcriptionMode}
+                    onValueChange={(v: string) => setForm((p) => ({ ...p, transcriptionMode: v as TranscriptionMode }))}
+                  >
+                    <SelectTrigger id="transcriptionMode" aria-label="Transcription mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TRANSCRIPTION_MODE_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-muted-foreground text-xs">
+                    Unless locked, a doctor&apos;s workflow preference can still override this.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="captureMode">Audio capture mode</Label>
+                  <Select
+                    value={form.captureMode === '' ? '__none__' : form.captureMode}
+                    onValueChange={(v: string) =>
+                      setForm((p) => ({ ...p, captureMode: v === '__none__' ? '' : (v as CaptureMode) }))
+                    }
+                  >
+                    <SelectTrigger id="captureMode" aria-label="Audio capture mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">No override (use capture toggle)</SelectItem>
+                      {CAPTURE_MODE_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-muted-foreground text-xs">
+                    Overrides the &ldquo;Capture raw audio&rdquo; toggle above when set.
+                  </p>
+                </div>
+              </div>
+
+              <FeatureSwitch
+                id="transcriptionModeLocked"
+                label="Lock transcription mode (doctors cannot override)"
+                description="When on, every doctor in this tenant uses the mode above regardless of their workflow preference."
+                checked={form.transcriptionModeLocked}
+                onChange={(v) => setForm((p) => ({ ...p, transcriptionModeLocked: v }))}
+              />
             </CardContent>
           </Card>
 

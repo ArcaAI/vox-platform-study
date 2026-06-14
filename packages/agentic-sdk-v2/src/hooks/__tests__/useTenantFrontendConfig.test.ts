@@ -103,6 +103,44 @@ describe('useTenantFrontendConfig', () => {
             expect(url).toContain('tenantId=t-2');
         });
 
+        // TASK-356 Phase 4 (SDK-T5) — the new audio-console fields round-trip
+        // through GET and save (the hook forwards the typed payload verbatim).
+        it('round-trips transcriptionMode / transcriptionModeLocked / captureMode through save and stores the result', async () => {
+            const input = {
+                transcriptionMode: 'LOCAL' as const,
+                transcriptionModeLocked: true,
+                captureMode: 'RAW_ONLY' as const,
+                expectedVersion: 2,
+            };
+            const saved = {
+                id: 'c1',
+                tenantId: 't1',
+                noiseCancel: false,
+                vad: false,
+                voiceEnrollment: false,
+                diarization: false,
+                captureRawAudio: true,
+                platformRawCaptureCapable: true,
+                transcriptionMode: 'LOCAL' as const,
+                transcriptionModeLocked: true,
+                captureMode: 'RAW_ONLY' as const,
+                createdAt: 'now',
+                updatedAt: 'now',
+                version: 3,
+            };
+            mockPut.mockResolvedValue(saved);
+            const { result } = renderHook(() => useTenantFrontendConfig());
+
+            let resp: unknown;
+            await act(async () => { resp = await result.current.save(input); });
+
+            expect(mockPut).toHaveBeenCalledWith(TENANT_FRONTEND_CONFIG_ENDPOINTS.UPSERT, input);
+            expect(resp).toEqual(saved);
+            expect(result.current.config?.transcriptionMode).toBe('LOCAL');
+            expect(result.current.config?.transcriptionModeLocked).toBe(true);
+            expect(result.current.config?.captureMode).toBe('RAW_ONLY');
+        });
+
         it('surfaces save errors', async () => {
             mockPut.mockRejectedValue(new Error('precondition failed'));
             const { result } = renderHook(() => useTenantFrontendConfig());

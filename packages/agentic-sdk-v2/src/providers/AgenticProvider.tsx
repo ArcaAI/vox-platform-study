@@ -556,9 +556,18 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         // request and only blocks the tier on a fetch the SDK already issues.
         try {
           await preferencesLoadPromise;
-          const remotePipelineId = personalizationManager.getPreferences().remoteConfig?.pipelineId;
+          const resolvedPrefs = personalizationManager.getPreferences();
+          const remotePipelineId = resolvedPrefs.remoteConfig?.pipelineId;
           if (remotePipelineId) {
             tenantOverrides.stt = { ...(tenantOverrides.stt ?? {}), transcriptionPipelineId: remotePipelineId };
+          }
+          // TASK-356 — the EFFECTIVE transcription mode is resolved per-user
+          // server-side and returned on the prefs response. Surface it as an
+          // admin-owned tenant-tier override (stt.transcriptionMode is
+          // permission:'admin') so the cascade keeps it authoritative against
+          // user prefs and the clinical workspace branches LOCAL vs BACKEND.
+          if (resolvedPrefs.transcriptionMode) {
+            tenantOverrides.stt = { ...(tenantOverrides.stt ?? {}), transcriptionMode: resolvedPrefs.transcriptionMode };
           }
         } catch {
           // loadFromBackend already logs at error; the tenant tier still
@@ -765,11 +774,14 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
             // personalization user-pref tier, so it never races the playground's
             // single-writer impersonation prefs (F-2 below).
             let remotePipelineId: string | undefined;
+            let effectiveTranscriptionMode: 'LOCAL' | 'BACKEND' | undefined;
             try {
-              const remotePrefs = await apiClient.get<{ remoteConfig?: { pipelineId?: string } }>(
-                PERSONALIZATION_ENDPOINTS.GET_PREFERENCES,
-              );
+              const remotePrefs = await apiClient.get<{
+                remoteConfig?: { pipelineId?: string };
+                transcriptionMode?: 'LOCAL' | 'BACKEND';
+              }>(PERSONALIZATION_ENDPOINTS.GET_PREFERENCES);
               remotePipelineId = remotePrefs?.remoteConfig?.pipelineId;
+              effectiveTranscriptionMode = remotePrefs?.transcriptionMode;
             } catch (error) {
               providerLogger.warn('Remote pipeline fetch after user switch failed', {
                 operation: 'rehydrateUserNamespace',
@@ -790,6 +802,10 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
             }
             if (remotePipelineId) {
               nextTenantOverrides.stt = { ...(nextTenantOverrides.stt ?? {}), transcriptionPipelineId: remotePipelineId };
+            }
+            // TASK-356 — re-apply the switched-in user's effective transcription mode.
+            if (effectiveTranscriptionMode) {
+              nextTenantOverrides.stt = { ...(nextTenantOverrides.stt ?? {}), transcriptionMode: effectiveTranscriptionMode };
             }
             if ('lockedPaths' in nextTenantCfg && Array.isArray((nextTenantCfg as Record<string, unknown>).lockedPaths)) {
               nextLockedPaths.push(...((nextTenantCfg as Record<string, unknown>).lockedPaths as string[]));

@@ -96,6 +96,10 @@ export const DEFAULT_POLICIES = [
             // departments and audio (ASR) pipelines, both tenant-scoped.
             { action: 'manage', subject: 'Department', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'manage', subject: 'AsrPipeline', conditions: { tenantId: '${context.tenantId}' } },
+            // AI model catalog (TASK-356 Phase 1) — tenant admins self-serve
+            // their own tenant's clone of the SYSTEM model catalog. Tenant-scoped
+            // (SUPER_ADMIN already covered by the `manage:all` system grant).
+            { action: 'manage', subject: 'AiModel', conditions: { tenantId: '${context.tenantId}' } },
             // DNA writing-style management (TASK-326 X7) — tenant admins manage
             // their own tenant's doctor writing-style reports. The service still
             // enforces the PHI/tenant scope guard (`assertReportInScope`); even

@@ -596,6 +596,10 @@ export class PluginManager {
         numSpeakers: sttConfig.numSpeakers ?? 2,
         returnTimestamps: sttConfig.returnTimestamps ?? 'word',
         codeSwitching: sttConfig.codeSwitching ?? false,
+        // TASK-356 Phase 4 — carry the server-resolved EFFECTIVE transcription
+        // mode through to the pipeline so resolveSTTRuntimeProvider() honors it.
+        // Omitted when absent to preserve today's provider/location behavior.
+        ...(sttConfig.transcriptionMode ? { transcriptionMode: sttConfig.transcriptionMode } : {}),
         ...(streamingTransport ? { streamingTransport } : {}),
         ...(voiceProfile ? { voiceProfile } : {}),
       },

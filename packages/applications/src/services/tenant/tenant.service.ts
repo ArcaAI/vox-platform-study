@@ -16,6 +16,8 @@ import {
   DepartmentFactory,
   PromptTemplateRepository,
   AsrPipelineRepository,
+  AiModelRepository,
+  AiModelFactory,
 } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException } from '@arcaai/exceptions';
 import { ITenantService } from './ITenantService';
@@ -27,6 +29,15 @@ import { ITenantBucketService } from '../tenant-bucket/ITenantBucketService';
 import { GLOBAL_TENANT_KEY, SUPER_ADMIN_ROLE, isUuidIdentifier } from './constants';
 import { DEFAULT_GEN_DEPARTMENT } from './departmentDefaults';
 import { scrubLockedForAudit } from './scrubbing';
+
+/**
+ * Reserved system tenant that owns the platform-wide AI model catalog (the
+ * master template cloned into every customer tenant — TASK-356 D-5). Declared
+ * as a local literal rather than a cross-package import, mirroring the
+ * precedent in `userPreferences.service.ts` and the duplicate literal in the
+ * `tenant-scope` Prisma extension.
+ */
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
  * Service for managing tenants and their configurations
@@ -48,6 +59,10 @@ export class TenantService extends BaseService implements ITenantService {
     private readonly tenantBucketService: ITenantBucketService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-356 Phase 1 (D-5) — appended last so existing positional callers
+    // (and tests) stay append-only. Used to clone the SYSTEM AiModel catalog
+    // into each new tenant.
+    private readonly aiModelRepository: AiModelRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.Tenant);
   }
@@ -106,7 +121,89 @@ export class TenantService extends BaseService implements ITenantService {
       });
     }
 
+    try {
+      await this.provisionTenantModelCatalog(tenant.id);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to provision AI model catalog for new tenant',
+        tenantId: tenant.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     return tenant;
+  }
+
+  /**
+   * Clones every `AiModel` row from the master `SYSTEM_TENANT_ID` catalog into
+   * the newly created tenant so each tenant owns an editable copy of the
+   * platform catalog (TASK-356 D-5). Composes with the `GlobalSetting` clone
+   * (`provisionTenantConfigs`) as an independent provisioning step.
+   *
+   * Behaviour mirrors `provisionTenantConfigs`:
+   *  - Reads the SYSTEM-owned source rows.
+   *  - For each source row, skips it when the new tenant already owns the slug
+   *    (`isSlugUnique` === false) so the method is idempotent and safe to
+   *    re-run as an existing-tenant backfill.
+   *  - Builds a clone via `AiModelFactory` bound to the NEW tenant; download
+   *    state is intentionally NOT copied — the factory resets it to
+   *    `NOT_DOWNLOADED` because a tenant's artifact state is its own.
+   *  - Each insert is wrapped in a try/catch so a single failure does not
+   *    abort the batch; the failure is logged and the loop continues.
+   *  - When zero rows are cloned, a warning is emitted for operators.
+   */
+  private async provisionTenantModelCatalog(newTenantId: string): Promise<void> {
+    const sourceModels = await this.aiModelRepository.findAll({
+      where: { tenantId: SYSTEM_TENANT_ID },
+    });
+
+    let clonedCount = 0;
+    for (const src of sourceModels) {
+      try {
+        // Idempotency: skip slugs the new tenant already owns (backfill-safe).
+        const isUnique = await this.aiModelRepository.isSlugUnique(newTenantId, src.slug);
+        if (!isUnique) {
+          continue;
+        }
+
+        const cloned = AiModelFactory.CreateAiModel({
+          tenantId: newTenantId,
+          name: src.name,
+          slug: src.slug,
+          description: src.description ?? undefined,
+          category: src.category,
+          taskType: src.taskType,
+          modelType: src.modelType,
+          source: src.source,
+          sourceUri: src.sourceUri,
+          sourceRevision: src.sourceRevision ?? undefined,
+          format: src.format,
+          memorySizeMb: src.memorySizeMb ?? undefined,
+          computeType: src.computeType ?? undefined,
+          tags: src.tags,
+          createdBy: this.requestUser?.id,
+        });
+
+        await this.aiModelRepository.create(cloned);
+        clonedCount += 1;
+      } catch (error) {
+        this.logger.warn({
+          message: 'Failed to clone AI model for new tenant - continuing',
+          newTenantId,
+          sourceModelId: src.id,
+          sourceSlug: src.slug,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (clonedCount === 0) {
+      this.logger.warn({
+        message: 'No AI models cloned for new tenant',
+        newTenantId,
+        systemTenantId: SYSTEM_TENANT_ID,
+      });
+    }
   }
 
   /**

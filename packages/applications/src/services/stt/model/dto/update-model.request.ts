@@ -1,5 +1,5 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsArray, IsEnum, IsNumber, Matches, MaxLength, MinLength, Min } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsOptional, IsArray, IsEnum, IsNumber, IsInt, Matches, MaxLength, MinLength, Min } from 'class-validator';
 import { ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat } from '@arcaai/domains';
 
 export class UpdateModelRequest {
@@ -111,4 +111,17 @@ export class UpdateModelRequest {
   @IsString({ each: true })
   @IsOptional()
   tags?: string[];
+
+  // TASK-356 Phase 1 — OCC CAS predicate (echoed from the prior GET, e.g. via
+  // the `ETag` header). The controller folds the `If-Match` header over this
+  // when both are present; missing both yields `428 Precondition Required` on
+  // `@RequiresIfMatch()` routes. Mirrors `UpdatePipelineRequest.expectedVersion`.
+  @ApiProperty({
+    description:
+      'Current version of the row (from the prior GET, e.g. via the `ETag` header). The PATCH fails with `412 Precondition Failed` if the version drifted.',
+    example: 7,
+  })
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
 }

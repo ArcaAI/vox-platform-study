@@ -27,6 +27,19 @@ export interface FrontendPipelineConfigJson {
   language?: string | null;
 }
 
+/**
+ * TASK-356 Phase 4 — tenant default transcription mode (mirrors the server
+ * `TranscriptionMode` enum). The EFFECTIVE per-doctor mode is resolved
+ * server-side and surfaced on the UserPreferences response.
+ */
+export type TranscriptionMode = 'LOCAL' | 'BACKEND';
+
+/**
+ * TASK-356 Phase 4 — tenant audio capture mode (mirrors the server `CaptureMode`
+ * enum). `null` (no tenant override) falls back to the legacy `captureRawAudio`.
+ */
+export type CaptureMode = 'RAW_AND_PROCESSED' | 'RAW_ONLY' | 'PROCESSED_ONLY' | 'NONE';
+
 /** A tenant's stored frontend pipeline config (one row per tenant). */
 export interface TenantFrontendConfig {
   id: string;
@@ -47,6 +60,12 @@ export interface TenantFrontendConfig {
    * UI disables the `captureRawAudio` toggle when this is false.
    */
   platformRawCaptureCapable: boolean;
+  /** TASK-356 — tenant default transcription mode (LOCAL | BACKEND). */
+  transcriptionMode: TranscriptionMode;
+  /** TASK-356 — when true, doctors cannot override the transcription mode. */
+  transcriptionModeLocked: boolean;
+  /** TASK-356 — tenant audio capture mode (null = no override; legacy captureRawAudio applies). */
+  captureMode?: CaptureMode | null;
   configJson?: FrontendPipelineConfigJson | null;
   resourceStatus?: string;
   createdAt: string;
@@ -68,6 +87,12 @@ export interface UpsertTenantFrontendConfigInput {
   diarization?: boolean;
   /** TASK-332 — tenant toggle for local raw-stream audio capture. */
   captureRawAudio?: boolean;
+  /** TASK-356 — tenant default transcription mode (LOCAL | BACKEND). */
+  transcriptionMode?: TranscriptionMode;
+  /** TASK-356 — lock the transcription mode so doctors cannot override it. */
+  transcriptionModeLocked?: boolean;
+  /** TASK-356 — tenant audio capture mode; `null` clears the override. */
+  captureMode?: CaptureMode | null;
   configJson?: FrontendPipelineConfigJson | null;
   /** Required to UPDATE an existing config; omit on first-time create. */
   expectedVersion?: number;

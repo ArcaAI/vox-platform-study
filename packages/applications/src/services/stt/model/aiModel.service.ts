@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { AiModelRepository, AiModelFactory, ResourceType, SysEventType, AiModelDownloadStatus, ModelTaskType } from '@arcaai/domains';
+import { AiModelRepository, AiModelFactory, ResourceType, SysEventType, AiModelDownloadStatus, ModelTaskType, ResourceStatusType } from '@arcaai/domains';
 import { IAiModelService } from './IAiModelService';
 import { CreateModelRequest, UpdateModelRequest, ModelResponse, PaginatedModelResponse } from './dto';
 import { AiModelDtoMapper } from './aiModel.dto.mapper';
@@ -65,7 +65,14 @@ export class AiModelService extends BaseService implements IAiModelService {
   }
 
   /**
-   * Update an existing model
+   * Update an existing model.
+   *
+   * TASK-356 Phase 1 — OCC retrofit. Writes via Compare-And-Set against the
+   * row's `_version` column (mirrors `PipelineService.update`). The DTO's
+   * `expectedVersion` (or the controller's `If-Match`-folded value) is the CAS
+   * predicate; on version drift the repository raises
+   * `OptimisticConcurrencyException`, which the `ExceptionInterceptor` maps to
+   * `412 Precondition Failed`.
    */
   async update(id: string, dto: UpdateModelRequest): Promise<ModelResponse> {
     const tenantId = this.tenantId;
@@ -88,7 +95,7 @@ export class AiModelService extends BaseService implements IAiModelService {
       }
     }
 
-    // Apply updates
+    // Apply updates (expectedVersion is the CAS predicate, never an entity field).
     if (dto.name !== undefined) existing.name = dto.name;
     if (dto.slug !== undefined) existing.slug = dto.slug;
     if (dto.description !== undefined) existing.description = dto.description;
@@ -104,11 +111,15 @@ export class AiModelService extends BaseService implements IAiModelService {
     if (dto.tags !== undefined) existing.tags = dto.tags;
     existing.updatedBy = userId ?? null;
 
-    const updated = await this.aiModelRepository.update(id, existing);
+    // Snapshot the pre-write `_version` BEFORE the CAS bumps it (audit
+    // correlation mirrors PipelineService.update).
+    const previousVersion = existing.version;
+
+    const updated = await this.aiModelRepository.updateWithVersion(id, existing, dto.expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
-      data: { slug: updated.slug, name: updated.name },
+      data: { slug: updated.slug, name: updated.name, previousVersion, newVersion: updated.version },
     });
 
     return AiModelDtoMapper.toResponse(updated);
@@ -157,6 +168,42 @@ export class AiModelService extends BaseService implements IAiModelService {
     }
 
     const models = await this.aiModelRepository.findEnabledModels(tenantId);
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: { count: models.length },
+    });
+
+    return models.map(AiModelDtoMapper.toResponse);
+  }
+
+  /**
+   * Get all models for the admin surface (ENABLED + DISABLED), scoped to the
+   * EXACT caller tenant.
+   *
+   * TASK-356 Phase 1 (D-Q3) — mirrors `PipelineService.getAllForAdmin` so a
+   * just-disabled model stays visible and re-enableable. The explicit
+   * `tenantId` filter pins the read to the caller's own rows: the tenant-scope
+   * extension only widens to include the SYSTEM catalog when NO `tenantId` is
+   * supplied (`tenant-scope.ts` `mergeSharedReadTenantIntoWhere`), so passing
+   * it here keeps the SYSTEM master template out of the tenant admin grid — a
+   * tenant admin manages only its own clone. The explicit `resourceStatus`
+   * filter also suppresses the default soft-delete `{ not: DELETED }` rewrite
+   * while still excluding deleted rows.
+   */
+  async getAllForAdmin(): Promise<ModelResponse[]> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const models = await this.aiModelRepository.findAll({
+      filters: {
+        tenantId,
+        resourceStatus: { in: [ResourceStatusType.ENABLED, ResourceStatusType.DISABLED] },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      sort: [{ name: 'asc' }],
+    });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: { count: models.length },

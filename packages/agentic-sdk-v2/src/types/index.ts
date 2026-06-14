@@ -318,4 +318,7 @@ export type {
   FrontendPipelineConfigJson,
   TenantFrontendConfig,
   UpsertTenantFrontendConfigInput,
+  // TASK-356 Phase 4 — audio-console enums (string unions).
+  CaptureMode,
+  TranscriptionMode,
 } from './frontend-pipeline-config';

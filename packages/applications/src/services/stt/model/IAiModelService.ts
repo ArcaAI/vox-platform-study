@@ -28,6 +28,11 @@ export interface IAiModelService {
   getAll(): Promise<ModelResponse[]>;
 
   /**
+   * Get all models for the admin surface (ENABLED + DISABLED), exact-tenant.
+   */
+  getAllForAdmin(): Promise<ModelResponse[]>;
+
+  /**
    * Get paginated list of models
    */
   list(page: number, limit: number): Promise<PaginatedModelResponse>;

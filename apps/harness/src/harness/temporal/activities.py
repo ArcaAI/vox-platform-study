@@ -25,6 +25,12 @@ from temporalio import activity
 from harness.core.config import Settings, get_runtime_judge_config, get_settings
 from harness.eval.judge.base import JudgeClient
 from harness.eval.judge.providers import build_judge_client
+from harness.guards.phi import (
+    PhiEgressBlocked,
+    PhiRedactor,
+    ensure_egress_safe,
+    ensure_inferential_egress_safe,
+)
 from harness.guides.retrieval.prompt import build_strict_citations_block
 from harness.guides.retrieval.qdrant_store import KnowledgeQdrantStore
 from harness.guides.retrieval.retriever import HybridRetriever, build_query
@@ -155,6 +161,16 @@ def _granite_client(settings: Settings) -> GraniteGuardianClient:
     return GraniteGuardianClient(settings.safety)
 
 
+def _phi_redactor() -> PhiRedactor:
+    """Build the fail-closed PHI egress redactor (TASK-357; Presidio engines are lazy).
+
+    Factored out like the other client factories so each cloud-bound activity builds
+    it once per invocation (the spaCy model loads only on an actual cloud redaction)
+    and the tests can monkeypatch it with a stub.
+    """
+    return PhiRedactor()
+
+
 def _hybrid_retriever(settings: Settings) -> HybridRetriever:
     """Build the JIT hybrid retriever from the (flag-gated) ``RetrievalConfig``.
 
@@ -233,9 +249,43 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
     """Generate the SOAP draft synchronously via the SMR service."""
     settings = get_settings()
     hp = payload.hyperparameters or {}
+
+    # TASK-357: enforce the fail-closed PHI egress guard before any cloud SMR call.
+    # Local providers (the default) are a pure pass-through. A fail-closed block
+    # raises PhiEgressBlocked, which propagates and fails the workflow — no draft is
+    # ever persisted (the SMR failure-propagation invariant), never a silent leak.
+    redactor = _phi_redactor()
+    try:
+        prompt = ensure_egress_safe(
+            payload.prompt,
+            provider=payload.provider,
+            settings=settings,
+            phi_enabled=payload.phi_enabled,
+            phi_fail_closed=payload.phi_fail_closed,
+            redactor=redactor,
+        )
+        system_prompt = (
+            ensure_egress_safe(
+                payload.system_prompt,
+                provider=payload.provider,
+                settings=settings,
+                phi_enabled=payload.phi_enabled,
+                phi_fail_closed=payload.phi_fail_closed,
+                redactor=redactor,
+            )
+            if payload.system_prompt is not None
+            else None
+        )
+    except PhiEgressBlocked as exc:
+        activity.logger.warning(
+            "harness.phi_egress.blocked",
+            extra={"provider": exc.provider, "reason": exc.reason, "stage": "generate"},
+        )
+        raise
+
     return await _smr_client(settings).generate(
-        prompt=payload.prompt,
-        system_prompt=payload.system_prompt,
+        prompt=prompt,
+        system_prompt=system_prompt,
         provider=payload.provider,
         model=payload.model,
         temperature=hp.get("temperature"),
@@ -450,11 +500,48 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
     whole pass. Returns the raw results + a guardrailDecisions map + ragTriadScore.
     """
     settings = get_settings()
+    judge_config = get_runtime_judge_config()
+
+    # TASK-357: enforce the fail-closed PHI egress guard before any cloud judge/Granite
+    # call — redact the Granite-screened note (safety provider) and the judge premise
+    # (transcript + per-claim hypotheses/evidence + knowledge chunks, judge provider).
+    # Local providers (the default) are an identity no-op. A fail-closed block degrades
+    # the whole inferential pass (reduced assurance) rather than raising into the loop —
+    # the inferential degrade contract — so an unverifiable note never auto-PASSes.
+    try:
+        note_text, transcript_text, citations_map, knowledge_chunks = (
+            ensure_inferential_egress_safe(
+                note_text=payload.note_text,
+                transcript_text=payload.transcript_text,
+                citations_map=payload.citations_map,
+                knowledge_chunks=payload.knowledge_chunks,
+                judge_provider=str(judge_config.provider),
+                safety_provider=settings.safety.provider if payload.safety_enabled else None,
+                settings=settings,
+                phi_enabled=payload.phi_enabled,
+                phi_fail_closed=payload.phi_fail_closed,
+                redactor=_phi_redactor(),
+            )
+        )
+    except PhiEgressBlocked as exc:
+        activity.logger.warning(
+            "harness.phi_egress.blocked",
+            extra={"provider": exc.provider, "reason": exc.reason, "stage": "inferential"},
+        )
+        reason = f"phi egress blocked for cloud provider {exc.provider!r}: {exc.reason}"
+        degraded = [
+            degraded_result(GROUNDEDNESS_NAME, reason),
+            degraded_result(CITATION_VERIFY_NAME, reason),
+        ]
+        if payload.safety_enabled:
+            degraded.append(degraded_result(SAFETY_NAME, reason))
+        return _assemble_inferential_output(degraded)
+
     ctx = SensorContext(
-        note_text=payload.note_text,
-        transcript_text=payload.transcript_text,
-        citations_map=payload.citations_map,
-        knowledge_chunks=payload.knowledge_chunks,
+        note_text=note_text,
+        transcript_text=transcript_text,
+        citations_map=citations_map,
+        knowledge_chunks=knowledge_chunks,
     )
 
     # TASK-354 Defect A: heartbeat for the whole pass (the costly, many-call part) so a
@@ -483,7 +570,7 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
         # config the runtime judge is built from.
         groundedness = GroundednessSensor(
             threshold=payload.groundedness_threshold,
-            batch_size=get_runtime_judge_config().entailment_batch_size,
+            batch_size=judge_config.entailment_batch_size,
         )
         citation_verify = CitationVerifySensor(threshold=thresholds.citation_verify_threshold)
         # TASK-355 Phase D Slice 5d (Q5) — stream each groundedness claim verdict to

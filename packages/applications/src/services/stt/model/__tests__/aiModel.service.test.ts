@@ -33,6 +33,9 @@ const AiModelFormat = {
     PYTORCH: 'PYTORCH',
     ONNX: 'ONNX',
     NEMO: 'NEMO',
+    // TASK-356 Phase 1 — additive formats (foundation migration).
+    MLX: 'MLX',
+    GGUF: 'GGUF',
 } as const;
 
 const ModelCategory = {
@@ -94,9 +97,11 @@ function createBehavioralModelEntity(overrides: {
     checksum?: string | null;
     resourceStatus?: string;
     tags?: string[];
+    version?: number;
 } = {}) {
     // Internal mutable state
     let _name = overrides.name ?? 'Whisper Large V3';
+    const _version = overrides.version ?? 3;
     let _slug = overrides.slug ?? 'whisper-large-v3';
     let _memorySizeMb = overrides.memorySizeMb ?? 3000;
     let _computeType = overrides.computeType ?? 'float16';
@@ -134,6 +139,9 @@ function createBehavioralModelEntity(overrides: {
         get fileSizeMb() { return _fileSizeMb; },
         get checksum() { return _checksum; },
         get resourceStatus() { return _resourceStatus; },
+        // TASK-302/356 OCC — the `_version` column surfaced as a getter so the
+        // service can snapshot it and pass it to `updateWithVersion`.
+        get version() { return _version; },
         get changes() { return _changes; },
         get hasChanges() { return Object.keys(_changes).length > 0; },
 
@@ -223,6 +231,7 @@ const mockModelRepository = {
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateWithVersion: vi.fn(),
     isSlugUnique: vi.fn(),
 };
 
@@ -294,6 +303,25 @@ describe('AiModelService', () => {
             ).rejects.toThrow(BadRequestException);
         });
 
+        // TASK-356 Phase 1 — the catalog must accept the additive formats.
+        it.each([AiModelFormat.MLX, AiModelFormat.GGUF])('should accept the new %s format', async (format) => {
+            mockModelRepository.isSlugUnique.mockResolvedValue(true);
+            mockModelRepository.create.mockImplementation(async (entity: any) => entity);
+
+            const result = await service.create({
+                name: 'New Format Model',
+                slug: 'new-format-model',
+                category: ModelCategory.NLP as any,
+                taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION as any,
+                modelType: ModelType.BASE_MODEL as any,
+                source: AiModelSource.LOCAL as any,
+                sourceUri: 'local/new-format-model',
+                format: format as any,
+            });
+
+            expect(result.format).toBe(format);
+        });
+
         it('should throw BadRequestException when slug already exists', async () => {
             mockModelRepository.isSlugUnique.mockResolvedValue(false);
 
@@ -314,11 +342,11 @@ describe('AiModelService', () => {
 
     describe('update', () => {
         it('should update an existing model and verify state changes', async () => {
-            const existingModel = createBehavioralModelEntity({ id: 'model-1', name: 'Old Name' });
+            const existingModel = createBehavioralModelEntity({ id: 'model-1', name: 'Old Name', version: 3 });
             mockModelRepository.findById.mockResolvedValue(existingModel);
-            mockModelRepository.update.mockImplementation(async (_id: any, entity: any) => entity);
+            mockModelRepository.updateWithVersion.mockImplementation(async (_id: any, entity: any) => entity);
 
-            const result = await service.update('model-1', { name: 'Updated Model Name' });
+            const result = await service.update('model-1', { name: 'Updated Model Name', expectedVersion: 3 } as any);
 
             // BEHAVIORAL VERIFICATION on entity
             expect(existingModel.name).toBe('Updated Model Name');
@@ -339,7 +367,7 @@ describe('AiModelService', () => {
             mockModelRepository.findById.mockResolvedValue(null);
 
             await expect(
-                service.update('non-existent-id', { name: 'Updated' })
+                service.update('non-existent-id', { name: 'Updated', expectedVersion: 1 } as any)
             ).rejects.toThrow(NotFoundException);
         });
 
@@ -352,8 +380,43 @@ describe('AiModelService', () => {
             mockModelRepository.isSlugUnique.mockResolvedValue(false);
 
             await expect(
-                service.update('model-1', { slug: 'taken-slug' })
+                service.update('model-1', { slug: 'taken-slug', expectedVersion: 1 } as any)
             ).rejects.toThrow(BadRequestException);
+        });
+
+        // TASK-356 Phase 1 — OCC retrofit (mirrors the AsrPipeline contract).
+        it('update() passes expectedVersion to updateWithVersion (CAS predicate)', async () => {
+            const existingModel = createBehavioralModelEntity({ id: 'model-1', version: 7 });
+            mockModelRepository.findById.mockResolvedValue(existingModel);
+            mockModelRepository.updateWithVersion.mockImplementation(async (_id: any, entity: any) => entity);
+
+            await service.update('model-1', { name: 'X', expectedVersion: 7 } as any);
+
+            expect(mockModelRepository.updateWithVersion).toHaveBeenCalledWith('model-1', existingModel, 7);
+            // The legacy non-OCC write must no longer be used.
+            expect(mockModelRepository.update).not.toHaveBeenCalled();
+        });
+
+        it('update() propagates the conflict on version drift (OCC)', async () => {
+            const existingModel = createBehavioralModelEntity({ id: 'model-1', version: 7 });
+            mockModelRepository.findById.mockResolvedValue(existingModel);
+            mockModelRepository.updateWithVersion.mockRejectedValue(
+                new Error('OptimisticConcurrencyException: version drift'),
+            );
+
+            await expect(
+                service.update('model-1', { name: 'X', expectedVersion: 2 } as any),
+            ).rejects.toThrow(/OptimisticConcurrency/);
+        });
+
+        it('update() maps version into the ModelResponse (ETag source)', async () => {
+            const existingModel = createBehavioralModelEntity({ id: 'model-1', version: 4 });
+            mockModelRepository.findById.mockResolvedValue(existingModel);
+            mockModelRepository.updateWithVersion.mockImplementation(async (_id: any, entity: any) => entity);
+
+            const result = await service.update('model-1', { name: 'X', expectedVersion: 4 } as any);
+
+            expect(result.version).toBe(4);
         });
     });
 
@@ -408,6 +471,42 @@ describe('AiModelService', () => {
 
             expect(result).toHaveLength(2);
             expect(mockModelRepository.findEnabledModels).toHaveBeenCalledWith('tenant-1');
+        });
+    });
+
+    // TASK-356 Phase 1 — admin catalog list (exact-tenant; includes disabled
+    // rows so a just-disabled model stays visible and re-enableable). Mirrors
+    // AsrPipeline `getAllForAdmin`, but filters to the EXACT tenant (the user's
+    // D-Q3 decision: a tenant admin sees only its own clone, not the SYSTEM
+    // original surfaced by the shared-read tenant-scope extension).
+    describe('getAllForAdmin', () => {
+        it('lists ENABLED + DISABLED rows for the exact tenant only', async () => {
+            const models = [
+                createBehavioralModelEntity({ id: 'm1', resourceStatus: ResourceStatusType.ENABLED }),
+                createBehavioralModelEntity({ id: 'm2', resourceStatus: ResourceStatusType.DISABLED }),
+            ];
+            mockModelRepository.findAll.mockResolvedValue(models);
+
+            const result = await service.getAllForAdmin();
+
+            expect(result).toHaveLength(2);
+            expect(mockModelRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    filters: expect.objectContaining({
+                        tenantId: 'tenant-1',
+                        resourceStatus: { in: [ResourceStatusType.ENABLED, ResourceStatusType.DISABLED] },
+                    }),
+                }),
+            );
+        });
+
+        it('throws BadRequestException when tenant ID is missing', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'tenantId') return null;
+                return null;
+            });
+
+            await expect(service.getAllForAdmin()).rejects.toThrow(BadRequestException);
         });
     });
 

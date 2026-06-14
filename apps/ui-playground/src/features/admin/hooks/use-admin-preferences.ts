@@ -24,6 +24,8 @@ export const DEFAULT_ADMIN_MENU_ORDER: readonly string[] = [
   'prompts',
   'departments',
   'audio-pipelines',
+  // TASK-356 Phase 1 — tenant AI model catalog.
+  'ai-models',
   'storage',
   'configurations',
   'audit-logs',

@@ -41,6 +41,10 @@ export const AiModelFormat = {
     ONNX: 'ONNX',
     NEMO: 'NEMO',
     PYTORCH: 'PYTORCH',
+    // TASK-356 Phase 1 — additive formats (foundation migration). Only the
+    // values actually used by a seed row are mirrored here.
+    MLX: 'MLX',
+    GGUF: 'GGUF',
 } as const;
 
 export const ModelCategory = {
@@ -54,6 +58,8 @@ export const ModelTaskType = {
     AUDIO_TO_AUDIO: 'AUDIO_TO_AUDIO',
     SUMMARIZATION: 'SUMMARIZATION',
     TEXT_GENERATION: 'TEXT_GENERATION',
+    // TASK-356 Phase 1 — guardrail/safety models (foundation migration).
+    GUARDRAIL: 'GUARDRAIL',
 } as const;
 
 export const ModelType = {
@@ -856,7 +862,8 @@ export const DEFAULT_AI_MODELS = [
         source: AiModelSource.LOCAL,
         sourceUri: 'mlx-community/medgemma-1.5-4b-it',
         sourceRevision: 'main',
-        format: AiModelFormat.SAFETENSOR,
+        // TASK-356 Phase 1 — corrected to MLX (the slug/tags already say MLX).
+        format: AiModelFormat.MLX,
         memorySizeMb: 9523,
         computeType: 'quantized',
         tags: ['smr', 'lm-studio', 'openai-compat', 'medical', 'mlx', 'recommended'],
@@ -894,6 +901,27 @@ export const DEFAULT_AI_MODELS = [
         memorySizeMb: 12595,
         computeType: 'quantized',
         tags: ['smr', 'lm-studio', 'openai-compat', 'high-quality'],
+    },
+
+    // =========================================================================
+    // Guardrail / Safety Models (TASK-356 Phase 1)
+    // =========================================================================
+    {
+        id: '80000000-0000-0000-0005-000000000060',
+        tenantId: DEFAULT_TENANT_ID,
+        name: 'Granite Guardian 4.1 8B',
+        slug: 'granite-guardian-4.1-8b',
+        description: 'IBM Granite Guardian 4.1 8B — safety/guardrail model. `format` is descriptive metadata (GGUF / llama.cpp); serving is provider-based.',
+        category: ModelCategory.NLP,
+        taskType: ModelTaskType.GUARDRAIL,
+        modelType: ModelType.BASE_MODEL,
+        source: AiModelSource.LOCAL,
+        sourceUri: 'granite-guardian-4.1-8b',
+        sourceRevision: 'main',
+        format: AiModelFormat.GGUF,
+        memorySizeMb: 4900,
+        computeType: 'quantized',
+        tags: ['guardrail', 'safety', 'granite'],
     },
 
     // =========================================================================
@@ -2042,6 +2070,55 @@ export const seedAiModels = async (client: CorePrismaClient) => {
     return { success: true, count: DEFAULT_AI_MODELS.length };
 };
 
+/**
+ * Customer tenants that receive a clone of the SYSTEM AI model catalog. Mirrors
+ * the customer-tenant set used by the per-tenant ASR pipeline / settings seeds.
+ */
+export const CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL = [
+    SEED_TENANT_ID,
+    SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    SEED_CUSTOMER_TENANT_IDS.FOURBITS,
+    SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
+];
+
+/**
+ * TASK-356 Phase 1 (D-5 backfill) — clones the SYSTEM AI model catalog into
+ * every seeded customer tenant so EXISTING tenants are made whole (the runtime
+ * `TenantService.provisionTenantModelCatalog` handles NEW tenants).
+ *
+ * Idempotent: a clone is created only when the tenant does not already own the
+ * slug, so re-running `db:seed` fills only the gaps and never duplicates. The
+ * SYSTEM rows are never touched (they are the master template); each clone omits
+ * the SYSTEM row `id` so Prisma assigns a fresh `uuid(7)`, and download state is
+ * intentionally not copied (the column defaults to `NOT_DOWNLOADED`).
+ */
+export const backfillCustomerTenantAiModels = async (client: CorePrismaClient) => {
+    console.log('Backfilling customer-tenant AI model catalog...');
+
+    let cloned = 0;
+    for (const tenantId of CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL) {
+        for (const src of DEFAULT_AI_MODELS) {
+            const existing = await client.aiModel.findFirst({
+                where: { tenantId, slug: src.slug },
+            });
+            if (existing) {
+                continue;
+            }
+
+            // Strip the SYSTEM-owned id + tenantId; the clone gets a fresh id
+            // (uuid(7) default) and the customer tenant id.
+            const { id: _systemId, tenantId: _systemTenantId, ...rest } = src;
+            await client.aiModel.create({
+                data: { ...rest, tenantId },
+            });
+            cloned += 1;
+        }
+    }
+
+    console.log(`Backfilled ${cloned} customer-tenant AI models`);
+    return { success: true, count: cloned };
+};
+
 export const seedAsrPipelines = async (client: CorePrismaClient) => {
     console.log('Seeding ASR Pipelines...');
 
@@ -2133,6 +2210,11 @@ export const seedStt = async (client: CorePrismaClient) => {
     try {
         // Seed AI Models first (pipelines reference them by slug)
         await seedAiModels(client);
+        console.log('');
+
+        // TASK-356 Phase 1 — clone the SYSTEM catalog into existing customer
+        // tenants (idempotent; mirrors the runtime clone-per-tenant).
+        await backfillCustomerTenantAiModels(client);
         console.log('');
 
         // Seed ASR Pipelines

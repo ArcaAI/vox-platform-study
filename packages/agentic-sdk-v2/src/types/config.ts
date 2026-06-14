@@ -212,6 +212,12 @@ export interface STTPluginConfig {
   returnTimestamps?: boolean | 'word';
   /** Let model auto-detect language for multilingual/code-switching audio */
   codeSwitching?: boolean;
+  /**
+   * TASK-356 Phase 4 — server-resolved EFFECTIVE transcription mode (admin-owned).
+   * Injected by `AgenticProvider` from the UserPreferences cascade; honored by
+   * `TranscriptionPipeline.resolveSTTRuntimeProvider()` ahead of provider/location.
+   */
+  transcriptionMode?: 'LOCAL' | 'BACKEND';
 }
 
 // =============================================================================
@@ -478,6 +484,15 @@ export interface UserPreferences {
    * endpoints (`enroll`, `activate`, `deactivate`) -- this field is informational only.
    */
   activeVoiceProfile?: ActiveVoiceProfileSummary;
+  /**
+   * TASK-356 — read-only EFFECTIVE transcription mode resolved server-side
+   * (locked ⇒ tenant default wins; unlocked ⇒ `workflowMode` overrides). NOT
+   * settable by doctors (see `UserPreferencesUpdate`); the SDK re-projects it
+   * into `resolvedConfig.stt.transcriptionMode` (admin-owned).
+   */
+  transcriptionMode?: 'LOCAL' | 'BACKEND';
+  /** TASK-356 — read-only: whether the tenant locked the transcription mode. */
+  transcriptionModeLocked?: boolean;
   /** Custom preferences (extensible) */
   custom?: Record<string, unknown>;
 }

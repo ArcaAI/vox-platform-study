@@ -267,6 +267,13 @@ class GenerateInput(BaseModel):
     hyperparameters: dict[str, Any] = Field(default_factory=dict)
     provider: str | None = None
     model: str | None = None
+    # TASK-357: the run-effective PHI egress policy, snapshotted from the harness
+    # policy at workflow start so the guard in the ``generate`` activity is
+    # deterministic across replay. Defaults mirror the fail-closed code default, so
+    # an unset/legacy input still enforces the guard. Optional with safe defaults ⇒
+    # no new workflow command, replay-safe (TASK-355 Slice-5d precedent).
+    phi_enabled: bool = True
+    phi_fail_closed: bool = True
 
 
 class RetrieveContextInput(BaseModel):
@@ -336,6 +343,12 @@ class RunInferentialSensorsInput(BaseModel):
     # ``safety_enabled=False`` skips the Granite safety screen entirely.
     groundedness_threshold: float = DEFAULT_GROUNDEDNESS_THRESHOLD
     safety_enabled: bool = True
+    # TASK-357: the run-effective PHI egress policy, snapshotted from the harness
+    # policy at workflow start so the guard in ``run_inferential_sensors`` is
+    # deterministic across replay (defaults mirror the fail-closed code default).
+    # Optional with safe defaults ⇒ no new workflow command, replay-safe.
+    phi_enabled: bool = True
+    phi_fail_closed: bool = True
     # TASK-355 Phase D Slice 5d (Q5) — live per-claim assurance feed. Populated ONLY
     # at the optimistic ASSURANCE call site; when ``live_assurance`` is True and the
     # ids are present, the activity streams each groundedness claim verdict to apps/api

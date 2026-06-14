@@ -4,6 +4,7 @@
 import { generateId } from '../../../utils';
 import { BaseEntityFactoryCreateProps } from '../../../common';
 import { TenantFrontendConfigEntity, ITenantFrontendConfigEntity } from '../../../entities';
+import * as Enums from '../../../enums';
 
 export interface CreateTenantFrontendConfigProps extends BaseEntityFactoryCreateProps {
   asrModel?: ITenantFrontendConfigEntity['asrModel'];
@@ -12,6 +13,9 @@ export interface CreateTenantFrontendConfigProps extends BaseEntityFactoryCreate
   voiceEnrollment?: ITenantFrontendConfigEntity['voiceEnrollment'];
   diarization?: ITenantFrontendConfigEntity['diarization'];
   captureRawAudio?: ITenantFrontendConfigEntity['captureRawAudio'];
+  transcriptionMode?: ITenantFrontendConfigEntity['transcriptionMode'];
+  transcriptionModeLocked?: ITenantFrontendConfigEntity['transcriptionModeLocked'];
+  captureMode?: ITenantFrontendConfigEntity['captureMode'];
   configJson?: ITenantFrontendConfigEntity['configJson'];
   tenantId: ITenantFrontendConfigEntity['tenantId'];
 
@@ -39,6 +43,9 @@ export class TenantFrontendConfigFactory {
       voiceEnrollment: props.voiceEnrollment ?? false,
       diarization: props.diarization ?? false,
       captureRawAudio: props.captureRawAudio ?? false,
+      transcriptionMode: props.transcriptionMode ?? Enums.TranscriptionMode.BACKEND,
+      transcriptionModeLocked: props.transcriptionModeLocked ?? false,
+      captureMode: props.captureMode ?? null,
       configJson: props.configJson ?? null,
     });
   }
