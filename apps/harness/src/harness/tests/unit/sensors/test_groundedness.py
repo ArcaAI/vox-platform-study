@@ -187,6 +187,75 @@ class TestDegradeAndEmpty:
         assert judge.calls == []
 
 
+class TestOnClaimCallback:
+    """TASK-355 Phase D Slice 5d (Q5) — the per-claim path notifies an optional
+    ``on_claim(claim_id, supported)`` callback AS EACH verdict resolves, so the
+    activity can stream it live. Best-effort + verdict-preserving: a callback that
+    raises must NEVER degrade the pass or change the aggregate verdict."""
+
+    @pytest.mark.asyncio
+    async def test_on_claim_fires_once_per_verifiable_claim_with_its_verdict(self):
+        claims = [
+            claim("c-pen", text="penicillin allergy", section="P"),  # ungrounded
+            claim("c-htn", text="hypertension", section="A", evidence=[evidence(quote="hypertension")]),
+        ]
+        seen: list[tuple[str, bool]] = []
+
+        async def on_claim(claim_id: str, supported: bool) -> None:
+            seen.append((claim_id, supported))
+
+        result = await GroundednessSensor(threshold=0.8).arun(
+            _ctx(claims), judge=_Judge(unsupported_markers=("penicillin",)), on_claim=on_claim
+        )
+
+        # One callback per claim, each carrying that claim's resolved verdict.
+        assert sorted(seen) == [("c-htn", True), ("c-pen", False)]
+        # The aggregate is unchanged by the callback (parity with the no-callback path).
+        assert result.score == pytest.approx(0.5)
+        assert result.claims_flagged == ["c-pen"]
+
+    @pytest.mark.asyncio
+    async def test_empty_hypothesis_claim_does_not_emit(self):
+        # An empty claim asserts nothing (aggregated grounded) and makes no judge
+        # call — so it must not produce a live event either. (The `claim` helper
+        # substitutes the id for empty text, so override text="" directly.)
+        claims = [{**claim("c-empty"), "text": ""}, claim("c-htn", text="hypertension")]
+        seen: list[tuple[str, bool]] = []
+
+        async def on_claim(claim_id: str, supported: bool) -> None:
+            seen.append((claim_id, supported))
+
+        await GroundednessSensor().arun(_ctx(claims), judge=_Judge(), on_claim=on_claim)
+
+        assert [c for c, _ in seen] == ["c-htn"]
+
+    @pytest.mark.asyncio
+    async def test_callback_error_never_degrades_or_changes_the_verdict(self):
+        claims = [
+            claim("c-pen", text="penicillin allergy", section="P"),
+            claim("c-htn", text="hypertension", section="A"),
+        ]
+
+        async def on_claim(claim_id: str, supported: bool) -> None:
+            raise RuntimeError("redis down")
+
+        result = await GroundednessSensor(threshold=0.8).arun(
+            _ctx(claims), judge=_Judge(unsupported_markers=("penicillin",)), on_claim=on_claim
+        )
+
+        # The pass completes normally — a broken live feed is swallowed.
+        assert result.degraded is False
+        assert result.score == pytest.approx(0.5)
+        assert result.claims_flagged == ["c-pen"]
+
+    @pytest.mark.asyncio
+    async def test_no_callback_keeps_the_legacy_signature_working(self):
+        # Omitting on_claim is the legacy call site — must behave exactly as before.
+        claims = [claim("c-htn", text="hypertension")]
+        result = await GroundednessSensor().arun(_ctx(claims), judge=_Judge())
+        assert result.passed is True
+
+
 def test_arun_is_a_coroutine_using_the_injected_judge():
     """The shared judge is passed per-call (not constructor-injected)."""
     import inspect

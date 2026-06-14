@@ -25,6 +25,10 @@ enum HarnessAuditAction {
     CONSENT_WITHDRAWN
     BREACH_REPORTED
     REDUCED_ASSURANCE
+    // TASK-355 Phase D (optimistic delivery) — relaxed sign-off governance.
+    SAFETY_OVERRIDE         // Q4 — clinician one-click override of a COMPLETED safety FLAG at sign-off (no free-text).
+    SIGNED_BEFORE_ASSURANCE // Q2a — note signed while assurance still running (DRAFT_PENDING_SENSORS); correlation annotation.
+    POST_SIGN_FLAG          // Q2b — assurance returned a FLAG/REGEN AFTER an early sign (note immutable); amendment/follow-up.
 
     @@schema("core")
 }

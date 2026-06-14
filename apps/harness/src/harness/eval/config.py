@@ -98,6 +98,14 @@ class JudgeConfig(BaseSettings):
     transient_retries: int = 3
     transient_retry_backoff_s: float = 12.0
 
+    # Groundedness batching (TASK-355 R-5): claims verified per judge call. ``1``
+    # keeps the legacy one-call-per-claim path byte-for-byte; ``>= 2`` states the
+    # shared transcript premise ONCE and labels that many claims in a single JSON-array
+    # call (``ceil(N / size)`` long-prefill calls instead of N), the dominant latency
+    # lever for the inferential pass. Conservative parser: any ambiguous array item
+    # degrades to ungrounded, so a larger batch can never loosen a verdict.
+    entailment_batch_size: int = 1
+
     # -- Calibration levers (TASK-330 eval hardening) -----------------------
     # Opt-in anchored rubric prompt: appends rubric-faithful per-score guidance +
     # balanced exemplars so a small local judge applies the Epic grade descriptors

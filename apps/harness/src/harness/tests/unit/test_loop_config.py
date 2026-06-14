@@ -73,3 +73,34 @@ class TestLoopConfigEnvOverride:
         assert s.max_regen == 5
         assert s.smr_base_url == "http://smr:9999"
         assert s.api_internal_prefix == "/api/v1/internal/harness"
+
+
+class TestOptimisticDeliveryFlag:
+    """TASK-355 Phase D (R-7) — the ``HARNESS_OPTIMISTIC_DELIVERY_ENABLED`` kill-switch.
+
+    The FIRST key of the two-key optimistic gate (the second is the durable
+    ``task-355-optimistic-delivery`` patch marker). It is read here, in NON-workflow
+    settings, and snapshotted into ``HarnessGateConfig`` at workflow start so it stays
+    deterministic across replay. Default OFF: unset / falsy ⇒ False.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _hermetic_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Isolate from any ambient dev ``.env`` value (eagerly loaded by conftest).
+        monkeypatch.delenv("HARNESS_OPTIMISTIC_DELIVERY_ENABLED", raising=False)
+
+    def test_defaults_off_when_unset(self):
+        # (a) env unset ⇒ the gate-config build site sees False.
+        assert Settings().optimistic_delivery_enabled is False
+
+    @pytest.mark.parametrize("raw", ["true", "True", "TRUE", "1"])
+    def test_truthy_env_enables(self, monkeypatch, raw):
+        # (b)/(c) true/True/1 (case-insensitive) ⇒ True.
+        monkeypatch.setenv("HARNESS_OPTIMISTIC_DELIVERY_ENABLED", raw)
+        assert Settings().optimistic_delivery_enabled is True
+
+    @pytest.mark.parametrize("raw", ["false", "False", "0"])
+    def test_falsy_env_stays_off(self, monkeypatch, raw):
+        # (c) false/0 ⇒ False (default-OFF preserved).
+        monkeypatch.setenv("HARNESS_OPTIMISTIC_DELIVERY_ENABLED", raw)
+        assert Settings().optimistic_delivery_enabled is False

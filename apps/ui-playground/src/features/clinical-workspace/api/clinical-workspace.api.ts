@@ -60,6 +60,13 @@ export function buildHarnessProgressStreamUrl(client: AgenticClient, consultatio
   return `${base}${path}?ticket=${encodeURIComponent(ticket)}`;
 }
 
+/** Build the authenticated harness-assurance SSE URL (TASK-355 Phase D Slice 6b, `?ticket=` appended). */
+export function buildHarnessAssuranceStreamUrl(client: AgenticClient, consultationId: string, ticket: string): string {
+  const base = client.getBaseUrl();
+  const path = WORKSPACE_ENDPOINTS.harnessAssuranceStream(consultationId);
+  return `${base}${path}?ticket=${encodeURIComponent(ticket)}`;
+}
+
 /** Add a mid-visit context item (case note, work note, attachment, …). */
 export function addContextItem(client: AgenticClient, consultationId: string, body: AddContextRequest): Promise<WorkspaceContextItem> {
   return client.post<WorkspaceContextItem>(WORKSPACE_ENDPOINTS.context(consultationId), { source: 'USER', ...body });
@@ -90,9 +97,20 @@ export function fetchProvenance(client: AgenticClient, consultationId: string, c
   return client.get<SummaryProvenanceResponse>(WORKSPACE_ENDPOINTS.summaryProvenance(consultationId, contextItemId));
 }
 
-/** Approve + sign the draft note (status → SIGNED_NOTE). NEVER auto-called. */
-export function approveNote(client: AgenticClient, consultationId: string, contextItemId: string): Promise<SummaryApprovalResponseDto> {
-  return client.post<SummaryApprovalResponseDto>(WORKSPACE_ENDPOINTS.summaryApprove(consultationId, contextItemId), {});
+/**
+ * Approve + sign the draft note (status → SIGNED_NOTE). NEVER auto-called.
+ *
+ * Pass `overrideSafetyFlag: true` to one-click acknowledge + sign past a safety
+ * FLAG (TASK-355 Q4); the server records it as a SAFETY_OVERRIDE WORM event.
+ */
+export function approveNote(
+  client: AgenticClient,
+  consultationId: string,
+  contextItemId: string,
+  options?: { overrideSafetyFlag?: boolean },
+): Promise<SummaryApprovalResponseDto> {
+  const body = options?.overrideSafetyFlag ? { overrideSafetyFlag: true } : {};
+  return client.post<SummaryApprovalResponseDto>(WORKSPACE_ENDPOINTS.summaryApprove(consultationId, contextItemId), body);
 }
 
 /** Edit the draft note content before signing. */

@@ -24,8 +24,12 @@ _TOKEN = "shared-secret"
 _HEADERS = {"X-Service-Token": _TOKEN}
 
 
-def _build(service_token: str = _TOKEN):
-    settings = Settings(service_token=SecretStr(service_token), log_level="debug")
+def _build(service_token: str = _TOKEN, *, optimistic_delivery_enabled: bool = False):
+    settings = Settings(
+        service_token=SecretStr(service_token),
+        log_level="debug",
+        optimistic_delivery_enabled=optimistic_delivery_enabled,
+    )
     app = create_app(settings_override=settings)
 
     handle = MagicMock()
@@ -94,6 +98,48 @@ class TestStartDocument:
         client.start_workflow.assert_not_awaited()
 
 
+class TestStartSnapshotsOptimisticFlag:
+    """TASK-355 Phase D (R-7) — the start path snapshots ``HARNESS_OPTIMISTIC_DELIVERY_ENABLED``
+    (via ``Settings``) into the workflow input's ``HarnessGateConfig`` at workflow start.
+
+    This is the determinism-safe injection point: the env is read in NON-workflow
+    code (the FastAPI start endpoint) and captured in the input, so the workflow
+    never reads env and the value is stable across replay.
+    """
+
+    @pytest.mark.asyncio
+    async def test_default_off_snapshots_false_into_gate(self, harness):
+        # (a) Default settings (flag unset) ⇒ the snapshotted gate is OFF.
+        http, client, _handle, settings = harness
+        assert settings.optimistic_delivery_enabled is False
+        resp = await http.post(
+            "/api/v1/internal/consultations/c-1/document:start",
+            headers=_HEADERS,
+            json={"tenantId": "t-1"},
+        )
+        assert resp.status_code == 200
+        args, _ = client.start_workflow.call_args
+        wf_input = args[1]
+        assert wf_input.gate.optimistic_delivery_enabled is False
+
+    @pytest.mark.asyncio
+    async def test_flag_on_snapshots_true_into_gate(self):
+        # (b) HARNESS_OPTIMISTIC_DELIVERY_ENABLED on ⇒ the snapshotted gate is ON.
+        app, client, _handle, settings = _build(optimistic_delivery_enabled=True)
+        assert settings.optimistic_delivery_enabled is True
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as http:
+            resp = await http.post(
+                "/api/v1/internal/consultations/c-1/document:start",
+                headers=_HEADERS,
+                json={"tenantId": "t-1"},
+            )
+        assert resp.status_code == 200
+        args, _ = client.start_workflow.call_args
+        wf_input = args[1]
+        assert wf_input.gate.optimistic_delivery_enabled is True
+
+
 class TestSignalApprove:
     @pytest.mark.asyncio
     async def test_signal_targets_the_right_workflow_id_with_mapped_payload(self, harness):
@@ -131,6 +177,65 @@ class TestSignalApprove:
         assert resp.status_code == 401
         handle.signal.assert_not_awaited()
         client.get_workflow_handle.assert_not_called()
+
+
+class TestSignalEdit:
+    """TASK-355 Phase D Slice 5c — the edit-signal SENDER side.
+
+    apps/api forwards a clinician edit of an optimistically-delivered draft (while
+    it is still DRAFT_PENDING_SENSORS) to the running workflow's ``edit`` signal so
+    the assurance pass re-binds + re-runs on the edited content (Q3) and the silent
+    regen-if-untouched path is disabled (Q1).
+    """
+
+    @pytest.mark.asyncio
+    async def test_signal_targets_the_right_workflow_id_with_mapped_payload(self, harness):
+        http, client, handle, _settings = harness
+        resp = await http.post(
+            "/api/v1/internal/workflows/c-1/signal/edit",
+            headers=_HEADERS,
+            json={
+                "content": "S: edited subjective ... P: edited plan",
+                "contextItemVersionId": "v-2",
+                "editedBy": "doc-1",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["workflowId"] == "harness-doc-c-1"
+        assert resp.json()["signaled"] is True
+
+        client.get_workflow_handle.assert_called_once_with("harness-doc-c-1")
+        handle.signal.assert_awaited_once()
+        sargs, _ = handle.signal.call_args
+        payload = sargs[1]
+        assert payload.content == "S: edited subjective ... P: edited plan"
+        assert payload.context_item_version_id == "v-2"
+        assert payload.edited_by == "doc-1"
+
+    @pytest.mark.asyncio
+    async def test_signal_rejects_bad_token(self, harness):
+        http, client, handle, _settings = harness
+        resp = await http.post(
+            "/api/v1/internal/workflows/c-1/signal/edit",
+            headers={"X-Service-Token": "wrong"},
+            json={"content": "edited"},
+        )
+        assert resp.status_code == 401
+        handle.signal.assert_not_awaited()
+        client.get_workflow_handle.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_signal_requires_content(self, harness):
+        # ``content`` is the edited note the assurance pass must screen — without it
+        # the request is a 422 (pydantic validation) and no signal is sent.
+        http, client, handle, _settings = harness
+        resp = await http.post(
+            "/api/v1/internal/workflows/c-1/signal/edit",
+            headers=_HEADERS,
+            json={"editedBy": "doc-1"},
+        )
+        assert resp.status_code == 422
+        handle.signal.assert_not_awaited()
 
 
 class TestTokenDisabledForLocalDev:

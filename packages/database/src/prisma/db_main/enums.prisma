@@ -222,12 +222,13 @@ enum ContextItemType {
 // JSON; this enum promotes it to a typed column so the clinical-documentation
 // harness can gate transitions (e.g. PENDING_REVIEW → SIGNED on attestation).
 enum ConsultationStatus {
-    OPEN                 // Active consultation, not yet under review
-    RECORDING            // Audio capture in progress
-    PENDING_REVIEW       // Summary generated, awaiting clinician review/attestation
-    SIGNED               // Clinician-attested (immutable signed note committed)
-    CLOSED               // Consultation closed
-    REOPENED             // Reopened after being closed
+    OPEN                  // Active consultation, not yet under review
+    RECORDING             // Audio capture in progress
+    DRAFT_PENDING_SENSORS // TASK-355 Phase D — draft delivered early (visible/readable); assurance (inferential) pass running concurrently. Cannot be signed until it lands.
+    PENDING_REVIEW        // Summary generated + assurance complete + gate verdict recorded; awaiting clinician review/attestation
+    SIGNED                // Clinician-attested (immutable signed note committed)
+    CLOSED                // Consultation closed
+    REOPENED              // Reopened after being closed
 
     @@schema("core")
 }

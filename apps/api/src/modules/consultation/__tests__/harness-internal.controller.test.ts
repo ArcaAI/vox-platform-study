@@ -15,6 +15,8 @@ const mockService = {
     assemble: vi.fn(),
     persistDraft: vi.fn(),
     recordGateDecision: vi.fn(),
+    // TASK-355 Phase D Slice 5d — second phase of optimistic delivery.
+    finalizeAssurance: vi.fn(),
 };
 
 describe('HarnessInternalController', () => {
@@ -114,6 +116,61 @@ describe('HarnessInternalController', () => {
             const statusCode = Reflect.getMetadata(
                 HTTP_CODE_METADATA,
                 HarnessInternalController.prototype.reportProgress,
+            ) as number | undefined;
+            expect(statusCode).toBe(200);
+        });
+    });
+
+    // TASK-355 Phase D Slice 5d — optimistic delivery second phase + live feed.
+    describe('POST consultations/:id/assurance (finalize) + assurance-event (per-claim)', () => {
+        const mockAssuranceService = { reportClaim: vi.fn(), publishComplete: vi.fn() };
+
+        const buildController = () =>
+            new HarnessInternalController(
+                mockService as any,
+                undefined as any, // harnessPolicyService (unused by these routes)
+                undefined as any, // cls (unused by these routes)
+                undefined as any, // harnessProgressService (unused by these routes)
+                mockAssuranceService as any,
+            );
+
+        it('POST assurance -> harnessInternalService.finalizeAssurance(consultationId, dto)', async () => {
+            mockService.finalizeAssurance.mockResolvedValue({ recorded: true, contextItemId: 'ctx-draft-1' });
+            const dto = { tenantId: 't-1', contextItemId: 'ctx-draft-1', gateDecision: 'PASS' };
+
+            const result = await buildController().finalizeAssurance('consultation-1', dto as any);
+
+            expect(mockService.finalizeAssurance).toHaveBeenCalledWith('consultation-1', dto);
+            expect(result).toEqual({ recorded: true, contextItemId: 'ctx-draft-1' });
+        });
+
+        it('POST assurance-event -> harnessAssuranceService.reportClaim(consultationId, dto)', async () => {
+            mockAssuranceService.reportClaim.mockResolvedValue({ ok: true });
+            const dto = { tenantId: 't-1', jobId: 'job-1', claimId: 'c-1', sensor: 'groundedness', verdict: 'grounded', ordinal: 1, total: 3 };
+
+            const result = await buildController().reportAssuranceClaim('consultation-1', dto as any);
+
+            expect(mockAssuranceService.reportClaim).toHaveBeenCalledWith('consultation-1', dto);
+            expect(result).toEqual({ ok: true });
+        });
+
+        it('relays the best-effort { ok: false } per-claim ack without throwing (live feed must never fail the workflow)', async () => {
+            mockAssuranceService.reportClaim.mockResolvedValue({ ok: false });
+
+            const result = await buildController().reportAssuranceClaim('consultation-1', {
+                tenantId: 't-1',
+                claimId: 'c-1',
+                sensor: 'safety',
+                verdict: 'flag',
+            } as any);
+
+            expect(result).toEqual({ ok: false });
+        });
+
+        it('assurance-event responds 200 (not 201): nothing is created — the ack can carry { ok: false }', () => {
+            const statusCode = Reflect.getMetadata(
+                HTTP_CODE_METADATA,
+                HarnessInternalController.prototype.reportAssuranceClaim,
             ) as number | undefined;
             expect(statusCode).toBe(200);
         });

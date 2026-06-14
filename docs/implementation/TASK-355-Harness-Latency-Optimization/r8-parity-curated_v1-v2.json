@@ -1,0 +1,342 @@
+{
+  "golden_set_version": "curated-v1.0.0",
+  "incumbent_model": "google/gemma-4-e4b",
+  "candidate_model": "granite-guardian-4.1-8b",
+  "groundedness_threshold": 0.8,
+  "aggregate": {
+    "n_cases": 18,
+    "n_incumbent_degraded": 0,
+    "n_candidate_degraded": 0,
+    "n_claims_compared": 73,
+    "agree_total": 69,
+    "unsafe_flips_total": 4,
+    "safe_flips_total": 0,
+    "agreement_rate": 0.9452,
+    "incumbent_mean_elapsed_s": 24.142,
+    "candidate_mean_elapsed_s": 11.405,
+    "passed": false,
+    "unsafe_flip_disagreements": [
+      {
+        "case_id": "curated-q04-peds-otitis-media",
+        "claim_ref": "curated-q04-peds-otitis-media-claim-1",
+        "claim_text": "Four-year-old with two days of right ear pain and low-grade fever.",
+        "section": "S",
+        "premise_excerpt": "Doctor: How long has she had ear pain? Parent: Two days, with a low-grade fever. Doctor: On exam the right eardrum is red and bulging with reduced mobility; the left ear is normal; temperature 38.0 degrees Celsius; she is well hydrated and ",
+        "incumbent_grounded": false,
+        "candidate_grounded": true,
+        "kind": "unsafe_flip"
+      },
+      {
+        "case_id": "curated-c01-fabrication-mi",
+        "claim_ref": "curated-c01-fabrication-mi-claim-2",
+        "claim_text": "Aspirin 81 mg daily, stress test, and cardiology follow-up.",
+        "section": "P",
+        "premise_excerpt": "Doctor: You describe two weeks of exertional chest tightness. Your ECG today shows normal sinus rhythm with no ST-segment changes, and the troponin is pending. Plan: start aspirin 81 mg daily, arrange an outpatient stress test, and follow u",
+        "incumbent_grounded": false,
+        "candidate_grounded": true,
+        "kind": "unsafe_flip"
+      },
+      {
+        "case_id": "curated-c03-verbose-rhinitis",
+        "claim_ref": "curated-c03-verbose-rhinitis-claim-5",
+        "claim_text": "Allergen avoidance strategies were also discussed in a fair amount of detail with the patient.",
+        "section": "A",
+        "premise_excerpt": "Doctor: You have springtime sneezing and nasal congestion, worse in spring, with no fever, and you responded well to antihistamines before. This is seasonal allergic rhinitis. Plan: start intranasal fluticasone once daily and review allerge",
+        "incumbent_grounded": false,
+        "candidate_grounded": true,
+        "kind": "unsafe_flip"
+      },
+      {
+        "case_id": "curated-c05-uncited-otitis",
+        "claim_ref": "curated-c05-uncited-otitis-claim-1",
+        "claim_text": "Right acute otitis media in a child with fever and a red, bulging right eardrum.",
+        "section": "A",
+        "premise_excerpt": "Doctor: The right eardrum is red and bulging; temperature 38.0. This is right acute otitis media. Plan: amoxicillin 45 mg per kilogram per day divided twice daily for ten days and acetaminophen for fever.",
+        "incumbent_grounded": false,
+        "candidate_grounded": true,
+        "kind": "unsafe_flip"
+      }
+    ],
+    "safe_flip_disagreements": []
+  },
+  "cases": [
+    {
+      "case_id": "curated-q01-fammed-pharyngitis",
+      "role": "quality",
+      "n_claims": 5,
+      "agree": 5,
+      "unsafe_flips": 0,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 31.383,
+      "candidate_elapsed_s": 12.851,
+      "disagreements": []
+    },
+    {
+      "case_id": "curated-q02-im-diabetes-complete",
+      "role": "quality",
+      "n_claims": 4,
+      "agree": 4,
+      "unsafe_flips": 0,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 22.754,
+      "candidate_elapsed_s": 14.922,
+      "disagreements": []
+    },
+    {
+      "case_id": "curated-q03-cardiology-stable-angina",
+      "role": "quality",
+      "n_claims": 4,
+      "agree": 4,
+      "unsafe_flips": 0,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 25.619,
+      "candidate_elapsed_s": 11.871,
+      "disagreements": []
+    },
+    {
+      "case_id": "curated-q04-peds-otitis-media",
+      "role": "quality",
+      "n_claims": 5,
+      "agree": 4,
+      "unsafe_flips": 1,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 24.8,
+      "candidate_elapsed_s": 12.43,
+      "disagreements": [
+        {
+          "case_id": "curated-q04-peds-otitis-media",
+          "claim_ref": "curated-q04-peds-otitis-media-claim-1",
+          "claim_text": "Four-year-old with two days of right ear pain and low-grade fever.",
+          "section": "S",
+          "premise_excerpt": "Doctor: How long has she had ear pain? Parent: Two days, with a low-grade fever. Doctor: On exam the right eardrum is red and bulging with reduced mobility; the left ear is normal; temperature 38.0 degrees Celsius; she is well hydrated and ",
+          "incumbent_grounded": false,
+          "candidate_grounded": true,
+          "kind": "unsafe_flip"
+        }
+      ]
+    },
+    {
+      "case_id": "curated-q05-obgyn-prenatal",
+      "role": "quality",
+      "n_claims": 4,
+      "agree": 4,
+      "unsafe_flips": 0,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 25.15,
+      "candidate_elapsed_s": 11.706,
+      "disagreements": []
+    },
+    {
+      "case_id": "curated-q06-psych-depression",
+      "role": "quality",
+      "n_claims": 5,
+      "agree": 5,
+      "unsafe_flips": 0,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 24.212,
+      "candidate_elapsed_s": 12.592,
+      "disagreements": []
+    },
+    {
+      "case_id": "curated-q07-pulm-copd",
+      "role": "quality",
+      "n_claims": 4,
+      "agree": 4,
+      "unsafe_flips": 0,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 22.862,
+      "candidate_elapsed_s": 11.945,
+      "disagreements": []
+    },
+    {
+      "case_id": "curated-q08-gi-gerd",
+      "role": "quality",
+      "n_claims": 4,
+      "agree": 4,
+      "unsafe_flips": 0,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 23.689,
+      "candidate_elapsed_s": 11.519,
+      "disagreements": []
+    },
+    {
+      "case_id": "curated-q09-endo-hypothyroid",
+      "role": "quality",
+      "n_claims": 5,
+      "agree": 5,
+      "unsafe_flips": 0,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 23.946,
+      "candidate_elapsed_s": 12.023,
+      "disagreements": []
+    },
+    {
+      "case_id": "curated-q10-ortho-ankle-sprain",
+      "role": "quality",
+      "n_claims": 4,
+      "agree": 4,
+      "unsafe_flips": 0,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 22.773,
+      "candidate_elapsed_s": 11.709,
+      "disagreements": []
+    },
+    {
+      "case_id": "curated-q11-derm-contact-dermatitis",
+      "role": "quality",
+      "n_claims": 4,
+      "agree": 4,
+      "unsafe_flips": 0,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 24.217,
+      "candidate_elapsed_s": 11.687,
+      "disagreements": []
+    },
+    {
+      "case_id": "curated-q12-nephro-ckd",
+      "role": "quality",
+      "n_claims": 5,
+      "agree": 5,
+      "unsafe_flips": 0,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 29.909,
+      "candidate_elapsed_s": 12.449,
+      "disagreements": []
+    },
+    {
+      "case_id": "curated-c01-fabrication-mi",
+      "role": "calibration",
+      "n_claims": 2,
+      "agree": 1,
+      "unsafe_flips": 1,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 23.721,
+      "candidate_elapsed_s": 8.075,
+      "disagreements": [
+        {
+          "case_id": "curated-c01-fabrication-mi",
+          "claim_ref": "curated-c01-fabrication-mi-claim-2",
+          "claim_text": "Aspirin 81 mg daily, stress test, and cardiology follow-up.",
+          "section": "P",
+          "premise_excerpt": "Doctor: You describe two weeks of exertional chest tightness. Your ECG today shows normal sinus rhythm with no ST-segment changes, and the troponin is pending. Plan: start aspirin 81 mg daily, arrange an outpatient stress test, and follow u",
+          "incumbent_grounded": false,
+          "candidate_grounded": true,
+          "kind": "unsafe_flip"
+        }
+      ]
+    },
+    {
+      "case_id": "curated-c02-omission-diabetes",
+      "role": "calibration",
+      "n_claims": 2,
+      "agree": 2,
+      "unsafe_flips": 0,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 21.09,
+      "candidate_elapsed_s": 9.697,
+      "disagreements": []
+    },
+    {
+      "case_id": "curated-c03-verbose-rhinitis",
+      "role": "calibration",
+      "n_claims": 5,
+      "agree": 4,
+      "unsafe_flips": 1,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 23.632,
+      "candidate_elapsed_s": 10.396,
+      "disagreements": [
+        {
+          "case_id": "curated-c03-verbose-rhinitis",
+          "claim_ref": "curated-c03-verbose-rhinitis-claim-5",
+          "claim_text": "Allergen avoidance strategies were also discussed in a fair amount of detail with the patient.",
+          "section": "A",
+          "premise_excerpt": "Doctor: You have springtime sneezing and nasal congestion, worse in spring, with no fever, and you responded well to antihistamines before. This is seasonal allergic rhinitis. Plan: start intranasal fluticasone once daily and review allerge",
+          "incumbent_grounded": false,
+          "candidate_grounded": true,
+          "kind": "unsafe_flip"
+        }
+      ]
+    },
+    {
+      "case_id": "curated-c04-disorganized-uri",
+      "role": "calibration",
+      "n_claims": 7,
+      "agree": 7,
+      "unsafe_flips": 0,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 23.072,
+      "candidate_elapsed_s": 12.288,
+      "disagreements": []
+    },
+    {
+      "case_id": "curated-c05-uncited-otitis",
+      "role": "calibration",
+      "n_claims": 2,
+      "agree": 1,
+      "unsafe_flips": 1,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 23.79,
+      "candidate_elapsed_s": 7.869,
+      "disagreements": [
+        {
+          "case_id": "curated-c05-uncited-otitis",
+          "claim_ref": "curated-c05-uncited-otitis-claim-1",
+          "claim_text": "Right acute otitis media in a child with fever and a red, bulging right eardrum.",
+          "section": "A",
+          "premise_excerpt": "Doctor: The right eardrum is red and bulging; temperature 38.0. This is right acute otitis media. Plan: amoxicillin 45 mg per kilogram per day divided twice daily for ten days and acetaminophen for fever.",
+          "incumbent_grounded": false,
+          "candidate_grounded": true,
+          "kind": "unsafe_flip"
+        }
+      ]
+    },
+    {
+      "case_id": "curated-c06-falsified-dose",
+      "role": "calibration",
+      "n_claims": 2,
+      "agree": 2,
+      "unsafe_flips": 0,
+      "safe_flips": 0,
+      "incumbent_degraded": false,
+      "candidate_degraded": false,
+      "incumbent_elapsed_s": 17.93,
+      "candidate_elapsed_s": 9.265,
+      "disagreements": []
+    }
+  ]
+}

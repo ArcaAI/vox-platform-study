@@ -123,6 +123,39 @@ describe('HarnessGatewayService', () => {
         });
     });
 
+    describe('signalEdit', () => {
+        it('POSTs to the harness edit-signal endpoint with the edited content + version + editor', async () => {
+            const service = build('http://harness:8866', 'harness-token-xyz');
+
+            await service.signalEdit('consultation-9', {
+                content: 'S: edited subjective ... P: edited plan',
+                contextItemVersionId: 'ver-2',
+                editedBy: 'doctor-9',
+            });
+
+            expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
+            const [url, body, options] = mockHttpService.axiosRef.post.mock.calls[0];
+            expect(url).toBe('http://harness:8866/api/v1/internal/workflows/consultation-9/signal/edit');
+            expect(body).toEqual(
+                expect.objectContaining({
+                    content: 'S: edited subjective ... P: edited plan',
+                    contextItemVersionId: 'ver-2',
+                    editedBy: 'doctor-9',
+                }),
+            );
+            expect(options.headers['X-Service-Token']).toBe('harness-token-xyz');
+        });
+
+        it('returns the harness response payload', async () => {
+            mockHttpService.axiosRef.post.mockResolvedValue({ data: { workflowId: 'harness-doc-c-9', signaled: true } });
+            const service = build('http://harness:8866', 'tok');
+
+            const result = await service.signalEdit('c-9', { content: 'edited' });
+
+            expect(result).toEqual({ workflowId: 'harness-doc-c-9', signaled: true });
+        });
+    });
+
     describe('service token resolution', () => {
         it('sends an empty X-Service-Token when no secret is configured (fail-open header, harness guard rejects)', async () => {
             const service = build('http://harness:8866', undefined);

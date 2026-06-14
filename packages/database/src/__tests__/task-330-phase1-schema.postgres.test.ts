@@ -84,11 +84,12 @@ afterAll(async () => {
 });
 
 describe('TASK-330 Phase 1 additive schema', () => {
-  it('creates core.ConsultationStatus with exactly the 6 lifecycle states', async () => {
+  it('creates core.ConsultationStatus with the lifecycle states (incl. TASK-355 DRAFT_PENDING_SENSORS)', async () => {
     if (!available) return;
     const labels = await enumLabels('ConsultationStatus');
+    // TASK-355 Phase D added DRAFT_PENDING_SENSORS (optimistic two-phase delivery).
     expect(new Set(labels)).toEqual(
-      new Set(['OPEN', 'RECORDING', 'PENDING_REVIEW', 'SIGNED', 'CLOSED', 'REOPENED']),
+      new Set(['OPEN', 'RECORDING', 'DRAFT_PENDING_SENSORS', 'PENDING_REVIEW', 'SIGNED', 'CLOSED', 'REOPENED']),
     );
   });
 

@@ -30,6 +30,9 @@ export interface ISummaryMetaEntity extends IBaseTenantEntity {
   guardrailDecisions?: JsonValue | null;
   attestationRef?: string | null;
   modelName?: string | null;
+  // TASK-355 Phase D — two-phase (optimistic) assurance state
+  gateDecision?: string | null;
+  assuranceCompletedAt?: Date | null;
   ContextItem?: Entities.ContextItemEntity | null;
 }
 
@@ -56,6 +59,8 @@ export class SummaryMetaEntity extends BaseTenantEntity {
   private _guardrailDecisions?: ISummaryMetaEntity['guardrailDecisions'];
   private _attestationRef?: ISummaryMetaEntity['attestationRef'];
   private _modelName?: ISummaryMetaEntity['modelName'];
+  private _gateDecision?: ISummaryMetaEntity['gateDecision'];
+  private _assuranceCompletedAt?: ISummaryMetaEntity['assuranceCompletedAt'];
   private _ContextItem?: ISummaryMetaEntity['ContextItem'];
 
   constructor(init: ISummaryMetaEntity) {
@@ -82,6 +87,8 @@ export class SummaryMetaEntity extends BaseTenantEntity {
     this._guardrailDecisions = init.guardrailDecisions;
     this._attestationRef = init.attestationRef;
     this._modelName = init.modelName;
+    this._gateDecision = init.gateDecision;
+    this._assuranceCompletedAt = init.assuranceCompletedAt;
     this._ContextItem = init.ContextItem;
   }
 
@@ -259,6 +266,22 @@ export class SummaryMetaEntity extends BaseTenantEntity {
 
   set modelName(value: ISummaryMetaEntity['modelName']) {
     this.setProperty('modelName', value);
+  }
+
+  get gateDecision(): ISummaryMetaEntity['gateDecision'] {
+    return this._gateDecision;
+  }
+
+  set gateDecision(value: ISummaryMetaEntity['gateDecision']) {
+    this.setProperty('gateDecision', value);
+  }
+
+  get assuranceCompletedAt(): ISummaryMetaEntity['assuranceCompletedAt'] {
+    return this._assuranceCompletedAt;
+  }
+
+  set assuranceCompletedAt(value: ISummaryMetaEntity['assuranceCompletedAt']) {
+    this.setProperty('assuranceCompletedAt', value);
   }
 
   get ContextItem(): ISummaryMetaEntity['ContextItem'] {

@@ -31,6 +31,19 @@ const h = vi.hoisted(() => ({
   // TASK-345 — live harness progress feed (hook stubbed; reducer covered in lib tests).
   progressState: { stages: [] as any[], total: undefined as number | undefined, closed: false, status: 'idle', error: null as string | null },
   useHarnessProgress: vi.fn(),
+  // TASK-355 Phase D Slice 6c — live per-claim assurance feed (hook stubbed; reducer covered in lib tests).
+  assuranceState: {
+    claims: [] as any[],
+    total: undefined as number | undefined,
+    gateDecision: null as string | null,
+    safetyFlag: false,
+    reducedAssurance: false,
+    postSignAlert: false,
+    closed: false,
+    status: 'idle',
+    error: null as string | null,
+  },
+  useHarnessAssurance: vi.fn(),
 }));
 
 // Stub the reused review screen: capture the props (the mapped review data) and
@@ -38,9 +51,14 @@ const h = vi.hoisted(() => ({
 vi.mock('../review', () => ({
   ReviewScreen: (props: any) => {
     h.reviewScreenProps(props);
+    // Mirror ReviewScreen's Q4 contract: a terminal safety FLAG turns approve into
+    // a one-click override (sends overrideSafetyFlag); otherwise a plain sign.
     return (
       <div data-testid="review-screen-stub">
-        <button data-testid="rs-approve" onClick={() => void props.onApprove(props.data.noteContextItemId)}>
+        <button
+          data-testid="rs-approve"
+          onClick={() => void props.onApprove(props.data.noteContextItemId, props.assurance?.safetyFlag ? { overrideSafetyFlag: true } : undefined)}
+        >
           approve
         </button>
       </div>
@@ -65,6 +83,13 @@ vi.mock('../../hooks/use-harness-progress', () => ({
   useHarnessProgress: (opts: any) => {
     h.useHarnessProgress(opts);
     return h.progressState;
+  },
+}));
+
+vi.mock('../../hooks/use-harness-assurance', () => ({
+  useHarnessAssurance: (opts: any) => {
+    h.useHarnessAssurance(opts);
+    return h.assuranceState;
   },
 }));
 
@@ -175,6 +200,17 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.provenanceState = { data: provenance, isLoading: false, isError: false, refetch: vi.fn() };
   h.progressState = { stages: [], total: undefined, closed: false, status: 'idle', error: null };
+  h.assuranceState = {
+    claims: [],
+    total: undefined,
+    gateDecision: null,
+    safetyFlag: false,
+    reducedAssurance: false,
+    postSignAlert: false,
+    closed: false,
+    status: 'idle',
+    error: null,
+  };
 });
 
 describe('ReviewPanel — provenance → click-to-inspect data', () => {
@@ -268,6 +304,37 @@ describe('ReviewPanel — sign-off + edit wiring', () => {
     await waitFor(() => expect(h.updateSummaryContent).toHaveBeenCalledTimes(1));
     expect(h.updateSummaryContent).toHaveBeenCalledWith(expect.objectContaining({ __fake: true }), CONSULTATION_ID, NOTE_ID, 'S: revised subjective');
     expect(toast.success).toHaveBeenCalled();
+  });
+});
+
+describe('ReviewPanel — Phase D assurance wiring (TASK-355)', () => {
+  it('subscribes to the assurance feed whenever a draft note exists', () => {
+    renderPanel();
+    expect(h.useHarnessAssurance).toHaveBeenCalledWith(expect.objectContaining({ consultationId: CONSULTATION_ID, enabled: true }));
+  });
+
+  it('renders the post-sign amendment alert when assurance reports postSignAlert (Q2b)', () => {
+    h.assuranceState = { ...h.assuranceState, closed: true, postSignAlert: true };
+    renderPanel();
+    expect(screen.getByTestId('review-post-sign-alert')).toBeInTheDocument();
+  });
+
+  it('threads overrideSafetyFlag through approve when a terminal safety FLAG is present (Q4)', async () => {
+    h.assuranceState = { ...h.assuranceState, closed: true, safetyFlag: true };
+    h.approveNote.mockResolvedValue({ status: 'SIGNED_NOTE' });
+    renderPanel();
+
+    fireEvent.click(screen.getByTestId('rs-approve'));
+
+    await waitFor(() => expect(h.approveNote).toHaveBeenCalledTimes(1));
+    expect(h.approveNote).toHaveBeenCalledWith(expect.objectContaining({ __fake: true }), CONSULTATION_ID, NOTE_ID, { overrideSafetyFlag: true });
+  });
+
+  it('passes the live N-of-M + safety-flag state down to the review screen', () => {
+    h.assuranceState = { ...h.assuranceState, claims: [{ claimId: 'a' }, { claimId: 'b' }], total: 3, closed: false };
+    renderPanel();
+    const props = h.reviewScreenProps.mock.calls.at(-1)![0];
+    expect(props.assurance).toEqual(expect.objectContaining({ pending: true, resolved: 2, total: 3, safetyFlag: false }));
   });
 });
 

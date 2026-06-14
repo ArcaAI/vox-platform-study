@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, Optional, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
@@ -283,7 +283,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       request.changeSource ?? 'doctor_edit',
       request.changeSummary,
     );
-    await this.contextItemVersionRepository.create(version);
+    const savedVersion = await this.contextItemVersionRepository.create(version);
 
     contextItem.currentVersionNumber = versionNumber;
 
@@ -303,6 +303,30 @@ export class SummaryService extends BaseService implements ISummaryService {
       previousData: previousData as object,
     });
 
+    // TASK-355 Phase D (Slice 5c) — if this edit lands while the draft is still
+    // under optimistic assurance (DRAFT_PENDING_SENSORS), forward it to the
+    // harness so the running workflow re-binds + re-runs assurance on the edited
+    // version (Q3) and permanently disables silent regen-if-untouched (Q1).
+    // Best-effort: the MODIFIED_SUMMARY version write above is the source of
+    // truth — a signal failure must never roll back the (committed) edit. Edits
+    // in any other consultation status have no assurance window, so they no-op.
+    try {
+      const consultation = await this.consultationRepository.findById(contextItem.consultationId);
+      if (consultation?.status === ConsultationStatus.DRAFT_PENDING_SENSORS) {
+        await this.harnessGatewayService?.signalEdit(contextItem.consultationId, {
+          content: contextItem.content ?? '',
+          contextItemVersionId: savedVersion?.id ?? version.id,
+          editedBy: this.requestUserId ?? undefined,
+        });
+      }
+    } catch (error) {
+      this.logger.warn({
+        message: 'Harness edit signal failed (best-effort, edit not rolled back)',
+        consultationId: contextItem.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     return SummaryDtoMapper.toResponse(updated);
   }
 
@@ -318,8 +342,20 @@ export class SummaryService extends BaseService implements ISummaryService {
    *      (`HarnessAuditService`) — fail-closed: if the audit append throws, the
    *      whole approval is rejected and the consultation is NOT signed.
    *   3. Flips `Consultation.status` → `SIGNED`.
+   *
+   * TASK-355 Phase D — RELAXED sign-off governance (clinician autonomy + full
+   * audit, doc 08 §7.1):
+   *   Q2a — signing BEFORE assurance lands is allowed with no acknowledgement;
+   *         a `SIGNED_BEFORE_ASSURANCE` WORM annotation is appended so the
+   *         late-verdict path (`finalizeAssurance` Q2b) can correlate.
+   *   Q4  — a COMPLETED safety FLAG hard-blocks UNLESS the clinician supplies an
+   *         explicit one-click `overrideSafetyFlag`, recorded (no free-text) as a
+   *         `SAFETY_OVERRIDE` WORM event. A REGEN/groundedness flag stays signable.
    */
-  async approveSummary(contextItemId: string): Promise<{ contextItemId: string; approvalStatus: string; approvedBy: string; approvedAt: string }> {
+  async approveSummary(
+    contextItemId: string,
+    options?: { overrideSafetyFlag?: boolean },
+  ): Promise<{ contextItemId: string; approvalStatus: string; approvedBy: string; approvedAt: string }> {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
@@ -342,6 +378,29 @@ export class SummaryService extends BaseService implements ISummaryService {
         approvedBy: first.changedBy ?? 'unknown',
         approvedAt: first.createdAt.toISOString(),
       };
+    }
+
+    // TASK-355 Phase D — RELAXED sign-off assurance guard (defense-in-depth; the
+    // UI mirrors this, but the API is the non-bypassable enforcement point). The
+    // draft's SummaryMeta carries the two-phase assurance state:
+    //   Q2a — signing while assurance is still running (`assuranceCompletedAt`
+    //         NULL, i.e. an optimistically-delivered DRAFT_PENDING_SENSORS draft)
+    //         is ALLOWED with no acknowledgement; we annotate the WORM trail with
+    //         SIGNED_BEFORE_ASSURANCE so the late-verdict path can correlate.
+    //   Q4  — a COMPLETED safety FLAG hard-blocks UNLESS the clinician supplies an
+    //         explicit one-click override, recorded as a SAFETY_OVERRIDE WORM
+    //         event. A REGEN/groundedness flag stays signable — those are review
+    //         prompts, not safety stops.
+    // Legacy single-shot drafts stamp `assuranceCompletedAt` at persist, and
+    // non-harness/manual summaries have no SummaryMeta at all — both have neither
+    // flag set, so they sign through unchanged with no extra annotations.
+    const draftMeta = await this.summaryMetaRepository.findByContextItem(contextItemId);
+    const signedBeforeAssurance = !!draftMeta && !draftMeta.assuranceCompletedAt;
+    const overridingSafetyFlag = !!draftMeta && SummaryService.hasSafetyFlag(draftMeta);
+    if (overridingSafetyFlag && !options?.overrideSafetyFlag) {
+      throw new ConflictException(
+        'This draft was flagged by the safety sensor and cannot be signed. Escalate for clinical review, or sign with an explicit safety override.',
+      );
     }
 
     const approvedBy = this.requestUserId;
@@ -373,6 +432,25 @@ export class SummaryService extends BaseService implements ISummaryService {
     const savedVersion = await this.contextItemVersionRepository.create(version);
     const versionId = savedVersion?.id ?? version.id;
 
+    // 2a. Q4 — record the clinician's explicit safety-flag override FIRST, and
+    //     fail-closed: if this WORM write fails the sign-off aborts before the
+    //     consultation is flipped (a safety override is never silently dropped).
+    if (overridingSafetyFlag && options?.overrideSafetyFlag) {
+      await this.harnessAuditService?.append({
+        tenantId,
+        consultationId: contextItem.consultationId,
+        contextItemVersionId: versionId,
+        action: HarnessAuditAction.SAFETY_OVERRIDE,
+        modelName: 'clinician-override',
+        modelVersion: 'v1',
+        sensorScores: {},
+        citations: [],
+        clinicianId: approvedBy,
+        attestationHash,
+        createdBy: approvedBy,
+      });
+    }
+
     // 2. Append the ATTEST event to the WORM audit trail. Fail-closed: any error
     //    propagates and aborts the approval BEFORE the consultation is signed.
     await this.harnessAuditService?.append({
@@ -388,6 +466,25 @@ export class SummaryService extends BaseService implements ISummaryService {
       attestationHash,
       createdBy: approvedBy,
     });
+
+    // 2b. Q2a — annotate that this sign preceded assurance completion so the
+    //     late-verdict path (finalizeAssurance Q2b) can correlate and surface an
+    //     amendment alert. Fail-closed, consistent with ATTEST.
+    if (signedBeforeAssurance) {
+      await this.harnessAuditService?.append({
+        tenantId,
+        consultationId: contextItem.consultationId,
+        contextItemVersionId: versionId,
+        action: HarnessAuditAction.SIGNED_BEFORE_ASSURANCE,
+        modelName: 'clinician-attestation',
+        modelVersion: 'v1',
+        sensorScores: {},
+        citations: [],
+        clinicianId: approvedBy,
+        attestationHash,
+        createdBy: approvedBy,
+      });
+    }
 
     // 3. Flip the consultation lifecycle → SIGNED.
     const consultation = await this.consultationRepository.findById(contextItem.consultationId);
@@ -450,6 +547,26 @@ export class SummaryService extends BaseService implements ISummaryService {
     return createHash('sha256')
       .update(`${input.contextItemId}:${input.versionNumber}:${input.attestedBy}:${input.attestedAt.toISOString()}:${input.content}`)
       .digest('hex');
+  }
+
+  /**
+   * TASK-355 Phase D — sign-off safety stop (I4). Reads the inferential safety
+   * verdict off the draft's `SummaryMeta.guardrailDecisions` and returns true iff
+   * the SAFETY dimension is a FLAG. Tolerant of the two shapes the harness emits:
+   * `{ safety: 'FLAG' }` and `{ safety: { decision|verdict: 'FLAG' } }`. ONLY the
+   * safety dimension hard-blocks — groundedness / RAG / REGEN verdicts remain
+   * signable (they are review prompts, not safety stops).
+   */
+  private static hasSafetyFlag(meta: { guardrailDecisions?: unknown }): boolean {
+    const decisions = meta.guardrailDecisions as Record<string, unknown> | null | undefined;
+    if (!decisions || typeof decisions !== 'object') return false;
+    const safety = (decisions as Record<string, unknown>).safety ?? (decisions as Record<string, unknown>).SAFETY;
+    if (safety == null) return false;
+    const verdict =
+      typeof safety === 'string'
+        ? safety
+        : ((safety as Record<string, unknown>).decision ?? (safety as Record<string, unknown>).verdict);
+    return String(verdict).toUpperCase() === 'FLAG';
   }
 
   /**

@@ -135,6 +135,20 @@ class TestScreen:
         assert "<guardian>" in body0["messages"][-1]["content"]
 
     @pytest.mark.asyncio
+    async def test_parallel_screen_keeps_criteria_order_and_mapping(self):
+        # TASK-355 R-4: screen() now fans the criteria out via asyncio.gather; the
+        # result dict must stay byte-identical to the serial version — same per-criterion
+        # verdicts AND same key order (criteria order), independent of completion order.
+        def handler(request: httpx.Request) -> httpx.Response:
+            block = json.loads(request.content)["messages"][-1]["content"]
+            verdict = "yes" if "violence" in block else "no"
+            return _openai_response(verdict)
+
+        dims = await _client(handler, harm_criteria=["harm", "social_bias", "violence"]).screen("x")
+        assert dims == {"harm": False, "social_bias": False, "violence": True}
+        assert list(dims.keys()) == ["harm", "social_bias", "violence"]
+
+    @pytest.mark.asyncio
     async def test_empty_criteria_makes_no_calls(self):
         def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover - must not run
             raise AssertionError("no HTTP call expected with empty harm_criteria")

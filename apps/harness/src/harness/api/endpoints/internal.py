@@ -107,6 +107,23 @@ class ApprovalRequest(BaseModel):
     decision: str | None = Field(default=None)
 
 
+class EditRequest(BaseModel):
+    """Body for ``signal/edit`` (camelCase at the apps/api boundary).
+
+    TASK-355 Phase D Slice 5c — apps/api forwards a clinician edit of an
+    optimistically-delivered draft (still ``DRAFT_PENDING_SENSORS``) so the
+    workflow re-binds + re-runs assurance on the edited content (Q3) and disables
+    the silent regen-if-untouched path (Q1). ``content`` is required — it is the
+    edited note the assurance pass must screen.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    content: str
+    context_item_version_id: str | None = Field(default=None, alias="contextItemVersionId")
+    edited_by: str | None = Field(default=None, alias="editedBy")
+
+
 @router.post(
     "/consultations/{consultation_id}/document:start",
     dependencies=[Depends(require_service_token)],
@@ -143,6 +160,10 @@ async def start_document(
             max_regen=settings.max_regen,
             gate_sla_seconds=settings.gate_sla_seconds,
             gate_escalation_seconds=settings.gate_escalation_seconds,
+            # TASK-355 Phase D (R-7): snapshot HARNESS_OPTIMISTIC_DELIVERY_ENABLED here,
+            # in the (non-workflow) start path, so the optimistic kill-switch is captured
+            # in the workflow input and stays deterministic across replay.
+            optimistic_delivery_enabled=settings.optimistic_delivery_enabled,
         ),
     )
 
@@ -226,5 +247,46 @@ async def signal_approve(
         consultation_id=consultation_id,
         workflow_id=workflow_id,
         decision=body.decision,
+    )
+    return {"workflowId": workflow_id, "signaled": True}
+
+
+@router.post(
+    "/workflows/{consultation_id}/signal/edit",
+    dependencies=[Depends(require_service_token)],
+)
+async def signal_edit(
+    consultation_id: str,
+    body: EditRequest,
+    request: Request,
+) -> dict[str, Any]:
+    """Forward a clinician edit to the running workflow's ``edit`` signal.
+
+    TASK-355 Phase D Slice 5c. Targets the same deterministic ``harness-doc-{id}``
+    handle as ``signal/approve``; the workflow re-binds assurance to the edited
+    content + version and re-runs it (Q3), and permanently disables the silent
+    regen-if-untouched path (Q1).
+    """
+    from harness.temporal.models import EditSignal
+    from harness.temporal.workflows import HarnessDocWorkflow
+
+    client = await _temporal_client(request)
+    workflow_id = _workflow_id(consultation_id)
+
+    handle = client.get_workflow_handle(workflow_id)
+    await handle.signal(
+        HarnessDocWorkflow.edit,
+        EditSignal(
+            content=body.content,
+            context_item_version_id=body.context_item_version_id,
+            edited_by=body.edited_by,
+        ),
+    )
+
+    logger.info(
+        "harness.document.signal_edit",
+        consultation_id=consultation_id,
+        workflow_id=workflow_id,
+        context_item_version_id=body.context_item_version_id,
     )
     return {"workflowId": workflow_id, "signaled": True}

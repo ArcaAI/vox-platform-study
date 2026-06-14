@@ -325,6 +325,84 @@ class TestReportProgress:
             await client.report_progress("c-1", tenant_id="t-1", stage="drafting_note")
 
 
+class TestReportAssuranceEvent:
+    """TASK-355 Phase D Slice 5d (Q5 true mid-pass live feed): the
+    ``run_inferential_sensors`` activity posts ONE resolved claim verdict per
+    claim to the internal assurance-event endpoint as each claim settles."""
+
+    @pytest.mark.asyncio
+    async def test_report_assurance_event_posts_camelcase_claim_with_token(self):
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json={"ok": True})
+
+        client = _client(handler)
+        result = await client.report_assurance_event(
+            "c-1",
+            tenant_id="t-1",
+            claim_id="claim-7",
+            sensor="groundedness",
+            verdict="grounded",
+            label="Assessment",
+            ordinal=3,
+            total=12,
+            job_id="harness-doc-1",
+        )
+
+        req = seen["request"]
+        assert req.method == "POST"
+        assert str(req.url) == "http://api:8868/internal/harness/consultations/c-1/assurance-event"
+        assert req.headers["X-Service-Token"] == "svc-token"
+        body = json.loads(req.content)
+        assert body == {
+            "tenantId": "t-1",
+            "jobId": "harness-doc-1",
+            "claimId": "claim-7",
+            "sensor": "groundedness",
+            "verdict": "grounded",
+            "label": "Assessment",
+            "ordinal": 3,
+            "total": 12,
+        }
+        assert result.ok is True
+
+    @pytest.mark.asyncio
+    async def test_report_assurance_event_prunes_optional_fields(self):
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json={"ok": True})
+
+        client = _client(handler)
+        await client.report_assurance_event(
+            "c-1", tenant_id="t-1", claim_id="claim-1", sensor="groundedness", verdict="ungrounded"
+        )
+
+        body = json.loads(seen["request"].content)
+        assert body == {
+            "tenantId": "t-1",
+            "claimId": "claim-1",
+            "sensor": "groundedness",
+            "verdict": "ungrounded",
+        }
+
+    @pytest.mark.asyncio
+    async def test_report_assurance_event_raises_on_upstream_error(self):
+        # The client raises like every other method; the ACTIVITY is the layer
+        # that swallows (the live feed must never fail the assurance pass).
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, json={"error": "redis down"})
+
+        client = _client(handler)
+        with pytest.raises(ApiServiceError):
+            await client.report_assurance_event(
+                "c-1", tenant_id="t-1", claim_id="claim-1", sensor="safety", verdict="flag"
+            )
+
+
 class TestConfigurablePrefix:
     @pytest.mark.asyncio
     async def test_prefix_is_configurable_for_lane_g_actual_mount(self):

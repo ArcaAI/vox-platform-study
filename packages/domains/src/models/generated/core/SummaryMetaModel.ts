@@ -30,6 +30,9 @@ export class SummaryMeta extends BaseTenantDataModel {
   public guardrailDecisions: JsonValue | null;
   public attestationRef: string | null;
   public modelName: string | null;
+  // TASK-355 Phase D — two-phase (optimistic) assurance state
+  public gateDecision: string | null;
+  public assuranceCompletedAt: Date | null;
 
   constructor(data: SummaryMeta & BaseTenantDataModel) {
     super(data);
@@ -55,5 +58,7 @@ export class SummaryMeta extends BaseTenantDataModel {
     this.guardrailDecisions = data.guardrailDecisions;
     this.attestationRef = data.attestationRef;
     this.modelName = data.modelName;
+    this.gateDecision = data.gateDecision;
+    this.assuranceCompletedAt = data.assuranceCompletedAt;
   }
 }

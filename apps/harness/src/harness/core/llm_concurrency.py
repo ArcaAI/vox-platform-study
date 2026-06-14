@@ -55,6 +55,12 @@ class LlmGovernorConfig:
     backoff_base_s: float = 0.5
     backoff_max_s: float = 20.0
     jitter_s: float = 0.25
+    # Per-call wall-clock timeout (TASK-354 Defect A). Bounds EACH individual model call
+    # so one hung LM Studio request can't burn the whole 900s activity budget before
+    # Temporal retries. A timed-out call is classified transient (see :func:`is_retryable`)
+    # and retried within ``max_attempts`` before the caller's fail-safe degrade takes over.
+    # ``<= 0`` disables the bound. Mirrors ``Settings.llm_request_timeout_s``.
+    request_timeout_s: float = 120.0
 
 
 def _env_int(name: str, default: int) -> int:
@@ -86,6 +92,7 @@ def get_llm_governor_config() -> LlmGovernorConfig:
         backoff_base_s=max(0.0, _env_float("HARNESS_LLM_BACKOFF_BASE_S", 0.5)),
         backoff_max_s=max(0.0, _env_float("HARNESS_LLM_BACKOFF_MAX_S", 20.0)),
         jitter_s=max(0.0, _env_float("HARNESS_LLM_BACKOFF_JITTER_S", 0.25)),
+        request_timeout_s=_env_float("HARNESS_LLM_REQUEST_TIMEOUT_S", 120.0),
     )
 
 
@@ -145,6 +152,24 @@ async def limit_endpoint(base_url: str, max_concurrency: int | None = None) -> A
     sem = endpoint_semaphore(base_url, cap)
     async with sem:
         yield
+
+
+async def call_with_timeout(operation: Callable[[], Awaitable[T]], timeout_s: float) -> T:
+    """Run a single LLM call under a per-call wall-clock timeout (TASK-354 Defect A).
+
+    ``timeout_s <= 0`` disables the bound (legacy behaviour). On expiry ``asyncio.timeout``
+    cancels the in-flight call and we re-raise a descriptive :class:`TimeoutError` — which
+    :func:`is_retryable` classifies transient, so the per-endpoint retry loops treat a hung
+    call exactly like any other transient backend failure (retry within budget, then the
+    caller's existing fail-safe degrade owns the outcome — never a silent auto-PASS).
+    """
+    if not timeout_s or timeout_s <= 0:
+        return await operation()
+    try:
+        async with asyncio.timeout(timeout_s):
+            return await operation()
+    except TimeoutError as exc:
+        raise TimeoutError(f"llm request exceeded {timeout_s:g}s per-call timeout") from exc
 
 
 # --- retry classification ---------------------------------------------------
@@ -226,7 +251,11 @@ def _retry_after_seconds(exc: Exception) -> float | None:
 
 
 def is_retryable(exc: Exception) -> bool:
-    """True for a transient failure (429 / 5xx / connection / ``terminated`` 400)."""
+    """True for a transient failure (timeout / 429 / 5xx / connection / ``terminated`` 400)."""
+    # A per-call wall-clock timeout (``asyncio.timeout`` raises a bare ``TimeoutError`` with
+    # an empty message, so marker-matching alone would miss it) is a transient hang.
+    if isinstance(exc, TimeoutError):
+        return True
     status = _status_code(exc)
     if status is not None:
         if status == 429 or 500 <= status <= 599:
@@ -264,7 +293,9 @@ async def governed_request(
         retry_after: float | None = None
         async with limit_endpoint(base_url, cfg.max_concurrency):
             try:
-                return await operation()
+                # Per-call timeout (TASK-354): a hung call surfaces as a transient
+                # ``TimeoutError``, retried within ``max_attempts`` like any 5xx.
+                return await call_with_timeout(operation, cfg.request_timeout_s)
             except Exception as exc:  # noqa: BLE001 — classified + re-raised below
                 last_exc = exc
                 if attempt + 1 >= cfg.max_attempts or not is_retryable(exc):

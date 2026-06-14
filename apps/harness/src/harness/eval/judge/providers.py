@@ -13,11 +13,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from functools import partial
 from typing import Any, cast
 
 from pydantic import SecretStr
 
-from harness.core.llm_concurrency import limit_endpoint
+from harness.core.llm_concurrency import call_with_timeout, get_llm_governor_config, limit_endpoint
 from harness.eval.config import JudgeConfig, JudgeProvider
 from harness.eval.jsonio import extract_last_object
 from harness.eval.judge.base import JudgeClient, JudgeConnectionError, Messages
@@ -55,6 +56,11 @@ _TRANSIENT_MARKERS = (
 
 
 def _is_transient(exc: Exception) -> bool:
+    # A per-call wall-clock timeout (TASK-354) is a transient hang — retry within the
+    # judge's budget before the sensor degrades (``asyncio.timeout`` can raise a bare
+    # ``TimeoutError`` whose empty message marker-matching would otherwise miss).
+    if isinstance(exc, TimeoutError):
+        return True
     return any(marker in str(exc).lower() for marker in _TRANSIENT_MARKERS)
 
 
@@ -72,15 +78,19 @@ async def _create_with_retry(
     (:func:`harness.core.llm_concurrency.limit_endpoint`, keyed by ``base_url``), so
     the inferential pass's concurrent judge calls never burst the LM Studio box past
     its admin-set cap — the slot is held only for the call itself, not the backoff.
+    Each attempt is ALSO bounded by the per-call wall-clock timeout (TASK-354 Defect A,
+    ``HARNESS_LLM_REQUEST_TIMEOUT_S``) so a hung judge call can't stall the whole pass;
+    a timeout is transient and retried like any other transient backend failure.
     The backoff gives a crashed local model time to reload before the next attempt.
     Non-transient errors raise immediately; transient ones raise only once the
     retry budget is exhausted (the caller wraps that in ``JudgeConnectionError``).
     """
+    request_timeout_s = get_llm_governor_config().request_timeout_s
     last_exc: Exception | None = None
     for attempt in range(retries + 1):
         try:
             async with limit_endpoint(base_url):
-                return await create_fn(**kwargs)
+                return await call_with_timeout(partial(create_fn, **kwargs), request_timeout_s)
         except Exception as exc:  # noqa: BLE001 — re-raised below
             last_exc = exc
             if attempt < retries and _is_transient(exc):

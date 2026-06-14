@@ -1,6 +1,10 @@
 import {
   HarnessAssembleRequest,
+  HarnessAssuranceAck,
+  HarnessAssuranceEventRequest,
+  HarnessAssuranceService,
   HarnessDraftRequest,
+  HarnessFinalizeAssuranceRequest,
   HarnessGateDecisionRequest,
   HarnessInternalService,
   HarnessPersistEntitiesRequest,
@@ -47,6 +51,9 @@ export class HarnessInternalController {
     private readonly cls: ClsService<IActiveUserContext>,
     // TASK-345 — live harness activity feed; ephemeral Redis publish, no CLS needed.
     private readonly harnessProgressService: HarnessProgressService,
+    // TASK-355 Phase D Slice 5d — live per-claim assurance feed; ephemeral Redis
+    // publish, no CLS needed (carries no PHI, only ids/sensor keys/verdict labels).
+    private readonly harnessAssuranceService: HarnessAssuranceService,
   ) {}
 
   @Get('policy')
@@ -93,6 +100,34 @@ export class HarnessInternalController {
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   async recordGateDecision(@Param('id') id: string, @Body() dto: HarnessGateDecisionRequest) {
     return this.harnessInternalService.recordGateDecision(id, dto);
+  }
+
+  // TASK-355 Phase D (optimistic delivery, second phase) — the harness calls this
+  // AFTER the inferential assurance pass: backfill the early-persisted SummaryMeta
+  // with the verdict + assuranceCompletedAt, flip DRAFT_PENDING_SENSORS →
+  // PENDING_REVIEW, record the deferred SENSOR_RUN WORM audit, and publish the
+  // terminal `assurance_complete` SSE event that closes the live feed.
+  @Post('consultations/:id/assurance')
+  @ApiOperation({ summary: 'Finalize optimistic delivery: backfill the draft verdict + close the assurance feed' })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async finalizeAssurance(@Param('id') id: string, @Body() dto: HarnessFinalizeAssuranceRequest) {
+    return this.harnessInternalService.finalizeAssurance(id, dto);
+  }
+
+  // TASK-355 Phase D Slice 5d (Q5 true mid-pass live feed) — the workflow's
+  // `run_inferential_sensors` activity posts ONE resolved claim verdict here as
+  // each claim settles; the service folds it into the full-state snapshot and
+  // publishes to `consultation:harness-assurance:{id}` for the browser SSE relay.
+  // Best-effort by contract (like progress): always acks ({ ok: boolean }), never
+  // 5xxs the workflow over a live-feed hiccup.
+  @Post('consultations/:id/assurance-event')
+  // Nothing is created — the ack is best-effort and can be `{ ok: false }`, so the
+  // default POST 201 would misreport the outcome (mirrors the progress route).
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Publish one resolved claim verdict to the live assurance feed (ephemeral, best-effort)' })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async reportAssuranceClaim(@Param('id') id: string, @Body() dto: HarnessAssuranceEventRequest): Promise<HarnessAssuranceAck> {
+    return this.harnessAssuranceService.reportClaim(id, dto);
   }
 
   // TASK-345 — the workflow's `report_progress` activity posts one stage event

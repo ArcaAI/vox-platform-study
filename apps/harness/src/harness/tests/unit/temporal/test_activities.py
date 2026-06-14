@@ -586,3 +586,96 @@ class TestRunInferentialSensors:
         cv = result.guardrail_decisions["citation_verify"]
         assert cv["decision"] == "DEGRADED"
         assert cv["badge"] == "unverified"
+
+
+class _FakeAssuranceApi:
+    """Stand-in ApiClient for the Slice-5d live feed: records per-claim publishes."""
+
+    def __init__(self, *, error: Exception | None = None) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self._error = error
+
+    async def report_assurance_event(self, consultation_id: str, **kw: Any):
+        self.calls.append({"consultation_id": consultation_id, **kw})
+        if self._error is not None:
+            raise self._error
+        from harness.services.api_client import AssuranceEventResponse
+
+        return AssuranceEventResponse(ok=True)
+
+
+class TestRunInferentialSensorsLiveAssurance:
+    """TASK-355 Phase D Slice 5d (Q5) — when ``live_assurance`` is set and the ids
+    are present, the activity streams each groundedness claim verdict to apps/api as
+    it resolves (best-effort: a publish failure never degrades the pass)."""
+
+    def _two_claim_input(self, **kw: Any) -> RunInferentialSensorsInput:
+        return _infer_input(
+            citations_map={
+                "claims": [
+                    {"id": "c-htn", "text": "hypertension", "section": "A", "evidence": [{"quote": "hypertension"}]},
+                    {"id": "c-pen", "text": "penicillin allergy", "section": "P", "evidence": []},
+                ]
+            },
+            **kw,
+        )
+
+    @pytest.mark.asyncio
+    async def test_publishes_one_event_per_claim_with_mapped_verdict(self, env, monkeypatch):
+        judge = _StubJudge(unsupported_markers=("penicillin",))
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: judge)
+        monkeypatch.setattr(activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False}))
+        fake = _FakeAssuranceApi()
+        monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)
+
+        await env.run(
+            activities.run_inferential_sensors,
+            self._two_claim_input(
+                live_assurance=True, consultation_id="c-1", tenant_id="t-1", job_id="job-1"
+            ),
+        )
+
+        by_claim = {c["claim_id"]: c for c in fake.calls}
+        assert set(by_claim) == {"c-htn", "c-pen"}
+        assert by_claim["c-htn"]["consultation_id"] == "c-1"
+        assert by_claim["c-htn"]["tenant_id"] == "t-1"
+        assert by_claim["c-htn"]["job_id"] == "job-1"
+        assert by_claim["c-htn"]["sensor"] == "groundedness"
+        assert by_claim["c-htn"]["verdict"] == "grounded"
+        assert by_claim["c-pen"]["verdict"] == "ungrounded"
+        # Each event carries a running counter + the claim total for an N/M UI.
+        assert by_claim["c-htn"]["total"] == 2
+        assert sorted(c["ordinal"] for c in fake.calls) == [1, 2]
+
+    @pytest.mark.asyncio
+    async def test_no_publish_when_live_assurance_disabled(self, env, monkeypatch):
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False}))
+        fake = _FakeAssuranceApi()
+        monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)
+
+        # Default input has live_assurance=False — the legacy path stays silent.
+        await env.run(activities.run_inferential_sensors, self._two_claim_input())
+
+        assert fake.calls == []
+
+    @pytest.mark.asyncio
+    async def test_publish_failure_never_degrades_the_pass(self, env, monkeypatch):
+        from harness.services.api_client import ApiServiceError
+
+        monkeypatch.setattr(activities, "_build_runtime_judge", lambda: _StubJudge())
+        monkeypatch.setattr(activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False}))
+        fake = _FakeAssuranceApi(error=ApiServiceError("redis down"))
+        monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)
+
+        result = await env.run(
+            activities.run_inferential_sensors,
+            self._two_claim_input(
+                live_assurance=True, consultation_id="c-1", tenant_id="t-1", job_id="job-1"
+            ),
+        )
+
+        # The pass completes normally despite the failing live feed (this judge
+        # grounds both claims, so the verdict is PASS — the point is it still resolves).
+        assert result.degraded is False
+        assert result.guardrail_decisions["groundedness"]["decision"] == "PASS"

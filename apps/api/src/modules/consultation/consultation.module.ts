@@ -14,6 +14,8 @@ import {
   HighlightServiceModule,
   // TASK-345 — live harness activity/progress feed.
   HarnessProgressServiceModule,
+  // TASK-355 Phase D Slice 5d — live per-claim assurance feed.
+  HarnessAssuranceServiceModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { ConsultationController } from './consultation.controller';
@@ -41,6 +43,8 @@ import { HarnessInternalController } from './harness-internal.controller';
     HighlightServiceModule,
     // TASK-345 — harness progress publish (internal POST) + SSE relay (stream route).
     HarnessProgressServiceModule,
+    // TASK-355 Phase D Slice 5d — assurance per-claim publish (internal POST) + SSE relay.
+    HarnessAssuranceServiceModule,
   ],
   controllers: [ConsultationController, AdminConsultationController, ConsultationJobController, HarnessInternalController],
 })

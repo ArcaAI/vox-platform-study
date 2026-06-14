@@ -210,6 +210,15 @@ class Settings(BaseSettings):
     gate_sla_seconds: float = 86_400.0  # 24h until the first SLA escalation
     gate_escalation_seconds: float = 43_200.0  # re-escalate every 12h until sign-off
 
+    # TASK-355 Phase D (R-7) — optimistic two-phase delivery kill-switch. The FIRST
+    # key of the two-key optimistic gate; the second is the durable
+    # ``workflow.patched("task-355-optimistic-delivery")`` marker (permanent in code).
+    # Read here, in NON-workflow settings, and snapshotted into ``HarnessGateConfig``
+    # at workflow start (document:start + the policy merge), so it stays deterministic
+    # across replay — never read from env inside the workflow body. Default OFF ⇒ the
+    # legacy single-phase path, byte-identical to pre-Phase-D history.
+    optimistic_delivery_enabled: bool = False
+
     # SMR generation defaults (None => let the SMR service choose).
     smr_provider: str | None = None
     smr_model: str | None = None
@@ -222,6 +231,16 @@ class Settings(BaseSettings):
     activity_start_to_close_s: float = 150.0
     activity_max_attempts: int = 3
     generate_max_attempts: int = 2
+
+    # Per-call LLM wall-clock timeout (TASK-354 Defect A). Bounds EACH individual judge /
+    # citation-verify / Granite Guardian request inside the inferential pass so a single
+    # hung LM Studio call can no longer burn the whole 900s start_to_close before Temporal
+    # retries; a timed-out call is transient (retried within HARNESS_LLM_MAX_ATTEMPTS) and
+    # the owning sensor then self-degrades. Enforced by the shared LLM governor (env
+    # ``HARNESS_LLM_REQUEST_TIMEOUT_S``; see ``core.llm_concurrency.LlmGovernorConfig`` and
+    # ``eval.judge.providers._create_with_retry``). Safety net for the raised
+    # HARNESS_LLM_MAX_CONCURRENCY (TASK-355 Phase A): a hung call now ties up a real slot.
+    llm_request_timeout_s: float = 120.0
 
     @property
     def harness_service_token(self) -> SecretStr:
