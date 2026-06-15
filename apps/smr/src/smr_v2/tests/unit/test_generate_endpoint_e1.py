@@ -77,7 +77,7 @@ class TestGenerateEndpointTokenUsage:
 
     @pytest.mark.asyncio
     async def test_sync_generate_includes_usage(self, client, mock_provider):
-        resp = await client.post("/api/v1/generate", json={"prompt": "hello"})
+        resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "test-model"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["usage"]["prompt_tokens"] == 50
@@ -86,7 +86,7 @@ class TestGenerateEndpointTokenUsage:
 
     @pytest.mark.asyncio
     async def test_sync_generate_includes_content(self, client):
-        resp = await client.post("/api/v1/generate", json={"prompt": "hello"})
+        resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "test-model"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["content"] == "Generated summary"
@@ -98,6 +98,7 @@ class TestGenerateEndpointTokenUsage:
         }))
         resp = await client.post("/api/v1/generate", json={
             "prompt": "hello",
+            "model": "test-model",
             "response_format": {"type": "json_schema", "json_schema": {"type": "object"}, "strict": True},
         })
         assert resp.status_code == 200
@@ -109,6 +110,7 @@ class TestGenerateEndpointTokenUsage:
     async def test_sync_generate_with_explicit_hyperparams(self, client, mock_provider):
         resp = await client.post("/api/v1/generate", json={
             "prompt": "hello",
+            "model": "test-model",
             "temperature": 0.1,
             "max_tokens": 6000,
             "top_p": 0.95,
@@ -121,7 +123,7 @@ class TestGenerateEndpointTokenUsage:
 
     @pytest.mark.asyncio
     async def test_sync_generate_with_none_hyperparams(self, client, mock_provider):
-        resp = await client.post("/api/v1/generate", json={"prompt": "hello"})
+        resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "test-model"})
         assert resp.status_code == 200
         call_args = mock_provider.generate.call_args[0][0]
         assert call_args.temperature is None
@@ -130,7 +132,7 @@ class TestGenerateEndpointTokenUsage:
 
     @pytest.mark.asyncio
     async def test_streaming_generate_returns_202(self, client):
-        resp = await client.post("/api/v1/generate", json={"prompt": "hello", "stream": True})
+        resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "test-model", "stream": True})
         assert resp.status_code == 202
         data = resp.json()
         assert data["status"] == "running"
@@ -140,13 +142,13 @@ class TestGenerateEndpointTokenUsage:
     async def test_provider_not_found_returns_404(self, client, mock_registry):
         from smr_v2.providers.base import ProviderNotFoundError
         mock_registry.get.side_effect = ProviderNotFoundError("not found")
-        resp = await client.post("/api/v1/generate", json={"prompt": "hello"})
+        resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "test-model"})
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
     async def test_provider_error_returns_502(self, client, mock_provider):
         mock_provider.generate = AsyncMock(side_effect=RuntimeError("LLM error"))
-        resp = await client.post("/api/v1/generate", json={"prompt": "hello"})
+        resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "test-model"})
         assert resp.status_code == 502
 
     @pytest.mark.asyncio

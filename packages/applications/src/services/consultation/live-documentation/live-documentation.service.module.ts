@@ -8,6 +8,7 @@ import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.servi
 import { StreamingSessionServiceModule } from '../../stt/streaming/streamingSession.service.module';
 import { LiveDocumentationService } from './live-documentation.service';
 import { OcrEnrichmentProcessor } from '../ocr/ocr-enrichment.processor';
+import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 
 /**
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
@@ -28,7 +29,7 @@ import { OcrEnrichmentProcessor } from '../ocr/ocr-enrichment.processor';
  * IBlobStorageService + ClsService are global), so no new module is needed.
  */
 @Module({
-  imports: [HttpModule, ConfigModule, CoreDatabaseModule, EventEmitterModule, RedisCacheModule.register(), StreamingSessionServiceModule],
+  imports: [HttpModule, ConfigModule, CoreDatabaseModule, EventEmitterModule, RedisCacheModule.register(), StreamingSessionServiceModule, HarnessPolicyServiceModule],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor],
   exports: [LiveDocumentationService],
 })

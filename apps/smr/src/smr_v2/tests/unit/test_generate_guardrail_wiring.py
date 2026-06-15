@@ -88,7 +88,7 @@ async def test_allowed_content_proceeds(_client_factory, mock_provider):
     guardrail.validate = AsyncMock(return_value={"allowed": True})
     client = await _client_factory(guardrail)
 
-    resp = await client.post("/api/v1/generate", json={"prompt": "patient note"})
+    resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "test-model"})
 
     assert resp.status_code == 200
     mock_provider.generate.assert_called_once()
@@ -103,7 +103,7 @@ async def test_fail_open_verdict_proceeds(_client_factory, mock_provider):
     )
     client = await _client_factory(guardrail)
 
-    resp = await client.post("/api/v1/generate", json={"prompt": "patient note"})
+    resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "test-model"})
 
     assert resp.status_code == 200
     mock_provider.generate.assert_called_once()
@@ -132,7 +132,7 @@ async def test_tenant_id_header_propagated_to_guardrail(_client_factory):
 async def test_no_guardrail_client_skips_validation(_client_factory, mock_provider):
     client = await _client_factory(None)  # guardrail unwired
 
-    resp = await client.post("/api/v1/generate", json={"prompt": "hello"})
+    resp = await client.post("/api/v1/generate", json={"prompt": "hello", "model": "test-model"})
 
     assert resp.status_code == 200
     mock_provider.generate.assert_called_once()

@@ -31,6 +31,8 @@ export * from './MediaRepository';
 export * from './NamedEntityRepository';
 export * from './NotificationRepository';
 export * from './PermissionRepository';
+export * from './PipelinePolicyChangeRepository';
+export * from './PipelinePolicyRepository';
 export * from './PromptTemplateRepository';
 export * from './PromptUsageRecordRepository';
 export * from './PromptVersionRepository';

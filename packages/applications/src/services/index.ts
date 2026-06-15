@@ -26,6 +26,10 @@ export * from './knowledge';
 export * from './harness-audit';
 // TASK-330 Phase 6 — editable harness runtime policy (admin console + worker).
 export * from './harness-policy';
+// TASK-356 Phase 5 — generalized realtime-config cascade resolver (Pillar B).
+export * from './config-resolver';
+// TASK-356 Phase 5 — editable realtime-pipeline policy (cascade admin surface).
+export * from './pipeline-policy';
 // TASK-330 Phase 6 — read-only observability projections (audit/eval/gate-queue).
 export * from './harness-observability';
 export * from './prompt-management';

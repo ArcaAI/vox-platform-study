@@ -50,6 +50,9 @@ interface BuildDepsOpts {
   redisSubscriber?: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   contextItemRepository?: any;
+  // TASK-356 D-7 — HarnessPolicy resolver override (defaults to a passing stub).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  harnessPolicyService?: any;
 }
 
 function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
@@ -80,6 +83,11 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
   };
   const config = opts.config ?? {};
   const configService = { get: vi.fn().mockImplementation((key: string) => config[key]) };
+  // TASK-356 D-7 — live-doc resolves provider+model via the HarnessPolicy cascade
+  // (not env). Default stub resolves successfully so SMR-path tests still flow.
+  const harnessPolicyService = opts.harnessPolicyService ?? {
+    resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }),
+  };
 
   const service = new LiveDocumentationService(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,9 +102,11 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
     audioBridge as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     contextItemRepository as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    harnessPolicyService as any,
   );
 
-  return { service, cacheService, redisSubscriber, audioBridge, contextItemRepository, httpMock };
+  return { service, cacheService, redisSubscriber, audioBridge, contextItemRepository, httpMock, harnessPolicyService };
 }
 
 describe('LiveDocumentationService', () => {
@@ -390,19 +400,24 @@ describe('LiveDocumentationService', () => {
       expect(secondPrompt).not.toContain('Patient reports cough'); // old transcript NOT re-sent verbatim
     });
 
-    it('sets bounded live SMR params (max_tokens, lower timeout, provider/model) and a SOAP response_format', async () => {
+    it('sets bounded live SMR params (max_tokens, lower timeout) and resolves provider/model via policy (TASK-356 D-7)', async () => {
+      const harnessPolicyService = {
+        resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'openai', model: 'fast-model' }),
+      };
       const { service, httpMock } = buildDeps(buildHttpMock(), {
         config: {
           LIVE_DOC_SMR_MAX_TOKENS: '1500',
           LIVE_DOC_SMR_TIMEOUT_MS: '20000',
-          LIVE_DOC_SMR_PROVIDER: 'openai',
-          LIVE_DOC_SMR_MODEL: 'fast-model',
         },
+        harnessPolicyService,
       });
       service.start({ consultationId: CID, tenantId: TENANT });
       service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
       await service.flush(CID);
 
+      // Provider+model come from the policy cascade (keyed by the session tenant),
+      // not LIVE_DOC_SMR_PROVIDER/MODEL env.
+      expect(harnessPolicyService.resolveSmrSelection).toHaveBeenCalledWith(TENANT);
       const smrCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/generate'))!;
       const body = smrCall[1] as { max_tokens?: number; provider?: string; model?: string; response_format?: { type?: string } };
       const config = smrCall[2] as { timeout?: number };

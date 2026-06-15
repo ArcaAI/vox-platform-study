@@ -26,6 +26,8 @@ export * from './MediaEntity';
 export * from './NamedEntityEntity';
 export * from './NotificationEntity';
 export * from './PermissionEntity';
+export * from './PipelinePolicyChangeEntity';
+export * from './PipelinePolicyEntity';
 export * from './PromptTemplateEntity';
 export * from './PromptUsageRecordEntity';
 export * from './PromptVersionEntity';

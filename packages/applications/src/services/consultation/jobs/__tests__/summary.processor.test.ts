@@ -108,6 +108,12 @@ const createMockNamedEntityRepository = () => ({
     findByConsultation: vi.fn().mockResolvedValue([]),
 });
 
+// Mock ConfigResolver (TASK-356 Phase 5 §2.5 — doctor-preferred prompt id).
+const createMockConfigResolver = () => ({
+    resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null),
+    resolvePipelineToggles: vi.fn(),
+});
+
 // Helper to create mock job
 const createMockJob = (data: GenerateSummaryJobPayload): Job<GenerateSummaryJobPayload> =>
     ({
@@ -150,6 +156,7 @@ describe('SummaryProcessor', () => {
     let mockPromptAssemblyService: ReturnType<typeof createMockPromptAssemblyService>;
     let mockJobMetrics: ReturnType<typeof createMockJobMetrics>;
     let mockClsService: ReturnType<typeof createMockClsService>;
+    let mockHarnessPolicyService: { resolveSmrSelection: ReturnType<typeof vi.fn> };
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -164,6 +171,9 @@ describe('SummaryProcessor', () => {
         mockPromptAssemblyService = createMockPromptAssemblyService();
         mockJobMetrics = createMockJobMetrics();
         mockClsService = createMockClsService();
+        mockHarnessPolicyService = {
+            resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
+        };
 
         processor = new SummaryProcessor(
             mockJobService as any,
@@ -176,7 +186,102 @@ describe('SummaryProcessor', () => {
             mockPromptAssemblyService as any,
             mockJobMetrics as any,
             mockClsService as any,
+            undefined, // secretsService (@Optional)
+            undefined, // namedEntityRepository (@Optional)
+            mockHarnessPolicyService as any, // TASK-356 D-7 — HarnessPolicyService resolver
         );
+    });
+
+    // ── TASK-356 Phase 5 (§2.5): the BullMQ path threads the preferred prompt id ──
+    describe('preferred-prompt threading (TASK-356 Phase 5)', () => {
+        let mockConfigResolver: ReturnType<typeof createMockConfigResolver>;
+        let processorWithResolver: SummaryProcessor;
+
+        beforeEach(() => {
+            mockConfigResolver = createMockConfigResolver();
+            processorWithResolver = new SummaryProcessor(
+                mockJobService as any,
+                mockContextItemRepository as any,
+                mockConsultationRepository as any,
+                mockHttpService as any,
+                mockConfigService as any,
+                mockEventEmitter as any,
+                mockPromptResolutionService as any,
+                mockPromptAssemblyService as any,
+                mockJobMetrics as any,
+                mockClsService as any,
+                undefined, // secretsService
+                undefined, // namedEntityRepository
+                mockHarnessPolicyService as any,
+                mockConfigResolver as any, // TASK-356 Phase 5 — ConfigResolver
+            );
+
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation({ doctorId: 'dr-smith-001' }));
+            mockContextItemRepository.findTranscripts.mockResolvedValue([createMockContextItem({ content: 'T' })]);
+            mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
+            mockContextItemRepository.create.mockResolvedValue({ id: 'sid', content: 'S' });
+        });
+
+        it('threads the doctor preferred prompt id into resolve + assemble (no explicit template)', async () => {
+            mockConfigResolver.resolvePreferredPromptTemplateId.mockResolvedValue('tpl-preferred');
+
+            await processorWithResolver.process(createMockJob({
+                jobId: 'job-pref',
+                consultationId: 'c-1',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            } as GenerateSummaryJobPayload));
+
+            expect(mockConfigResolver.resolvePreferredPromptTemplateId).toHaveBeenCalledWith('dr-smith-001');
+            expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(
+                expect.objectContaining({ preferredPromptTemplateId: 'tpl-preferred' }),
+            );
+            expect(mockPromptAssemblyService.assemble).toHaveBeenCalledWith(
+                expect.objectContaining({ preferredPromptTemplateId: 'tpl-preferred' }),
+            );
+        });
+
+        it('passes the preferred id to assemble even when an explicit template is set', async () => {
+            mockConfigResolver.resolvePreferredPromptTemplateId.mockResolvedValue('tpl-preferred');
+
+            await processorWithResolver.process(createMockJob({
+                jobId: 'job-pref-2',
+                consultationId: 'c-1',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: { template: 'SOAP' },
+            } as GenerateSummaryJobPayload));
+
+            // resolve() is skipped when a template is explicit, but assemble() still threads the id.
+            expect(mockPromptAssemblyService.assemble).toHaveBeenCalledWith(
+                expect.objectContaining({ preferredPromptTemplateId: 'tpl-preferred' }),
+            );
+        });
+    });
+
+    // ── TASK-356 D-7 (T-C3): the SMR call carries the cascade-resolved model ──
+    describe('SMR selection', () => {
+        it('posts the cascade-resolved provider+model when the request omits a model', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findTranscripts.mockResolvedValue([createMockContextItem({ content: 'T' })]);
+            mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
+            mockContextItemRepository.create.mockResolvedValue({ id: 'sid', content: 'S' });
+
+            await processor.process(createMockJob({
+                jobId: 'job-1',
+                consultationId: 'c-1',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            } as GenerateSummaryJobPayload));
+
+            expect(mockHarnessPolicyService.resolveSmrSelection).toHaveBeenCalled();
+            const smrCall = mockHttpService.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'))!;
+            const body = smrCall[1] as { provider?: string; model?: string };
+            expect(body.provider).toBe('lm-studio');
+            expect(body.model).toBe('resolved-medgemma');
+        });
     });
 
     // ===========================================================================

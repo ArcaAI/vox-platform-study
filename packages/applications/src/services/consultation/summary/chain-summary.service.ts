@@ -20,6 +20,7 @@ import { BaseService, assertParentInScope } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { SecretsService } from '../../baseServices/_meta/secrets';
+import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 
 /**
@@ -53,6 +54,11 @@ export class ChainSummaryService extends BaseService {
     protected override readonly clsService: ClsService<IActiveUserContext>,
     private readonly promptAssemblyService: PromptAssemblyService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-356 D-7 — resolve the admin-managed SMR {provider, model} on every
+    // SMR call (the gateway has no model default). Optional + trailing so
+    // existing positional test fixtures keep compiling; production DI always
+    // supplies it (ChainSummaryServiceModule).
+    @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -499,7 +505,14 @@ export class ChainSummaryService extends BaseService {
     outputTokens?: number;
   }> {
     try {
-      const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, payload.options, payload.context);
+      // TASK-356 D-7 — resolve the admin-managed {provider, model} (no in-gateway
+      // default) as the base so a caller-supplied model still wins.
+      let options = payload.options;
+      if (this.harnessPolicyService) {
+        const { provider, model } = await this.harnessPolicyService.resolveSmrSelection();
+        options = { smrProvider: provider, smrModel: model, ...payload.options };
+      }
+      const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, options, payload.context);
       const smrServiceToken = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
       const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, smrPayload, {
         timeout: 180000,

@@ -67,6 +67,8 @@ export async function buildTenantServiceTestHarness(): Promise<TenantServiceTest
     dbStub, bucketStub, eventEmitter, clsStub,
     // TASK-356 Phase 1 — appended AiModelRepository (clone-per-tenant).
     repoStub,
+    // TASK-356 Phase 2 — appended AsrPipelineVersionRepository (pipeline clone).
+    repoStub,
   );
 
   return {

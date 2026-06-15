@@ -179,6 +179,7 @@ describe('DnaWritingStyleProcessor', () => {
     let mockJobMetrics: ReturnType<typeof createMockJobMetrics>;
     let mockClsService: ReturnType<typeof createMockClsService>;
     let mockContextItemVersionRepo: ReturnType<typeof createMockContextItemVersionRepository>;
+    let mockHarnessPolicyService: { resolveSmrSelection: ReturnType<typeof vi.fn> };
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -204,6 +205,9 @@ describe('DnaWritingStyleProcessor', () => {
                     ? [{ id: 'v', contextItemId, changeReason: 'approved', versionNumber: 1 }]
                     : [],
         );
+        mockHarnessPolicyService = {
+            resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
+        };
 
         processor = new DnaWritingStyleProcessor(
             mockJobService as never,
@@ -219,6 +223,8 @@ describe('DnaWritingStyleProcessor', () => {
             mockConfigService as never,
             mockJobMetrics as never,
             mockClsService as never,
+            undefined, // secretsService (@Optional)
+            mockHarnessPolicyService as never, // TASK-356 D-7 — HarnessPolicyService resolver
         );
     });
 
@@ -273,12 +279,17 @@ describe('DnaWritingStyleProcessor', () => {
 
             await processor.process(createMockJob({ textSamples: ['sample'] }) as never);
 
+            // TASK-356 D-7 — the SMR gateway now requires an explicit provider+model,
+            // resolved via the HarnessPolicy cascade and merged into the payload.
+            expect(mockHarnessPolicyService.resolveSmrSelection).toHaveBeenCalled();
             expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
                 'http://localhost:8862/api/v1/generate',
                 {
                     prompt: 'sample',
                     system_prompt: 'Analyze writing.',
                     stream: false,
+                    provider: 'lm-studio',
+                    model: 'resolved-medgemma',
                 },
                 {
                     timeout: 120000,
@@ -1147,6 +1158,119 @@ describe('DnaWritingStyleProcessor', () => {
 
             const [, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
             expect(requestBody.prompt).toContain('Explicit text sample bypassing approval');
+        });
+    });
+
+    // ─── TASK-356 Phase 6 (S6) — draft↔approved pairs + DNA gating ──────────
+    describe('TASK-356 Phase 6 — draft↔approved learning pairs', () => {
+        const createMockConfigResolver = () => ({
+            resolveEffectiveDnaStyleEnabled: vi.fn().mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null }),
+        });
+
+        const buildProcessorWithResolver = (configResolver: unknown) =>
+            new DnaWritingStyleProcessor(
+                mockJobService as never,
+                mockAppSettings as never,
+                mockContextItemRepo as never,
+                mockContextItemVersionRepo as never,
+                mockDnaReportRepo as never,
+                mockDnaVersionRepo as never,
+                mockDnaUsageRepo as never,
+                mockPromptUsageRepo as never,
+                mockPromptService as never,
+                mockHttpService as never,
+                mockConfigService as never,
+                mockJobMetrics as never,
+                mockClsService as never,
+                undefined, // secretsService
+                mockHarnessPolicyService as never, // harnessPolicyService
+                configResolver as never, // configResolver
+            );
+
+        const primeStorageMocks = () => {
+            mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
+            mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+            mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
+            mockDnaReportRepo.create.mockResolvedValue({ id: 'r', createdAt: new Date(), updatedAt: new Date() });
+            mockDnaVersionRepo.create.mockResolvedValue({});
+            mockDnaUsageRepo.create.mockResolvedValue({});
+        };
+
+        it('pairs the ai_draft_v1 snapshot with the approved final when both exist (AI DRAFT → DOCTOR APPROVED)', async () => {
+            mockContextItemVersionRepo.getVersionsByChangeReason.mockImplementation(async (id: string, reason: string) => {
+                if (reason === 'approved') return [{ id: 'v', contextItemId: id, changeReason: 'approved', versionNumber: 2 }];
+                if (reason === 'ai_draft_v1') return [{ id: 'd', contextItemId: id, changeReason: 'ai_draft_v1', versionNumber: 1, content: 'AI DRAFT BODY' }];
+                return [];
+            });
+            mockContextItemRepo.findAll.mockResolvedValue([{ id: 'ci-1', content: 'DOCTOR APPROVED BODY', type: 'RAW_SUMMARY' }]);
+            primeStorageMocks();
+
+            await processor.process(createMockJob({}) as never);
+
+            const [, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
+            expect(requestBody.prompt).toContain('AI DRAFT:');
+            expect(requestBody.prompt).toContain('AI DRAFT BODY');
+            expect(requestBody.prompt).toContain('DOCTOR APPROVED:');
+            expect(requestBody.prompt).toContain('DOCTOR APPROVED BODY');
+        });
+
+        it('falls back to final-only (no AI DRAFT block) for a legacy consult with no v1 snapshot', async () => {
+            // default mock: approved → present, ai_draft_v1 → [] (legacy)
+            mockContextItemRepo.findAll.mockResolvedValue([{ id: 'ci-1', content: 'DOCTOR APPROVED BODY', type: 'RAW_SUMMARY' }]);
+            primeStorageMocks();
+
+            await processor.process(createMockJob({}) as never);
+
+            const [, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
+            expect(requestBody.prompt).toContain('DOCTOR APPROVED BODY');
+            expect(requestBody.prompt).not.toContain('AI DRAFT:');
+        });
+
+        it('keeps the callSmrV2 transport boundary stable (payload still {prompt, system_prompt, stream:false, provider, model})', async () => {
+            mockContextItemVersionRepo.getVersionsByChangeReason.mockImplementation(async (id: string, reason: string) => {
+                if (reason === 'approved') return [{ id: 'v', contextItemId: id, changeReason: 'approved', versionNumber: 2 }];
+                if (reason === 'ai_draft_v1') return [{ id: 'd', contextItemId: id, changeReason: 'ai_draft_v1', versionNumber: 1, content: 'AI DRAFT BODY' }];
+                return [];
+            });
+            mockContextItemRepo.findAll.mockResolvedValue([{ id: 'ci-1', content: 'DOCTOR APPROVED BODY', type: 'RAW_SUMMARY' }]);
+            primeStorageMocks();
+
+            await processor.process(createMockJob({}) as never);
+
+            const [url, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
+            expect(url).toBe('http://localhost:8862/api/v1/generate');
+            expect(requestBody).toEqual(
+                expect.objectContaining({ prompt: expect.any(String), system_prompt: expect.any(String), stream: false }),
+            );
+            expect(Object.keys(requestBody).sort()).toEqual(['model', 'prompt', 'provider', 'stream', 'system_prompt']);
+        });
+
+        it('GATES the automatic corpus: a doctor with effective DNA = false is not learned-from (job fails)', async () => {
+            const configResolver = createMockConfigResolver();
+            configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: false });
+            const gatedProcessor = buildProcessorWithResolver(configResolver);
+
+            await expect(gatedProcessor.process(createMockJob({}) as never)).rejects.toThrow(/disabled/i);
+
+            expect(configResolver.resolveEffectiveDnaStyleEnabled).toHaveBeenCalledWith(
+                expect.objectContaining({ tenantId: 'tenant-1', doctorId: 'doctor-1' }),
+            );
+            expect(mockJobService.notifyFailed).toHaveBeenCalledWith('job-1', expect.stringContaining('disabled'));
+            // gated out BEFORE the corpus is even fetched
+            expect(mockContextItemRepo.findAll).not.toHaveBeenCalled();
+        });
+
+        it('does NOT gate the explicit textSamples path even when effective DNA = false (admin/migration)', async () => {
+            const configResolver = createMockConfigResolver();
+            configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: false, tenantEnabled: false, doctorToggle: null });
+            const gatedProcessor = buildProcessorWithResolver(configResolver);
+            primeStorageMocks();
+
+            await gatedProcessor.process(createMockJob({ textSamples: ['Explicit override sample'] }) as never);
+
+            expect(configResolver.resolveEffectiveDnaStyleEnabled).not.toHaveBeenCalled();
+            const [, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
+            expect(requestBody.prompt).toContain('Explicit override sample');
         });
     });
 });

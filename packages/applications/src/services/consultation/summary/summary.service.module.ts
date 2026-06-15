@@ -9,11 +9,13 @@ import { PromptResolutionServiceModule } from '../prompt/prompt-resolution.servi
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { HarnessAuditServiceModule } from '../../harness-audit';
 import { HarnessGatewayServiceModule } from '../harness/harness-gateway.service.module';
+import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 
 @Module({
   // TASK-330 Phase 1 — HarnessAuditServiceModule supplies the WORM audit trail
   // used by approveSummary's attestation gate (ATTEST event on signing).
   // HarnessGatewayServiceModule (Lane G) supplies the outbound sign-off signal.
+  // TASK-356 D-7 — HarnessPolicyServiceModule supplies the SMR-selection resolver.
   imports: [
     CommonServiceModule,
     CoreDatabaseModule,
@@ -22,6 +24,7 @@ import { HarnessGatewayServiceModule } from '../harness/harness-gateway.service.
     PromptResolutionServiceModule,
     HarnessAuditServiceModule,
     HarnessGatewayServiceModule,
+    HarnessPolicyServiceModule,
   ],
   providers: [
     {

@@ -6,9 +6,11 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../../baseServices';
 import { PromptResolutionServiceModule } from '../prompt/prompt-resolution.service.module';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
+import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule, ConfigModule, HttpModule, PromptResolutionServiceModule],
+  // TASK-356 D-7 — HarnessPolicyServiceModule supplies the SMR-selection resolver.
+  imports: [CommonServiceModule, CoreDatabaseModule, ConfigModule, HttpModule, PromptResolutionServiceModule, HarnessPolicyServiceModule],
   providers: [PromptAssemblyService, ChainSummaryService],
   exports: [ChainSummaryService],
 })

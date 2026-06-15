@@ -7,6 +7,7 @@ import { HarnessAuditServiceModule } from '../../harness-audit';
 import { PromptResolutionServiceModule } from '../prompt/prompt-resolution.service.module';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { ConsultationJobServiceModule } from '../jobs/consultation-job.service.module';
+import { ConfigResolverModule } from '../../config-resolver';
 
 /**
  * HarnessInternalService DI module (TASK-330 Phase 1 — Lane G). Wires the
@@ -26,6 +27,9 @@ import { ConsultationJobServiceModule } from '../jobs/consultation-job.service.m
     // TASK-355 Phase D Slice 5d — supplies HarnessAssuranceService so
     // finalizeAssurance can publish the terminal `assurance_complete` SSE event.
     HarnessAssuranceServiceModule,
+    // TASK-356 Phase 5 — supplies ConfigResolver so assemble can thread the
+    // doctor's preferred prompt id (Tier-0) through the async/harness path.
+    ConfigResolverModule,
   ],
   providers: [HarnessInternalService, PromptAssemblyService],
   exports: [HarnessInternalService],

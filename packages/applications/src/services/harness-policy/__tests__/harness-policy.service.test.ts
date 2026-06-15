@@ -15,6 +15,7 @@
  * factory/entity run so change-tracking + validation are exercised.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BadRequestException } from '@nestjs/common';
 import { HarnessPolicyFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { HarnessPolicyService } from '../harness-policy.service';
@@ -75,7 +76,15 @@ describe('HarnessPolicyService', () => {
 
   describe('getEffectivePolicy', () => {
     it('returns the tenant own row (source=tenant) when present', async () => {
-      const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, coverageThreshold: 0.55 });
+      // SMR fields non-null so the TASK-356 D-7 (B1) field-level fallthrough is
+      // a no-op here: this case asserts the SYSTEM default is NOT consulted when
+      // the own row is fully populated.
+      const own = HarnessPolicyFactory.CreateHarnessPolicy({
+        tenantId: TENANT,
+        coverageThreshold: 0.55,
+        smrProvider: 'tenant-prov',
+        smrModel: 'tenant-model',
+      });
       policyRepository.findForExactTenant.mockResolvedValue(own);
 
       const result = await service.getEffectivePolicy();
@@ -110,6 +119,99 @@ describe('HarnessPolicyService', () => {
       expect(result.entityFaithfulnessThreshold).toBe(1.0);
       expect(result.maxRegen).toBe(2);
       expect(result.id).toBeNull();
+    });
+
+    // ── TASK-356 D-7 (T-B1): field-level fallthrough for the two SMR fields ──
+    it('fills null SMR fields on the tenant own row from the SYSTEM default (field-level fallthrough)', async () => {
+      const own = HarnessPolicyFactory.CreateHarnessPolicy({
+        tenantId: TENANT,
+        coverageThreshold: 0.55,
+        // Pre-Phase-2 tenant row: SMR selection was never set.
+        smrProvider: null,
+        smrModel: null,
+      });
+      const sys = HarnessPolicyFactory.CreateHarnessPolicy({
+        tenantId: SYSTEM_TENANT_ID,
+        smrProvider: 'lm-studio',
+        smrModel: 'mlx-community/medgemma-1.5-4b-it',
+      });
+      policyRepository.findForExactTenant.mockResolvedValue(own);
+      policyRepository.findSystemDefault.mockResolvedValue(sys);
+
+      const result = await service.getEffectivePolicy();
+
+      // Still the tenant's own row (source unchanged) but SMR fields inherited.
+      expect(result.source).toBe('tenant');
+      expect(result.coverageThreshold).toBe(0.55);
+      expect(result.smrProvider).toBe('lm-studio');
+      expect(result.smrModel).toBe('mlx-community/medgemma-1.5-4b-it');
+    });
+
+    it('does NOT override a non-null SMR field on the tenant own row', async () => {
+      const own = HarnessPolicyFactory.CreateHarnessPolicy({
+        tenantId: TENANT,
+        smrProvider: 'ollama',
+        smrModel: 'tenant-pinned-model',
+      });
+      const sys = HarnessPolicyFactory.CreateHarnessPolicy({
+        tenantId: SYSTEM_TENANT_ID,
+        smrProvider: 'lm-studio',
+        smrModel: 'mlx-community/medgemma-1.5-4b-it',
+      });
+      policyRepository.findForExactTenant.mockResolvedValue(own);
+      policyRepository.findSystemDefault.mockResolvedValue(sys);
+
+      const result = await service.getEffectivePolicy();
+
+      expect(result.smrProvider).toBe('ollama');
+      expect(result.smrModel).toBe('tenant-pinned-model');
+    });
+  });
+
+  // ── TASK-356 D-7 (T-B2): the fail-closed SMR selection seam ──
+  describe('resolveSmrSelection', () => {
+    it('returns {provider, model} resolved from the SYSTEM-default cascade', async () => {
+      const sys = HarnessPolicyFactory.CreateHarnessPolicy({
+        tenantId: SYSTEM_TENANT_ID,
+        smrProvider: 'lm-studio',
+        smrModel: 'mlx-community/medgemma-1.5-4b-it',
+      });
+      policyRepository.findForExactTenant.mockResolvedValue(null);
+      policyRepository.findSystemDefault.mockResolvedValue(sys);
+
+      const result = await service.resolveSmrSelection();
+
+      expect(result).toEqual({ provider: 'lm-studio', model: 'mlx-community/medgemma-1.5-4b-it' });
+    });
+
+    it('resolves a null-SMR tenant row to the SYSTEM default (field-level fallthrough)', async () => {
+      const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, smrProvider: null, smrModel: null });
+      const sys = HarnessPolicyFactory.CreateHarnessPolicy({
+        tenantId: SYSTEM_TENANT_ID,
+        smrProvider: 'lm-studio',
+        smrModel: 'mlx-community/medgemma-1.5-4b-it',
+      });
+      policyRepository.findForExactTenant.mockResolvedValue(own);
+      policyRepository.findSystemDefault.mockResolvedValue(sys);
+
+      const result = await service.resolveSmrSelection();
+
+      expect(result).toEqual({ provider: 'lm-studio', model: 'mlx-community/medgemma-1.5-4b-it' });
+    });
+
+    it('throws (fail-closed) when the cascade yields no model (no tenant row, no SYSTEM default)', async () => {
+      policyRepository.findForExactTenant.mockResolvedValue(null);
+      policyRepository.findSystemDefault.mockResolvedValue(null);
+
+      await expect(service.resolveSmrSelection()).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('throws (fail-closed) when the tenant row and the SYSTEM default both leave SMR null', async () => {
+      const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, smrProvider: null, smrModel: null });
+      policyRepository.findForExactTenant.mockResolvedValue(own);
+      policyRepository.findSystemDefault.mockResolvedValue(null);
+
+      await expect(service.resolveSmrSelection()).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 

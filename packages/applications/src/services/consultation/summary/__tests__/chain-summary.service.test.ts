@@ -157,6 +157,9 @@ function createService() {
     const eventEmitter = createMockEventEmitter();
     const clsService = createMockClsService();
     const promptAssemblyService = createMockPromptAssemblyService();
+    const harnessPolicyService = {
+        resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
+    };
 
     const service = new ChainSummaryService(
         contextItemRepo as any,
@@ -168,6 +171,8 @@ function createService() {
         eventEmitter as any,
         clsService as any,
         promptAssemblyService as any,
+        undefined, // secretsService (@Optional)
+        harnessPolicyService as any, // TASK-356 D-7 — HarnessPolicyService resolver
     );
 
     return {
@@ -181,6 +186,7 @@ function createService() {
         eventEmitter,
         clsService,
         promptAssemblyService,
+        harnessPolicyService,
     };
 }
 
@@ -194,6 +200,40 @@ describe('ChainSummaryService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks = createService();
+    });
+
+    // ── TASK-356 D-7 (T-C2): callSmrService passes the cascade-resolved model ──
+    describe('SMR selection', () => {
+        const primeComprehensive = () => {
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([createContextItem({ content: 'Findings.' })]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+            mocks.httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Result.' } });
+        };
+
+        it('posts the cascade-resolved provider+model when the request omits a model', async () => {
+            primeComprehensive();
+
+            await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
+
+            expect(mocks.harnessPolicyService.resolveSmrSelection).toHaveBeenCalled();
+            const body = mocks.httpService.axiosRef.post.mock.calls[0][1] as { provider?: string; model?: string };
+            expect(body.provider).toBe('lm-studio');
+            expect(body.model).toBe('resolved-medgemma');
+        });
+
+        it('lets a caller-supplied model win over the resolved default', async () => {
+            primeComprehensive();
+
+            await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false, options: { model: 'caller-pinned' } } as any);
+
+            const body = mocks.httpService.axiosRef.post.mock.calls[0][1] as { model?: string };
+            expect(body.model).toBe('caller-pinned');
+        });
     });
 
     describe('resolveLinkedConsultations', () => {

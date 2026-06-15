@@ -81,6 +81,8 @@ describe('TenantService — audit-scrub for Vault-encrypted rows (Phase 4 Task 4
       cls as never,
       // TASK-356 Phase 1 — model-catalog clone repo (unused by this suite).
       { findAll: async () => [] } as never,
+      // TASK-356 Phase 2 — pipeline-version clone repo (unused by this suite).
+      { create: async () => ({}) } as never,
     );
   });
 

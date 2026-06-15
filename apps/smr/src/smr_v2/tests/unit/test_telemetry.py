@@ -237,7 +237,7 @@ class TestOllamaGenAISpans:
 
         provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
         await provider.generate(
-            GenerateRequest(prompt="hi", temperature=0.5, max_tokens=100)
+            GenerateRequest(prompt="hi", model="llama3.2:latest", temperature=0.5, max_tokens=100)
         )
 
         spans = in_memory_exporter.get_finished_spans()

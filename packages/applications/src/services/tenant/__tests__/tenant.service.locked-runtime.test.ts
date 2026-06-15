@@ -55,7 +55,9 @@ const mockGlobalSettingRepository = {
 
 const mockDepartmentRepository = { findAll: vi.fn(), count: vi.fn() };
 const mockPromptTemplateRepository = { findAll: vi.fn(), count: vi.fn() };
-const mockAsrPipelineRepository = { findAll: vi.fn(), count: vi.fn() };
+// TASK-356 Phase 2 — `findDefault` returns null so the new pipeline-clone
+// provisioning step is a clean no-op for this suite (which exercises create()).
+const mockAsrPipelineRepository = { findAll: vi.fn(), count: vi.fn(), findDefault: vi.fn().mockResolvedValue(null) };
 // TASK-302 Stream D Phase C (C.4) — `updateTenantConfigs` wraps writes in
 // `databaseService.baseClient.$transaction(callback)`. The stub invokes the
 // callback with a sentinel tx client so the loop executes.
@@ -188,6 +190,8 @@ describe('TenantService — locked-field runtime plumbing (TASK-258 Agent D)', (
             mockClsService as never,
             // TASK-356 Phase 1 — model-catalog clone repo (no-op for this suite).
             { findAll: async () => [] } as never,
+            // TASK-356 Phase 2 — pipeline-version clone repo (unused; clone is a no-op here).
+            { create: async () => ({}) } as never,
         );
     });
 

@@ -201,6 +201,9 @@ function createProcessor() {
     const clsService = createMockClsService();
 
     const promptAssemblyService = createMockPromptAssemblyService();
+    const harnessPolicyService = {
+        resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
+    };
 
     const processor = new ComprehensiveSummaryProcessor(
         jobService as any,
@@ -215,6 +218,8 @@ function createProcessor() {
         promptAssemblyService as any,
         jobMetrics as any,
         clsService as any,
+        undefined, // secretsService (@Optional)
+        harnessPolicyService as any, // TASK-356 D-7 — HarnessPolicyService resolver
     );
 
     return {
@@ -231,6 +236,7 @@ function createProcessor() {
         promptAssemblyService,
         jobMetrics,
         clsService,
+        harnessPolicyService,
     };
 }
 
@@ -244,6 +250,25 @@ describe('ComprehensiveSummaryProcessor', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks = createProcessor();
+    });
+
+    // ── TASK-356 D-7 (T-C5): the SMR call carries the cascade-resolved model ──
+    describe('SMR selection', () => {
+        it('posts the cascade-resolved provider+model when the request omits a model', async () => {
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.chainSummaryService.resolveLinkedConsultations.mockResolvedValue([consultation]);
+            mocks.chainSummaryService.gatherSections.mockResolvedValue([createSection()]);
+            mocks.httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
+
+            await mocks.processor.process(createMockJob(createDefaultPayload({ request: { includeNER: false } })));
+
+            expect(mocks.harnessPolicyService.resolveSmrSelection).toHaveBeenCalled();
+            const smrCall = mocks.httpService.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'))!;
+            const body = smrCall[1] as { provider?: string; model?: string };
+            expect(body.provider).toBe('lm-studio');
+            expect(body.model).toBe('resolved-medgemma');
+        });
     });
 
     // ===========================================================================

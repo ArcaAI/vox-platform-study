@@ -1619,7 +1619,12 @@ describe('PromptManagementService', () => {
     // ─── TASK-328 A4: prompt quality/score test run ──────────────────────
 
     describe('testPromptTemplate (TASK-328 A4)', () => {
-        const buildSmrService = (responseData: Record<string, unknown>) => {
+        const buildSmrService = (
+            responseData: Record<string, unknown>,
+            harnessPolicyService: { resolveSmrSelection: ReturnType<typeof vi.fn> } = {
+                resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
+            },
+        ) => {
             const httpMock = createMockHttpService(responseData);
             const configMock = createMockConfigService();
             const svc = new PromptManagementService(
@@ -1632,10 +1637,26 @@ describe('PromptManagementService', () => {
                 mockDatabaseService as never,
                 httpMock as never,
                 configMock as never,
-                undefined,
+                undefined, // secretsService (@Optional)
+                harnessPolicyService as never, // TASK-356 D-7 — HarnessPolicyService resolver
             );
-            return { svc, httpMock, configMock };
+            return { svc, httpMock, configMock, harnessPolicyService };
         };
+
+        // ── TASK-356 D-7 (T-C8): prompt-test resolves provider+model via policy ──
+        it('resolves provider+model via the policy cascade and posts both to SMR', async () => {
+            const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
+            mockTemplateRepo.findById.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
+            const { svc, httpMock, harnessPolicyService } = buildSmrService({ content: wordsOfLength(60) });
+
+            await svc.testPromptTemplate('tpl-1', { variables: { topic: 'asthma' }, expectedVersion: 1 } as never);
+
+            expect(harnessPolicyService.resolveSmrSelection).toHaveBeenCalled();
+            const [, payload] = httpMock.axiosRef.post.mock.calls[0];
+            expect((payload as { provider?: string }).provider).toBe('lm-studio');
+            expect((payload as { model?: string }).model).toBe('resolved-medgemma');
+        });
 
         it('runs the template against SMR and persists lastTestScore/lastTestOutput/lastTestAt via OCC write', async () => {
             const output = wordsOfLength(60); // ≥ 50 words → full score
@@ -1893,6 +1914,127 @@ describe('PromptManagementService', () => {
             mockClsService.get.mockImplementation((key: string) => (key === 'user' ? defaultClsContext.user : null));
 
             await expect(service.getUsageAnalytics()).rejects.toThrow(BadRequestException);
+        });
+    });
+
+    // ─── TASK-356 Phase 6 (S1/S2) — doctor self-service (caller-ownership) ───
+    describe('doctor self-service: personal CRUD + preferred template', () => {
+        const createMockUserProfileService = () => ({
+            upsertByUserId: vi.fn(),
+            getByUserId: vi.fn(),
+        });
+
+        let profileSvc: ReturnType<typeof createMockUserProfileService>;
+        let svc: PromptManagementService;
+
+        beforeEach(() => {
+            profileSvc = createMockUserProfileService();
+            svc = new PromptManagementService(
+                mockTemplateRepo as never,
+                mockVersionRepo as never,
+                mockUsageRepo as never,
+                mockDepartmentService as never,
+                mockEventEmitter as never,
+                mockClsService as never,
+                mockDatabaseService as never,
+                undefined, // httpService
+                undefined, // configService
+                undefined, // secretsService
+                undefined, // harnessPolicyService
+                profileSvc as never, // userProfileService (Phase 6)
+            );
+        });
+
+        describe('updatePersonal', () => {
+            it('REJECTS a non-personal template even when the caller has manage (NOT a doctor self-service target)', async () => {
+                abilityCan.mockReturnValue(true); // caller has manage
+                const tenantDefault = createMockTemplateEntity({ id: 'tpl-D', tenantId: 'tenant-1', scope: 'TENANT_DEFAULT' });
+                mockTemplateRepo.findById.mockResolvedValue(tenantDefault);
+
+                await expect(svc.updatePersonal('tpl-D', { content: 'edit', expectedVersion: 1 } as never)).rejects.toThrow(ForbiddenException);
+                expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
+            });
+
+            it("REJECTS another user's personal template (ownership)", async () => {
+                const personal = createMockTemplateEntity({ id: 'tpl-P', tenantId: 'tenant-1', scope: 'USER_PERSONAL', ownerUserId: 'someone-else' });
+                mockTemplateRepo.findById.mockResolvedValue(personal);
+
+                await expect(svc.updatePersonal('tpl-P', { content: 'edit', expectedVersion: 1 } as never)).rejects.toThrow(ForbiddenException);
+                expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
+            });
+
+            it('allows the owner to update their own personal template (delegates to the CAS write path)', async () => {
+                abilityCan.mockReturnValue(false); // no manage — ownership is the only grant
+                const personal = createMockTemplateEntity({ id: 'tpl-mine', tenantId: 'tenant-1', scope: 'USER_PERSONAL', ownerUserId: 'user-id-1' });
+                mockTemplateRepo.findById.mockResolvedValue(personal);
+                mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
+                mockTemplateRepo.updateWithVersion.mockResolvedValue(personal);
+
+                await svc.updatePersonal('tpl-mine', { content: 'new content', expectedVersion: 1 } as never);
+
+                expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalled();
+            });
+
+            it('throws NotFoundException (no existence leak) for a cross-tenant template', async () => {
+                const foreign = createMockTemplateEntity({ id: 'tpl-X', tenantId: 'tenant-OTHER', scope: 'USER_PERSONAL', ownerUserId: 'user-id-1' });
+                mockTemplateRepo.findById.mockResolvedValue(foreign);
+
+                await expect(svc.updatePersonal('tpl-X', { content: 'edit', expectedVersion: 1 } as never)).rejects.toThrow(NotFoundException);
+            });
+        });
+
+        describe('deletePersonal', () => {
+            it('REJECTS a non-personal template even with manage', async () => {
+                abilityCan.mockReturnValue(true);
+                const tenantDefault = createMockTemplateEntity({ id: 'tpl-D', tenantId: 'tenant-1', scope: 'TENANT_DEFAULT' });
+                mockTemplateRepo.findById.mockResolvedValue(tenantDefault);
+
+                await expect(svc.deletePersonal('tpl-D')).rejects.toThrow(ForbiddenException);
+                expect(mockTemplateRepo.softDelete).not.toHaveBeenCalled();
+            });
+
+            it('allows the owner to delete their own personal template (delegates to soft delete)', async () => {
+                const personal = createMockTemplateEntity({ id: 'tpl-mine', tenantId: 'tenant-1', scope: 'USER_PERSONAL', ownerUserId: 'user-id-1' });
+                mockTemplateRepo.findById.mockResolvedValue(personal);
+                mockTemplateRepo.softDelete.mockResolvedValue(personal);
+
+                await svc.deletePersonal('tpl-mine');
+
+                expect(mockTemplateRepo.softDelete).toHaveBeenCalledWith('tpl-mine');
+            });
+        });
+
+        describe('setPreferredPromptTemplate', () => {
+            it('writes the caller UserProfile.preferredPromptTemplateId when the template is available to the caller', async () => {
+                vi.spyOn(svc, 'listAvailableForCaller').mockResolvedValue([
+                    { id: 'tpl-1' } as never,
+                    { id: 'tpl-2' } as never,
+                ]);
+                profileSvc.upsertByUserId.mockResolvedValue({ preferredPromptTemplateId: 'tpl-1' });
+
+                const res = await svc.setPreferredPromptTemplate('tpl-1');
+
+                expect(profileSvc.upsertByUserId).toHaveBeenCalledWith('user-id-1', { preferredPromptTemplateId: 'tpl-1' });
+                expect(res.preferredPromptTemplateId).toBe('tpl-1');
+            });
+
+            it('REJECTS a template that is not available to the caller (ownership / publication gate)', async () => {
+                vi.spyOn(svc, 'listAvailableForCaller').mockResolvedValue([{ id: 'tpl-1' } as never]);
+
+                await expect(svc.setPreferredPromptTemplate('tpl-not-mine')).rejects.toThrow(ForbiddenException);
+                expect(profileSvc.upsertByUserId).not.toHaveBeenCalled();
+            });
+
+            it('clears the preference (templateId=null) without an availability check', async () => {
+                const listSpy = vi.spyOn(svc, 'listAvailableForCaller');
+                profileSvc.upsertByUserId.mockResolvedValue({ preferredPromptTemplateId: null });
+
+                const res = await svc.setPreferredPromptTemplate(null);
+
+                expect(listSpy).not.toHaveBeenCalled();
+                expect(profileSvc.upsertByUserId).toHaveBeenCalledWith('user-id-1', { preferredPromptTemplateId: null });
+                expect(res.preferredPromptTemplateId).toBeNull();
+            });
         });
     });
 });

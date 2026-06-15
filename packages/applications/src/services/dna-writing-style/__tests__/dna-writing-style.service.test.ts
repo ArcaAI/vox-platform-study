@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
-import { JobQueue, ResourceStatusType } from '@arcaai/domains';
+import { JobQueue, ResourceStatusType, SysEventType } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { DnaWritingStyleService } from '../dna-writing-style.service';
 
@@ -1520,6 +1520,88 @@ describe('DnaWritingStyleService', () => {
                 ).rejects.toThrow(NotFoundException);
                 expect(mockVersionRepo.findAll).not.toHaveBeenCalled();
             });
+        });
+    });
+
+    // ─── TASK-356 Phase 6 (S3) — per-doctor DNA settings (toggle) ───────────
+    describe('DNA settings (Phase 6 doctor self-service toggle)', () => {
+        const createMockPipelinePolicyService = () => ({
+            getDnaSettings: vi.fn(),
+            setDnaStyleForDoctor: vi.fn(),
+        });
+
+        let policy: ReturnType<typeof createMockPipelinePolicyService>;
+        let svc: DnaWritingStyleService;
+
+        const buildSvc = () =>
+            new DnaWritingStyleService(
+                mockReportRepo as never,
+                mockVersionRepo as never,
+                mockUsageRepo as never,
+                mockUserRoleAssignmentRepo as never, mockUserDepartmentRepo as never, mockUserRepo as never,
+                mockQueue as never,
+                mockEventEmitter as never,
+                mockClsService as never,
+                mockDatabaseService as never,
+                policy as never,
+            );
+
+        beforeEach(() => {
+            policy = createMockPipelinePolicyService();
+            svc = buildSvc();
+        });
+
+        it('getDnaSettings delegates to PipelinePolicyService with the CLS tenant + doctorId and maps the response', async () => {
+            policy.getDnaSettings.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true, version: 2 });
+
+            const res = await svc.getDnaSettings('doctor-id-1');
+
+            expect(policy.getDnaSettings).toHaveBeenCalledWith({ tenantId: 'tenant-1', doctorId: 'doctor-id-1' });
+            expect(res).toEqual({ doctorToggle: true, tenantEnabled: true, effective: true, version: 2 });
+        });
+
+        it('getDnaSettings throws BadRequestException when no tenant is in context', async () => {
+            mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'user-id-1' } : null));
+
+            await expect(svc.getDnaSettings('doctor-id-1')).rejects.toThrow(BadRequestException);
+            expect(policy.getDnaSettings).not.toHaveBeenCalled();
+        });
+
+        it('setDnaEnabled writes the toggle via PipelinePolicyService and broadcasts ResourceUpdated', async () => {
+            policy.setDnaStyleForDoctor.mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: false, version: 3 });
+
+            const res = await svc.setDnaEnabled('doctor-id-1', { enabled: false, reason: 'opt out', expectedVersion: 2 });
+
+            expect(policy.setDnaStyleForDoctor).toHaveBeenCalledWith({
+                tenantId: 'tenant-1',
+                doctorId: 'doctor-id-1',
+                enabled: false,
+                reason: 'opt out',
+                expectedVersion: 2,
+            });
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceUpdated,
+                expect.objectContaining({ resourceId: 'doctor-id-1' }),
+            );
+            expect(res).toEqual({ doctorToggle: false, tenantEnabled: true, effective: false, version: 3 });
+        });
+
+        it('setDnaEnabled coerces an omitted/null `enabled` to null (clear the override)', async () => {
+            policy.setDnaStyleForDoctor.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null, version: 0 });
+
+            await svc.setDnaEnabled('doctor-id-1', { enabled: null });
+
+            expect(policy.setDnaStyleForDoctor).toHaveBeenCalledWith(
+                expect.objectContaining({ enabled: null, doctorId: 'doctor-id-1', tenantId: 'tenant-1' }),
+            );
+        });
+
+        it('setDnaEnabled throws BadRequestException when no tenant is in context (no write, no broadcast)', async () => {
+            mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'user-id-1' } : null));
+
+            await expect(svc.setDnaEnabled('doctor-id-1', { enabled: true })).rejects.toThrow(BadRequestException);
+            expect(policy.setDnaStyleForDoctor).not.toHaveBeenCalled();
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
         });
     });
 });

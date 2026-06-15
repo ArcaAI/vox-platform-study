@@ -42,6 +42,7 @@ import {
   useSetDefaultDnaReport,
   type DnaReport,
 } from './api/dna-writing-styles';
+import { DnaSettingsCard } from './components/dna-settings-card';
 import { EditDialog } from './components/edit-dialog';
 import { GenerateFromHistoryPanel } from './components/generate-from-history-panel';
 import { ReportsListPanel } from './components/reports-list-panel';
@@ -666,6 +667,11 @@ export default function DnaWritingStylePage() {
                 )}
               </div>
             )}
+
+            {/* TASK-356 Phase 6 (S3/S7) — per-doctor DNA on/off switch. */}
+            <div className="mb-6">
+              <DnaSettingsCard />
+            </div>
 
             <div data-doc="dna-report-detail">
               <MyStyleCard onEdit={editCtrl.openFor} />

@@ -373,8 +373,12 @@ function tenantSettings(
             namespace: 'smr',
             name: 'Default SMR Model',
             key: 'default-smr-model',
-            value: 'google/gemma-4-e4b',
-            defaultValue: 'google/gemma-4-e4b',
+            // TASK-356 Phase 2 — the platform-default summarization model is
+            // medgemma (mirrors the SYSTEM HarnessPolicy.smrModel set by
+            // seedHarnessPolicy). Must remain a member of the lm-studio SMR
+            // provider catalog (SMR_PROVIDER_MODELS) so the resolver stays valid.
+            value: 'mlx-community/medgemma-1.5-4b-it',
+            defaultValue: 'mlx-community/medgemma-1.5-4b-it',
             dataType: ValueType.String,
             description: 'Default LLM model slug for summarization tasks (LM Studio model name)',
             locked: true,

@@ -92,7 +92,7 @@ class TestSyncGenerateErrorSanitization:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/api/v1/generate", json={"prompt": "hello", "provider": "leaky"}
+                "/api/v1/generate", json={"prompt": "hello", "provider": "leaky", "model": "test-model"}
             )
             yield resp, tm
 

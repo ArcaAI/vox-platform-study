@@ -2,8 +2,10 @@ import {
   IDnaWritingStyleService,
   DnaReportResponse,
   DnaVersionResponse,
+  DnaSettingsResponse,
   GenerateDnaReportRequest,
   UpdateDnaReportRequest,
+  UpdateDnaSettingsRequest,
   HttpMethod,
   type DnaJobResponse,
 } from '@arcaai/applications';
@@ -18,6 +20,7 @@ import {
   NotFoundException,
   UnauthorizedException,
   Get,
+  Put,
   Sse,
   type MessageEvent,
 } from '@nestjs/common';
@@ -105,6 +108,37 @@ export class DnaWritingStyleController {
       throw new NotFoundException('No DNA writing style found for current user');
     }
     return report;
+  }
+
+  // ─── TASK-356 Phase 6 (S3) — per-doctor DNA on/off settings ──────────
+  // Storage is the Phase-5 DOCTOR-scope `PipelinePolicy.dnaStyleEnabled`.
+  // `effective = tenant AND doctor`; the UI binds the switch to `doctorToggle`
+  // and disables it when `tenantEnabled` is false.
+  @Get('settings')
+  @ApiOperation({ summary: "Get the caller doctor's DNA writing-style on/off settings (TASK-356 Phase 6)" })
+  @ApiResponse({ status: 200, description: 'Per-doctor DNA settings', type: DnaSettingsResponse })
+  async getSettings(): Promise<DnaSettingsResponse> {
+    return this.dnaService.getDnaSettings(this.getDoctorId());
+  }
+
+  @Put('settings')
+  @ApiOperation({
+    summary: "Set the caller doctor's DNA writing-style on/off toggle (TASK-356 Phase 6)",
+    description:
+      'Writes the DOCTOR-scope `PipelinePolicy.dnaStyleEnabled` for the caller. `enabled: false` is an explicit ' +
+      'opt-out, `enabled: null` clears the override (revert to the implicit opt-in). Optimistic concurrency is ' +
+      'optional: when an `If-Match` header is present it overrides the body `expectedVersion`. The DNA learning ' +
+      'processor honours the resulting opt-out on its next BATCH run.',
+  })
+  @ApiResponse({ status: 200, description: 'Updated per-doctor DNA settings', type: DnaSettingsResponse })
+  @ApiResponse({ status: 403, description: 'An admin not acting as a doctor cannot toggle DNA under their own account.' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
+  async setSettings(@Body() dto: UpdateDnaSettingsRequest, @ExpectedVersion() expectedFromHeader: number | undefined): Promise<DnaSettingsResponse> {
+    // Mirror `generate`: a non-impersonating admin must not toggle DNA under
+    // their OWN account (per-doctor isolation — the toggle is owned by CLS user).
+    this.assertActingAsDoctor();
+    const effective: UpdateDnaSettingsRequest = expectedFromHeader !== undefined ? { ...dto, expectedVersion: expectedFromHeader } : dto;
+    return this.dnaService.setDnaEnabled(this.getDoctorId(), effective);
   }
 
   // TASK-329 P5 — owner-scoped report history for the playground's report list

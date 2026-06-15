@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, ForbiddenException, BadRequestException, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -20,8 +20,20 @@ import {
   CoreDatabaseService,
 } from '@arcaai/domains';
 import { IDnaWritingStyleService, DnaJobResponse, ListDnaReportsFilters, PaginatedDnaReports } from './IDnaWritingStyleService';
-import { DnaReportResponse, DnaVersionResponse, GenerateDnaReportRequest, UpdateDnaReportRequest, DnaDashboardResponse } from './dto';
+import {
+  DnaReportResponse,
+  DnaVersionResponse,
+  GenerateDnaReportRequest,
+  UpdateDnaReportRequest,
+  DnaDashboardResponse,
+  DnaSettingsResponse,
+  UpdateDnaSettingsRequest,
+} from './dto';
 import { DnaWritingStyleDtoMapper } from './dna-writing-style.dto.mapper';
+// TASK-356 Phase 6 (S3) — the per-doctor DNA toggle is stored on the Phase-5
+// DOCTOR-scope `PipelinePolicy.dnaStyleEnabled` column; this service is the
+// doctor self-service surface that writes/reads it via PipelinePolicyService.
+import { PipelinePolicyService } from '../pipeline-policy';
 import { BaseService } from '../../common';
 import { assertUserBelongsToTenant } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
@@ -65,6 +77,10 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     // PromptManagementService). Required so the version-history insert and the
     // OCC compare-and-set commit (or roll back) together.
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
+    // TASK-356 Phase 6 (S3) — DOCTOR-scope DNA toggle write/read. Optional +
+    // trailing so existing positional unit fixtures keep their arity; production
+    // DI supplies it via PipelinePolicyServiceModule.
+    @Optional() @Inject(PipelinePolicyService) private readonly pipelinePolicyService?: PipelinePolicyService,
   ) {
     super(eventEmitter, clsService, ResourceType.DnaWritingStyleReport);
   }
@@ -140,6 +156,63 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
     if (!report) return null;
     return DnaWritingStyleDtoMapper.toReportResponse(report);
+  }
+
+  /**
+   * TASK-356 Phase 6 (S3) — READ the caller doctor's DNA on/off settings. The
+   * effective decision is `tenant AND doctor`, resolved through the Phase-5
+   * pipeline-policy cascade; the response also carries the tenant gate (so the
+   * UI can disable + explain the switch when the tenant disabled DNA) and the
+   * DOCTOR-row OCC version. Delegates storage to {@link PipelinePolicyService}.
+   */
+  async getDnaSettings(doctorId: string): Promise<DnaSettingsResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+    const policy = this.requirePipelinePolicyService();
+    const s = await policy.getDnaSettings({ tenantId, doctorId });
+    return { doctorToggle: s.doctorToggle, tenantEnabled: s.tenantEnabled, effective: s.effective, version: s.version };
+  }
+
+  /**
+   * TASK-356 Phase 6 (S3) — WRITE the caller doctor's DNA on/off toggle onto the
+   * DOCTOR-scope `PipelinePolicy.dnaStyleEnabled` column (via
+   * {@link PipelinePolicyService}, which keeps the OCC + WORM contract). A null
+   * `enabled` clears the override (revert to the implicit opt-in default). A
+   * `ResourceUpdated` SysEvent is broadcast so the audit trail records the
+   * privileged self-service change. The DNA processor's effective-flag gate then
+   * honours an opt-out on the NEXT batch (no synchronous re-learning here).
+   */
+  async setDnaEnabled(doctorId: string, dto: UpdateDnaSettingsRequest): Promise<DnaSettingsResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+    const policy = this.requirePipelinePolicyService();
+    const enabled = dto.enabled ?? null;
+    const s = await policy.setDnaStyleForDoctor({
+      tenantId,
+      doctorId,
+      enabled,
+      reason: dto.reason ?? null,
+      expectedVersion: dto.expectedVersion,
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: doctorId,
+      data: { kind: 'dna-settings-updated', doctorId, enabled },
+    });
+
+    return { doctorToggle: s.doctorToggle, tenantEnabled: s.tenantEnabled, effective: s.effective, version: s.version };
+  }
+
+  /** Guard the optional dependency so a misconfigured DI surfaces a clear 400. */
+  private requirePipelinePolicyService(): PipelinePolicyService {
+    if (!this.pipelinePolicyService) {
+      throw new BadRequestException('DNA settings are not available');
+    }
+    return this.pipelinePolicyService;
   }
 
   async updateDnaReport(reportId: string, dto: UpdateDnaReportRequest, options?: { bypassOwnershipCheck?: boolean }): Promise<DnaReportResponse> {

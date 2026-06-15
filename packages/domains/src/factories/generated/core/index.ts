@@ -26,6 +26,8 @@ export * from './MediaFactory';
 export * from './NamedEntityFactory';
 export * from './NotificationFactory';
 export * from './PermissionFactory';
+export * from './PipelinePolicyChangeFactory';
+export * from './PipelinePolicyFactory';
 export * from './PromptTemplateFactory';
 export * from './PromptUsageRecordFactory';
 export * from './PromptVersionFactory';

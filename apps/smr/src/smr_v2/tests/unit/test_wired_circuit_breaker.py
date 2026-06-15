@@ -100,7 +100,7 @@ class TestCircuitBreakerWiring:
         app = _build_app(settings, registry, _make_task_manager(), circuit_breakers={"test": cb})
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/generate", json={"prompt": "hello", "provider": "test"})
+            resp = await client.post("/api/v1/generate", json={"prompt": "hello", "provider": "test", "model": "test-model"})
 
         assert resp.status_code == 200
         data = resp.json()
@@ -120,7 +120,7 @@ class TestCircuitBreakerWiring:
         app = _build_app(settings, registry, _make_task_manager(), circuit_breakers={"test": cb})
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/generate", json={"prompt": "hello", "provider": "test"})
+            resp = await client.post("/api/v1/generate", json={"prompt": "hello", "provider": "test", "model": "test-model"})
 
         assert resp.status_code == 503
         assert "circuit" in resp.json()["detail"].lower()
@@ -137,15 +137,15 @@ class TestCircuitBreakerWiring:
         app = _build_app(settings, registry, _make_task_manager(), circuit_breakers={"test": cb})
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp1 = await client.post("/api/v1/generate", json={"prompt": "a", "provider": "test"})
+            resp1 = await client.post("/api/v1/generate", json={"prompt": "a", "provider": "test", "model": "test-model"})
             assert resp1.status_code == 502
 
-            resp2 = await client.post("/api/v1/generate", json={"prompt": "b", "provider": "test"})
+            resp2 = await client.post("/api/v1/generate", json={"prompt": "b", "provider": "test", "model": "test-model"})
             assert resp2.status_code == 502
 
             assert cb.state == CircuitState.OPEN
 
-            resp3 = await client.post("/api/v1/generate", json={"prompt": "c", "provider": "test"})
+            resp3 = await client.post("/api/v1/generate", json={"prompt": "c", "provider": "test", "model": "test-model"})
             assert resp3.status_code == 503
 
     @pytest.mark.asyncio
@@ -160,7 +160,7 @@ class TestCircuitBreakerWiring:
         app = _build_app(settings, registry, _make_task_manager(), circuit_breakers={"test": cb})
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/generate", json={"prompt": "hello", "provider": "test"})
+            resp = await client.post("/api/v1/generate", json={"prompt": "hello", "provider": "test", "model": "test-model"})
 
         assert resp.status_code == 200
         assert cb.failure_count == 0
@@ -180,7 +180,7 @@ class TestCircuitBreakerWiring:
         app = _build_app(settings, registry, _make_task_manager(), circuit_breakers={"test": cb})
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/generate", json={"prompt": "probe", "provider": "test"})
+            resp = await client.post("/api/v1/generate", json={"prompt": "probe", "provider": "test", "model": "test-model"})
 
         assert resp.status_code == 200
         assert cb.state == CircuitState.CLOSED
@@ -206,8 +206,8 @@ class TestCircuitBreakerWiring:
         )
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp_good = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "good"})
-            resp_bad = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "bad"})
+            resp_good = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "good", "model": "test-model"})
+            resp_bad = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "bad", "model": "test-model"})
 
         assert resp_good.status_code == 200
         assert resp_bad.status_code == 503
@@ -232,7 +232,7 @@ class TestShutdownManagerWiring:
         app = _build_app(settings, registry, _make_task_manager(), shutdown_manager=sm)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/generate", json={"prompt": "hello", "provider": "test"})
+            resp = await client.post("/api/v1/generate", json={"prompt": "hello", "provider": "test", "model": "test-model"})
 
         assert resp.status_code == 503
         assert "shutting down" in resp.json()["detail"].lower()
@@ -248,7 +248,7 @@ class TestShutdownManagerWiring:
         app = _build_app(settings, registry, _make_task_manager(), shutdown_manager=sm)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/generate", json={"prompt": "hello", "provider": "test"})
+            resp = await client.post("/api/v1/generate", json={"prompt": "hello", "provider": "test", "model": "test-model"})
 
         assert resp.status_code == 200
         assert sm.active_count == 0
@@ -298,7 +298,7 @@ class TestShutdownManagerWiring:
         sm.complete_task = spy_complete
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.post("/api/v1/generate", json={"prompt": "hello", "provider": "test"})
+            resp = await client.post("/api/v1/generate", json={"prompt": "hello", "provider": "test", "model": "test-model"})
 
         assert resp.status_code == 200
         assert len(registered_ids) == 1

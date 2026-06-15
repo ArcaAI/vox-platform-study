@@ -24,6 +24,7 @@ import { ConsultationRepository, ContextItemRepository } from '@arcaai/domains';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
 import { PromptResolutionService } from '../prompt/prompt-resolution.service';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
+import { ConfigResolver } from '../../config-resolver';
 import { createWorkerSession } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import {
@@ -56,6 +57,11 @@ export class ConsultationEventHandler {
     // transcript's text to the durable workflow. Optional + trailing so the
     // legacy fixtures/DI keep compiling.
     @Optional() @Inject(ContextItemRepository) private readonly contextItemRepository?: ContextItemRepository,
+    // TASK-356 Phase 5 (Pillar B) — resolves the realtime toggles through the
+    // tenant→department→doctor→SYSTEM cascade and the doctor-preferred prompt id.
+    // Optional + trailing so existing positional fixtures keep compiling; when
+    // absent the resolver falls back to DEFAULT_PIPELINE_CONFIG (legacy behaviour).
+    @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
   ) {
     this.logger.log('ConsultationEventHandler initialized — auto-pipeline enabled');
   }
@@ -158,12 +164,20 @@ export class ConsultationEventHandler {
           return;
         }
 
-        // Resolve prompt config via the Department → Default chain (GAP-3).
-        // DNA style is per-doctor and resolved separately — not part of prompt resolution (TASK-025).
+        // Resolve prompt config via the doctor-preferred → Department → Default
+        // chain (GAP-3 + TASK-356 Phase 5 §2.5). DNA style is per-doctor and
+        // resolved separately — not part of prompt resolution (TASK-025).
         const consultation = await this.consultationRepository.findById(consultationId);
+        // TASK-356 Phase 5 — thread the doctor's preferred prompt id on the
+        // legacy auto path (was previously dropped here); the resolver reads
+        // UserProfile.preferredPromptTemplateId and is null-safe.
+        const preferredPromptTemplateId = this.configResolver
+          ? await this.configResolver.resolvePreferredPromptTemplateId(consultation?.doctorId ?? null)
+          : undefined;
         const resolvedPrompt = await this.promptResolutionService.resolve({
           departmentId: consultation?.departmentId ?? undefined,
           explicitTemplate: config.summaryTemplate,
+          preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
         });
 
         this.logger.log({
@@ -390,12 +404,18 @@ export class ConsultationEventHandler {
    * Resolve pipeline configuration for a consultation.
    *
    * Resolution order (first non-null wins):
-   *   1. Consultation `metadata.pipelineConfig`
-   *   2. System defaults (DEFAULT_PIPELINE_CONFIG)
+   *   1. Consultation `metadata.pipelineConfig` (per-consultation override, kept
+   *      as the top overlay for back-compat).
+   *   2. The `PipelinePolicy` cascade via `ConfigResolver` — doctor → department
+   *      → tenant → SYSTEM-tenant default (TASK-356 Phase 5, Pillar B). Resolves
+   *      `autoSummaryEnabled` / `autoNerEnabled` / `harnessEnabled`.
+   *   3. System code defaults (`DEFAULT_PIPELINE_CONFIG`) — also the fallback when
+   *      the resolver is not wired (legacy DI/fixtures).
    *
-   * Note: dnaStyleId/summaryTemplate from pipelineConfig are passed as explicit
-   * overrides to PromptResolutionService, which handles the full
-   * Doctor → Department → Default fallback chain (GAP-3).
+   * Note: dnaStyleId/summaryTemplate stay per-consultation (metadata) and are
+   * passed as explicit overrides to PromptResolutionService, which handles the
+   * full Doctor → Department → Default fallback chain (GAP-3). Fail-closed: any
+   * error degrades to the safe code defaults (never throws on the realtime path).
    */
   async resolvePipelineConfig(consultationId: string): Promise<ConsultationPipelineConfig> {
     try {
@@ -409,22 +429,40 @@ export class ConsultationEventHandler {
       }
 
       const metadata = consultation.metadata as Record<string, unknown> | null;
-      if (metadata?.pipelineConfig) {
-        const config = metadata.pipelineConfig as Partial<ConsultationPipelineConfig>;
-        return {
-          autoSummaryEnabled: config.autoSummaryEnabled ?? DEFAULT_PIPELINE_CONFIG.autoSummaryEnabled,
-          autoNerEnabled: config.autoNerEnabled ?? DEFAULT_PIPELINE_CONFIG.autoNerEnabled,
-          dnaStyleId: config.dnaStyleId ?? DEFAULT_PIPELINE_CONFIG.dnaStyleId,
-          summaryTemplate: config.summaryTemplate ?? DEFAULT_PIPELINE_CONFIG.summaryTemplate,
-          includeSharedContext: config.includeSharedContext ?? DEFAULT_PIPELINE_CONFIG.includeSharedContext,
-          haltOnFailure: config.haltOnFailure ?? DEFAULT_PIPELINE_CONFIG.haltOnFailure,
-          // TASK-330 (Lane G) — only surface harnessEnabled when explicitly set so
-          // callers reading a fully-specified config don't see a synthesized default.
-          ...(config.harnessEnabled !== undefined ? { harnessEnabled: config.harnessEnabled } : {}),
-        };
+      const override = (metadata?.pipelineConfig ?? {}) as Partial<ConsultationPipelineConfig>;
+
+      // Cascade-resolved toggles (doctor → department → tenant → SYSTEM default).
+      // When the resolver isn't wired, fall back to the code defaults so the
+      // legacy behaviour is preserved exactly.
+      const cascade = this.configResolver
+        ? await this.configResolver.resolvePipelineToggles({
+            tenantId: consultation.tenantId,
+            departmentId: consultation.departmentId ?? null,
+            doctorId: consultation.doctorId ?? null,
+          })
+        : null;
+
+      const resolved: ConsultationPipelineConfig = {
+        // The cascade owns the realtime toggles; the per-consultation metadata
+        // override wins on top (back-compat).
+        autoSummaryEnabled: override.autoSummaryEnabled ?? cascade?.autoSummaryEnabled ?? DEFAULT_PIPELINE_CONFIG.autoSummaryEnabled,
+        autoNerEnabled: override.autoNerEnabled ?? cascade?.autoNerEnabled ?? DEFAULT_PIPELINE_CONFIG.autoNerEnabled,
+        // dnaStyleId / summaryTemplate / includeSharedContext stay per-consultation.
+        dnaStyleId: override.dnaStyleId ?? DEFAULT_PIPELINE_CONFIG.dnaStyleId,
+        summaryTemplate: override.summaryTemplate ?? DEFAULT_PIPELINE_CONFIG.summaryTemplate,
+        includeSharedContext: override.includeSharedContext ?? DEFAULT_PIPELINE_CONFIG.includeSharedContext,
+        haltOnFailure: override.haltOnFailure ?? DEFAULT_PIPELINE_CONFIG.haltOnFailure,
+      };
+
+      // harnessEnabled: per-consultation override wins over the cascade. Only
+      // surfaced when defined so callers reading a fully-specified legacy config
+      // (no resolver) don't see a synthesized default (preserves back-compat).
+      const harnessEnabled = override.harnessEnabled ?? cascade?.harnessEnabled;
+      if (harnessEnabled !== undefined) {
+        resolved.harnessEnabled = harnessEnabled;
       }
 
-      return { ...DEFAULT_PIPELINE_CONFIG };
+      return resolved;
     } catch (error) {
       this.logger.error({
         message: 'Error resolving pipeline config — using defaults',

@@ -162,7 +162,7 @@ class TestGenerateEndpointWithTenantKeys:
     async def test_generate_with_azure_openai_provider(self, client, mock_registry):
         resp = await client.post(
             "/api/v1/generate",
-            json={"prompt": "summarize this", "provider": "azure-openai"},
+            json={"prompt": "summarize this", "provider": "azure-openai", "model": "test-model"},
         )
         assert resp.status_code == 200
         mock_registry.get.assert_called_with("azure-openai")
@@ -171,7 +171,7 @@ class TestGenerateEndpointWithTenantKeys:
     async def test_generate_with_lm_studio_provider(self, client, mock_registry):
         resp = await client.post(
             "/api/v1/generate",
-            json={"prompt": "summarize this", "provider": "lm-studio"},
+            json={"prompt": "summarize this", "provider": "lm-studio", "model": "test-model"},
         )
         assert resp.status_code == 200
         mock_registry.get.assert_called_with("lm-studio")

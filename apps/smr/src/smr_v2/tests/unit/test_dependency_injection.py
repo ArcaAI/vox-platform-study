@@ -118,7 +118,7 @@ class TestGenerateUsesInjectedRegistry:
     async def test_generate_uses_injected_registry(self, client):
         resp = await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello", "provider": "ollama", "stream": False},
+            json={"prompt": "Hello", "provider": "ollama", "model": "test-model", "stream": False},
         )
         assert resp.status_code == 200
         data = resp.json()

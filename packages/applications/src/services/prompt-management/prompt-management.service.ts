@@ -31,11 +31,16 @@ import {
   TestPromptTemplateRequest,
   PromptTestResultResponse,
   PromptUsageAnalyticsResponse,
+  PreferredPromptTemplateResponse,
 } from './dto';
 import { PromptManagementDtoMapper } from './prompt-management.dto.mapper';
 import { mapSmrGenerateResponse } from '../consultation/summary/smr-v2-generate';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { HarnessPolicyService } from '../harness-policy/harness-policy.service';
 import { IDepartmentService } from '../department/IDepartmentService';
+// TASK-356 Phase 6 (S2) — the doctor self-service "set my preferred template"
+// write delegates to the existing UserProfile upsert (which Phase 5 reads back).
+import { IUserProfileService } from '../user/userProfile/IUserProfileService';
 import { DepartmentResponse } from '../department/dto';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
@@ -136,6 +141,13 @@ export class PromptManagementService extends BaseService implements IPromptManag
     @Optional() private readonly httpService?: HttpService,
     @Optional() private readonly configService?: ConfigService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-356 D-7 — resolver for the tenant's effective SMR {provider, model}.
+    @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
+    // TASK-356 Phase 6 (S2) — doctor self-service "set my preferred template"
+    // delegates the WRITE to the existing UserProfile upsert (Phase 5 reads it
+    // back). Optional + trailing so existing positional unit fixtures keep their
+    // arity; production DI supplies it via UserProfileServiceModule.
+    @Optional() @Inject(IUserProfileService) private readonly userProfileService?: IUserProfileService,
   ) {
     super(eventEmitter, clsService, ResourceType.PromptTemplate);
     this.smrServiceUrl = this.configService?.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -570,6 +582,49 @@ export class PromptManagementService extends BaseService implements IPromptManag
     return PromptManagementDtoMapper.toTemplateResponse(deleted);
   }
 
+  // ─── TASK-356 Phase 6 (S1/S2) — doctor self-service surface ──────────
+  //
+  // These are the END-USER (non-admin) entry points. Unlike the admin
+  // `updatePromptTemplate` / `softDeletePromptTemplate` (which also accept a
+  // `manage PromptTemplate` grant for DEFAULT-scoped rows), these are scoped to
+  // STRICT caller-ownership of a USER_PERSONAL row — a doctor may only ever edit
+  // or delete their own personal prompts. They re-use the proven admin write
+  // paths after the ownership gate so OCC + version-history behaviour is shared.
+
+  /** Update a personal prompt the caller owns (strict ownership, no admin path). */
+  async updatePersonal(id: string, dto: UpdatePromptTemplateRequest): Promise<PromptTemplateResponse> {
+    await this.assertPersonalOwned(id);
+    return this.updatePromptTemplate(id, dto);
+  }
+
+  /** Soft-delete a personal prompt the caller owns (strict ownership, no admin path). */
+  async deletePersonal(id: string): Promise<PromptTemplateResponse> {
+    await this.assertPersonalOwned(id);
+    return this.softDeletePromptTemplate(id);
+  }
+
+  /**
+   * Set (or clear) the caller's preferred backend prompt template. `null` clears
+   * the preference. A non-null id MUST be visible to the caller via
+   * `listAvailableForCaller` (their own personal prompts + published defaults) —
+   * this blocks preferring another doctor's personal/unpublished template. The
+   * write delegates to the existing `UserProfile` upsert that Phase 5 reads back.
+   */
+  async setPreferredPromptTemplate(templateId: string | null): Promise<PreferredPromptTemplateResponse> {
+    const userId = this.requestUserId;
+    if (!userId) throw new BadRequestException('User context is required');
+
+    if (templateId !== null) {
+      const available = await this.listAvailableForCaller();
+      if (!available.some((t) => t.id === templateId)) {
+        throw new ForbiddenException('Prompt template is not available to set as preferred');
+      }
+    }
+
+    const profile = await this.requireUserProfileService().upsertByUserId(userId, { preferredPromptTemplateId: templateId });
+    return { preferredPromptTemplateId: profile.preferredPromptTemplateId ?? null };
+  }
+
   async assignToDepartment(dto: AssignDepartmentPromptRequest): Promise<DepartmentResponse> {
     // TASK-302 Stream D Phase E.2 — `updatePromptConfig` now enforces OCC,
     // so the caller MUST carry the Department row's `expectedVersion`.
@@ -613,9 +668,17 @@ export class PromptManagementService extends BaseService implements IPromptManag
     }
     try {
       const token = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
+      // TASK-356 D-7 — admin prompt-test resolves the tenant's effective
+      // {provider, model} via the policy cascade (parity with prod), since the SMR
+      // gateway requires an explicit caller-supplied model (no in-gateway default).
+      let provider: string | undefined;
+      let model: string | undefined;
+      if (this.harnessPolicyService) {
+        ({ provider, model } = await this.harnessPolicyService.resolveSmrSelection(this.tenantId));
+      }
       const response = await this.httpService.axiosRef.post(
         `${this.smrServiceUrl}/api/v1/generate`,
-        { prompt, stream: false },
+        { prompt, stream: false, provider, model },
         { headers: { 'Content-Type': 'application/json', 'X-Service-Token': token } },
       );
       return mapSmrGenerateResponse(response.data).summary;
@@ -709,5 +772,33 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const ability = this.clsService.get('userAbility') as { can?: (action: string, subject: string) => boolean } | undefined;
     if (!ability || typeof ability.can !== 'function') return false;
     return ability.can('manage', 'PromptTemplate');
+  }
+
+  // ─── TASK-356 Phase 6 (S1) — strict ownership gate for self-service ───
+  //
+  // Fetches the row, hides cross-tenant rows behind NotFound (no existence
+  // leak — mirrors `assertOwnedByTenant`), then requires the row be a
+  // USER_PERSONAL prompt owned by the caller. Unlike `assertCanMutate`, a
+  // `manage` grant is NOT a substitute for ownership here: the doctor surface
+  // never lets one user mutate another's (or a DEFAULT) template.
+  private async assertPersonalOwned(id: string): Promise<void> {
+    const template = await this.promptTemplateRepository.findById(id);
+    if (!template) throw new NotFoundException(`Prompt template ${id} not found`);
+
+    this.assertOwnedByTenant(template, id);
+
+    if (template.scope !== SCOPE_USER_PERSONAL) {
+      throw new ForbiddenException('Only personal prompt templates can be managed from the doctor surface');
+    }
+    if (template.ownerUserId !== this.requestUserId) {
+      throw new ForbiddenException('Caller does not own this personal prompt template');
+    }
+  }
+
+  private requireUserProfileService(): IUserProfileService {
+    if (!this.userProfileService) {
+      throw new Error('UserProfileService is not wired (import UserProfileServiceModule into PromptManagementServiceModule)');
+    }
+    return this.userProfileService;
   }
 }

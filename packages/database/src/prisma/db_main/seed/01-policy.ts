@@ -121,6 +121,13 @@ export const DEFAULT_POLICIES = [
             { action: 'manage', subject: 'HarnessWorkflow', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'read', subject: 'HarnessAudit', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'read', subject: 'HarnessEval', conditions: { tenantId: '${context.tenantId}' } },
+            // Realtime-pipeline toggle cascade (TASK-356 Phase 5) — tenant admins
+            // manage their own tenant's PipelinePolicy rows (auto-summary / auto-NER
+            // / harness-vs-legacy routing). A SEPARATE subject from HarnessPolicy so
+            // realtime-toggle admin stays decoupled from harness-gating admin. `manage`
+            // implies `read` (used by the GET routes). Tenant-scoped; the controller
+            // pins every read/write to the caller's tenant.
+            { action: 'manage', subject: 'PipelinePolicy', conditions: { tenantId: '${context.tenantId}' } },
         ],
     },
     {
@@ -368,6 +375,9 @@ export const DEFAULT_POLICIES = [
             { action: 'manage', subject: 'HarnessWorkflow' },
             { action: 'read', subject: 'HarnessAudit' },
             { action: 'read', subject: 'HarnessEval' },
+            // TASK-356 Phase 5 — platform-wide realtime-pipeline cascade admin
+            // (incl. the SYSTEM-tenant global-default row). `manage` implies `read`.
+            { action: 'manage', subject: 'PipelinePolicy' },
         ],
     },
     {
@@ -385,6 +395,9 @@ export const DEFAULT_POLICIES = [
             { action: 'manage', subject: 'HarnessWorkflow', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'read', subject: 'HarnessAudit', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'read', subject: 'HarnessEval', conditions: { tenantId: '${context.tenantId}' } },
+            // TASK-356 Phase 5 — tenant-scoped realtime-pipeline cascade admin.
+            // `manage` implies `read`; the controller pins every op to the tenant.
+            { action: 'manage', subject: 'PipelinePolicy', conditions: { tenantId: '${context.tenantId}' } },
         ],
     },
 ];

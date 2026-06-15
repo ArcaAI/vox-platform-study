@@ -33,6 +33,9 @@ const createMockDnaService = () => ({
     getVersions: vi.fn(),
     getVersionsForDoctor: vi.fn(),
     listReports: vi.fn(),
+    // TASK-356 Phase 6 (S3) — per-doctor DNA on/off settings.
+    getDnaSettings: vi.fn(),
+    setDnaEnabled: vi.fn(),
 });
 
 const createMockClsService = (
@@ -309,6 +312,50 @@ describe('DnaWritingStyleController', () => {
             mockDnaQueue.getJob.mockResolvedValue(null);
 
             await expect(controller.getJobStatus('missing-job')).rejects.toThrow();
+        });
+    });
+
+    // ─── TASK-356 Phase 6 (S3) — per-doctor DNA on/off settings ──────────
+    describe('GET /dna-writing-styles/settings', () => {
+        it('returns the caller doctor settings (delegates with current user id)', async () => {
+            mockDnaService.getDnaSettings.mockResolvedValue({ doctorToggle: true, tenantEnabled: true, effective: true, version: 2 });
+
+            const result = await controller.getSettings();
+
+            expect(mockDnaService.getDnaSettings).toHaveBeenCalledWith('doctor-1');
+            expect(result.effective).toBe(true);
+            expect(result.version).toBe(2);
+        });
+    });
+
+    describe('PUT /dna-writing-styles/settings', () => {
+        it('writes the toggle for the caller doctor (delegates with current user id + dto)', async () => {
+            const dto = { enabled: false, reason: 'prefer my own voice' };
+            mockDnaService.setDnaEnabled.mockResolvedValue({ doctorToggle: false, tenantEnabled: true, effective: false, version: 3 });
+
+            const result = await controller.setSettings(dto as never, undefined);
+
+            expect(mockDnaService.setDnaEnabled).toHaveBeenCalledWith('doctor-1', dto);
+            expect(result.effective).toBe(false);
+        });
+
+        it('folds the If-Match header into expectedVersion (header wins)', async () => {
+            mockDnaService.setDnaEnabled.mockResolvedValue({ doctorToggle: true, tenantEnabled: true, effective: true, version: 4 });
+
+            await controller.setSettings({ enabled: true, expectedVersion: 99 } as never, 3);
+
+            expect(mockDnaService.setDnaEnabled).toHaveBeenCalledWith(
+                'doctor-1',
+                expect.objectContaining({ enabled: true, expectedVersion: 3 }),
+            );
+        });
+
+        it('rejects a non-impersonating admin (doctor-scope gate, mirrors generate)', async () => {
+            const adminCls = createMockClsService('admin-1', { roles: ['TENANT_ADMIN'] });
+            const adminController = new DnaWritingStyleController(mockDnaService as any, adminCls as any, mockDnaQueue as any);
+
+            await expect(adminController.setSettings({ enabled: true } as never, undefined)).rejects.toThrow(/impersonate a doctor/i);
+            expect(mockDnaService.setDnaEnabled).not.toHaveBeenCalled();
         });
     });
 

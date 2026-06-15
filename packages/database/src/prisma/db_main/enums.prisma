@@ -329,3 +329,14 @@ enum CaptureMode {
 
     @@schema("core")
 }
+
+// TASK-356 Phase 5 — scope discriminator for the realtime PipelinePolicy cascade
+// (Pillar B). One polymorphic PipelinePolicy table covers all three tiers; the
+// ConfigResolver walks DOCTOR → DEPARTMENT → TENANT → SYSTEM-default → code-default.
+enum PipelinePolicyScope {
+    TENANT               // Tenant default (scopeId null; SYSTEM tenant's row = platform default)
+    DEPARTMENT           // Per-department override (scopeId = departmentId)
+    DOCTOR               // Per-doctor override (scopeId = userId)
+
+    @@schema("core")
+}
