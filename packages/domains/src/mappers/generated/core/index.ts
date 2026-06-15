@@ -26,6 +26,8 @@ export * from './MediaEntityMapper';
 export * from './NamedEntityEntityMapper';
 export * from './NotificationEntityMapper';
 export * from './PermissionEntityMapper';
+export * from './PipelinePolicyChangeEntityMapper';
+export * from './PipelinePolicyEntityMapper';
 export * from './PromptTemplateEntityMapper';
 export * from './PromptUsageRecordEntityMapper';
 export * from './PromptVersionEntityMapper';

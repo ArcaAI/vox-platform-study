@@ -10,6 +10,9 @@ import { DnaRegenerationScheduler } from './dna-regeneration.scheduler';
 import { CommonServiceModule } from '../baseServices';
 import { PromptManagementServiceModule } from '../prompt-management/prompt-management.service.module';
 import { ConsultationJobServiceModule } from '../consultation/jobs/consultation-job.service.module';
+import { HarnessPolicyServiceModule } from '../harness-policy/harness-policy.service.module';
+import { PipelinePolicyServiceModule } from '../pipeline-policy';
+import { ConfigResolverModule } from '../config-resolver';
 
 @Module({
   imports: [
@@ -19,6 +22,11 @@ import { ConsultationJobServiceModule } from '../consultation/jobs/consultation-
     ConfigModule,
     PromptManagementServiceModule,
     ConsultationJobServiceModule,
+    HarnessPolicyServiceModule, // TASK-356 D-7 — SMR-selection resolver for DnaWritingStyleProcessor
+    // TASK-356 Phase 6 (S3) — PipelinePolicyService backs the per-doctor DNA
+    // toggle (service); ConfigResolver gates the processor's learning corpus.
+    PipelinePolicyServiceModule,
+    ConfigResolverModule,
     BullModule.registerQueue({ name: JobQueue.GenerateDnaReport }),
   ],
   providers: [

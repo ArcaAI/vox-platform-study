@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedVoiceProfileRouteImport } from './routes/_authenticated/voice-profile'
+import { Route as AuthenticatedPromptsRouteImport } from './routes/_authenticated/prompts'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors404RouteImport } from './routes/(errors)/404'
 import { Route as errors403RouteImport } from './routes/(errors)/403'
@@ -46,6 +47,7 @@ import { Route as AuthenticatedAdminDepartmentsRouteImport } from './routes/_aut
 import { Route as AuthenticatedAdminConfigurationsRouteImport } from './routes/_authenticated/admin/configurations'
 import { Route as AuthenticatedAdminAuditLogsRouteImport } from './routes/_authenticated/admin/audit-logs'
 import { Route as AuthenticatedAdminAudioPipelinesRouteImport } from './routes/_authenticated/admin/audio-pipelines'
+import { Route as AuthenticatedAdminAiModelsRouteImport } from './routes/_authenticated/admin/ai-models'
 import { Route as AuthenticatedAdminHarnessRouteRouteImport } from './routes/_authenticated/admin/harness/route'
 import { Route as AuthenticatedAdminHarnessIndexRouteImport } from './routes/_authenticated/admin/harness/index'
 import { Route as AuthenticatedAdminHarnessWorkflowsRouteImport } from './routes/_authenticated/admin/harness/workflows'
@@ -70,6 +72,11 @@ const AuthenticatedVoiceProfileRoute =
     path: '/voice-profile',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPromptsRoute = AuthenticatedPromptsRouteImport.update({
+  id: '/prompts',
+  path: '/prompts',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const errors500Route = errors500RouteImport.update({
   id: '/(errors)/500',
   path: '/500',
@@ -267,6 +274,12 @@ const AuthenticatedAdminAudioPipelinesRoute =
     path: '/admin/audio-pipelines',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAdminAiModelsRoute =
+  AuthenticatedAdminAiModelsRouteImport.update({
+    id: '/admin/ai-models',
+    path: '/admin/ai-models',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminHarnessRouteRoute =
   AuthenticatedAdminHarnessRouteRouteImport.update({
     id: '/admin/harness',
@@ -323,8 +336,10 @@ export interface FileRoutesByFullPath {
   '/403': typeof errors403Route
   '/404': typeof errors404Route
   '/500': typeof errors500Route
+  '/prompts': typeof AuthenticatedPromptsRoute
   '/voice-profile': typeof AuthenticatedVoiceProfileRoute
   '/admin/harness': typeof AuthenticatedAdminHarnessRouteRouteWithChildren
+  '/admin/ai-models': typeof AuthenticatedAdminAiModelsRoute
   '/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
   '/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
   '/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
@@ -368,8 +383,10 @@ export interface FileRoutesByTo {
   '/403': typeof errors403Route
   '/404': typeof errors404Route
   '/500': typeof errors500Route
+  '/prompts': typeof AuthenticatedPromptsRoute
   '/voice-profile': typeof AuthenticatedVoiceProfileRoute
   '/': typeof AuthenticatedIndexRoute
+  '/admin/ai-models': typeof AuthenticatedAdminAiModelsRoute
   '/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
   '/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
   '/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
@@ -415,9 +432,11 @@ export interface FileRoutesById {
   '/(errors)/403': typeof errors403Route
   '/(errors)/404': typeof errors404Route
   '/(errors)/500': typeof errors500Route
+  '/_authenticated/prompts': typeof AuthenticatedPromptsRoute
   '/_authenticated/voice-profile': typeof AuthenticatedVoiceProfileRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/admin/harness': typeof AuthenticatedAdminHarnessRouteRouteWithChildren
+  '/_authenticated/admin/ai-models': typeof AuthenticatedAdminAiModelsRoute
   '/_authenticated/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
   '/_authenticated/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
   '/_authenticated/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
@@ -464,8 +483,10 @@ export interface FileRouteTypes {
     | '/403'
     | '/404'
     | '/500'
+    | '/prompts'
     | '/voice-profile'
     | '/admin/harness'
+    | '/admin/ai-models'
     | '/admin/audio-pipelines'
     | '/admin/audit-logs'
     | '/admin/configurations'
@@ -509,8 +530,10 @@ export interface FileRouteTypes {
     | '/403'
     | '/404'
     | '/500'
+    | '/prompts'
     | '/voice-profile'
     | '/'
+    | '/admin/ai-models'
     | '/admin/audio-pipelines'
     | '/admin/audit-logs'
     | '/admin/configurations'
@@ -555,9 +578,11 @@ export interface FileRouteTypes {
     | '/(errors)/403'
     | '/(errors)/404'
     | '/(errors)/500'
+    | '/_authenticated/prompts'
     | '/_authenticated/voice-profile'
     | '/_authenticated/'
     | '/_authenticated/admin/harness'
+    | '/_authenticated/admin/ai-models'
     | '/_authenticated/admin/audio-pipelines'
     | '/_authenticated/admin/audit-logs'
     | '/_authenticated/admin/configurations'
@@ -626,6 +651,13 @@ declare module '@tanstack/react-router' {
       path: '/voice-profile'
       fullPath: '/voice-profile'
       preLoaderRoute: typeof AuthenticatedVoiceProfileRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/prompts': {
+      id: '/_authenticated/prompts'
+      path: '/prompts'
+      fullPath: '/prompts'
+      preLoaderRoute: typeof AuthenticatedPromptsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/(errors)/500': {
@@ -866,6 +898,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminAudioPipelinesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/ai-models': {
+      id: '/_authenticated/admin/ai-models'
+      path: '/admin/ai-models'
+      fullPath: '/admin/ai-models'
+      preLoaderRoute: typeof AuthenticatedAdminAiModelsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/harness': {
       id: '/_authenticated/admin/harness'
       path: '/admin/harness'
@@ -954,9 +993,11 @@ const AuthenticatedAdminHarnessRouteRouteWithChildren =
   )
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedPromptsRoute: typeof AuthenticatedPromptsRoute
   AuthenticatedVoiceProfileRoute: typeof AuthenticatedVoiceProfileRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedAdminHarnessRouteRoute: typeof AuthenticatedAdminHarnessRouteRouteWithChildren
+  AuthenticatedAdminAiModelsRoute: typeof AuthenticatedAdminAiModelsRoute
   AuthenticatedAdminAudioPipelinesRoute: typeof AuthenticatedAdminAudioPipelinesRoute
   AuthenticatedAdminAuditLogsRoute: typeof AuthenticatedAdminAuditLogsRoute
   AuthenticatedAdminConfigurationsRoute: typeof AuthenticatedAdminConfigurationsRoute
@@ -989,10 +1030,12 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedPromptsRoute: AuthenticatedPromptsRoute,
   AuthenticatedVoiceProfileRoute: AuthenticatedVoiceProfileRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedAdminHarnessRouteRoute:
     AuthenticatedAdminHarnessRouteRouteWithChildren,
+  AuthenticatedAdminAiModelsRoute: AuthenticatedAdminAiModelsRoute,
   AuthenticatedAdminAudioPipelinesRoute: AuthenticatedAdminAudioPipelinesRoute,
   AuthenticatedAdminAuditLogsRoute: AuthenticatedAdminAuditLogsRoute,
   AuthenticatedAdminConfigurationsRoute: AuthenticatedAdminConfigurationsRoute,

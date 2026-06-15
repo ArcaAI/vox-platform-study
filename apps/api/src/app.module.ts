@@ -43,6 +43,8 @@ import { DepartmentModule } from './modules/department/department.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
 // TASK-330 Phase 6 — harness administration & observability console (/admin/harness/*).
 import { HarnessAdminModule } from './modules/harness-admin/harness-admin.module';
+// TASK-356 Phase 5 — realtime-pipeline toggle cascade admin (/admin/harness/pipeline-policy).
+import { PipelinePolicyAdminModule } from './modules/pipeline-policy-admin/pipeline-policy-admin.module';
 import { HealthModule } from './modules/health/health.module';
 import { InternalModule } from './modules/internal/internal.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
@@ -242,6 +244,8 @@ const featureModules: any[] = [
   PromptManagementModule,
   // TASK-330 Phase 6 — /admin/harness/* (policy, observe, workflow ops).
   HarnessAdminModule,
+  // TASK-356 Phase 5 — /admin/harness/pipeline-policy (realtime-toggle cascade admin).
+  PipelinePolicyAdminModule,
   QueueAdminModule,
   RbacModule,
   StorageModule,

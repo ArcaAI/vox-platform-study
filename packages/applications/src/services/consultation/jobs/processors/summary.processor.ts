@@ -14,6 +14,8 @@ import { PromptAssemblyService, type NerEntityForPrompt } from '../../prompt/pro
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-v2-generate';
+import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
+import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
 import { assertEqualTenants, createWorkerSession } from '../../../../common';
 
@@ -35,6 +37,12 @@ export class SummaryProcessor extends WorkerHost {
     private readonly cls: ClsService<IActiveUserContext>,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     @Optional() @Inject(NamedEntityRepository) private readonly namedEntityRepository?: NamedEntityRepository,
+    // TASK-356 D-7 — resolver for the tenant's effective SMR {provider, model}.
+    @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
+    // TASK-356 Phase 5 (§2.5) — load the consulting doctor's preferred prompt id
+    // so the legacy BullMQ summary path threads it (was previously dropped here).
+    // Optional + trailing so existing positional fixtures keep compiling.
+    @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
   ) {
     super();
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -78,12 +86,21 @@ export class SummaryProcessor extends WorkerHost {
         // payload whose tenantId no longer matches the persisted record.
         assertEqualTenants(consultation, { tenantId });
 
+        // TASK-356 Phase 5 (§2.5) — resolve the consulting doctor's preferred
+        // prompt id once so BOTH the prompt resolution and assembly threads it
+        // (legacy BullMQ path previously dropped it). Null-safe + no-op when the
+        // resolver isn't wired.
+        const preferredPromptTemplateId = this.configResolver
+          ? await this.configResolver.resolvePreferredPromptTemplateId(consultation.doctorId ?? null)
+          : undefined;
+
         // Resolve prompt config if template not explicitly provided (GAP-3)
         // DNA style is per-doctor and resolved separately — not part of prompt resolution (TASK-025).
         if (!request.template) {
           const resolved = await this.promptResolutionService.resolve({
             departmentId: consultation.departmentId ?? undefined,
             explicitTemplate: request.template,
+            preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
           });
 
           if (!request.template) {
@@ -132,6 +149,7 @@ export class SummaryProcessor extends WorkerHost {
           dnaStyleId: request.dnaStyleId,
           preSummaryText: latestPreSummary?.content ?? undefined,
           explicitTemplate: request.template,
+          preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
           nerEntities,
         });
 
@@ -243,7 +261,15 @@ export class SummaryProcessor extends WorkerHost {
   }> {
     try {
       const smrStart = Date.now();
-      const smrPayload = buildSmrGeneratePayload(assembledPrompt, request.options, {
+      // TASK-356 D-7 — SMR is a stateless gateway with no model default; resolve
+      // the tenant's effective {provider, model} (CLS tenant set by process()) and
+      // merge as the base so a caller-supplied model still wins.
+      let options = request.options;
+      if (this.harnessPolicyService) {
+        const { provider, model } = await this.harnessPolicyService.resolveSmrSelection();
+        options = { smrProvider: provider, smrModel: model, ...request.options };
+      }
+      const smrPayload = buildSmrGeneratePayload(assembledPrompt, options, {
         dnaStyleId: request.dnaStyleId,
         template: request.template,
         includeNER: request.includeNER,

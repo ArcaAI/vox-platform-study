@@ -10,6 +10,8 @@ export class PromptManagementDtoMapper {
       description: entity.description ?? undefined,
       content: entity.content ?? '',
       category: entity.category ?? '',
+      // TASK-356 Phase 6 (S1) — expose scope for the doctor "My Prompts" UI.
+      scope: entity.scope ?? undefined,
       // TASK-331 doc-02 F5 — surface the real status; pre-migration rows default DRAFT.
       status: (entity.status as 'DRAFT' | 'PUBLISHED') ?? 'DRAFT',
       variables: entity.variables ?? undefined,

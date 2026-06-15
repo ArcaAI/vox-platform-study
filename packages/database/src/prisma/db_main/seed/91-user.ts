@@ -1020,11 +1020,13 @@ export const seedUser = async (client: CorePrismaClient) => {
     console.log('Seeding tenant-wide default pipeline setting...');
 
     // TASK-336 IC-03 — point the Global tenant's `default-stt-pipeline` at the
-    // Global tenant's OWN production pipeline (06-stt GLOBAL_TENANT_ASR_PIPELINES,
-    // id …0401) instead of the SYSTEM-owned …0001 row. SYSTEM pipelines are not
-    // shared-read into customer tenants, so the old value was unreachable for
-    // Global doctors; the …0401 pipeline lives in SEED_TENANT_ID and is both
+    // Global tenant's OWN pipeline (06-stt GLOBAL_TENANT_ASR_PIPELINES) instead
+    // of the SYSTEM-owned rows. SYSTEM pipelines are not shared-read into
+    // customer tenants, so a SYSTEM value would be unreachable for Global
+    // doctors; the Global-tenant pipeline lives in SEED_TENANT_ID and is both
     // listable and resolvable for them.
+    // TASK-356 Phase 2 — switch the default to the Global tenant's faster-whisper
+    // CT2 int8 pipeline (id …0403), matching the both-defaults flip in 06-stt.
     await client.globalSetting.upsert({
         where: {
             GlobalSetting_tenantId_name_key_unique: {
@@ -1034,7 +1036,7 @@ export const seedUser = async (client: CorePrismaClient) => {
             },
         },
         update: {
-            value: '81000000-0000-0000-0001-000000000401',
+            value: '81000000-0000-0000-0001-000000000403',
             description: 'Default ASR pipeline for all doctors when using remote workflow mode',
         },
         create: {
@@ -1043,8 +1045,8 @@ export const seedUser = async (client: CorePrismaClient) => {
             namespace: 'arcaai-sdk',
             name: 'stt-pipeline',
             key: 'default-stt-pipeline',
-            value: '81000000-0000-0000-0001-000000000401',
-            defaultValue: '81000000-0000-0000-0001-000000000401',
+            value: '81000000-0000-0000-0001-000000000403',
+            defaultValue: '81000000-0000-0000-0001-000000000403',
             dataType: ValueType.String,
             description: 'Default ASR pipeline for all doctors when using remote workflow mode',
         },

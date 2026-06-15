@@ -1,7 +1,14 @@
-import { IPromptManagementService, PromptTemplateResponse } from '@arcaai/applications';
-import { Controller, Get, Inject, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Authorize } from '../../decorators';
+import {
+  IPromptManagementService,
+  PromptTemplateResponse,
+  CreatePromptTemplateRequest,
+  UpdatePromptTemplateRequest,
+  SetPreferredTemplateRequest,
+  PreferredPromptTemplateResponse,
+} from '@arcaai/applications';
+import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 
 /**
  * TASK-331 doc-09 — end-user (clinician) prompt-template plane.
@@ -13,11 +20,16 @@ import { Authorize } from '../../decorators';
  * `read:PromptTemplate` ability that doctors don't have, so the call 403'd and
  * the global query-cache error handler bounced the whole app to `/403`.
  *
- * This controller lives OFF the `/admin/*` prefix and exposes a single,
- * read-only, caller-scoped route. It requires only `read:PromptTemplate` (the
- * new clinician policy). Plane separation is preserved because the admin read
- * surface was bumped to `manage:PromptTemplate` (doc-09 D1), so this ability
- * grant does NOT open the admin GET routes to clinicians.
+ * This controller lives OFF the `/admin/*` prefix. It requires only
+ * `read:PromptTemplate` (the clinician policy). Plane separation is preserved
+ * because the admin read surface was bumped to `manage:PromptTemplate` (doc-09
+ * D1), so this ability grant does NOT open the admin GET routes to clinicians.
+ *
+ * TASK-356 Phase 6 (S1/S2) — extends this plane with doctor self-service:
+ * personal prompt create / update / delete (STRICT caller-ownership enforced in
+ * the service — a `read` grant only lets the clinician reach the route; it is
+ * NOT a mutate grant) plus set-preferred (writes `UserProfile.preferredPromptTemplateId`,
+ * which the Phase-5 resolver cascade reads back).
  */
 @ApiBearerAuth()
 @ApiTags('prompt-templates')
@@ -42,5 +54,77 @@ export class PromptTemplateController {
   @ApiResponse({ status: 200, description: 'Templates available to the caller', type: PromptTemplateResponse, isArray: true })
   async available(@Query() queryParams: { category?: string }): Promise<PromptTemplateResponse[]> {
     return this.promptService.listAvailableForCaller({ category: queryParams.category });
+  }
+
+  // ─── TASK-356 Phase 6 (S2) — set / clear preferred template ──────────
+  // Declared before the `:id` routes for clarity (it's a distinct PUT, so no
+  // route collision). The service validates the template is available to the
+  // caller before writing; a null `templateId` clears the preference.
+  @Put('preferred')
+  @Authorize(['read', 'PromptTemplate'])
+  @ApiOperation({
+    summary: "Set or clear the calling clinician's preferred prompt template (TASK-356 Phase 6)",
+    description:
+      "Writes `UserProfile.preferredPromptTemplateId` for the caller. The id MUST be visible to the caller " +
+      "(own personal prompts + published defaults); `templateId: null` clears the preference (revert to the " +
+      'department/tenant default tier resolved by the Phase-5 cascade).',
+  })
+  @ApiResponse({ status: 200, description: 'The resulting preferred template id', type: PreferredPromptTemplateResponse })
+  @ApiResponse({ status: 403, description: 'Template is not available to the caller' })
+  async setPreferred(@Body() dto: SetPreferredTemplateRequest): Promise<PreferredPromptTemplateResponse> {
+    return this.promptService.setPreferredPromptTemplate(dto.templateId);
+  }
+
+  // ─── TASK-356 Phase 6 (S1) — personal CRUD (caller-ownership) ────────
+  @Post()
+  @Authorize(['read', 'PromptTemplate'])
+  @ApiOperation({
+    summary: 'Create a personal prompt template owned by the calling clinician (TASK-356 Phase 6)',
+    description: "Creates a USER_PERSONAL prompt owned by the caller (overlays the tenant/department defaults in the caller's selector).",
+  })
+  @ApiResponse({ status: 201, description: 'The created personal template', type: PromptTemplateResponse })
+  async createPersonal(@Body() dto: CreatePromptTemplateRequest): Promise<PromptTemplateResponse> {
+    return this.promptService.createPersonal(dto);
+  }
+
+  @Patch(':id')
+  @Authorize(['read', 'PromptTemplate'])
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Update a personal prompt template the caller owns (TASK-356 Phase 6)',
+    description:
+      'Updates one USER_PERSONAL prompt OWNED by the caller. Optimistic concurrency is enforced: the `If-Match` ' +
+      "header (RFC 7232) is REQUIRED and the server runs a Compare-And-Set against the row's `_version`. When " +
+      'present, the header value overrides the body-field `expectedVersion`. A non-personal or non-owned template ' +
+      'is rejected (403); a cross-tenant id is hidden behind 404.',
+  })
+  @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })
+  @ApiHeader({ name: 'If-Match', description: 'RFC 7232 strong validator carrying the row version the client read (e.g. `"1"`).', required: true, example: '"1"' })
+  @ApiResponse({ status: 200, description: 'The updated personal template', type: PromptTemplateResponse })
+  @ApiResponse({ status: 403, description: 'Caller does not own this personal template' })
+  @ApiResponse({ status: 404, description: 'Template not found' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async updatePersonal(
+    @Param('id') id: string,
+    @Body() dto: UpdatePromptTemplateRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<PromptTemplateResponse> {
+    const effective: UpdatePromptTemplateRequest = expectedFromHeader !== undefined ? { ...dto, expectedVersion: expectedFromHeader } : dto;
+    return this.promptService.updatePersonal(id, effective);
+  }
+
+  @Delete(':id')
+  @Authorize(['read', 'PromptTemplate'])
+  @ApiOperation({
+    summary: 'Soft-delete a personal prompt template the caller owns (TASK-356 Phase 6)',
+    description: 'Soft-deletes one USER_PERSONAL prompt OWNED by the caller. A non-personal or non-owned template is rejected (403).',
+  })
+  @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })
+  @ApiResponse({ status: 200, description: 'The soft-deleted personal template', type: PromptTemplateResponse })
+  @ApiResponse({ status: 403, description: 'Caller does not own this personal template' })
+  @ApiResponse({ status: 404, description: 'Template not found' })
+  async deletePersonal(@Param('id') id: string): Promise<PromptTemplateResponse> {
+    return this.promptService.deletePersonal(id);
   }
 }

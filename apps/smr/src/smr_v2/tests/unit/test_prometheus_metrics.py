@@ -181,15 +181,15 @@ class TestGenerateMetricsIntegration:
         """After successful generate, GENERATION_TOTAL with status=completed is incremented."""
         before = _get_sample_value(
             "smr_v2_generation_total",
-            {"provider": "ollama", "model": "default", "status": "completed"},
+            {"provider": "ollama", "model": "test-model", "status": "completed"},
         )
         await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "ollama", "stream": False},
+            json={"prompt": "Hello world", "provider": "ollama", "model": "test-model", "stream": False},
         )
         after = _get_sample_value(
             "smr_v2_generation_total",
-            {"provider": "ollama", "model": "default", "status": "completed"},
+            {"provider": "ollama", "model": "test-model", "status": "completed"},
         )
         assert after - before >= 1.0
 
@@ -198,15 +198,15 @@ class TestGenerateMetricsIntegration:
         """After successful generate, GENERATION_LATENCY has an observation."""
         before = _get_sample_value(
             "smr_v2_generation_latency_seconds_count",
-            {"provider": "ollama", "model": "default"},
+            {"provider": "ollama", "model": "test-model"},
         )
         await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "ollama", "stream": False},
+            json={"prompt": "Hello world", "provider": "ollama", "model": "test-model", "stream": False},
         )
         after = _get_sample_value(
             "smr_v2_generation_latency_seconds_count",
-            {"provider": "ollama", "model": "default"},
+            {"provider": "ollama", "model": "test-model"},
         )
         assert after - before >= 1.0
 
@@ -215,23 +215,23 @@ class TestGenerateMetricsIntegration:
         """After successful generate, TOKENS_TOTAL is incremented for both input and output."""
         before_input = _get_sample_value(
             "smr_v2_tokens_total",
-            {"provider": "ollama", "model": "default", "direction": "input"},
+            {"provider": "ollama", "model": "test-model", "direction": "input"},
         )
         before_output = _get_sample_value(
             "smr_v2_tokens_total",
-            {"provider": "ollama", "model": "default", "direction": "output"},
+            {"provider": "ollama", "model": "test-model", "direction": "output"},
         )
         await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "ollama", "stream": False},
+            json={"prompt": "Hello world", "provider": "ollama", "model": "test-model", "stream": False},
         )
         after_input = _get_sample_value(
             "smr_v2_tokens_total",
-            {"provider": "ollama", "model": "default", "direction": "input"},
+            {"provider": "ollama", "model": "test-model", "direction": "input"},
         )
         after_output = _get_sample_value(
             "smr_v2_tokens_total",
-            {"provider": "ollama", "model": "default", "direction": "output"},
+            {"provider": "ollama", "model": "test-model", "direction": "output"},
         )
         assert after_input - before_input == 10.0
         assert after_output - before_output == 20.0
@@ -241,16 +241,16 @@ class TestGenerateMetricsIntegration:
         """After failed generate, GENERATION_ERRORS is incremented."""
         before = _get_sample_value(
             "smr_v2_generation_errors_total",
-            {"provider": "ollama", "model": "default", "error_type": "provider_error"},
+            {"provider": "ollama", "model": "test-model", "error_type": "provider_error"},
         )
         resp = await failing_client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "ollama", "stream": False},
+            json={"prompt": "Hello world", "provider": "ollama", "model": "test-model", "stream": False},
         )
         assert resp.status_code == 502
         after = _get_sample_value(
             "smr_v2_generation_errors_total",
-            {"provider": "ollama", "model": "default", "error_type": "provider_error"},
+            {"provider": "ollama", "model": "test-model", "error_type": "provider_error"},
         )
         assert after - before >= 1.0
 
@@ -259,15 +259,15 @@ class TestGenerateMetricsIntegration:
         """After failed generate, GENERATION_TOTAL with status=failed is incremented."""
         before = _get_sample_value(
             "smr_v2_generation_total",
-            {"provider": "ollama", "model": "default", "status": "failed"},
+            {"provider": "ollama", "model": "test-model", "status": "failed"},
         )
         await failing_client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "ollama", "stream": False},
+            json={"prompt": "Hello world", "provider": "ollama", "model": "test-model", "stream": False},
         )
         after = _get_sample_value(
             "smr_v2_generation_total",
-            {"provider": "ollama", "model": "default", "status": "failed"},
+            {"provider": "ollama", "model": "test-model", "status": "failed"},
         )
         assert after - before >= 1.0
 
@@ -280,7 +280,7 @@ class TestGenerateMetricsIntegration:
         )
         await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "ollama", "stream": False},
+            json={"prompt": "Hello world", "provider": "ollama", "model": "test-model", "stream": False},
         )
         gauge_after = _get_sample_value(
             "smr_v2_active_generations",
@@ -297,7 +297,7 @@ class TestGenerateMetricsIntegration:
         )
         await failing_client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "ollama", "stream": False},
+            json={"prompt": "Hello world", "provider": "ollama", "model": "test-model", "stream": False},
         )
         gauge_after = _get_sample_value(
             "smr_v2_active_generations",

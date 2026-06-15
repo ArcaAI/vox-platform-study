@@ -5,8 +5,8 @@
 | **Ticket** | TASK-356 |
 | **Title** | Admin-managed AI models & workflows + per-tenant default models |
 | **Created** | 2026-06-14 |
-| **Updated** | 2026-06-14 |
-| **Status** | **In Progress** — Phase 1 (Catalog plane) + Phase 4 (Audio console) **implemented & integration-verified** (2026-06-14). Phases 2, 3, 5, 6 still outstanding. Cloud-provider model **activation** (Phase 2/3) remains **gated on TASK-357** (PHI egress guard). The full 6-phase ticket is not complete. |
+| **Updated** | 2026-06-15 |
+| **Status** | **Phases 1–6 implemented** — Phase 1 (Catalog plane) + Phase 4 (Audio console) **implemented & integration-verified** (2026-06-14); Phase 2 (Defaults wiring) **implemented & verified** (2026-06-14); Phase 3 (SMR gateway refactor / D-7) **implemented & verified** (2026-06-15); Phase 5 (Realtime cascade / Pillar B) **implemented & verified** (2026-06-15); **Phase 6 (doctor self-service prompt CRUD/UI + per-doctor DNA toggle + DNA edit-capture) implemented & verified** (2026-06-15) — all via strict TDD. Cloud-provider model **activation** remains **gated on TASK-357** (PHI egress guard). |
 | **Type** | feature (admin platform + configuration) |
 | **Builds on** | TASK-233 (Administration Section), TASK-302 (System Config / Vault), TASK-328/331/336 (AsrPipeline admin + GLOBAL_ADMIN + shared-read), TASK-338 (admin-configurable SMR/Guardrail engine), TASK-330/355 (HarnessPolicy + optimistic delivery), TASK-294 (prompt-template scopes), TASK-299 (DNA writing style), TASK-332 (local raw capture) |
 
@@ -112,8 +112,8 @@ Python model services (env-first pydantic-settings):
 - **Raw and processed share ONE `AUDIO` bucket** (object-key prefixes differ); there is no raw-vs-processed bucket purpose. `TenantStorageConfig` already supports provider/topology/credentials + per-bucket override + default-bucket mapping (AUDIO/ATTACHMENTS/MISC), all tenant-scoped.
 
 **Pillar B — Harness realtime:**
-- **`ConsultationPipelineConfig`** (`autoSummaryEnabled`/`autoNerEnabled`/`harnessEnabled`) is documented to cascade tenant→department→consultation, but **`resolvePipelineConfig()` only reads the consultation's own metadata** then system defaults. `harnessEnabled` is hard-coded `true` in the UI launch panel. The "during-recording" live-documentation engine has only a **global Redis kill-switch** (super-admin).
-- **`PromptTemplate` resolution works** (doctor-preferred id → department columns → system default) on the harness path; the legacy BullMQ path doesn't thread the doctor-preferred id.
+- **`ConsultationPipelineConfig`** (`autoSummaryEnabled`/`autoNerEnabled`/`harnessEnabled`) is documented to cascade tenant→department→consultation, but **`resolvePipelineConfig()` only reads the consultation's own metadata** then system defaults. `harnessEnabled` is hard-coded `true` in the UI launch panel. The "during-recording" live-documentation engine has only a **global Redis kill-switch** (super-admin). **→ Resolved in Phase 5 (§8D):** `resolvePipelineConfig()` now resolves the toggles through the realtime **`PipelinePolicy`** cascade (doctor→department→tenant→SYSTEM-default→code-default; `harnessEnabled` capped at tenant+dept) via `ConfigResolver`, with the per-consultation `metadata.pipelineConfig` retained as the **top overlay** for back-compat; the UI hard-coded `harnessEnabled` is removed (the demo is preserved by a seeded demo-tenant policy row).
+- **`PromptTemplate` resolution works** (doctor-preferred id → department columns → system default). **At audit time only the harness path threaded the doctor-preferred id; the legacy BullMQ path did not.** **→ Corrected in Phase 5 (§8D): ALL generation paths now thread `UserProfile.preferredPromptTemplateId` (read-only)** — the sync REST path (already threaded since TASK-329), **and now** the BullMQ job processor + the harness assemble path, resolved via `ConfigResolver.resolvePreferredPromptTemplateId`.
 - **Gating is the gold standard** (`HarnessPolicy`, tenant overrides global default, live-injected).
 - **Doctor personal prompt authoring is backend-ready but unrouted** — `PromptManagementService.createPersonal()` + owner-scoped `assertCanMutate()` exist, but **no controller route / UI**; doctors can only *select* a preferred template (via an admin route) and *read* available ones.
 
@@ -379,6 +379,250 @@ Per-package / filtered commands were used deliberately (not `turbo`) to isolate 
 
 ---
 
+## 8B. Implementation Summary — Phase 2 (Defaults wiring)
+
+> **Implemented & verified 2026-06-14**, via strict TDD (RED → GREEN → REFACTOR) on top of the Phase 1 + Phase 4 working tree. **Rows/config only — no schema change** (the `HarnessPolicyChange` table and the audio/catalog enums already exist from the Phase 1 foundation migration). Cloud-provider **activation** remains **gated on TASK-357**; this phase only sets **local** defaults and does **not** enable any cloud provider, touch gating/thresholds/safety logic (TASK-358/359), or refactor SMR / its call sites (Phase 3 / D-7).
+>
+> Plan-gate artifact: [`phase-2-defaults-wiring-plan.md`](./phase-2-defaults-wiring-plan.md)
+
+### 8B.1 What shipped
+
+- **(a) SMR default → medgemma on LM Studio.** A new idempotent `seedHarnessPolicy` step sets the **SYSTEM** `HarnessPolicy` `smrProvider='lm-studio'` + `smrModel='mlx-community/medgemma-1.5-4b-it'` (writes **only** those two columns; all other policy knobs untouched). Per the **seed_worm** decision it **also records a WORM `HarnessPolicyChange` audit row** for the default-set (system/seed actor `SYSTEM_USER_ID`, `beforeJson=null` on first create / before+after snapshots on update), reusing the existing change-record mechanism. The `default-smr-model` GlobalSetting is updated to the same medgemma slug.
+- **(b) Guardrail — regression guards only.** `granite-guardian-4.1-8b` is already the default (schema/env/GlobalSetting/catalog from Phase 1); Phase 2 adds **regression-guard tests** only and **leaves `GUARDRAIL_DB_CONFIG_ENABLED=false`** (no flip).
+- **(c) STT → faster-whisper CT2 int8 as the new default.** Registers a new `AiModel` `faster-whisper-large-v3-turbo-int8` (`taskType=AUTOMATIC_SPEECH_RECOGNITION`, `modelType=QUANTIZED_MODEL`, `format=CTRANSLATE2`, `computeType='int8'`) with a **clearly-marked placeholder `sourceUri` = `MODEL_REPO_PLACEHOLDER/faster-whisper-large-v3-turbo-ct2`** + a TODO that engineers publish the real artifact (D-4) — it intentionally **won't resolve at runtime yet**. Adds a new `AsrPipeline` `production-faster-whisper-turbo-int8` (faster-whisper/int8 YAML from §4.8(c), **diarization + dual_capture carried over**). **Switches BOTH batch + streaming defaults**: flips `isDefault` (demotes the old `production-whisper-large-v3` across the SYSTEM, Global-tenant, and customer-tenant pipeline groups), repoints `batch_pipeline_slug` + `streaming_pipeline_slug`, and updates the `default-stt-pipeline` GlobalSetting. A new **`switchDefaultSttPipeline` backfill** reconciles existing DBs (since `seedAsrPipelines` won't clobber `isDefault` on update) so there is never a double-default — and it **respects an admin-chosen default** (only demotes the freshly-seeded CT2 when an operator already picked something else).
+- **(d) Clone-per-tenant — extend_clone override.** `tenant.service.ts` `create()` now **also clones the SYSTEM default `AsrPipeline` (+ its current `AsrPipelineVersion`)** into each new tenant, tenant-scoped default via `setDefaultForTenant` (preserving the one-default-per-tenant invariant), **idempotently** (skips when the tenant already owns the slug) in its own try/catch alongside the existing AiModel clone — so it doubles as the existing-tenant backfill. (Chosen instead of the plan's GlobalSetting-fallback recommendation.)
+
+### 8B.2 Per-file changes & key files
+
+| Area | New / Modified | File(s) |
+|---|---|---|
+| **SMR default + WORM** | **New** | `packages/database/src/prisma/db_main/seed/13-harness-policy.ts` — `seedHarnessPolicy` (SYSTEM `HarnessPolicy` SMR columns + WORM `HarnessPolicyChange`, idempotent, non-clobbering) |
+| **Seed registration** | Modified | `seed/index.ts` (calls `seedHarnessPolicy` after `seedStt` in Phase 2 platform config) |
+| **SMR GlobalSetting** | Modified | `seed/11-global-setting.ts` (`default-smr-model` value+default → `mlx-community/medgemma-1.5-4b-it`) |
+| **STT model + pipeline + both defaults + backfill** | Modified | `seed/06-stt.ts` (`CTRANSLATE2` enum mirror; CT2 `AiModel` w/ placeholder `sourceUri`+TODO; `faster_whisper_turbo_int8` YAML; `DEFAULT/GLOBAL/CUSTOMER` pipeline groups demote old + add CT2 `isDefault`; `DEFAULT_STT_SETTINGS` batch+streaming slugs; **`switchDefaultSttPipeline`** + constants, wired into `seedStt`) |
+| **STT GlobalSetting** | Modified | `seed/91-user.ts` (`default-stt-pipeline` value+default → Global-tenant CT2 pipeline id) |
+| **AsrPipeline clone-per-tenant** | Modified | `packages/applications/src/services/tenant/tenant.service.ts` (`provisionTenantPipelineCatalog` + `create()` step + appended `AsrPipelineVersionRepository` ctor param, append-only) |
+| **Tests (TDD)** | Modified | `packages/database/src/__tests__/seed.test.ts` (Phase-2 seed-data + `seedHarnessPolicy`/WORM + `switchDefaultSttPipeline` blocks; **OLD-default guards at the pinned lines updated to the CT2 default**); `tenant/__tests__/tenant.service.test.ts` (pipeline-clone suite) + ctor-append in `_harness.ts`, `tenant.service.{locked-runtime,mass-assignment,audit-scrub,audit-scrub-encrypted}.test.ts` |
+
+**No migration.** No `.prisma` file or `migrations/` directory was touched (git-verified); the read-only `prisma migrate diff` reports the datamodel **in-sync** (§8B.3).
+
+### 8B.3 Verification evidence (captured 2026-06-14)
+
+Filtered / direct commands (not `turbo`) to avoid the pre-existing TASK-352 `@arcaai/database` `tsc` `TS2493` error (§8.5) — seed tests run via `vitest` (esbuild, not `tsc`), so the blocker does not apply.
+
+| Package | Command | Result |
+|---|---|---|
+| `@arcaai/database` | `vitest run src/__tests__/seed.test.ts` | **315 passed** (1 file) |
+| `@arcaai/database` | `prisma migrate diff --from-config-datasource --to-schema src/prisma/db_main --exit-code` (read-only) | **"No difference detected" (exit 0 — in-sync)** |
+| `@arcaai/applications` | `build` (rimraf + tsc) + `typecheck` (tsc --noEmit) | **clean** |
+| `@arcaai/applications` | `test:unit` (full) | **5125 passed / 4 skipped** (218 files) |
+| `@arcaai/applications` | `vitest tenant.service.test.ts` | **99 passed** (incl. 6 new pipeline-clone tests) |
+| `@arcaai/applications` | `vitest` 4 sibling tenant suites (ctor append-only check) | **10 passed** (4 files) |
+| (all changed source) | `ReadLints` | **no linter errors** |
+
+`apps/api` and `@arcaai/domains` were **not** touched in Phase 2, so their gates were not re-run.
+
+### 8B.4 Decisions applied
+
+- **seed_worm (override):** the SMR default-set writes a WORM `HarnessPolicyChange` audit row (not just the two columns).
+- **extend_clone (override):** the default `AsrPipeline` (+ current version) is cloned per-tenant in `tenant.service.ts` (not a GlobalSetting fallback).
+- **Guardrail not flipped:** `GUARDRAIL_DB_CONFIG_ENABLED` stays `false`; granite remains default; regression guards only.
+- **CT2 placeholder `sourceUri`:** intentionally non-resolving until engineers publish the real artifact (D-4).
+- **Local-only:** no cloud provider enabled; no gating/threshold/safety changes; SMR call sites untouched (Phase 3 / D-7).
+
+## 8C. Implementation Summary — Phase 3 (SMR gateway refactor / D-7)
+
+> **Implemented & verified 2026-06-15**, via strict TDD (RED → GREEN → REFACTOR) on top of the Phase 1/2/4 working tree. **No schema change** (`migrate diff` in-sync). **No `apps/harness/**` edits.** This phase changes **who resolves and passes** the SMR model and **removes SMR's silent in-gateway default**; it enables **no** cloud provider (activation still gated on **TASK-357**) and touches **no** gating/thresholds/PHI/sensors (TASK-357/358/359). **Phases 5 & 6 remain outstanding** — Phase 3 deliberately leaves a single resolver seam (`resolveSmrSelection`) that Phase 5 can later fold onto its generalized `ConfigResolver`.
+>
+> Plan-gate artifact: [`phase-3-smr-gateway-refactor-plan.md`](./phase-3-smr-gateway-refactor-plan.md)
+
+### 8C.1 What shipped
+
+- **(Resolver seam — B1/B2) `HarnessPolicyService`.** `getEffectivePolicy()` now applies **field-level fallthrough for the two SMR fields only** (`smrModel`/`smrProvider`): when a tenant's own row has them null, they fill from the SYSTEM default, then code-default null (other knobs unchanged; pre-Phase-2 null rows simply fall through — no backfill migration). A new **`resolveSmrSelection(tenantId?)`** wrapper calls `getEffectivePolicy()` and **fails closed** — it throws when no `{provider, model}` can be resolved (no hidden last-resort model). This is the **one resolver every TypeScript caller uses**, and the seam left for Phase 5.
+- **(SMR gateway — fail-closed 422, the "no default" half of D-7) `apps/smr`.** The `/api/v1/generate` endpoint now **rejects a missing/blank model with HTTP 422** (`"Field 'model' is required: SMR has no default model."`), evaluated **after** the guardrail check so guardrail rejection keeps precedence. The endpoint's `model = request_body.model or "default"` last-resort and the streaming mirror's `or "default"` are removed, and every provider's `_resolve_model` no longer falls back to `self._default_model` — it returns the caller-supplied `request.model` verbatim. The informational **`ProviderInfo.default_model` / config `default_model` fields are retained** (decision 3) — surfaced only by the providers listing / `get_info()`, never in the generation path.
+- **(Callers pass `{provider, model}` on every call)** Each TypeScript `/api/v1/generate` caller resolves via `resolveSmrSelection` and passes both fields (the shared `buildSmrGeneratePayload` already accepts `provider`/`model`/`smrProvider`/`smrModel` in `options`). The durable **harness** path already resolves + passes the model and is **unchanged**; it benefits from B1 transparently because `harness-internal.controller` reads `getEffectivePolicy`.
+
+### 8C.2 The three ambiguous call sites (decision 7)
+
+- **(7a) Admin prompt-test** (`prompt-management.service.ts`) → resolves via the policy cascade (`resolveSmrSelection(this.tenantId)`) and posts `{provider, model}` — consistent with production.
+- **(7b) Live-documentation** (`live-documentation.service.ts`) → resolves via policy (per the session's `tenantId`), **not env**; the legacy env values remain only as a fallback for the un-injected/optional path (test fixtures).
+- **(7c) Playground/SDK proxy** (`smr-proxy.controller.ts` `generate` + `generateAssembled`) → **passes through** the caller-supplied `model` for SDK fidelity; **only when absent** does it policy-resolve via the tenant from CLS; if resolution still fails it **forwards the request to SMR without a model**, so SMR's fail-closed **422 is the single authority** (the proxy never masks it).
+
+### 8C.3 Per-file changes & key files
+
+| Area | New / Modified | File(s) |
+|---|---|---|
+| **Resolver seam (B1/B2)** | Modified | `packages/applications/src/services/harness-policy/harness-policy.service.ts` (SMR field-level fallthrough in `getEffectivePolicy` + new fail-closed `resolveSmrSelection`) |
+| **Legacy summary callers (C1/C2)** | Modified | `consultation/summary/summary.service.ts`, `consultation/summary/chain-summary.service.ts` (+ `summary.service.module.ts`, `chain-summary.service.module.ts` `HarnessPolicyServiceModule` import) |
+| **Job processors (C3–C5)** | Modified | `consultation/jobs/processors/{summary,pre-summary,comprehensive-summary}.processor.ts` (+ `consultation-job.service.module.ts` import) |
+| **DNA caller (C6)** | Modified | `dna-writing-style/dna-writing-style.processor.ts` (+ `dna-writing-style.service.module.ts` import) |
+| **Live-documentation (C7 / 7b)** | Modified | `consultation/live-documentation/live-documentation.service.ts` (+ `.service.module.ts` import) |
+| **Admin prompt-test (C8 / 7a)** | Modified | `prompt-management/prompt-management.service.ts` (+ `.service.module.ts` import) |
+| **SDK/playground proxy (D1 / 7c)** | Modified | `apps/api/src/modules/streaming/smr-proxy.controller.ts` (+ `streaming.module.ts` import) |
+| **SMR gateway (E1/E3/E4)** | Modified | `apps/smr/src/smr_v2/api/endpoints/generate.py` (422 guard + drop `or "default"`); `providers/{ollama,openai_compat,azure_openai,bedrock}.py` (`_resolve_model` → `request.model`, drop `or self._default_model`) |
+| **SMR — intentionally NOT changed** | — | `models/requests.py` (`model` stays `Optional`; see deviation §8C.5) and `core/config.py` (`default_model` retained — decision 3) |
+| **Tests (TDD)** | New | `apps/smr/.../tests/unit/test_no_model_default_d7.py` (endpoint 422, provider no-fallback, `default_model` retained) |
+| **Tests (TDD)** | Modified | applications: `harness-policy.service.test.ts`, `{summary,chain-summary}.service.test.ts`, `{summary,pre-summary,comprehensive-summary}.processor.test.ts`, `dna-writing-style.processor.test.ts`, `live-documentation.service.test.ts`, `prompt-management.service.test.ts`; api: `smr-proxy.controller.test.ts`; SMR: 14 endpoint/provider suites updated for the caller-supplied-model contract (the old `test_generate_uses_default_model_when_none` rewritten to assert the caller model is used) |
+
+**No migration.** No `.prisma`/`migrations/` change; read-only `prisma migrate diff` reports **in-sync** (§8C.4).
+
+### 8C.4 Verification evidence (captured 2026-06-15)
+
+Filtered / direct commands (not `turbo`) to avoid the pre-existing TASK-352 `@arcaai/database` `tsc` `TS2493` blocker (§8.5). SMR Python tests run in the **`arcaenv`** conda env (the repo's `py:smr-v2:*` scripts; the SMR README's `hope-smr` name is stale).
+
+| Package | Command | Result |
+|---|---|---|
+| `apps/smr` | `conda run -n arcaenv pytest src/smr_v2/tests/unit/` | **743 passed** |
+| `apps/smr` | `pytest .../test_no_model_default_d7.py` | **17 passed** (8 confirmed RED before GREEN) |
+| `@arcaai/applications` | `tsc --noEmit` + `build` (rimraf + tsc) | **clean** (both) |
+| `@arcaai/applications` | `vitest run` (9 changed suites) | **387 passed** |
+| `apps/api` | `vitest run smr-proxy.controller.test.ts` | **67 passed** |
+| `apps/api` | `tsc --noEmit -p tsconfig.build.json` (prod config, excludes tests) | **0 errors** |
+| `@arcaai/database` | `prisma migrate diff --from-config-datasource --to-schema src/prisma/db_main --exit-code` (read-only) | **"No difference detected" (exit 0 — in-sync)** |
+| (all changed source) | `ReadLints` | **no linter errors** |
+
+> Note: the full `apps/api` `tsc --noEmit -p tsconfig.json` (which **includes** test files) surfaces only **pre-existing, unrelated** test-file drift (constructor arg-count/type mismatches in `auth`, `audit-log`, `consultation`, `dna-writing-style-admin`, `harness-internal`, `transcription-job`, `stream-ticket` suites — none touched by Phase 3). The production build config excludes tests, so these do not affect the build.
+
+### 8C.5 Decisions applied & deviation
+
+- **Decision 1/2 (fail-closed 422, pass both):** missing/blank model ⇒ 422 at the SMR endpoint; every caller passes `{provider, model}`.
+- **Decision 3 (informational `default_model`):** the field is **kept** (config + `ProviderInfo`/`get_info`), removed only from the generation path.
+- **Decision 4 (reuse the cascade):** resolver = `HarnessPolicyService.getEffectivePolicy()` + `resolveSmrSelection` fail-closed wrapper; **Phase 3 does not depend on Phase 5's `ConfigResolver`** — the seam is left for Phase 5.
+- **Decision 5/6:** no `apps/harness/**` edits; pre-Phase-2 null rows fall through (no backfill).
+- **Deviation from plan §4.E E1 (flagged):** the plan suggested making `GenerateRequest.model` a **required Pydantic field**. Instead the fail-closed 422 is enforced at the **endpoint** while `model` stays `Optional` at the schema. The **external contract is identical** (a model-less request ⇒ 422), but this avoids churning ~140 unrelated TASK-338 unit constructions (`GenerateRequest(prompt=...)` in provider/hyperparameter/response-format/telemetry tests) — i.e., the safest equivalent with the smallest blast radius. Provider `_resolve_model` now returns `request.model` (typed `str | None`); in the live flow the endpoint guard guarantees it is non-null before any provider call.
+
+## 8D. Implementation Summary — Phase 5 (Realtime cascade / Pillar B)
+
+> **Implemented & verified 2026-06-15**, via strict TDD (RED → GREEN → REFACTOR) on top of the Phase 1/2/3/4 working tree. **Additive schema only** — one new enum + two new tables + a SYSTEM-default seed row; **NO column changes** to `Department`/`UserProfile`/`Consultation`, and `migrate diff` reports **in-sync**. This phase builds the realtime-toggle **cascade** (`autoSummaryEnabled`/`autoNerEnabled`/`harnessEnabled`) + the generalized **`ConfigResolver`**, threads the doctor-preferred prompt id through **all** generation paths, and creates the per-doctor **`dnaStyleEnabled`** column **reserved for Phase 6** (Phase 5 only CREATES + READS it — no write/application). **Phase 3 is not regressed** — its `resolveSmrSelection`/`getEffectivePolicy` SMR seam + fail-closed 422 are left **untouched** (the optional SMR fold-in was **skipped** — §8D.5). **Phase 6 remains outstanding** (no doctor prompt CRUD/UI, no DNA-style application, no draft↔final viewer). Cloud activation still gated on **TASK-357**.
+>
+> Plan-gate artifact: [`phase-5-realtime-cascade-plan.md`](./phase-5-realtime-cascade-plan.md)
+
+### 8D.1 What shipped
+
+- **(DB — additive polymorphic table) `PipelinePolicy` + WORM `PipelinePolicyChange` + enum `PipelinePolicyScope`.** Mirrors `HarnessPolicy`/`HarnessPolicyChange`: a polymorphic `(scope ∈ TENANT|DEPARTMENT|DOCTOR, scopeId)` row carrying **nullable** toggles `autoSummaryEnabled`/`autoNerEnabled`/`harnessEnabled`/`dnaStyleEnabled` (null = "inherit from next tier"), `_version` for OCC, and a unique `(tenantId, scope, scopeId)` index. The change table is append-only at the **DB-privilege layer** (role-guarded `REVOKE UPDATE, DELETE … FROM hope_app_template`/`hope_app`, mirroring the `HarnessPolicyChange` WORM block). The migration also bootstraps **one SYSTEM-tenant TENANT-scope default row** (`INSERT … ON CONFLICT ("id") DO NOTHING`): `autoSummary=autoNer=true`, **`harnessEnabled=false`** (legacy platform default), `dnaStyleEnabled=NULL`.
+- **(Domain) entity/factory/mapper/model/repository ×2 + the enum** generated under `…/generated/core/` + the six generated barrels + `CoreDatabaseModule` registration (mirrors the harness-policy domain layout).
+- **(Applications — generalized resolver) `ConfigResolver`.** Resolves each cascade knob `doctor → department → tenant → SYSTEM-default → code-default`, returns the effective value **with a resolution trace**, registers a **max-scope** per setting (`harnessEnabled` capped at **tenant+dept**, NOT doctor), and **fails open to code-defaults** on a DB error (logs a WARN). Also exposes `resolvePreferredPromptTemplateId(doctorId)` — the unified preferred-prompt read. Phase 3's SMR resolver is deliberately **not** folded in (§8D.5).
+- **(Applications — policy store) `PipelinePolicyService`** (+ module/DTO/interface): `getEffective` (cascade + trace), `getRow` (raw editable row at a scope), `upsertRow` (OCC via `_version` + a **WORM `PipelinePolicyChange`** on every write). Max-scope is enforced on write (a doctor-scope `harnessEnabled` is rejected).
+- **(Applications — rewire) `consultation-event.handler.ts` `resolvePipelineConfig()`** now resolves the toggles through `ConfigResolver` (cascade) instead of consultation-metadata-only, keeps the per-consultation `metadata.pipelineConfig` as the **top overlay** (back-compat), and gracefully falls back to the prior defaults when the resolver is unwired.
+- **(Applications — all-paths preferred-prompt threading)** the BullMQ **`summary.processor.ts`** and the **harness assemble path** (`harness-internal.service.ts`, a surgical add that dodges the TASK-355 warm-start block) now resolve `UserProfile.preferredPromptTemplateId` via `ConfigResolver` and pass it into prompt resolution/assembly; the sync REST `summary.service.ts` already threaded it (TASK-329). **§2.5 corrected** to reflect that every path now threads it.
+- **(API) `PipelinePolicyAdminController` + module** under `admin/harness/pipeline-policy`: `GET /` (effective cascade + trace), `GET /row` (raw row at a scope), `PUT /row` (OCC `If-Match`/`ExpectedVersion` + max-scope guard). New **`PipelinePolicy` CASL subject** (NOT a reuse of `HarnessPolicy`).
+- **(Seed / UI) `14-pipeline-policy.ts`** idempotently ensures the SYSTEM default **and** a **demo-tenant** TENANT-scope row (`harnessEnabled=true`, with its WORM change row) so the clinical-workspace demo keeps routing through the harness after the UI hard-code is removed; **CASL grants** for `PipelinePolicy` added to `tenant-full-access` / `harness-platform-manage` / `harness-tenant-manage` in `seed/01-policy.ts`; the hard-coded `HARNESS_PIPELINE_METADATA`/`harnessEnabled` is removed from `launch-panel.tsx` + `constants.ts` (open routing is now server-resolved).
+
+### 8D.2 Cascade & back-compat semantics
+
+- **Knobs that cascade:** `autoSummaryEnabled`/`autoNerEnabled` (doctor→dept→tenant→SYSTEM→code-default) and `harnessEnabled` (**tenant→dept only** — doctor scope rejected). `dnaStyleEnabled` is **doctor-scope storage only** this phase (created + read; **written/applied in Phase 6**).
+- **No-policy back-compat:** with zero override rows every tenant falls through to the SYSTEM default — `autoSummary/autoNer=true`, `harnessEnabled=false` — exactly today's platform behavior. The demo's harness is preserved by its **own** seeded demo-tenant row, NOT by the platform default, so removing the UI hard-code does **not** silently route every tenant into the harness.
+- **Overlay precedence (top layer unchanged):** per-consultation `metadata.pipelineConfig` still wins over the cascade, so existing callers that pass explicit metadata are unaffected.
+
+### 8D.3 Per-file changes & key files
+
+| Area | New / Modified | File(s) |
+|---|---|---|
+| **DB schema** | New / Modified | `packages/database/src/prisma/db_main/pipeline-policy.prisma` (new — both models); `…/enums.prisma` (modified — `PipelinePolicyScope`) |
+| **DB migration** | New | `…/migrations/20260615120000_task_356_phase5_pipeline_policy/migration.sql` (enum + 2 tables + 4 indexes + role-guarded WORM `REVOKE` + SYSTEM-default `INSERT … ON CONFLICT DO NOTHING`) |
+| **Domain** | New | `domains/src/enums/generated/PipelinePolicyScope.ts`; `entities/generated/core/{PipelinePolicyEntity,PipelinePolicyChangeEntity}.ts`; `factories/generated/core/{PipelinePolicyFactory,PipelinePolicyChangeFactory}.ts`; `mappers/generated/core/{PipelinePolicyEntityMapper,PipelinePolicyChangeEntityMapper}.ts`; `models/generated/core/{PipelinePolicyModel,PipelinePolicyChangeModel}.ts`; `repositories/generated/core/{PipelinePolicyRepository,PipelinePolicyChangeRepository}.ts` |
+| **Domain barrels/registration** | Modified | `entities`/`factories`/`mappers`/`models`/`repositories` `…/generated/core/index.ts`, `enums/generated/index.ts`, `common/databaseServices/core/core.database.module.ts` |
+| **Applications — resolver** | New | `applications/src/services/config-resolver/{config-resolver.service,config-resolver.module,index}.ts` |
+| **Applications — policy store** | New | `…/services/pipeline-policy/{pipeline-policy.service,pipeline-policy.service.module,index}.ts` + `dto/{pipeline-policy.response,update-pipeline-policy.request,index}.ts` |
+| **Applications — rewire / threading** | Modified | `consultation/events/consultation-event.handler.ts`; `consultation/jobs/processors/summary.processor.ts` (+ `consultation-job.service.module.ts` — imports `ConfigResolverModule` for handler + processor); `consultation/harness/harness-internal.service.ts` (+ `harness-internal.service.module.ts`); `services/index.ts` (barrel) |
+| **API** | New / Modified | `apps/api/src/modules/pipeline-policy-admin/{pipeline-policy-admin.controller,pipeline-policy-admin.module}.ts` (new); `apps/api/src/app.module.ts` (modified — register module) |
+| **Seed / CASL** | New / Modified | `packages/database/src/prisma/db_main/seed/14-pipeline-policy.ts` (new); `seed/index.ts`, `seed/01-policy.ts` (modified) |
+| **UI** | Modified | `apps/ui-playground/src/features/clinical-workspace/components/launch-panel.tsx`, `…/constants.ts` (remove hard-coded `harnessEnabled`) |
+| **Tests (TDD)** | New | domains `__tests__/{PipelinePolicyEntity,PipelinePolicyFactory}.test.ts`; applications `config-resolver/__tests__/config-resolver.service.test.ts`, `pipeline-policy/__tests__/pipeline-policy.service.test.ts`; api `pipeline-policy-admin/__tests__/pipeline-policy-admin.controller.test.ts` |
+| **Tests (TDD)** | Modified | applications `consultation/events/__tests__/consultation-event.handler.test.ts`, `consultation/jobs/__tests__/summary.processor.test.ts`, `consultation/harness/__tests__/harness-internal.service.test.ts`; database `src/__tests__/seed.test.ts` |
+
+### 8D.4 Verification evidence (captured 2026-06-15)
+
+Filtered / direct commands (not `turbo`) to avoid the pre-existing TASK-352 `@arcaai/database` `tsc` `TS2493` blocker (§8.5) — the DB suite is run via the targeted `vitest run src/__tests__/seed.test.ts` (it never compiles the offending `seed/__tests__/api-key-pepper.test.ts`). Phase 5 is TS-only — no conda.
+
+| Package | Command | Result |
+|---|---|---|
+| `@arcaai/database` | `prisma migrate diff --from-config-datasource --to-schema src/prisma/db_main --exit-code` (read-only) | **"No difference detected" (exit 0 — in-sync)** |
+| `@arcaai/database` | `vitest run src/__tests__/seed.test.ts` | **323 passed** |
+| `@arcaai/domains` | `build` (tsc) | **clean** |
+| `@arcaai/domains` | `vitest run -t "PipelinePolicy"` | **11 passed** (entity + factory suites) |
+| `@arcaai/applications` | `build` (rimraf + tsc) | **clean** |
+| `@arcaai/applications` | `vitest run config-resolver pipeline-policy` | **25 passed** |
+| `@arcaai/applications` | `vitest run src/services/consultation` | **1049 passed** (36 suites — handler/processor/harness threading, no regression) |
+| `apps/api` | `build` (nest build + tsc-alias) | **clean** |
+| `apps/api` | `vitest run src/modules/pipeline-policy-admin` | **13 passed** |
+| (all changed source) | `ReadLints` | **no linter errors** |
+
+### 8D.5 Decisions applied & scope guards
+
+- **Decision 1 (additive polymorphic table):** new `PipelinePolicy`/`PipelinePolicyChange` + `PipelinePolicyScope`; nullable toggles incl. `dnaStyleEnabled`; **no** column changes to `Department`/`UserProfile`/`Consultation`.
+- **Decision 2 (all paths):** preferred-prompt threading on sync REST (pre-existing) + processor + harness assemble; **§2.5 corrected**.
+- **Decision 3 (`harnessEnabled` max-scope = tenant+dept):** enforced in `ConfigResolver` and on `PipelinePolicyService.upsertRow`; back-compat default preserved (`false`).
+- **Decision 4 (new authz subject):** dedicated `PipelinePolicy` CASL subject (GLOBAL + TENANT grants); `HarnessPolicy` NOT reused.
+- **Decision 5 (cascade knobs = toggles):** `dnaStyleEnabled` is doctor-scope storage only (Phase 6 applies it).
+- **Decision 6 (SYSTEM-default cascade):** one bootstrapped SYSTEM row via migration `INSERT … ON CONFLICT DO NOTHING`; **zero per-tenant rows required**; `tenant.service.ts` clone NOT extended.
+- **Decision 7 (resolver; optional SMR fold-in) — SKIPPED:** built the generalized `ConfigResolver` for the realtime toggles + preferred-prompt, but **left Phase 3's `resolveSmrSelection`/`getEffectivePolicy` SMR seam exactly as shipped**. Folding SMR onto `ConfigResolver` was optional and only allowed if it preserved Phase 3's 422 contract bit-for-bit; the conservative, no-regression choice is to leave the SMR seam independent (it can be folded later without touching the 422 behavior).
+- **Scope guards:** no Phase 6 work (no doctor CRUD/UI, no DNA-style application, no viewer); no `apps/harness/**` Python or gating/threshold/PHI/sensor edits; no Phase 3 SMR-path edits; `apps/ui-playground/src/routeTree.gen.ts` untouched; **no git commit**.
+
+## 8E. Implementation Summary — Phase 6 (Doctor self-service + DNA edit-capture)
+
+> **Implemented & verified 2026-06-15**, via strict TDD (RED → GREEN → REFACTOR) on top of the Phase 1/2/3/4/5 working tree. **NO new schema** — the AI-draft `v1` snapshot + edit/sign deltas reuse the existing `ContextItemVersion` columns (`changeReason`/`contentDiff`/`fieldChanges`), and the per-doctor DNA toggle reuses Phase 5's `PipelinePolicy.dnaStyleEnabled`; `migrate diff` reports **in-sync**. This phase is **additive and opt-in** — with the tenant DNA flag off and no doctor opting in, behaviour is byte-identical to pre-Phase-6. **Phase 3 (SMR `resolveSmrSelection`/422 seam) and Phase 5 (`PipelinePolicy`/`ConfigResolver` internals) are consumed, not regressed.** Cloud activation still gated on **TASK-357**.
+>
+> Plan-gate artifact: [`phase-6-doctor-selfservice-dna-plan.md`](./phase-6-doctor-selfservice-dna-plan.md)
+
+### 8E.1 What shipped
+
+- **(S1/S2 — Applications) Doctor self-service prompt CRUD + preferred.** `PromptManagementService` gained `updatePersonal`/`deletePersonal` (thin wrappers that **assert strict caller-ownership** of a `USER_PERSONAL` row, then delegate to the existing OCC update / soft-delete) and `setPreferredPromptTemplate` (validates the target is available to the caller, then writes `UserProfile.preferredPromptTemplateId` via the injected `IUserProfileService.upsertByUserId`; `null` clears). `UpdateUserProfileRequest.preferredPromptTemplateId` widened to `string | null`. `PromptTemplateResponse` + mapper now surface **`scope`** so the doctor UI can tell its OWN editable personals from read-only defaults (additive; admin surfaces ignore it).
+- **(S3 — Applications) Per-doctor DNA toggle (stored on `PipelinePolicy.dnaStyleEnabled`).** `ConfigResolver.resolveEffectiveDnaStyleEnabled` computes **effective = tenant AND doctor** (`tenantEnabled && (doctorToggle ?? true)`). `PipelinePolicyService.getDnaSettings`/`setDnaStyleForDoctor` read/write the DOCTOR-scope row with **OCC + a WORM `PipelinePolicyChange`**. `DnaWritingStyleService.getDnaSettings`/`setDnaEnabled` are the doctor-facing API (delegate + tenant-context validation + `ResourceUpdated` SysEvent). DNA-style **application** is gated on the same effective flag across generation paths.
+- **(S4 — Applications) AI-draft `v1` snapshot at generation.** Both the sync `summary.service.ts generateSummary` and the harness/async `harness-internal.service.ts persistDraft` boundaries capture a `ContextItemVersion` with `changeReason='ai_draft_v1'` (surgical appends in the TASK-355/Phase-3 shared methods).
+- **(S5 — Applications) Delta capture on edit + sign.** New dependency-light `content-diff.util.ts` (`diffContent(old,new) → { contentDiff (unified text diff), fieldChanges ({section:{old,new}} by SOAP heading, whole-doc fallback) }`). `summary.service.ts updateSummary` (before the TASK-355 `signalEdit`) and `approveSummary` (append-only on sign) populate the existing `contentDiff`/`fieldChanges` columns.
+- **(S6 — Applications) DNA processor ingests draft↔approved pairs (BATCH).** `dna-writing-style.processor.ts` builds the corpus from `ai_draft_v1`↔approved **pairs** (static `buildCorpus`), falls back to final-only for legacy consults with no `v1`, and **gates** on the effective DNA flag (fails the job when disabled). Capture-on-sign / process-offline — **no synchronous on-sign SMR enqueue**; the `callSmrV2` transport signature is **unchanged** (Phase 3 seam preserved).
+- **(API) Doctor self-service routes.** `prompt-template.controller.ts` (end-user, NOT `/admin`): `POST /` create personal, `PATCH /:id` update (OCC `If-Match`), `DELETE /:id` delete, `PUT /preferred` set/clear — all `['read','PromptTemplate']` with real ownership enforced in the service (clinicians only hold `read`/`list`). `dna-writing-style.controller.ts`: `GET/PUT /settings` (OCC, `assertActingAsDoctor` guard). New DTOs + NestJS module wiring (`UserProfileServiceModule`, `PipelinePolicyServiceModule`, `ConfigResolverModule`).
+- **(UI) "My Prompts" + DNA switch + draft↔final viewer.** New `features/prompts/**` page (route `routes/_authenticated/prompts.tsx` + sidebar "My Prompts"): lists the caller's personals (create/edit/delete dialogs + OCC) and read-only defaults, with a **preferred** picker (`PUT /prompt-templates/preferred`). The DNA page (`features/dna-writing-style/index.tsx`) now mounts a **per-doctor on/off `Switch`** (`DnaSettingsCard`) that disables + explains when the tenant flag is off (effective = tenant AND doctor). A reusable **read-only `DraftFinalDiffViewer`** (over the shared `VersionDiffPanel`) is surfaced on My Prompts as a "default → your version" comparison.
+
+### 8E.2 Edit-capture & effective-flag semantics
+
+- **No-migration edit-capture:** `v1` = `ContextItemVersion(changeReason='ai_draft_v1')`; the edit/sign delta = the existing `contentDiff`/`fieldChanges` columns (previously always `undefined`). The DNA processor already keys off `changeReason`, so pairing is a corpus-builder change only.
+- **Effective DNA = tenant AND doctor:** a doctor may **opt out** any time; a doctor **cannot opt in** when the tenant flag is off (the UI switch is disabled + explained). `doctorToggle === null` ⇒ implicit opt-in (`?? true`).
+- **Opt-in back-compat:** tenant flag off + no doctor override ⇒ no snapshot styling/learning differences vs pre-Phase-6 (the snapshot/delta rows are inert metadata until a doctor opts in and the processor runs).
+
+### 8E.3 Per-file changes & key files
+
+| Area | New / Modified | File(s) |
+|---|---|---|
+| **Applications — edit-capture (S4/S5)** | New | `consultation/summary/content-diff.util.ts` (+ `__tests__/content-diff.util.test.ts`, `__tests__/summary.service.edit-capture.test.ts`) |
+| **Applications — edit-capture (S4/S5)** | Modified | `consultation/summary/summary.service.ts` (`generateSummary` v1 snapshot; `updateSummary`/`approveSummary` delta); `consultation/harness/harness-internal.service.ts` (`persistDraft` v1 snapshot) (+ their test suites) |
+| **Applications — DNA toggle (S3)** | Modified (extends Phase-5 files) | `config-resolver/config-resolver.service.ts` (`resolveEffectiveDnaStyleEnabled`); `pipeline-policy/pipeline-policy.service.ts` (`getDnaSettings`/`setDnaStyleForDoctor`); `dna-writing-style/{dna-writing-style.service.ts,IDnaWritingStyleService.ts,dna-writing-style.service.module.ts,dto/index.ts}` (+ test suites) |
+| **Applications — DNA toggle (S3) DTOs** | New | `dna-writing-style/dto/{dna-settings.response,update-dna-settings.request}.ts` |
+| **Applications — DNA pairs (S6)** | Modified | `dna-writing-style/dna-writing-style.processor.ts` (pairs corpus + gating) (+ test) |
+| **Applications — prompt CRUD/preferred (S1/S2)** | Modified | `prompt-management/{prompt-management.service.ts,IPromptManagementService.ts,prompt-management.service.module.ts,prompt-management.dto.mapper.ts,dto/index.ts,dto/prompt-template.response.ts}`; `user/userProfile/dto/updateUserProfile.request.ts` (+ service/mapper test suites) |
+| **Applications — prompt DTOs (S2)** | New | `prompt-management/dto/{preferred-prompt-template.response,set-preferred-template.request}.ts` |
+| **API** | Modified | `apps/api/src/modules/prompt-management/prompt-template.controller.ts` (personal CRUD + preferred); `apps/api/src/modules/dna-writing-style/dna-writing-style.controller.ts` (settings) (+ both controller test suites) |
+| **UI — new feature** | New | `apps/ui-playground/src/features/prompts/{api/prompts.ts,lib/partition.ts,components/draft-final-diff-viewer.tsx,components/prompt-form-dialog.tsx,index.tsx}` (+ `lib/__tests__/partition.test.ts`, `components/__tests__/draft-final-diff-viewer.test.tsx`, `__tests__/my-prompts.test.tsx`); `routes/_authenticated/prompts.tsx` |
+| **UI — DNA switch** | New / Modified | `features/dna-writing-style/components/dna-settings-card.tsx` (new); `features/dna-writing-style/{index.tsx,api/dna-writing-styles.ts}` (mount card + settings hooks); `features/dna-writing-style/__tests__/dna-impersonation-guard.test.tsx` (stub the new card) |
+| **UI — nav / generated** | Modified | `apps/ui-playground/src/components/layout/app-sidebar.tsx` ("My Prompts" entry); `apps/ui-playground/src/routeTree.gen.ts` (**auto-generated** via `tsr generate` — not hand-edited) |
+
+### 8E.4 Verification evidence (captured 2026-06-15)
+
+Filtered / direct commands (not `turbo`) to avoid the pre-existing TASK-352 `@arcaai/database` `tsc` `TS2493` blocker (§8.5). Phase 6 is TS-only — no conda.
+
+| Package | Command | Result |
+|---|---|---|
+| `@arcaai/database` | `prisma migrate diff --from-config-datasource --to-schema src/prisma/db_main --exit-code` (read-only) | **"No difference detected" (exit 0 — in-sync; NO Phase-6 schema)** |
+| `@arcaai/applications` | `test:unit` (full) | **5222 passed \| 4 skipped (222 files) — no regression** |
+| `@arcaai/applications` | `vitest run` (summary/dna/pipeline-policy/prompt-management/config-resolver/harness) | **617 passed (28 suites)** |
+| `apps/api` | `test` (full) | **1808 passed \| 4 skipped (104 files) — no regression** |
+| `apps/api` | `vitest run` (prompt-management + dna-writing-style + pipeline-policy-admin) | **123 passed (5 suites)** |
+| `apps/ui-playground` | `vitest run` (full) | **1345 passed (160 files)** |
+| `apps/ui-playground` | `vitest run src/features/prompts` | **11 passed (3 files)** |
+| (all changed source) | `ReadLints` | **no linter errors** |
+| `apps/ui-playground` | `type-check` (tsc) | **0 errors in Phase-6 files** (only pre-existing, out-of-scope errors remain — see §8E.5 deviation) |
+
+### 8E.5 Decisions applied, deviations & scope guards
+
+- **BQ-1 (`v1` storage) / BQ-2 (delta format):** reuse `ContextItemVersion` (`changeReason='ai_draft_v1'`) + `contentDiff` (unified text diff) + `fieldChanges` (`{section:{old,new}}` by SOAP heading, whole-doc fallback). **No migration.**
+- **BQ-3 (DNA trigger) = BATCH:** capture-on-sign, process-offline; **no** synchronous on-sign SMR enqueue and **no** new module coupling into `SummaryServiceModule`; `callSmrV2` transport unchanged.
+- **BQ-4 (DNA toggle) = Phase-5 `PipelinePolicy.dnaStyleEnabled`** (zero new schema); semantics **tenant AND doctor**.
+- **BQ-5 (auth scope):** personal routes on the **end-user** `prompt-template.controller.ts` gated `['read','PromptTemplate']` with **strict caller-ownership in the service**; preferred-template route writes the caller's profile only.
+- **BQ-6 (draft↔final viewer) = IN, as a reusable read-only component.** Built `DraftFinalDiffViewer` and surfaced it on **My Prompts** (default → your-version diff) — a self-contained, testable data source. **Deviation (flagged):** the consultation `version-detail-panel.tsx` AI-draft↔signed surface (and its optional `GET …/draft-delta` endpoint) was **NOT** wired — it is SDK-coupled (`@arcaai/vox`, stubbed under test) and adjacent to TASK-355 review territory; the reusable viewer is generic enough to drop in there later without change.
+- **Deviation (pre-existing, out-of-scope — NOT introduced by Phase 6):** `apps/ui-playground` `vite build` + `tsc` are RED on the working tree because **committed** consumers `clinical-workspace/components/capture-panel.tsx` and `admin/audio-pipelines/frontend-pipeline-tab.tsx` import `useArcaAudio`/`CaptureMode`/`TranscriptionMode`, which the `@arcaai/vox` **public barrel** does not export (the SDK source defines them; the barrel/dist lag). Both files are out-of-scope (`clinical-workspace`, SDK) and were left untouched. Phase-6 build-equivalence is evidenced instead by the **full vitest suite (1345 passed — esbuild-compiles every new file)**, **clean `ReadLints`**, and **`type-check` reporting zero errors in Phase-6 files**.
+- **Scope guards honoured:** no new schema / migration (`migrate diff` in-sync); surgical appends only on `summary.service.ts`/`harness-internal.service.ts`; **did not touch** `clinical-workspace/review-*`, harness gating/thresholds/PHI/sensors, `apps/harness/**` Python, `/admin/prompt-templates`, Phase 3 SMR code, or Phase 5 `PipelinePolicy` internals (consumed only); `routeTree.gen.ts` regenerated via `tsr generate` (not hand-edited); **no git commit**.
+
 ## 9. Change History
 
 | Date | Change | Files |
@@ -386,3 +630,7 @@ Per-package / filtered commands were used deliberately (not `turbo`) to isolate 
 | 2026-06-14 | Initial review/audit + design addendum created (no code changes). | `docs/implementation/TASK-356-Admin-Managed-Models-Workflows/README.md` |
 | 2026-06-14 | Deep-dive across audio pipeline, capture/storage, prompts/realtime, DNA edit-capture; finalized architecture (3 planes + 1 resolver + 2 workflow consoles); resolved D-1/D-2/D-4/D-5/D-6/D-7 + added D-8/D-9/D-10; re-phased plan. | same |
 | 2026-06-14 | **Planned → foundation → parallel implementation → integration verify.** Authored the Phase 1 (`phase-1-catalog-plane-plan.md`) and Phase 4 (`phase-4-audio-console-plan.md`) TDD plan-gate docs; landed a single additive shared DB foundation migration (`20260614120000_task_356_catalog_audio_foundation`); implemented Phase 1 (Catalog plane) and Phase 4 (Audio console) **in parallel**; then ran a combined integration verification (domains/applications/api/ui/SDK/database — all green, no fix needed, migration in-sync & additive) and recorded the **§8 Implementation Summary**. Status → Phase 1 + 4 implemented & verified; Phases 2/3/5/6 outstanding (Phase 2/3 activation gated on TASK-357). | `…/README.md`, `phase-1-catalog-plane-plan.md`, `phase-4-audio-console-plan.md` (+ DB/domain/applications/api/ui/SDK source per §8.2) |
+| 2026-06-14 | **Phase 2 (Defaults wiring) implemented & verified (TDD).** Rows/config only — **no schema change** (`migrate diff` in-sync). (a) SMR default set on the SYSTEM `HarnessPolicy` (`lm-studio` / `mlx-community/medgemma-1.5-4b-it`) via new idempotent **`seedHarnessPolicy`** that also writes a **WORM `HarnessPolicyChange`** (seed_worm override) + `default-smr-model` GlobalSetting; (b) Guardrail regression guards only (`GUARDRAIL_DB_CONFIG_ENABLED` left `false`); (c) STT CT2 `AiModel` (placeholder `sourceUri`, D-4) + `production-faster-whisper-turbo-int8` `AsrPipeline`, **both batch+streaming defaults flipped** + `switchDefaultSttPipeline` backfill (no double-default); (d) **extend_clone override** — `tenant.service.ts` `create()` clones the SYSTEM default `AsrPipeline` (+ current version) per-tenant, tenant-scoped default, idempotent backfill. Verified: 315 seed tests, applications build + 5125 unit tests, tenant clone suite, lints clean. No cloud enabled (still gated on TASK-357); Phases 3/5/6 outstanding. | `…/README.md`, `packages/database/src/prisma/db_main/seed/{13-harness-policy.ts (new),06-stt.ts,11-global-setting.ts,91-user.ts,index.ts}`, `packages/database/src/__tests__/seed.test.ts`, `packages/applications/src/services/tenant/tenant.service.ts` (+ tenant test suites) |
+| 2026-06-15 | **Phase 3 (SMR gateway refactor / D-7) implemented & verified (TDD).** **No schema change** (`migrate diff` in-sync) and **no `apps/harness/**` edits**. (B1/B2) `HarnessPolicyService.getEffectivePolicy()` now field-level-fallthroughs the two SMR fields (tenant→SYSTEM→null) + new **fail-closed `resolveSmrSelection`** = the single resolver seam left for Phase 5. (E1/E3/E4) `apps/smr` `/api/v1/generate` **fails closed with 422** on missing/blank model (after guardrail), the `or "default"` last-resort is removed, and every provider `_resolve_model` returns the caller-supplied model (no `_default_model` fallback); **informational `default_model` retained** (decision 3). (C1–C8/D1) every TS caller — legacy `summary`/`chain-summary`, the 3 job processors, DNA, **(7b) live-doc → policy not env**, **(7a) admin prompt-test → policy** — resolves via `resolveSmrSelection` and posts `{provider, model}`; **(7c) SDK proxy passes through** the caller model and only policy-resolves when absent, letting SMR's 422 be the sole authority. **Deviation (flagged):** 422 enforced at the endpoint with `GenerateRequest.model` kept `Optional` (identical external contract, avoids churning ~140 unrelated unit constructions). Verified in conda **`arcaenv`**: SMR 743 pytest + 17 new D-7 tests; applications tsc/build clean + 387 unit (9 Phase-3 suites); api `smr-proxy` 67 + prod-config tsc 0 errors; lints clean. No cloud enabled (still gated on TASK-357); Phases 5/6 outstanding. | `…/README.md`, `packages/applications/src/services/harness-policy/harness-policy.service.ts`, `consultation/summary/{summary,chain-summary}.service.ts`, `consultation/jobs/processors/{summary,pre-summary,comprehensive-summary}.processor.ts`, `consultation/live-documentation/live-documentation.service.ts`, `dna-writing-style/dna-writing-style.processor.ts`, `prompt-management/prompt-management.service.ts` (+ their `.service.module.ts`/`consultation-job.service.module.ts` imports + test suites), `apps/api/src/modules/streaming/{smr-proxy.controller.ts,streaming.module.ts}` (+ test), `apps/smr/src/smr_v2/api/endpoints/generate.py`, `apps/smr/src/smr_v2/providers/{ollama,openai_compat,azure_openai,bedrock}.py`, `apps/smr/.../tests/unit/test_no_model_default_d7.py` (new) + 14 SMR test suites |
+| 2026-06-15 | **Phase 5 (Realtime cascade / Pillar B) implemented & verified (TDD).** **Additive schema only** (`migrate diff` in-sync) — new polymorphic **`PipelinePolicy`** + WORM **`PipelinePolicyChange`** + enum **`PipelinePolicyScope`** (nullable toggles `autoSummary`/`autoNer`/`harness`/**`dnaStyleEnabled`**, role-guarded WORM `REVOKE`, SYSTEM-default `INSERT … ON CONFLICT DO NOTHING` with `harnessEnabled=false`); no `Department`/`UserProfile`/`Consultation` column changes. New generalized **`ConfigResolver`** (doctor→dept→tenant→SYSTEM→code-default + trace; `harnessEnabled` capped at tenant+dept; fail-open to defaults) + **`PipelinePolicyService`** (OCC + WORM). `consultation-event.handler.resolvePipelineConfig()` rewired to the cascade (per-consultation `metadata.pipelineConfig` retained as top overlay); **preferred-prompt threading now on ALL paths** — processor + harness assemble added (sync REST pre-existing TASK-329) → **§2.5 corrected**. New `PipelinePolicyAdminController` (`admin/harness/pipeline-policy`, GET/GET row/PUT row + OCC) + dedicated **`PipelinePolicy` CASL subject**. `14-pipeline-policy.ts` seed (SYSTEM default + **demo-tenant `harnessEnabled=true`** row preserving the clinical-workspace demo) + CASL grants in `01-policy.ts`; UI hard-coded `harnessEnabled` removed (server-resolved). **`dnaStyleEnabled` column created + read only — Phase 6 writes/applies it.** **Phase 3 not regressed** — SMR `resolveSmrSelection`/422 seam left untouched (optional SMR fold-in **skipped**, §8D.5). Verified: DB seed **323**, domains build + **11** PipelinePolicy, applications build + **25** (resolver/policy) + **1049** (consultation, no regression), api build + **13** (admin controller), `migrate diff` in-sync, lints clean. No cloud enabled (gated on TASK-357); Phase 6 outstanding. | `…/README.md`, `packages/database/src/prisma/db_main/{pipeline-policy.prisma (new),enums.prisma,migrations/20260615120000_task_356_phase5_pipeline_policy/migration.sql (new),seed/14-pipeline-policy.ts (new),seed/index.ts,seed/01-policy.ts}`, `packages/database/src/__tests__/seed.test.ts`, `packages/domains/src/{enums,entities,factories,mappers,models,repositories}/generated/**` (PipelinePolicy[Change] + `PipelinePolicyScope` + barrels + `core.database.module.ts`), `packages/applications/src/services/{config-resolver/**(new),pipeline-policy/**(new),consultation/events/consultation-event.handler.ts,consultation/jobs/processors/summary.processor.ts,consultation/jobs/consultation-job.service.module.ts,consultation/harness/harness-internal.service.ts,consultation/harness/harness-internal.service.module.ts,index.ts}` (+ test suites), `apps/api/src/modules/pipeline-policy-admin/**` (new) + `apps/api/src/app.module.ts`, `apps/ui-playground/src/features/clinical-workspace/{components/launch-panel.tsx,constants.ts}` |
+| 2026-06-15 | **Phase 6 (Doctor self-service + DNA edit-capture) implemented & verified (TDD) — ticket now Phases 1–6 implemented.** **NO new schema** (`migrate diff` in-sync) — AI-draft `v1` snapshot + edit/sign deltas reuse `ContextItemVersion` (`changeReason='ai_draft_v1'` + existing `contentDiff`/`fieldChanges`); per-doctor DNA toggle reuses Phase-5 `PipelinePolicy.dnaStyleEnabled`. **(S1/S2)** `PromptManagementService.updatePersonal`/`deletePersonal` (strict caller-ownership) + `setPreferredPromptTemplate` (writes `UserProfile.preferredPromptTemplateId` via `IUserProfileService`; `null` clears); `PromptTemplateResponse`+mapper expose `scope`; `UpdateUserProfileRequest.preferredPromptTemplateId` → `string\|null`. **(S3)** `ConfigResolver.resolveEffectiveDnaStyleEnabled` = **tenant AND doctor**; `PipelinePolicyService.getDnaSettings`/`setDnaStyleForDoctor` (OCC + WORM `PipelinePolicyChange`); `DnaWritingStyleService.getDnaSettings`/`setDnaEnabled` (delegate + tenant-ctx validation + `ResourceUpdated`). **(S4/S5)** `v1` snapshot at sync `summary.service.generateSummary` + harness `harness-internal.persistDraft`; new `content-diff.util.ts` populates `contentDiff`/`fieldChanges` on `updateSummary`+`approveSummary`. **(S6)** DNA processor ingests `ai_draft_v1`↔approved **pairs** (legacy final-only fallback) + effective-flag gating — **BATCH** (no synchronous on-sign enqueue; `callSmrV2` transport unchanged). **(API)** end-user `prompt-template.controller` personal CRUD (OCC) + `PUT /preferred`, `dna-writing-style.controller` `GET/PUT /settings` (`['read','PromptTemplate']` + service-enforced ownership) + module wiring. **(UI)** new `features/prompts/**` "My Prompts" CRUD + preferred + route + sidebar; per-doctor DNA `Switch` (`DnaSettingsCard`, disabled when tenant-off); reusable read-only `DraftFinalDiffViewer`. **Deviation:** consultation `version-detail-panel` draft↔signed wiring deferred (SDK-coupled, TASK-355 territory) — reusable viewer drops in later; pre-existing out-of-scope `ui-playground` `vite build`/`tsc` RED (committed `clinical-workspace`/`admin` consumers import `useArcaAudio`/`CaptureMode`/`TranscriptionMode` missing from `@arcaai/vox` barrel) — evidenced via full vitest + lints + Phase-6 type-check instead. **Phase 3/5 not regressed.** Verified: `migrate diff` in-sync; applications **5222** unit (617 targeted); api **1808** (123 targeted); ui-playground **1345** vitest (11 prompts); lints clean. No cloud enabled (gated on TASK-357). | `…/README.md`, `packages/applications/src/services/consultation/summary/{content-diff.util.ts (new),summary.service.ts}` (+ edit-capture/util tests), `consultation/harness/harness-internal.service.ts`, `config-resolver/config-resolver.service.ts`, `pipeline-policy/pipeline-policy.service.ts`, `dna-writing-style/{dna-writing-style.processor.ts,dna-writing-style.service.ts,IDnaWritingStyleService.ts,dna-writing-style.service.module.ts,dto/**(2 new)}`, `prompt-management/{prompt-management.service.ts,IPromptManagementService.ts,prompt-management.service.module.ts,prompt-management.dto.mapper.ts,dto/**(2 new + scope)}`, `user/userProfile/dto/updateUserProfile.request.ts` (+ test suites), `apps/api/src/modules/{prompt-management/prompt-template.controller.ts,dna-writing-style/dna-writing-style.controller.ts}` (+ tests), `apps/ui-playground/src/{features/prompts/**(new),routes/_authenticated/prompts.tsx (new),features/dna-writing-style/{components/dna-settings-card.tsx (new),index.tsx,api/dna-writing-styles.ts},components/layout/app-sidebar.tsx,routeTree.gen.ts (generated)}` |

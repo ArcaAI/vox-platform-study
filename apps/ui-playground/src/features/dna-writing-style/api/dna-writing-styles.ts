@@ -75,6 +75,26 @@ export interface DnaJobStatus {
   error?: string;
 }
 
+/**
+ * TASK-356 Phase 6 (S3) — per-doctor DNA on/off settings.
+ *  - `doctorToggle`  — the doctor's explicit choice (`null` = inherit / implicit opt-in).
+ *  - `tenantEnabled` — whether the tenant cascade permits DNA at all.
+ *  - `effective`     — final decision = tenant AND doctor (drives styling + learning).
+ *  - `version`       — DOCTOR-scope policy row OCC token (0 when no override row yet).
+ */
+export interface DnaSettings {
+  doctorToggle: boolean | null;
+  tenantEnabled: boolean;
+  effective: boolean;
+  version: number;
+}
+
+export interface DnaSettingsUpdate {
+  enabled: boolean | null;
+  reason?: string;
+  expectedVersion?: number;
+}
+
 export interface DnaStreamCallbacks {
   onStatus?: (status: DnaJobStatus) => void;
   onProgress?: (progress: number) => void;
@@ -95,6 +115,8 @@ const keys = {
   mine: () => [...keys.all, 'mine'] as const,
   versions: (reportId: string) => [...keys.all, 'versions', reportId] as const,
   jobStatus: (jobId: string) => [...keys.all, 'job', jobId] as const,
+  // TASK-356 Phase 6 (S3) — per-doctor DNA on/off settings.
+  settings: () => [...keys.all, 'settings'] as const,
 };
 
 /**
@@ -281,6 +303,36 @@ export function useSetDefaultDnaReport() {
       }
     },
     onSettled: () => {
+      qc.invalidateQueries({ queryKey: keys.all });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// TASK-356 Phase 6 (S3) — per-doctor DNA on/off settings
+// ---------------------------------------------------------------------------
+
+export function useDnaSettings(options?: Omit<UseQueryOptions<DnaSettings>, 'queryKey' | 'queryFn'>) {
+  return useQuery({
+    queryKey: keys.settings(),
+    queryFn: () => adminClient.get<DnaSettings>('/dna-writing-styles/settings'),
+    ...options,
+  });
+}
+
+export function useUpdateDnaSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    // The toggle is stored on the DOCTOR-scope `PipelinePolicy.dnaStyleEnabled`.
+    // Echo the row `version` as `If-Match: "<v>"` when present so the server runs
+    // its compare-and-set (412 on drift); omit it for the first opt-in (version 0).
+    mutationFn: ({ expectedVersion, ...body }: DnaSettingsUpdate) =>
+      adminClient.put<DnaSettings>(
+        '/dna-writing-styles/settings',
+        { ...body, expectedVersion },
+        expectedVersion && expectedVersion > 0 ? { ifMatch: `"${expectedVersion}"` } : undefined,
+      ),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.all });
     },
   });

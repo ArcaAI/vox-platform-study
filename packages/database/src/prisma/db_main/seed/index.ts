@@ -16,6 +16,8 @@ import { seedConsultation } from './09-consultation';
 import { seedAuditLog } from './10-audit-log';
 import { seedGlobalSetting } from './11-global-setting';
 import { seedRateLimitSettings } from './12-rate-limit-settings';
+import { seedHarnessPolicy } from './13-harness-policy';
+import { seedPipelinePolicy } from './14-pipeline-policy';
 import { seedUser } from './91-user';
 
 /**
@@ -88,6 +90,14 @@ export const seed = async () => {
         await seedDepartment(client);
         console.log('');
         await seedStt(client);
+        console.log('');
+        // TASK-356 Phase 2 — SYSTEM HarnessPolicy SMR default (+ WORM audit).
+        // Depends only on the reserved SYSTEM tenant (Phase 1).
+        await seedHarnessPolicy(client);
+        console.log('');
+        // TASK-356 Phase 5 — SYSTEM + demo PipelinePolicy cascade defaults (+ WORM).
+        // Needs the reserved SYSTEM tenant + the Global demo tenant (both Phase 1).
+        await seedPipelinePolicy(client);
         console.log('');
 
         // Phase 3: Depends on Phase 2 (PromptTemplate.departmentId → Department)

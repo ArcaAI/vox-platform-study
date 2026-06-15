@@ -1,4 +1,12 @@
-import { DnaReportResponse, DnaVersionResponse, GenerateDnaReportRequest, UpdateDnaReportRequest, DnaDashboardResponse } from './dto';
+import {
+  DnaReportResponse,
+  DnaVersionResponse,
+  GenerateDnaReportRequest,
+  UpdateDnaReportRequest,
+  DnaDashboardResponse,
+  DnaSettingsResponse,
+  UpdateDnaSettingsRequest,
+} from './dto';
 
 export interface DnaJobResponse {
   jobId: string;
@@ -26,6 +34,18 @@ export interface PaginatedDnaReports {
 export abstract class IDnaWritingStyleService {
   abstract generateDnaReport(doctorId: string, dto: GenerateDnaReportRequest): Promise<DnaJobResponse>;
   abstract getDnaReport(doctorId: string): Promise<DnaReportResponse | null>;
+  /**
+   * TASK-356 Phase 6 (S3) — read the caller doctor's DNA on/off settings
+   * (effective = tenant AND doctor, plus the tenant gate + DOCTOR-row OCC
+   * version). Storage is the Phase-5 DOCTOR-scope `PipelinePolicy.dnaStyleEnabled`.
+   */
+  abstract getDnaSettings(doctorId: string): Promise<DnaSettingsResponse>;
+  /**
+   * TASK-356 Phase 6 (S3) — write the caller doctor's DNA on/off toggle
+   * (`enabled: null` clears the override). Broadcasts a `ResourceUpdated`
+   * SysEvent; the DNA processor honours opt-out on the next batch.
+   */
+  abstract setDnaEnabled(doctorId: string, dto: UpdateDnaSettingsRequest): Promise<DnaSettingsResponse>;
   abstract updateDnaReport(reportId: string, dto: UpdateDnaReportRequest, options?: { bypassOwnershipCheck?: boolean }): Promise<DnaReportResponse>;
   /**
    * TASK-329 P5 — Promote a historical report to the caller's active/default

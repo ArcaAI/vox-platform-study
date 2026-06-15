@@ -113,7 +113,7 @@ async def app_without_rate_limiters(settings, mock_provider_registry, mock_task_
     return _make_app(settings, mock_provider_registry, mock_task_manager, rate_limiters={})
 
 
-GENERATE_PAYLOAD = {"prompt": "Hello world test prompt", "provider": "ollama", "stream": False}
+GENERATE_PAYLOAD = {"prompt": "Hello world test prompt", "provider": "ollama", "model": "test-model", "stream": False}
 
 
 class TestGenerateWithRateLimits:
@@ -216,19 +216,19 @@ class TestGenerateWithRateLimits:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             r1 = await client.post(
                 "/api/v1/generate",
-                json={"prompt": "hi", "provider": "azure", "stream": False},
+                json={"prompt": "hi", "provider": "azure", "model": "test-model", "stream": False},
             )
             assert r1.status_code == 200
 
             r2 = await client.post(
                 "/api/v1/generate",
-                json={"prompt": "hi", "provider": "azure", "stream": False},
+                json={"prompt": "hi", "provider": "azure", "model": "test-model", "stream": False},
             )
             assert r2.status_code == 429
 
             r3 = await client.post(
                 "/api/v1/generate",
-                json={"prompt": "hi", "provider": "ollama", "stream": False},
+                json={"prompt": "hi", "provider": "ollama", "model": "test-model", "stream": False},
             )
             assert r3.status_code == 200
 

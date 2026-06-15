@@ -234,6 +234,10 @@ vi.mock('../api/dna-writing-styles', () => ({
   useDnaJobStatus: () => ({ data: undefined }),
   streamDnaJob: () => ({ abort: vi.fn() }),
 }));
+// TASK-356 Phase 6 (S7) — the page now mounts the per-doctor DNA on/off card
+// (its own `useDnaSettings`/`useUpdateDnaSettings` hooks). This suite is about
+// the generate-action gating, so stub the card to keep the render focused.
+vi.mock('../components/dna-settings-card', () => ({ DnaSettingsCard: () => null }));
 vi.mock('../components/edit-dialog', () => ({ EditDialog: () => null }));
 vi.mock('../components/generate-from-history-panel', () => ({ GenerateFromHistoryPanel: () => null }));
 vi.mock('../components/reports-list-panel', () => ({ ReportsListPanel: () => null }));

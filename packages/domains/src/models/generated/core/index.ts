@@ -26,6 +26,8 @@ export * from './MediaModel';
 export * from './NamedEntityModel';
 export * from './NotificationModel';
 export * from './PermissionModel';
+export * from './PipelinePolicyChangeModel';
+export * from './PipelinePolicyModel';
 export * from './PromptTemplateModel';
 export * from './PromptUsageRecordModel';
 export * from './PromptVersionModel';

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Reflector } from '@nestjs/core';
 import { PATH_METADATA } from '@nestjs/common/constants';
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
+import { REQUIRES_IF_MATCH_KEY } from '../../../decorators';
 import { PromptTemplateController } from '../prompt-template.controller';
 
 // TASK-331 doc-09 — end-user (clinician) prompt-template plane.
@@ -20,6 +22,11 @@ const fakeTemplate = {
 
 const createMockService = () => ({
     listAvailableForCaller: vi.fn(),
+    // TASK-356 Phase 6 (S1/S2) — doctor self-service surface.
+    createPersonal: vi.fn(),
+    updatePersonal: vi.fn(),
+    deletePersonal: vi.fn(),
+    setPreferredPromptTemplate: vi.fn(),
 });
 
 describe('PromptTemplateController (TASK-331 doc-09 — end-user plane)', () => {
@@ -74,6 +81,97 @@ describe('PromptTemplateController (TASK-331 doc-09 — end-user plane)', () => 
                 (PromptTemplateController.prototype as any).available,
             );
             expect(meta).toEqual([{ action: 'read', subject: 'PromptTemplate' }]);
+        });
+    });
+
+    // ─── TASK-356 Phase 6 (S1/S2) — doctor self-service routes ───────────
+    // These live on the END-USER plane (NOT /admin). Clinicians hold only
+    // `read:PromptTemplate` (01-policy.ts), so every self-service route gates on
+    // `read` and relies on the service's STRICT caller-ownership for real authz.
+    describe('POST /prompt-templates (createPersonal)', () => {
+        it('delegates to service.createPersonal with the body', async () => {
+            const dto = { name: 'My SOAP', category: 'SUMMARY', content: 'x' };
+            mockService.createPersonal.mockResolvedValue({ ...fakeTemplate, scope: 'USER_PERSONAL' });
+
+            await controller.createPersonal(dto as never);
+
+            expect(mockService.createPersonal).toHaveBeenCalledWith(dto);
+        });
+
+        it('gates on ["read","PromptTemplate"] (clinician plane)', () => {
+            const meta = Reflect.getMetadata(
+                REQUIRED_PERMISSIONS_KEY,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (PromptTemplateController.prototype as any).createPersonal,
+            );
+            expect(meta).toEqual([{ action: 'read', subject: 'PromptTemplate' }]);
+        });
+    });
+
+    describe('PATCH /prompt-templates/:id (updatePersonal)', () => {
+        it('delegates to service.updatePersonal with id + dto (no header)', async () => {
+            const dto = { content: 'new', expectedVersion: 3 };
+            mockService.updatePersonal.mockResolvedValue(fakeTemplate);
+
+            await controller.updatePersonal('tpl-1', dto as never, undefined);
+
+            expect(mockService.updatePersonal).toHaveBeenCalledWith('tpl-1', dto);
+        });
+
+        it('folds the If-Match header into expectedVersion (header wins)', async () => {
+            mockService.updatePersonal.mockResolvedValue(fakeTemplate);
+
+            await controller.updatePersonal('tpl-1', { content: 'new', expectedVersion: 99 } as never, 7);
+
+            expect(mockService.updatePersonal).toHaveBeenCalledWith(
+                'tpl-1',
+                expect.objectContaining({ content: 'new', expectedVersion: 7 }),
+            );
+        });
+
+        it('requires the If-Match header (@RequiresIfMatch metadata)', () => {
+            const reflector = new Reflector();
+            const flag = reflector.get(REQUIRES_IF_MATCH_KEY, PromptTemplateController.prototype.updatePersonal);
+            expect(flag).toBe(true);
+        });
+
+        it('gates on ["read","PromptTemplate"] (clinician plane)', () => {
+            const meta = Reflect.getMetadata(
+                REQUIRED_PERMISSIONS_KEY,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (PromptTemplateController.prototype as any).updatePersonal,
+            );
+            expect(meta).toEqual([{ action: 'read', subject: 'PromptTemplate' }]);
+        });
+    });
+
+    describe('DELETE /prompt-templates/:id (deletePersonal)', () => {
+        it('delegates to service.deletePersonal with the id', async () => {
+            mockService.deletePersonal.mockResolvedValue(fakeTemplate);
+
+            await controller.deletePersonal('tpl-1');
+
+            expect(mockService.deletePersonal).toHaveBeenCalledWith('tpl-1');
+        });
+    });
+
+    describe('PUT /prompt-templates/preferred (setPreferred)', () => {
+        it('delegates to service.setPreferredPromptTemplate with the templateId', async () => {
+            mockService.setPreferredPromptTemplate.mockResolvedValue({ preferredPromptTemplateId: 'tpl-1' });
+
+            const res = await controller.setPreferred({ templateId: 'tpl-1' } as never);
+
+            expect(mockService.setPreferredPromptTemplate).toHaveBeenCalledWith('tpl-1');
+            expect(res.preferredPromptTemplateId).toBe('tpl-1');
+        });
+
+        it('clears the preference when templateId is null', async () => {
+            mockService.setPreferredPromptTemplate.mockResolvedValue({ preferredPromptTemplateId: null });
+
+            const res = await controller.setPreferred({ templateId: null } as never);
+
+            expect(mockService.setPreferredPromptTemplate).toHaveBeenCalledWith(null);
+            expect(res.preferredPromptTemplateId).toBeNull();
         });
     });
 });

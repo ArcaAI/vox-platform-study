@@ -17,6 +17,8 @@ describe('PromptManagementDtoMapper', () => {
                 description: 'A SOAP note prompt',
                 content: 'You are a clinical assistant.',
                 category: 'SUMMARY',
+                // TASK-356 Phase 6 (S1) — scope is surfaced for the doctor UI.
+                scope: 'USER_PERSONAL',
                 variables: { format: 'SOAP' },
                 currentVersionNumber: 3,
                 departmentId: 'dept-1',
@@ -32,6 +34,7 @@ describe('PromptManagementDtoMapper', () => {
             expect(result.description).toBe('A SOAP note prompt');
             expect(result.content).toBe('You are a clinical assistant.');
             expect(result.category).toBe('SUMMARY');
+            expect(result.scope).toBe('USER_PERSONAL');
             expect(result.variables).toEqual({ format: 'SOAP' });
             expect(result.currentVersionNumber).toBe(3);
             expect(result.departmentId).toBe('dept-1');

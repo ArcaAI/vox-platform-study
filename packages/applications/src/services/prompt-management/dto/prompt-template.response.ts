@@ -17,6 +17,13 @@ export class PromptTemplateResponse {
   @ApiProperty({ description: 'Template category' })
   category: string;
 
+  // TASK-356 Phase 6 (S1) — surface the template scope so the doctor "My
+  // Prompts" UI can distinguish the caller's OWN editable personal prompts
+  // (`USER_PERSONAL`) from the read-only tenant/department defaults in the
+  // `listAvailableForCaller` result. Additive; admin surfaces ignore it.
+  @ApiPropertyOptional({ description: 'Template scope (e.g. USER_PERSONAL, DEPARTMENT_DEFAULT, TENANT_DEFAULT)' })
+  scope?: string;
+
   // TASK-331 doc-02 F5 — real Draft/Published lifecycle column (was previously
   // dropped server-side; the admin status filter is now server-side).
   @ApiProperty({ description: 'Publication status', enum: ['DRAFT', 'PUBLISHED'], default: 'DRAFT' })

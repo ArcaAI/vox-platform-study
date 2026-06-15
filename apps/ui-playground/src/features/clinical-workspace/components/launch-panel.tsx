@@ -1,10 +1,12 @@
 /**
  * LaunchPanel (TASK-330 P3).
  *
- * Opens (get-or-creates) a consultation routed through the documentation harness
- * via `POST /consultations/open` with `metadata.pipelineConfig.harnessEnabled`.
- * Pre-fills the demo patient; the impersonated doctor + tenant come from the
- * active (impersonated) session.
+ * Opens (get-or-creates) a consultation via `POST /consultations/open`. As of
+ * TASK-356 Phase 5 the harness-vs-legacy routing is resolved SERVER-side from the
+ * realtime PipelinePolicy cascade (the demo tenant carries a `harnessEnabled`
+ * TENANT-scope row), so the client no longer hard-codes
+ * `metadata.pipelineConfig.harnessEnabled`. Pre-fills the demo patient; the
+ * impersonated doctor + tenant come from the active (impersonated) session.
  */
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
@@ -15,7 +17,7 @@ import { useArca } from '@arcaai/vox';
 import { FlaskConical, Loader2, Stethoscope } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { DEMO, HARNESS_PIPELINE_METADATA } from '../constants';
+import { DEMO } from '../constants';
 
 function todayISO(): string {
   return new Date().toISOString().split('T')[0]!;
@@ -42,9 +44,8 @@ export function LaunchPanel({ onOpened }: LaunchPanelProps) {
       const consultation = await session.open({
         patientId: trimmed,
         appointmentDate: appointmentDate || todayISO(),
-        metadata: { ...HARNESS_PIPELINE_METADATA },
       });
-      toast.success('Consultation opened — harness documentation enabled');
+      toast.success('Consultation opened');
       onOpened(consultation.id);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to open consultation');

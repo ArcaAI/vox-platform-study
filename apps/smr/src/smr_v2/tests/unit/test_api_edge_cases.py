@@ -92,7 +92,7 @@ class TestGenerateProviderError:
 
     @pytest.mark.asyncio
     async def test_generate_returns_502_on_provider_exception(self, client):
-        resp = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "broken"})
+        resp = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "broken", "model": "test-model"})
         assert resp.status_code == 502
         assert "internal error" in resp.json()["detail"].lower()
 
@@ -105,7 +105,7 @@ class TestGenerateProviderError:
         app = _build_app(settings, registry, tm)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
-            await c.post("/api/v1/generate", json={"prompt": "hi", "provider": "broken"})
+            await c.post("/api/v1/generate", json={"prompt": "hi", "provider": "broken", "model": "test-model"})
         tm.update_task.assert_any_call("t-1", status=TaskStatus.FAILED, error="bad")
 
 

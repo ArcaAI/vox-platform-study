@@ -78,6 +78,21 @@ const createMockPromptResolutionService = () => ({
     ),
 });
 
+// TASK-356 Phase 5 (Pillar B) — the realtime cascade resolver. Defaults mirror
+// DEFAULT_PIPELINE_CONFIG (auto-summary/NER on, harness off) so the cascade is a
+// no-op unless a test overrides it; `resolvePreferredPromptTemplateId` defaults
+// to null (no doctor preference).
+const createMockConfigResolver = () => ({
+    resolvePipelineToggles: vi.fn().mockResolvedValue({
+        autoSummaryEnabled: true,
+        autoNerEnabled: true,
+        harnessEnabled: false,
+        dnaStyleEnabled: false,
+        trace: {},
+    }),
+    resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null),
+});
+
 // Mock ClsService — TASK-305 D.9 follow-up. EventEmitter2 async handlers
 // run in their own microtask context that does NOT inherit the caller's
 // AsyncLocalStorage scope, so the handler must explicitly re-establish CLS.
@@ -1048,6 +1063,132 @@ describe('ConsultationEventHandler', () => {
                 ConsultationPipelineEvent.PipelineStepFailed,
                 expect.objectContaining({ failedStep: 'summary', error: 'harness unreachable' }),
             );
+        });
+    });
+
+    // =========================================================================
+    // TASK-356 Phase 5 (Pillar B) — realtime cascade + preferred-prompt threading
+    //
+    // The handler now resolves the realtime toggles through the PipelinePolicy
+    // cascade (ConfigResolver: doctor → department → tenant → SYSTEM default)
+    // rather than reading the consultation metadata alone. The per-consultation
+    // `metadata.pipelineConfig` stays the TOP overlay (back-compat). The legacy
+    // auto path also threads the doctor-preferred prompt id (§2.5 correction).
+    // A dedicated handler instance is wired WITH the resolver (the suite above
+    // intentionally exercises the resolver-absent legacy fallback).
+    // =========================================================================
+
+    describe('realtime cascade (TASK-356 Phase 5)', () => {
+        let cascadeHandler: ConsultationEventHandler;
+        let mockConfigResolver: ReturnType<typeof createMockConfigResolver>;
+
+        beforeEach(() => {
+            mockConfigResolver = createMockConfigResolver();
+            cascadeHandler = new ConsultationEventHandler(
+                mockJobService as any,
+                mockConsultationRepository as any,
+                mockPromptResolutionService as any,
+                mockEventEmitter as any,
+                mockClsService as any,
+                mockHarnessGateway as any,
+                mockContextItemRepository as any,
+                mockConfigResolver as any,
+            );
+            mockConsultationRepository.findById.mockResolvedValue({
+                id: 'consultation-001',
+                tenantId: 'tenant-abc',
+                departmentId: 'dept-card-001',
+                doctorId: 'dr-smith-001',
+                parentConsultationId: null,
+                metadata: null,
+            });
+        });
+
+        it('resolves the cascade with the consultation tenant/department/doctor', async () => {
+            await cascadeHandler.resolvePipelineConfig('consultation-001');
+
+            expect(mockConfigResolver.resolvePipelineToggles).toHaveBeenCalledWith({
+                tenantId: 'tenant-abc',
+                departmentId: 'dept-card-001',
+                doctorId: 'dr-smith-001',
+            });
+        });
+
+        it('disables auto-summary when the cascade resolves autoSummaryEnabled=false (no metadata)', async () => {
+            mockConfigResolver.resolvePipelineToggles.mockResolvedValue({
+                autoSummaryEnabled: false,
+                autoNerEnabled: true,
+                harnessEnabled: false,
+                dnaStyleEnabled: false,
+                trace: {},
+            });
+
+            await cascadeHandler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+            expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
+        });
+
+        it('routes to the harness when the cascade resolves harnessEnabled=true (no metadata hard-code)', async () => {
+            mockConfigResolver.resolvePipelineToggles.mockResolvedValue({
+                autoSummaryEnabled: true,
+                autoNerEnabled: true,
+                harnessEnabled: true,
+                dnaStyleEnabled: false,
+                trace: {},
+            });
+
+            await cascadeHandler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+            expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
+            expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
+        });
+
+        it('lets a per-consultation metadata override BEAT the cascade (harnessEnabled=false wins)', async () => {
+            mockConfigResolver.resolvePipelineToggles.mockResolvedValue({
+                autoSummaryEnabled: true,
+                autoNerEnabled: true,
+                harnessEnabled: true,
+                dnaStyleEnabled: false,
+                trace: {},
+            });
+            mockConsultationRepository.findById.mockResolvedValue({
+                id: 'consultation-001',
+                tenantId: 'tenant-abc',
+                departmentId: 'dept-card-001',
+                doctorId: 'dr-smith-001',
+                parentConsultationId: null,
+                metadata: { pipelineConfig: { harnessEnabled: false } },
+            });
+
+            await cascadeHandler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+            expect(mockHarnessGateway.start).not.toHaveBeenCalled();
+            expect(mockJobService.createSummaryJob).toHaveBeenCalledTimes(1);
+        });
+
+        it('threads the doctor-preferred prompt id into PromptResolutionService (legacy auto path)', async () => {
+            mockConfigResolver.resolvePreferredPromptTemplateId.mockResolvedValue('tpl-preferred');
+
+            await cascadeHandler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+            expect(mockConfigResolver.resolvePreferredPromptTemplateId).toHaveBeenCalledWith('dr-smith-001');
+            expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(
+                expect.objectContaining({ preferredPromptTemplateId: 'tpl-preferred' }),
+            );
+        });
+
+        it('surfaces the cascade-resolved harnessEnabled on resolvePipelineConfig', async () => {
+            mockConfigResolver.resolvePipelineToggles.mockResolvedValue({
+                autoSummaryEnabled: true,
+                autoNerEnabled: true,
+                harnessEnabled: true,
+                dnaStyleEnabled: false,
+                trace: {},
+            });
+
+            const config = await cascadeHandler.resolvePipelineConfig('consultation-001');
+
+            expect(config.harnessEnabled).toBe(true);
         });
     });
 });

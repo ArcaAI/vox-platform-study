@@ -179,6 +179,7 @@ describe('PreSummaryProcessor', () => {
     let mockPromptAssemblyService: ReturnType<typeof createMockPromptAssemblyService>;
     let mockJobMetrics: ReturnType<typeof createMockJobMetrics>;
     let mockClsService: ReturnType<typeof createMockClsService>;
+    let mockHarnessPolicyService: { resolveSmrSelection: ReturnType<typeof vi.fn> };
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -192,6 +193,9 @@ describe('PreSummaryProcessor', () => {
         mockPromptAssemblyService = createMockPromptAssemblyService();
         mockJobMetrics = createMockJobMetrics();
         mockClsService = createMockClsService();
+        mockHarnessPolicyService = {
+            resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
+        };
 
         processor = new PreSummaryProcessor(
             mockJobService as any,
@@ -203,7 +207,35 @@ describe('PreSummaryProcessor', () => {
             mockPromptAssemblyService as any,
             mockJobMetrics as any,
             mockClsService as any,
+            undefined, // secretsService (@Optional)
+            mockHarnessPolicyService as any, // TASK-356 D-7 — HarnessPolicyService resolver
         );
+    });
+
+    // ── TASK-356 D-7 (T-C4): the SMR call carries the cascade-resolved model ──
+    describe('SMR selection', () => {
+        it('posts the cascade-resolved provider+model when the request omits a model', async () => {
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+            mockContextItemRepository.findByConsultation.mockResolvedValue([
+                createMockContextItem({ content: 'case note content' }),
+            ]);
+            mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
+            mockContextItemRepository.create.mockResolvedValue({ id: 'pre-sum-1', content: 'S' });
+
+            await processor.process(createMockJob({
+                jobId: 'job-1',
+                consultationId: 'c-1',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            } as GeneratePreSummaryJobPayload));
+
+            expect(mockHarnessPolicyService.resolveSmrSelection).toHaveBeenCalled();
+            const smrCall = mockHttpService.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'))!;
+            const body = smrCall[1] as { provider?: string; model?: string };
+            expect(body.provider).toBe('lm-studio');
+            expect(body.model).toBe('resolved-medgemma');
+        });
     });
 
     // ===========================================================================

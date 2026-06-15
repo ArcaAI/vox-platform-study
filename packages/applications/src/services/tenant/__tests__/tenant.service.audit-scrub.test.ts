@@ -81,6 +81,8 @@ describe('TenantService — audit-log secret scrubbing (Phase 0 Item 4)', () => 
       cls as never,
       // TASK-356 Phase 1 — model-catalog clone repo (unused by this suite).
       { findAll: async () => [] } as never,
+      // TASK-356 Phase 2 — pipeline-version clone repo (unused by this suite).
+      { create: async () => ({}) } as never,
     );
   });
 

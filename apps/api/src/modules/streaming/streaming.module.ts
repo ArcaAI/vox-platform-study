@@ -1,4 +1,5 @@
 import {
+  HarnessPolicyServiceModule,
   PipelineServiceModule,
   StreamingSessionServiceModule,
   TenantBucketServiceModule,
@@ -29,6 +30,7 @@ import { TranscriptionJobController } from './transcription-job.controller';
     TenantBucketServiceModule,
     PipelineServiceModule,
     CoreDatabaseModule,
+    HarnessPolicyServiceModule, // TASK-356 D-7 — SMR-selection resolver for SmrProxyController
     // TASK-310 W7.A.9 (AC-3): exposes `StreamSessionTenantBindingService`
     // to `TranscriptionJobController` so it can bind on create / clear on close.
     TenantOwnedResourceModule,

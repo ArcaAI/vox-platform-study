@@ -36,6 +36,21 @@ vi.mock('@arcaai/domains', async () => {
                 type: 'RAW_SUMMARY',
             })),
         },
+        // TASK-356 Phase 6 (S4) — echo the AI-draft v1 snapshot args so the
+        // persistDraft snapshot test can assert on the version written.
+        ContextItemVersionFactory: {
+            CreateFromContextItem: vi.fn((contextItem, versionNumber, changeReason, changedBy, changeSource, changeSummary) => ({
+                id: 'ver-temp',
+                contextItemId: contextItem.id,
+                versionNumber,
+                content: contextItem.content,
+                changeReason,
+                changedBy,
+                changeSource: changeSource ?? 'manual',
+                changeSummary: changeSummary ?? null,
+                tenantId: contextItem.tenantId,
+            })),
+        },
         SummaryMetaFactory: {
             CreateSummaryMeta: vi.fn((props) => ({ id: 'sm-temp', ...props })),
         },
@@ -66,7 +81,12 @@ const createMockContextItemRepository = () => ({
     // TASK-355 Phase C (R-6) — the live SOAP snapshot lookup; default empty
     // (cold path) so pre-existing assemble/persistDraft tests stay green.
     findPreSummaries: vi.fn().mockResolvedValue([]),
-    create: vi.fn().mockResolvedValue({ id: 'ctx-draft-1', content: 'S: ...' }),
+    create: vi.fn().mockResolvedValue({ id: 'ctx-draft-1', content: 'S: ...', tenantId: 'tenant-1' }),
+});
+
+// TASK-356 Phase 6 (S4) — the AI-draft v1 snapshot sink (best-effort).
+const createMockContextItemVersionRepository = () => ({
+    create: vi.fn().mockResolvedValue({ id: 'ver-1' }),
 });
 
 const createMockConsultationRepository = () => ({
@@ -74,6 +94,7 @@ const createMockConsultationRepository = () => ({
         id: 'consultation-1',
         tenantId: 'tenant-1',
         departmentId: 'dept-1',
+        doctorId: 'doctor-1',
         parentConsultationId: null,
         status: ConsultationStatus.RECORDING,
         updatedBy: null,
@@ -157,6 +178,17 @@ const createMockHarnessAssuranceService = () => ({
     publishComplete: vi.fn().mockResolvedValue({ ok: true }),
 });
 
+// TASK-356 Phase 5 — the realtime ConfigResolver. The harness assemble path
+// threads the doctor's preferred prompt id (UserProfile.preferredPromptTemplateId,
+// read-only) so async/harness generation honors Tier-0 like the sync/REST path.
+const createMockConfigResolver = () => ({
+    resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null),
+    resolvePipelineToggles: vi.fn(),
+    // TASK-356 Phase 6 (S3) — effective DNA decision (tenant AND doctor). Default
+    // effective so existing fixtures (which never pass a dnaStyleId) are unaffected.
+    resolveEffectiveDnaStyleEnabled: vi.fn().mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null }),
+});
+
 describe('HarnessInternalService', () => {
     let service: HarnessInternalService;
     let cls: ReturnType<typeof createMockClsService>;
@@ -171,10 +203,18 @@ describe('HarnessInternalService', () => {
     let highlightRepository: ReturnType<typeof createMockHighlightRepository>;
     let configService: ReturnType<typeof createMockConfigService>;
     let assuranceService: ReturnType<typeof createMockHarnessAssuranceService>;
+    let contextItemVersionRepository: ReturnType<typeof createMockContextItemVersionRepository>;
 
     // TASK-355 Phase C (R-6) — (re)build the service with the warm-start flag in a
     // known state. Default OFF mirrors prod; warm-start tests call buildService(true).
-    const buildService = (warmStartEnabled = false) => {
+    // TASK-356 Phase 5 — optional configResolver (13th arg) so existing fixtures
+    // keep their arity; the preferred-prompt threading tests pass one explicitly.
+    // TASK-356 Phase 6 (S4) — optional contextItemVersionRepository (14th arg) for
+    // the AI-draft v1 snapshot; always wired here so persistDraft snapshots.
+    const buildService = (
+        warmStartEnabled = false,
+        configResolver?: ReturnType<typeof createMockConfigResolver>,
+    ) => {
         configService = createMockConfigService(warmStartEnabled);
         return new HarnessInternalService(
             contextItemRepository as any,
@@ -189,6 +229,8 @@ describe('HarnessInternalService', () => {
             highlightRepository as any,
             configService as any,
             assuranceService as any,
+            configResolver as any,
+            contextItemVersionRepository as any,
         );
     };
 
@@ -205,6 +247,7 @@ describe('HarnessInternalService', () => {
         jobService = createMockJobService();
         highlightRepository = createMockHighlightRepository();
         assuranceService = createMockHarnessAssuranceService();
+        contextItemVersionRepository = createMockContextItemVersionRepository();
 
         // Default OFF — pre-Phase-C behavior. Warm-start tests rebuild with ON.
         service = buildService(false);
@@ -455,6 +498,72 @@ describe('HarnessInternalService', () => {
             // Airtight: the snapshot lookup is short-circuited when disabled.
             expect(contextItemRepository.findPreSummaries).not.toHaveBeenCalled();
         });
+
+        // ── Doctor preferred-prompt threading (TASK-356 Phase 5 — §2.5) ──
+        // The async/harness assemble path must honor the doctor's preferred prompt
+        // (Tier-0) exactly like the sync REST + processor paths. The id is resolved
+        // read-only from UserProfile via ConfigResolver, keyed off consultation.doctorId.
+        it('threads the doctor preferred prompt id (from consultation.doctorId) into assemble', async () => {
+            const configResolver = createMockConfigResolver();
+            configResolver.resolvePreferredPromptTemplateId.mockResolvedValue('tpl-doctor-pref');
+            service = buildService(false, configResolver);
+
+            await service.assemble('consultation-1', { tenantId: 'tenant-1' });
+
+            expect(configResolver.resolvePreferredPromptTemplateId).toHaveBeenCalledWith('doctor-1');
+            expect(promptAssemblyService.assemble).toHaveBeenCalledWith(
+                expect.objectContaining({ preferredPromptTemplateId: 'tpl-doctor-pref' }),
+            );
+        });
+
+        it('threads undefined preferred id when no ConfigResolver is wired (back-compat arity)', async () => {
+            // Default service is built WITHOUT a ConfigResolver — the preferred id is
+            // simply omitted, preserving the exact pre-Phase-5 assemble behavior.
+            await service.assemble('consultation-1', { tenantId: 'tenant-1' });
+
+            const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+            expect(call.preferredPromptTemplateId).toBeUndefined();
+        });
+
+        it('omits the preferred id when the doctor has no preference (resolver returns null)', async () => {
+            const configResolver = createMockConfigResolver();
+            configResolver.resolvePreferredPromptTemplateId.mockResolvedValue(null);
+            service = buildService(false, configResolver);
+
+            await service.assemble('consultation-1', { tenantId: 'tenant-1' });
+
+            expect(configResolver.resolvePreferredPromptTemplateId).toHaveBeenCalledWith('doctor-1');
+            const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+            expect(call.preferredPromptTemplateId ?? undefined).toBeUndefined();
+        });
+
+        // ── DNA-style application gating (TASK-356 Phase 6 — S3, tenant AND doctor) ──
+        // The harness generation path must apply DNA style only when EFFECTIVE,
+        // exactly like the sync SummaryService path, keyed off consultation.doctorId.
+        it('applies the requested DNA style on the harness path when effective', async () => {
+            const configResolver = createMockConfigResolver();
+            configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null });
+            service = buildService(false, configResolver);
+
+            await service.assemble('consultation-1', { tenantId: 'tenant-1', dnaStyleId: 'dna-1' });
+
+            expect(configResolver.resolveEffectiveDnaStyleEnabled).toHaveBeenCalledWith(
+                expect.objectContaining({ tenantId: 'tenant-1', doctorId: 'doctor-1' }),
+            );
+            const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+            expect(call.dnaStyleId).toBe('dna-1');
+        });
+
+        it('drops the DNA style on the harness path when NOT effective (opted out / tenant off)', async () => {
+            const configResolver = createMockConfigResolver();
+            configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: false });
+            service = buildService(false, configResolver);
+
+            await service.assemble('consultation-1', { tenantId: 'tenant-1', dnaStyleId: 'dna-1' });
+
+            const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+            expect(call.dnaStyleId).toBeUndefined();
+        });
     });
 
     // =========================================================================
@@ -513,6 +622,30 @@ describe('HarnessInternalService', () => {
             );
 
             expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
+        });
+
+        // ── AI-draft v1 snapshot (TASK-356 Phase 6 — S4) ──
+        it('captures an ai_draft_v1 ContextItemVersion (v1, ai_model) and pins the draft to currentVersionNumber=1', async () => {
+            await service.persistDraft('consultation-1', draftBody());
+
+            expect(contextItemVersionRepository.create).toHaveBeenCalledTimes(1);
+            const version = contextItemVersionRepository.create.mock.calls[0][0];
+            expect(version.versionNumber).toBe(1);
+            expect(version.changeReason).toBe('ai_draft_v1');
+            expect(version.changeSource).toBe('ai_model');
+
+            // The RAW_SUMMARY context item is pinned to v1 so the first edit is v2.
+            const createdItem = contextItemRepository.create.mock.calls[0][0];
+            expect(createdItem.currentVersionNumber).toBe(1);
+        });
+
+        it('still persists the draft when the best-effort v1 snapshot write throws', async () => {
+            contextItemVersionRepository.create.mockRejectedValueOnce(new Error('db down'));
+
+            const result = await service.persistDraft('consultation-1', draftBody());
+
+            expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
+            expect(summaryMetaRepository.create).toHaveBeenCalledTimes(1);
         });
 
         it('appends both GENERATE and SENSOR_RUN WORM audit events', async () => {

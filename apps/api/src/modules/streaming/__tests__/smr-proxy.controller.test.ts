@@ -206,6 +206,93 @@ describe('SmrProxyController', () => {
     });
   });
 
+  // TASK-356 D-7 (T-D1) — the playground/SDK proxy passes a caller-supplied
+  // model through untouched (SDK fidelity); only when the model is absent does it
+  // fall back to the HarnessPolicy cascade. When neither is available it forwards
+  // to SMR, which is the fail-closed 422 authority (no in-proxy default).
+  describe('SMR model selection (TASK-356 D-7)', () => {
+    const buildWithResolver = (resolver: { resolveSmrSelection: ReturnType<typeof vi.fn> }) =>
+      new SmrProxyController(
+        mockHttpService as any,
+        mockTenantService as any,
+        mockClsService as any,
+        mockContextItemRepo as any,
+        mockPromptTemplateRepo as any,
+        mockDnaStyleRepo as any,
+        mockDepartmentRepo as any,
+        mockMediaRepo as any,
+        mockBlobStorage as any,
+        mockConfigService as any,
+        undefined, // secretsService (@Optional)
+        resolver as any, // HarnessPolicyService resolver
+      );
+
+    it('passes a caller-supplied model through without resolving (SDK fidelity)', async () => {
+      const resolver = { resolveSmrSelection: vi.fn() };
+      const ctrl = buildWithResolver(resolver);
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { content: 'ok' } });
+
+      await ctrl.generate({ prompt: 'p', provider: 'lm-studio', model: 'caller-pinned', stream: false });
+
+      expect(resolver.resolveSmrSelection).not.toHaveBeenCalled();
+      const body = mockHttpService.axiosRef.post.mock.calls[0][1];
+      expect(body.provider).toBe('lm-studio');
+      expect(body.model).toBe('caller-pinned');
+    });
+
+    it('resolves provider+model via policy when the caller omits the model', async () => {
+      const resolver = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'ollama', model: 'granite4:latest' }) };
+      const ctrl = buildWithResolver(resolver);
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { content: 'ok' } });
+
+      await ctrl.generate({ prompt: 'p', stream: false });
+
+      expect(resolver.resolveSmrSelection).toHaveBeenCalled();
+      const body = mockHttpService.axiosRef.post.mock.calls[0][1];
+      expect(body.provider).toBe('ollama');
+      expect(body.model).toBe('granite4:latest');
+    });
+
+    it('forwards to SMR (the fail-closed 422 authority) when model is omitted and policy is unresolved', async () => {
+      const resolver = { resolveSmrSelection: vi.fn().mockRejectedValue(new BadRequestException('unresolved')) };
+      const ctrl = buildWithResolver(resolver);
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { content: 'ok' } });
+
+      await ctrl.generate({ prompt: 'p', stream: false });
+
+      expect(resolver.resolveSmrSelection).toHaveBeenCalled();
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalled();
+      const body = mockHttpService.axiosRef.post.mock.calls[0][1];
+      expect(body.model).toBeUndefined();
+    });
+
+    it('generate/assembled resolves provider+model when the caller omits the model', async () => {
+      const resolver = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'ollama', model: 'granite4:latest' }) };
+      const ctrl = buildWithResolver(resolver);
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { task_id: 't', status: 'completed', content: 'ok' } });
+
+      await ctrl.generateAssembled({ type: 'summary', message: 'hello' });
+
+      expect(resolver.resolveSmrSelection).toHaveBeenCalled();
+      const body = mockHttpService.axiosRef.post.mock.calls[0][1];
+      expect(body.provider).toBe('ollama');
+      expect(body.model).toBe('granite4:latest');
+    });
+
+    it('generate/assembled passes a caller-supplied model through without resolving', async () => {
+      const resolver = { resolveSmrSelection: vi.fn() };
+      const ctrl = buildWithResolver(resolver);
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { task_id: 't', status: 'completed', content: 'ok' } });
+
+      await ctrl.generateAssembled({ type: 'summary', message: 'hello', provider: 'lm-studio', model: 'qwen3.5-4b' });
+
+      expect(resolver.resolveSmrSelection).not.toHaveBeenCalled();
+      const body = mockHttpService.axiosRef.post.mock.calls[0][1];
+      expect(body.provider).toBe('lm-studio');
+      expect(body.model).toBe('qwen3.5-4b');
+    });
+  });
+
   describe('GET /text/tasks/:taskId', () => {
     it('should proxy task status request to SMR v2', async () => {
       const taskResponse = {

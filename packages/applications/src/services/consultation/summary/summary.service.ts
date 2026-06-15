@@ -13,14 +13,18 @@ import {
   UserProfileRepository,
   ContextItemFactory,
   ContextItemVersionFactory,
+  ContextItemEntity,
   SummaryMetaFactory,
   NamedEntityFactory,
   ResourceType,
   SysEventType,
   ConsultationStatus,
   HarnessAuditAction,
+  JsonValue,
 } from '@arcaai/domains';
 import { HarnessAuditService } from '../../harness-audit';
+import { ConfigResolver } from '../../config-resolver';
+import { diffContent } from './content-diff.util';
 import { ISummaryService } from './ISummaryService';
 import { GenerateSummaryRequest, GeneratePreSummaryRequest, UpdateSummaryRequest, SummaryResponse, SummaryProvenanceResponse } from './dto';
 import { SummaryDtoMapper } from './summary.dto.mapper';
@@ -30,6 +34,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
+import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 
 @Injectable()
@@ -68,6 +73,18 @@ export class SummaryService extends BaseService implements ISummaryService {
     // harness workflow (best-effort). Optional + trailing so existing positional
     // test fixtures keep compiling; production DI (SummaryServiceModule) supplies it.
     @Optional() @Inject(HarnessGatewayService) private readonly harnessGatewayService?: HarnessGatewayService,
+    // TASK-356 D-7 — resolve the admin-managed SMR {provider, model} on every
+    // SMR call (the gateway has no model default). Optional + trailing so
+    // existing positional test fixtures keep compiling; production DI
+    // (SummaryServiceModule) always supplies it, keeping the path fail-closed.
+    @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
+    // TASK-356 Phase 6 (S3) — resolve the effective DNA-style decision
+    // (tenant AND doctor) so DNA style is applied at generation only when the
+    // doctor is opted in under an enabling tenant. Optional + trailing so
+    // existing positional test fixtures keep compiling; production DI
+    // (SummaryServiceModule) always supplies it. When unset, DNA gating is a
+    // no-op and behaviour is byte-identical to the pre-Phase-6 path.
+    @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -194,12 +211,17 @@ export class SummaryService extends BaseService implements ISummaryService {
     }
 
     const latestPreSummary = await this.contextItemRepository.findLatestPreSummary(consultationId);
+    // TASK-356 Phase 6 (S3) — gate the DNA style on the effective decision
+    // (tenant AND doctor). Drops to `undefined` (no DNA prompt) when the doctor
+    // has opted out or the tenant flag is off. No-op (passes the requested id
+    // through) when ConfigResolver is not wired into this instance.
+    const effectiveDnaStyleId = await this.resolveEffectiveDnaStyleId(tenantId, consultation.departmentId, consultation.doctorId, request.dnaStyleId);
     const assembledPrompt = await this.promptAssemblyService.assemble({
       departmentId: consultation.departmentId ?? undefined,
       promptType: consultation.parentConsultationId ? 'revisit' : 'new-patient',
       transcript: content,
       conversationLanguage: this.resolveConversationLanguage(request.options),
-      dnaStyleId: request.dnaStyleId,
+      dnaStyleId: effectiveDnaStyleId,
       preSummaryText: latestPreSummary?.content ?? undefined,
       explicitTemplate: request.template,
       preferredPromptTemplateId: await this.resolvePreferredPromptTemplateId(consultation.doctorId),
@@ -210,7 +232,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       assembledPrompt,
       options: request.options,
       context: {
-        dnaStyleId: request.dnaStyleId,
+        dnaStyleId: effectiveDnaStyleId,
         template: request.template,
         includeNER: request.includeNER,
         summaryType: 'summary',
@@ -220,7 +242,11 @@ export class SummaryService extends BaseService implements ISummaryService {
     });
 
     // Create summary context item
-    const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, request.dnaStyleId, userId ?? 'system');
+    const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, effectiveDnaStyleId, userId ?? 'system');
+    // TASK-356 Phase 6 (S4) — pin the AI draft to v1 so the immutable
+    // `ai_draft_v1` snapshot below IS version 1 and the doctor's first edit
+    // becomes v2 (no `@@unique([contextItemId, versionNumber])` collision).
+    contextItem.currentVersionNumber = 1;
 
     const savedContext = await this.contextItemRepository.create(contextItem);
 
@@ -245,6 +271,12 @@ export class SummaryService extends BaseService implements ISummaryService {
       createdAt: savedContext.createdAt,
       data: { consultationId, type: 'summary' },
     });
+
+    // TASK-356 Phase 6 (S4) — capture the immutable AI-draft `v1` snapshot for
+    // the DNA edit-capture corpus (draft↔approved learning, README D-10). Runs
+    // AFTER the draft + meta are committed and is best-effort: a snapshot
+    // failure must never roll back the (delivered) draft.
+    await this.captureAiDraftSnapshot(savedContext);
 
     return SummaryDtoMapper.toResponse(savedContext);
   }
@@ -283,6 +315,17 @@ export class SummaryService extends BaseService implements ISummaryService {
       request.changeSource ?? 'doctor_edit',
       request.changeSummary,
     );
+
+    // TASK-356 Phase 6 (S5) — stamp the edit delta (previous draft → this edit)
+    // onto the existing version columns for the DNA edit-capture corpus
+    // (README D-10). `CreateFromContextItem` snapshots the PREVIOUS content
+    // (request.content is applied below), so diff(previous, new). A metadata-only
+    // edit (no `content`) leaves both columns null. This runs BEFORE the
+    // TASK-355 Slice-5c `signalEdit` hook below — order preserved.
+    const editDelta = request.content !== undefined ? diffContent(contextItem.content, request.content) : { contentDiff: null, fieldChanges: null };
+    version.contentDiff = editDelta.contentDiff;
+    version.fieldChanges = editDelta.fieldChanges as unknown as JsonValue | null;
+
     const savedVersion = await this.contextItemVersionRepository.create(version);
 
     contextItem.currentVersionNumber = versionNumber;
@@ -429,6 +472,20 @@ export class SummaryService extends BaseService implements ISummaryService {
       attestedAt,
       changeSummary: 'Approved and locked',
     });
+
+    // TASK-356 Phase 6 (S5) — stamp the cumulative AI-draft → approved delta on
+    // the signed note so the final divergence is captured even when the doctor
+    // signs without an intermediate edit (README D-10). Baseline = the immutable
+    // `ai_draft_v1` snapshot; skipped for legacy drafts that predate Phase 6
+    // (no v1 snapshot) so their signed note keeps the null delta columns. This
+    // is append-only and never blocks the TASK-355 sign-off below.
+    const draftBaseline = await this.resolveAiDraftBaseline(contextItemId);
+    if (draftBaseline !== null) {
+      const signDelta = diffContent(draftBaseline, contextItem.content);
+      version.contentDiff = signDelta.contentDiff;
+      version.fieldChanges = signDelta.fieldChanges as unknown as JsonValue | null;
+    }
+
     const savedVersion = await this.contextItemVersionRepository.create(version);
     const versionId = savedVersion?.id ?? version.id;
 
@@ -712,7 +769,15 @@ export class SummaryService extends BaseService implements ISummaryService {
     context?: Record<string, unknown>;
   }): Promise<LegacySmrSummaryResponse> {
     try {
-      const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, payload.options, payload.context);
+      // TASK-356 D-7 — SMR is a stateless gateway with no model default; resolve
+      // the tenant's effective {provider, model} and merge it in as the base so a
+      // caller-supplied model still wins (resolved values fill only when omitted).
+      let options = payload.options;
+      if (this.harnessPolicyService) {
+        const { provider, model } = await this.harnessPolicyService.resolveSmrSelection();
+        options = { smrProvider: provider, smrModel: model, ...payload.options };
+      }
+      const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, options, payload.context);
       const smrServiceToken = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
       const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, smrPayload, {
         headers: {
@@ -748,6 +813,71 @@ export class SummaryService extends BaseService implements ISummaryService {
       this.logger.warn({
         message: 'Failed to resolve preferred prompt template — falling back to department/default',
         doctorId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * TASK-356 Phase 6 (S3) — resolve the DNA style id to actually apply at
+   * generation: the requested id when DNA is EFFECTIVE (tenant AND doctor), else
+   * `undefined` (no DNA prompt). When ConfigResolver is not wired (legacy
+   * fixtures) or no id was requested this is a pass-through no-op, so behaviour
+   * is byte-identical to the pre-Phase-6 path. `resolveEffectiveDnaStyleEnabled`
+   * fails closed internally, so a degraded config read drops DNA rather than
+   * applying it.
+   */
+  private async resolveEffectiveDnaStyleId(
+    tenantId: string,
+    departmentId: string | null | undefined,
+    doctorId: string | null | undefined,
+    dnaStyleId?: string,
+  ): Promise<string | undefined> {
+    if (!dnaStyleId || !this.configResolver) return dnaStyleId;
+    const { effective } = await this.configResolver.resolveEffectiveDnaStyleEnabled({
+      tenantId,
+      departmentId: departmentId ?? null,
+      doctorId: doctorId ?? null,
+    });
+    return effective ? dnaStyleId : undefined;
+  }
+
+  /**
+   * TASK-356 Phase 6 (S4) — write the immutable AI-draft `v1` snapshot for the
+   * DNA edit-capture corpus. Reuses `ContextItemVersion` with
+   * `changeReason='ai_draft_v1'` / `changeSource='ai_model'` (no schema change).
+   * Best-effort: a snapshot failure is logged and swallowed so it never rolls
+   * back the already-committed draft (mirrors the Slice-5c `signalEdit`
+   * discipline). Idempotency is guarded by `@@unique([contextItemId, versionNumber])`.
+   */
+  private async captureAiDraftSnapshot(savedContext: ContextItemEntity): Promise<void> {
+    try {
+      const snapshot = ContextItemVersionFactory.CreateFromContextItem(savedContext, 1, 'ai_draft_v1', 'system', 'ai_model', 'AI draft v1 snapshot');
+      await this.contextItemVersionRepository.create(snapshot);
+    } catch (error) {
+      this.logger.warn({
+        message: 'AI-draft v1 snapshot capture failed (best-effort, draft not rolled back)',
+        contextItemId: savedContext.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * TASK-356 Phase 6 (S5) — read the AI-draft `v1` snapshot content as the
+   * baseline for the draft→approved delta on sign. Returns null (skip delta)
+   * when no snapshot exists (legacy pre-Phase-6 drafts) or on a lookup failure,
+   * so signing is never blocked by edit-capture.
+   */
+  private async resolveAiDraftBaseline(contextItemId: string): Promise<string | null> {
+    try {
+      const drafts = await this.contextItemVersionRepository.getVersionsByChangeReason(contextItemId, 'ai_draft_v1');
+      return drafts[0]?.content ?? null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'AI-draft baseline lookup failed (best-effort, sign-off not blocked)',
+        contextItemId,
         error: error instanceof Error ? error.message : String(error),
       });
       return null;

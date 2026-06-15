@@ -5,6 +5,8 @@ import {
   ConsultationRepository,
   ContextItemRepository,
   ContextItemFactory,
+  ContextItemVersionRepository,
+  ContextItemVersionFactory,
   NamedEntityRepository,
   NamedEntityFactory,
   SummaryMetaRepository,
@@ -17,6 +19,7 @@ import {
 } from '@arcaai/domains';
 import { HarnessAuditService } from '../../harness-audit';
 import { HarnessAssuranceService } from './harness-assurance.service';
+import { ConfigResolver } from '../../config-resolver';
 import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt-assembly.service';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
 import { assertEqualTenants, createWorkerSession } from '../../../common';
@@ -81,6 +84,20 @@ export class HarnessInternalService {
     // finalizeAssurance publishes the terminal `assurance_complete` here to close
     // the live SSE feed (best-effort — a Redis hiccup must not break finalize).
     @Optional() private readonly assuranceService?: HarnessAssuranceService,
+    // TASK-356 Phase 5 — optional so existing unit fixtures keep their constructor
+    // arity; production DI supplies it via ConfigResolverModule. Threads the
+    // doctor's preferred prompt id (UserProfile.preferredPromptTemplateId, read-only)
+    // into assemble so the async/harness path honors Tier-0 like the sync/REST path.
+    // TASK-356 Phase 6 (S3) — also resolves the effective DNA-style decision
+    // (tenant AND doctor) so DNA style is applied on the harness generation path
+    // only when the doctor is opted in under an enabling tenant.
+    @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
+    // TASK-356 Phase 6 (S4) — write the immutable AI-draft `v1` snapshot at the
+    // harness generation boundary (`persistDraft`) for the DNA edit-capture
+    // corpus. Optional + trailing so existing positional unit fixtures keep their
+    // arity; production DI supplies it via CoreDatabaseModule. When unset the
+    // snapshot is a no-op (best-effort), matching the pre-Phase-6 path.
+    @Optional() @Inject(ContextItemVersionRepository) private readonly contextItemVersionRepository?: ContextItemVersionRepository,
   ) {
     const raw = String(this.configService?.get('HARNESS_WARM_START_ENABLED') ?? '')
       .trim()
@@ -195,13 +212,29 @@ export class HarnessInternalService {
       // snapshot lookup entirely so nothing is injected (exact pre-Phase-C path).
       const liveSnapshot = this.warmStartEnabled ? await this.loadLiveSoapSnapshot(consultationId) : null;
 
+      // TASK-356 Phase 5 (§2.5) — thread the doctor's preferred prompt id (Tier-0)
+      // through the async/harness path too. Read-only from UserProfile via the
+      // ConfigResolver, keyed off the consultation's doctor. Best-effort: when the
+      // resolver is unwired (unit fixtures) or there is no doctor, the id is omitted
+      // and assembly falls back to the department/global tier exactly as before.
+      const preferredPromptTemplateId = this.configResolver
+        ? await this.configResolver.resolvePreferredPromptTemplateId(consultation?.doctorId ?? null)
+        : undefined;
+
+      // TASK-356 Phase 6 (S3) — gate the DNA style on the effective decision
+      // (tenant AND doctor). Drops to `undefined` (no DNA prompt) when the doctor
+      // has opted out or the tenant flag is off. No-op (passes the requested id
+      // through) when ConfigResolver is unwired (legacy fixtures).
+      const effectiveDnaStyleId = await this.resolveEffectiveDnaStyleId(tenantId, consultation?.departmentId, consultation?.doctorId, dto.dnaStyleId);
+
       const assembled = await this.promptAssemblyService.assemble({
         departmentId: consultation?.departmentId ?? undefined,
         promptType: consultation?.parentConsultationId ? 'revisit' : 'new-patient',
         transcript,
         conversationLanguage: dto.conversationLanguage?.trim() || 'en',
-        dnaStyleId: dto.dnaStyleId,
+        dnaStyleId: effectiveDnaStyleId,
         explicitTemplate: dto.template,
+        preferredPromptTemplateId,
         nerEntities,
         clinicianNotes,
         attachments,
@@ -263,8 +296,17 @@ export class HarnessInternalService {
 
       // 1. RAW_SUMMARY context item for the generated note.
       const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, dto.content, dto.dnaStyleId, userId);
+      // TASK-356 Phase 6 (S4) — pin the AI draft to v1 so the `ai_draft_v1`
+      // snapshot below IS version 1 and the doctor's first edit becomes v2.
+      contextItem.currentVersionNumber = 1;
       const savedContext = await this.contextItemRepository.create(contextItem);
       const contextItemId = savedContext?.id ?? contextItem.id;
+
+      // TASK-356 Phase 6 (S4) — capture the immutable AI-draft `v1` snapshot at
+      // this (harness/optimistic) generation boundary too, so the DNA
+      // edit-capture corpus is populated regardless of which path generated the
+      // draft. Best-effort: a snapshot failure must never roll back the draft.
+      await this.captureAiDraftSnapshot(savedContext ?? contextItem);
 
       // 2. SummaryMeta — sensor score columns + full sensor detail + citation map.
       // TASK-355 Phase C (R-6) — record warm-start provenance. The consumed
@@ -601,6 +643,51 @@ export class HarnessInternalService {
     const snapshots = preSummaries.filter((p) => (p.metaData as Record<string, unknown> | undefined)?.subType === 'LIVE_SOAP_SNAPSHOT');
     if (snapshots.length === 0) return null;
     return snapshots.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b));
+  }
+
+  /**
+   * TASK-356 Phase 6 (S3) — resolve the DNA style id to actually apply at the
+   * harness generation boundary: the requested id when DNA is EFFECTIVE (tenant
+   * AND doctor), else `undefined`. No-op pass-through when ConfigResolver is
+   * unwired or no id was requested. `resolveEffectiveDnaStyleEnabled` fails closed
+   * internally, so a degraded config read drops DNA rather than applying it.
+   */
+  private async resolveEffectiveDnaStyleId(
+    tenantId: string,
+    departmentId: string | null | undefined,
+    doctorId: string | null | undefined,
+    dnaStyleId?: string,
+  ): Promise<string | undefined> {
+    if (!dnaStyleId || !this.configResolver) return dnaStyleId;
+    const { effective } = await this.configResolver.resolveEffectiveDnaStyleEnabled({
+      tenantId,
+      departmentId: departmentId ?? null,
+      doctorId: doctorId ?? null,
+    });
+    return effective ? dnaStyleId : undefined;
+  }
+
+  /**
+   * TASK-356 Phase 6 (S4) — write the immutable AI-draft `v1` snapshot for the
+   * DNA edit-capture corpus. Reuses `ContextItemVersion` with
+   * `changeReason='ai_draft_v1'` / `changeSource='ai_model'` (no schema change),
+   * mirroring the sync `SummaryService` path so both generation boundaries snapshot.
+   * No-op when the version repository is unwired (legacy fixtures); best-effort
+   * otherwise — a snapshot failure is logged and swallowed so it never rolls back
+   * the committed draft.
+   */
+  private async captureAiDraftSnapshot(savedContext: ContextItemEntity): Promise<void> {
+    if (!this.contextItemVersionRepository) return;
+    try {
+      const snapshot = ContextItemVersionFactory.CreateFromContextItem(savedContext, 1, 'ai_draft_v1', 'system', 'ai_model', 'AI draft v1 snapshot');
+      await this.contextItemVersionRepository.create(snapshot);
+    } catch (error) {
+      this.logger.warn({
+        message: 'AI-draft v1 snapshot capture failed (best-effort, draft not rolled back)',
+        contextItemId: savedContext.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**

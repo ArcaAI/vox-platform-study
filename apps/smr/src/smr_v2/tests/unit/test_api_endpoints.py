@@ -133,6 +133,7 @@ class TestGenerateEndpoint:
         resp = await client.post("/api/v1/generate", json={
             "prompt": "Hello world",
             "provider": "ollama",
+            "model": "test-model",
             "stream": False,
         })
         assert resp.status_code == 200
@@ -145,6 +146,7 @@ class TestGenerateEndpoint:
         resp = await client.post("/api/v1/generate", json={
             "prompt": "Hello",
             "provider": "ollama",
+            "model": "test-model",
             "stream": True,
         })
         assert resp.status_code == 202
@@ -166,6 +168,7 @@ class TestGenerateEndpoint:
         resp = await client.post("/api/v1/generate", json={
             "prompt": "Hello",
             "provider": "nonexistent",
+            "model": "test-model",
         })
         assert resp.status_code == 404
 

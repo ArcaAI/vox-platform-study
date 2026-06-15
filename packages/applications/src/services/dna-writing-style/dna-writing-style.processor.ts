@@ -18,6 +18,8 @@ import {
   JobQueue,
 } from '@arcaai/domains';
 import { PromptManagementService } from '../prompt-management/prompt-management.service';
+import { HarnessPolicyService } from '../harness-policy/harness-policy.service';
+import { ConfigResolver } from '../config-resolver';
 import { IConsultationJobService } from '../consultation/jobs/consultation-job.service';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { SecretsService } from '../baseServices/_meta/secrets';
@@ -51,6 +53,14 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     private readonly jobMetrics: JobMetricsService,
     private readonly clsService: ClsService<IActiveUserContext>,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-356 D-7 — resolver for the tenant's effective SMR {provider, model}.
+    @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
+    // TASK-356 Phase 6 (S3/S6) — gate the AUTOMATIC learning corpus on the
+    // effective DNA flag (tenant AND doctor): a doctor who has opted out (or whose
+    // tenant disabled DNA) is never learned-from. Optional + trailing so existing
+    // positional fixtures keep their arity; production DI supplies it via
+    // ConfigResolverModule. When unset, gating is a no-op (pre-Phase-6 behaviour).
+    @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
   ) {
     super();
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -90,6 +100,19 @@ export class DnaWritingStyleProcessor extends WorkerHost {
           sourceContextItemIds = sourceIds;
         }
       } else {
+        // TASK-356 Phase 6 (S3/S6) — gate the AUTOMATIC corpus on the effective
+        // DNA flag (tenant AND doctor). A doctor who has opted out (or whose tenant
+        // disabled DNA) is never learned-from. Only the automatic path is gated;
+        // an explicit textSamples request (admin/migration) bypasses this. No-op
+        // when ConfigResolver is unwired (legacy fixtures).
+        if (this.configResolver) {
+          const { effective } = await this.configResolver.resolveEffectiveDnaStyleEnabled({ tenantId, doctorId });
+          if (!effective) {
+            this.jobService.notifyFailed(job.data.jobId, 'DNA writing style is disabled for this doctor');
+            throw new Error('DNA writing style is disabled for this doctor (opt-out or tenant flag off)');
+          }
+        }
+
         const contextItems = await this.contextItemRepository.findAll({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           filters: { doctorId } as any,
@@ -115,26 +138,30 @@ export class DnaWritingStyleProcessor extends WorkerHost {
           (item: any) => item?.type === 'RAW_SUMMARY' || item?.type === 'MODIFIED_SUMMARY',
         );
 
-        const approved: Array<{ id: string; content: string }> = [];
+        // TASK-356 Phase 6 (S6) — build draft↔approved PAIRS: for each approved
+        // summary also fetch its immutable `ai_draft_v1` snapshot so the DNA model
+        // learns the doctor's EDIT behaviour (draft → approved), not just the final
+        // prose (README D-10). Back-compat: a legacy summary with no v1 snapshot
+        // falls back to final-only.
+        const pairs: Array<{ id: string; draft: string | null; approved: string }> = [];
         for (const item of finalSummaries) {
           if (!item?.id) continue;
           const approvedVersions = await this.contextItemVersionRepository.getVersionsByChangeReason(item.id, 'approved');
           if (approvedVersions && approvedVersions.length > 0) {
-            const content: string = item.content ?? item.text ?? '';
-            approved.push({ id: item.id, content });
+            const approvedContent: string = item.content ?? item.text ?? '';
+            const draftVersions = await this.contextItemVersionRepository.getVersionsByChangeReason(item.id, 'ai_draft_v1');
+            const draftContent: string | null = draftVersions?.[0]?.content ?? null;
+            pairs.push({ id: item.id, draft: draftContent, approved: approvedContent });
           }
         }
 
-        if (approved.length === 0) {
+        if (pairs.length === 0) {
           this.jobService.notifyFailed(job.data.jobId, 'No approved samples available');
           throw new Error('No approved text samples available for DNA analysis');
         }
 
-        sourceContextItemIds = approved.map((a) => a.id);
-        samples = approved
-          .map((a) => a.content)
-          .filter((s: string) => s.length > 0)
-          .join('\n\n---\n\n');
+        sourceContextItemIds = pairs.map((p) => p.id);
+        samples = DnaWritingStyleProcessor.buildCorpus(pairs);
       }
 
       if (samples.length > maxContextChars) {
@@ -246,6 +273,24 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     }
   }
 
+  /**
+   * TASK-356 Phase 6 (S6) — render the learning corpus from draft↔approved pairs.
+   * A pair whose captured AI draft DIFFERS from the approved text is rendered as
+   * an explicit `AI DRAFT` → `DOCTOR APPROVED` block so the model learns the
+   * doctor's edit behaviour. Pairs with no draft snapshot (legacy) or an unchanged
+   * draft fall back to the raw approved text only — byte-identical to the
+   * pre-Phase-6 final-only corpus (so empty approvals still contribute nothing).
+   */
+  private static buildCorpus(pairs: Array<{ draft: string | null; approved: string }>): string {
+    return pairs
+      .map(({ draft, approved }) => {
+        const hasDraftDelta = !!draft && draft.trim().length > 0 && draft !== approved;
+        return hasDraftDelta ? `AI DRAFT:\n${draft}\n\nDOCTOR APPROVED:\n${approved}` : approved;
+      })
+      .filter((s) => s.length > 0)
+      .join('\n\n---\n\n');
+  }
+
   private async callSmrV2(
     textSamples: string,
     systemPrompt: string,
@@ -255,12 +300,22 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     latency_ms?: number;
   }> {
     const smrStart = Date.now();
+    // TASK-356 D-7 — SMR is a stateless gateway with no model default; resolve the
+    // tenant's effective {provider, model} (CLS tenant set by processWithContext)
+    // and pass both explicitly on the generate call.
+    let provider: string | undefined;
+    let model: string | undefined;
+    if (this.harnessPolicyService) {
+      ({ provider, model } = await this.harnessPolicyService.resolveSmrSelection());
+    }
     const response = await this.httpService.axiosRef.post(
       `${this.smrServiceUrl}/api/v1/generate`,
       {
         prompt: textSamples,
         system_prompt: systemPrompt,
         stream: false,
+        provider,
+        model,
       },
       {
         timeout: 120000,

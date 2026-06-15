@@ -13,13 +13,10 @@ export const DEMO = {
   patientId: 'PAT-20250101-001',
 } as const;
 
-/**
- * Opening a consultation with this metadata routes it through the
- * clinical-documentation harness (auto-draft + provenance on stop).
- */
-export const HARNESS_PIPELINE_METADATA = {
-  pipelineConfig: { harnessEnabled: true },
-} as const;
+// TASK-356 Phase 5 — the harness-vs-legacy routing is now resolved SERVER-side
+// from the realtime PipelinePolicy cascade (the demo tenant carries a
+// `harnessEnabled` TENANT-scope row seeded by `14-pipeline-policy`). The client
+// no longer hard-codes `metadata.pipelineConfig.harnessEnabled` on open.
 
 /** Storage bucket used for raw/processed audio + lab attachments. */
 export const STORAGE_BUCKET = 'attachments';

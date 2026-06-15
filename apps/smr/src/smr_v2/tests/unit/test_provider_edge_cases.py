@@ -89,7 +89,10 @@ class TestOllamaEdgeCases:
         assert body["options"]["top_p"] == 0.9
 
     @pytest.mark.asyncio
-    async def test_generate_uses_default_model_when_none(self, ollama_config, mock_http):
+    async def test_generate_uses_caller_supplied_model(self, ollama_config, mock_http):
+        # D-7 (TASK-356): SMR has no in-gateway default — the caller-supplied
+        # model is used verbatim (the provider's informational ``default_model``
+        # is NOT substituted into the generation payload).
         from smr_v2.providers.ollama import OllamaProvider
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -97,9 +100,9 @@ class TestOllamaEdgeCases:
         mock_resp.raise_for_status = MagicMock()
         mock_http.post.return_value = mock_resp
         provider = OllamaProvider(config=ollama_config, http_client=mock_http)
-        await provider.generate(GenerateRequest(prompt="hi"))
+        await provider.generate(GenerateRequest(prompt="hi", model="caller-model"))
         body = mock_http.post.call_args.kwargs["json"]
-        assert body["model"] == "llama3.2:latest"
+        assert body["model"] == "caller-model"
 
     @pytest.mark.asyncio
     async def test_get_info_when_api_fails(self, ollama_config, mock_http):

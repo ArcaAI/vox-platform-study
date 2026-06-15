@@ -31,6 +31,7 @@ import {
     DEFAULT_AI_MODELS,
     DEFAULT_ASR_PIPELINES,
     CUSTOMER_TENANT_ASR_PIPELINES,
+    GLOBAL_TENANT_ASR_PIPELINES,
     DEFAULT_STT_SETTINGS,
     AiModelSource,
     AiModelFormat,
@@ -39,7 +40,21 @@ import {
     ModelType,
     backfillCustomerTenantAiModels,
     CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL,
+    switchDefaultSttPipeline,
+    STT_DEFAULT_PIPELINE_BACKFILL_TENANTS,
+    STT_OLD_DEFAULT_PIPELINE_SLUG,
+    STT_NEW_DEFAULT_PIPELINE_SLUG,
 } from '../prisma/db_main/seed/06-stt';
+import { ALL_SETTINGS, SMR_PROVIDER_MODELS } from '../prisma/db_main/seed/11-global-setting';
+import {
+    seedHarnessPolicy,
+    SYSTEM_HARNESS_POLICY_SMR_DEFAULTS,
+} from '../prisma/db_main/seed/13-harness-policy';
+import {
+    seedPipelinePolicy,
+    SYSTEM_PIPELINE_POLICY_DEFAULTS,
+    DEMO_PIPELINE_POLICY_OVERRIDE,
+} from '../prisma/db_main/seed/14-pipeline-policy';
 import { TENANT_FRONTEND_CONFIGS } from '../prisma/db_main/seed/05-tenant';
 import {
     DEFAULT_PROMPT_TEMPLATES,
@@ -321,6 +336,37 @@ describe('Policy Seed Data', () => {
             const policy = DEFAULT_POLICIES.find((p) => p.name === 'harness-tenant-manage');
             expect(policy).toBeDefined();
             expect(policy?.scope).toBe(PolicyScope.TENANT);
+        });
+
+        // TASK-356 Phase 5 — realtime-pipeline cascade admin RBAC (a SEPARATE
+        // PipelinePolicy subject from HarnessPolicy). Platform = unconditional;
+        // tenant = pinned to the caller's tenant. `manage` implies `read`.
+        it('should grant platform-wide manage PipelinePolicy in harness-platform-manage', () => {
+            const policy = DEFAULT_POLICIES.find((p) => p.name === 'harness-platform-manage');
+            const rule = policy?.rules.find((r) => r.subject === 'PipelinePolicy');
+            expect(rule).toBeDefined();
+            const actions = Array.isArray(rule?.action) ? rule?.action : [rule?.action];
+            expect(actions).toContain('manage');
+            // GLOBAL grant — no tenant condition.
+            expect(rule?.conditions).toBeUndefined();
+        });
+
+        it('should grant tenant-scoped manage PipelinePolicy in harness-tenant-manage', () => {
+            const policy = DEFAULT_POLICIES.find((p) => p.name === 'harness-tenant-manage');
+            const rule = policy?.rules.find((r) => r.subject === 'PipelinePolicy');
+            expect(rule).toBeDefined();
+            const actions = Array.isArray(rule?.action) ? rule?.action : [rule?.action];
+            expect(actions).toContain('manage');
+            expect(JSON.stringify(rule?.conditions)).toContain('${context.tenantId}');
+        });
+
+        it('should grant tenant-scoped manage PipelinePolicy in tenant-full-access', () => {
+            const policy = DEFAULT_POLICIES.find((p) => p.name === 'tenant-full-access');
+            const rule = policy?.rules.find((r) => r.subject === 'PipelinePolicy');
+            expect(rule).toBeDefined();
+            const actions = Array.isArray(rule?.action) ? rule?.action : [rule?.action];
+            expect(actions).toContain('manage');
+            expect(JSON.stringify(rule?.conditions)).toContain('${context.tenantId}');
         });
 
         it('should have unique policy names', () => {
@@ -1350,13 +1396,22 @@ describe('ASR Pipeline isDefault invariant (TASK-331 doc-03 Q2)', () => {
         });
     });
 
-    it('should make the system production pipeline (the GlobalSetting default) the isDefault one', () => {
-        const production = DEFAULT_ASR_PIPELINES.find(
+    it('should make the CT2 faster-whisper pipeline (TASK-356 Phase 2) the system isDefault one', () => {
+        // TASK-356 Phase 2 — the SYSTEM default flips from production-whisper-large-v3
+        // (id …0001) to the faster-whisper CTranslate2 int8 pipeline (id …0008).
+        const ct2Default = DEFAULT_ASR_PIPELINES.find(
+            (p) => p.id === '81000000-0000-0000-0001-000000000008'
+        );
+        expect(ct2Default).toBeDefined();
+        expect(ct2Default?.slug).toBe('production-faster-whisper-turbo-int8');
+        expect(ct2Default?.isDefault).toBe(true);
+
+        // The prior default must be demoted so there is exactly one system default.
+        const priorDefault = DEFAULT_ASR_PIPELINES.find(
             (p) => p.id === '81000000-0000-0000-0001-000000000001'
         );
-        expect(production).toBeDefined();
-        expect(production?.slug).toBe('production-whisper-large-v3');
-        expect(production?.isDefault).toBe(true);
+        expect(priorDefault?.slug).toBe('production-whisper-large-v3');
+        expect(priorDefault?.isDefault).toBe(false);
     });
 
     it('should give each customer tenant exactly one isDefault pipeline', () => {
@@ -1381,6 +1436,136 @@ describe('ASR Pipeline isDefault invariant (TASK-331 doc-03 Q2)', () => {
         defaultsByTenant.forEach((count) => {
             expect(count).toBeLessThanOrEqual(1);
         });
+    });
+});
+
+// =============================================================================
+// TASK-356 Phase 2 — DEFAULT MODEL WIRING
+//   (a) SMR  → mlx-community/medgemma-1.5-4b-it (lm-studio)
+//   (b) Guardrail → granite-guardian-4.1-8b (regression guard; no flip)
+//   (c) STT  → faster-whisper whisper-large-v3-turbo CTranslate2 int8
+// =============================================================================
+
+describe('TASK-356 Phase 2 — SMR default (medgemma)', () => {
+    it('points the default-smr-model GlobalSetting at medgemma for every tenant', () => {
+        const smrModelSettings = ALL_SETTINGS.filter((s) => s.key === 'default-smr-model');
+        expect(smrModelSettings.length).toBeGreaterThanOrEqual(1);
+        smrModelSettings.forEach((s) => {
+            expect(s.value).toBe('mlx-community/medgemma-1.5-4b-it');
+            expect(s.defaultValue).toBe('mlx-community/medgemma-1.5-4b-it');
+        });
+    });
+
+    it('keeps medgemma a member of the lm-studio SMR provider catalog (resolver validity)', () => {
+        const lmStudio = SMR_PROVIDER_MODELS.find((p) => p.provider === 'lm-studio');
+        expect(lmStudio).toBeDefined();
+        const names = lmStudio!.models.map((m) => m.name);
+        expect(names).toContain('mlx-community/medgemma-1.5-4b-it');
+    });
+});
+
+describe('TASK-356 Phase 2 — Guardrail default (granite) regression guard', () => {
+    it('keeps default-guardrail-model = granite-guardian-4.1-8b for every tenant', () => {
+        const guardrailModelSettings = ALL_SETTINGS.filter((s) => s.key === 'default-guardrail-model');
+        expect(guardrailModelSettings.length).toBeGreaterThanOrEqual(1);
+        guardrailModelSettings.forEach((s) => {
+            expect(s.value).toBe('granite-guardian-4.1-8b');
+            expect(s.defaultValue).toBe('granite-guardian-4.1-8b');
+        });
+    });
+
+    it('keeps default-guardrail-provider = lm-studio for every tenant', () => {
+        const guardrailProviderSettings = ALL_SETTINGS.filter((s) => s.key === 'default-guardrail-provider');
+        expect(guardrailProviderSettings.length).toBeGreaterThanOrEqual(1);
+        guardrailProviderSettings.forEach((s) => {
+            expect(s.value).toBe('lm-studio');
+        });
+    });
+
+    it('keeps the granite-guardian catalog row registered under SYSTEM (GUARDRAIL / GGUF)', () => {
+        const granite = DEFAULT_AI_MODELS.find((m) => m.slug === 'granite-guardian-4.1-8b');
+        expect(granite).toBeDefined();
+        expect(granite?.tenantId).toBe(SYSTEM_TENANT_ID);
+        expect(granite?.taskType).toBe(ModelTaskType.GUARDRAIL);
+        expect(granite?.format).toBe(AiModelFormat.GGUF);
+    });
+});
+
+describe('TASK-356 Phase 2 — STT default (faster-whisper CTranslate2 int8)', () => {
+    const CT2_MODEL_SLUG = 'faster-whisper-large-v3-turbo-int8';
+    const CT2_PIPELINE_SLUG = 'production-faster-whisper-turbo-int8';
+
+    it('mirrors the CTRANSLATE2 format in the seed enum mirror', () => {
+        expect(AiModelFormat.CTRANSLATE2).toBe('CTRANSLATE2');
+    });
+
+    it('registers the CT2 int8 turbo AiModel under SYSTEM with a clearly-marked placeholder sourceUri', () => {
+        const ct2 = DEFAULT_AI_MODELS.find((m) => m.slug === CT2_MODEL_SLUG);
+        expect(ct2).toBeDefined();
+        expect(ct2?.tenantId).toBe(SYSTEM_TENANT_ID);
+        expect(ct2?.category).toBe(ModelCategory.AUDIO);
+        expect(ct2?.taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
+        expect(ct2?.modelType).toBe(ModelType.QUANTIZED_MODEL);
+        expect(ct2?.format).toBe(AiModelFormat.CTRANSLATE2);
+        expect(ct2?.computeType).toBe('int8');
+        // D-4: engineers publish the real CT2 artifact before the prod flip; the
+        // placeholder intentionally won't resolve at runtime yet.
+        expect(ct2?.sourceUri).toContain('MODEL_REPO_PLACEHOLDER');
+    });
+
+    it('adds the CT2 pipeline as the SYSTEM default and demotes the old production pipeline', () => {
+        const ct2 = DEFAULT_ASR_PIPELINES.find((p) => p.slug === CT2_PIPELINE_SLUG);
+        expect(ct2).toBeDefined();
+        expect(ct2?.isDefault).toBe(true);
+        const oldProduction = DEFAULT_ASR_PIPELINES.find((p) => p.slug === 'production-whisper-large-v3');
+        expect(oldProduction?.isDefault).toBe(false);
+    });
+
+    it('makes the CT2 pipeline the isDefault one for SYSTEM, Global, and every customer tenant', () => {
+        const groups = [DEFAULT_ASR_PIPELINES, GLOBAL_TENANT_ASR_PIPELINES, CUSTOMER_TENANT_ASR_PIPELINES];
+        groups.forEach((group) => {
+            const tenantIds = new Set(group.map((p) => p.tenantId));
+            tenantIds.forEach((tenantId) => {
+                const defaults = group.filter((p) => p.tenantId === tenantId && p.isDefault === true);
+                expect(defaults.length).toBe(1);
+                expect(defaults[0].slug).toBe(CT2_PIPELINE_SLUG);
+            });
+        });
+    });
+
+    it('keeps exactly one isDefault pipeline per tenant across all pipeline groups', () => {
+        const all = [
+            ...DEFAULT_ASR_PIPELINES,
+            ...GLOBAL_TENANT_ASR_PIPELINES,
+            ...CUSTOMER_TENANT_ASR_PIPELINES,
+        ];
+        const defaultsByTenant = new Map<string, number>();
+        all.forEach((p) => {
+            if (p.isDefault === true) {
+                defaultsByTenant.set(p.tenantId, (defaultsByTenant.get(p.tenantId) ?? 0) + 1);
+            }
+        });
+        new Set(all.map((p) => p.tenantId)).forEach((tenantId) => {
+            expect(defaultsByTenant.get(tenantId)).toBe(1);
+        });
+    });
+
+    it('points BOTH batch + streaming default pipeline slugs at the CT2 pipeline', () => {
+        const batch = DEFAULT_STT_SETTINGS.find((s) => s.key === 'batch_pipeline_slug');
+        const streaming = DEFAULT_STT_SETTINGS.find((s) => s.key === 'streaming_pipeline_slug');
+        expect(batch?.value).toBe(CT2_PIPELINE_SLUG);
+        expect(streaming?.value).toBe(CT2_PIPELINE_SLUG);
+        // The referenced slug must exist in the seeded pipeline catalog.
+        expect(DEFAULT_ASR_PIPELINES.map((p) => p.slug)).toContain(CT2_PIPELINE_SLUG);
+    });
+
+    it('carries diarization + dual_capture into the CT2 pipeline config', () => {
+        const ct2 = DEFAULT_ASR_PIPELINES.find((p) => p.slug === CT2_PIPELINE_SLUG);
+        expect(ct2).toBeDefined();
+        expect(ct2!.configYaml).toContain('engine: "faster_whisper"');
+        expect(ct2!.configYaml).toMatch(/compute_type:\s*int8/);
+        expect(ct2!.configYaml).toContain('diarization:');
+        expect(ct2!.configYaml).toContain('dual_capture:');
     });
 });
 
@@ -2086,6 +2271,288 @@ describe('Customer-tenant AI model catalog backfill', () => {
 });
 
 // =============================================================================
+// TASK-356 Phase 2 — SYSTEM HarnessPolicy SMR default + WORM audit
+// =============================================================================
+
+describe('TASK-356 Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
+    const makeMockClient = (existing: Record<string, unknown> | null) => {
+        const created: Array<{ data: Record<string, unknown> }> = [];
+        const updated: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
+        const changes: Array<{ data: Record<string, unknown> }> = [];
+        const client = {
+            harnessPolicy: {
+                findFirst: vi.fn(async () => existing),
+                create: vi.fn(async (args: { data: Record<string, unknown> }) => {
+                    created.push(args);
+                    // Real Prisma returns the full row incl. column defaults.
+                    return { id: 'new-policy-id', version: 1, ...args.data };
+                }),
+                update: vi.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+                    updated.push(args);
+                    return { id: 'existing-id', version: 2, ...existing, ...args.data };
+                }),
+            },
+            harnessPolicyChange: {
+                create: vi.fn(async (args: { data: Record<string, unknown> }) => {
+                    changes.push(args);
+                    return args.data;
+                }),
+            },
+        };
+        return { client, created, updated, changes };
+    };
+
+    it('exposes the agreed SMR defaults (lm-studio + medgemma)', () => {
+        expect(SYSTEM_HARNESS_POLICY_SMR_DEFAULTS.smrProvider).toBe('lm-studio');
+        expect(SYSTEM_HARNESS_POLICY_SMR_DEFAULTS.smrModel).toBe('mlx-community/medgemma-1.5-4b-it');
+    });
+
+    it('creates the SYSTEM policy row with the SMR defaults and writes a WORM change (beforeJson=null)', async () => {
+        const { client, created, changes } = makeMockClient(null);
+        const result = await seedHarnessPolicy(client as never);
+
+        expect(result.action).toBe('created');
+        expect(result.changeWritten).toBe(true);
+
+        expect(client.harnessPolicy.create).toHaveBeenCalledTimes(1);
+        expect(created[0].data.tenantId).toBe(SYSTEM_TENANT_ID);
+        expect(created[0].data.smrProvider).toBe('lm-studio');
+        expect(created[0].data.smrModel).toBe('mlx-community/medgemma-1.5-4b-it');
+
+        // WORM audit entry (HarnessPolicyChange) recorded for the default-set.
+        expect(client.harnessPolicyChange.create).toHaveBeenCalledTimes(1);
+        const change = changes[0].data;
+        expect(change.tenantId).toBe(SYSTEM_TENANT_ID);
+        expect(change.beforeJson).toBeNull();
+        expect((change.afterJson as Record<string, unknown>).smrProvider).toBe('lm-studio');
+        expect((change.afterJson as Record<string, unknown>).smrModel).toBe(
+            'mlx-community/medgemma-1.5-4b-it'
+        );
+        expect(change.changedBy).toBe(SYSTEM_USER_ID);
+    });
+
+    it('is idempotent — no write/WORM when the SYSTEM policy already has the SMR defaults', async () => {
+        const { client } = makeMockClient({
+            id: 'existing-id',
+            tenantId: SYSTEM_TENANT_ID,
+            version: 3,
+            smrProvider: 'lm-studio',
+            smrModel: 'mlx-community/medgemma-1.5-4b-it',
+        });
+        const result = await seedHarnessPolicy(client as never);
+
+        expect(result.action).toBe('noop');
+        expect(result.changeWritten).toBe(false);
+        expect(client.harnessPolicy.create).not.toHaveBeenCalled();
+        expect(client.harnessPolicy.update).not.toHaveBeenCalled();
+        expect(client.harnessPolicyChange.create).not.toHaveBeenCalled();
+    });
+
+    it('updates ONLY the two SMR columns on an existing NULL-SMR row and writes a before/after WORM change', async () => {
+        const { client, updated, changes } = makeMockClient({
+            id: 'existing-id',
+            tenantId: SYSTEM_TENANT_ID,
+            version: 1,
+            smrProvider: null,
+            smrModel: null,
+            safetyModel: 'granite-guardian-4.1-8b',
+        });
+        const result = await seedHarnessPolicy(client as never);
+
+        expect(result.action).toBe('updated');
+        expect(result.changeWritten).toBe(true);
+
+        expect(client.harnessPolicy.update).toHaveBeenCalledTimes(1);
+        // Writes ONLY the two SMR columns (does not clobber other admin knobs).
+        expect(Object.keys(updated[0].data).sort()).toEqual(['smrModel', 'smrProvider']);
+        expect(updated[0].data.smrProvider).toBe('lm-studio');
+        expect(updated[0].data.smrModel).toBe('mlx-community/medgemma-1.5-4b-it');
+
+        const change = changes[0].data;
+        expect((change.beforeJson as Record<string, unknown>).smrModel).toBeNull();
+        expect((change.afterJson as Record<string, unknown>).smrModel).toBe(
+            'mlx-community/medgemma-1.5-4b-it'
+        );
+        // The audit snapshot preserves untouched knobs (granite safety model).
+        expect((change.afterJson as Record<string, unknown>).safetyModel).toBe('granite-guardian-4.1-8b');
+    });
+});
+
+// =============================================================================
+// TASK-356 Phase 5 — SYSTEM + demo PipelinePolicy cascade defaults + WORM audit
+// =============================================================================
+
+describe('TASK-356 Phase 5 — seedPipelinePolicy (cascade defaults + WORM)', () => {
+    // The seed ensures two TENANT-scope rows idempotently (find-then-create, never
+    // upsert — the (tenantId, scope, scopeId) unique index treats null scopeId as
+    // DISTINCT, so a blind create would duplicate). Each create also appends a WORM
+    // PipelinePolicyChange (beforeJson=null). The mock keys existing rows by tenant.
+    const makeMockClient = (existingByTenant: Record<string, Record<string, unknown> | null>) => {
+        const created: Array<{ data: Record<string, unknown> }> = [];
+        const changes: Array<{ data: Record<string, unknown> }> = [];
+        const client = {
+            pipelinePolicy: {
+                findFirst: vi.fn(async (args: { where: Record<string, unknown> }) => {
+                    const tenantId = args.where.tenantId as string;
+                    return existingByTenant[tenantId] ?? null;
+                }),
+                create: vi.fn(async (args: { data: Record<string, unknown> }) => {
+                    created.push(args);
+                    return { id: `pp-${created.length}`, version: 1, ...args.data };
+                }),
+            },
+            pipelinePolicyChange: {
+                create: vi.fn(async (args: { data: Record<string, unknown> }) => {
+                    changes.push(args);
+                    return args.data;
+                }),
+            },
+        };
+        return { client, created, changes };
+    };
+
+    it('exposes the platform-legacy SYSTEM defaults (auto on, harness OFF)', () => {
+        expect(SYSTEM_PIPELINE_POLICY_DEFAULTS.autoSummaryEnabled).toBe(true);
+        expect(SYSTEM_PIPELINE_POLICY_DEFAULTS.autoNerEnabled).toBe(true);
+        // Back-compat: today only the clinical-workspace demo opted into the harness.
+        expect(SYSTEM_PIPELINE_POLICY_DEFAULTS.harnessEnabled).toBe(false);
+    });
+
+    it('exposes the demo-tenant override that preserves the clinical-workspace harness', () => {
+        expect(DEMO_PIPELINE_POLICY_OVERRIDE.harnessEnabled).toBe(true);
+    });
+
+    it('creates BOTH the SYSTEM default + demo override rows (each with a beforeJson=null WORM change)', async () => {
+        const { client, created, changes } = makeMockClient({ [SYSTEM_TENANT_ID]: null, [SEED_TENANT_ID]: null });
+        const result = await seedPipelinePolicy(client as never);
+
+        expect(result.success).toBe(true);
+        expect(result.system).toBe('created');
+        expect(result.demo).toBe('created');
+
+        expect(client.pipelinePolicy.create).toHaveBeenCalledTimes(2);
+        const systemRow = created.find((c) => c.data.tenantId === SYSTEM_TENANT_ID)!.data;
+        expect(systemRow.scope).toBe('TENANT');
+        expect(systemRow.scopeId ?? null).toBeNull();
+        expect(systemRow.harnessEnabled).toBe(false);
+        expect(systemRow.autoSummaryEnabled).toBe(true);
+
+        const demoRow = created.find((c) => c.data.tenantId === SEED_TENANT_ID)!.data;
+        expect(demoRow.scope).toBe('TENANT');
+        expect(demoRow.harnessEnabled).toBe(true);
+
+        // One WORM change per created row, before=null (creation), changedBy=SYSTEM.
+        expect(client.pipelinePolicyChange.create).toHaveBeenCalledTimes(2);
+        for (const change of changes) {
+            expect(change.data.beforeJson).toBeNull();
+            expect(change.data.changedBy).toBe(SYSTEM_USER_ID);
+        }
+        const demoChange = changes.find((c) => c.data.tenantId === SEED_TENANT_ID)!.data;
+        expect((demoChange.afterJson as Record<string, unknown>).harnessEnabled).toBe(true);
+    });
+
+    it('is idempotent — no write/WORM when both rows already exist', async () => {
+        const { client } = makeMockClient({
+            [SYSTEM_TENANT_ID]: { id: 'sys', tenantId: SYSTEM_TENANT_ID, scope: 'TENANT', harnessEnabled: false },
+            [SEED_TENANT_ID]: { id: 'demo', tenantId: SEED_TENANT_ID, scope: 'TENANT', harnessEnabled: true },
+        });
+        const result = await seedPipelinePolicy(client as never);
+
+        expect(result.system).toBe('noop');
+        expect(result.demo).toBe('noop');
+        expect(client.pipelinePolicy.create).not.toHaveBeenCalled();
+        expect(client.pipelinePolicyChange.create).not.toHaveBeenCalled();
+    });
+
+    it('creates ONLY the missing row when the other already exists (demo present, SYSTEM absent)', async () => {
+        const { client, created } = makeMockClient({
+            [SYSTEM_TENANT_ID]: null,
+            [SEED_TENANT_ID]: { id: 'demo', tenantId: SEED_TENANT_ID, scope: 'TENANT', harnessEnabled: true },
+        });
+        const result = await seedPipelinePolicy(client as never);
+
+        expect(result.system).toBe('created');
+        expect(result.demo).toBe('noop');
+        expect(client.pipelinePolicy.create).toHaveBeenCalledTimes(1);
+        expect(created[0].data.tenantId).toBe(SYSTEM_TENANT_ID);
+    });
+});
+
+// =============================================================================
+// TASK-356 Phase 2 — switchDefaultSttPipeline backfill (no double-default)
+// =============================================================================
+
+describe('TASK-356 Phase 2 — switchDefaultSttPipeline backfill', () => {
+    type Row = { id: string; tenantId: string; slug: string; isDefault: boolean };
+
+    const makeMockClient = (rows: Row[]) => {
+        const matches = (row: Row, where: Record<string, unknown>) =>
+            Object.entries(where).every(([k, v]) => (row as Record<string, unknown>)[k] === v);
+        const client = {
+            asrPipeline: {
+                findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
+                    rows.find((r) => matches(r, where)) ?? null
+                ),
+                findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
+                    rows.filter((r) => matches(r, where))
+                ),
+                update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+                    const row = rows.find((r) => r.id === where.id);
+                    if (row) Object.assign(row, data);
+                    return row;
+                }),
+            },
+        };
+        return { client, rows };
+    };
+
+    // Use a tenant that switchDefaultSttPipeline actually iterates over.
+    const T = SYSTEM_TENANT_ID;
+    const oldRow = (isDefault: boolean): Row => ({ id: 'old', tenantId: T, slug: STT_OLD_DEFAULT_PIPELINE_SLUG, isDefault });
+    const newRow = (isDefault: boolean): Row => ({ id: 'new', tenantId: T, slug: STT_NEW_DEFAULT_PIPELINE_SLUG, isDefault });
+    const turboRow = (isDefault: boolean): Row => ({ id: 'turbo', tenantId: T, slug: 'turbo-whisper-large-v3', isDefault });
+
+    const tenantDefaults = (rows: Row[]) => rows.filter((r) => r.tenantId === T && r.isDefault);
+
+    it('targets every pipeline-owning tenant (SYSTEM + Global + customers)', () => {
+        expect(STT_DEFAULT_PIPELINE_BACKFILL_TENANTS).toContain(SYSTEM_TENANT_ID);
+        expect(STT_DEFAULT_PIPELINE_BACKFILL_TENANTS.length).toBeGreaterThanOrEqual(4);
+    });
+
+    it('demotes the untouched prior default (production) and promotes CT2 (resolves the double-default)', async () => {
+        const { client, rows } = makeMockClient([oldRow(true), newRow(true)]);
+        const result = await switchDefaultSttPipeline(client as never);
+
+        const defaults = tenantDefaults(rows);
+        expect(defaults).toHaveLength(1);
+        expect(defaults[0].slug).toBe(STT_NEW_DEFAULT_PIPELINE_SLUG);
+        expect(result.switched).toBeGreaterThanOrEqual(1);
+    });
+
+    it('respects an admin-chosen default (turbo) and instead demotes the freshly-seeded CT2', async () => {
+        const { client, rows } = makeMockClient([oldRow(false), turboRow(true), newRow(true)]);
+        await switchDefaultSttPipeline(client as never);
+
+        const defaults = tenantDefaults(rows);
+        expect(defaults).toHaveLength(1);
+        expect(defaults[0].slug).toBe('turbo-whisper-large-v3');
+    });
+
+    it('is a no-op when CT2 is already the sole default (fresh DB) and is idempotent on re-run', async () => {
+        const { client, rows } = makeMockClient([oldRow(false), newRow(true)]);
+        const first = await switchDefaultSttPipeline(client as never);
+        expect(client.asrPipeline.update).not.toHaveBeenCalled();
+        expect(first.switched).toBe(0);
+
+        // Re-run converges to the same single-default state.
+        await switchDefaultSttPipeline(client as never);
+        const defaults = tenantDefaults(rows);
+        expect(defaults).toHaveLength(1);
+        expect(defaults[0].slug).toBe(STT_NEW_DEFAULT_PIPELINE_SLUG);
+    });
+});
+
+// =============================================================================
 // SEED DATA VALIDATION
 // =============================================================================
 
@@ -2225,9 +2692,9 @@ function getYamlBlock(yaml: string, keyPath: string[]): string | null {
 describe('Dual Capture Pipeline Config (TASK-331 doc-06 F2)', () => {
     const defaultPipeline = DEFAULT_ASR_PIPELINES.find((p) => p.isDefault === true);
 
-    it('should expose a default pipeline (production) whose config drives dual capture', () => {
+    it('should expose a default pipeline (CT2 faster-whisper, TASK-356 Phase 2) whose config drives dual capture', () => {
         expect(defaultPipeline).toBeDefined();
-        expect(defaultPipeline?.slug).toBe('production-whisper-large-v3');
+        expect(defaultPipeline?.slug).toBe('production-faster-whisper-turbo-int8');
     });
 
     it('should add a dual_capture block under preprocessing on the default pipeline (raw capture before filters)', () => {

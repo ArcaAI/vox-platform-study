@@ -8,6 +8,7 @@ import { IRedisCacheService } from '../../baseServices/redis';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
 import { mapSmrGenerateResponse } from '../summary/smr-v2-generate';
+import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemovedPayload } from '../events';
 import {
   LiveDocEngineConfigResponse,
@@ -156,6 +157,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     private readonly redisSubscriber: RedisSubscriberService,
     @Optional() private readonly audioBridge?: StreamingAudioBridgeService,
     @Optional() @Inject(ContextItemRepository) private readonly contextItemRepository?: ContextItemRepository,
+    // TASK-356 D-7 — resolver for the tenant's effective SMR {provider, model}.
+    @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -454,7 +457,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     let smrLatencyMs = 0;
     const smrStartedAt = Date.now();
     try {
-      const smrText = await this.callSmr(promptText, signal);
+      const smrText = await this.callSmr(promptText, session.tenantId, signal);
       smrLatencyMs = Date.now() - smrStartedAt;
       if (isStale()) return this.dropStale(session);
       const parsed = parseSoapJson(smrText) ?? parseSoapSections(smrText);
@@ -781,17 +784,26 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private async callSmr(promptText: string, signal?: AbortSignal): Promise<string> {
+  private async callSmr(promptText: string, tenantId: string, signal?: AbortSignal): Promise<string> {
+    // TASK-356 D-7 — SMR is a stateless gateway with no model default. Resolve the
+    // tenant's effective {provider, model} via the HarnessPolicy cascade (NOT the
+    // legacy LIVE_DOC_SMR_PROVIDER/MODEL env); fall back to env only when the
+    // resolver is not wired (kept for non-DI construction paths).
+    let provider = this.smrProvider;
+    let model = this.smrModel;
+    if (this.harnessPolicyService) {
+      ({ provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId));
+    }
     // `response_format: json_schema` makes json-schema-capable providers return a
     // deterministic SOAP object (parsed by parseSoapJson); ollama ignores it so we
     // omit it there and fall back to the prose regex parse (P0-C).
-    const includeResponseFormat = (this.smrProvider ?? '').toLowerCase() !== 'ollama';
+    const includeResponseFormat = (provider ?? '').toLowerCase() !== 'ollama';
     const payload = {
       prompt: promptText,
       system_prompt:
         'You are a clinical documentation assistant generating an in-progress, structured SOAP running note. Be concise and faithful to the transcript; never fabricate findings.',
-      provider: this.smrProvider,
-      model: this.smrModel,
+      provider,
+      model,
       max_tokens: this.smrMaxTokens,
       stream: false as const,
       response_format: includeResponseFormat ? LIVE_SOAP_RESPONSE_FORMAT : undefined,

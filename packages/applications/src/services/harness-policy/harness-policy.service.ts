@@ -129,12 +129,49 @@ export class HarnessPolicyService {
     if (!tid) throw new BadRequestException('Tenant ID is required');
 
     const own = await this.policyRepository.findForExactTenant(tid);
-    if (own) return toResponse(own, 'tenant');
+    if (own) {
+      const resp = toResponse(own, 'tenant');
+      // TASK-356 D-7 (B1): field-level fallthrough for the two SMR fields ONLY.
+      // A tenant row created before Phase 2 (when the SYSTEM default was null)
+      // can carry null smrProvider/smrModel; fill them from the SYSTEM default
+      // so the effective SMR selection is never null when a platform default
+      // exists. The harness benefits with zero apps/harness change (it reads
+      // this via the worker-facing endpoint). All other knobs stay row-level.
+      if (resp.smrProvider === null || resp.smrModel === null) {
+        const sys = await this.policyRepository.findSystemDefault();
+        if (sys) {
+          if (resp.smrProvider === null) resp.smrProvider = sys.smrProvider ?? null;
+          if (resp.smrModel === null) resp.smrModel = sys.smrModel ?? null;
+        }
+      }
+      return resp;
+    }
 
     const sys = await this.policyRepository.findSystemDefault();
     if (sys) return toResponse(sys, 'system-default');
 
     return codeDefaultResponse(tid);
+  }
+
+  /**
+   * TASK-356 D-7 (B2) — the single fail-closed SMR-selection seam every TS
+   * `/api/v1/generate` caller funnels through. Resolves the effective policy
+   * (tenant own → SYSTEM default → code default, with the B1 field-level
+   * fallthrough) and returns a GUARANTEED-non-null `{ provider, model }`.
+   *
+   * Throws when the cascade yields no provider/model so the admin-managed
+   * default can never be silently bypassed (SMR itself also fail-closes with a
+   * 422). Phase 5 may later re-point this at the generalized `ConfigResolver`
+   * without touching any caller.
+   */
+  async resolveSmrSelection(tenantId?: string): Promise<{ provider: string; model: string }> {
+    const effective = await this.getEffectivePolicy(tenantId);
+    if (!effective.smrProvider || !effective.smrModel) {
+      throw new BadRequestException(
+        'No SMR model is configured for this tenant. Set HarnessPolicy.smrProvider/smrModel on the tenant or the SYSTEM default.',
+      );
+    }
+    return { provider: effective.smrProvider, model: effective.smrModel };
   }
 
   /** The SYSTEM-tenant GLOBAL-DEFAULT policy (platform editor reads this). */

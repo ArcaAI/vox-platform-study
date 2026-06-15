@@ -198,6 +198,8 @@ describe('SummaryService', () => {
     let mockHttpService: ReturnType<typeof createMockHttpService>;
     let mockConfigService: ReturnType<typeof createMockConfigService>;
     let mockPromptAssemblyService: ReturnType<typeof createMockPromptAssemblyService>;
+    // TASK-356 D-7 — the fail-closed SMR-selection seam every caller funnels through.
+    let mockHarnessPolicyService: { resolveSmrSelection: ReturnType<typeof vi.fn> };
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -212,6 +214,9 @@ describe('SummaryService', () => {
         mockHttpService = createMockHttpService();
         mockConfigService = createMockConfigService();
         mockPromptAssemblyService = createMockPromptAssemblyService();
+        mockHarnessPolicyService = {
+            resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
+        };
 
         service = new SummaryService(
             mockContextItemRepository as any,
@@ -224,7 +229,48 @@ describe('SummaryService', () => {
             mockClsService as any,
             mockContextItemVersionRepository as any,
             mockPromptAssemblyService as any,
+            undefined, // secretsService (@Optional)
+            undefined, // userProfileRepository (@Optional)
+            undefined, // harnessAuditService (@Optional)
+            undefined, // harnessGatewayService (@Optional)
+            mockHarnessPolicyService as any, // TASK-356 D-7 — HarnessPolicyService resolver
         );
+    });
+
+    // ── TASK-356 D-7 (T-C1): callSmrService passes the cascade-resolved model ──
+    describe('callSmrService SMR selection', () => {
+        const primeGenerateMocks = () => {
+            mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+            mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
+            mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
+            mockContextItemRepository.create.mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() });
+            mockSummaryMetaRepository.create.mockResolvedValue({ id: 'meta-1' });
+        };
+
+        const lastSmrBody = () => {
+            const call = mockHttpService.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'))!;
+            return call[1] as { provider?: string; model?: string };
+        };
+
+        it('posts the cascade-resolved provider+model when the request omits a model', async () => {
+            primeGenerateMocks();
+
+            await service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any);
+
+            expect(mockHarnessPolicyService.resolveSmrSelection).toHaveBeenCalled();
+            const body = lastSmrBody();
+            expect(body.provider).toBe('lm-studio');
+            expect(body.model).toBe('resolved-medgemma');
+        });
+
+        it('lets a caller-supplied model win over the resolved default', async () => {
+            primeGenerateMocks();
+
+            await service.generateSummary('c-1', { options: { model: 'caller-pinned' } } as any);
+
+            const body = lastSmrBody();
+            expect(body.model).toBe('caller-pinned');
+        });
     });
 
     // ===========================================================================

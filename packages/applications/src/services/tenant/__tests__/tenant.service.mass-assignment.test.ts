@@ -152,6 +152,8 @@ describe('Phase 0 Item 2 — TenantService.updateTenantConfigs must NOT apply un
       mockClsService as any,
       // TASK-356 Phase 1 — model-catalog clone repo (unused by this suite).
       { findAll: async () => [] } as any,
+      // TASK-356 Phase 2 — pipeline-version clone repo (unused by this suite).
+      { create: async () => ({}) } as any,
     );
   });
 

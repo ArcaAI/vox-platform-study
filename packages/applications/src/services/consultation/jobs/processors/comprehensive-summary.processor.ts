@@ -21,6 +21,7 @@ import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-v2-generate';
+import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
 import { IActiveUserContext } from '../../../../interfaces';
 import { assertEqualTenants, createWorkerSession } from '../../../../common';
 
@@ -57,6 +58,8 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     private readonly jobMetrics: JobMetricsService,
     private readonly cls: ClsService<IActiveUserContext>,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-356 D-7 — resolver for the tenant's effective SMR {provider, model}.
+    @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
   ) {
     super();
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -288,7 +291,14 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
 
     try {
       const smrStart = Date.now();
-      const smrPayload = buildSmrGeneratePayload(assembledPrompt, request.options, {
+      // TASK-356 D-7 — resolve the tenant's effective {provider, model} (CLS tenant
+      // set by process()) and merge as the base so a caller-supplied model wins.
+      let options = request.options;
+      if (this.harnessPolicyService) {
+        const { provider, model } = await this.harnessPolicyService.resolveSmrSelection();
+        options = { smrProvider: provider, smrModel: model, ...request.options };
+      }
+      const smrPayload = buildSmrGeneratePayload(assembledPrompt, options, {
         dnaStyleId: request.dnaStyleId,
         template: request.template ?? 'comprehensive',
         includeNER: request.includeNER,

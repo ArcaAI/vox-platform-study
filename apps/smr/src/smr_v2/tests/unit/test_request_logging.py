@@ -382,6 +382,7 @@ class TestEndpointEmitsGenerationAudit:
                 json={
                     "prompt": "Summarize the clinical transcript.",
                     "provider": "ollama",
+                    "model": "test-model",
                     "stream": False,
                 },
             )

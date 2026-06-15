@@ -42,8 +42,11 @@ class BedrockProvider:
             region_name=config.region,
         )
 
-    def _resolve_model(self, request: GenerateRequest) -> str:
-        return request.model or self._default_model
+    def _resolve_model(self, request: GenerateRequest) -> str | None:
+        # D-7 (TASK-356): no in-gateway default — the caller-supplied model is
+        # authoritative. ``_default_model`` is retained for the providers
+        # listing (informational) only.
+        return request.model
 
     def _build_converse_params(self, request: GenerateRequest) -> dict[str, Any]:
         resolved = resolve_request_defaults(request)

@@ -7,6 +7,7 @@ import {
   TestPromptTemplateRequest,
   PromptTestResultResponse,
   PromptUsageAnalyticsResponse,
+  PreferredPromptTemplateResponse,
 } from './dto';
 import { DepartmentResponse } from '../department/dto';
 
@@ -31,6 +32,10 @@ export interface PaginatedPromptTemplates {
 export abstract class IPromptManagementService {
   abstract createPromptTemplate(dto: CreatePromptTemplateRequest): Promise<PromptTemplateResponse>;
   abstract createPersonal(dto: CreatePromptTemplateRequest): Promise<PromptTemplateResponse>;
+  // TASK-356 Phase 6 (S1/S2) — doctor self-service (strict caller-ownership).
+  abstract updatePersonal(id: string, dto: UpdatePromptTemplateRequest): Promise<PromptTemplateResponse>;
+  abstract deletePersonal(id: string): Promise<PromptTemplateResponse>;
+  abstract setPreferredPromptTemplate(templateId: string | null): Promise<PreferredPromptTemplateResponse>;
   abstract updatePromptTemplate(id: string, dto: UpdatePromptTemplateRequest): Promise<PromptTemplateResponse>;
   abstract getPromptTemplate(id: string): Promise<PromptTemplateResponse | null>;
   abstract listPromptTemplates(filters?: ListPromptTemplatesFilters): Promise<PromptTemplateResponse[]>;

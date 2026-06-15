@@ -31,6 +31,8 @@ import { MediaRepository } from '../../../repositories/generated/core/MediaRepos
 import { NamedEntityRepository } from '../../../repositories/generated/core/NamedEntityRepository';
 import { NotificationRepository } from '../../../repositories/generated/core/NotificationRepository';
 import { PermissionRepository } from '../../../repositories/generated/core/PermissionRepository';
+import { PipelinePolicyChangeRepository } from '../../../repositories/generated/core/PipelinePolicyChangeRepository';
+import { PipelinePolicyRepository } from '../../../repositories/generated/core/PipelinePolicyRepository';
 import { PromptTemplateRepository } from '../../../repositories/generated/core/PromptTemplateRepository';
 import { PromptUsageRecordRepository } from '../../../repositories/generated/core/PromptUsageRecordRepository';
 import { PromptVersionRepository } from '../../../repositories/generated/core/PromptVersionRepository';
@@ -136,6 +138,9 @@ const repositories = [
   // Harness Administration Console — editable runtime policy (TASK-330 Phase 6)
   HarnessPolicyRepository,
   HarnessPolicyChangeRepository,
+  // Realtime-pipeline policy cascade (TASK-356 Phase 5, Pillar B)
+  PipelinePolicyRepository,
+  PipelinePolicyChangeRepository,
   // Institutional RAG knowledge corpus (TASK-330 Phase 3)
   KnowledgeDocumentRepository,
   KnowledgeChunkRepository,

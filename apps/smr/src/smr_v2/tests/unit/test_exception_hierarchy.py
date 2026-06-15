@@ -353,7 +353,7 @@ class TestGenerateEndpointDomainExceptions:
         app = _build_app(settings, registry, _make_task_manager(), shutdown_manager=sm)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "ollama"})
+            resp = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "ollama", "model": "test-model"})
         assert resp.status_code == 503
         body = resp.json()
         assert body["error_code"] == "SHUTTING_DOWN"
@@ -374,7 +374,7 @@ class TestGenerateEndpointDomainExceptions:
         app.state.circuit_breakers = {"ollama": cb}
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "ollama"})
+            resp = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "ollama", "model": "test-model"})
         assert resp.status_code == 503
         assert resp.headers.get("retry-after") == "30"
         body = resp.json()
@@ -387,7 +387,7 @@ class TestGenerateEndpointDomainExceptions:
         app = _build_app(settings, registry, _make_task_manager())
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "ghost"})
+            resp = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "ghost", "model": "test-model"})
         assert resp.status_code == 404
         body = resp.json()
         assert body["error_code"] == "PROVIDER_NOT_FOUND"

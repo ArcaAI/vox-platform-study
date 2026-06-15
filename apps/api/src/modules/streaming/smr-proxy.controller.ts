@@ -1,5 +1,6 @@
 import {
   Authorize,
+  HarnessPolicyService,
   IActiveUserContext,
   IBlobStorageService,
   IConfigService,
@@ -140,7 +141,33 @@ export class SmrProxyController {
     @Inject(IBlobStorageService) private readonly blobStorage: IBlobStorageServiceType,
     @Inject(IConfigService) private readonly configService: IConfigService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-356 D-7 — resolves the tenant's effective SMR {provider, model} when a
+    // caller (playground/SDK) omits the model. @Optional so test fixtures that
+    // construct the controller without it keep compiling.
+    @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
   ) {}
+
+  /**
+   * TASK-356 D-7 — SDK fidelity: a caller-supplied model is forwarded untouched.
+   * When the model is absent, fall back to the tenant's effective {provider, model}
+   * via the HarnessPolicy cascade. If the cascade is also unresolved we forward as
+   * is and let `apps/smr` fail-closed with 422 (the single source of truth for the
+   * "no model" contract) rather than masking it with an in-proxy 4xx.
+   */
+  private async applySmrModelSelection<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
+    if (target.model || !this.harnessPolicyService) {
+      return target;
+    }
+    try {
+      const tenantId = this.clsService.get('tenantId');
+      const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId);
+      target.provider = provider;
+      target.model = model;
+    } catch {
+      // Unresolved → forward without a model so SMR returns its fail-closed 422.
+    }
+    return target;
+  }
 
   // TASK-310 E-5 (AC-5): the SMR base URL now resolves through the
   // typed `IConfigService.getConfigValue('SMR_URL')` accessor. The
@@ -354,6 +381,7 @@ export class SmrProxyController {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generate(@Body() body: SmrGenerateRequest): Promise<any> {
     const base = this.getSmrBaseUrl();
+    await this.applySmrModelSelection(body);
 
     try {
       const response = await this.withRetry(
@@ -533,6 +561,7 @@ export class SmrProxyController {
       max_tokens: body.max_tokens,
       stream: body.stream ?? false,
     };
+    await this.applySmrModelSelection(smrPayload);
 
     const base = this.getSmrBaseUrl();
 

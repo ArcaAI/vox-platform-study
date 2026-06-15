@@ -29,3 +29,4 @@ export * from './StorageProviderType';
 export * from './StorageTopologyType';
 export * from './TranscriptionMode';
 export * from './CaptureMode';
+export * from './PipelinePolicyScope';

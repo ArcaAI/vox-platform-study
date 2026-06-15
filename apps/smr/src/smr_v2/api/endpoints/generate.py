@@ -142,7 +142,16 @@ async def generate(
             )
 
     ctx = structlog.contextvars.get_contextvars()
-    model = request_body.model or "default"
+
+    # D-7 (TASK-356): SMR is a stateless gateway with no default model. The
+    # caller (API/harness) resolves and supplies the model on every request;
+    # a missing/blank model fails closed with a 422 (no silent default).
+    model = request_body.model
+    if model is None or not model.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Field 'model' is required: SMR has no default model.",
+        )
 
     rate_limiter = rate_limiters.get(request_body.provider)
     queue = provider_queues.get(request_body.provider)
@@ -427,7 +436,7 @@ async def _run_streaming_generation(
 ) -> None:
     from smr_v2.core.metrics import TTFT_SECONDS
 
-    resolved_model = model or request_body.model or "default"
+    resolved_model = model or request_body.model
     resolved_provider = provider_name or request_body.provider
     await task_manager.update_task(task_id, status=TaskStatus.RUNNING)
     ACTIVE_GENERATIONS.labels(provider=resolved_provider).inc()
