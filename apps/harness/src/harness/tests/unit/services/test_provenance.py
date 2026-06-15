@@ -10,7 +10,7 @@ claim carrying the transcript evidence span; an ungrounded one becomes an
 from __future__ import annotations
 
 from harness.sensors.base import NEREntity
-from harness.services.provenance import build_citations_map
+from harness.services.provenance import build_citations_map, clean_entities_for_sensors
 
 
 class TestBuildCitationsMap:
@@ -278,3 +278,60 @@ class TestSubwordAttribution:
         assert claim["status"] == "verified"
         assert claim["evidence"][0]["quote"] == "amlodipine"
         assert "\u2581" not in claim["evidence"][0]["quote"]
+
+
+# ── TASK-358: the SINGLE shared cleanup the entity-level sensors consume ─────────
+# ``clean_entities_for_sensors`` reuses the claims-path subword aggregation
+# (``_aggregate_subword_entities`` + ``_clean_claim_text``) AND drops non-clinical
+# NER noise (mic-check counting words, bare stopwords, empty tokens) so the
+# entity_faithfulness / coverage_omission matching path sees the same clean,
+# merged entities the citationsMap does — one source of truth, no divergent copy.
+class TestCleanEntitiesForSensors:
+    def test_merges_bio_subwords_and_strips_markers(self):
+        cleaned = clean_entities_for_sensors(
+            [
+                NEREntity(text="\u2581amlodipine", type="B-MEDICATION", start=0, end=11),
+                NEREntity(text="\u25815", type="B-DOSAGE", start=11, end=13),
+                NEREntity(text="\u2581mg", type="I-DOSAGE", start=13, end=16),
+                NEREntity(text="\u2581once", type="I-DOSAGE", start=16, end=21),
+                NEREntity(text="\u2581daily", type="I-DOSAGE", start=21, end=27),
+            ]
+        )
+        assert [e.text for e in cleaned] == ["amlodipine", "5 mg once daily"]
+
+    def test_drops_mic_check_counting_words(self):
+        cleaned = clean_entities_for_sensors(
+            [
+                NEREntity(text="\u2581One", type="O", start=0, end=4),
+                NEREntity(text="\u2581two", type="O", start=4, end=8),
+                NEREntity(text="\u2581three", type="O", start=8, end=14),
+                NEREntity(text="hypertension", type="DISEASE"),
+            ]
+        )
+        assert [e.text for e in cleaned] == ["hypertension"]
+
+    def test_drops_empty_and_bare_stopword_tokens(self):
+        cleaned = clean_entities_for_sensors(
+            [
+                NEREntity(text="the", type="O"),
+                NEREntity(text="   ", type="O"),
+                NEREntity(text="lisinopril", type="MEDICATION"),
+            ]
+        )
+        assert [e.text for e in cleaned] == ["lisinopril"]
+
+    def test_keeps_clinical_phrases_that_contain_a_number_word(self):
+        # The filter only drops a span whose EVERY token is noise — a real phrase
+        # that merely contains "two" (e.g. "two week history") must survive.
+        cleaned = clean_entities_for_sensors([NEREntity(text="two week history", type="HISTORY")])
+        assert [e.text for e in cleaned] == ["two week history"]
+
+    def test_keeps_short_clinical_lab_markers_no_false_positives(self):
+        # TASK-358 hardening (accuracy): the noise filter must NEVER drop a short or
+        # ambiguous but clinically meaningful token. Vitamins / labs (B12, T3, T4,
+        # A1c, HbA1c, O2), single-letter electrolytes (K = potassium, Na), and bare
+        # numeric dose/value tokens (5, 10, 20) must all survive — only mic-check
+        # counting words and bare stopwords are noise.
+        survivors = ["B12", "T3", "T4", "A1c", "HbA1c", "O2", "K", "Na", "5", "10", "20"]
+        cleaned = clean_entities_for_sensors([NEREntity(text=t, type="LAB") for t in survivors])
+        assert [e.text for e in cleaned] == survivors

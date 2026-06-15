@@ -71,7 +71,13 @@ class TestSensorRunner:
         verdict = aggregate(out.results, regens_remaining=2, expected=COMPUTATIONAL_SENSOR_NAMES)
         assert verdict.decision == GateDecision.PASS
 
-    def test_malformed_soap_fails_schema_validity(self):
+    def test_malformed_soap_degrades_schema_validity_and_flags(self):
+        # TASK-358: a truly unparseable note (no JSON, no SOAP headers) yields no
+        # sections at all -> schema_validity is *degraded* (it cannot validate an
+        # empty shell), so the gate FLAGs for human review rather than spending the
+        # regen budget on garbage. (A note with *partial* structure — e.g. a
+        # markdown note missing only Plan — is the regen-fixable case; see the
+        # calibration suite.)
         note, transcript, note_entities, transcript_entities = _grounded_inputs()
         out = run_computational_sensors(
             note_text="this is not valid json",
@@ -84,8 +90,9 @@ class TestSensorRunner:
 
         schema = next(r for r in out.results if r.name == "schema_validity")
         assert schema.passed is False
+        assert schema.degraded is True
         verdict = aggregate(out.results, regens_remaining=2, expected=COMPUTATIONAL_SENSOR_NAMES)
-        assert verdict.decision == GateDecision.REGEN
+        assert verdict.decision == GateDecision.FLAG
 
     def test_markdown_soap_note_attaches_section_cited_knowledge_chunk_ids(self):
         # Real-path defense: gemma3 may emit a MARKDOWN SOAP note (not the requested
@@ -153,6 +160,65 @@ class TestSensorRunner:
         amlodipine = next(c for c in claims if c["text"] == "amlodipine")
         assert amlodipine["section"] == "P"
         assert amlodipine["knowledgeChunkIds"] == ["kc-htn"]
+
+    def test_empty_colon_bold_section_is_detected_as_missing(self):
+        # TASK-358 hardening: a markdown note whose Plan header is present but the
+        # body is EMPTY ("**Plan:**" then nothing) must NOT be masked as a present
+        # section by the closing "**" emphasis leaking into the body. The section
+        # must parse empty, no stray "**" must remain in the other bodies, and
+        # schema_validity must report a missing Plan (regen-fixable, not a false 1.0).
+        note = (
+            "**Subjective:** Patient reports worsening hypertension.\n\n"
+            "**Objective:** BP 150/95.\n\n"
+            "**Assessment:** Essential hypertension, poorly controlled.\n\n"
+            "**Plan:**\n\n"
+        )
+        _note, transcript, note_entities, transcript_entities = _grounded_inputs()
+        out = run_computational_sensors(
+            note_text=note,
+            transcript_text=transcript,
+            note_entities=note_entities,
+            transcript_entities=transcript_entities,
+            response_format=None,
+        )
+        assert out.soap_sections["subjective"] == "Patient reports worsening hypertension."
+        assert out.soap_sections.get("plan", "") == ""
+        schema = next(r for r in out.results if r.name == "schema_validity")
+        assert schema.passed is False
+        assert schema.degraded is False
+        assert "P" in schema.details["sections"]
+
+    def test_markdown_header_variants_parse_to_full_structure(self):
+        # TASK-358 hardening (robustness): the live model emits SOAP headers in
+        # several markdown styles. Each complete variant must split into all four
+        # sections so schema_validity scores 1.0 on the responseFormat=null path.
+        variants = [
+            (
+                "### Subjective\nHypertension.\n### Objective\nBP 150/95.\n"
+                "### Assessment\nEssential hypertension.\n### Plan\nContinue lisinopril."
+            ),
+            (
+                "Subjective: Hypertension.\nObjective: BP 150/95.\n"
+                "Assessment: Essential hypertension.\nPlan: Continue lisinopril."
+            ),
+            (
+                "**Subjective**: Hypertension.\n**Objective**: BP 150/95.\n"
+                "**Assessment**: Essential hypertension.\n**Plan**: Continue lisinopril."
+            ),
+        ]
+        _note, transcript, note_entities, transcript_entities = _grounded_inputs()
+        for note in variants:
+            out = run_computational_sensors(
+                note_text=note,
+                transcript_text=transcript,
+                note_entities=note_entities,
+                transcript_entities=transcript_entities,
+                response_format=None,
+            )
+            assert set(out.soap_sections) == {"subjective", "objective", "assessment", "plan"}, note
+            schema = next(r for r in out.results if r.name == "schema_validity")
+            assert schema.passed is True, note
+            assert schema.score == 1.0, note
 
     def test_fabricated_note_entity_aggregates_to_flag(self):
         note, transcript, _note_entities, transcript_entities = _grounded_inputs()

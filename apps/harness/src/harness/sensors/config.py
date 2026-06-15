@@ -5,6 +5,17 @@ Kept separate from :mod:`harness.core.config` (the gate sensors own their own
 defaults are clinically conservative — fabrication (entity-faithfulness) and
 numeric/dose checks are **zero-tolerance** (1.0) because they are the
 highest-harm errors.
+
+TASK-358 (D-B) validated these defaults against a labeled fixture set rather than
+loosening them: the FLAG-always behaviour was a *bug* (markdown notes failed the
+schema gate; ``▁``/BIO NER artifacts and mic-check counting words drove
+entity-faithfulness below 1.0), not a too-strict threshold. With the inputs
+cleaned (schema_validity validates the actual contract; the entity-level sensors
+consume merged, marker-free, noise-filtered entities), a faithful note legitimately
+reaches 1.0, so the zero-tolerance fabrication/numeric-dose values stay unchanged
+and the gate discriminates good vs bad. Making these admin-editable is TASK-356's
+scope (effective values resolve from the ``HarnessPolicy`` DB row); changing a
+default end-to-end is a TASK-356 coordination item, not a calibration edit here.
 """
 
 from __future__ import annotations
