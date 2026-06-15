@@ -22,6 +22,16 @@ class TestNormalizeText:
     def test_empty(self):
         assert normalize_text("") == ""
 
+    # TASK-358: the entity-level matching path must be ▁-insensitive too (the live
+    # NER returns SentencePiece "▁" (U+2581) surfaces). Strip ▁ so a marker-bearing
+    # note entity matches the plain transcript — consistent with the claims path.
+    def test_strips_sentencepiece_word_boundary_marker(self):
+        assert normalize_text("\u2581amlodipine") == "amlodipine"
+        assert NEREntity(text="\u2581amlodipine", type="B-MEDICATION").normalized == "amlodipine"
+
+    def test_strips_marker_and_preserves_legitimate_content(self):
+        assert normalize_text("\u2581130/\u258180 \u2581mmHg") == "130/ 80 mmhg"
+
 
 class TestNEREntity:
     def test_normalized_surface_form(self):

@@ -19,10 +19,13 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from harness.core.logging import get_logger
 from harness.sensors.base import NEREntity, SensorContext, SensorResult
 from harness.sensors.config import SensorThresholds
 from harness.sensors.registry import computational_sensors
-from harness.services.provenance import build_citations_map
+from harness.services.provenance import build_citations_map, clean_entities_for_sensors
+
+logger = get_logger(__name__)
 
 # SOAP section header on its own line in a markdown/prose note. Matches the colon
 # form ("**Plan:**", "Plan:", "### Plan:") AND the parenthetical-letter form some
@@ -30,9 +33,15 @@ from harness.services.provenance import build_citations_map
 # letter in parens, and NO trailing colon. Line-anchored so a prose line that merely
 # starts with "Plan to ..." is NOT mistaken for a header: after the word we require a
 # colon, a "(S)" annotation, closing emphasis, or end-of-line.
+# The trailing ``[*_]{0,2}`` consumes a closing bold/italic marker that directly
+# follows the colon ("**Plan:**") so it does NOT leak into the section body — which
+# would otherwise mask a genuinely EMPTY section ("**Plan:**\n\n" -> body "**", read
+# as present) and let an empty note falsely pass the structural contract. It is
+# anchored to the colon (no intervening space) so spaced inline bold content
+# ("**Plan:** **Important** ...") is preserved.
 _SOAP_HEADER_RE = re.compile(
     r"^[ \t>#*_-]*(subjective|objective|assessment|plan)\b"
-    r"[ \t]*(?:\([soap]\))?[ \t]*[*_]{0,2}[ \t]*(?::|$)",
+    r"[ \t]*(?:\([soap]\))?[ \t]*[*_]{0,2}[ \t]*(?::|$)[*_]{0,2}",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -91,18 +100,42 @@ def run_computational_sensors(
     thresholds: SensorThresholds | None = None,
 ) -> SensorRunOutput:
     """Run all computational sensors over one generated draft."""
-    soap_sections = _parse_soap(note_text)
+    # Parse the structured note. The activated response_format requests JSON SOAP,
+    # but the common department/CATCHALL path emits a MARKDOWN note (no schema), so
+    # fall back to the header-parsed sections. schema_validity then validates the
+    # ACTUAL structure (TASK-358 D-A) — a complete S/O/A/P note scores 1.0 in both the
+    # responseFormat=null and json_schema paths; a truly unparseable note yields ``{}``
+    # (schema_validity degrades -> FLAG). Provenance attribution reuses the same parse.
+    json_sections = _parse_soap(note_text)
+    soap_sections = json_sections or _parse_soap_markdown(note_text)
+    parse_mode = "json" if json_sections else ("markdown" if soap_sections else "none")
 
-    # Provenance/citation attribution must survive a model that emits a markdown SOAP
-    # note instead of the requested JSON: fall back to header-parsed sections ONLY for
-    # the citationsMap, so the StrictCitations [[kb:]] markers resolve to a section and
-    # claims attribute per-section. The SensorContext keeps the strict JSON parse, so
-    # schema_validity (and the other sensors) are unchanged — a markdown note still
-    # fails the schema gate, it just no longer silently drops every knowledgeChunkId.
-    provenance_sections = soap_sections or _parse_soap_markdown(note_text)
+    # One shared cleanup (TASK-358 D-B): merge ▁/BIO subword NER tokens and drop
+    # non-clinical noise (mic-check counting words, bare stopwords) so the
+    # entity-level sensors and the citationsMap consume the SAME clean entities —
+    # single source of truth (``provenance.clean_entities_for_sensors``).
+    note_entities_in, transcript_entities_in = len(note_entities), len(transcript_entities)
+    note_entities = clean_entities_for_sensors(note_entities)
+    transcript_entities = clean_entities_for_sensors(transcript_entities)
+
+    # Observability (no PHI — counts/keys only): explains how the note parsed and how
+    # many NER artifacts were merged/dropped, so a degraded -> FLAG outcome or a low
+    # entity-faithfulness score is diagnosable in production without the note text.
+    logger.debug(
+        "harness.sensors.inputs_prepared",
+        parse_mode=parse_mode,
+        sections=sorted(soap_sections),
+        note_entities_in=note_entities_in,
+        note_entities_kept=len(note_entities),
+        transcript_entities_in=transcript_entities_in,
+        transcript_entities_kept=len(transcript_entities),
+    )
+    if not soap_sections:
+        # No JSON object and no SOAP headers -> schema_validity degrades -> FLAG.
+        logger.info("harness.sensors.note_unparseable", note_chars=len(note_text))
 
     citations_map = build_citations_map(
-        soap_sections=provenance_sections,
+        soap_sections=soap_sections,
         note_entities=note_entities,
         transcript_entities=transcript_entities,
         transcript_text=transcript_text,

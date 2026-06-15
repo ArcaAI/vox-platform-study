@@ -20,7 +20,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from harness.guides.retrieval.prompt import extract_cited_ids
-from harness.sensors.base import NEREntity, normalize_text
+from harness.sensors.base import SUBWORD_MARKER, NEREntity, normalize_text
 
 # SOAP property name -> single-letter section code (matches the sensors).
 _SECTION_CODES = (
@@ -34,8 +34,9 @@ _DEFAULT_SECTION = "A"
 # SentencePiece "▁" (U+2581) word-boundary marker. NER spans tokenized by a
 # SentencePiece model can carry it (e.g. "▁October"); it must never leak into the
 # human-readable citation claim text / evidence quote, nor into the keys used to
-# match an entity against the (plain) SOAP section text / transcript.
-_SUBWORD_MARKER = "\u2581"
+# match an entity against the (plain) SOAP section text / transcript. Single
+# source: the same constant the base ``normalize_text`` strips.
+_SUBWORD_MARKER = SUBWORD_MARKER
 
 # Max character gap between one NER span's end and the next span's start for them to
 # count as contiguous. Live NLP token spans touch at 0; an occasional boundary char
@@ -113,6 +114,79 @@ def _aggregate_subword_entities(entities: Sequence[NEREntity]) -> list[NEREntity
             )
         )
     return merged
+
+
+# Non-clinical NER noise the entity-level sensors must ignore: spoken-number
+# "mic check" counting words ("one, two, three") and bare function words the
+# tokenizer occasionally surfaces as standalone entities. Conservative — a span
+# is dropped only when EVERY one of its tokens is noise, so a real phrase that
+# merely contains such a word ("two week history", "day three of symptoms")
+# survives.
+_COUNTING_WORDS = frozenset(
+    {
+        "zero",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "eleven",
+        "twelve",
+    }
+)
+_STOPWORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "of",
+        "to",
+        "in",
+        "on",
+        "at",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "with",
+        "for",
+        "this",
+        "that",
+    }
+)
+_NOISE_TOKENS = _COUNTING_WORDS | _STOPWORDS
+
+
+def _is_noise_entity(text: str) -> bool:
+    """True when every token of ``text`` is non-clinical noise (or it is empty)."""
+    norm = normalize_text(text)
+    if not norm:
+        return True
+    return all(token in _NOISE_TOKENS for token in norm.split())
+
+
+def clean_entities_for_sensors(entities: Sequence[NEREntity]) -> list[NEREntity]:
+    """Clean NER entities for the entity-level sensors — one shared cleanup.
+
+    Reuses the claims-path subword aggregation (``_aggregate_subword_entities``,
+    which merges ``B-``/``I-`` BIO subword tokens into phrase-entities and strips
+    the ``▁`` marker via ``_clean_claim_text``) so ``entity_faithfulness`` /
+    ``coverage_omission`` see exactly the same merged, marker-free surfaces the
+    ``citationsMap`` does — no divergent second implementation. Then drops spans
+    that are pure non-clinical noise (mic-check counting words / bare stopwords /
+    empty tokens) so a "one, two, three" mic check or a stray ``▁One`` fragment
+    never counts as a clinical entity.
+    """
+    merged = _aggregate_subword_entities(entities)
+    return [entity for entity in merged if not _is_noise_entity(entity.text)]
 
 
 def _derive_section(entity_norm: str, soap_sections: dict[str, Any]) -> str:

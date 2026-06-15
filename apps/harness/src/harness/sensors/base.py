@@ -24,10 +24,21 @@ from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# SentencePiece "▁" (U+2581) word-boundary marker. The live NER returns
+# ▁-bearing subword surfaces ("▁amlodipine"); it must be stripped so the
+# entity-level matching path compares like-with-like against the plain SOAP
+# section / transcript text (the claims path strips it too — single behaviour).
+SUBWORD_MARKER = "\u2581"
+
 
 def normalize_text(text: str) -> str:
-    """Case-fold + collapse whitespace, for deterministic string matching."""
-    return " ".join(text.lower().split())
+    """Case-fold, strip ``▁`` markers, and collapse whitespace, for matching.
+
+    ``▁`` (U+2581) is replaced with a space before collapsing so a SentencePiece
+    subword surface ("▁amlodipine") normalizes to the same key as its plain form
+    ("amlodipine"). Idempotent with the claims-path ``_clean_claim_text`` cleanup.
+    """
+    return " ".join(text.replace(SUBWORD_MARKER, " ").lower().split())
 
 
 def dedupe(items: Iterable[str]) -> list[str]:
