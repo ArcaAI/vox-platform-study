@@ -1025,8 +1025,11 @@ export const seedUser = async (client: CorePrismaClient) => {
     // customer tenants, so a SYSTEM value would be unreachable for Global
     // doctors; the Global-tenant pipeline lives in SEED_TENANT_ID and is both
     // listable and resolvable for them.
-    // TASK-356 Phase 2 — switch the default to the Global tenant's faster-whisper
-    // CT2 int8 pipeline (id …0403), matching the both-defaults flip in 06-stt.
+    // TASK-361 — point the default at the Global tenant's resolvable
+    // production-whisper-large-v3 pipeline (id …0401). TASK-356 Phase 2 had
+    // pointed this at the CT2 int8 pipeline (…0403), whose model carries a
+    // non-resolving placeholder sourceUri (D-4); the CT2 pipeline stays
+    // registered but must not be the default until the artifact is published.
     await client.globalSetting.upsert({
         where: {
             GlobalSetting_tenantId_name_key_unique: {
@@ -1036,7 +1039,7 @@ export const seedUser = async (client: CorePrismaClient) => {
             },
         },
         update: {
-            value: '81000000-0000-0000-0001-000000000403',
+            value: '81000000-0000-0000-0001-000000000401',
             description: 'Default ASR pipeline for all doctors when using remote workflow mode',
         },
         create: {
@@ -1045,8 +1048,8 @@ export const seedUser = async (client: CorePrismaClient) => {
             namespace: 'arcaai-sdk',
             name: 'stt-pipeline',
             key: 'default-stt-pipeline',
-            value: '81000000-0000-0000-0001-000000000403',
-            defaultValue: '81000000-0000-0000-0001-000000000403',
+            value: '81000000-0000-0000-0001-000000000401',
+            defaultValue: '81000000-0000-0000-0001-000000000401',
             dataType: ValueType.String,
             description: 'Default ASR pipeline for all doctors when using remote workflow mode',
         },

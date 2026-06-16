@@ -203,7 +203,9 @@ export const DEFAULT_AI_MODELS = [
         format: AiModelFormat.CTRANSLATE2,
         memorySizeMb: 1700,
         computeType: 'int8',
-        tags: ['multilingual', 'faster-whisper', 'ctranslate2', 'int8', 'production', 'recommended'],
+        // TASK-361 — keep registered (catalog-visible) but NOT 'production'/'recommended':
+        // the placeholder sourceUri below does not resolve until the D-4 artifact is published.
+        tags: ['multilingual', 'faster-whisper', 'ctranslate2', 'int8'],
     },
 
     // =========================================================================
@@ -1639,10 +1641,13 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
         slug: 'production-whisper-large-v3',
         description: 'High-quality production pipeline using Whisper Large V3 with VAD and noise reduction. Best for final transcriptions.',
         configYaml: PIPELINE_CONFIGS.production,
-        // TASK-356 Phase 2 — demoted from system default in favour of the
-        // faster-whisper CT2 int8 pipeline (id …0008). Existing DBs are migrated
-        // by switchDefaultSttPipeline (which respects admin overrides).
-        isDefault: false,
+        // TASK-361 — restored as the effective system default. This pipeline loads
+        // a resolvable artifact (whisper-large-v3-turbo, safetensor), whereas the
+        // CT2 int8 pipeline (id …0008) still carries the non-resolving
+        // MODEL_REPO_PLACEHOLDER pending the D-4 publish. Existing DBs are
+        // reconciled by switchDefaultSttPipeline (which respects an admin-chosen
+        // resolvable default).
+        isDefault: true,
         tags: ['production', 'high-quality', 'recommended'],
     },
     {
@@ -1703,17 +1708,19 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
         tags: ['best-practice', 'batch', 'high-quality', 'v1.1'],
     },
     {
-        // TASK-356 Phase 2 — the new SYSTEM default: faster-whisper CT2 int8
-        // (model slug `faster-whisper-large-v3-turbo-int8`). Used for BOTH the
-        // batch and streaming defaults (see DEFAULT_STT_SETTINGS).
+        // TASK-356 Phase 2 / TASK-361 — faster-whisper CT2 int8 pipeline. Registered
+        // in the catalog (model slug `faster-whisper-large-v3-turbo-int8`) but NOT the
+        // default until the D-4 artifact replaces MODEL_REPO_PLACEHOLDER.
         id: '81000000-0000-0000-0001-000000000008',
         tenantId: DEFAULT_TENANT_ID,
         name: 'Production Pipeline (Faster-Whisper Turbo CT2 int8)',
         slug: 'production-faster-whisper-turbo-int8',
         description: 'High-quality + fast production pipeline using whisper-large-v3-turbo converted to CTranslate2 int8 via faster-whisper. Carries diarization + dual capture. TASK-356 Phase 2 default.',
         configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
-        isDefault: true,
-        tags: ['production', 'faster-whisper', 'ctranslate2', 'int8', 'diarization', 'recommended'],
+        // TASK-361 — registered + catalog-visible, but NOT the default: its ASR
+        // model still carries the non-resolving MODEL_REPO_PLACEHOLDER (D-4).
+        isDefault: false,
+        tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
     },
     // =========================================================================
     // CODE-SWITCHING & LANGUAGE-SPECIFIC PIPELINES
@@ -1775,8 +1782,9 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         slug: 'production-whisper-large-v3',
         description: 'ArcaAI default production pipeline using Whisper Large V3 with VAD and noise reduction.',
         configYaml: PIPELINE_CONFIGS.production,
-        // TASK-356 Phase 2 — demoted in favour of the CT2 int8 pipeline (…0103).
-        isDefault: false,
+        // TASK-361 — restored as the effective default (resolvable artifact);
+        // CT2 int8 pipeline (…0103) deferred until the D-4 artifact is published.
+        isDefault: true,
         tags: ['production', 'high-quality', 'recommended'],
     },
     {
@@ -1790,15 +1798,17 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         tags: ['streaming', 'real-time', 'fast'],
     },
     {
-        // TASK-356 Phase 2 — ArcaAI CT2 int8 default.
+        // TASK-356 Phase 2 / TASK-361 — ArcaAI CT2 int8 pipeline (registered, not default until D-4).
         id: '81000000-0000-0000-0001-000000000103',
         tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
         name: 'ArcaAI Production Pipeline (Faster-Whisper Turbo CT2 int8)',
         slug: 'production-faster-whisper-turbo-int8',
         description: 'ArcaAI default production pipeline using whisper-large-v3-turbo CTranslate2 int8 (faster-whisper) with diarization + dual capture.',
         configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
-        isDefault: true,
-        tags: ['production', 'faster-whisper', 'ctranslate2', 'int8', 'diarization', 'recommended'],
+        // TASK-361 — registered + catalog-visible, but NOT the default: its ASR
+        // model still carries the non-resolving MODEL_REPO_PLACEHOLDER (D-4).
+        isDefault: false,
+        tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
     },
     // --- 4bits ---
     {
@@ -1808,8 +1818,9 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         slug: 'production-whisper-large-v3',
         description: '4bits default production pipeline using Whisper Large V3 with VAD and noise reduction.',
         configYaml: PIPELINE_CONFIGS.production,
-        // TASK-356 Phase 2 — demoted in favour of the CT2 int8 pipeline (…0203).
-        isDefault: false,
+        // TASK-361 — restored as the effective default (resolvable artifact);
+        // CT2 int8 pipeline (…0203) deferred until the D-4 artifact is published.
+        isDefault: true,
         tags: ['production', 'high-quality', 'recommended'],
     },
     {
@@ -1823,15 +1834,17 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         tags: ['streaming', 'real-time', 'fast'],
     },
     {
-        // TASK-356 Phase 2 — 4bits CT2 int8 default.
+        // TASK-356 Phase 2 / TASK-361 — 4bits CT2 int8 pipeline (registered, not default until D-4).
         id: '81000000-0000-0000-0001-000000000203',
         tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
         name: '4bits Production Pipeline (Faster-Whisper Turbo CT2 int8)',
         slug: 'production-faster-whisper-turbo-int8',
         description: '4bits default production pipeline using whisper-large-v3-turbo CTranslate2 int8 (faster-whisper) with diarization + dual capture.',
         configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
-        isDefault: true,
-        tags: ['production', 'faster-whisper', 'ctranslate2', 'int8', 'diarization', 'recommended'],
+        // TASK-361 — registered + catalog-visible, but NOT the default: its ASR
+        // model still carries the non-resolving MODEL_REPO_PLACEHOLDER (D-4).
+        isDefault: false,
+        tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
     },
     // --- Mumbai General Hospital ---
     {
@@ -1841,8 +1854,9 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         slug: 'production-whisper-large-v3',
         description: 'Mumbai General Hospital default production pipeline using Whisper Large V3 with VAD and noise reduction.',
         configYaml: PIPELINE_CONFIGS.production,
-        // TASK-356 Phase 2 — demoted in favour of the CT2 int8 pipeline (…0303).
-        isDefault: false,
+        // TASK-361 — restored as the effective default (resolvable artifact);
+        // CT2 int8 pipeline (…0303) deferred until the D-4 artifact is published.
+        isDefault: true,
         tags: ['production', 'high-quality', 'recommended'],
     },
     {
@@ -1856,15 +1870,17 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         tags: ['cpu', 'lightweight', 'low-resource'],
     },
     {
-        // TASK-356 Phase 2 — Mumbai CT2 int8 default.
+        // TASK-356 Phase 2 / TASK-361 — Mumbai CT2 int8 pipeline (registered, not default until D-4).
         id: '81000000-0000-0000-0001-000000000303',
         tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
         name: 'Mumbai Production Pipeline (Faster-Whisper Turbo CT2 int8)',
         slug: 'production-faster-whisper-turbo-int8',
         description: 'Mumbai General Hospital default production pipeline using whisper-large-v3-turbo CTranslate2 int8 (faster-whisper) with diarization + dual capture.',
         configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
-        isDefault: true,
-        tags: ['production', 'faster-whisper', 'ctranslate2', 'int8', 'diarization', 'recommended'],
+        // TASK-361 — registered + catalog-visible, but NOT the default: its ASR
+        // model still carries the non-resolving MODEL_REPO_PLACEHOLDER (D-4).
+        isDefault: false,
+        tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
     },
 ];
 
@@ -1899,8 +1915,10 @@ export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         slug: 'production-whisper-large-v3',
         description: 'Global tenant default production pipeline using Whisper Large V3 with VAD and noise reduction. Referenced by the tenant `default-stt-pipeline` setting.',
         configYaml: PIPELINE_CONFIGS.production,
-        // TASK-356 Phase 2 — demoted in favour of the CT2 int8 pipeline (…0403).
-        isDefault: false,
+        // TASK-361 — restored as the effective default (resolvable artifact);
+        // CT2 int8 pipeline (…0403) deferred until the D-4 artifact is published.
+        // Referenced by the tenant `default-stt-pipeline` GlobalSetting (91-user.ts).
+        isDefault: true,
         tags: ['production', 'high-quality', 'recommended'],
     },
     {
@@ -1914,16 +1932,19 @@ export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         tags: ['streaming', 'real-time', 'fast'],
     },
     {
-        // TASK-356 Phase 2 — Global tenant CT2 int8 default. Referenced by the
-        // tenant `default-stt-pipeline` GlobalSetting (91-user.ts).
+        // TASK-356 Phase 2 / TASK-361 — Global tenant CT2 int8 pipeline (registered,
+        // not default until D-4). The tenant `default-stt-pipeline` GlobalSetting now
+        // points at the resolvable production-whisper-large-v3 pipeline (…0401).
         id: '81000000-0000-0000-0001-000000000403',
         tenantId: SEED_TENANT_ID,
         name: 'Global Production Pipeline (Faster-Whisper Turbo CT2 int8)',
         slug: 'production-faster-whisper-turbo-int8',
         description: 'Global tenant default production pipeline using whisper-large-v3-turbo CTranslate2 int8 (faster-whisper) with diarization + dual capture.',
         configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
-        isDefault: true,
-        tags: ['production', 'faster-whisper', 'ctranslate2', 'int8', 'diarization', 'recommended'],
+        // TASK-361 — registered + catalog-visible, but NOT the default: its ASR
+        // model still carries the non-resolving MODEL_REPO_PLACEHOLDER (D-4).
+        isDefault: false,
+        tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
     },
 ];
 
@@ -2160,10 +2181,11 @@ export const DEFAULT_STT_SETTINGS = [
         namespace: 'stt.config',
         name: 'defaults',
         key: 'batch_pipeline_slug',
-        // TASK-356 Phase 2 — both batch + streaming defaults switch to the
-        // faster-whisper CT2 int8 pipeline.
-        value: 'production-faster-whisper-turbo-int8',
-        defaultValue: 'production-faster-whisper-turbo-int8',
+        // TASK-361 — both batch + streaming defaults point at the resolvable
+        // production-whisper-large-v3 pipeline. The faster-whisper CT2 int8
+        // pipeline stays registered but is deferred until the D-4 artifact lands.
+        value: 'production-whisper-large-v3',
+        defaultValue: 'production-whisper-large-v3',
         dataType: ValueType.String,
         description: 'Default pipeline slug for batch transcription',
     },
@@ -2173,10 +2195,11 @@ export const DEFAULT_STT_SETTINGS = [
         namespace: 'stt.config',
         name: 'defaults',
         key: 'streaming_pipeline_slug',
-        // TASK-356 Phase 2 — both batch + streaming defaults switch to the
-        // faster-whisper CT2 int8 pipeline.
-        value: 'production-faster-whisper-turbo-int8',
-        defaultValue: 'production-faster-whisper-turbo-int8',
+        // TASK-361 — both batch + streaming defaults point at the resolvable
+        // production-whisper-large-v3 pipeline. The faster-whisper CT2 int8
+        // pipeline stays registered but is deferred until the D-4 artifact lands.
+        value: 'production-whisper-large-v3',
+        defaultValue: 'production-whisper-large-v3',
         dataType: ValueType.String,
         description: 'Default pipeline slug for streaming transcription',
     },
@@ -2325,13 +2348,19 @@ export const seedAsrPipelines = async (client: CorePrismaClient) => {
 };
 
 // =============================================================================
-// TASK-356 Phase 2 — DEFAULT ASR PIPELINE RECONCILIATION (no double-default)
+// DEFAULT ASR PIPELINE RECONCILIATION (no double-default)
+//
+// TASK-356 Phase 2 set the faster-whisper CT2 int8 pipeline as the default.
+// TASK-361 reverses that: the CT2 model carries a non-resolving placeholder
+// sourceUri (MODEL_REPO_PLACEHOLDER, pending the D-4 publish), so it cannot be
+// the effective default. We restore the resolvable production-whisper-large-v3
+// pipeline as the default while keeping the CT2 pipeline registered.
 // =============================================================================
 
-/** Prior seed default (Whisper Large V3 safetensor) demoted in Phase 2. */
-export const STT_OLD_DEFAULT_PIPELINE_SLUG = 'production-whisper-large-v3';
-/** New seed default (faster-whisper whisper-large-v3-turbo CTranslate2 int8). */
-export const STT_NEW_DEFAULT_PIPELINE_SLUG = 'production-faster-whisper-turbo-int8';
+/** Resolvable production default (whisper-large-v3-turbo, safetensor). Restored as the effective default in TASK-361. */
+export const STT_DEFAULT_PIPELINE_SLUG = 'production-whisper-large-v3';
+/** Faster-whisper CT2 int8 pipeline — registered but NOT default until the D-4 artifact replaces MODEL_REPO_PLACEHOLDER (TASK-361). */
+export const STT_PLACEHOLDER_PIPELINE_SLUG = 'production-faster-whisper-turbo-int8';
 
 /**
  * Every tenant that owns ASR pipelines in the seed: the SYSTEM master catalog
@@ -2347,67 +2376,72 @@ export const STT_DEFAULT_PIPELINE_BACKFILL_TENANTS = [
 ];
 
 /**
- * TASK-356 Phase 2 — migrate EXISTING databases to the faster-whisper CT2 int8
- * default without creating a second default.
+ * TASK-361 — reconcile EXISTING databases back to the resolvable
+ * production-whisper-large-v3 default without creating a second default.
  *
- * `seedAsrPipelines` deliberately never clobbers `isDefault` on update, so on an
- * existing DB the freshly-created CT2 row arrives as `isDefault: true` while the
- * prior default (production-whisper-large-v3) is still `isDefault: true` — two
- * defaults for one tenant. This backfill reconciles each tenant to EXACTLY ONE
- * default, while respecting an admin who already moved the default elsewhere:
+ * TASK-356 Phase 2 promoted the faster-whisper CT2 int8 pipeline to the default,
+ * but its model carries a non-resolving placeholder sourceUri (D-4), so it must
+ * not be the effective default. `seedAsrPipelines` deliberately never clobbers
+ * `isDefault` on update, so a DB previously switched to CT2 still has CT2 as its
+ * default after re-seed. This backfill reconciles each tenant to EXACTLY ONE
+ * default — the resolvable target — while respecting an admin's resolvable pick:
  *
- *   - prior default is still the untouched OLD production slug → demote it and
- *     promote CT2 (CT2 becomes the default);
- *   - admin already picked a different default (e.g. turbo) → keep their choice
- *     and demote the freshly-seeded CT2 instead;
- *   - CT2 is already the sole default (fresh seed) → no-op.
+ *   - CT2 is the current default (TASK-356 Phase 2 auto-promotion) → demote it
+ *     and promote production-whisper-large-v3 (the resolvable default);
+ *   - admin already picked a different RESOLVABLE default (e.g. turbo) → keep
+ *     their choice and just ensure the placeholder CT2 is not also a default;
+ *   - production-whisper-large-v3 is already the sole default (fresh seed) → no-op.
  *
- * Idempotent: re-running converges to the same single-default state and performs
- * no writes once converged.
+ * The non-resolving placeholder CT2 is never left as a default, even if it was
+ * the current `isDefault` row. Idempotent: re-running converges to the same
+ * single-default state and performs no writes once converged.
  */
 export const switchDefaultSttPipeline = async (client: CorePrismaClient) => {
-    console.log('Reconciling default ASR pipeline (TASK-356 Phase 2)...');
+    console.log('Reconciling default ASR pipeline (TASK-361)...');
     let switched = 0;
     let skipped = 0;
 
     for (const tenantId of STT_DEFAULT_PIPELINE_BACKFILL_TENANTS) {
-        const ct2 = await client.asrPipeline.findFirst({
-            where: { tenantId, slug: STT_NEW_DEFAULT_PIPELINE_SLUG },
+        const target = await client.asrPipeline.findFirst({
+            where: { tenantId, slug: STT_DEFAULT_PIPELINE_SLUG },
         });
-        // CT2 pipeline not seeded for this tenant — nothing to reconcile.
-        if (!ct2) {
+        // Resolvable default pipeline not seeded for this tenant — nothing to reconcile.
+        if (!target) {
             continue;
         }
 
         const currentDefaults = await client.asrPipeline.findMany({
             where: { tenantId, isDefault: true },
         });
-        const otherDefaults = currentDefaults.filter((p) => p.id !== ct2.id);
-        const adminPicked = otherDefaults.find((p) => p.slug !== STT_OLD_DEFAULT_PIPELINE_SLUG);
+        const otherDefaults = currentDefaults.filter((p) => p.id !== target.id);
+        // An admin explicitly chose some OTHER resolvable pipeline — i.e. a default
+        // that is neither the resolvable target nor the non-resolving placeholder CT2.
+        const adminPicked = otherDefaults.find((p) => p.slug !== STT_PLACEHOLDER_PIPELINE_SLUG);
 
         let touched = false;
         if (adminPicked) {
-            // Respect the admin's explicit default; ensure CT2 is not a second
-            // default and demote any stale OLD-slug default too.
-            if (ct2.isDefault) {
-                await client.asrPipeline.update({ where: { id: ct2.id }, data: { isDefault: false } });
+            // Respect the admin's resolvable default; ensure the target is not a
+            // second default and demote any stale placeholder-CT2 default too.
+            if (target.isDefault) {
+                await client.asrPipeline.update({ where: { id: target.id }, data: { isDefault: false } });
                 touched = true;
             }
             for (const stale of otherDefaults) {
-                if (stale.slug === STT_OLD_DEFAULT_PIPELINE_SLUG && stale.isDefault) {
+                if (stale.slug === STT_PLACEHOLDER_PIPELINE_SLUG && stale.isDefault) {
                     await client.asrPipeline.update({ where: { id: stale.id }, data: { isDefault: false } });
                     touched = true;
                 }
             }
         } else {
-            // No admin override → CT2 is the intended sole default. Demote any
-            // OLD-slug defaults and promote CT2 if needed.
+            // No admin override → the resolvable target is the intended sole default.
+            // Demote any other defaults (including the placeholder CT2) and promote
+            // the target if needed.
             for (const stale of otherDefaults) {
                 await client.asrPipeline.update({ where: { id: stale.id }, data: { isDefault: false } });
                 touched = true;
             }
-            if (!ct2.isDefault) {
-                await client.asrPipeline.update({ where: { id: ct2.id }, data: { isDefault: true } });
+            if (!target.isDefault) {
+                await client.asrPipeline.update({ where: { id: target.id }, data: { isDefault: true } });
                 touched = true;
             }
         }
@@ -2478,9 +2512,10 @@ export const seedStt = async (client: CorePrismaClient) => {
         await seedAsrPipelines(client);
         console.log('');
 
-        // TASK-356 Phase 2 — reconcile the default pipeline to the CT2 int8
-        // pipeline on existing DBs (seedAsrPipelines won't clobber isDefault on
-        // update, so without this an existing DB would have two defaults).
+        // TASK-361 — reconcile the default pipeline back to the resolvable
+        // production-whisper-large-v3 on existing DBs (seedAsrPipelines won't
+        // clobber isDefault on update, and the non-resolving CT2 placeholder must
+        // not remain the default until the D-4 artifact lands).
         await switchDefaultSttPipeline(client);
         console.log('');
 
