@@ -22,6 +22,7 @@ import { JobMetricsService } from '../../../baseServices/observability/job-metri
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-v2-generate';
 import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
+import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
 import { assertEqualTenants, createWorkerSession } from '../../../../common';
 
@@ -60,6 +61,10 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     // TASK-356 D-7 — resolver for the tenant's effective SMR {provider, model}.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
+    // TASK-362 — load the requesting doctor's preferred prompt id so this async
+    // comprehensive path threads it into BOTH resolution and assembly (was dropped
+    // here before). Optional + trailing so existing positional fixtures keep compiling.
+    @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
   ) {
     super();
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -97,6 +102,13 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         }
         // TASK-305 D.9.2 — defense in depth against a poisoned / stale payload.
         assertEqualTenants(consultation, { tenantId });
+
+        // TASK-362 — resolve the requesting doctor's preferred prompt id once so
+        // BOTH prompt resolution and assembly thread it (this async comprehensive
+        // path dropped it before). Null-safe + no-op when the resolver isn't wired.
+        const preferredPromptTemplateId = this.configResolver
+          ? await this.configResolver.resolvePreferredPromptTemplateId(consultation.doctorId ?? null)
+          : undefined;
 
         const linkedConsultations = await this.chainSummaryService.resolveLinkedConsultations(consultation);
         if (linkedConsultations.length === 0) {
@@ -143,6 +155,8 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
           const resolved = await this.promptResolutionService.resolve({
             departmentId: consultation.departmentId ?? undefined,
             explicitTemplate: request.template,
+            // TASK-362 — thread the doctor's preferred prompt id into resolution.
+            preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
           });
           resolvedRequest = {
             ...request,
@@ -153,7 +167,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         // Step 4: Call SMR service (60%)
         await this.jobService.notifyProgress(jobId, 60, 'Generating comprehensive summary with AI');
 
-        const smrResponse = await this.callSmrService(consultation, sections, aggregatedEntities, resolvedRequest, jobId);
+        const smrResponse = await this.callSmrService(consultation, sections, aggregatedEntities, resolvedRequest, preferredPromptTemplateId, jobId);
 
         // Step 5: Save results (85%)
         await this.jobService.notifyProgress(jobId, 85, 'Saving results');
@@ -245,6 +259,8 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         >
       | undefined,
     request: GenerateComprehensiveSummaryJobPayload['request'],
+    // TASK-362 — doctor's preferred prompt id, threaded into assembly below.
+    preferredPromptTemplateId: string | null | undefined,
     jobId?: string,
   ): Promise<{
     summary: string;
@@ -287,6 +303,8 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
       conversationLanguage: this.resolveConversationLanguage(request.options),
       dnaStyleId: request.dnaStyleId,
       explicitTemplate: request.template ?? 'comprehensive',
+      // TASK-362 — thread the doctor's preferred prompt id into assembly.
+      preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
     });
 
     try {

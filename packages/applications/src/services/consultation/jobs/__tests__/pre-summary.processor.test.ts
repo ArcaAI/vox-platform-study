@@ -97,6 +97,9 @@ const createMockClsService = () => {
     return mock;
 };
 
+// Mock ConfigResolver (TASK-362 — doctor-preferred prompt id threading).
+const createMockConfigResolver = () => ({ resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null) });
+
 // =============================================================================
 // Realistic Mock Data Factories - These match actual SMR service responses
 // =============================================================================
@@ -210,6 +213,55 @@ describe('PreSummaryProcessor', () => {
             undefined, // secretsService (@Optional)
             mockHarnessPolicyService as any, // TASK-356 D-7 — HarnessPolicyService resolver
         );
+    });
+
+    // ── TASK-362: the pre-summary BullMQ path threads the preferred prompt id ──
+    describe('preferred-prompt threading (TASK-362)', () => {
+        let mockConfigResolver: ReturnType<typeof createMockConfigResolver>;
+        let processorWithResolver: PreSummaryProcessor;
+
+        beforeEach(() => {
+            mockConfigResolver = createMockConfigResolver();
+            processorWithResolver = new PreSummaryProcessor(
+                mockJobService as any,
+                mockContextItemRepository as any,
+                mockConsultationRepository as any,
+                mockHttpService as any,
+                mockConfigService as any,
+                mockPromptResolutionService as any,
+                mockPromptAssemblyService as any,
+                mockJobMetrics as any,
+                mockClsService as any,
+                undefined, // secretsService
+                mockHarnessPolicyService as any,
+                mockConfigResolver as any, // TASK-362 — ConfigResolver
+            );
+
+            mockConsultationRepository.findById.mockResolvedValue(createMockConsultation({ doctorId: 'dr-1' }));
+            mockContextItemRepository.findByConsultation.mockResolvedValue([createMockContextItem({ content: 'case note content' })]);
+            mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
+            mockContextItemRepository.create.mockResolvedValue({ id: 'pre-sum-id', content: 'S' });
+        });
+
+        it('threads the doctor preferred prompt id into resolve + assemble', async () => {
+            mockConfigResolver.resolvePreferredPromptTemplateId.mockResolvedValue('tpl-preferred');
+
+            await processorWithResolver.process(createMockJob({
+                jobId: 'job-pref',
+                consultationId: 'c-1',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+                request: {},
+            } as GeneratePreSummaryJobPayload));
+
+            expect(mockConfigResolver.resolvePreferredPromptTemplateId).toHaveBeenCalledWith('dr-1');
+            expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(
+                expect.objectContaining({ preferredPromptTemplateId: 'tpl-preferred' }),
+            );
+            expect(mockPromptAssemblyService.assemble).toHaveBeenCalledWith(
+                expect.objectContaining({ preferredPromptTemplateId: 'tpl-preferred' }),
+            );
+        });
     });
 
     // ── TASK-356 D-7 (T-C4): the SMR call carries the cascade-resolved model ──
