@@ -89,7 +89,7 @@ export class PipelinePolicyAdminController {
     summary: 'Create or update ONE policy row (sparse patch) under optimistic concurrency',
     description:
       'Pins/clears the supplied toggles at the requested scope (omit = unchanged, `null` = clear/inherit). The ' +
-      '`If-Match` header (RFC 7232) is REQUIRED on an existing row and CAS\'es against `_version` (drift → 412, ' +
+      "`If-Match` header (RFC 7232) is REQUIRED on an existing row and CAS'es against `_version` (drift → 412, " +
       'missing → 428); every edit appends a WORM `PipelinePolicyChange` in the same transaction. A toggle pinned ' +
       'beyond its registered max scope (e.g. `harnessEnabled` at DOCTOR) is rejected with 400.',
   })

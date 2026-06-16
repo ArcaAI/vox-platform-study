@@ -119,7 +119,7 @@ export const queueKeys = {
   job: (queueName: string, jobId: string) => [...queueKeys.all, queueName, 'job', jobId] as const,
 };
 
-function qs(params?: Record<string, unknown>): string {
+function qs(params?: object): string {
   if (!params) return '';
   const entries = Object.entries(params).filter(([, v]) => v != null && v !== '');
   if (entries.length === 0) return '';

@@ -155,10 +155,7 @@ export function isSTTCaptureWorkletRegistered(audioContext: AudioContext): boole
  *
  * @throws if the worklet has not been registered for the given context.
  */
-export function createSTTCaptureWorkletNode(
-  audioContext: AudioContext,
-  options?: STTCaptureWorkletNodeOptions,
-): AudioWorkletNode {
+export function createSTTCaptureWorkletNode(audioContext: AudioContext, options?: STTCaptureWorkletNodeOptions): AudioWorkletNode {
   if (!loader.isRegistered(audioContext)) {
     throw new Error('[STT-Capture] Worklet not registered. Call registerSTTCaptureWorklet first.');
   }

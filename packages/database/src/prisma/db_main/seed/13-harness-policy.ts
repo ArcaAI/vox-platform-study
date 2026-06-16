@@ -114,7 +114,7 @@ export const seedHarnessPolicy = async (
                 tenantId: SYSTEM_TENANT_ID,
                 changedBy: SYSTEM_USER_ID,
                 policyVersion: (created as { version?: number }).version ?? null,
-                beforeJson: null,
+                beforeJson: null as unknown as object,
                 afterJson: snapshotKnobs(created as Record<string, unknown>) as unknown as object,
                 reason: SEED_CHANGE_REASON,
             },

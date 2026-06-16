@@ -132,7 +132,7 @@ describe('seedApiKey uses the resolved Vault pepper for keyHash (TASK-352)', () 
         stubVaultFetch();
         vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
-        const upsert = vi.fn(async () => ({}));
+        const upsert = vi.fn(async (_args: unknown) => ({}));
         const client = { apiKey: { upsert } } as never;
 
         await seedApiKey(client);

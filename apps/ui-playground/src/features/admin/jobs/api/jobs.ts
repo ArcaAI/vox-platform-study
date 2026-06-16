@@ -105,7 +105,7 @@ export const adminJobKeys = {
   transcriptionStats: (tenantId?: string) => [...adminJobKeys.all(tenantId), 'transcription-jobs', 'stats'] as const,
 };
 
-function qs(params?: Record<string, unknown>): string {
+function qs(params?: object): string {
   if (!params) return '';
   const entries = Object.entries(params).filter(([, v]) => v != null && v !== '');
   if (entries.length === 0) return '';

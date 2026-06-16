@@ -75,11 +75,7 @@ export function CapturePanel({ consultationId, recording, onRecordingStarted, on
   // Unified live-capture view: the LOCAL browser pipeline and the BACKEND STT-WS
   // path expose streaming state + transcript chunks through different hooks.
   const isStreaming = isLocalTranscription ? localAudio.isCapturing : realtime.isStreaming;
-  const captureError = isLocalTranscription
-    ? localAudio.error instanceof Error
-      ? localAudio.error.message
-      : null
-    : realtime.error;
+  const captureError = isLocalTranscription ? (localAudio.error instanceof Error ? localAudio.error.message : null) : realtime.error;
   const transcriptEntries = isLocalTranscription
     ? localAudio.transcriptSegments.map((seg, i) => ({
         id: `local-${i}`,
@@ -123,7 +119,7 @@ export function CapturePanel({ consultationId, recording, onRecordingStarted, on
     if (isLocalTranscription) {
       setIntent('starting');
       try {
-        await localAudio.start({ consultationId });
+        await localAudio.start();
         if (apiClient && !recordingStartedRef.current) {
           recordingStartedRef.current = true;
           const state = await startRecording(apiClient, consultationId);

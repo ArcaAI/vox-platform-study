@@ -46,6 +46,17 @@ export { useNoiseFilter } from '@arcaai/noise-filter';
 export type { UseNoiseFilterOptions, UseNoiseFilterReturn } from '@arcaai/noise-filter';
 
 // =============================================================================
+// SDK Audio Hook (TASK-356 Phase 4 Hotfix H-1)
+// =============================================================================
+//
+// `useArcaAudio` is the SDK's first-party audio facade (capture / mute / plugin
+// control). Its `UseArcaAudio` *type* ships from `@arcaai/vox/core`, but the
+// runtime hook is surfaced here so it flows through the full `@arcaai/vox`
+// barrel WITHOUT adding audio code to the `core` public API (core stays
+// audio-free; core consumers use `useArca().audio`).
+export { useArcaAudio } from './hooks/useArcaAudio';
+
+// =============================================================================
 // Plugin Manager
 // =============================================================================
 

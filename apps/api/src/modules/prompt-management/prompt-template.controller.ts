@@ -65,8 +65,8 @@ export class PromptTemplateController {
   @ApiOperation({
     summary: "Set or clear the calling clinician's preferred prompt template (TASK-356 Phase 6)",
     description:
-      "Writes `UserProfile.preferredPromptTemplateId` for the caller. The id MUST be visible to the caller " +
-      "(own personal prompts + published defaults); `templateId: null` clears the preference (revert to the " +
+      'Writes `UserProfile.preferredPromptTemplateId` for the caller. The id MUST be visible to the caller ' +
+      '(own personal prompts + published defaults); `templateId: null` clears the preference (revert to the ' +
       'department/tenant default tier resolved by the Phase-5 cascade).',
   })
   @ApiResponse({ status: 200, description: 'The resulting preferred template id', type: PreferredPromptTemplateResponse })
@@ -99,7 +99,12 @@ export class PromptTemplateController {
       'is rejected (403); a cross-tenant id is hidden behind 404.',
   })
   @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })
-  @ApiHeader({ name: 'If-Match', description: 'RFC 7232 strong validator carrying the row version the client read (e.g. `"1"`).', required: true, example: '"1"' })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the row version the client read (e.g. `"1"`).',
+    required: true,
+    example: '"1"',
+  })
   @ApiResponse({ status: 200, description: 'The updated personal template', type: PromptTemplateResponse })
   @ApiResponse({ status: 403, description: 'Caller does not own this personal template' })
   @ApiResponse({ status: 404, description: 'Template not found' })

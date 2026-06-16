@@ -63,9 +63,7 @@ export function computeAnchor(fullText: string, start: number, end: number): Hig
 }
 
 /** Outcome of a re-attachment attempt against (possibly changed) text. */
-export type ReattachResult =
-  | { status: 'position' | 'quote' | 'fuzzy'; position: TextPositionSelector }
-  | { status: 'orphaned' };
+export type ReattachResult = { status: 'position' | 'quote' | 'fuzzy'; position: TextPositionSelector } | { status: 'orphaned' };
 
 /**
  * Re-anchor `anchor` against `fullText`, degrading through three tiers:
@@ -86,7 +84,14 @@ export function reattachAnchor(fullText: string, anchor: HighlightAnchor | null 
   const pos = anchor.position;
 
   // 1) Position tier — trust the offsets only if the exact text is still there.
-  if (pos && Number.isInteger(pos.start) && Number.isInteger(pos.end) && pos.start >= 0 && pos.end <= fullText.length && fullText.slice(pos.start, pos.end) === exact) {
+  if (
+    pos &&
+    Number.isInteger(pos.start) &&
+    Number.isInteger(pos.end) &&
+    pos.start >= 0 &&
+    pos.end <= fullText.length &&
+    fullText.slice(pos.start, pos.end) === exact
+  ) {
     return { status: 'position', position: { start: pos.start, end: pos.end } };
   }
 

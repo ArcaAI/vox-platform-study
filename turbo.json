@@ -92,6 +92,7 @@
         "DATABASE_URL",
         "PORT",
         "STT_V2_URL",
+        "STT_WS_EGRESS_HIGH_WATERMARK_BYTES",
         "LLM_URL",
         "NLP_URL",
         "NLP_SERVICE_URL",

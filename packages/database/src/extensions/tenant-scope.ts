@@ -110,6 +110,9 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // knowledge.prisma (2) — TASK-330 Phase 3 institutional RAG corpus
   'KnowledgeDocument',
   'KnowledgeChunk',
+  // pipeline-policy.prisma (2) — TASK-356 Phase 5 realtime-cascade policy.
+  'PipelinePolicy', // also a SYSTEM-shared read model (global-default row, below)
+  'PipelinePolicyChange', // append-only WORM change log (no soft-delete)
 ]);
 
 /**
@@ -164,6 +167,11 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // but never mutate the SYSTEM-owned global default (only a platform admin can,
   // through the dedicated global-default service path).
   'HarnessPolicy',
+  // TASK-356 Phase 5 — the realtime-cascade GLOBAL-DEFAULT policy row is owned
+  // by the SYSTEM tenant and read by every tenant's ConfigResolver cascade
+  // (doctor→department→tenant→SYSTEM default). READS widen to [caller, SYSTEM];
+  // WRITES are NOT widened (only a platform admin mutates the SYSTEM default).
+  'PipelinePolicy',
 ]);
 
 export function isSystemSharedReadModel(model: string): boolean {

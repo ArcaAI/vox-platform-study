@@ -17,12 +17,7 @@ import { X } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useCreateHighlightMutation, useDeleteHighlightMutation, useHighlightsQuery } from '../api/queries';
-import {
-  buildHighlightSegments,
-  computeAnchorFromSelection,
-  resolveHighlights,
-  type HighlightAnchor,
-} from '../lib/highlight-anchoring';
+import { buildHighlightSegments, computeAnchorFromSelection, resolveHighlights, type HighlightAnchor } from '../lib/highlight-anchoring';
 import type { HighlightTargetKind, WorkspaceHighlight } from '../types';
 
 /** A selectable highlight color (light enough to read dark text on). */
@@ -149,7 +144,15 @@ interface ManualHighlightSurfaceProps {
  * `sourceContextItemId`), and wires select/remove to the create/delete
  * mutations (which invalidate the highlights cache on success).
  */
-export function ManualHighlightSurface({ consultationId, targetKind, sourceContextItemId, text, readOnly, className, ...rest }: ManualHighlightSurfaceProps) {
+export function ManualHighlightSurface({
+  consultationId,
+  targetKind,
+  sourceContextItemId,
+  text,
+  readOnly,
+  className,
+  ...rest
+}: ManualHighlightSurfaceProps) {
   const highlightsQuery = useHighlightsQuery(consultationId);
   const createMutation = useCreateHighlightMutation(consultationId);
   const deleteMutation = useDeleteHighlightMutation(consultationId);

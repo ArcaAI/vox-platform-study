@@ -137,9 +137,7 @@ export default function MyPromptsPage() {
                 <FileText className="size-6" />
                 My Prompts
               </h2>
-              <p className="text-muted-foreground mt-1">
-                Author your own prompt templates and pick the one used by default for your documentation.
-              </p>
+              <p className="text-muted-foreground mt-1">Author your own prompt templates and pick the one used by default for your documentation.</p>
             </div>
             {!requiresImpersonation && (
               <Button onClick={() => setCreateOpen(true)}>
@@ -197,12 +195,22 @@ export default function MyPromptsPage() {
                                   Delete
                                 </Button>
                                 {preferredId === p.id ? (
-                                  <Button variant="ghost" size="sm" onClick={() => handleSetPreferred(null)} disabled={setPreferredMutation.isPending}>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleSetPreferred(null)}
+                                    disabled={setPreferredMutation.isPending}
+                                  >
                                     <StarOff className="mr-1.5 size-3.5" />
                                     Clear preferred
                                   </Button>
                                 ) : (
-                                  <Button variant="ghost" size="sm" onClick={() => handleSetPreferred(p.id)} disabled={setPreferredMutation.isPending}>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleSetPreferred(p.id)}
+                                    disabled={setPreferredMutation.isPending}
+                                  >
                                     <Star className="mr-1.5 size-3.5" />
                                     Set as preferred
                                   </Button>
@@ -303,9 +311,7 @@ export default function MyPromptsPage() {
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete personal prompt?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will remove “{deleting?.name}”. This action cannot be undone.
-                </AlertDialogDescription>
+                <AlertDialogDescription>This will remove “{deleting?.name}”. This action cannot be undone.</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
