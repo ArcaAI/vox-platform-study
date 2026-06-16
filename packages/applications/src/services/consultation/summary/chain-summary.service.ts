@@ -21,6 +21,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
+import { ConfigResolver } from '../../config-resolver';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 
 /**
@@ -59,6 +60,11 @@ export class ChainSummaryService extends BaseService {
     // existing positional test fixtures keep compiling; production DI always
     // supplies it (ChainSummaryServiceModule).
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
+    // TASK-362 — resolve the requesting doctor's preferred prompt template id
+    // (UserProfile.preferredPromptTemplateId) so the sync chain-summary path
+    // honors Tier-0 prompt selection. Optional + trailing so existing positional
+    // test fixtures keep compiling; production DI supplies it (ChainSummaryServiceModule).
+    @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -83,6 +89,13 @@ export class ChainSummaryService extends BaseService {
     // throws `NotFoundException` for both missing and cross-tenant so
     // the response never leaks the existence of a foreign-tenant id.
     const consultation = await assertParentInScope(this.consultationRepository, consultationId, tenantId);
+
+    // TASK-362 — resolve the requesting doctor's preferred prompt template id once,
+    // keyed off the consultation the comprehensive artifact is written to, so it can
+    // be threaded into promptAssemblyService.assemble (Tier-0 prompt selection).
+    const preferredPromptTemplateId = this.configResolver
+      ? await this.configResolver.resolvePreferredPromptTemplateId(consultation.doctorId ?? null)
+      : undefined;
 
     // Step 1: Resolve all linked consultations (chain + same-day)
     const linkedConsultations = await this.resolveLinkedConsultations(consultation);
@@ -132,7 +145,7 @@ export class ChainSummaryService extends BaseService {
     }
 
     // Step 4: Compose structured input and assemble final prompt for SMR
-    const smrInput = await this.composeSmrInput(consultation, sections, aggregatedEntities, request);
+    const smrInput = await this.composeSmrInput(consultation, sections, aggregatedEntities, request, preferredPromptTemplateId);
 
     // Step 5: Call SMR service
     const smrResponse = await this.callSmrService(smrInput, request);
@@ -406,6 +419,8 @@ export class ChainSummaryService extends BaseService {
         >
       | undefined,
     request: ComprehensiveSummaryRequest,
+    // TASK-362 — requesting doctor's preferred prompt template id (Tier-0).
+    preferredPromptTemplateId: string | null | undefined,
   ): Promise<{
     assembledPrompt: {
       userPrompt: string;
@@ -456,6 +471,8 @@ export class ChainSummaryService extends BaseService {
       conversationLanguage: this.resolveConversationLanguage(request.options),
       dnaStyleId: request.dnaStyleId,
       explicitTemplate: request.template ?? 'comprehensive',
+      // TASK-362 — thread the requesting doctor's preferred prompt template id (Tier-0).
+      preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
     });
 
     return {

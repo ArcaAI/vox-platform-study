@@ -160,6 +160,9 @@ function createService() {
     const harnessPolicyService = {
         resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
     };
+    // TASK-362 — doctor-preferred prompt id resolver. Defaults to null so the
+    // existing fixtures (no doctor preference) are unaffected.
+    const configResolver = { resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null) };
 
     const service = new ChainSummaryService(
         contextItemRepo as any,
@@ -173,6 +176,7 @@ function createService() {
         promptAssemblyService as any,
         undefined, // secretsService (@Optional)
         harnessPolicyService as any, // TASK-356 D-7 — HarnessPolicyService resolver
+        configResolver as any, // TASK-362 — preferred-prompt resolver
     );
 
     return {
@@ -187,6 +191,7 @@ function createService() {
         clsService,
         promptAssemblyService,
         harnessPolicyService,
+        configResolver,
     };
 }
 
@@ -233,6 +238,36 @@ describe('ChainSummaryService', () => {
 
             const body = mocks.httpService.axiosRef.post.mock.calls[0][1] as { model?: string };
             expect(body.model).toBe('caller-pinned');
+        });
+    });
+
+    // ── TASK-362 — the sync chain-summary REST path must thread the requesting
+    //    doctor's preferred prompt template id (UserProfile.preferredPromptTemplateId,
+    //    resolved via ConfigResolver off the requesting consultation's doctorId)
+    //    into promptAssemblyService.assemble so Tier-0 prompt selection is honored.
+    describe('preferred-prompt threading (TASK-362)', () => {
+        const primeComprehensive = () => {
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+            mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+            mocks.contextItemRepo.findSummaries.mockResolvedValue([createContextItem({ content: 'Findings.' })]);
+            mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+            mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+            mocks.httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Result.' } });
+        };
+
+        it('resolves the preferred id off the requesting consultation doctorId and threads it into assemble', async () => {
+            mocks.configResolver.resolvePreferredPromptTemplateId.mockResolvedValue('tpl-preferred');
+            primeComprehensive();
+
+            await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
+
+            // doctorId for the default consultation fixture is 'doctor-A' (createConsultation).
+            expect(mocks.configResolver.resolvePreferredPromptTemplateId).toHaveBeenCalledWith('doctor-A');
+            expect(mocks.promptAssemblyService.assemble).toHaveBeenCalledWith(
+                expect.objectContaining({ preferredPromptTemplateId: 'tpl-preferred' }),
+            );
         });
     });
 

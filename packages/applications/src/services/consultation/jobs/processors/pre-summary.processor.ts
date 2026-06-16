@@ -13,6 +13,7 @@ import { JobMetricsService } from '../../../baseServices/observability/job-metri
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-v2-generate';
 import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
+import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
 import { assertEqualTenants, createWorkerSession } from '../../../../common';
 
@@ -34,6 +35,11 @@ export class PreSummaryProcessor extends WorkerHost {
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     // TASK-356 D-7 — resolver for the tenant's effective SMR {provider, model}.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
+    // TASK-362 — load the consulting doctor's preferred prompt id so the
+    // pre-summary BullMQ path threads it (was previously dropped here, unlike
+    // summary.processor). Optional + trailing so existing positional fixtures
+    // keep compiling.
+    @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
   ) {
     super();
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -73,11 +79,19 @@ export class PreSummaryProcessor extends WorkerHost {
         // TASK-305 D.9.2 — defense in depth against a poisoned / stale payload.
         assertEqualTenants(consultation, { tenantId });
 
+        // TASK-362 — resolve the consulting doctor's preferred prompt id once so
+        // BOTH the prompt resolution and assembly thread it (the pre-summary path
+        // previously dropped it). Null-safe + no-op when the resolver isn't wired.
+        const preferredPromptTemplateId = this.configResolver
+          ? await this.configResolver.resolvePreferredPromptTemplateId(consultation.doctorId ?? null)
+          : undefined;
+
         // Resolve prompt config for pre-summary (GAP-3)
         // DNA style is per-doctor and resolved separately — not part of prompt resolution (TASK-025).
         const resolved = await this.promptResolutionService.resolve({
           departmentId: consultation.departmentId ?? undefined,
           promptType: 'pre-summary',
+          preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
         });
 
         this.logger.debug({
@@ -112,6 +126,8 @@ export class PreSummaryProcessor extends WorkerHost {
           transcript: content,
           conversationLanguage: this.resolveConversationLanguage(request.options),
           dnaStyleId: request.dnaStyleId,
+          // TASK-362 — thread the doctor-preferred prompt id into assembly.
+          preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
         });
 
         // Step 2: Calling AI service (30%)

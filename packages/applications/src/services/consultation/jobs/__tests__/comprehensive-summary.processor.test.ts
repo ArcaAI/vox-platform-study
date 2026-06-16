@@ -204,6 +204,8 @@ function createProcessor() {
     const harnessPolicyService = {
         resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'resolved-medgemma' }),
     };
+    // TASK-362 — doctor-preferred prompt id resolver. Default null keeps existing tests unaffected.
+    const configResolver = { resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null) };
 
     const processor = new ComprehensiveSummaryProcessor(
         jobService as any,
@@ -220,6 +222,7 @@ function createProcessor() {
         clsService as any,
         undefined, // secretsService (@Optional)
         harnessPolicyService as any, // TASK-356 D-7 — HarnessPolicyService resolver
+        configResolver as any, // TASK-362 — ConfigResolver (doctor-preferred prompt id)
     );
 
     return {
@@ -237,6 +240,7 @@ function createProcessor() {
         jobMetrics,
         clsService,
         harnessPolicyService,
+        configResolver,
     };
 }
 
@@ -1006,6 +1010,53 @@ describe('ComprehensiveSummaryProcessor', () => {
 
             expect(mocks.contextItemRepo.create).not.toHaveBeenCalled();
             expect(mocks.jobService.notifyFailed).toHaveBeenCalled();
+        });
+    });
+
+    // ===========================================================================
+    // TASK-362 — thread the requesting doctor's preferred prompt template id into
+    // BOTH prompt resolution and assembly (this async path previously dropped it).
+    // ===========================================================================
+
+    describe('preferred-prompt threading (TASK-362)', () => {
+        const setupSuccessfulJob = () => {
+            const consultation = createConsultation();
+            mocks.consultationRepo.findById.mockResolvedValue(consultation);
+            mocks.chainSummaryService.resolveLinkedConsultations.mockResolvedValue([consultation]);
+            mocks.chainSummaryService.gatherSections.mockResolvedValue([createSection()]);
+            mocks.httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Result.' } });
+        };
+
+        it('threads the preferred prompt id into promptResolutionService.resolve when template is omitted', async () => {
+            setupSuccessfulJob();
+            mocks.configResolver.resolvePreferredPromptTemplateId.mockResolvedValue('tpl-preferred');
+
+            // request omits `template`, so the resolve() branch runs.
+            await mocks.processor.process(createMockJob(createDefaultPayload({ request: { includeNER: false } })));
+
+            expect(mocks.promptResolutionService.resolve).toHaveBeenCalledWith(
+                expect.objectContaining({ preferredPromptTemplateId: 'tpl-preferred' }),
+            );
+        });
+
+        it('threads the preferred prompt id into promptAssemblyService.assemble', async () => {
+            setupSuccessfulJob();
+            mocks.configResolver.resolvePreferredPromptTemplateId.mockResolvedValue('tpl-preferred');
+
+            await mocks.processor.process(createMockJob(createDefaultPayload({ request: { includeNER: false } })));
+
+            expect(mocks.promptAssemblyService.assemble).toHaveBeenCalledWith(
+                expect.objectContaining({ preferredPromptTemplateId: 'tpl-preferred' }),
+            );
+        });
+
+        it('resolves the preferred prompt id from the requesting consultation doctorId', async () => {
+            setupSuccessfulJob();
+            mocks.configResolver.resolvePreferredPromptTemplateId.mockResolvedValue('tpl-preferred');
+
+            await mocks.processor.process(createMockJob(createDefaultPayload({ request: { includeNER: false } })));
+
+            expect(mocks.configResolver.resolvePreferredPromptTemplateId).toHaveBeenCalledWith('doctor-A');
         });
     });
 });
