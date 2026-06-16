@@ -94,9 +94,11 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // KnowledgeDocument + KnowledgeChunk → 38. TASK-330 Phase 6 added the
     // editable harness policy HarnessPolicy + append-only HarnessPolicyChange
     // → 40. TASK-349 added Highlight (TASK-344 model, caught by the drift
-    // guard below) → 41. (The drift guard below is the durable check; this
-    // count stays as a quick human-readable tripwire.)
-    expect(TENANT_SCOPED_MODELS.size).toBe(41);
+    // guard below) → 41. TASK-356 Phase 5 added the realtime-cascade
+    // PipelinePolicy + append-only PipelinePolicyChange → 43. (The drift guard
+    // below is the durable check; this count stays as a quick human-readable
+    // tripwire.)
+    expect(TENANT_SCOPED_MODELS.size).toBe(43);
   });
 
   it('includes every PHI-bearing model', () => {
@@ -212,11 +214,13 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
 // ---------------------------------------------------------------------------
 
 describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
-  it('contains the platform catalog models + the harness global-default policy (AsrPipeline, AiModel, HarnessPolicy)', () => {
+  it('contains the platform catalog models + the harness/pipeline global-default policies (AsrPipeline, AiModel, HarnessPolicy, PipelinePolicy)', () => {
     expect(new Set(SYSTEM_SHARED_READ_MODELS)).toEqual(
       // TASK-330 Phase 6 — HarnessPolicy's SYSTEM-tenant row is the global
       // default every tenant reads to compute its effective policy.
-      new Set(['AsrPipeline', 'AiModel', 'HarnessPolicy']),
+      // TASK-356 Phase 5 — PipelinePolicy's SYSTEM-tenant row is the realtime
+      // cascade's platform default (ConfigResolver reads it for every tenant).
+      new Set(['AsrPipeline', 'AiModel', 'HarnessPolicy', 'PipelinePolicy']),
     );
   });
 

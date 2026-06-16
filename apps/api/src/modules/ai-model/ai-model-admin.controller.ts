@@ -1,11 +1,4 @@
-import {
-  AiModelService,
-  CreateModelRequest,
-  HttpMethod,
-  ModelResponse,
-  PaginatedModelResponse,
-  UpdateModelRequest,
-} from '@arcaai/applications';
+import { AiModelService, CreateModelRequest, HttpMethod, ModelResponse, PaginatedModelResponse, UpdateModelRequest } from '@arcaai/applications';
 import { Body, Controller, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
@@ -116,8 +109,7 @@ export class AiModelAdminController {
     // The header takes precedence over the body when both are present. On a
     // `@RequiresIfMatch()` route the param decorator already fired 428 if the
     // header was missing (mirrors the pipeline OCC contract).
-    const effectiveRequest: UpdateModelRequest =
-      expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
+    const effectiveRequest: UpdateModelRequest = expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
     return this.aiModelService.update(id, effectiveRequest);
   }
 

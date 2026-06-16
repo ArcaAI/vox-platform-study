@@ -39,10 +39,7 @@ function qs(category?: string): string {
 }
 
 /** TASK-356 Phase 6 (S1) — list templates the caller may use (defaults + own personals). */
-export function useAvailablePrompts(
-  category?: PromptTemplateCategory,
-  options?: Omit<UseQueryOptions<AvailablePrompt[]>, 'queryKey' | 'queryFn'>,
-) {
+export function useAvailablePrompts(category?: PromptTemplateCategory, options?: Omit<UseQueryOptions<AvailablePrompt[]>, 'queryKey' | 'queryFn'>) {
   return useQuery({
     queryKey: keys.available(category),
     queryFn: () => adminClient.get<AvailablePrompt[]>(`/prompt-templates/available${qs(category)}`),

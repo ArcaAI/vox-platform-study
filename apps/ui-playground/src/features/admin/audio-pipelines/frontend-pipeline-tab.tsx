@@ -304,9 +304,7 @@ export function FrontendPipelineTab() {
           <Card>
             <CardHeader>
               <CardTitle>Transcription &amp; capture mode</CardTitle>
-              <CardDescription>
-                Tenant default for where speech-to-text runs and which audio streams are captured.
-              </CardDescription>
+              <CardDescription>Tenant default for where speech-to-text runs and which audio streams are captured.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-6">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -327,17 +325,13 @@ export function FrontendPipelineTab() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-muted-foreground text-xs">
-                    Unless locked, a doctor&apos;s workflow preference can still override this.
-                  </p>
+                  <p className="text-muted-foreground text-xs">Unless locked, a doctor&apos;s workflow preference can still override this.</p>
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="captureMode">Audio capture mode</Label>
                   <Select
                     value={form.captureMode === '' ? '__none__' : form.captureMode}
-                    onValueChange={(v: string) =>
-                      setForm((p) => ({ ...p, captureMode: v === '__none__' ? '' : (v as CaptureMode) }))
-                    }
+                    onValueChange={(v: string) => setForm((p) => ({ ...p, captureMode: v === '__none__' ? '' : (v as CaptureMode) }))}
                   >
                     <SelectTrigger id="captureMode" aria-label="Audio capture mode">
                       <SelectValue />
@@ -351,9 +345,7 @@ export function FrontendPipelineTab() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-muted-foreground text-xs">
-                    Overrides the &ldquo;Capture raw audio&rdquo; toggle above when set.
-                  </p>
+                  <p className="text-muted-foreground text-xs">Overrides the &ldquo;Capture raw audio&rdquo; toggle above when set.</p>
                 </div>
               </div>
 

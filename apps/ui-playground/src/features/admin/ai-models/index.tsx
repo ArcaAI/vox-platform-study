@@ -26,7 +26,14 @@ import { useAiModels, useCreateAiModel, useDeleteAiModel, useUpdateAiModel, type
 // ---------------------------------------------------------------------------
 
 const CATEGORY_OPTIONS = ['AUDIO', 'NLP', 'VISION', 'MULTI_MODAL', 'TABULAR'] as const;
-const TASK_TYPE_OPTIONS = ['AUTOMATIC_SPEECH_RECOGNITION', 'VOICE_ACTIVITY_DETECTION', 'AUDIO_TO_AUDIO', 'SUMMARIZATION', 'TEXT_GENERATION', 'GUARDRAIL'] as const;
+const TASK_TYPE_OPTIONS = [
+  'AUTOMATIC_SPEECH_RECOGNITION',
+  'VOICE_ACTIVITY_DETECTION',
+  'AUDIO_TO_AUDIO',
+  'SUMMARIZATION',
+  'TEXT_GENERATION',
+  'GUARDRAIL',
+] as const;
 const MODEL_TYPE_OPTIONS = ['BASE_MODEL', 'FINETUNED_MODEL', 'QUANTIZED_MODEL'] as const;
 const SOURCE_OPTIONS = ['HUGGINGFACE', 'GITHUB', 'MLFLOW', 'LOCAL'] as const;
 const FORMAT_OPTIONS = ['SAFETENSOR', 'ONNX', 'NEMO', 'PYTORCH', 'CTRANSLATE2', 'FASTER_WHISPER', 'MLX', 'GGUF'] as const;
@@ -245,12 +252,7 @@ export default function AiModelsPage() {
         />
       )}
 
-      <AiModelFormDialog
-        mode="create"
-        open={showCreate}
-        tenantId={tenantId}
-        onOpenChange={(open) => setShowCreate(open)}
-      />
+      <AiModelFormDialog mode="create" open={showCreate} tenantId={tenantId} onOpenChange={(open) => setShowCreate(open)} />
 
       <AiModelFormDialog
         mode="edit"
@@ -366,7 +368,9 @@ function AiModelFormDialog({ mode, open, tenantId, model, onOpenChange }: FormDi
         <DialogHeader>
           <DialogTitle>{mode === 'create' ? 'Create AI model' : 'Edit AI model'}</DialogTitle>
           <DialogDescription>
-            {mode === 'create' ? 'Register a new model in this tenant catalog.' : 'Update this tenant model. Saving uses optimistic concurrency (If-Match).'}
+            {mode === 'create'
+              ? 'Register a new model in this tenant catalog.'
+              : 'Update this tenant model. Saving uses optimistic concurrency (If-Match).'}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>

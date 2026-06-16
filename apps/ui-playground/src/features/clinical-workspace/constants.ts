@@ -51,16 +51,14 @@ export const WORKSPACE_ENDPOINTS = {
   streamSession: '/audio/transcription-jobs/stream/session',
   streamTicket: '/auth/stream-ticket',
   context: (id: string) => `/consultations/${encodeURIComponent(id)}/context`,
-  contextItem: (id: string, contextId: string) =>
-    `/consultations/${encodeURIComponent(id)}/context/${encodeURIComponent(contextId)}`,
+  contextItem: (id: string, contextId: string) => `/consultations/${encodeURIComponent(id)}/context/${encodeURIComponent(contextId)}`,
   recordings: (id: string) => `/consultations/${encodeURIComponent(id)}/recordings`,
   summaryProvenance: (id: string, ctxId: string) => `/consultations/${encodeURIComponent(id)}/summary/${encodeURIComponent(ctxId)}/provenance`,
   summaryApprove: (id: string, ctxId: string) => `/consultations/${encodeURIComponent(id)}/summary/${encodeURIComponent(ctxId)}/approve`,
   summaryUpdate: (id: string, summaryId: string) => `/consultations/${encodeURIComponent(id)}/summary/${encodeURIComponent(summaryId)}`,
   // TASK-344 Workstream B — manual doctor highlights.
   highlights: (id: string) => `/consultations/${encodeURIComponent(id)}/highlights`,
-  highlight: (id: string, highlightId: string) =>
-    `/consultations/${encodeURIComponent(id)}/highlights/${encodeURIComponent(highlightId)}`,
+  highlight: (id: string, highlightId: string) => `/consultations/${encodeURIComponent(id)}/highlights/${encodeURIComponent(highlightId)}`,
 } as const;
 
 /** Context item types that represent a drafted/signed clinical note. */

@@ -1,7 +1,20 @@
 import { useAdminPreferences } from '@/features/admin/hooks/use-admin-preferences';
 import { useAuthStore } from '@/store/auth-store';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail } from '@arcaai/ui/sidebar';
-import { BookOpen, Brain, Dna, Download, FileText, Fingerprint, Headphones, LayoutDashboard, MessageSquare, ScrollText, Stethoscope, Zap } from 'lucide-react';
+import {
+  BookOpen,
+  Brain,
+  Dna,
+  Download,
+  FileText,
+  Fingerprint,
+  Headphones,
+  LayoutDashboard,
+  MessageSquare,
+  ScrollText,
+  Stethoscope,
+  Zap,
+} from 'lucide-react';
 import { useMemo } from 'react';
 import { buildAdminNavItems } from './admin-nav-items';
 import { DraggableNavGroup } from './draggable-nav-group';

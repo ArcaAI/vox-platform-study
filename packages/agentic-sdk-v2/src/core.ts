@@ -383,10 +383,12 @@ export type {
 } from './types';
 export { ConfigConflictError } from './types';
 
-// Frontend pipeline config types (TASK-328 A6)
+// Frontend pipeline config types (TASK-328 A6; CaptureMode/TranscriptionMode TASK-356 Phase 4)
 export type {
+  CaptureMode,
   FrontendPipelineConfigJson,
   TenantFrontendConfig,
+  TranscriptionMode,
   UpsertTenantFrontendConfigInput,
 } from './types';
 

@@ -106,7 +106,7 @@ async function ensureTenantRow(
             scopeId: null,
             changedBy: SYSTEM_USER_ID,
             policyVersion: (created as { version?: number }).version ?? null,
-            beforeJson: null,
+            beforeJson: null as unknown as object,
             afterJson: snapshotToggles(created as Record<string, unknown>) as unknown as object,
             reason,
         },
