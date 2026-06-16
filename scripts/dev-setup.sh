@@ -6,7 +6,7 @@
 # `pnpm dev:api` boots cleanly against Vault with dynamic Postgres creds.
 #
 # Sequence:
-#   1. Start infrastructure (Postgres, Redis, MinIO, Vault, Qdrant)
+#   1. Start infrastructure (Postgres, Redis, MinIO, Vault, Qdrant, Temporal)
 #   2. Wait for Postgres + Vault (and the vault-init AppRole bootstrap)
 #   3. Apply Prisma migrations + seed         (pnpm db:all)
 #   4. Refresh Vault AppRole creds in .env.dev (so the app can authenticate)
@@ -41,8 +41,12 @@ read_env() {
 ROOT_TOKEN="$(read_env VAULT_DEV_ROOT_TOKEN root)"
 PG_SUPERUSER="$(read_env POSTGRES_USER postgres)"
 
-bold "── Step 1/5: starting infrastructure ───────────────────────────────"
-"$SCRIPT_DIR/start-infra.sh" --all
+bold "── Step 1/5: starting infrastructure (core + vault + temporal) ──────"
+# Use the full dev-infra wrapper so the Temporal stack (required by the
+# clinical-workspace harness) comes up alongside core + vault. Plain
+# `start-infra.sh --all` only activates the `vault` profile and would leave
+# Temporal down.
+"$SCRIPT_DIR/dev-infra.sh" up
 
 bold "── Step 2/5: waiting for Postgres + Vault to be ready ───────────────"
 ready=0
