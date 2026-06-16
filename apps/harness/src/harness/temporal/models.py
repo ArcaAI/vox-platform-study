@@ -359,6 +359,13 @@ class RunInferentialSensorsInput(BaseModel):
     consultation_id: str | None = None
     tenant_id: str | None = None
     job_id: str | None = None
+    # TASK-359 WS-1 — workflow-threaded, data-only verdict cache (L2). Content-addressed
+    # {claim_verdict_key: supported} carried in from earlier inferential passes; the activity
+    # seeds its cache from this and re-judges only cache-missing (changed) claims, reusing the
+    # rest byte-identically (AC-2). Additive-optional default ⇒ no new workflow command, no
+    # ``workflow.patched()``; an old replay history without it defaults to {} (T8). Held only in
+    # workflow history (data-only) — never persisted to an external store (L3 is default-OFF, §4.5).
+    prior_verdicts: dict[str, bool] = Field(default_factory=dict)
 
 
 class InferentialRunOutput(BaseModel):
@@ -377,6 +384,10 @@ class InferentialRunOutput(BaseModel):
     guardrail_decisions: dict[str, Any] = Field(default_factory=dict)
     rag_triad_score: float | None = None
     degraded: bool = False
+    # TASK-359 WS-1 — the verdict cache populated by this pass (seed ∪ newly-judged), returned so
+    # the workflow can thread it into the next regen pass's ``prior_verdicts``. Additive-optional
+    # ⇒ replay-safe; an old history without this field deserializes it to {} (T8).
+    verdict_cache: dict[str, bool] = Field(default_factory=dict)
 
 
 # TASK-355 Phase D (Slice 4a) — the early-persist phase discriminator. Mirrors the

@@ -26,6 +26,12 @@ from harness.sensors.inferential.groundedness import (
     _is_supported,
     _section_code,
 )
+from harness.sensors.inferential.verdict_cache import (
+    VerdictCache,
+    cached_verdict,
+    claim_verdict_key,
+    sensor_identity,
+)
 
 NAME = "citation_verify"
 
@@ -78,10 +84,22 @@ class CitationVerifySensor:
     def __init__(self, threshold: float = 0.8) -> None:
         self.threshold = threshold
 
-    async def arun(self, ctx: SensorContext, *, judge: JudgeClient) -> SensorResult:
+    async def arun(
+        self,
+        ctx: SensorContext,
+        *,
+        judge: JudgeClient,
+        verdict_cache: VerdictCache | None = None,
+    ) -> SensorResult:
         cited = [c for c in ctx.claims() if _cited_ids(c)]
         if not cited:
             return _vacuous_pass()
+
+        # TASK-359 WS-2: reuse the WS-1 content key — keyed on this sensor's OWN premise (the
+        # cited chunk(s), NOT the transcript) + its own identity, so a dually-checked cited claim
+        # gets a citation_verify entry DISTINCT from its groundedness entry (different premise +
+        # sensor/prompt) and the two verdicts stay separable. NO prompt merge (parity-unsafe).
+        identity = sensor_identity(NAME, _SYSTEM_PROMPT, judge.model)
 
         supported: list[str] = []
         unverified: list[str] = []
@@ -93,15 +111,25 @@ class CitationVerifySensor:
                 premise = _premise(ctx, _cited_ids(claim))
                 ok = False
                 if hypothesis and premise:
-                    raw = await judge.complete(
-                        _entailment_messages(premise, hypothesis),
-                        json_mode=True,
-                        temperature=0.0,
+                    key = claim_verdict_key(
+                        claim_text=hypothesis, premise=premise, judge_identity=identity
                     )
-                    try:
-                        ok = _is_supported(raw)
-                    except ValueError:
-                        ok = False  # unparseable -> not confirmed (conservative)
+
+                    async def _judge_once(_premise: str = premise, _hyp: str = hypothesis) -> bool:
+                        raw = await judge.complete(
+                            _entailment_messages(_premise, _hyp),
+                            json_mode=True,
+                            temperature=0.0,
+                        )
+                        try:
+                            return _is_supported(raw)
+                        except ValueError:
+                            return False  # unparseable -> not confirmed (conservative)
+
+                    # HIT reuses the cached verdict; MISS re-judges (conservative) + populates.
+                    # The cached bool is byte-identical to a fresh judgement (AC-2) and flows
+                    # unchanged into the scoring below — citation_verify stays separable.
+                    ok = await cached_verdict(verdict_cache, key=key, compute=_judge_once)
                 # No premise (unresolvable cited id) or empty hypothesis -> unverifiable.
                 if ok:
                     supported.append(ref)

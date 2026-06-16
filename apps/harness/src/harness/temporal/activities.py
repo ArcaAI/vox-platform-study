@@ -417,8 +417,15 @@ async def _heartbeat_periodically() -> None:
         await asyncio.sleep(_HEARTBEAT_INTERVAL_S)
 
 
-def _assemble_inferential_output(results: list[SensorResult]) -> InferentialRunOutput:
-    """Fold the inferential sensor results into the activity's typed output."""
+def _assemble_inferential_output(
+    results: list[SensorResult], verdict_cache: dict[str, bool] | None = None
+) -> InferentialRunOutput:
+    """Fold the inferential sensor results into the activity's typed output.
+
+    ``verdict_cache`` (TASK-359 WS-1) is the content-addressed per-claim verdict map this pass
+    saw + populated; it is echoed on the output so the workflow can thread it into the next
+    regen pass. On a degrade it is the unchanged inbound cache (nothing new was judged).
+    """
     by_name = {r.name: r for r in results}
     guardrail_decisions: dict[str, Any] = {}
     rag_triad_score: float | None = None
@@ -442,6 +449,7 @@ def _assemble_inferential_output(results: list[SensorResult]) -> InferentialRunO
         guardrail_decisions=guardrail_decisions,
         rag_triad_score=rag_triad_score,
         degraded=any(r.degraded for r in results),
+        verdict_cache=dict(verdict_cache or {}),
     )
 
 
@@ -502,6 +510,12 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
     settings = get_settings()
     judge_config = get_runtime_judge_config()
 
+    # TASK-359 WS-1 — seed the per-claim verdict cache from earlier passes (the L2 carrier).
+    # The sensors reuse a cached verdict for an unchanged claim and re-judge only cache-missing
+    # ones; we echo the (now-populated) cache on the output so the workflow threads it forward.
+    # On any early degrade below, the unchanged inbound cache is returned (nothing was judged).
+    verdict_cache: dict[str, bool] = dict(payload.prior_verdicts)
+
     # TASK-357: enforce the fail-closed PHI egress guard before any cloud judge/Granite
     # call — redact the Granite-screened note (safety provider) and the judge premise
     # (transcript + per-claim hypotheses/evidence + knowledge chunks, judge provider).
@@ -535,7 +549,7 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
         ]
         if payload.safety_enabled:
             degraded.append(degraded_result(SAFETY_NAME, reason))
-        return _assemble_inferential_output(degraded)
+        return _assemble_inferential_output(degraded, verdict_cache)
 
     ctx = SensorContext(
         note_text=note_text,
@@ -560,7 +574,7 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
             # Phase 6: a disabled safety guard contributes no safety result at all.
             if payload.safety_enabled:
                 degraded.append(degraded_result(SAFETY_NAME, reason))
-            return _assemble_inferential_output(degraded)
+            return _assemble_inferential_output(degraded, verdict_cache)
 
         thresholds = SensorThresholds()
         # Phase 6: the groundedness pass threshold is policy-driven; the safety screen
@@ -578,13 +592,25 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
         # callback swallows every error so the live feed can NEVER degrade the pass.
         on_claim = _build_assurance_publisher(settings, payload, ctx)
         tasks = [
-            groundedness.arun(ctx, judge=judge, on_claim=on_claim),
-            citation_verify.arun(ctx, judge=judge),
+            groundedness.arun(ctx, judge=judge, on_claim=on_claim, verdict_cache=verdict_cache),
+            # TASK-359 WS-2 — citation_verify reuses the SAME shared cache dict; its keys never
+            # collide with groundedness (different premise + sensor identity), so the two verdicts
+            # stay separable while both are reused across regen passes.
+            citation_verify.arun(ctx, judge=judge, verdict_cache=verdict_cache),
         ]
         if payload.safety_enabled:
-            tasks.append(SafetySensor(_granite_client(settings)).arun(ctx, judge=judge))
+            # TASK-363 WS-3 — the safety screen reuses the SAME shared cache dict: each
+            # per-(criterion, screened-text, model) verdict is content-addressed with a
+            # "safety" sensor identity, so its keys never collide with groundedness/citation
+            # entries while an unchanged-content regen pass reuses the prior screen (no Granite
+            # call). No new carrier field / workflow command — the existing dict is threaded.
+            tasks.append(
+                SafetySensor(_granite_client(settings)).arun(
+                    ctx, judge=judge, screen_cache=verdict_cache
+                )
+            )
         results = list(await asyncio.gather(*tasks))
-        return _assemble_inferential_output(results)
+        return _assemble_inferential_output(results, verdict_cache)
     finally:
         heartbeat.cancel()
         with contextlib.suppress(asyncio.CancelledError):

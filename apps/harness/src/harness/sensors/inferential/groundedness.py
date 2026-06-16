@@ -35,6 +35,12 @@ from harness.sensors.inferential.entailment_batch import (
     chunk,
     parse_batch_verdicts,
 )
+from harness.sensors.inferential.verdict_cache import (
+    VerdictCache,
+    cached_verdict,
+    claim_verdict_key,
+    sensor_identity,
+)
 
 NAME = "groundedness"
 
@@ -158,6 +164,7 @@ class GroundednessSensor:
         *,
         judge: JudgeClient,
         on_claim: ClaimVerdictCallback | None = None,
+        verdict_cache: VerdictCache | None = None,
     ) -> SensorResult:
         claims = ctx.claims()
         if not claims:
@@ -165,10 +172,13 @@ class GroundednessSensor:
 
         try:
             if self.batch_size and self.batch_size > 1:
-                # Batching is the env-gated, clinically-rejected path: no live feed.
+                # Batching is the env-gated, clinically-rejected path: no live feed, and the
+                # TASK-359 WS-1 per-claim cache is not applied to its (different) framing.
                 verdicts = await self._verdicts_batched(ctx, claims, judge=judge)
             else:
-                verdicts = await self._verdicts_per_claim(ctx, claims, judge=judge, on_claim=on_claim)
+                verdicts = await self._verdicts_per_claim(
+                    ctx, claims, judge=judge, on_claim=on_claim, verdict_cache=verdict_cache
+                )
         except Exception as exc:  # noqa: BLE001 — backend failure degrades, never raises
             return degraded_result(NAME, f"groundedness judge unavailable: {exc}")
 
@@ -181,6 +191,7 @@ class GroundednessSensor:
         *,
         judge: JudgeClient,
         on_claim: ClaimVerdictCallback | None = None,
+        verdict_cache: VerdictCache | None = None,
     ) -> dict[str, bool]:
         """One focused judge call per claim, fired CONCURRENTLY (TASK-355 R-4).
 
@@ -192,20 +203,36 @@ class GroundednessSensor:
         prefix-KV cache overlap the calls. Verdict keyed by claim ref; a backend error
         propagates to ``arun`` (degrade), an unparseable verdict is conservative
         ungrounded.
+
+        TASK-359 WS-1: when ``verdict_cache`` is provided, each claim's verdict is keyed on
+        the EXACT judge input (post-clean claim text + premise + sensor/judge identity); a
+        HIT reuses the cached boolean (no judge call), a MISS re-judges (conservative) and
+        populates. The cached boolean is byte-identical to a fresh judgement (AC-2) and feeds
+        the unchanged aggregation below — so a cached pass yields the identical SensorResult.
         """
+        identity = sensor_identity(NAME, _SYSTEM_PROMPT, judge.model)
 
         async def _verdict(claim: dict[str, Any]) -> tuple[str, bool] | None:
             hypothesis = str(claim.get("text") or "").strip()
             if not hypothesis:
                 return None  # empty claim asserts nothing -> aggregated as grounded
-            messages = _entailment_messages(_premise(ctx, claim), hypothesis)
-            raw = await judge.complete(messages, json_mode=True, temperature=0.0)
+            premise = _premise(ctx, claim)
+            key = claim_verdict_key(
+                claim_text=hypothesis, premise=premise, judge_identity=identity
+            )
+
+            async def _judge_once() -> bool:
+                raw = await judge.complete(
+                    _entailment_messages(premise, hypothesis), json_mode=True, temperature=0.0
+                )
+                try:
+                    return _is_supported(raw)
+                except ValueError:
+                    return False  # unparseable -> conservative ungrounded
+
+            supported = await cached_verdict(verdict_cache, key=key, compute=_judge_once)
             ref = _claim_ref(claim)
-            try:
-                supported = _is_supported(raw)
-            except ValueError:
-                supported = False  # unparseable -> conservative ungrounded
-            # Q5 live feed: stream this verdict the moment it resolves. Best-effort
+            # Q5 live feed: stream this verdict the moment it resolves (hit or miss). Best-effort
             # — a callback failure must never change the verdict or degrade the pass.
             if on_claim is not None:
                 with contextlib.suppress(Exception):
