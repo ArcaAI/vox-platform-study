@@ -382,6 +382,12 @@ class HarnessDocWorkflow:
         comp_verdict = None
         guardrail_decisions: dict[str, Any] = {}
         rag_triad_score: float | None = None
+        # TASK-359 WS-1 — workflow-threaded, data-only per-claim verdict cache (L2). Carried
+        # from one inferential pass's OUTPUT into the next pass's INPUT so a regen re-judges only
+        # changed claims (unchanged claims reuse the byte-identical cached verdict, AC-2). DATA
+        # flow only — adds no new command, needs no ``workflow.patched()``; reconstructed
+        # deterministically from recorded activity outputs on replay (old histories ⇒ {}, T8).
+        verdict_cache: dict[str, bool] = {}
         while True:
             # Progress stage 3 — re-emitted on every regen iteration (the fold on
             # the API side re-activates it and bumps the attempt counter).
@@ -489,6 +495,9 @@ class HarnessDocWorkflow:
                         safety_enabled=safety_enabled,
                         phi_enabled=phi_enabled,
                         phi_fail_closed=phi_fail_closed,
+                        # TASK-359 WS-1 — carry the prior passes' verdicts so unchanged
+                        # claims reuse the cache (data-only; no new command / patch marker).
+                        prior_verdicts=verdict_cache,
                     ),
                     start_to_close_timeout=_INFERENTIAL_TIMEOUT,
                     heartbeat_timeout=_INFERENTIAL_HEARTBEAT_TIMEOUT,
@@ -501,6 +510,8 @@ class HarnessDocWorkflow:
             if inferential is not None:
                 guardrail_decisions = inferential.guardrail_decisions
                 rag_triad_score = inferential.rag_triad_score
+                # TASK-359 WS-1 — thread this pass's populated verdict cache into the next.
+                verdict_cache = inferential.verdict_cache
                 if inferential.degraded:
                     reduced_assurance = True
                 # Reduced assurance: exclude a degraded inferential result (and omit
@@ -685,6 +696,9 @@ class HarnessDocWorkflow:
                             consultation_id=inp.consultation_id,
                             tenant_id=inp.tenant_id,
                             job_id=inp.job_id,
+                            # TASK-359 WS-1 — carry prior verdicts across assurance regen
+                            # passes (data-only; no new command / patch marker).
+                            prior_verdicts=verdict_cache,
                         ),
                         start_to_close_timeout=_INFERENTIAL_TIMEOUT,
                         heartbeat_timeout=_INFERENTIAL_HEARTBEAT_TIMEOUT,
@@ -702,6 +716,8 @@ class HarnessDocWorkflow:
                 if inferential is not None:
                     guardrail_decisions = inferential.guardrail_decisions
                     rag_triad_score = inferential.rag_triad_score
+                    # TASK-359 WS-1 — thread this pass's populated verdict cache into the next.
+                    verdict_cache = inferential.verdict_cache
                     if inferential.degraded:
                         reduced_assurance = True
                     inferential_results = [r for r in inferential.results if not r.degraded]

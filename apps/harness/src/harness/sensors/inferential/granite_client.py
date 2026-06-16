@@ -99,6 +99,17 @@ class GraniteGuardianClient:
         self._timeout = config.timeout_s
         self._transport = transport
 
+    @property
+    def criteria(self) -> list[str]:
+        """The configured harm dimensions, in screen order (TASK-363).
+
+        Exposed read-only so the safety sensor can compute the per-(criterion, text,
+        model) cache keys and decide whether an unchanged note is a full cache HIT —
+        WITHOUT first issuing the screen. The order matches :meth:`screen`'s result
+        keys (``dict(zip(self._criteria, ...))``), so a cache-reconstructed dict keeps
+        the same key order as a fresh screen (parity, AC-3)."""
+        return list(self._criteria)
+
     async def screen(self, text: str) -> dict[str, bool]:
         """Screen ``text`` across every configured harm dimension (unsafe => True).
 
