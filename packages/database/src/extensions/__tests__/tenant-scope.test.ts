@@ -214,13 +214,15 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
 // ---------------------------------------------------------------------------
 
 describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
-  it('contains the platform catalog models + the harness/pipeline global-default policies (AsrPipeline, AiModel, HarnessPolicy, PipelinePolicy)', () => {
+  it('contains the platform catalog models + the harness/pipeline global-default policies + GlobalSetting (AsrPipeline, AiModel, HarnessPolicy, PipelinePolicy, GlobalSetting)', () => {
     expect(new Set(SYSTEM_SHARED_READ_MODELS)).toEqual(
       // TASK-330 Phase 6 — HarnessPolicy's SYSTEM-tenant row is the global
       // default every tenant reads to compute its effective policy.
       // TASK-356 Phase 5 — PipelinePolicy's SYSTEM-tenant row is the realtime
       // cascade's platform default (ConfigResolver reads it for every tenant).
-      new Set(['AsrPipeline', 'AiModel', 'HarnessPolicy', 'PipelinePolicy']),
+      // GlobalSetting — platform infra settings (S3/MinIO, STT) are seeded under
+      // the SYSTEM tenant; the AppSettingsService platform cache reads them.
+      new Set(['AsrPipeline', 'AiModel', 'HarnessPolicy', 'PipelinePolicy', 'GlobalSetting']),
     );
   });
 
@@ -270,6 +272,23 @@ describe('SYSTEM-tenant read inheritance on shared catalog models', () => {
     const query = vi.fn().mockResolvedValue([]);
 
     await config.query.$allModels.findMany({ model: 'AiModel', args: {}, query });
+
+    expect(query).toHaveBeenCalledWith({
+      where: { tenantId: { in: ['tenant-A', SYSTEM_TENANT_ID] } },
+    });
+  });
+
+  // Regression — the AppSettingsService platform cache loads via
+  // `globalSettingRepository.findAll({})` (no where). Under the GLOBAL tenant
+  // context this previously exact-matched the caller tenant and dropped the
+  // SYSTEM-owned platform settings (S3_ENDPOINT/keys), so the S3 client fell
+  // back to real AWS and bucket ops 500'd. The load must widen to [caller,
+  // SYSTEM] so the SYSTEM-owned infra settings resolve.
+  it('GlobalSetting.findMany seeds the inheritance filter when no where supplied (platform-cache load picks up SYSTEM settings)', async () => {
+    const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
+    const query = vi.fn().mockResolvedValue([]);
+
+    await config.query.$allModels.findMany({ model: 'GlobalSetting', args: {}, query });
 
     expect(query).toHaveBeenCalledWith({
       where: { tenantId: { in: ['tenant-A', SYSTEM_TENANT_ID] } },

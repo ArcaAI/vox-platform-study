@@ -21,11 +21,12 @@ import { defineConfig, type Options } from 'tsup';
  *
  * Bundle Structure:
  * - Core (~200KB): Provider, hooks, state management, API client
- * - Plugins (~5MB total):
- *   - @arcaai/vad: Silero VAD + ONNX Runtime Web
- *   - @arcaai/stt: Whisper + HuggingFace Transformers
- *   - @arcaai/noise-filter: RNNoise WASM
+ * - Bundled plugins:
+ *   - @arcaai/vad: Silero VAD wrapper (@ricky0123/vad-web + ONNX Runtime Web stay external)
  *   - @arcaai/room: Audio context management
+ * - External plugins (TASK-364 — own runtime assets via import.meta.url):
+ *   - @arcaai/stt: Whisper + HuggingFace Transformers (ships its own Whisper worker)
+ *   - @arcaai/noise-filter: RNNoise WASM (ships its own rnnoise.wasm)
  *
  * Optional (peer deps - not bundled):
  * - @arcaai/med-ner: Medical NER (~300MB models)
@@ -44,12 +45,19 @@ import { defineConfig, type Options } from 'tsup';
  * - Browser-only platform target prevents Node.js module inclusion
  */
 
-// Packages that should be bundled INTO the SDK (workspace dependencies)
+// Packages that should be bundled INTO the SDK (workspace dependencies).
+//
+// TASK-364 — `@arcaai/stt` + `@arcaai/noise-filter` were REMOVED from this list
+// (they are now in `externalDependencies` below). Both resolve runtime assets
+// via `new URL(<relative>, import.meta.url)` — the Whisper worker and the
+// RNNoise WASM — which esbuild breaks when it inlines those ESM sub-packages:
+// `import.meta` is shimmed to `{}`, so `new URL(rel, undefined)` throws
+// "Invalid URL", and the `workers/`/`assets/` files never land in the SDK
+// `dist/`. Keeping them external preserves `import.meta.url` and the
+// co-located worker/wasm assets in each sub-package's own dist.
 const bundledDependencies = [
   '@arcaai/room',
   '@arcaai/vad',
-  '@arcaai/stt',
-  '@arcaai/noise-filter',
   'zustand',
   'eventemitter3',
 ];
@@ -93,6 +101,18 @@ const externalDependencies = [
   '@ricky0123/vad-web',
   'onnxruntime-web',
   'onnxruntime-common',
+  // TASK-364: Asset/worker-owning ESM sub-packages MUST stay external (same
+  // class of reason as `@ricky0123/vad-web` above). `@arcaai/noise-filter`
+  // resolves its RNNoise WASM via `new URL('../assets/rnnoise.wasm',
+  // import.meta.url)` and `@arcaai/stt` spawns its Whisper worker via
+  // `new Worker(new URL('./workers/whisper.worker.mjs', import.meta.url))`.
+  // When bundled, esbuild inlines the source under an `import_meta = {}` shim,
+  // so `new URL(rel, undefined)` throws "Invalid URL", and neither the worker
+  // nor the wasm is copied into the SDK `dist/`. External resolution keeps
+  // `import.meta.url` + the co-located assets intact. Both stay in `package.json`
+  // `dependencies` so consumer bundlers (Vite/webpack) resolve them normally.
+  '@arcaai/stt',
+  '@arcaai/noise-filter',
 ];
 
 // Plugin packages - external for core build, bundled for plugins build

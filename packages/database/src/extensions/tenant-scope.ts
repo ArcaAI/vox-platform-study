@@ -172,6 +172,18 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // (doctor→department→tenant→SYSTEM default). READS widen to [caller, SYSTEM];
   // WRITES are NOT widened (only a platform admin mutates the SYSTEM default).
   'PipelinePolicy',
+  // Platform infrastructure settings (S3/MinIO endpoint + credentials, STT
+  // pipeline slugs/queues, …) are seeded under the SYSTEM tenant in
+  // `seed/06-stt.ts`, alongside the SYSTEM-owned AsrPipeline/AiModel catalog.
+  // `AppSettingsService` builds ONE process-wide, tenant-agnostic settings
+  // cache via `globalSettingRepository.findAll({})`; when that load runs under
+  // the platform (GLOBAL) tenant context, an exact-match filter drops these
+  // SYSTEM rows, leaving e.g. `S3_ENDPOINT` empty so the S3 client defaults to
+  // real AWS (InvalidAccessKeyId 500 on bucket ops). Widening READS to
+  // [caller, SYSTEM] lets the platform load resolve these shared settings.
+  // WRITES are NOT widened (a tenant can never mutate a SYSTEM-owned setting),
+  // and customer tenants stay excluded (the IN list is exactly [caller, SYSTEM]).
+  'GlobalSetting',
 ]);
 
 export function isSystemSharedReadModel(model: string): boolean {

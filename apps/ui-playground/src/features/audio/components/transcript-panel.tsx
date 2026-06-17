@@ -20,7 +20,6 @@ import { createVAD } from '@arcaai/vad';
 import { Brain, Download, HardDrive, Languages, Mic, MicOff, Plug, RefreshCw, Server, Trash2, Wifi, WifiOff } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { DEFAULT_TRANSCRIPTION_PIPELINE_ID } from '../constants';
 import { DiarizationSeedingIndicator } from './diarization-seeding-indicator';
 import { LiveSpectrogram } from './live-spectrogram';
 import { TranscriptList } from './transcript-list';
@@ -399,6 +398,12 @@ function BackendSocketTranscript() {
   }, []);
 
   const startStream = useCallback(async () => {
+    // TASK-364 — no hardcoded cross-tenant fallback. Require an explicitly
+    // selected pipeline instead of silently using the SYSTEM-tenant default.
+    if (!selectedPipelineId) {
+      toast.error('Select a transcription pipeline before streaming.');
+      return;
+    }
     toast.info('Creating streaming session...');
     releaseMixedInput();
     let preparedMixedInput: PreparedMixedInput | null = null;
@@ -409,7 +414,7 @@ function BackendSocketTranscript() {
       }
 
       await realtime.start({
-        pipelineId: selectedPipelineId || DEFAULT_TRANSCRIPTION_PIPELINE_ID,
+        pipelineId: selectedPipelineId,
         sampleRate: 16000,
         language: language || undefined,
         deviceId: preparedMixedInput ? undefined : micSources[0]?.deviceId,

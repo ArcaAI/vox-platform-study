@@ -5,10 +5,16 @@ import { SKIP_AUTH_KEY } from '@arcaai/applications';
 import { OidcAuthGuard } from '../oidcauth.guard';
 
 const mockSuperCanActivate = vi.fn();
-const mockLoggerDebug = vi.fn();
+// Hoisted so the @nestjs/common Logger mock (which is hoisted above this line)
+// can reference it. With @arcaai/applications now resolved from source, its
+// barrel instantiates a Logger at import time, before this const would
+// otherwise initialize — see auth.service.module.
+const mockLoggerDebug = vi.hoisted(() => vi.fn());
 
-vi.mock('@nestjs/passport', () => {
+vi.mock('@nestjs/passport', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@nestjs/passport')>();
     return {
+        ...actual,
         AuthGuard: () => {
             class MockAuthGuard {
                 canActivate(context: ExecutionContext) {

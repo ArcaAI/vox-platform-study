@@ -103,6 +103,12 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   'ContextItemVersion',
   'PromptVersion',
   'DnaWritingStyleVersion',
+  // AsrPipelineVersion (TASK-328 A6) is an immutable config-snapshot history
+  // table with NO `resourceStatus` column — same shape as the version tables
+  // above. Without this entry the soft-delete extension injected
+  // `resourceStatus: { not: 'DELETED' }` into every read and Prisma rejected it
+  // (PrismaClientValidationError → bare 400 on GET /admin/audio/pipelines/:id/versions). TASK-364.
+  'AsrPipelineVersion',
   'DnaUsageRecord',
   'PromptUsageRecord',
   'AudioRecording',
