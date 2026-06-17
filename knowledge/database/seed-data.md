@@ -118,14 +118,17 @@ graph TD
 | `SYSTEM_USER_ID` | `60000000-0000-0000-0000-000000000000` | Default `createdBy` for all seed records |
 | `SEED_TENANT_ID` | `50000000-0000-0000-0000-000000000000` | Global default tenant |
 
-### Tenants (4)
+### Tenants (2)
 
 | Key | Name | ID Constant |
 |-----|------|-------------|
 | `__GLOBAL__` | Global | `SEED_TENANT_ID` |
 | `ARCAAI` | ArcaAI | `SEED_CUSTOMER_TENANT_IDS.ARCAAI` |
-| `4BITS` | 4bits | `SEED_CUSTOMER_TENANT_IDS.FOURBITS` |
-| `MUMBAI_HOSPITAL` | Mumbai General Hospital | `SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL` |
+
+> The `4BITS` and `MUMBAI_HOSPITAL` demo tenants were removed in TASK-365. `ArcaAI`
+> is retained as the single customer/demo tenant that backs the cross-tenant
+> isolation E2E suite. The reserved `__SYSTEM__` tenant (shared catalog owner) is
+> not listed here as it holds no customer data.
 
 ### Policies (12)
 

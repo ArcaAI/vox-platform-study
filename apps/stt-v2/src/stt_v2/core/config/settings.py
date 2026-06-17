@@ -164,6 +164,23 @@ class Settings(BaseSettings):
             return os.environ.get("HF_HOME") or "/models/hf-cache"
         return str(v).strip()
 
+    @field_validator("huggingface_token", mode="before")
+    @classmethod
+    def _normalize_huggingface_token(cls, v: object) -> str | None:
+        """Treat a blank ``HUGGINGFACE_TOKEN`` as *unset* (``None``).
+
+        An explicitly-empty value (e.g. ``HUGGINGFACE_TOKEN=`` in a .env file,
+        or an env var set to ``""``) must not be forwarded to the HuggingFace
+        libraries. Passing ``token=""`` builds an ``Authorization: Bearer ``
+        header with no credential, which raises
+        ``Illegal header value b'Bearer '`` on every model load. Returning
+        ``None`` lets huggingface_hub fall back to the ``HF_TOKEN`` environment
+        variable / local cache (or anonymous access for public models).
+        """
+        if v is None or not str(v).strip():
+            return None
+        return str(v).strip()
+
     # Azure Speech (cloud ASR engine)
     azure_speech_key: str | None = Field(
         default=None,

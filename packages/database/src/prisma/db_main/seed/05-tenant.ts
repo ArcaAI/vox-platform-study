@@ -1,4 +1,5 @@
 import type { CorePrismaClient } from '../../../client';
+import { TranscriptionMode } from '../../../generated/core-prisma-client/client.js';
 import { SEED_TENANT_ID, SEED_CUSTOMER_TENANT_IDS, SYSTEM_TENANT_ID } from './00-constants';
 
 export { SEED_TENANT_ID as DEFAULT_TENANT_ID } from './00-constants';
@@ -23,19 +24,7 @@ const CUSTOMER_TENANTS = [
         id: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
         name: 'ArcaAI',
         key: 'ARCAAI',
-        description: 'ArcaAI customer environment',
-    },
-    {
-        id: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-        name: '4bits',
-        key: '4BITS',
-        description: '4bits customer environment',
-    },
-    {
-        id: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
-        name: 'Mumbai General Hospital',
-        key: 'MUMBAI_HOSPITAL',
-        description: 'Mumbai General Hospital — multi-site hospital group for multi-tenant testing',
+        description: 'ArcaAI customer environment — retained as the secondary tenant backing cross-tenant isolation E2E tests',
     },
 ];
 
@@ -81,6 +70,14 @@ export const TENANT_FRONTEND_CONFIGS = [
         vad: true,
         voiceEnrollment: false,
         diarization: false,
+        // TASK-364 follow-up — backend is the default realtime transcription
+        // pipeline for the Global tenant, and it is LOCKED so an impersonated
+        // doctor's per-user `workflowMode` cannot fall back to the browser-local
+        // pipeline (server-authoritative; see UserPreferencesService
+        // resolveEffectiveTranscriptionMode). Other tenants stay unlocked so
+        // local STT remains opt-in there.
+        transcriptionMode: TranscriptionMode.BACKEND,
+        transcriptionModeLocked: true,
         // Clinical Workflow Playground (WS6) — enable dual-capture for the Global
         // demo tenant. Effective SDK enablement is this column AND the platform
         // capability `enable-local-raw-capture` (also flipped to true in the
@@ -90,24 +87,6 @@ export const TENANT_FRONTEND_CONFIGS = [
     },
     {
         tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-        asrModel: null,
-        noiseCancel: false,
-        vad: true,
-        voiceEnrollment: false,
-        diarization: false,
-        configJson: {},
-    },
-    {
-        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-        asrModel: null,
-        noiseCancel: false,
-        vad: true,
-        voiceEnrollment: false,
-        diarization: false,
-        configJson: {},
-    },
-    {
-        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
         asrModel: null,
         noiseCancel: false,
         vad: true,

@@ -22,7 +22,9 @@
  *   - Verifies test infrastructure is ready
  *   - Does NOT start Docker containers (do this manually)
  *   - Does NOT start API server (do this manually or via CI)
+ *   - Resets/seeds the test DB and FAILS FAST if seeding errors
  *   - Waits for API to be available
+ *   - Verifies seeded users can authenticate (fails fast on an empty DB)
  *   - Optionally waits for Python services (STT-v2, SMR-v2, NLP)
  *
  * ENVIRONMENT FLAGS:
@@ -50,8 +52,9 @@
  * overriding test configuration.
  */
 
-import { FullConfig } from '@playwright/test';
+import { FullConfig, request } from '@playwright/test';
 import { execSync } from 'child_process';
+import { verifySeededData } from '../helpers';
 
 if (process.env.NODE_ENV !== 'test') {
   console.warn(
@@ -151,8 +154,20 @@ async function globalSetup(config: FullConfig): Promise<void> {
         });
         console.log('✅ Database reset and seeded\n');
       } catch (error) {
-        console.warn('⚠️ Database reset failed:', (error as Error).message?.slice(0, 200));
-        console.warn('   Some tests may fail if seeded data is missing\n');
+        // Surface the REAL failure (captured via stdio:'pipe') and abort.
+        // The old "warn and continue" path let the suite run against a freshly
+        // force-reset (empty) DB, turning one root cause into 30+ misleading
+        // "login failed / 401" cascades in every spec's beforeAll.
+        const e = error as { stdout?: Buffer; stderr?: Buffer; message?: string };
+        const details = `${e.stdout?.toString() ?? ''}${e.stderr?.toString() ?? ''}`.trim();
+        console.error('\n❌ Database reset/seed FAILED — aborting (refusing to run tests against an unseeded DB).');
+        if (details) console.error(details.slice(-2000));
+        console.error(
+          '\n   Most common cause: the generated Prisma client is missing after a `clean`/`nuke`\n' +
+            '   (the `tsx` seed imports packages/database/src/generated/core-prisma-client).\n' +
+            '   Fix:  pnpm db:generate   then re-run  pnpm test:e2e\n'
+        );
+        throw new Error('test:db:reset failed during Playwright globalSetup — see output above');
       }
     }
   }
@@ -168,6 +183,30 @@ async function globalSetup(config: FullConfig): Promise<void> {
     throw new Error(`API at ${baseURL} is not available`);
   }
   console.log('✅ API is ready\n');
+
+  // Step 3.5: Verify seeded users can actually authenticate. Converts the
+  // confusing "every spec's beforeAll login returns 401" cascade (empty or
+  // half-seeded DB — e.g. a RESET_DB=false run against a DB that was never
+  // seeded) into one actionable failure. Gated by the same flag as the DB
+  // steps: HTTP-only specs (SKIP_DB_PRECHECK) don't depend on seeded data.
+  if (!skipDbPrecheck) {
+    console.log('🔍 Step 3.5: Verifying seeded data (auth smoke test)...');
+    const ctx = await request.newContext({ baseURL });
+    try {
+      const { ready, message } = await verifySeededData(ctx);
+      if (!ready) {
+        console.error(`❌ Seeded-data check failed: ${message}`);
+        console.error(
+          '   The API is up but seeded logins fail — the DB is empty/unseeded.\n' +
+            '   Fix:  pnpm db:generate && pnpm test:db:seed   (or run with RESET_DB unset)\n'
+        );
+        throw new Error(`Seeded-data verification failed: ${message}`);
+      }
+    } finally {
+      await ctx.dispose();
+    }
+    console.log('✅ Seeded data verified\n');
+  }
 
   // Step 4: Optionally wait for Python services
   if (waitForServices) {

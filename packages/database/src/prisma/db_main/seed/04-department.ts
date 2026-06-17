@@ -304,8 +304,8 @@ export const DEFAULT_DEPARTMENTS = [
 // Per-customer-tenant General Practice departments (TASK-305 Phase F).
 //
 // The DEFAULT_DEPARTMENTS above all belong to the Global customer tenant
-// (DEFAULT_TENANT_ID). The remaining customer tenants need at least a GEN
-// department of their own so their non-exempt admins can satisfy the
+// (DEFAULT_TENANT_ID). The ArcaAI customer tenant needs at least a GEN
+// department of its own so its non-exempt admins can satisfy the
 // role + department membership invariant enforced at login. Prompt IDs are
 // intentionally null here — they reference Global-tenant prompt templates.
 //
@@ -327,43 +327,11 @@ export const CUSTOMER_TENANT_GEN_DEPARTMENTS = [
             abbreviationDensity: 'low',
         },
     },
-    {
-        id: SEED_DEPARTMENT_IDS.GEN_FOURBITS,
-        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-        code: 'GEN',
-        name: 'General Practice',
-        description: 'General medical consultations and primary care',
-        defaultSummaryTemplate: 'SOAP',
-        preSummaryPromptId: null,
-        newPatientPromptId: null,
-        revisitPromptId: null,
-        promptConfig: {
-            contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
-            preferredSections: ['Chief Complaint', 'HPI', 'Assessment', 'Plan'],
-            abbreviationDensity: 'low',
-        },
-    },
-    {
-        id: SEED_DEPARTMENT_IDS.GEN_MUMBAI,
-        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
-        code: 'GEN',
-        name: 'General Practice',
-        description: 'General medical consultations and primary care',
-        defaultSummaryTemplate: 'SOAP',
-        preSummaryPromptId: null,
-        newPatientPromptId: null,
-        revisitPromptId: null,
-        promptConfig: {
-            contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
-            preferredSections: ['Chief Complaint', 'HPI', 'Assessment', 'Plan'],
-            abbreviationDensity: 'low',
-        },
-    },
 ];
 
 // Per-customer-tenant specialty departments (TASK-331 r2605 #6).
 //
-// In addition to the bare GEN above, each customer tenant gets a small
+// In addition to the bare GEN above, the ArcaAI customer tenant gets a small
 // realistic specialty catalog — Cardiology (`CARD`) and Emergency (`ER`) —
 // so cross-tenant demos look like real hospitals rather than empty shells.
 // Shapes mirror the Global-tenant `CARD`/`ER` entries in DEFAULT_DEPARTMENTS,
@@ -391,70 +359,6 @@ export const CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS = [
     {
         id: SEED_DEPARTMENT_IDS.ER_ARCAAI,
         tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-        code: 'ER',
-        name: 'Emergency',
-        description: 'Emergency and urgent care services',
-        defaultSummaryTemplate: 'ER-Triage',
-        preSummaryPromptId: null,
-        newPatientPromptId: null,
-        revisitPromptId: null,
-        promptConfig: {
-            contextVariables: ['Triage Assessment', 'Recent Vitals', 'Allergies'],
-            preferredSections: ['Chief Complaint', 'Triage Category', 'HPI', 'Examination', 'Investigations', 'Disposition'],
-            abbreviationDensity: 'high',
-        },
-    },
-    {
-        id: SEED_DEPARTMENT_IDS.CARD_FOURBITS,
-        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-        code: 'CARD',
-        name: 'Cardiology',
-        description: 'Heart and cardiovascular system specialists',
-        defaultSummaryTemplate: 'SOAP',
-        preSummaryPromptId: null,
-        newPatientPromptId: null,
-        revisitPromptId: null,
-        promptConfig: {
-            contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'ECG Results'],
-            preferredSections: ['Chief Complaint', 'Cardiac History', 'Physical Examination', 'Investigations', 'Assessment', 'Plan'],
-            abbreviationDensity: 'medium',
-        },
-    },
-    {
-        id: SEED_DEPARTMENT_IDS.ER_FOURBITS,
-        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-        code: 'ER',
-        name: 'Emergency',
-        description: 'Emergency and urgent care services',
-        defaultSummaryTemplate: 'ER-Triage',
-        preSummaryPromptId: null,
-        newPatientPromptId: null,
-        revisitPromptId: null,
-        promptConfig: {
-            contextVariables: ['Triage Assessment', 'Recent Vitals', 'Allergies'],
-            preferredSections: ['Chief Complaint', 'Triage Category', 'HPI', 'Examination', 'Investigations', 'Disposition'],
-            abbreviationDensity: 'high',
-        },
-    },
-    {
-        id: SEED_DEPARTMENT_IDS.CARD_MUMBAI,
-        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
-        code: 'CARD',
-        name: 'Cardiology',
-        description: 'Heart and cardiovascular system specialists',
-        defaultSummaryTemplate: 'SOAP',
-        preSummaryPromptId: null,
-        newPatientPromptId: null,
-        revisitPromptId: null,
-        promptConfig: {
-            contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'ECG Results'],
-            preferredSections: ['Chief Complaint', 'Cardiac History', 'Physical Examination', 'Investigations', 'Assessment', 'Plan'],
-            abbreviationDensity: 'medium',
-        },
-    },
-    {
-        id: SEED_DEPARTMENT_IDS.ER_MUMBAI,
-        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
         code: 'ER',
         name: 'Emergency',
         description: 'Emergency and urgent care services',

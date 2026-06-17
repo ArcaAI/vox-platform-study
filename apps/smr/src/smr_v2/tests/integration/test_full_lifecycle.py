@@ -26,7 +26,7 @@ class TestGenerateLifecycle:
         client, _ = integration_client
         resp = await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "mock"},
+            json={"prompt": "Hello world", "provider": "mock", "model": "mock-model"},
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -45,7 +45,7 @@ class TestGenerateLifecycle:
         client, _ = integration_client
         resp = await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "mock"},
+            json={"prompt": "Hello world", "provider": "mock", "model": "mock-model"},
         )
         assert resp.status_code == 200
         task_id = resp.json()["task_id"]
@@ -66,6 +66,7 @@ class TestGenerateLifecycle:
             json={
                 "prompt": "Hello world",
                 "provider": "mock_fail",
+                "model": "mock-model",
                 "retry_config": {"max_retries": 0, "retry_on": []},
             },
         )
@@ -76,7 +77,7 @@ class TestGenerateLifecycle:
         client, _ = integration_client
         resp = await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "nonexistent"},
+            json={"prompt": "Hello world", "provider": "nonexistent", "model": "mock-model"},
         )
         assert resp.status_code == 404
         body = resp.json()
@@ -96,7 +97,7 @@ class TestStreamingLifecycle:
         client, _ = integration_client
         resp = await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "mock", "stream": True},
+            json={"prompt": "Hello world", "provider": "mock", "model": "mock-model", "stream": True},
         )
         assert resp.status_code == 202
         body = resp.json()
@@ -109,7 +110,7 @@ class TestStreamingLifecycle:
         client, _ = integration_client
         resp = await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "mock", "stream": True},
+            json={"prompt": "Hello world", "provider": "mock", "model": "mock-model", "stream": True},
         )
         assert resp.status_code == 202
         task_id = resp.json()["task_id"]
@@ -129,7 +130,7 @@ class TestStreamingLifecycle:
         client, _ = integration_client
         resp = await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "mock", "stream": True},
+            json={"prompt": "Hello world", "provider": "mock", "model": "mock-model", "stream": True},
         )
         assert resp.status_code == 202
         task_id = resp.json()["task_id"]
@@ -171,7 +172,7 @@ class TestTaskManagement:
         client, _ = integration_client
         gen_resp = await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "mock"},
+            json={"prompt": "Hello world", "provider": "mock", "model": "mock-model"},
         )
         assert gen_resp.status_code == 200
         task_id = gen_resp.json()["task_id"]
@@ -188,7 +189,7 @@ class TestTaskManagement:
         client, _ = integration_client
         gen_resp = await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "mock"},
+            json={"prompt": "Hello world", "provider": "mock", "model": "mock-model"},
         )
         task_id = gen_resp.json()["task_id"]
 

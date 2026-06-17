@@ -206,8 +206,55 @@ Trees: `packages/agentic-sdk-v2`, `packages/stt`, `packages/noise-filter`, `apps
 - Combined working tree: 13 modified + 2 untracked files; backend and SDK trees
   are disjoint (no conflicts). Changes left **uncommitted** per instructions.
 
+### Follow-up (2026-06-17) — Global still resolved to LOCAL + `whisper-large-v3` 401
+
+After the TASK-364 SDK default flip, impersonating a **Global-tenant doctor**
+*still* ran the local pipeline and failed with
+`Unauthorized access … huggingface.co/whisper-large-v3/…/config.json` →
+`PROVIDER_INIT_FAILED`. Two **data + default** causes the code-only fix did not
+cover:
+
+1. **Effective mode is data-driven, not code-driven.** The Global tenant's
+   `TenantFrontendConfig` was `BACKEND` but **unlocked**, and the seeded Global
+   doctors had `workflowMode='local'`. Per
+   `userPreferences.service.resolveEffectiveTranscriptionMode`, an *unlocked*
+   tenant lets the user's `workflowMode` win → `LOCAL`. The SDK `provider`
+   default never applied because the resolved server `transcriptionMode` was
+   present (`LOCAL`).
+2. **`whisper-large-v3` is not browser-loadable.** It is neither a recognized
+   Whisper size nor a namespaced repo, so `LocalSTTProvider` forwarded it
+   verbatim → the worker requested `huggingface.co/whisper-large-v3` (401). Even
+   the namespaced `onnx-community/whisper-large-v3` is **gated (HTTP 401)** —
+   verified via the HF API; `onnx-community/whisper-{tiny,base,small}` +
+   `_timestamped` variants return 200. Browser-loadable Whisper = `tiny/base/small`.
+
+**Fix (chosen: C — lock + seed remote default; and make local loadable):**
+- **Lock Global → BACKEND.** `seed/05-tenant.ts` Global `TenantFrontendConfig`
+  → `transcriptionMode: BACKEND` + `transcriptionModeLocked: true` (other tenants
+  stay unlocked; local stays opt-in). Live DB synced via `UPDATE` (1 row).
+- **Remote as the sane default.** `seed/91-user.ts` all seeded `workflowMode`
+  `'local' → 'remote'` (11 rows; per-user `localConfig` retained so local is a
+  working opt-in); SDK `DEFAULT_PERSONALIZATION_CONFIG.defaults.workflowMode`
+  `'local' → 'remote'`. Live DB synced (11 rows).
+- **Make local loadable (defense-in-depth).** New `resolveLocalWhisperModel()`
+  (`packages/stt/src/types/index.ts`): browser-viable size → use it; namespaced
+  HF repo → trust as `modelPath`; anything else (e.g. `whisper-large-v3`, or
+  `medium`/`large`) → fall back to `base` + `console.warn`, **never** a
+  bare/gated repo. Wired into `LocalSTTProvider.init`. SDK
+  `DEFAULT_LOCAL_CONFIG.stt.modelId` + seeded `localConfig.stt.modelId`
+  `'whisper-large-v3' → 'whisper-base'` (live DB synced, 2 rows).
+
+**Verification:** `@arcaai/stt` build + 406 tests (incl. `resolveLocalWhisperModel`
+RED→GREEN, 5 new); `@arcaai/vox` build + 70 affected tests (PersonalizationManager,
+config.task225, AgenticProvider.transcriptionMode.task356); `@arcaai/database`
+`tsc` build + seed 327 tests; lint clean on all edited files. Live DB verified:
+`global_locked=true`, 0 `workflowMode='local'` remaining (18 remote), 0
+`localConfig` with `whisper-large-v3`. Rebuilt `@arcaai/stt` + `@arcaai/vox` dist
+(consumed by the playground). Changes left **uncommitted** per instructions.
+
 ## 5. Change History
 | Date | Change | Files |
 |---|---|---|
 | 2026-06-16 | Ticket opened; root-caused all three issues with file:line evidence; chose externalization for Issue 2; dispatched Backend + SDK streams. | _(docs only)_ |
 | 2026-06-17 | **Implemented all three (TDD, parallel streams).** Issue 3: soft-delete exemption for `AsrPipelineVersion` (root cause was the extension, NOT the `as any` filter — corrected §2). Issue 1: SDK default `local→backend` + `streamingTransport`-aware resolver + playground guard; backend default chain verified already-correct. Issue 2: externalized stt + noise-filter from the vox bundle. All verified; left uncommitted. | `client.ts`, `soft-delete-extension.test.ts`, `agentic-sdk-v2/{tsup.config.ts,core/ConfigSchema.ts,core/TranscriptionPipeline.ts,+tests,__tests__/bundle-externals.task364.test.ts}`, `ui-playground/.../audio/{constants.ts,batch.tsx,components/transcript-panel.tsx}`, `ui-playground/.../consultation/components/consultation-recording-panel.tsx` (+test) |
+| 2026-06-17 | **Follow-up:** Global tenant still resolved to LOCAL (unlocked `TenantFrontendConfig` + seeded `workflowMode='local'`) and `whisper-large-v3` is browser-ungated/non-loadable (401, verified via HF API). Chose **lock Global + seed remote default + make local loadable**: new `resolveLocalWhisperModel()` guard (browser-viable size / namespaced repo / safe `base` fallback), SDK defaults `workflowMode local→remote` + local model `whisper-large-v3→whisper-base`, seed lock + workflowMode flips + model fix, and synced the running DB (1 lock + 11 workflowMode + 2 localConfig `UPDATE`s). Rebuilt stt + vox dist. Verified (stt 406, vox 70, database 327, lint clean); uncommitted. | `stt/src/types/index.ts` (`resolveLocalWhisperModel`, `DEFAULT_LOCAL_WHISPER_SIZE`), `stt/src/providers/LocalSTTProvider.ts`, `stt/src/__tests__/types.test.ts`, `agentic-sdk-v2/src/types/config.ts`, `database/.../seed/05-tenant.ts`, `database/.../seed/91-user.ts`; live DB `UPDATE`s (non-destructive) |

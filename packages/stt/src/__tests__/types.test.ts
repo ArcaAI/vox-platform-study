@@ -5,7 +5,7 @@
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   STTError,
   STTErrorCode,
@@ -18,6 +18,8 @@ import {
   getCountryCode,
   isWhisperModelSize,
   parseModelId,
+  resolveLocalWhisperModel,
+  DEFAULT_LOCAL_WHISPER_SIZE,
   type STTOptions,
   type TranscriptionResult,
   type STTStats,
@@ -198,6 +200,49 @@ describe('Model utilities', () => {
 
     it('should return undefined for custom paths', () => {
       expect(parseModelId('huggingface/custom-model')).toBeUndefined();
+    });
+  });
+
+  describe('resolveLocalWhisperModel', () => {
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    it('maps a browser-viable size (with or without prefix) to that size and no path', () => {
+      expect(resolveLocalWhisperModel('tiny')).toEqual({ model: 'tiny' });
+      expect(resolveLocalWhisperModel('whisper-base')).toEqual({ model: 'base' });
+      expect(resolveLocalWhisperModel('small')).toEqual({ model: 'small' });
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('trusts an explicit namespaced HuggingFace repo id as modelPath', () => {
+      expect(resolveLocalWhisperModel('onnx-community/whisper-base_timestamped')).toEqual({
+        model: DEFAULT_LOCAL_WHISPER_SIZE,
+        modelPath: 'onnx-community/whisper-base_timestamped',
+      });
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the default browser size for a non-browser-loadable bare id (the whisper-large-v3 bug)', () => {
+      expect(resolveLocalWhisperModel('whisper-large-v3')).toEqual({ model: DEFAULT_LOCAL_WHISPER_SIZE });
+      expect(warnSpy).toHaveBeenCalled();
+    });
+
+    it('falls back for whisper sizes that have no browser-loadable onnx repo (medium/large)', () => {
+      expect(resolveLocalWhisperModel('medium')).toEqual({ model: DEFAULT_LOCAL_WHISPER_SIZE });
+      expect(resolveLocalWhisperModel('whisper-large')).toEqual({ model: DEFAULT_LOCAL_WHISPER_SIZE });
+      expect(warnSpy).toHaveBeenCalled();
+    });
+
+    it('never returns a bare (non-namespaced) modelPath that would hit huggingface.co/<id>', () => {
+      const result = resolveLocalWhisperModel('whisper-large-v3');
+      expect(result.modelPath).toBeUndefined();
     });
   });
 });

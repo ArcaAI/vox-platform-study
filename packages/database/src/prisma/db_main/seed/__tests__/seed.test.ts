@@ -10,7 +10,7 @@
  *     — it reuses the canonical 91-user.ts clinicians by id. A duplicate
  *     username under a NEW id would violate `User.username @unique` and crash a
  *     COLD seed (91 inserts the canonical user, 08's create then collides).
- *   - (F1) every customer tenant (ArcaAI / 4bits / Mumbai) has >= 1 seeded
+ *   - (F1) the ArcaAI customer tenant has >= 1 seeded
  *     consultation, so admin clinical lists & analytics are not empty.
  *   - (F8) every customer tenant has >= 1 clinician.
  *   - (F6/F8) every seeded audit row references users/consultations that live
@@ -41,8 +41,6 @@ import {
 
 const CUSTOMER_TENANTS = [
     { label: 'ArcaAI', tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI },
-    { label: '4bits', tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS },
-    { label: 'Mumbai', tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL },
 ] as const;
 
 // id -> home tenant for every seeded user (platform users live on the system

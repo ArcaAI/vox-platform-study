@@ -1758,15 +1758,15 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
 // PER-CUSTOMER-TENANT ASR PIPELINES (TASK-331 doc-03 F3 / Q2)
 //
 // The DEFAULT_ASR_PIPELINES above are platform-wide system seeds owned by the
-// reserved system tenant. Each customer tenant (ArcaAI/4bits/Mumbai) was
+// reserved system tenant. The ArcaAI customer tenant was
 // previously left with ZERO pipelines; this gave admins nothing to manage and
-// no per-tenant default. Here we give every customer tenant a small, realistic
+// no per-tenant default. Here we give the customer tenant a small, realistic
 // catalog (a production default + a turbo/streaming option) and mark EXACTLY
 // ONE as `isDefault: true`. The runtime (resolveRemoteConfig) honours that
 // per-tenant default ahead of the GlobalSetting slug default.
 //
 // ID scheme: kept inside the `81000000-…-0001-…` ASR-pipeline block; the LAST
-// UUID group encodes the tenant (1xx=ArcaAI, 2xx=4bits, 3xx=Mumbai) so the IDs
+// UUID group encodes the tenant (1xx=ArcaAI) so the IDs
 // never collide with the system rows (01-07, 50-52). Slugs are reused per
 // tenant — safe under the `@@unique([tenantId, slug])` constraint.
 //
@@ -1810,78 +1810,6 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
         isDefault: false,
         tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
     },
-    // --- 4bits ---
-    {
-        id: '81000000-0000-0000-0001-000000000201',
-        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-        name: '4bits Production Pipeline (Whisper Large V3)',
-        slug: 'production-whisper-large-v3',
-        description: '4bits default production pipeline using Whisper Large V3 with VAD and noise reduction.',
-        configYaml: PIPELINE_CONFIGS.production,
-        // TASK-361 — restored as the effective default (resolvable artifact);
-        // CT2 int8 pipeline (…0203) deferred until the D-4 artifact is published.
-        isDefault: true,
-        tags: ['production', 'high-quality', 'recommended'],
-    },
-    {
-        id: '81000000-0000-0000-0001-000000000202',
-        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-        name: '4bits Turbo Pipeline (Whisper Large V3 Turbo)',
-        slug: 'turbo-whisper-large-v3',
-        description: '4bits fast streaming pipeline using Whisper Large V3 Turbo for low-latency transcription.',
-        configYaml: PIPELINE_CONFIGS.turbo,
-        isDefault: false,
-        tags: ['streaming', 'real-time', 'fast'],
-    },
-    {
-        // TASK-356 Phase 2 / TASK-361 — 4bits CT2 int8 pipeline (registered, not default until D-4).
-        id: '81000000-0000-0000-0001-000000000203',
-        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-        name: '4bits Production Pipeline (Faster-Whisper Turbo CT2 int8)',
-        slug: 'production-faster-whisper-turbo-int8',
-        description: '4bits default production pipeline using whisper-large-v3-turbo CTranslate2 int8 (faster-whisper) with diarization + dual capture.',
-        configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
-        // TASK-361 — registered + catalog-visible, but NOT the default: its ASR
-        // model still carries the non-resolving MODEL_REPO_PLACEHOLDER (D-4).
-        isDefault: false,
-        tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
-    },
-    // --- Mumbai General Hospital ---
-    {
-        id: '81000000-0000-0000-0001-000000000301',
-        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
-        name: 'Mumbai Production Pipeline (Whisper Large V3)',
-        slug: 'production-whisper-large-v3',
-        description: 'Mumbai General Hospital default production pipeline using Whisper Large V3 with VAD and noise reduction.',
-        configYaml: PIPELINE_CONFIGS.production,
-        // TASK-361 — restored as the effective default (resolvable artifact);
-        // CT2 int8 pipeline (…0303) deferred until the D-4 artifact is published.
-        isDefault: true,
-        tags: ['production', 'high-quality', 'recommended'],
-    },
-    {
-        id: '81000000-0000-0000-0001-000000000302',
-        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
-        name: 'Mumbai Lightweight Pipeline (Whisper Small)',
-        slug: 'lightweight-whisper-small',
-        description: 'Mumbai General Hospital CPU-friendly fallback pipeline using Whisper Small for low-resource sites.',
-        configYaml: PIPELINE_CONFIGS.lightweight,
-        isDefault: false,
-        tags: ['cpu', 'lightweight', 'low-resource'],
-    },
-    {
-        // TASK-356 Phase 2 / TASK-361 — Mumbai CT2 int8 pipeline (registered, not default until D-4).
-        id: '81000000-0000-0000-0001-000000000303',
-        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
-        name: 'Mumbai Production Pipeline (Faster-Whisper Turbo CT2 int8)',
-        slug: 'production-faster-whisper-turbo-int8',
-        description: 'Mumbai General Hospital default production pipeline using whisper-large-v3-turbo CTranslate2 int8 (faster-whisper) with diarization + dual capture.',
-        configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
-        // TASK-361 — registered + catalog-visible, but NOT the default: its ASR
-        // model still carries the non-resolving MODEL_REPO_PLACEHOLDER (D-4).
-        isDefault: false,
-        tags: ['faster-whisper', 'ctranslate2', 'int8', 'diarization'],
-    },
 ];
 
 // =============================================================================
@@ -1899,12 +1827,12 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
 //
 // ID scheme: stays in the `81000000-…-0001-…` ASR-pipeline block; the trailing
 // group uses the 4xx slot (Global) so IDs never collide with the system rows
-// (01-07, 50-52) or the other customer tenants (1xx/2xx/3xx). Slugs are reused
+// (01-07, 50-52) or the ArcaAI customer tenant (1xx). Slugs are reused
 // per tenant — safe under `@@unique([tenantId, slug])`.
 //
 // Kept in a SEPARATE array (not CUSTOMER_TENANT_ASR_PIPELINES) because the seed
-// tests require every CUSTOMER_TENANT_ASR_PIPELINES row to be an ArcaAI/4bits/
-// Mumbai tenant. Exported for testing + reuse by transcription-job seeds.
+// tests require every CUSTOMER_TENANT_ASR_PIPELINES row to be the ArcaAI
+// customer tenant. Exported for testing + reuse by transcription-job seeds.
 // =============================================================================
 
 export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = [
@@ -2258,8 +2186,6 @@ export const seedAiModels = async (client: CorePrismaClient) => {
 export const CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL = [
     SEED_TENANT_ID,
     SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-    SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-    SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
 ];
 
 /**
@@ -2371,8 +2297,6 @@ export const STT_DEFAULT_PIPELINE_BACKFILL_TENANTS = [
     DEFAULT_TENANT_ID, // SYSTEM master catalog (=== SYSTEM_TENANT_ID)
     SEED_TENANT_ID, // Global customer tenant
     SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-    SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-    SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
 ];
 
 /**
