@@ -77,6 +77,13 @@ export default defineConfig({
   resolve: {
     alias: {
       '@tests': path.resolve(__dirname, './tests'),
+      // Resolve the actively-developed @arcaai/applications package from source
+      // rather than its built ./dist. The direct-vitest path (`test:unit`) does
+      // not build first (unlike turbo's `test` task), so an incremental rebuild
+      // writing dist/index.js concurrently produced "Failed to resolve entry for
+      // package" races. Source resolution removes that dependency on build state
+      // and matches the coverage config, which already targets packages/*/src.
+      '@arcaai/applications': path.resolve(__dirname, './packages/applications/src/index.ts'),
     },
   },
 });

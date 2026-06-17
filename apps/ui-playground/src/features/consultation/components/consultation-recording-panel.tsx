@@ -1,6 +1,5 @@
 import { LiveByteCount } from '@/components/live-byte-count';
 import { DiarizationSeedingIndicator } from '@/features/audio/components/diarization-seeding-indicator';
-import { DEFAULT_TRANSCRIPTION_PIPELINE_ID } from '@/features/audio/constants';
 import { useRealtimeTranscription } from '@/hooks/use-realtime-transcription';
 import { Badge } from '@arcaai/ui/badge';
 import { Button } from '@arcaai/ui/button';
@@ -71,9 +70,13 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId }: Consu
 
   const rawRecorderRef = useRef<{ recorder: MediaRecorder; chunks: Blob[] } | null>(null);
 
-  // TASK-333 T5 — resolve the remote transcription pipeline: explicit prop >
-  // the user/tenant cascade-resolved config (SDK config hook) > system default.
-  const resolvedPipelineId = pipelineId ?? resolvedConfig?.stt?.transcriptionPipelineId ?? DEFAULT_TRANSCRIPTION_PIPELINE_ID;
+  // TASK-333 T5 / TASK-364 — resolve the remote transcription pipeline: explicit
+  // prop > the user/tenant cascade-resolved config (SDK config hook). There is
+  // intentionally NO hardcoded fallback: the old DEFAULT_TRANSCRIPTION_PIPELINE_ID
+  // is a SYSTEM-tenant pipeline not shared-read into customer tenants, so silently
+  // using it produced a cross-tenant "Pipeline … not found" 404 on session start.
+  // When nothing resolves, handleStart blocks with an actionable error.
+  const resolvedPipelineId = pipelineId ?? resolvedConfig?.stt?.transcriptionPipelineId;
 
   const refreshRecordings = useCallback(() => {
     void list(consultationId).catch(() => {
@@ -115,6 +118,12 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId }: Consu
   }, []);
 
   const handleStart = useCallback(async () => {
+    // TASK-364 — block Start (rather than silently 404 mid-session) when no
+    // tenant-scoped transcription pipeline is configured for this doctor.
+    if (!resolvedPipelineId) {
+      toast.error('No transcription pipeline is configured for your account. Ask an administrator to assign one before recording.');
+      return;
+    }
     try {
       await realtime.start({ pipelineId: resolvedPipelineId, consultationId });
     } catch (err) {

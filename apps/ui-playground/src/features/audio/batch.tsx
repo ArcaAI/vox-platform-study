@@ -17,7 +17,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AudioImpersonationBanner, AudioPageHeaderAction } from './components/audio-page-chrome';
 import { AudioTranscriptItem } from './components/audio-transcript-item';
-import { DEFAULT_TRANSCRIPTION_PIPELINE_ID, SUPPORTED_LANGUAGES } from './constants';
+import { SUPPORTED_LANGUAGES } from './constants';
 
 function FileUploadPanel({
   file,
@@ -140,10 +140,16 @@ function BatchTranscriptPanel() {
       toast.warning('Select an audio file first');
       return;
     }
+    // TASK-364 — no hardcoded cross-tenant fallback. Require an explicitly
+    // selected pipeline instead of silently using the SYSTEM-tenant default.
+    if (!selectedPipelineId) {
+      toast.error('Select a transcription pipeline before uploading.');
+      return;
+    }
     toast.info(`Uploading ${selectedFile.name}...`);
     try {
       await fileTranscription.upload(selectedFile, {
-        pipelineId: selectedPipelineId || DEFAULT_TRANSCRIPTION_PIPELINE_ID,
+        pipelineId: selectedPipelineId,
         ...(language ? { language } : {}),
       });
       toast.success(`Upload complete. Job: ${fileTranscription.jobId?.slice(0, 12) ?? ''}...`);

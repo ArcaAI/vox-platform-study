@@ -21,6 +21,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { toast } from 'sonner';
 
 vi.mock('@arcaai/ui/card', () => ({
   Card: ({ children, ...p }: any) => <div {...p}>{children}</div>,
@@ -36,7 +37,6 @@ vi.mock('@arcaai/ui/skeleton', () => ({
   Skeleton: (p: any) => <div data-testid="skeleton" {...p} />,
 }));
 vi.mock('@/features/audio/constants', () => ({
-  DEFAULT_TRANSCRIPTION_PIPELINE_ID: 'pipe-default',
   SUPPORTED_LANGUAGES: [],
 }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
@@ -137,6 +137,7 @@ describe('ConsultationRecordingPanel (TASK-329 P2)', () => {
     storageState.uploadFile = vi.fn().mockImplementation((_bucket: string, file: File) => Promise.resolve({ key: `key-${file.name}` }));
     configState.resolvedConfig = null;
     mediaRec.instances = [];
+    vi.mocked(toast.error).mockClear();
     vi.stubGlobal('MediaRecorder', MockMediaRecorder);
   });
 
@@ -170,10 +171,14 @@ describe('ConsultationRecordingPanel (TASK-329 P2)', () => {
     expect(screen.getAllByText('Dual capture')).toHaveLength(1);
   });
 
-  it('starts a consultation-scoped session with the default pipeline', () => {
+  // TASK-364 — there is NO silent cross-tenant fallback. With no prop and no
+  // cascade-resolved pipeline, Start must be blocked with an actionable error
+  // rather than starting a session against the SYSTEM-tenant pipeline (404 risk).
+  it('blocks Start with an actionable error when no pipeline is configured', () => {
     render(<ConsultationRecordingPanel consultationId="c-1" />);
     fireEvent.click(screen.getByText('Start recording'));
-    expect(realtime.start).toHaveBeenCalledWith({ pipelineId: 'pipe-default', consultationId: 'c-1' });
+    expect(realtime.start).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalled();
   });
 
   it('honours an explicit pipeline override', () => {
@@ -183,7 +188,8 @@ describe('ConsultationRecordingPanel (TASK-329 P2)', () => {
   });
 
   // TASK-333 T5 — pipeline selection resolves the user's remote pipeline id
-  // (cascade-resolved via the SDK config hook), falling back to the constant.
+  // (cascade-resolved via the SDK config hook). TASK-364 removed the silent
+  // constant fallback; an unresolved pipeline now blocks Start (see above).
   it('uses the resolved remote pipeline id from config when no prop is given', () => {
     configState.resolvedConfig = { stt: { transcriptionPipelineId: 'pipe-remote' } };
     render(<ConsultationRecordingPanel consultationId="c-1" />);
@@ -198,11 +204,12 @@ describe('ConsultationRecordingPanel (TASK-329 P2)', () => {
     expect(realtime.start).toHaveBeenCalledWith({ pipelineId: 'pipe-x', consultationId: 'c-1' });
   });
 
-  it('falls back to the default pipeline when config has no resolved id', () => {
+  it('blocks Start when config resolves no pipeline id (no silent default)', () => {
     configState.resolvedConfig = { audio: { dualCapture: false } };
     render(<ConsultationRecordingPanel consultationId="c-1" />);
     fireEvent.click(screen.getByText('Start recording'));
-    expect(realtime.start).toHaveBeenCalledWith({ pipelineId: 'pipe-default', consultationId: 'c-1' });
+    expect(realtime.start).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalled();
   });
 
   it('shows Stop while streaming and stops the session', () => {

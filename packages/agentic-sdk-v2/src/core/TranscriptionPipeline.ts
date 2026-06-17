@@ -608,7 +608,14 @@ export class TranscriptionPipeline {
       return 'local';
     }
 
-    return this.config.stt.sttSocket ? 'remote' : 'local';
+    // TASK-364 — default to backend/remote whenever a backend transport exists.
+    // The backend workflow injects a pipeline-aware `streamingTransport` (its own
+    // WebSocket URL) but no legacy `sttSocket`; treating only `sttSocket` as the
+    // backend signal wrongly resolved those consumers to LOCAL when the server
+    // left `transcriptionMode` unset, dragging them into the local Whisper path.
+    // A bare config with neither transport stays local (offline-capable default;
+    // local must then be opted into via provider/location/transcriptionMode).
+    return this.config.stt.sttSocket || this.config.stt.streamingTransport ? 'remote' : 'local';
   }
 
   private getSTTLanguage(): string {

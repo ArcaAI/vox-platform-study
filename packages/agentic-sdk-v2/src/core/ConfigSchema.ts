@@ -37,7 +37,11 @@ export const AudioConfigSchema = v.object({
 });
 
 export const SttConfigSchema = v.object({
-  provider: v.optional(v.picklist(['local', 'backend', 'auto']), 'local'),
+  // TASK-364 — default flips local → backend. When the server resolves no
+  // transcriptionMode, consumers must NOT silently fall into the local Whisper
+  // path (which requires a heavy in-browser model download). Backend is the safe
+  // default; explicit `provider: 'local'` is still honored for local opt-in.
+  provider: v.optional(v.picklist(['local', 'backend', 'auto']), 'backend'),
   defaultModel: v.optional(v.string(), 'whisper-tiny'),
   // TASK-329 P3 — default derived from DEFAULT_STT_MODELS (single source of
   // truth) so the presented list can never drift from the registry-loadable set.

@@ -36,7 +36,7 @@ describe('ConfigSchema', () => {
         });
 
         it('should have correct stt defaults', () => {
-            expect(SYSTEM_DEFAULTS.stt.provider).toBe('local');
+            expect(SYSTEM_DEFAULTS.stt.provider).toBe('backend');
             expect(SYSTEM_DEFAULTS.stt.defaultModel).toBe('whisper-tiny');
             expect(SYSTEM_DEFAULTS.stt.language).toBe('en');
             expect(SYSTEM_DEFAULTS.stt.availableModels).toHaveLength(3);
@@ -59,7 +59,7 @@ describe('ConfigSchema', () => {
         it('should parse an empty object to full defaults', () => {
             const result = v.parse(AppConfigSchema, {});
             expect(result.audio.sampleRate).toBe(16000);
-            expect(result.stt.provider).toBe('local');
+            expect(result.stt.provider).toBe('backend');
             expect(result.ui.theme).toBe('system');
         });
 
@@ -307,6 +307,21 @@ describe('ConfigSchema', () => {
             expect(getFieldPermission('stt.transcriptionMode')).toBe('admin');
             expect(canUserEditField('stt.transcriptionMode', new Set())).toBe(false);
             expect(getUserEditableFields()).not.toContain('stt.transcriptionMode');
+        });
+    });
+
+    // =========================================================================
+    // TASK-364 — stt.provider default flips local → backend so an absent
+    // server transcriptionMode no longer drags consumers into the local path.
+    // =========================================================================
+    describe('TASK-364: stt.provider default', () => {
+        it('defaults stt.provider to backend (was local) when unset', () => {
+            expect(SYSTEM_DEFAULTS.stt.provider).toBe('backend');
+            expect(v.parse(SttConfigSchema, {}).provider).toBe('backend');
+        });
+
+        it('still preserves an explicit provider: local opt-in', () => {
+            expect(v.parse(SttConfigSchema, { provider: 'local' }).provider).toBe('local');
         });
     });
 });

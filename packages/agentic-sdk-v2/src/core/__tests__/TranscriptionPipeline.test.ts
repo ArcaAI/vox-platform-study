@@ -39,6 +39,7 @@ const mockSTT = {
   disable: vi.fn().mockResolvedValue(undefined),
   destroy: vi.fn().mockResolvedValue(undefined),
   getProviderType: vi.fn(() => 'local' as const),
+  setStreamingTransport: vi.fn(),
   transcribeSegment: vi.fn().mockResolvedValue({
     text: 'speech segment',
     isFinal: true,
@@ -305,6 +306,37 @@ describe('TranscriptionPipeline', () => {
           }),
         })
       );
+    });
+
+    // TASK-364 — the backend workflow injects a `streamingTransport` (pipeline-aware
+    // WebSocket) but never sets an `sttSocket`. Before this fix the final fallback
+    // only checked `sttSocket`, so an absent `transcriptionMode` resolved to LOCAL
+    // and dragged backend consumers into the (broken) local Whisper path. The
+    // fallback must treat a streaming transport as a backend signal → remote.
+    it('resolves auto STT provider to remote when a streamingTransport is configured (no sttSocket)', async () => {
+      const transport = { sessionManager: {}, wsClient: {}, pipelineId: 'pipe-1' };
+      const pipeline = new TranscriptionPipeline(
+        {
+          noiseFilter: { enabled: false, location: 'skip' },
+          vad: { enabled: false, location: 'browser' },
+          stt: {
+            enabled: true,
+            location: 'auto',
+            provider: 'auto',
+            streamingTransport: transport,
+          },
+        },
+        mockLogger
+      );
+
+      await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
+
+      expect(createSTT).toHaveBeenCalledWith(
+        expect.objectContaining({
+          features: expect.objectContaining({ provider: 'remote' }),
+        })
+      );
+      expect(mockSTT.setStreamingTransport).toHaveBeenCalledWith(transport);
     });
 
     it('should fail fast when backend STT is selected without sttSocket', async () => {

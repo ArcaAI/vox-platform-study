@@ -7,8 +7,10 @@ import { STREAM_SCOPE_METADATA } from '../../modules/auth/decorators/stream-scop
 
 const mockSuperCanActivate = vi.fn();
 
-vi.mock('@nestjs/passport', () => {
+vi.mock('@nestjs/passport', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@nestjs/passport')>();
     return {
+        ...actual,
         AuthGuard: () => {
             class MockAuthGuard {
                 canActivate(context: ExecutionContext) {
