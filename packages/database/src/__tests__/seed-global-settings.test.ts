@@ -8,7 +8,7 @@ import { ALL_SETTINGS } from '../prisma/db_main/seed/11-global-setting';
 
 const UUID_REGEX = /^85000000-/;
 
-const SETTING_PREFIXES = ['ARCAAI', 'FOURBITS', 'MUMBAI', 'GLOBAL'] as const;
+const SETTING_PREFIXES = ['ARCAAI', 'GLOBAL'] as const;
 
 const GENERAL_SUFFIXES = [
   'MAX_CONCURRENT_SESSIONS',
@@ -47,8 +47,8 @@ const CORE_SUFFIXES = [
 
 // TASK-331 doc-08 F4 — every tenant (including ArcaAI) now carries the `general`
 // namespace block (max-concurrent-sessions, default-language, session-timeout) so
-// all four tenants are consistent and no admin "General" tab is left empty.
-const PREFIXES_WITH_GENERAL = new Set(['ARCAAI', 'FOURBITS', 'MUMBAI', 'GLOBAL']);
+// both tenants are consistent and no admin "General" tab is left empty.
+const PREFIXES_WITH_GENERAL = new Set(['ARCAAI', 'GLOBAL']);
 
 // TASK-316 — platform-wide (NOT per-tenant) settings: DB-backed gateway
 // rate-limit config. These live on the platform tenant only and therefore
@@ -109,8 +109,6 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
     const SEGMENT_MAP: Record<string, string> = {
       GLOBAL: '0000',
       ARCAAI: '0001',
-      FOURBITS: '0002',
-      MUMBAI: '0003',
     };
 
     for (const [prefix, segment] of Object.entries(SEGMENT_MAP)) {
@@ -180,10 +178,8 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
       expect(SEED_TENANT_ID).toBe('50000000-0000-0000-0000-000000000000');
     });
 
-    it('should define all three customer tenant IDs', () => {
+    it('should define the ArcaAI customer tenant ID', () => {
       expect(SEED_CUSTOMER_TENANT_IDS.ARCAAI).toBeDefined();
-      expect(SEED_CUSTOMER_TENANT_IDS.FOURBITS).toBeDefined();
-      expect(SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL).toBeDefined();
     });
   });
 
@@ -196,8 +192,6 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
     const TENANT_ID_BY_PREFIX: Record<string, string> = {
       GLOBAL: SEED_TENANT_ID,
       ARCAAI: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-      FOURBITS: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-      MUMBAI: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
     };
 
     const settingsForTenant = (tenantId: string) =>

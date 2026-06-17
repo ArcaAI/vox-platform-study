@@ -5,7 +5,7 @@
  * `throw new BusinessException('Method not implemented.')` stub.
  *
  * Invariants under test (derived from `tenant.prisma` + existing seed values
- * `__GLOBAL__`, `ARCAAI`, `4BITS`, `MUMBAI_HOSPITAL`):
+ * `__SYSTEM__`, `__GLOBAL__`, `ARCAAI`):
  *   - name: non-empty trimmed, <= 255 chars
  *   - key:  non-empty trimmed, <= 100 chars, matches /^[A-Z0-9_-]+$/i
  *   - description: optional, <= 1000 chars if present
@@ -49,7 +49,7 @@ describe('TenantEntity.validate()', () => {
       expect(() => entity.validate()).not.toThrow('Method not implemented.');
     });
 
-    it.each(['__GLOBAL__', 'ARCAAI', '4BITS', 'MUMBAI_HOSPITAL'])(
+    it.each(['__SYSTEM__', '__GLOBAL__', 'ARCAAI'])(
       'should accept seed-style key %s',
       (key) => {
         const entity = new TenantEntity(createValidInit({ key }));

@@ -8,7 +8,7 @@
  *   00000000-0000-0000-0000-000000000000  →  Reserved system tenant (platform-wide rows)
  *   00000000-0000-0000-0000-XXXXXXXXXXXX  →  Roles (RBAC)
  *   00000000-0000-0000-0001-XXXXXXXXXXXX  →  Policies (RBAC)
- *   50000000-xxxx  →  Customer Tenants (Global, ArcaAI, 4bits, Mumbai)
+ *   50000000-xxxx  →  Customer Tenants (Global, ArcaAI)
  *   60000000-xxxx  →  API Keys + System User
  *   70000000-xxxx  →  Users (0001-0009 admin, 0010-0029 clinical, 0030+ service)
  *   70000000-xxxx  →  Departments (separate entity, same prefix range but dept block)
@@ -69,9 +69,10 @@ export const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 export const SEED_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 
 export const SEED_CUSTOMER_TENANT_IDS = {
+    // ArcaAI is the single retained customer/demo tenant. It exists to back the
+    // cross-tenant isolation E2E suite (a "second tenant" to prove 404/scoping
+    // contracts). The former 4bits + Mumbai demo tenants were removed (TASK-365).
     ARCAAI: '50000000-0000-0000-0000-000000000001',
-    FOURBITS: '50000000-0000-0000-0000-000000000002',
-    MUMBAI_HOSPITAL: '50000000-0000-0000-0000-000000000003',
 } as const;
 
 // =============================================================================
@@ -124,8 +125,6 @@ export const SEED_USER_IDS = {
     SUPER_ADMIN: '70000000-0000-0000-0000-000000000001',
     TENANT_ADMIN: '70000000-0000-0000-0000-000000000002',
     ARCAAI_ADMIN: '70000000-0000-0000-0000-000000000003',
-    FOURBITS_ADMIN: '70000000-0000-0000-0000-000000000004',
-    MUMBAI_ADMIN: '70000000-0000-0000-0000-000000000005',
     // TASK-336 AC-06 — platform-wide global admin. Lives on the SYSTEM tenant
     // (like SUPER_ADMIN) so it is membership-exempt and elevated cross-tenant.
     GLOBAL_ADMIN: '70000000-0000-0000-0000-000000000006',
@@ -149,16 +148,12 @@ export const SEED_USER_IDS = {
     NURSE_CARD: '70000000-0000-0000-0000-000000000027',
     NURSE_MED: '70000000-0000-0000-0000-000000000028',
     SERVICE_ACCOUNT: '70000000-0000-0000-0000-000000000030',
-    // TASK-331 doc-05 F1 — one impersonatable DOCTOR + NURSE per customer tenant
-    // (ArcaAI/4bits/Mumbai). The ~17 clinical users above all live on the Global
+    // TASK-331 doc-05 F1 — one impersonatable DOCTOR + NURSE for the ArcaAI
+    // customer tenant. The ~17 clinical users above all live on the Global
     // tenant; tenant admins are confined to their own tenant (backend C-1), so
-    // each customer tenant needs its own non-admin clinical users to impersonate.
+    // ArcaAI needs its own non-admin clinical users to impersonate.
     ARCAAI_DOCTOR: '70000000-0000-0000-0000-000000000040',
     ARCAAI_NURSE: '70000000-0000-0000-0000-000000000041',
-    FOURBITS_DOCTOR: '70000000-0000-0000-0000-000000000042',
-    FOURBITS_NURSE: '70000000-0000-0000-0000-000000000043',
-    MUMBAI_DOCTOR: '70000000-0000-0000-0000-000000000044',
-    MUMBAI_NURSE: '70000000-0000-0000-0000-000000000045',
 } as const;
 
 // =============================================================================
@@ -186,24 +181,18 @@ export const SEED_DEPARTMENT_IDS = {
     SONC: '70000000-0000-0000-0000-000000000018',
     // Per-customer-tenant General Practice departments (TASK-305 Phase F).
     // The 18 departments above belong to the Global customer tenant
-    // (SEED_TENANT_ID, 50000000-…0000). The other customer tenants need their
-    // own GEN department so their non-exempt admins can satisfy the
+    // (SEED_TENANT_ID, 50000000-…0000). The ArcaAI customer tenant needs its
+    // own GEN department so its non-exempt admins can satisfy the
     // role + department membership invariant enforced at login.
     GEN_ARCAAI: '70000000-0000-0000-0001-000000000001',
-    GEN_FOURBITS: '70000000-0000-0000-0002-000000000001',
-    GEN_MUMBAI: '70000000-0000-0000-0003-000000000001',
-    // TASK-331 r2605 #6 — enrich each customer tenant with a small realistic
-    // specialty catalog (Cardiology + Emergency) alongside the existing GEN
-    // so cross-tenant demos look real. The 4th UUID group encodes the tenant
-    // (0001=ArcaAI, 0002=4bits, 0003=Mumbai); the trailing group encodes the
-    // department slot within that tenant (001=GEN, 002=CARD, 003=ER). Prompt
-    // IDs stay null on these rows (they reference Global-tenant templates).
+    // TASK-331 r2605 #6 — enrich the ArcaAI customer tenant with a small
+    // realistic specialty catalog (Cardiology + Emergency) alongside the
+    // existing GEN so cross-tenant demos look real. The 4th UUID group encodes
+    // the tenant (0001=ArcaAI); the trailing group encodes the department slot
+    // within that tenant (001=GEN, 002=CARD, 003=ER). Prompt IDs stay null on
+    // these rows (they reference Global-tenant templates).
     CARD_ARCAAI: '70000000-0000-0000-0001-000000000002',
     ER_ARCAAI: '70000000-0000-0000-0001-000000000003',
-    CARD_FOURBITS: '70000000-0000-0000-0002-000000000002',
-    ER_FOURBITS: '70000000-0000-0000-0002-000000000003',
-    CARD_MUMBAI: '70000000-0000-0000-0003-000000000002',
-    ER_MUMBAI: '70000000-0000-0000-0003-000000000003',
 } as const;
 
 // =============================================================================
@@ -304,7 +293,7 @@ export const SEED_DNA_REPORT_IDS = {
 // Seeded in 09-consultation.ts:
 //   GEN_COMPLETED, GEN_REOPENED, CARD_NEW, SURG_NEW, SURG_FOLLOWUP,
 //   NEUR_REFERRAL, PEDS_COMPLETED, ER_RECORDING, CARD_CROSS_DEPT
-//   + customer-tenant: {ARCAAI,FOURBITS,MUMBAI}_GEN_{NEW,REVISIT} (doc-08 F1)
+//   + customer-tenant: ARCAAI_GEN_{NEW,REVISIT} (doc-08 F1)
 //
 // Reserved (ID allocated, not yet seeded in 09-consultation.ts):
 //   CARD_REVISIT, BREN_NEW, RHEUM_NEW, RHEUM_REVISIT, HEME_NEW,
@@ -333,13 +322,9 @@ export const SEED_CONSULTATION_IDS = {
     NEPH_NEW: '90000000-0000-0000-0000-000000000014',
     SONC_NEW: '90000000-0000-0000-0000-000000000015',
     // --- Customer-tenant consultations (TASK-331 doc-08 F1, seeded in 09-consultation.ts) ---
-    // 4th UUID group encodes the customer tenant (0001 ArcaAI, 0002 4bits, 0003 Mumbai).
+    // 4th UUID group encodes the customer tenant (0001 ArcaAI).
     ARCAAI_GEN_NEW: '90000000-0000-0000-0001-000000000001',
     ARCAAI_GEN_REVISIT: '90000000-0000-0000-0001-000000000002',
-    FOURBITS_GEN_NEW: '90000000-0000-0000-0002-000000000001',
-    FOURBITS_GEN_REVISIT: '90000000-0000-0000-0002-000000000002',
-    MUMBAI_GEN_NEW: '90000000-0000-0000-0003-000000000001',
-    MUMBAI_GEN_REVISIT: '90000000-0000-0000-0003-000000000002',
 } as const;
 
 // Context item IDs are generated with a helper for scalability.
@@ -402,13 +387,9 @@ export const SEED_CONTEXT_ITEM_IDS = {
     DNA_CASE_NOTE_DOE_4: SEED_CTX_ID(223),
     DNA_CASE_NOTE_DOE_5: SEED_CTX_ID(224),
     // --- Customer-tenant transcripts (TASK-331 doc-08 F1, seeded in 09-consultation.ts) ---
-    // 4th UUID group encodes the customer tenant (0001 ArcaAI, 0002 4bits, 0003 Mumbai).
+    // 4th UUID group encodes the customer tenant (0001 ArcaAI).
     ARCAAI_GEN_NEW_TRANSCRIPT: '91000000-0000-0000-0001-000000000001',
     ARCAAI_GEN_REVISIT_TRANSCRIPT: '91000000-0000-0000-0001-000000000002',
-    FOURBITS_GEN_NEW_TRANSCRIPT: '91000000-0000-0000-0002-000000000001',
-    FOURBITS_GEN_REVISIT_TRANSCRIPT: '91000000-0000-0000-0002-000000000002',
-    MUMBAI_GEN_NEW_TRANSCRIPT: '91000000-0000-0000-0003-000000000001',
-    MUMBAI_GEN_REVISIT_TRANSCRIPT: '91000000-0000-0000-0003-000000000002',
 } as const;
 
 export const SEED_SUMMARY_META_IDS = {
@@ -443,12 +424,10 @@ export const SEED_VOICE_PROFILE_IDS = {
     DOCTOR_INACTIVE: '97000000-0000-0000-0000-000000000002',
     DOCTOR2_ACTIVE: '97000000-0000-0000-0000-000000000003',
     DOCTOR2_INACTIVE: '97000000-0000-0000-0000-000000000004',
-    // TASK-336 EU-05 — one ACTIVE enrollment per customer-tenant doctor
-    // (ArcaAI / 4bits / Mumbai) so voice-enrollment demos are populated for
-    // every tenant, not just the Global-tenant doctors above.
+    // TASK-336 EU-05 — one ACTIVE enrollment for the ArcaAI customer-tenant
+    // doctor so voice-enrollment demos are populated for the customer tenant,
+    // not just the Global-tenant doctors above.
     ARCAAI_DOCTOR_ACTIVE: '97000000-0000-0000-0001-000000000001',
-    FOURBITS_DOCTOR_ACTIVE: '97000000-0000-0000-0002-000000000001',
-    MUMBAI_DOCTOR_ACTIVE: '97000000-0000-0000-0003-000000000001',
 } as const;
 
 // =============================================================================
@@ -555,64 +534,6 @@ export const SEED_GLOBAL_SETTING_IDS = {
     ARCAAI_UX_SMR_PROVIDER_MODELS: '85000000-0000-0000-0001-000000000043',
     ARCAAI_UX_GUARDRAIL_PROVIDER_MODELS: '85000000-0000-0000-0001-000000000044',
 
-    // 4bits — general
-    FOURBITS_MAX_CONCURRENT_SESSIONS: '85000000-0000-0000-0002-000000000001',
-    FOURBITS_DEFAULT_LANGUAGE: '85000000-0000-0000-0002-000000000002',
-    FOURBITS_SESSION_TIMEOUT: '85000000-0000-0000-0002-000000000003',
-    // 4bits — feature-flags
-    FOURBITS_FF_TRANSCRIPTION: '85000000-0000-0000-0002-000000000010',
-    FOURBITS_FF_DNA_STYLE: '85000000-0000-0000-0002-000000000011',
-    FOURBITS_FF_CROSS_CHAIN: '85000000-0000-0000-0002-000000000012',
-    FOURBITS_FF_NER: '85000000-0000-0000-0002-000000000013',
-    FOURBITS_FF_CODE_SWITCHING: '85000000-0000-0000-0002-000000000014',
-    // 4bits — stt
-    FOURBITS_STT_MODEL: '85000000-0000-0000-0002-000000000020',
-    FOURBITS_STT_VAD: '85000000-0000-0000-0002-000000000021',
-    // 4bits — smr
-    FOURBITS_SMR_PROVIDER: '85000000-0000-0000-0002-000000000030',
-    FOURBITS_SMR_MODEL: '85000000-0000-0000-0002-000000000031',
-    // 4bits — smr Azure deployment-name (TASK-338, non-secret)
-    FOURBITS_SMR_AZURE_DEPLOYMENT: '85000000-0000-0000-0002-000000000032',
-    // 4bits — guardrail (TASK-338 admin-configurable Guardrail engine)
-    FOURBITS_GUARDRAIL_PROVIDER: '85000000-0000-0000-0002-000000000033',
-    FOURBITS_GUARDRAIL_MODEL: '85000000-0000-0000-0002-000000000034',
-    FOURBITS_GUARDRAIL_AZURE_DEPLOYMENT: '85000000-0000-0000-0002-000000000035',
-    // 4bits — ux-constants
-    FOURBITS_UX_LOCAL_ASR_MODELS: '85000000-0000-0000-0002-000000000040',
-    FOURBITS_UX_LOCAL_VAD_MODELS: '85000000-0000-0000-0002-000000000041',
-    FOURBITS_UX_LOCAL_NOISE_SUPPRESSION_MODELS: '85000000-0000-0000-0002-000000000042',
-    FOURBITS_UX_SMR_PROVIDER_MODELS: '85000000-0000-0000-0002-000000000043',
-    FOURBITS_UX_GUARDRAIL_PROVIDER_MODELS: '85000000-0000-0000-0002-000000000044',
-
-    // Mumbai General Hospital — general
-    MUMBAI_MAX_CONCURRENT_SESSIONS: '85000000-0000-0000-0003-000000000001',
-    MUMBAI_DEFAULT_LANGUAGE: '85000000-0000-0000-0003-000000000002',
-    MUMBAI_SESSION_TIMEOUT: '85000000-0000-0000-0003-000000000003',
-    // Mumbai General Hospital — feature-flags
-    MUMBAI_FF_TRANSCRIPTION: '85000000-0000-0000-0003-000000000010',
-    MUMBAI_FF_DNA_STYLE: '85000000-0000-0000-0003-000000000011',
-    MUMBAI_FF_CROSS_CHAIN: '85000000-0000-0000-0003-000000000012',
-    MUMBAI_FF_NER: '85000000-0000-0000-0003-000000000013',
-    MUMBAI_FF_CODE_SWITCHING: '85000000-0000-0000-0003-000000000014',
-    // Mumbai General Hospital — stt
-    MUMBAI_STT_MODEL: '85000000-0000-0000-0003-000000000020',
-    MUMBAI_STT_VAD: '85000000-0000-0000-0003-000000000021',
-    // Mumbai General Hospital — smr
-    MUMBAI_SMR_PROVIDER: '85000000-0000-0000-0003-000000000030',
-    MUMBAI_SMR_MODEL: '85000000-0000-0000-0003-000000000031',
-    // Mumbai General Hospital — smr Azure deployment-name (TASK-338, non-secret)
-    MUMBAI_SMR_AZURE_DEPLOYMENT: '85000000-0000-0000-0003-000000000032',
-    // Mumbai General Hospital — guardrail (TASK-338 admin-configurable Guardrail engine)
-    MUMBAI_GUARDRAIL_PROVIDER: '85000000-0000-0000-0003-000000000033',
-    MUMBAI_GUARDRAIL_MODEL: '85000000-0000-0000-0003-000000000034',
-    MUMBAI_GUARDRAIL_AZURE_DEPLOYMENT: '85000000-0000-0000-0003-000000000035',
-    // Mumbai General Hospital — ux-constants
-    MUMBAI_UX_LOCAL_ASR_MODELS: '85000000-0000-0000-0003-000000000040',
-    MUMBAI_UX_LOCAL_VAD_MODELS: '85000000-0000-0000-0003-000000000041',
-    MUMBAI_UX_LOCAL_NOISE_SUPPRESSION_MODELS: '85000000-0000-0000-0003-000000000042',
-    MUMBAI_UX_SMR_PROVIDER_MODELS: '85000000-0000-0000-0003-000000000043',
-    MUMBAI_UX_GUARDRAIL_PROVIDER_MODELS: '85000000-0000-0000-0003-000000000044',
-
     // Global tenant — general
     GLOBAL_MAX_CONCURRENT_SESSIONS: '85000000-0000-0000-0000-000000000001',
     GLOBAL_DEFAULT_LANGUAGE: '85000000-0000-0000-0000-000000000002',
@@ -646,12 +567,8 @@ export const SEED_GLOBAL_SETTING_IDS = {
     // Consultation sharing feature flag
     GLOBAL_FF_CONSULTATION_SHARING: '85000000-0000-0000-0000-000000000015',
     ARCAAI_FF_CONSULTATION_SHARING: '85000000-0000-0000-0001-000000000015',
-    FOURBITS_FF_CONSULTATION_SHARING: '85000000-0000-0000-0002-000000000015',
-    MUMBAI_FF_CONSULTATION_SHARING: '85000000-0000-0000-0003-000000000015',
 
     ARCAAI_LOCKED_CONFIG_PATHS: '85000000-0000-0000-0001-000000000050',
-    FOURBITS_LOCKED_CONFIG_PATHS: '85000000-0000-0000-0002-000000000050',
-    MUMBAI_LOCKED_CONFIG_PATHS: '85000000-0000-0000-0003-000000000050',
 
     // TASK-331 doc-04 F4 — per-tenant admin-console menu-order default
     // (namespace `arcaai-admin`, key `menuOrder`). Seeds the TENANT tier of the
@@ -659,8 +576,6 @@ export const SEED_GLOBAL_SETTING_IDS = {
     // `050` locked-config-paths numbering; the 4th UUID group encodes the tenant.
     GLOBAL_ADMIN_MENU_ORDER: '85000000-0000-0000-0000-000000000051',
     ARCAAI_ADMIN_MENU_ORDER: '85000000-0000-0000-0001-000000000051',
-    FOURBITS_ADMIN_MENU_ORDER: '85000000-0000-0000-0002-000000000051',
-    MUMBAI_ADMIN_MENU_ORDER: '85000000-0000-0000-0003-000000000051',
 
     // TASK-332 — platform capability for local raw-stream dual-capture. A single
     // `locked` row owned by SYSTEM_TENANT_ID (the reserved platform tenant). The
@@ -701,13 +616,4 @@ export const SEED_AUDIT_LOG_IDS = {
     ARCAAI_CREATE_CONSULTATION: 'A0000000-0000-0000-0001-000000000003',
     ARCAAI_UPDATE_SETTINGS: 'A0000000-0000-0000-0001-000000000004',
     ARCAAI_ASSIGN_ROLE: 'A0000000-0000-0000-0001-000000000005',
-    FOURBITS_LOGIN_ADMIN: 'A0000000-0000-0000-0002-000000000001',
-    FOURBITS_CREATE_USER: 'A0000000-0000-0000-0002-000000000002',
-    FOURBITS_CREATE_CONSULTATION: 'A0000000-0000-0000-0002-000000000003',
-    FOURBITS_UPDATE_SETTINGS: 'A0000000-0000-0000-0002-000000000004',
-    MUMBAI_LOGIN_ADMIN: 'A0000000-0000-0000-0003-000000000001',
-    MUMBAI_CREATE_USER: 'A0000000-0000-0000-0003-000000000002',
-    MUMBAI_CREATE_DEPT: 'A0000000-0000-0000-0003-000000000003',
-    MUMBAI_CREATE_CONSULTATION: 'A0000000-0000-0000-0003-000000000004',
-    MUMBAI_UPDATE_SETTINGS: 'A0000000-0000-0000-0003-000000000005',
 } as const;

@@ -1,8 +1,8 @@
 /**
  * Impersonation Seed-Coverage Tests (TASK-331 doc-05 F1)
  *
- * Guards the seed-data invariant that every customer tenant (ArcaAI / 4bits /
- * Mumbai) has at least one impersonatable DOCTOR and one impersonatable NURSE.
+ * Guards the seed-data invariant that the ArcaAI customer tenant has at least
+ * one impersonatable DOCTOR and one impersonatable NURSE.
  *
  * Why this matters: cross-tenant impersonation is blocked for TENANT_ADMINs
  * (auth.controller C-1), so a tenant admin can only impersonate users inside
@@ -41,8 +41,6 @@ import {
 
 const CUSTOMER_TENANTS = [
     { label: 'ArcaAI', tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI },
-    { label: '4bits', tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS },
-    { label: 'Mumbai', tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL },
 ] as const;
 
 // `${tenantId}:${code}` for every department the seed actually creates, used to

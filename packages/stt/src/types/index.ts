@@ -937,6 +937,65 @@ export function parseModelId(modelId: string): WhisperModelSize | undefined {
 }
 
 /**
+ * Whisper sizes that are published as browser-loadable `onnx-community` repos
+ * and small enough for in-browser inference. The `large`/`medium` checkpoints
+ * are NOT loadable in the browser — e.g. `onnx-community/whisper-large-v3` is
+ * gated and returns HTTP 401 — so they must never be selected for local STT.
+ */
+const BROWSER_LOADABLE_WHISPER_SIZES: readonly WhisperModelSize[] = ['tiny', 'base', 'small'];
+
+/**
+ * Default browser-loadable Whisper size, used when a configured local model id
+ * is not browser-loadable. `base` (~150 MB) balances size and accuracy.
+ */
+export const DEFAULT_LOCAL_WHISPER_SIZE: WhisperModelSize = 'base';
+
+/**
+ * Resolve a configured STT model id into a browser-loadable Whisper source for
+ * the local pipeline, returning `{ model, modelPath }` for the engine:
+ * - `modelPath` set   → load this explicit HuggingFace repo verbatim.
+ * - `modelPath` unset → the engine derives `onnx-community/whisper-<model>`.
+ *
+ * Resolution order:
+ * 1. A recognized, browser-loadable Whisper size ("tiny"/"base"/"small", with
+ *    or without the "whisper-" prefix) → use that size.
+ * 2. A namespaced HuggingFace repo id ("org/name") → trust it as `modelPath`.
+ * 3. Anything else — a bare non-namespaced id ("whisper-large-v3"), or a
+ *    too-large size ("medium"/"large") with no browser-loadable onnx repo — is
+ *    NOT loadable in the browser. Returning it as a bare path makes the worker
+ *    request `huggingface.co/<id>` and fail (401/404), so fall back to
+ *    {@link DEFAULT_LOCAL_WHISPER_SIZE} and warn instead. (TASK-364 follow-up.)
+ */
+export function resolveLocalWhisperModel(modelId: string): {
+  model: WhisperModelSize;
+  modelPath?: string;
+} {
+  const normalized = normalizeModelId(modelId);
+
+  if (isWhisperModelSize(normalized)) {
+    const size = normalized as WhisperModelSize;
+    if (BROWSER_LOADABLE_WHISPER_SIZES.includes(size)) {
+      return { model: size };
+    }
+    console.warn(
+      `[stt] Local Whisper size "${size}" is not browser-loadable; falling back to "${DEFAULT_LOCAL_WHISPER_SIZE}". Browser-viable sizes: ${BROWSER_LOADABLE_WHISPER_SIZES.join('/')}.`,
+    );
+    return { model: DEFAULT_LOCAL_WHISPER_SIZE };
+  }
+
+  // A namespaced HuggingFace repo id is an explicit, intentional choice — trust it.
+  if (normalized.includes('/')) {
+    return { model: DEFAULT_LOCAL_WHISPER_SIZE, modelPath: normalized };
+  }
+
+  // Unrecognized bare id (e.g. "whisper-large-v3"): not a loadable browser repo.
+  console.warn(
+    `[stt] Local STT model "${modelId}" is not browser-loadable; falling back to "${DEFAULT_LOCAL_WHISPER_SIZE}". Use a Whisper size (${BROWSER_LOADABLE_WHISPER_SIZES.join('/')}) or a full HF repo id (e.g. "onnx-community/whisper-base").`,
+  );
+  return { model: DEFAULT_LOCAL_WHISPER_SIZE };
+}
+
+/**
  * Get the language code (ISO 639-1) from a locale code.
  * @example getLanguageCode('en-US') // returns 'en'
  */

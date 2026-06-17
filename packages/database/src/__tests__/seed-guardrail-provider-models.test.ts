@@ -80,7 +80,7 @@ describe('Guardrail Provider-Model Catalog Seed Data (TASK-338)', () => {
   });
 
   describe('seed IDs for Guardrail provider-model catalog', () => {
-    const SETTING_PREFIXES = ['GLOBAL', 'ARCAAI', 'FOURBITS', 'MUMBAI'] as const;
+    const SETTING_PREFIXES = ['GLOBAL', 'ARCAAI'] as const;
 
     for (const prefix of SETTING_PREFIXES) {
       const key = `${prefix}_UX_GUARDRAIL_PROVIDER_MODELS` as keyof typeof SEED_GLOBAL_SETTING_IDS;
@@ -91,19 +91,19 @@ describe('Guardrail Provider-Model Catalog Seed Data (TASK-338)', () => {
     }
 
     it('should have unique IDs for all Guardrail catalog entries', () => {
-      const ids = ['GLOBAL', 'ARCAAI', 'FOURBITS', 'MUMBAI'].map(
+      const ids = ['GLOBAL', 'ARCAAI'].map(
         (prefix) =>
           SEED_GLOBAL_SETTING_IDS[
             `${prefix}_UX_GUARDRAIL_PROVIDER_MODELS` as keyof typeof SEED_GLOBAL_SETTING_IDS
           ],
       );
       const unique = new Set(ids);
-      expect(unique.size).toBe(4);
+      expect(unique.size).toBe(2);
     });
   });
 
   describe('seed IDs for Guardrail engine + Azure deployment settings', () => {
-    const SETTING_PREFIXES = ['GLOBAL', 'ARCAAI', 'FOURBITS', 'MUMBAI'] as const;
+    const SETTING_PREFIXES = ['GLOBAL', 'ARCAAI'] as const;
     const SUFFIXES = [
       'GUARDRAIL_PROVIDER',
       'GUARDRAIL_MODEL',

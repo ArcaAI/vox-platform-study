@@ -518,7 +518,9 @@ export interface UserPreferencesUpdate {
  */
 export const DEFAULT_LOCAL_CONFIG: LocalWorkflowConfig = {
   noiseCancellation: { modelId: 'rnnoise', level: 'medium' },
-  stt: { modelId: 'whisper-large-v3' },
+  // Browser-loadable Whisper default. `whisper-large-v3` is NOT browser-loadable
+  // (the onnx-community repo is gated / 401s); local STT runs tiny/base/small.
+  stt: { modelId: 'whisper-base' },
   vad: { modelId: 'silero-vad-v5', sensitivity: 0.5 },
   ner: { modelId: 'biomedical', autoExtract: true },
   diarization: { enabled: false, autoEnroll: false },
@@ -552,7 +554,8 @@ export const DEFAULT_AUDIO_CONFIG: AudioPluginConfig = {
 export const DEFAULT_PERSONALIZATION_CONFIG: PersonalizationConfig = {
   storage: 'local',
   defaults: {
-    workflowMode: 'local',
+    // Backend transcription is the sane platform default; local is opt-in.
+    workflowMode: 'remote',
     language: 'en',
     localConfig: { ...DEFAULT_LOCAL_CONFIG },
   },

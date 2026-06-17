@@ -102,23 +102,17 @@ describe('Seed Constants (00-constants)', () => {
         expect(SEED_USER_IDS.SYSTEM).toBe(SYSTEM_USER_ID);
     });
 
-    it('should define 27 department IDs (18 Global-tenant + 3 per-customer-tenant GEN + 6 per-customer-tenant specialty, TASK-305 Phase F / TASK-331 r2605 #6)', () => {
-        expect(Object.keys(SEED_DEPARTMENT_IDS).length).toBe(27);
+    it('should define 21 department IDs (18 Global-tenant + 1 ArcaAI GEN + 2 ArcaAI specialty, TASK-305 Phase F / TASK-331 r2605 #6 / TASK-365)', () => {
+        expect(Object.keys(SEED_DEPARTMENT_IDS).length).toBe(21);
     });
 
-    it('should define a per-customer-tenant GEN department ID for each non-Global tenant (TASK-305 Phase F)', () => {
+    it('should define a per-customer-tenant GEN department ID for the ArcaAI tenant (TASK-305 Phase F)', () => {
         expect(SEED_DEPARTMENT_IDS.GEN_ARCAAI).toBeDefined();
-        expect(SEED_DEPARTMENT_IDS.GEN_FOURBITS).toBeDefined();
-        expect(SEED_DEPARTMENT_IDS.GEN_MUMBAI).toBeDefined();
     });
 
-    it('should define CARD + ER specialty department IDs for each non-Global tenant (TASK-331 r2605 #6)', () => {
+    it('should define CARD + ER specialty department IDs for the ArcaAI tenant (TASK-331 r2605 #6)', () => {
         expect(SEED_DEPARTMENT_IDS.CARD_ARCAAI).toBeDefined();
         expect(SEED_DEPARTMENT_IDS.ER_ARCAAI).toBeDefined();
-        expect(SEED_DEPARTMENT_IDS.CARD_FOURBITS).toBeDefined();
-        expect(SEED_DEPARTMENT_IDS.ER_FOURBITS).toBeDefined();
-        expect(SEED_DEPARTMENT_IDS.CARD_MUMBAI).toBeDefined();
-        expect(SEED_DEPARTMENT_IDS.ER_MUMBAI).toBeDefined();
     });
 
     it('should include DIET, NEPH, SONC department IDs', () => {
@@ -175,8 +169,7 @@ describe('Seed Constants (00-constants)', () => {
     });
 
     it('should have per-tenant admin user IDs', () => {
-        expect(SEED_USER_IDS.FOURBITS_ADMIN).toBeDefined();
-        expect(SEED_USER_IDS.MUMBAI_ADMIN).toBeDefined();
+        expect(SEED_USER_IDS.ARCAAI_ADMIN).toBeDefined();
     });
 
     it('should have department-specific doctor user IDs', () => {
@@ -610,12 +603,10 @@ describe('Department Seed Data', () => {
 describe('Customer-Tenant Department Seed Data (TASK-331 r2605 #6)', () => {
     const customerTenantIds = [
         SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-        SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-        SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
     ];
 
-    it('should define 6 specialty rows (CARD + ER for each of the 3 customer tenants)', () => {
-        expect(CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS.length).toBe(6);
+    it('should define 2 specialty rows (CARD + ER for the ArcaAI customer tenant)', () => {
+        expect(CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS.length).toBe(2);
     });
 
     it('should add CARD and ER to every customer tenant alongside the existing GEN', () => {
@@ -1322,11 +1313,9 @@ describe('STT Seed Data', () => {
 describe('Per-Tenant ASR Pipelines (TASK-331 doc-03 F3)', () => {
     const customerTenantIds = [
         SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-        SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-        SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
     ];
 
-    it('should seed at least one ASR pipeline for each customer tenant (ArcaAI/4bits/Mumbai)', () => {
+    it('should seed at least one ASR pipeline for each customer tenant (ArcaAI)', () => {
         customerTenantIds.forEach((tenantId) => {
             const count = CUSTOMER_TENANT_ASR_PIPELINES.filter((p) => p.tenantId === tenantId).length;
             expect(count).toBeGreaterThanOrEqual(1);
@@ -1378,8 +1367,6 @@ describe('ASR Pipeline isDefault invariant (TASK-331 doc-03 Q2)', () => {
     const allPipelines = [...DEFAULT_ASR_PIPELINES, ...CUSTOMER_TENANT_ASR_PIPELINES];
     const customerTenantIds = [
         SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-        SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-        SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
     ];
 
     it('should mark exactly ONE pipeline as isDefault:true per owning tenant', () => {
@@ -1627,8 +1614,6 @@ describe('Tenant Frontend Config Seed (TASK-331 doc-03 F3)', () => {
     const expectedTenantIds = [
         SEED_TENANT_ID,
         SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-        SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-        SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
     ];
 
     it('should seed one frontend config per customer tenant + the Global/SEED tenant', () => {
@@ -2289,8 +2274,8 @@ describe('Customer-tenant AI model catalog backfill', () => {
         return { client, created };
     };
 
-    it('targets the global + three customer tenants (not the SYSTEM tenant)', () => {
-        expect(CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL).toHaveLength(4);
+    it('targets the global + the ArcaAI customer tenant (not the SYSTEM tenant)', () => {
+        expect(CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL).toHaveLength(2);
         expect(CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL).not.toContain(SYSTEM_TENANT_ID);
     });
 
@@ -2566,7 +2551,7 @@ describe('TASK-361 — switchDefaultSttPipeline backfill (reconcile back to reso
 
     it('targets every pipeline-owning tenant (SYSTEM + Global + customers)', () => {
         expect(STT_DEFAULT_PIPELINE_BACKFILL_TENANTS).toContain(SYSTEM_TENANT_ID);
-        expect(STT_DEFAULT_PIPELINE_BACKFILL_TENANTS.length).toBeGreaterThanOrEqual(4);
+        expect(STT_DEFAULT_PIPELINE_BACKFILL_TENANTS.length).toBeGreaterThanOrEqual(3);
     });
 
     it('demotes the placeholder CT2 default and promotes resolvable whisper-large-v3 (migrates a Phase-2 DB back)', async () => {

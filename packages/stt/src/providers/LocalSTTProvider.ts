@@ -10,7 +10,7 @@
 
 import type { TranscriptionResult, STTStats, LocalProviderConfig, ComputeDevice } from '../types/index.js';
 import type { TranscribeOptions } from '../engines/types.js';
-import { isWhisperModelSize, normalizeModelId } from '../types/index.js';
+import { resolveLocalWhisperModel } from '../types/index.js';
 import { BaseSTTProvider } from './BaseSTTProvider.js';
 import { WhisperWorkerEngine } from '../engines/WhisperWorkerEngine.js';
 import type { BaseEngine } from '../engines/BaseEngine.js';
@@ -82,10 +82,11 @@ export class LocalSTTProvider extends BaseSTTProvider {
 
     this.config = config;
 
-    // Normalize modelId: 'whisper-tiny' → 'tiny', full HF paths pass through
-    const normalized = normalizeModelId(config.modelId);
-    const model = isWhisperModelSize(normalized) ? normalized : 'tiny';
-    const modelPath = isWhisperModelSize(normalized) ? undefined : normalized;
+    // Resolve modelId into a browser-loadable Whisper source:
+    // 'whisper-tiny' → 'tiny'; a namespaced HF repo passes through as modelPath;
+    // a non-browser-loadable id (e.g. 'whisper-large-v3') falls back to a safe
+    // browser-viable size instead of requesting a bare/gated HF repo (which 401s).
+    const { model, modelPath } = resolveLocalWhisperModel(config.modelId);
 
     // Use WhisperWorkerEngine by default for non-blocking transcription
     // It will automatically fall back to main thread if Workers unavailable

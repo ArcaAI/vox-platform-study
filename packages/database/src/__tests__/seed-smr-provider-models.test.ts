@@ -138,7 +138,7 @@ describe('SMR Provider-Model Catalog Seed Data (TASK-240)', () => {
   });
 
   describe('seed IDs for SMR provider-model catalog', () => {
-    const SETTING_PREFIXES = ['GLOBAL', 'ARCAAI', 'FOURBITS', 'MUMBAI'] as const;
+    const SETTING_PREFIXES = ['GLOBAL', 'ARCAAI'] as const;
 
     for (const prefix of SETTING_PREFIXES) {
       const key = `${prefix}_UX_SMR_PROVIDER_MODELS` as keyof typeof SEED_GLOBAL_SETTING_IDS;
@@ -149,14 +149,14 @@ describe('SMR Provider-Model Catalog Seed Data (TASK-240)', () => {
     }
 
     it('should have unique IDs for all SMR catalog entries', () => {
-      const ids = ['GLOBAL', 'ARCAAI', 'FOURBITS', 'MUMBAI'].map(
+      const ids = ['GLOBAL', 'ARCAAI'].map(
         (prefix) =>
           SEED_GLOBAL_SETTING_IDS[
             `${prefix}_UX_SMR_PROVIDER_MODELS` as keyof typeof SEED_GLOBAL_SETTING_IDS
           ],
       );
       const unique = new Set(ids);
-      expect(unique.size).toBe(4);
+      expect(unique.size).toBe(2);
     });
   });
 });

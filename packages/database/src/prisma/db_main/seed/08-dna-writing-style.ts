@@ -377,22 +377,22 @@ export const DEFAULT_PROMPT_USAGE_RECORDS = [
 //
 // The DNA reports/versions/usage above all belong to the Global customer
 // tenant (SEED_TENANT_ID), so the admin cross-tenant switcher demoed empty DNA
-// for ArcaAI / 4bits / Mumbai. A DnaWritingStyleReport.doctorId is a hard FK to
+// for ArcaAI. A DnaWritingStyleReport.doctorId is a hard FK to
 // User AND the runtime membership/PHI guard requires that doctor to be a member
 // of the tenant (role + department).
 //
 // Those clinicians ALREADY exist: 91-user.ts seeds one impersonatable DOCTOR
-// per customer tenant (ARCAAI_DOCTOR / FOURBITS_DOCTOR / MUMBAI_DOCTOR), each
+// per customer tenant (ARCAAI_DOCTOR), each
 // with the DOCTOR role + that tenant's GEN department, satisfying the
 // membership invariant. This seed therefore REUSES those canonical users by id
 // and must NOT invent its own. An earlier revision created brand-new users with
-// the SAME usernames (arcaai_doctor / fourbits_doctor / mumbai_doctor) under
+// the SAME username (arcaai_doctor) under
 // different ids, which violates `User.username @unique` and crashes a COLD seed:
 // 91-user.ts runs first and takes the username, then this file's create
 // collides. We now attach ONLY the DNA-specific child rows below.
 //
-// IDs follow the per-tenant 4th-UUID-group convention (0001 ArcaAI, 0002 4bits,
-// 0003 Mumbai): reports 73…, versions 74…, usage 75…. DnaUsageRecord has no
+// IDs follow the per-tenant 4th-UUID-group convention (0001 ArcaAI):
+// reports 73…, versions 74…, usage 75…. DnaUsageRecord has no
 // createdAt override so it defaults to now(), keeping the records inside the
 // 30-day admin dashboard window.
 // =============================================================================
@@ -407,28 +407,6 @@ export const CUSTOMER_DNA_CLINICIANS = [
         reportData: { formality: 'professional', sentenceLength: 'medium', medicalTermUsage: 'moderate', abbreviationStyle: 'standard' },
         styleText:
             'Dr. Tan (ArcaAI, General Practice) writes concise, professional outpatient notes with moderate medical terminology and standard abbreviations. Documentation follows a clear SOAP structure with explicit assessment and plan sections.',
-    },
-    {
-        userId: SEED_USER_IDS.FOURBITS_DOCTOR,
-        tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-        departmentId: SEED_DEPARTMENT_IDS.GEN_FOURBITS,
-        reportId: '73000000-0000-0000-0002-000000000001',
-        versionId: '74000000-0000-0000-0002-000000000001',
-        usageIds: ['75000000-0000-0000-0002-000000000001', '75000000-0000-0000-0002-000000000002'],
-        reportData: { formality: 'casual', sentenceLength: 'short', medicalTermUsage: 'moderate', abbreviationStyle: 'heavy' },
-        styleText:
-            'Dr. Mehta (4bits, General Practice) favours short, efficient notes with heavy use of standard abbreviations. Sentences are brief and bullet-oriented, prioritising the active problem and immediate plan.',
-    },
-    {
-        userId: SEED_USER_IDS.MUMBAI_DOCTOR,
-        tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
-        departmentId: SEED_DEPARTMENT_IDS.GEN_MUMBAI,
-        reportId: '73000000-0000-0000-0003-000000000001',
-        versionId: '74000000-0000-0000-0003-000000000001',
-        usageIds: ['75000000-0000-0000-0003-000000000001', '75000000-0000-0000-0003-000000000002'],
-        reportData: { formality: 'formal', sentenceLength: 'long', medicalTermUsage: 'extensive', abbreviationStyle: 'minimal' },
-        styleText:
-            'Dr. Iyer (Mumbai General Hospital, General Practice) writes detailed, formal notes with extensive medical terminology and minimal abbreviations. Documentation is narrative, occasionally code-switching between English and Hindi for patient-reported history.',
     },
 ];
 
@@ -590,8 +568,8 @@ export const seedDnaWritingStyle = async (client: CorePrismaClient) => {
     // -------------------------------------------------------------------------
     // Customer-tenant DNA (TASK-331 doc-02 F7 / doc-08 cold-seed fix).
     //
-    // The customer-tenant DOCTOR clinicians (ARCAAI_DOCTOR / FOURBITS_DOCTOR /
-    // MUMBAI_DOCTOR) are seeded by 91-user.ts (which runs first), each with the
+    // The customer-tenant DOCTOR clinician (ARCAAI_DOCTOR) is seeded by
+    // 91-user.ts (which runs first), with the
     // DOCTOR role + that tenant's GEN department. We attach the DNA child rows
     // to those EXISTING canonical users by id — we do NOT create users here, so
     // there is no duplicate-username collision on a cold seed.

@@ -58,15 +58,9 @@ export const PRIMARY_DEPARTMENT_CODE_BY_USERNAME: Record<string, string> = {
     doctor_sonc: 'SONC',
     doctor_med: 'MED',
     arcaai_admin: 'GEN',
-    fourbits_admin: 'GEN',
-    mumbai_admin: 'GEN',
     // TASK-331 doc-05 F1 — per-customer-tenant impersonatable clinical users.
     arcaai_doctor: 'GEN',
     arcaai_nurse: 'GEN',
-    fourbits_doctor: 'GEN',
-    fourbits_nurse: 'GEN',
-    mumbai_doctor: 'GEN',
-    mumbai_nurse: 'GEN',
 };
 
 // =========================================================================
@@ -519,40 +513,6 @@ export const SEED_USERS = [
             lastLoginAt: new Date('2026-02-24T10:00:00Z'),
             lastActiveAt: new Date('2026-02-24T10:00:00Z'),
         },
-        {
-            id: SEED_USER_IDS.FOURBITS_ADMIN,
-            username: 'fourbits_admin',
-            password: null,
-            isServiceAccount: false,
-            roleNames: ['TENANT_ADMIN'],
-            tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-            profile: {
-                firstName: '4bits',
-                lastName: 'Administrator',
-                email: 'admin@4bits.io',
-                phone: '+6581234567',
-            },
-            tags: ['admin', 'tenant', 'fourbits'],
-            lastLoginAt: null,
-            lastActiveAt: null,
-        },
-        {
-            id: SEED_USER_IDS.MUMBAI_ADMIN,
-            username: 'mumbai_admin',
-            password: null,
-            isServiceAccount: false,
-            roleNames: ['TENANT_ADMIN'],
-            tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
-            profile: {
-                firstName: 'Mumbai',
-                lastName: 'Administrator',
-                email: 'admin@mumbaihospital.in',
-                phone: '+912212345678',
-            },
-            tags: ['admin', 'tenant', 'mumbai'],
-            lastLoginAt: null,
-            lastActiveAt: null,
-        },
 
         // =================================================================
         // CUSTOMER-TENANT CLINICAL USERS (TASK-331 doc-05 F1)
@@ -593,74 +553,6 @@ export const SEED_USERS = [
                 phone: '+6591234602',
             },
             tags: ['clinical', 'nurse', 'arcaai'],
-            lastLoginAt: null,
-            lastActiveAt: null,
-        },
-        {
-            id: SEED_USER_IDS.FOURBITS_DOCTOR,
-            username: 'fourbits_doctor',
-            password: null,
-            isServiceAccount: false,
-            roleNames: ['DOCTOR'],
-            tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-            profile: {
-                firstName: 'Arjun',
-                lastName: 'Mehta',
-                email: 'doctor.mehta@4bits.io',
-                phone: '+6581234601',
-            },
-            tags: ['clinical', 'doctor', 'fourbits'],
-            lastLoginAt: null,
-            lastActiveAt: null,
-        },
-        {
-            id: SEED_USER_IDS.FOURBITS_NURSE,
-            username: 'fourbits_nurse',
-            password: null,
-            isServiceAccount: false,
-            roleNames: ['NURSE'],
-            tenantId: SEED_CUSTOMER_TENANT_IDS.FOURBITS,
-            profile: {
-                firstName: 'Nadia',
-                lastName: 'Rahman',
-                email: 'nurse.rahman@4bits.io',
-                phone: '+6581234602',
-            },
-            tags: ['clinical', 'nurse', 'fourbits'],
-            lastLoginAt: null,
-            lastActiveAt: null,
-        },
-        {
-            id: SEED_USER_IDS.MUMBAI_DOCTOR,
-            username: 'mumbai_doctor',
-            password: null,
-            isServiceAccount: false,
-            roleNames: ['DOCTOR'],
-            tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
-            profile: {
-                firstName: 'Rohan',
-                lastName: 'Iyer',
-                email: 'doctor.iyer@mumbaihospital.in',
-                phone: '+912212345601',
-            },
-            tags: ['clinical', 'doctor', 'mumbai'],
-            lastLoginAt: null,
-            lastActiveAt: null,
-        },
-        {
-            id: SEED_USER_IDS.MUMBAI_NURSE,
-            username: 'mumbai_nurse',
-            password: null,
-            isServiceAccount: false,
-            roleNames: ['NURSE'],
-            tenantId: SEED_CUSTOMER_TENANT_IDS.MUMBAI_HOSPITAL,
-            profile: {
-                firstName: 'Anjali',
-                lastName: 'Nair',
-                email: 'nurse.nair@mumbaihospital.in',
-                phone: '+912212345602',
-            },
-            tags: ['clinical', 'nurse', 'mumbai'],
             lastLoginAt: null,
             lastActiveAt: null,
         },
@@ -779,9 +671,9 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
         embedding: makeDeterministicEmbedding(4),
     },
     // TASK-336 EU-05 — one ACTIVE enrollment per customer-tenant doctor so the
-    // voice-enrollment / diarization demos are populated for ArcaAI, 4bits and
-    // Mumbai, not just the Global-tenant doctors above. Distinct embedding seeds
-    // keep each vector unique for cosine-similarity demos.
+    // voice-enrollment / diarization demos are populated for the ArcaAI
+    // customer-tenant doctor, not just the Global-tenant doctors above. Distinct
+    // embedding seeds keep each vector unique for cosine-similarity demos.
     {
         id: SEED_VOICE_PROFILE_IDS.ARCAAI_DOCTOR_ACTIVE,
         userId: SEED_USER_IDS.ARCAAI_DOCTOR,
@@ -789,22 +681,6 @@ export const SEED_VOICE_PROFILES: SeedVoiceProfile[] = [
         label: 'Clinic mic (primary)',
         modelId: VOICE_PROFILE_MODEL_ID,
         embedding: makeDeterministicEmbedding(5),
-    },
-    {
-        id: SEED_VOICE_PROFILE_IDS.FOURBITS_DOCTOR_ACTIVE,
-        userId: SEED_USER_IDS.FOURBITS_DOCTOR,
-        isActive: true,
-        label: 'Clinic mic (primary)',
-        modelId: VOICE_PROFILE_MODEL_ID,
-        embedding: makeDeterministicEmbedding(6),
-    },
-    {
-        id: SEED_VOICE_PROFILE_IDS.MUMBAI_DOCTOR_ACTIVE,
-        userId: SEED_USER_IDS.MUMBAI_DOCTOR,
-        isActive: true,
-        label: 'Clinic mic (primary)',
-        modelId: VOICE_PROFILE_MODEL_ID,
-        embedding: makeDeterministicEmbedding(7),
     },
 ];
 
@@ -1065,15 +941,15 @@ export const seedUser = async (client: CorePrismaClient) => {
 
     const sdkUserPreferences = [
         // =====================================================================
-        // Doctor (John Smith) - Local workflow
-        // Selects individual models for browser-side processing
+        // Doctor (John Smith) - Remote (backend) workflow — sane default.
+        // localConfig below is retained so local STT is loadable if opted in.
         // =====================================================================
         {
             id: '81000000-0000-0000-0000-000000000001',
             userId: SEED_USER_IDS.DOCTOR,
             name: 'SDK Preference: workflowMode',
             key: 'workflowMode',
-            value: 'local',
+            value: 'remote',
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },
@@ -1102,7 +978,7 @@ export const seedUser = async (client: CorePrismaClient) => {
             key: 'localConfig',
             value: JSON.stringify({
                 noiseCancellation: { modelId: 'rnnoise', level: 'high' },
-                stt: { modelId: 'whisper-large-v3' },
+                stt: { modelId: 'whisper-base' },
                 vad: { modelId: 'silero-vad-v5', sensitivity: 0.6 },
                 ner: { modelId: 'biomedical', autoExtract: true },
                 diarization: { enabled: true, autoEnroll: true },
@@ -1157,7 +1033,7 @@ export const seedUser = async (client: CorePrismaClient) => {
         },
 
         // =====================================================================
-        // Department Head (Michael Johnson) - Local workflow, power user
+        // Department Head (Michael Johnson) - Remote (backend) workflow, power user
         // All features enabled with custom shortcuts
         // =====================================================================
         {
@@ -1165,7 +1041,7 @@ export const seedUser = async (client: CorePrismaClient) => {
             userId: SEED_USER_IDS.DEPT_HEAD,
             name: 'SDK Preference: workflowMode',
             key: 'workflowMode',
-            value: 'local',
+            value: 'remote',
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },
@@ -1185,7 +1061,7 @@ export const seedUser = async (client: CorePrismaClient) => {
             key: 'localConfig',
             value: JSON.stringify({
                 noiseCancellation: { modelId: 'rnnoise', level: 'high' },
-                stt: { modelId: 'whisper-large-v3' },
+                stt: { modelId: 'whisper-base' },
                 vad: { modelId: 'silero-vad-v5', sensitivity: 0.7 },
                 ner: { modelId: 'biomedical', autoExtract: true },
                 diarization: { enabled: true, autoEnroll: true },
@@ -1241,14 +1117,14 @@ export const seedUser = async (client: CorePrismaClient) => {
         },
 
         // =====================================================================
-        // Dr. Lisa Chen (Neurology) - Local workflow, English
+        // Dr. Lisa Chen (Neurology) - Remote (backend) workflow, English
         // =====================================================================
         {
             id: '81000000-0000-0000-0000-000000000051',
             userId: SEED_USER_IDS.DOCTOR_NEURO,
             name: 'SDK Preference: workflowMode',
             key: 'workflowMode',
-            value: 'local',
+            value: 'remote',
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },
@@ -1272,14 +1148,14 @@ export const seedUser = async (client: CorePrismaClient) => {
         },
 
         // =====================================================================
-        // Dr. Maria Garcia (Pediatrics) - Local workflow, Spanish
+        // Dr. Maria Garcia (Pediatrics) - Remote (backend) workflow, Spanish
         // =====================================================================
         {
             id: '81000000-0000-0000-0000-000000000061',
             userId: SEED_USER_IDS.DOCTOR_PEDS,
             name: 'SDK Preference: workflowMode',
             key: 'workflowMode',
-            value: 'local',
+            value: 'remote',
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },
@@ -1334,14 +1210,14 @@ export const seedUser = async (client: CorePrismaClient) => {
         },
 
         // =====================================================================
-        // Dr. Priya Sharma (Breast & Endocrine) - Local workflow, English
+        // Dr. Priya Sharma (Breast & Endocrine) - Remote (backend) workflow, English
         // =====================================================================
         {
             id: '84000000-0000-0000-0000-000000000001',
             userId: SEED_USER_IDS.DOCTOR_BREN,
             name: 'SDK Preference: workflowMode',
             key: 'workflowMode',
-            value: 'local',
+            value: 'remote',
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },
@@ -1396,14 +1272,14 @@ export const seedUser = async (client: CorePrismaClient) => {
         },
 
         // =====================================================================
-        // Dr. Aisha Khan (Hematology) - Local workflow, English
+        // Dr. Aisha Khan (Hematology) - Remote (backend) workflow, English
         // =====================================================================
         {
             id: '84000000-0000-0000-0000-000000000021',
             userId: SEED_USER_IDS.DOCTOR_HEME,
             name: 'SDK Preference: workflowMode',
             key: 'workflowMode',
-            value: 'local',
+            value: 'remote',
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },
@@ -1458,14 +1334,14 @@ export const seedUser = async (client: CorePrismaClient) => {
         },
 
         // =====================================================================
-        // Dr. Mei Lin (Dietetics) - Local workflow, Chinese
+        // Dr. Mei Lin (Dietetics) - Remote (backend) workflow, Chinese
         // =====================================================================
         {
             id: '84000000-0000-0000-0000-000000000041',
             userId: SEED_USER_IDS.DOCTOR_DIET,
             name: 'SDK Preference: workflowMode',
             key: 'workflowMode',
-            value: 'local',
+            value: 'remote',
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },
@@ -1520,14 +1396,14 @@ export const seedUser = async (client: CorePrismaClient) => {
         },
 
         // =====================================================================
-        // Dr. Elena Volkov (Surgical Oncology) - Local workflow, Russian
+        // Dr. Elena Volkov (Surgical Oncology) - Remote (backend) workflow, Russian
         // =====================================================================
         {
             id: '84000000-0000-0000-0000-000000000061',
             userId: SEED_USER_IDS.DOCTOR_SONC,
             name: 'SDK Preference: workflowMode',
             key: 'workflowMode',
-            value: 'local',
+            value: 'remote',
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },
@@ -1551,14 +1427,14 @@ export const seedUser = async (client: CorePrismaClient) => {
         },
 
         // =====================================================================
-        // Dr. Thomas Wright (Medicine) - Local workflow, English
+        // Dr. Thomas Wright (Medicine) - Remote (backend) workflow, English
         // =====================================================================
         {
             id: '84000000-0000-0000-0000-000000000071',
             userId: SEED_USER_IDS.DOCTOR_MED,
             name: 'SDK Preference: workflowMode',
             key: 'workflowMode',
-            value: 'local',
+            value: 'remote',
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },
@@ -1584,15 +1460,15 @@ export const seedUser = async (client: CorePrismaClient) => {
         // =====================================================================
         // TASK-331 doc-05 F1 — per-customer-tenant DOCTOR preferences.
         // Minimal, distinct-per-tenant prefs so impersonation surfaces real
-        // (non-default) values: ArcaAI = local/en, 4bits = remote/th,
-        // Mumbai = local/hi.
+        // values. workflowMode defaults to remote (backend) for all; language
+        // stays distinct per tenant: ArcaAI = en.
         // =====================================================================
         {
             id: '84000000-0000-0000-0000-000000000081',
             userId: SEED_USER_IDS.ARCAAI_DOCTOR,
             name: 'SDK Preference: workflowMode',
             key: 'workflowMode',
-            value: 'local',
+            value: 'remote',
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },
@@ -1622,80 +1498,6 @@ export const seedUser = async (client: CorePrismaClient) => {
             name: 'SDK Preference: dnaStyleId',
             key: 'dnaStyleId',
             value: 'clinical-concise-en',
-            dataType: ValueType.String,
-            namespace: 'arcaai-sdk',
-        },
-        {
-            id: '84000000-0000-0000-0000-000000000091',
-            userId: SEED_USER_IDS.FOURBITS_DOCTOR,
-            name: 'SDK Preference: workflowMode',
-            key: 'workflowMode',
-            value: 'remote',
-            dataType: ValueType.String,
-            namespace: 'arcaai-sdk',
-        },
-        {
-            id: '84000000-0000-0000-0000-000000000092',
-            userId: SEED_USER_IDS.FOURBITS_DOCTOR,
-            name: 'SDK Preference: language',
-            key: 'language',
-            value: 'th',
-            dataType: ValueType.String,
-            namespace: 'arcaai-sdk',
-        },
-        // TASK-336 EU-05 — enrich 4bits doctor prefs.
-        {
-            id: '84000000-0000-0000-0000-000000000093',
-            userId: SEED_USER_IDS.FOURBITS_DOCTOR,
-            name: 'SDK Preference: primaryDepartmentId',
-            key: 'primaryDepartmentId',
-            value: SEED_DEPARTMENT_IDS.GEN_FOURBITS,
-            dataType: ValueType.String,
-            namespace: 'arcaai-sdk',
-        },
-        {
-            id: '84000000-0000-0000-0000-000000000094',
-            userId: SEED_USER_IDS.FOURBITS_DOCTOR,
-            name: 'SDK Preference: dnaStyleId',
-            key: 'dnaStyleId',
-            value: 'clinical-concise-th',
-            dataType: ValueType.String,
-            namespace: 'arcaai-sdk',
-        },
-        {
-            id: '84000000-0000-0000-0000-000000000101',
-            userId: SEED_USER_IDS.MUMBAI_DOCTOR,
-            name: 'SDK Preference: workflowMode',
-            key: 'workflowMode',
-            value: 'local',
-            dataType: ValueType.String,
-            namespace: 'arcaai-sdk',
-        },
-        {
-            id: '84000000-0000-0000-0000-000000000102',
-            userId: SEED_USER_IDS.MUMBAI_DOCTOR,
-            name: 'SDK Preference: language',
-            key: 'language',
-            value: 'hi',
-            dataType: ValueType.String,
-            namespace: 'arcaai-sdk',
-        },
-        // TASK-336 EU-05 — enrich Mumbai doctor prefs.
-        {
-            id: '84000000-0000-0000-0000-000000000103',
-            userId: SEED_USER_IDS.MUMBAI_DOCTOR,
-            name: 'SDK Preference: primaryDepartmentId',
-            key: 'primaryDepartmentId',
-            value: SEED_DEPARTMENT_IDS.GEN_MUMBAI,
-            dataType: ValueType.String,
-            namespace: 'arcaai-sdk',
-        },
-        {
-            id: '84000000-0000-0000-0000-000000000104',
-            userId: SEED_USER_IDS.MUMBAI_DOCTOR,
-            name: 'SDK Preference: dnaStyleId',
-            key: 'dnaStyleId',
-            value: 'clinical-concise-hi',
             dataType: ValueType.String,
             namespace: 'arcaai-sdk',
         },

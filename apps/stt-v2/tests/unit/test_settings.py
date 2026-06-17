@@ -179,6 +179,27 @@ class TestSettings:
 
             assert settings.huggingface_token == "hf_test_token"
 
+    def test_huggingface_token_empty_string_normalized_to_none(self):
+        """An empty ``HUGGINGFACE_TOKEN`` must be treated as unset (None).
+
+        Regression: an explicitly-empty value (``HUGGINGFACE_TOKEN=``) was
+        forwarded to the HuggingFace libraries as ``token=""``, which builds an
+        ``Authorization: Bearer `` header with no credential and raises
+        ``Illegal header value b'Bearer '`` on every model load. It must become
+        ``None`` so huggingface_hub falls back to ``HF_TOKEN`` / anonymous.
+        """
+        with patch.dict(os.environ, {"HUGGINGFACE_TOKEN": ""}, clear=True):
+            settings = Settings()
+
+            assert settings.huggingface_token is None
+
+    def test_huggingface_token_whitespace_normalized_to_none(self):
+        """A whitespace-only ``HUGGINGFACE_TOKEN`` must be treated as unset."""
+        with patch.dict(os.environ, {"HUGGINGFACE_TOKEN": "   "}, clear=True):
+            settings = Settings()
+
+            assert settings.huggingface_token is None
+
     def test_cors_origins_default(self):
         """Test CORS origins default."""
         with patch.dict(os.environ, {}, clear=True):
