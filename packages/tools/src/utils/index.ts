@@ -6,6 +6,7 @@ export { default as getNodeModulesPath, getPnpmWorkspaceNodeModulesPath } from '
 export { default as names, simpleNames } from './names';
 export { default as Logger, LogMethod, LogLevel } from './Logger';
 export { default as getPrismaDMMF, DMMF } from './getPrismaDMMF';
+export { discoverPrismaDomains, getDMMFForDomain, PrismaDomain } from './prismaSchema';
 export { default as removeUnusedImports } from './removeUnusedImports';
 export { default as runCommand } from './runCommand';
 export { default as toPascalCase } from './toPascalCase';

@@ -1,20 +1,13 @@
 #!/usr/bin/env node
 
-import path, { join } from 'path';
+import path from 'path';
 import fs from 'fs';
 import { program } from 'commander';
 import inquirer from 'inquirer';
 import Handlebars from 'handlebars';
+import * as prettier from 'prettier';
 import { SelectedItem, DomainFolder, CommandLineOptions, ProcessingOptions } from './types';
-import {
-    Logger,
-    getNodeModulesPath,
-    getPrismaDMMF,
-    checkDirectory,
-    toPascalCase,
-    names,
-    getPnpmWorkspaceNodeModulesPath
-} from '../utils';
+import { Logger, names, getPnpmWorkspaceNodeModulesPath, discoverPrismaDomains, getDMMFForDomain } from '../utils';
 // Load environment variables using centralized utility
 import '../utils/loadEnv';
 
@@ -25,25 +18,21 @@ const logger = new Logger('Generate Data Model');
 async function main() {
     try {
         const options = await setupCommandLineOptions();
-        setupDirectories(options.outputModelsPath, options.enumsOutputPath);
 
-        const nodeModulesPath = getPnpmWorkspaceNodeModulesPath();
-        const prismaPath = path.resolve(nodeModulesPath, '.prisma');
-
-        if (!checkDirectory(prismaPath)) {
-            logger.error('The .prisma directory does not exist in node_modules.');
-            logger.error('Please generate the Prisma clients first.');
-            process.exit(1);
-        }
-
-        const domainFolders = discoverDomainFolders(prismaPath);
+        const workspaceRoot = path.dirname(getPnpmWorkspaceNodeModulesPath());
+        const domainFolders: DomainFolder[] = await discoverPrismaDomains(workspaceRoot);
         if (domainFolders.length === 0) {
-            logger.error('No Prisma client folders found in .prisma directory.');
-            logger.error('Please generate the Prisma clients first.');
+            logger.error('No Prisma schema packages found.');
+            logger.error('Expected a workspace package whose package.json declares a "prisma.schema" path.');
             process.exit(1);
         }
 
-        const selectedDomains = await selectDomains(domainFolders);
+        // In check mode nothing is written, so the output directories are never touched.
+        if (options.mode === 'write') {
+            setupDirectories(options.outputModelsPath, options.enumsOutputPath);
+        }
+
+        const selectedDomains = await selectDomains(domainFolders, options);
         const modelTemplateSource = fs.readFileSync(
             path.resolve(__dirname, 'templates', 'model.hbs'),
             'utf-8'
@@ -61,12 +50,17 @@ async function main() {
         }
 
         // Generate root index files
-        generateRootIndexFiles(options, selectedDomains, allSelectedItems);
+        await generateRootIndexFiles(options, selectedDomains, allSelectedItems);
+
+        if (options.mode === 'check') {
+            const exitCode = reportDrift(options, workspaceRoot);
+            process.exit(exitCode);
+        }
 
         logger.info('Data model generation completed successfully.');
 
     } catch (error) {
-        logger.error(`Error generating data models: ${error instanceof Error ? error.message : String(error)}`);
+        logger.error(`Error generating data models: ${errorMessage(error)}`);
         process.exit(1);
     }
 }
@@ -74,8 +68,15 @@ async function main() {
 async function setupCommandLineOptions(): Promise<ProcessingOptions> {
     program
         .name('generate-data-model')
-        .description('Generate TypeScript data model and enum files from Prisma schema')
+        .description('Generate TypeScript data model and enum files from the Prisma schema')
         .option('-o, --output-path <path>', 'Output directory for generated files')
+        .option('--domain <name>', 'Domain to generate ("all" or a domain name). Skips the domain prompt.')
+        .option('-y, --yes', 'Non-interactive: select all domains and all items without prompting')
+        .option('--ci', 'Alias for --yes (non-interactive, selects everything)')
+        .option(
+            '--check',
+            'Dry-run: report whether regeneration would change committed files. Writes nothing and exits non-zero when drift is found.'
+        )
         .option('--overwrite <boolean>', 'Whether to overwrite existing files (true/false)', (value) => {
             if (value !== 'true' && value !== 'false') {
                 throw new Error('overwrite option must be either "true" or "false"');
@@ -85,13 +86,28 @@ async function setupCommandLineOptions(): Promise<ProcessingOptions> {
         .parse(process.argv);
 
     const options = program.opts<CommandLineOptions>();
+    const check = options.check ?? false;
     const shouldOverwrite = options.overwrite ?? false;
+
+    // Non-interactive when explicitly asked (--yes/--ci/--check) or when stdin is not a
+    // TTY (pipes / CI / pre-commit). Otherwise keep the original interactive prompts.
+    const nonInteractive = Boolean(options.yes) || Boolean(options.ci) || check || !process.stdin.isTTY;
+    const interactive = !nonInteractive;
 
     const outputBasePath = options.outputPath || path.resolve(process.env.OUTPUT_PATH || '..');
     const outputModelsPath = path.resolve(outputBasePath, 'domains/src/models', 'generated');
     const enumsOutputPath = path.resolve(outputBasePath, 'domains/src/enums', 'generated');
 
-    return { outputModelsPath, enumsOutputPath, shouldOverwrite };
+    return {
+        outputModelsPath,
+        enumsOutputPath,
+        // In check mode we always compute the full would-be output, regardless of overwrite.
+        shouldOverwrite: check ? true : shouldOverwrite,
+        mode: check ? 'check' : 'write',
+        interactive,
+        selectedDomain: options.domain,
+        outputs: new Map<string, string>()
+    };
 }
 
 function setupDirectories(outputModelsPath: string, enumsOutputPath: string): void {
@@ -104,21 +120,27 @@ function setupDirectories(outputModelsPath: string, enumsOutputPath: string): vo
     }
 }
 
-function discoverDomainFolders(prismaPath: string): DomainFolder[] {
-    return fs.readdirSync(prismaPath)
-        .filter(folder => folder.match(/^(.+)(-prisma-client)$/))
-        .map(folder => {
-            const domainName = folder.replace(/(.+)(-prisma-client)$/, '$1');
-            return {
-                name: domainName,
-                value: folder,
-                folderPath: path.resolve(prismaPath, folder),
-                module: `.prisma/${folder}`
-            };
-        });
-}
+async function selectDomains(domainFolders: DomainFolder[], options: ProcessingOptions): Promise<DomainFolder[]> {
+    // Explicit --domain wins and skips the prompt.
+    if (options.selectedDomain) {
+        if (options.selectedDomain === 'all') {
+            return domainFolders;
+        }
+        const matches = domainFolders.filter(
+            (domain) => domain.name === options.selectedDomain || domain.value === options.selectedDomain
+        );
+        if (matches.length === 0) {
+            const available = domainFolders.map((domain) => domain.name).join(', ');
+            throw new Error(`Unknown domain "${options.selectedDomain}". Available: ${available} (or "all").`);
+        }
+        return matches;
+    }
 
-async function selectDomains(domainFolders: DomainFolder[]): Promise<DomainFolder[]> {
+    // Non-interactive default: every domain.
+    if (!options.interactive) {
+        return domainFolders;
+    }
+
     const { selectedDomains } = await inquirer.prompt([
         {
             type: 'list',
@@ -136,12 +158,23 @@ async function selectDomains(domainFolders: DomainFolder[]): Promise<DomainFolde
         : domainFolders.filter(domain => domain.value === selectedDomains);
 }
 
-async function selectItemsForDomain(models: any[], enums: any[], domain: DomainFolder, isAllDomains: boolean): Promise<SelectedItem[]> {
-    if (isAllDomains) {
-        return [
-            ...models.map(model => ({ type: 'model' as const, name: model.name, data: model })),
-            ...enums.map(enumItem => ({ type: 'enum' as const, name: enumItem.name, data: enumItem }))
-        ];
+async function selectItemsForDomain(
+    models: any[],
+    enums: any[],
+    domain: DomainFolder,
+    isAllDomains: boolean,
+    options: ProcessingOptions
+): Promise<SelectedItem[]> {
+    // Generated output follows the schema/DMMF declaration order (the canonical
+    // ordering source-of-truth) so it is deterministic and matches the schema.
+    const allItems = (): SelectedItem[] => [
+        ...models.map(model => ({ type: 'model' as const, name: model.name, data: model })),
+        ...enums.map(enumItem => ({ type: 'enum' as const, name: enumItem.name, data: enumItem }))
+    ];
+
+    // Non-interactive (or "all domains") selects everything without prompting.
+    if (!options.interactive || isAllDomains) {
+        return allItems();
     }
 
     const { selectedItems } = await inquirer.prompt<{ selectedItems: SelectedItem[] }>([
@@ -151,9 +184,9 @@ async function selectItemsForDomain(models: any[], enums: any[], domain: DomainF
             message: `Select models and enums to generate for domain ${domain.name}:`,
             choices: [
                 new inquirer.Separator('--- Models ---'),
-                ...models.map(model => ({ name: model.name, value: { type: 'model', name: model.name, data: model } })),
+                ...sortByName(models).map(model => ({ name: model.name, value: { type: 'model', name: model.name, data: model } })),
                 new inquirer.Separator('--- Enums ---'),
-                ...enums.map(enumItem => ({ name: enumItem.name, value: { type: 'enum', name: enumItem.name, data: enumItem } }))
+                ...sortByName(enums).map(enumItem => ({ name: enumItem.name, value: { type: 'enum', name: enumItem.name, data: enumItem } }))
             ],
             pageSize: 20
         }
@@ -162,13 +195,16 @@ async function selectItemsForDomain(models: any[], enums: any[], domain: DomainF
     return selectedItems;
 }
 
-function generateEnumFile(
+async function generateEnumFile(
     enumItem: SelectedItem,
     enumsOutputPath: string,
     modelTemplate: HandlebarsTemplateDelegate,
-    shouldOverwrite: boolean
-): void {
+    options: ProcessingOptions
+): Promise<void> {
     const className = names(enumItem.data.name).className;
+    // Enum value order is preserved from the schema (DMMF declaration order); it is
+    // deterministic and semantically meaningful (e.g. Postgres enum sort order), so we
+    // never re-sort it.
     const enumValues = enumItem.data.values.map((value: any) => ({
         name: value.name
     }));
@@ -183,22 +219,15 @@ function generateEnumFile(
     });
 
     const enumFilePath = path.resolve(enumsOutputPath, `${className}.ts`);
-
-    if (fs.existsSync(enumFilePath) && !shouldOverwrite) {
-        logger.info(`Skipping existing enum file: ${enumFilePath}`);
-        return;
-    }
-
-    fs.writeFileSync(enumFilePath, enumFileContent);
-    logger.info(`${fs.existsSync(enumFilePath) ? 'Overwrote' : 'Generated'} enum file: ${className}.ts`);
+    await emit(options, enumFilePath, enumFileContent, options.shouldOverwrite);
 }
 
-function generateModelFile(
+async function generateModelFile(
     modelItem: SelectedItem,
     domainOutputPath: string,
     modelTemplate: HandlebarsTemplateDelegate,
-    shouldOverwrite: boolean
-): void {
+    options: ProcessingOptions
+): Promise<void> {
     const model = modelItem.data;
     const className = names(model.name).className;
 
@@ -224,72 +253,51 @@ function generateModelFile(
 
     const { className: modelClassName } = names(model.name);
     const modelFilePath = path.resolve(domainOutputPath, `${modelClassName}Model.ts`);
-
-    if (fs.existsSync(modelFilePath) && !shouldOverwrite) {
-        logger.info(`Skipping existing model file: ${modelFilePath}`);
-        return;
-    }
-
-    fs.writeFileSync(modelFilePath, modelFileContent);
-    logger.info(`${fs.existsSync(modelFilePath) ? 'Overwrote' : 'Generated'} model file: ${modelClassName}Model.ts`);
+    await emit(options, modelFilePath, modelFileContent, options.shouldOverwrite);
 }
 
-function generateDomainIndexFile(domainOutputPath: string, selectedItems: SelectedItem[]): void {
+async function generateDomainIndexFile(domainOutputPath: string, selectedItems: SelectedItem[], options: ProcessingOptions): Promise<void> {
     const modelItems = selectedItems.filter(item => item.type === 'model');
     if (modelItems.length === 0) return;
 
+    // Exports follow declaration (DMMF) order — the canonical ordering.
     const modelExports = modelItems
-        .map(item => {
-            const { className } = names(item.name);
-            return `export * from './${className}Model';`;
-        })
+        .map(item => `export * from './${names(item.name).className}Model';`)
         .join('\n');
 
     const indexFilePath = path.resolve(domainOutputPath, 'index.ts');
-    // Delete the file if it exists
-    if (fs.existsSync(indexFilePath)) {
-        fs.unlinkSync(indexFilePath);
-    }
-    fs.writeFileSync(indexFilePath, modelExports);
+    // Index files are always (re)written so they reflect the current selection.
+    await emit(options, indexFilePath, modelExports, true);
 }
 
-function generateRootIndexFiles(
+async function generateRootIndexFiles(
     options: ProcessingOptions,
     selectedDomains: DomainFolder[],
     allSelectedItems: SelectedItem[]
-): void {
-    // Generate index file for enums
+): Promise<void> {
+    // Generate index file for enums — exports follow declaration (DMMF) order.
     const enumItems = allSelectedItems.filter(item => item.type === 'enum');
     if (enumItems.length > 0) {
         const enumExports = enumItems
-            .map(item => {
-                const className = names(item.name).className;
-                return `export * from './${className}';`;
-            })
+            .map(item => `export * from './${names(item.name).className}';`)
             .join('\n');
 
         const enumsIndexPath = path.resolve(options.enumsOutputPath, 'index.ts');
-        // Delete the file if it exists
-        if (fs.existsSync(enumsIndexPath)) {
-            fs.unlinkSync(enumsIndexPath);
-        }
-        fs.writeFileSync(enumsIndexPath, enumExports);
-        logger.info('Generated index.ts file for enums folder');
+        await emit(options, enumsIndexPath, enumExports, true);
+        logger.info('Prepared index.ts file for enums folder');
     }
 
-    // Generate index file for models/generated
+    // Generate index file for models/generated (one export per domain folder).
     if (selectedDomains.length > 0) {
-        const domainExports = selectedDomains
-            .map(domain => `export * from './${domain.name}';`)
+        const domainExports = [...selectedDomains]
+            .map(domain => domain.name)
+            .sort((a, b) => a.localeCompare(b))
+            .map(name => `export * from './${name}';`)
             .join('\n');
 
         const modelsIndexPath = path.resolve(options.outputModelsPath, 'index.ts');
-        // Delete the file if it exists
-        if (fs.existsSync(modelsIndexPath)) {
-            fs.unlinkSync(modelsIndexPath);
-        }
-        fs.writeFileSync(modelsIndexPath, domainExports);
-        logger.info('Generated index.ts file for models/generated folder');
+        await emit(options, modelsIndexPath, domainExports, true);
+        logger.info('Prepared index.ts file for models/generated folder');
     }
 }
 
@@ -302,7 +310,7 @@ async function processDomain(
     logger.info(`Processing domain: ${domain.name}`);
 
     try {
-        const dmmf = await getPrismaDMMF(domain.folderPath);
+        const dmmf = await getDMMFForDomain(domain);
         const { models, enums } = dmmf.datamodel;
 
         if (!models.length && !enums.length) {
@@ -311,27 +319,33 @@ async function processDomain(
         }
 
         const domainOutputPath = path.resolve(options.outputModelsPath, domain.name);
-        if (!fs.existsSync(domainOutputPath)) {
+        if (options.mode === 'write' && !fs.existsSync(domainOutputPath)) {
             fs.mkdirSync(domainOutputPath, { recursive: true });
         }
 
-        const selectedItems = await selectItemsForDomain(models, enums, domain, isAllDomains);
+        const selectedItems = await selectItemsForDomain(
+            models as any[],
+            enums as any[],
+            domain,
+            isAllDomains,
+            options
+        );
 
         for (const item of selectedItems) {
             if (item.type === 'enum') {
-                generateEnumFile(item, options.enumsOutputPath, modelTemplate, options.shouldOverwrite);
+                await generateEnumFile(item, options.enumsOutputPath, modelTemplate, options);
             } else {
-                generateModelFile(item, domainOutputPath, modelTemplate, options.shouldOverwrite);
+                await generateModelFile(item, domainOutputPath, modelTemplate, options);
             }
         }
 
-        generateDomainIndexFile(domainOutputPath, selectedItems);
-        logger.info(`Generated index.ts file for domain: ${domain.name}`);
+        await generateDomainIndexFile(domainOutputPath, selectedItems, options);
+        logger.info(`Prepared index.ts file for domain: ${domain.name}`);
 
         return selectedItems;
 
     } catch (error) {
-        logger.error(`Error processing domain ${domain.name}: ${error instanceof Error ? error.message : String(error)}`);
+        logger.error(`Error processing domain ${domain.name}: ${errorMessage(error)}`);
         return;
     }
 }
@@ -379,7 +393,9 @@ function composeScalarEnumFields(
         String: 'string',
         Boolean: 'boolean',
         DateTime: 'Date',
-        Json: 'JsonValue'
+        Json: 'JsonValue',
+        // Prisma `Bytes` maps to `Uint8Array` in the Prisma 7 client types.
+        Bytes: 'Uint8Array'
     };
 
     const fieldsToOmit = baseModel ? BASE_MODEL_FIELDS[baseModel] || [] : [];
@@ -428,8 +444,97 @@ function composeRelationFields(
         });
 }
 
+/**
+ * Sort DMMF items (models/enums) alphabetically by name without mutating the
+ * (readonly) source array.
+ */
+function sortByName<T extends { name: string }>(items: readonly T[]): T[] {
+    return [...items].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Cache the resolved Prettier config (resolved once from the repo's config).
+let prettierConfig: Awaited<ReturnType<typeof prettier.resolveConfig>> | undefined;
+
+/**
+ * Format generated TypeScript with the repo's Prettier config so the emitted
+ * output is byte-identical to the committed (Prettier-formatted) style and is
+ * idempotent (output === prettier(output)). This is what reconciles the template's
+ * 4-space / blank-line layout with the committed 2-space style.
+ */
+async function formatGenerated(absolutePath: string, content: string): Promise<string> {
+    if (prettierConfig === undefined) {
+        // Resolve from this source file (always inside the repo) so the repo's
+        // root Prettier config is used regardless of the output path (e.g. when
+        // generating into a throwaway dir via -o for testing).
+        prettierConfig = await prettier.resolveConfig(__filename);
+    }
+    return prettier.format(content, { ...prettierConfig, filepath: absolutePath, parser: 'typescript' });
+}
+
+/**
+ * Write a generated file, or — in check mode — record its would-be content in memory
+ * instead of touching the filesystem. Content is Prettier-formatted before either.
+ */
+async function emit(options: ProcessingOptions, absolutePath: string, content: string, overwrite: boolean): Promise<void> {
+    const formatted = await formatGenerated(absolutePath, content);
+
+    if (options.mode === 'check') {
+        options.outputs.set(absolutePath, formatted);
+        return;
+    }
+
+    const existed = fs.existsSync(absolutePath);
+    if (existed && !overwrite) {
+        logger.info(`Skipping existing file: ${path.basename(absolutePath)}`);
+        return;
+    }
+
+    fs.writeFileSync(absolutePath, formatted);
+    logger.info(`${existed ? 'Overwrote' : 'Generated'} file: ${path.basename(absolutePath)}`);
+}
+
+/**
+ * Compare the in-memory generated output against the committed files and report drift.
+ * Returns a process exit code: 0 when clean, 1 when regeneration would change anything.
+ */
+function reportDrift(options: ProcessingOptions, workspaceRoot: string): number {
+    const changed: string[] = [];
+    const created: string[] = [];
+
+    for (const [absolutePath, content] of options.outputs) {
+        if (!fs.existsSync(absolutePath)) {
+            created.push(absolutePath);
+        } else if (fs.readFileSync(absolutePath, 'utf-8') !== content) {
+            changed.push(absolutePath);
+        }
+    }
+
+    const rel = (file: string) => path.relative(workspaceRoot, file);
+
+    if (changed.length === 0 && created.length === 0) {
+        logger.info(`check: no drift — ${options.outputs.size} generated file(s) match the committed files.`);
+        return 0;
+    }
+
+    logger.warn(
+        `check: drift detected — ${changed.length} file(s) would change, ${created.length} new file(s) would be created.`
+    );
+    for (const file of changed.sort()) {
+        logger.warn(`  would change: ${rel(file)}`);
+    }
+    for (const file of created.sort()) {
+        logger.warn(`  would create: ${rel(file)}`);
+    }
+    logger.warn('Regenerate with "pnpm --filter @arcaai/tools generate-data-model:all" once manual edits are reconciled.');
+    return 1;
+}
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
 // Execute the main function
 main().catch(error => {
-    logger.error(`Unhandled error: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(`Unhandled error: ${errorMessage(error)}`);
     process.exit(1);
 });
