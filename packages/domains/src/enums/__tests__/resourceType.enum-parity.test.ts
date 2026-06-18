@@ -1,32 +1,35 @@
 /**
  * ResourceType enum parity guard — TASK-366.
  *
- * Every value declared in the domain-layer `ResourceType` enum is an
- * authoritative value that application services pass to
- * `broadcastSysEvent(...)`, which persists it on `AuditLog.resourceType`.
- * Each one MUST therefore also exist in the database enum that Prisma
- * generates from `audit.prisma`.
+ * The domain-layer `ResourceType` enum (`@arcaai/domains`) and the database
+ * enum that Prisma generates from `audit.prisma` (`@arcaai/database`) MUST be
+ * kept in lock-step. Drift in either direction is a bug:
  *
- * When they drift, the AuditLog INSERT fails at runtime with
- * "Invalid value for argument `resourceType`. Expected ResourceType." and
- * rolls the originating create/update/delete back into a 500/404. That was
- * the TASK-366 bug: `UserVoiceProfile`, `Highlight`, `UserDepartment`,
- * `TenantFrontendConfig` and `AsrPipelineVersion` lived in the domain enum
- * (and were emitted by their services) but had never been added to the DB
- * enum when their tables were created.
+ *   - A value in the DOMAIN enum but missing from the DATABASE enum makes the
+ *     `AuditLog` INSERT throw at runtime ("Invalid value for argument
+ *     `resourceType`. Expected ResourceType.") and rolls the originating
+ *     create/update/delete back into a 500/404. This was the TASK-366 bug
+ *     (`UserVoiceProfile`, `Highlight`, `UserDepartment`, `TenantFrontendConfig`,
+ *     `AsrPipelineVersion`).
  *
- * The reverse direction is allowed — the DB enum may hold values the domain
- * layer never emits (e.g. `Session`, `AudioRecording`) — so this asserts a
- * subset relationship, not equality.
+ *   - A value in the DATABASE enum but missing from the DOMAIN enum means the
+ *     application layer can never emit or exhaustively handle that resource
+ *     type (`Session`, `SessionEvent`, `SessionSyncLog`, `AudioRecording`,
+ *     `SummaryMeta`, `NamedEntity` had drifted this way).
+ *
+ * To fix a failure: add the missing value(s) to BOTH
+ *   - packages/database/src/prisma/db_main/audit.prisma (+ an ADD VALUE migration), and
+ *   - packages/domains/src/enums/generated/ResourceType.ts
  */
 import { describe, it, expect } from 'vitest';
 import { ResourceType as PrismaResourceType } from '@arcaai/database';
 import { ResourceType as DomainResourceType } from '../index';
 
-describe('ResourceType enum parity (domain ⊆ database)', () => {
-  it('every domain ResourceType value exists in the database enum', () => {
-    const databaseValues = new Set<string>(Object.values(PrismaResourceType));
+describe('ResourceType enum parity (domain ⇔ database)', () => {
+  const databaseValues = new Set<string>(Object.values(PrismaResourceType));
+  const domainValues = new Set<string>(Object.values(DomainResourceType));
 
+  it('every domain ResourceType value exists in the database enum', () => {
     const missingFromDatabase = Object.values(DomainResourceType).filter((value) => !databaseValues.has(value));
 
     expect(
@@ -34,6 +37,17 @@ describe('ResourceType enum parity (domain ⊆ database)', () => {
       'Domain ResourceType values are missing from the database enum. Add each ' +
         'to packages/database/src/prisma/db_main/audit.prisma AND a migration ' +
         `(ALTER TYPE "core"."ResourceType" ADD VALUE ...): ${missingFromDatabase.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('every database ResourceType value exists in the domain enum', () => {
+    const missingFromDomain = Object.values(PrismaResourceType).filter((value) => !domainValues.has(value));
+
+    expect(
+      missingFromDomain,
+      'Database ResourceType values are missing from the domain enum. Add each ' +
+        'to packages/domains/src/enums/generated/ResourceType.ts: ' +
+        `${missingFromDomain.join(', ')}`,
     ).toEqual([]);
   });
 });

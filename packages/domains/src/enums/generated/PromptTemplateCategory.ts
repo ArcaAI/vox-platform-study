@@ -2,7 +2,9 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export enum TenantBucketType {
+export enum PromptTemplateCategory {
   SYSTEM = 'SYSTEM',
+  SUMMARY = 'SUMMARY',
+  DNA_ANALYSIS = 'DNA_ANALYSIS',
   CUSTOM = 'CUSTOM',
 }

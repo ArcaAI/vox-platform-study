@@ -30,3 +30,5 @@ export * from './StorageTopologyType';
 export * from './TranscriptionMode';
 export * from './CaptureMode';
 export * from './PipelinePolicyScope';
+export * from './FedlRoundStatus';
+export * from './PromptTemplateCategory';

@@ -40,8 +40,9 @@ persist — a SOC2 / HIPAA audit-completeness gap, not a cosmetic log line.
 
 - [x] `AuditLog` rows for `UserVoiceProfile` operations persist without error.
 - [x] The same latent failure for every other drifted resource type is fixed.
-- [x] A regression test fails if the domain `ResourceType` enum ever drifts
-      ahead of the database enum again.
+- [x] The reverse drift is reconciled — every database `ResourceType` value also
+      exists in the domain enum.
+- [x] A regression test fails if the two enums drift in EITHER direction again.
 - [x] No `DROP` / `DELETE` / `TRUNCATE`; change is purely additive.
 
 ---
@@ -111,7 +112,8 @@ The recurring pattern: a feature added its table + its own enums but never ran
 | --- | --- |
 | `packages/database/src/prisma/db_main/audit.prisma` | Appended `Highlight`, `AsrPipelineVersion`, `UserVoiceProfile`, `UserDepartment`, `TenantFrontendConfig` to the `ResourceType` enum. |
 | `packages/database/src/prisma/db_main/migrations/20260618000000_task_366_add_missing_resource_types/migration.sql` | New migration — 5 × `ALTER TYPE "core"."ResourceType" ADD VALUE IF NOT EXISTS '…'`. |
-| `packages/domains/src/enums/__tests__/resourceType.enum-parity.test.ts` | New regression test asserting domain enum ⊆ database enum. |
+| `packages/domains/src/enums/generated/ResourceType.ts` | Added the 6 database-only values (`Session`, `SessionEvent`, `SessionSyncLog`, `AudioRecording`, `SummaryMeta`, `NamedEntity`) that the domain enum was missing — reconciling the reverse drift. |
+| `packages/domains/src/enums/__tests__/resourceType.enum-parity.test.ts` | New regression test asserting BIDIRECTIONAL parity (domain ⇔ database). |
 
 `packages/database/src/generated/core-prisma-client/*` was regenerated
 (gitignored artifact).
@@ -130,10 +132,13 @@ The recurring pattern: a feature added its table + its own enums but never ran
   INSERT 0 5          -- AuditLog rows for all 5 previously-rejected resourceType values
   ROLLBACK
   ```
-- **Regression test:** RED before regeneration (listed all 5 missing), GREEN after.
+- **Regression test:** RED before the fix (forward direction listed all 5
+  missing values), GREEN after. The bidirectional version then proved the
+  reverse direction (6 database-only values) was also reconciled.
+- **Full domains suite (after both directions reconciled):**
   ```
-  Test Files  2 passed (2)
-        Tests  24 passed (24)   # enum parity + AuditLogEntity invariants
+  Test Files  93 passed | 2 skipped (95)
+        Tests  1198 passed | 2 skipped | 9 todo (1209)
   ```
 - **Build:** `@arcaai/database` and `@arcaai/domains` `tsc` builds clean.
 - **Lint:** no linter errors on changed files.
@@ -164,4 +169,5 @@ Other lines in the same log window are **not** defects:
 
 | Date | Description | Files |
 | --- | --- | --- |
-| 2026-06-18 | Initial fix: reconcile DB `ResourceType` enum with the domain enum (+5 values), add migration, add parity regression test. | see Files Changed |
+| 2026-06-18 | Initial fix: add the 5 domain-only values to the DB `ResourceType` enum (`audit.prisma` + migration), add forward-direction parity regression test. | `audit.prisma`, migration, parity test |
+| 2026-06-18 | Reverse-drift reconciliation: add the 6 database-only values (`Session`, `SessionEvent`, `SessionSyncLog`, `AudioRecording`, `SummaryMeta`, `NamedEntity`) to the domain enum; upgrade the regression test to enforce bidirectional parity. | `ResourceType.ts`, parity test |

@@ -188,6 +188,29 @@
       changes:
         - packages/database/**/*
 
+# ── Data-model generator drift (generated domain layer ↔ Prisma schema) ──────
+# Fires when the Prisma schema (DMMF source), the committed generated domain
+# model/enum layer, or the generator itself changes — i.e. anything that could
+# make `generate-data-model:check` drift.
+
+.rules-data-model:
+  rules:
+    - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - packages/database/src/prisma/**/*.prisma
+          - packages/domains/src/**/generated/**/*
+          - packages/tools/src/generate-data-model/**/*
+        compare_to: refs/heads/main
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+      changes:
+        - packages/database/src/prisma/**/*.prisma
+        - packages/domains/src/**/generated/**/*
+        - packages/tools/src/generate-data-model/**/*
+
 # ── Any TypeScript change ───────────────────────────────────────────────────
 
 .rules-any-ts:

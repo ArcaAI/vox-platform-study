@@ -1,7 +1,6 @@
 import { glob } from 'glob';
-import fs from 'fs';
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'fs';
-import path, { dirname, join, basename, relative, resolve } from 'path';
+import { join, basename } from 'path';
 import * as Handlebars from 'handlebars';
 import { DMMF } from '@prisma/generator-helper';
 import {
@@ -10,10 +9,9 @@ import {
     parseModelFile,
     EntityMetadata,
     ModelMetadata,
-    getPrismaDMMF,
     DMMF as PrismaDMMF,
-    checkDirectory,
-    getPnpmWorkspaceNodeModulesPath,
+    discoverPrismaDomains,
+    getDMMFForDomain,
     names,
     toCamelCase,
 } from '../utils';
@@ -46,13 +44,6 @@ interface MapperData {
     toDomainHandlers: { name: string; code: string }[];
 }
 
-interface DomainFolder {
-    name: string;
-    value: string;
-    folderPath: string;
-    module: string;
-}
-
 function getEntityName(type: string): string {
     return type.replace('Entity.', '');
 }
@@ -61,42 +52,17 @@ function getModelName(type: string): string {
     return type.replace('Model.', '');
 }
 
-function discoverDomainFolders(prismaPath: string): DomainFolder[] {
-    return fs
-        .readdirSync(prismaPath)
-        .filter((folder) => folder.match(/^(.+)(-prisma-client)$/))
-        .map((folder) => {
-            const domainName = folder.replace(/(.+)(-prisma-client)/, '$1');
-            return {
-                name: domainName,
-                value: folder,
-                folderPath: path.resolve(prismaPath, folder),
-                module: `.prisma/${folder}`,
-            };
-        });
-}
-
 export async function generateMappers(options: GenerateMapperOptions): Promise<void> {
-    const nodeModulesPath = getPnpmWorkspaceNodeModulesPath();
-    const prismaPath = path.resolve(nodeModulesPath, '.prisma');
-
-    if (!checkDirectory(prismaPath)) {
-        logger.error('The .prisma directory does not exist in node_modules.');
-        logger.error('Please generate the Prisma clients first.');
-        process.exit(1);
-    }
-
-    const domainFolders = discoverDomainFolders(prismaPath);
+    const domainFolders = await discoverPrismaDomains();
     if (domainFolders.length === 0) {
-        logger.error('No Prisma client folders found in .prisma directory.');
-        logger.error('Please generate the Prisma clients first.');
+        logger.error('No Prisma schema packages found.');
+        logger.error('Expected a workspace package whose package.json declares a "prisma.schema" path.');
         process.exit(1);
     }
 
     const prismaClients: Record<string, PrismaDMMF> = {};
     for (const domainFolder of domainFolders) {
-        const dmmf = await getPrismaDMMF(domainFolder.folderPath);
-        prismaClients[domainFolder.name] = dmmf;
+        prismaClients[domainFolder.name] = await getDMMFForDomain(domainFolder);
     }
 
     const { basePath, outputPath, entityPath, modelPath } = options;

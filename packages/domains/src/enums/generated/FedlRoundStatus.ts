@@ -2,7 +2,9 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export enum TenantBucketType {
-  SYSTEM = 'SYSTEM',
-  CUSTOM = 'CUSTOM',
+export enum FedlRoundStatus {
+  PENDING = 'PENDING',
+  AGGREGATING = 'AGGREGATING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
 }
