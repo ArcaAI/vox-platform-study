@@ -144,5 +144,18 @@ enum ResourceType {
     StorageAccessKey
     TenantStorageConfig
 
+    // TASK-366 — reconcile the DB enum with the application `ResourceType` enum.
+    // These values are emitted as audit `resourceType` by their services'
+    // `broadcastSysEvent(...)` calls but were missing from the database enum,
+    // causing every AuditLog write (and therefore the originating mutation) to
+    // fail with "Invalid value for argument `resourceType`". Appended in
+    // declaration order so the schema matches the append-only ADD VALUE
+    // migration and Postgres enum sort order.
+    Highlight
+    AsrPipelineVersion
+    UserVoiceProfile
+    UserDepartment
+    TenantFrontendConfig
+
     @@schema("core")
 }
