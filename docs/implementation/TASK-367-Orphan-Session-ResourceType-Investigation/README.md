@@ -1,14 +1,19 @@
 # TASK-367 — Orphan `Session` / `SessionEvent` / `SessionSyncLog` `ResourceType` Values
 
 - **Ticket**: TASK-367 (follow-up to TASK-366)
-- **Type**: investigation / docs
+- **Type**: investigation + cleanup (orphan enum removal)
 - **Created**: 2026-06-18
-- **Updated**: 2026-06-18
-- **Status**: Review (investigation complete; no code changed)
+- **Updated**: 2026-06-19
+- **Status**: Completed
 
-> Scope guard: this ticket is **investigation only**. No enum, schema, domain,
-> or migration file was modified, and no destructive or write SQL was run
-> (`SELECT`-only against both databases). The only file authored is this README.
+> Update (2026-06-19): the investigation below recommended **Keep + tracking
+> comment** (Option B), but the team explicitly chose **Option C — full
+> removal**. That removal has now been executed under explicit approval: the
+> three dead values were dropped from both enums and the admin filter, a guarded
+> recreation migration was authored and applied to dev (`hope`) and test
+> (`hope_test`), and the TASK-366 parity test is green at 40⇔40. See §5 Change
+> History for specifics. The original investigation record below is preserved
+> as-authored (it still reads "investigation only").
 
 ---
 
@@ -263,3 +268,4 @@ former DB-only drift) so it no longer references removed values.
 | Date | Description | Files |
 | --- | --- | --- |
 | 2026-06-18 | Investigation: confirmed `Session`, `SessionEvent`, `SessionSyncLog` are dead/orphan `ResourceType` values (no model, no emitter, 0 DB rows on dev+test, introduced unused in initial commit `d10c1775`, no documented plan). Login/logout audits use `ResourceType.User`. Recommended keep + tracking comment; documented a human-gated, non-destructive-by-default removal plan. No code or DB changes. | This README only |
+| 2026-06-19 | **Executed Option C — full removal** (explicitly approved). Dropped the three values from the `ResourceType` enum (DB schema + domain enum + admin filter), regenerated the domain enum via the data-model generator (source-of-truth; `generate-data-model:check` EXIT 0 across 97 files), and authored + applied a guarded enum-recreation migration to both local DBs via `docker exec psql --single-transaction`. **Before → after enum labels: 43 → 40** on dev (`hope`) and **43 → 40** on test (`hope_test`); the pre-flight guard confirmed **0** `AuditLog` rows used the values on either DB (so nothing was lost); TASK-366 parity test green at **40⇔40**; `@arcaai/domains` build EXIT 0. The 40 retained labels (declaration order) are: AuditLog, ApiKey, Department, GlobalSetting, IntegrationPackage, IntegrationItem, Media, Notification, ResourceSubscription, Role, Permission, RolePermission, Tag, Tenant, UserRoleAssignment, User, UserSettings, UserProfile, UserMedia, Webhook, WebhookRunHistory, Consultation, ContextItem, ContextItemVersion, AudioRecording, SummaryMeta, NamedEntity, AsrPipeline, AiModel, TranscriptionJob, PromptTemplate, DnaWritingStyleReport, TenantBucket, StorageAccessKey, TenantStorageConfig, Highlight, AsrPipelineVersion, UserVoiceProfile, UserDepartment, TenantFrontendConfig. | `packages/database/src/prisma/db_main/audit.prisma` (−3 enum values); `packages/domains/src/enums/generated/ResourceType.ts` (regenerated → 40); `apps/ui-playground/src/features/admin/audit-logs/index.tsx` (dropped `'Session'`); `packages/domains/src/enums/__tests__/resourceType.enum-parity.test.ts` (comment updated); `packages/database/src/prisma/db_main/migrations/20260619090000_task_367_remove_orphan_session_resource_types/migration.sql` (new); this README |
