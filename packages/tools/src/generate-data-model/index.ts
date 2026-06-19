@@ -5,9 +5,16 @@ import fs from 'fs';
 import { program } from 'commander';
 import inquirer from 'inquirer';
 import Handlebars from 'handlebars';
-import * as prettier from 'prettier';
 import { SelectedItem, DomainFolder, CommandLineOptions, ProcessingOptions } from './types';
-import { Logger, names, getPnpmWorkspaceNodeModulesPath, discoverPrismaDomains, getDMMFForDomain } from '../utils';
+import {
+    Logger,
+    names,
+    getPnpmWorkspaceNodeModulesPath,
+    discoverPrismaDomains,
+    getDMMFForDomain,
+    formatWithPrettier,
+    reportDrift as reportSharedDrift,
+} from '../utils';
 // Load environment variables using centralized utility
 import '../utils/loadEnv';
 
@@ -53,7 +60,12 @@ async function main() {
         await generateRootIndexFiles(options, selectedDomains, allSelectedItems);
 
         if (options.mode === 'check') {
-            const exitCode = reportDrift(options, workspaceRoot);
+            const exitCode = reportSharedDrift(
+                options.outputs,
+                workspaceRoot,
+                logger,
+                'Regenerate with "pnpm --filter @arcaai/tools generate-data-model:all" once manual edits are reconciled.'
+            );
             process.exit(exitCode);
         }
 
@@ -605,31 +617,16 @@ function extractPreservation(filePath: string): PreservedCustomizations {
     return result;
 }
 
-// Cache the resolved Prettier config (resolved once from the repo's config).
-let prettierConfig: Awaited<ReturnType<typeof prettier.resolveConfig>> | undefined;
-
-/**
- * Format generated TypeScript with the repo's Prettier config so the emitted
- * output is byte-identical to the committed (Prettier-formatted) style and is
- * idempotent (output === prettier(output)). This is what reconciles the template's
- * 4-space / blank-line layout with the committed 2-space style.
- */
-async function formatGenerated(absolutePath: string, content: string): Promise<string> {
-    if (prettierConfig === undefined) {
-        // Resolve from this source file (always inside the repo) so the repo's
-        // root Prettier config is used regardless of the output path (e.g. when
-        // generating into a throwaway dir via -o for testing).
-        prettierConfig = await prettier.resolveConfig(__filename);
-    }
-    return prettier.format(content, { ...prettierConfig, filepath: absolutePath, parser: 'typescript' });
-}
-
 /**
  * Write a generated file, or — in check mode — record its would-be content in memory
  * instead of touching the filesystem. Content is Prettier-formatted before either.
+ *
+ * Prettier formatting is shared with the entity/factory generators via
+ * `formatWithPrettier` (TASK-370) so the template's 4-space / blank-line layout is
+ * reconciled with the committed 2-space style identically across all three tools.
  */
 async function emit(options: ProcessingOptions, absolutePath: string, content: string, overwrite: boolean): Promise<void> {
-    const formatted = await formatGenerated(absolutePath, content);
+    const formatted = await formatWithPrettier(absolutePath, content);
 
     if (options.mode === 'check') {
         options.outputs.set(absolutePath, formatted);
@@ -644,42 +641,6 @@ async function emit(options: ProcessingOptions, absolutePath: string, content: s
 
     fs.writeFileSync(absolutePath, formatted);
     logger.info(`${existed ? 'Overwrote' : 'Generated'} file: ${path.basename(absolutePath)}`);
-}
-
-/**
- * Compare the in-memory generated output against the committed files and report drift.
- * Returns a process exit code: 0 when clean, 1 when regeneration would change anything.
- */
-function reportDrift(options: ProcessingOptions, workspaceRoot: string): number {
-    const changed: string[] = [];
-    const created: string[] = [];
-
-    for (const [absolutePath, content] of options.outputs) {
-        if (!fs.existsSync(absolutePath)) {
-            created.push(absolutePath);
-        } else if (fs.readFileSync(absolutePath, 'utf-8') !== content) {
-            changed.push(absolutePath);
-        }
-    }
-
-    const rel = (file: string) => path.relative(workspaceRoot, file);
-
-    if (changed.length === 0 && created.length === 0) {
-        logger.info(`check: no drift — ${options.outputs.size} generated file(s) match the committed files.`);
-        return 0;
-    }
-
-    logger.warn(
-        `check: drift detected — ${changed.length} file(s) would change, ${created.length} new file(s) would be created.`
-    );
-    for (const file of changed.sort()) {
-        logger.warn(`  would change: ${rel(file)}`);
-    }
-    for (const file of created.sort()) {
-        logger.warn(`  would create: ${rel(file)}`);
-    }
-    logger.warn('Regenerate with "pnpm --filter @arcaai/tools generate-data-model:all" once manual edits are reconciled.');
-    return 1;
 }
 
 function errorMessage(error: unknown): string {
