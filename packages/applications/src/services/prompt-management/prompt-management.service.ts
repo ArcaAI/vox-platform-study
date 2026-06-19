@@ -1,4 +1,4 @@
-import { Injectable, Inject, Optional, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, Logger, Optional, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
@@ -151,6 +151,23 @@ export class PromptManagementService extends BaseService implements IPromptManag
   ) {
     super(eventEmitter, clsService, ResourceType.PromptTemplate);
     this.smrServiceUrl = this.configService?.get<string>('SMR_URL') ?? 'http://localhost:8862';
+  }
+
+  private readonly logger = new Logger(PromptManagementService.name);
+
+  /**
+   * TASK-369 Phase 3C — best-effort field encryption. When a SecretsService is
+   * wired, encrypt the template's free-text `lastTestOutput` into the
+   * `encryptedLastTestOutput` column before persist. A Vault failure is
+   * swallowed (error message only) so the dual-write soak never blocks a write.
+   */
+  private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
+    if (!this.secretsService) return;
+    try {
+      await run();
+    } catch (error) {
+      this.logger.error(`${label} field encryption skipped (dual-write soak): ${(error as Error).message}`);
+    }
   }
 
   async createPromptTemplate(dto: CreatePromptTemplateRequest): Promise<PromptTemplateResponse> {
@@ -526,6 +543,12 @@ export class PromptManagementService extends BaseService implements IPromptManag
     template.lastTestScore = score;
     template.lastTestOutput = output;
     template.lastTestAt = testedAt;
+
+    // TASK-369 Phase 3C — encrypt the free-text test output into the ciphertext
+    // column before the CAS persist (dual-write; plaintext retained for soak).
+    await this.encryptBestEffort('PromptTemplate', () =>
+      this.promptTemplateRepository.encryptFieldsIntoEntity(template, this.secretsService!),
+    );
 
     // Compare-And-Set against the row `_version` (mirrors updatePromptTemplate).
     const updated = await this.promptTemplateRepository.updateWithVersion(id, template, dto.expectedVersion);

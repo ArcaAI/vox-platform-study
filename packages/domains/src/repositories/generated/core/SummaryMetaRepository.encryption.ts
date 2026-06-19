@@ -1,0 +1,96 @@
+// TASK-369 (Data Encryption Initiative) Phase 3C — field encryption for
+// SummaryMeta (citation provenance + guardrail decision JSONB blobs, which can
+// echo clinical content / transcript spans).
+//
+// Sibling file mirroring ContextItemRepository.encryption.ts. Both JSONB fields
+// share ONE `keyVersion` column; plaintext JSONB retained for the dual-read
+// soak.
+
+import { SummaryMetaRepository } from './SummaryMetaRepository';
+import { SummaryMetaEntity } from '../../../entities';
+import {
+  type SecretsServiceLike,
+  encryptJsonToCiphertext,
+  decryptCiphertextToJson,
+} from '../../../common/field-encryption';
+
+/** Plaintext view returned by {@link SummaryMetaRepository.decryptFieldsFromEntity}. */
+export interface SummaryMetaPlaintext {
+  citationsMap: unknown | null;
+  guardrailDecisions: unknown | null;
+}
+
+declare module './SummaryMetaRepository' {
+  interface SummaryMetaRepository {
+    /**
+     * Encrypt the JSONB provenance blobs via Vault Transit (hope-phi), storing
+     * ciphertext in the matching `encrypted*` column and recording the Transit
+     * key version in the shared `keyVersion`. Mutates in place; no-op per field
+     * when null. Plaintext retained for the dual-read soak.
+     */
+    encryptFieldsIntoEntity(
+      this: SummaryMetaRepository,
+      entity: SummaryMetaEntity,
+      secrets: SecretsServiceLike,
+    ): Promise<void>;
+
+    /** Decrypt all ciphertext columns, each falling back to its plaintext column. */
+    decryptFieldsFromEntity(
+      this: SummaryMetaRepository,
+      entity: SummaryMetaEntity,
+      secrets: SecretsServiceLike,
+    ): Promise<SummaryMetaPlaintext>;
+
+    /** findById + decryptFieldsFromEntity in one shot (generic findById never decrypts). */
+    findByIdWithDecryptedFields(
+      this: SummaryMetaRepository,
+      id: string,
+      secrets: SecretsServiceLike,
+    ): Promise<{ entity: SummaryMetaEntity; plaintext: SummaryMetaPlaintext }>;
+  }
+}
+
+SummaryMetaRepository.prototype.encryptFieldsIntoEntity = async function (
+  this: SummaryMetaRepository,
+  entity: SummaryMetaEntity,
+  secrets: SecretsServiceLike,
+): Promise<void> {
+  let keyVersion: number | null = null;
+
+  const citationsMap = await encryptJsonToCiphertext(secrets, entity.citationsMap);
+  if (citationsMap) {
+    entity.encryptedCitationsMap = citationsMap.ciphertext;
+    keyVersion = citationsMap.keyVersion;
+  }
+
+  const guardrailDecisions = await encryptJsonToCiphertext(secrets, entity.guardrailDecisions);
+  if (guardrailDecisions) {
+    entity.encryptedGuardrailDecisions = guardrailDecisions.ciphertext;
+    keyVersion = guardrailDecisions.keyVersion;
+  }
+
+  if (keyVersion !== null) entity.keyVersion = keyVersion;
+};
+
+SummaryMetaRepository.prototype.decryptFieldsFromEntity = async function (
+  this: SummaryMetaRepository,
+  entity: SummaryMetaEntity,
+  secrets: SecretsServiceLike,
+): Promise<SummaryMetaPlaintext> {
+  const citationsMap = await decryptCiphertextToJson(secrets, entity.encryptedCitationsMap);
+  const guardrailDecisions = await decryptCiphertextToJson(secrets, entity.encryptedGuardrailDecisions);
+  return {
+    citationsMap: citationsMap !== null ? citationsMap : (entity.citationsMap ?? null),
+    guardrailDecisions: guardrailDecisions !== null ? guardrailDecisions : (entity.guardrailDecisions ?? null),
+  };
+};
+
+SummaryMetaRepository.prototype.findByIdWithDecryptedFields = async function (
+  this: SummaryMetaRepository,
+  id: string,
+  secrets: SecretsServiceLike,
+): Promise<{ entity: SummaryMetaEntity; plaintext: SummaryMetaPlaintext }> {
+  const entity = await this.findById(id);
+  const plaintext = await this.decryptFieldsFromEntity(entity, secrets);
+  return { entity, plaintext };
+};

@@ -19,6 +19,16 @@ path "transit/decrypt/hope-globalsetting" {
   capabilities = ["update"]
 }
 
+# Transit encrypt/decrypt for field-encrypted PHI (Data Encryption Initiative
+# Phase 3A — ContextItem.content + clinical fields). Mirrors the hope-globalsetting
+# grant; the hope-phi key itself is created in dev-init.sh / configure-app-auth.sh.
+path "transit/encrypt/hope-phi" {
+  capabilities = ["update"]
+}
+path "transit/decrypt/hope-phi" {
+  capabilities = ["update"]
+}
+
 # Dynamic PostgreSQL credentials (Phase 5)
 path "database/creds/hope-app-role" {
   capabilities = ["read"]

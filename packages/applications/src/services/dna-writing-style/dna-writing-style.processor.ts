@@ -72,6 +72,21 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     });
   }
 
+  /**
+   * TASK-369 Phase 3C — best-effort field encryption. When a SecretsService is
+   * wired, encrypt the entity's writing-style columns into their `encrypted*`
+   * siblings before persist. A Vault failure is swallowed (error message only)
+   * so the dual-write soak never blocks a write — plaintext is still persisted.
+   */
+  private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
+    if (!this.secretsService) return;
+    try {
+      await run();
+    } catch (error) {
+      this.logger.error(`${label} field encryption skipped (dual-write soak): ${(error as Error).message}`);
+    }
+  }
+
   private async processWithContext(job: Job<GenerateDnaReportJobPayload>): Promise<DnaReportJobResult> {
     const { doctorId, tenantId, userId, textSamples, sourceIds } = job.data;
 
@@ -215,6 +230,13 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         createdBy: userId,
       });
 
+      // TASK-369 Phase 3C — encrypt reportData/styleText into the ciphertext
+      // columns before the first persist (dual-write; plaintext retained for the
+      // soak). Best-effort: a Vault outage must not fail DNA generation.
+      await this.encryptBestEffort('DnaWritingStyleReport', () =>
+        this.dnaReportRepository.encryptFieldsIntoEntity(reportEntity, this.secretsService!),
+      );
+
       const saved = await this.dnaReportRepository.create(reportEntity);
 
       const versionEntity = DnaWritingStyleVersionFactory.CreateDnaWritingStyleVersion({
@@ -226,6 +248,10 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         changeReason: 'AI-generated initial analysis',
         changedBy: userId,
       });
+
+      await this.encryptBestEffort('DnaWritingStyleVersion', () =>
+        this.dnaVersionRepository.encryptFieldsIntoEntity(versionEntity, this.secretsService!),
+      );
 
       await this.dnaVersionRepository.create(versionEntity);
 

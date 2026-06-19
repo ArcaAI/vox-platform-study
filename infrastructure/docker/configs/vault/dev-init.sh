@@ -112,6 +112,22 @@ vault write transit/keys/hope-globalsetting/config \
   deletion_allowed=false \
   exportable=false 2>/dev/null || true
 
+# Data Encryption Initiative Phase 3A — dedicated PHI Transit key for
+# field-encrypting free-text clinical content (ContextItem.content and the
+# Phase 3C clinical fields). Kept SEPARATE from 'hope-globalsetting' so PHI
+# rotation cadence and Transit policy blast radius are independent from the
+# secrets-encryption key. Same hardened config as above:
+#   min_decryption_version=1 — historical ciphertexts stay decryptable post-rotation.
+#   deletion_allowed=false   — destructive key delete must be explicitly enabled first.
+#   exportable=false         — key material never leaves Vault (server-side crypto).
+echo "[vault-init] creating transit key 'hope-phi'"
+vault write -f transit/keys/hope-phi 2>/dev/null || true
+
+vault write transit/keys/hope-phi/config \
+  min_decryption_version=1 \
+  deletion_allowed=false \
+  exportable=false 2>/dev/null || true
+
 # TASK-302 Phase 5 Task 5.2 — Vault database secrets engine for short-
 # lived PostgreSQL credentials. The dev container points at host
 # PostgreSQL on docker.host.internal:5432; the SRE blueprint at

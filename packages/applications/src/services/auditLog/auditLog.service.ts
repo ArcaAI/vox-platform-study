@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import {
   IAuditLogService,
@@ -15,6 +15,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { SUPER_ADMIN_ROLE } from '../tenant/constants';
+import { AuditLogEncryptionService } from './auditLog-encryption.service';
 
 /**
  * TASK-328 A8 — hard cap on rows materialised for a single CSV export so a
@@ -69,6 +70,10 @@ export class AuditLogService extends BaseService implements IAuditLogService {
     // admin table. User is a global model (no tenantId column) so a tenant
     // admin can safely label rows authored by cross-tenant/system actors.
     private readonly userRepository: UserRepository,
+    // TASK-369 Phase 3D — envelope encryption for data/previousData on the two
+    // direct-write paths below, and decrypt-on-read for fetchById. @Optional so
+    // direct-construction unit tests keep working (plaintext-only soak).
+    @Optional() private readonly auditLogEncryption?: AuditLogEncryptionService,
   ) {
     super(eventEmitter, clsService, ResourceType.AuditLog);
   }
@@ -332,6 +337,12 @@ export class AuditLogService extends BaseService implements IAuditLogService {
     const auditLog = await this.auditLogRepository.findById(id);
     this.assertTenantOwnership(auditLog, id);
 
+    // TASK-369 Phase 3D — single-record reads decrypt the envelope payloads in
+    // place (with plaintext fallback for legacy rows). Best-effort: never throws.
+    // Only fetchById decrypts — the list/export paths stay on the retained
+    // plaintext columns to avoid per-row crypto on hot read paths during soak.
+    await this.auditLogEncryption?.decryptIntoEntity(auditLog);
+
     // OB-04 (TASK-336): reading a single audit row is never itself audited.
     return auditLog;
   }
@@ -454,6 +465,11 @@ export class AuditLogService extends BaseService implements IAuditLogService {
         tenantId: this.tenantId ?? '00000000-0000-0000-0000-000000000000',
       });
 
+      // TASK-369 Phase 3D — envelope-encrypt before mapping so the persisted row
+      // carries ciphertext (+ plaintext, dual-read soak). Best-effort; no-op when
+      // the encryption service is absent or Vault is unavailable.
+      await this.auditLogEncryption?.encryptIntoEntity(auditLog);
+
       // TASK-314 §7 — baseClient (tenant-scope bypass). `trackAuthentication`
       // emits `user.authenticated` while CLS still has NO tenant context (login
       // is a public route, so this @OnEvent handler runs in the unauthenticated
@@ -524,6 +540,10 @@ export class AuditLogService extends BaseService implements IAuditLogService {
         createdBy: this.requestUser?.id ?? null,
         tenantId: this.tenantId ?? '00000000-0000-0000-0000-000000000000',
       });
+
+      // TASK-369 Phase 3D — envelope-encrypt data/previousData before mapping
+      // (best-effort; plaintext retained for the dual-read soak).
+      await this.auditLogEncryption?.encryptIntoEntity(auditLog);
 
       const persistence = AuditLogEntityMapper.getInstance().toPersistence(auditLog) as unknown as Record<string, unknown>;
       const data = Object.fromEntries(Object.entries(persistence).filter(([, value]) => value !== null));

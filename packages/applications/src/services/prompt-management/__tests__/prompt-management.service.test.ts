@@ -64,6 +64,10 @@ const createMockPromptTemplateRepository = () => ({
     updateWithVersion: vi.fn(),
     softDelete: vi.fn(),
     $: vi.fn(),
+    // TASK-369 Phase 3C — encrypt-on-write helper (declaration-merged onto the
+    // generated repo). Default no-op so the legacy fixtures (no SecretsService
+    // wired) never invoke it.
+    encryptFieldsIntoEntity: vi.fn(async () => undefined),
 });
 
 const createMockPromptVersionRepository = () => ({
@@ -1686,6 +1690,73 @@ describe('PromptManagementService', () => {
             expect(result.output).toBe(output);
             expect(result.version).toBe(6);
             expect(typeof result.testedAt).toBe('string');
+        });
+
+        // ── TASK-369 Phase 3C: encrypt `lastTestOutput` on the test-run write ──
+        const buildSmrServiceWithSecrets = (responseData: Record<string, unknown>) => {
+            const httpMock = createMockHttpService(responseData);
+            const configMock = createMockConfigService();
+            const secretsService = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') };
+            const svc = new PromptManagementService(
+                mockTemplateRepo as never,
+                mockVersionRepo as never,
+                mockUsageRepo as never,
+                mockDepartmentService as never,
+                mockEventEmitter as never,
+                mockClsService as never,
+                mockDatabaseService as never,
+                httpMock as never,
+                configMock as never,
+                secretsService as never, // TASK-369 SecretsService
+                { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'm' }) } as never,
+            );
+            return { svc, secretsService };
+        };
+
+        it('encrypts lastTestOutput BEFORE the CAS write, and the result DTO carries no ciphertext (TASK-369)', async () => {
+            const output = wordsOfLength(60);
+            const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
+            mockTemplateRepo.findById.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
+            const { svc, secretsService } = buildSmrServiceWithSecrets({ content: output });
+
+            const result = await svc.testPromptTemplate('tpl-1', { variables: { topic: 'asthma' }, expectedVersion: 1 } as never);
+
+            // encrypt-on-write ran with the live SecretsService, BEFORE persisting
+            expect(mockTemplateRepo.encryptFieldsIntoEntity).toHaveBeenCalledTimes(1);
+            expect(mockTemplateRepo.encryptFieldsIntoEntity).toHaveBeenCalledWith(existing, secretsService);
+            expect(mockTemplateRepo.encryptFieldsIntoEntity.mock.invocationCallOrder[0]).toBeLessThan(
+                mockTemplateRepo.updateWithVersion.mock.invocationCallOrder[0],
+            );
+
+            // the result DTO never carries the ciphertext column
+            expect(result).not.toHaveProperty('encryptedLastTestOutput');
+            expect(result).not.toHaveProperty('keyVersion');
+        });
+
+        it('still persists the test result when encryption fails (dual-write soak, TASK-369)', async () => {
+            const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+            mockTemplateRepo.findById.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
+            const { svc } = buildSmrServiceWithSecrets({ content: wordsOfLength(60) });
+            mockTemplateRepo.encryptFieldsIntoEntity.mockRejectedValueOnce(new Error('vault down'));
+
+            const result = await svc.testPromptTemplate('tpl-1', { expectedVersion: 1 } as never);
+
+            expect(result.id).toBe('tpl-1');
+            expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledTimes(1);
+        });
+
+        it('does NOT encrypt when no SecretsService is wired (TASK-369)', async () => {
+            const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+            mockTemplateRepo.findById.mockResolvedValue(existing);
+            mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
+            const { svc } = buildSmrService({ content: wordsOfLength(60) }); // no secretsService
+
+            await svc.testPromptTemplate('tpl-1', { expectedVersion: 1 } as never);
+
+            expect(mockTemplateRepo.encryptFieldsIntoEntity).not.toHaveBeenCalled();
+            expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalledTimes(1);
         });
 
         it('scores a short SMR output below 1.0 (deterministic word-count heuristic)', async () => {

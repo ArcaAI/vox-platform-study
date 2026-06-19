@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   ConsultationRepository,
   EvalRunEntity,
@@ -7,13 +7,15 @@ import {
   EvalScoreRepository,
   HARNESS_POLICY_DEFAULTS,
   HarnessAuditAction,
-  HarnessAuditChainRecord,
   HarnessAuditEventEntity,
   HarnessAuditEventRepository,
   HarnessPolicyRepository,
+  JsonValue,
+  toHarnessAuditChainRecord,
   verifyHarnessAuditChain,
 } from '@arcaai/domains';
 import { DataNotFoundException } from '@arcaai/exceptions';
+import { SecretsService } from '../baseServices/_meta/secrets';
 import {
   EvalRunDetailResponse,
   EvalRunListResponse,
@@ -65,12 +67,19 @@ export interface ListEvalRunsOptions {
  */
 @Injectable()
 export class HarnessObservabilityService {
+  private readonly logger = new Logger(HarnessObservabilityService.name);
+
   constructor(
     private readonly auditRepository: HarnessAuditEventRepository,
     private readonly evalRunRepository: EvalRunRepository,
     private readonly evalScoreRepository: EvalScoreRepository,
     private readonly consultationRepository: ConsultationRepository,
     private readonly policyRepository: HarnessPolicyRepository,
+    // TASK-369 Phase 3D — optional so existing fixtures keep their 5-arg
+    // construction; production DI supplies the @Global SecretsService. Used to
+    // decrypt-on-read the WORM audit payloads (sensorScores/citations) that the
+    // encrypt-before-hash writer stored as ciphertext.
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
 
   /**
@@ -99,10 +108,8 @@ export class HarnessObservabilityService {
 
     const limit = clamp(options.limit ?? DEFAULT_AUDIT_PAGE, 1, MAX_AUDIT_PAGE);
     const offset = Math.max(options.offset ?? 0, 0);
-    const items = [...filtered]
-      .reverse()
-      .slice(offset, offset + limit)
-      .map(auditToResponse);
+    const page = [...filtered].reverse().slice(offset, offset + limit);
+    const items = await Promise.all(page.map((e) => this.auditToResponseDecrypted(e)));
 
     return { items, total, verification };
   }
@@ -205,27 +212,37 @@ export class HarnessObservabilityService {
 
   /** Re-derive the hash chain over the audit entities (oldest→newest). */
   private verifyChainEntities(chain: HarnessAuditEventEntity[]): HarnessAuditVerificationResponse {
-    const records: HarnessAuditChainRecord[] = chain.map((e) => ({
-      tenantId: e.tenantId,
-      consultationId: e.consultationId,
-      contextItemVersionId: e.contextItemVersionId ?? null,
-      action: e.action,
-      modelName: e.modelName,
-      modelVersion: e.modelVersion,
-      promptTemplateId: e.promptTemplateId ?? null,
-      promptVersion: e.promptVersion ?? null,
-      sensorScores: e.sensorScores,
-      citations: e.citations,
-      gateDecision: e.gateDecision ?? null,
-      clinicianId: e.clinicianId ?? null,
-      attestationHash: e.attestationHash ?? null,
-      createdAt: toDate(e.createdAt),
-      prevHash: e.prevHash,
-      hash: e.hash,
-    }));
-
+    // TASK-369 Phase 3D — map via the shared helper so the verifier hashes over
+    // the SAME representation the writer used (ciphertext for encrypted rows,
+    // plaintext for legacy rows). Without this, encrypted rows would be hashed
+    // over their redaction sentinel and the chain would (incorrectly) read broken.
+    const records = chain.map(toHarnessAuditChainRecord);
     const result = verifyHarnessAuditChain(records);
     return { valid: result.valid, brokenAtIndex: result.brokenAtIndex, reason: result.reason ?? null };
+  }
+
+  /**
+   * TASK-369 Phase 3D — project an audit entity to its response, decrypting the
+   * WORM payloads for display. On an encrypted (new) row the plaintext columns
+   * hold a redaction sentinel, so the real sensorScores/citations are recovered
+   * from the ciphertext. Best-effort: no SecretsService, a decrypt failure, or a
+   * legacy (plaintext) row falls back to the entity's plaintext values.
+   */
+  private async auditToResponseDecrypted(e: HarnessAuditEventEntity): Promise<HarnessAuditEventResponse> {
+    const base = auditToResponse(e);
+    if (this.secretsService && (e.encryptedSensorScores || e.encryptedCitations)) {
+      try {
+        const { sensorScores, citations } = await this.auditRepository.decryptPayloadsFromEntity(e, this.secretsService);
+        return { ...base, sensorScores: sensorScores as JsonValue, citations: citations as JsonValue };
+      } catch (error) {
+        this.logger.warn({
+          message: 'HarnessAuditEvent payload decryption failed — returning redaction sentinel for display',
+          id: e.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return base;
   }
 }
 

@@ -1,0 +1,105 @@
+// TASK-369 (Data Encryption Initiative) Phase 3C — field encryption for
+// DnaWritingStyleVersion (immutable snapshot: reportData JSONB / styleText).
+//
+// Sibling file mirroring ContextItemRepository.encryption.ts (declaration
+// merging + prototype patching so codegen can re-run with --overwrite). Both
+// fields share ONE `keyVersion` column; the shared Buffer/ciphertext
+// primitives live in common/field-encryption.ts and default to the dedicated
+// `hope-phi` Transit key. Plaintext columns are retained for the dual-read
+// soak — decrypt helpers fall back to plaintext when the ciphertext is null.
+
+import { DnaWritingStyleVersionRepository } from './DnaWritingStyleVersionRepository';
+import { DnaWritingStyleVersionEntity } from '../../../entities';
+import {
+  type SecretsServiceLike,
+  encryptStringToCiphertext,
+  encryptJsonToCiphertext,
+  decryptCiphertextToString,
+  decryptCiphertextToJson,
+} from '../../../common/field-encryption';
+
+/** Plaintext view returned by {@link DnaWritingStyleVersionRepository.decryptFieldsFromEntity}. */
+export interface DnaWritingStyleVersionPlaintext {
+  reportData: unknown | null;
+  styleText: string | null;
+}
+
+declare module './DnaWritingStyleVersionRepository' {
+  interface DnaWritingStyleVersionRepository {
+    /**
+     * Encrypt every populated snapshot field via Vault Transit (hope-phi) and
+     * store the ciphertext in the matching `encrypted*` column, recording the
+     * Transit key version in the shared `keyVersion`. Mutates the entity in
+     * place; caller persists. No-op per field when that field is empty/null, so
+     * it is safe to call unconditionally on a partial row. Does NOT clear
+     * plaintext — retained for the dual-read soak (Phase 6 cleanup).
+     */
+    encryptFieldsIntoEntity(
+      this: DnaWritingStyleVersionRepository,
+      entity: DnaWritingStyleVersionEntity,
+      secrets: SecretsServiceLike,
+    ): Promise<void>;
+
+    /**
+     * Decrypt all ciphertext columns, each falling back to its legacy plaintext
+     * column when the ciphertext is null (dual-read soak bridge).
+     */
+    decryptFieldsFromEntity(
+      this: DnaWritingStyleVersionRepository,
+      entity: DnaWritingStyleVersionEntity,
+      secrets: SecretsServiceLike,
+    ): Promise<DnaWritingStyleVersionPlaintext>;
+
+    /** findById + decryptFieldsFromEntity in one shot (generic findById never decrypts). */
+    findByIdWithDecryptedFields(
+      this: DnaWritingStyleVersionRepository,
+      id: string,
+      secrets: SecretsServiceLike,
+    ): Promise<{ entity: DnaWritingStyleVersionEntity; plaintext: DnaWritingStyleVersionPlaintext }>;
+  }
+}
+
+DnaWritingStyleVersionRepository.prototype.encryptFieldsIntoEntity = async function (
+  this: DnaWritingStyleVersionRepository,
+  entity: DnaWritingStyleVersionEntity,
+  secrets: SecretsServiceLike,
+): Promise<void> {
+  let keyVersion: number | null = null;
+
+  const reportData = await encryptJsonToCiphertext(secrets, entity.reportData);
+  if (reportData) {
+    entity.encryptedReportData = reportData.ciphertext;
+    keyVersion = reportData.keyVersion;
+  }
+
+  const styleText = await encryptStringToCiphertext(secrets, entity.styleText);
+  if (styleText) {
+    entity.encryptedStyleText = styleText.ciphertext;
+    keyVersion = styleText.keyVersion;
+  }
+
+  if (keyVersion !== null) entity.keyVersion = keyVersion;
+};
+
+DnaWritingStyleVersionRepository.prototype.decryptFieldsFromEntity = async function (
+  this: DnaWritingStyleVersionRepository,
+  entity: DnaWritingStyleVersionEntity,
+  secrets: SecretsServiceLike,
+): Promise<DnaWritingStyleVersionPlaintext> {
+  const reportData = await decryptCiphertextToJson(secrets, entity.encryptedReportData);
+  const styleText = await decryptCiphertextToString(secrets, entity.encryptedStyleText);
+  return {
+    reportData: reportData !== null ? reportData : (entity.reportData ?? null),
+    styleText: styleText !== null ? styleText : (entity.styleText ?? null),
+  };
+};
+
+DnaWritingStyleVersionRepository.prototype.findByIdWithDecryptedFields = async function (
+  this: DnaWritingStyleVersionRepository,
+  id: string,
+  secrets: SecretsServiceLike,
+): Promise<{ entity: DnaWritingStyleVersionEntity; plaintext: DnaWritingStyleVersionPlaintext }> {
+  const entity = await this.findById(id);
+  const plaintext = await this.decryptFieldsFromEntity(entity, secrets);
+  return { entity, plaintext };
+};

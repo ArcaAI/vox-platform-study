@@ -6,7 +6,7 @@
 # creds in the FILE shape the app already expects (VAULT_ROLE_ID_FILE /
 # VAULT_WRAPPED_SECRET_ID_FILE — apps/api/.env.production, B.9/B.10):
 #   - kv-v2 at secret/        (warmup secrets: JWT_SECRET_KEY, …)
-#   - transit/ + hope-globalsetting key (envelope-encrypted GlobalSetting rows)
+#   - transit/ + hope-globalsetting key (GlobalSetting rows) + hope-phi key (PHI fields)
 #   - approle auth + hope-app policy + hope-app role
 #   - k8s Secret <APP_NS>/hope-vault-approle  data: role_id, wrapped_secret_id
 #     (mount as files in the API Deployment; see ../README.md "Wiring the app")
@@ -54,8 +54,11 @@ vex() {
 log "enabling kv-v2 at secret/"
 vex 'vault secrets enable -path=secret -version=2 kv 2>/dev/null || true'
 
-log "enabling transit + key hope-globalsetting"
-vex 'vault secrets enable transit 2>/dev/null || true; vault write -f transit/keys/hope-globalsetting >/dev/null'
+log "enabling transit + keys hope-globalsetting, hope-phi"
+# hope-phi: dedicated PHI field-encryption key (Data Encryption Initiative
+# Phase 3A), kept separate from hope-globalsetting so PHI rotation/blast-radius
+# is independent. Mirrors dev-init.sh; `-f` is idempotent (no-op if it exists).
+vex 'vault secrets enable transit 2>/dev/null || true; vault write -f transit/keys/hope-globalsetting >/dev/null; vault write -f transit/keys/hope-phi >/dev/null'
 
 log "enabling approle auth"
 vex 'vault auth enable approle 2>/dev/null || true'
@@ -66,6 +69,8 @@ path \"secret/data/hope/*\"     { capabilities = [\"read\", \"list\"] }
 path \"secret/metadata/hope/*\" { capabilities = [\"read\", \"list\"] }
 path \"transit/encrypt/hope-globalsetting\" { capabilities = [\"update\"] }
 path \"transit/decrypt/hope-globalsetting\" { capabilities = [\"update\"] }
+path \"transit/encrypt/hope-phi\" { capabilities = [\"update\"] }
+path \"transit/decrypt/hope-phi\" { capabilities = [\"update\"] }
 path \"database/creds/hope-app-role\" { capabilities = [\"read\"] }
 path \"sys/leases/renew\"  { capabilities = [\"update\"] }
 path \"sys/leases/revoke\" { capabilities = [\"update\"] }

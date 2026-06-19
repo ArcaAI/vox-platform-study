@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import {
   CoreDatabaseService,
@@ -12,7 +12,15 @@ import {
   SYSTEM_TENANT_ID,
 } from '@arcaai/domains';
 import { IActiveUserContext } from '../../interfaces';
+import { SecretsService } from '../baseServices/_meta/secrets';
 import { HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest } from './dto';
+
+/** Ciphertext payloads threaded into the change factory (TASK-369 Phase 3D). */
+interface EncryptedChangePayloads {
+  encryptedBeforeJson: Buffer | null;
+  encryptedAfterJson: Buffer | null;
+  keyVersion: number | null;
+}
 
 /**
  * The 16 runtime knobs the clinical loop reads. Decoupled from the entity (whose
@@ -104,12 +112,37 @@ function applyKnobsToEntity(entity: HarnessPolicyEntity, dto: UpdateHarnessPolic
  */
 @Injectable()
 export class HarnessPolicyService {
+  private readonly logger = new Logger(HarnessPolicyService.name);
+
   constructor(
     private readonly policyRepository: HarnessPolicyRepository,
     private readonly policyChangeRepository: HarnessPolicyChangeRepository,
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     private readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-369 Phase 3D — optional so fixtures keep their 4-arg construction and
+    // non-Vault deployments degrade to plaintext WORM change rows.
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
+
+  /**
+   * TASK-369 Phase 3D — best-effort encrypt the before/after policy snapshots so
+   * the WORM `HarnessPolicyChange` row stores ciphertext (+ a redaction sentinel
+   * in the plaintext JSONB). Done OUTSIDE the change transaction (the Vault
+   * round-trip must not hold a DB connection open). Returns null when there is no
+   * SecretsService or Vault errors — the change is then written in plaintext.
+   */
+  private async encryptChangePayloads(before: JsonValue | null, after: JsonValue): Promise<EncryptedChangePayloads | null> {
+    if (!this.secretsService) return null;
+    try {
+      return await this.policyChangeRepository.encryptPayloads(this.secretsService, before, after);
+    } catch (error) {
+      this.logger.warn({
+        message: 'HarnessPolicyChange payload encryption failed — writing plaintext change row',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
 
   private get callerTenantId(): string | null {
     return this.clsService.get('tenantId') || null;
@@ -219,6 +252,13 @@ export class HarnessPolicyService {
       own.updatedBy = changedBy;
       own.validate();
 
+      // Knobs after the patch == the persisted row's knobs (the update only bumps
+      // `version`), so snapshot + encrypt here, before opening the transaction.
+      const after = entityToKnobs(own);
+      const beforeJson = before as unknown as JsonValue;
+      const afterJson = after as unknown as JsonValue;
+      const enc = await this.encryptChangePayloads(beforeJson, afterJson);
+
       const casVersion = expectedVersion ?? own.version;
       const updated = await this.databaseService.baseClient.$transaction(async (tx) => {
         const u = await this.policyRepository.updateWithVersion(own.id, own, casVersion, tx);
@@ -226,8 +266,11 @@ export class HarnessPolicyService {
           tenantId,
           changedBy,
           policyVersion: u.version,
-          beforeJson: before as unknown as JsonValue,
-          afterJson: entityToKnobs(u) as unknown as JsonValue,
+          beforeJson,
+          afterJson,
+          encryptedBeforeJson: enc?.encryptedBeforeJson ?? null,
+          encryptedAfterJson: enc?.encryptedAfterJson ?? null,
+          keyVersion: enc?.keyVersion ?? null,
           reason,
           createdBy: changedBy,
         });
@@ -248,6 +291,10 @@ export class HarnessPolicyService {
     const entity = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId, ...merged, createdBy: changedBy });
     entity.validate();
 
+    // First edit ⇒ before is null; the created row's knobs == the entity's knobs.
+    const afterJson = entityToKnobs(entity) as unknown as JsonValue;
+    const enc = await this.encryptChangePayloads(null, afterJson);
+
     const created = await this.databaseService.baseClient.$transaction(async (tx) => {
       const c = await this.policyRepository.create(entity, tx);
       const change = HarnessPolicyChangeFactory.CreateHarnessPolicyChange({
@@ -255,7 +302,10 @@ export class HarnessPolicyService {
         changedBy,
         policyVersion: c.version,
         beforeJson: null,
-        afterJson: entityToKnobs(c) as unknown as JsonValue,
+        afterJson,
+        encryptedBeforeJson: enc?.encryptedBeforeJson ?? null,
+        encryptedAfterJson: enc?.encryptedAfterJson ?? null,
+        keyVersion: enc?.keyVersion ?? null,
         reason,
         createdBy: changedBy,
       });

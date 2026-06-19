@@ -212,6 +212,57 @@ describe('SecretsService.encrypt/decrypt (Phase 4 Task 4.5)', () => {
   });
 });
 
+describe('SecretsService keyed encrypt/decrypt (Phase 3A PHI)', () => {
+  it('forwards an explicit key name to the provider on encrypt', async () => {
+    const fakeVault = {
+      encrypt: vi.fn(async (b: Buffer, key?: string) => `vault:v1:${key}:${b.toString('base64')}`),
+      getSecret: vi.fn(),
+      getSecrets: vi.fn(),
+      health: vi.fn(),
+    } as unknown as InMemorySecretsProvider;
+    const service = new SecretsService(fakeVault, {});
+    const ct = await service.encrypt(Buffer.from('hello'), 'hope-phi');
+    expect(ct).toBe('vault:v1:hope-phi:aGVsbG8=');
+    expect((fakeVault as unknown as { encrypt: ReturnType<typeof vi.fn> }).encrypt).toHaveBeenCalledWith(
+      Buffer.from('hello'),
+      'hope-phi',
+    );
+  });
+
+  it('forwards an explicit key name to the provider on decrypt', async () => {
+    const fakeVault = {
+      decrypt: vi.fn(async (ct: string, _key?: string) => Buffer.from(ct.split(':').pop()!, 'base64')),
+      getSecret: vi.fn(),
+      getSecrets: vi.fn(),
+      health: vi.fn(),
+    } as unknown as InMemorySecretsProvider;
+    const service = new SecretsService(fakeVault, {});
+    const pt = await service.decrypt('vault:v1:aGVsbG8=', 'hope-phi');
+    expect(pt.toString('utf8')).toBe('hello');
+    expect((fakeVault as unknown as { decrypt: ReturnType<typeof vi.fn> }).decrypt).toHaveBeenCalledWith(
+      'vault:v1:aGVsbG8=',
+      'hope-phi',
+    );
+  });
+
+  it('getPhiTransitKeyName returns the provider PHI key when exposed', () => {
+    const fakeVault = {
+      phiTransitKey: 'hope-phi-prod',
+      getSecret: vi.fn(),
+      getSecrets: vi.fn(),
+      health: vi.fn(),
+    } as unknown as InMemorySecretsProvider;
+    const service = new SecretsService(fakeVault, {});
+    expect(service.getPhiTransitKeyName()).toBe('hope-phi-prod');
+  });
+
+  it('getPhiTransitKeyName defaults to "hope-phi" when the provider has no Transit support', () => {
+    const provider = new InMemorySecretsProvider({});
+    const service = new SecretsService(provider, {});
+    expect(service.getPhiTransitKeyName()).toBe('hope-phi');
+  });
+});
+
 describe('SecretsService lease-renewer integration (Phase 5 Task 5.7)', () => {
   it('reports degraded=false on health when no renewer is registered', async () => {
     const provider = new InMemorySecretsProvider({});

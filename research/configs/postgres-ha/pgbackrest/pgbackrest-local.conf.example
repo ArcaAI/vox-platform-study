@@ -5,6 +5,15 @@
 
 [global]
 repo1-path=/var/lib/pgbackrest
+
+# ── Backup encryption at rest — TASK-369 Phase 4 ─────────────────────────────
+# Same AES-256-CBC repo cipher as the S3 config so local-disk backups are also
+# encrypted. The passphrase is injected via env (NOT stored here), from Vault:
+#     PGBACKREST_REPO1_CIPHER_PASS  ->  repo1-cipher-pass
+#     Vault: secret/hope/PGBACKREST_REPO1_CIPHER_PASS  (openssl rand -base64 48)
+# With cipher-type set but no pass available, pgBackRest fails closed.
+repo1-cipher-type=aes-256-cbc
+
 repo1-retention-full=2
 repo1-retention-diff=7
 

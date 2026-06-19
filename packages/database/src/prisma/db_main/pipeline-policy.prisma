@@ -26,75 +26,84 @@
 // =============================================================================
 
 model PipelinePolicy {
-    // Meta fields (BaseEntity pattern) — `_version` is the OCC token.
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields (BaseEntity pattern) — `_version` is the OCC token.
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant — system tenant owns the global-default (TENANT-scope) row.
-    tenantId String
+  // Multi-tenant — system tenant owns the global-default (TENANT-scope) row.
+  tenantId String
 
-    // Scope discriminator: TENANT (scopeId null) | DEPARTMENT (departmentId) |
-    // DOCTOR (userId). The (tenantId, TENANT, null) row is the tenant default;
-    // the SYSTEM tenant's TENANT row is the platform default.
-    scope   PipelinePolicyScope @default(TENANT)
-    scopeId String?
+  // Scope discriminator: TENANT (scopeId null) | DEPARTMENT (departmentId) |
+  // DOCTOR (userId). The (tenantId, TENANT, null) row is the tenant default;
+  // the SYSTEM tenant's TENANT row is the platform default.
+  scope   PipelinePolicyScope @default(TENANT)
+  scopeId String?
 
-    // Realtime toggles — NULLABLE so each row overrides only what it sets
-    // (null => inherit from the next tier up; resolution lives in ConfigResolver).
-    //  - autoSummaryEnabled / autoNerEnabled : max scope DOCTOR
-    //  - harnessEnabled                       : max scope DEPARTMENT (rollout, not a clinician pref)
-    //  - dnaStyleEnabled                      : per-doctor DNA toggle (Phase 6 writes it)
-    autoSummaryEnabled Boolean?
-    autoNerEnabled     Boolean?
-    harnessEnabled     Boolean?
-    dnaStyleEnabled    Boolean?
+  // Realtime toggles — NULLABLE so each row overrides only what it sets
+  // (null => inherit from the next tier up; resolution lives in ConfigResolver).
+  //  - autoSummaryEnabled / autoNerEnabled : max scope DOCTOR
+  //  - harnessEnabled                       : max scope DEPARTMENT (rollout, not a clinician pref)
+  //  - dnaStyleEnabled                      : per-doctor DNA toggle (Phase 6 writes it)
+  autoSummaryEnabled Boolean?
+  autoNerEnabled     Boolean?
+  harnessEnabled     Boolean?
+  dnaStyleEnabled    Boolean?
 
-    // Resource status + Audit (standard fields)
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
-    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy               String?
-    createdAt               DateTime @default(now())
-    updatedAt               DateTime @updatedAt
+  // Resource status + Audit (standard fields)
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+  updatedBy               String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
-    // One row per (tenant, scope, scopeId). The unique index doubles as the
-    // cascade lookup index. A partial-style `@@index([tenantId, scope])` keeps
-    // per-tier scans cheap on the realtime path.
-    @@unique([tenantId, scope, scopeId], name: "PipelinePolicy_tenant_scope_key")
-    @@index([tenantId, scope], name: "PipelinePolicy_tenant_scope_idx")
-    @@schema("core")
+  // One row per (tenant, scope, scopeId). The unique index doubles as the
+  // cascade lookup index. A partial-style `@@index([tenantId, scope])` keeps
+  // per-tier scans cheap on the realtime path.
+  @@unique([tenantId, scope, scopeId], name: "PipelinePolicy_tenant_scope_key")
+  @@index([tenantId, scope], name: "PipelinePolicy_tenant_scope_idx")
+  @@schema("core")
 }
 
 model PipelinePolicyChange {
-    // Identity only — NO _version / _metadata / updatedAt / resourceStatus.
-    // Rows are immutable (append-only); the migration REVOKEs UPDATE/DELETE
-    // on this table from the application role.
-    id String @id @default(uuid(7))
+  // Identity only — NO _version / _metadata / updatedAt / resourceStatus.
+  // Rows are immutable (append-only); the migration REVOKEs UPDATE/DELETE
+  // on this table from the application role.
+  id String @id @default(uuid(7))
 
-    // Multi-tenant — the policy row's tenant (system tenant for global-default edits).
-    tenantId String
+  // Multi-tenant — the policy row's tenant (system tenant for global-default edits).
+  tenantId String
 
-    // Which scope row was edited (mirrors the PipelinePolicy discriminator), for
-    // correlation in the audit trail.
-    scope   PipelinePolicyScope @default(TENANT)
-    scopeId String?
+  // Which scope row was edited (mirrors the PipelinePolicy discriminator), for
+  // correlation in the audit trail.
+  scope   PipelinePolicyScope @default(TENANT)
+  scopeId String?
 
-    // Who made the change (user id) + the optimistic-concurrency version of the
-    // policy row AFTER the edit (the `_version` the CAS produced), for correlation.
-    changedBy     String?
-    policyVersion Int?
+  // Who made the change (user id) + the optimistic-concurrency version of the
+  // policy row AFTER the edit (the `_version` the CAS produced), for correlation.
+  changedBy     String?
+  policyVersion Int?
 
-    // Full before/after snapshots of the policy values (null `beforeJson` => the
-    // policy row was created by this change).
-    beforeJson Json? @db.JsonB
-    afterJson  Json  @db.JsonB
-    reason     String? @db.Text
+  // Full before/after snapshots of the policy values (null `beforeJson` => the
+  // policy row was created by this change).
+  beforeJson Json?   @db.JsonB
+  afterJson  Json    @db.JsonB
+  reason     String? @db.Text
 
-    createdAt DateTime @default(now())
+  // Data Encryption Initiative Phase 3D — additive Vault-Transit (hope-phi)
+  // ciphertext of the before/after policy snapshots + shared key version. WORM
+  // (UPDATE/DELETE revoked): NEW rows store ciphertext here with a non-PHI
+  // redaction sentinel ({"_encrypted": true}) in the plaintext JSONB columns;
+  // historical rows keep plaintext (encrypted* NULL) and are never rewritten.
+  encryptedBeforeJson Bytes?
+  encryptedAfterJson  Bytes?
+  keyVersion          Int?
 
-    @@index([tenantId], name: "PipelinePolicyChange_tenantId_idx")
-    @@index([tenantId, createdAt], name: "PipelinePolicyChange_tenant_createdAt_idx")
-    @@schema("core")
+  createdAt DateTime @default(now())
+
+  @@index([tenantId], name: "PipelinePolicyChange_tenantId_idx")
+  @@index([tenantId, createdAt], name: "PipelinePolicyChange_tenant_createdAt_idx")
+  @@schema("core")
 }

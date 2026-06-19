@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   EvalRunEntity,
   EvalRunFactory,
@@ -14,6 +14,7 @@ import {
   GoldenSetRepository,
 } from '@arcaai/domains';
 import { InternalServerErrorException } from '@arcaai/exceptions';
+import { SecretsService } from '../baseServices/_meta/secrets';
 
 /**
  * EvalService (TASK-330 Phase 0) — offline evaluation storage for the clinical
@@ -80,7 +81,28 @@ export class EvalService {
     private readonly goldenCaseRepository: GoldenCaseRepository,
     private readonly evalRunRepository: EvalRunRepository,
     private readonly evalScoreRepository: EvalScoreRepository,
+    // TASK-369 Phase 3C — optional so the data-layer service still works when
+    // Vault/SecretsService is not provisioned; encryption then degrades to a
+    // plaintext-only write (dual-write soak retains plaintext regardless).
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
+
+  private readonly logger = new Logger(EvalService.name);
+
+  /**
+   * Best-effort field encryption: when a SecretsService is wired, encrypt the
+   * entity's free-text columns into their `encrypted*` siblings before persist.
+   * A Vault failure is swallowed (error message only) so the dual-write soak
+   * never blocks a write — the plaintext column is still persisted.
+   */
+  private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
+    if (!this.secretsService) return;
+    try {
+      await run();
+    } catch (error) {
+      this.logger.error(`${label} field encryption skipped (dual-write soak): ${(error as Error).message}`);
+    }
+  }
 
   async createGoldenSet(input: CreateGoldenSetInput): Promise<GoldenSetEntity> {
     const entity = GoldenSetFactory.CreateGoldenSet({
@@ -108,6 +130,10 @@ export class EvalService {
       createdBy: input.createdBy ?? null,
     });
 
+    await this.encryptBestEffort('GoldenCase', () =>
+      this.goldenCaseRepository.encryptFieldsIntoEntity(entity, this.secretsService!),
+    );
+
     const created = await this.goldenCaseRepository.create(entity);
     if (!created) {
       throw new InternalServerErrorException('Failed to create GoldenCaseEntity');
@@ -132,6 +158,10 @@ export class EvalService {
       createdBy: input.createdBy ?? null,
     });
 
+    await this.encryptBestEffort('EvalRun', () =>
+      this.evalRunRepository.encryptFieldsIntoEntity(entity, this.secretsService!),
+    );
+
     const created = await this.evalRunRepository.create(entity);
     if (!created) {
       throw new InternalServerErrorException('Failed to create EvalRunEntity');
@@ -152,6 +182,10 @@ export class EvalService {
       details: input.details ?? null,
       createdBy: input.createdBy ?? null,
     });
+
+    await this.encryptBestEffort('EvalScore', () =>
+      this.evalScoreRepository.encryptFieldsIntoEntity(entity, this.secretsService!),
+    );
 
     const created = await this.evalScoreRepository.create(entity);
     if (!created) {

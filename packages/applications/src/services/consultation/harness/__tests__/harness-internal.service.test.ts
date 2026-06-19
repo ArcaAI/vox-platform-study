@@ -87,6 +87,16 @@ const createMockContextItemRepository = () => ({
 // TASK-356 Phase 6 (S4) — the AI-draft v1 snapshot sink (best-effort).
 const createMockContextItemVersionRepository = () => ({
     create: vi.fn().mockResolvedValue({ id: 'ver-1' }),
+    // TASK-369 Phase 3C — encrypt-on-write helper (declaration-merged sibling).
+    encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined),
+});
+
+// TASK-369 Phase 3C — mocked SecretsService. encryptBestEffort only checks it is
+// truthy and delegates to the repo helper, so a minimal stub suffices.
+const createMockSecretsService = () => ({
+    encrypt: vi.fn().mockResolvedValue('vault:v1:x'),
+    decrypt: vi.fn(),
+    getPhiTransitKeyName: () => 'hope-phi',
 });
 
 const createMockConsultationRepository = () => ({
@@ -104,6 +114,8 @@ const createMockConsultationRepository = () => ({
 
 const createMockNamedEntityRepository = () => ({
     create: vi.fn().mockImplementation((e) => Promise.resolve({ id: `ne-${e.text}` })),
+    // TASK-369 Phase 3C — encrypt-on-write helper (declaration-merged sibling).
+    encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined),
     findByConsultation: vi.fn().mockResolvedValue([
         {
             text: 'chest pain',
@@ -119,6 +131,8 @@ const createMockNamedEntityRepository = () => ({
 
 const createMockSummaryMetaRepository = () => ({
     create: vi.fn().mockResolvedValue({ id: 'sm-1' }),
+    // TASK-369 Phase 3C — encrypt-on-write helper (declaration-merged sibling).
+    encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined),
     // TASK-355 Phase D — finalizeAssurance backfills the early-persisted meta.
     findByContextItem: vi.fn().mockResolvedValue({
         id: 'sm-early-1',
@@ -204,6 +218,7 @@ describe('HarnessInternalService', () => {
     let configService: ReturnType<typeof createMockConfigService>;
     let assuranceService: ReturnType<typeof createMockHarnessAssuranceService>;
     let contextItemVersionRepository: ReturnType<typeof createMockContextItemVersionRepository>;
+    let secretsService: ReturnType<typeof createMockSecretsService>;
 
     // TASK-355 Phase C (R-6) — (re)build the service with the warm-start flag in a
     // known state. Default OFF mirrors prod; warm-start tests call buildService(true).
@@ -211,9 +226,13 @@ describe('HarnessInternalService', () => {
     // keep their arity; the preferred-prompt threading tests pass one explicitly.
     // TASK-356 Phase 6 (S4) — optional contextItemVersionRepository (14th arg) for
     // the AI-draft v1 snapshot; always wired here so persistDraft snapshots.
+    // TASK-369 Phase 3C — optional `withSecrets` (default ON) appends the mocked
+    // SecretsService as the 15th arg. Pass `false` to exercise the unwired path
+    // (encrypt-on-write must no-op and never call the repo helper).
     const buildService = (
         warmStartEnabled = false,
         configResolver?: ReturnType<typeof createMockConfigResolver>,
+        withSecrets = true,
     ) => {
         configService = createMockConfigService(warmStartEnabled);
         return new HarnessInternalService(
@@ -231,6 +250,7 @@ describe('HarnessInternalService', () => {
             assuranceService as any,
             configResolver as any,
             contextItemVersionRepository as any,
+            withSecrets ? (secretsService as any) : undefined,
         );
     };
 
@@ -248,6 +268,7 @@ describe('HarnessInternalService', () => {
         highlightRepository = createMockHighlightRepository();
         assuranceService = createMockHarnessAssuranceService();
         contextItemVersionRepository = createMockContextItemVersionRepository();
+        secretsService = createMockSecretsService();
 
         // Default OFF — pre-Phase-C behavior. Warm-start tests rebuild with ON.
         service = buildService(false);
@@ -1136,6 +1157,168 @@ describe('HarnessInternalService', () => {
                 service.recordGateDecision('consultation-1', { tenantId: '' } as any),
             ).rejects.toThrow(BadRequestException);
             expect(harnessAuditService.append).not.toHaveBeenCalled();
+        });
+    });
+
+    // =========================================================================
+    // TASK-369 Phase 3C — field encryption (encrypt-on-write)
+    //
+    // The harness callback half persists NamedEntity (persistEntities),
+    // SummaryMeta (persistDraft create + finalizeAssurance update), and the
+    // ai_draft_v1 ContextItemVersion (persistDraft → captureAiDraftSnapshot).
+    // Each must encrypt the PHI fields via the repo's encryptFieldsIntoEntity
+    // BEFORE persisting, be best-effort during the dual-write soak, and no-op
+    // when SecretsService is unwired. The WORM audit payloads are DTO-derived
+    // (never the encrypted entity), so there is no ciphertext to strip.
+    // =========================================================================
+
+    describe('TASK-369 field encryption', () => {
+        const draftBody = () => ({
+            tenantId: 'tenant-1',
+            userId: 'doctor-1',
+            content: 'S: chest pain O: BP 120/80 A: stable P: review',
+            modelName: 'gpt-x',
+            modelVersion: 'v9',
+            citationsMap: { claims: [{ id: 'c1', status: 'verified' }] },
+            guardrailDecisions: { safety: { verdict: 'pass' } },
+            gateDecision: 'PASS',
+        });
+        const finalizeBody = () => ({
+            tenantId: 'tenant-1',
+            userId: 'doctor-1',
+            contextItemId: 'ctx-draft-1',
+            ragTriadScore: 0.92,
+            citationsMap: { claims: [{ id: 'c1', status: 'verified' }] },
+            guardrailDecisions: { safety: { verdict: 'pass' } },
+            gateDecision: 'PASS',
+            modelName: 'gpt-x',
+            modelVersion: 'v9',
+        });
+
+        // ── NamedEntity (persistEntities) ──
+        it('persistEntities encrypts each NamedEntity via encryptFieldsIntoEntity BEFORE create', async () => {
+            await service.persistEntities('consultation-1', {
+                tenantId: 'tenant-1',
+                userId: 'doctor-1',
+                contextItemId: 'tx-1',
+                entities: [
+                    { text: 'Metformin', type: 'MEDICATION', startOffset: 5, endOffset: 14, confidence: 0.9 },
+                    { text: 'Diabetes', type: 'CONDITION', startOffset: 20, endOffset: 28 },
+                ],
+            } as any);
+
+            expect(namedEntityRepository.encryptFieldsIntoEntity).toHaveBeenCalledTimes(2);
+            expect(namedEntityRepository.encryptFieldsIntoEntity).toHaveBeenCalledWith(
+                expect.objectContaining({ text: 'Metformin', className: 'MEDICATION' }),
+                secretsService,
+            );
+            const encOrder = namedEntityRepository.encryptFieldsIntoEntity.mock.invocationCallOrder[0];
+            const createOrder = namedEntityRepository.create.mock.invocationCallOrder[0];
+            expect(encOrder).toBeLessThan(createOrder);
+        });
+
+        it('persistEntities is best-effort: a Vault failure does NOT abort the write', async () => {
+            namedEntityRepository.encryptFieldsIntoEntity.mockRejectedValueOnce(new Error('vault down'));
+
+            const result = await service.persistEntities('consultation-1', {
+                tenantId: 'tenant-1',
+                userId: 'doctor-1',
+                contextItemId: 'tx-1',
+                entities: [{ text: 'Metformin', type: 'MEDICATION' }],
+            } as any);
+
+            expect(result.savedCount).toBe(1);
+            expect(namedEntityRepository.create).toHaveBeenCalledTimes(1);
+        });
+
+        it('persistEntities does NOT encrypt when no SecretsService is wired (no-op)', async () => {
+            service = buildService(false, undefined, false);
+
+            await service.persistEntities('consultation-1', {
+                tenantId: 'tenant-1',
+                userId: 'doctor-1',
+                contextItemId: 'tx-1',
+                entities: [{ text: 'Metformin', type: 'MEDICATION' }],
+            } as any);
+
+            expect(namedEntityRepository.encryptFieldsIntoEntity).not.toHaveBeenCalled();
+            expect(namedEntityRepository.create).toHaveBeenCalledTimes(1);
+        });
+
+        // ── SummaryMeta (persistDraft create) ──
+        it('persistDraft encrypts SummaryMeta via encryptFieldsIntoEntity BEFORE create', async () => {
+            await service.persistDraft('consultation-1', draftBody() as any);
+
+            expect(summaryMetaRepository.encryptFieldsIntoEntity).toHaveBeenCalledTimes(1);
+            expect(summaryMetaRepository.encryptFieldsIntoEntity).toHaveBeenCalledWith(
+                expect.objectContaining({ id: 'sm-temp' }),
+                secretsService,
+            );
+            const encOrder = summaryMetaRepository.encryptFieldsIntoEntity.mock.invocationCallOrder[0];
+            const createOrder = summaryMetaRepository.create.mock.invocationCallOrder[0];
+            expect(encOrder).toBeLessThan(createOrder);
+        });
+
+        // ── ContextItemVersion (persistDraft → captureAiDraftSnapshot) ──
+        it('persistDraft encrypts the ai_draft_v1 ContextItemVersion BEFORE create', async () => {
+            await service.persistDraft('consultation-1', draftBody() as any);
+
+            expect(contextItemVersionRepository.encryptFieldsIntoEntity).toHaveBeenCalledTimes(1);
+            expect(contextItemVersionRepository.encryptFieldsIntoEntity).toHaveBeenCalledWith(
+                expect.objectContaining({ changeReason: 'ai_draft_v1' }),
+                secretsService,
+            );
+            const encOrder = contextItemVersionRepository.encryptFieldsIntoEntity.mock.invocationCallOrder[0];
+            const createOrder = contextItemVersionRepository.create.mock.invocationCallOrder[0];
+            expect(encOrder).toBeLessThan(createOrder);
+        });
+
+        it('persistDraft skips ALL encryption when no SecretsService is wired (no-op)', async () => {
+            service = buildService(false, undefined, false);
+
+            await service.persistDraft('consultation-1', draftBody() as any);
+
+            expect(summaryMetaRepository.encryptFieldsIntoEntity).not.toHaveBeenCalled();
+            expect(contextItemVersionRepository.encryptFieldsIntoEntity).not.toHaveBeenCalled();
+            expect(summaryMetaRepository.create).toHaveBeenCalledTimes(1);
+        });
+
+        // ── SummaryMeta (finalizeAssurance update — where the verdict JSONB blobs
+        //    actually get their values in the two-phase EARLY flow) ──
+        it('finalizeAssurance re-encrypts the backfilled SummaryMeta BEFORE update', async () => {
+            consultationRepository.findById.mockResolvedValue({
+                id: 'consultation-1',
+                tenantId: 'tenant-1',
+                status: ConsultationStatus.DRAFT_PENDING_SENSORS,
+                updatedBy: null,
+            });
+
+            await service.finalizeAssurance('consultation-1', finalizeBody() as any);
+
+            expect(summaryMetaRepository.encryptFieldsIntoEntity).toHaveBeenCalledTimes(1);
+            // The encrypted entity carries the freshly backfilled verdict blobs.
+            expect(summaryMetaRepository.encryptFieldsIntoEntity).toHaveBeenCalledWith(
+                expect.objectContaining({ citationsMap: { claims: [{ id: 'c1', status: 'verified' }] } }),
+                secretsService,
+            );
+            const encOrder = summaryMetaRepository.encryptFieldsIntoEntity.mock.invocationCallOrder[0];
+            const updateOrder = summaryMetaRepository.update.mock.invocationCallOrder[0];
+            expect(encOrder).toBeLessThan(updateOrder);
+        });
+
+        it('finalizeAssurance is best-effort: a Vault failure does NOT abort the finalize', async () => {
+            consultationRepository.findById.mockResolvedValue({
+                id: 'consultation-1',
+                tenantId: 'tenant-1',
+                status: ConsultationStatus.DRAFT_PENDING_SENSORS,
+                updatedBy: null,
+            });
+            summaryMetaRepository.encryptFieldsIntoEntity.mockRejectedValueOnce(new Error('vault down'));
+
+            const result = await service.finalizeAssurance('consultation-1', finalizeBody() as any);
+
+            expect(result).toEqual(expect.objectContaining({ recorded: true }));
+            expect(summaryMetaRepository.update).toHaveBeenCalledTimes(1);
         });
     });
 });

@@ -1,31 +1,31 @@
 model Tenant {
-    // meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // core fields
-    name        String
-    key         String @unique
-    description String?
+  // core fields
+  name        String
+  key         String  @unique
+  description String?
 
-    // resource status fields
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
 
-    // audit fields
-    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy String?
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    // tags
-    tags String[] @default([])
+  // tags
+  tags String[] @default([])
 
-    // indexing
-    @@unique([name, key], name: "Tenant_name_key_unique")
-    @@schema("core")
+  // indexing
+  @@unique([name, key], name: "Tenant_name_key_unique")
+  @@schema("core")
 }
 
 // ============================================================================
@@ -35,45 +35,45 @@ model Tenant {
 // ============================================================================
 
 model TenantFrontendConfig {
-    // meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // multi tenant fields (one config per tenant)
-    tenantId String @unique
+  // multi tenant fields (one config per tenant)
+  tenantId String @unique
 
-    // core fields — frontend audio pipeline defaults
-    asrModel        String?
-    noiseCancel     Boolean @default(false)
-    vad             Boolean @default(false)
-    voiceEnrollment Boolean @default(false)
-    diarization     Boolean @default(false)
-    // TASK-332 — tenant toggle for local raw-stream dual-capture. The effective
-    // SDK flag is platformCapability(GlobalSetting) AND this column, computed
-    // server-side in GET /tenant/me/config.
-    captureRawAudio Boolean @default(false)
-    // TASK-356 Phase 4 — tenant default transcription mode + lock, and audio
-    // capture mode. transcriptionMode defaults to BACKEND (preserves today's
-    // hard-wired clinical-workspace behavior); captureMode is nullable so existing
-    // tenants keep current per-surface capture behavior until an admin opts in (R-6).
-    transcriptionMode       TranscriptionMode @default(BACKEND)
-    transcriptionModeLocked Boolean           @default(false)
-    captureMode             CaptureMode?
-    configJson      Json?   @db.JsonB
+  // core fields — frontend audio pipeline defaults
+  asrModel                String?
+  noiseCancel             Boolean           @default(false)
+  vad                     Boolean           @default(false)
+  voiceEnrollment         Boolean           @default(false)
+  diarization             Boolean           @default(false)
+  // TASK-332 — tenant toggle for local raw-stream dual-capture. The effective
+  // SDK flag is platformCapability(GlobalSetting) AND this column, computed
+  // server-side in GET /tenant/me/config.
+  captureRawAudio         Boolean           @default(false)
+  // TASK-356 Phase 4 — tenant default transcription mode + lock, and audio
+  // capture mode. transcriptionMode defaults to BACKEND (preserves today's
+  // hard-wired clinical-workspace behavior); captureMode is nullable so existing
+  // tenants keep current per-surface capture behavior until an admin opts in (R-6).
+  transcriptionMode       TranscriptionMode @default(BACKEND)
+  transcriptionModeLocked Boolean           @default(false)
+  captureMode             CaptureMode?
+  configJson              Json?             @db.JsonB
 
-    // resource status fields
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
 
-    // audit fields
-    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy String?
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    // indexing
-    @@index([tenantId], name: "TenantFrontendConfig_tenantId_idx")
-    @@schema("core")
+  // indexing
+  @@index([tenantId], name: "TenantFrontendConfig_tenantId_idx")
+  @@schema("core")
 }

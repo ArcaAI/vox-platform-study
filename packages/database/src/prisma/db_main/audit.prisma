@@ -1,161 +1,175 @@
 model AuditLog {
-    // Meta fields (BaseEntity pattern)
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields (BaseEntity pattern)
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant
-    tenantId String
+  // Multi-tenant
+  tenantId String
 
-    // Actor information
-    responsibleUserId String?
-    responsibleIp     String?
+  // Actor information
+  responsibleUserId String?
+  responsibleIp     String?
 
-    // Resource identification
-    resourceType     ResourceType
-    resourceId       String?
-    resourceDatabase String?
+  // Resource identification
+  resourceType     ResourceType
+  resourceId       String?
+  resourceDatabase String?
 
-    // Event correlation (for distributed tracing)
-    correlationId String?
-    causationId   String?
+  // Event correlation (for distributed tracing)
+  correlationId String?
+  causationId   String?
 
-    // Action and event categorization
-    action    AuditAction
-    eventType String?     // Categorizes audit events (e.g., 'AUTHORIZATION', 'RESOURCE', 'SYSTEM')
-    success   Boolean?    // Tracks success/failure of operations
+  // Action and event categorization
+  action    AuditAction
+  eventType String? // Categorizes audit events (e.g., 'AUTHORIZATION', 'RESOURCE', 'SYSTEM')
+  success   Boolean? // Tracks success/failure of operations
 
-    // Data payloads
-    data         Json  @db.JsonB
-    previousData Json  @db.JsonB
-    metadata     Json? @db.JsonB
+  // Data payloads
+  // Data Encryption Initiative Phase 3D — IMPLEMENTED (AuditLog is the highest-
+  // volume write path, so a Vault Transit round-trip PER ROW is too costly):
+  //   ENVELOPE ENCRYPTION with a cached Data Encryption Key (DEK). A DEK is
+  //   generated once per process and wrapped ONCE via Vault Transit (hope-phi);
+  //   the wrapped DEK + its Transit key version are persisted per row
+  //   (`dekWrapped` / `dekKeyVersion`) so rows stay decryptable after rotation.
+  //   Each row's `data`/`previousData` is encrypted LOCALLY with authenticated
+  //   AES-256-GCM (the hardened CryptoService) into `encryptedData`/
+  //   `encryptedPreviousData` — zero Vault calls on the hot path. Plaintext
+  //   JSONB columns are RETAINED for the dual-read soak (reads decrypt with a
+  //   plaintext fallback; removal is Phase 6, user-gated). `metadata` stays
+  //   plaintext (non-PHI: ids/flags). (See plan Phase 3D "AuditLog".)
+  data         Json  @db.JsonB
+  previousData Json  @db.JsonB
+  metadata     Json? @db.JsonB
 
-    // Resource status (standard fields)
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
+  // Phase 3D additive envelope-encryption columns (all nullable; NULL on
+  // historical/plaintext rows). `dekWrapped` is the Vault-wrapped DEK reference
+  // (vault:vN:...) and `dekKeyVersion` is the Transit key version that wrapped it.
+  encryptedData         Bytes?
+  encryptedPreviousData Bytes?
+  dekWrapped            String?
+  dekKeyVersion         Int?
 
-    // Audit fields
-    createdBy String?
-    updatedBy String?
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  // Resource status (standard fields)
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
 
-    // =============================================================================
-    // INDEXES - Optimized for high-performance querying
-    // =============================================================================
+  // Audit fields
+  createdBy String?
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    // Primary query patterns
-    @@index([tenantId], name: "AuditLog_tenantId_idx")
-    @@index([createdAt], name: "AuditLog_createdAt_idx")
-    @@index([responsibleUserId], name: "AuditLog_responsibleUserId_idx")
+  // =============================================================================
+  // INDEXES - Optimized for high-performance querying
+  // =============================================================================
 
-    // Resource-based queries
-    @@index([resourceType, resourceId], name: "AuditLog_resource_idx")
-    @@index([action, resourceType], name: "AuditLog_action_resource_idx")
-
-    // Event categorization queries
-    @@index([eventType], name: "AuditLog_eventType_idx")
-    @@index([success], name: "AuditLog_success_idx")
-
-    // Distributed tracing
-    @@index([correlationId], name: "AuditLog_correlationId_idx")
-
-    // Composite indexes for common query patterns
-    @@index([tenantId, createdAt], name: "AuditLog_tenant_createdAt_idx")
-    @@index([tenantId, resourceType, createdAt], name: "AuditLog_tenant_resource_time_idx")
-    @@index([eventType, responsibleUserId, createdAt], name: "AuditLog_event_user_time_idx")
-    @@index([tenantId, eventType, success, createdAt], name: "AuditLog_tenant_event_success_time_idx")
-
-    // Additional indexes for high-performance querying
-    @@index([tenantId, action, createdAt], name: "AuditLog_tenant_action_time_idx")
-    @@index([resourceId], name: "AuditLog_resourceId_idx")
-
-    @@schema("core")
+  // Primary query patterns
+  @@index([tenantId], name: "AuditLog_tenantId_idx")
+  @@index([createdAt], name: "AuditLog_createdAt_idx")
+  @@index([responsibleUserId], name: "AuditLog_responsibleUserId_idx")
+  // Resource-based queries
+  @@index([resourceType, resourceId], name: "AuditLog_resource_idx")
+  @@index([action, resourceType], name: "AuditLog_action_resource_idx")
+  // Event categorization queries
+  @@index([eventType], name: "AuditLog_eventType_idx")
+  @@index([success], name: "AuditLog_success_idx")
+  // Distributed tracing
+  @@index([correlationId], name: "AuditLog_correlationId_idx")
+  // Composite indexes for common query patterns
+  @@index([tenantId, createdAt], name: "AuditLog_tenant_createdAt_idx")
+  @@index([tenantId, resourceType, createdAt], name: "AuditLog_tenant_resource_time_idx")
+  @@index([eventType, responsibleUserId, createdAt], name: "AuditLog_event_user_time_idx")
+  @@index([tenantId, eventType, success, createdAt], name: "AuditLog_tenant_event_success_time_idx")
+  // Additional indexes for high-performance querying
+  @@index([tenantId, action, createdAt], name: "AuditLog_tenant_action_time_idx")
+  @@index([resourceId], name: "AuditLog_resourceId_idx")
+  @@schema("core")
 }
 
 enum AuditAction {
-    CREATE
-    READ
-    UPDATE
-    DELETE
-    ARCHIVE
-    LOGIN
-    LOGOUT
-    IMPERSONATED_ACTION
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  ARCHIVE
+  LOGIN
+  LOGOUT
+  IMPERSONATED_ACTION
 
-    @@schema("core")
+  @@schema("core")
 }
 
 enum ResourceType {
-    // AUDIT LOG
+  // AUDIT LOG
 
-    AuditLog
+  AuditLog
 
-    // CORE
+  // CORE
 
-    ApiKey
-    Department
-    GlobalSetting
-    IntegrationPackage
-    IntegrationItem
-    Media
-    Notification
-    ResourceSubscription
-    Role
-    Permission
-    RolePermission
-    Tag
-    Tenant
-    UserRoleAssignment
-    User
-    UserSettings
-    UserProfile
-    UserMedia
-    Webhook
-    WebhookRunHistory
-    Session
-    SessionEvent
-    SessionSyncLog
+  ApiKey
+  Department
+  GlobalSetting
+  IntegrationPackage
+  IntegrationItem
+  Media
+  Notification
+  ResourceSubscription
+  Role
+  Permission
+  RolePermission
+  Tag
+  Tenant
+  UserRoleAssignment
+  User
+  UserSettings
+  UserProfile
+  UserMedia
+  Webhook
+  WebhookRunHistory
+  Session
+  SessionEvent
+  SessionSyncLog
 
-    // CONSULTATION
+  // CONSULTATION
 
-    Consultation
-    ContextItem
-    ContextItemVersion
-    AudioRecording
-    SummaryMeta
-    NamedEntity
+  Consultation
+  ContextItem
+  ContextItemVersion
+  AudioRecording
+  SummaryMeta
+  NamedEntity
 
-    // STT / AI
+  // STT / AI
 
-    AsrPipeline
-    AiModel
-    TranscriptionJob
+  AsrPipeline
+  AiModel
+  TranscriptionJob
 
-    // PROMPT / DNA
+  // PROMPT / DNA
 
-    PromptTemplate
-    DnaWritingStyleReport
+  PromptTemplate
+  DnaWritingStyleReport
 
-    // STORAGE
+  // STORAGE
 
-    TenantBucket
-    StorageAccessKey
-    TenantStorageConfig
+  TenantBucket
+  StorageAccessKey
+  TenantStorageConfig
 
-    // TASK-366 — reconcile the DB enum with the application `ResourceType` enum.
-    // These values are emitted as audit `resourceType` by their services'
-    // `broadcastSysEvent(...)` calls but were missing from the database enum,
-    // causing every AuditLog write (and therefore the originating mutation) to
-    // fail with "Invalid value for argument `resourceType`". Appended in
-    // declaration order so the schema matches the append-only ADD VALUE
-    // migration and Postgres enum sort order.
-    Highlight
-    AsrPipelineVersion
-    UserVoiceProfile
-    UserDepartment
-    TenantFrontendConfig
+  // TASK-366 — reconcile the DB enum with the application `ResourceType` enum.
+  // These values are emitted as audit `resourceType` by their services'
+  // `broadcastSysEvent(...)` calls but were missing from the database enum,
+  // causing every AuditLog write (and therefore the originating mutation) to
+  // fail with "Invalid value for argument `resourceType`". Appended in
+  // declaration order so the schema matches the append-only ADD VALUE
+  // migration and Postgres enum sort order.
+  Highlight
+  AsrPipelineVersion
+  UserVoiceProfile
+  UserDepartment
+  TenantFrontendConfig
 
-    @@schema("core")
+  @@schema("core")
 }

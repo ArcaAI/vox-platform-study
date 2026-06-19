@@ -1,0 +1,117 @@
+# Vault / Transit alert rules — TASK-369 Phase 5 (key management).
+#
+# Monitors the secrets root of trust (Vault VMs 430–432). The PHI Transit key
+# is `hope-phi`; a Vault outage means NO transit-encrypted PHI column can be
+# read and NO dynamic DB credential can be issued, so seal/health alerts page.
+#
+# SCRAPE PREREQUISITES (operator, on each Vault node's config):
+#   telemetry { prometheus_retention_time = "24h" disable_hostname = true }
+#   listener "tcp" { telemetry { unauthenticated_metrics_access = true } }
+# Without unauthenticated_metrics_access, a SEALED node returns 503 on
+# /v1/sys/metrics, so `vault_core_unsealed` vanishes and `up` flips to 0 — the
+# VaultSealed expr below handles the metric-absent case, but the retention bump
+# is still required so the gauge does not age out of go-metrics while idle.
+# Assumes a Prometheus scrape job labelled job="vault" over the 3 nodes.
+
+groups:
+  - name: vault.transit.rules
+    rules:
+      # ── Page ──────────────────────────────────────────────────────────
+      - alert: VaultSealed
+        # vault_core_unsealed: 1=unsealed, 0=sealed. A sealed node may stop
+        # exporting the gauge entirely (go-metrics + 503), so also fire when the
+        # target is up but the series is absent.
+        expr: |
+          vault_core_unsealed == 0
+            or (up{job="vault"} == 1 unless on(instance, job) vault_core_unsealed)
+        for: 1m
+        labels:
+          severity: page
+          team: platform
+        annotations:
+          summary: 'Vault node sealed (transit/PHI decryption unavailable)'
+          description: |
+            A Vault node is sealed or no longer reporting unseal status. While
+            sealed, the `hope-phi` Transit key cannot encrypt/decrypt PHI and no
+            dynamic DB credentials are issued. Unseal per the DR/break-glass
+            runbook (research/deployments/dr-break-glass-runbook.md §2 — Shamir
+            3-of-5 quorum) immediately.
+
+      - alert: VaultTargetDown
+        expr: up{job="vault"} == 0
+        for: 2m
+        labels:
+          severity: page
+          team: platform
+        annotations:
+          summary: 'Vault target unreachable for ≥ 2 m'
+          description: |
+            Prometheus cannot scrape a Vault node. Either the node/process is
+            down or it is sealed and returning 503 on /v1/sys/metrics (enable
+            unauthenticated_metrics_access). Cross-check VaultSealed and the
+            node's systemd unit; see the DR runbook.
+
+      - alert: VaultNoActiveNode
+        # vault.core.active = 1 on the active (leader) node. Across the HA
+        # cluster at least one node must be active. (Verify the series name on
+        # your Vault version: `curl .../v1/sys/metrics?format=prometheus | grep active`.)
+        expr: max(vault_core_active) < 1
+        for: 1m
+        labels:
+          severity: page
+          team: platform
+        annotations:
+          summary: 'No active Vault node in the cluster'
+          description: |
+            No Vault node reports leadership (vault_core_active). The cluster
+            cannot service writes (transit encrypt, secret writes). Check Raft
+            quorum / etcd and the standby nodes.
+
+      # ── Warning ───────────────────────────────────────────────────────
+      - alert: VaultRequestLatencyHigh
+        # vault.core.handle_request is a summary in MILLISECONDS. p99 of the
+        # whole request path is the most reliable signal for a slow crypto path
+        # (transit encrypt/decrypt + barrier) without depending on fragile,
+        # per-mount vault_route_* series.
+        expr: vault_core_handle_request{quantile="0.99"} > 500
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: 'Vault request p99 > 500 ms for 5 m'
+          description: |
+            The Vault request path (includes hope-phi transit encrypt/decrypt
+            and barrier ops) is slow at p99. Investigate CPU/seal-wrap load,
+            storage (Raft/etcd) latency, or a client hammering transit. Sustained
+            latency degrades every PHI read/write that envelope-encrypts.
+
+      - alert: VaultLeadershipFlapping
+        expr: changes(vault_core_active[10m]) > 2
+        for: 0m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: 'Vault leadership changed > 2× in 10 m'
+          description: |
+            Frequent leader elections indicate Raft/etcd instability or network
+            partitions. Stabilise before it escalates to NoActiveNode.
+
+      # ── App-side PHI crypto failures (OPTIONAL — wire when the metric lands) ──
+      # The CryptoService worker owns an application-exported counter for
+      # hope-phi encrypt/decrypt failures. Once that metric exists (e.g.
+      # hope_crypto_transit_errors_total{key="hope-phi"}), uncomment to page on
+      # PHI crypto errors directly rather than inferring from Vault latency:
+      #
+      # - alert: HopePhiTransitCryptoFailing
+      #     expr: increase(hope_crypto_transit_errors_total{key="hope-phi"}[5m]) > 0
+      #     for: 0m
+      #     labels: { severity: page, team: platform }
+      #     annotations:
+      #       summary: 'hope-phi transit encrypt/decrypt failures'
+      #       description: |
+      #         The app is failing to encrypt/decrypt PHI via the hope-phi Transit
+      #         key. Check VaultSealed, the AppRole token TTL, and that
+      #         min_decryption_version still covers in-use ciphertext versions
+      #         (see vault-transit-key-rotation.md).

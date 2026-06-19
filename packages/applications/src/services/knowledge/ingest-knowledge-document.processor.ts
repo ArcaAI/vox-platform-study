@@ -1,11 +1,12 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { Inject, Logger, Optional } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
 import { JobQueue, KnowledgeChunkFactory, KnowledgeChunkRepository, KnowledgeDocumentRepository } from '@arcaai/domains';
 import { KnowledgeIngestClient } from './knowledge-ingest.client';
 import { assertEqualTenants, createWorkerSession } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
+import { SecretsService } from '../baseServices/_meta/secrets';
 
 /**
  * Payload for the IngestKnowledgeDocument job. `text` travels in the payload
@@ -49,8 +50,26 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
     private readonly knowledgeChunkRepository: KnowledgeChunkRepository,
     private readonly ingestClient: KnowledgeIngestClient,
     private readonly cls: ClsService<IActiveUserContext>,
+    // TASK-369 Phase 3C — optional + trailing so existing positional fixtures
+    // keep their arity; when wired, each chunk's `text` is encrypted into the
+    // `encryptedText` column before persist (dual-write soak).
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super();
+  }
+
+  /**
+   * Best-effort field encryption: a Vault failure is swallowed (error message
+   * only) so the dual-write soak never blocks ingestion — the plaintext chunk
+   * column is still persisted.
+   */
+  private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
+    if (!this.secretsService) return;
+    try {
+      await run();
+    } catch (error) {
+      this.logger.error(`${label} field encryption skipped (dual-write soak): ${(error as Error).message}`);
+    }
   }
 
   async process(job: Job<IngestKnowledgeDocumentJobPayload>): Promise<IngestKnowledgeDocumentResult> {
@@ -103,6 +122,9 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
           status: chunk.status,
           createdBy: userId ?? null,
         });
+        await this.encryptBestEffort('KnowledgeChunk', () =>
+          this.knowledgeChunkRepository.encryptFieldsIntoEntity(entity, this.secretsService!),
+        );
         const saved = await this.knowledgeChunkRepository.create(entity);
         chunkIds.push(saved?.id ?? entity.id);
       }

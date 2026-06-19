@@ -1,9 +1,10 @@
-import { ConsultationRepository, HighlightFactory, HighlightRepository, ResourceType, SysEventType } from '@arcaai/domains';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConsultationRepository, HighlightEntity, HighlightFactory, HighlightRepository, ResourceType, SysEventType } from '@arcaai/domains';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { BaseService, assertParentInScope } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IHighlightService } from './IHighlightService';
 import { HighlightDtoMapper } from './highlight.dto.mapper';
 import { CreateHighlightRequest, HighlightResponse } from './dto';
@@ -24,8 +25,31 @@ export class HighlightService extends BaseService implements IHighlightService {
     private readonly consultationRepository: ConsultationRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-369 Phase 3C — Vault-Transit field encryption for the highlight's
+    // doctor-authored free text (exact / prefix / suffix / note). Optional +
+    // @Inject so legacy/direct-construction tests still work; when absent the
+    // dual-write degrades to plaintext-only and the backfill catches the row up.
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Highlight);
+  }
+
+  private readonly logger = new Logger(HighlightService.name);
+
+  /**
+   * TASK-369 Phase 3C — dual-write: encrypt the highlight's plaintext free-text
+   * fields into the `encrypted*` / `keyVersion` columns (Vault Transit
+   * `hope-phi`) before persistence. Best-effort during the soak: a missing or
+   * failing SecretsService leaves the row plaintext-only (logged, message only)
+   * — never throws into the write path.
+   */
+  private async encryptHighlight(entity: HighlightEntity): Promise<void> {
+    if (!this.secretsService) return;
+    try {
+      await this.highlightRepository.encryptFieldsIntoEntity(entity, this.secretsService);
+    } catch (err) {
+      this.logger.error(`Highlight field encryption skipped (dual-write soak): ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /**
@@ -62,6 +86,10 @@ export class HighlightService extends BaseService implements IHighlightService {
     // Defense-in-depth: the cross-field span invariant (endOffset >= startOffset,
     // non-empty exact) cannot be expressed with per-field class-validator rules.
     highlight.validate();
+
+    // TASK-369 Phase 3C — encrypt free-text fields into the ciphertext columns
+    // before the first persist (dual-write; plaintext is retained for the soak).
+    await this.encryptHighlight(highlight);
 
     const saved = await this.highlightRepository.create(highlight);
 

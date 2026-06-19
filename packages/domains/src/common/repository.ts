@@ -5,6 +5,7 @@ import { ICountProps, IFindAllProps, IRepository } from '../interfaces';
 
 import { DataCreationException, DataNotFoundException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { ResourceStatusType } from '../enums';
+import { removeNullValues } from './removeNullValues';
 
 // Type for the database context - can be extended client or transaction client
 type DatabaseContext = ReturnType<PrismaClient['$extends']> | Prisma.TransactionClient;
@@ -323,23 +324,3 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
   }
 }
 
-function removeNullValues(obj: Record<string, any>): Record<string, any> {
-  // Create a new object to avoid mutating the original object
-  const cleanedObject: Record<string, any> = {};
-
-  // Iterate over each key in the object
-  for (const [key, value] of Object.entries(obj)) {
-    if (value === null) {
-      // Skip keys with null values
-      continue;
-    } else if (typeof value === 'object' && !Array.isArray(value)) {
-      // Recursively clean nested objects
-      cleanedObject[key] = removeNullValues(value);
-    } else {
-      // Assign the value if it's not null
-      cleanedObject[key] = value;
-    }
-  }
-
-  return cleanedObject;
-}

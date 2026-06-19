@@ -54,6 +54,15 @@ export interface VaultProviderConfig {
   transitMount: string;
   /** Transit key name (default 'hope-globalsetting'). */
   transitKey: string;
+  /**
+   * Dedicated PHI Transit key name (default 'hope-phi'). Data Encryption
+   * Initiative Phase 3A: clinical free-text is encrypted under a SEPARATE key
+   * from `transitKey` so rotation cadence and Transit policy blast radius are
+   * independent from the secrets key. Optional so existing call sites and the
+   * provider-construction tests keep their two-arg transit defaults; resolved
+   * to 'hope-phi' by the `phiTransitKey` getter when unset.
+   */
+  transitKeyPhi?: string;
   requestTimeoutMs?: number;
 }
 
@@ -394,9 +403,25 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
   }
 
   // ---------- transit (Phase 4 helpers) ----------
-  async encrypt(plaintext: Buffer): Promise<string> {
+  /**
+   * Resolved PHI Transit key name. Defaults to 'hope-phi' so PHI encryption
+   * works even when `VAULT_TRANSIT_KEY_PHI` is unset (Phase 3A requirement).
+   */
+  get phiTransitKey(): string {
+    return this.config.transitKeyPhi ?? 'hope-phi';
+  }
+
+  /**
+   * Encrypt via Vault Transit. `keyName` is OPTIONAL: when omitted the call
+   * uses `this.config.transitKey` (kept for backward compatibility with the
+   * GlobalSetting secrets path). PHI call sites pass the dedicated PHI key
+   * (see `phiTransitKey`). Vault Transit ciphertext (`vault:vN:<b64>`) does
+   * NOT embed the key name, so decrypt MUST pass the same key name.
+   */
+  async encrypt(plaintext: Buffer, keyName?: string): Promise<string> {
     this.ensureBooted();
-    const path = `${this.config.transitMount}/encrypt/${this.config.transitKey}`;
+    const key = keyName ?? this.config.transitKey;
+    const path = `${this.config.transitMount}/encrypt/${key}`;
     const res = await this.client.write(path, {
       plaintext: plaintext.toString('base64'),
     });
@@ -405,9 +430,10 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     return ct;
   }
 
-  async decrypt(ciphertext: string): Promise<Buffer> {
+  async decrypt(ciphertext: string, keyName?: string): Promise<Buffer> {
     this.ensureBooted();
-    const path = `${this.config.transitMount}/decrypt/${this.config.transitKey}`;
+    const key = keyName ?? this.config.transitKey;
+    const path = `${this.config.transitMount}/decrypt/${key}`;
     const res = await this.client.write(path, { ciphertext });
     const pt = (res as { data?: { plaintext?: string } })?.data?.plaintext;
     if (!pt) throw new Error('VaultSecretsProvider.decrypt: empty plaintext from transit');

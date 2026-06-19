@@ -2,101 +2,109 @@
 // Each tenant gets isolated storage buckets with system defaults + custom buckets
 
 model TenantBucket {
-    // Meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant
-    tenantId String
+  // Multi-tenant
+  tenantId String
 
-    // Bucket identity
-    name        String           // Physical S3 bucket name (e.g., "arcaai-audio-recordings")
-    slug        String           // Logical name (e.g., "audio_recordings")
-    description String?
-    bucketType  TenantBucketType // SYSTEM or CUSTOM
+  // Bucket identity
+  name        String // Physical S3 bucket name (e.g., "arcaai-audio-recordings")
+  slug        String // Logical name (e.g., "audio_recordings")
+  description String?
+  bucketType  TenantBucketType // SYSTEM or CUSTOM
 
-    // Logical purpose used to resolve tenant defaults (audio / attachments / misc).
-    // At most one non-CUSTOM bucket per (tenantId, purpose) — enforced at the
-    // application layer (mirrors TenantStorageConfig's tenant-default rule).
-    purpose     TenantBucketPurpose @default(CUSTOM)
+  // Logical purpose used to resolve tenant defaults (audio / attachments / misc).
+  // At most one non-CUSTOM bucket per (tenantId, purpose) — enforced at the
+  // application layer (mirrors TenantStorageConfig's tenant-default rule).
+  purpose TenantBucketPurpose @default(CUSTOM)
 
-    // Path layout for file organization within the bucket
-    pathPattern String @default("{yyyy}/{MM}/{dd}/{user_name}")
+  // Path layout for file organization within the bucket
+  pathPattern String @default("{yyyy}/{MM}/{dd}/{user_name}")
 
-    // Resource status + Audit
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
-    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy               String?
-    createdAt               DateTime @default(now())
-    updatedAt               DateTime @updatedAt
+  // Resource status + Audit
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+  updatedBy               String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
-    // Tags
-    tags String[] @default([])
+  // Tags
+  tags String[] @default([])
 
-    // Relations
-    Medias           Media[]
-    StorageAccessKeys StorageAccessKey[] @relation("BucketAccessKeys")
-    StorageConfigs   TenantStorageConfig[] @relation("BucketStorageConfig")
+  // Relations
+  Medias            Media[]
+  StorageAccessKeys StorageAccessKey[]    @relation("BucketAccessKeys")
+  StorageConfigs    TenantStorageConfig[] @relation("BucketStorageConfig")
 
-    // Constraints: one slug per tenant
-    @@unique([tenantId, slug], name: "TenantBucket_tenant_slug_unique")
-    @@unique([name], name: "TenantBucket_name_unique")
-
-    // Indexes
-    @@index([tenantId], name: "TenantBucket_tenantId_idx")
-    @@index([bucketType], name: "TenantBucket_bucketType_idx")
-    @@index([tenantId, bucketType], name: "TenantBucket_tenant_type_idx")
-    @@index([tenantId, purpose], name: "TenantBucket_tenant_purpose_idx")
-    @@schema("core")
+  // Constraints: one slug per tenant
+  @@unique([tenantId, slug], name: "TenantBucket_tenant_slug_unique")
+  @@unique([name], name: "TenantBucket_name_unique")
+  // Indexes
+  @@index([tenantId], name: "TenantBucket_tenantId_idx")
+  @@index([bucketType], name: "TenantBucket_bucketType_idx")
+  @@index([tenantId, bucketType], name: "TenantBucket_tenant_type_idx")
+  @@index([tenantId, purpose], name: "TenantBucket_tenant_purpose_idx")
+  @@schema("core")
 }
 
 model StorageAccessKey {
-    // Meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant
-    tenantId String
+  // Multi-tenant
+  tenantId String
 
-    // Key identity
-    name        String
-    description String?
+  // Key identity
+  name        String
+  description String?
 
-    // Credentials (encrypted at application layer)
-    accessKeyId     String @unique
-    secretAccessKey String
+  // Credentials.
+  //   accessKeyId     — public identifier (queryable; unique).
+  //   secretAccessKey — NOT a recoverable secret: TASK-318 W3 (F-2) stores a
+  //     one-way PEPPERED HMAC-SHA256 hash of the issued secret (the plaintext is
+  //     returned to the caller exactly once at creation and never persisted).
+  //     TASK-369 Phase 5: deliberately NOT Vault-encrypted — encrypting a
+  //     one-way verifier hash adds no protection (it is not reversible and is
+  //     never decrypted). The actual object-store backend credentials live in
+  //     Vault via SecretsService (TenantStorageConfig.credentialsRef / S3_SECRET_KEY),
+  //     not in this column.
+  accessKeyId     String @unique
+  secretAccessKey String
 
-    // Scoping
-    permissions String[] @default(["read"]) // "read", "write", "delete", "list"
-    bucketIds   String[] @default([])       // Empty = all tenant buckets
+  // Scoping
+  permissions String[] @default(["read"]) // "read", "write", "delete", "list"
+  bucketIds   String[] @default([]) // Empty = all tenant buckets
 
-    // Lifecycle
-    expiresAt  DateTime?
-    lastUsedAt DateTime?
-    lastUsedIp String?
+  // Lifecycle
+  expiresAt  DateTime?
+  lastUsedAt DateTime?
+  lastUsedIp String?
 
-    // Resource status + Audit
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
-    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy               String?
-    createdAt               DateTime @default(now())
-    updatedAt               DateTime @updatedAt
+  // Resource status + Audit
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+  updatedBy               String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
-    // Relations
-    Buckets TenantBucket[] @relation("BucketAccessKeys")
+  // Relations
+  Buckets TenantBucket[] @relation("BucketAccessKeys")
 
-    // Indexes
-    @@index([tenantId], name: "StorageAccessKey_tenantId_idx")
-    @@index([accessKeyId], name: "StorageAccessKey_accessKeyId_idx")
-    @@index([expiresAt], name: "StorageAccessKey_expiresAt_idx")
-    @@index([tenantId, resourceStatus], name: "StorageAccessKey_tenant_status_idx")
-    @@schema("core")
+  // Indexes
+  @@index([tenantId], name: "StorageAccessKey_tenantId_idx")
+  @@index([accessKeyId], name: "StorageAccessKey_accessKeyId_idx")
+  @@index([expiresAt], name: "StorageAccessKey_expiresAt_idx")
+  @@index([tenantId, resourceStatus], name: "StorageAccessKey_tenant_status_idx")
+  @@schema("core")
 }
 
 // Per-tenant / per-bucket storage provider configuration.
@@ -106,57 +114,56 @@ model StorageAccessKey {
 // DEDICATED carries a `credentialsRef` resolved via SecretsService (never raw
 // credentials in the database).
 model TenantStorageConfig {
-    // Meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant
-    tenantId String
+  // Multi-tenant
+  tenantId String
 
-    // Scope: null = tenant-wide default; set = per-bucket override
-    bucketId String?
+  // Scope: null = tenant-wide default; set = per-bucket override
+  bucketId String?
 
-    // Provider selection
-    provider StorageProviderType
-    topology StorageTopologyType @default(SHARED)
+  // Provider selection
+  provider StorageProviderType
+  topology StorageTopologyType @default(SHARED)
 
-    // S3 / MinIO settings (used when provider is MINIO or AWS_S3)
-    endpoint       String?
-    region         String?
-    forcePathStyle Boolean?
+  // S3 / MinIO settings (used when provider is MINIO or AWS_S3)
+  endpoint       String?
+  region         String?
+  forcePathStyle Boolean?
 
-    // Azure settings (used when provider is AZURE_BLOB)
-    accountName    String?
-    endpointSuffix String?
+  // Azure settings (used when provider is AZURE_BLOB)
+  accountName    String?
+  endpointSuffix String?
 
-    // Common
-    containerPrefix String? // optional namespace prefix within the account/endpoint
-    credentialsRef  String? // SecretsService key holding provider credentials (DEDICATED only)
+  // Common
+  containerPrefix String? // optional namespace prefix within the account/endpoint
+  credentialsRef  String? // SecretsService key holding provider credentials (DEDICATED only)
 
-    // Resource status + Audit
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
-    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy               String?
-    createdAt               DateTime @default(now())
-    updatedAt               DateTime @updatedAt
+  // Resource status + Audit
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+  updatedBy               String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
-    // Tags
-    tags String[] @default([])
+  // Tags
+  tags String[] @default([])
 
-    // Relations
-    Bucket TenantBucket? @relation("BucketStorageConfig", fields: [bucketId], references: [id])
+  // Relations
+  Bucket TenantBucket? @relation("BucketStorageConfig", fields: [bucketId], references: [id])
 
-    // Constraints: one config per (tenant, bucket). NOTE: a single tenant-wide
-    // default (bucketId = NULL) is enforced at the application layer, since
-    // Postgres treats NULLs as distinct in unique indexes.
-    @@unique([tenantId, bucketId], name: "TenantStorageConfig_tenant_bucket_unique")
-
-    // Indexes
-    @@index([tenantId], name: "TenantStorageConfig_tenantId_idx")
-    @@index([bucketId], name: "TenantStorageConfig_bucketId_idx")
-    @@index([tenantId, resourceStatus], name: "TenantStorageConfig_tenant_status_idx")
-    @@schema("core")
+  // Constraints: one config per (tenant, bucket). NOTE: a single tenant-wide
+  // default (bucketId = NULL) is enforced at the application layer, since
+  // Postgres treats NULLs as distinct in unique indexes.
+  @@unique([tenantId, bucketId], name: "TenantStorageConfig_tenant_bucket_unique")
+  // Indexes
+  @@index([tenantId], name: "TenantStorageConfig_tenantId_idx")
+  @@index([bucketId], name: "TenantStorageConfig_bucketId_idx")
+  @@index([tenantId, resourceStatus], name: "TenantStorageConfig_tenant_status_idx")
+  @@schema("core")
 }

@@ -18,6 +18,7 @@ import {
   ContextItemEntity,
 } from '@arcaai/domains';
 import { HarnessAuditService } from '../../harness-audit';
+import { SecretsService } from '../../baseServices/_meta/secrets';
 import { HarnessAssuranceService } from './harness-assurance.service';
 import { ConfigResolver } from '../../config-resolver';
 import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt-assembly.service';
@@ -98,11 +99,34 @@ export class HarnessInternalService {
     // arity; production DI supplies it via CoreDatabaseModule. When unset the
     // snapshot is a no-op (best-effort), matching the pre-Phase-6 path.
     @Optional() @Inject(ContextItemVersionRepository) private readonly contextItemVersionRepository?: ContextItemVersionRepository,
+    // TASK-369 Phase 3C — application-level field encryption for the clinical
+    // models this callback half persists (NamedEntity spans, SummaryMeta
+    // provenance JSONB, ContextItemVersion snapshots). Optional + trailing so
+    // existing positional unit fixtures keep their arity; production DI supplies
+    // it via CoreDatabaseModule. Absent ⇒ plaintext-only writes (dual-write soak).
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     const raw = String(this.configService?.get('HARNESS_WARM_START_ENABLED') ?? '')
       .trim()
       .toLowerCase();
     this.warmStartEnabled = raw === 'true' || raw === '1';
+  }
+
+  /**
+   * TASK-369 Phase 3C — best-effort field encryption for the clinical models
+   * persisted by this service. A missing/failing SecretsService leaves the row
+   * plaintext-only (logged, message only) and never throws into the write path
+   * during the dual-read soak. The harness WORM audit payloads are built from
+   * the inbound DTO (not the encrypted entity), so no ciphertext can leak into
+   * them — there is nothing to strip here.
+   */
+  private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
+    if (!this.secretsService) return;
+    try {
+      await run();
+    } catch (error) {
+      this.logger.error(`${label} field encryption skipped (dual-write soak): ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /**
@@ -133,6 +157,9 @@ export class HarnessInternalService {
           transcriptStartOffset: entity.transcriptStartOffset,
           transcriptEndOffset: entity.transcriptEndOffset,
         });
+        await this.encryptBestEffort('NamedEntity', () =>
+          this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!),
+        );
         const saved = await this.namedEntityRepository.create(namedEntity);
         entityIds.push(saved?.id ?? namedEntity.id);
       }
@@ -335,6 +362,9 @@ export class HarnessInternalService {
         preSummaryIds: liveSnapshot ? [liveSnapshot.id] : [],
         generatedAt: new Date(),
       });
+      await this.encryptBestEffort('SummaryMeta', () =>
+        this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!),
+      );
       await this.summaryMetaRepository.create(summaryMeta);
 
       // 3. Lifecycle. EARLY -> DRAFT_PENDING_SENSORS (readable, assurance pending,
@@ -475,6 +505,13 @@ export class HarnessInternalService {
       meta.guardrailDecisions = (dto.guardrailDecisions ?? null) as never;
       meta.gateDecision = dto.gateDecision ?? null;
       meta.assuranceCompletedAt = new Date();
+      // TASK-369 Phase 3C — the EARLY persist wrote these JSONB blobs as NULL
+      // (verdict withheld); this finalize is where citationsMap/guardrailDecisions
+      // actually get their values, so re-encrypt here (after the backfill, before
+      // the update) to keep the ciphertext columns in sync with the plaintext.
+      await this.encryptBestEffort('SummaryMeta', () =>
+        this.summaryMetaRepository.encryptFieldsIntoEntity(meta, this.secretsService!),
+      );
       await this.summaryMetaRepository.update(meta.id, meta);
 
       // 2. Lifecycle DRAFT_PENDING_SENSORS -> PENDING_REVIEW (idempotent — a retry
@@ -680,6 +717,9 @@ export class HarnessInternalService {
     if (!this.contextItemVersionRepository) return;
     try {
       const snapshot = ContextItemVersionFactory.CreateFromContextItem(savedContext, 1, 'ai_draft_v1', 'system', 'ai_model', 'AI draft v1 snapshot');
+      await this.encryptBestEffort('ContextItemVersion', () =>
+        this.contextItemVersionRepository!.encryptFieldsIntoEntity(snapshot, this.secretsService!),
+      );
       await this.contextItemVersionRepository.create(snapshot);
     } catch (error) {
       this.logger.warn({

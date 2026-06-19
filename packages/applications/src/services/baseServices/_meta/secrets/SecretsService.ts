@@ -247,24 +247,37 @@ export class SecretsService {
    * the ciphertext, so a misconfigured prod node that hits this guard
    * cannot accidentally surface either material in a log line.
    */
-  async encrypt(plaintext: Buffer): Promise<string> {
+  async encrypt(plaintext: Buffer, keyName?: string): Promise<string> {
     const maybe = this.provider as unknown as {
-      encrypt?: (b: Buffer) => Promise<string>;
+      encrypt?: (b: Buffer, k?: string) => Promise<string>;
     };
     if (typeof maybe.encrypt !== 'function') {
       throw new Error('SecretsService.encrypt() requires Vault provider (SECRETS_PROVIDER=vault); current provider has no transit support');
     }
-    return maybe.encrypt(plaintext);
+    return maybe.encrypt(plaintext, keyName);
   }
 
-  async decrypt(ciphertext: string): Promise<Buffer> {
+  async decrypt(ciphertext: string, keyName?: string): Promise<Buffer> {
     const maybe = this.provider as unknown as {
-      decrypt?: (s: string) => Promise<Buffer>;
+      decrypt?: (s: string, k?: string) => Promise<Buffer>;
     };
     if (typeof maybe.decrypt !== 'function') {
       throw new Error('SecretsService.decrypt() requires Vault provider (SECRETS_PROVIDER=vault); current provider has no transit support');
     }
-    return maybe.decrypt(ciphertext);
+    return maybe.decrypt(ciphertext, keyName);
+  }
+
+  /**
+   * Resolved name of the dedicated PHI Transit key. Data Encryption Initiative
+   * Phase 3A — clinical free-text fields encrypt under this key (separate from
+   * the secrets `transitKey`). When the underlying provider exposes
+   * `phiTransitKey` (Vault) that value wins so `VAULT_TRANSIT_KEY_PHI` ops
+   * overrides take effect; otherwise we default to 'hope-phi' so the field
+   * encryption helpers work even with no env configured / non-Vault provider.
+   */
+  getPhiTransitKeyName(): string {
+    const maybe = this.provider as unknown as { phiTransitKey?: string };
+    return maybe.phiTransitKey ?? 'hope-phi';
   }
 
   /**

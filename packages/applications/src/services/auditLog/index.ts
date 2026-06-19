@@ -1,5 +1,6 @@
 // This file is auto-generated. Be careful to edit manually
 export * from './auditLog.dto.mapper';
+export * from './auditLog-encryption.service';
 export * from './auditLog.processor';
 export * from './auditLog.service';
 export * from './auditLog.service.module';

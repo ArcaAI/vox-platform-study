@@ -1,43 +1,49 @@
 model Media {
-    // meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // multi tenant fields
-    tenantId String
+  // multi tenant fields
+  tenantId String
 
-    // core fields
-    name      String
-    uri       String
-    extension String
-    mimeType  String
-    size      Int
-    hash      String
+  // core fields
+  // Data Encryption Initiative Phase 3D — CONFIRMATION: audio/media PHI bytes
+  // live in OBJECT STORAGE (MinIO/S3), not in Postgres. This table holds only
+  // metadata + a reference (`uri`) to the object. The bytes are protected by
+  // Phase 1 object-storage SSE + Phase 2 in-transit TLS; therefore NO field
+  // encryption is applied here. `uri`/`name`/`hash` are non-PHI references kept
+  // plaintext for lookups. (See plan Phase 3D "Audio/media files".)
+  name      String
+  uri       String
+  extension String
+  mimeType  String
+  size      Int
+  hash      String
 
-    // Tenant bucket reference (which bucket this file belongs to)
-    bucketId String?
-    Bucket   TenantBucket? @relation(fields: [bucketId], references: [id])
+  // Tenant bucket reference (which bucket this file belongs to)
+  bucketId String?
+  Bucket   TenantBucket? @relation(fields: [bucketId], references: [id])
 
-    // audit fields
-    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy String?
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    // resource status fields
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
 
-    // tags
-    tags String[] @default([])
+  // tags
+  tags String[] @default([])
 
-    // relations
-    UserMedias UserMedia[] @relation("_Media_UserMedia")
+  // relations
+  UserMedias UserMedia[] @relation("_Media_UserMedia")
 
-    // indexing
-    @@index([tenantId], name: "Media_tenantId_index")
-    @@index([bucketId], name: "Media_bucketId_index")
-    @@schema("core")
+  // indexing
+  @@index([tenantId], name: "Media_tenantId_index")
+  @@index([bucketId], name: "Media_bucketId_index")
+  @@schema("core")
 }
