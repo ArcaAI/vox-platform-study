@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Entities from '../../../entities';
 
@@ -18,6 +18,13 @@ export interface INamedEntityEntity extends IBaseTenantEntity {
   aiModelVersion?: string | null;
   processingTimeMs?: number | null;
   metadata?: JsonValue | null;
+  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the recognized
+  // span (text / normalizedText) + metadata JSONB + shared key version.
+  // Plaintext retained for the dual-read soak (removal is Phase 6).
+  encryptedText?: Buffer | null;
+  encryptedNormalizedText?: Buffer | null;
+  encryptedMetadata?: Buffer | null;
+  keyVersion?: number | null;
   // TASK-330 Phase 1 — clinical ontology normalization codes
   umlsCui?: string | null;
   snomedCode?: string | null;
@@ -43,6 +50,10 @@ export class NamedEntityEntity extends BaseTenantEntity {
   private _aiModelVersion?: INamedEntityEntity['aiModelVersion'];
   private _processingTimeMs?: INamedEntityEntity['processingTimeMs'];
   private _metadata?: INamedEntityEntity['metadata'];
+  private _encryptedText?: INamedEntityEntity['encryptedText'];
+  private _encryptedNormalizedText?: INamedEntityEntity['encryptedNormalizedText'];
+  private _encryptedMetadata?: INamedEntityEntity['encryptedMetadata'];
+  private _keyVersion?: INamedEntityEntity['keyVersion'];
   private _umlsCui?: INamedEntityEntity['umlsCui'];
   private _snomedCode?: INamedEntityEntity['snomedCode'];
   private _rxnormCode?: INamedEntityEntity['rxnormCode'];
@@ -66,6 +77,10 @@ export class NamedEntityEntity extends BaseTenantEntity {
     this._aiModelVersion = init.aiModelVersion;
     this._processingTimeMs = init.processingTimeMs;
     this._metadata = init.metadata;
+    this._encryptedText = init.encryptedText;
+    this._encryptedNormalizedText = init.encryptedNormalizedText;
+    this._encryptedMetadata = init.encryptedMetadata;
+    this._keyVersion = init.keyVersion;
     this._umlsCui = init.umlsCui;
     this._snomedCode = init.snomedCode;
     this._rxnormCode = init.rxnormCode;
@@ -85,6 +100,9 @@ export class NamedEntityEntity extends BaseTenantEntity {
     this.setProperty('contextItemId', value);
   }
 
+  // TASK-369 Phase 3C — recognized span is free-text clinical PHI. @Secret()
+  // marks it for audit-log redaction.
+  @Secret()
   get text(): INamedEntityEntity['text'] {
     return this._text;
   }
@@ -101,6 +119,7 @@ export class NamedEntityEntity extends BaseTenantEntity {
     this.setProperty('className', value);
   }
 
+  @Secret()
   get normalizedText(): INamedEntityEntity['normalizedText'] {
     return this._normalizedText;
   }
@@ -157,12 +176,50 @@ export class NamedEntityEntity extends BaseTenantEntity {
     this.setProperty('processingTimeMs', value);
   }
 
+  @Secret()
   get metadata(): INamedEntityEntity['metadata'] {
     return this._metadata;
   }
 
   set metadata(value: INamedEntityEntity['metadata']) {
     this.setProperty('metadata', value);
+  }
+
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // ciphertext from audit-log surfaces.
+  @Secret()
+  get encryptedText(): INamedEntityEntity['encryptedText'] {
+    return this._encryptedText;
+  }
+
+  set encryptedText(value: INamedEntityEntity['encryptedText']) {
+    this.setProperty('encryptedText', value);
+  }
+
+  @Secret()
+  get encryptedNormalizedText(): INamedEntityEntity['encryptedNormalizedText'] {
+    return this._encryptedNormalizedText;
+  }
+
+  set encryptedNormalizedText(value: INamedEntityEntity['encryptedNormalizedText']) {
+    this.setProperty('encryptedNormalizedText', value);
+  }
+
+  @Secret()
+  get encryptedMetadata(): INamedEntityEntity['encryptedMetadata'] {
+    return this._encryptedMetadata;
+  }
+
+  set encryptedMetadata(value: INamedEntityEntity['encryptedMetadata']) {
+    this.setProperty('encryptedMetadata', value);
+  }
+
+  get keyVersion(): INamedEntityEntity['keyVersion'] {
+    return this._keyVersion;
+  }
+
+  set keyVersion(value: INamedEntityEntity['keyVersion']) {
+    this.setProperty('keyVersion', value);
   }
 
   get umlsCui(): INamedEntityEntity['umlsCui'] {

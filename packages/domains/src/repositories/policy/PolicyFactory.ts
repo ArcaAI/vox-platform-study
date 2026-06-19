@@ -13,8 +13,14 @@
  */
 import { ResourceStatusType } from '../../enums';
 
-/** Allowed `Policy.scope` values; mirrors the enum in `db_main/enums.prisma`. */
-export type PolicyScope = 'GLOBAL' | 'TENANT';
+/**
+ * Allowed `Policy.scope` values; mirrors the enum in `db_main/enums.prisma`.
+ * TASK-368 — kept as a LOCAL (non-exported) literal union so the canonical
+ * `PolicyScope` enum emitted by generate-data-model into `enums/generated` is
+ * the single exported name (avoids a duplicate-export collision at the barrel),
+ * while this factory keeps accepting plain string literals.
+ */
+type PolicyScope = 'GLOBAL' | 'TENANT';
 
 /** Properties required to seed a new `Policy` row. */
 export interface PolicyCreateProps {

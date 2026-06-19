@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
@@ -13,6 +13,12 @@ export interface IContextItemEntity extends IBaseTenantEntity {
   source: Enums.ContextItemSource;
   currentVersionNumber: number;
   content?: string | null;
+  // TASK-369 (Data Encryption Initiative) Phase 3B — Vault-Transit (hope-phi)
+  // ciphertext of `content` plus the Transit key version. Both nullable;
+  // populated only once the row's content has been migrated. Plaintext
+  // `content` is retained for the dual-read soak (removal is Phase 6).
+  encryptedContent?: Buffer | null;
+  contentKeyVersion?: number | null;
   mediaId?: string | null;
   dnaWritingStyleId?: string | null;
   qdrantSynced: boolean;
@@ -30,6 +36,8 @@ export class ContextItemEntity extends BaseTenantEntity {
   private _source: IContextItemEntity['source'];
   private _currentVersionNumber: IContextItemEntity['currentVersionNumber'];
   private _content?: IContextItemEntity['content'];
+  private _encryptedContent?: IContextItemEntity['encryptedContent'];
+  private _contentKeyVersion?: IContextItemEntity['contentKeyVersion'];
   private _mediaId?: IContextItemEntity['mediaId'];
   private _dnaWritingStyleId?: IContextItemEntity['dnaWritingStyleId'];
   // Clinical Workflow Playground — round-trips the `_metadata` JSONB column so
@@ -51,6 +59,8 @@ export class ContextItemEntity extends BaseTenantEntity {
     this._source = init.source ?? Enums.ContextItemSource.USER;
     this._currentVersionNumber = init.currentVersionNumber ?? 1;
     this._content = init.content;
+    this._encryptedContent = init.encryptedContent;
+    this._contentKeyVersion = init.contentKeyVersion;
     this._mediaId = init.mediaId;
     this._dnaWritingStyleId = init.dnaWritingStyleId;
     this._metaData = init.metaData;
@@ -95,12 +105,36 @@ export class ContextItemEntity extends BaseTenantEntity {
     this.setProperty('currentVersionNumber', value);
   }
 
+  // TASK-369 Phase 3B — `content` is free-text clinical PHI. @Secret() marks
+  // it for audit-log redaction (defense-in-depth) and documents it as the
+  // plaintext counterpart of the encrypted column.
+  @Secret()
   get content(): IContextItemEntity['content'] {
     return this._content;
   }
 
   set content(value: IContextItemEntity['content']) {
     this.setProperty('content', value);
+  }
+
+  // TASK-369 Phase 3B — Vault-Transit ciphertext of `content`. @Secret()
+  // guards it from audit-log surfaces (leaking ciphertext + keyVersion helps
+  // an attacker correlate confidential rows).
+  @Secret()
+  get encryptedContent(): IContextItemEntity['encryptedContent'] {
+    return this._encryptedContent;
+  }
+
+  set encryptedContent(value: IContextItemEntity['encryptedContent']) {
+    this.setProperty('encryptedContent', value);
+  }
+
+  get contentKeyVersion(): IContextItemEntity['contentKeyVersion'] {
+    return this._contentKeyVersion;
+  }
+
+  set contentKeyVersion(value: IContextItemEntity['contentKeyVersion']) {
+    this.setProperty('contentKeyVersion', value);
   }
 
   get mediaId(): IContextItemEntity['mediaId'] {

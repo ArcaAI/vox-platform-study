@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
@@ -16,6 +16,12 @@ export interface IEvalScoreEntity extends IBaseTenantEntity {
   rationale?: string | null;
   judgeModel?: string | null;
   details?: JsonValue | null;
+  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the free-text
+  // clinical fields + shared key version. Plaintext columns retained for the
+  // dual-read soak (removal is Phase 6).
+  encryptedRationale?: Buffer | null;
+  encryptedDetails?: Buffer | null;
+  keyVersion?: number | null;
 }
 
 export class EvalScoreEntity extends BaseTenantEntity {
@@ -27,6 +33,9 @@ export class EvalScoreEntity extends BaseTenantEntity {
   private _rationale?: IEvalScoreEntity['rationale'];
   private _judgeModel?: IEvalScoreEntity['judgeModel'];
   private _details?: IEvalScoreEntity['details'];
+  private _encryptedRationale?: IEvalScoreEntity['encryptedRationale'];
+  private _encryptedDetails?: IEvalScoreEntity['encryptedDetails'];
+  private _keyVersion?: IEvalScoreEntity['keyVersion'];
 
   constructor(init: IEvalScoreEntity) {
     super(init);
@@ -38,6 +47,9 @@ export class EvalScoreEntity extends BaseTenantEntity {
     this._rationale = init.rationale;
     this._judgeModel = init.judgeModel;
     this._details = init.details;
+    this._encryptedRationale = init.encryptedRationale;
+    this._encryptedDetails = init.encryptedDetails;
+    this._keyVersion = init.keyVersion;
   }
 
   get evalRunId(): IEvalScoreEntity['evalRunId'] {
@@ -80,6 +92,9 @@ export class EvalScoreEntity extends BaseTenantEntity {
     this.setProperty('maxScore', value);
   }
 
+  // TASK-369 Phase 3C — free-text clinical PHI. @Secret() marks it for
+  // audit-log redaction (defense-in-depth) alongside the encrypted counterpart.
+  @Secret()
   get rationale(): IEvalScoreEntity['rationale'] {
     return this._rationale;
   }
@@ -96,12 +111,41 @@ export class EvalScoreEntity extends BaseTenantEntity {
     this.setProperty('judgeModel', value);
   }
 
+  @Secret()
   get details(): IEvalScoreEntity['details'] {
     return this._details;
   }
 
   set details(value: IEvalScoreEntity['details']) {
     this.setProperty('details', value);
+  }
+
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // ciphertext from audit-log surfaces.
+  @Secret()
+  get encryptedRationale(): IEvalScoreEntity['encryptedRationale'] {
+    return this._encryptedRationale;
+  }
+
+  set encryptedRationale(value: IEvalScoreEntity['encryptedRationale']) {
+    this.setProperty('encryptedRationale', value);
+  }
+
+  @Secret()
+  get encryptedDetails(): IEvalScoreEntity['encryptedDetails'] {
+    return this._encryptedDetails;
+  }
+
+  set encryptedDetails(value: IEvalScoreEntity['encryptedDetails']) {
+    this.setProperty('encryptedDetails', value);
+  }
+
+  get keyVersion(): IEvalScoreEntity['keyVersion'] {
+    return this._keyVersion;
+  }
+
+  set keyVersion(value: IEvalScoreEntity['keyVersion']) {
+    this.setProperty('keyVersion', value);
   }
 
   public override validate(): void {

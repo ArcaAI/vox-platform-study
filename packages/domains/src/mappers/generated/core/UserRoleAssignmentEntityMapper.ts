@@ -30,7 +30,10 @@ export const UserRoleAssignmentEntityMapperHandlers = createMapperHandlers<Entit
     userId: (obj: Models.UserRoleAssignment) => obj.userId,
     roleId: (obj: Models.UserRoleAssignment) => obj.roleId,
     User: (obj: Models.UserRoleAssignment) => (obj.User ? Mappers.UserEntityMapper.getInstance().toDomainEntity(obj.User) : null),
+    // TASK-368 — `UserRoleAssignment` now holds a single `Role` relation (the
+    // legacy plural `Roles` model field was removed by the policy-based RBAC
+    // migration). Project the singular relation into the entity's `Roles` array.
     Roles: (obj: Models.UserRoleAssignment) =>
-      obj.Role ? [Mappers.RoleEntityMapper.getInstance().toDomainEntity(obj.Role)] : obj.Roles?.map((item) => Mappers.RoleEntityMapper.getInstance().toDomainEntity(item)) || [],
+      obj.Role ? [Mappers.RoleEntityMapper.getInstance().toDomainEntity(obj.Role)] : [],
   },
 });

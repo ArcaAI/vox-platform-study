@@ -12,14 +12,19 @@ export class Role extends BaseDataModel {
   public description: string | null;
   public externalName: string | null;
   public externalId: string | null;
+  public isSystemRole: boolean;
+  public parentRoleId: string | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
-  public userRoleAssignmentId: string | null;
   @VirtualDbProperty()
-  public RolePermissions: Models.RolePermission[] | undefined;
+  public ParentRole: Models.Role | undefined;
   @VirtualDbProperty()
-  public UserRoleAssignment: Models.UserRoleAssignment | undefined;
+  public ChildRoles: Models.Role[] | undefined;
+  @VirtualDbProperty()
+  public RolePolicies: Models.RolePolicy[] | undefined;
+  @VirtualDbProperty()
+  public UserRoleAssignments: Models.UserRoleAssignment[] | undefined;
 
   constructor(data: Role & BaseDataModel) {
     super(data);
@@ -27,11 +32,14 @@ export class Role extends BaseDataModel {
     this.description = data.description;
     this.externalName = data.externalName;
     this.externalId = data.externalId;
+    this.isSystemRole = data.isSystemRole;
+    this.parentRoleId = data.parentRoleId;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
-    this.userRoleAssignmentId = data.userRoleAssignmentId;
-    this.RolePermissions = data.RolePermissions;
-    this.UserRoleAssignment = data.UserRoleAssignment;
+    this.ParentRole = data.ParentRole;
+    this.ChildRoles = data.ChildRoles;
+    this.RolePolicies = data.RolePolicies;
+    this.UserRoleAssignments = data.UserRoleAssignments;
   }
 }

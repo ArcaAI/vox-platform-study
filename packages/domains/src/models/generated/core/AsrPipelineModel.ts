@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
@@ -17,9 +17,10 @@ export class AsrPipeline extends BaseTenantDataModel {
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
   public tags: string[];
-
-  // Relations
-  public TranscriptionJobs?: Models.TranscriptionJob[];
+  @VirtualDbProperty()
+  public TranscriptionJobs: Models.TranscriptionJob[] | undefined;
+  @VirtualDbProperty()
+  public Versions: Models.AsrPipelineVersion[] | undefined;
 
   constructor(data: AsrPipeline & BaseTenantDataModel) {
     super(data);
@@ -33,5 +34,6 @@ export class AsrPipeline extends BaseTenantDataModel {
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
     this.tags = data.tags ?? [];
     this.TranscriptionJobs = data.TranscriptionJobs;
+    this.Versions = data.Versions;
   }
 }

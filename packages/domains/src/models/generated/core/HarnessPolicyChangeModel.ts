@@ -21,6 +21,11 @@ export class HarnessPolicyChange extends BaseTenantDataModel {
   public beforeJson: JsonValue | null;
   public afterJson: JsonValue;
   public reason: string | null;
+  // TASK-369 Phase 3D — Vault-Transit ciphertext of beforeJson/afterJson + shared
+  // key version. When set, the plaintext JSONB columns hold a redaction sentinel.
+  public encryptedBeforeJson: Uint8Array | null;
+  public encryptedAfterJson: Uint8Array | null;
+  public keyVersion: number | null;
 
   constructor(data: HarnessPolicyChange & BaseTenantDataModel) {
     super(data);
@@ -29,5 +34,8 @@ export class HarnessPolicyChange extends BaseTenantDataModel {
     this.beforeJson = data.beforeJson;
     this.afterJson = data.afterJson;
     this.reason = data.reason;
+    this.encryptedBeforeJson = data.encryptedBeforeJson;
+    this.encryptedAfterJson = data.encryptedAfterJson;
+    this.keyVersion = data.keyVersion;
   }
 }

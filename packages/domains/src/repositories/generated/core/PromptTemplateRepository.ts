@@ -5,7 +5,7 @@ import { PromptTemplateEntityMapper } from '../../../mappers';
 import { PromptTemplateEntity } from '../../../entities';
 import { PromptTemplate } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
-import { ResourceStatusType } from '../../../enums';
+import { PromptTemplateCategory, PromptTemplateScope, ResourceStatusType } from '../../../enums';
 
 @Injectable()
 export class PromptTemplateRepository extends Repository<PromptTemplateEntity, PromptTemplate> {
@@ -53,7 +53,7 @@ export class PromptTemplateRepository extends Repository<PromptTemplateEntity, P
   async findByCategory(category: string): Promise<PromptTemplateEntity[]> {
     return this.findAll({
       filters: {
-        category,
+        category: category as PromptTemplateCategory,
         resourceStatus: ResourceStatusType.ENABLED,
       },
       sort: [{ name: 'asc' }],
@@ -74,7 +74,7 @@ export class PromptTemplateRepository extends Repository<PromptTemplateEntity, P
         tenantId,
         ownerUserId,
         departmentId,
-        scope: 'USER_PERSONAL',
+        scope: PromptTemplateScope.USER_PERSONAL,
         resourceStatus: ResourceStatusType.ENABLED,
       },
       sort: [{ name: 'asc' }],

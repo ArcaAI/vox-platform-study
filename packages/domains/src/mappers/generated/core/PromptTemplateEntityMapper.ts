@@ -40,6 +40,12 @@ export class PromptTemplateEntityMapper extends BaseMapper<Entities.PromptTempla
 }
 
 export const PromptTemplateEntityMapperHandlers = createMapperHandlers<Entities.PromptTemplateEntity, Models.PromptTemplate>({
-  $toPersistence: {},
-  $toDomain: {},
+  $toPersistence: {
+    // TASK-369 Phase 3C — return the raw ciphertext Buffer directly so the
+    // generic auto-mapper does not destructure the typed array.
+    encryptedLastTestOutput: (entity) => entity.encryptedLastTestOutput ?? null,
+  },
+  $toDomain: {
+    encryptedLastTestOutput: (model) => model.encryptedLastTestOutput ?? null,
+  },
 });

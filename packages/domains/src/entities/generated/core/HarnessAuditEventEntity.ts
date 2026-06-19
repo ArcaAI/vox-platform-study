@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
@@ -25,6 +25,13 @@ export interface IHarnessAuditEventEntity extends IBaseTenantEntity {
   promptVersion?: string | null;
   sensorScores: JsonValue;
   citations: JsonValue;
+  // TASK-369 Phase 3D (ENCRYPT-BEFORE-HASH) — Vault-Transit (hope-phi) ciphertext
+  // of sensorScores/citations + shared key version. Set ONLY on encrypted (new)
+  // rows; the plaintext JSONB columns then hold a non-PHI redaction sentinel and
+  // the row `hash` is computed over THESE bytes. Null on legacy/plaintext rows.
+  encryptedSensorScores?: Buffer | null;
+  encryptedCitations?: Buffer | null;
+  keyVersion?: number | null;
   gateDecision?: string | null;
   clinicianId?: string | null;
   attestationHash?: string | null;
@@ -42,6 +49,9 @@ export class HarnessAuditEventEntity extends BaseTenantEntity {
   private _promptVersion?: IHarnessAuditEventEntity['promptVersion'];
   private _sensorScores: IHarnessAuditEventEntity['sensorScores'];
   private _citations: IHarnessAuditEventEntity['citations'];
+  private _encryptedSensorScores?: IHarnessAuditEventEntity['encryptedSensorScores'];
+  private _encryptedCitations?: IHarnessAuditEventEntity['encryptedCitations'];
+  private _keyVersion?: IHarnessAuditEventEntity['keyVersion'];
   private _gateDecision?: IHarnessAuditEventEntity['gateDecision'];
   private _clinicianId?: IHarnessAuditEventEntity['clinicianId'];
   private _attestationHash?: IHarnessAuditEventEntity['attestationHash'];
@@ -59,6 +69,9 @@ export class HarnessAuditEventEntity extends BaseTenantEntity {
     this._promptVersion = init.promptVersion;
     this._sensorScores = init.sensorScores;
     this._citations = init.citations;
+    this._encryptedSensorScores = init.encryptedSensorScores;
+    this._encryptedCitations = init.encryptedCitations;
+    this._keyVersion = init.keyVersion;
     this._gateDecision = init.gateDecision;
     this._clinicianId = init.clinicianId;
     this._attestationHash = init.attestationHash;
@@ -97,12 +110,34 @@ export class HarnessAuditEventEntity extends BaseTenantEntity {
     return this._promptVersion;
   }
 
+  // TASK-369 Phase 3D — `sensorScores`/`citations` can carry clinical evidence.
+  // @Secret() marks them for audit-log redaction (defense-in-depth). On encrypted
+  // rows these hold a non-PHI redaction sentinel; the real payload lives in the
+  // `encrypted*` columns (use the repository decrypt helper to read it back).
+  @Secret()
   get sensorScores(): IHarnessAuditEventEntity['sensorScores'] {
     return this._sensorScores;
   }
 
+  @Secret()
   get citations(): IHarnessAuditEventEntity['citations'] {
     return this._citations;
+  }
+
+  // TASK-369 Phase 3D — Vault-Transit ciphertext (read-only; WORM). @Secret()
+  // keeps ciphertext + keyVersion off audit-log surfaces.
+  @Secret()
+  get encryptedSensorScores(): IHarnessAuditEventEntity['encryptedSensorScores'] {
+    return this._encryptedSensorScores;
+  }
+
+  @Secret()
+  get encryptedCitations(): IHarnessAuditEventEntity['encryptedCitations'] {
+    return this._encryptedCitations;
+  }
+
+  get keyVersion(): IHarnessAuditEventEntity['keyVersion'] {
+    return this._keyVersion;
   }
 
   get gateDecision(): IHarnessAuditEventEntity['gateDecision'] {

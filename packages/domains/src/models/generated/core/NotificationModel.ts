@@ -14,6 +14,11 @@ export class Notification extends BaseTenantDataModel {
   public messageContent: JsonValue | null;
   public type: Enums.NotificationType;
   public read: boolean;
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
+  public encryptedMessageText: Uint8Array | null;
+  public encryptedMessageRichText: Uint8Array | null;
+  public encryptedMessageContent: Uint8Array | null;
+  public keyVersion: number | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -33,6 +38,10 @@ export class Notification extends BaseTenantDataModel {
     this.messageContent = data.messageContent;
     this.type = data.type;
     this.read = data.read;
+    this.encryptedMessageText = data.encryptedMessageText;
+    this.encryptedMessageRichText = data.encryptedMessageRichText;
+    this.encryptedMessageContent = data.encryptedMessageContent;
+    this.keyVersion = data.keyVersion;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

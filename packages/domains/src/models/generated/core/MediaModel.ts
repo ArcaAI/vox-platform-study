@@ -20,6 +20,8 @@ export class Media extends BaseTenantDataModel {
   public resourceStatusUpdatedBy: string | null;
   public tags: string[];
   @VirtualDbProperty()
+  public Bucket: Models.TenantBucket | undefined;
+  @VirtualDbProperty()
   public UserMedias: Models.UserMedia[] | undefined;
 
   constructor(data: Media & BaseTenantDataModel) {
@@ -35,6 +37,7 @@ export class Media extends BaseTenantDataModel {
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
     this.tags = data.tags;
+    this.Bucket = data.Bucket;
     this.UserMedias = data.UserMedias;
   }
 }

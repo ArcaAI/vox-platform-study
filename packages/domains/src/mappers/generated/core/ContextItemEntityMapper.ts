@@ -22,8 +22,16 @@ export class ContextItemEntityMapper extends BaseMapper<Entities.ContextItemEnti
 }
 
 export const ContextItemEntityMapperHandlers = createMapperHandlers<Entities.ContextItemEntity, Models.ContextItem>({
-  $toPersistence: {},
+  $toPersistence: {
+    // TASK-369 Phase 3B — bypass the generic auto-mapper for binary ciphertext.
+    // BaseEntity.toObject() calls convertEntityValue() which walks Object.keys
+    // on objects, destructively destructuring Buffer/Uint8Array into a plain
+    // `{0: byte, …}` map (losing the typed-array constructor). Returning the
+    // underlying buffer directly preserves it for the Prisma Bytes write path.
+    encryptedContent: (entity) => entity.encryptedContent ?? null,
+  },
   $toDomain: {
+    encryptedContent: (model) => model.encryptedContent ?? null,
     // Map nested AudioRecordings relation
     AudioRecordings: (obj: any) =>
       obj.AudioRecordings?.map((item: any) => Mappers.AudioRecordingEntityMapper.getInstance().toDomainEntity(item)) || null,

@@ -202,11 +202,14 @@ async function generateEnumFile(
     options: ProcessingOptions
 ): Promise<void> {
     const className = names(enumItem.data.name).className;
+    const enumFilePath = path.resolve(enumsOutputPath, `${className}.ts`);
+    const preservation = extractPreservation(enumFilePath);
     // Enum value order is preserved from the schema (DMMF declaration order); it is
     // deterministic and semantically meaningful (e.g. Postgres enum sort order), so we
-    // never re-sort it.
+    // never re-sort it. Any hand-authored per-value `//` comment is round-tripped.
     const enumValues = enumItem.data.values.map((value: any) => ({
-        name: value.name
+        name: value.name,
+        comment: preservation.enumValueComments.get(value.name)
     }));
 
     const enumFileContent = modelTemplate({
@@ -214,11 +217,11 @@ async function generateEnumFile(
         enumValues,
         hasDecimal: false,
         baseModel: '',
+        classDoc: null,
         scalarFields: [],
         relationFields: []
     });
 
-    const enumFilePath = path.resolve(enumsOutputPath, `${className}.ts`);
     await emit(options, enumFilePath, enumFileContent, options.shouldOverwrite);
 }
 
@@ -235,11 +238,17 @@ async function generateModelFile(
     if (model.fields.find((f: any) => /tenantId/.test(f.name))) {
         baseModel = 'BaseTenantDataModel';
     }
-    if (/audit/i.test(model.name)) {
+    // Only the singular append-only `AuditLog` WORM table inlines its base fields
+    // (no base class). Other "*Audit*" models (e.g. HarnessAuditEvent) are
+    // standard tenant models that extend BaseTenantDataModel.
+    if (model.name === 'AuditLog') {
         baseModel = '';
     }
 
-    const { scalarFields, hasDecimal } = composeScalarEnumFields(model.fields, baseModel);
+    const modelFilePath = path.resolve(domainOutputPath, `${className}Model.ts`);
+    const preservation = extractPreservation(modelFilePath);
+
+    const { scalarFields, hasDecimal } = composeScalarEnumFields(model.fields, baseModel, preservation);
     const relationFields = composeRelationFields(model.fields);
 
     const modelFileContent = modelTemplate({
@@ -247,12 +256,11 @@ async function generateModelFile(
         enumValues: [],
         hasDecimal,
         baseModel,
+        classDoc: preservation.classDoc,
         scalarFields,
         relationFields
     });
 
-    const { className: modelClassName } = names(model.name);
-    const modelFilePath = path.resolve(domainOutputPath, `${modelClassName}Model.ts`);
     await emit(options, modelFilePath, modelFileContent, options.shouldOverwrite);
 }
 
@@ -260,9 +268,29 @@ async function generateDomainIndexFile(domainOutputPath: string, selectedItems: 
     const modelItems = selectedItems.filter(item => item.type === 'model');
     if (modelItems.length === 0) return;
 
-    // Exports follow declaration (DMMF) order — the canonical ordering.
-    const modelExports = modelItems
-        .map(item => `export * from './${names(item.name).className}Model';`)
+    // Schema-derived model files (from DMMF) ...
+    const moduleNames = new Set<string>(
+        modelItems.map(item => `${names(item.name).className}Model`)
+    );
+
+    // ... unioned with any `*Model.ts` already present in the folder. This keeps
+    // hand-maintained ORPHAN models exported — models whose Prisma model was
+    // retired (so DMMF no longer yields them) but whose TS model + entity/mapper/
+    // repository stack is still wired into the application layer (e.g.
+    // Permission / RolePermission after the policy-based RBAC migration).
+    if (fs.existsSync(domainOutputPath)) {
+        for (const file of fs.readdirSync(domainOutputPath)) {
+            if (file.endsWith('Model.ts')) {
+                moduleNames.add(file.slice(0, -'.ts'.length));
+            }
+        }
+    }
+
+    // Sorted alphabetically so the barrel is deterministic regardless of schema
+    // declaration order or filesystem enumeration order.
+    const modelExports = [...moduleNames]
+        .sort((a, b) => a.localeCompare(b))
+        .map(name => `export * from './${name}';`)
         .join('\n');
 
     const indexFilePath = path.resolve(domainOutputPath, 'index.ts');
@@ -275,11 +303,14 @@ async function generateRootIndexFiles(
     selectedDomains: DomainFolder[],
     allSelectedItems: SelectedItem[]
 ): Promise<void> {
-    // Generate index file for enums — exports follow declaration (DMMF) order.
+    // Generate index file for enums — exports sorted alphabetically so the barrel
+    // is deterministic regardless of schema declaration order.
     const enumItems = allSelectedItems.filter(item => item.type === 'enum');
     if (enumItems.length > 0) {
         const enumExports = enumItems
-            .map(item => `export * from './${names(item.name).className}';`)
+            .map(item => names(item.name).className)
+            .sort((a, b) => a.localeCompare(b))
+            .map(name => `export * from './${name}';`)
             .join('\n');
 
         const enumsIndexPath = path.resolve(options.enumsOutputPath, 'index.ts');
@@ -358,9 +389,10 @@ async function processDomain(
  */
 function composeScalarEnumFields(
     fields: any[],
-    baseModel: string
+    baseModel: string,
+    preservation: PreservedCustomizations = emptyPreservation()
 ): {
-    scalarFields: { name: string; type: string }[];
+    scalarFields: { name: string; type: string; comment?: string; init: string }[];
     hasDecimal: boolean;
 } {
     let hasDecimal = false;
@@ -406,11 +438,17 @@ function composeScalarEnumFields(
         .map((field) => {
             const { name, type } = field;
             const array = field.isList ? '[]' : '';
+            // Preserve any hand-authored field comment + constructor default (RHS);
+            // fall back to a plain `data.<name>` assignment for new/undecorated fields.
+            const comment = preservation.fieldComments.get(name);
+            const init = preservation.ctorDefaults.get(name) ?? `data.${name}`;
 
             if (field.kind === 'enum') {
                 return {
                     name,
-                    type: `Enums.${type}${array} ${field.isRequired ? '' : '| null'}`
+                    type: `Enums.${type}${array} ${field.isRequired ? '' : '| null'}`,
+                    comment,
+                    init
                 };
             }
 
@@ -420,7 +458,9 @@ function composeScalarEnumFields(
 
             return {
                 name,
-                type: `${MAPPINGS[type] || 'any'}${array} ${field.isRequired ? '' : '| null'}`
+                type: `${MAPPINGS[type] || 'any'}${array} ${field.isRequired ? '' : '| null'}`,
+                comment,
+                init
             };
         });
 
@@ -450,6 +490,119 @@ function composeRelationFields(
  */
 function sortByName<T extends { name: string }>(items: readonly T[]): T[] {
     return [...items].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Customizations preserved across regeneration from the previously-emitted file.
+ *
+ * The Prisma schema cannot express several behaviour-affecting hand-edits that
+ * the committed `generated/` files encode:
+ *   - constructor defaults (`?? []`, `?? false`, `?? Enums.X.Y`) — applied
+ *     INCONSISTENTLY across models, so they are NOT derivable from a field's
+ *     `@default(...)` without churning every other defaulted field.
+ *   - class-level JSDoc and field-level `//` comments (DMMF only exposes `///`
+ *     triple-slash docs, and the committed comments are condensed/hand-authored
+ *     and differ from the schema text).
+ *   - enum-value `//` comments.
+ *
+ * To keep `--check` green and never silently drop a behaviour-affecting edit or
+ * human documentation, the generator ROUND-TRIPS these from the existing file:
+ * it parses the previously-emitted output, keys each customization by field /
+ * enum-value name (robust to re-ordering), and re-emits them. New fields/files
+ * (no prior output) fall back to the schema-derived baseline.
+ */
+interface PreservedCustomizations {
+    /** Class-level `/** ... *\/` JSDoc immediately preceding `export class`. */
+    classDoc: string | null;
+    /** Field name → contiguous `//` comment block immediately preceding it. */
+    fieldComments: Map<string, string>;
+    /** Field name → constructor right-hand side (e.g. `data.tags ?? []`). */
+    ctorDefaults: Map<string, string>;
+    /** Enum value name → contiguous `//` comment block immediately preceding it. */
+    enumValueComments: Map<string, string>;
+}
+
+function emptyPreservation(): PreservedCustomizations {
+    return {
+        classDoc: null,
+        fieldComments: new Map(),
+        ctorDefaults: new Map(),
+        enumValueComments: new Map(),
+    };
+}
+
+/**
+ * Collect the contiguous block of single-line `//` comments immediately above
+ * `declIdx`, returning them left-trimmed (Prettier re-indents on emit). Stops at
+ * the first blank line, decorator, or non-comment line so section headers that
+ * sit above an unrelated declaration are not captured.
+ */
+function collectLeadingLineComments(lines: string[], declIdx: number): string | null {
+    const comments: string[] = [];
+    for (let i = declIdx - 1; i >= 0; i--) {
+        const trimmed = lines[i].trim();
+        if (trimmed.startsWith('//')) {
+            comments.unshift(lines[i].trimStart());
+        } else {
+            break;
+        }
+    }
+    return comments.length ? comments.join('\n') : null;
+}
+
+/**
+ * Parse a previously-emitted model/enum file and extract the customizations that
+ * are not derivable from the Prisma schema so regeneration can re-emit them.
+ * Returns empty preservation when the file does not yet exist (new artifact).
+ */
+function extractPreservation(filePath: string): PreservedCustomizations {
+    if (!fs.existsSync(filePath)) {
+        return emptyPreservation();
+    }
+
+    const result = emptyPreservation();
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const lines = content.split('\n');
+
+    // Class-level JSDoc: the `/** ... */` block ending right before `export class`.
+    const exportClassIdx = lines.findIndex((line) => line.startsWith('export class '));
+    if (exportClassIdx > 0) {
+        let end = exportClassIdx - 1;
+        while (end >= 0 && lines[end].trim() === '') end--;
+        if (end >= 0 && lines[end].trim().endsWith('*/')) {
+            let start = end;
+            while (start >= 0 && !lines[start].trim().startsWith('/**')) start--;
+            if (start >= 0) {
+                result.classDoc = lines
+                    .slice(start, end + 1)
+                    .map((line) => line.trimStart())
+                    .join('\n');
+            }
+        }
+    }
+
+    // Field-level comments, keyed by field name (scalar declarations).
+    lines.forEach((line, idx) => {
+        const fieldMatch = /^\s*public\s+(\w+)\??:/.exec(line);
+        if (fieldMatch) {
+            const comment = collectLeadingLineComments(lines, idx);
+            if (comment) result.fieldComments.set(fieldMatch[1], comment);
+        }
+        const enumMatch = /^\s*(\w+)\s*=\s*'[^']*',?\s*$/.exec(line);
+        if (enumMatch) {
+            const comment = collectLeadingLineComments(lines, idx);
+            if (comment) result.enumValueComments.set(enumMatch[1], comment);
+        }
+    });
+
+    // Constructor right-hand sides, keyed by field name. RHS never contains `;`.
+    const ctorRegex = /this\.(\w+)\s*=\s*([^;]+);/g;
+    let match: RegExpExecArray | null;
+    while ((match = ctorRegex.exec(content)) !== null) {
+        result.ctorDefaults.set(match[1], match[2].trim());
+    }
+
+    return result;
 }
 
 // Cache the resolved Prettier config (resolved once from the repo's config).

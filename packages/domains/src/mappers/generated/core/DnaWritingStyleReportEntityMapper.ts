@@ -40,6 +40,14 @@ export class DnaWritingStyleReportEntityMapper extends BaseMapper<Entities.DnaWr
 }
 
 export const DnaWritingStyleReportEntityMapperHandlers = createMapperHandlers<Entities.DnaWritingStyleReportEntity, Models.DnaWritingStyleReport>({
-  $toPersistence: {},
-  $toDomain: {},
+  $toPersistence: {
+    // TASK-369 Phase 3C — return the raw ciphertext Buffer directly so the
+    // generic auto-mapper does not destructure the typed array.
+    encryptedReportData: (entity) => entity.encryptedReportData ?? null,
+    encryptedStyleText: (entity) => entity.encryptedStyleText ?? null,
+  },
+  $toDomain: {
+    encryptedReportData: (model) => model.encryptedReportData ?? null,
+    encryptedStyleText: (model) => model.encryptedStyleText ?? null,
+  },
 });

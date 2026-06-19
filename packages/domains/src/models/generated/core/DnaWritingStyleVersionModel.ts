@@ -2,16 +2,24 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
+import { JsonValue } from '../../../interfaces';
+import * as Enums from '../../../enums';
 import * as Models from './';
 
 export class DnaWritingStyleVersion extends BaseTenantDataModel {
-  public dnaReportId: string | null;
-  public versionNumber: number | null;
-  public reportData: any | null;
+  public dnaReportId: string;
+  public versionNumber: number;
+  public reportData: JsonValue | null;
   public styleText: string | null;
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
+  public encryptedReportData: Uint8Array | null;
+  public encryptedStyleText: Uint8Array | null;
+  public keyVersion: number | null;
   public changeReason: string | null;
   public changedBy: string | null;
+  @VirtualDbProperty()
+  public DnaWritingStyleReport: Models.DnaWritingStyleReport | undefined;
 
   constructor(data: DnaWritingStyleVersion & BaseTenantDataModel) {
     super(data);
@@ -19,7 +27,11 @@ export class DnaWritingStyleVersion extends BaseTenantDataModel {
     this.versionNumber = data.versionNumber;
     this.reportData = data.reportData;
     this.styleText = data.styleText;
+    this.encryptedReportData = data.encryptedReportData;
+    this.encryptedStyleText = data.encryptedStyleText;
+    this.keyVersion = data.keyVersion;
     this.changeReason = data.changeReason;
     this.changedBy = data.changedBy;
+    this.DnaWritingStyleReport = data.DnaWritingStyleReport;
   }
 }

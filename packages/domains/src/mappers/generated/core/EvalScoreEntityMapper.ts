@@ -22,6 +22,15 @@ export class EvalScoreEntityMapper extends BaseMapper<Entities.EvalScoreEntity, 
 }
 
 export const EvalScoreEntityMapperHandlers = createMapperHandlers<Entities.EvalScoreEntity, Models.EvalScore>({
-  $toPersistence: {},
-  $toDomain: {},
+  $toPersistence: {
+    // TASK-369 Phase 3C — return the raw ciphertext Buffer directly so the
+    // generic auto-mapper does not destructure the typed array (see
+    // ContextItemEntityMapper for the rationale).
+    encryptedRationale: (entity) => entity.encryptedRationale ?? null,
+    encryptedDetails: (entity) => entity.encryptedDetails ?? null,
+  },
+  $toDomain: {
+    encryptedRationale: (model) => model.encryptedRationale ?? null,
+    encryptedDetails: (model) => model.encryptedDetails ?? null,
+  },
 });

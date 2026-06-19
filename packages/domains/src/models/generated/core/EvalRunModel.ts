@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
@@ -19,9 +19,16 @@ export class EvalRun extends BaseTenantDataModel {
   public completedAt: Date | null;
   public aggregateScores: JsonValue | null;
   public notes: string | null;
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
+  public encryptedNotes: Uint8Array | null;
+  public keyVersion: number | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
+  @VirtualDbProperty()
+  public GoldenSet: Models.GoldenSet | undefined;
+  @VirtualDbProperty()
+  public EvalScores: Models.EvalScore[] | undefined;
 
   constructor(data: EvalRun & BaseTenantDataModel) {
     super(data);
@@ -36,8 +43,12 @@ export class EvalRun extends BaseTenantDataModel {
     this.completedAt = data.completedAt;
     this.aggregateScores = data.aggregateScores;
     this.notes = data.notes;
+    this.encryptedNotes = data.encryptedNotes;
+    this.keyVersion = data.keyVersion;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
+    this.GoldenSet = data.GoldenSet;
+    this.EvalScores = data.EvalScores;
   }
 }

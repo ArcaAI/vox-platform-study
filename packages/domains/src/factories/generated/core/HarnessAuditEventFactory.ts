@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { GENESIS_PREV_HASH, computeHarnessAuditHash, generateId } from '../../../utils';
 import { BaseEntityFactoryCreateProps } from '../../../common';
+import { ENCRYPTED_PAYLOAD_SENTINEL } from '../../../common/field-encryption';
 import { HarnessAuditEventEntity, IHarnessAuditEventEntity } from '../../../entities';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
@@ -17,6 +18,13 @@ export interface CreateHarnessAuditEventProps extends BaseEntityFactoryCreatePro
   promptVersion?: IHarnessAuditEventEntity['promptVersion'];
   sensorScores: IHarnessAuditEventEntity['sensorScores'];
   citations: IHarnessAuditEventEntity['citations'];
+  // TASK-369 Phase 3D — when supplied (by the service, after Vault-Transit
+  // encryption), the `hash` is derived over THIS ciphertext (encrypt-before-hash)
+  // and the plaintext sensorScores/citations are replaced with a redaction
+  // sentinel before persistence. Omitted ⇒ legacy plaintext row (hash over JSON).
+  encryptedSensorScores?: IHarnessAuditEventEntity['encryptedSensorScores'];
+  encryptedCitations?: IHarnessAuditEventEntity['encryptedCitations'];
+  keyVersion?: IHarnessAuditEventEntity['keyVersion'];
   gateDecision?: IHarnessAuditEventEntity['gateDecision'];
   clinicianId?: IHarnessAuditEventEntity['clinicianId'];
   attestationHash?: IHarnessAuditEventEntity['attestationHash'];
@@ -40,6 +48,12 @@ export class HarnessAuditEventFactory {
     const now = props.createdAt || new Date();
     const prevHash = props.prevHash ?? GENESIS_PREV_HASH;
 
+    const encryptedSensorScores = props.encryptedSensorScores ?? null;
+    const encryptedCitations = props.encryptedCitations ?? null;
+
+    // ENCRYPT-BEFORE-HASH (Phase 3D): when a payload is encrypted, the hash is
+    // derived over its CIPHERTEXT (per field, in computeHarnessAuditHash) so the
+    // chain validates identically on the verifier; otherwise over the plaintext.
     const hash = computeHarnessAuditHash({
       tenantId: props.tenantId,
       consultationId: props.consultationId,
@@ -51,12 +65,20 @@ export class HarnessAuditEventFactory {
       promptVersion: props.promptVersion ?? null,
       sensorScores: props.sensorScores ?? null,
       citations: props.citations ?? null,
+      encryptedSensorScores,
+      encryptedCitations,
       gateDecision: props.gateDecision ?? null,
       clinicianId: props.clinicianId ?? null,
       attestationHash: props.attestationHash ?? null,
       createdAt: now,
       prevHash,
     });
+
+    // For an encrypted field, persist a non-PHI redaction sentinel in the
+    // NOT-NULL plaintext JSONB (immutable WORM column) — the ciphertext is the
+    // source of truth. Legacy/plaintext rows keep the real JSON.
+    const persistedSensorScores = encryptedSensorScores ? { ...ENCRYPTED_PAYLOAD_SENTINEL } : props.sensorScores;
+    const persistedCitations = encryptedCitations ? { ...ENCRYPTED_PAYLOAD_SENTINEL } : props.citations;
 
     return new HarnessAuditEventEntity({
       id,
@@ -73,8 +95,11 @@ export class HarnessAuditEventFactory {
       modelVersion: props.modelVersion,
       promptTemplateId: props.promptTemplateId ?? null,
       promptVersion: props.promptVersion ?? null,
-      sensorScores: props.sensorScores,
-      citations: props.citations,
+      sensorScores: persistedSensorScores,
+      citations: persistedCitations,
+      encryptedSensorScores,
+      encryptedCitations,
+      keyVersion: props.keyVersion ?? null,
       gateDecision: props.gateDecision ?? null,
       clinicianId: props.clinicianId ?? null,
       attestationHash: props.attestationHash ?? null,

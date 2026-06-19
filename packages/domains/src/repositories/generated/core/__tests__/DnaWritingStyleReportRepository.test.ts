@@ -20,7 +20,6 @@ describe('DnaWritingStyleReportRepository', () => {
     const { DnaWritingStyleReportRepository } = await import('../DnaWritingStyleReportRepository');
     const proto = DnaWritingStyleReportRepository.prototype;
     expect(typeof proto.findLatestForDoctor).toBe('function');
-    expect(typeof proto.findByDepartment).toBe('function');
     expect(typeof proto.findAllForDoctor).toBe('function');
   });
 

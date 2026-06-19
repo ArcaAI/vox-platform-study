@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import Decimal from 'decimal.js';
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
@@ -22,6 +22,15 @@ export interface IAuditLogEntity extends IBaseTenantEntity {
   data: JsonValue;
   previousData: JsonValue;
   metadata?: JsonValue | null;
+  // TASK-369 Phase 3D — envelope-encryption columns. `encryptedData` /
+  // `encryptedPreviousData` are the AES-256-GCM ciphertext (under a cached DEK);
+  // `dekWrapped` is the Vault-Transit-wrapped DEK (vault:vN:...) and
+  // `dekKeyVersion` the Transit key version that wrapped it. All nullable (NULL
+  // on legacy/plaintext rows; plaintext is retained for the dual-read soak).
+  encryptedData?: Buffer | null;
+  encryptedPreviousData?: Buffer | null;
+  dekWrapped?: string | null;
+  dekKeyVersion?: number | null;
 }
 
 export class AuditLogEntity extends BaseTenantEntity {
@@ -38,6 +47,10 @@ export class AuditLogEntity extends BaseTenantEntity {
   private _data: IAuditLogEntity['data'];
   private _previousData: IAuditLogEntity['previousData'];
   private _metadata?: IAuditLogEntity['metadata'];
+  private _encryptedData?: IAuditLogEntity['encryptedData'];
+  private _encryptedPreviousData?: IAuditLogEntity['encryptedPreviousData'];
+  private _dekWrapped?: IAuditLogEntity['dekWrapped'];
+  private _dekKeyVersion?: IAuditLogEntity['dekKeyVersion'];
 
   constructor(init: IAuditLogEntity) {
     super(init);
@@ -54,6 +67,10 @@ export class AuditLogEntity extends BaseTenantEntity {
     this._data = init.data;
     this._previousData = init.previousData;
     this._metadata = init.metadata;
+    this._encryptedData = init.encryptedData;
+    this._encryptedPreviousData = init.encryptedPreviousData;
+    this._dekWrapped = init.dekWrapped;
+    this._dekKeyVersion = init.dekKeyVersion;
   }
 
   get responsibleUserId(): IAuditLogEntity['responsibleUserId'] {
@@ -136,6 +153,10 @@ export class AuditLogEntity extends BaseTenantEntity {
     this.setProperty('success', value);
   }
 
+  // TASK-369 Phase 3D — `data`/`previousData` can carry PHI. @Secret() marks them
+  // for audit-log redaction (defense-in-depth). Plaintext is retained for the
+  // dual-read soak; the encrypted ciphertext lives in `encrypted*` columns.
+  @Secret()
   get data(): IAuditLogEntity['data'] {
     return this._data;
   }
@@ -144,6 +165,7 @@ export class AuditLogEntity extends BaseTenantEntity {
     this.setProperty('data', value);
   }
 
+  @Secret()
   get previousData(): IAuditLogEntity['previousData'] {
     return this._previousData;
   }
@@ -158,6 +180,43 @@ export class AuditLogEntity extends BaseTenantEntity {
 
   set metadata(value: IAuditLogEntity['metadata']) {
     this.setProperty('metadata', value);
+  }
+
+  // TASK-369 Phase 3D — envelope-encryption ciphertext + wrapped-DEK metadata.
+  // @Secret() keeps the ciphertext off any audit-log surface. Set by the
+  // applications-layer AuditLog encryption helper before persistence.
+  @Secret()
+  get encryptedData(): IAuditLogEntity['encryptedData'] {
+    return this._encryptedData;
+  }
+
+  set encryptedData(value: IAuditLogEntity['encryptedData']) {
+    this.setProperty('encryptedData', value);
+  }
+
+  @Secret()
+  get encryptedPreviousData(): IAuditLogEntity['encryptedPreviousData'] {
+    return this._encryptedPreviousData;
+  }
+
+  set encryptedPreviousData(value: IAuditLogEntity['encryptedPreviousData']) {
+    this.setProperty('encryptedPreviousData', value);
+  }
+
+  get dekWrapped(): IAuditLogEntity['dekWrapped'] {
+    return this._dekWrapped;
+  }
+
+  set dekWrapped(value: IAuditLogEntity['dekWrapped']) {
+    this.setProperty('dekWrapped', value);
+  }
+
+  get dekKeyVersion(): IAuditLogEntity['dekKeyVersion'] {
+    return this._dekKeyVersion;
+  }
+
+  set dekKeyVersion(value: IAuditLogEntity['dekKeyVersion']) {
+    this.setProperty('dekKeyVersion', value);
   }
 
   public override validate(): void {

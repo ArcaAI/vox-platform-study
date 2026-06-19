@@ -48,6 +48,17 @@ export const HarnessAuditEventEntityMapperHandlers = createMapperHandlers<
   Entities.HarnessAuditEventEntity,
   Models.HarnessAuditEvent
 >({
-  $toPersistence: {},
-  $toDomain: {},
+  $toPersistence: {
+    // TASK-369 Phase 3D — bypass the generic auto-mapper for binary ciphertext.
+    // BaseEntity.toObject() walks Object.keys on objects, destructively turning a
+    // Buffer/Uint8Array into a plain `{0: byte, …}` map (losing the typed-array
+    // constructor). Returning the underlying buffer directly preserves it for the
+    // Prisma Bytes write path.
+    encryptedSensorScores: (entity) => entity.encryptedSensorScores ?? null,
+    encryptedCitations: (entity) => entity.encryptedCitations ?? null,
+  },
+  $toDomain: {
+    encryptedSensorScores: (model) => model.encryptedSensorScores ?? null,
+    encryptedCitations: (model) => model.encryptedCitations ?? null,
+  },
 });

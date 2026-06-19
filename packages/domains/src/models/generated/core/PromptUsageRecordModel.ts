@@ -3,10 +3,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { BaseTenantDataModel } from '../../../common';
+import { JsonValue } from '../../../interfaces';
+import * as Enums from '../../../enums';
 import * as Models from './';
 
 export class PromptUsageRecord extends BaseTenantDataModel {
-  public promptTemplateId: string | null;
+  public promptTemplateId: string;
   public promptVersionNumber: number | null;
   public consultationId: string | null;
   public doctorId: string | null;

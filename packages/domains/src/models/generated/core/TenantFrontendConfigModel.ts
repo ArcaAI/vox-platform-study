@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { BaseTenantDataModel } from '../../../common';
+import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
 
@@ -16,8 +17,7 @@ export class TenantFrontendConfig extends BaseTenantDataModel {
   public transcriptionMode: Enums.TranscriptionMode;
   public transcriptionModeLocked: boolean;
   public captureMode: Enums.CaptureMode | null;
-  public configJson: any | null;
-
+  public configJson: JsonValue | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;

@@ -13,6 +13,9 @@ import Decimal from 'decimal.js';
 
 export enum {{className}} {
     {{#each enumValues}}
+    {{#if comment}}
+    {{{comment}}}
+    {{/if}}
     {{name}} = '{{name}}',
     {{/each}}
 }
@@ -25,8 +28,14 @@ import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
 
+{{#if classDoc}}
+{{{classDoc}}}
+{{/if}}
 export class {{className}} extends {{baseModel}} {
     {{#each scalarFields}}
+    {{#if comment}}
+    {{{comment}}}
+    {{/if}}
     public {{name}}: {{type}};
     {{/each}}
     {{#each relationFields}}
@@ -37,7 +46,7 @@ export class {{className}} extends {{baseModel}} {
     constructor(data: {{className}} & {{baseModel}}) {
         super(data);
         {{#each scalarFields}}
-        this.{{name}} = data.{{name}};
+        this.{{name}} = {{{init}}};
         {{/each}}
         {{#each relationFields}}
         this.{{name}} = data.{{name}};
@@ -53,8 +62,14 @@ import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
 
+{{#if classDoc}}
+{{{classDoc}}}
+{{/if}}
 export class {{className}} {
     {{#each scalarFields}}
+    {{#if comment}}
+    {{{comment}}}
+    {{/if}}
     public {{name}}: {{type}};
     {{/each}}
     {{#each relationFields}}
@@ -64,7 +79,7 @@ export class {{className}} {
 
     constructor(data: {{className}}) {
         {{#each scalarFields}}
-        this.{{name}} = data.{{name}};
+        this.{{name}} = {{{init}}};
         {{/each}}
         {{#each relationFields}}
         this.{{name}} = data.{{name}};

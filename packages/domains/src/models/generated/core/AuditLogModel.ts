@@ -10,7 +10,7 @@ export class AuditLog {
   public metaData: JsonValue | null;
   public version: number;
   public id: string;
-  public tenantId: string | null;
+  public tenantId: string;
   public responsibleUserId: string | null;
   public responsibleIp: string | null;
   public resourceType: Enums.ResourceType;
@@ -24,6 +24,12 @@ export class AuditLog {
   public data: JsonValue;
   public previousData: JsonValue;
   public metadata: JsonValue | null;
+  // TASK-369 Phase 3D — envelope-encryption columns (nullable; NULL on legacy
+  // plaintext rows). Prisma maps Bytes → Uint8Array.
+  public encryptedData: Uint8Array | null;
+  public encryptedPreviousData: Uint8Array | null;
+  public dekWrapped: string | null;
+  public dekKeyVersion: number | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -50,6 +56,10 @@ export class AuditLog {
     this.data = data.data;
     this.previousData = data.previousData;
     this.metadata = data.metadata;
+    this.encryptedData = data.encryptedData;
+    this.encryptedPreviousData = data.encryptedPreviousData;
+    this.dekWrapped = data.dekWrapped;
+    this.dekKeyVersion = data.dekKeyVersion;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
