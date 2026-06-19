@@ -16,8 +16,14 @@
  * `node-vault`, producing the identical `vault:vN:<b64>`-as-utf8-bytes format
  * (stored in the `BYTEA encrypted*` columns) plus the parsed `keyVersion`.
  *
- * Requires `SECRETS_PROVIDER=vault` + a reachable Vault (see `.env.dev`). With
- * no Vault, the reseed of clinical content cannot run (fail-closed by design).
+ * ENVIRONMENT-GATED (mirrors the application write-path
+ * `@arcaai/applications` `phi-field-encryption.ts` `isPhiEncryptionRequired`):
+ *   - `SECRETS_PROVIDER=vault` (staging/prod + dev per `.env.dev`) → encrypt via
+ *     a reachable Vault, fail closed if it is missing/unreachable.
+ *   - anything else (`env`, unset — e.g. `.env.test`) → soft no-op: the app
+ *     leaves these fields unpersisted on write, so the seed does the same instead
+ *     of hard-requiring Vault (a hard requirement aborted `pnpm test:db:seed`
+ *     under `.env.test`, which configures no Vault).
  */
 import vault from 'node-vault';
 
@@ -197,10 +203,27 @@ const SEED_PHI_MODELS = {
 export type SeedPhiModel = keyof typeof SEED_PHI_MODELS;
 
 /**
+ * Whether seed-time PHI encryption is REQUIRED for the current environment.
+ *
+ * Mirrors the application write-path gate (`@arcaai/applications`
+ * `phi-field-encryption.ts` `isPhiEncryptionRequired`) — duplicated here because
+ * the leaf `@arcaai/database` package cannot import `@arcaai/applications`
+ * without a dependency cycle (the same reason this file talks to Vault directly).
+ * `SECRETS_PROVIDER=vault` ⇒ encrypt + fail closed; anything else ⇒ soft no-op.
+ */
+export function isSeedPhiEncryptionRequired(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.SECRETS_PROVIDER === 'vault';
+}
+
+/**
  * Return a copy of `row` with its Phase-6 plaintext PHI keys replaced by the
  * `encrypted*` BYTEA ciphertext (+ the row's `keyVersion`/`contentKeyVersion`).
  * Non-PHI fields pass through untouched. Use the result as BOTH the upsert
  * `create` and `update` payload so seeded rows match the encrypt-on-write path.
+ *
+ * In soft (non-Vault dev/test) mode the Phase-6 plaintext columns no longer
+ * exist, so the plaintext seed keys are dropped and the `encrypted*` columns are
+ * left NULL — byte-for-byte what the application persists on write there.
  */
 export async function encryptSeedRow<TOut extends Record<string, unknown> = Record<string, unknown>>(
   model: SeedPhiModel,
@@ -208,11 +231,13 @@ export async function encryptSeedRow<TOut extends Record<string, unknown> = Reco
 ): Promise<TOut> {
   const spec: PhiModel = SEED_PHI_MODELS[model];
   const out: Record<string, unknown> = { ...row };
+  const required = isSeedPhiEncryptionRequired();
   let keyVersion: number | undefined;
 
   for (const field of spec.fields) {
     const value = out[field.plaintext];
     delete out[field.plaintext];
+    if (!required) continue; // soft no-op: no Vault, leave encrypted*/keyVersion NULL
     const enc = field.json ? await encryptJson(value) : await encryptString(value as string | null | undefined);
     if (enc) {
       out[field.ciphertext] = enc.ciphertext;
