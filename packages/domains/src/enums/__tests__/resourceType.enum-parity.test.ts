@@ -14,8 +14,9 @@
  *
  *   - A value in the DATABASE enum but missing from the DOMAIN enum means the
  *     application layer can never emit or exhaustively handle that resource
- *     type (`Session`, `SessionEvent`, `SessionSyncLog`, `AudioRecording`,
- *     `SummaryMeta`, `NamedEntity` had drifted this way).
+ *     type (`AudioRecording`, `SummaryMeta`, `NamedEntity` had drifted this
+ *     way; the dead `Session`, `SessionEvent`, `SessionSyncLog` scaffolding was
+ *     removed from both enums entirely by TASK-367).
  *
  * To fix a failure: add the missing value(s) to BOTH
  *   - packages/database/src/prisma/db_main/audit.prisma (+ an ADD VALUE migration), and

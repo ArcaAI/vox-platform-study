@@ -128,9 +128,6 @@ enum ResourceType {
   UserMedia
   Webhook
   WebhookRunHistory
-  Session
-  SessionEvent
-  SessionSyncLog
 
   // CONSULTATION
 

@@ -54,7 +54,6 @@ const RESOURCE_OPTIONS = [
   'ApiKey',
   'Media',
   'Notification',
-  'Session',
   'AiModel',
   'TranscriptionJob',
   'PromptTemplate',
