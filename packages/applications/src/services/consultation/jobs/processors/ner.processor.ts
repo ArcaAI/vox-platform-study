@@ -1,11 +1,12 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Inject, Logger } from '@nestjs/common';
+import { Inject, Logger, Optional } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { JobQueue, ContextItemRepository, NamedEntityRepository, NamedEntityFactory } from '@arcaai/domains';
+import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { IConsultationJobService } from '../consultation-job.service';
 import { ExtractNerJobPayload, NerJobResult } from '../dto';
 import { ConsultationPipelineEvent, NerExtractedPayload } from '../../events';
@@ -25,9 +26,27 @@ export class NerProcessor extends WorkerHost {
     private readonly configService: ConfigService,
     private readonly eventEmitter: EventEmitter2,
     private readonly cls: ClsService<IActiveUserContext>,
+    // TASK-369 Phase 3C — application-level encryption for NamedEntity PHI spans.
+    // Optional + trailing so existing positional test fixtures keep compiling;
+    // production DI (ConsultationServiceModule) always supplies it.
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super();
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
+  }
+
+  /**
+   * TASK-369 Phase 3C — best-effort NamedEntity field encryption. A missing or
+   * failing SecretsService leaves the row plaintext-only (logged, message only)
+   * and never throws into the write path during the dual-read soak.
+   */
+  private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
+    if (!this.secretsService) return;
+    try {
+      await run();
+    } catch (error) {
+      this.logger.error(`${label} field encryption skipped (dual-write soak): ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   async process(job: Job<ExtractNerJobPayload>): Promise<NerJobResult> {
@@ -93,6 +112,9 @@ export class NerProcessor extends WorkerHost {
             endOffset: entity.end,
           });
 
+          await this.encryptBestEffort('NamedEntity', () =>
+            this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!),
+          );
           const saved = await this.namedEntityRepository.create(namedEntity);
           savedEntities.push({
             id: saved.id,

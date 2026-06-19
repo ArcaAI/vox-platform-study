@@ -17,11 +17,12 @@ import {
   SummaryMetaRepository,
   SysEventType,
 } from '@arcaai/domains';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { BaseService, assertParentInScope } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IContextService } from './IContextService';
 import { ContextDtoMapper } from './context.dto.mapper';
 import { ConsultationPipelineEvent, ContextAddedPayload, ContextRemovedPayload } from '../events';
@@ -63,8 +64,49 @@ export class ContextService extends BaseService implements IContextService {
     private readonly consultationRepository: ConsultationRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-369 Phase 3B — Vault-Transit field encryption for `content`.
+    // Optional + @Inject so legacy/direct-construction tests (which don't wire
+    // the @Global SecretsService) still work, mirroring ApiKeyService /
+    // StorageAccessKeyService. When absent, the dual-write degrades to
+    // plaintext-only and the backfill script catches the row up later.
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
+  }
+
+  private readonly logger = new Logger(ContextService.name);
+
+  /**
+   * TASK-369 Phase 3B — dual-write: encrypt the entity's plaintext `content`
+   * into `encryptedContent` / `contentKeyVersion` (Vault Transit `hope-phi`)
+   * before persistence. Best-effort during the dual-read soak: a missing or
+   * non-Vault SecretsService leaves the row plaintext-only and is logged
+   * (message only, never PHI). Never throws into the write path — plaintext
+   * stays the source of truth until Phase 6 cleanup.
+   */
+  private async encryptContent(entity: ContextItemEntity): Promise<void> {
+    if (!this.secretsService) return;
+    try {
+      await this.contextItemRepository.encryptContentIntoEntity(entity, this.secretsService);
+    } catch (err) {
+      this.logger.error(`ContextItem content encryption skipped (dual-write soak): ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * TASK-369 Phase 3C — best-effort field encryption for the sibling clinical
+   * models persisted by this service (ContextItemVersion snapshots, SummaryMeta
+   * provenance, NamedEntity spans). Mirrors {@link encryptContent}: a missing or
+   * failing SecretsService leaves the row plaintext-only (logged, message only)
+   * and never throws into the write path during the dual-read soak.
+   */
+  private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
+    if (!this.secretsService) return;
+    try {
+      await run();
+    } catch (err) {
+      this.logger.error(`${label} field encryption skipped (dual-write soak): ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   // ============================================
@@ -113,12 +155,19 @@ export class ContextService extends BaseService implements IContextService {
       contextItem.metaData = request.metadata;
     }
 
+    // TASK-369 Phase 3B — encrypt `content` into the ciphertext columns before
+    // the first persist (dual-write; plaintext column is retained for the soak).
+    await this.encryptContent(contextItem);
+
     const saved = await this.contextItemRepository.create(contextItem);
 
     // Create initial version (v1) for audit trail completeness.
     // Media types (AUDIO_RECORDING, ATTACHMENT) are excluded since they have no text content to version.
     if (!isMediaType) {
       const initialVersion = ContextItemVersionFactory.CreateInitialVersion(saved, userId ?? 'system');
+      await this.encryptBestEffort('ContextItemVersion', () =>
+        this.contextItemVersionRepository.encryptFieldsIntoEntity(initialVersion, this.secretsService!),
+      );
       await this.contextItemVersionRepository.create(initialVersion);
     }
 
@@ -200,6 +249,9 @@ export class ContextService extends BaseService implements IContextService {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       request.fieldChanges as any,
     );
+    await this.encryptBestEffort('ContextItemVersion', () =>
+      this.contextItemVersionRepository.encryptFieldsIntoEntity(version, this.secretsService!),
+    );
     await this.contextItemVersionRepository.create(version);
 
     // Mark for Qdrant re-sync
@@ -207,12 +259,24 @@ export class ContextService extends BaseService implements IContextService {
 
     contextItem.updatedBy = userId;
 
+    // TASK-369 Phase 3B — re-encrypt only when `content` actually changed, so
+    // metadata-only updates don't rewrite the ciphertext column needlessly.
+    if (request.content !== undefined) {
+      await this.encryptContent(contextItem);
+    }
+
     const updated = await this.contextItemRepository.update(contextItemId, contextItem);
 
+    // TASK-369 Phase 3B — never surface the ciphertext columns in the audit
+    // payload (defense-in-depth; also avoids serialising a raw Buffer into the
+    // SysEvent). The plaintext `content` change is unchanged from prior behavior.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { encryptedContent: _encryptedContent, contentKeyVersion: _contentKeyVersion, ...auditableChanges } =
+      contextItem.changes as Record<string, unknown>;
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
       responsibleEntityId: this.requestUserId ?? undefined,
-      data: { ...contextItem.changes, versionCreated: newVersionNumber },
+      data: { ...auditableChanges, versionCreated: newVersionNumber },
     });
 
     return ContextDtoMapper.toResponse(updated);
@@ -370,10 +434,16 @@ export class ContextService extends BaseService implements IContextService {
     // Create summary context item
     const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, request.content, request.dnaWritingStyleId, userId ?? 'system');
 
+    // TASK-369 Phase 3B — encrypt summary `content` before persist (dual-write).
+    await this.encryptContent(contextItem);
+
     const saved = await this.contextItemRepository.create(contextItem);
 
     // Create initial version (v1) for the AI-generated summary
     const initialVersion = ContextItemVersionFactory.CreateInitialVersion(saved, userId ?? 'system');
+    await this.encryptBestEffort('ContextItemVersion', () =>
+      this.contextItemVersionRepository.encryptFieldsIntoEntity(initialVersion, this.secretsService!),
+    );
     await this.contextItemVersionRepository.create(initialVersion);
 
     // Create summary metadata
@@ -407,6 +477,9 @@ export class ContextService extends BaseService implements IContextService {
       summaryMeta.qualityScore = request.qualityScore;
     }
 
+    await this.encryptBestEffort('SummaryMeta', () =>
+      this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!),
+    );
     await this.summaryMetaRepository.create(summaryMeta);
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
@@ -469,6 +542,9 @@ export class ContextService extends BaseService implements IContextService {
         entityItem.metadata as any,
       );
 
+      await this.encryptBestEffort('NamedEntity', () =>
+        this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!),
+      );
       const saved = await this.namedEntityRepository.create(namedEntity);
       results.push(ContextDtoMapper.toNamedEntityResponse(saved));
     }

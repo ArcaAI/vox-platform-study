@@ -17,20 +17,20 @@
 // =============================================================================
 
 enum HarnessAuditAction {
-    GENERATE
-    SENSOR_RUN
-    GATE_DECISION
-    ATTEST
-    CONSENT_GIVEN
-    CONSENT_WITHDRAWN
-    BREACH_REPORTED
-    REDUCED_ASSURANCE
-    // TASK-355 Phase D (optimistic delivery) — relaxed sign-off governance.
-    SAFETY_OVERRIDE         // Q4 — clinician one-click override of a COMPLETED safety FLAG at sign-off (no free-text).
-    SIGNED_BEFORE_ASSURANCE // Q2a — note signed while assurance still running (DRAFT_PENDING_SENSORS); correlation annotation.
-    POST_SIGN_FLAG          // Q2b — assurance returned a FLAG/REGEN AFTER an early sign (note immutable); amendment/follow-up.
+  GENERATE
+  SENSOR_RUN
+  GATE_DECISION
+  ATTEST
+  CONSENT_GIVEN
+  CONSENT_WITHDRAWN
+  BREACH_REPORTED
+  REDUCED_ASSURANCE
+  // TASK-355 Phase D (optimistic delivery) — relaxed sign-off governance.
+  SAFETY_OVERRIDE // Q4 — clinician one-click override of a COMPLETED safety FLAG at sign-off (no free-text).
+  SIGNED_BEFORE_ASSURANCE // Q2a — note signed while assurance still running (DRAFT_PENDING_SENSORS); correlation annotation.
+  POST_SIGN_FLAG // Q2b — assurance returned a FLAG/REGEN AFTER an early sign (note immutable); amendment/follow-up.
 
-    @@schema("core")
+  @@schema("core")
 }
 
 // =============================================================================
@@ -38,148 +38,169 @@ enum HarnessAuditAction {
 // =============================================================================
 
 model GoldenSet {
-    // Meta fields (BaseEntity pattern)
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields (BaseEntity pattern)
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant
-    tenantId String
+  // Multi-tenant
+  tenantId String
 
-    // Business fields
-    name        String
-    description String? @db.Text
-    // Pinned dataset version label (e.g. "v1") an EvalRun executes against, so
-    // a run is reproducible against a frozen snapshot of the golden cases.
-    pinnedVersion String?
+  // Business fields
+  name          String
+  description   String? @db.Text
+  // Pinned dataset version label (e.g. "v1") an EvalRun executes against, so
+  // a run is reproducible against a frozen snapshot of the golden cases.
+  pinnedVersion String?
 
-    // Resource status + Audit (standard fields)
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
-    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy               String?
-    createdAt               DateTime @default(now())
-    updatedAt               DateTime @updatedAt
+  // Resource status + Audit (standard fields)
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+  updatedBy               String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
-    // Relations
-    GoldenCases GoldenCase[]
-    EvalRuns    EvalRun[]
+  // Relations
+  GoldenCases GoldenCase[]
+  EvalRuns    EvalRun[]
 
-    @@index([tenantId], name: "GoldenSet_tenantId_idx")
-    @@index([tenantId, name], name: "GoldenSet_tenant_name_idx")
-    @@schema("core")
+  @@index([tenantId], name: "GoldenSet_tenantId_idx")
+  @@index([tenantId, name], name: "GoldenSet_tenant_name_idx")
+  @@schema("core")
 }
 
 model GoldenCase {
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    tenantId String
+  tenantId String
 
-    // Parent golden set
-    goldenSetId String
-    GoldenSet   GoldenSet @relation(fields: [goldenSetId], references: [id])
+  // Parent golden set
+  goldenSetId String
+  GoldenSet   GoldenSet @relation(fields: [goldenSetId], references: [id])
 
-    // The input transcript and the reference (gold) note for this case
-    label         String?
-    transcript    String  @db.Text
-    referenceNote String  @db.Text
+  // The input transcript and the reference (gold) note for this case
+  label         String?
+  transcript    String  @db.Text
+  referenceNote String  @db.Text
 
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
-    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy               String?
-    createdAt               DateTime @default(now())
-    updatedAt               DateTime @updatedAt
+  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
+  // of the golden transcript + reference note plus the shared Transit key
+  // version. All nullable + additive; plaintext columns retained for the
+  // dual-read soak (removal is Phase 6, user-gated).
+  encryptedTranscript    Bytes?
+  encryptedReferenceNote Bytes?
+  keyVersion             Int?
 
-    EvalScores EvalScore[]
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+  updatedBy               String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
-    @@index([tenantId], name: "GoldenCase_tenantId_idx")
-    @@index([goldenSetId], name: "GoldenCase_goldenSetId_idx")
-    @@index([tenantId, goldenSetId], name: "GoldenCase_tenant_set_idx")
-    @@schema("core")
+  EvalScores EvalScore[]
+
+  @@index([tenantId], name: "GoldenCase_tenantId_idx")
+  @@index([goldenSetId], name: "GoldenCase_goldenSetId_idx")
+  @@index([tenantId, goldenSetId], name: "GoldenCase_tenant_set_idx")
+  @@schema("core")
 }
 
 model EvalRun {
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    tenantId String
+  tenantId String
 
-    goldenSetId String
-    GoldenSet   GoldenSet @relation(fields: [goldenSetId], references: [id])
+  goldenSetId String
+  GoldenSet   GoldenSet @relation(fields: [goldenSetId], references: [id])
 
-    // What was evaluated (model + prompt provenance, judge model)
-    modelName        String
-    modelVersion     String?
-    promptTemplateId String?
-    promptVersion    String?
-    judgeModel       String?
+  // What was evaluated (model + prompt provenance, judge model)
+  modelName        String
+  modelVersion     String?
+  promptTemplateId String?
+  promptVersion    String?
+  judgeModel       String?
 
-    // Lifecycle (free-form for Phase 0: QUEUED | RUNNING | COMPLETED | FAILED)
-    status      String?
-    startedAt   DateTime?
-    completedAt DateTime?
+  // Lifecycle (free-form for Phase 0: QUEUED | RUNNING | COMPLETED | FAILED)
+  status      String?
+  startedAt   DateTime?
+  completedAt DateTime?
 
-    // Aggregate metrics across the run (e.g. mean faithfulness / coverage)
-    aggregateScores Json?   @db.JsonB
-    notes           String? @db.Text
+  // Aggregate metrics across the run (e.g. mean faithfulness / coverage)
+  aggregateScores Json?   @db.JsonB
+  notes           String? @db.Text
 
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
-    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy               String?
-    createdAt               DateTime @default(now())
-    updatedAt               DateTime @updatedAt
+  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
+  // of the free-text run notes plus the shared Transit key version. Nullable +
+  // additive; plaintext retained for the dual-read soak (removal is Phase 6).
+  encryptedNotes Bytes?
+  keyVersion     Int?
 
-    EvalScores EvalScore[]
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+  updatedBy               String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
-    @@index([tenantId], name: "EvalRun_tenantId_idx")
-    @@index([goldenSetId], name: "EvalRun_goldenSetId_idx")
-    @@index([tenantId, goldenSetId], name: "EvalRun_tenant_set_idx")
-    @@index([tenantId, createdAt], name: "EvalRun_tenant_createdAt_idx")
-    @@schema("core")
+  EvalScores EvalScore[]
+
+  @@index([tenantId], name: "EvalRun_tenantId_idx")
+  @@index([goldenSetId], name: "EvalRun_goldenSetId_idx")
+  @@index([tenantId, goldenSetId], name: "EvalRun_tenant_set_idx")
+  @@index([tenantId, createdAt], name: "EvalRun_tenant_createdAt_idx")
+  @@schema("core")
 }
 
 model EvalScore {
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    tenantId String
+  tenantId String
 
-    evalRunId String
-    EvalRun   EvalRun @relation(fields: [evalRunId], references: [id])
+  evalRunId String
+  EvalRun   EvalRun @relation(fields: [evalRunId], references: [id])
 
-    goldenCaseId String
-    GoldenCase   GoldenCase @relation(fields: [goldenCaseId], references: [id])
+  goldenCaseId String
+  GoldenCase   GoldenCase @relation(fields: [goldenCaseId], references: [id])
 
-    // A single metric result for (run, case)
-    metric     String // e.g. 'faithfulness' | 'coverage' | 'pdsqi9'
-    score      Float
-    maxScore   Float?
-    rationale  String? @db.Text
-    judgeModel String?
-    details    Json?   @db.JsonB
+  // A single metric result for (run, case)
+  metric     String // e.g. 'faithfulness' | 'coverage' | 'pdsqi9'
+  score      Float
+  maxScore   Float?
+  rationale  String? @db.Text
+  judgeModel String?
+  details    Json?   @db.JsonB
 
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
-    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy               String?
-    createdAt               DateTime @default(now())
-    updatedAt               DateTime @updatedAt
+  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
+  // of the judge rationale + details JSONB plus the shared Transit key
+  // version. Nullable + additive; plaintext retained for the dual-read soak.
+  encryptedRationale Bytes?
+  encryptedDetails   Bytes?
+  keyVersion         Int?
 
-    @@index([tenantId], name: "EvalScore_tenantId_idx")
-    @@index([evalRunId], name: "EvalScore_evalRunId_idx")
-    @@index([goldenCaseId], name: "EvalScore_goldenCaseId_idx")
-    @@index([tenantId, evalRunId], name: "EvalScore_tenant_run_idx")
-    @@schema("core")
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+  updatedBy               String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  @@index([tenantId], name: "EvalScore_tenantId_idx")
+  @@index([evalRunId], name: "EvalScore_evalRunId_idx")
+  @@index([goldenCaseId], name: "EvalScore_goldenCaseId_idx")
+  @@index([tenantId, evalRunId], name: "EvalScore_tenant_run_idx")
+  @@schema("core")
 }
 
 // =============================================================================
@@ -187,50 +208,69 @@ model EvalScore {
 // =============================================================================
 
 model HarnessAuditEvent {
-    // Identity only — NO _version / _metadata / updatedAt / resourceStatus.
-    // Rows are immutable (append-only); the migration REVOKEs UPDATE/DELETE
-    // on this table from the application role.
-    id String @id @default(uuid(7))
+  // Identity only — NO _version / _metadata / updatedAt / resourceStatus.
+  // Rows are immutable (append-only); the migration REVOKEs UPDATE/DELETE
+  // on this table from the application role.
+  id String @id @default(uuid(7))
 
-    // Multi-tenant
-    tenantId String
+  // Multi-tenant
+  tenantId String
 
-    // Subject of the event
-    consultationId       String
-    contextItemVersionId String?
+  // Subject of the event
+  consultationId       String
+  contextItemVersionId String?
 
-    // What happened + the model that did it (version, not just name)
-    action       HarnessAuditAction
-    modelName    String
-    modelVersion String
+  // What happened + the model that did it (version, not just name)
+  action       HarnessAuditAction
+  modelName    String
+  modelVersion String
 
-    // Prompt provenance
-    promptTemplateId String?
-    promptVersion    String?
+  // Prompt provenance
+  promptTemplateId String?
+  promptVersion    String?
 
-    // Evidence captured at the time of the event
-    sensorScores Json @db.JsonB
-    citations    Json @db.JsonB
+  // Evidence captured at the time of the event.
+  // Data Encryption Initiative Phase 3D — IMPLEMENTED (WORM / hash-chained):
+  //   ENCRYPT-BEFORE-HASH for NEW rows only. `sensorScores`/`citations` are
+  //   encrypted via Vault Transit (hope-phi) into `encryptedSensorScores`/
+  //   `encryptedCitations`, and the row `hash` is derived over the CIPHERTEXT
+  //   (see `computeHarnessAuditHash` + `verifyHarnessAuditChain`, applied in
+  //   BOTH the insert path and the chain verifier). For an encrypted row the
+  //   plaintext JSONB columns hold a non-PHI redaction sentinel ({"_encrypted":
+  //   true}) — the table is immutable (UPDATE/DELETE revoked) so plaintext can
+  //   never be scrubbed later; storing the sentinel keeps NEW rows confidential
+  //   from the start while the ciphertext (hashed) remains the source of truth.
+  //   EXISTING rows are NEVER rewritten: they keep plaintext (encrypted* NULL),
+  //   hash over plaintext, and stay protected by Phase 1 disk encryption. Same
+  //   approach applies to HarnessPolicyChange / PipelinePolicyChange.
+  sensorScores Json @db.JsonB
+  citations    Json @db.JsonB
 
-    // Governance
-    gateDecision    String?
-    clinicianId     String?
-    attestationHash String?
+  // Phase 3D additive ciphertext + shared Transit key version (nullable; NULL on
+  // historical/plaintext rows). When set, `hash` is computed over these bytes.
+  encryptedSensorScores Bytes?
+  encryptedCitations    Bytes?
+  keyVersion            Int?
 
-    // Tamper-evident hash chain: prevHash links to the previous event's hash
-    // for the same tenant; hash = SHA-256 over the canonical event fields.
-    prevHash String
-    hash     String
+  // Governance
+  gateDecision    String?
+  clinicianId     String?
+  attestationHash String?
 
-    createdAt DateTime @default(now())
+  // Tamper-evident hash chain: prevHash links to the previous event's hash
+  // for the same tenant; hash = SHA-256 over the canonical event fields.
+  prevHash String
+  hash     String
 
-    @@unique([hash], name: "HarnessAuditEvent_hash_key")
-    @@index([tenantId], name: "HarnessAuditEvent_tenantId_idx")
-    @@index([tenantId, consultationId], name: "HarnessAuditEvent_tenant_consultation_idx")
-    @@index([tenantId, createdAt], name: "HarnessAuditEvent_tenant_createdAt_idx")
-    @@index([consultationId], name: "HarnessAuditEvent_consultationId_idx")
-    @@index([prevHash], name: "HarnessAuditEvent_prevHash_idx")
-    @@schema("core")
+  createdAt DateTime @default(now())
+
+  @@unique([hash], name: "HarnessAuditEvent_hash_key")
+  @@index([tenantId], name: "HarnessAuditEvent_tenantId_idx")
+  @@index([tenantId, consultationId], name: "HarnessAuditEvent_tenant_consultation_idx")
+  @@index([tenantId, createdAt], name: "HarnessAuditEvent_tenant_createdAt_idx")
+  @@index([consultationId], name: "HarnessAuditEvent_consultationId_idx")
+  @@index([prevHash], name: "HarnessAuditEvent_prevHash_idx")
+  @@schema("core")
 }
 
 // =============================================================================
@@ -255,84 +295,93 @@ model HarnessAuditEvent {
 // =============================================================================
 
 model HarnessPolicy {
-    // Meta fields (BaseEntity pattern) — `_version` is the OCC token.
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields (BaseEntity pattern) — `_version` is the OCC token.
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant — system tenant owns the global-default row; tenant rows override.
-    tenantId String
+  // Multi-tenant — system tenant owns the global-default row; tenant rows override.
+  tenantId String
 
-    // Computational sensor thresholds (fractions in [0, 1]). Defaults mirror
-    // apps/harness/src/harness/sensors/config.py (SensorThresholds).
-    entityFaithfulnessThreshold Float @default(1.0)
-    coverageThreshold           Float @default(0.8)
-    citationPresenceThreshold   Float @default(1.0)
-    numericDoseThreshold        Float @default(1.0)
-    groundednessThreshold       Float @default(0.8)
+  // Computational sensor thresholds (fractions in [0, 1]). Defaults mirror
+  // apps/harness/src/harness/sensors/config.py (SensorThresholds).
+  entityFaithfulnessThreshold Float @default(1.0)
+  coverageThreshold           Float @default(0.8)
+  citationPresenceThreshold   Float @default(1.0)
+  numericDoseThreshold        Float @default(1.0)
+  groundednessThreshold       Float @default(0.8)
 
-    // Guardrail toggles + engine selection. Defaults mirror SafetyGuardConfig
-    // (apps/harness/src/harness/core/config.py) + PhiConfig.
-    safetyEnabled Boolean @default(true)
-    phiEnabled    Boolean @default(true)
-    phiFailClosed Boolean @default(true)
-    safetyProvider String @default("lm-studio")
-    safetyModel    String @default("granite-guardian-4.1-8b")
+  // Guardrail toggles + engine selection. Defaults mirror SafetyGuardConfig
+  // (apps/harness/src/harness/core/config.py) + PhiConfig.
+  safetyEnabled  Boolean @default(true)
+  phiEnabled     Boolean @default(true)
+  phiFailClosed  Boolean @default(true)
+  safetyProvider String  @default("lm-studio")
+  safetyModel    String  @default("granite-guardian-4.1-8b")
 
-    // SMR generation defaults (null => let the SMR service choose). Mirrors
-    // Settings.smr_provider / smr_model.
-    smrProvider String?
-    smrModel    String?
+  // SMR generation defaults (null => let the SMR service choose). Mirrors
+  // Settings.smr_provider / smr_model.
+  smrProvider String?
+  smrModel    String?
 
-    // Bounded-regen budget + clinician-gate timing (durable, deterministic).
-    // Mirrors Settings.max_regen / gate_sla_seconds / gate_escalation_seconds.
-    maxRegen              Int @default(2)
-    gateSlaSeconds        Int @default(86400)
-    gateEscalationSeconds Int @default(43200)
+  // Bounded-regen budget + clinician-gate timing (durable, deterministic).
+  // Mirrors Settings.max_regen / gate_sla_seconds / gate_escalation_seconds.
+  maxRegen              Int @default(2)
+  gateSlaSeconds        Int @default(86400)
+  gateEscalationSeconds Int @default(43200)
 
-    // Tool allow-list the loop may call out to (JSON array of tool ids); null =
-    // no restriction (all tools allowed).
-    toolAllowlist Json? @db.JsonB
+  // Tool allow-list the loop may call out to (JSON array of tool ids); null =
+  // no restriction (all tools allowed).
+  toolAllowlist Json? @db.JsonB
 
-    // Resource status + Audit (standard fields)
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
-    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy               String?
-    createdAt               DateTime @default(now())
-    updatedAt               DateTime @updatedAt
+  // Resource status + Audit (standard fields)
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+  updatedBy               String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
-    // One policy row per tenant (the system tenant's row is the global default).
-    // The unique index doubles as the tenant lookup index, so no separate
-    // `@@index([tenantId])` is declared (it would be redundant).
-    @@unique([tenantId], name: "HarnessPolicy_tenantId_key")
-    @@schema("core")
+  // One policy row per tenant (the system tenant's row is the global default).
+  // The unique index doubles as the tenant lookup index, so no separate
+  // `@@index([tenantId])` is declared (it would be redundant).
+  @@unique([tenantId], name: "HarnessPolicy_tenantId_key")
+  @@schema("core")
 }
 
 model HarnessPolicyChange {
-    // Identity only — NO _version / _metadata / updatedAt / resourceStatus.
-    // Rows are immutable (append-only); the migration REVOKEs UPDATE/DELETE
-    // on this table from the application role.
-    id String @id @default(uuid(7))
+  // Identity only — NO _version / _metadata / updatedAt / resourceStatus.
+  // Rows are immutable (append-only); the migration REVOKEs UPDATE/DELETE
+  // on this table from the application role.
+  id String @id @default(uuid(7))
 
-    // Multi-tenant — the policy row's tenant (system tenant for global-default edits).
-    tenantId String
+  // Multi-tenant — the policy row's tenant (system tenant for global-default edits).
+  tenantId String
 
-    // Who made the change (user id) + the optimistic-concurrency version of the
-    // policy row AFTER the edit (the `_version` the CAS produced), for correlation.
-    changedBy     String?
-    policyVersion Int?
+  // Who made the change (user id) + the optimistic-concurrency version of the
+  // policy row AFTER the edit (the `_version` the CAS produced), for correlation.
+  changedBy     String?
+  policyVersion Int?
 
-    // Full before/after snapshots of the policy values (null `beforeJson` => the
-    // policy row was created by this change).
-    beforeJson Json? @db.JsonB
-    afterJson  Json  @db.JsonB
-    reason     String? @db.Text
+  // Full before/after snapshots of the policy values (null `beforeJson` => the
+  // policy row was created by this change).
+  beforeJson Json?   @db.JsonB
+  afterJson  Json    @db.JsonB
+  reason     String? @db.Text
 
-    createdAt DateTime @default(now())
+  // Data Encryption Initiative Phase 3D — additive Vault-Transit (hope-phi)
+  // ciphertext of the before/after policy snapshots + shared key version. WORM
+  // (UPDATE/DELETE revoked): NEW rows store ciphertext here with a non-PHI
+  // redaction sentinel ({"_encrypted": true}) in the plaintext JSONB columns;
+  // historical rows keep plaintext (encrypted* NULL) and are never rewritten.
+  encryptedBeforeJson Bytes?
+  encryptedAfterJson  Bytes?
+  keyVersion          Int?
 
-    @@index([tenantId], name: "HarnessPolicyChange_tenantId_idx")
-    @@index([tenantId, createdAt], name: "HarnessPolicyChange_tenant_createdAt_idx")
-    @@schema("core")
+  createdAt DateTime @default(now())
+
+  @@index([tenantId], name: "HarnessPolicyChange_tenantId_idx")
+  @@index([tenantId, createdAt], name: "HarnessPolicyChange_tenant_createdAt_idx")
+  @@schema("core")
 }

@@ -4,120 +4,125 @@
 // ============================================================================
 
 enum PromptTemplateCategory {
-    SYSTEM
-    SUMMARY
-    DNA_ANALYSIS
-    CUSTOM
+  SYSTEM
+  SUMMARY
+  DNA_ANALYSIS
+  CUSTOM
 
-    @@schema("core")
+  @@schema("core")
 }
 
 enum PromptTemplateScope {
-    TENANT_DEFAULT
-    DEPARTMENT_DEFAULT
-    USER_PERSONAL
+  TENANT_DEFAULT
+  DEPARTMENT_DEFAULT
+  USER_PERSONAL
 
-    @@schema("core")
+  @@schema("core")
 }
 
 enum PromptTemplateStatus {
-    DRAFT
-    PUBLISHED
+  DRAFT
+  PUBLISHED
 
-    @@schema("core")
+  @@schema("core")
 }
 
 model PromptTemplate {
-    // Meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant
-    tenantId String
+  // Multi-tenant
+  tenantId String
 
-    // Template content
-    name        String
-    description String?
-    content     String  @db.Text
-    category    PromptTemplateCategory
-    status      PromptTemplateStatus @default(DRAFT)
-    variables   Json?   @db.JsonB
+  // Template content
+  name        String
+  description String?
+  content     String                 @db.Text
+  category    PromptTemplateCategory
+  status      PromptTemplateStatus   @default(DRAFT)
+  variables   Json?                  @db.JsonB
 
-    // Quality/score testing (TASK-328 A4) — last SMR-scored test run
-    lastTestScore  Float?
-    lastTestOutput String?   @db.Text
-    lastTestAt     DateTime?
+  // Quality/score testing (TASK-328 A4) — last SMR-scored test run
+  lastTestScore  Float?
+  lastTestOutput String?   @db.Text
+  lastTestAt     DateTime?
 
-    // Version tracking
-    currentVersionNumber Int @default(1)
+  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
+  // of the last SMR-scored test output plus the shared Transit key version.
+  // Nullable + additive; plaintext retained for the dual-read soak (removal is
+  // Phase 6, user-gated).
+  encryptedLastTestOutput Bytes?
+  keyVersion              Int?
 
-    // Department assignment (optional)
-    departmentId String?
-    Department   Department? @relation(fields: [departmentId], references: [id])
+  // Version tracking
+  currentVersionNumber Int @default(1)
 
-    // Scope discriminator (TASK-294 DEF-C1): tenant default vs department default vs user-personal overlay
-    scope       PromptTemplateScope @default(TENANT_DEFAULT)
-    ownerUserId String?
-    Owner       User?               @relation("_User_OwnedPromptTemplates", fields: [ownerUserId], references: [id])
+  // Department assignment (optional)
+  departmentId String?
+  Department   Department? @relation(fields: [departmentId], references: [id])
 
-    // Resource status + Audit
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
-    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy               String?
-    createdAt               DateTime @default(now())
-    updatedAt               DateTime @updatedAt
+  // Scope discriminator (TASK-294 DEF-C1): tenant default vs department default vs user-personal overlay
+  scope       PromptTemplateScope @default(TENANT_DEFAULT)
+  ownerUserId String?
+  Owner       User?               @relation("_User_OwnedPromptTemplates", fields: [ownerUserId], references: [id])
 
-    // Tags
-    tags String[] @default([])
+  // Resource status + Audit
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+  updatedBy               String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
-    // Relations
-    Versions PromptVersion[]
+  // Tags
+  tags String[] @default([])
 
-    // Constraints
-    @@unique([tenantId, name])
-    @@unique([tenantId, departmentId, ownerUserId, name], name: "PromptTemplate_scope_unique")
+  // Relations
+  Versions PromptVersion[]
 
-    // Indexes
-    @@index([tenantId], name: "PromptTemplate_tenantId_idx")
-    @@index([departmentId], name: "PromptTemplate_departmentId_idx")
-    @@index([category], name: "PromptTemplate_category_idx")
-    @@index([tenantId, scope], name: "PromptTemplate_tenantId_scope_idx")
-    @@index([ownerUserId], name: "PromptTemplate_ownerUserId_idx")
-    @@schema("core")
+  // Constraints
+  @@unique([tenantId, name])
+  @@unique([tenantId, departmentId, ownerUserId, name], name: "PromptTemplate_scope_unique")
+  // Indexes
+  @@index([tenantId], name: "PromptTemplate_tenantId_idx")
+  @@index([departmentId], name: "PromptTemplate_departmentId_idx")
+  @@index([category], name: "PromptTemplate_category_idx")
+  @@index([tenantId, scope], name: "PromptTemplate_tenantId_scope_idx")
+  @@index([ownerUserId], name: "PromptTemplate_ownerUserId_idx")
+  @@schema("core")
 }
 
 model PromptVersion {
-    // Meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant
-    tenantId String
+  // Multi-tenant
+  tenantId String
 
-    // Parent template
-    promptTemplateId String
-    PromptTemplate   PromptTemplate @relation(fields: [promptTemplateId], references: [id])
+  // Parent template
+  promptTemplateId String
+  PromptTemplate   PromptTemplate @relation(fields: [promptTemplateId], references: [id])
 
-    // Version content snapshot
-    versionNumber Int
-    content       String  @db.Text
-    variables     Json?   @db.JsonB
+  // Version content snapshot
+  versionNumber Int
+  content       String @db.Text
+  variables     Json?  @db.JsonB
 
-    // Change tracking
-    changeReason String?
-    changedBy    String?
+  // Change tracking
+  changeReason String?
+  changedBy    String?
 
-    // Timestamps
-    createdAt DateTime @default(now())
+  // Timestamps
+  createdAt DateTime @default(now())
 
-    // Constraints
-    @@unique([promptTemplateId, versionNumber])
-
-    // Indexes
-    @@index([promptTemplateId], name: "PromptVersion_promptTemplateId_idx")
-    @@schema("core")
+  // Constraints
+  @@unique([promptTemplateId, versionNumber])
+  // Indexes
+  @@index([promptTemplateId], name: "PromptVersion_promptTemplateId_idx")
+  @@schema("core")
 }

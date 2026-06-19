@@ -70,6 +70,15 @@ services:
       REPL_PASSWORD: ${REPL_PASSWORD}
       PGDATA: /home/postgres/pgdata/data
       PGBACKREST_CONFIG: /etc/pgbackrest/pgbackrest.conf
+      # ── pgBackRest secrets via env (TASK-369 Phase 4) ──
+      # pgBackRest reads any option as PGBACKREST_<OPTION> (uppercase, dashes ->
+      # underscores). These keep the S3 creds + backup cipher passphrase OUT of
+      # the committed pgbackrest.conf; values come from the node .env, sourced
+      # from Vault (secret/hope/PGBACKREST_*). archive_command + cron `docker
+      # exec` both inherit this container env. Empty -> pgBackRest fails closed.
+      PGBACKREST_REPO1_S3_KEY: ${PGBACKREST_REPO1_S3_KEY}
+      PGBACKREST_REPO1_S3_KEY_SECRET: ${PGBACKREST_REPO1_S3_KEY_SECRET}
+      PGBACKREST_REPO1_CIPHER_PASS: ${PGBACKREST_REPO1_CIPHER_PASS}
     volumes:
       - ./patroni/entrypoint.sh:/patroni-entrypoint.sh:ro
       - ./pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro

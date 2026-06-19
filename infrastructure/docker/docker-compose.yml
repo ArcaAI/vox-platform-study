@@ -22,6 +22,13 @@ networks:
         driver: bridge
 
 volumes:
+    # At-rest encryption (TASK-369 Phase 1): this named volume lives under the
+    # Docker data root on the HOST. PostgreSQL has no built-in transparent
+    # at-rest encryption, so the backing filesystem MUST be encrypted to protect
+    # PHI on stolen disks/VM snapshots. Dev relies on host full-disk encryption
+    # (macOS FileVault / Linux LUKS); production Postgres data+WAL volumes sit on
+    # LUKS/dm-crypt — see
+    # research/deployments/encryption-at-rest-luks-minio-sse-runbook.md.
     postgres-data:
         name: hope-postgres-data-pg18
 
@@ -87,6 +94,12 @@ services:
         environment:
             MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
             MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_admin}
+            # At-rest SSE (TASK-369 Phase 1): server-side encryption needs a KMS.
+            # Dev can use MinIO's built-in single-key KMS (DEV ONLY); production
+            # uses KES backed by a real KMS/Vault. Uncomment, then enable SSE per
+            # bucket in minio-setup below. Generate a dev key:
+            #   openssl rand -base64 32   -> MINIO_KMS_SECRET_KEY=hope-dev-key:<base64>
+            # MINIO_KMS_SECRET_KEY: ${MINIO_KMS_SECRET_KEY:-}
         command: server /data --console-address ":9001"
         healthcheck:
             test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
@@ -130,6 +143,14 @@ services:
             echo 'Setting bucket policies...';
             /usr/bin/mc policy set public minio/recordings;
             /usr/bin/mc policy set public minio/generated-audio;
+            echo 'Configuring at-rest SSE (TASK-369 Phase 1)...';
+            # Requires MINIO_KMS_SECRET_KEY on the minio service (see above).
+            # Uncomment to auto-encrypt new objects in the PHI/media + backup
+            # buckets. Production enables SSE-KMS via KES (see the at-rest runbook).
+            # /usr/bin/mc encrypt set sse-s3 minio/recordings;
+            # /usr/bin/mc encrypt set sse-s3 minio/generated-audio;
+            # /usr/bin/mc encrypt set sse-s3 minio/documents;
+            # /usr/bin/mc encrypt set sse-s3 minio/backups;
             echo 'MinIO setup completed successfully';
             exit 0;
             "
@@ -145,7 +166,11 @@ services:
             - '${REDIS_PORT:-6379}:6379'
         environment:
             REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
-        # Minimal Redis config for local development
+        # Minimal Redis config for local development.
+        # At-rest (TASK-369 Phase 1): persistence is DISABLED here (--appendonly no
+        # + --save "") so nothing is written to disk — the safest posture if Redis
+        # ever caches PHI. If a deployment must enable RDB/AOF persistence, put the
+        # Redis data dir on a LUKS-encrypted volume (see the at-rest runbook).
         command: >
             redis-server
             ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORD:-redis_password}}

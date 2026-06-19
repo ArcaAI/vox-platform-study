@@ -1,38 +1,38 @@
 model Tag {
-    // meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // multi tenant fields
-    tenantId String
+  // multi tenant fields
+  tenantId String
 
-    // core fields
-    resourceTypeName String?
-    resourceId       String?
-    tagKey           String?
-    tagValue         String
-    description      String?
-    color            String?
-    icon             String?
+  // core fields
+  resourceTypeName String?
+  resourceId       String?
+  tagKey           String?
+  tagValue         String
+  description      String?
+  color            String?
+  icon             String?
 
-    // resource status fields
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
 
-    // audit fields
-    createdBy String?
-    updatedBy String?
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  // audit fields
+  createdBy String?
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    // tags
+  // tags
 
-    // relations
+  // relations
 
-    // indexing
-    @@unique([tenantId, resourceTypeName, resourceId, tagKey], name: "Tag_tenantId_resource_key_unique")
-    @@index([tenantId, resourceTypeName, resourceId], name: "Tag_tenantId_resource_idx")
-    @@schema("core")
+  // indexing
+  @@unique([tenantId, resourceTypeName, resourceId, tagKey], name: "Tag_tenantId_resource_key_unique")
+  @@index([tenantId, resourceTypeName, resourceId], name: "Tag_tenantId_resource_idx")
+  @@schema("core")
 }

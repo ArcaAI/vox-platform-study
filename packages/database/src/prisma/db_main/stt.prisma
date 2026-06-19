@@ -10,47 +10,47 @@
 // =============================================================================
 
 model AsrPipeline {
-    // Meta fields (BaseEntity pattern)
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields (BaseEntity pattern)
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant (system-wide or tenant-specific)
-    tenantId String
+  // Multi-tenant (system-wide or tenant-specific)
+  tenantId String
 
-    // Core fields
-    name        String   // e.g., "whisper-large-v3-medical"
-    slug        String   // URL-friendly unique identifier
-    description String?
+  // Core fields
+  name        String // e.g., "whisper-large-v3-medical"
+  slug        String // URL-friendly unique identifier
+  description String?
 
-    // Pipeline configuration (YAML stored as text, validated on write)
-    // Contains model references by slug: models.asr, models.vad, models.denoise
-    configYaml String @db.Text
+  // Pipeline configuration (YAML stored as text, validated on write)
+  // Contains model references by slug: models.asr, models.vad, models.denoise
+  configYaml String @db.Text
 
-    // Per-tenant default backend pipeline assignment (TASK-328 A6)
-    isDefault Boolean @default(false)
+  // Per-tenant default backend pipeline assignment (TASK-328 A6)
+  isDefault Boolean @default(false)
 
-    // Resource status + Audit
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
-    createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
-    updatedBy               String?
-    createdAt               DateTime           @default(now())
-    updatedAt               DateTime           @updatedAt
+  // Resource status + Audit
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+  updatedBy               String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
-    // Tags
-    tags String[] @default([])
+  // Tags
+  tags String[] @default([])
 
-    // Relations (only TranscriptionJob references pipeline)
-    TranscriptionJobs TranscriptionJob[]
-    Versions          AsrPipelineVersion[]
+  // Relations (only TranscriptionJob references pipeline)
+  TranscriptionJobs TranscriptionJob[]
+  Versions          AsrPipelineVersion[]
 
-    // Indexes
-    @@unique([tenantId, slug], name: "AsrPipeline_tenant_slug_unique")
-    @@index([tenantId], name: "AsrPipeline_tenantId_idx")
-    @@index([resourceStatus], name: "AsrPipeline_status_idx")
-    @@schema("core")
+  // Indexes
+  @@unique([tenantId, slug], name: "AsrPipeline_tenant_slug_unique")
+  @@index([tenantId], name: "AsrPipeline_tenantId_idx")
+  @@index([resourceStatus], name: "AsrPipeline_status_idx")
+  @@schema("core")
 }
 
 // =============================================================================
@@ -59,38 +59,37 @@ model AsrPipeline {
 // =============================================================================
 
 model AsrPipelineVersion {
-    // Meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant
-    tenantId String
+  // Multi-tenant
+  tenantId String
 
-    // Parent pipeline
-    asrPipelineId String
-    AsrPipeline   AsrPipeline @relation(fields: [asrPipelineId], references: [id])
+  // Parent pipeline
+  asrPipelineId String
+  AsrPipeline   AsrPipeline @relation(fields: [asrPipelineId], references: [id])
 
-    // Version snapshot
-    versionNumber Int
-    configYaml    String  @db.Text
-    name          String?
-    description   String?
+  // Version snapshot
+  versionNumber Int
+  configYaml    String  @db.Text
+  name          String?
+  description   String?
 
-    // Change tracking
-    changeReason String?
-    changedBy    String?
+  // Change tracking
+  changeReason String?
+  changedBy    String?
 
-    // Timestamps
-    createdAt DateTime @default(now())
+  // Timestamps
+  createdAt DateTime @default(now())
 
-    // Constraints
-    @@unique([asrPipelineId, versionNumber])
-
-    // Indexes
-    @@index([tenantId], name: "AsrPipelineVersion_tenantId_idx")
-    @@index([asrPipelineId], name: "AsrPipelineVersion_asrPipelineId_idx")
-    @@schema("core")
+  // Constraints
+  @@unique([asrPipelineId, versionNumber])
+  // Indexes
+  @@index([tenantId], name: "AsrPipelineVersion_tenantId_idx")
+  @@index([asrPipelineId], name: "AsrPipelineVersion_asrPipelineId_idx")
+  @@schema("core")
 }
 
 // =============================================================================
@@ -100,66 +99,66 @@ model AsrPipelineVersion {
 // =============================================================================
 
 model AiModel {
-    // Meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant
-    tenantId String
+  // Multi-tenant
+  tenantId String
 
-    // Core identification
-    name        String // e.g., "Whisper Large V3"
-    slug        String // e.g., "whisper-large-v3" (used in pipeline YAML)
-    description String?
+  // Core identification
+  name        String // e.g., "Whisper Large V3"
+  slug        String // e.g., "whisper-large-v3" (used in pipeline YAML)
+  description String?
 
-    // Model classification (using existing enums)
-    category ModelCategory // AUDIO
-    taskType ModelTaskType // AUTOMATIC_SPEECH_RECOGNITION, VOICE_ACTIVITY_DETECTION
-    modelType ModelType    // BASE_MODEL, FINETUNED_MODEL, QUANTIZED_MODEL
+  // Model classification (using existing enums)
+  category  ModelCategory // AUDIO
+  taskType  ModelTaskType // AUTOMATIC_SPEECH_RECOGNITION, VOICE_ACTIVITY_DETECTION
+  modelType ModelType // BASE_MODEL, FINETUNED_MODEL, QUANTIZED_MODEL
 
-    // Model source and location
-    source         AiModelSource // HUGGINGFACE, GITHUB, MLFLOW, LOCAL
-    sourceUri      String        // e.g., "openai/whisper-large-v3" or MLFlow URI
-    sourceRevision String?       // Git revision, MLFlow version, etc.
+  // Model source and location
+  source         AiModelSource // HUGGINGFACE, GITHUB, MLFLOW, LOCAL
+  sourceUri      String // e.g., "openai/whisper-large-v3" or MLFlow URI
+  sourceRevision String? // Git revision, MLFlow version, etc.
 
-    // Model format for loader selection
-    format AiModelFormat // SAFETENSOR, ONNX, NEMO, PYTORCH
+  // Model format for loader selection
+  format AiModelFormat // SAFETENSOR, ONNX, NEMO, PYTORCH
 
-    // Resource requirements (for scheduling/allocation)
-    memorySizeMb Int?    // Estimated GPU/CPU memory in MB
-    computeType  String? // float32, float16, int8
+  // Resource requirements (for scheduling/allocation)
+  memorySizeMb Int? // Estimated GPU/CPU memory in MB
+  computeType  String? // float32, float16, int8
 
-    // Download/cache status
-    downloadStatus AiModelDownloadStatus @default(NOT_DOWNLOADED)
-    localPath      String?               // Local cache path after download
-    downloadedAt   DateTime?
-    fileSizeMb     Int?
-    checksum       String?               // SHA256 for verification
+  // Download/cache status
+  downloadStatus AiModelDownloadStatus @default(NOT_DOWNLOADED)
+  localPath      String? // Local cache path after download
+  downloadedAt   DateTime?
+  fileSizeMb     Int?
+  checksum       String? // SHA256 for verification
 
-    // Resource status + Audit
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
-    createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
-    updatedBy               String?
-    createdAt               DateTime           @default(now())
-    updatedAt               DateTime           @updatedAt
+  // Resource status + Audit
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+  updatedBy               String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
-    // Tags
-    tags String[] @default([])
+  // Tags
+  tags String[] @default([])
 
-    // NO RELATIONS - models are referenced by slug in pipeline YAML
+  // NO RELATIONS - models are referenced by slug in pipeline YAML
 
-    // Indexes
-    @@unique([tenantId, slug], name: "AiModel_tenant_slug_unique")
-    @@index([tenantId], name: "AiModel_tenantId_idx")
-    @@index([category], name: "AiModel_category_idx")
-    @@index([taskType], name: "AiModel_taskType_idx")
-    @@index([source], name: "AiModel_source_idx")
-    @@index([format], name: "AiModel_format_idx")
-    @@index([resourceStatus], name: "AiModel_status_idx")
-    @@schema("core")
+  // Indexes
+  @@unique([tenantId, slug], name: "AiModel_tenant_slug_unique")
+  @@index([tenantId], name: "AiModel_tenantId_idx")
+  @@index([category], name: "AiModel_category_idx")
+  @@index([taskType], name: "AiModel_taskType_idx")
+  @@index([source], name: "AiModel_source_idx")
+  @@index([format], name: "AiModel_format_idx")
+  @@index([resourceStatus], name: "AiModel_status_idx")
+  @@schema("core")
 }
 
 // =============================================================================
@@ -168,59 +167,67 @@ model AiModel {
 // =============================================================================
 
 model TranscriptionJob {
-    // Meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant
-    tenantId String
+  // Multi-tenant
+  tenantId String
 
-    // Job type
-    jobType TranscriptionJobType // BATCH, STREAMING
+  // Job type
+  jobType TranscriptionJobType // BATCH, STREAMING
 
-    // Related entities (external references, no FK to Consultation/ContextItem)
-    consultationId String? // Target consultation
-    contextItemId  String? // Created ContextItem (after completion)
-    mediaId        String? // Source audio file (for batch)
+  // Related entities (external references, no FK to Consultation/ContextItem)
+  consultationId String? // Target consultation
+  contextItemId  String? // Created ContextItem (after completion)
+  mediaId        String? // Source audio file (for batch)
 
-    // Pipeline used (FK relationship)
-    pipelineId String
-    Pipeline   AsrPipeline @relation(fields: [pipelineId], references: [id])
+  // Pipeline used (FK relationship)
+  pipelineId String
+  Pipeline   AsrPipeline @relation(fields: [pipelineId], references: [id])
 
-    // Job status
-    status   TranscriptionJobStatus @default(QUEUED)
-    progress Int                    @default(0) // 0-100
+  // Job status
+  status   TranscriptionJobStatus @default(QUEUED)
+  progress Int                    @default(0) // 0-100
 
-    // Timing
-    queuedAt    DateTime  @default(now())
-    startedAt   DateTime?
-    completedAt DateTime?
+  // Timing
+  queuedAt    DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
 
-    // Results (on completion)
-    resultText     String? @db.Text
-    resultMetadata Json?   @db.JsonB // confidence, word timestamps, etc.
+  // Results (on completion)
+  resultText     String? @db.Text
+  resultMetadata Json?   @db.JsonB // confidence, word timestamps, etc.
 
-    // Error handling
-    errorMessage String?
-    errorCode    String?
-    retryCount   Int     @default(0)
-    maxRetries   Int     @default(3)
+  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
+  // of the transcription result (resultText / resultMetadata) plus the shared
+  // Transit key version. All nullable + additive; plaintext columns retained
+  // for the dual-read soak (removal is Phase 6, user-gated).
+  encryptedResultText     Bytes?
+  encryptedResultMetadata Bytes?
+  keyVersion              Int?
 
-    // Worker info
-    workerId String? // Which worker processed this
+  // Error handling
+  errorMessage String?
+  errorCode    String?
+  retryCount   Int     @default(0)
+  maxRetries   Int     @default(3)
 
-    // Audit
-    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  // Worker info
+  workerId String? // Which worker processed this
 
-    // Indexes
-    @@index([tenantId], name: "TranscriptionJob_tenantId_idx")
-    @@index([status], name: "TranscriptionJob_status_idx")
-    @@index([pipelineId], name: "TranscriptionJob_pipelineId_idx")
-    @@index([consultationId], name: "TranscriptionJob_consultationId_idx")
-    @@index([createdAt], name: "TranscriptionJob_createdAt_idx")
-    @@index([tenantId, status, createdAt], name: "TranscriptionJob_tenant_status_created_idx")
-    @@schema("core")
+  // Audit
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Indexes
+  @@index([tenantId], name: "TranscriptionJob_tenantId_idx")
+  @@index([status], name: "TranscriptionJob_status_idx")
+  @@index([pipelineId], name: "TranscriptionJob_pipelineId_idx")
+  @@index([consultationId], name: "TranscriptionJob_consultationId_idx")
+  @@index([createdAt], name: "TranscriptionJob_createdAt_idx")
+  @@index([tenantId, status, createdAt], name: "TranscriptionJob_tenant_status_created_idx")
+  @@schema("core")
 }

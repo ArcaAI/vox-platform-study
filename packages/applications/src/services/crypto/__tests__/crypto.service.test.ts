@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { CryptoService } from '../crypto.service';
 import * as bcrypt from 'bcryptjs';
+import * as nodeCrypto from 'crypto';
 
 // Mock bcryptjs (external library boundary)
 // We mock bcryptjs because it's an external dependency with slow operations
@@ -76,8 +77,8 @@ describe('CryptoService', () => {
             await newService.onModuleInit();
 
             expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalledWith('crypto.saltRounds', 10);
-            expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalledWith('crypto.algorithm', 'aes-256-cbc');
-            expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalledWith('crypto.ivLength', 16);
+            // TASK-369 Phase 5 — the cipher is now fixed to AES-256-GCM; the old
+            // operator-selectable algorithm/ivLength knobs were removed.
         });
 
         it('should use default values when settings not available', async () => {
@@ -192,18 +193,24 @@ describe('CryptoService', () => {
         });
     });
 
+    // TASK-369 Phase 5 — new ciphertext is authenticated AES-256-GCM:
+    //   gcm:v1:<ivHex(24)>:<authTagHex(32)>:<ciphertextHex>
+    const GCM_FORMAT = /^gcm:v1:[a-f0-9]{24}:[a-f0-9]{32}:[a-f0-9]*$/;
+
     describe('encrypt', () => {
-        it('should encrypt data and return iv:encrypted format', async () => {
+        it('should encrypt data and return the authenticated gcm:v1 format', async () => {
             const data = 'sensitive data';
             const key = '12345678901234567890123456789012'; // 32 bytes for AES-256
 
             const result = await service.encrypt(data, key);
 
-            // Result should be in format iv:encryptedData
-            expect(result).toMatch(/^[a-f0-9]+:[a-f0-9]+$/);
-            const [iv, encrypted] = result.split(':');
-            expect(iv).toHaveLength(32); // 16 bytes = 32 hex chars
-            expect(encrypted.length).toBeGreaterThan(0);
+            expect(result).toMatch(GCM_FORMAT);
+            const parts = result.split(':');
+            expect(parts[0]).toBe('gcm');
+            expect(parts[1]).toBe('v1');
+            expect(parts[2]).toHaveLength(24); // 12-byte GCM nonce = 24 hex chars
+            expect(parts[3]).toHaveLength(32); // 16-byte auth tag = 32 hex chars
+            expect(parts[4].length).toBeGreaterThan(0);
         });
 
         it('should produce different output for same input (due to random IV)', async () => {
@@ -213,9 +220,9 @@ describe('CryptoService', () => {
             const result1 = await service.encrypt(data, key);
             const result2 = await service.encrypt(data, key);
 
-            // IVs should be different
-            const [iv1] = result1.split(':');
-            const [iv2] = result2.split(':');
+            // IVs (3rd colon-separated segment) should be different
+            const iv1 = result1.split(':')[2];
+            const iv2 = result2.split(':')[2];
             expect(iv1).not.toBe(iv2);
         });
 
@@ -224,7 +231,7 @@ describe('CryptoService', () => {
 
             const result = await service.encrypt('', key);
 
-            expect(result).toMatch(/^[a-f0-9]+:[a-f0-9]+$/);
+            expect(result).toMatch(GCM_FORMAT);
         });
 
         it('should handle special characters in data', async () => {
@@ -233,7 +240,7 @@ describe('CryptoService', () => {
 
             const result = await service.encrypt(data, key);
 
-            expect(result).toMatch(/^[a-f0-9]+:[a-f0-9]+$/);
+            expect(result).toMatch(GCM_FORMAT);
         });
 
         it('should handle unicode data', async () => {
@@ -242,7 +249,7 @@ describe('CryptoService', () => {
 
             const result = await service.encrypt(data, key);
 
-            expect(result).toMatch(/^[a-f0-9]+:[a-f0-9]+$/);
+            expect(result).toMatch(GCM_FORMAT);
         });
 
         it('should handle long data', async () => {
@@ -251,7 +258,7 @@ describe('CryptoService', () => {
 
             const result = await service.encrypt(data, key);
 
-            expect(result).toMatch(/^[a-f0-9]+:[a-f0-9]+$/);
+            expect(result).toMatch(GCM_FORMAT);
         });
     });
 
@@ -327,6 +334,38 @@ describe('CryptoService', () => {
 
             await expect(service.decrypt(corruptedData, key)).rejects.toThrow();
         });
+
+        // TASK-369 Phase 5 — backward compatibility: ciphertext written by the
+        // old AES-256-CBC implementation (format `<ivHex>:<dataHex>`, no prefix)
+        // must still decrypt so any persisted legacy values remain readable.
+        it('should decrypt legacy AES-256-CBC ciphertext (no gcm: prefix)', async () => {
+            const key = '12345678901234567890123456789012';
+            const originalData = 'legacy secret payload';
+
+            // Reproduce the OLD CBC output format exactly.
+            const iv = nodeCrypto.randomBytes(16);
+            const cipher = nodeCrypto.createCipheriv('aes-256-cbc', Buffer.from(key), iv);
+            const enc = Buffer.concat([cipher.update(originalData), cipher.final()]);
+            const legacyCiphertext = iv.toString('hex') + ':' + enc.toString('hex');
+
+            const decrypted = await service.decrypt(legacyCiphertext, key);
+            expect(decrypted).toBe(originalData);
+        });
+
+        // TASK-369 Phase 5 — authentication: tampering with GCM ciphertext (or
+        // its auth tag) must be detected and rejected (CBC could not do this).
+        it('should reject tampered GCM ciphertext (auth tag mismatch)', async () => {
+            const key = '12345678901234567890123456789012';
+            const encrypted = await service.encrypt('integrity matters', key);
+
+            const parts = encrypted.split(':'); // gcm:v1:iv:tag:data
+            // Flip the last hex char of the ciphertext segment.
+            const data = parts[4];
+            const flipped = data.slice(0, -1) + (data.slice(-1) === 'a' ? 'b' : 'a');
+            const tampered = ['gcm', 'v1', parts[2], parts[3], flipped].join(':');
+
+            await expect(service.decrypt(tampered, key)).rejects.toThrow();
+        });
     });
 
     describe('encrypt/decrypt integration', () => {
@@ -401,30 +440,18 @@ describe('CryptoService', () => {
             expect(bcrypt.hash).toHaveBeenCalledWith('password', 15);
         });
 
-        it('should use custom algorithm from settings', async () => {
-            // Note: Changing algorithm would require matching key size
-            // This test verifies settings are loaded
-            mockAppSettingsService.getValueWithDefault.mockImplementation((key: string, defaultValue: any) => {
-                if (key === 'crypto.algorithm') return 'aes-256-cbc';
-                return defaultValue;
-            });
-
+        it('uses a fixed AES-256-GCM cipher (algorithm/ivLength are no longer settings)', async () => {
+            // TASK-369 Phase 5 — the cipher is hardcoded to authenticated
+            // AES-256-GCM, so the service must NOT read the removed knobs.
             const newService = new CryptoService(mockAppSettingsService as any);
             await newService.onModuleInit();
 
-            expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalledWith('crypto.algorithm', 'aes-256-cbc');
-        });
+            expect(mockAppSettingsService.getValueWithDefault).not.toHaveBeenCalledWith('crypto.algorithm', expect.anything());
+            expect(mockAppSettingsService.getValueWithDefault).not.toHaveBeenCalledWith('crypto.ivLength', expect.anything());
 
-        it('should use custom IV length from settings', async () => {
-            mockAppSettingsService.getValueWithDefault.mockImplementation((key: string, defaultValue: any) => {
-                if (key === 'crypto.ivLength') return 16;
-                return defaultValue;
-            });
-
-            const newService = new CryptoService(mockAppSettingsService as any);
-            await newService.onModuleInit();
-
-            expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalledWith('crypto.ivLength', 16);
+            // And new ciphertext is GCM-formatted.
+            const out = await newService.encrypt('x', '12345678901234567890123456789012');
+            expect(out.startsWith('gcm:v1:')).toBe(true);
         });
     });
 

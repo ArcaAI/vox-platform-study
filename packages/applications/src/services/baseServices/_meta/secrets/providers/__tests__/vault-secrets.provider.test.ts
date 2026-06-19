@@ -372,6 +372,63 @@ describe('VaultSecretsProvider transit helpers', () => {
   });
 });
 
+// Phase 3A (Data Encryption Initiative) — the PHI field-encryption workstream
+// needs a SECOND Transit key (`hope-phi`) so clinical content rotates and is
+// policy-scoped independently from the `hope-globalsetting` secrets key. The
+// provider gains an OPTIONAL keyName parameter on encrypt/decrypt (default
+// stays `transitKey` for backward compatibility) plus a `phiTransitKey` getter.
+describe('VaultSecretsProvider keyed transit (Phase 3A PHI)', () => {
+  function provider(client: Record<string, unknown>, overrides: Partial<VaultProviderConfig> = {}) {
+    const p = new VaultSecretsProvider(cfg(overrides));
+    (p as unknown as { client: unknown }).client = {
+      approleLogin: vi
+        .fn()
+        .mockResolvedValue({ auth: { client_token: 't', lease_duration: 1, renewable: false } }),
+      ...client,
+    };
+    return p;
+  }
+
+  it('encrypt(plaintext) without a key name uses the default transitKey (backward compatible)', async () => {
+    const mockWrite = vi.fn().mockResolvedValue({ data: { ciphertext: 'vault:v1:abc==' } });
+    const p = provider({ write: mockWrite });
+    await p.boot();
+    await p.encrypt(Buffer.from('hello'));
+    expect(mockWrite).toHaveBeenCalledWith('transit/encrypt/hope-globalsetting', {
+      plaintext: 'aGVsbG8=',
+    });
+  });
+
+  it('encrypt(plaintext, keyName) routes to the named transit key', async () => {
+    const mockWrite = vi.fn().mockResolvedValue({ data: { ciphertext: 'vault:v1:abc==' } });
+    const p = provider({ write: mockWrite });
+    await p.boot();
+    await p.encrypt(Buffer.from('hello'), 'hope-phi');
+    expect(mockWrite).toHaveBeenCalledWith('transit/encrypt/hope-phi', {
+      plaintext: 'aGVsbG8=',
+    });
+  });
+
+  it('decrypt(ciphertext, keyName) routes to the named transit key', async () => {
+    const mockWrite = vi.fn().mockResolvedValue({ data: { plaintext: 'aGVsbG8=' } });
+    const p = provider({ write: mockWrite });
+    await p.boot();
+    const pt = await p.decrypt('vault:v2:abc==', 'hope-phi');
+    expect(mockWrite).toHaveBeenCalledWith('transit/decrypt/hope-phi', { ciphertext: 'vault:v2:abc==' });
+    expect(pt.toString('utf8')).toBe('hello');
+  });
+
+  it('phiTransitKey defaults to "hope-phi" when transitKeyPhi is unset', () => {
+    const p = provider({});
+    expect(p.phiTransitKey).toBe('hope-phi');
+  });
+
+  it('phiTransitKey honors an explicit transitKeyPhi config (ops override)', () => {
+    const p = provider({}, { transitKeyPhi: 'hope-phi-prod' });
+    expect(p.phiTransitKey).toBe('hope-phi-prod');
+  });
+});
+
 // TASK-312 Phase B (B.1–B.4) — AppRole token renewal. boot() captures the
 // login lease_duration/renewable but the pre-B build never renewed, so a prod
 // pod 403s when the token hits token_max_ttl. These tests pin the renew-at-50%

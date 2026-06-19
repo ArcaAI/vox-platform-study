@@ -8,11 +8,12 @@ import {
   TranscriptionJobStatus,
   TranscriptionJobType,
 } from '@arcaai/domains';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { SecretsService } from '../../baseServices/_meta/secrets';
 import { ITranscriptionJobService } from './ITranscriptionJobService';
 import {
   CreateBatchJobRequest,
@@ -31,8 +32,28 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
     private readonly pipelineRepository: AsrPipelineRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-369 Phase 3C — optional + trailing so existing positional fixtures
+    // keep their arity; when wired, the completed job's resultText/resultMetadata
+    // are encrypted before persist (dual-write soak).
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.TranscriptionJob);
+  }
+
+  private readonly logger = new Logger(TranscriptionJobService.name);
+
+  /**
+   * Best-effort field encryption: a Vault failure is swallowed (error message
+   * only) so the dual-write soak never blocks a job completion — the plaintext
+   * result columns are still persisted.
+   */
+  private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
+    if (!this.secretsService) return;
+    try {
+      await run();
+    } catch (error) {
+      this.logger.error(`${label} field encryption skipped (dual-write soak): ${(error as Error).message}`);
+    }
   }
 
   /**
@@ -365,6 +386,13 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
     }
 
     job.complete(resultText, resultMetadata);
+
+    // TASK-369 Phase 3C — encrypt resultText/resultMetadata into the ciphertext
+    // columns before the completing persist (dual-write; plaintext kept for soak).
+    await this.encryptBestEffort('TranscriptionJob', () =>
+      this.jobRepository.encryptFieldsIntoEntity(job, this.secretsService!),
+    );
+
     const updated = await this.jobRepository.update(id, job);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {

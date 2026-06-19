@@ -105,6 +105,10 @@ function createProvider(name: SecretsProviderName): ISecretsProvider {
         kvPrefix: process.env.VAULT_KV_PREFIX ?? 'hope',
         transitMount: process.env.VAULT_TRANSIT_MOUNT ?? 'transit',
         transitKey: process.env.VAULT_TRANSIT_KEY ?? 'hope-globalsetting',
+        // Data Encryption Initiative Phase 3A — dedicated PHI Transit key.
+        // Defaults to 'hope-phi' so clinical field encryption works even if
+        // VAULT_TRANSIT_KEY_PHI is never set (env files are owned elsewhere).
+        transitKeyPhi: process.env.VAULT_TRANSIT_KEY_PHI ?? 'hope-phi',
         requestTimeoutMs: Number(process.env.VAULT_REQUEST_TIMEOUT_MS ?? 5000),
       });
     case 'aws':

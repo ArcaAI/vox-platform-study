@@ -3,7 +3,9 @@ import {
   GENESIS_PREV_HASH,
   computeHarnessAuditHash,
   verifyHarnessAuditChain,
+  toHarnessAuditChainRecord,
   type HarnessAuditChainRecord,
+  type HarnessAuditEventLike,
   type HarnessAuditHashInput,
 } from './harnessAuditHash';
 
@@ -99,5 +101,117 @@ describe('verifyHarnessAuditChain', () => {
     const result = verifyHarnessAuditChain([e1]);
     expect(result.valid).toBe(false);
     expect(result.brokenAtIndex).toBe(0);
+  });
+});
+
+// =============================================================================
+// TASK-369 Phase 3D — ENCRYPT-BEFORE-HASH (WORM hash chain over ciphertext)
+// =============================================================================
+
+const ct = (s: string): Buffer => Buffer.from(s, 'utf8');
+
+/** A NEW (encrypted) event: ciphertext columns set; plaintext is the sentinel. */
+const encInput = (over: Partial<HarnessAuditHashInput> = {}): HarnessAuditHashInput => ({
+  ...baseInput(),
+  sensorScores: { _encrypted: true },
+  citations: { _encrypted: true },
+  encryptedSensorScores: ct('vault:v1:scores-ciphertext'),
+  encryptedCitations: ct('vault:v1:citations-ciphertext'),
+  ...over,
+});
+
+describe('computeHarnessAuditHash — encrypt-before-hash', () => {
+  it('hashes over the ciphertext, not the plaintext slot, when encrypted* is set', () => {
+    // Same ciphertext, DIFFERENT plaintext sentinel → identical hash (proves the
+    // digest binds to ciphertext, so the persisted sentinel is irrelevant).
+    const a = computeHarnessAuditHash(encInput({ sensorScores: { _encrypted: true } }));
+    const b = computeHarnessAuditHash(encInput({ sensorScores: { anything: 'else' }, citations: 'x' }));
+    expect(a).toBe(b);
+  });
+
+  it('differs from the plaintext-only digest of the same payload', () => {
+    const plaintextOnly = computeHarnessAuditHash(baseInput());
+    const encrypted = computeHarnessAuditHash(encInput());
+    expect(encrypted).not.toBe(plaintextOnly);
+  });
+
+  it('changes when the ciphertext changes (tamper-evident over ciphertext)', () => {
+    const original = computeHarnessAuditHash(encInput());
+    const tampered = computeHarnessAuditHash(encInput({ encryptedSensorScores: ct('vault:v1:TAMPERED') }));
+    expect(tampered).not.toBe(original);
+  });
+
+  it('is backward-compatible: omitting encrypted* yields the exact pre-3D digest', () => {
+    // A legacy/plaintext row (no encrypted* fields) must hash identically to the
+    // original algorithm so historical chains keep verifying after the upgrade.
+    const legacy = { ...baseInput() };
+    delete (legacy as Partial<HarnessAuditHashInput>).encryptedSensorScores;
+    delete (legacy as Partial<HarnessAuditHashInput>).encryptedCitations;
+    expect(computeHarnessAuditHash(legacy)).toBe(computeHarnessAuditHash(baseInput()));
+  });
+
+  it('treats empty/zero-length ciphertext as absent (falls back to plaintext)', () => {
+    const withEmpty = computeHarnessAuditHash({
+      ...baseInput(),
+      encryptedSensorScores: Buffer.alloc(0),
+      encryptedCitations: ct(''),
+    });
+    expect(withEmpty).toBe(computeHarnessAuditHash(baseInput()));
+  });
+});
+
+describe('verifyHarnessAuditChain — encrypted chains', () => {
+  it('(a) verifies a chain of encrypted-payload events end-to-end', () => {
+    const e1 = record(encInput());
+    const e2 = record(encInput({ consultationId: 'consult-2', prevHash: e1.hash }));
+    const e3 = record(encInput({ consultationId: 'consult-3', prevHash: e2.hash }));
+    const result = verifyHarnessAuditChain([e1, e2, e3]);
+    expect(result.valid).toBe(true);
+    expect(result.brokenAtIndex).toBeNull();
+  });
+
+  it('verifies a MIXED chain (legacy plaintext rows followed by encrypted rows)', () => {
+    const legacy = record(baseInput());
+    const encrypted = record(encInput({ consultationId: 'consult-2', prevHash: legacy.hash }));
+    expect(verifyHarnessAuditChain([legacy, encrypted]).valid).toBe(true);
+  });
+
+  it('(b1) detects tampering with the ciphertext of an encrypted row', () => {
+    const e1 = record(encInput());
+    const e2 = record(encInput({ consultationId: 'consult-2', prevHash: e1.hash }));
+    // Attacker swaps the ciphertext but cannot recompute the WORM hash.
+    const tampered: HarnessAuditChainRecord = { ...e2, encryptedSensorScores: ct('vault:v1:EVIL') };
+    const result = verifyHarnessAuditChain([e1, tampered]);
+    expect(result.valid).toBe(false);
+    expect(result.brokenAtIndex).toBe(1);
+  });
+
+  it('(b2) detects tampering with the stored hash of an encrypted row', () => {
+    const e1 = record(encInput());
+    const e2 = record(encInput({ consultationId: 'consult-2', prevHash: e1.hash }));
+    const tampered: HarnessAuditChainRecord = { ...e2, hash: 'd'.repeat(64) };
+    // e2's hash is also e3.prevHash would-be anchor; a lone bad hash breaks at its own index.
+    const result = verifyHarnessAuditChain([e1, tampered]);
+    expect(result.valid).toBe(false);
+    expect(result.brokenAtIndex).toBe(1);
+  });
+});
+
+describe('toHarnessAuditChainRecord', () => {
+  it('maps a persisted (entity-shaped) encrypted row to a verifiable chain record', () => {
+    const input = encInput();
+    const stored: HarnessAuditEventLike = { ...input, hash: computeHarnessAuditHash(input) };
+    const rec = toHarnessAuditChainRecord(stored);
+    // The mapped record carries the ciphertext, so it re-verifies over ciphertext.
+    expect(verifyHarnessAuditChain([rec]).valid).toBe(true);
+    expect(rec.encryptedSensorScores).toBe(input.encryptedSensorScores);
+  });
+
+  it('round-trips a legacy plaintext row (encrypted* default to null)', () => {
+    const input = baseInput();
+    const stored: HarnessAuditEventLike = { ...input, hash: computeHarnessAuditHash(input) };
+    const rec = toHarnessAuditChainRecord(stored);
+    expect(rec.encryptedSensorScores).toBeNull();
+    expect(verifyHarnessAuditChain([rec]).valid).toBe(true);
   });
 });

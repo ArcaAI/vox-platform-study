@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException, ForbiddenException, BadRequestException, Optional } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, ForbiddenException, BadRequestException, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -34,6 +34,7 @@ import { DnaWritingStyleDtoMapper } from './dna-writing-style.dto.mapper';
 // DOCTOR-scope `PipelinePolicy.dnaStyleEnabled` column; this service is the
 // doctor self-service surface that writes/reads it via PipelinePolicyService.
 import { PipelinePolicyService } from '../pipeline-policy';
+import { SecretsService } from '../baseServices/_meta/secrets';
 import { BaseService } from '../../common';
 import { assertUserBelongsToTenant } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
@@ -81,8 +82,28 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     // trailing so existing positional unit fixtures keep their arity; production
     // DI supplies it via PipelinePolicyServiceModule.
     @Optional() @Inject(PipelinePolicyService) private readonly pipelinePolicyService?: PipelinePolicyService,
+    // TASK-369 Phase 3C — optional + trailing (same arity rationale). When wired,
+    // manual report edits encrypt reportData/styleText into the ciphertext
+    // columns before persisting; degrades to plaintext-only when unset.
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.DnaWritingStyleReport);
+  }
+
+  private readonly logger = new Logger(DnaWritingStyleService.name);
+
+  /**
+   * TASK-369 Phase 3C — best-effort field encryption (mirrors the processor).
+   * A Vault failure is swallowed so the dual-write soak never blocks an edit —
+   * the plaintext columns are still persisted.
+   */
+  private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
+    if (!this.secretsService) return;
+    try {
+      await run();
+    } catch (error) {
+      this.logger.error(`${label} field encryption skipped (dual-write soak): ${(error as Error).message}`);
+    }
   }
 
   /**
@@ -259,6 +280,16 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       if (dto.reportData !== undefined) report.reportData = dto.reportData;
       if (dto.styleText !== undefined) report.styleText = dto.styleText;
       report.currentVersionNumber = nextVersionNumber;
+
+      // TASK-369 Phase 3C — re-encrypt the new content into both the version
+      // snapshot and the report row before they are persisted in the tx below.
+      // Only runs when content actually changed (status-only edits skip it).
+      await this.encryptBestEffort('DnaWritingStyleVersion', () =>
+        this.dnaVersionRepository.encryptFieldsIntoEntity(version!, this.secretsService!),
+      );
+      await this.encryptBestEffort('DnaWritingStyleReport', () =>
+        this.dnaReportRepository.encryptFieldsIntoEntity(report, this.secretsService!),
+      );
     }
 
     if (dto.resourceStatus !== undefined) {

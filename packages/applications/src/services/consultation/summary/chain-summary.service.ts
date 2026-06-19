@@ -71,6 +71,20 @@ export class ChainSummaryService extends BaseService {
   }
 
   /**
+   * TASK-369 Phase 3C — best-effort SummaryMeta field encryption. A missing or
+   * failing SecretsService leaves the row plaintext-only (logged, message only)
+   * and never throws into the write path during the dual-read soak.
+   */
+  private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
+    if (!this.secretsService) return;
+    try {
+      await run();
+    } catch (error) {
+      this.logger.error(`${label} field encryption skipped (dual-write soak): ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
    * Generate a comprehensive summary spanning all linked consultations.
    *
    * This is the synchronous endpoint — blocks until SMR returns.
@@ -164,6 +178,9 @@ export class ChainSummaryService extends BaseService {
       inputTokens: smrResponse.inputTokens,
       outputTokens: smrResponse.outputTokens,
     });
+    await this.encryptBestEffort('SummaryMeta', () =>
+      this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!),
+    );
     await this.summaryMetaRepository.create(summaryMeta);
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {

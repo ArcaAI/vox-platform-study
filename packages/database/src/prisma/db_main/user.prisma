@@ -6,48 +6,48 @@
 // ============================================================================
 
 model UserRoleAssignment {
-    // meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // multi tenant fields
-    // Always tenant-scoped — use SYSTEM_TENANT_ID ('00000000-…') for
-    // platform-wide assignments (e.g. SUPER_ADMIN). NULL is no longer
-    // accepted: the previous `null = global` semantics relied on the
-    // `[userId,roleId,tenantId]` composite unique, which Postgres treats as
-    // "distinct" for NULL, allowing a global assignment to shadow a
-    // tenant-scoped one. See TASK-305 audit § B4.
-    tenantId String
+  // multi tenant fields
+  // Always tenant-scoped — use SYSTEM_TENANT_ID ('00000000-…') for
+  // platform-wide assignments (e.g. SUPER_ADMIN). NULL is no longer
+  // accepted: the previous `null = global` semantics relied on the
+  // `[userId,roleId,tenantId]` composite unique, which Postgres treats as
+  // "distinct" for NULL, allowing a global assignment to shadow a
+  // tenant-scoped one. See TASK-305 audit § B4.
+  tenantId String
 
-    // core fields
-    // Optional: Override/extend policies for this specific assignment
-    // Example: { "additionalRules": [...], "excludedPolicies": ["policy-id"] }
-    scopeOverrides Json? @db.JsonB
+  // core fields
+  // Optional: Override/extend policies for this specific assignment
+  // Example: { "additionalRules": [...], "excludedPolicies": ["policy-id"] }
+  scopeOverrides Json? @db.JsonB
 
-    // resource status fields
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
 
-    // audit fields
-    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy String?
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    // relations
-    userId String
-    User   User   @relation("_User_UserRoleAssignments", fields: [userId], references: [id], onDelete: Cascade)
-    roleId String
-    Role   Role   @relation("_Role_UserRoleAssignments", fields: [roleId], references: [id], onDelete: Cascade)
+  // relations
+  userId String
+  User   User   @relation("_User_UserRoleAssignments", fields: [userId], references: [id], onDelete: Cascade)
+  roleId String
+  Role   Role   @relation("_Role_UserRoleAssignments", fields: [roleId], references: [id], onDelete: Cascade)
 
-    // indexing
-    @@unique([userId, roleId, tenantId], name: "UserRoleAssignment_userId_roleId_tenantId_unique")
-    @@index([tenantId], name: "UserRoleAssignment_tenantId_idx")
-    @@index([userId], name: "UserRoleAssignment_userId_idx")
-    @@index([roleId], name: "UserRoleAssignment_roleId_idx")
-    @@schema("core")
+  // indexing
+  @@unique([userId, roleId, tenantId], name: "UserRoleAssignment_userId_roleId_tenantId_unique")
+  @@index([tenantId], name: "UserRoleAssignment_tenantId_idx")
+  @@index([userId], name: "UserRoleAssignment_userId_idx")
+  @@index([roleId], name: "UserRoleAssignment_roleId_idx")
+  @@schema("core")
 }
 
 // ============================================================================
@@ -55,55 +55,55 @@ model UserRoleAssignment {
 // ============================================================================
 
 model User {
-    // meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // core fields
-    username         String    @unique
-    password         String
-    lastLoginAt      DateTime?
-    lastActiveAt     DateTime?
-    externalId       String?   @unique
-    // as service account
-    isServiceAccount Boolean   @default(false)
-    secret1          String?
-    secret1Expiry    DateTime?
-    secret2          String?
-    secret2Expiry    DateTime?
+  // core fields
+  username         String    @unique
+  password         String
+  lastLoginAt      DateTime?
+  lastActiveAt     DateTime?
+  externalId       String?   @unique
+  // as service account
+  isServiceAccount Boolean   @default(false)
+  secret1          String?
+  secret1Expiry    DateTime?
+  secret2          String?
+  secret2Expiry    DateTime?
 
-    // resource status fields
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
 
-    // audit fields
-    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy String?
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    // tags
-    tags String[] @default([])
+  // tags
+  tags String[] @default([])
 
-    // relations
-    UserProfile           UserProfile?           @relation("_User_UserProfile")
-    UserSettings          UserSettings[]         @relation("_User_UserSettings")
-    UserRoleAssignments   UserRoleAssignment[]   @relation("_User_UserRoleAssignments")
-    UserNotifications     Notification[]         @relation("_User_UserNotification")
-    ResourceSubscriptions ResourceSubscription[] @relation("_User_Subscription")
-    UserMedias            UserMedia[]            @relation("_User_UserMedia")
-    DoctorConsultations   Consultation[]         @relation("DoctorConsultations")
-    DoctorDnaReports      DnaWritingStyleReport[] @relation("DoctorDnaReports")
-    ApiKeys               ApiKey[]                @relation("_User_ApiKeys")
-    VoiceProfiles         UserVoiceProfile[]      @relation("_User_VoiceProfiles")
-    OwnedPromptTemplates  PromptTemplate[]        @relation("_User_OwnedPromptTemplates")
-    UserDepartments       UserDepartment[]        @relation("_User_UserDepartments")
+  // relations
+  UserProfile           UserProfile?            @relation("_User_UserProfile")
+  UserSettings          UserSettings[]          @relation("_User_UserSettings")
+  UserRoleAssignments   UserRoleAssignment[]    @relation("_User_UserRoleAssignments")
+  UserNotifications     Notification[]          @relation("_User_UserNotification")
+  ResourceSubscriptions ResourceSubscription[]  @relation("_User_Subscription")
+  UserMedias            UserMedia[]             @relation("_User_UserMedia")
+  DoctorConsultations   Consultation[]          @relation("DoctorConsultations")
+  DoctorDnaReports      DnaWritingStyleReport[] @relation("DoctorDnaReports")
+  ApiKeys               ApiKey[]                @relation("_User_ApiKeys")
+  VoiceProfiles         UserVoiceProfile[]      @relation("_User_VoiceProfiles")
+  OwnedPromptTemplates  PromptTemplate[]        @relation("_User_OwnedPromptTemplates")
+  UserDepartments       UserDepartment[]        @relation("_User_UserDepartments")
 
-    // indexing
-    @@index([username], name: "User_username_idx")
-    @@schema("core")
+  // indexing
+  @@index([username], name: "User_username_idx")
+  @@schema("core")
 }
 
 // ============================================================================
@@ -111,36 +111,36 @@ model User {
 // ============================================================================
 
 model UserSettings {
-    // meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // core fields
-    name      String
-    key       String
-    value     String
-    dataType  ValueType
-    namespace String?
+  // core fields
+  name      String
+  key       String
+  value     String
+  dataType  ValueType
+  namespace String?
 
-    // resource status fields
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
 
-    // audit fields
-    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy String?
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    // relations
-    userId String
-    User   User   @relation("_User_UserSettings", fields: [userId], references: [id], onDelete: Cascade)
+  // relations
+  userId String
+  User   User   @relation("_User_UserSettings", fields: [userId], references: [id], onDelete: Cascade)
 
-    // indexing
-    @@index([userId], name: "UserSettings_userId_idx")
-    @@schema("core")
+  // indexing
+  @@index([userId], name: "UserSettings_userId_idx")
+  @@schema("core")
 }
 
 // ============================================================================
@@ -148,39 +148,39 @@ model UserSettings {
 // ============================================================================
 
 model UserProfile {
-    // meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // core fields
-    firstName String?
-    lastName  String?
-    email     String?
-    phone     String?
-    avatarId  String?
+  // core fields
+  firstName String?
+  lastName  String?
+  email     String?
+  phone     String?
+  avatarId  String?
 
-    // Backend preferred prompt template (TASK-328 A1–A3) — soft reference
-    preferredPromptTemplateId String?
+  // Backend preferred prompt template (TASK-328 A1–A3) — soft reference
+  preferredPromptTemplateId String?
 
-    // resource status fields
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
 
-    // audit fields
-    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy String?
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    // relations
-    userId String @unique
-    User   User   @relation("_User_UserProfile", fields: [userId], references: [id], onDelete: Cascade)
+  // relations
+  userId String @unique
+  User   User   @relation("_User_UserProfile", fields: [userId], references: [id], onDelete: Cascade)
 
-    // indexing
-    @@index([email], name: "UserProfile_email_idx")
-    @@schema("core")
+  // indexing
+  @@index([email], name: "UserProfile_email_idx")
+  @@schema("core")
 }
 
 // ============================================================================
@@ -188,38 +188,38 @@ model UserProfile {
 // ============================================================================
 
 model UserMedia {
-    // meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // core fields
-    sharedAt DateTime?
+  // core fields
+  sharedAt DateTime?
 
-    // resource status fields
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
 
-    // audit fields
-    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy String?
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    // tags
-    tags String[] @default([])
+  // tags
+  tags String[] @default([])
 
-    // relations
-    userId  String
-    User    User   @relation("_User_UserMedia", fields: [userId], references: [id], onDelete: Cascade)
-    mediaId String
-    Media   Media  @relation("_Media_UserMedia", fields: [mediaId], references: [id], onDelete: Cascade)
+  // relations
+  userId  String
+  User    User   @relation("_User_UserMedia", fields: [userId], references: [id], onDelete: Cascade)
+  mediaId String
+  Media   Media  @relation("_Media_UserMedia", fields: [mediaId], references: [id], onDelete: Cascade)
 
-    // indexing
-    @@unique([userId, mediaId], name: "UserMedia_userId_mediaId_unique")
-    @@index([userId], name: "UserMedia_userId_index")
-    @@schema("core")
+  // indexing
+  @@unique([userId, mediaId], name: "UserMedia_userId_mediaId_unique")
+  @@index([userId], name: "UserMedia_userId_index")
+  @@schema("core")
 }
 
 // ==========================================================================
@@ -227,36 +227,44 @@ model UserMedia {
 // ==========================================================================
 
 model UserVoiceProfile {
-    // meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // core fields
-    userId       String
-    embedding    Unsupported("vector(256)")
-    isActive     Boolean  @default(false)
-    label        String?  @db.VarChar(100)
-    modelId      String?
+  // core fields
+  userId String
+  // Data Encryption Initiative Phase 3D — DECISION: the speaker `embedding`
+  // (pgvector vector(256)) is deliberately NOT field-encrypted. It is a
+  // biometric used for cosine-similarity diarization (the ANN/`<->` distance
+  // operators require the raw vector); Vault-Transit randomized encryption
+  // would make the column opaque and break similarity search entirely. It
+  // stays protected by Phase 1 at-rest disk encryption + RBAC (tenant/user
+  // scoping). Revisit only if a searchable-encryption / secure-enclave scheme
+  // is adopted. (See plan Phase 3D + TASK-369 README "voiceprint".)
+  embedding Unsupported("vector(256)")
+  isActive  Boolean                    @default(false)
+  label     String?                    @db.VarChar(100)
+  modelId   String?
 
-    // resource status fields
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
 
-    // audit fields
-    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy String?
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    // relations
-    User User @relation("_User_VoiceProfiles", fields: [userId], references: [id], onDelete: Cascade)
+  // relations
+  User User @relation("_User_VoiceProfiles", fields: [userId], references: [id], onDelete: Cascade)
 
-    // indexing
-    @@index([userId, isActive], name: "UserVoiceProfile_userId_isActive_idx")
-    @@index([resourceStatus], name: "UserVoiceProfile_status_idx")
-    @@schema("core")
+  // indexing
+  @@index([userId, isActive], name: "UserVoiceProfile_userId_isActive_idx")
+  @@index([resourceStatus], name: "UserVoiceProfile_status_idx")
+  @@schema("core")
 }
 
 // ============================================================================
@@ -265,39 +273,39 @@ model UserVoiceProfile {
 // ============================================================================
 
 model UserDepartment {
-    // meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // multi tenant fields
-    tenantId String
+  // multi tenant fields
+  tenantId String
 
-    // core fields
-    isPrimary Boolean @default(false)
+  // core fields
+  isPrimary Boolean @default(false)
 
-    // resource status fields
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
 
-    // audit fields
-    createdBy String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy String?
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    // relations
-    userId       String
-    User         User       @relation("_User_UserDepartments", fields: [userId], references: [id], onDelete: Cascade)
-    departmentId String
-    Department   Department @relation(fields: [departmentId], references: [id])
+  // relations
+  userId       String
+  User         User       @relation("_User_UserDepartments", fields: [userId], references: [id], onDelete: Cascade)
+  departmentId String
+  Department   Department @relation(fields: [departmentId], references: [id])
 
-    // indexing
-    @@unique([tenantId, userId, departmentId], name: "UserDepartment_tenant_user_department_unique")
-    @@index([tenantId], name: "UserDepartment_tenantId_idx")
-    @@index([userId], name: "UserDepartment_userId_idx")
-    @@index([departmentId], name: "UserDepartment_departmentId_idx")
-    @@index([tenantId, userId], name: "UserDepartment_tenant_user_idx")
-    @@schema("core")
+  // indexing
+  @@unique([tenantId, userId, departmentId], name: "UserDepartment_tenant_user_department_unique")
+  @@index([tenantId], name: "UserDepartment_tenantId_idx")
+  @@index([userId], name: "UserDepartment_userId_idx")
+  @@index([departmentId], name: "UserDepartment_departmentId_idx")
+  @@index([tenantId, userId], name: "UserDepartment_tenant_user_idx")
+  @@schema("core")
 }

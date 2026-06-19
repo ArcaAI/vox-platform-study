@@ -4,76 +4,90 @@
 // ============================================================================
 
 model DnaWritingStyleReport {
-    // Meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant
-    tenantId String
+  // Multi-tenant
+  tenantId String
 
-    // Doctor (FK to User)
-    doctorId String
-    Doctor   User   @relation("DoctorDnaReports", fields: [doctorId], references: [id])
+  // Doctor (FK to User)
+  doctorId String
+  Doctor   User   @relation("DoctorDnaReports", fields: [doctorId], references: [id])
 
-    // Report content
-    reportData Json?   @db.JsonB
-    styleText  String? @db.Text
+  // Report content
+  reportData Json?   @db.JsonB
+  styleText  String? @db.Text
 
-    // Version tracking
-    isLatest             Boolean @default(true)
-    currentVersionNumber Int     @default(1)
+  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
+  // of the writing-style report (reportData JSONB / styleText) plus the shared
+  // Transit key version. Nullable + additive; plaintext retained for the
+  // dual-read soak (removal is Phase 6, user-gated).
+  encryptedReportData Bytes?
+  encryptedStyleText  Bytes?
+  keyVersion          Int?
 
-    // Resource status + Audit
-    resourceStatus          ResourceStatusType @default(ENABLED)
-    resourceStatusUpdatedAt DateTime?
-    resourceStatusUpdatedBy String?
-    createdBy               String?  @default("60000000-0000-0000-0000-000000000000")
-    updatedBy               String?
-    createdAt               DateTime @default(now())
-    updatedAt               DateTime @updatedAt
+  // Version tracking
+  isLatest             Boolean @default(true)
+  currentVersionNumber Int     @default(1)
 
-    // Relations
-    Versions DnaWritingStyleVersion[]
+  // Resource status + Audit
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+  updatedBy               String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
-    // Indexes
-    @@index([tenantId], name: "DnaWritingStyleReport_tenantId_idx")
-    @@index([doctorId], name: "DnaWritingStyleReport_doctorId_idx")
-    @@index([doctorId, isLatest], name: "DnaWritingStyleReport_doctor_latest_idx")
-    @@schema("core")
+  // Relations
+  Versions DnaWritingStyleVersion[]
+
+  // Indexes
+  @@index([tenantId], name: "DnaWritingStyleReport_tenantId_idx")
+  @@index([doctorId], name: "DnaWritingStyleReport_doctorId_idx")
+  @@index([doctorId, isLatest], name: "DnaWritingStyleReport_doctor_latest_idx")
+  @@schema("core")
 }
 
 model DnaWritingStyleVersion {
-    // Meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant
-    tenantId String
+  // Multi-tenant
+  tenantId String
 
-    // Parent report
-    dnaReportId            String
-    DnaWritingStyleReport  DnaWritingStyleReport @relation(fields: [dnaReportId], references: [id])
+  // Parent report
+  dnaReportId           String
+  DnaWritingStyleReport DnaWritingStyleReport @relation(fields: [dnaReportId], references: [id])
 
-    // Version content snapshot
-    versionNumber Int
-    reportData    Json?   @db.JsonB
-    styleText     String? @db.Text
+  // Version content snapshot
+  versionNumber Int
+  reportData    Json?   @db.JsonB
+  styleText     String? @db.Text
 
-    // Change tracking
-    changeReason String?
-    changedBy    String?
+  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
+  // of the snapshot (reportData JSONB / styleText) plus the shared Transit key
+  // version. Nullable + additive; plaintext retained for the dual-read soak.
+  encryptedReportData Bytes?
+  encryptedStyleText  Bytes?
+  keyVersion          Int?
 
-    // Timestamps
-    createdAt DateTime @default(now())
+  // Change tracking
+  changeReason String?
+  changedBy    String?
 
-    // Constraints
-    @@unique([dnaReportId, versionNumber])
+  // Timestamps
+  createdAt DateTime @default(now())
 
-    // Indexes
-    @@index([dnaReportId], name: "DnaWritingStyleVersion_dnaReportId_idx")
-    @@schema("core")
+  // Constraints
+  @@unique([dnaReportId, versionNumber])
+  // Indexes
+  @@index([dnaReportId], name: "DnaWritingStyleVersion_dnaReportId_idx")
+  @@schema("core")
 }
 
 // ============================================================================
@@ -82,54 +96,54 @@ model DnaWritingStyleVersion {
 // ============================================================================
 
 model DnaUsageRecord {
-    // Meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant
-    tenantId String
+  // Multi-tenant
+  tenantId String
 
-    // Usage facts — plain IDs, NO FK relations
-    doctorId         String
-    dnaReportId      String
-    dnaVersionNumber Int?
-    consultationId   String?
-    departmentId     String?
+  // Usage facts — plain IDs, NO FK relations
+  doctorId         String
+  dnaReportId      String
+  dnaVersionNumber Int?
+  consultationId   String?
+  departmentId     String?
 
-    // Timestamps
-    createdAt DateTime @default(now())
+  // Timestamps
+  createdAt DateTime @default(now())
 
-    // Indexes
-    @@index([tenantId], name: "DnaUsageRecord_tenantId_idx")
-    @@index([doctorId], name: "DnaUsageRecord_doctorId_idx")
-    @@index([dnaReportId], name: "DnaUsageRecord_dnaReportId_idx")
-    @@index([consultationId], name: "DnaUsageRecord_consultationId_idx")
-    @@schema("core")
+  // Indexes
+  @@index([tenantId], name: "DnaUsageRecord_tenantId_idx")
+  @@index([doctorId], name: "DnaUsageRecord_doctorId_idx")
+  @@index([dnaReportId], name: "DnaUsageRecord_dnaReportId_idx")
+  @@index([consultationId], name: "DnaUsageRecord_consultationId_idx")
+  @@schema("core")
 }
 
 model PromptUsageRecord {
-    // Meta fields
-    metaData Json?  @map("_metadata") @db.JsonB
-    version  Int    @default(1) @map("_version")
-    id       String @id @default(uuid(7))
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
 
-    // Multi-tenant
-    tenantId String
+  // Multi-tenant
+  tenantId String
 
-    // Usage facts — plain IDs, NO FK relations
-    promptTemplateId    String
-    promptVersionNumber Int?
-    consultationId      String?
-    doctorId            String?
-    departmentId        String?
+  // Usage facts — plain IDs, NO FK relations
+  promptTemplateId    String
+  promptVersionNumber Int?
+  consultationId      String?
+  doctorId            String?
+  departmentId        String?
 
-    // Timestamps
-    createdAt DateTime @default(now())
+  // Timestamps
+  createdAt DateTime @default(now())
 
-    // Indexes
-    @@index([tenantId], name: "PromptUsageRecord_tenantId_idx")
-    @@index([promptTemplateId], name: "PromptUsageRecord_promptTemplateId_idx")
-    @@index([consultationId], name: "PromptUsageRecord_consultationId_idx")
-    @@schema("core")
+  // Indexes
+  @@index([tenantId], name: "PromptUsageRecord_tenantId_idx")
+  @@index([promptTemplateId], name: "PromptUsageRecord_promptTemplateId_idx")
+  @@index([consultationId], name: "PromptUsageRecord_consultationId_idx")
+  @@schema("core")
 }

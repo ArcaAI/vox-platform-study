@@ -92,6 +92,22 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
+   * TASK-369 Phase 3C — best-effort field encryption for the clinical models
+   * this service persists (SummaryMeta provenance, ContextItemVersion snapshots,
+   * NamedEntity spans). A missing/failing SecretsService leaves the row
+   * plaintext-only (logged, message only) and never throws into the write path
+   * during the dual-read soak.
+   */
+  private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
+    if (!this.secretsService) return;
+    try {
+      await run();
+    } catch (error) {
+      this.logger.error(`${label} field encryption skipped (dual-write soak): ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
    * Generate pre-summary from historical case notes
    */
   async generatePreSummary(consultationId: string, request: GeneratePreSummaryRequest): Promise<SummaryResponse> {
@@ -159,6 +175,9 @@ export class SummaryService extends BaseService implements ISummaryService {
       promptResolvedFrom: assembledPrompt.resolvedFrom,
       resolvedPromptId: assembledPrompt.promptId,
     });
+    await this.encryptBestEffort('SummaryMeta', () =>
+      this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!),
+    );
     await this.summaryMetaRepository.create(summaryMeta);
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
@@ -263,6 +282,9 @@ export class SummaryService extends BaseService implements ISummaryService {
       promptResolvedFrom: assembledPrompt.resolvedFrom,
       resolvedPromptId: assembledPrompt.promptId,
     });
+    await this.encryptBestEffort('SummaryMeta', () =>
+      this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!),
+    );
     await this.summaryMetaRepository.create(summaryMeta);
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
@@ -326,6 +348,9 @@ export class SummaryService extends BaseService implements ISummaryService {
     version.contentDiff = editDelta.contentDiff;
     version.fieldChanges = editDelta.fieldChanges as unknown as JsonValue | null;
 
+    await this.encryptBestEffort('ContextItemVersion', () =>
+      this.contextItemVersionRepository.encryptFieldsIntoEntity(version, this.secretsService!),
+    );
     const savedVersion = await this.contextItemVersionRepository.create(version);
 
     contextItem.currentVersionNumber = versionNumber;
@@ -486,6 +511,9 @@ export class SummaryService extends BaseService implements ISummaryService {
       version.fieldChanges = signDelta.fieldChanges as unknown as JsonValue | null;
     }
 
+    await this.encryptBestEffort('ContextItemVersion', () =>
+      this.contextItemVersionRepository.encryptFieldsIntoEntity(version, this.secretsService!),
+    );
     const savedVersion = await this.contextItemVersionRepository.create(version);
     const versionId = savedVersion?.id ?? version.id;
 
@@ -708,6 +736,9 @@ export class SummaryService extends BaseService implements ISummaryService {
           endOffset: (entity.end as number) ?? (entity.endOffset as number),
         });
 
+        await this.encryptBestEffort('NamedEntity', () =>
+          this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!),
+        );
         await this.namedEntityRepository.create(namedEntity);
         savedCount++;
       } catch (error) {
@@ -854,6 +885,9 @@ export class SummaryService extends BaseService implements ISummaryService {
   private async captureAiDraftSnapshot(savedContext: ContextItemEntity): Promise<void> {
     try {
       const snapshot = ContextItemVersionFactory.CreateFromContextItem(savedContext, 1, 'ai_draft_v1', 'system', 'ai_model', 'AI draft v1 snapshot');
+      await this.encryptBestEffort('ContextItemVersion', () =>
+        this.contextItemVersionRepository.encryptFieldsIntoEntity(snapshot, this.secretsService!),
+      );
       await this.contextItemVersionRepository.create(snapshot);
     } catch (error) {
       this.logger.warn({

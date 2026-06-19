@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import {
   CoreDatabaseService,
@@ -12,8 +12,16 @@ import {
   SYSTEM_TENANT_ID,
 } from '@arcaai/domains';
 import { IActiveUserContext } from '../../interfaces';
+import { SecretsService } from '../baseServices/_meta/secrets';
 import { ConfigResolver, PIPELINE_SETTING_DESCRIPTORS, PipelineToggleKey } from '../config-resolver';
 import { PipelinePolicyEffectiveResponse, PipelinePolicyResponse, PipelinePolicySource, UpdatePipelinePolicyRequest } from './dto';
+
+/** Ciphertext payloads threaded into the change factory (TASK-369 Phase 3D). */
+interface EncryptedChangePayloads {
+  encryptedBeforeJson: Buffer | null;
+  encryptedAfterJson: Buffer | null;
+  keyVersion: number | null;
+}
 
 /**
  * The three cascade toggles this admin surface may write (NULLABLE = inherit).
@@ -81,16 +89,41 @@ function entityToToggles(e: PipelinePolicyEntity): PolicyToggleSnapshot {
  */
 @Injectable()
 export class PipelinePolicyService {
+  private readonly logger = new Logger(PipelinePolicyService.name);
+
   constructor(
     private readonly policyRepository: PipelinePolicyRepository,
     private readonly policyChangeRepository: PipelinePolicyChangeRepository,
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     private readonly clsService: ClsService<IActiveUserContext>,
     private readonly configResolver: ConfigResolver,
+    // TASK-369 Phase 3D — optional so fixtures keep their 5-arg construction and
+    // non-Vault deployments degrade to plaintext WORM change rows.
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
 
   private get callerUserId(): string | null {
     return this.clsService.get('user')?.id ?? null;
+  }
+
+  /**
+   * TASK-369 Phase 3D — best-effort encrypt the before/after toggle snapshots so
+   * the WORM `PipelinePolicyChange` row stores ciphertext (+ a redaction sentinel
+   * in the plaintext JSONB). Done OUTSIDE the change transaction (the Vault
+   * round-trip must not hold a DB connection open). Returns null when there is no
+   * SecretsService or Vault errors — the change is then written in plaintext.
+   */
+  private async encryptChangePayloads(before: JsonValue | null, after: JsonValue): Promise<EncryptedChangePayloads | null> {
+    if (!this.secretsService) return null;
+    try {
+      return await this.policyChangeRepository.encryptPayloads(this.secretsService, before, after);
+    } catch (error) {
+      this.logger.warn({
+        message: 'PipelinePolicyChange payload encryption failed — writing plaintext change row',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 
   /** The resolved effective cascade (booleans + trace) for a consultation context. */
@@ -152,6 +185,12 @@ export class PipelinePolicyService {
       existing.updatedBy = changedBy;
       existing.validate();
 
+      // Toggles after the patch == the persisted row's toggles (update only bumps
+      // `version`), so snapshot + encrypt here, before opening the transaction.
+      const beforeJson = before as unknown as JsonValue;
+      const afterJson = entityToToggles(existing) as unknown as JsonValue;
+      const enc = await this.encryptChangePayloads(beforeJson, afterJson);
+
       const casVersion = expectedVersion ?? existing.version;
       const updated = await this.databaseService.baseClient.$transaction(async (tx) => {
         const u = await this.policyRepository.updateWithVersion(existing.id, existing, casVersion, tx);
@@ -162,8 +201,11 @@ export class PipelinePolicyService {
             scopeId,
             changedBy,
             policyVersion: u.version,
-            beforeJson: before as unknown as JsonValue,
-            afterJson: entityToToggles(u) as unknown as JsonValue,
+            beforeJson,
+            afterJson,
+            encryptedBeforeJson: enc?.encryptedBeforeJson ?? null,
+            encryptedAfterJson: enc?.encryptedAfterJson ?? null,
+            keyVersion: enc?.keyVersion ?? null,
             reason,
             createdBy: changedBy,
           }),
@@ -186,6 +228,9 @@ export class PipelinePolicyService {
     });
     entity.validate();
 
+    const afterJson = entityToToggles(entity) as unknown as JsonValue;
+    const enc = await this.encryptChangePayloads(null, afterJson);
+
     const created = await this.databaseService.baseClient.$transaction(async (tx) => {
       const c = await this.policyRepository.create(entity, tx);
       await this.policyChangeRepository.create(
@@ -196,7 +241,10 @@ export class PipelinePolicyService {
           changedBy,
           policyVersion: c.version,
           beforeJson: null,
-          afterJson: entityToToggles(c) as unknown as JsonValue,
+          afterJson,
+          encryptedBeforeJson: enc?.encryptedBeforeJson ?? null,
+          encryptedAfterJson: enc?.encryptedAfterJson ?? null,
+          keyVersion: enc?.keyVersion ?? null,
           reason,
           createdBy: changedBy,
         }),
@@ -266,6 +314,10 @@ export class PipelinePolicyService {
       existing.updatedBy = changedBy;
       existing.validate();
 
+      const beforeJson = before as unknown as JsonValue;
+      const afterJson = entityToToggles(existing) as unknown as JsonValue;
+      const enc = await this.encryptChangePayloads(beforeJson, afterJson);
+
       const casVersion = expectedVersion ?? existing.version;
       const updated = await this.databaseService.baseClient.$transaction(async (tx) => {
         const u = await this.policyRepository.updateWithVersion(existing.id, existing, casVersion, tx);
@@ -276,8 +328,11 @@ export class PipelinePolicyService {
             scopeId,
             changedBy,
             policyVersion: u.version,
-            beforeJson: before as unknown as JsonValue,
-            afterJson: entityToToggles(u) as unknown as JsonValue,
+            beforeJson,
+            afterJson,
+            encryptedBeforeJson: enc?.encryptedBeforeJson ?? null,
+            encryptedAfterJson: enc?.encryptedAfterJson ?? null,
+            keyVersion: enc?.keyVersion ?? null,
             reason,
             createdBy: changedBy,
           }),
@@ -303,6 +358,9 @@ export class PipelinePolicyService {
     });
     entity.validate();
 
+    const afterJson = entityToToggles(entity) as unknown as JsonValue;
+    const enc = await this.encryptChangePayloads(null, afterJson);
+
     const created = await this.databaseService.baseClient.$transaction(async (tx) => {
       const c = await this.policyRepository.create(entity, tx);
       await this.policyChangeRepository.create(
@@ -313,7 +371,10 @@ export class PipelinePolicyService {
           changedBy,
           policyVersion: c.version,
           beforeJson: null,
-          afterJson: entityToToggles(c) as unknown as JsonValue,
+          afterJson,
+          encryptedBeforeJson: enc?.encryptedBeforeJson ?? null,
+          encryptedAfterJson: enc?.encryptedAfterJson ?? null,
+          keyVersion: enc?.keyVersion ?? null,
           reason,
           createdBy: changedBy,
         }),

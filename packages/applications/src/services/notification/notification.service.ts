@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -19,7 +19,16 @@ import { CreateNotificationRequest, UpdateNotificationRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { assertParentInScope, assertUserBelongsToTenant } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
+import { SecretsService } from '../baseServices/_meta/secrets';
 import { SUPER_ADMIN_ROLE } from '../tenant/constants';
+
+/**
+ * TASK-369 Phase 3C — ciphertext columns that must never cross an audit /
+ * SysEvent boundary. The entity serializer (`toObject()` / `changes`) iterates
+ * every backing field, so the encrypted message blobs + shared key version are
+ * stripped from any payload derived from the entity.
+ */
+const NOTIFICATION_CIPHERTEXT_KEYS = ['encryptedMessageText', 'encryptedMessageRichText', 'encryptedMessageContent', 'keyVersion'] as const;
 
 @Injectable()
 export class NotificationService extends BaseService implements INotificationService {
@@ -33,8 +42,44 @@ export class NotificationService extends BaseService implements INotificationSer
     private readonly resourceSubscriptionRepository: ResourceSubscriptionRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-369 Phase 3C — Vault-Transit field encryption for the notification
+    // message body (messageText / messageRichText / messageContent). Optional +
+    // @Inject so legacy/direct-construction tests still work; when absent the
+    // dual-write degrades to plaintext-only and the backfill catches the row up.
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Notification);
+  }
+
+  private readonly logger = new Logger(NotificationService.name);
+
+  /**
+   * TASK-369 Phase 3C — dual-write: encrypt the notification's plaintext message
+   * fields into the `encrypted*` / `keyVersion` columns (Vault Transit
+   * `hope-phi`) before persistence. Best-effort during the soak: a missing or
+   * failing SecretsService leaves the row plaintext-only (logged, message only)
+   * — never throws into the write path.
+   */
+  private async encryptMessage(entity: NotificationEntity): Promise<void> {
+    if (!this.secretsService) return;
+    try {
+      await this.notificationRepository.encryptFieldsIntoEntity(entity, this.secretsService);
+    } catch (err) {
+      this.logger.error(`Notification message encryption skipped (dual-write soak): ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * TASK-369 Phase 3C — drop the ciphertext columns from an entity-derived audit
+   * payload (`toObject()` / `changes` / `previousData`) so the SysEvent never
+   * carries the raw ciphertext Buffer or the key version.
+   */
+  private stripCiphertext(payload: object): Record<string, unknown> {
+    const clone = { ...(payload as Record<string, unknown>) };
+    for (const key of NOTIFICATION_CIPHERTEXT_KEYS) {
+      delete clone[key];
+    }
+    return clone;
   }
 
   /**
@@ -76,6 +121,10 @@ export class NotificationService extends BaseService implements INotificationSer
       createdBy: this.requestUser?.id,
     });
 
+    // TASK-369 Phase 3C — encrypt the message body into the ciphertext columns
+    // before the first persist (dual-write; plaintext is retained for the soak).
+    await this.encryptMessage(newNotification);
+
     const notification = await this.notificationRepository.create(newNotification);
 
     if (!notification) {
@@ -85,7 +134,7 @@ export class NotificationService extends BaseService implements INotificationSer
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: notification.id,
       createdAt: notification.createdAt,
-      data: notification.toObject() as object,
+      data: this.stripCiphertext(notification.toObject()),
     });
     return notification;
   }
@@ -210,7 +259,7 @@ export class NotificationService extends BaseService implements INotificationSer
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: notification.id,
-      data: notification.toObject() as object,
+      data: this.stripCiphertext(notification.toObject()),
     });
     return notification;
   }
@@ -222,6 +271,17 @@ export class NotificationService extends BaseService implements INotificationSer
     const previousData = notification.toObject();
     this.updateEntity(notification, request);
 
+    // TASK-369 Phase 3C — re-encrypt only when a message field actually changed
+    // (read by the entity change-set, not the request DTO, since the API DTO
+    // field names differ from the entity columns) so read-status / tag-only
+    // updates don't churn the ciphertext columns.
+    const changedKeys = notification.changes as Record<string, unknown>;
+    const messageChanged =
+      'messageText' in changedKeys || 'messageRichText' in changedKeys || 'messageContent' in changedKeys;
+    if (messageChanged) {
+      await this.encryptMessage(notification);
+    }
+
     if (!notification.hasChanges) {
       throw new ArgumentInvalidException(`No changes to write to.`);
     }
@@ -229,8 +289,8 @@ export class NotificationService extends BaseService implements INotificationSer
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updatedNotification.id,
-      data: notification.changes,
-      previousData,
+      data: this.stripCiphertext(notification.changes),
+      previousData: this.stripCiphertext(previousData),
     });
     return updatedNotification;
   }
@@ -243,7 +303,7 @@ export class NotificationService extends BaseService implements INotificationSer
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
       resourceId: notification.id,
-      data: notification.toObject() as object,
+      data: this.stripCiphertext(notification.toObject()),
     });
     return notification;
   }

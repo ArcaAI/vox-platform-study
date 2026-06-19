@@ -70,6 +70,20 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
   }
 
+  /**
+   * TASK-369 Phase 3C — best-effort SummaryMeta field encryption. A missing or
+   * failing SecretsService leaves the row plaintext-only (logged, message only)
+   * and never throws into the write path during the dual-read soak.
+   */
+  private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
+    if (!this.secretsService) return;
+    try {
+      await run();
+    } catch (error) {
+      this.logger.error(`${label} field encryption skipped (dual-write soak): ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   async process(job: Job<GenerateComprehensiveSummaryJobPayload>): Promise<ComprehensiveSummaryJobResult> {
     const { jobId, consultationId, tenantId, userId, request } = job.data;
     // TASK-305 D.9.3 — fail-closed when tenantId is missing.
@@ -184,6 +198,9 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
           inputTokens: smrResponse.inputTokens,
           outputTokens: smrResponse.outputTokens,
         });
+        await this.encryptBestEffort('SummaryMeta', () =>
+          this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!),
+        );
         await this.summaryMetaRepository.create(summaryMeta);
 
         // Step 6: Complete (100%)

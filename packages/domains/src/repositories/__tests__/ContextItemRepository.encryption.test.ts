@@ -1,0 +1,191 @@
+// TASK-369 (Data Encryption Initiative) Phase 3B — ContextItemRepository
+// encryption helpers, exercised via the prototype-augmentation sibling file.
+// No real Prisma client is booted; findById is monkeypatched per test.
+import { describe, it, expect, vi } from 'vitest';
+import 'reflect-metadata';
+import { ContextItemRepository } from '../generated/core/ContextItemRepository';
+import { ContextItemEntity } from '../../entities/generated/core/ContextItemEntity';
+import { ContextItemType, ContextItemSource } from '../../enums';
+import type { SecretsServiceLike } from '../../common/field-encryption';
+
+// Side-effect import that registers the prototype methods.
+import '../generated/core/ContextItemRepository.encryption';
+
+function makeEntity(
+  overrides: Partial<ConstructorParameters<typeof ContextItemEntity>[0]> = {},
+): ContextItemEntity {
+  return new ContextItemEntity({
+    id: 'c0000000-0000-0000-0000-000000000001',
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+    createdBy: null,
+    updatedBy: null,
+    tenantId: 'tenant-1',
+    Tenant: null,
+    consultationId: 'consult-1',
+    type: ContextItemType.WORKNOTE,
+    source: ContextItemSource.USER,
+    currentVersionNumber: 1,
+    content: 'Patient presents with chest pain.',
+    encryptedContent: null,
+    contentKeyVersion: null,
+    qdrantSynced: false,
+    ...overrides,
+  } as any);
+}
+
+function makeRepo(): ContextItemRepository {
+  // Skip the real constructor (needs a UoW). We only exercise prototype methods.
+  return Object.create(ContextItemRepository.prototype) as ContextItemRepository;
+}
+
+describe('ContextItemRepository.encryptContentIntoEntity (Phase 3B)', () => {
+  it('encrypts content via SecretsService, populating encryptedContent + contentKeyVersion', async () => {
+    const secrets: SecretsServiceLike = {
+      encrypt: vi.fn(async (b: Buffer) => `vault:v3:${b.toString('base64')}`),
+      decrypt: vi.fn(),
+    };
+    const repo = makeRepo();
+    const entity = makeEntity({ content: 'note' });
+
+    await repo.encryptContentIntoEntity(entity, secrets);
+
+    expect(secrets.encrypt).toHaveBeenCalledTimes(1);
+    expect(entity.encryptedContent).toBeInstanceOf(Buffer);
+    expect(entity.encryptedContent?.toString('utf8')).toBe('vault:v3:bm90ZQ==');
+    expect(entity.contentKeyVersion).toBe(3);
+  });
+
+  it('routes encryption through the dedicated PHI key when getPhiTransitKeyName is present', async () => {
+    const encrypt = vi.fn(async (b: Buffer) => `vault:v1:${b.toString('base64')}`);
+    const secrets: SecretsServiceLike = {
+      encrypt,
+      decrypt: vi.fn(),
+      getPhiTransitKeyName: () => 'hope-phi',
+    };
+    const repo = makeRepo();
+    const entity = makeEntity({ content: 'note' });
+
+    await repo.encryptContentIntoEntity(entity, secrets);
+
+    expect(encrypt).toHaveBeenCalledWith(expect.any(Buffer), 'hope-phi');
+  });
+
+  it('parses contentKeyVersion=1 fallback when ciphertext is malformed', async () => {
+    const secrets: SecretsServiceLike = {
+      encrypt: vi.fn(async () => 'not-a-valid-vault-ciphertext'),
+      decrypt: vi.fn(),
+    };
+    const repo = makeRepo();
+    const entity = makeEntity({ content: 'note' });
+
+    await repo.encryptContentIntoEntity(entity, secrets);
+    expect(entity.contentKeyVersion).toBe(1);
+  });
+
+  it('no-ops when content is empty/null (nothing to encrypt)', async () => {
+    const secrets: SecretsServiceLike = { encrypt: vi.fn(), decrypt: vi.fn() };
+    const repo = makeRepo();
+    const entity = makeEntity({ content: null, type: ContextItemType.ATTACHMENT });
+
+    await repo.encryptContentIntoEntity(entity, secrets);
+    expect(secrets.encrypt).not.toHaveBeenCalled();
+    expect(entity.encryptedContent ?? null).toBeNull();
+    expect(entity.contentKeyVersion ?? null).toBeNull();
+  });
+
+  it('does NOT clear the plaintext content (dual-read soak)', async () => {
+    const secrets: SecretsServiceLike = {
+      encrypt: vi.fn(async (b: Buffer) => `vault:v1:${b.toString('base64')}`),
+      decrypt: vi.fn(),
+    };
+    const repo = makeRepo();
+    const entity = makeEntity({ content: 'keep-me' });
+
+    await repo.encryptContentIntoEntity(entity, secrets);
+    expect(entity.content).toBe('keep-me');
+  });
+});
+
+describe('ContextItemRepository.decryptContentFromEntity (Phase 3B)', () => {
+  it('decrypts encryptedContent via SecretsService', async () => {
+    const secrets: SecretsServiceLike = {
+      encrypt: vi.fn(),
+      decrypt: vi.fn(async (ct: string) => Buffer.from(ct.split(':').pop()!, 'base64')),
+    };
+    const repo = makeRepo();
+    const entity = makeEntity({
+      content: null,
+      encryptedContent: Buffer.from('vault:v2:bm90ZQ==', 'utf8'),
+    });
+
+    const pt = await repo.decryptContentFromEntity(entity, secrets);
+    expect(pt).toBe('note');
+    // Decryption always resolves to the dedicated PHI key (default 'hope-phi').
+    expect(secrets.decrypt).toHaveBeenCalledWith('vault:v2:bm90ZQ==', 'hope-phi');
+  });
+
+  it('falls back to plaintext content when encryptedContent is null (legacy bridge)', async () => {
+    const secrets: SecretsServiceLike = { encrypt: vi.fn(), decrypt: vi.fn() };
+    const repo = makeRepo();
+    const entity = makeEntity({ content: 'legacy-note', encryptedContent: null });
+
+    const pt = await repo.decryptContentFromEntity(entity, secrets);
+    expect(pt).toBe('legacy-note');
+    expect(secrets.decrypt).not.toHaveBeenCalled();
+  });
+
+  it('returns null when the row has neither ciphertext nor plaintext', async () => {
+    const secrets: SecretsServiceLike = { encrypt: vi.fn(), decrypt: vi.fn() };
+    const repo = makeRepo();
+    const entity = makeEntity({ content: null, encryptedContent: null, type: ContextItemType.AUDIO_RECORDING });
+
+    const pt = await repo.decryptContentFromEntity(entity, secrets);
+    expect(pt).toBeNull();
+  });
+
+  it('prefers encryptedContent when both are present', async () => {
+    const secrets: SecretsServiceLike = {
+      encrypt: vi.fn(),
+      decrypt: vi.fn(async () => Buffer.from('from-vault', 'utf8')),
+    };
+    const repo = makeRepo();
+    const entity = makeEntity({
+      content: 'from-plaintext',
+      encryptedContent: Buffer.from('vault:v1:Zg==', 'utf8'),
+    });
+
+    const pt = await repo.decryptContentFromEntity(entity, secrets);
+    expect(pt).toBe('from-vault');
+  });
+});
+
+describe('ContextItemRepository.findByIdWithDecryptedContent (Phase 3B)', () => {
+  it('wraps findById + decryptContentFromEntity into a single call', async () => {
+    const secrets: SecretsServiceLike = {
+      encrypt: vi.fn(),
+      decrypt: vi.fn(async () => Buffer.from('decrypted-note', 'utf8')),
+    };
+    const repo = makeRepo();
+    const entity = makeEntity({
+      content: null,
+      encryptedContent: Buffer.from('vault:v1:ZA==', 'utf8'),
+    });
+    (repo as { findById: typeof repo.findById }).findById = vi.fn(async () => entity);
+
+    const out = await repo.findByIdWithDecryptedContent('any-id', secrets);
+    expect(out.entity).toBe(entity);
+    expect(out.plaintext).toBe('decrypted-note');
+    expect(repo.findById).toHaveBeenCalledWith('any-id');
+  });
+
+  it('propagates the not-found error from findById', async () => {
+    const secrets: SecretsServiceLike = { encrypt: vi.fn(), decrypt: vi.fn() };
+    const repo = makeRepo();
+    (repo as { findById: typeof repo.findById }).findById = vi.fn(async () => {
+      throw new Error('DataNotFound: ContextItem/nope');
+    });
+
+    await expect(repo.findByIdWithDecryptedContent('nope', secrets)).rejects.toThrow(/DataNotFound/);
+  });
+});

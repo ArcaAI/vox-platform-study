@@ -1,11 +1,12 @@
 import type { AuditLogJob } from '@arcaai/domains';
 import { AuditLogFactory, AuditLogRepository, JobQueue } from '@arcaai/domains';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { Logger, Optional } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
 import { createWorkerSession } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
+import { AuditLogEncryptionService } from './auditLog-encryption.service';
 
 @Processor(JobQueue.AuditLog)
 export class AuditLogProcessor extends WorkerHost {
@@ -14,6 +15,10 @@ export class AuditLogProcessor extends WorkerHost {
   constructor(
     private readonly auditLogRepository: AuditLogRepository,
     private readonly cls: ClsService<IActiveUserContext>,
+    // TASK-369 Phase 3D — envelope-encrypt data/previousData before the row is
+    // written. @Optional so tests that construct the processor directly without
+    // the encryption service degrade to plaintext-only (dual-read soak).
+    @Optional() private readonly auditLogEncryption?: AuditLogEncryptionService,
   ) {
     super();
   }
@@ -54,6 +59,10 @@ export class AuditLogProcessor extends WorkerHost {
         correlationId,
         tenantId,
       });
+
+      // TASK-369 Phase 3D — best-effort envelope encryption (no-op + plaintext
+      // fallback when unavailable); never blocks the audit write.
+      await this.auditLogEncryption?.encryptIntoEntity(entity);
 
       await this.auditLogRepository.create(entity);
     });
