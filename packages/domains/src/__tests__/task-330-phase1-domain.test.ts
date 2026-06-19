@@ -279,7 +279,7 @@ describe('TASK-330 Phase 1 — SummaryMeta sensor/citation provenance', () => {
     expect(entity.modelName).toBe('gpt-x');
   });
 
-  it('toPersistence carries sensor/citation fields to the data model', () => {
+  it('toPersistence carries sensor scores but never the dropped citationsMap PHI', () => {
     const entity = SummaryMetaFactory.CreateSummaryMeta({
       tenantId: TENANT_ID,
       contextItemId: 'ctx-1',
@@ -288,6 +288,9 @@ describe('TASK-330 Phase 1 — SummaryMeta sensor/citation provenance', () => {
     });
     const model = mapper.toPersistence(entity);
     expect(model.entityFaithfulnessScore).toBe(0.5);
-    expect(model.citationsMap).toEqual({ c: ['x'] });
+    // TASK-369 Phase 6 — citationsMap/guardrailDecisions plaintext columns were
+    // dropped; they survive only as transient fields persisted as ciphertext
+    // (encryptedCitationsMap/encryptedGuardrailDecisions), never as plaintext.
+    expect(model).not.toHaveProperty('citationsMap');
   });
 });

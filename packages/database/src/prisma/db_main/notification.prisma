@@ -7,18 +7,17 @@ model Notification {
   // multi tenant fields
   tenantId String
 
-  // core fields
+  // core fields. TASK-369 Phase 6 — plaintext messageText / messageRichText /
+  // messageContent columns DROPPED; persisted as Vault-Transit ciphertext only.
+  // `title` is NOT encrypted and remains a plaintext column.
   title           String
-  messageText     String?
-  messageRichText String?
-  messageContent  Json?            @db.JsonB
   type            NotificationType
   read            Boolean          @default(false)
 
-  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
-  // of the message body (messageText / messageRichText / messageContent) plus
-  // the shared Transit key version. All nullable + additive; plaintext columns
-  // retained for the dual-read soak (removal is Phase 6, user-gated).
+  // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
+  // message body (messageText / messageRichText / messageContent) plus the
+  // shared Transit key version. Phase 6: these ciphertext columns are now the
+  // system of record.
   encryptedMessageText     Bytes?
   encryptedMessageRichText Bytes?
   encryptedMessageContent  Bytes?

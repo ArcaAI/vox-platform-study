@@ -6,8 +6,8 @@
 | **Ticket Name** | Data Encryption |
 | **Type** | `feature` (security/compliance) + `infrastructure` + `refactor` (crypto debt) |
 | **Created** | 2026-06-18 |
-| **Last Updated** | 2026-06-18 |
-| **Status** | **In Progress** — repo deliverables landed (infra + app); operator actions + deferred follow-ups remain (see §6.7, §6.8) |
+| **Last Updated** | 2026-06-19 |
+| **Status** | **Review** — repo deliverables landed (infra + app) incl. **Phase 6** plaintext-column DROP + decrypt-only reads (dev-applied, user-approved 2026-06-19); operator actions + deferred follow-ups remain (see §6.7, §6.8) |
 | **Source Plan** | Data Encryption Initiative (approved) |
 | **Reusable Foundation** | TASK-302 Phase 4 — Vault Transit envelope-encryption recipe |
 | **Workspace Rules** | `.cursor/rules/00-project-context.mdc`, `.cursor/rules/01-development-workflow.mdc` |
@@ -61,8 +61,8 @@ This ticket is **Completed** when all of the following are true (per-phase verif
 - [ ] **Phase 3D** — `AuditLog` batch/DEK approach benchmarked and chosen; WORM hash-chained tables encrypt-before-hash for new rows; voiceprint decision recorded; audio confirmed covered by object-storage SSE.
 - [ ] **Phase 4** — pgBackRest repo cipher (`aes-256-cbc` + Vault-managed pass) enabled; encrypted backup + restore verified; hardcoded S3 creds rotated.
 - [ ] **Phase 5** — Key rotation/rewrap procedure; DR/break-glass runbook; Transit monitoring/alerts (fail-closed); `crypto.service.ts` migrated to AES-256-GCM; `StorageAccessKey.secretAccessKey` actually encrypted.
-- [ ] **Phase 6** — Gated plaintext cleanup completed after a one-release dual-read soak per field, **only with explicit approval** (no destructive SQL without sign-off).
-- [ ] All migrations are additive (`ADD COLUMN`) until Phase 6; no `DROP`/`DELETE`/`TRUNCATE` runs without user sign-off.
+- [x] **Phase 6** — Gated plaintext cleanup completed (user-approved 2026-06-19): 30 free-text clinical PHI columns + `NamedEntity_text_idx` dropped across 14 models; read paths switched to decrypt-only. Coded identifiers + `Notification.title` + `AuditLog`/WORM plaintext intentionally retained (see §6.2).
+- [x] All migrations were additive (`ADD COLUMN`) until Phase 6; the single Phase 6 `DROP COLUMN` migration ran only with explicit user sign-off (no `DELETE`/`TRUNCATE`).
 
 ### 1.5 Out of Scope
 
@@ -127,7 +127,7 @@ Field-encrypting these would break uniqueness constraints, indexed lookups, and 
 
 ### (B) Free-text clinical content — **field-encrypted** (randomized Vault Transit `hope-phi`)
 
-Additive `Bytes?` ciphertext column + `keyVersion Int?` per field; encrypt-on-write / decrypt-on-read; plaintext kept for a one-release dual-read soak, then gated cleanup (Phase 6).
+Additive `Bytes?` ciphertext column + `keyVersion Int?` per field; encrypt-on-write / decrypt-on-read. The one-release dual-read soak is complete: **Phase 6 (2026-06-19) dropped the plaintext columns**, so these fields now persist as ciphertext only and are repopulated as transient in-memory properties by repository decrypt-on-read (Vault required at runtime). See §6.2 Phase 6.
 
 | Model.field(s) | Service area | Phase |
 |---|---|---|
@@ -183,7 +183,7 @@ The encryption pattern is **not greenfield** — TASK-302 Phase 4 built a reusab
 | Crypto API — `encrypt(Buffer) -> string` / `decrypt(string) -> Buffer` (capability-checked, Vault-only) | `packages/applications/src/services/baseServices/_meta/secrets/SecretsService.ts` |
 | Transit calls — `transit/encrypt|decrypt/<key>` | `packages/applications/src/services/baseServices/_meta/secrets/providers/vault-secrets.provider.ts` |
 | Column + repo + mapper recipe (Bytes-safe) | `GlobalSettingRepository.encryption.ts`, `GlobalSettingEntityMapper.ts`, `globalSetting.prisma` (`encryptedValue Bytes?` + `keyVersion Int?`) |
-| Backfill template (idempotent, `--dry-run`) | `packages/database/scripts/backfill-globalsetting-encryption.ts` |
+| Read-only PHI decrypt CLI (admin/dev) | `packages/database/scripts/decrypt-row.ts` (backfill scripts removed — see §6.9) |
 | Vault provisioning | `infrastructure/docker/configs/vault/dev-init.sh`, env in `.env.dev` |
 
 **Known gap:** the live service **write/read path was never wired** under TASK-302 (Phase 4C/4D). The Phase 3B pilot completes that missing wiring and generalizes the recipe to clinical free-text fields.
@@ -208,7 +208,7 @@ Layer order for every code-touching change follows the HOPE dependency chain: **
 | **3D** | Field-level: special cases | `AuditLog` JSONB via batch/DEK (perf); WORM hash-chained tables encrypt-before-hash (new rows only); voiceprint embedding decision; confirm audio covered by object-storage SSE. |
 | **4** | Backup encryption | pgBackRest `repo-cipher-type=aes-256-cbc` + `repo-cipher-pass` (from Vault); verify encrypted backup + restore; rotate hardcoded S3 creds committed in `pgbackrest.conf`. |
 | **5** | Key management, rotation, DR, ops | `hope-phi` rotation policy + `transit/rewrap` (tracked by `keyVersion` columns); DR/break-glass runbook (Vault unseal + LUKS recovery); Transit latency/error alerts + fail-closed; migrate `crypto.service.ts` CBC→GCM; encrypt `StorageAccessKey.secretAccessKey`. |
-| **6** | Gated plaintext cleanup | After a one-release dual-read soak per field, null out and drop plaintext columns for migrated rows. **DESTRUCTIVE — requires explicit user approval before any `UPDATE`-to-null / `DROP COLUMN`.** |
+| **6** | Gated plaintext cleanup | **Done 2026-06-19 (user-approved, dev).** Dropped 30 free-text clinical PHI columns across 14 models + `NamedEntity_text_idx`; reads switched to decrypt-only. One `DROP COLUMN` migration; coded identifiers / `Notification.title` / `AuditLog` + WORM plaintext retained. |
 
 ### 5.2 Per-field migration lifecycle
 
@@ -264,7 +264,7 @@ Updated 2026-06-18 after the infra and application workstreams reported. "Operat
 | 3D — Special cases | application | Complete (verified green) — AuditLog envelope + WORM encrypt-before-hash |
 | 4 — Backup encryption | infra | Config complete — credential rotation is an operator action |
 | 5 — Key mgmt / rotation / DR | infra + application | Code + runbooks + alerts complete — operator actions pending |
-| 6 — Gated plaintext cleanup | application | Deferred (approval-gated) |
+| 6 — Gated plaintext cleanup | application | **Complete (verified green)** — user-approved 2026-06-19; 30 plaintext PHI columns + `NamedEntity_text_idx` dropped (dev); decrypt-on-read switched to ciphertext-only |
 
 ### 6.2 Per-phase detail
 
@@ -329,8 +329,54 @@ Config complete; rotating the compromised `pgbackrest-svc` MinIO credentials + s
 - `StorageAccessKey.secretAccessKey`: **deviation** (§6.6) — already a one-way peppered HMAC-SHA256 hash with Vault-managed backend creds; reversible encryption is not applicable. Stale schema comment corrected.
 - Operator actions: load Vault alerts into Prometheus; init `hope-phi` `auto_rotate_period` (§6.7).
 
-#### Phase 6 — Gated plaintext cleanup
-Deferred and approval-gated. No destructive SQL (null-out / `DROP COLUMN`) will run until a one-release dual-read soak completes and explicit approval is given (§6.8).
+#### Phase 6 — Gated plaintext cleanup (application) — complete (verified green), user-approved 2026-06-19
+The dual-read soak is over: the plaintext PHI columns are **dropped** and all read paths are **decrypt-only**. Dev DB only (`localhost:5432/hope`, `SECRETS_PROVIDER=vault`); no staging/prod, no commit/push.
+
+**Migration:** `20260619100000_task_369_phase6_drop_plaintext_phi_columns` — a single non-additive migration with only `DROP COLUMN`s (+ one `DROP INDEX`). **30 plaintext columns across 14 models** + the now-unused `NamedEntity_text_idx`:
+- `ContextItem.content`
+- `ContextItemVersion.content` / `.contentDiff` / `.changeSummary` / `.fieldChanges`
+- `Highlight.exact` / `.prefix` / `.suffix` / `.note`
+- `NamedEntity.text` / `.normalizedText` / `.metadata`  (+ drop `NamedEntity_text_idx`)
+- `SummaryMeta.citationsMap` / `.guardrailDecisions`
+- `TranscriptionJob.resultText` / `.resultMetadata`
+- `GoldenCase.transcript` / `.referenceNote`
+- `EvalRun.notes`
+- `EvalScore.rationale` / `.details`
+- `DnaWritingStyleReport.styleText` / `.reportData`
+- `DnaWritingStyleVersion.styleText` / `.reportData`
+- `KnowledgeChunk.text`
+- `Notification.messageText` / `.messageRichText` / `.messageContent`
+- `PromptTemplate.lastTestOutput`
+
+**Intentionally retained (NOT dropped), with rationale:**
+- **`NamedEntity` coded fields** (`umlsCui` / `snomedCode` / `rxnormCode` / `icdCode` / `loincCode`) and **`Notification.title`** — structured identifiers / short labels, no `encrypted*` counterpart; outside the "free-text clinical content only" scope.
+- **`AuditLog.data` / `.previousData`** — DEK-envelope encrypted on a separate path; plaintext retained for legacy rows (decrypt-on-read stays `fetchById`-only; §6.6).
+- **WORM payloads** (`HarnessAuditEvent` / `HarnessPolicyChange` / `PipelinePolicyChange`) — append-only (UPDATE/DELETE revoked); `encrypted*` coexists with the immutable plaintext.
+
+**Code — entities / models / mappers / repos:** Each dropped field is now a **transient in-memory property** (declaration + constructor assignment removed from the 14 `models/generated/core/*Model.ts`, so the auto-mappers persist ciphertext only — they iterate real model columns). The 14 `*Repository.encryption.ts` siblings had their **dead plaintext fallback removed** — `decrypt*FromEntity` returns `null` when the ciphertext is null (no legacy column to read).
+
+**Decrypt-on-read (Option A — auto-decrypt in the repository):**
+- New `packages/domains/src/common/phi-read-decrypt.ts` — one **global registry** `PHI_CIPHERTEXT_FIELDS` maps the 26 unique `encrypted<Field>` columns (covering all 30 dropped fields) to their transient plaintext target (+ JSON flag).
+- The base `Repository.db` getter wraps the Prisma delegate (`wrapDelegateWithPhiDecrypt`) **only when a SecretsService is wired** (Vault mode), so every row-returning read — generic finders, hand-written custom finders, **and nested PHI rows pulled via `include` from any repository** — flows through `decryptPhiRows`. One wrap point; zero overhead in non-Vault dev/test (the wrap is skipped).
+- **Batch:** one Vault Transit `decryptBatch` round-trip per result set (all ciphertext across all rows + nested relations decrypted together under `hope-phi`). Added `decryptBatch` to `SecretsServiceLike`, `SecretsService`, and `VaultSecretsProvider` (Transit `batch_input` / `batch_results`).
+- Wiring: `secrets.module.ts` calls `setPhiReadSecrets(svc)` once when a Transit-capable (Vault) provider is active.
+
+**Consequence — Vault is now hard-required for these PHI reads/writes:** with no plaintext column, any environment that must read or persist these fields runs `SECRETS_PROVIDER=vault`. The write path is already env-gated **fail-closed** (§6.9-(2)); in soft (non-Vault) dev/test the fields are simply left unpersisted (no silent plaintext).
+
+**Reseed (dev):** seeds now write ciphertext via a seed-time helper `packages/database/src/prisma/db_main/seed/phi-encryption.ts` (`encryptSeedRow`) that calls Vault Transit `hope-phi` directly through `node-vault` — same `vault:vN:<b64>`-as-bytes format the services write (the leaf `@arcaai/database` package cannot import `@arcaai/domains`/`@arcaai/applications` without a dependency cycle, mirroring the sanctioned `decrypt-row.ts`). Wired into `09-consultation.ts` (ContextItem, ContextItemVersion, NamedEntity, TranscriptionJob) and `08-dna-writing-style.ts` (DnaWritingStyleReport / Version). Dev was synced + reseeded with `SECRETS_PROVIDER=vault` and a round-trip decrypt verified.
+
+**Dev apply note:** the dev DB had never run the Phase 3 additive migrations (its `encrypted*` columns were missing), so dev was synced with `prisma db push --accept-data-loss` (adds the missing `encrypted*` columns **and** applies the Phase 6 drops) rather than `migrate dev`. The committed `DROP COLUMN` migration above is the artifact for environments with a clean migration history. To reproduce on dev:
+
+```
+SECRETS_PROVIDER=vault VAULT_ADDR=… VAULT_ROLE_ID=… VAULT_WRAPPED_SECRET_ID=… \
+  pnpm --filter @arcaai/database db:push          # or db:migrate where history is clean
+pnpm --filter @arcaai/database db:generate
+SECRETS_PROVIDER=vault VAULT_ADDR=… …             pnpm --filter @arcaai/database db:seed
+```
+
+**Perf follow-up:** decrypt-on-read issues one batch Transit call per result set. Hot **list / index** reads that return PHI rows but don't need the plaintext still pay that batch call — a future optimisation can make decryption opt-in per query (skip when the caller only needs non-PHI columns). Recorded here, not redesigned now.
+
+**Verification:** `@arcaai/database` 783 / `@arcaai/domains` 1263 (+2 skipped, 9 todo) / `@arcaai/applications` 5328 (+4 skipped) unit tests pass; touched files lint-clean. Integration paths that exercise real decrypt-on-read require a live Vault.
 
 ### 6.3 Files changed (rolled up)
 
@@ -351,8 +397,8 @@ Deferred and approval-gated. No destructive SQL (null-out / `DROP COLUMN`) will 
 **Application — created:**
 - `packages/domains/src/common/field-encryption.ts`
 - `ContextItemRepository.encryption.ts` + `.encryption.ts` repo siblings for the 13 Category B models
-- `packages/database/scripts/backfill-contextitem-content-encryption.ts`
-- `packages/database/scripts/_phi-encryption-backfill.shared.ts` (shared backfill engine) + per-model backfill scripts under `packages/database/scripts/` (3C)
+- `packages/database/scripts/backfill-contextitem-content-encryption.ts` _(removed in §6.9 follow-up)_
+- `packages/database/scripts/_phi-encryption-backfill.shared.ts` (shared backfill engine) + per-model backfill scripts under `packages/database/scripts/` (3C) _(all removed in §6.9 follow-up; replaced by the read-only `decrypt-row.ts` CLI)_
 
 **Application — modified:**
 - `infrastructure/docker/configs/vault/dev-init.sh` (`hope-phi` key)
@@ -363,13 +409,23 @@ Deferred and approval-gated. No destructive SQL (null-out / `DROP COLUMN`) will 
 - Vault policy: `infrastructure/docker/configs/vault/policies/hope-app.hcl` (dev) + `infrastructure/single-deployment/vault/bootstrap/configure-app-auth.sh` (prod-HA `hope-phi` grant + prod key)
 - `crypto.service.ts` (AES-256-GCM); `StorageAccessKey` schema-comment correction
 
+**Application — Phase 6 (plaintext DROP + decrypt-on-read):**
+- Migration `20260619100000_task_369_phase6_drop_plaintext_phi_columns` (30 `DROP COLUMN` + 1 `DROP INDEX`); 7 `packages/database/src/prisma/db_main/*.prisma` (dropped the 30 columns + `NamedEntity_text_idx`).
+- 14 `packages/domains/src/models/generated/core/*Model.ts` (dropped fields → transient) + the 14 entities' comments; 14 `*Repository.encryption.ts` siblings (removed dead plaintext fallback).
+- `packages/domains/src/common/phi-read-decrypt.ts` (new global decrypt-on-read) + `field-encryption.ts` (`decryptBatch`), `common/index.ts`, `common/repository.ts` (`db`-getter wrap).
+- `SecretsService` + `VaultSecretsProvider` (`decryptBatch`) + `secrets.module.ts` (`setPhiReadSecrets`).
+- Write-path comment corrections: `context` / `highlight` / `notification` / `eval` / `dna-writing-style` / `harness-internal` services + `common/phi-field-encryption.ts`.
+- Seeds: `seed/phi-encryption.ts` (new) + `09-consultation.ts` + `08-dna-writing-style.ts`.
+- Tests: 6 domains + 2 applications encryption test files updated for transient-field / decrypt-only.
+
 ### 6.4 Migrations (rolled up)
 
-Four additive (`ADD COLUMN`) only — no destructive SQL.
+Four additive (`ADD COLUMN`) through Phase 3 + one Phase 6 destructive (`DROP COLUMN`, user-approved).
 - `20260618100000_task_369_phase3b_contextitem_encrypted_content` — `ContextItem` encrypted content + key-version columns.
 - `20260618110000_task_369_phase3c_clinical_fields_encrypted` — encrypted columns + `keyVersion` for the 13 Category B models.
 - `20260618120000_task_369_phase3d_worm_encrypted_payloads` — encrypted PHI-payload columns for the 3 WORM tables.
 - `20260618130000_task_369_phase3d_auditlog_envelope_encryption` — `AuditLog` envelope-encryption columns for `data` / `previousData` (now added — supersedes the earlier "not added this pass" note).
+- `20260619100000_task_369_phase6_drop_plaintext_phi_columns` — **Phase 6 (destructive, user-approved):** drops the 30 plaintext clinical-PHI columns across 14 models + `NamedEntity_text_idx`. Reads are now decrypt-only.
 
 ### 6.5 Endpoints affected
 
@@ -380,7 +436,8 @@ No HTTP endpoint contracts changed. Field encryption is transparent at the servi
 - **`StorageAccessKey.secretAccessKey` not field-encrypted** — the plan listed it as a Phase 5 "make it actually encrypted" item, but it is already a one-way peppered HMAC-SHA256 hash and backend creds are Vault-managed, so reversible encryption is not applicable. The stale "encrypted at app layer" schema comment was corrected instead.
 - **`SummaryMeta` encrypted at `finalizeAssurance`, not `persistDraft`** — `harness-internal.service.ts` `finalizeAssurance` is a 4th encrypted site; `SummaryMeta.citationsMap` / `guardrailDecisions` receive real values there and are written `NULL` at `persistDraft` create.
 - **Authorization-audit emitter intentionally not wired** — it writes empty `{}` data (no PHI), so it is left unencrypted.
-- **`AuditLog` decrypt-on-read limited to `fetchById`** — `list` / `export` paths intentionally stay on retained plaintext during the dual-read soak.
+- **`AuditLog` decrypt-on-read limited to `fetchById`** — `list` / `export` paths intentionally stay on retained plaintext (AuditLog plaintext is retained, not dropped in Phase 6).
+- **Phase 6 retained non-free-text columns** — `NamedEntity` coded fields (`umlsCui` / `snomedCode` / `rxnormCode` / `icdCode` / `loincCode`) and `Notification.title` were **not** dropped: structured identifiers / short labels with no `encrypted*` counterpart, outside the "free-text clinical content only" scope. `AuditLog` + WORM plaintext likewise retained (separate encrypt paths / append-only immutability).
 - **Vault ACL policy scope (resolved in-repo)** — the Transit grant was scoped only to `hope-globalsetting`; the `hope-app` policy now grants `hope-phi` in the dev `.hcl` and the prod bootstrap script. Loading it on the running Vault is an operator action (§6.7).
 - **Out-of-plan bug fix** — a latent Buffer/Date corruption bug in `removeNullValues.ts` was found and fixed during the 3B pilot.
 
@@ -397,7 +454,41 @@ Real-host actions that cannot be performed in the repo. Tracked in `infrastructu
 ### 6.8 Deferred / Follow-up Work
 
 - Python-owned bulk-write paths in STT-v2 / NLP that write directly to encrypted models (the TS HTTP API paths are wired).
-- Phase 6 gated plaintext cleanup (approval-gated).
+- ~~Phase 6 gated plaintext cleanup (approval-gated).~~ **Done 2026-06-19 (dev, user-approved)** — see §6.2 Phase 6.
+- **Fail-closed coverage for the audit/WORM paths** — the `AuditLog` DEK-envelope service and the WORM `encryptPayloads` callers (`harness-audit`, `harness-policy`, `pipeline-policy`) were **intentionally left best-effort** in the §6.9 follow-up (different encrypt shape + an availability requirement: the clinical audit append "must never fail closed"). Whether to make these fail-closed in staging/prod is an open decision.
+
+### 6.9 Follow-up — decrypt CLI, fail-closed encrypt-on-write, backfill removal (2026-06-19)
+
+Greenfield (no production data) follow-up. **No schema/migration changes and no destructive SQL** — plaintext columns and the decrypt-on-read fallback are unchanged.
+
+**(1) Read-only decrypt CLI — `packages/database/scripts/decrypt-row.ts`**
+
+An admin/dev tool to decrypt a single row's encrypted PHI field(s) out-of-band (support/debugging), without the running API. It reuses the former backfill bootstrap (Vault AppRole auth + the unscoped platform-admin Prisma client — copied in, since the backfill scripts were removed in (3)). **Strictly read-only** (`findUnique` only — no create/update/delete); **error-message-only** logging that never prints ciphertext/DEK/secrets (`DECRYPT_DEBUG=1` for a full stack, never in prod); requires `SECRETS_PROVIDER=vault` (exits `2` otherwise). Per-field models decrypt each `encrypted<Field>` via Transit `hope-phi` (JSONB fields are `JSON.parse`d); `AuditLog` unwraps the row's `dekWrapped` DEK once then locally AES-256-GCM-decrypts `data`/`previousData` (mirrors `CryptoService` + `AuditLogEncryptionService`). Not-yet-encrypted rows fall back to the retained plaintext column (dual-read soak).
+
+```
+SECRETS_PROVIDER=vault VAULT_ADDR=… VAULT_ROLE_ID=… VAULT_WRAPPED_SECRET_ID=… \
+  pnpm --filter @arcaai/database decrypt:row -- --model <ModelName> --id <rowId> [--field <name>] [--json]
+pnpm --filter @arcaai/database decrypt:row -- --help
+```
+
+Models: `AuditLog` + the 14 per-field PHI models (`ContextItem`, `ContextItemVersion`, `NamedEntity`, `SummaryMeta`, `Highlight`, `TranscriptionJob`, `GoldenCase`, `EvalRun`, `EvalScore`, `DnaWritingStyleReport`, `DnaWritingStyleVersion`, `KnowledgeChunk`, `Notification`, `PromptTemplate`). `GlobalSetting` is out of scope (non-PHI secrets under `hope-globalsetting`). Unit test: `scripts/__tests__/decrypt-row.test.ts` (20 cases — arg parsing, validation, per-field + AuditLog-envelope decrypt with mocked Vault/crypto; no live Vault/DB). Added a `decrypt:row` pnpm alias.
+
+**(2) Env-gated FAIL-CLOSED encrypt-on-write — `packages/applications/src/common/phi-field-encryption.ts`**
+
+Phase 3 wired encrypt-on-write as "best-effort" (silently persist plaintext-only when the SecretsService/Vault was unavailable) — correct for the dev/test soak, unsafe in staging/prod. The new shared helper `encryptPhiFields(secrets, label, run, logger, env?)` centralises the policy:
+
+- dev/test (`SECRETS_PROVIDER` != `vault`) → **SOFT** no-op (logged, message-only, never PHI).
+- staging/prod (`SECRETS_PROVIDER` == `vault`) → **FAIL-CLOSED**: a missing SecretsService **or** an encryption error **throws** so the write aborts instead of persisting plaintext-only.
+
+All **15** per-field encrypt-on-write helpers now route through it: the 13 `encryptBestEffort` services (`harness-internal`, `ner.processor`, `comprehensive-summary.processor`, `chain-summary`, `summary`, `sttInternal`, `transcriptionJob`, `prompt-management`, `ingest-knowledge-document.processor`, `dna-writing-style.service`, `dna-writing-style.processor`, `eval`, plus `context`'s sibling-model writes) + `context.service.ts`'s `encryptContent` + `highlight.service.ts`'s `encryptHighlight` + `notification.service.ts`'s `encryptMessage`. The schema and decrypt-on-read fallback are unchanged. Tests: `common/__tests__/phi-field-encryption.test.ts` (helper — both regimes) + a fail-closed service test in `harness-internal.service.test.ts` (`persistEntities` aborts the write, `create` not called, when a Vault failure occurs under `SECRETS_PROVIDER=vault`). The `AuditLog`/WORM paths were left best-effort by design (see §6.8).
+
+**(3) Backfill machinery removed (greenfield — nothing to backfill)**
+
+Deleted all 15 `scripts/backfill-*-encryption.ts` (incl. the TASK-302 `backfill-globalsetting-encryption.ts`), the shared engine `scripts/_phi-encryption-backfill.shared.ts`, and their 3 `__tests__`. **Kept:** the domain `*Repository.encryption.ts` helpers, all migrations, `benchmark-auditlog-envelope-encryption.ts`, and `vault-db-smoke.*`. No `pnpm` aliases pointed at the backfills (they ran via `pnpm --filter @arcaai/database tsx scripts/…`), so none to remove; the §"unscoped client" allow-list table was repointed from the deleted globalsetting backfill to `decrypt-row.ts`.
+
+**(4) Phase 6 (plaintext-column DROP)** was still **gated / pending approval** at the time of this §6.9 follow-up. It has since been **approved and executed (2026-06-19, dev)** — see §6.2 Phase 6 and the Change-History entry below.
+
+**Verification:** `@arcaai/applications` 236 files / 5328 tests pass (1 file, 4 tests skipped); `@arcaai/database` 21 files / 783 tests pass; `@arcaai/domains` 99 files / 1263 tests pass (unchanged by this follow-up).
 
 ---
 
@@ -408,3 +499,5 @@ Real-host actions that cannot be performed in the repo. Tracked in `infrastructu
 | 2026-06-18 | docs workstream | Ticket created; plan approved; implementation started in parallel across infra/app/docs workstreams. HIPAA citations verified against 45 CFR §164.312. | `docs/implementation/TASK-369-Data-Encryption/README.md` |
 | 2026-06-18 | infra + application + docs workstreams | Implementation Summary consolidated. **Infra:** LUKS/MinIO-SSE + DR + Transit-rotation runbooks, 5 Vault Transit Prometheus alerts, pgBackRest `aes-256-cbc` cipher + hardcoded-S3-cred removal, TLS env hardening across services, security deployment guide. **Application:** `hope-phi` keyed crypto API (3A), `ContextItem.content` pilot (3B), domain-layer field encryption for 13 clinical models + 2 additive migrations (3C), 3D special-case decisions, CryptoService → AES-256-GCM (5). Recorded outstanding operator actions (§6.7), deferred follow-ups (§6.8), and deviations (StorageAccessKey hash; AuditLog/WORM deferral; Vault ACL `hope-phi` extension in progress). Status remains **In Progress**. | `docs/implementation/TASK-369-Data-Encryption/README.md` |
 | 2026-06-18 | application + docs workstreams | Phase 3C & 3D completed. **3C:** encrypt-on-write wired for all 12 models across their TS services + `harness-internal.service.ts` (`NamedEntity`, `SummaryMeta` at `persistDraft`/`finalizeAssurance`, `ContextItemVersion`); per-model idempotent batched backfills via shared engine `_phi-encryption-backfill.shared.ts`; `@arcaai/applications` 5320 passed / 4 skipped. **3D:** `AuditLog` envelope encryption (cached DEK wrapped via Transit `hope-phi`, local AES-256-GCM per row) on all 3 write paths + decrypt-on-read in `fetchById`; WORM encrypt-before-hash (new-rows-only) in insert + chain-verify; 31 domain + 27 app tests pass, domains 1260 passed / 2 skipped. Migrations now 4 additive (added WORM payloads + AuditLog envelope; corrected the earlier "AuditLog not added" note). Vault `hope-app` policy extended to grant Transit on `hope-phi` (dev `.hcl` + prod bootstrap, which also creates the prod `hope-phi` key). New deviations recorded (`finalizeAssurance` 4th site; authorization-audit emitter not wired; `AuditLog` decrypt-on-read limited to `fetchById`). Status remains **In Progress** (operator actions §6.7 + Phase 6 cleanup remain). | `docs/implementation/TASK-369-Data-Encryption/README.md` |
+| 2026-06-19 | application + docs | **Follow-up (§6.9), greenfield, no schema/destructive SQL.** (1) Added read-only `decrypt-row` CLI (`packages/database/scripts/decrypt-row.ts` + `decrypt:row` alias + 20-case unit test) — per-field Transit + `AuditLog` DEK-envelope decrypt, `SECRETS_PROVIDER=vault` gated, error-message-only. (2) Centralised **env-gated fail-closed** encrypt-on-write in `packages/applications/src/common/phi-field-encryption.ts` (`encryptPhiFields`) and routed all 15 per-field encrypt-on-write helpers through it (soft no-op in dev/test; throws under `SECRETS_PROVIDER=vault`); `AuditLog`/WORM left best-effort by design. (3) Removed all 15 `backfill-*-encryption.ts` + the shared engine + their 3 tests (kept `*Repository.encryption.ts`, migrations, benchmark, smoke). (4) Phase 6 plaintext DROP still gated/pending. Verified: applications 5328 / database 783 / domains 1263 tests pass. | `packages/database/scripts/decrypt-row.ts`, `packages/database/scripts/__tests__/decrypt-row.test.ts`, `packages/database/package.json`, `packages/database/README.md`, `packages/applications/src/common/phi-field-encryption.ts` (+`index.ts`, `__tests__`), 15 encrypt-on-write services, `harness-internal.service.test.ts`, `docs/implementation/TASK-369-Data-Encryption/README.md` |
+| 2026-06-19 | application + database + docs | **Phase 6 — gated plaintext cleanup, user-approved (dev only).** Dropped **30 free-text clinical PHI columns across 14 models** + `NamedEntity_text_idx` via one `DROP COLUMN` migration `20260619100000_task_369_phase6_drop_plaintext_phi_columns`. Each dropped field is now a **transient** entity property; the auto-mappers persist ciphertext only; the 14 `*Repository.encryption.ts` siblings drop their plaintext fallback. **Decrypt-on-read (Option A):** new `phi-read-decrypt.ts` global registry + base `Repository.db` proxy (`wrapDelegateWithPhiDecrypt`, Vault-mode only) batch-decrypts every read incl. nested `include`d PHI rows in one Transit round-trip; added `decryptBatch` to `SecretsServiceLike` / `SecretsService` / `VaultSecretsProvider` + `setPhiReadSecrets` wiring. **Retained (rationale):** NamedEntity coded fields + `Notification.title` (no ciphertext counterpart); AuditLog + WORM plaintext (separate path / append-only). **Reseed:** seed-time `phi-encryption.ts` (`encryptSeedRow` via `node-vault` `hope-phi`) wired into `09-consultation` + `08-dna-writing-style`; dev synced via `prisma db push --accept-data-loss` (dev lacked the Phase 3 additive columns) + reseeded with `SECRETS_PROVIDER=vault`, round-trip verified. **Consequence:** Vault now hard-required for these PHI reads/writes (write path already fail-closed). **Perf follow-up:** list/index reads that don't need plaintext still pay one batch Transit call — opt-in decryption recorded for later. Stale "dual-read soak / plaintext fallback" comments corrected on the 14 entities/siblings + write-path services (AuditLog/WORM/GlobalSetting comments kept — still accurate). **Verified:** database 783 / domains 1263 (+2 skip, 9 todo) / applications 5328 (+4 skip) tests pass; lint clean. Status → **Review**. | Phase 6 migration; 14 `models/generated/core/*Model.ts`; 14 `repositories/generated/core/*Repository.encryption.ts` + entities; `common/phi-read-decrypt.ts` (+ `field-encryption.ts`, `index.ts`, `repository.ts`); `secrets.module.ts`, `SecretsService.ts`, `vault-secrets.provider.ts`; 7 `*.prisma`; `seed/phi-encryption.ts` (+ `09-consultation.ts`, `08-dna-writing-style.ts`); 6 domains + 2 applications test files; this README |

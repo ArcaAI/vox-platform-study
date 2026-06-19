@@ -2,7 +2,7 @@ import { ConsultationRepository, HighlightEntity, HighlightFactory, HighlightRep
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { BaseService, assertParentInScope } from '../../../common';
+import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IHighlightService } from './IHighlightService';
@@ -27,8 +27,8 @@ export class HighlightService extends BaseService implements IHighlightService {
     protected override readonly clsService: ClsService<IActiveUserContext>,
     // TASK-369 Phase 3C — Vault-Transit field encryption for the highlight's
     // doctor-authored free text (exact / prefix / suffix / note). Optional +
-    // @Inject so legacy/direct-construction tests still work; when absent the
-    // dual-write degrades to plaintext-only and the backfill catches the row up.
+    // @Inject so legacy/direct-construction tests still work; when absent these
+    // PHI fields are left unpersisted (Phase 6 dropped the plaintext columns).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Highlight);
@@ -37,19 +37,18 @@ export class HighlightService extends BaseService implements IHighlightService {
   private readonly logger = new Logger(HighlightService.name);
 
   /**
-   * TASK-369 Phase 3C — dual-write: encrypt the highlight's plaintext free-text
-   * fields into the `encrypted*` / `keyVersion` columns (Vault Transit
-   * `hope-phi`) before persistence. Best-effort during the soak: a missing or
-   * failing SecretsService leaves the row plaintext-only (logged, message only)
-   * — never throws into the write path.
+   * TASK-369 — encrypt the highlight's plaintext free-text fields (exact /
+   * prefix / suffix / note) into their `encrypted*` / `keyVersion` columns
+   * through the shared env-gated guard: a soft no-op in dev/test, FAIL-CLOSED
+   * (throws) in staging/prod (SECRETS_PROVIDER=vault) instead of plaintext-only.
    */
   private async encryptHighlight(entity: HighlightEntity): Promise<void> {
-    if (!this.secretsService) return;
-    try {
-      await this.highlightRepository.encryptFieldsIntoEntity(entity, this.secretsService);
-    } catch (err) {
-      this.logger.error(`Highlight field encryption skipped (dual-write soak): ${err instanceof Error ? err.message : String(err)}`);
-    }
+    await encryptPhiFields(
+      this.secretsService,
+      'Highlight',
+      () => this.highlightRepository.encryptFieldsIntoEntity(entity, this.secretsService!),
+      this.logger,
+    );
   }
 
   /**

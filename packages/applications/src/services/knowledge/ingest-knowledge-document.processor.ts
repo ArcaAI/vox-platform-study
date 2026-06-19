@@ -4,7 +4,7 @@ import { Job } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
 import { JobQueue, KnowledgeChunkFactory, KnowledgeChunkRepository, KnowledgeDocumentRepository } from '@arcaai/domains';
 import { KnowledgeIngestClient } from './knowledge-ingest.client';
-import { assertEqualTenants, createWorkerSession } from '../../common';
+import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
 
@@ -59,17 +59,12 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
   }
 
   /**
-   * Best-effort field encryption: a Vault failure is swallowed (error message
-   * only) so the dual-write soak never blocks ingestion — the plaintext chunk
-   * column is still persisted.
+   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
+   * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
   private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
-    if (!this.secretsService) return;
-    try {
-      await run();
-    } catch (error) {
-      this.logger.error(`${label} field encryption skipped (dual-write soak): ${(error as Error).message}`);
-    }
+    await encryptPhiFields(this.secretsService, label, run, this.logger);
   }
 
   async process(job: Job<IngestKnowledgeDocumentJobPayload>): Promise<IngestKnowledgeDocumentResult> {

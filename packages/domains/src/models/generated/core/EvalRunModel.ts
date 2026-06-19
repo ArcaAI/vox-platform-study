@@ -18,7 +18,9 @@ export class EvalRun extends BaseTenantDataModel {
   public startedAt: Date | null;
   public completedAt: Date | null;
   public aggregateScores: JsonValue | null;
-  public notes: string | null;
+  // TASK-369 Phase 6 — plaintext notes column DROPPED; persistence is
+  // ciphertext-only. The entity keeps `notes` as a transient field repopulated
+  // by repository decrypt-on-read.
   // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
   public encryptedNotes: Uint8Array | null;
   public keyVersion: number | null;
@@ -42,7 +44,6 @@ export class EvalRun extends BaseTenantDataModel {
     this.startedAt = data.startedAt;
     this.completedAt = data.completedAt;
     this.aggregateScores = data.aggregateScores;
-    this.notes = data.notes;
     this.encryptedNotes = data.encryptedNotes;
     this.keyVersion = data.keyVersion;
     this.resourceStatus = data.resourceStatus;

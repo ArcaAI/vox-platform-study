@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { encryptPhiFields } from '../../common';
 import {
   PromptTemplateRepository,
   PromptVersionRepository,
@@ -156,18 +157,12 @@ export class PromptManagementService extends BaseService implements IPromptManag
   private readonly logger = new Logger(PromptManagementService.name);
 
   /**
-   * TASK-369 Phase 3C — best-effort field encryption. When a SecretsService is
-   * wired, encrypt the template's free-text `lastTestOutput` into the
-   * `encryptedLastTestOutput` column before persist. A Vault failure is
-   * swallowed (error message only) so the dual-write soak never blocks a write.
+   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
+   * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
   private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
-    if (!this.secretsService) return;
-    try {
-      await run();
-    } catch (error) {
-      this.logger.error(`${label} field encryption skipped (dual-write soak): ${(error as Error).message}`);
-    }
+    await encryptPhiFields(this.secretsService, label, run, this.logger);
   }
 
   async createPromptTemplate(dto: CreatePromptTemplateRequest): Promise<PromptTemplateResponse> {

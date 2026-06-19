@@ -35,7 +35,7 @@ import { DnaWritingStyleDtoMapper } from './dna-writing-style.dto.mapper';
 // doctor self-service surface that writes/reads it via PipelinePolicyService.
 import { PipelinePolicyService } from '../pipeline-policy';
 import { SecretsService } from '../baseServices/_meta/secrets';
-import { BaseService } from '../../common';
+import { BaseService, encryptPhiFields } from '../../common';
 import { assertUserBelongsToTenant } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 
@@ -84,7 +84,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     @Optional() @Inject(PipelinePolicyService) private readonly pipelinePolicyService?: PipelinePolicyService,
     // TASK-369 Phase 3C — optional + trailing (same arity rationale). When wired,
     // manual report edits encrypt reportData/styleText into the ciphertext
-    // columns before persisting; degrades to plaintext-only when unset.
+    // columns before persisting; left unpersisted when unset (Phase 6 dropped plaintext).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.DnaWritingStyleReport);
@@ -93,17 +93,12 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   private readonly logger = new Logger(DnaWritingStyleService.name);
 
   /**
-   * TASK-369 Phase 3C — best-effort field encryption (mirrors the processor).
-   * A Vault failure is swallowed so the dual-write soak never blocks an edit —
-   * the plaintext columns are still persisted.
+   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
+   * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
   private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
-    if (!this.secretsService) return;
-    try {
-      await run();
-    } catch (error) {
-      this.logger.error(`${label} field encryption skipped (dual-write soak): ${(error as Error).message}`);
-    }
+    await encryptPhiFields(this.secretsService, label, run, this.logger);
   }
 
   /**

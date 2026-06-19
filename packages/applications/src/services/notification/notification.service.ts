@@ -16,7 +16,7 @@ import {
 import { InternalServerErrorException, ArgumentInvalidException } from '@arcaai/exceptions';
 import { INotificationService } from './INotificationService';
 import { CreateNotificationRequest, UpdateNotificationRequest } from './dto';
-import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
+import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps, encryptPhiFields } from '../../common';
 import { assertParentInScope, assertUserBelongsToTenant } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
@@ -44,8 +44,8 @@ export class NotificationService extends BaseService implements INotificationSer
     protected override readonly clsService: ClsService<IActiveUserContext>,
     // TASK-369 Phase 3C — Vault-Transit field encryption for the notification
     // message body (messageText / messageRichText / messageContent). Optional +
-    // @Inject so legacy/direct-construction tests still work; when absent the
-    // dual-write degrades to plaintext-only and the backfill catches the row up.
+    // @Inject so legacy/direct-construction tests still work; when absent these
+    // PHI fields are left unpersisted (Phase 6 dropped the plaintext columns).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Notification);
@@ -54,19 +54,18 @@ export class NotificationService extends BaseService implements INotificationSer
   private readonly logger = new Logger(NotificationService.name);
 
   /**
-   * TASK-369 Phase 3C — dual-write: encrypt the notification's plaintext message
-   * fields into the `encrypted*` / `keyVersion` columns (Vault Transit
-   * `hope-phi`) before persistence. Best-effort during the soak: a missing or
-   * failing SecretsService leaves the row plaintext-only (logged, message only)
-   * — never throws into the write path.
+   * TASK-369 — encrypt the notification's plaintext message fields (messageText /
+   * messageRichText / messageContent) into their `encrypted*` / `keyVersion`
+   * columns through the shared env-gated guard: a soft no-op in dev/test,
+   * FAIL-CLOSED (throws) in staging/prod (SECRETS_PROVIDER=vault).
    */
   private async encryptMessage(entity: NotificationEntity): Promise<void> {
-    if (!this.secretsService) return;
-    try {
-      await this.notificationRepository.encryptFieldsIntoEntity(entity, this.secretsService);
-    } catch (err) {
-      this.logger.error(`Notification message encryption skipped (dual-write soak): ${err instanceof Error ? err.message : String(err)}`);
-    }
+    await encryptPhiFields(
+      this.secretsService,
+      'Notification message',
+      () => this.notificationRepository.encryptFieldsIntoEntity(entity, this.secretsService!),
+      this.logger,
+    );
   }
 
   /**

@@ -11,7 +11,7 @@ import { IConsultationJobService } from '../consultation-job.service';
 import { ExtractNerJobPayload, NerJobResult } from '../dto';
 import { ConsultationPipelineEvent, NerExtractedPayload } from '../../events';
 import { IActiveUserContext } from '../../../../interfaces';
-import { assertEqualTenants, createWorkerSession } from '../../../../common';
+import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../../common';
 
 @Processor(JobQueue.ExtractNamedEntities)
 export class NerProcessor extends WorkerHost {
@@ -36,17 +36,12 @@ export class NerProcessor extends WorkerHost {
   }
 
   /**
-   * TASK-369 Phase 3C — best-effort NamedEntity field encryption. A missing or
-   * failing SecretsService leaves the row plaintext-only (logged, message only)
-   * and never throws into the write path during the dual-read soak.
+   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
+   * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
   private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
-    if (!this.secretsService) return;
-    try {
-      await run();
-    } catch (error) {
-      this.logger.error(`${label} field encryption skipped (dual-write soak): ${error instanceof Error ? error.message : String(error)}`);
-    }
+    await encryptPhiFields(this.secretsService, label, run, this.logger);
   }
 
   async process(job: Job<ExtractNerJobPayload>): Promise<NerJobResult> {

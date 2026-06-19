@@ -4,9 +4,8 @@
 // Sibling file mirroring ContextItemVersionRepository.encryption.ts. The single
 // encrypted field records its Transit key version in `keyVersion`; the shared
 // Buffer/ciphertext primitives live in common/field-encryption.ts and default
-// to the dedicated `hope-phi` Transit key. The plaintext column is retained for
-// the dual-read soak — the decrypt helper falls back to plaintext when the
-// ciphertext is null.
+// to the dedicated `hope-phi` Transit key. TASK-369 Phase 6 dropped the plaintext
+// column; reads decrypt the ciphertext only (no plaintext fallback).
 
 import { PromptTemplateRepository } from './PromptTemplateRepository';
 import { PromptTemplateEntity } from '../../../entities';
@@ -28,8 +27,8 @@ declare module './PromptTemplateRepository' {
      * store the ciphertext in the `encryptedLastTestOutput` column, recording
      * the Transit key version in `keyVersion`. Mutates the entity in place;
      * caller persists. No-op when the field is empty/null, so it is safe to
-     * call unconditionally on a partial row. Does NOT clear plaintext —
-     * retained for the dual-read soak (Phase 6 cleanup).
+     * call unconditionally on a partial row. The transient plaintext stays in
+     * memory for the request; only ciphertext persists.
      */
     encryptFieldsIntoEntity(
       this: PromptTemplateRepository,
@@ -38,8 +37,8 @@ declare module './PromptTemplateRepository' {
     ): Promise<void>;
 
     /**
-     * Decrypt the ciphertext column, falling back to its legacy plaintext
-     * column when the ciphertext is null (dual-read soak bridge).
+     * Decrypt the ciphertext column (ciphertext-only; the plaintext column was
+     * dropped in Phase 6).
      */
     decryptFieldsFromEntity(
       this: PromptTemplateRepository,
@@ -78,9 +77,8 @@ PromptTemplateRepository.prototype.decryptFieldsFromEntity = async function (
   secrets: SecretsServiceLike,
 ): Promise<PromptTemplatePlaintext> {
   const lastTestOutput = await decryptCiphertextToString(secrets, entity.encryptedLastTestOutput);
-  return {
-    lastTestOutput: lastTestOutput !== null ? lastTestOutput : (entity.lastTestOutput ?? null),
-  };
+  // TASK-369 Phase 6 — plaintext column dropped; decrypt ciphertext only.
+  return { lastTestOutput };
 };
 
 PromptTemplateRepository.prototype.findByIdWithDecryptedFields = async function (

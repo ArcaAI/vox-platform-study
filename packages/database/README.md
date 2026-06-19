@@ -182,7 +182,7 @@ fails CI. As of TASK-305 the allow-list contains 8 call-sites
 | 1 | `packages/database/src/client.ts` | Definition site. |
 | 2 | `packages/database/src/index.ts` | Re-export with `⚠️` JSDoc. |
 | 3 | `packages/database/src/prisma/db_main/seed/index.ts` | Seed runner — no CLS context exists at seed time. |
-| 4 | `packages/database/scripts/backfill-globalsetting-encryption.ts` | One-shot back-fill (TASK-302 Phase 4). |
+| 4 | `packages/database/scripts/decrypt-row.ts` | Read-only PHI decrypt CLI (TASK-369). |
 | 5 | `packages/database/src/integration/soft-delete.integration.test.ts` | Integration test fixture. |
 | 6 | `packages/database/src/integration/database-e2e.integration.test.ts` | Integration test fixture. |
 | 7 | `packages/domains/src/integration/repository-soft-delete.integration.test.ts` | Integration test fixture. |

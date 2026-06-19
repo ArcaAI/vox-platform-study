@@ -15,6 +15,7 @@ import {
 } from '@arcaai/domains';
 import { InternalServerErrorException } from '@arcaai/exceptions';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { encryptPhiFields } from '../../common';
 
 /**
  * EvalService (TASK-330 Phase 0) — offline evaluation storage for the clinical
@@ -82,26 +83,20 @@ export class EvalService {
     private readonly evalRunRepository: EvalRunRepository,
     private readonly evalScoreRepository: EvalScoreRepository,
     // TASK-369 Phase 3C — optional so the data-layer service still works when
-    // Vault/SecretsService is not provisioned; encryption then degrades to a
-    // plaintext-only write (dual-write soak retains plaintext regardless).
+    // Vault/SecretsService is not provisioned; in that soft (non-vault) mode the
+    // write is a no-op for these fields (Phase 6 dropped the plaintext columns).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
 
   private readonly logger = new Logger(EvalService.name);
 
   /**
-   * Best-effort field encryption: when a SecretsService is wired, encrypt the
-   * entity's free-text columns into their `encrypted*` siblings before persist.
-   * A Vault failure is swallowed (error message only) so the dual-write soak
-   * never blocks a write — the plaintext column is still persisted.
+   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
+   * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
   private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
-    if (!this.secretsService) return;
-    try {
-      await run();
-    } catch (error) {
-      this.logger.error(`${label} field encryption skipped (dual-write soak): ${(error as Error).message}`);
-    }
+    await encryptPhiFields(this.secretsService, label, run, this.logger);
   }
 
   async createGoldenSet(input: CreateGoldenSetInput): Promise<GoldenSetEntity> {

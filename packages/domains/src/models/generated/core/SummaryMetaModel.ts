@@ -27,8 +27,9 @@ export class SummaryMeta extends BaseTenantDataModel {
   public entityFaithfulnessScore: number | null;
   public coverageScore: number | null;
   public ragTriadScore: number | null;
-  public citationsMap: JsonValue | null;
-  public guardrailDecisions: JsonValue | null;
+  // TASK-369 Phase 6 — plaintext citationsMap / guardrailDecisions columns
+  // DROPPED; persistence is ciphertext-only. The entity keeps these as transient
+  // fields repopulated by repository decrypt-on-read.
   public attestationRef: string | null;
   public modelName: string | null;
   // TASK-355 Phase D — two-phase (optimistic) assurance state
@@ -61,8 +62,6 @@ export class SummaryMeta extends BaseTenantDataModel {
     this.entityFaithfulnessScore = data.entityFaithfulnessScore;
     this.coverageScore = data.coverageScore;
     this.ragTriadScore = data.ragTriadScore;
-    this.citationsMap = data.citationsMap;
-    this.guardrailDecisions = data.guardrailDecisions;
     this.attestationRef = data.attestationRef;
     this.modelName = data.modelName;
     this.gateDecision = data.gateDecision;

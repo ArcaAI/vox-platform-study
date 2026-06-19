@@ -268,6 +268,22 @@ export class SecretsService {
   }
 
   /**
+   * TASK-369 Phase 6 — Vault Transit BATCH decrypt. Decrypts many ciphertexts in
+   * ONE round-trip, preserving input order. Powers repository decrypt-on-read
+   * for multi-row/list reads. Capability-checked like encrypt/decrypt: requires
+   * the Vault provider; throws fail-fast otherwise (the error omits material).
+   */
+  async decryptBatch(ciphertexts: string[], keyName?: string): Promise<Buffer[]> {
+    const maybe = this.provider as unknown as {
+      decryptBatch?: (cts: string[], k?: string) => Promise<Buffer[]>;
+    };
+    if (typeof maybe.decryptBatch !== 'function') {
+      throw new Error('SecretsService.decryptBatch() requires Vault provider (SECRETS_PROVIDER=vault); current provider has no transit support');
+    }
+    return maybe.decryptBatch(ciphertexts, keyName);
+  }
+
+  /**
    * Resolved name of the dedicated PHI Transit key. Data Encryption Initiative
    * Phase 3A — clinical free-text fields encrypt under this key (separate from
    * the secrets `transitKey`). When the underlying provider exposes

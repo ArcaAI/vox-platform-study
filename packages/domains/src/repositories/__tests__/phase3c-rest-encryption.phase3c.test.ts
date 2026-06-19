@@ -88,7 +88,7 @@ describe('TranscriptionJobRepository encryption (Phase 3C)', () => {
     expect(entity.encryptedResultText).toBeInstanceOf(Buffer);
     expect(entity.encryptedResultMetadata).toBeInstanceOf(Buffer);
     expect(entity.keyVersion).toBe(7);
-    expect(entity.resultText).toBe('patient reports cough'); // dual-read soak
+    expect(entity.resultText).toBe('patient reports cough'); // transient plaintext kept in memory (column dropped in Phase 6)
 
     const out = await repo.decryptFieldsFromEntity(entity, secrets);
     expect(out.resultText).toBe('patient reports cough');
@@ -134,7 +134,7 @@ describe('GoldenCaseRepository encryption (Phase 3C)', () => {
 });
 
 describe('EvalRunRepository encryption (Phase 3C)', () => {
-  it('encrypts notes (string), round-trips, falls back to plaintext when ciphertext null', async () => {
+  it('encrypts notes (string), round-trips, returns null when ciphertext null (Phase 6)', async () => {
     const secrets = fakeSecrets();
     const repo = repoOf(EvalRunRepository.prototype);
     const entity = new EvalRunEntity({ ...baseInit, notes: 'reviewer comments' } as any);
@@ -146,10 +146,11 @@ describe('EvalRunRepository encryption (Phase 3C)', () => {
     const out = await repo.decryptFieldsFromEntity(entity, secrets);
     expect(out.notes).toBe('reviewer comments');
 
-    // Fallback: a fresh entity with plaintext but no ciphertext.
+    // Phase 6 — no plaintext fallback: a fresh entity with only a transient
+    // plaintext value and no ciphertext decrypts to null.
     const legacy = new EvalRunEntity({ ...baseInit, notes: 'legacy notes' } as any);
     const legacyOut = await repo.decryptFieldsFromEntity(legacy, secrets);
-    expect(legacyOut.notes).toBe('legacy notes');
+    expect(legacyOut.notes).toBeNull();
   });
 });
 

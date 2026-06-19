@@ -12,8 +12,10 @@ export class ContextItem extends BaseTenantDataModel {
   public type: Enums.ContextItemType;
   public source: Enums.ContextItemSource;
   public currentVersionNumber: number;
-  public content: string | null;
-  // TASK-369 Phase 3B — Vault-Transit ciphertext of `content` + Transit key version.
+  // TASK-369 Phase 6 — plaintext `content` column DROPPED. Persistence is
+  // ciphertext-only; the entity keeps `content` as a transient field repopulated
+  // by repository decrypt-on-read. Removing it here stops the auto-mapper from
+  // writing/reading the now-nonexistent column.
   public encryptedContent: Uint8Array | null;
   public contentKeyVersion: number | null;
   public mediaId: string | null;
@@ -42,7 +44,6 @@ export class ContextItem extends BaseTenantDataModel {
     this.type = data.type;
     this.source = data.source ?? Enums.ContextItemSource.USER;
     this.currentVersionNumber = data.currentVersionNumber ?? 1;
-    this.content = data.content;
     this.encryptedContent = data.encryptedContent;
     this.contentKeyVersion = data.contentKeyVersion;
     this.mediaId = data.mediaId;

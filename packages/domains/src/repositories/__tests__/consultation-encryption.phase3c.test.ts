@@ -77,26 +77,27 @@ describe('ContextItemVersionRepository encryption (Phase 3C)', () => {
     expect(entity.encryptedChangeSummary).toBeInstanceOf(Buffer);
     expect(entity.encryptedFieldChanges).toBeInstanceOf(Buffer);
     expect(entity.keyVersion).toBe(7);
-    // dual-read soak: plaintext retained
+    // Phase 6 — encrypt mutates ciphertext only; the transient plaintext stays
+    // in memory for the rest of the request (it is simply never persisted).
     expect(entity.content).toBe('chest pain');
   });
 
-  it('decrypts each field, falling back to plaintext when ciphertext is null', async () => {
+  it('decrypts each field from ciphertext only — no plaintext fallback (Phase 6)', async () => {
     const secrets = fakeSecrets();
     const repo = repoOf(ContextItemVersionRepository.prototype);
     const entity = new ContextItemVersionEntity({
       ...baseInit,
       contextItemId: 'ci-1',
       versionNumber: 2,
-      content: 'legacy-plaintext',
+      content: 'legacy-plaintext', // transient only — column dropped, not a source
       encryptedContentDiff: Buffer.from('vault:v7:ZGlmZg==', 'utf8'), // 'diff'
-      fieldChanges: { a: 1 },
+      fieldChanges: { a: 1 }, // transient only — column dropped, not a source
     } as any);
 
     const out = await repo.decryptFieldsFromEntity(entity, secrets);
-    expect(out.content).toBe('legacy-plaintext'); // fallback (no ciphertext)
+    expect(out.content).toBeNull(); // no ciphertext ⇒ null (Phase 6)
     expect(out.contentDiff).toBe('diff'); // decrypted
-    expect(out.fieldChanges).toEqual({ a: 1 }); // fallback JSON
+    expect(out.fieldChanges).toBeNull(); // no ciphertext ⇒ null (Phase 6)
   });
 
   it('mapper preserves the ciphertext Buffer through toPersistence -> toDomain', () => {

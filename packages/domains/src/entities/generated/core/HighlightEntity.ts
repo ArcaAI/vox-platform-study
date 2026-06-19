@@ -18,8 +18,9 @@ export interface IHighlightEntity extends IBaseTenantEntity {
   label?: string | null;
   note?: string | null;
   // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the quote
-  // selectors + note + shared key version. Plaintext retained for the
-  // dual-read soak (removal is Phase 6).
+  // selectors + note + shared key version. Phase 6 dropped the plaintext
+  // columns; plaintext survives only as transient fields repopulated by
+  // decrypt-on-read.
   encryptedExact?: Buffer | null;
   encryptedPrefix?: Buffer | null;
   encryptedSuffix?: Buffer | null;

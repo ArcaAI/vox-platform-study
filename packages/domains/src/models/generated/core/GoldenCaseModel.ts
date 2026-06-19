@@ -10,8 +10,9 @@ import * as Models from './';
 export class GoldenCase extends BaseTenantDataModel {
   public goldenSetId: string;
   public label: string | null;
-  public transcript: string;
-  public referenceNote: string;
+  // TASK-369 Phase 6 — plaintext transcript / referenceNote columns DROPPED;
+  // persistence is ciphertext-only. The entity keeps these as transient fields
+  // repopulated by repository decrypt-on-read.
   // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
   public encryptedTranscript: Uint8Array | null;
   public encryptedReferenceNote: Uint8Array | null;
@@ -28,8 +29,6 @@ export class GoldenCase extends BaseTenantDataModel {
     super(data);
     this.goldenSetId = data.goldenSetId;
     this.label = data.label;
-    this.transcript = data.transcript;
-    this.referenceNote = data.referenceNote;
     this.encryptedTranscript = data.encryptedTranscript;
     this.encryptedReferenceNote = data.encryptedReferenceNote;
     this.keyVersion = data.keyVersion;

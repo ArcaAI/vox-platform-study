@@ -20,7 +20,7 @@ import {
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { BaseService, assertParentInScope } from '../../../common';
+import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IContextService } from './IContextService';
@@ -67,8 +67,8 @@ export class ContextService extends BaseService implements IContextService {
     // TASK-369 Phase 3B — Vault-Transit field encryption for `content`.
     // Optional + @Inject so legacy/direct-construction tests (which don't wire
     // the @Global SecretsService) still work, mirroring ApiKeyService /
-    // StorageAccessKeyService. When absent, the dual-write degrades to
-    // plaintext-only and the backfill script catches the row up later.
+    // StorageAccessKeyService. When absent, `content` is left unpersisted
+    // (Phase 6 dropped the plaintext column).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
@@ -77,36 +77,30 @@ export class ContextService extends BaseService implements IContextService {
   private readonly logger = new Logger(ContextService.name);
 
   /**
-   * TASK-369 Phase 3B — dual-write: encrypt the entity's plaintext `content`
-   * into `encryptedContent` / `contentKeyVersion` (Vault Transit `hope-phi`)
-   * before persistence. Best-effort during the dual-read soak: a missing or
-   * non-Vault SecretsService leaves the row plaintext-only and is logged
-   * (message only, never PHI). Never throws into the write path — plaintext
-   * stays the source of truth until Phase 6 cleanup.
+   * TASK-369 — dual-write: encrypt the entity's plaintext `content` into
+   * `encryptedContent` / `contentKeyVersion` (Vault Transit `hope-phi`) before
+   * persistence, via the shared env-gated guard: a soft no-op in dev/test, but
+   * fail-closed (throws) in staging/prod (SECRETS_PROVIDER=vault) so a populated
+   * `content` is never persisted plaintext-only. Phase 6 has dropped the plaintext
+   * column; reads decrypt the ciphertext only.
    */
   private async encryptContent(entity: ContextItemEntity): Promise<void> {
-    if (!this.secretsService) return;
-    try {
-      await this.contextItemRepository.encryptContentIntoEntity(entity, this.secretsService);
-    } catch (err) {
-      this.logger.error(`ContextItem content encryption skipped (dual-write soak): ${err instanceof Error ? err.message : String(err)}`);
-    }
+    await encryptPhiFields(
+      this.secretsService,
+      'ContextItem content',
+      () => this.contextItemRepository.encryptContentIntoEntity(entity, this.secretsService!),
+      this.logger,
+    );
   }
 
   /**
-   * TASK-369 Phase 3C — best-effort field encryption for the sibling clinical
-   * models persisted by this service (ContextItemVersion snapshots, SummaryMeta
-   * provenance, NamedEntity spans). Mirrors {@link encryptContent}: a missing or
-   * failing SecretsService leaves the row plaintext-only (logged, message only)
-   * and never throws into the write path during the dual-read soak.
+   * TASK-369 — encrypt-on-write for the sibling clinical models persisted by
+   * this service (ContextItemVersion snapshots, SummaryMeta provenance,
+   * NamedEntity spans). Mirrors {@link encryptContent}: a soft no-op in dev/test,
+   * fail-closed (throws) in staging/prod (SECRETS_PROVIDER=vault).
    */
   private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
-    if (!this.secretsService) return;
-    try {
-      await run();
-    } catch (err) {
-      this.logger.error(`${label} field encryption skipped (dual-write soak): ${err instanceof Error ? err.message : String(err)}`);
-    }
+    await encryptPhiFields(this.secretsService, label, run, this.logger);
   }
 
   // ============================================

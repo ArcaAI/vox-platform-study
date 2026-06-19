@@ -5,8 +5,8 @@
 // merging + prototype patching so codegen can re-run with --overwrite). Both
 // fields share ONE `keyVersion` column; the shared Buffer/ciphertext primitives
 // live in common/field-encryption.ts and default to the dedicated `hope-phi`
-// Transit key. Plaintext columns are retained for the dual-read soak — decrypt
-// helpers fall back to plaintext when the ciphertext is null.
+// Transit key. TASK-369 Phase 6 dropped the plaintext columns; reads decrypt the
+// ciphertext only (no plaintext fallback).
 
 import { EvalScoreRepository } from './EvalScoreRepository';
 import { EvalScoreEntity } from '../../../entities';
@@ -31,8 +31,8 @@ declare module './EvalScoreRepository' {
      * store the ciphertext in the matching `encrypted*` column, recording the
      * Transit key version in the shared `keyVersion`. Mutates the entity in
      * place; caller persists. No-op per field when that field is empty/null, so
-     * it is safe to call unconditionally on a partial row. Does NOT clear
-     * plaintext — retained for the dual-read soak (Phase 6 cleanup).
+     * it is safe to call unconditionally on a partial row. The transient
+     * plaintext stays in memory for the request; only ciphertext persists.
      */
     encryptFieldsIntoEntity(
       this: EvalScoreRepository,
@@ -41,8 +41,8 @@ declare module './EvalScoreRepository' {
     ): Promise<void>;
 
     /**
-     * Decrypt all ciphertext columns, each falling back to its legacy plaintext
-     * column when the ciphertext is null (dual-read soak bridge).
+     * Decrypt all ciphertext columns (ciphertext-only; the plaintext columns
+     * were dropped in Phase 6).
      */
     decryptFieldsFromEntity(
       this: EvalScoreRepository,
@@ -88,10 +88,8 @@ EvalScoreRepository.prototype.decryptFieldsFromEntity = async function (
 ): Promise<EvalScorePlaintext> {
   const rationale = await decryptCiphertextToString(secrets, entity.encryptedRationale);
   const details = await decryptCiphertextToJson(secrets, entity.encryptedDetails);
-  return {
-    rationale: rationale !== null ? rationale : (entity.rationale ?? null),
-    details: details !== null ? details : (entity.details ?? null),
-  };
+  // TASK-369 Phase 6 — plaintext columns dropped; decrypt ciphertext only.
+  return { rationale, details };
 };
 
 EvalScoreRepository.prototype.findByIdWithDecryptedFields = async function (

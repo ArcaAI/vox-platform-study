@@ -5,8 +5,8 @@
 // merging + prototype patching so codegen can re-run with --overwrite). The
 // field uses ONE `keyVersion` column; the shared Buffer/ciphertext primitives
 // live in common/field-encryption.ts and default to the dedicated `hope-phi`
-// Transit key. The plaintext column is retained for the dual-read soak — the
-// decrypt helper falls back to plaintext when the ciphertext is null.
+// Transit key. TASK-369 Phase 6 dropped the plaintext column; reads decrypt the
+// ciphertext only (no plaintext fallback).
 
 import { KnowledgeChunkRepository } from './KnowledgeChunkRepository';
 import { KnowledgeChunkEntity } from '../../../entities';
@@ -28,8 +28,8 @@ declare module './KnowledgeChunkRepository' {
      * the ciphertext in the `encryptedText` column, recording the Transit key
      * version in the shared `keyVersion`. Mutates the entity in place; caller
      * persists. No-op when the field is empty/null, so it is safe to call
-     * unconditionally on a partial row. Does NOT clear plaintext — retained for
-     * the dual-read soak (Phase 6 cleanup).
+     * unconditionally on a partial row. The transient plaintext stays in memory
+     * for the request; only ciphertext persists.
      */
     encryptFieldsIntoEntity(
       this: KnowledgeChunkRepository,
@@ -38,8 +38,8 @@ declare module './KnowledgeChunkRepository' {
     ): Promise<void>;
 
     /**
-     * Decrypt the ciphertext column, falling back to the legacy plaintext
-     * column when the ciphertext is null (dual-read soak bridge).
+     * Decrypt the ciphertext column (ciphertext-only; the plaintext column was
+     * dropped in Phase 6).
      */
     decryptFieldsFromEntity(
       this: KnowledgeChunkRepository,
@@ -78,9 +78,8 @@ KnowledgeChunkRepository.prototype.decryptFieldsFromEntity = async function (
   secrets: SecretsServiceLike,
 ): Promise<KnowledgeChunkPlaintext> {
   const text = await decryptCiphertextToString(secrets, entity.encryptedText);
-  return {
-    text: text !== null ? text : (entity.text ?? null),
-  };
+  // TASK-369 Phase 6 — plaintext column dropped; decrypt ciphertext only.
+  return { text };
 };
 
 KnowledgeChunkRepository.prototype.findByIdWithDecryptedFields = async function (

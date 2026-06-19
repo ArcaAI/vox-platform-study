@@ -1,4 +1,5 @@
 import type { CorePrismaClient } from '../../../client';
+import { Prisma } from '../../../generated/core-prisma-client/client';
 import {
     SEED_TENANT_ID,
     SEED_CUSTOMER_TENANT_IDS,
@@ -8,6 +9,9 @@ import {
     SEED_TEMPLATE_IDS,
     SYSTEM_USER_ID,
 } from './00-constants';
+// TASK-369 Phase 6 — plaintext `reportData`/`styleText` columns were dropped;
+// seed rows must persist Vault-Transit ciphertext into the `encrypted*` columns.
+import { encryptSeedRow } from './phi-encryption';
 
 export const DEFAULT_TENANT_ID = SEED_TENANT_ID;
 
@@ -527,20 +531,22 @@ export const seedDnaWritingStyle = async (client: CorePrismaClient) => {
 
     console.log('Seeding DNA writing style reports...');
     for (const report of DEFAULT_DNA_REPORTS) {
+        const data = await encryptSeedRow<Prisma.DnaWritingStyleReportUncheckedCreateInput>('DnaWritingStyleReport', report);
         await client.dnaWritingStyleReport.upsert({
             where: { id: report.id },
-            update: report,
-            create: report,
+            update: data,
+            create: data,
         });
     }
     console.log(`Seeded ${DEFAULT_DNA_REPORTS.length} DNA reports`);
 
     console.log('Seeding DNA writing style versions...');
     for (const version of DEFAULT_DNA_VERSIONS) {
+        const data = await encryptSeedRow<Prisma.DnaWritingStyleVersionUncheckedCreateInput>('DnaWritingStyleVersion', version);
         await client.dnaWritingStyleVersion.upsert({
             where: { id: version.id },
-            update: version,
-            create: version,
+            update: data,
+            create: data,
         });
     }
     console.log(`Seeded ${DEFAULT_DNA_VERSIONS.length} DNA versions`);
@@ -576,20 +582,22 @@ export const seedDnaWritingStyle = async (client: CorePrismaClient) => {
     // -------------------------------------------------------------------------
     console.log('Seeding customer-tenant DNA reports...');
     for (const report of CUSTOMER_DNA_REPORTS) {
+        const data = await encryptSeedRow<Prisma.DnaWritingStyleReportUncheckedCreateInput>('DnaWritingStyleReport', report);
         await client.dnaWritingStyleReport.upsert({
             where: { id: report.id },
-            update: report,
-            create: report,
+            update: data,
+            create: data,
         });
     }
     console.log(`Seeded ${CUSTOMER_DNA_REPORTS.length} customer-tenant DNA reports`);
 
     console.log('Seeding customer-tenant DNA versions...');
     for (const version of CUSTOMER_DNA_VERSIONS) {
+        const data = await encryptSeedRow<Prisma.DnaWritingStyleVersionUncheckedCreateInput>('DnaWritingStyleVersion', version);
         await client.dnaWritingStyleVersion.upsert({
             where: { id: version.id },
-            update: version,
-            create: version,
+            update: data,
+            create: data,
         });
     }
     console.log(`Seeded ${CUSTOMER_DNA_VERSIONS.length} customer-tenant DNA versions`);

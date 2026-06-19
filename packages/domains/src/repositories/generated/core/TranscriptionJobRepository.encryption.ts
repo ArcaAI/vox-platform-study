@@ -4,8 +4,8 @@
 // Sibling file mirroring ContextItemVersionRepository.encryption.ts. Both
 // fields share ONE `keyVersion` column; the shared Buffer/ciphertext primitives
 // live in common/field-encryption.ts and default to the dedicated `hope-phi`
-// Transit key. Plaintext columns are retained for the dual-read soak — decrypt
-// helpers fall back to plaintext when the ciphertext is null.
+// Transit key. TASK-369 Phase 6 dropped the plaintext columns; reads decrypt the
+// ciphertext only (no plaintext fallback).
 
 import { TranscriptionJobRepository } from './TranscriptionJobRepository';
 import { TranscriptionJobEntity } from '../../../entities';
@@ -30,8 +30,8 @@ declare module './TranscriptionJobRepository' {
      * store the ciphertext in the matching `encrypted*` column, recording the
      * Transit key version in the shared `keyVersion`. Mutates the entity in
      * place; caller persists. No-op per field when that field is empty/null, so
-     * it is safe to call unconditionally on a partial row. Does NOT clear
-     * plaintext — retained for the dual-read soak (Phase 6 cleanup).
+     * it is safe to call unconditionally on a partial row. The transient
+     * plaintext stays in memory for the request; only ciphertext persists.
      */
     encryptFieldsIntoEntity(
       this: TranscriptionJobRepository,
@@ -40,8 +40,8 @@ declare module './TranscriptionJobRepository' {
     ): Promise<void>;
 
     /**
-     * Decrypt all ciphertext columns, each falling back to its legacy plaintext
-     * column when the ciphertext is null (dual-read soak bridge).
+     * Decrypt all ciphertext columns (ciphertext-only; the plaintext columns
+     * were dropped in Phase 6).
      */
     decryptFieldsFromEntity(
       this: TranscriptionJobRepository,
@@ -87,10 +87,8 @@ TranscriptionJobRepository.prototype.decryptFieldsFromEntity = async function (
 ): Promise<TranscriptionJobPlaintext> {
   const resultText = await decryptCiphertextToString(secrets, entity.encryptedResultText);
   const resultMetadata = await decryptCiphertextToJson(secrets, entity.encryptedResultMetadata);
-  return {
-    resultText: resultText !== null ? resultText : (entity.resultText ?? null),
-    resultMetadata: resultMetadata !== null ? resultMetadata : (entity.resultMetadata ?? null),
-  };
+  // TASK-369 Phase 6 — plaintext columns dropped; decrypt ciphertext only.
+  return { resultText, resultMetadata };
 };
 
 TranscriptionJobRepository.prototype.findByIdWithDecryptedFields = async function (
