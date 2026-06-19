@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
@@ -19,6 +19,11 @@ export interface IEvalRunEntity extends IBaseTenantEntity {
   completedAt?: Date | null;
   aggregateScores?: JsonValue | null;
   notes?: string | null;
+  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the free-text
+  // clinical fields + shared key version. Plaintext columns retained for the
+  // dual-read soak (removal is Phase 6).
+  encryptedNotes?: Buffer | null;
+  keyVersion?: number | null;
 }
 
 export class EvalRunEntity extends BaseTenantEntity {
@@ -33,6 +38,8 @@ export class EvalRunEntity extends BaseTenantEntity {
   private _completedAt?: IEvalRunEntity['completedAt'];
   private _aggregateScores?: IEvalRunEntity['aggregateScores'];
   private _notes?: IEvalRunEntity['notes'];
+  private _encryptedNotes?: IEvalRunEntity['encryptedNotes'];
+  private _keyVersion?: IEvalRunEntity['keyVersion'];
 
   constructor(init: IEvalRunEntity) {
     super(init);
@@ -47,6 +54,8 @@ export class EvalRunEntity extends BaseTenantEntity {
     this._completedAt = init.completedAt;
     this._aggregateScores = init.aggregateScores;
     this._notes = init.notes;
+    this._encryptedNotes = init.encryptedNotes;
+    this._keyVersion = init.keyVersion;
   }
 
   get goldenSetId(): IEvalRunEntity['goldenSetId'] {
@@ -129,12 +138,34 @@ export class EvalRunEntity extends BaseTenantEntity {
     this.setProperty('aggregateScores', value);
   }
 
+  // TASK-369 Phase 3C — free-text clinical PHI. @Secret() marks it for
+  // audit-log redaction (defense-in-depth) alongside the encrypted counterpart.
+  @Secret()
   get notes(): IEvalRunEntity['notes'] {
     return this._notes;
   }
 
   set notes(value: IEvalRunEntity['notes']) {
     this.setProperty('notes', value);
+  }
+
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // ciphertext from audit-log surfaces.
+  @Secret()
+  get encryptedNotes(): IEvalRunEntity['encryptedNotes'] {
+    return this._encryptedNotes;
+  }
+
+  set encryptedNotes(value: IEvalRunEntity['encryptedNotes']) {
+    this.setProperty('encryptedNotes', value);
+  }
+
+  get keyVersion(): IEvalRunEntity['keyVersion'] {
+    return this._keyVersion;
+  }
+
+  set keyVersion(value: IEvalRunEntity['keyVersion']) {
+    this.setProperty('keyVersion', value);
   }
 
   public override validate(): void {

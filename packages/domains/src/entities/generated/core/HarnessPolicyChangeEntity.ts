@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
@@ -22,6 +22,13 @@ export interface IHarnessPolicyChangeEntity extends IBaseTenantEntity {
   beforeJson?: JsonValue | null;
   afterJson: JsonValue;
   reason?: string | null;
+  // TASK-369 Phase 3D — Vault-Transit (hope-phi) ciphertext of beforeJson/
+  // afterJson + shared key version. Set ONLY on encrypted (new) rows; the
+  // plaintext JSONB columns then hold a non-PHI redaction sentinel. Null on
+  // legacy/plaintext rows. WORM table — immutable once written.
+  encryptedBeforeJson?: Buffer | null;
+  encryptedAfterJson?: Buffer | null;
+  keyVersion?: number | null;
 }
 
 export class HarnessPolicyChangeEntity extends BaseTenantEntity {
@@ -30,6 +37,9 @@ export class HarnessPolicyChangeEntity extends BaseTenantEntity {
   private _beforeJson?: IHarnessPolicyChangeEntity['beforeJson'];
   private _afterJson: IHarnessPolicyChangeEntity['afterJson'];
   private _reason?: IHarnessPolicyChangeEntity['reason'];
+  private _encryptedBeforeJson?: IHarnessPolicyChangeEntity['encryptedBeforeJson'];
+  private _encryptedAfterJson?: IHarnessPolicyChangeEntity['encryptedAfterJson'];
+  private _keyVersion?: IHarnessPolicyChangeEntity['keyVersion'];
 
   constructor(init: IHarnessPolicyChangeEntity) {
     super(init);
@@ -38,6 +48,9 @@ export class HarnessPolicyChangeEntity extends BaseTenantEntity {
     this._beforeJson = init.beforeJson;
     this._afterJson = init.afterJson;
     this._reason = init.reason;
+    this._encryptedBeforeJson = init.encryptedBeforeJson;
+    this._encryptedAfterJson = init.encryptedAfterJson;
+    this._keyVersion = init.keyVersion;
   }
 
   // Read-only accessors — the record is immutable once created (WORM). No
@@ -51,16 +64,36 @@ export class HarnessPolicyChangeEntity extends BaseTenantEntity {
     return this._policyVersion;
   }
 
+  // TASK-369 Phase 3D — @Secret() marks the before/after policy snapshots for
+  // audit-log redaction. On encrypted rows these hold a redaction sentinel; the
+  // real value lives in the encrypted* columns (use the repo decrypt helper).
+  @Secret()
   get beforeJson(): IHarnessPolicyChangeEntity['beforeJson'] {
     return this._beforeJson;
   }
 
+  @Secret()
   get afterJson(): IHarnessPolicyChangeEntity['afterJson'] {
     return this._afterJson;
   }
 
   get reason(): IHarnessPolicyChangeEntity['reason'] {
     return this._reason;
+  }
+
+  // TASK-369 Phase 3D — Vault-Transit ciphertext (read-only; WORM).
+  @Secret()
+  get encryptedBeforeJson(): IHarnessPolicyChangeEntity['encryptedBeforeJson'] {
+    return this._encryptedBeforeJson;
+  }
+
+  @Secret()
+  get encryptedAfterJson(): IHarnessPolicyChangeEntity['encryptedAfterJson'] {
+    return this._encryptedAfterJson;
+  }
+
+  get keyVersion(): IHarnessPolicyChangeEntity['keyVersion'] {
+    return this._keyVersion;
   }
 
   public override validate(): void {

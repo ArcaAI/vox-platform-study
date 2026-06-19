@@ -1,7 +1,6 @@
 import { AutoClassMapper, AutoEntityChangeMapper, BaseMapper, createMapperHandlers } from '../../../common';
 import * as Entities from '../../../entities';
 import * as Models from '../../../models';
-import * as Mappers from '../../../mappers';
 
 export class RoleEntityMapper extends BaseMapper<Entities.RoleEntity, Models.Role> {
   constructor() {
@@ -22,13 +21,15 @@ export class RoleEntityMapper extends BaseMapper<Entities.RoleEntity, Models.Rol
 }
 
 export const RoleEntityMapperHandlers = createMapperHandlers<Entities.RoleEntity, Models.Role>({
-  $toPersistence: {
-    userRoleAssignmentId: (obj: Entities.RoleEntity) => obj.UserRoleAssignment?.id || null,
-  },
+  $toPersistence: {},
   $toDomain: {
-    RolePermissions: (obj: Models.Role) =>
-      obj.RolePermissions?.map((item) => Mappers.RolePermissionEntityMapper.getInstance().toDomainEntity(item)) || [],
-    UserRoleAssignment: (obj: Models.Role) =>
-      obj.UserRoleAssignment ? Mappers.UserRoleAssignmentEntityMapper.getInstance().toDomainEntity(obj.UserRoleAssignment) : null,
+    // TASK-368 — the policy-based RBAC migration removed `RolePermissions`,
+    // `UserRoleAssignment`, and `userRoleAssignmentId` from the `Role` Prisma
+    // model (roles now bind via `RolePolicies` / `UserRoleAssignments`). The
+    // legacy RoleEntity fields are retained for backward-compatible shape but are
+    // no longer sourced from persistence, so project them to stable empties
+    // instead of reading the now-removed model relations.
+    RolePermissions: () => [],
+    UserRoleAssignment: () => null,
   },
 });

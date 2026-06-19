@@ -35,18 +35,6 @@ export class DnaWritingStyleReportRepository extends Repository<DnaWritingStyleR
   }
 
   /**
-   * Find all DNA writing style reports for a department
-   */
-  async findByDepartment(departmentId: string): Promise<DnaWritingStyleReportEntity[]> {
-    return this.findAll({
-      filters: {
-        departmentId,
-        resourceStatus: ResourceStatusType.ENABLED,
-      },
-    });
-  }
-
-  /**
    * Find all DNA writing style reports for a doctor
    */
   async findAllForDoctor(doctorId: string): Promise<DnaWritingStyleReportEntity[]> {

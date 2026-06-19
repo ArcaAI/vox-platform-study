@@ -2,7 +2,9 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
+import { JsonValue } from '../../../interfaces';
+import * as Enums from '../../../enums';
 import * as Models from './';
 
 export class AsrPipelineVersion extends BaseTenantDataModel {
@@ -13,6 +15,8 @@ export class AsrPipelineVersion extends BaseTenantDataModel {
   public description: string | null;
   public changeReason: string | null;
   public changedBy: string | null;
+  @VirtualDbProperty()
+  public AsrPipeline: Models.AsrPipeline | undefined;
 
   constructor(data: AsrPipelineVersion & BaseTenantDataModel) {
     super(data);
@@ -23,5 +27,6 @@ export class AsrPipelineVersion extends BaseTenantDataModel {
     this.description = data.description;
     this.changeReason = data.changeReason;
     this.changedBy = data.changedBy;
+    this.AsrPipeline = data.AsrPipeline;
   }
 }

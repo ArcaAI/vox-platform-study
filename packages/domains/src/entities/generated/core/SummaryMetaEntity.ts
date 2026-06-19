@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Entities from '../../../entities';
 
@@ -28,6 +28,12 @@ export interface ISummaryMetaEntity extends IBaseTenantEntity {
   ragTriadScore?: number | null;
   citationsMap?: JsonValue | null;
   guardrailDecisions?: JsonValue | null;
+  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the JSONB
+  // provenance blobs (citationsMap / guardrailDecisions) + shared key version.
+  // Plaintext retained for the dual-read soak (removal is Phase 6).
+  encryptedCitationsMap?: Buffer | null;
+  encryptedGuardrailDecisions?: Buffer | null;
+  keyVersion?: number | null;
   attestationRef?: string | null;
   modelName?: string | null;
   // TASK-355 Phase D — two-phase (optimistic) assurance state
@@ -57,6 +63,9 @@ export class SummaryMetaEntity extends BaseTenantEntity {
   private _ragTriadScore?: ISummaryMetaEntity['ragTriadScore'];
   private _citationsMap?: ISummaryMetaEntity['citationsMap'];
   private _guardrailDecisions?: ISummaryMetaEntity['guardrailDecisions'];
+  private _encryptedCitationsMap?: ISummaryMetaEntity['encryptedCitationsMap'];
+  private _encryptedGuardrailDecisions?: ISummaryMetaEntity['encryptedGuardrailDecisions'];
+  private _keyVersion?: ISummaryMetaEntity['keyVersion'];
   private _attestationRef?: ISummaryMetaEntity['attestationRef'];
   private _modelName?: ISummaryMetaEntity['modelName'];
   private _gateDecision?: ISummaryMetaEntity['gateDecision'];
@@ -85,6 +94,9 @@ export class SummaryMetaEntity extends BaseTenantEntity {
     this._ragTriadScore = init.ragTriadScore;
     this._citationsMap = init.citationsMap;
     this._guardrailDecisions = init.guardrailDecisions;
+    this._encryptedCitationsMap = init.encryptedCitationsMap;
+    this._encryptedGuardrailDecisions = init.encryptedGuardrailDecisions;
+    this._keyVersion = init.keyVersion;
     this._attestationRef = init.attestationRef;
     this._modelName = init.modelName;
     this._gateDecision = init.gateDecision;
@@ -236,6 +248,9 @@ export class SummaryMetaEntity extends BaseTenantEntity {
     this.setProperty('ragTriadScore', value);
   }
 
+  // TASK-369 Phase 3C — citation provenance + guardrail decisions can echo
+  // clinical content. @Secret() marks them for audit-log redaction.
+  @Secret()
   get citationsMap(): ISummaryMetaEntity['citationsMap'] {
     return this._citationsMap;
   }
@@ -244,12 +259,41 @@ export class SummaryMetaEntity extends BaseTenantEntity {
     this.setProperty('citationsMap', value);
   }
 
+  @Secret()
   get guardrailDecisions(): ISummaryMetaEntity['guardrailDecisions'] {
     return this._guardrailDecisions;
   }
 
   set guardrailDecisions(value: ISummaryMetaEntity['guardrailDecisions']) {
     this.setProperty('guardrailDecisions', value);
+  }
+
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // ciphertext from audit-log surfaces.
+  @Secret()
+  get encryptedCitationsMap(): ISummaryMetaEntity['encryptedCitationsMap'] {
+    return this._encryptedCitationsMap;
+  }
+
+  set encryptedCitationsMap(value: ISummaryMetaEntity['encryptedCitationsMap']) {
+    this.setProperty('encryptedCitationsMap', value);
+  }
+
+  @Secret()
+  get encryptedGuardrailDecisions(): ISummaryMetaEntity['encryptedGuardrailDecisions'] {
+    return this._encryptedGuardrailDecisions;
+  }
+
+  set encryptedGuardrailDecisions(value: ISummaryMetaEntity['encryptedGuardrailDecisions']) {
+    this.setProperty('encryptedGuardrailDecisions', value);
+  }
+
+  get keyVersion(): ISummaryMetaEntity['keyVersion'] {
+    return this._keyVersion;
+  }
+
+  set keyVersion(value: ISummaryMetaEntity['keyVersion']) {
+    this.setProperty('keyVersion', value);
   }
 
   get attestationRef(): ISummaryMetaEntity['attestationRef'] {

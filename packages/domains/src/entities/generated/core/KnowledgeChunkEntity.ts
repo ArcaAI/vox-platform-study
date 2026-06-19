@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
@@ -11,6 +11,11 @@ export interface IKnowledgeChunkEntity extends IBaseTenantEntity {
   knowledgeDocumentId: string;
   chunkIndex: number;
   text: string;
+  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the chunk text
+  // + shared key version. Plaintext column retained for the dual-read soak
+  // (removal is Phase 6).
+  encryptedText?: Buffer | null;
+  keyVersion?: number | null;
   tokenCount: number;
   startOffset: number;
   endOffset: number;
@@ -24,6 +29,8 @@ export class KnowledgeChunkEntity extends BaseTenantEntity {
   private _knowledgeDocumentId: IKnowledgeChunkEntity['knowledgeDocumentId'];
   private _chunkIndex: IKnowledgeChunkEntity['chunkIndex'];
   private _text: IKnowledgeChunkEntity['text'];
+  private _encryptedText?: IKnowledgeChunkEntity['encryptedText'];
+  private _keyVersion?: IKnowledgeChunkEntity['keyVersion'];
   private _tokenCount: IKnowledgeChunkEntity['tokenCount'];
   private _startOffset: IKnowledgeChunkEntity['startOffset'];
   private _endOffset: IKnowledgeChunkEntity['endOffset'];
@@ -37,6 +44,8 @@ export class KnowledgeChunkEntity extends BaseTenantEntity {
     this._knowledgeDocumentId = init.knowledgeDocumentId;
     this._chunkIndex = init.chunkIndex;
     this._text = init.text;
+    this._encryptedText = init.encryptedText;
+    this._keyVersion = init.keyVersion;
     this._tokenCount = init.tokenCount;
     this._startOffset = init.startOffset;
     this._endOffset = init.endOffset;
@@ -62,12 +71,34 @@ export class KnowledgeChunkEntity extends BaseTenantEntity {
     this.setProperty('chunkIndex', value);
   }
 
+  // TASK-369 Phase 3C — clinical PHI field. @Secret() marks it for audit-log
+  // redaction (defense-in-depth) alongside the encrypted counterpart.
+  @Secret()
   get text(): IKnowledgeChunkEntity['text'] {
     return this._text;
   }
 
   set text(value: IKnowledgeChunkEntity['text']) {
     this.setProperty('text', value);
+  }
+
+  // TASK-369 Phase 3C — Vault-Transit ciphertext column. @Secret() guards the
+  // ciphertext from audit-log surfaces.
+  @Secret()
+  get encryptedText(): IKnowledgeChunkEntity['encryptedText'] {
+    return this._encryptedText;
+  }
+
+  set encryptedText(value: IKnowledgeChunkEntity['encryptedText']) {
+    this.setProperty('encryptedText', value);
+  }
+
+  get keyVersion(): IKnowledgeChunkEntity['keyVersion'] {
+    return this._keyVersion;
+  }
+
+  set keyVersion(value: IKnowledgeChunkEntity['keyVersion']) {
+    this.setProperty('keyVersion', value);
   }
 
   get tokenCount(): IKnowledgeChunkEntity['tokenCount'] {

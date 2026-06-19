@@ -22,6 +22,13 @@ export class EvalRunEntityMapper extends BaseMapper<Entities.EvalRunEntity, Mode
 }
 
 export const EvalRunEntityMapperHandlers = createMapperHandlers<Entities.EvalRunEntity, Models.EvalRun>({
-  $toPersistence: {},
-  $toDomain: {},
+  $toPersistence: {
+    // TASK-369 Phase 3C — return the raw ciphertext Buffer directly so the
+    // generic auto-mapper does not destructure the typed array (see
+    // ContextItemEntityMapper for the rationale).
+    encryptedNotes: (entity) => entity.encryptedNotes ?? null,
+  },
+  $toDomain: {
+    encryptedNotes: (model) => model.encryptedNotes ?? null,
+  },
 });

@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
@@ -19,6 +19,18 @@ export class Consultation extends BaseTenantDataModel {
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
+  @VirtualDbProperty()
+  public Doctor: Models.User | undefined;
+  @VirtualDbProperty()
+  public Department: Models.Department | undefined;
+  @VirtualDbProperty()
+  public ParentConsultation: Models.Consultation | undefined;
+  @VirtualDbProperty()
+  public ChildConsultations: Models.Consultation[] | undefined;
+  @VirtualDbProperty()
+  public ContextItems: Models.ContextItem[] | undefined;
+  @VirtualDbProperty()
+  public Highlights: Models.Highlight[] | undefined;
 
   constructor(data: Consultation & BaseTenantDataModel) {
     super(data);
@@ -32,5 +44,11 @@ export class Consultation extends BaseTenantDataModel {
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
+    this.Doctor = data.Doctor;
+    this.Department = data.Department;
+    this.ParentConsultation = data.ParentConsultation;
+    this.ChildConsultations = data.ChildConsultations;
+    this.ContextItems = data.ContextItems;
+    this.Highlights = data.Highlights;
   }
 }

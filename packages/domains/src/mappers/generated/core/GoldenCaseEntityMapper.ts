@@ -22,6 +22,15 @@ export class GoldenCaseEntityMapper extends BaseMapper<Entities.GoldenCaseEntity
 }
 
 export const GoldenCaseEntityMapperHandlers = createMapperHandlers<Entities.GoldenCaseEntity, Models.GoldenCase>({
-  $toPersistence: {},
-  $toDomain: {},
+  $toPersistence: {
+    // TASK-369 Phase 3C — return the raw ciphertext Buffer directly so the
+    // generic auto-mapper does not destructure the typed array (see
+    // ContextItemEntityMapper for the rationale).
+    encryptedTranscript: (entity) => entity.encryptedTranscript ?? null,
+    encryptedReferenceNote: (entity) => entity.encryptedReferenceNote ?? null,
+  },
+  $toDomain: {
+    encryptedTranscript: (model) => model.encryptedTranscript ?? null,
+    encryptedReferenceNote: (model) => model.encryptedReferenceNote ?? null,
+  },
 });

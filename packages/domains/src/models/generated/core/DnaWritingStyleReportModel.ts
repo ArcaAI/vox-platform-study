@@ -2,31 +2,43 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
+import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
 
 export class DnaWritingStyleReport extends BaseTenantDataModel {
-  public doctorId: string | null;
-  public departmentId: string | null;
-  public reportData: any | null;
+  public doctorId: string;
+  public reportData: JsonValue | null;
   public styleText: string | null;
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
+  public encryptedReportData: Uint8Array | null;
+  public encryptedStyleText: Uint8Array | null;
+  public keyVersion: number | null;
   public isLatest: boolean;
-  public currentVersionNumber: number | null;
+  public currentVersionNumber: number;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
+  @VirtualDbProperty()
+  public Doctor: Models.User | undefined;
+  @VirtualDbProperty()
+  public Versions: Models.DnaWritingStyleVersion[] | undefined;
 
   constructor(data: DnaWritingStyleReport & BaseTenantDataModel) {
     super(data);
     this.doctorId = data.doctorId;
-    this.departmentId = data.departmentId;
     this.reportData = data.reportData;
     this.styleText = data.styleText;
+    this.encryptedReportData = data.encryptedReportData;
+    this.encryptedStyleText = data.encryptedStyleText;
+    this.keyVersion = data.keyVersion;
     this.isLatest = data.isLatest;
     this.currentVersionNumber = data.currentVersionNumber;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
+    this.Doctor = data.Doctor;
+    this.Versions = data.Versions;
   }
 }

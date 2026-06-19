@@ -4,7 +4,7 @@
 - **Type**: infrastructure / tooling
 - **Created**: 2026-06-18
 - **Updated**: 2026-06-18
-- **Status**: Completed (tool hardening) + Follow-up implemented (siblings / formatting / missing / ci) — see §6. `generate-data-model:check` is wired into CI (`allow_failure: true`) and currently **reports drift** that is blocked by a pre-existing substantive divergence in the committed generated layer (category-(iv) blockers, §6.4).
+- **Status**: **Completed (proper & complete) — see §7.** The generator is the genuine source-of-truth: `generate-data-model:check` exits **0** (no drift, 97 files), all 11 previously-missing artifacts are landed/wired/compiling, and the CI gate is **strict** (`allow_failure: true` removed). `@arcaai/domains` build + tests, the `ResourceType` parity test, `@arcaai/tools` typecheck, and the `@arcaai/applications` consumer build are all green. (§6 is retained as the historical follow-up record; its "still red / cat-(iv) blockers" notes are superseded by §7.)
 
 > Scope guardrail (original pass): code changes were confined to `packages/tools/`
 > plus this document; `packages/domains/src/**/generated` was left untouched.
@@ -459,9 +459,127 @@ clearable without overwriting hand-edits or editing out-of-scope files. (37 + 1 
 
 ---
 
-## 7. Change History
+## 7. Completion (proper & complete) — generator is the source-of-truth; CI gates strictly
+
+This pass closes every residual from §6: the generator now regenerates the committed
+`packages/domains/src/**/generated` layer **byte-identically** (`:check` EXIT 0), the
+11 previously-missing artifacts are landed and compile, and the CI gate is strict.
+
+### 7.1 Override mechanism (the one sustainable, documented choice)
+
+**Text round-trip preservation** in the generator (`extractPreservation()` in
+`generate-data-model/index.ts`). Before emitting a model/enum, the generator parses
+the *previously-emitted* file and re-injects the customizations the Prisma schema
+cannot express, keyed **by field / enum-value name** (so it is robust to DMMF field
+re-ordering):
+
+- **class-level JSDoc** (the `/** … */` block directly above `export class`),
+- **field-level `//` comments** (contiguous block above each `public x:` declaration),
+- **enum-value `//` comments**,
+- **constructor right-hand sides** (e.g. `data.tags ?? []`, `data.qdrantSynced ?? false`).
+
+New artifacts (no prior file) fall back to the schema-derived baseline. This keeps
+`:check` green going forward and never silently drops a hand-authored default or human
+doc. Template (`templates/model.hbs`) emits `{{{classDoc}}}`, per-field `{{{comment}}}`,
+the `{{{init}}}` RHS, and per-enum-value `{{{comment}}}`; Prettier (repo config) is run
+on every emitted file so output is byte-identical to the committed 2-space style and is
+idempotent.
+
+### 7.2 What became schema-derivable (now auto-emitted, no hand-edit)
+
+- relations → `@VirtualDbProperty()` (DMMF `kind === 'object'`),
+- `Json` → `JsonValue` (not `any`); `Bytes` → `Uint8Array`,
+- nullability/optionality from field modifiers (`| null` when `!isRequired`),
+- enum field types → `Enums.<Name>`,
+- base class: `BaseTenantDataModel` when a `tenantId` field exists, else `BaseDataModel`;
+  **exact** `model.name === 'AuditLog'` inlines base fields (no base class). The prior
+  broad `/audit/i` regex (which wrongly stripped `HarnessAuditEvent`'s base) is gone.
+- barrels sorted **alphabetically**; the model barrel **unions** DMMF names with any
+  `*Model.ts` already on disk (keeps orphans exported — see 7.4),
+- enum value-sets follow DMMF (schema) order.
+
+### 7.3 The 5 collision artifacts — landed + reconciled
+
+| Artifact | Kind | Resolution |
+| --- | --- | --- |
+| `Policy` | model | New `class Policy extends BaseDataModel` (`rules: JsonValue`, `scope: Enums.PolicyScope`, `@VirtualDbProperty RolePolicies`). No name clash. Wired into core barrel. |
+| `RolePolicy` | model | New `class RolePolicy extends BaseDataModel` (`Role`/`Policy` virtual relations). Wired into core barrel. |
+| `PolicyScope` | enum | Generated enum is now the **single exported** `PolicyScope`. `repositories/policy/PolicyFactory.ts` `export type PolicyScope` → **non-exported local** `type PolicyScope` (declaration-emit inlines it into the exported interfaces; string-literal callers unchanged). `applications/IPolicyService` keeps its own local union — unaffected. |
+| `PromptTemplateScope` | enum | Removed the exported alias from `PromptTemplateEntity.ts`; the literal union is **inlined** into `IPromptTemplateEntity.scope` + `CreatePromptTemplateProps.scope`; factory drops the named import. Generated enum is canonical. |
+| `PromptTemplateStatus` | enum | Same inline treatment for `status` in entity + factory. |
+
+Why inline/de-export rather than switch consumers to the enum **type**: the entity,
+factory, and `applications` (`prompt-management.service`) pass plain string literals
+(`'DRAFT'`, `'TENANT_DEFAULT'`); typing the fields as the TS `enum` would break those
+literal assignments across an out-of-scope package. Inlining keeps the literal unions
+(string-assignable) while the generated `enum` becomes the canonical exported name.
+`@arcaai/applications` builds clean (EXIT 0) — confirming no consumer breakage.
+
+### 7.4 Orphan barrels — kept (documented decision)
+
+`PermissionModel` / `RolePermissionModel` have **no** Prisma model (the policy-based
+RBAC migration retired permission tables in favour of `Policy`/`RolePolicy`), but their
+TS model + entity/mapper/repository stack is still wired into the application layer.
+Deleting them is out-of-scope and breaking. The generator’s barrel step unions on-disk
+`*Model.ts` with DMMF names, so these orphans stay exported without re-introducing a
+phantom Prisma model. (Confirmed: no `export … Policy|RolePolicy` name clash in domains.)
+
+### 7.5 Enum value-set reconciliation — `PermissionAction`
+
+Committed TS enum had **5** values (`CREATE, READ, UPDATE, DELETE, ARCHIVE`); the Prisma
+schema enum (`db_main/enums.prisma`) is the source of truth with **8**
+(`MANAGE, CREATE, READ, LIST, UPDATE, DELETE, ARCHIVE, EXPORT`) — the CASL action
+vocabulary referenced by `Policy.rules` in `rbac.prisma`. The generator now emits all 8
+in schema order. **No DB migration written/needed**: the DB enum already defines the 8
+values; the drift was TS-only. Safe to add: no `Record<PermissionAction, …>` or
+exhaustive `switch` exists, and `@arcaai/applications` builds clean.
+**`ResourceType` `Session`/`SessionEvent`/`SessionSyncLog` were NOT touched** (TASK-367
+owns that); the bidirectional parity test passes.
+
+### 7.6 Downstream reconciliations forced by the now-accurate models (in-scope `generated/`)
+
+Regenerating the models to match the schema exposed stale consumers that only compiled
+against the previously-drifted models:
+
+- `mappers/generated/core/RoleEntityMapper.ts` — the policy-RBAC `Role` model no longer
+  has `userRoleAssignmentId` / `RolePermissions` / `UserRoleAssignment`. Dropped the
+  `$toPersistence.userRoleAssignmentId` handler and the two `$toDomain` reads; the legacy
+  RoleEntity fields project to stable empties (`[]` / `null`). Removed the now-unused
+  `Mappers` import.
+- `mappers/generated/core/UserRoleAssignmentEntityMapper.ts` — model now has a singular
+  `Role` (no plural `Roles`); the `$toDomain.Roles` fallback on `obj.Roles` was removed.
+- `repositories/generated/core/DnaWritingStyleReportRepository.ts` — `DnaWritingStyleReport`
+  has **no** `departmentId` in the schema (the committed model’s field was stale drift; the
+  `departmentId` columns belong to `DnaUsageRecord`/`PromptUsageRecord`). Removed the dead
+  `findByDepartment` method (no production caller) and its test existence-assertion.
+- `repositories/generated/core/PromptTemplateRepository.ts` — `category`/`scope` are now
+  enum-typed; filters use `PromptTemplateScope.USER_PERSONAL` and cast `category as
+  PromptTemplateCategory` (public string signature kept for callers).
+
+### 7.7 Verification evidence (actual output, this pass)
+
+| Check | Command | Result |
+| --- | --- | --- |
+| **Drift check** | `pnpm --filter @arcaai/tools generate-data-model:check` | **no drift — 97 files match, EXIT 0** |
+| Idempotency | write (`:all`) then `:check` | stable, EXIT 0 |
+| **CI gate** | `rg allow_failure .gitlab/ci/validate.yml` | **(none) — `allow_failure: true` removed** |
+| **Domains build** | `pnpm --filter @arcaai/domains build` | **EXIT 0** |
+| Domains tests | `pnpm --filter @arcaai/domains test` | **1263 passed / 2 skipped / 9 todo, EXIT 0** |
+| **ResourceType parity** | `vitest run …resourceType.enum-parity.test.ts` | **2 passed, EXIT 0** |
+| Domains lint | `pnpm --filter @arcaai/domains lint` | **0 errors** (3 pre-existing prettier warnings, untouched files) |
+| Tools typecheck | `pnpm --filter @arcaai/tools typecheck` | **EXIT 0** |
+| Consumer build | `pnpm --filter @arcaai/applications build` | **EXIT 0** (no regression from model/enum changes) |
+| New artifacts | `git status --short` | 5 new: `enums/generated/{PolicyScope,PromptTemplateScope,PromptTemplateStatus}.ts`, `models/generated/core/{PolicyModel,RolePolicyModel}.ts` |
+
+No remaining blockers. No destructive DB op was run; no migration file was required.
+
+---
+
+## 8. Change History
 
 | Date | Change | Files |
 | --- | --- | --- |
 | 2026-06-18 | Made `generate-data-model` Prisma-7-runnable (schema-based DMMF), non-interactive (`--domain`/`--yes`/`--ci` + non-TTY auto-detect), deterministic, and added a no-write `--check` drift guard; added npm scripts. Characterized the regenerate-diff and left `domains/**/generated` unchanged per guardrail 4. | `packages/tools/src/generate-data-model/index.ts`, `packages/tools/src/generate-data-model/types.ts`, `packages/tools/package.json`, this README |
 | 2026-06-18 | Follow-up (authorized, §6): shared Prisma-7 DMMF helper adopted by `generate-data-entity` + `generate-mapper`; Prettier post-step + DMMF declaration order as canonical; regenerated + categorized the domain layer (kept ordering/new, flagged 37 models + `PermissionAction` as cat-(iv) blockers, 5 artifacts un-landable due to union-type collisions); landed 6 new artifacts (`Fedl*`, `FedlRoundStatus`, `PromptTemplateCategory`) + wired barrels; added GitLab CI drift gate. `@arcaai/domains` build + tools typecheck green; `:check` still red (cat-(iv) blockers). | `packages/tools/src/{generate-data-model/index.ts,generate-data-entity/index.ts,generate-mapper/generator.ts,utils/index.ts,utils/prismaSchema.ts}`, `packages/domains/src/enums/generated/{ResourceType.ts,index.ts,FedlRoundStatus.ts,PromptTemplateCategory.ts}`, `packages/domains/src/models/generated/core/{index.ts,FedlClientModel.ts,FedlRoundModel.ts,FedlUpdateModel.ts,FedlModelVersionModel.ts}`, `.gitlab/ci/{rules.yml,validate.yml}`, this README |
+| 2026-06-18 | **Completion (§7) — generator is now source-of-truth; CI gates strictly.** Added text round-trip preservation (class JSDoc / field & enum-value `//` comments / constructor `??` RHS, keyed by name) + template support so all 37 cat-(iv) models + 6 comment-loss files regenerate byte-identically; fixed `AuditLog` base-class detection (exact match); alphabetical barrels with on-disk orphan union (keeps `Permission`/`RolePermission`). Landed the 5 collision artifacts (`Policy`/`RolePolicy` models, `PolicyScope`/`PromptTemplateScope`/`PromptTemplateStatus` enums) by de-exporting/inlining the hand union types in their consumers. Reconciled `PermissionAction` value-set to the schema's 8 (no DB migration needed). Fixed downstream consumers (`Role`/`UserRoleAssignment` mappers, `DnaWritingStyleReport`/`PromptTemplate` repositories). Removed `allow_failure: true` from the CI gate. `:check` EXIT 0 (97 files); domains build/tests + parity + applications build green. | `packages/tools/src/generate-data-model/{index.ts,templates/model.hbs}`, regenerated `packages/domains/src/{models,enums}/generated/**` (incl. new `PolicyModel`/`RolePolicyModel`/`PolicyScope`/`PromptTemplateScope`/`PromptTemplateStatus`), `packages/domains/src/{mappers/generated/core/{RoleEntityMapper,UserRoleAssignmentEntityMapper}.ts,entities/generated/core/PromptTemplateEntity.ts,factories/generated/core/PromptTemplateFactory.ts,repositories/policy/PolicyFactory.ts,repositories/generated/core/{DnaWritingStyleReportRepository,PromptTemplateRepository}.ts}`, `.gitlab/ci/validate.yml`, this README |
+| 2026-06-19 | **Commit-split close-out + sibling-generator parity finding.** Verified `generate-data-model:check` EXIT 0 (97 files match) — the models+enums layer is the byte-identical source-of-truth — and committed the regenerated domain layer + `Policy`/`PromptTemplate` collision fixes as a dedicated TASK-368 commit. **Finding (deviation from the original close-out request to "fold the collision rule into the entity/factory generators and verify byte-identical idempotency"):** `generate-data-entity`/`generate-factory` are NOT byte-identical source-of-truth for the hand-curated entity/factory layer — a fresh regen differs in **52/57** entity files (4-space vs Prettier 2-space; missing `@Secret()` decorators; `Bytes` vs `Buffer`; dropped constructor `?? <default>` RHS; lost business methods e.g. `isActive()`/`incrementVersion()`; schema-order vs curated field order). Folding only the `PromptTemplate*`/`PolicyScope` collision rule cannot reach byte-identical without porting the §7.1 round-trip preservation + Prettier post-step + decorator/method preservation into both siblings (a separate, §7-scale effort, and risky to run against the hand-curated TASK-369 PHI/encryption entity layer). The collision fix is permanently preserved by committing the working-tree entity/factory files; full sibling-generator parity and an entity/factory `--check` drift mode are **deferred as documented follow-ups** (these siblings are not CI-gated — only `generate-data-model:check` is). | this README |

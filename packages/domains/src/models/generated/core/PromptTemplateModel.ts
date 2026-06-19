@@ -2,28 +2,38 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
+import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
 
 export class PromptTemplate extends BaseTenantDataModel {
-  public name: string | null;
+  public name: string;
   public description: string | null;
-  public content: string | null;
-  public category: string | null;
-  public status: string | null;
-  public variables: any | null;
-  public currentVersionNumber: number | null;
-  public departmentId: string | null;
-  public scope: string | null;
-  public ownerUserId: string | null;
+  public content: string;
+  public category: Enums.PromptTemplateCategory;
+  public status: Enums.PromptTemplateStatus;
+  public variables: JsonValue | null;
   public lastTestScore: number | null;
   public lastTestOutput: string | null;
   public lastTestAt: Date | null;
-  public tags: string[];
+  // TASK-369 Phase 3C — Vault-Transit ciphertext column + key version.
+  public encryptedLastTestOutput: Uint8Array | null;
+  public keyVersion: number | null;
+  public currentVersionNumber: number;
+  public departmentId: string | null;
+  public scope: Enums.PromptTemplateScope;
+  public ownerUserId: string | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
+  public tags: string[];
+  @VirtualDbProperty()
+  public Department: Models.Department | undefined;
+  @VirtualDbProperty()
+  public Owner: Models.User | undefined;
+  @VirtualDbProperty()
+  public Versions: Models.PromptVersion[] | undefined;
 
   constructor(data: PromptTemplate & BaseTenantDataModel) {
     super(data);
@@ -33,16 +43,21 @@ export class PromptTemplate extends BaseTenantDataModel {
     this.category = data.category;
     this.status = data.status;
     this.variables = data.variables;
+    this.lastTestScore = data.lastTestScore;
+    this.lastTestOutput = data.lastTestOutput;
+    this.lastTestAt = data.lastTestAt;
+    this.encryptedLastTestOutput = data.encryptedLastTestOutput;
+    this.keyVersion = data.keyVersion;
     this.currentVersionNumber = data.currentVersionNumber;
     this.departmentId = data.departmentId;
     this.scope = data.scope;
     this.ownerUserId = data.ownerUserId;
-    this.lastTestScore = data.lastTestScore;
-    this.lastTestOutput = data.lastTestOutput;
-    this.lastTestAt = data.lastTestAt;
-    this.tags = data.tags;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
+    this.tags = data.tags;
+    this.Department = data.Department;
+    this.Owner = data.Owner;
+    this.Versions = data.Versions;
   }
 }

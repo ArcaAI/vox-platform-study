@@ -34,6 +34,18 @@ export class User extends BaseDataModel {
   public ResourceSubscriptions: Models.ResourceSubscription[] | undefined;
   @VirtualDbProperty()
   public UserMedias: Models.UserMedia[] | undefined;
+  @VirtualDbProperty()
+  public DoctorConsultations: Models.Consultation[] | undefined;
+  @VirtualDbProperty()
+  public DoctorDnaReports: Models.DnaWritingStyleReport[] | undefined;
+  @VirtualDbProperty()
+  public ApiKeys: Models.ApiKey[] | undefined;
+  @VirtualDbProperty()
+  public VoiceProfiles: Models.UserVoiceProfile[] | undefined;
+  @VirtualDbProperty()
+  public OwnedPromptTemplates: Models.PromptTemplate[] | undefined;
+  @VirtualDbProperty()
+  public UserDepartments: Models.UserDepartment[] | undefined;
 
   constructor(data: User & BaseDataModel) {
     super(data);
@@ -57,5 +69,11 @@ export class User extends BaseDataModel {
     this.UserNotifications = data.UserNotifications;
     this.ResourceSubscriptions = data.ResourceSubscriptions;
     this.UserMedias = data.UserMedias;
+    this.DoctorConsultations = data.DoctorConsultations;
+    this.DoctorDnaReports = data.DoctorDnaReports;
+    this.ApiKeys = data.ApiKeys;
+    this.VoiceProfiles = data.VoiceProfiles;
+    this.OwnedPromptTemplates = data.OwnedPromptTemplates;
+    this.UserDepartments = data.UserDepartments;
   }
 }

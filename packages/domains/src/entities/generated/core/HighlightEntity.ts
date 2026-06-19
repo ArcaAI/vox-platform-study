@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 import * as Enums from '../../../enums';
 
 export interface IHighlightEntity extends IBaseTenantEntity {
@@ -17,6 +17,14 @@ export interface IHighlightEntity extends IBaseTenantEntity {
   color?: string | null;
   label?: string | null;
   note?: string | null;
+  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the quote
+  // selectors + note + shared key version. Plaintext retained for the
+  // dual-read soak (removal is Phase 6).
+  encryptedExact?: Buffer | null;
+  encryptedPrefix?: Buffer | null;
+  encryptedSuffix?: Buffer | null;
+  encryptedNote?: Buffer | null;
+  keyVersion?: number | null;
 }
 
 export class HighlightEntity extends BaseTenantEntity {
@@ -31,6 +39,11 @@ export class HighlightEntity extends BaseTenantEntity {
   private _color?: IHighlightEntity['color'];
   private _label?: IHighlightEntity['label'];
   private _note?: IHighlightEntity['note'];
+  private _encryptedExact?: IHighlightEntity['encryptedExact'];
+  private _encryptedPrefix?: IHighlightEntity['encryptedPrefix'];
+  private _encryptedSuffix?: IHighlightEntity['encryptedSuffix'];
+  private _encryptedNote?: IHighlightEntity['encryptedNote'];
+  private _keyVersion?: IHighlightEntity['keyVersion'];
 
   constructor(init: IHighlightEntity) {
     super(init);
@@ -45,6 +58,11 @@ export class HighlightEntity extends BaseTenantEntity {
     this._color = init.color;
     this._label = init.label;
     this._note = init.note;
+    this._encryptedExact = init.encryptedExact;
+    this._encryptedPrefix = init.encryptedPrefix;
+    this._encryptedSuffix = init.encryptedSuffix;
+    this._encryptedNote = init.encryptedNote;
+    this._keyVersion = init.keyVersion;
   }
 
   get consultationId(): IHighlightEntity['consultationId'] {
@@ -71,6 +89,9 @@ export class HighlightEntity extends BaseTenantEntity {
     this.setProperty('targetKind', value);
   }
 
+  // TASK-369 Phase 3C — quote selectors + note are free-text clinical PHI.
+  // @Secret() marks them for audit-log redaction.
+  @Secret()
   get exact(): IHighlightEntity['exact'] {
     return this._exact;
   }
@@ -79,6 +100,7 @@ export class HighlightEntity extends BaseTenantEntity {
     this.setProperty('exact', value);
   }
 
+  @Secret()
   get prefix(): IHighlightEntity['prefix'] {
     return this._prefix;
   }
@@ -87,6 +109,7 @@ export class HighlightEntity extends BaseTenantEntity {
     this.setProperty('prefix', value);
   }
 
+  @Secret()
   get suffix(): IHighlightEntity['suffix'] {
     return this._suffix;
   }
@@ -127,12 +150,59 @@ export class HighlightEntity extends BaseTenantEntity {
     this.setProperty('label', value);
   }
 
+  @Secret()
   get note(): IHighlightEntity['note'] {
     return this._note;
   }
 
   set note(value: IHighlightEntity['note']) {
     this.setProperty('note', value);
+  }
+
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // ciphertext from audit-log surfaces.
+  @Secret()
+  get encryptedExact(): IHighlightEntity['encryptedExact'] {
+    return this._encryptedExact;
+  }
+
+  set encryptedExact(value: IHighlightEntity['encryptedExact']) {
+    this.setProperty('encryptedExact', value);
+  }
+
+  @Secret()
+  get encryptedPrefix(): IHighlightEntity['encryptedPrefix'] {
+    return this._encryptedPrefix;
+  }
+
+  set encryptedPrefix(value: IHighlightEntity['encryptedPrefix']) {
+    this.setProperty('encryptedPrefix', value);
+  }
+
+  @Secret()
+  get encryptedSuffix(): IHighlightEntity['encryptedSuffix'] {
+    return this._encryptedSuffix;
+  }
+
+  set encryptedSuffix(value: IHighlightEntity['encryptedSuffix']) {
+    this.setProperty('encryptedSuffix', value);
+  }
+
+  @Secret()
+  get encryptedNote(): IHighlightEntity['encryptedNote'] {
+    return this._encryptedNote;
+  }
+
+  set encryptedNote(value: IHighlightEntity['encryptedNote']) {
+    this.setProperty('encryptedNote', value);
+  }
+
+  get keyVersion(): IHighlightEntity['keyVersion'] {
+    return this._keyVersion;
+  }
+
+  set keyVersion(value: IHighlightEntity['keyVersion']) {
+    this.setProperty('keyVersion', value);
   }
 
   // ============================================

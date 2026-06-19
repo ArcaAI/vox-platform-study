@@ -50,13 +50,11 @@ typecheck:
 # output. Reads Prisma schema files directly via @prisma/internals (DMMF) — no
 # database connection or `db:generate` required.
 #
-# allow_failure: true is TEMPORARY. A pre-existing substantive divergence
-# between the committed generated layer and current generator output (the
-# category-(iv) blockers documented in
-# docs/implementation/TASK-368-Generate-Data-Model-Noninteractive/README.md →
-# "Follow-up implementation") means this check currently reports drift. Once
-# that backlog is reconciled, delete the `allow_failure: true` line below to
-# turn drift into a hard pipeline failure.
+# TASK-368 — the generator is now the authoritative source-of-truth for the
+# committed generated layer (`generate-data-model:check` is green), so this gate
+# is STRICT: any drift between the Prisma schema and the committed
+# packages/domains/src/**/generated files fails the pipeline. Regenerate with
+# `pnpm --filter @arcaai/tools generate-data-model:all` and commit the result.
 
 generate-data-model-check:
   stage: validate
@@ -64,7 +62,6 @@ generate-data-model-check:
   needs:
     - job: install-node
       optional: true
-  allow_failure: true
   script:
     - pnpm --filter @arcaai/tools generate-data-model:check
   rules:

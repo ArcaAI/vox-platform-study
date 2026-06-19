@@ -44,6 +44,13 @@ export class SummaryMetaEntityMapper extends BaseMapper<Entities.SummaryMetaEnti
 }
 
 export const SummaryMetaEntityMapperHandlers = createMapperHandlers<Entities.SummaryMetaEntity, Models.SummaryMeta>({
-  $toPersistence: {},
-  $toDomain: {},
+  $toPersistence: {
+    // TASK-369 Phase 3C — Bytes-safe: return the raw ciphertext Buffer directly.
+    encryptedCitationsMap: (entity) => entity.encryptedCitationsMap ?? null,
+    encryptedGuardrailDecisions: (entity) => entity.encryptedGuardrailDecisions ?? null,
+  },
+  $toDomain: {
+    encryptedCitationsMap: (model) => model.encryptedCitationsMap ?? null,
+    encryptedGuardrailDecisions: (model) => model.encryptedGuardrailDecisions ?? null,
+  },
 });

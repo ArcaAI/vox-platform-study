@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
@@ -14,6 +14,9 @@ export class KnowledgeChunk extends BaseTenantDataModel {
   public tokenCount: number;
   public startOffset: number;
   public endOffset: number;
+  // TASK-369 Phase 3C — Vault-Transit ciphertext column + shared key version.
+  public encryptedText: Uint8Array | null;
+  public keyVersion: number | null;
   public qdrantPointId: string;
   public embeddingModel: string;
   public embeddingDim: number;
@@ -21,6 +24,8 @@ export class KnowledgeChunk extends BaseTenantDataModel {
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
+  @VirtualDbProperty()
+  public KnowledgeDocument: Models.KnowledgeDocument | undefined;
 
   constructor(data: KnowledgeChunk & BaseTenantDataModel) {
     super(data);
@@ -30,6 +35,8 @@ export class KnowledgeChunk extends BaseTenantDataModel {
     this.tokenCount = data.tokenCount;
     this.startOffset = data.startOffset;
     this.endOffset = data.endOffset;
+    this.encryptedText = data.encryptedText;
+    this.keyVersion = data.keyVersion;
     this.qdrantPointId = data.qdrantPointId;
     this.embeddingModel = data.embeddingModel;
     this.embeddingDim = data.embeddingDim;
@@ -37,5 +44,6 @@ export class KnowledgeChunk extends BaseTenantDataModel {
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
+    this.KnowledgeDocument = data.KnowledgeDocument;
   }
 }

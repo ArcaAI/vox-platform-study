@@ -5,6 +5,7 @@
 import { BaseTenantDataModel } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
+import * as Models from './';
 
 export class AiModel extends BaseTenantDataModel {
   public name: string;

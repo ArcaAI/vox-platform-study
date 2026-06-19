@@ -2,8 +2,10 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseDataModel } from '../../../common';
+import { BaseDataModel, VirtualDbProperty } from '../../../common';
+import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
+import * as Models from './';
 
 export class UserVoiceProfile extends BaseDataModel {
   public userId: string;
@@ -13,6 +15,8 @@ export class UserVoiceProfile extends BaseDataModel {
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
+  @VirtualDbProperty()
+  public User: Models.User | undefined;
 
   constructor(data: UserVoiceProfile & BaseDataModel) {
     super(data);
@@ -23,5 +27,6 @@ export class UserVoiceProfile extends BaseDataModel {
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
+    this.User = data.User;
   }
 }

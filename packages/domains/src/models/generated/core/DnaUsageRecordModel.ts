@@ -3,11 +3,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { BaseTenantDataModel } from '../../../common';
+import { JsonValue } from '../../../interfaces';
+import * as Enums from '../../../enums';
 import * as Models from './';
 
 export class DnaUsageRecord extends BaseTenantDataModel {
-  public doctorId: string | null;
-  public dnaReportId: string | null;
+  public doctorId: string;
+  public dnaReportId: string;
   public dnaVersionNumber: number | null;
   public consultationId: string | null;
   public departmentId: string | null;

@@ -8,6 +8,7 @@ import * as Enums from '../../../enums';
 import * as Models from './';
 
 export class GlobalSetting extends BaseTenantDataModel {
+  public locked: boolean;
   public name: string;
   public description: string | null;
   public key: string;
@@ -16,7 +17,6 @@ export class GlobalSetting extends BaseTenantDataModel {
   // TASK-302 Phase 4 — Vault-Transit-encrypted ciphertext + Transit key version.
   public encryptedValue: Uint8Array | null;
   public keyVersion: number | null;
-  public locked: boolean;
   public dataType: Enums.ValueType;
   public namespace: string | null;
   public resourceStatus: Enums.ResourceStatusType;
@@ -26,6 +26,7 @@ export class GlobalSetting extends BaseTenantDataModel {
 
   constructor(data: GlobalSetting & BaseTenantDataModel) {
     super(data);
+    this.locked = data.locked;
     this.name = data.name;
     this.description = data.description;
     this.key = data.key;
@@ -33,7 +34,6 @@ export class GlobalSetting extends BaseTenantDataModel {
     this.value = data.value;
     this.encryptedValue = data.encryptedValue;
     this.keyVersion = data.keyVersion;
-    this.locked = data.locked;
     this.dataType = data.dataType;
     this.namespace = data.namespace;
     this.resourceStatus = data.resourceStatus;

@@ -2,29 +2,34 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTaggedEntity, IBaseTaggedEntity } from '../../../common';
+import { BaseTaggedEntity, IBaseTaggedEntity, Secret } from '../../../common';
 import * as Entities from '../../../entities';
 import { ResourceStatusType } from '../../../enums';
 import type { PromptVersionEntity } from './PromptVersionEntity';
 
-export type PromptTemplateScope = 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USER_PERSONAL';
-
-export type PromptTemplateStatus = 'DRAFT' | 'PUBLISHED';
-
+// TASK-368 — the canonical `PromptTemplateScope` / `PromptTemplateStatus` enums
+// are now emitted by generate-data-model into `enums/generated`. The literal
+// unions are inlined here (rather than re-exported) so callers may keep passing
+// string literals while the generated enums remain the single exported names.
 export interface IPromptTemplateEntity extends IBaseTaggedEntity {
   name?: string | null;
   description?: string | null;
   content?: string | null;
   category?: string | null;
-  status?: PromptTemplateStatus | null;
+  status?: 'DRAFT' | 'PUBLISHED' | null;
   variables?: Record<string, unknown> | null;
   currentVersionNumber?: number | null;
   departmentId?: string | null;
-  scope?: PromptTemplateScope | null;
+  scope?: 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USER_PERSONAL' | null;
   ownerUserId?: string | null;
   lastTestScore?: number | null;
   lastTestOutput?: string | null;
   lastTestAt?: Date | null;
+  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the test-output
+  // field + shared key version. Plaintext column retained for the dual-read
+  // soak (removal is Phase 6).
+  encryptedLastTestOutput?: Buffer | null;
+  keyVersion?: number | null;
   Versions?: PromptVersionEntity[] | null;
   Department?: Entities.DepartmentEntity | null;
   Owner?: Entities.UserEntity | null;
@@ -44,6 +49,8 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
   private _lastTestScore?: IPromptTemplateEntity['lastTestScore'];
   private _lastTestOutput?: IPromptTemplateEntity['lastTestOutput'];
   private _lastTestAt?: IPromptTemplateEntity['lastTestAt'];
+  private _encryptedLastTestOutput?: IPromptTemplateEntity['encryptedLastTestOutput'];
+  private _keyVersion?: IPromptTemplateEntity['keyVersion'];
   private _Versions?: IPromptTemplateEntity['Versions'];
   private _Department?: IPromptTemplateEntity['Department'];
   private _Owner?: IPromptTemplateEntity['Owner'];
@@ -63,6 +70,8 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
     this._lastTestScore = init.lastTestScore;
     this._lastTestOutput = init.lastTestOutput;
     this._lastTestAt = init.lastTestAt;
+    this._encryptedLastTestOutput = init.encryptedLastTestOutput;
+    this._keyVersion = init.keyVersion;
     this._Versions = init.Versions;
     this._Department = init.Department;
     this._Owner = init.Owner ?? null;
@@ -156,6 +165,9 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
     this.setProperty('lastTestScore', value);
   }
 
+  // TASK-369 Phase 3C — free-text clinical PHI. @Secret() marks it for
+  // audit-log redaction (defense-in-depth) alongside the encrypted counterpart.
+  @Secret()
   get lastTestOutput(): IPromptTemplateEntity['lastTestOutput'] {
     return this._lastTestOutput ?? null;
   }
@@ -170,6 +182,25 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
 
   set lastTestAt(value: IPromptTemplateEntity['lastTestAt']) {
     this.setProperty('lastTestAt', value);
+  }
+
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // ciphertext from audit-log surfaces.
+  @Secret()
+  get encryptedLastTestOutput(): IPromptTemplateEntity['encryptedLastTestOutput'] {
+    return this._encryptedLastTestOutput;
+  }
+
+  set encryptedLastTestOutput(value: IPromptTemplateEntity['encryptedLastTestOutput']) {
+    this.setProperty('encryptedLastTestOutput', value);
+  }
+
+  get keyVersion(): IPromptTemplateEntity['keyVersion'] {
+    return this._keyVersion;
+  }
+
+  set keyVersion(value: IPromptTemplateEntity['keyVersion']) {
+    this.setProperty('keyVersion', value);
   }
 
   get Versions(): IPromptTemplateEntity['Versions'] {

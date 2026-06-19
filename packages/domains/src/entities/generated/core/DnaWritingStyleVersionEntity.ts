@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 import type { DnaWritingStyleReportEntity } from './DnaWritingStyleReportEntity';
 
 export interface IDnaWritingStyleVersionEntity extends IBaseTenantEntity {
@@ -10,6 +10,12 @@ export interface IDnaWritingStyleVersionEntity extends IBaseTenantEntity {
   versionNumber?: number | null;
   reportData?: Record<string, unknown> | null;
   styleText?: string | null;
+  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the snapshot
+  // fields + shared key version. Plaintext columns retained for the dual-read
+  // soak (removal is Phase 6).
+  encryptedReportData?: Buffer | null;
+  encryptedStyleText?: Buffer | null;
+  keyVersion?: number | null;
   changeReason?: string | null;
   changedBy?: string | null;
   DnaWritingStyleReport?: DnaWritingStyleReportEntity | null;
@@ -20,6 +26,9 @@ export class DnaWritingStyleVersionEntity extends BaseTenantEntity {
   private _versionNumber?: IDnaWritingStyleVersionEntity['versionNumber'];
   private _reportData?: IDnaWritingStyleVersionEntity['reportData'];
   private _styleText?: IDnaWritingStyleVersionEntity['styleText'];
+  private _encryptedReportData?: IDnaWritingStyleVersionEntity['encryptedReportData'];
+  private _encryptedStyleText?: IDnaWritingStyleVersionEntity['encryptedStyleText'];
+  private _keyVersion?: IDnaWritingStyleVersionEntity['keyVersion'];
   private _changeReason?: IDnaWritingStyleVersionEntity['changeReason'];
   private _changedBy?: IDnaWritingStyleVersionEntity['changedBy'];
   private _DnaWritingStyleReport?: IDnaWritingStyleVersionEntity['DnaWritingStyleReport'];
@@ -30,6 +39,9 @@ export class DnaWritingStyleVersionEntity extends BaseTenantEntity {
     this._versionNumber = init.versionNumber;
     this._reportData = init.reportData;
     this._styleText = init.styleText;
+    this._encryptedReportData = init.encryptedReportData;
+    this._encryptedStyleText = init.encryptedStyleText;
+    this._keyVersion = init.keyVersion;
     this._changeReason = init.changeReason;
     this._changedBy = init.changedBy;
     this._DnaWritingStyleReport = init.DnaWritingStyleReport;
@@ -51,6 +63,9 @@ export class DnaWritingStyleVersionEntity extends BaseTenantEntity {
     this.setProperty('versionNumber', value);
   }
 
+  // TASK-369 Phase 3C — clinical PHI fields. @Secret() marks them for audit-log
+  // redaction (defense-in-depth) alongside the encrypted counterpart.
+  @Secret()
   get reportData(): IDnaWritingStyleVersionEntity['reportData'] {
     return this._reportData;
   }
@@ -59,12 +74,41 @@ export class DnaWritingStyleVersionEntity extends BaseTenantEntity {
     this.setProperty('reportData', value);
   }
 
+  @Secret()
   get styleText(): IDnaWritingStyleVersionEntity['styleText'] {
     return this._styleText;
   }
 
   set styleText(value: IDnaWritingStyleVersionEntity['styleText']) {
     this.setProperty('styleText', value);
+  }
+
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // ciphertext from audit-log surfaces.
+  @Secret()
+  get encryptedReportData(): IDnaWritingStyleVersionEntity['encryptedReportData'] {
+    return this._encryptedReportData;
+  }
+
+  set encryptedReportData(value: IDnaWritingStyleVersionEntity['encryptedReportData']) {
+    this.setProperty('encryptedReportData', value);
+  }
+
+  @Secret()
+  get encryptedStyleText(): IDnaWritingStyleVersionEntity['encryptedStyleText'] {
+    return this._encryptedStyleText;
+  }
+
+  set encryptedStyleText(value: IDnaWritingStyleVersionEntity['encryptedStyleText']) {
+    this.setProperty('encryptedStyleText', value);
+  }
+
+  get keyVersion(): IDnaWritingStyleVersionEntity['keyVersion'] {
+    return this._keyVersion;
+  }
+
+  set keyVersion(value: IDnaWritingStyleVersionEntity['keyVersion']) {
+    this.setProperty('keyVersion', value);
   }
 
   get changeReason(): IDnaWritingStyleVersionEntity['changeReason'] {

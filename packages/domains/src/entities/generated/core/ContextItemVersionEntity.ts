@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Entities from '../../../entities';
 
@@ -16,6 +16,14 @@ export interface IContextItemVersionEntity extends IBaseTenantEntity {
   changedBy?: string | null;
   changeSource?: string | null;
   fieldChanges?: JsonValue | null;
+  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the free-text
+  // snapshot fields + shared key version. Plaintext columns retained for the
+  // dual-read soak (removal is Phase 6).
+  encryptedContent?: Buffer | null;
+  encryptedContentDiff?: Buffer | null;
+  encryptedChangeSummary?: Buffer | null;
+  encryptedFieldChanges?: Buffer | null;
+  keyVersion?: number | null;
   // TASK-330 Phase 1 — clinician attestation fields
   attestedAt?: Date | null;
   attestedBy?: string | null;
@@ -36,6 +44,11 @@ export class ContextItemVersionEntity extends BaseTenantEntity {
   private _changedBy?: IContextItemVersionEntity['changedBy'];
   private _changeSource?: IContextItemVersionEntity['changeSource'];
   private _fieldChanges?: IContextItemVersionEntity['fieldChanges'];
+  private _encryptedContent?: IContextItemVersionEntity['encryptedContent'];
+  private _encryptedContentDiff?: IContextItemVersionEntity['encryptedContentDiff'];
+  private _encryptedChangeSummary?: IContextItemVersionEntity['encryptedChangeSummary'];
+  private _encryptedFieldChanges?: IContextItemVersionEntity['encryptedFieldChanges'];
+  private _keyVersion?: IContextItemVersionEntity['keyVersion'];
   private _attestedAt?: IContextItemVersionEntity['attestedAt'];
   private _attestedBy?: IContextItemVersionEntity['attestedBy'];
   private _attestationHash?: IContextItemVersionEntity['attestationHash'];
@@ -55,6 +68,11 @@ export class ContextItemVersionEntity extends BaseTenantEntity {
     this._changedBy = init.changedBy;
     this._changeSource = init.changeSource;
     this._fieldChanges = init.fieldChanges;
+    this._encryptedContent = init.encryptedContent;
+    this._encryptedContentDiff = init.encryptedContentDiff;
+    this._encryptedChangeSummary = init.encryptedChangeSummary;
+    this._encryptedFieldChanges = init.encryptedFieldChanges;
+    this._keyVersion = init.keyVersion;
     this._attestedAt = init.attestedAt;
     this._attestedBy = init.attestedBy;
     this._attestationHash = init.attestationHash;
@@ -80,6 +98,9 @@ export class ContextItemVersionEntity extends BaseTenantEntity {
     this.setProperty('versionNumber', value);
   }
 
+  // TASK-369 Phase 3C — free-text clinical PHI snapshot. @Secret() marks it for
+  // audit-log redaction (defense-in-depth) alongside the encrypted counterpart.
+  @Secret()
   get content(): IContextItemVersionEntity['content'] {
     return this._content;
   }
@@ -88,6 +109,7 @@ export class ContextItemVersionEntity extends BaseTenantEntity {
     this.setProperty('content', value);
   }
 
+  @Secret()
   get contentDiff(): IContextItemVersionEntity['contentDiff'] {
     return this._contentDiff;
   }
@@ -104,6 +126,7 @@ export class ContextItemVersionEntity extends BaseTenantEntity {
     this.setProperty('changeReason', value);
   }
 
+  @Secret()
   get changeSummary(): IContextItemVersionEntity['changeSummary'] {
     return this._changeSummary;
   }
@@ -128,12 +151,59 @@ export class ContextItemVersionEntity extends BaseTenantEntity {
     this.setProperty('changeSource', value);
   }
 
+  @Secret()
   get fieldChanges(): IContextItemVersionEntity['fieldChanges'] {
     return this._fieldChanges;
   }
 
   set fieldChanges(value: IContextItemVersionEntity['fieldChanges']) {
     this.setProperty('fieldChanges', value);
+  }
+
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // ciphertext from audit-log surfaces.
+  @Secret()
+  get encryptedContent(): IContextItemVersionEntity['encryptedContent'] {
+    return this._encryptedContent;
+  }
+
+  set encryptedContent(value: IContextItemVersionEntity['encryptedContent']) {
+    this.setProperty('encryptedContent', value);
+  }
+
+  @Secret()
+  get encryptedContentDiff(): IContextItemVersionEntity['encryptedContentDiff'] {
+    return this._encryptedContentDiff;
+  }
+
+  set encryptedContentDiff(value: IContextItemVersionEntity['encryptedContentDiff']) {
+    this.setProperty('encryptedContentDiff', value);
+  }
+
+  @Secret()
+  get encryptedChangeSummary(): IContextItemVersionEntity['encryptedChangeSummary'] {
+    return this._encryptedChangeSummary;
+  }
+
+  set encryptedChangeSummary(value: IContextItemVersionEntity['encryptedChangeSummary']) {
+    this.setProperty('encryptedChangeSummary', value);
+  }
+
+  @Secret()
+  get encryptedFieldChanges(): IContextItemVersionEntity['encryptedFieldChanges'] {
+    return this._encryptedFieldChanges;
+  }
+
+  set encryptedFieldChanges(value: IContextItemVersionEntity['encryptedFieldChanges']) {
+    this.setProperty('encryptedFieldChanges', value);
+  }
+
+  get keyVersion(): IContextItemVersionEntity['keyVersion'] {
+    return this._keyVersion;
+  }
+
+  set keyVersion(value: IContextItemVersionEntity['keyVersion']) {
+    this.setProperty('keyVersion', value);
   }
 
   get attestedAt(): IContextItemVersionEntity['attestedAt'] {

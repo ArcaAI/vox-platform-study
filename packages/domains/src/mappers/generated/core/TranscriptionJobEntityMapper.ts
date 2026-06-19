@@ -25,6 +25,10 @@ export const TranscriptionJobEntityMapperHandlers = createMapperHandlers<Entitie
   $toPersistence: {
     // Handle Pipeline relation - exclude from persistence (use pipelineId)
     Pipeline: () => undefined,
+    // TASK-369 Phase 3C — return the raw ciphertext Buffer directly so the
+    // generic auto-mapper does not destructure the typed array.
+    encryptedResultText: (entity) => entity.encryptedResultText ?? null,
+    encryptedResultMetadata: (entity) => entity.encryptedResultMetadata ?? null,
   },
   $toDomain: {
     // Handle Pipeline relation mapping
@@ -33,5 +37,7 @@ export const TranscriptionJobEntityMapperHandlers = createMapperHandlers<Entitie
       const mapper = Mappers.AsrPipelineEntityMapper.getInstance();
       return mapper.toDomainEntity(obj.Pipeline);
     },
+    encryptedResultText: (model) => model.encryptedResultText ?? null,
+    encryptedResultMetadata: (model) => model.encryptedResultMetadata ?? null,
   },
 });

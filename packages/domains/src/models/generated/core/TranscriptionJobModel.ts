@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
@@ -20,14 +20,17 @@ export class TranscriptionJob extends BaseTenantDataModel {
   public completedAt: Date | null;
   public resultText: string | null;
   public resultMetadata: JsonValue | null;
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
+  public encryptedResultText: Uint8Array | null;
+  public encryptedResultMetadata: Uint8Array | null;
+  public keyVersion: number | null;
   public errorMessage: string | null;
   public errorCode: string | null;
   public retryCount: number;
   public maxRetries: number;
   public workerId: string | null;
-
-  // Relations
-  public Pipeline?: Models.AsrPipeline;
+  @VirtualDbProperty()
+  public Pipeline: Models.AsrPipeline | undefined;
 
   constructor(data: TranscriptionJob & BaseTenantDataModel) {
     super(data);
@@ -43,6 +46,9 @@ export class TranscriptionJob extends BaseTenantDataModel {
     this.completedAt = data.completedAt;
     this.resultText = data.resultText;
     this.resultMetadata = data.resultMetadata;
+    this.encryptedResultText = data.encryptedResultText;
+    this.encryptedResultMetadata = data.encryptedResultMetadata;
+    this.keyVersion = data.keyVersion;
     this.errorMessage = data.errorMessage;
     this.errorCode = data.errorCode;
     this.retryCount = data.retryCount;

@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 import * as Entities from '../../../entities';
 import * as Enums from '../../../enums';
 import { JsonValue } from '../../../interfaces';
@@ -20,6 +20,12 @@ export interface ITranscriptionJobEntity extends IBaseTenantEntity {
   completedAt?: Date | null;
   resultText?: string | null;
   resultMetadata?: JsonValue | null;
+  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the result
+  // fields + shared key version. Plaintext columns retained for the dual-read
+  // soak (removal is Phase 6).
+  encryptedResultText?: Buffer | null;
+  encryptedResultMetadata?: Buffer | null;
+  keyVersion?: number | null;
   errorMessage?: string | null;
   errorCode?: string | null;
   retryCount: number;
@@ -41,6 +47,9 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
   private _completedAt?: ITranscriptionJobEntity['completedAt'];
   private _resultText?: ITranscriptionJobEntity['resultText'];
   private _resultMetadata?: ITranscriptionJobEntity['resultMetadata'];
+  private _encryptedResultText?: ITranscriptionJobEntity['encryptedResultText'];
+  private _encryptedResultMetadata?: ITranscriptionJobEntity['encryptedResultMetadata'];
+  private _keyVersion?: ITranscriptionJobEntity['keyVersion'];
   private _errorMessage?: ITranscriptionJobEntity['errorMessage'];
   private _errorCode?: ITranscriptionJobEntity['errorCode'];
   private _retryCount: ITranscriptionJobEntity['retryCount'];
@@ -62,6 +71,9 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
     this._completedAt = init.completedAt;
     this._resultText = init.resultText;
     this._resultMetadata = init.resultMetadata;
+    this._encryptedResultText = init.encryptedResultText;
+    this._encryptedResultMetadata = init.encryptedResultMetadata;
+    this._keyVersion = init.keyVersion;
     this._errorMessage = init.errorMessage;
     this._errorCode = init.errorCode;
     this._retryCount = init.retryCount;
@@ -151,6 +163,9 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
     this.setProperty('completedAt', value);
   }
 
+  // TASK-369 Phase 3C — free-text clinical PHI. @Secret() marks it for
+  // audit-log redaction (defense-in-depth) alongside the encrypted counterpart.
+  @Secret()
   get resultText(): ITranscriptionJobEntity['resultText'] {
     return this._resultText;
   }
@@ -159,12 +174,41 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
     this.setProperty('resultText', value);
   }
 
+  @Secret()
   get resultMetadata(): ITranscriptionJobEntity['resultMetadata'] {
     return this._resultMetadata;
   }
 
   set resultMetadata(value: ITranscriptionJobEntity['resultMetadata']) {
     this.setProperty('resultMetadata', value);
+  }
+
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // ciphertext from audit-log surfaces.
+  @Secret()
+  get encryptedResultText(): ITranscriptionJobEntity['encryptedResultText'] {
+    return this._encryptedResultText;
+  }
+
+  set encryptedResultText(value: ITranscriptionJobEntity['encryptedResultText']) {
+    this.setProperty('encryptedResultText', value);
+  }
+
+  @Secret()
+  get encryptedResultMetadata(): ITranscriptionJobEntity['encryptedResultMetadata'] {
+    return this._encryptedResultMetadata;
+  }
+
+  set encryptedResultMetadata(value: ITranscriptionJobEntity['encryptedResultMetadata']) {
+    this.setProperty('encryptedResultMetadata', value);
+  }
+
+  get keyVersion(): ITranscriptionJobEntity['keyVersion'] {
+    return this._keyVersion;
+  }
+
+  set keyVersion(value: ITranscriptionJobEntity['keyVersion']) {
+    this.setProperty('keyVersion', value);
   }
 
   get errorMessage(): ITranscriptionJobEntity['errorMessage'] {

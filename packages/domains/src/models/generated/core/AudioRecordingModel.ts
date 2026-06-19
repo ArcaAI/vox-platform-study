@@ -2,7 +2,9 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
+import { JsonValue } from '../../../interfaces';
+import * as Enums from '../../../enums';
 import * as Models from './';
 
 export class AudioRecording extends BaseTenantDataModel {
@@ -18,6 +20,8 @@ export class AudioRecording extends BaseTenantDataModel {
   public language: string | null;
   public sequenceNumber: number;
   public recordedAt: Date | null;
+  @VirtualDbProperty()
+  public ContextItem: Models.ContextItem | undefined;
 
   constructor(data: AudioRecording & BaseTenantDataModel) {
     super(data);
@@ -33,5 +37,6 @@ export class AudioRecording extends BaseTenantDataModel {
     this.language = data.language;
     this.sequenceNumber = data.sequenceNumber ?? 1;
     this.recordedAt = data.recordedAt;
+    this.ContextItem = data.ContextItem;
   }
 }

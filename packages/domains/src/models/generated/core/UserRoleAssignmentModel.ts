@@ -8,6 +8,7 @@ import * as Enums from '../../../enums';
 import * as Models from './';
 
 export class UserRoleAssignment extends BaseTenantDataModel {
+  public scopeOverrides: JsonValue | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -17,11 +18,10 @@ export class UserRoleAssignment extends BaseTenantDataModel {
   public User: Models.User | undefined;
   @VirtualDbProperty()
   public Role: Models.Role | undefined;
-  @VirtualDbProperty()
-  public Roles: Models.Role[] | undefined;
 
   constructor(data: UserRoleAssignment & BaseTenantDataModel) {
     super(data);
+    this.scopeOverrides = data.scopeOverrides;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
@@ -29,6 +29,5 @@ export class UserRoleAssignment extends BaseTenantDataModel {
     this.roleId = data.roleId;
     this.User = data.User;
     this.Role = data.Role;
-    this.Roles = data.Roles;
   }
 }

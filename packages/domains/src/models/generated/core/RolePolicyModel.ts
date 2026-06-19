@@ -2,32 +2,32 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
+import { BaseDataModel, VirtualDbProperty } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
 
-export class UserDepartment extends BaseTenantDataModel {
-  public isPrimary: boolean;
+export class RolePolicy extends BaseDataModel {
+  public priority: number;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
-  public userId: string;
-  public departmentId: string;
+  public roleId: string;
+  public policyId: string;
   @VirtualDbProperty()
-  public User: Models.User | undefined;
+  public Role: Models.Role | undefined;
   @VirtualDbProperty()
-  public Department: Models.Department | undefined;
+  public Policy: Models.Policy | undefined;
 
-  constructor(data: UserDepartment & BaseTenantDataModel) {
+  constructor(data: RolePolicy & BaseDataModel) {
     super(data);
-    this.isPrimary = data.isPrimary;
+    this.priority = data.priority;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
-    this.userId = data.userId;
-    this.departmentId = data.departmentId;
-    this.User = data.User;
-    this.Department = data.Department;
+    this.roleId = data.roleId;
+    this.policyId = data.policyId;
+    this.Role = data.Role;
+    this.Policy = data.Policy;
   }
 }

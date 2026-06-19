@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
-import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 import * as Entities from '../../../entities';
 import type { DnaWritingStyleVersionEntity } from './DnaWritingStyleVersionEntity';
 
@@ -11,6 +11,12 @@ export interface IDnaWritingStyleReportEntity extends IBaseTenantEntity {
   departmentId?: string | null;
   reportData?: Record<string, unknown> | null;
   styleText?: string | null;
+  // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the
+  // writing-style fields + shared key version. Plaintext columns retained for
+  // the dual-read soak (removal is Phase 6).
+  encryptedReportData?: Buffer | null;
+  encryptedStyleText?: Buffer | null;
+  keyVersion?: number | null;
   isLatest?: boolean | null;
   currentVersionNumber?: number | null;
   Doctor?: Entities.UserEntity | null;
@@ -23,6 +29,9 @@ export class DnaWritingStyleReportEntity extends BaseTenantEntity {
   private _departmentId?: IDnaWritingStyleReportEntity['departmentId'];
   private _reportData?: IDnaWritingStyleReportEntity['reportData'];
   private _styleText?: IDnaWritingStyleReportEntity['styleText'];
+  private _encryptedReportData?: IDnaWritingStyleReportEntity['encryptedReportData'];
+  private _encryptedStyleText?: IDnaWritingStyleReportEntity['encryptedStyleText'];
+  private _keyVersion?: IDnaWritingStyleReportEntity['keyVersion'];
   private _isLatest?: IDnaWritingStyleReportEntity['isLatest'];
   private _currentVersionNumber?: IDnaWritingStyleReportEntity['currentVersionNumber'];
   private _Doctor?: IDnaWritingStyleReportEntity['Doctor'];
@@ -35,6 +44,9 @@ export class DnaWritingStyleReportEntity extends BaseTenantEntity {
     this._departmentId = init.departmentId;
     this._reportData = init.reportData;
     this._styleText = init.styleText;
+    this._encryptedReportData = init.encryptedReportData;
+    this._encryptedStyleText = init.encryptedStyleText;
+    this._keyVersion = init.keyVersion;
     this._isLatest = init.isLatest;
     this._currentVersionNumber = init.currentVersionNumber;
     this._Doctor = init.Doctor;
@@ -58,6 +70,9 @@ export class DnaWritingStyleReportEntity extends BaseTenantEntity {
     this.setProperty('departmentId', value);
   }
 
+  // TASK-369 Phase 3C — clinical PHI fields. @Secret() marks them for audit-log
+  // redaction (defense-in-depth) alongside the encrypted counterpart.
+  @Secret()
   get reportData(): IDnaWritingStyleReportEntity['reportData'] {
     return this._reportData;
   }
@@ -66,12 +81,41 @@ export class DnaWritingStyleReportEntity extends BaseTenantEntity {
     this.setProperty('reportData', value);
   }
 
+  @Secret()
   get styleText(): IDnaWritingStyleReportEntity['styleText'] {
     return this._styleText;
   }
 
   set styleText(value: IDnaWritingStyleReportEntity['styleText']) {
     this.setProperty('styleText', value);
+  }
+
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns. @Secret() guards the
+  // ciphertext from audit-log surfaces.
+  @Secret()
+  get encryptedReportData(): IDnaWritingStyleReportEntity['encryptedReportData'] {
+    return this._encryptedReportData;
+  }
+
+  set encryptedReportData(value: IDnaWritingStyleReportEntity['encryptedReportData']) {
+    this.setProperty('encryptedReportData', value);
+  }
+
+  @Secret()
+  get encryptedStyleText(): IDnaWritingStyleReportEntity['encryptedStyleText'] {
+    return this._encryptedStyleText;
+  }
+
+  set encryptedStyleText(value: IDnaWritingStyleReportEntity['encryptedStyleText']) {
+    this.setProperty('encryptedStyleText', value);
+  }
+
+  get keyVersion(): IDnaWritingStyleReportEntity['keyVersion'] {
+    return this._keyVersion;
+  }
+
+  set keyVersion(value: IDnaWritingStyleReportEntity['keyVersion']) {
+    this.setProperty('keyVersion', value);
   }
 
   get isLatest(): IDnaWritingStyleReportEntity['isLatest'] {

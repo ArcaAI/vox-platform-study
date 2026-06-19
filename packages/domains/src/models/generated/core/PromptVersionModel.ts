@@ -2,16 +2,20 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
+import { JsonValue } from '../../../interfaces';
+import * as Enums from '../../../enums';
 import * as Models from './';
 
 export class PromptVersion extends BaseTenantDataModel {
-  public promptTemplateId: string | null;
-  public versionNumber: number | null;
-  public content: string | null;
-  public variables: any | null;
+  public promptTemplateId: string;
+  public versionNumber: number;
+  public content: string;
+  public variables: JsonValue | null;
   public changeReason: string | null;
   public changedBy: string | null;
+  @VirtualDbProperty()
+  public PromptTemplate: Models.PromptTemplate | undefined;
 
   constructor(data: PromptVersion & BaseTenantDataModel) {
     super(data);
@@ -21,5 +25,6 @@ export class PromptVersion extends BaseTenantDataModel {
     this.variables = data.variables;
     this.changeReason = data.changeReason;
     this.changedBy = data.changedBy;
+    this.PromptTemplate = data.PromptTemplate;
   }
 }

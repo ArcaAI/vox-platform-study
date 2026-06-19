@@ -2,8 +2,9 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
 import { JsonValue } from '../../../interfaces';
+import * as Enums from '../../../enums';
 import * as Models from './';
 
 export class ContextItemVersion extends BaseTenantDataModel {
@@ -16,6 +17,12 @@ export class ContextItemVersion extends BaseTenantDataModel {
   public changedBy: string | null;
   public changeSource: string | null;
   public fieldChanges: JsonValue | null;
+  // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
+  public encryptedContent: Uint8Array | null;
+  public encryptedContentDiff: Uint8Array | null;
+  public encryptedChangeSummary: Uint8Array | null;
+  public encryptedFieldChanges: Uint8Array | null;
+  public keyVersion: number | null;
   // TASK-330 Phase 1 — clinician attestation (confirm-before-commit gate)
   public attestedAt: Date | null;
   public attestedBy: string | null;
@@ -23,6 +30,8 @@ export class ContextItemVersion extends BaseTenantDataModel {
   public modelName: string | null;
   public modelVersion: string | null;
   public sensorScores: JsonValue | null;
+  @VirtualDbProperty()
+  public ContextItem: Models.ContextItem | undefined;
 
   constructor(data: ContextItemVersion & BaseTenantDataModel) {
     super(data);
@@ -35,11 +44,17 @@ export class ContextItemVersion extends BaseTenantDataModel {
     this.changedBy = data.changedBy;
     this.changeSource = data.changeSource;
     this.fieldChanges = data.fieldChanges;
+    this.encryptedContent = data.encryptedContent;
+    this.encryptedContentDiff = data.encryptedContentDiff;
+    this.encryptedChangeSummary = data.encryptedChangeSummary;
+    this.encryptedFieldChanges = data.encryptedFieldChanges;
+    this.keyVersion = data.keyVersion;
     this.attestedAt = data.attestedAt;
     this.attestedBy = data.attestedBy;
     this.attestationHash = data.attestationHash;
     this.modelName = data.modelName;
     this.modelVersion = data.modelVersion;
     this.sensorScores = data.sensorScores;
+    this.ContextItem = data.ContextItem;
   }
 }

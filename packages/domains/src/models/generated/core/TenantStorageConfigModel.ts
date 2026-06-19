@@ -1,5 +1,11 @@
-import { BaseTenantDataModel } from '../../../common';
+/* eslint-disable unused-imports/no-unused-imports */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
+import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
+import * as Models from './';
 
 export class TenantStorageConfig extends BaseTenantDataModel {
   public bucketId: string | null;
@@ -12,10 +18,12 @@ export class TenantStorageConfig extends BaseTenantDataModel {
   public endpointSuffix: string | null;
   public containerPrefix: string | null;
   public credentialsRef: string | null;
-
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
+  public tags: string[];
+  @VirtualDbProperty()
+  public Bucket: Models.TenantBucket | undefined;
 
   constructor(data: TenantStorageConfig & BaseTenantDataModel) {
     super(data);
@@ -32,5 +40,7 @@ export class TenantStorageConfig extends BaseTenantDataModel {
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
+    this.tags = data.tags;
+    this.Bucket = data.Bucket;
   }
 }
