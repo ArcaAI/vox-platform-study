@@ -188,10 +188,12 @@
       changes:
         - packages/database/**/*
 
-# ── Data-model generator drift (generated domain layer ↔ Prisma schema) ──────
+# ── Generated domain-layer drift (generated layer ↔ Prisma schema / generators) ──
+# Shared by the three generator drift gates (data-model, data-entity, factory).
 # Fires when the Prisma schema (DMMF source), the committed generated domain
-# model/enum layer, or the generator itself changes — i.e. anything that could
-# make `generate-data-model:check` drift.
+# layer (models/enums/entities/factories), any of the three generators, or the
+# shared preservation util changes — i.e. anything that could make a
+# `generate-*:check` drift. (TASK-368 added data-model; TASK-370 added entity/factory.)
 
 .rules-data-model:
   rules:
@@ -203,6 +205,9 @@
           - packages/database/src/prisma/**/*.prisma
           - packages/domains/src/**/generated/**/*
           - packages/tools/src/generate-data-model/**/*
+          - packages/tools/src/generate-data-entity/**/*
+          - packages/tools/src/generate-factory/**/*
+          - packages/tools/src/utils/**/*
         compare_to: refs/heads/main
     - if: $PIPELINE_TYPE == "dev"
     - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
@@ -210,6 +215,9 @@
         - packages/database/src/prisma/**/*.prisma
         - packages/domains/src/**/generated/**/*
         - packages/tools/src/generate-data-model/**/*
+        - packages/tools/src/generate-data-entity/**/*
+        - packages/tools/src/generate-factory/**/*
+        - packages/tools/src/utils/**/*
 
 # ── Any TypeScript change ───────────────────────────────────────────────────
 

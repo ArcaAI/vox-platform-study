@@ -67,6 +67,42 @@ generate-data-model-check:
   rules:
     - !reference [.rules-data-model, rules]
 
+# ── Entity layer drift gate ──────────────────────────────────────────────────
+# TASK-370 — the entity generator now reproduces the hand-curated
+# packages/domains/src/entities/generated layer verbatim and keeps its barrels in
+# sync. This gate is STRICT: it fails the pipeline if the committed entity files
+# or barrels drift from generator output (e.g. an entity added/removed without
+# updating the barrel). Reconcile with `pnpm --filter @arcaai/tools generate-data-entity`.
+
+generate-data-entity-check:
+  stage: validate
+  extends: .node-base
+  needs:
+    - job: install-node
+      optional: true
+  script:
+    - pnpm --filter @arcaai/tools generate-data-entity:check
+  rules:
+    - !reference [.rules-data-model, rules]
+
+# ── Factory layer drift gate ─────────────────────────────────────────────────
+# TASK-370 — the factory generator now reproduces the hand-curated
+# packages/domains/src/factories/generated layer verbatim and keeps its barrels in
+# sync. This gate is STRICT: it fails the pipeline if the committed factory files
+# or barrels drift from generator output. Reconcile with
+# `pnpm --filter @arcaai/tools generate-factory`.
+
+generate-factory-check:
+  stage: validate
+  extends: .node-base
+  needs:
+    - job: install-node
+      optional: true
+  script:
+    - pnpm --filter @arcaai/tools generate-factory:check
+  rules:
+    - !reference [.rules-data-model, rules]
+
 # ── Python linting (ruff) ───────────────────────────────────────────────────
 
 lint-python:
