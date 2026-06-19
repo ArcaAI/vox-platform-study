@@ -18,6 +18,9 @@ import {
     SEED_TRANSCRIPTION_JOB_IDS,
     SYSTEM_USER_ID,
 } from './00-constants';
+// TASK-369 Phase 6 — plaintext clinical PHI columns were dropped; seed rows must
+// persist Vault-Transit ciphertext into the sibling `encrypted*` columns.
+import { encryptSeedRow } from './phi-encryption';
 
 /**
  * Consultation Seed Data — E2E-Ready Clinical Workflow
@@ -1404,10 +1407,11 @@ export const seedConsultation = async (client: CorePrismaClient) => {
     );
 
     for (const item of [...DEFAULT_CONTEXT_ITEMS, ...CUSTOMER_TENANT_CONTEXT_ITEMS]) {
+        const data = await encryptSeedRow<Prisma.ContextItemUncheckedCreateInput>('ContextItem', item);
         await client.contextItem.upsert({
             where: { id: item.id },
-            update: item,
-            create: item,
+            update: data,
+            create: data,
         });
     }
     console.log(
@@ -1442,6 +1446,7 @@ export const seedConsultation = async (client: CorePrismaClient) => {
     console.log(`  Seeded ${DEFAULT_AUDIO_RECORDINGS.length} audio recordings`);
 
     for (const version of DEFAULT_CONTEXT_VERSIONS) {
+        const data = await encryptSeedRow<Prisma.ContextItemVersionUncheckedCreateInput>('ContextItemVersion', version);
         await client.contextItemVersion.upsert({
             where: {
                 contextItemId_versionNumber: {
@@ -1449,17 +1454,18 @@ export const seedConsultation = async (client: CorePrismaClient) => {
                     versionNumber: version.versionNumber,
                 },
             },
-            update: version,
-            create: version,
+            update: data,
+            create: data,
         });
     }
     console.log(`  Seeded ${DEFAULT_CONTEXT_VERSIONS.length} context item versions`);
 
     for (const entity of DEFAULT_NAMED_ENTITIES) {
+        const data = await encryptSeedRow<Prisma.NamedEntityUncheckedCreateInput>('NamedEntity', entity);
         await client.namedEntity.upsert({
             where: { id: entity.id },
-            update: entity,
-            create: entity,
+            update: data,
+            create: data,
         });
     }
     console.log(`  Seeded ${DEFAULT_NAMED_ENTITIES.length} named entities`);
@@ -1489,10 +1495,11 @@ export const seedConsultation = async (client: CorePrismaClient) => {
                 ? { resultMetadata: job.resultMetadata as Prisma.InputJsonValue }
                 : {}),
         };
+        const encrypted = await encryptSeedRow<Prisma.TranscriptionJobUncheckedCreateInput>('TranscriptionJob', data);
         await client.transcriptionJob.upsert({
             where: { id: job.id },
-            update: data,
-            create: data,
+            update: encrypted,
+            create: encrypted,
         });
     }
     console.log(`  Seeded ${DEFAULT_TRANSCRIPTION_JOBS.length} transcription jobs`);

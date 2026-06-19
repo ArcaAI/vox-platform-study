@@ -196,14 +196,12 @@ model TranscriptionJob {
   startedAt   DateTime?
   completedAt DateTime?
 
-  // Results (on completion)
-  resultText     String? @db.Text
-  resultMetadata Json?   @db.JsonB // confidence, word timestamps, etc.
+  // Results (on completion). TASK-369 Phase 6 — plaintext resultText /
+  // resultMetadata columns DROPPED; persisted as Vault-Transit ciphertext only.
 
-  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
-  // of the transcription result (resultText / resultMetadata) plus the shared
-  // Transit key version. All nullable + additive; plaintext columns retained
-  // for the dual-read soak (removal is Phase 6, user-gated).
+  // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
+  // transcription result (resultText / resultMetadata) plus the shared Transit
+  // key version. Phase 6: these ciphertext columns are now the system of record.
   encryptedResultText     Bytes?
   encryptedResultMetadata Bytes?
   keyVersion              Int?

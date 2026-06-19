@@ -94,7 +94,7 @@ describe('ContextItemRepository.encryptContentIntoEntity (Phase 3B)', () => {
     expect(entity.contentKeyVersion ?? null).toBeNull();
   });
 
-  it('does NOT clear the plaintext content (dual-read soak)', async () => {
+  it('does NOT clear the transient plaintext content (kept in memory, never persisted)', async () => {
     const secrets: SecretsServiceLike = {
       encrypt: vi.fn(async (b: Buffer) => `vault:v1:${b.toString('base64')}`),
       decrypt: vi.fn(),
@@ -125,13 +125,16 @@ describe('ContextItemRepository.decryptContentFromEntity (Phase 3B)', () => {
     expect(secrets.decrypt).toHaveBeenCalledWith('vault:v2:bm90ZQ==', 'hope-phi');
   });
 
-  it('falls back to plaintext content when encryptedContent is null (legacy bridge)', async () => {
+  it('returns null when encryptedContent is null — no plaintext fallback (Phase 6)', async () => {
     const secrets: SecretsServiceLike = { encrypt: vi.fn(), decrypt: vi.fn() };
     const repo = makeRepo();
+    // The plaintext column was DROPPED in Phase 6; `content` survives only as a
+    // transient in-memory field. decrypt-on-read is ciphertext-only, so a null
+    // ciphertext yields null even if a transient plaintext value is present.
     const entity = makeEntity({ content: 'legacy-note', encryptedContent: null });
 
     const pt = await repo.decryptContentFromEntity(entity, secrets);
-    expect(pt).toBe('legacy-note');
+    expect(pt).toBeNull();
     expect(secrets.decrypt).not.toHaveBeenCalled();
   });
 

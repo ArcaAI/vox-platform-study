@@ -6,8 +6,8 @@
 // merging + prototype patching so codegen can re-run with --overwrite). All
 // four fields share ONE `keyVersion` column; the shared Buffer/ciphertext
 // primitives live in common/field-encryption.ts and default to the dedicated
-// `hope-phi` Transit key. Plaintext columns are retained for the dual-read
-// soak — decrypt helpers fall back to plaintext when the ciphertext is null.
+// `hope-phi` Transit key. TASK-369 Phase 6 dropped the plaintext columns; reads
+// decrypt the ciphertext only (no plaintext fallback).
 
 import { ContextItemVersionRepository } from './ContextItemVersionRepository';
 import { ContextItemVersionEntity } from '../../../entities';
@@ -34,8 +34,8 @@ declare module './ContextItemVersionRepository' {
      * (hope-phi) and store the ciphertext in the matching `encrypted*` column,
      * recording the Transit key version in the shared `keyVersion`. Mutates the
      * entity in place; caller persists. No-op per field when that field is
-     * empty/null, so it is safe to call unconditionally on a partial row. Does
-     * NOT clear plaintext — retained for the dual-read soak (Phase 6 cleanup).
+     * empty/null, so it is safe to call unconditionally on a partial row. The
+     * transient plaintext stays in memory for the request; only ciphertext persists.
      */
     encryptFieldsIntoEntity(
       this: ContextItemVersionRepository,
@@ -44,8 +44,8 @@ declare module './ContextItemVersionRepository' {
     ): Promise<void>;
 
     /**
-     * Decrypt all ciphertext columns, each falling back to its legacy plaintext
-     * column when the ciphertext is null (dual-read soak bridge).
+     * Decrypt all ciphertext columns (ciphertext-only; the plaintext columns
+     * were dropped in Phase 6).
      */
     decryptFieldsFromEntity(
       this: ContextItemVersionRepository,
@@ -105,12 +105,8 @@ ContextItemVersionRepository.prototype.decryptFieldsFromEntity = async function 
   const contentDiff = await decryptCiphertextToString(secrets, entity.encryptedContentDiff);
   const changeSummary = await decryptCiphertextToString(secrets, entity.encryptedChangeSummary);
   const fieldChanges = await decryptCiphertextToJson(secrets, entity.encryptedFieldChanges);
-  return {
-    content: content !== null ? content : (entity.content ?? null),
-    contentDiff: contentDiff !== null ? contentDiff : (entity.contentDiff ?? null),
-    changeSummary: changeSummary !== null ? changeSummary : (entity.changeSummary ?? null),
-    fieldChanges: fieldChanges !== null ? fieldChanges : (entity.fieldChanges ?? null),
-  };
+  // TASK-369 Phase 6 — plaintext columns dropped; decrypt ciphertext only.
+  return { content, contentDiff, changeSummary, fieldChanges };
 };
 
 ContextItemVersionRepository.prototype.findByIdWithDecryptedFields = async function (

@@ -16,14 +16,12 @@ model DnaWritingStyleReport {
   doctorId String
   Doctor   User   @relation("DoctorDnaReports", fields: [doctorId], references: [id])
 
-  // Report content
-  reportData Json?   @db.JsonB
-  styleText  String? @db.Text
+  // Report content. TASK-369 Phase 6 — plaintext reportData / styleText columns
+  // DROPPED; persisted as Vault-Transit ciphertext only.
 
-  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
-  // of the writing-style report (reportData JSONB / styleText) plus the shared
-  // Transit key version. Nullable + additive; plaintext retained for the
-  // dual-read soak (removal is Phase 6, user-gated).
+  // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
+  // writing-style report (reportData JSONB / styleText) plus the shared Transit
+  // key version. Phase 6: these ciphertext columns are now the system of record.
   encryptedReportData Bytes?
   encryptedStyleText  Bytes?
   keyVersion          Int?
@@ -64,14 +62,13 @@ model DnaWritingStyleVersion {
   dnaReportId           String
   DnaWritingStyleReport DnaWritingStyleReport @relation(fields: [dnaReportId], references: [id])
 
-  // Version content snapshot
+  // Version content snapshot. TASK-369 Phase 6 — plaintext reportData /
+  // styleText columns DROPPED; persisted as Vault-Transit ciphertext only.
   versionNumber Int
-  reportData    Json?   @db.JsonB
-  styleText     String? @db.Text
 
-  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
-  // of the snapshot (reportData JSONB / styleText) plus the shared Transit key
-  // version. Nullable + additive; plaintext retained for the dual-read soak.
+  // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
+  // snapshot (reportData JSONB / styleText) plus the shared Transit key version.
+  // Phase 6: these ciphertext columns are now the system of record.
   encryptedReportData Bytes?
   encryptedStyleText  Bytes?
   keyVersion          Int?

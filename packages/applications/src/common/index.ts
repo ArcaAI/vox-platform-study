@@ -12,6 +12,7 @@ export * from './groups.enum';
 export * from './hexDecode';
 export * from './httpMethod.enum';
 export * from './paginatedQueryParamConverters';
+export * from './phi-field-encryption';
 export * from './tenant-guards';
 export * from './typed-event-emitter';
 export * from './worker-session';

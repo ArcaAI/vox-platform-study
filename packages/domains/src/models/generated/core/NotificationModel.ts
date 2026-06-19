@@ -9,9 +9,10 @@ import * as Models from './';
 
 export class Notification extends BaseTenantDataModel {
   public title: string;
-  public messageText: string | null;
-  public messageRichText: string | null;
-  public messageContent: JsonValue | null;
+  // TASK-369 Phase 6 — plaintext messageText / messageRichText / messageContent
+  // columns DROPPED; persistence is ciphertext-only. The entity keeps these as
+  // transient fields repopulated by repository decrypt-on-read. `title` is NOT
+  // encrypted and remains a plaintext column.
   public type: Enums.NotificationType;
   public read: boolean;
   // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
@@ -33,9 +34,6 @@ export class Notification extends BaseTenantDataModel {
   constructor(data: Notification & BaseTenantDataModel) {
     super(data);
     this.title = data.title;
-    this.messageText = data.messageText;
-    this.messageRichText = data.messageRichText;
-    this.messageContent = data.messageContent;
     this.type = data.type;
     this.read = data.read;
     this.encryptedMessageText = data.encryptedMessageText;

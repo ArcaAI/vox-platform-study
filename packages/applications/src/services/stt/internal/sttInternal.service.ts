@@ -15,7 +15,7 @@ import {
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { BaseService } from '../../../common';
+import { BaseService, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { ConsultationPipelineEvent, TranscriptionCreatedPayload } from '../../consultation/events';
@@ -54,17 +54,12 @@ export class SttInternalService extends BaseService implements ISttInternalServi
   private readonly logger = new Logger(SttInternalService.name);
 
   /**
-   * Best-effort field encryption: a Vault failure is swallowed (error message
-   * only) so the dual-write soak never blocks a job completion — the plaintext
-   * result columns are still persisted.
+   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
+   * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
   private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
-    if (!this.secretsService) return;
-    try {
-      await run();
-    } catch (error) {
-      this.logger.error(`${label} field encryption skipped (dual-write soak): ${(error as Error).message}`);
-    }
+    await encryptPhiFields(this.secretsService, label, run, this.logger);
   }
 
   /**

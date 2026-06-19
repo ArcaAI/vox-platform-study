@@ -6,6 +6,7 @@ import { ICountProps, IFindAllProps, IRepository } from '../interfaces';
 import { DataCreationException, DataNotFoundException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { ResourceStatusType } from '../enums';
 import { removeNullValues } from './removeNullValues';
+import { getPhiReadSecrets, wrapDelegateWithPhiDecrypt } from './phi-read-decrypt';
 
 // Type for the database context - can be extended client or transaction client
 type DatabaseContext = ReturnType<PrismaClient['$extends']> | Prisma.TransactionClient;
@@ -32,7 +33,21 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
       this._databaseContext = this._unitOfWorkService.getDatabaseService();
     }
     // Use type assertion to handle the indexing
-    return (this._databaseContext as Record<string, any>)[this._modelName];
+    const delegate = (this._databaseContext as Record<string, any>)[this._modelName];
+
+    // TASK-369 Phase 6 — decrypt-on-read for the dropped plaintext PHI columns.
+    // Only wrap when a SecretsService has been wired (Vault mode); env-mode dev
+    // and unit tests leave it unwired, so this is a zero-overhead pass-through
+    // there. Routing through `this.db` means BOTH the generic finders above and
+    // every hand-written custom finder are covered by one wrap point, and the
+    // recursive walk also decrypts nested PHI rows pulled in via `include` from
+    // ANY repository (e.g. Consultation.ContextItems). The decryptor only acts
+    // on the 26 registered `encrypted*` columns — all other models (GlobalSetting,
+    // AuditLog, WORM) use distinct names and are untouched.
+    if (getPhiReadSecrets()) {
+      return wrapDelegateWithPhiDecrypt(delegate);
+    }
+    return delegate;
   }
 
   public async create(entity: DomainEntity, tx?: Prisma.TransactionClient | any): Promise<DomainEntity> {

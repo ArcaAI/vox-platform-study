@@ -30,7 +30,8 @@ export interface ISummaryMetaEntity extends IBaseTenantEntity {
   guardrailDecisions?: JsonValue | null;
   // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the JSONB
   // provenance blobs (citationsMap / guardrailDecisions) + shared key version.
-  // Plaintext retained for the dual-read soak (removal is Phase 6).
+  // Phase 6 dropped the plaintext columns; plaintext survives only as transient
+  // fields repopulated by decrypt-on-read.
   encryptedCitationsMap?: Buffer | null;
   encryptedGuardrailDecisions?: Buffer | null;
   keyVersion?: number | null;

@@ -1,6 +1,7 @@
 import { DynamicModule, Global, Logger, Module } from '@nestjs/common';
 import { TerminusModule } from '@nestjs/terminus';
 import { readFileSync } from 'node:fs';
+import { setPhiReadSecrets } from '@arcaai/domains';
 import { SecretsService, SECRETS_SERVICE_OPTIONS } from './SecretsService';
 import { SecretsHealthIndicator } from './secrets.health';
 import { ISecretsProvider, SECRETS_PROVIDER_TOKEN, SecretsProviderName } from './ISecretsProvider';
@@ -173,6 +174,16 @@ export class SecretsModule {
             // dialling a non-existent Vault.
             if (options.warmupKeys && options.warmupKeys.length > 0) {
               await svc.boot({ warmupKeys: options.warmupKeys });
+            }
+            // TASK-369 Phase 6 — activate repository decrypt-on-read for the
+            // dropped plaintext PHI columns. Gated on the provider actually
+            // being transit-capable (only the Vault provider implements
+            // `decrypt`); env/in-memory/aws/azure leave it unwired so reads
+            // stay a zero-overhead no-op and need no Vault. Process-wide, set
+            // once per process when SecretsService is constructed (it is a
+            // @Global singleton, instantiated before any request-time read).
+            if (typeof (provider as unknown as { decrypt?: unknown }).decrypt === 'function') {
+              setPhiReadSecrets(svc);
             }
             return svc;
           },

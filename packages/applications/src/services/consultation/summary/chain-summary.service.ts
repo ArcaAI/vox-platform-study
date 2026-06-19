@@ -16,7 +16,7 @@ import {
 } from '@arcaai/domains';
 import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSectionDto } from './dto';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './smr-v2-generate';
-import { BaseService, assertParentInScope } from '../../../common';
+import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { SecretsService } from '../../baseServices/_meta/secrets';
@@ -71,17 +71,12 @@ export class ChainSummaryService extends BaseService {
   }
 
   /**
-   * TASK-369 Phase 3C — best-effort SummaryMeta field encryption. A missing or
-   * failing SecretsService leaves the row plaintext-only (logged, message only)
-   * and never throws into the write path during the dual-read soak.
+   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
+   * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
   private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
-    if (!this.secretsService) return;
-    try {
-      await run();
-    } catch (error) {
-      this.logger.error(`${label} field encryption skipped (dual-write soak): ${error instanceof Error ? error.message : String(error)}`);
-    }
+    await encryptPhiFields(this.secretsService, label, run, this.logger);
   }
 
   /**

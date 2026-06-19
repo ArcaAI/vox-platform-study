@@ -44,15 +44,16 @@ model PromptTemplate {
   status      PromptTemplateStatus   @default(DRAFT)
   variables   Json?                  @db.JsonB
 
-  // Quality/score testing (TASK-328 A4) — last SMR-scored test run
+  // Quality/score testing (TASK-328 A4) — last SMR-scored test run.
+  // TASK-369 Phase 6 — plaintext `lastTestOutput` column DROPPED; persisted as
+  // Vault-Transit ciphertext only. (`content` is the prompt body and is NOT
+  // encrypted — it remains a plaintext column.)
   lastTestScore  Float?
-  lastTestOutput String?   @db.Text
   lastTestAt     DateTime?
 
-  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
-  // of the last SMR-scored test output plus the shared Transit key version.
-  // Nullable + additive; plaintext retained for the dual-read soak (removal is
-  // Phase 6, user-gated).
+  // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the last
+  // SMR-scored test output plus the shared Transit key version. Phase 6: this
+  // ciphertext column is now the system of record.
   encryptedLastTestOutput Bytes?
   keyVersion              Int?
 

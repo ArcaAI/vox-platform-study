@@ -5,7 +5,7 @@
 // merging + prototype patching). All four fields share ONE `keyVersion`
 // column; shared Buffer/ciphertext primitives live in
 // common/field-encryption.ts and default to the `hope-phi` Transit key.
-// Plaintext columns are retained for the dual-read soak.
+// Phase 6 dropped the plaintext columns; reads decrypt the ciphertext only.
 
 import { HighlightRepository } from './HighlightRepository';
 import { HighlightEntity } from '../../../entities';
@@ -29,8 +29,8 @@ declare module './HighlightRepository' {
      * Encrypt every populated quote-selector / note field via Vault Transit
      * (hope-phi), storing ciphertext in the matching `encrypted*` column and
      * recording the Transit key version in the shared `keyVersion`. Mutates the
-     * entity in place. No-op per field when empty/null. Plaintext retained for
-     * the dual-read soak.
+     * entity in place. No-op per field when empty/null. Only ciphertext
+     * persists (Phase 6).
      */
     encryptFieldsIntoEntity(
       this: HighlightRepository,
@@ -38,7 +38,7 @@ declare module './HighlightRepository' {
       secrets: SecretsServiceLike,
     ): Promise<void>;
 
-    /** Decrypt all ciphertext columns, each falling back to its plaintext column. */
+    /** Decrypt all ciphertext columns (ciphertext-only; plaintext dropped in Phase 6). */
     decryptFieldsFromEntity(
       this: HighlightRepository,
       entity: HighlightEntity,
@@ -97,12 +97,8 @@ HighlightRepository.prototype.decryptFieldsFromEntity = async function (
   const prefix = await decryptCiphertextToString(secrets, entity.encryptedPrefix);
   const suffix = await decryptCiphertextToString(secrets, entity.encryptedSuffix);
   const note = await decryptCiphertextToString(secrets, entity.encryptedNote);
-  return {
-    exact: exact !== null ? exact : (entity.exact ?? null),
-    prefix: prefix !== null ? prefix : (entity.prefix ?? null),
-    suffix: suffix !== null ? suffix : (entity.suffix ?? null),
-    note: note !== null ? note : (entity.note ?? null),
-  };
+  // TASK-369 Phase 6 — plaintext columns dropped; decrypt ciphertext only.
+  return { exact, prefix, suffix, note };
 };
 
 HighlightRepository.prototype.findByIdWithDecryptedFields = async function (

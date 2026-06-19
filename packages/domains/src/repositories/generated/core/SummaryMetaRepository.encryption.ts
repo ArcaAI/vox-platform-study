@@ -3,8 +3,8 @@
 // echo clinical content / transcript spans).
 //
 // Sibling file mirroring ContextItemRepository.encryption.ts. Both JSONB fields
-// share ONE `keyVersion` column; plaintext JSONB retained for the dual-read
-// soak.
+// share ONE `keyVersion` column. Phase 6 dropped the plaintext JSONB columns;
+// reads decrypt the ciphertext only.
 
 import { SummaryMetaRepository } from './SummaryMetaRepository';
 import { SummaryMetaEntity } from '../../../entities';
@@ -26,7 +26,7 @@ declare module './SummaryMetaRepository' {
      * Encrypt the JSONB provenance blobs via Vault Transit (hope-phi), storing
      * ciphertext in the matching `encrypted*` column and recording the Transit
      * key version in the shared `keyVersion`. Mutates in place; no-op per field
-     * when null. Plaintext retained for the dual-read soak.
+     * when null. Only ciphertext persists (Phase 6).
      */
     encryptFieldsIntoEntity(
       this: SummaryMetaRepository,
@@ -34,7 +34,7 @@ declare module './SummaryMetaRepository' {
       secrets: SecretsServiceLike,
     ): Promise<void>;
 
-    /** Decrypt all ciphertext columns, each falling back to its plaintext column. */
+    /** Decrypt all ciphertext columns (ciphertext-only; plaintext dropped in Phase 6). */
     decryptFieldsFromEntity(
       this: SummaryMetaRepository,
       entity: SummaryMetaEntity,
@@ -79,10 +79,8 @@ SummaryMetaRepository.prototype.decryptFieldsFromEntity = async function (
 ): Promise<SummaryMetaPlaintext> {
   const citationsMap = await decryptCiphertextToJson(secrets, entity.encryptedCitationsMap);
   const guardrailDecisions = await decryptCiphertextToJson(secrets, entity.encryptedGuardrailDecisions);
-  return {
-    citationsMap: citationsMap !== null ? citationsMap : (entity.citationsMap ?? null),
-    guardrailDecisions: guardrailDecisions !== null ? guardrailDecisions : (entity.guardrailDecisions ?? null),
-  };
+  // TASK-369 Phase 6 — plaintext columns dropped; decrypt ciphertext only.
+  return { citationsMap, guardrailDecisions };
 };
 
 SummaryMetaRepository.prototype.findByIdWithDecryptedFields = async function (

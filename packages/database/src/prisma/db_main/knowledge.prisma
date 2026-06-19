@@ -79,17 +79,17 @@ model KnowledgeChunk {
   knowledgeDocumentId String
   KnowledgeDocument   KnowledgeDocument @relation(fields: [knowledgeDocumentId], references: [id])
 
-  // Chunk content + position within the source document
+  // Chunk content + position within the source document.
+  // TASK-369 Phase 6 — plaintext `text` column DROPPED; persisted as
+  // Vault-Transit ciphertext only.
   chunkIndex  Int
-  text        String @db.Text
   tokenCount  Int
   startOffset Int
   endOffset   Int
 
-  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
-  // of the chunk text plus the shared Transit key version. Nullable +
-  // additive; plaintext `text` retained for the dual-read soak (removal is
-  // Phase 6, user-gated).
+  // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
+  // chunk text plus the shared Transit key version. Phase 6: this ciphertext
+  // column is now the system of record.
   encryptedText Bytes?
   keyVersion    Int?
 

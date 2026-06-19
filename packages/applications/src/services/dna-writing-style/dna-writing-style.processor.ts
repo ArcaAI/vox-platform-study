@@ -18,6 +18,7 @@ import {
   JobQueue,
 } from '@arcaai/domains';
 import { PromptManagementService } from '../prompt-management/prompt-management.service';
+import { encryptPhiFields } from '../../common';
 import { HarnessPolicyService } from '../harness-policy/harness-policy.service';
 import { ConfigResolver } from '../config-resolver';
 import { IConsultationJobService } from '../consultation/jobs/consultation-job.service';
@@ -73,18 +74,12 @@ export class DnaWritingStyleProcessor extends WorkerHost {
   }
 
   /**
-   * TASK-369 Phase 3C — best-effort field encryption. When a SecretsService is
-   * wired, encrypt the entity's writing-style columns into their `encrypted*`
-   * siblings before persist. A Vault failure is swallowed (error message only)
-   * so the dual-write soak never blocks a write — plaintext is still persisted.
+   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
+   * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
    */
   private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
-    if (!this.secretsService) return;
-    try {
-      await run();
-    } catch (error) {
-      this.logger.error(`${label} field encryption skipped (dual-write soak): ${(error as Error).message}`);
-    }
+    await encryptPhiFields(this.secretsService, label, run, this.logger);
   }
 
   private async processWithContext(job: Job<GenerateDnaReportJobPayload>): Promise<DnaReportJobResult> {

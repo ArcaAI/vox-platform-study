@@ -14,9 +14,9 @@ export interface IContextItemEntity extends IBaseTenantEntity {
   currentVersionNumber: number;
   content?: string | null;
   // TASK-369 (Data Encryption Initiative) Phase 3B — Vault-Transit (hope-phi)
-  // ciphertext of `content` plus the Transit key version. Both nullable;
-  // populated only once the row's content has been migrated. Plaintext
-  // `content` is retained for the dual-read soak (removal is Phase 6).
+  // ciphertext of `content` plus the Transit key version. Both nullable.
+  // TASK-369 Phase 6 dropped the plaintext `content` column; `content` survives
+  // only as a transient field repopulated by repository decrypt-on-read.
   encryptedContent?: Buffer | null;
   contentKeyVersion?: number | null;
   mediaId?: string | null;

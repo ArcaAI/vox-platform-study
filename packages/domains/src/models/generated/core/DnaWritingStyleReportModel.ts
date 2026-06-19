@@ -9,8 +9,9 @@ import * as Models from './';
 
 export class DnaWritingStyleReport extends BaseTenantDataModel {
   public doctorId: string;
-  public reportData: JsonValue | null;
-  public styleText: string | null;
+  // TASK-369 Phase 6 — plaintext reportData / styleText columns DROPPED;
+  // persistence is ciphertext-only. The entity keeps these as transient fields
+  // repopulated by repository decrypt-on-read.
   // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
   public encryptedReportData: Uint8Array | null;
   public encryptedStyleText: Uint8Array | null;
@@ -28,8 +29,6 @@ export class DnaWritingStyleReport extends BaseTenantDataModel {
   constructor(data: DnaWritingStyleReport & BaseTenantDataModel) {
     super(data);
     this.doctorId = data.doctorId;
-    this.reportData = data.reportData;
-    this.styleText = data.styleText;
     this.encryptedReportData = data.encryptedReportData;
     this.encryptedStyleText = data.encryptedStyleText;
     this.keyVersion = data.keyVersion;

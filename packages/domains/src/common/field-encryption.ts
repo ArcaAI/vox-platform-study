@@ -48,6 +48,14 @@ export const ENCRYPTED_PAYLOAD_SENTINEL: { readonly _encrypted: true } = { _encr
 export interface SecretsServiceLike {
   encrypt(plaintext: Buffer, keyName?: string): Promise<string>;
   decrypt(ciphertext: string, keyName?: string): Promise<Buffer>;
+  /**
+   * TASK-369 Phase 6 — optional Vault Transit BATCH decrypt. When present, the
+   * repository decrypt-on-read path uses it to decrypt every ciphertext in a
+   * multi-row/list read with ONE round-trip (the real SecretsService provides
+   * it; unit-test mocks may omit it and fall back to per-item `decrypt`).
+   * Returns plaintext buffers in the SAME order as the input ciphertexts.
+   */
+  decryptBatch?(ciphertexts: string[], keyName?: string): Promise<Buffer[]>;
   getPhiTransitKeyName?(): string | undefined;
 }
 
@@ -83,8 +91,9 @@ export async function encryptStringToCiphertext(
 
 /**
  * Decrypt a ciphertext Buffer back to its plaintext string. Returns `null`
- * when the ciphertext column is empty (caller falls back to the legacy
- * plaintext column during the dual-read soak).
+ * when the ciphertext column is empty. (AuditLog/WORM/GlobalSetting still
+ * retain a plaintext column to fall back to; the Phase 6 PHI models dropped
+ * theirs, so `null` is terminal there.)
  */
 export async function decryptCiphertextToString(
   secrets: SecretsServiceLike,

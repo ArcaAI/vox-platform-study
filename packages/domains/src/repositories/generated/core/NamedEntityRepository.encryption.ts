@@ -5,8 +5,8 @@
 // ontology code columns (umlsCui / snomedCode / rxnormCode / icdCode /
 // loincCode) are standard coded identifiers and are intentionally NOT
 // encrypted (kept queryable under disk encryption, per the data-classification
-// decision). All encrypted fields share ONE `keyVersion` column; plaintext is
-// retained for the dual-read soak.
+// decision). All encrypted fields share ONE `keyVersion` column. Phase 6 dropped
+// the plaintext columns; reads decrypt the ciphertext only.
 //
 // Performance note: NamedEntity rows are created in BULK by the NER pipeline.
 // Encrypting via a Transit round-trip per field per row is acceptable for the
@@ -36,7 +36,7 @@ declare module './NamedEntityRepository' {
      * Encrypt the recognized span + metadata via Vault Transit (hope-phi),
      * storing ciphertext in the matching `encrypted*` column and recording the
      * Transit key version in the shared `keyVersion`. Mutates in place; no-op
-     * per field when empty/null. Plaintext retained for the dual-read soak.
+     * per field when empty/null. Only ciphertext persists (Phase 6).
      */
     encryptFieldsIntoEntity(
       this: NamedEntityRepository,
@@ -44,7 +44,7 @@ declare module './NamedEntityRepository' {
       secrets: SecretsServiceLike,
     ): Promise<void>;
 
-    /** Decrypt all ciphertext columns, each falling back to its plaintext column. */
+    /** Decrypt all ciphertext columns (ciphertext-only; plaintext dropped in Phase 6). */
     decryptFieldsFromEntity(
       this: NamedEntityRepository,
       entity: NamedEntityEntity,
@@ -96,11 +96,8 @@ NamedEntityRepository.prototype.decryptFieldsFromEntity = async function (
   const text = await decryptCiphertextToString(secrets, entity.encryptedText);
   const normalizedText = await decryptCiphertextToString(secrets, entity.encryptedNormalizedText);
   const metadata = await decryptCiphertextToJson(secrets, entity.encryptedMetadata);
-  return {
-    text: text !== null ? text : (entity.text ?? null),
-    normalizedText: normalizedText !== null ? normalizedText : (entity.normalizedText ?? null),
-    metadata: metadata !== null ? metadata : (entity.metadata ?? null),
-  };
+  // TASK-369 Phase 6 — plaintext columns dropped; decrypt ciphertext only.
+  return { text, normalizedText, metadata };
 };
 
 NamedEntityRepository.prototype.findByIdWithDecryptedFields = async function (

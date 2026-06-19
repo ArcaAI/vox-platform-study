@@ -23,7 +23,7 @@ import { HarnessAssuranceService } from './harness-assurance.service';
 import { ConfigResolver } from '../../config-resolver';
 import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt-assembly.service';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
-import { assertEqualTenants, createWorkerSession } from '../../../common';
+import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { HARNESS_DRAFT_PHASE } from './dto';
 import type {
@@ -103,7 +103,8 @@ export class HarnessInternalService {
     // models this callback half persists (NamedEntity spans, SummaryMeta
     // provenance JSONB, ContextItemVersion snapshots). Optional + trailing so
     // existing positional unit fixtures keep their arity; production DI supplies
-    // it via CoreDatabaseModule. Absent ⇒ plaintext-only writes (dual-write soak).
+    // it via CoreDatabaseModule. Absent ⇒ these PHI fields are left unpersisted
+    // (Phase 6 dropped the plaintext columns); SECRETS_PROVIDER=vault is fail-closed.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     const raw = String(this.configService?.get('HARNESS_WARM_START_ENABLED') ?? '')
@@ -113,20 +114,14 @@ export class HarnessInternalService {
   }
 
   /**
-   * TASK-369 Phase 3C — best-effort field encryption for the clinical models
-   * persisted by this service. A missing/failing SecretsService leaves the row
-   * plaintext-only (logged, message only) and never throws into the write path
-   * during the dual-read soak. The harness WORM audit payloads are built from
-   * the inbound DTO (not the encrypted entity), so no ciphertext can leak into
-   * them — there is nothing to strip here.
+   * TASK-369 — encrypt PHI on write through the shared env-gated guard: a soft
+   * no-op in dev/test (SECRETS_PROVIDER!=vault) but FAIL-CLOSED (throws) in
+   * staging/prod (SECRETS_PROVIDER=vault) instead of persisting plaintext-only.
+   * The harness WORM audit payloads are built from the inbound DTO (not the
+   * encrypted entity), so no ciphertext can leak into them — nothing to strip.
    */
   private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
-    if (!this.secretsService) return;
-    try {
-      await run();
-    } catch (error) {
-      this.logger.error(`${label} field encryption skipped (dual-write soak): ${error instanceof Error ? error.message : String(error)}`);
-    }
+    await encryptPhiFields(this.secretsService, label, run, this.logger);
   }
 
   /**

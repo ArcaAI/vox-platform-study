@@ -6,7 +6,7 @@
  *   - DnaWritingStyleService.updateDnaReport (manual doctor/admin edits): the
  *     new version snapshot AND the mutated report row are encrypted BEFORE the
  *     transactional insert + CAS; a status-only edit must NOT re-encrypt; a
- *     missing SecretsService degrades to plaintext-only.
+ *     missing SecretsService leaves these PHI fields unpersisted (soft mode).
  *   - DnaWritingStyleProcessor (AI generation): the freshly built report +
  *     initial version are encrypted before their respective creates.
  *

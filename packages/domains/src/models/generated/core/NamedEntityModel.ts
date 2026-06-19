@@ -9,9 +9,11 @@ import * as Models from './';
 
 export class NamedEntity extends BaseTenantDataModel {
   public contextItemId: string;
-  public text: string;
   public className: string;
-  public normalizedText: string | null;
+  // TASK-369 Phase 6 — plaintext text / normalizedText columns DROPPED;
+  // persistence is ciphertext-only. The entity keeps these as transient fields
+  // repopulated by repository decrypt-on-read. The coded ontology fields below
+  // (umlsCui/snomedCode/…) are NOT encrypted and remain plaintext columns.
   // TASK-330 Phase 1 — clinical ontology normalization codes
   public umlsCui: string | null;
   public snomedCode: string | null;
@@ -28,7 +30,6 @@ export class NamedEntity extends BaseTenantDataModel {
   public aiModelId: string | null;
   public aiModelVersion: string | null;
   public processingTimeMs: number | null;
-  public metadata: JsonValue | null;
   // TASK-369 Phase 3C — Vault-Transit ciphertext columns + shared key version.
   public encryptedText: Uint8Array | null;
   public encryptedNormalizedText: Uint8Array | null;
@@ -42,9 +43,7 @@ export class NamedEntity extends BaseTenantDataModel {
   constructor(data: NamedEntity & BaseTenantDataModel) {
     super(data);
     this.contextItemId = data.contextItemId;
-    this.text = data.text;
     this.className = data.className;
-    this.normalizedText = data.normalizedText;
     this.umlsCui = data.umlsCui;
     this.snomedCode = data.snomedCode;
     this.rxnormCode = data.rxnormCode;
@@ -59,7 +58,6 @@ export class NamedEntity extends BaseTenantDataModel {
     this.aiModelId = data.aiModelId;
     this.aiModelVersion = data.aiModelVersion;
     this.processingTimeMs = data.processingTimeMs;
-    this.metadata = data.metadata;
     this.encryptedText = data.encryptedText;
     this.encryptedNormalizedText = data.encryptedNormalizedText;
     this.encryptedMetadata = data.encryptedMetadata;

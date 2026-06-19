@@ -440,6 +440,35 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     return Buffer.from(pt, 'base64');
   }
 
+  /**
+   * TASK-369 Phase 6 — Vault Transit BATCH decrypt. Decrypts many ciphertexts in
+   * a single round-trip via Transit's `batch_input`/`batch_results`, returning
+   * plaintext buffers in the SAME order as the input. Powers repository
+   * decrypt-on-read for multi-row/list reads (one Vault call per result set
+   * instead of N). Fail-closed: throws if Vault returns no results, a count
+   * mismatch, or a per-item error (a partial/garbled PHI read must not silently
+   * surface). The error message never includes ciphertext or plaintext material.
+   */
+  async decryptBatch(ciphertexts: string[], keyName?: string): Promise<Buffer[]> {
+    if (ciphertexts.length === 0) return [];
+    this.ensureBooted();
+    const key = keyName ?? this.config.transitKey;
+    const path = `${this.config.transitMount}/decrypt/${key}`;
+    const res = await this.client.write(path, {
+      batch_input: ciphertexts.map((ciphertext) => ({ ciphertext })),
+    });
+    const results = (res as { data?: { batch_results?: Array<{ plaintext?: string; error?: string }> } })?.data?.batch_results;
+    if (!results || results.length !== ciphertexts.length) {
+      throw new Error('VaultSecretsProvider.decryptBatch: missing or mismatched batch_results from transit');
+    }
+    return results.map((r, i) => {
+      if (r.error || !r.plaintext) {
+        throw new Error(`VaultSecretsProvider.decryptBatch: transit failed to decrypt item ${i}`);
+      }
+      return Buffer.from(r.plaintext, 'base64');
+    });
+  }
+
   // ---------- DB Secrets Engine (Phase 5 helper, available now for tests) ----------
   async issueDbCredential(role: string): Promise<{
     username: string;

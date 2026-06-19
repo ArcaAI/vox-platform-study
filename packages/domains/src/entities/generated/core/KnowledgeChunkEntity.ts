@@ -12,8 +12,8 @@ export interface IKnowledgeChunkEntity extends IBaseTenantEntity {
   chunkIndex: number;
   text: string;
   // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the chunk text
-  // + shared key version. Plaintext column retained for the dual-read soak
-  // (removal is Phase 6).
+  // + shared key version. Phase 6 dropped the plaintext column; plaintext
+  // survives only as a transient field repopulated by decrypt-on-read.
   encryptedText?: Buffer | null;
   keyVersion?: number | null;
   tokenCount: number;

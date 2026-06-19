@@ -12,11 +12,12 @@
 //   - The shared Buffer/ciphertext/key-version primitives live in
 //     `common/field-encryption.ts` (used by every Phase 3 model) and default
 //     to the dedicated `hope-phi` Transit key.
-//   - decryptContentFromEntity falls back to the legacy plaintext `content`
-//     column when `encryptedContent` is null — the readback bridge for the
-//     dual-read soak. Unlike GlobalSetting.value, ContextItem.content is
-//     legitimately nullable (ATTACHMENT / AUDIO_RECORDING rows), so the
-//     fallback returns `null` rather than throwing.
+//   - TASK-369 Phase 6: the plaintext `content` column has been DROPPED, so
+//     decryptContentFromEntity decrypts ciphertext only (the legacy plaintext
+//     fallback is gone). It returns `null` when `encryptedContent` is null
+//     (legitimately nullable for ATTACHMENT / AUDIO_RECORDING rows). Generic
+//     reads now repopulate the transient `content` automatically via the base
+//     repository's decrypt-on-read (Vault required at runtime).
 
 import { ContextItemRepository } from './ContextItemRepository';
 import { ContextItemEntity } from '../../../entities';
@@ -34,8 +35,7 @@ declare module './ContextItemRepository' {
      * `contentKeyVersion`). Mutates the entity in place; caller persists.
      *
      * No-op when `content` is empty/null so it is safe to call unconditionally
-     * on a not-yet-migrated row. Does NOT clear `content` — plaintext is kept
-     * for the dual-read soak (removal is Phase 6, user-gated).
+     * on a not-yet-migrated row.
      */
     encryptContentIntoEntity(
       this: ContextItemRepository,
@@ -44,9 +44,8 @@ declare module './ContextItemRepository' {
     ): Promise<void>;
 
     /**
-     * Decrypt `encryptedContent` and return the plaintext string. Falls back to
-     * the legacy `content` column when `encryptedContent` is null. Returns
-     * `null` when the row has neither (e.g. media-only context items).
+     * Decrypt `encryptedContent` and return the plaintext string. Returns
+     * `null` when `encryptedContent` is null (e.g. media-only context items).
      */
     decryptContentFromEntity(
       this: ContextItemRepository,
@@ -83,9 +82,7 @@ ContextItemRepository.prototype.decryptContentFromEntity = async function (
   entity: ContextItemEntity,
   secrets: SecretsServiceLike,
 ): Promise<string | null> {
-  const decrypted = await decryptCiphertextToString(secrets, entity.encryptedContent);
-  if (decrypted !== null) return decrypted;
-  return entity.content ?? null;
+  return decryptCiphertextToString(secrets, entity.encryptedContent);
 };
 
 ContextItemRepository.prototype.findByIdWithDecryptedContent = async function (

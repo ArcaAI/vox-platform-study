@@ -6,8 +6,8 @@
  * notes, EvalScore rationale/details):
  *   - `encryptFieldsIntoEntity` is invoked with the freshly built entity BEFORE
  *     it is persisted (so the ciphertext columns land on the first write);
- *   - encryption is best-effort — a Vault failure must NOT block the write
- *     (dual-write soak: plaintext is still persisted);
+ *   - encryption is best-effort in soft mode — a Vault failure must NOT block the
+ *     write (the row still persists, just without the PHI ciphertext);
  *   - when no SecretsService is wired the encrypt helper is never called.
  *
  * Repositories + SecretsService are fully mocked; no DB or Vault is touched.

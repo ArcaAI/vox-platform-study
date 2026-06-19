@@ -26,8 +26,8 @@ export interface IPromptTemplateEntity extends IBaseTaggedEntity {
   lastTestOutput?: string | null;
   lastTestAt?: Date | null;
   // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the test-output
-  // field + shared key version. Plaintext column retained for the dual-read
-  // soak (removal is Phase 6).
+  // field + shared key version. Phase 6 dropped the plaintext column; plaintext
+  // survives only as a transient field repopulated by decrypt-on-read.
   encryptedLastTestOutput?: Buffer | null;
   keyVersion?: number | null;
   Versions?: PromptVersionEntity[] | null;

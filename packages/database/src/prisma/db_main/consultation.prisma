@@ -90,13 +90,10 @@ model ContextItem {
   // Current version tracking
   currentVersionNumber Int @default(1)
 
-  // Common content field (for text-based types: worknotes, summaries, transcripts)
-  content           String? @db.Text
-  // Data Encryption Initiative Phase 3B — Vault-Transit (hope-phi) encrypted
-  // ciphertext of `content` plus the Transit key version. Both nullable and
-  // additive: existing rows keep reading `content` until the dual-write soak
-  // completes. The plaintext `content` column is RETAINED for the soak; its
-  // removal is Phase 6 (user-gated). NO DROP until then.
+  // Data Encryption Initiative — clinical free-text content.
+  // TASK-369 Phase 6: the plaintext `content` column has been DROPPED.
+  // Persistence is Vault-Transit (hope-phi) ciphertext only; reads decrypt on
+  // the fly into the entity's transient `content` field.
   encryptedContent  Bytes?
   contentKeyVersion Int?
 
@@ -254,8 +251,8 @@ model SummaryMeta {
   entityFaithfulnessScore Float? // NER entity faithfulness (0.0 - 1.0)
   coverageScore           Float? // transcript coverage (0.0 - 1.0)
   ragTriadScore           Float? // RAG triad (context relevance / groundedness / answer relevance)
-  citationsMap            Json?   @db.JsonB // claim → supporting transcript spans
-  guardrailDecisions      Json?   @db.JsonB // guardrail pass/fail decisions + reasons
+  // TASK-369 Phase 6 — plaintext citationsMap / guardrailDecisions JSONB columns
+  // DROPPED; persisted as Vault-Transit ciphertext only (see encrypted* below).
   attestationRef          String? // ref to the attestation (ContextItemVersion id / audit hash)
   modelName               String? // model that produced the scored summary
 
@@ -267,10 +264,10 @@ model SummaryMeta {
   gateDecision         String? // 'PASS' | 'REGEN' | 'FLAG' — mirrors harness GateDecision; written only when computed
   assuranceCompletedAt DateTime? // null = assurance pending (DRAFT_PENDING_SENSORS); set = assurance finalised (verdict recorded)
 
-  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
-  // of the JSONB provenance blobs (citationsMap / guardrailDecisions) plus the
-  // shared Transit key version. All nullable + additive; plaintext JSONB
-  // columns retained for the dual-read soak (removal is Phase 6, user-gated).
+  // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
+  // JSONB provenance blobs (citationsMap / guardrailDecisions) plus the shared
+  // Transit key version. TASK-369 Phase 6: the plaintext JSONB columns have been
+  // DROPPED; these ciphertext columns are now the system of record.
   encryptedCitationsMap       Bytes?
   encryptedGuardrailDecisions Bytes?
   keyVersion                  Int?
@@ -306,10 +303,10 @@ model NamedEntity {
   contextItemId String
   ContextItem   ContextItem @relation("NamedEntityParent", fields: [contextItemId], references: [id])
 
-  // Entity information
-  text           String // The recognized text span
+  // Entity information.
+  // TASK-369 Phase 6 — plaintext `text` / `normalizedText` columns DROPPED
+  // (persisted as Vault-Transit ciphertext; see encrypted* below).
   className      String // Entity class (e.g., "MEDICATION", "CONDITION", "PROCEDURE", "ANATOMY")
-  normalizedText String? // Normalized/canonical form (e.g., standard drug name)
 
   // TASK-330 Phase 1 — clinical ontology normalization codes (nullable; set by
   // the NER/normalization pipeline). Enables entity-faithfulness scoring and
@@ -342,16 +339,13 @@ model NamedEntity {
   // Cost tracking (time-based - duration in milliseconds)
   processingTimeMs Int? // Time taken for recognition
 
-  // Additional metadata (e.g., linked codes like ICD-10, SNOMED, synonyms)
-  metadata Json? @db.JsonB
-
-  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
-  // of the recognized free-text span (text / normalizedText) and the metadata
-  // JSONB blob, plus the shared Transit key version. All nullable + additive;
-  // plaintext columns retained for the dual-read soak. The legacy
-  // `NamedEntity_text_idx` is intentionally LEFT in place (dropping it is a
-  // non-additive optimization deferred to Phase 6); it simply becomes unused
-  // once `text` reads come from the ciphertext.
+  // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
+  // recognized free-text span (text / normalizedText) and the metadata JSONB
+  // blob, plus the shared Transit key version. TASK-369 Phase 6: the plaintext
+  // text / normalizedText / metadata columns AND the now-unused
+  // `NamedEntity_text_idx` have been DROPPED. The coded ontology columns
+  // (umlsCui/snomedCode/rxnormCode/icdCode/loincCode) are NOT encrypted and
+  // remain plaintext.
   encryptedText           Bytes?
   encryptedNormalizedText Bytes?
   encryptedMetadata       Bytes?
@@ -364,7 +358,7 @@ model NamedEntity {
   @@index([tenantId], name: "NamedEntity_tenantId_idx")
   @@index([contextItemId], name: "NamedEntity_contextItemId_idx")
   @@index([className], name: "NamedEntity_className_idx")
-  @@index([text], name: "NamedEntity_text_idx")
+  // TASK-369 Phase 6 — `NamedEntity_text_idx` dropped with the `text` column.
   @@index([confidence], name: "NamedEntity_confidence_idx")
   @@index([contextItemId, className], name: "NamedEntity_item_class_idx")
   // TASK-305 A.4 — tenant-leading composite for entity-class lookups.
@@ -394,26 +388,18 @@ model ContextItemVersion {
   // Version number (1, 2, 3...)
   versionNumber Int
 
-  // Snapshot of content at this version
-  content String? @db.Text
-
-  // Content diff for analytics (JSON diff or text diff from previous version)
-  contentDiff String? @db.Text
-
-  // Change metadata
+  // Change metadata. TASK-369 Phase 6 — the free-text snapshot columns
+  // (content / contentDiff / changeSummary / fieldChanges) have been DROPPED;
+  // they are persisted as Vault-Transit ciphertext only (see encrypted* below).
+  // changeReason / changedBy / changeSource are NOT encrypted and remain.
   changeReason  String? // e.g., "user_edit", "ai_regeneration", "correction", "typo_fix"
-  changeSummary String? // Brief human-readable description of what changed
   changedBy     String? // User ID or "system"
   changeSource  String? // e.g., "manual", "ai_model_v2", "bulk_update", "api"
 
-  // For modified summaries: track specific field changes
-  fieldChanges Json? @db.JsonB // { field: { old: "...", new: "..." } }
-
-  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
-  // of the free-text clinical snapshot fields (content / contentDiff /
-  // changeSummary / fieldChanges) plus the shared Transit key version. All
-  // nullable + additive; plaintext columns are RETAINED for the dual-read
-  // soak (removal is Phase 6, user-gated). NO DROP until then.
+  // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
+  // free-text clinical snapshot fields (content / contentDiff / changeSummary /
+  // fieldChanges) plus the shared Transit key version. Phase 6: these ciphertext
+  // columns are now the system of record (plaintext columns dropped).
   encryptedContent       Bytes?
   encryptedContentDiff   Bytes?
   encryptedChangeSummary Bytes?
@@ -479,21 +465,20 @@ model Highlight {
   // W3C Web Annotation dual selectors:
   //  - TextQuoteSelector  : exact + ~32-char prefix/suffix (robust to re-flow)
   //  - TextPositionSelector: startOffset/endOffset (precise but brittle)
-  exact       String  @db.Text
-  prefix      String? @db.Text
-  suffix      String? @db.Text
+  // TASK-369 Phase 6 — the quote-selector / note free-text columns
+  // (exact / prefix / suffix / note) have been DROPPED; persisted as
+  // Vault-Transit ciphertext only (see encrypted* below).
   startOffset Int
   endOffset   Int
 
   // Presentation
   color String?
   label String?
-  note  String? @db.Text
 
-  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
-  // of the W3C quote selectors + free-text note (exact / prefix / suffix /
-  // note) plus the shared Transit key version. All nullable + additive;
-  // plaintext columns retained for the dual-read soak (removal is Phase 6).
+  // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the W3C
+  // quote selectors + free-text note (exact / prefix / suffix / note) plus the
+  // shared Transit key version. Phase 6: these ciphertext columns are now the
+  // system of record (plaintext columns dropped).
   encryptedExact  Bytes?
   encryptedPrefix Bytes?
   encryptedSuffix Bytes?

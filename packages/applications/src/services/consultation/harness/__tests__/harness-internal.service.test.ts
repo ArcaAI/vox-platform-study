@@ -1320,5 +1320,32 @@ describe('HarnessInternalService', () => {
             expect(result).toEqual(expect.objectContaining({ recorded: true }));
             expect(summaryMetaRepository.update).toHaveBeenCalledTimes(1);
         });
+
+        // ── Required mode (SECRETS_PROVIDER=vault) — FAIL-CLOSED ──
+        // The identical encrypt path that is soft (best-effort) above MUST instead
+        // abort the write — throw, never persist plaintext-only — once encryption
+        // is environment-required. Env is restored in finally so it cannot leak.
+        it('persistEntities FAILS CLOSED in required mode: a Vault failure aborts the write', async () => {
+            const prevProvider = process.env.SECRETS_PROVIDER;
+            process.env.SECRETS_PROVIDER = 'vault';
+            try {
+                namedEntityRepository.encryptFieldsIntoEntity.mockRejectedValueOnce(new Error('transit/encrypt 503'));
+
+                await expect(
+                    service.persistEntities('consultation-1', {
+                        tenantId: 'tenant-1',
+                        userId: 'doctor-1',
+                        contextItemId: 'tx-1',
+                        entities: [{ text: 'Metformin', type: 'MEDICATION' }],
+                    } as any),
+                ).rejects.toThrow('transit/encrypt 503');
+
+                // fail-closed: the PHI row must NOT be persisted plaintext-only.
+                expect(namedEntityRepository.create).not.toHaveBeenCalled();
+            } finally {
+                if (prevProvider === undefined) delete process.env.SECRETS_PROVIDER;
+                else process.env.SECRETS_PROVIDER = prevProvider;
+            }
+        });
     });
 });

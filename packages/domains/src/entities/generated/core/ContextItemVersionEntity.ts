@@ -17,8 +17,8 @@ export interface IContextItemVersionEntity extends IBaseTenantEntity {
   changeSource?: string | null;
   fieldChanges?: JsonValue | null;
   // TASK-369 Phase 3C — Vault-Transit (hope-phi) ciphertext of the free-text
-  // snapshot fields + shared key version. Plaintext columns retained for the
-  // dual-read soak (removal is Phase 6).
+  // snapshot fields + shared key version. Phase 6 dropped the plaintext columns;
+  // plaintext survives only as transient fields repopulated by decrypt-on-read.
   encryptedContent?: Buffer | null;
   encryptedContentDiff?: Buffer | null;
   encryptedChangeSummary?: Buffer | null;

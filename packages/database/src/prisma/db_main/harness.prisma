@@ -82,15 +82,14 @@ model GoldenCase {
   goldenSetId String
   GoldenSet   GoldenSet @relation(fields: [goldenSetId], references: [id])
 
-  // The input transcript and the reference (gold) note for this case
+  // The input transcript and the reference (gold) note for this case.
+  // TASK-369 Phase 6 — plaintext transcript / referenceNote columns DROPPED;
+  // persisted as Vault-Transit ciphertext only.
   label         String?
-  transcript    String  @db.Text
-  referenceNote String  @db.Text
 
-  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
-  // of the golden transcript + reference note plus the shared Transit key
-  // version. All nullable + additive; plaintext columns retained for the
-  // dual-read soak (removal is Phase 6, user-gated).
+  // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
+  // golden transcript + reference note plus the shared Transit key version.
+  // Phase 6: these ciphertext columns are now the system of record.
   encryptedTranscript    Bytes?
   encryptedReferenceNote Bytes?
   keyVersion             Int?
@@ -133,13 +132,14 @@ model EvalRun {
   startedAt   DateTime?
   completedAt DateTime?
 
-  // Aggregate metrics across the run (e.g. mean faithfulness / coverage)
+  // Aggregate metrics across the run (e.g. mean faithfulness / coverage).
+  // TASK-369 Phase 6 — plaintext `notes` column DROPPED; persisted as
+  // Vault-Transit ciphertext only.
   aggregateScores Json?   @db.JsonB
-  notes           String? @db.Text
 
-  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
-  // of the free-text run notes plus the shared Transit key version. Nullable +
-  // additive; plaintext retained for the dual-read soak (removal is Phase 6).
+  // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
+  // free-text run notes plus the shared Transit key version. Phase 6: this
+  // ciphertext column is now the system of record.
   encryptedNotes Bytes?
   keyVersion     Int?
 
@@ -177,13 +177,13 @@ model EvalScore {
   metric     String // e.g. 'faithfulness' | 'coverage' | 'pdsqi9'
   score      Float
   maxScore   Float?
-  rationale  String? @db.Text
   judgeModel String?
-  details    Json?   @db.JsonB
+  // TASK-369 Phase 6 — plaintext rationale / details columns DROPPED; persisted
+  // as Vault-Transit ciphertext only.
 
-  // Data Encryption Initiative Phase 3C — Vault-Transit (hope-phi) ciphertext
-  // of the judge rationale + details JSONB plus the shared Transit key
-  // version. Nullable + additive; plaintext retained for the dual-read soak.
+  // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
+  // judge rationale + details JSONB plus the shared Transit key version.
+  // Phase 6: these ciphertext columns are now the system of record.
   encryptedRationale Bytes?
   encryptedDetails   Bytes?
   keyVersion         Int?

@@ -10,7 +10,9 @@ import * as Models from './';
 export class KnowledgeChunk extends BaseTenantDataModel {
   public knowledgeDocumentId: string;
   public chunkIndex: number;
-  public text: string;
+  // TASK-369 Phase 6 — plaintext text column DROPPED; persistence is
+  // ciphertext-only. The entity keeps `text` as a transient field repopulated by
+  // repository decrypt-on-read.
   public tokenCount: number;
   public startOffset: number;
   public endOffset: number;
@@ -31,7 +33,6 @@ export class KnowledgeChunk extends BaseTenantDataModel {
     super(data);
     this.knowledgeDocumentId = data.knowledgeDocumentId;
     this.chunkIndex = data.chunkIndex;
-    this.text = data.text;
     this.tokenCount = data.tokenCount;
     this.startOffset = data.startOffset;
     this.endOffset = data.endOffset;
