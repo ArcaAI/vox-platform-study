@@ -21,7 +21,6 @@ from httpx import ASGITransport, AsyncClient
 
 from smr_v2.models.requests import GenerateRequest
 
-
 # ── Endpoint: fail-closed 422 when the model cannot be resolved ──
 
 

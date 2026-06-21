@@ -138,7 +138,12 @@ class HuggingFaceLoader(BaseModelLoader):
         _has_accelerate = self._has_accelerate()
         _device_map_kwargs: dict[str, Any] = {"device_map": "auto"} if _has_accelerate else {}
 
-        model = None
+        # ``model`` holds many different concrete classes across branches
+        # (Whisper / Seq2Seq / CTC / audio-classification / multimodal LM) and
+        # is returned as ``Any``. Annotating it ``Any`` keeps the union from
+        # narrowing to a concrete type whose decorated ``.to`` confuses mypy
+        # (transformers wraps ``PreTrainedModel.to`` with ``functools.wraps``).
+        model: Any = None
         tokenizer = None
         processor = None
         feature_extractor = None
