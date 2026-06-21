@@ -89,7 +89,7 @@ class BedrockProvider:
             "gen_ai.generate",
             attributes={
                 "gen_ai.system": "aws_bedrock",
-                "gen_ai.request.model": self._resolve_model(request),
+                "gen_ai.request.model": self._resolve_model(request) or "",
                 "gen_ai.operation.name": "generate",
                 "gen_ai.request.temperature": resolved["temperature"],
                 "gen_ai.request.max_tokens": resolved["max_tokens"],
@@ -126,7 +126,7 @@ class BedrockProvider:
             "gen_ai.generate_stream",
             attributes={
                 "gen_ai.system": "aws_bedrock",
-                "gen_ai.request.model": self._resolve_model(request),
+                "gen_ai.request.model": self._resolve_model(request) or "",
                 "gen_ai.operation.name": "generate_stream",
                 "gen_ai.request.temperature": resolved["temperature"],
                 "gen_ai.request.max_tokens": resolved["max_tokens"],

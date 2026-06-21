@@ -1226,6 +1226,7 @@ async def _ensure_minio_initialized() -> None:
     if _minio_initialized:
         return
 
+    import stt_v2.core.storage.minio_client as minio_mod
     from stt_v2.core.config.settings import get_settings
     from stt_v2.core.storage.minio_client import initialize_minio
 
@@ -1240,6 +1241,15 @@ async def _ensure_minio_initialized() -> None:
     settings.minio_access_key = test_access_key
     settings.minio_secret_key = test_secret_key
     settings.minio_secure = False
+
+    # ``initialize_minio`` builds the client from the module-level ``settings``
+    # captured in ``minio_client`` at import time. Sibling fixtures
+    # (``configured_app`` / ``real_audio_client``) clear the settings cache and
+    # can leave that reference pointing at a stale instance whose
+    # ``minio_access_key`` is the production default ("minio_admin"), which the
+    # test MinIO rejects with InvalidAccessKeyId. Re-bind it to the instance we
+    # just mutated so the client always uses the test credentials.
+    minio_mod.settings = settings
 
     # Probe MinIO reachability before attempting to initialize.
     import socket
@@ -1956,7 +1966,8 @@ class TestRealDataTranscription:
             assert transcript_uri, "Transcript URI should not be empty"
             assert transcript_uri.startswith("s3://"), "Transcript URI should start with s3://"
             assert (
-                f"/consultations/{consultation_id}/transcripts/" in transcript_uri
+                f"/consultations/{consultation_id}/{job_id}/" in transcript_uri
+                and transcript_uri.endswith("/transcript.json")
             ), f"Transcript URI should contain consultation transcript path, got: {transcript_uri}"
 
             transcript_exists = await _verify_minio_audio_exists(transcript_uri)
@@ -2160,7 +2171,10 @@ class TestRealDataTranscription:
 
             assert transcript_uri, "Transcript URI should not be empty"
             assert transcript_uri.startswith("s3://")
-            assert f"/consultations/{consultation_id}/transcripts/" in transcript_uri
+            assert (
+                f"/consultations/{consultation_id}/{job_id}/" in transcript_uri
+                and transcript_uri.endswith("/transcript.json")
+            ), f"Transcript URI should contain consultation transcript path, got: {transcript_uri}"
 
             transcript_exists = await _verify_minio_audio_exists(transcript_uri)
             assert transcript_exists, f"Transcript should exist at {transcript_uri}"
@@ -2313,7 +2327,10 @@ class TestRealDataTranscription:
 
             assert transcript_uri, "Transcript URI should not be empty"
             assert transcript_uri.startswith("s3://")
-            assert f"/consultations/{consultation_id}/transcripts/" in transcript_uri
+            assert (
+                f"/consultations/{consultation_id}/{job_id}/" in transcript_uri
+                and transcript_uri.endswith("/transcript.json")
+            ), f"Transcript URI should contain consultation transcript path, got: {transcript_uri}"
 
             transcript_exists = await _verify_minio_audio_exists(transcript_uri)
             assert transcript_exists, f"Transcript should exist at {transcript_uri}"
@@ -2515,7 +2532,10 @@ class TestRealDataTranscription:
 
             assert transcript_uri, "Transcript URI should not be empty"
             assert transcript_uri.startswith("s3://")
-            assert f"/consultations/{consultation_id}/transcripts/" in transcript_uri
+            assert (
+                f"/consultations/{consultation_id}/{job_id}/" in transcript_uri
+                and transcript_uri.endswith("/transcript.json")
+            ), f"Transcript URI should contain consultation transcript path, got: {transcript_uri}"
 
             transcript_exists = await _verify_minio_audio_exists(transcript_uri)
             assert transcript_exists, f"Transcript should exist at {transcript_uri}"

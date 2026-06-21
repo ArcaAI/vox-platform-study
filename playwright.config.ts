@@ -17,6 +17,13 @@ if (process.env.NODE_ENV !== 'test') {
   console.warn('WARNING: NODE_ENV is not "test". Run with: pnpm test:e2e');
 }
 
+// CI must be parsed, not coerced. `.env.test` sets `CI=false`, and a bare
+// `process.env.CI` truthy check treats the non-empty string "false" as CI —
+// which wrongly enabled retries/single-worker/forbidOnly on local runs (the
+// source of the "Retry #1/#2" noise in local failures). Mirror the
+// global-setup convention (real CI sets CI=true|1) so local and CI agree.
+const isCI = ['1', 'true'].includes((process.env.CI ?? '').toLowerCase());
+
 const baseURL = process.env.API_URL || 'http://localhost:8868/api/v1';
 
 export default defineConfig({
@@ -30,20 +37,20 @@ export default defineConfig({
   fullyParallel: true,
 
   // Fail the build on CI if you accidentally left test.only in the source code
-  forbidOnly: !!process.env.CI,
+  forbidOnly: isCI,
 
   // Retry failed tests in CI
-  retries: process.env.CI ? 2 : 0,
+  retries: isCI ? 2 : 0,
 
   // Number of workers
-  workers: process.env.CI ? 1 : undefined,
+  workers: isCI ? 1 : undefined,
 
   // Reporter configuration
   reporter: [
     ['list'],
     ['html', { open: 'never', outputFolder: 'test-results/html' }],
     ['json', { outputFile: 'test-results/results.json' }],
-    ...(process.env.CI ? [['github'] as const] : []),
+    ...(isCI ? [['github'] as const] : []),
   ],
 
   // Global timeout for each test
