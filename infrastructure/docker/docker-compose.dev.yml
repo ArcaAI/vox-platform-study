@@ -32,9 +32,6 @@ networks:
 volumes:
   vault-data:
   qdrant-data:
-  # TASK-330: dedicated persistence for the Temporal dev server (isolated from
-  # hope-postgres / the test PG — Temporal never touches the app database).
-  temporal-pg-data:
   # TASK-330 Phase 3: HF TEI reranker model/weights cache (avoids re-downloading
   # BAAI/bge-reranker-v2-m3 on every `up`).
   reranker-data:
@@ -139,45 +136,33 @@ services:
   # Temporal — durable-workflow substrate for the Clinical Documentation
   # Harness (TASK-330, apps/harness).
   #
-  # OPT-IN by design: all three services below are gated behind the `temporal`
+  # OPT-IN by design: both services below are gated behind the `temporal`
   # profile, so a plain `docker compose up` (and `start-infra.sh --all`, which
   # only activates `--profile vault`) does NOT start them — existing
   # postgres/redis/minio/qdrant/vault are untouched. Mirrors the Vault opt-in
   # precedent above.
   #
+  # PERSISTENCE: Temporal shares the core `postgres` (hope-postgres) instance
+  # instead of running its own container. auto-setup provisions two DEDICATED
+  # databases (TEMPORAL_DB_NAME=`temporal` + TEMPORAL_VISIBILITY_DB_NAME=
+  # `temporal_visibility`) alongside the app `hope` DB — the app database is
+  # never touched, and Temporal's data inherits the same encrypted-at-rest
+  # volume as the app DB (TASK-369). Dropping the dedicated container removes a
+  # whole Postgres from dev. Because `temporal` now `depends_on: postgres`
+  # (defined in the core compose file), ALWAYS pass BOTH -f files — the wrappers
+  # (scripts/dev-infra.sh) and the commands below already do.
+  #
   # Start (from the monorepo root):
   #   docker compose -f infrastructure/docker/docker-compose.yml \
   #                  -f infrastructure/docker/docker-compose.dev.yml \
-  #                  --profile temporal up -d temporal-postgresql temporal temporal-ui
+  #                  --profile temporal up -d temporal temporal-ui
   #
   #   Web UI:        http://localhost:${TEMPORAL_UI_PORT:-8233}
   #   gRPC frontend: localhost:${TEMPORAL_PORT:-7233}
   # ==========================================================================
 
-  # Dedicated PostgreSQL for Temporal persistence.
-  # NOTE: intentionally NOT publishing a host port — Temporal reaches it over
-  # hope-network. This keeps it fully isolated from hope-postgres (5432) and the
-  # test PG (5433) with zero port conflicts.
-  temporal-postgresql:
-    container_name: hope-temporal-postgresql
-    image: postgres:${TEMPORAL_POSTGRESQL_VERSION:-16}
-    profiles: ["temporal"]
-    networks:
-      - hope-network
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${TEMPORAL_POSTGRES_USER:-temporal}
-      POSTGRES_PASSWORD: ${TEMPORAL_POSTGRES_PASSWORD:-temporal}
-    volumes:
-      - temporal-pg-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${TEMPORAL_POSTGRES_USER:-temporal}']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
-  # Temporal server (auto-setup: provisions schema + the `default` namespace).
+  # Temporal server (auto-setup: provisions the temporal/temporal_visibility
+  # schemas + the `default` namespace inside the shared hope-postgres instance).
   temporal:
     container_name: hope-temporal
     image: temporalio/auto-setup:${TEMPORAL_VERSION:-1.29.1}
@@ -186,14 +171,27 @@ services:
       - hope-network
     restart: unless-stopped
     depends_on:
-      temporal-postgresql:
+      postgres:
         condition: service_healthy
     environment:
       - DB=postgres12
       - DB_PORT=5432
-      - POSTGRES_USER=${TEMPORAL_POSTGRES_USER:-temporal}
-      - POSTGRES_PWD=${TEMPORAL_POSTGRES_PASSWORD:-temporal}
-      - POSTGRES_SEEDS=temporal-postgresql
+      # Reuse the hope-postgres superuser: auto-setup needs CREATEDB to
+      # provision the two dedicated Temporal databases on first `up`, connecting
+      # via the default `postgres` maintenance DB.
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_SEEDS=postgres
+      # Dedicated databases inside hope-postgres (kept separate from `hope`).
+      - DBNAME=${TEMPORAL_DB_NAME:-temporal}
+      - VISIBILITY_DBNAME=${TEMPORAL_VISIBILITY_DB_NAME:-temporal_visibility}
+      # Cap the SQL pools: hope-postgres runs a small dev budget
+      # (max_connections=50) shared with the app, so keep Temporal modest
+      # (<=12 conns total) to avoid starving Prisma / the other services.
+      - SQL_MAX_CONNS=8
+      - SQL_MAX_IDLE_CONNS=8
+      - SQL_VIS_MAX_CONNS=4
+      - SQL_VIS_MAX_IDLE_CONNS=4
       - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
     ports:
       - '${TEMPORAL_PORT:-7233}:7233'

@@ -59,7 +59,9 @@ conda run -n arcaenv pip install -e "apps/harness[dev,test]"
 # 2. (Optional) start the Temporal dev stack — opt-in via the `temporal` profile
 docker compose -f infrastructure/docker/docker-compose.yml \
                -f infrastructure/docker/docker-compose.dev.yml \
-               --profile temporal up -d temporal-postgresql temporal temporal-ui
+               --profile temporal up -d temporal temporal-ui
+#   Temporal persists into dedicated `temporal`/`temporal_visibility` databases
+#   inside the shared hope-postgres instance (no dedicated PG container).
 #   Temporal Web UI: http://localhost:8233   gRPC frontend: localhost:7233
 
 # 3. Run the FastAPI app (from the monorepo root)
