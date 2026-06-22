@@ -1429,26 +1429,26 @@ describe('ASR Pipeline isDefault invariant (TASK-331 doc-03 Q2)', () => {
 
 // =============================================================================
 // TASK-356 Phase 2 — DEFAULT MODEL WIRING
-//   (a) SMR  → mlx-community/medgemma-1.5-4b-it (lm-studio)
+//   (a) SMR  → gemma-4-e2b-it-sft-rlvr-medical (lm-studio)
 //   (b) Guardrail → granite-guardian-4.1-8b (regression guard; no flip)
 //   (c) STT  → faster-whisper whisper-large-v3-turbo CTranslate2 int8
 // =============================================================================
 
-describe('TASK-356 Phase 2 — SMR default (medgemma)', () => {
-    it('points the default-smr-model GlobalSetting at medgemma for every tenant', () => {
+describe('TASK-356 Phase 2 — SMR default (gemma-4-e2b-it-sft-rlvr-medical)', () => {
+    it('points the default-smr-model GlobalSetting at gemma-4-e2b-it-sft-rlvr-medical for every tenant', () => {
         const smrModelSettings = ALL_SETTINGS.filter((s) => s.key === 'default-smr-model');
         expect(smrModelSettings.length).toBeGreaterThanOrEqual(1);
         smrModelSettings.forEach((s) => {
-            expect(s.value).toBe('mlx-community/medgemma-1.5-4b-it');
-            expect(s.defaultValue).toBe('mlx-community/medgemma-1.5-4b-it');
+            expect(s.value).toBe('gemma-4-e2b-it-sft-rlvr-medical');
+            expect(s.defaultValue).toBe('gemma-4-e2b-it-sft-rlvr-medical');
         });
     });
 
-    it('keeps medgemma a member of the lm-studio SMR provider catalog (resolver validity)', () => {
+    it('keeps gemma-4-e2b-it-sft-rlvr-medical a member of the lm-studio SMR provider catalog (resolver validity)', () => {
         const lmStudio = SMR_PROVIDER_MODELS.find((p) => p.provider === 'lm-studio');
         expect(lmStudio).toBeDefined();
         const names = lmStudio!.models.map((m) => m.name);
-        expect(names).toContain('mlx-community/medgemma-1.5-4b-it');
+        expect(names).toContain('gemma-4-e2b-it-sft-rlvr-medical');
     });
 });
 
@@ -2114,7 +2114,7 @@ describe('SMR v2 LLM Models Seed Data', () => {
             'lms-lfm2.5-1.2b-thinking',
             'lms-lfm2.5-vl-1.6b',
             'lms-translategemma-27b-it',
-            'lms-medgemma-1.5-4b-mlx',
+            'lms-gemma-4-e2b-it-sft-rlvr-medical',
             'lms-medgemma-1.5-4b-unsloth',
             'lms-gpt-oss-20b',
         ];
@@ -2133,10 +2133,10 @@ describe('SMR v2 LLM Models Seed Data', () => {
             });
         });
 
-        it('should mark lms-medgemma-1.5-4b-mlx as an MLX-format model (TASK-356 Phase 1 fix)', () => {
-            const medgemma = smrModels.find((m) => m.slug === 'lms-medgemma-1.5-4b-mlx');
-            expect(medgemma).toBeDefined();
-            expect(medgemma?.format).toBe(AiModelFormat.MLX);
+        it('should mark lms-gemma-4-e2b-it-sft-rlvr-medical as a SAFETENSOR-format model', () => {
+            const gemmaMedical = smrModels.find((m) => m.slug === 'lms-gemma-4-e2b-it-sft-rlvr-medical');
+            expect(gemmaMedical).toBeDefined();
+            expect(gemmaMedical?.format).toBe(AiModelFormat.SAFETENSOR);
         });
     });
 
@@ -2337,9 +2337,9 @@ describe('TASK-356 Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
         return { client, created, updated, changes };
     };
 
-    it('exposes the agreed SMR defaults (lm-studio + medgemma)', () => {
+    it('exposes the agreed SMR defaults (lm-studio + gemma-4-e2b-it-sft-rlvr-medical)', () => {
         expect(SYSTEM_HARNESS_POLICY_SMR_DEFAULTS.smrProvider).toBe('lm-studio');
-        expect(SYSTEM_HARNESS_POLICY_SMR_DEFAULTS.smrModel).toBe('mlx-community/medgemma-1.5-4b-it');
+        expect(SYSTEM_HARNESS_POLICY_SMR_DEFAULTS.smrModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
     });
 
     it('creates the SYSTEM policy row with the SMR defaults and writes a WORM change (beforeJson=null)', async () => {
@@ -2352,7 +2352,7 @@ describe('TASK-356 Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
         expect(client.harnessPolicy.create).toHaveBeenCalledTimes(1);
         expect(created[0].data.tenantId).toBe(SYSTEM_TENANT_ID);
         expect(created[0].data.smrProvider).toBe('lm-studio');
-        expect(created[0].data.smrModel).toBe('mlx-community/medgemma-1.5-4b-it');
+        expect(created[0].data.smrModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
 
         // WORM audit entry (HarnessPolicyChange) recorded for the default-set.
         expect(client.harnessPolicyChange.create).toHaveBeenCalledTimes(1);
@@ -2361,7 +2361,7 @@ describe('TASK-356 Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
         expect(change.beforeJson).toBeNull();
         expect((change.afterJson as Record<string, unknown>).smrProvider).toBe('lm-studio');
         expect((change.afterJson as Record<string, unknown>).smrModel).toBe(
-            'mlx-community/medgemma-1.5-4b-it'
+            'gemma-4-e2b-it-sft-rlvr-medical'
         );
         expect(change.changedBy).toBe(SYSTEM_USER_ID);
     });
@@ -2372,7 +2372,7 @@ describe('TASK-356 Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
             tenantId: SYSTEM_TENANT_ID,
             version: 3,
             smrProvider: 'lm-studio',
-            smrModel: 'mlx-community/medgemma-1.5-4b-it',
+            smrModel: 'gemma-4-e2b-it-sft-rlvr-medical',
         });
         const result = await seedHarnessPolicy(client as never);
 
@@ -2401,12 +2401,12 @@ describe('TASK-356 Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
         // Writes ONLY the two SMR columns (does not clobber other admin knobs).
         expect(Object.keys(updated[0].data).sort()).toEqual(['smrModel', 'smrProvider']);
         expect(updated[0].data.smrProvider).toBe('lm-studio');
-        expect(updated[0].data.smrModel).toBe('mlx-community/medgemma-1.5-4b-it');
+        expect(updated[0].data.smrModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
 
         const change = changes[0].data;
         expect((change.beforeJson as Record<string, unknown>).smrModel).toBeNull();
         expect((change.afterJson as Record<string, unknown>).smrModel).toBe(
-            'mlx-community/medgemma-1.5-4b-it'
+            'gemma-4-e2b-it-sft-rlvr-medical'
         );
         // The audit snapshot preserves untouched knobs (granite safety model).
         expect((change.afterJson as Record<string, unknown>).safetyModel).toBe('granite-guardian-4.1-8b');

@@ -148,7 +148,7 @@ Add 13 LM Studio models with `lm-studio` tag:
 | 8 | `lfm2.5-1.2b-thinking-mlx` | `lms-lfm2.5-1.2b-thinking` | 2.2 GB |
 | 9 | `liquidai/lfm2.5-vl-1.6b` | `lms-lfm2.5-vl-1.6b` | 3.0 GB |
 | 10 | `translategemma-27b-it` | `lms-translategemma-27b-it` | 14.2 GB |
-| 11 | `mlx-community/medgemma-1.5-4b-it` | `lms-medgemma-1.5-4b-mlx` | 9.3 GB |
+| 11 | `gemma-4-e2b-it-sft-rlvr-medical` | `lms-medgemma-1.5-4b-mlx` | 9.3 GB |
 | 12 | `unsloth/medgemma-1.5-4b-it` | `lms-medgemma-1.5-4b-unsloth` | 8.8 GB |
 | 13 | `gpt-oss-20b` | `lms-gpt-oss-20b` | 12.3 GB |
 

@@ -96,7 +96,7 @@ export const SMR_PROVIDER_MODELS = [
             { name: 'lfm2.5-1.2b-thinking-mlx', size: '2.2 GB' },
             { name: 'liquidai/lfm2.5-vl-1.6b', size: '3.0 GB' },
             { name: 'translategemma-27b-it', size: '14.2 GB' },
-            { name: 'mlx-community/medgemma-1.5-4b-it', size: '9.3 GB' },
+            { name: 'gemma-4-e2b-it-sft-rlvr-medical', size: '5.6 GB' },
             { name: 'unsloth/medgemma-1.5-4b-it', size: '8.8 GB' },
             { name: 'gpt-oss-20b', size: '12.3 GB' },
         ],
@@ -374,11 +374,12 @@ function tenantSettings(
             name: 'Default SMR Model',
             key: 'default-smr-model',
             // TASK-356 Phase 2 — the platform-default summarization model is
-            // medgemma (mirrors the SYSTEM HarnessPolicy.smrModel set by
-            // seedHarnessPolicy). Must remain a member of the lm-studio SMR
-            // provider catalog (SMR_PROVIDER_MODELS) so the resolver stays valid.
-            value: 'mlx-community/medgemma-1.5-4b-it',
-            defaultValue: 'mlx-community/medgemma-1.5-4b-it',
+            // gemma-4-e2b-it-sft-rlvr-medical (mirrors the SYSTEM
+            // HarnessPolicy.smrModel set by seedHarnessPolicy). Must remain a
+            // member of the lm-studio SMR provider catalog (SMR_PROVIDER_MODELS)
+            // so the resolver stays valid.
+            value: 'gemma-4-e2b-it-sft-rlvr-medical',
+            defaultValue: 'gemma-4-e2b-it-sft-rlvr-medical',
             dataType: ValueType.String,
             description: 'Default LLM model slug for summarization tasks (LM Studio model name)',
             locked: true,

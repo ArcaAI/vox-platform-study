@@ -27,7 +27,7 @@ artifact-plane design README §4.4). Concretely:
    concrete, cascade-resolved model.
 
 This phase changes **WHO resolves and passes** the SMR model and **removes the silent fallback**. It does
-**NOT** change the *value* (Phase 2 already set SYSTEM `HarnessPolicy.smrModel = mlx-community/medgemma-1.5-4b-it`,
+**NOT** change the *value* (Phase 2 already set SYSTEM `HarnessPolicy.smrModel = gemma-4-e2b-it-sft-rlvr-medical`,
 README §8B), and it does **NOT** touch gating/thresholds/PHI/sensors (TASK-357/358/359) or enable any
 cloud provider.
 
@@ -109,7 +109,7 @@ admin-managed cascade. This is exactly G-13 / D-7.
   `smrProvider: null`, `smrModel: null` (D-7 keeps these null — the "default" is a **data** row, not code).
 - **Columns nullable, no DB default** — `packages/database/src/prisma/db_main/harness.prisma:284-285`.
 - **Phase 2 set the SYSTEM row** — `seed/13-harness-policy.ts` upserts SYSTEM `smrProvider='lm-studio'`,
-  `smrModel='mlx-community/medgemma-1.5-4b-it'`; `GlobalSetting smr/default-smr-model` flipped to medgemma
+  `smrModel='gemma-4-e2b-it-sft-rlvr-medical'`; `GlobalSetting smr/default-smr-model` flipped to medgemma
   (README §8B). ⇒ **post-Phase-2, the cascade yields medgemma for every tenant without its own (null) row.**
 - **Two consumers of `getEffectivePolicy`:** the worker-facing endpoint
   `apps/api/src/modules/consultation/harness-internal.controller.ts:62-73` (the harness `fetch_policy`

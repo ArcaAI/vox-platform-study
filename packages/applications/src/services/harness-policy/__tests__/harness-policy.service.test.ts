@@ -133,7 +133,7 @@ describe('HarnessPolicyService', () => {
       const sys = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: SYSTEM_TENANT_ID,
         smrProvider: 'lm-studio',
-        smrModel: 'mlx-community/medgemma-1.5-4b-it',
+        smrModel: 'gemma-4-e2b-it-sft-rlvr-medical',
       });
       policyRepository.findForExactTenant.mockResolvedValue(own);
       policyRepository.findSystemDefault.mockResolvedValue(sys);
@@ -144,7 +144,7 @@ describe('HarnessPolicyService', () => {
       expect(result.source).toBe('tenant');
       expect(result.coverageThreshold).toBe(0.55);
       expect(result.smrProvider).toBe('lm-studio');
-      expect(result.smrModel).toBe('mlx-community/medgemma-1.5-4b-it');
+      expect(result.smrModel).toBe('gemma-4-e2b-it-sft-rlvr-medical');
     });
 
     it('does NOT override a non-null SMR field on the tenant own row', async () => {
@@ -156,7 +156,7 @@ describe('HarnessPolicyService', () => {
       const sys = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: SYSTEM_TENANT_ID,
         smrProvider: 'lm-studio',
-        smrModel: 'mlx-community/medgemma-1.5-4b-it',
+        smrModel: 'gemma-4-e2b-it-sft-rlvr-medical',
       });
       policyRepository.findForExactTenant.mockResolvedValue(own);
       policyRepository.findSystemDefault.mockResolvedValue(sys);
@@ -174,14 +174,14 @@ describe('HarnessPolicyService', () => {
       const sys = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: SYSTEM_TENANT_ID,
         smrProvider: 'lm-studio',
-        smrModel: 'mlx-community/medgemma-1.5-4b-it',
+        smrModel: 'gemma-4-e2b-it-sft-rlvr-medical',
       });
       policyRepository.findForExactTenant.mockResolvedValue(null);
       policyRepository.findSystemDefault.mockResolvedValue(sys);
 
       const result = await service.resolveSmrSelection();
 
-      expect(result).toEqual({ provider: 'lm-studio', model: 'mlx-community/medgemma-1.5-4b-it' });
+      expect(result).toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-sft-rlvr-medical' });
     });
 
     it('resolves a null-SMR tenant row to the SYSTEM default (field-level fallthrough)', async () => {
@@ -189,14 +189,14 @@ describe('HarnessPolicyService', () => {
       const sys = HarnessPolicyFactory.CreateHarnessPolicy({
         tenantId: SYSTEM_TENANT_ID,
         smrProvider: 'lm-studio',
-        smrModel: 'mlx-community/medgemma-1.5-4b-it',
+        smrModel: 'gemma-4-e2b-it-sft-rlvr-medical',
       });
       policyRepository.findForExactTenant.mockResolvedValue(own);
       policyRepository.findSystemDefault.mockResolvedValue(sys);
 
       const result = await service.resolveSmrSelection();
 
-      expect(result).toEqual({ provider: 'lm-studio', model: 'mlx-community/medgemma-1.5-4b-it' });
+      expect(result).toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-sft-rlvr-medical' });
     });
 
     it('throws (fail-closed) when the cascade yields no model (no tenant row, no SYSTEM default)', async () => {

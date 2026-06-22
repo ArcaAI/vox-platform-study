@@ -17,8 +17,8 @@ Point the platform's **default model selections** at the three target models fro
 ticket [`README.md`](./README.md), **without** changing any gating/thresholds, any cloud provider
 activation, or the SMR runtime. Concretely:
 
-1. **(a) SMR → `mlx-community/medgemma-1.5-4b-it`** — set the **SYSTEM-tenant `HarnessPolicy`
-   global-default** `smrProvider='lm-studio'` + `smrModel='mlx-community/medgemma-1.5-4b-it'` (today this
+1. **(a) SMR → `gemma-4-e2b-it-sft-rlvr-medical`** — set the **SYSTEM-tenant `HarnessPolicy`
+   global-default** `smrProvider='lm-studio'` + `smrModel='gemma-4-e2b-it-sft-rlvr-medical'` (today this
    resolves to `null`), and update the `GlobalSetting smr/default-smr-model` value for UI consistency.
 2. **(b) Guardrails → `granite-guardian-4.1-8b`** — **confirm/verify only**. Already the default
    everywhere and already cataloged (Phase 1). No value change.
@@ -188,9 +188,9 @@ activation, or the SMR runtime. Concretely:
 
 | # | File | N/M | Change | Covering test |
 |---|---|---|---|---|
-| A1 | `packages/database/src/prisma/db_main/seed/13-harness-policy.ts` | **N** | New seed step `seedHarnessPolicy(client)`: idempotent **upsert** of ONE SYSTEM-tenant `HarnessPolicy` row (key = `tenantId = SYSTEM_TENANT_ID`, the `@@unique([tenantId])`). `create` sets `smrProvider='lm-studio'`, `smrModel='mlx-community/medgemma-1.5-4b-it'`; all other knobs **omitted** so DB `@default`s apply (thresholds/safety/gate — a faithful snapshot of code defaults). `update` block **does NOT touch `smrProvider`/`smrModel`** so an admin-tuned SYSTEM default survives `db:seed` (mirrors the `enable-local-raw-capture` non-clobber pattern, `11-global-setting.ts:716-718`). | `seed.test.ts` (S-test 1) |
+| A1 | `packages/database/src/prisma/db_main/seed/13-harness-policy.ts` | **N** | New seed step `seedHarnessPolicy(client)`: idempotent **upsert** of ONE SYSTEM-tenant `HarnessPolicy` row (key = `tenantId = SYSTEM_TENANT_ID`, the `@@unique([tenantId])`). `create` sets `smrProvider='lm-studio'`, `smrModel='gemma-4-e2b-it-sft-rlvr-medical'`; all other knobs **omitted** so DB `@default`s apply (thresholds/safety/gate — a faithful snapshot of code defaults). `update` block **does NOT touch `smrProvider`/`smrModel`** so an admin-tuned SYSTEM default survives `db:seed` (mirrors the `enable-local-raw-capture` non-clobber pattern, `11-global-setting.ts:716-718`). | `seed.test.ts` (S-test 1) |
 | A2 | `packages/database/src/prisma/db_main/seed/index.ts` | **M** | Import `seedHarnessPolicy`; call it in **Phase 4** right after `seedGlobalSetting(client)` (`index.ts:110`) — no FK deps; SYSTEM tenant exists by Phase 1. | seed runs clean |
-| A3 | `packages/database/src/prisma/db_main/seed/11-global-setting.ts` | **M** | Change the `smrModel` setting `value` **and** `defaultValue` from `'google/gemma-4-e4b'` → `'mlx-community/medgemma-1.5-4b-it'` (the single `tenantSettings(...)` definition at `:371-381` flows to all 4 tenants). **UI-consistency only** — the harness authority is `HarnessPolicy` (A1). | `seed.test.ts` (S-test 2) |
+| A3 | `packages/database/src/prisma/db_main/seed/11-global-setting.ts` | **M** | Change the `smrModel` setting `value` **and** `defaultValue` from `'google/gemma-4-e4b'` → `'gemma-4-e2b-it-sft-rlvr-medical'` (the single `tenantSettings(...)` definition at `:371-381` flows to all 4 tenants). **UI-consistency only** — the harness authority is `HarnessPolicy` (A1). | `seed.test.ts` (S-test 2) |
 
 **Why a seed row, not a code-default change (recommended Option B; see Q-4):** seeding the SYSTEM row is
 additive, requires no migration, matches the documented "SYSTEM tenant owns the GLOBAL-DEFAULT row"
@@ -349,9 +349,9 @@ SYSTEM `HarnessPolicy` row takes those columns' DB `@default`s, which mirror the
 ### Seed (TS) — `pnpm --filter @arcaai/database test` (or the `seed.test.ts` suite)
 `packages/database/src/__tests__/seed.test.ts` (**M**) + assertions importing from `seed/13-harness-policy.ts`:
 1. **S-test 1** — `seedHarnessPolicy` source defines a SYSTEM row with `smrProvider==='lm-studio'` and
-   `smrModel==='mlx-community/medgemma-1.5-4b-it'`; and its `update` block omits `smrProvider/smrModel`
+   `smrModel==='gemma-4-e2b-it-sft-rlvr-medical'`; and its `update` block omits `smrProvider/smrModel`
    (non-clobber).
-2. **S-test 2** — `default-smr-model` setting `value === 'mlx-community/medgemma-1.5-4b-it'` (and it is
+2. **S-test 2** — `default-smr-model` setting `value === 'gemma-4-e2b-it-sft-rlvr-medical'` (and it is
    a member of the `smr-provider-models` lm-studio catalog).
 3. **S-test 3 (verify)** — `safetyModel`/`default-guardrail-model`/granite catalog row all
    `'granite-guardian-4.1-8b'` (regression guard; mostly already at `seed.test.ts:989-996`).
@@ -462,7 +462,7 @@ All four blocking questions were resolved by the user; **two answers override** 
 4. **SMR mechanism (Q-4)** → **Option B** (seed step, no migration) **+ OVERRIDE (seed_worm):** the new
    `seedHarnessPolicy` step writes only `smrProvider`/`smrModel` on the existing SYSTEM row **and**
    records a WORM `HarnessPolicyChange` audit entry for the default-set. `GlobalSetting
-   default-smr-model` flipped to `mlx-community/medgemma-1.5-4b-it` (locked).
+   default-smr-model` flipped to `gemma-4-e2b-it-sft-rlvr-medical` (locked).
 
 **As-built record:** see README §8B + Change History. Implemented with all layer gates green (315 seed
 tests; `@arcaai/applications` build + 5125 unit tests incl. the tenant-clone suite + 6 new clone tests;
