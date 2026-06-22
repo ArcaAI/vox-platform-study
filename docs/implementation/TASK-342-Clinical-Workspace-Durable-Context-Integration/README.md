@@ -360,7 +360,7 @@ Status is now **Completed** for the integration scope. The following are **expli
 
 ### R1 — Live Bring-Up & Smoke (2026-06-09, INFRA/INTEGRATION)
 
-The original deferral blocker (GPU/LM-Studio host + NLP model cache) is **retired**. Host: Apple-Silicon **MPS (48 GB unified)**; HF cache mounted at `/Volumes/aillusion/huggingface` (Whisper, `pyannote/wespeaker…`, Medical-NER, emotion classifier all present, HF token configured); **LM Studio** at `http://localhost:1234/v1` (rich model set incl. `medgemma-27b-text-it`, `mlx-community/medgemma-1.5-4b-it`, `gemma-4-*`, `granite-guardian-4.1-8b`) + Ollama at `:11434`.
+The original deferral blocker (GPU/LM-Studio host + NLP model cache) is **retired**. Host: Apple-Silicon **MPS (48 GB unified)**; HF cache mounted at `/Volumes/aillusion/huggingface` (Whisper, `pyannote/wespeaker…`, Medical-NER, emotion classifier all present, HF token configured); **LM Studio** at `http://localhost:1234/v1` (rich model set incl. `medgemma-27b-text-it`, `gemma-4-e2b-it-sft-rlvr-medical`, `gemma-4-*`, `granite-guardian-4.1-8b`) + Ollama at `:11434`.
 
 **Brought up + health** (all `GET …/api/v1/health → 200`; ui `GET / → 200`):
 
@@ -379,7 +379,7 @@ Docker infra (pre-existing): Postgres, Redis (`:6379`), MinIO, Temporal (+UI `:8
 
 1. **Manual highlighting (API CRUD) — PROVEN.** Real login (`arcaai_doctor` / tenant key `ARCAAI`) → `POST /consultations/90000000-0000-0000-0001-000000000001/highlights` **201** → `GET` returns the row → `DELETE` **200** `{ok:true}` → `GET` **200** `[]` (soft-delete). Ownership enforced (the consultation's `doctorId` matches the JWT `sub`).
 2. **OCR enrichment (NLP `POST /api/v1/extract`) — PROVEN.** Text-layer PDF → `{"ocrUsed":false}`; image PNG → `{"ocrUsed":true}` with the embedded text recovered.
-3. **Realtime summarization (SMR `POST /api/v1/generate`) — PROVEN.** A consultation snippet returned a coherent SOAP note via `mlx-community/medgemma-1.5-4b-it` (status `completed`, real token usage). **Caveat:** gemma-4 QAT "thinking" models (`gemma-4-e4b-it-qat`, `-e2b-it-qat`) return an **empty `content`** (all tokens go to a reasoning channel) — use a non-thinking instruct model (`medgemma-*`) for usable notes.
+3. **Realtime summarization (SMR `POST /api/v1/generate`) — PROVEN.** A consultation snippet returned a coherent SOAP note via `gemma-4-e2b-it-sft-rlvr-medical` (status `completed`, real token usage). **Caveat:** gemma-4 QAT "thinking" models (`gemma-4-e4b-it-qat`, `-e2b-it-qat`) return an **empty `content`** (all tokens go to a reasoning channel) — use a non-thinking instruct model (`medgemma-*`) for usable notes.
 
 **Remaining blocker (one, needs a human):** the **mic → STT(WS) → harness(Temporal) → SMR → NLP → API → UI** live consultation requires a person at `http://localhost:5175` with a **microphone**. Everything upstream is up, healthy, and individually exercised — this is now a hands-on QA step, not an infra gap.
 
@@ -387,12 +387,12 @@ Docker infra (pre-existing): Postgres, Redis (`:6379`), MinIO, Temporal (+UI `:8
 
 ```bash
 # 1) In LM Studio (:1234) load a non-thinking instruct chat model
-#    (mlx-community/medgemma-1.5-4b-it or medgemma-27b-text-it) and
+#    (gemma-4-e2b-it-sft-rlvr-medical or medgemma-27b-text-it) and
 #    granite-guardian-4.1-8b (safety guard). Then bring up the services:
 pnpm dev:stt-v2
-SMR_V2_OPENAI_COMPAT_ENABLED=true SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL=mlx-community/medgemma-1.5-4b-it pnpm dev:smr-v2
+SMR_V2_OPENAI_COMPAT_ENABLED=true SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL=gemma-4-e2b-it-sft-rlvr-medical pnpm dev:smr-v2
 pnpm dev:nlp
-HARNESS_SMR_BASE_URL=http://localhost:8862 HARNESS_SMR_PROVIDER=lm-studio HARNESS_SMR_MODEL=mlx-community/medgemma-1.5-4b-it HARNESS_RETRIEVAL_ENABLED=false pnpm dev:harness
+HARNESS_SMR_BASE_URL=http://localhost:8862 HARNESS_SMR_PROVIDER=lm-studio HARNESS_SMR_MODEL=gemma-4-e2b-it-sft-rlvr-medical HARNESS_RETRIEVAL_ENABLED=false pnpm dev:harness
 pnpm dev:api
 pnpm dev:ui-playground
 # 2) Log in at http://localhost:5175 as arcaai_doctor / password123 (tenant key ARCAAI),
