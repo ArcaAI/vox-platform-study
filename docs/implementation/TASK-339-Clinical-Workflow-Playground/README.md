@@ -252,10 +252,11 @@ Re-run `pnpm db:seed` to apply the raw-capture config to the demo tenant.
 # Core (postgres :5432, redis :6379, minio, qdrant, vault)
 pnpm docker:dev:up            # ./scripts/start-infra.sh
 
-# Temporal stack (gRPC :7233, UI :8233, dedicated temporal-postgresql)
+# Temporal stack (gRPC :7233, UI :8233; persists into dedicated temporal/
+# temporal_visibility databases inside the shared hope-postgres instance)
 docker compose -f infrastructure/docker/docker-compose.yml \
                -f infrastructure/docker/docker-compose.dev.yml \
-               --profile temporal up -d temporal-postgresql temporal temporal-ui
+               --profile temporal up -d temporal temporal-ui
 
 # (Optional) harness Phase-3 RAG reranker (:8870)
 docker compose -f infrastructure/docker/docker-compose.yml \

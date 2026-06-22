@@ -32,7 +32,7 @@ conda run -n arcaenv pip install -e "apps/harness[dev,test]"
 # Start the Temporal dev stack (opt-in `temporal` compose profile):
 docker compose -f infrastructure/docker/docker-compose.yml \
                -f infrastructure/docker/docker-compose.dev.yml \
-               --profile temporal up -d temporal-postgresql temporal temporal-ui
+               --profile temporal up -d temporal temporal-ui
 #   Temporal Web UI: http://localhost:8233 · gRPC frontend: localhost:7233
 
 # Run the FastAPI app + the worker (separate terminals):

@@ -96,7 +96,7 @@ Some stacks are gated behind Compose profiles and are **not** started by `docker
 # Temporal — required by the Clinical Documentation Harness (apps/harness)
 docker compose -f infrastructure/docker/docker-compose.yml \
                -f infrastructure/docker/docker-compose.dev.yml \
-               --profile temporal up -d temporal-postgresql temporal temporal-ui
+               --profile temporal up -d temporal temporal-ui
 #   Temporal Web UI: http://localhost:8233   ·   gRPC frontend: localhost:7233
 
 # RAG reranker (HF Text-Embeddings-Inference) — used by the harness hybrid retriever

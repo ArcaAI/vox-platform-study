@@ -6,7 +6,7 @@
 # `docker:dev:up:all` (scripts/start-infra.sh --all) only activates the
 # `vault` profile. This wrapper brings up/down the full dev infra in one
 # command: postgres, redis, minio, qdrant, vault (+init) AND the Temporal
-# stack (temporal-postgresql, temporal, temporal-ui).
+# stack (temporal, temporal-ui — both backed by the shared hope-postgres).
 #
 # USAGE:
 #   pnpm infra:up              # up -d with vault+temporal profiles
