@@ -263,6 +263,12 @@ type DataTableComponent = {
   Provider: typeof DataTableProvider;
 };
 
+/**
+ * @deprecated Use `VirtualizedDataGrid` (the canonical data grid, TASK-372 D6) from
+ * `@arcaai/ui` instead. This tool-ui `DataTable` is retained for backwards compatibility
+ * but is no longer the blessed surface; its formatters can be salvaged as cell renderers.
+ * @see VirtualizedDataGrid
+ */
 export const DataTable = Object.assign(DataTableRoot, {
   Table: DataTableTable,
   Cards: DataTableCards,

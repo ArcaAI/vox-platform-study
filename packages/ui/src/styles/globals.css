@@ -3,39 +3,142 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================================
+ * HOPE Design System — "Calm Clinical Teal" (TASK-371 tokens, adopted via
+ * TASK-372 D1). Single token source for @arcaai/ui. CSS variable NAMES are
+ * kept stable so existing consumers don't break; only VALUES changed
+ * (green→teal), plus added HOPE roles (--ai/--hope/--success/--warning/--info).
+ * later in this file. The rainbow --color-1..5 tokens (magicui) are preserved.
+ * ========================================================================== */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.648 0.2 131.684);
-  --primary-foreground: oklch(0.986 0.031 120.757);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.58 0.22 27);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.871 0.15 154.449);
-  --chart-2: oklch(0.723 0.219 149.579);
-  --chart-3: oklch(0.627 0.194 149.214);
-  --chart-4: oklch(0.527 0.154 150.069);
-  --chart-5: oklch(0.448 0.119 151.328);
-  --radius: 0.45rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.648 0.2 131.684);
-  --sidebar-primary-foreground: oklch(0.986 0.031 120.757);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* --- Brand ramps (raw) ------------------------------------------------- */
+  --teal-50: #ecfbfc;
+  --teal-100: #cff2f5;
+  --teal-200: #a1e3e9;
+  --teal-300: #69cdd8;
+  --teal-400: #2fafc0;
+  --teal-500: #1597a5;
+  --teal-600: #0f7a8b;
+  --teal-700: #0e626e;
+  --teal-800: #0e505a;
+  --teal-900: #103f47;
+  --teal-950: #07262c;
+
+  --indigo-50: #eef0fe;
+  --indigo-100: #e0e3fc;
+  --indigo-200: #c6cbf9;
+  --indigo-300: #a3a9f3;
+  --indigo-400: #7c82ea;
+  --indigo-500: #5e66e0;
+  --indigo-600: #4f5bd5;
+  --indigo-700: #4147bb;
+  --indigo-800: #363b95;
+  --indigo-900: #2f3576;
+  --indigo-950: #1d2046;
+
+  --saffron-50: #fef6ec;
+  --saffron-100: #fbe7c9;
+  --saffron-200: #f7cf96;
+  --saffron-300: #f2b463;
+  --saffron-400: #ed9c3b;
+  --saffron-500: #e8912a;
+  --saffron-600: #cb7a1c;
+  --saffron-700: #a45f18;
+  --saffron-800: #824c1a;
+  --saffron-900: #6c4019;
+  --saffron-950: #3d2109;
+
+  --green-50: #e9f8f0;
+  --green-100: #c8eedb;
+  --green-200: #97debd;
+  --green-300: #5dc998;
+  --green-400: #2fae7c;
+  --green-500: #1f9e6b;
+  --green-600: #1a8259;
+  --green-700: #176a4a;
+  --green-800: #16543c;
+  --green-900: #134632;
+
+  --red-50: #fceeee;
+  --red-100: #f8d6d6;
+  --red-200: #f0aeae;
+  --red-300: #e68585;
+  --red-400: #da6262;
+  --red-500: #cc4f4f;
+  --red-600: #c24a4a;
+  --red-700: #9f3a3a;
+  --red-800: #7e2f2f;
+  --red-900: #682929;
+
+  --amber-400: #efb751;
+  --amber-500: #e0a53b;
+  --amber-600: #c7861f;
+
+  --slate-0: #ffffff;
+  --slate-50: #f5f7f8;
+  --slate-100: #edf1f3;
+  --slate-200: #e2e8ec;
+  --slate-300: #cfd8de;
+  --slate-400: #a7b4bd;
+  --slate-500: #7c8b95;
+  --slate-600: #5a6a77;
+  --slate-700: #44535e;
+  --slate-800: #2b3942;
+  --slate-900: #18242b;
+  --slate-950: #0e1a24;
+
+  /* --- shadcn semantic roles (light) ------------------------------------ */
+  --background: #fbfcfd;
+  --foreground: var(--slate-950);
+  --card: var(--slate-0);
+  --card-foreground: var(--slate-950);
+  --popover: var(--slate-0);
+  --popover-foreground: var(--slate-950);
+  --primary: var(--teal-600);
+  --primary-foreground: #ffffff;
+  --secondary: var(--slate-100);
+  --secondary-foreground: var(--slate-900);
+  --muted: var(--slate-50);
+  --muted-foreground: var(--slate-600);
+  --accent: #e6f3f5;
+  --accent-foreground: var(--teal-700);
+  --destructive: var(--red-600);
+  --destructive-foreground: #ffffff;
+  --border: var(--slate-200);
+  --input: var(--slate-200);
+  --ring: var(--teal-600);
+
+  /* --- HOPE brand semantic roles (custom) ------------------------------- */
+  --ai: var(--indigo-600);
+  --ai-foreground: #ffffff;
+  --hope: var(--saffron-500);
+  --hope-foreground: var(--saffron-950);
+  --success: var(--green-600);
+  --success-foreground: #ffffff;
+  --warning: var(--amber-500);
+  --warning-foreground: var(--saffron-950);
+  --info: var(--indigo-600);
+  --info-foreground: #ffffff;
+  --link: var(--indigo-600);
+
+  --chart-1: var(--teal-500);
+  --chart-2: var(--indigo-500);
+  --chart-3: var(--saffron-500);
+  --chart-4: var(--green-500);
+  --chart-5: var(--slate-500);
+
+  --radius: 0.625rem;
+
+  --sidebar: #f7f9fa;
+  --sidebar-foreground: var(--slate-800);
+  --sidebar-primary: var(--teal-600);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e6f3f5;
+  --sidebar-accent-foreground: var(--teal-700);
+  --sidebar-border: var(--slate-200);
+  --sidebar-ring: var(--teal-600);
+
+  /* Rainbow tokens (magicui) — preserved from legacy theme. */
   --color-1: oklch(66.2% 0.225 25.9);
   --color-2: oklch(60.4% 0.26 302);
   --color-3: oklch(69.6% 0.165 251);
@@ -44,37 +147,54 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.648 0.2 131.684);
-  --primary-foreground: oklch(0.986 0.031 120.757);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.371 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.871 0.15 154.449);
-  --chart-2: oklch(0.723 0.219 149.579);
-  --chart-3: oklch(0.627 0.194 149.214);
-  --chart-4: oklch(0.527 0.154 150.069);
-  --chart-5: oklch(0.448 0.119 151.328);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.768 0.233 130.85);
-  --sidebar-primary-foreground: oklch(0.986 0.031 120.757);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #0c1418;
+  --foreground: #e6edf0;
+  --card: #111d23;
+  --card-foreground: #e6edf0;
+  --popover: #14222a;
+  --popover-foreground: #e6edf0;
+  --primary: var(--teal-400);
+  --primary-foreground: #042a30;
+  --secondary: #1c2a31;
+  --secondary-foreground: #e6edf0;
+  --muted: #16242b;
+  --muted-foreground: #93a4ae;
+  --accent: #16323b;
+  --accent-foreground: #bbe7ec;
+  --destructive: #e06a6a;
+  --destructive-foreground: #2a0e0e;
+  --border: #25333b;
+  --input: #25333b;
+  --ring: var(--teal-400);
+
+  --ai: var(--indigo-400);
+  --ai-foreground: #11122e;
+  --hope: var(--saffron-400);
+  --hope-foreground: var(--saffron-950);
+  --success: var(--green-400);
+  --success-foreground: #04231a;
+  --warning: var(--amber-400);
+  --warning-foreground: #2a1b05;
+  --info: var(--indigo-400);
+  --info-foreground: #11122e;
+  --link: var(--indigo-300);
+
+  --chart-1: var(--teal-400);
+  --chart-2: var(--indigo-400);
+  --chart-3: var(--saffron-400);
+  --chart-4: var(--green-400);
+  --chart-5: var(--slate-400);
+
+  --sidebar: #0e171c;
+  --sidebar-foreground: #c7d2d8;
+  --sidebar-primary: var(--teal-400);
+  --sidebar-primary-foreground: #042a30;
+  --sidebar-accent: #16323b;
+  --sidebar-accent-foreground: #bbe7ec;
+  --sidebar-border: #25333b;
+  --sidebar-ring: var(--teal-400);
+
+  /* Rainbow tokens (magicui) — preserved from legacy theme. */
   --color-1: oklch(66.2% 0.225 25.9);
   --color-2: oklch(60.4% 0.26 302);
   --color-3: oklch(69.6% 0.165 251);
@@ -83,8 +203,9 @@
 }
 
 @theme inline {
-  --font-sans: "Public Sans", ui-sans-serif, system-ui, sans-serif,
-    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", "Menlo", monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -100,9 +221,24 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  /* HOPE brand semantics (TASK-372 D1) */
+  --color-ai: var(--ai);
+  --color-ai-foreground: var(--ai-foreground);
+  --color-hope: var(--hope);
+  --color-hope-foreground: var(--hope-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-link: var(--link);
+
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
