@@ -37,6 +37,7 @@
   DATABASE_URL_DIRECT: $CI_DATABASE_URL_DIRECT
   REDIS_URL: $CI_REDIS_URL
   REDIS_PASS: $CI_REDIS_PASS
+  JWT_SECRET_KEY: $CI_JWT_SECRET
   JWT_SECRET: $CI_JWT_SECRET
   JWT_REFRESH_SECRET: $CI_JWT_REFRESH_SECRET
   API_KEY_PEPPER: $CI_API_KEY_PEPPER
@@ -546,6 +547,7 @@ test-pgbouncer-validation:
     # need: pnpm (drives `pgbv:*` scripts), psql (admin queries +
     # `pgbv:show:*`), and bash (rig scripts use `#!/usr/bin/env bash`).
     - apk add --no-cache nodejs npm bash postgresql-client
+    - npm install -g corepack
     - corepack enable
     - corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
     - pnpm config set store-dir /tmp/pnpm-store

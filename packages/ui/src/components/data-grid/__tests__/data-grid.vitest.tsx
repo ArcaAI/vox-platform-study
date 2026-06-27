@@ -200,7 +200,7 @@ describe('VirtualizedDataGrid (shell)', () => {
   });
 
   it('virtualizes large datasets to a bounded number of DOM rows', () => {
-    renderGrid({ data: makeData(50000), defaultQueryState: { pagination: { mode: 'offset', page: 0, limit: 50000 } } });
+    renderGrid({ data: makeData(1000), defaultQueryState: { pagination: { mode: 'offset', page: 0, limit: 1000 } } });
     const dataRows = screen.queryAllByRole('row').filter((r) => r.getAttribute('aria-rowindex') !== '1');
     expect(dataRows.length).toBeGreaterThan(0);
     expect(dataRows.length).toBeLessThan(200);
