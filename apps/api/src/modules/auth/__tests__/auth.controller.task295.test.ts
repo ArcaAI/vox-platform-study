@@ -171,6 +171,7 @@ function buildController(opts: {
         refreshTokenService as never,
         userDepartmentService as never,
         eventEmitter as never,
+        {} as never,
     );
     return {
         controller,

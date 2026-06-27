@@ -50,6 +50,8 @@ function buildController(overrides: { userId?: string | null; consultation?: unk
     empty, // tagService
     empty, // liveDocumentationService
     highlightService as never, // highlightService (TASK-344)
+    empty, // harnessProgressService
+    empty, // harnessAssuranceService
   );
 
   return { controller, consultationService, highlightService };
