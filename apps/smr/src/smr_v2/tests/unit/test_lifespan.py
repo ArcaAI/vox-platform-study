@@ -14,6 +14,27 @@ def settings():
     return Settings(host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False)
 
 
+def collect_route_paths(app):
+    paths = []
+    seen = set()
+
+    def visit(node):
+        path = getattr(node, "path", None)
+        if isinstance(path, str) and path not in seen:
+            seen.add(path)
+            paths.append(path)
+
+        routes = getattr(node, "routes", None)
+        if routes:
+            for child in routes:
+                visit(child)
+
+    for route in app.routes:
+        visit(route)
+
+    return paths
+
+
 class TestCreateApp:
     def test_creates_app_with_default_settings(self):
         from smr_v2.main import create_app
@@ -28,7 +49,7 @@ class TestCreateApp:
     def test_app_registers_all_routers(self, settings):
         from smr_v2.main import create_app
         app = create_app(settings_override=settings)
-        routes = [r.path for r in app.routes]
+        routes = collect_route_paths(app)
         assert "/api/v1/health" in routes
         assert "/api/v1/generate" in routes
         assert "/api/v1/providers" in routes
@@ -44,14 +65,14 @@ class TestCreateApp:
         from smr_v2.main import create_app
         s = Settings(metrics_enabled=False)
         app = create_app(settings_override=s)
-        routes = [r.path for r in app.routes]
+        routes = collect_route_paths(app)
         assert "/metrics" not in routes
 
     def test_metrics_enabled_when_true(self):
         from smr_v2.main import create_app
         s = Settings(metrics_enabled=True)
         app = create_app(settings_override=s)
-        routes = [r.path for r in app.routes]
+        routes = collect_route_paths(app)
         assert "/metrics" in routes
 
 

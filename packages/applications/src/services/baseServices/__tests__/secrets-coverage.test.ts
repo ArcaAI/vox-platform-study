@@ -12,8 +12,8 @@
 //
 // Run as: pnpm --filter @arcaai/applications test -- secrets-coverage
 import { describe, it, expect } from 'vitest';
-import { execSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { resolve, sep } from 'node:path';
 
 const MIGRATED_SECRETS = [
   'JWT_SECRET_KEY',
@@ -33,39 +33,61 @@ describe('Phase 3 coverage — no stray process.env secret reads', () => {
   it('returns zero matches across packages/ + apps/ (excluding allowed paths)', () => {
     const repoRoot = resolve(__dirname, '../../../../../..');
     const pattern = `process\\.env\\.(${MIGRATED_SECRETS.join('|')})`;
-    let stdout: string;
-    try {
-      // git grep prints matches and exits 0 (has matches) or 1 (none).
-      stdout = execSync(
-        `git grep -nE "${pattern}" -- 'packages/' 'apps/' ` +
-          `':(exclude)**/__tests__/**' ` +
-          `':(exclude)**/*.test.ts' ` +
-          `':(exclude)**/*.md' ` +
-          `':(exclude)**/.env*' ` +
-          `':(exclude)packages/database/src/prisma/db_main/seed/**' ` +
-          `':(exclude)packages/applications/src/services/baseServices/_meta/config/config.service.ts' ` +
-          `':(exclude)packages/tools/src/gen-dev-token/**'`,
-        { cwd: repoRoot, encoding: 'utf8' },
+    const rx = new RegExp(pattern);
+    const matches: string[] = [];
+
+    const isAllowedPath = (relativePath: string): boolean => {
+      const normalized = relativePath.split(sep).join('/');
+      return (
+        normalized.includes('/__tests__/') ||
+        normalized.endsWith('.test.ts') ||
+        normalized.endsWith('.test.tsx') ||
+        normalized.endsWith('.md') ||
+        normalized.startsWith('packages/database/src/prisma/db_main/seed/') ||
+        normalized === 'packages/applications/src/services/baseServices/_meta/config/config.service.ts' ||
+        normalized.startsWith('packages/tools/src/gen-dev-token/') ||
+        normalized.includes('/.env')
       );
-    } catch (e: unknown) {
-      // exit code 1 = no matches found (success). Anything else is a hard error.
-      const err = e as { status?: number; stdout?: string };
-      if (err.status === 1) {
-        stdout = '';
-      } else {
-        throw e;
+    };
+
+    const shouldScanFile = (filePath: string): boolean => {
+      const normalized = filePath.split(sep).join('/');
+      return /\.(ts|tsx|md|yml|yaml)$/.test(normalized);
+    };
+
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = resolve(dir, entry.name);
+        const relativePath = fullPath.slice(repoRoot.length + 1);
+        if (isAllowedPath(relativePath)) continue;
+        if (entry.isDirectory()) {
+          if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === '.git') continue;
+          walk(fullPath);
+          continue;
+        }
+        if (!shouldScanFile(fullPath)) continue;
+        const content = readFileSync(fullPath, 'utf8');
+        content.split(/\r?\n/).forEach((line, index) => {
+          if (rx.test(line)) {
+            matches.push(`${relativePath}:${index + 1}:${line}`);
+          }
+        });
       }
-    }
-    if (stdout.trim().length > 0) {
+    };
+
+    walk(resolve(repoRoot, 'packages'));
+    walk(resolve(repoRoot, 'apps'));
+
+    if (matches.length > 0) {
       // Make the failure message actionable.
       throw new Error(
         `Phase 3 coverage check FAILED. The following sites still read secrets ` +
-          `from process.env directly:\n\n${stdout}\n` +
+          `from process.env directly:\n\n${matches.join('\n')}\n` +
           `Each must be migrated to SecretsService (sync sites: getSecretSync; ` +
           `async sites: getSecret / getSecretOptional). See ` +
           `02-vault-migration.md Phase 3 for the patterns.`,
       );
     }
-    expect(stdout.trim()).toBe('');
+    expect(matches).toHaveLength(0);
   });
 });
