@@ -78,7 +78,7 @@ describe('AuditLogController - OpenAPI/Swagger metadata', () => {
     describe('delete (removed — OB-10)', () => {
         it('exposes no delete handler', () => {
             expect(
-                (AuditLogController.prototype as Record<string, unknown>).delete,
+                (AuditLogController.prototype as unknown as Record<string, unknown>).delete,
             ).toBeUndefined();
         });
     });

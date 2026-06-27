@@ -4,6 +4,7 @@ import { Observable, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CreateStreamSessionRequest, TranscribeFileRequest } from '../dto';
 import { CreateJobRequest, CreateBatchJobRequest, CreateStreamingJobRequest } from '@arcaai/applications';
+import { TranscriptionJobType } from '@arcaai/domains';
 import { TranscriptionJobController } from '../transcription-job.controller';
 import {
     TENANT_OWNED_RESOURCE_KEY,
@@ -129,9 +130,9 @@ describe('TranscriptionJobController', () => {
             const jobResponse = { id: 'job-1', status: 'QUEUED', pipelineId: 'pipe-1' };
             mockJobService.create.mockResolvedValue(jobResponse);
 
-            const result = await controller.create({ jobType: 'BATCH', pipelineId: 'pipe-1' });
+            const result = await controller.create({ jobType: TranscriptionJobType.BATCH, pipelineId: 'pipe-1' });
 
-            expect(mockJobService.create).toHaveBeenCalledWith({ jobType: 'BATCH', pipelineId: 'pipe-1' });
+            expect(mockJobService.create).toHaveBeenCalledWith({ jobType: TranscriptionJobType.BATCH, pipelineId: 'pipe-1' });
             expect(result).toEqual(jobResponse);
         });
     });

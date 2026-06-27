@@ -190,6 +190,8 @@ function buildController(overrides: any = {}) {
         (overrides.refreshTokenService ?? createMockRefreshTokenService()) as any,
         // TASK-305 Phase F — login now also resolves the department half of membership.
         { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
+        { emit: vi.fn() } as any,
+        {} as any,
     );
 }
 

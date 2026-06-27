@@ -194,7 +194,7 @@ describe('DnaWritingStyleAdminController', () => {
             const updatedReport = { ...fakeReportEntity, resourceStatus: 'DISABLED' };
             mockDnaService.updateDnaReport.mockResolvedValue(updatedReport);
 
-            const result = await controller.update('report-1', { resourceStatus: 'DISABLED' } as any);
+            const result = await controller.update('report-1', { resourceStatus: 'DISABLED' } as any, undefined);
 
             expect(mockDnaService.updateDnaReport).toHaveBeenCalledWith(
                 'report-1',
@@ -208,7 +208,7 @@ describe('DnaWritingStyleAdminController', () => {
             const disabledReport = { ...fakeReportEntity, resourceStatus: 'DISABLED' };
             mockDnaService.updateDnaReport.mockResolvedValue(disabledReport);
 
-            const result = await controller.update('report-1', { resourceStatus: 'DISABLED' } as any);
+            const result = await controller.update('report-1', { resourceStatus: 'DISABLED' } as any, undefined);
 
             expect(result.resourceStatus).toBe('DISABLED');
         });
@@ -217,7 +217,7 @@ describe('DnaWritingStyleAdminController', () => {
             const enabledReport = { ...fakeReportEntity, resourceStatus: 'ENABLED' };
             mockDnaService.updateDnaReport.mockResolvedValue(enabledReport);
 
-            const result = await controller.update('report-1', { resourceStatus: 'ENABLED' } as any);
+            const result = await controller.update('report-1', { resourceStatus: 'ENABLED' } as any, undefined);
 
             expect(result.resourceStatus).toBe('ENABLED');
         });
@@ -229,7 +229,7 @@ describe('DnaWritingStyleAdminController', () => {
             );
 
             await expect(
-                controller.update('nonexistent', { resourceStatus: 'DISABLED' } as any),
+                controller.update('nonexistent', { resourceStatus: 'DISABLED' } as any, undefined),
             ).rejects.toThrow(NotFoundException);
         });
 
@@ -245,7 +245,7 @@ describe('DnaWritingStyleAdminController', () => {
             const result = await controller.update('report-1', {
                 styleText: 'New style',
                 resourceStatus: 'DISABLED',
-            } as any);
+            } as any, undefined);
 
             expect(mockDnaService.updateDnaReport).toHaveBeenCalledWith(
                 'report-1',

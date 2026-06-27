@@ -24,7 +24,13 @@ describe('HarnessInternalController', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        controller = new HarnessInternalController(mockService as any);
+        controller = new HarnessInternalController(
+            mockService as any,
+            undefined as any,
+            undefined as any,
+            undefined as any,
+            undefined as any,
+        );
     });
 
     it('is class-guarded by HarnessServiceTokenGuard', () => {
@@ -92,6 +98,7 @@ describe('HarnessInternalController', () => {
                 undefined as any, // harnessPolicyService (unused by progress route)
                 undefined as any, // cls (unused by progress route)
                 mockProgressService as any,
+                undefined as any,
             );
 
         it('delegates to HarnessProgressService.reportProgress(consultationId, dto)', async () => {

@@ -165,6 +165,8 @@ function buildController(overrides: {
     secretsService?: any;
     refreshTokenService?: any;
     userDepartmentService?: any;
+    eventEmitter?: any;
+    consultationRepository?: any;
 } = {}) {
     return new AuthController(
         (overrides.userService ?? createMockUserService()) as any,
@@ -181,6 +183,8 @@ function buildController(overrides: {
         (overrides.secretsService ?? createMockSecretsService()) as any,
         (overrides.refreshTokenService ?? createMockRefreshTokenService()) as any,
         (overrides.userDepartmentService ?? createMockUserDepartmentService()) as any,
+        (overrides.eventEmitter ?? { emit: vi.fn() }) as any,
+        (overrides.consultationRepository ?? { findById: vi.fn() }) as any,
     );
 }
 

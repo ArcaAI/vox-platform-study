@@ -162,6 +162,11 @@ function buildController(overrides: {
         cls as any,
         policyEngine as any,
         globalSettingRepo as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
     );
 
     return {
