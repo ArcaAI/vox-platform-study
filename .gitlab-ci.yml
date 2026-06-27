@@ -64,6 +64,9 @@ workflow:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       variables:
         PIPELINE_TYPE: "main"
+    - if: $CI_COMMIT_BRANCH
+      variables:
+        PIPELINE_TYPE: "feature"
 
 stages:
   - install
