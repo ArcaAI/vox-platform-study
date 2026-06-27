@@ -75,7 +75,7 @@ class TestCreateApp:
 
             app = create_app()
 
-            routes = [r.path for r in app.routes]
+            routes = set(app.openapi()["paths"].keys())
             assert "/api/v1/health" in routes
             assert "/api/v1/ready" in routes
             assert "/api/v1/live" in routes
@@ -94,7 +94,7 @@ class TestCreateApp:
             app = create_app()
 
             # Check that internal routes exist
-            routes = [r.path for r in app.routes]
+            routes = set(app.openapi()["paths"].keys())
             assert "/internal/cache/stats" in routes
 
 

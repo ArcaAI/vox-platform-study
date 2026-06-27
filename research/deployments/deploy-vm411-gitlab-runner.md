@@ -726,7 +726,7 @@ find /cache -type d -empty -delete 2>/dev/null || true
 if [ -d /srv/gitlab-runner/pnpm-store ]; then
   STORE_BEFORE=$(du -sh /srv/gitlab-runner/pnpm-store | cut -f1)
   docker run --rm -v /srv/gitlab-runner/pnpm-store:/pnpm-store node:22-alpine \
-    sh -c "corepack enable && corepack prepare pnpm@latest --activate && pnpm store prune --store-dir /pnpm-store" 2>&1 | logger -t "$LOG_TAG"
+    sh -c "corepack enable && corepack install -g --cache-only /path/to/pnpm-10.31.0.tgz && pnpm store prune --store-dir /pnpm-store" 2>&1 | logger -t "$LOG_TAG"
   STORE_AFTER=$(du -sh /srv/gitlab-runner/pnpm-store | cut -f1)
   logger -t "$LOG_TAG" "pnpm store: $STORE_BEFORE → $STORE_AFTER"
 fi
