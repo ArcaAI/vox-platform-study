@@ -243,7 +243,7 @@ test-ui-ct:
       policy: pull
   before_script:
     - corepack enable
-    - corepack prepare pnpm@latest --activate
+    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
     - pnpm config set store-dir /pnpm-store
     - pnpm install --frozen-lockfile --prefer-offline
   needs:
@@ -429,7 +429,7 @@ test-api-e2e:
       policy: pull
   before_script:
     - corepack enable
-    - corepack prepare pnpm@latest --activate
+    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
     - pnpm config set store-dir /pnpm-store
     - pnpm install --frozen-lockfile --prefer-offline
   needs:
@@ -546,8 +546,8 @@ test-pgbouncer-validation:
     # need: pnpm (drives `pgbv:*` scripts), psql (admin queries +
     # `pgbv:show:*`), and bash (rig scripts use `#!/usr/bin/env bash`).
     - apk add --no-cache nodejs npm bash postgresql-client
-    - corepack enable || npm install -g corepack@latest
-    - corepack prepare pnpm@latest --activate
+    - corepack enable
+    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
     - pnpm config set store-dir /tmp/pnpm-store
     - pnpm install --frozen-lockfile --prefer-offline
     - pnpm --filter @arcaai/database db:generate

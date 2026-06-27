@@ -18,7 +18,7 @@
       policy: pull
   before_script:
     - corepack enable
-    - corepack prepare pnpm@latest --activate
+    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
     - pnpm config set store-dir /pnpm-store
     - pnpm install --frozen-lockfile --prefer-offline
 
@@ -55,7 +55,7 @@
       policy: pull
   before_script:
     - corepack enable
-    - corepack prepare pnpm@latest --activate
+    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
     - pnpm config set store-dir /pnpm-store
     - pnpm install --frozen-lockfile --prefer-offline
 
