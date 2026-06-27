@@ -378,3 +378,66 @@ export * from './components/registries/blocks';
 // Registry: @hooks (React Hooks Collection)
 // ============================================
 export * from './hooks/registries';
+
+// ============================================
+// TASK-372 — Gold-standard shared component system (canonical, D6)
+// ============================================
+
+// Shared contracts: pagination / query-state / async-collection / surface props.
+export * from './lib/shared';
+
+// Shared primitives. `StatusBadge` is intentionally NOT re-exported here — the name
+// collides with the tool-ui formatter `StatusBadge`; import it from
+// '@arcaai/ui/components/shared' (subpath) if a consumer needs the new one.
+export { DensityProvider, useDensity, type DensityProviderProps } from './components/shared/density-provider';
+
+// VirtualizedDataGrid — canonical data grid (supersedes tool-ui DataTable, D6).
+export * from './components/data-grid';
+
+// HistoryTimelineList — content-type-aware, virtualized history.
+// `TimelineItem` is omitted (collides with the diceui `TimelineItem` export).
+export {
+  HistoryTimelineList,
+  useTimeline,
+  MarkdownRenderer,
+  PdfRenderer,
+  ImageGridRenderer,
+  AudioRenderer,
+  FileRenderer,
+  MixedRenderer,
+  CustomRenderer,
+  FallbackRenderer,
+  DEFAULT_RENDERERS,
+  resolveRenderer,
+} from './components/timeline';
+export type {
+  TimelineContentVariant,
+  TimelineContent,
+  TimelineItemModel,
+  TimelineBadge,
+  TimelineWord,
+  TimelineImage,
+  TimelineTranscriptSegment,
+  TimelineRenderer,
+  TimelineRendererProps,
+  TimelineExpansion,
+  HistoryTimelineListProps,
+  UseTimelineParams,
+  UseTimelineResult,
+} from './components/timeline';
+
+// LiveTranscript — canonical realtime transcript (supersedes custom TranscriptViewer, D6).
+// The `TranscriptSegment` / `TranscriptWord` sub-components are omitted (their names
+// collide with the `use-transcript-viewer` type exports); import them from
+// '@arcaai/ui/components/live-transcript' (subpath) if needed.
+export { LiveTranscript, useLiveTranscript, JumpToLive, ListeningPulse } from './components/live-transcript';
+export type {
+  LiveTranscriptSegment,
+  LiveTranscriptWord,
+  LiveTranscriptProps,
+  SpeakerConfig,
+  AudioController,
+  UseLiveTranscriptParams,
+  UseLiveTranscriptResult,
+  ActiveWord,
+} from './components/live-transcript';

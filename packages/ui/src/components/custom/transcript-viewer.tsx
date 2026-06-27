@@ -22,6 +22,13 @@ export interface TranscriptViewerProps {
   maxHeight?: string;
 }
 
+/**
+ * @deprecated Use `LiveTranscript` (the canonical realtime transcript, TASK-372 D6) from
+ * `@arcaai/ui` instead. `LiveTranscript` supersedes this viewer with virtualization,
+ * inline Lexical editing, word-level timestamps + click-to-seek, and jump-to-live. This
+ * component is retained for backwards compatibility and is not deleted.
+ * @see LiveTranscript
+ */
 export function TranscriptViewer({ entries, currentTranscript, className, maxHeight = '400px' }: TranscriptViewerProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 

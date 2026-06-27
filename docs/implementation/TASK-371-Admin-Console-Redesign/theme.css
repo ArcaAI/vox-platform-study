@@ -1,0 +1,289 @@
+/* ============================================================================
+ * HOPE Admin Console — Design System Theme Tokens
+ * Ticket: TASK-371 · Direction A "Calm Clinical Teal"
+ *
+ * Tailwind v4 + shadcn/ui compatible. This is the single source of truth for
+ * the end-user-configurable theme template (color, radius, typography).
+ *
+ * Brand rationale (color psychology):
+ *   teal-blue  → Medical Trust + Healing + clinical calm        → primary
+ *   indigo     → AI Intelligence + Marian/Christian blue + Indian indigo → --ai
+ *   saffron    → Hope, dawn light, India, Christian "divine light" → --hope
+ *   green      → Compassion & Healing; theological "hope"; healthy → --success
+ *   warm slate → "quiet / ambient" calm, long-shift legibility    → neutrals
+ *
+ * a11y: tuned for WCAG 2.2 AA. Status is never color-only in the UI
+ * (always paired with icon + label).
+ * ========================================================================== */
+
+:root {
+  /* --- Brand ramps (raw) ------------------------------------------------- */
+  /* Teal — primary */
+  --teal-50:  #ecfbfc;
+  --teal-100: #cff2f5;
+  --teal-200: #a1e3e9;
+  --teal-300: #69cdd8;
+  --teal-400: #2fafc0;
+  --teal-500: #1597a5;
+  --teal-600: #0f7a8b;
+  --teal-700: #0e626e;
+  --teal-800: #0e505a;
+  --teal-900: #103f47;
+  --teal-950: #07262c;
+
+  /* Indigo — AI / intelligence accent */
+  --indigo-50:  #eef0fe;
+  --indigo-100: #e0e3fc;
+  --indigo-200: #c6cbf9;
+  --indigo-300: #a3a9f3;
+  --indigo-400: #7c82ea;
+  --indigo-500: #5e66e0;
+  --indigo-600: #4f5bd5;
+  --indigo-700: #4147bb;
+  --indigo-800: #363b95;
+  --indigo-900: #2f3576;
+  --indigo-950: #1d2046;
+
+  /* Saffron — hope / dawn highlight */
+  --saffron-50:  #fef6ec;
+  --saffron-100: #fbe7c9;
+  --saffron-200: #f7cf96;
+  --saffron-300: #f2b463;
+  --saffron-400: #ed9c3b;
+  --saffron-500: #e8912a;
+  --saffron-600: #cb7a1c;
+  --saffron-700: #a45f18;
+  --saffron-800: #824c1a;
+  --saffron-900: #6c4019;
+  --saffron-950: #3d2109;
+
+  /* Green — healing / success */
+  --green-50:  #e9f8f0;
+  --green-100: #c8eedb;
+  --green-200: #97debd;
+  --green-300: #5dc998;
+  --green-400: #2fae7c;
+  --green-500: #1f9e6b;
+  --green-600: #1a8259;
+  --green-700: #176a4a;
+  --green-800: #16543c;
+  --green-900: #134632;
+
+  /* Red — destructive (calm clinical, not alarmist) */
+  --red-50:  #fceeee;
+  --red-100: #f8d6d6;
+  --red-200: #f0aeae;
+  --red-300: #e68585;
+  --red-400: #da6262;
+  --red-500: #cc4f4f;
+  --red-600: #c24a4a;
+  --red-700: #9f3a3a;
+  --red-800: #7e2f2f;
+  --red-900: #682929;
+
+  /* Amber — warning */
+  --amber-400: #efb751;
+  --amber-500: #e0a53b;
+  --amber-600: #c7861f;
+
+  /* Slate — warm-cool neutrals */
+  --slate-0:   #ffffff;
+  --slate-50:  #f5f7f8;
+  --slate-100: #edf1f3;
+  --slate-200: #e2e8ec;
+  --slate-300: #cfd8de;
+  --slate-400: #a7b4bd;
+  --slate-500: #7c8b95;
+  --slate-600: #5a6a77;
+  --slate-700: #44535e;
+  --slate-800: #2b3942;
+  --slate-900: #18242b;
+  --slate-950: #0e1a24;
+
+  /* --- shadcn semantic roles (light) ------------------------------------ */
+  --background: #fbfcfd;
+  --foreground: var(--slate-950);
+
+  --card: var(--slate-0);
+  --card-foreground: var(--slate-950);
+  --popover: var(--slate-0);
+  --popover-foreground: var(--slate-950);
+
+  --primary: var(--teal-600);
+  --primary-foreground: #ffffff;
+
+  --secondary: var(--slate-100);
+  --secondary-foreground: var(--slate-900);
+
+  --muted: var(--slate-50);
+  --muted-foreground: var(--slate-600);
+
+  /* shadcn --accent = subtle hover/active surface (on-brand teal tint) */
+  --accent: #e6f3f5;
+  --accent-foreground: var(--teal-700);
+
+  --destructive: var(--red-600);
+  --destructive-foreground: #ffffff;
+
+  --border: var(--slate-200);
+  --input: var(--slate-200);
+  --ring: var(--teal-600);
+
+  /* --- HOPE brand semantic roles (custom) ------------------------------- */
+  --ai: var(--indigo-600);            /* AI / intelligence features */
+  --ai-foreground: #ffffff;
+  --hope: var(--saffron-500);         /* highlights, NEW badges, brand light */
+  --hope-foreground: var(--saffron-950);
+  --success: var(--green-600);        /* healthy services, active users */
+  --success-foreground: #ffffff;
+  --warning: var(--amber-500);
+  --warning-foreground: var(--saffron-950);
+  --info: var(--indigo-600);
+  --info-foreground: #ffffff;
+  --link: var(--indigo-600);
+
+  /* Charts: teal · indigo · saffron · green · slate */
+  --chart-1: var(--teal-500);
+  --chart-2: var(--indigo-500);
+  --chart-3: var(--saffron-500);
+  --chart-4: var(--green-500);
+  --chart-5: var(--slate-500);
+
+  /* Sidebar (shadcn sidebar tokens) */
+  --sidebar: #f7f9fa;
+  --sidebar-foreground: var(--slate-800);
+  --sidebar-primary: var(--teal-600);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e6f3f5;
+  --sidebar-accent-foreground: var(--teal-700);
+  --sidebar-border: var(--slate-200);
+  --sidebar-ring: var(--teal-600);
+
+  /* --- Radius (calm 10px base) ------------------------------------------ */
+  --radius: 0.625rem;
+
+  /* --- Typography ------------------------------------------------------- */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", "Menlo", monospace;
+}
+
+.dark {
+  --background: #0c1418;
+  --foreground: #e6edf0;
+
+  --card: #111d23;
+  --card-foreground: #e6edf0;
+  --popover: #14222a;
+  --popover-foreground: #e6edf0;
+
+  --primary: var(--teal-400);
+  --primary-foreground: #042a30;
+
+  --secondary: #1c2a31;
+  --secondary-foreground: #e6edf0;
+
+  --muted: #16242b;
+  --muted-foreground: #93a4ae;
+
+  --accent: #16323b;
+  --accent-foreground: #bbe7ec;
+
+  --destructive: #e06a6a;
+  --destructive-foreground: #2a0e0e;
+
+  --border: #25333b;
+  --input: #25333b;
+  --ring: var(--teal-400);
+
+  --ai: var(--indigo-400);
+  --ai-foreground: #11122e;
+  --hope: var(--saffron-400);
+  --hope-foreground: var(--saffron-950);
+  --success: var(--green-400);
+  --success-foreground: #04231a;
+  --warning: var(--amber-400);
+  --warning-foreground: #2a1b05;
+  --info: var(--indigo-400);
+  --info-foreground: #11122e;
+  --link: var(--indigo-300);
+
+  --chart-1: var(--teal-400);
+  --chart-2: var(--indigo-400);
+  --chart-3: var(--saffron-400);
+  --chart-4: var(--green-400);
+  --chart-5: var(--slate-400);
+
+  --sidebar: #0e171c;
+  --sidebar-foreground: #c7d2d8;
+  --sidebar-primary: var(--teal-400);
+  --sidebar-primary-foreground: #042a30;
+  --sidebar-accent: #16323b;
+  --sidebar-accent-foreground: #bbe7ec;
+  --sidebar-border: #25333b;
+  --sidebar-ring: var(--teal-400);
+}
+
+/* ---------------------------------------------------------------------------
+ * Tailwind v4 theme mapping. Exposes the semantic roles as utility colors
+ * (bg-primary, text-muted-foreground, ring-ai, bg-success, etc.) and wires
+ * the radius + font scales.
+ * ------------------------------------------------------------------------- */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* HOPE brand semantics */
+  --color-ai: var(--ai);
+  --color-ai-foreground: var(--ai-foreground);
+  --color-hope: var(--hope);
+  --color-hope-foreground: var(--hope-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-link: var(--link);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-mono: var(--font-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
