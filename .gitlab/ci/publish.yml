@@ -97,7 +97,7 @@ publish-sdk:
     GIT_DEPTH: 0
   before_script:
     - corepack enable
-    - corepack prepare pnpm@latest --activate
+    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
     - pnpm config set store-dir .pnpm-store
     - |
       echo "@arcaai:registry=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/npm/"
