@@ -224,6 +224,21 @@ export class ContextItemResponse {
   @ApiPropertyOptional({ description: 'Media ID of the uploaded file (for ATTACHMENT type)' })
   mediaId?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'TASK-375 — short-lived accessible (presigned) download URL for the attached media, resolved from storage when available. Absent when the item has no media or storage resolution is unavailable.',
+  })
+  url?: string;
+
+  @ApiPropertyOptional({ description: 'TASK-375 — MIME type of the attached media (e.g. image/png, application/pdf, audio/wav)' })
+  mimeType?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-375 — presigned URL of a real downscaled WebP thumbnail for image attachments (generated on upload, addressed by a deterministic derived key). Falls back to the full-size image URL for media without a derivative; absent for non-images.',
+  })
+  thumbnailUrl?: string;
+
   @ApiPropertyOptional({ description: 'DNA Writing Style ID' })
   dnaWritingStyleId?: string;
 

@@ -1,4 +1,13 @@
-import { IBlobStorageService, IMediaService, IS3Service, ITenantBucketService, S3HealthService } from '@arcaai/applications';
+import {
+  IBlobStorageService,
+  IMediaService,
+  IS3Service,
+  ITenantBucketService,
+  ImageThumbnailService,
+  S3HealthService,
+  deriveThumbnailKey,
+  isThumbnailableImageMimeType,
+} from '@arcaai/applications';
 import {
   BadRequestException,
   Body,
@@ -7,6 +16,7 @@ import {
   FileTypeValidator,
   Get,
   Inject,
+  Logger,
   MaxFileSizeValidator,
   NotFoundException,
   Param,
@@ -51,7 +61,12 @@ export class StorageController {
     @Inject(IMediaService) private readonly mediaService: IMediaService,
     @Inject(ITenantBucketService) private readonly tenantBucketService: ITenantBucketService,
     private readonly s3HealthService: S3HealthService,
+    // TASK-375 (thumbnails) — produces the downscaled WebP derivative stored on
+    // image upload. Provided by StorageModule (no deps; wraps `sharp`).
+    private readonly imageThumbnailService: ImageThumbnailService,
   ) {}
+
+  private readonly logger = new Logger(StorageController.name);
 
   @Get('buckets')
   @ApiOperation({ summary: 'List all storage buckets' })
@@ -181,6 +196,26 @@ export class StorageController {
       body: file.buffer,
       contentType: file.mimetype,
     });
+
+    // TASK-375 (thumbnails) — for image uploads, also store a real downscaled
+    // WebP derivative at the deterministic derived key (`<key>.thumb.webp`) so
+    // the context timeline can presign a genuinely smaller thumbnail without any
+    // schema change. Best-effort: a thumbnail failure must never fail the upload.
+    if (isThumbnailableImageMimeType(file.mimetype)) {
+      try {
+        const thumbnail = await this.imageThumbnailService.generateWebpThumbnail(file.buffer);
+        await this.blobStorage.putObject({
+          bucket: bucketName,
+          key: deriveThumbnailKey(fileKey),
+          body: thumbnail,
+          contentType: 'image/webp',
+        });
+      } catch (error) {
+        this.logger.warn(
+          `TASK-375 — failed to generate/store thumbnail for ${bucketName}/${fileKey}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
 
     const response: FileUploadResponse = {
       key: fileKey,

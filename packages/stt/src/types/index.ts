@@ -393,6 +393,37 @@ export interface TranscriptionTimestamp {
 }
 
 /**
+ * Word-level timestamp emitted by the streaming backend (stt-v2
+ * `SegmentResult.word_timestamps`). Carried through {@link TranscriptionResult.words}
+ * so the SDK store can expose word timings to consumers (TASK-372 D9, Option B).
+ *
+ * Distinct from {@link TranscriptionTimestamp} (segment-level `{ start, end, text }`):
+ * this is per-word and includes an optional confidence score.
+ */
+export interface WordTimestamp {
+  /**
+   * The word text.
+   */
+  word: string;
+
+  /**
+   * Start time in seconds.
+   */
+  start: number;
+
+  /**
+   * End time in seconds.
+   */
+  end: number;
+
+  /**
+   * Confidence score (0-1), if the engine provides one. Whisper does not score
+   * individual words, so this is optional.
+   */
+  confidence?: number;
+}
+
+/**
  * Result of a transcription operation.
  */
 export interface TranscriptionResult {
@@ -420,6 +451,13 @@ export interface TranscriptionResult {
    * Timestamps for segments/words, if requested.
    */
   timestamps?: TranscriptionTimestamp[];
+
+  /**
+   * Word-level timestamps carried from the streaming backend transcript
+   * (TASK-372 D9, Option B). Distinct from the segment-level `timestamps`
+   * above; preserved so the SDK store can surface per-word timings.
+   */
+  words?: WordTimestamp[];
 
   /**
    * Speaker ID from diarization, if available.

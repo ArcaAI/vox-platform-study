@@ -7,6 +7,7 @@ import { BaseService, FetchResponse, PaginatedQuery, withFormattedPaginatedProps
 import { IActiveUserContext } from '../../../interfaces';
 import { IUserSettingsService } from './IUserSettingsService';
 import { CreateUserSettingsRequest, UpdateUserSettingsRequest, UpdateUserSettingByKeyRequest } from './dto';
+import { USER_SETTINGS_NAMESPACES, validateUiDataGridValue } from './userSettings.namespaces';
 import { ValueType } from '@arcaai/domains';
 
 // TODO: Implement this
@@ -148,6 +149,14 @@ export class UserSettingsService extends BaseService implements IUserSettingsSer
     key: string,
     request: UpdateUserSettingByKeyRequest,
   ): Promise<UserSettingsEntity> {
+    // TASK-375 (item 1 backend) — solidify D8. Validate the `ui.data-grid`
+    // round-trip in the SERVICE (not just the self-service controller) so the
+    // admin upsert path is covered too. The open registry is preserved: only
+    // the `ui.data-grid` namespace is guarded; all others pass through.
+    if (namespace === USER_SETTINGS_NAMESPACES.UI_DATA_GRID) {
+      validateUiDataGridValue(request.value);
+    }
+
     const existing = await this.userSettingsRepository.findByUserKeyNamespace(userId, key, namespace);
 
     if (existing) {

@@ -1,7 +1,7 @@
 import { AuditLogEntity, AutoClassMapper } from '@arcaai/domains';
-import { AuditLogResponse, PaginatedAuditLogResponse } from './dto';
+import { AuditLogResponse, PaginatedAuditLogResponse, CursorPaginatedAuditLogResponse } from './dto';
 import { ResponsibleUserMap } from './IAuditLogService';
-import { FetchResponse } from '../../common';
+import { FetchResponse, CursorPage } from '../../common';
 
 /**
  * TASK-328 A8 — CSV column order. Kept as a single source of truth so the
@@ -52,6 +52,23 @@ export class AuditLogDtoMapper {
       page,
       limit,
       count,
+      data: data.map((entity) => this.ToResponse(entity, responsibleUsers)),
+    });
+  }
+
+  /**
+   * TASK-373 — map a cursor (keyset) page to its response envelope, preserving
+   * the opaque `nextCursor`/`hasMore` cursor metadata and enriching each row
+   * with its acting user (same as {@link ToPaginatedResponse}).
+   */
+  static ToCursorResponse(
+    { data, nextCursor, hasMore, limit }: CursorPage<AuditLogEntity>,
+    responsibleUsers?: ResponsibleUserMap,
+  ): CursorPaginatedAuditLogResponse {
+    return new CursorPaginatedAuditLogResponse({
+      nextCursor,
+      hasMore,
+      limit,
       data: data.map((entity) => this.ToResponse(entity, responsibleUsers)),
     });
   }

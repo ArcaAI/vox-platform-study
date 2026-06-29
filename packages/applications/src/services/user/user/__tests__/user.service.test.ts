@@ -467,6 +467,67 @@ describe('UserService', () => {
         });
     });
 
+    // -------------------------------------------------------------------------
+    // TASK-375 (item 3 backend) — composition lock: the CSV `filters`/`sort`
+    // from PaginatedQuery are deserialized by withFormattedPaginatedProps and
+    // forwarded to the repository, and on the tenant-scoped path they compose
+    // WITH the tenant `where` (filters are merged into `where` downstream by
+    // formatFindAllProps). These assert the already-wired contract the admin
+    // grid depends on.
+    // -------------------------------------------------------------------------
+    describe('TASK-375 — filter/sort forwarding + tenant composition', () => {
+        it('fetchAll: forwards deserialized filters + sort into findAll (and filters into count)', async () => {
+            mockUserRepository.findAll.mockResolvedValue([]);
+            mockUserRepository.count.mockResolvedValue(0);
+
+            await service.fetchAll({
+                limit: 10,
+                page: 1,
+                sort: 'createdAt:desc',
+                filters: 'resourceStatus[equals]:ENABLED',
+            });
+
+            expect(mockUserRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    sort: [{ createdAt: 'desc' }],
+                    filters: { resourceStatus: { equals: 'ENABLED' } },
+                })
+            );
+            // count does not sort, but applies the same filters for an accurate total
+            expect(mockUserRepository.count).toHaveBeenCalledWith(
+                expect.objectContaining({ filters: { resourceStatus: { equals: 'ENABLED' } } })
+            );
+        });
+
+        it('fetchAllByTenantId: composes filters + sort WITH the tenant where (boolean column coerced — DEFECT-F1)', async () => {
+            mockUserRepository.findAll.mockResolvedValue([]);
+            mockUserRepository.count.mockResolvedValue(0);
+
+            await service.fetchAllByTenantId({
+                limit: 20,
+                page: 1,
+                tenantId: 'tenant-1',
+                sort: 'username:asc',
+                filters: 'isServiceAccount[equals]:false',
+            });
+
+            // DEFECT-F1: the Bool column `isServiceAccount` is coerced from the
+            // string CSV value `'false'` → boolean `false` (the service declares
+            // it in USER_BOOLEAN_FILTER_FIELDS), so Prisma no longer 400s.
+            expect(mockUserRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    where: {
+                        UserRoleAssignments: {
+                            some: { tenantId: 'tenant-1', resourceStatus: { not: ResourceStatusType.DELETED } },
+                        },
+                    },
+                    sort: [{ username: 'asc' }],
+                    filters: { isServiceAccount: { equals: false } },
+                })
+            );
+        });
+    });
+
     describe('fetchAllCreatedByUser', () => {
         it('should return users created by specific user', async () => {
             const users = [createMockUserEntity({ id: 'user-1', createdBy: 'creator-id' })];

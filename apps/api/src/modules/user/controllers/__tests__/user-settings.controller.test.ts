@@ -124,6 +124,54 @@ describe('UserSettingsController — selectedPipelineId validator (TASK-298 D-5)
     });
   });
 
+  // TASK-372 D8 — the VirtualizedDataGrid persists per-user layout under the
+  // `ui.data-grid` namespace via the existing PATCH endpoint. The namespace is
+  // now explicitly recognised and its value is guarded (valid JSON + size),
+  // without breaking the open-namespace behaviour for other clients.
+  describe('updateSetting — ui.data-grid namespace (TASK-372 D8)', () => {
+    it('persists a valid JSON layout value (PATCH round-trip)', async () => {
+      const layout = JSON.stringify({ columnOrder: ['a', 'b'], density: 'compact' });
+
+      await controller.updateSetting('ui.data-grid', 'tenants-table', {
+        value: layout,
+        dataType: 'JSON' as never,
+      } as never);
+
+      // The pipeline validator must NOT fire for this namespace.
+      expect(pipelineService.getById).not.toHaveBeenCalled();
+      expect(userSettingsService.upsertByUserKeyNamespace).toHaveBeenCalledWith(
+        'user-1',
+        'ui.data-grid',
+        'tenants-table',
+        expect.objectContaining({ value: layout }),
+      );
+    });
+
+    it('rejects a non-JSON value with BadRequestException (and never persists)', async () => {
+      await expect(
+        controller.updateSetting('ui.data-grid', 'tenants-table', {
+          value: 'not-json{',
+          dataType: 'JSON' as never,
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(userSettingsService.upsertByUserKeyNamespace).not.toHaveBeenCalled();
+    });
+
+    it('rejects an oversized value with BadRequestException', async () => {
+      const huge = JSON.stringify({ blob: 'x'.repeat(20_000) });
+
+      await expect(
+        controller.updateSetting('ui.data-grid', 'tenants-table', {
+          value: huge,
+          dataType: 'JSON' as never,
+        } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(userSettingsService.upsertByUserKeyNamespace).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getMySettings', () => {
     it('throws UnauthorizedException when no user is in CLS', async () => {
       clsService = createMockClsService(undefined);

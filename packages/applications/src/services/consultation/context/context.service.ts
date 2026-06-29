@@ -10,6 +10,7 @@ import {
   ContextItemType,
   ContextItemVersionFactory,
   ContextItemVersionRepository,
+  MediaRepository,
   NamedEntityFactory,
   NamedEntityRepository,
   ResourceType,
@@ -23,8 +24,9 @@ import { ClsService } from 'nestjs-cls';
 import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
+import { IBlobStorageService, deriveThumbnailKey } from '../../baseServices/storage';
 import { IContextService } from './IContextService';
-import { ContextDtoMapper } from './context.dto.mapper';
+import { ContextDtoMapper, ResolvedMediaUrl } from './context.dto.mapper';
 import { ConsultationPipelineEvent, ContextAddedPayload, ContextRemovedPayload } from '../events';
 import {
   AddAudioRecordingRequest,
@@ -53,6 +55,31 @@ import {
  */
 const LIVE_CONTEXT_TYPES = new Set<ContextItemType>([ContextItemType.WORKNOTE, ContextItemType.CASE_NOTE, ContextItemType.ATTACHMENT]);
 
+/**
+ * TASK-375 (item 4) — lifetime of presigned context-attachment download URLs.
+ * Mirrors StorageController's `PRESIGNED_GET_EXPIRY_SECONDS` (1h) so links live
+ * roughly as long as an admin session view.
+ */
+const CONTEXT_MEDIA_URL_TTL_SECONDS = 3600;
+
+/**
+ * TASK-375 (item 4) — parse a `MediaEntity.uri` of the canonical
+ * `s3://<bucket>/<key>` form (written by StorageController on upload) into a
+ * provider-agnostic `{ bucket, key }` for {@link IBlobStorageService.presignGet}.
+ * Returns `null` for any other shape (e.g. legacy absolute URLs) so callers
+ * degrade to "no url" instead of throwing.
+ */
+function parseStorageUri(uri: string | null | undefined): { bucket: string; key: string } | null {
+  if (!uri) {
+    return null;
+  }
+  const match = /^s3:\/\/([^/]+)\/(.+)$/.exec(uri);
+  if (!match) {
+    return null;
+  }
+  return { bucket: match[1], key: match[2] };
+}
+
 @Injectable()
 export class ContextService extends BaseService implements IContextService {
   constructor(
@@ -70,6 +97,13 @@ export class ContextService extends BaseService implements IContextService {
     // StorageAccessKeyService. When absent, `content` is left unpersisted
     // (Phase 6 dropped the plaintext column).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-375 (item 4) — storage-resolved media URLs for context attachments.
+    // Optional + @Inject so the many direct-construction tests that don't wire
+    // storage still work (mirrors the SecretsService pattern above); when
+    // absent, attachments simply carry no resolved `url`. Both are provided by
+    // CoreDatabaseModule / the @Global storage module in the NestJS runtime.
+    @Optional() @Inject(MediaRepository) private readonly mediaRepository?: MediaRepository,
+    @Optional() @Inject(IBlobStorageService) private readonly blobStorage?: IBlobStorageService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
   }
@@ -803,11 +837,131 @@ export class ContextService extends BaseService implements IContextService {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const items = await this.contextItemRepository.findByConsultation(consultationId, filters as any);
 
+    const responses = items.map(ContextDtoMapper.toResponse);
+    // TASK-375 (item 4) — populate accessible (presigned) media URLs so the
+    // admin timeline can render image/pdf/audio/file attachments.
+    await this.attachMediaUrls(responses);
+
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: { consultationId, count: items.length },
     });
 
-    return items.map(ContextDtoMapper.toResponse);
+    return responses;
+  }
+
+  /**
+   * TASK-375 (item 4) — enrich mapped context items with storage-resolved media
+   * URLs. No-op unless BOTH the MediaRepository and IBlobStorageService are
+   * wired (they are in the NestJS runtime; absent in legacy direct-construction
+   * tests). Batches the lookup + presigns per DISTINCT mediaId, so a timeline
+   * with N attachments referencing M distinct media costs one findAll + M presigns.
+   */
+  private async attachMediaUrls(responses: ContextItemResponse[]): Promise<void> {
+    if (!this.mediaRepository || !this.blobStorage) {
+      return;
+    }
+
+    const mediaIds = [...new Set(responses.map((r) => r.mediaId).filter((id): id is string => Boolean(id)))];
+    if (mediaIds.length === 0) {
+      return;
+    }
+
+    const resolved = await this.resolveMediaUrls(mediaIds);
+    for (const response of responses) {
+      if (!response.mediaId) {
+        continue;
+      }
+      const media = resolved.get(response.mediaId);
+      if (media) {
+        ContextDtoMapper.applyMediaUrl(response, media);
+      }
+    }
+  }
+
+  /**
+   * TASK-375 (item 4) — resolve a presigned download URL (+ mimeType / image
+   * thumbnail) for each distinct mediaId. A media row whose `uri` is not an
+   * `s3://bucket/key` URL, or whose presign fails, is skipped (warn-logged) so
+   * one bad attachment never fails the whole timeline read.
+   */
+  private async resolveMediaUrls(mediaIds: string[]): Promise<Map<string, ResolvedMediaUrl>> {
+    const resolved = new Map<string, ResolvedMediaUrl>();
+    const mediaRepository = this.mediaRepository;
+    const blobStorage = this.blobStorage;
+    if (!mediaRepository || !blobStorage) {
+      return resolved;
+    }
+
+    const mediaRows = await mediaRepository.findAll({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      where: { id: { in: mediaIds } } as any,
+      limit: mediaIds.length,
+      page: 1,
+    });
+
+    await Promise.all(
+      mediaRows.map(async (media) => {
+        const location = parseStorageUri(media.uri);
+        if (!location) {
+          return;
+        }
+        try {
+          const url = await blobStorage.presignGet({
+            bucket: location.bucket,
+            key: location.key,
+            expiresInSeconds: CONTEXT_MEDIA_URL_TTL_SECONDS,
+          });
+          const isImage = (media.mimeType ?? '').startsWith('image/');
+          resolved.set(media.id, {
+            url,
+            mimeType: media.mimeType ?? undefined,
+            // TASK-375 (thumbnails) — images resolve to the real downscaled
+            // `.thumb.webp` derivative generated on upload; pre-existing media
+            // with no derivative falls back to the full-size URL.
+            thumbnailUrl: isImage ? await this.resolveThumbnailUrl(blobStorage, location, url) : undefined,
+          });
+        } catch (error) {
+          this.logger.warn(
+            `TASK-375 — failed to presign media ${media.id} for context timeline: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }),
+    );
+
+    return resolved;
+  }
+
+  /**
+   * TASK-375 (thumbnails) — resolve the presigned URL of an image's downscaled
+   * `.thumb.webp` derivative, addressed by the deterministic key convention
+   * ({@link deriveThumbnailKey}) the upload path writes. Existence is confirmed
+   * via a 1-key prefix list so older media (no derivative) — or any storage
+   * failure — falls back to `fullSizeUrl`, preserving current behavior and never
+   * surfacing a 404 thumbnail.
+   */
+  private async resolveThumbnailUrl(
+    blobStorage: IBlobStorageService,
+    location: { bucket: string; key: string },
+    fullSizeUrl: string,
+  ): Promise<string> {
+    const thumbnailKey = deriveThumbnailKey(location.key);
+    try {
+      const listing = await blobStorage.listObjects({
+        bucket: location.bucket,
+        prefix: thumbnailKey,
+        maxKeys: 1,
+      });
+      if (!listing.objects.some((object) => object.key === thumbnailKey)) {
+        return fullSizeUrl;
+      }
+      return await blobStorage.presignGet({
+        bucket: location.bucket,
+        key: thumbnailKey,
+        expiresInSeconds: CONTEXT_MEDIA_URL_TTL_SECONDS,
+      });
+    } catch {
+      return fullSizeUrl;
+    }
   }
 
   /**

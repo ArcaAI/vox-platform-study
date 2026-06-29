@@ -35,6 +35,24 @@ function supportsViewTransitions(): boolean {
   );
 }
 
+/**
+ * Upgrade the (reparented) grid `<img>` to the full-resolution `zoomSrc` when the
+ * lightbox opens. No-op when the image has no separate full-res source. The grid
+ * `src` (typically a thumbnail) is restored by {@link restoreGridSource} on close.
+ */
+function applyZoomSource(element: HTMLElement, image: ImageGalleryItem): void {
+  if (image.zoomSrc && image.zoomSrc !== image.src && element instanceof HTMLImageElement) {
+    element.src = image.zoomSrc;
+  }
+}
+
+/** Restore the grid (thumbnail) `src` before the `<img>` moves back into the grid. */
+function restoreGridSource(element: HTMLElement, image: ImageGalleryItem): void {
+  if (image.zoomSrc && image.zoomSrc !== image.src && element instanceof HTMLImageElement) {
+    element.src = image.src;
+  }
+}
+
 function withViewTransition(element: HTMLElement, domUpdate: () => void, onFinished?: () => void): void {
   if (!supportsViewTransitions()) {
     domUpdate();
@@ -96,6 +114,7 @@ export function ImageGalleryProvider({ images, children }: ImageGalleryProviderP
 
       withViewTransition(imageElement, () => {
         container.appendChild(imageElement);
+        applyZoomSource(imageElement, image);
         flushSync(() => setActiveIndex(index));
         dialog.showModal();
       });
@@ -127,6 +146,7 @@ export function ImageGalleryProvider({ images, children }: ImageGalleryProviderP
     withViewTransition(
       imageElement,
       () => {
+        restoreGridSource(imageElement, image);
         originalParent.appendChild(imageElement);
         flushSync(() => setActiveIndex(null));
         dialog?.close();

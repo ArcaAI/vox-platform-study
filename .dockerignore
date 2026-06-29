@@ -6,6 +6,11 @@ node_modules
 **/dist
 **/.next
 **/storybook-static
+# TypeScript incremental-build cache — must be excluded alongside dist. A host-stale
+# buildinfo makes `@arcaai/types`' `tsc --build` trust it and SKIP emit, so
+# packages/types/dist is never regenerated in-container and @arcaai/applications fails
+# with TS2307: Cannot find module '@arcaai/types'. Excluding it forces a clean emit.
+**/*.tsbuildinfo
 
 # Version control
 .git

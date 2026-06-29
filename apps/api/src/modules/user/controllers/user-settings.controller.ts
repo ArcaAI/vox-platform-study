@@ -5,6 +5,8 @@ import {
   UpdateUserSettingByKeyRequest,
   IActiveUserContext,
   PipelineService,
+  USER_SETTINGS_NAMESPACES,
+  validateUiDataGridValue,
 } from '@arcaai/applications';
 import { BadRequestException, Body, Controller, Get, Inject, Param, Patch, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
@@ -71,19 +73,29 @@ export class UserSettingsController {
   }
 
   /**
-   * TASK-298 D-5 — per-key validators run BEFORE the upsert hits the DB.
-   * Currently only enforces that `arcaai-sdk:selectedPipelineId` references
-   * a pipeline owned by the caller's tenant. PipelineService.getById is
-   * already tenant-scoped (TASK-298 D-9), so a `null` result is sufficient
-   * to reject the request.
+   * Per-key validators run BEFORE the upsert hits the DB. The endpoint stays
+   * open to arbitrary namespaces (the SDK lets clients choose their own), so
+   * these are targeted, per-namespace guards — not a rejecting allow-list.
+   *
+   * - TASK-298 D-5: `arcaai-sdk:selectedPipelineId` must reference a pipeline
+   *   owned by the caller's tenant (PipelineService.getById is tenant-scoped,
+   *   so a `null` result is sufficient to reject).
+   * - TASK-372 D8 / TASK-375: `ui.data-grid` layout values must be well-formed
+   *   JSON within the byte cap. This is an early-reject (fast 400) that
+   *   delegates to the shared {@link validateUiDataGridValue}; the service
+   *   layer enforces the SAME guard so the admin path is covered too.
    */
   private async validateSettingValue(namespace: string, key: string, value: string): Promise<void> {
-    if (namespace !== SELECTED_PIPELINE_NAMESPACE || key !== SELECTED_PIPELINE_KEY) {
+    if (namespace === SELECTED_PIPELINE_NAMESPACE && key === SELECTED_PIPELINE_KEY) {
+      const pipeline = await this.pipelineService.getById(value);
+      if (!pipeline) {
+        throw new BadRequestException(`Pipeline '${value}' is not available for the current tenant`);
+      }
       return;
     }
-    const pipeline = await this.pipelineService.getById(value);
-    if (!pipeline) {
-      throw new BadRequestException(`Pipeline '${value}' is not available for the current tenant`);
+
+    if (namespace === USER_SETTINGS_NAMESPACES.UI_DATA_GRID) {
+      validateUiDataGridValue(value);
     }
   }
 

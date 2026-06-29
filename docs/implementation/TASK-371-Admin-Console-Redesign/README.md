@@ -5,7 +5,7 @@
 | **Ticket** | TASK-371 |
 | **Type** | Feature / Design |
 | **Created** | 2026-06-27 |
-| **Updated** | 2026-06-27 |
+| **Updated** | 2026-06-28 |
 | **Status** | In Progress |
 | **Owner** | Design (UX/UI) |
 | **Figma file** | `HOPE-Admin-Console` |
@@ -126,20 +126,20 @@ Full 50→950 ramps + dark pairs in `theme.css`. **a11y:** WCAG 2.2 AA; status i
 | Theme tokens (Tailwind v4 + shadcn) | [`theme.css`](./theme.css) | Done |
 | Live design-system preview (Canvas) | `canvases/hope-admin-design-system.canvas.tsx` | Done |
 | Ticket doc | this file | Done |
-| Figma initial design | `HOPE-Admin-Console` | In progress — 3 of 7 surfaces (Foundations, Tenants, Login) |
-| Figma screenshots | [`screenshots/`](./screenshots/) | foundations, tenants-hero, login |
+| Figma initial design | `HOPE-Admin-Console` | In progress — Foundations, App Shell–Tenants, Login + **Pass 2:** Users, Consultation History, Live Session + **Pass 3 (foundation page):** Dashboard Shell, Full-Screen Table, Blades, DataGrid anatomy, Theming/Dark + **Pass 4 (foundation page):** Multi-Tenancy & Impersonation, Responsive (tablet/mobile) |
+| Figma screenshots | [`screenshots/`](./screenshots/) | foundations, tenants-hero, login, users-grid, history-timeline, live-session, **foundation-10…16** |
 
-### 4.2 Figma page structure
+### 4.2 Figma layer taxonomy (frame numbering)
 
-| Page | Contents |
-|---|---|
-| 00 · Foundations | Color tokens (light/dark), type specimen, spacing, radius, elevation, iconography |
-| 01 · Components | Buttons, inputs, table, badges (service/role status), tabs, dialog, sidebar/header, tenant switcher, empty states |
-| 02 · App Shell | Sidebar + header + breadcrumb + connection badge + impersonation banner + working-tenant switcher |
-| 03 · Tenants | List (search/filter/pagination), detail, create/edit, archive-confirm, monitor, protected-system-tenant |
-| 04 · Users & Access | User list (role badges), user detail + role assignment, create user, roles & CASL policy builder |
-| 05 · System Health | Service status grid, uptime, sessions/jobs, consultation-status dashboard |
-| 06 · Login | JWT + API-key tabs, brand hero |
+> Authoritative structure per [`.cursor/rules/12-design-workflow.mdc`](../../../.cursor/rules/12-design-workflow.mdc). The **number prefix encodes the audience tier**; the admin app's routes, menu visibility, and role guards must mirror these bands. (Supersedes the earlier topic-based page plan.)
+
+| Band | Audience | Screens |
+|---|---|---|
+| **00–09** | Foundations / UX-UI references | Tokens, theming/dark-mode, DataGrid anatomy, shells (dashboard / full-screen table / blades), multi-tenancy & impersonation patterns, responsive |
+| **10–19** | Global / Super-admin only (cross-tenant) | Dashboard, Monitoring, Logs & Audit Logs, Tenant Management, Rate Limits, Queues & Jobs, Prisma Studio |
+| **20–29** | Shared (super-admin + tenant-admin) | Users, Roles, API Keys, Tenant configuration/settings |
+| **30–49** | Tenant-admin only (super-admin must select a working tenant) | Department management, Store management, Ambience-listening management → Audio processing, Agents instructions, Agent Jobs, Harness |
+| **50–59** | Playground | Clinical Consultation, Live Transcription, Voice profile, DNA Writing style, Summarization |
 
 ### 4.3 Build order
 Foundations → Components → App Shell → Tenants → Users & Access → System Health → Login. Desktop-first (1440), responsive-aware.
@@ -165,8 +165,80 @@ Notes / decisions:
 - Built with absolute positioning + solid/gradient fills, strokes, and 2-level soft shadows — no auto-layout yet (component-ization deferred to the Components pass).
 - The Figma file is **unsaved**, so its `fileKey` rotates on reconnect; tooling targets the single connected file without a key.
 
-### 5.2 Remaining (Pass 2)
-01 · Components library, 03 · Tenant detail + create/edit + archive-confirm, 04 · Users & Access (+ roles/CASL policy builder), 05 · System Health dashboard. Then dark-mode variants and Lucide icon swap.
+### 5.2 Figma build — Pass 2 — flagship component surfaces (2026-06-27)
+
+Added the three screens that exercise the gold-standard `@arcaai/ui` components shipped in [TASK-372](../TASK-372-Shared-Component-System/README.md) and wired to real data in [TASK-374](../TASK-374-Admin-App-Integration/README.md). Built in a new column at `x=2940` on `Page 1` (1440×1024 each) from the same `theme.css` tokens. **The shell was reconciled to the as-built `apps/admin` layout** (`AppShell` + `src/lib/nav.ts`): the real **5-pillar** sidebar (Multi-Tenancy / Identity & Access / Clinical Operations / Observability / Platform — 11 items) and the simpler shipped topbar (page title + theme/density toggles + user chip) — i.e. **no** breadcrumb / global-search / env-pill / connected-badge and **no** sidebar user-footer. Those richer elements appear only on the older Pass-1 `02 · App Shell — Tenants` frame, which is now **stale** vs. the build (reconcile pending — §5.5).
+
+| Artboard | Frame | Component | Highlights |
+|---|---|---|---|
+| 04 · Users | `53:308` | `VirtualizedDataGrid` | Toolbar (search, dashed `+ Status`/`+ Type` faceted filters, density + View/column toggle), 5-col table (Username/Email/Status/Type/ID) with sort affordances + 10 sample rows, color-blind-safe `StatusBadge`s (Enabled/Disabled/Archived = dot + label), Service-account vs User, mono IDs, offset pagination footer ("0 of 248 · Rows per page 20 · Page 1 of 13 · ⏮◀▶⏭"). |
+| 07 · Consultation History | `54:459` | `HistoryTimelineList` | Page header + Refresh, consultation `Select`, accordion timeline of 7 content-typed items (first **expanded** → Assessment/Plan markdown + bullets), `AI`/`summary`/`transcript`/`image`/`pdf`/`audio`/`file`/`note` badges. |
+| 08 · Live Session | `54:560` | `LiveTranscript` | Page header + destructive **Stop capture** (capturing state) + helper caption, transcript card with ambient "Listening" pulse, 4 speaker-tagged segments (Clinician/Patient chips, mono timestamps, confidence %), word-level teal highlight, italic interim line, floating "Jump to live" pill. |
+
+Verification: screenshots captured to [`screenshots/`](./screenshots/) (`users-grid.png`, `history-timeline.png`, `live-session.png`) and visually reviewed against the as-built screens.
+
+### 5.3 Figma build — Pass 3 — shared layouts & DataGrid system (2026-06-28)
+
+> **Renumbered (see §5.5):** the Pass-3/Pass-4 frames below were later reconciled into the **00–09 foundation band**. The §5.5 map is the current source of truth (Pass-3: 10→03, 11→04, 12→05, 13→02, 14→01; Pass-4: 15→06, 16→07). Node IDs are unchanged.
+
+Captured the **recently shipped shared layout shells and the `VirtualizedDataGrid`** as reusable foundation specs on the **`foundation`** page of `HOPE-Admin-Console`, built directly from `theme.css` tokens (1440-wide, desktop-first). Every status uses **dot + label** (never color-only); spacing follows the 8-pt rhythm; data-grid row heights match `DENSITY_ROW_HEIGHT` from `@arcaai/ui` (comfortable 48 / compact 36).
+
+| Artboard | Frame | Captures |
+|---|---|---|
+| 10 · Dashboard Shell | `58:2` | Collapsible **sidebar** (5-pillar nav, active indicator, working-tenant footer), **breadcrumb** topbar + global search + avatars, KPI stat cards, weekly consultations chart, recent-activity panel, and the **fixed `ServiceStatusBar`** (per-service health dots incl. an amber *degraded*, active sessions, processing jobs, env pill, refresh). |
+| 11 · Full-Screen Table | `59:155` | The data-dense page pattern: **fixed** toolbar (search + faceted `+ Status`/`+ Type` filters + density/View), **sticky** sortable & reorderable header, full-height **scrollable** body (13 rows — avatars, `StatusBadge`s, selected-row highlight + checkbox), and a **fixed** selection + pagination footer ("1 of 13 selected · Rows per page 20 · Page 1 of 13"). |
+| 12 · Blades | `60:490` | Master→detail **blades**: searchable master list (session cards, selected teal accent) and a detail **blade** revealed on selection (header + `Completed` status, 4 stat tiles, Summary/Transcript/Timeline tabs, SOAP note, footer `Export`/`Open record`). |
+| 13 · DataGrid — Anatomy & States | `60:745` | Full `VirtualizedDataGrid` spec: toolbar parts, **column-header states** (default / sorted asc / sorted desc + header-menu popover), **row states** (default / zebra / hover / selected / keyboard-focus), `StatusBadge` set mapped to theme tokens (`--success`…`--info`), **density** comparison (48 vs 36 px), and async **loading (skeleton) / empty / error** states. |
+| 14 · Theming — Tokens & Dark Mode | `60:886` | Configurability proof: a semantic-token legend with **light + dark** swatches & hex (`--background`…`--destructive`) beside the **same components rendered in dark theme** (stat cards, data grid, `StatusBadge`s, buttons) — demonstrating "swap token values → zero component changes." |
+
+Verification: each frame screenshotted to [`screenshots/`](./screenshots/) (`foundation-10-dashboard-shell.png` … `foundation-14-theming.png`) and visually reviewed against the design system.
+
+### 5.4 Figma build — Pass 4 — multi-tenancy, impersonation & responsive (2026-06-28)
+
+Extended the `foundation` page with the **tenant-context / impersonation patterns** and the **responsive breakpoint system** (desktop was proven in §5.1–5.3; here tablet + mobile). Built from `theme.css`; **touch targets ≥ 44px**; status is dot + label; and **impersonation uses the `--ai` indigo as a "mode" signal — never a health-status color**, so it can't be confused with degraded/warning.
+
+| Artboard | Frame | Captures |
+|---|---|---|
+| 15 · Multi-Tenancy & Impersonation | `61:985` | **Working-tenant switcher** (collapsed sidebar-footer control + expanded popover: search, **All tenants / cross-tenant** option, tenant list w/ current ✓, "Manage tenants"); super-admin **cross-tenant topbar** + the **"Acting on: «Tenant»"** scoped-mutation banner over a Create-user form; **NoTenant empty state** (`GAP-ADM-001`); the **impersonation confirm dialog** (audited, "view as" framing); and the **active impersonation banner** that sits above the topbar app-wide (indigo mode bar — avatar, "viewing as", audit chip, **Exit impersonation**). |
+| 16 · Responsive — Tablet & Mobile | `62:1082` | One shell across breakpoints. **Tablet (768):** floating **icon-rail** sidebar + tenant pill in the topbar + condensed users table (zebra rows, status pills, pagination). **Mobile (360):** (a) **app bar + card-list** — table collapses to tappable cards w/ trailing chevron, working-tenant chip, full-width search, **FAB**; (b) **modal nav drawer** — scrim + M3 rounded-trailing panel, 5-pillar nav w/ active state, **bottom working-tenant switcher**; (c) **blade drill-down** — user-detail reached from the list (back nav, profile header, detail rows, **Impersonate user** primary action). |
+
+Requirement trace: tenant isolation/switcher (X1; US 57, 61–63), impersonation (US 31, 111), NoTenant empty state + "Acting on" banner (current-state gaps 4 & 5). Responsive follows current best practices — off-canvas drawer + scrim, table→cards collapse, master/detail → drill-down, persistent tenant + impersonation context at every size.
+
+Verification: `foundation-15-multitenancy.png` and `foundation-16-responsive.png` captured to [`screenshots/`](./screenshots/) and visually reviewed against the design system.
+
+> **File-state note:** `HOPE-Admin-Console` is **unsaved**, so its document/`fileKey` rotates on reconnect; the live `foundation` page currently hosts `00 · Foundations` (`2:2`) plus the Pass-3 frames (`58:2`, `59:155`, `60:490`, `60:745`, `60:886`) and the Pass-4 frames (`61:985`, `62:1082`). The Pass-1/Pass-2 frames documented in §5.1–5.2 belong to an earlier session state and are not in the current file — re-create from those specs + screenshots if a single persisted file is needed.
+
+### 5.5 Figma build — Pass 5 — layer-taxonomy reconciliation (2026-06-28)
+
+Reconciled the `foundation` page to the layer-numbering taxonomy now mandated by [`12-design-workflow.mdc`](../../../.cursor/rules/12-design-workflow.mdc) (§4.2). All eight existing frames are **foundations**, but the page had drifted into two `00` frames and a jumbled `00 / 04 / 05 / 06 / 00 / 01 / 02 / 03` order; they were renumbered into a clean, de-duplicated **00–07** reference sequence. **This map is the source of truth** (it supersedes the 10–16 numbers in §5.3–§5.4; node IDs are unchanged):
+
+| # | Frame | Node | Prev # | Screenshot |
+|---|---|---|---|---|
+| **00** | Foundations | `2:2` | 00 | `foundations-wip.png` |
+| **01** | Theming — Tokens & Dark Mode | `60:886` | 14 | `foundation-14-theming.png` |
+| **02** | DataGrid — Anatomy & States | `60:745` | 13 | `foundation-13-datagrid-anatomy.png` |
+| **03** | Dashboard Shell | `58:2` | 10 | `foundation-10-dashboard-shell.png` |
+| **04** | Full-Screen Table | `59:155` | 11 | `foundation-11-fullscreen-table.png` |
+| **05** | Blades | `60:490` | 12 | `foundation-12-blades.png` |
+| **06** | Multi-Tenancy & Impersonation | `61:985` | 15 | `foundation-15-multitenancy.png` |
+| **07** | Responsive — Tablet & Mobile | `62:1082` | 16 | `foundation-16-responsive.png` |
+
+Ordering rationale: tokens (00) → themeability (01) → flagship component (02) → layout shells (03–05) → cross-cutting patterns (06–07). Screenshot files keep their original `foundation-1N-…` names — the frame **visuals** are unchanged, only the layer number — so they can be renamed on the next persisted save.
+
+**Gap to taxonomy (not yet drawn):** the product tiers remain to be designed —
+- **10–19** (super-admin): Dashboard, Monitoring, Logs & Audit Logs, Tenant Management, Rate Limits, Queues & Jobs, Prisma Studio
+- **20–29** (shared): Users, Roles, API Keys, Tenant configuration/settings
+- **30–49** (tenant-admin): Department, Store, Ambience-listening (Audio processing, Agents instructions, Agent Jobs, Harness)
+- **50–59** (playground): Clinical Consultation, Live Transcription, Voice profile, DNA Writing style, Summarization
+
+> **Blocker:** the file is still `unsaved-…` (its fileKey rotates on reconnect). **Save `HOPE-Admin-Console` in Figma before the product-tier build-out** so frames persist — Pass-1/Pass-2 surfaces were already lost to this.
+
+### 5.6 Remaining
+- **Persist the file** (save `HOPE-Admin-Console`) so frames stop rotating, then re-create the Pass-1/Pass-2 surfaces alongside the Pass-3/Pass-4 foundation frames in one document.
+- Surfaces not yet drawn: `01 · Components` library; `03 · Tenants` detail + create/edit + archive-confirm; Roles & Policies (+ CASL policy builder); API Keys; Departments & Prompts; Audit Log; `05 · System Health`; Settings.
+- **Lucide** icon swap (nav/toolbar/grid icons are still placeholder squares/glyphs).
+- Per-screen **dark-mode** variants (the token system + a dark component proof now exist in `14 · Theming`; extend to each surface).
+- Extend the **responsive** specs (`16 · Responsive`) — which cover the shell, full-screen table and blade patterns — to the remaining surfaces (roles/policy builder, system health, settings).
 
 ---
 
@@ -177,3 +249,6 @@ Notes / decisions:
 | 2026-06-27 | Ticket created; requirements/business/implementation review; Direction A design system + `theme.css`; Figma page plan | `README.md`, `theme.css` |
 | 2026-06-27 | Figma build Pass 1: Foundations, App Shell — Tenants, and Login built in `HOPE-Admin-Console` from tokens; screenshots captured | `HOPE-Admin-Console` (Figma), `screenshots/*` |
 | 2026-06-27 | **Dependency noted (TASK-372 D1):** [TASK-372 — Shared Component System](../TASK-372-Shared-Component-System/README.md) will migrate `@arcaai/ui/styles/globals.css` to this ticket's `theme.css` as the single token source (their build step 0). `theme.css` here remains the canonical token source; coordinate the rollout (breaking visual change for all `@arcaai/ui` consumers). | — (cross-ticket reference) |
+| 2026-06-27 | **Figma build Pass 2 — flagship component surfaces.** Added `04 · Users` (`53:308`, `VirtualizedDataGrid`), `07 · Consultation History` (`54:459`, `HistoryTimelineList`), and `08 · Live Session` (`54:560`, `LiveTranscript`) in a new column on `Page 1`, grounded in the **as-built** `apps/admin` screens ([TASK-374](../TASK-374-Admin-App-Integration/README.md)) and reconciled to the shipped **5-pillar** shell (`src/lib/nav.ts`) + simplified topbar. Screenshots captured + reviewed. Pass-1 `02 · App Shell — Tenants` sidebar flagged **stale** vs. the build (reconcile pending — §5.5). | `HOPE-Admin-Console` (Figma), `screenshots/{users-grid,history-timeline,live-session}.png` |
+| 2026-06-28 | **Figma build Pass 3 — shared layouts & DataGrid system** (on the `foundation` page). Added `10 · Dashboard Shell` (`58:2`), `11 · Full-Screen Table` (`59:155`), `12 · Blades` (`60:490`), `13 · DataGrid — Anatomy & States` (`60:745`), and `14 · Theming — Tokens & Dark Mode` (`60:886`) — capturing the shared shell (collapsible sidebar + breadcrumb + fixed `ServiceStatusBar`), the full-screen scrollable-table pattern (sticky header + fixed pagination), the master→detail blades pattern, the complete `VirtualizedDataGrid` anatomy/states/density, and a light/dark token legend + dark-theme component proof. All built from `theme.css`; status is dot+label; grid densities match `DENSITY_ROW_HEIGHT` (48/36). Screenshots captured + reviewed (§5.3). Noted the unsaved-file rotation caveat. | `HOPE-Admin-Console` (Figma), `screenshots/foundation-10…14.png`, `README.md` |
+| 2026-06-28 | **Figma build Pass 4 — multi-tenancy, impersonation & responsive** (on the `foundation` page). Added `15 · Multi-Tenancy & Impersonation` (`61:985`) — working-tenant switcher (collapsed + popover w/ cross-tenant "All tenants"), cross-tenant topbar + "Acting on: «Tenant»" scoped-mutation banner, NoTenant empty state, audited impersonation confirm dialog, and the app-wide active impersonation banner (indigo "mode" bar w/ Exit) — and `16 · Responsive — Tablet & Mobile` (`62:1082`) — tablet icon-rail + condensed table, mobile app-bar + card-list + FAB, modal nav drawer w/ bottom tenant switcher, and blade drill-down user-detail w/ Impersonate action. Built from `theme.css`; ≥44px touch targets; impersonation uses `--ai` indigo as a non-status "mode" color. Screenshots captured + reviewed (§5.4). | `HOPE-Admin-Console` (Figma), `screenshots/foundation-{15-multitenancy,16-responsive}.png`, `README.md` |

@@ -50,6 +50,12 @@ const mockS3HealthService = {
   checkHealth: vi.fn(),
 };
 
+// TASK-375 (thumbnails) — StorageController now also generates image derivatives
+// on upload; these TASK-318 cases all upload non-images, so it is never invoked.
+const mockImageThumbnailService = {
+  generateWebpThumbnail: vi.fn(),
+};
+
 const createMockBucketResponse = (
   overrides: Partial<{ id: string; tenantId: string; name: string; slug: string; createdAt: string }> = {},
 ) => ({
@@ -91,6 +97,7 @@ describe('TASK-318 W2 — StorageController tenant scoping & traversal hardening
       mockMediaService as any,
       mockTenantBucketService as any,
       mockS3HealthService as any,
+      mockImageThumbnailService as any,
     );
   });
 

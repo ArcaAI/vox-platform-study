@@ -189,6 +189,45 @@ describe('HistoryTimelineList (shell)', () => {
     expect(onMediaOpen).toHaveBeenCalledWith('img', 1);
   });
 
+  it('swaps the lightbox to the full-res zoomSrc on open and restores the thumbnail on close', () => {
+    const item: TimelineItemModel = {
+      id: 'img',
+      timestamp: '2025-01-01',
+      variant: 'image',
+      content: {
+        type: 'image',
+        images: [{ id: 'i0', src: 'https://ex.com/thumb.jpg', zoomSrc: 'https://ex.com/full.jpg', alt: 'Scan', width: 100, height: 100 }],
+      },
+      defaultExpanded: true,
+    };
+    const { container } = render(<HistoryTimelineList items={[item]} />);
+    const img = container.querySelector('img');
+    expect(img).toBeTruthy();
+    // Grid shows the thumbnail.
+    expect(img!.getAttribute('src')).toBe('https://ex.com/thumb.jpg');
+    // Opening the lightbox upgrades the (reparented) <img> to the full-res source.
+    fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+    expect(img!.getAttribute('src')).toBe('https://ex.com/full.jpg');
+    // Closing restores the grid thumbnail.
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    expect(img!.getAttribute('src')).toBe('https://ex.com/thumb.jpg');
+  });
+
+  it('falls back to src in the lightbox when no zoomSrc is provided', () => {
+    const item: TimelineItemModel = {
+      id: 'img',
+      timestamp: '2025-01-01',
+      variant: 'image',
+      content: { type: 'image', images: [{ id: 'i0', src: 'https://ex.com/only.jpg', alt: 'Scan', width: 100, height: 100 }] },
+      defaultExpanded: true,
+    };
+    const { container } = render(<HistoryTimelineList items={[item]} />);
+    const img = container.querySelector('img');
+    fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
+    // No zoomSrc → the lightbox keeps the single src (unchanged).
+    expect(img!.getAttribute('src')).toBe('https://ex.com/only.jpg');
+  });
+
   it('shows a bottom skeleton while fetching the next page', () => {
     const collection: AsyncCollection<TimelineItemModel> = {
       data: [mdItem('a', '2025-01-01', 'A')],

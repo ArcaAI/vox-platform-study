@@ -1,6 +1,19 @@
 import { ContextItemEntity, ContextItemVersionEntity, AudioRecordingEntity, SummaryMetaEntity, NamedEntityEntity } from '@arcaai/domains';
 import { ContextItemResponse, ContextItemVersionResponse, AudioRecordingResponse, SummaryMetaResponse, NamedEntityResponse } from './dto';
 
+/**
+ * TASK-375 (item 4) — storage-resolved media fields for a context-item
+ * attachment, produced by {@link ContextService} from the MediaEntity + a
+ * presigned URL and applied via {@link ContextDtoMapper.applyMediaUrl}. Kept
+ * separate from the entity→DTO mapping so the mapper stays synchronous and free
+ * of any storage concern.
+ */
+export interface ResolvedMediaUrl {
+  url: string;
+  mimeType?: string;
+  thumbnailUrl?: string;
+}
+
 export class ContextDtoMapper {
   /**
    * Map ContextItemEntity to ContextItemResponse
@@ -49,6 +62,23 @@ export class ContextDtoMapper {
       response.versions = entity.Versions.map(this.toVersionResponse);
     }
 
+    return response;
+  }
+
+  /**
+   * TASK-375 (item 4) — enrich an already-mapped {@link ContextItemResponse}
+   * with a storage-resolved media URL (+ mimeType / image thumbnail). Applied
+   * AFTER {@link toResponse} so the base entity→DTO mapping stays synchronous
+   * and storage-free. Mutates and returns the same response for convenience.
+   */
+  static applyMediaUrl(response: ContextItemResponse, resolved: ResolvedMediaUrl): ContextItemResponse {
+    response.url = resolved.url;
+    if (resolved.mimeType) {
+      response.mimeType = resolved.mimeType;
+    }
+    if (resolved.thumbnailUrl) {
+      response.thumbnailUrl = resolved.thumbnailUrl;
+    }
     return response;
   }
 

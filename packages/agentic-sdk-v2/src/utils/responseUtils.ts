@@ -49,3 +49,48 @@ export function extractPaginated<T>(raw: unknown): PaginatedResponse<T> {
 
   return { data, total, page, limit, totalPages, hasMore };
 }
+
+/**
+ * Client page result for CURSOR (keyset) pagination — the cursor sibling of the
+ * offset {@link extractPaginated}. Structurally mirrors the `@arcaai/ui`
+ * `PageResult<T>` contract (`packages/ui/src/lib/shared/pagination.ts`) so the
+ * admin grid/timeline can consume it directly, WITHOUT `@arcaai/vox` taking a
+ * dependency on `@arcaai/ui` (the two packages stay decoupled; the consuming app
+ * wires them together). Cursor mode is count-free, so `total`/`page`/`totalPages`
+ * are intentionally omitted (they remain `undefined` on the `PageResult` shape).
+ */
+export interface CursorPageResult<T> {
+  /** Mapped from the server `data` array (the `PageResult.rows` field). */
+  rows: T[];
+  /** Items per page echoed by the server. */
+  limit?: number;
+  /** Whether another page exists after this one. */
+  hasMore?: boolean;
+  /** Opaque keyset token for the next page; `null` on the last page. */
+  nextCursor?: string | null;
+}
+
+/**
+ * Normalizes a server `CursorPaginatedResponse<T>` (`{ data, nextCursor,
+ * hasMore, limit }` — TASK-373, reference endpoint `GET /admin/audit-logs/cursor`)
+ * into the client {@link CursorPageResult} (`PageResult<T>`-shaped) cursor page.
+ *
+ * The offset counterpart is {@link extractPaginated}. Defensive like its
+ * siblings: tolerates raw arrays / `items` / `results` wrappers for `rows`,
+ * derives `hasMore` from `nextCursor` when the flag is absent, and falls back to
+ * {@link DEFAULT_PAGE_SIZE} for a missing/invalid `limit`.
+ */
+export function extractCursorPaginated<T>(raw: unknown): CursorPageResult<T> {
+  const rows = extractArray<T>(raw);
+
+  if (raw == null || typeof raw !== 'object') {
+    return { rows, limit: DEFAULT_PAGE_SIZE, hasMore: false, nextCursor: null };
+  }
+
+  const obj = raw as Record<string, unknown>;
+  const limit = typeof obj.limit === 'number' && obj.limit > 0 ? obj.limit : DEFAULT_PAGE_SIZE;
+  const nextCursor = typeof obj.nextCursor === 'string' ? obj.nextCursor : null;
+  const hasMore = typeof obj.hasMore === 'boolean' ? obj.hasMore : nextCursor !== null;
+
+  return { rows, limit, hasMore, nextCursor };
+}

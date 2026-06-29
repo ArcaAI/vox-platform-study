@@ -12,6 +12,12 @@ export type ImageGallerySource = z.infer<typeof ImageGallerySourceSchema>;
 export const ImageGalleryItemSchema = z.object({
   id: z.string().min(1),
   src: z.string().url(),
+  /**
+   * Optional full-resolution source for the lightbox. When present, the lightbox
+   * swaps the (grid/thumbnail) `src` to this on open and restores it on close;
+   * when absent the lightbox keeps `src`. Additive / back-compatible.
+   */
+  zoomSrc: z.string().url().optional(),
   alt: z.string().min(1, 'Images require alt text for accessibility'),
   width: z.number().positive(),
   height: z.number().positive(),

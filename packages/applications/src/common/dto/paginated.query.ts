@@ -43,6 +43,7 @@ export class PaginatedQuery {
   })
   searchFields?: string;
 
+  @IsOptional()
   @ApiProperty({
     description: 'Filters (comma separated: name:John,phoneNumber:123456)',
     required: false,
@@ -50,6 +51,7 @@ export class PaginatedQuery {
   })
   filters?: string;
 
+  @IsOptional()
   @ApiProperty({
     description: 'Sort (comma separated: name:asc,phoneNumber:desc)',
     required: false,

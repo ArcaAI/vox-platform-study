@@ -36,7 +36,7 @@ export type { UserDepartmentAssignment, AssignUserDepartmentInput } from './useU
 
 // User management hook (TASK-032 WS-G)
 export { useUsers, type UseUsersReturn } from './useUsers';
-export type { User, CreateUserInput, UpdateUserInput } from './useUsers';
+export type { User, CreateUserInput, UpdateUserInput, UserListQuery } from './useUsers';
 
 // Role management hook (TASK-032 WS-G)
 export { useRoles, type UseRolesReturn } from './useRoles';
@@ -110,9 +110,9 @@ export type { Tenant, CreateTenantInput, UpdateTenantInput } from './useTenants'
 export { usePolicies, type UsePoliciesReturn } from './usePolicies';
 export type { Policy, CreatePolicyInput, UpdatePolicyInput } from './usePolicies';
 
-// Audit log hook (QA-003, extended TASK-328 A8)
+// Audit log hook (QA-003, extended TASK-328 A8; cursor list TASK-373 client follow-up)
 export { useAuditLog, type UseAuditLogReturn } from './useAuditLog';
-export type { AuditLogEntry, AuditLogFilterParams, AuditLogResponsibleUser } from './useAuditLog';
+export type { AuditLogEntry, AuditLogFilterParams, AuditLogCursorParams, AuditLogResponsibleUser } from './useAuditLog';
 
 // Admin consultation supervision hook (TASK-323 Phase 0 / TASK-320 A1)
 export { useAdminConsultations, type UseAdminConsultationsReturn } from './useAdminConsultations';

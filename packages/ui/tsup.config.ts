@@ -1,7 +1,11 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  // `src/index.ts` is the root barrel. `src/components/shared/index.ts` is shipped
+  // as a dedicated subpath entry so `@arcaai/ui/components/shared` (StatusBadge /
+  // StatusColorRole — intentionally kept off the root barrel) ships a matching
+  // `dist/components/shared/index.d.ts` for type-only consumers like apps/admin.
+  entry: ['src/index.ts', 'src/components/shared/index.ts'],
   format: ['cjs', 'esm'],
   dts: true,
   sourcemap: true,

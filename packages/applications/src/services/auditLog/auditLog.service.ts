@@ -1,9 +1,10 @@
-import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import {
   IAuditLogService,
   AuditLogFilters,
   FilteredAuditLogResult,
+  CursorFilteredAuditLogResult,
   AuditLogExportResult,
   ResponsibleUserMap,
 } from './IAuditLogService';
@@ -12,7 +13,19 @@ import { AuditLogRepository, AuditLogEntityMapper, CoreDatabaseService, UserRepo
 import { EventTypes, AuditAction, AuditLogEntity, ResourceType, AuditLogFactory } from '@arcaai/domains';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { BaseService, FetchResponse, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
+import {
+  BaseService,
+  FetchResponse,
+  PaginatedQuery,
+  CursorQuery,
+  withFormattedPaginatedProps,
+  withFormattedCountProps,
+  deserializeFilterString,
+  buildCursorFindAllProps,
+  toCursorPage,
+  clampCursorLimit,
+  decodeCursor,
+} from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 import { AuditLogEncryptionService } from './auditLog-encryption.service';
@@ -23,6 +36,18 @@ import { AuditLogEncryptionService } from './auditLog-encryption.service';
  * memory. Tune alongside the UI page sizes if exports start truncating.
  */
 const AUDIT_LOG_EXPORT_MAX = 10000;
+
+/**
+ * TASK-375 §8 — the audit-log resource's Prisma model name. Passed to
+ * `withFormatted{Paginated,Count}Props` so the shared deserializer coerces the
+ * stringly-typed CSV `filters` values of `AuditLog`'s boolean/number/date
+ * columns to their real types before the `where` reaches Prisma (e.g.
+ * `success` → boolean, `version` → number, `createdAt` → Date). String/enum
+ * columns (resourceType, action, eventType, …) stay strings. This is purely
+ * additive to the structured `from`/`to`/`action`/`resourceType`/`userId`
+ * filters built by `buildAuditFilterWhere`.
+ */
+const AUDIT_LOG_FILTER_MODEL = 'AuditLog';
 
 /**
  * Service for managing audit logs.
@@ -99,11 +124,11 @@ export class AuditLogService extends BaseService implements IAuditLogService {
     // Parallelize data fetch and count queries for better performance
     const [auditLogs, count] = await Promise.all([
       this.auditLogRepository.findAll({
-        ...withFormattedPaginatedProps(props),
+        ...withFormattedPaginatedProps(props, AUDIT_LOG_FILTER_MODEL),
         where: tenantScopedFindWhere,
       }),
       this.auditLogRepository.count({
-        ...withFormattedCountProps(props),
+        ...withFormattedCountProps(props, AUDIT_LOG_FILTER_MODEL),
         where: tenantScopedCountWhere,
       }),
     ]);
@@ -134,11 +159,11 @@ export class AuditLogService extends BaseService implements IAuditLogService {
 
     const [auditLogs, count] = await Promise.all([
       this.auditLogRepository.findAll({
-        ...withFormattedPaginatedProps(props),
+        ...withFormattedPaginatedProps(props, AUDIT_LOG_FILTER_MODEL),
         where: whereClause,
       }),
       this.auditLogRepository.count({
-        ...withFormattedCountProps(props),
+        ...withFormattedCountProps(props, AUDIT_LOG_FILTER_MODEL),
         where: whereClause,
       }),
     ]);
@@ -150,6 +175,57 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       result: new FetchResponse<AuditLogEntity>({ data: auditLogs, count, limit, page }),
       responsibleUsers,
     };
+  }
+
+  /**
+   * TASK-373 — cursor (keyset) page of the filtered, tenant-scoped audit list.
+   *
+   * The opt-in counterpart of {@link fetchAllFiltered}: it reuses the SAME
+   * `buildTenantWhere(buildAuditFilterWhere(...))` scope+filter builder (so
+   * tenant isolation, SUPER_ADMIN bypass, and the A8 filters behave
+   * identically), then orders by the stable `(createdAt, id)` DESC keyset and
+   * over-fetches `limit + 1` rows to derive `hasMore`/`nextCursor`. A single
+   * batch resolves the page's acting users (no N+1) — mirroring the offset path.
+   *
+   * No `count` is issued: keyset pagination is intentionally count-free (that's
+   * the scalability win for high-volume lists).
+   */
+  async fetchPageByCursor(props: CursorQuery & AuditLogFilters): Promise<CursorFilteredAuditLogResult> {
+    const cursor = props.cursor ? decodeCursor(props.cursor) : null;
+    if (props.cursor && !cursor) {
+      throw new BadRequestException('Invalid cursor');
+    }
+
+    const limit = clampCursorLimit(props.limit);
+    const whereClause = this.buildTenantWhere(this.buildAuditFilterWhere(props));
+
+    // TASK-375 §8 follow-up — apply the SAME model-aware CSV `filters` coercion
+    // as the offset path (fetchAllFiltered): the stringly-typed `field[op]:value`
+    // values (e.g. `success`→bool, `version`→number, `createdAt`→Date,
+    // `action`→enum) are coerced against the 'AuditLog' model. It is passed as
+    // the `filters` prop — SEPARATE from the keyset/tenant `where` — so
+    // Repository.findAll's `formatFindAllProps` AND-composes it with the keyset
+    // predicate, exactly as the offset path threads withFormattedPaginatedProps.
+    const filters = props.filters ? deserializeFilterString(props.filters, AUDIT_LOG_FILTER_MODEL) : undefined;
+
+    const rows = await this.auditLogRepository.findAll({
+      ...buildCursorFindAllProps(cursor, limit, { where: whereClause }),
+      filters,
+    });
+
+    const page = toCursorPage(rows, limit, (row) => this.toCursorKey(row.createdAt));
+    const responsibleUsers = await this.resolveResponsibleUsers(page.data.map((log) => log.responsibleUserId));
+
+    // OB-04 (TASK-336): reads of the audit log are never themselves audited.
+    return { page, responsibleUsers };
+  }
+
+  /**
+   * Normalise a `createdAt` value into the cursor's sort-key string. Stored as
+   * an ISO-8601 timestamp so the opaque cursor stays stable and deterministic.
+   */
+  private toCursorKey(createdAt: Date | string): string {
+    return createdAt instanceof Date ? createdAt.toISOString() : new Date(createdAt).toISOString();
   }
 
   /**
@@ -266,11 +342,11 @@ export class AuditLogService extends BaseService implements IAuditLogService {
     // Parallelize data fetch and count queries for better performance
     const [auditLogs, count] = await Promise.all([
       this.auditLogRepository.findAll({
-        ...withFormattedPaginatedProps(props),
+        ...withFormattedPaginatedProps(props, AUDIT_LOG_FILTER_MODEL),
         where: whereClause,
       }),
       this.auditLogRepository.count({
-        ...withFormattedCountProps(props),
+        ...withFormattedCountProps(props, AUDIT_LOG_FILTER_MODEL),
         where: whereClause,
       }),
     ]);
@@ -305,11 +381,11 @@ export class AuditLogService extends BaseService implements IAuditLogService {
     // Parallelize data fetch and count queries for better performance
     const [auditLogs, count] = await Promise.all([
       this.auditLogRepository.findAll({
-        ...withFormattedPaginatedProps(props),
+        ...withFormattedPaginatedProps(props, AUDIT_LOG_FILTER_MODEL),
         where: whereClause,
       }),
       this.auditLogRepository.count({
-        ...withFormattedCountProps(props),
+        ...withFormattedCountProps(props, AUDIT_LOG_FILTER_MODEL),
         where: whereClause,
       }),
     ]);

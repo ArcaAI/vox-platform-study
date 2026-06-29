@@ -197,6 +197,81 @@ describe('UserController', () => {
     });
 
     // -------------------------------------------------------------------------
+    // TASK-375 (item 3 backend) — Users list sort/filter/search via the shared
+    // PaginatedQuery. The CSV filters/sort/search already flow through the
+    // service → repository (withFormattedPaginatedProps → formatFindAllProps);
+    // the controller adds a DETERMINISTIC default sort so server-side offset
+    // paging from the admin grid is stable, mirroring AuditLogController. The
+    // query params are otherwise forwarded untouched on every scoping branch.
+    // -------------------------------------------------------------------------
+    describe('TASK-375 — sort/filter/search forwarding + default sort', () => {
+        it('fetchAll: applies the default createdAt:desc sort when none is supplied (super-admin)', async () => {
+            mockUserService.fetchAll.mockResolvedValue(fakeFetchResponse);
+
+            await controller.fetchAll({ page: 1, pageSize: 10 } as any);
+
+            expect(mockUserService.fetchAll).toHaveBeenCalledWith(
+                expect.objectContaining({ page: 1, pageSize: 10, sort: 'createdAt:desc' }),
+            );
+        });
+
+        it('fetchAll: preserves an explicit sort and forwards filters/search untouched', async () => {
+            mockUserService.fetchAll.mockResolvedValue(fakeFetchResponse);
+
+            await controller.fetchAll({
+                page: 1,
+                pageSize: 25,
+                sort: 'username:asc',
+                filters: 'resourceStatus[equals]:ENABLED',
+                search: 'john',
+            } as any);
+
+            expect(mockUserService.fetchAll).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    sort: 'username:asc',
+                    filters: 'resourceStatus[equals]:ENABLED',
+                    search: 'john',
+                }),
+            );
+        });
+
+        it('fetchByTenant: applies the default sort and forwards the tenantId + query', async () => {
+            mockUserService.fetchAllByTenantId.mockResolvedValue(fakeFetchResponse);
+
+            await controller.fetchByTenant('tenant-1', { page: 1 } as any);
+
+            expect(mockUserService.fetchAllByTenantId).toHaveBeenCalledWith(
+                expect.objectContaining({ tenantId: 'tenant-1', page: 1, sort: 'createdAt:desc' }),
+            );
+        });
+
+        it('fetchAll (non-super-admin): forwards default sort + filters to the tenant-scoped path', async () => {
+            mockUserService.fetchAllByTenantId.mockResolvedValue(fakeFetchResponse);
+            const cls = createMockCls({ id: 'u-1', tenantId: 't-OWN', roles: ['TENANT_ADMIN'] }, 't-OWN');
+            const scoped = new UserController(
+                mockUserService as any,
+                mockApiKeyService as any,
+                mockUserSettingsService as any,
+                mockUserRoleAssignmentService as any,
+                mockUserProfileService as any,
+                mockVoiceProfileService as any,
+                cls as any,
+            );
+
+            await scoped.fetchAll({ page: 1, pageSize: 10, filters: 'isServiceAccount[equals]:false' } as any);
+
+            expect(mockUserService.fetchAllByTenantId).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    tenantId: 't-OWN',
+                    sort: 'createdAt:desc',
+                    filters: 'isServiceAccount[equals]:false',
+                }),
+            );
+            expect(mockUserService.fetchAll).not.toHaveBeenCalled();
+        });
+    });
+
+    // -------------------------------------------------------------------------
     // TASK-326 X2 — GET /admin/users tenant scoping (Critical defect).
     // Pre-fix `fetchAll` applied NO tenant scope, so a TENANT_ADMIN with
     // `manage:User` could enumerate users platform-wide. Non-super-admins must

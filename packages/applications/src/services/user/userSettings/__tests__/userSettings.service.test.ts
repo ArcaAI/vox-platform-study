@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { NotImplementedException } from '@nestjs/common';
+import { NotImplementedException, BadRequestException } from '@nestjs/common';
 import { UserSettingsService } from '../userSettings.service';
 import { SysEventType, ValueType, ResourceStatusType } from '@arcaai/domains';
 
@@ -31,6 +31,7 @@ const mockUserSettingsRepository = {
     findById: vi.fn(),
     findFirst: vi.fn(),
     findAll: vi.fn(),
+    findByUserKeyNamespace: vi.fn(),
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -512,6 +513,68 @@ describe('UserSettingsService', () => {
             });
 
             expect(result.id).toBe('setting-123');
+        });
+    });
+
+    // TASK-375 (item 1 backend) — the admin path
+    // (UserController.updateUserSetting → upsertByUserKeyNamespace) previously
+    // bypassed the `ui.data-grid` guard that lived only in the self-service
+    // controller. The SERVICE now validates the round-trip itself, so EVERY
+    // entry point enforces the JSON + byte-cap contract. The open registry is
+    // preserved: other namespaces are not validated.
+    describe('upsertByUserKeyNamespace — ui.data-grid validation (TASK-375 D8)', () => {
+        const NAMESPACE = 'ui.data-grid';
+
+        it('rejects a non-JSON ui.data-grid value with BadRequestException (never touches the repo)', async () => {
+            await expect(
+                service.upsertByUserKeyNamespace('user-1', NAMESPACE, 'tenants-table', {
+                    value: 'not-json{'
+                } as any)
+            ).rejects.toBeInstanceOf(BadRequestException);
+
+            expect(mockUserSettingsRepository.findByUserKeyNamespace).not.toHaveBeenCalled();
+            expect(mockUserSettingsRepository.create).not.toHaveBeenCalled();
+            expect(mockUserSettingsRepository.update).not.toHaveBeenCalled();
+        });
+
+        it('rejects an oversized ui.data-grid value with BadRequestException', async () => {
+            const huge = JSON.stringify({ blob: 'x'.repeat(20_000) });
+
+            await expect(
+                service.upsertByUserKeyNamespace('user-1', NAMESPACE, 'tenants-table', {
+                    value: huge
+                } as any)
+            ).rejects.toBeInstanceOf(BadRequestException);
+
+            expect(mockUserSettingsRepository.create).not.toHaveBeenCalled();
+        });
+
+        it('accepts a valid JSON layout and creates the setting', async () => {
+            const layout = JSON.stringify({ columnOrder: ['a', 'b'], density: 'compact' });
+            mockUserSettingsRepository.findByUserKeyNamespace.mockResolvedValue(null);
+            const created = createMockUserSettingsEntity({ id: 'grid-setting', namespace: NAMESPACE, value: layout });
+            mockUserSettingsRepository.create.mockResolvedValue(created);
+
+            const result = await service.upsertByUserKeyNamespace('user-1', NAMESPACE, 'tenants-table', {
+                value: layout
+            } as any);
+
+            expect(result.id).toBe('grid-setting');
+            expect(mockUserSettingsRepository.create).toHaveBeenCalledTimes(1);
+        });
+
+        it('does NOT validate non-ui.data-grid namespaces (open registry preserved)', async () => {
+            mockUserSettingsRepository.findByUserKeyNamespace.mockResolvedValue(null);
+            const created = createMockUserSettingsEntity({ id: 'sdk-setting', namespace: 'arcaai-sdk' });
+            mockUserSettingsRepository.create.mockResolvedValue(created);
+
+            // A value that WOULD fail ui.data-grid validation must still upsert here.
+            const result = await service.upsertByUserKeyNamespace('user-1', 'arcaai-sdk', 'whatever', {
+                value: 'not-json{'
+            } as any);
+
+            expect(result.id).toBe('sdk-setting');
+            expect(mockUserSettingsRepository.create).toHaveBeenCalledTimes(1);
         });
     });
 

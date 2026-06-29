@@ -18,9 +18,13 @@ describe('QA-003: RBAC Constants Enhancements', () => {
       expect(AUDIT_LOG_ENDPOINTS.EXPORT).toBe('/admin/audit-logs/export');
     });
 
+    it('should have CURSOR endpoint (TASK-373)', () => {
+      expect(AUDIT_LOG_ENDPOINTS.CURSOR).toBe('/admin/audit-logs/cursor');
+    });
+
     it('should expose exactly the expected endpoint keys (guard)', () => {
       expect(Object.keys(AUDIT_LOG_ENDPOINTS).sort()).toEqual(
-        ['BY_RESOURCE', 'BY_USER', 'EXPORT', 'GET', 'LIST'].sort(),
+        ['BY_RESOURCE', 'BY_USER', 'CURSOR', 'EXPORT', 'GET', 'LIST'].sort(),
       );
     });
 

@@ -1013,4 +1013,37 @@ describe('ContextDtoMapper', () => {
             expect(result.fieldChanges).toEqual({ summary: { old: 'old', new: 'new' } });
         });
     });
+
+    // TASK-375 (item 4) — applyMediaUrl enriches an already-mapped response with
+    // a storage-resolved (presigned) URL. Image attachments also get a thumbnail
+    // (currently the image URL itself); non-images do not.
+    describe('applyMediaUrl (TASK-375)', () => {
+        const baseResponse = () => ({ id: 'ci-1', mediaId: 'media-1' } as any);
+
+        it('sets url + mimeType + thumbnailUrl and returns the same (mutated) object', () => {
+            const response = baseResponse();
+
+            const result = ContextDtoMapper.applyMediaUrl(response, {
+                url: 'https://signed.example/img.png',
+                mimeType: 'image/png',
+                thumbnailUrl: 'https://signed.example/img.png',
+            });
+
+            expect(result).toBe(response);
+            expect(result.url).toBe('https://signed.example/img.png');
+            expect(result.mimeType).toBe('image/png');
+            expect(result.thumbnailUrl).toBe('https://signed.example/img.png');
+        });
+
+        it('sets url + mimeType but leaves thumbnailUrl undefined for a non-image', () => {
+            const result = ContextDtoMapper.applyMediaUrl(baseResponse(), {
+                url: 'https://signed.example/report.pdf',
+                mimeType: 'application/pdf',
+            });
+
+            expect(result.url).toBe('https://signed.example/report.pdf');
+            expect(result.mimeType).toBe('application/pdf');
+            expect(result.thumbnailUrl).toBeUndefined();
+        });
+    });
 });

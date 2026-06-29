@@ -48,6 +48,17 @@ import { ApiEndpoint, CanManage } from '../../decorators';
 import { UpdateUserStatusRequest, BulkDeleteUsersRequest, BulkDeleteUsersResponse, BulkDeleteUserFailure } from './dto';
 import { VoiceProfileResponse } from '../voice-profile/dto/voice-profile.response';
 
+/**
+ * TASK-375 (item 3 backend) — default ordering for the admin Users list.
+ *
+ * The CSV `filters`/`sort`/`search` from the shared `PaginatedQuery` already
+ * flow through `UserService` → `Repository.findAll`, but with NO `sort` the
+ * underlying offset query has an undefined row order, so server-side paging
+ * from the admin grid is non-deterministic. Default to newest-first (mirrors
+ * `AuditLogController`); any client-supplied `sort` takes precedence.
+ */
+const DEFAULT_USERS_SORT = 'createdAt:desc';
+
 @ApiBearerAuth()
 @ApiTags('admin-users')
 @Controller('admin/users')
@@ -94,12 +105,15 @@ export class UserController {
     // their effective CLS tenant; SUPER_ADMIN keeps the cross-tenant read.
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
+    // TASK-375 — apply the deterministic default sort once, before any scoping
+    // branch, so every path pages stably.
+    const params = this.withDefaultSort(queryParams);
     if (!isSuperAdmin(user)) {
       if (!callerTenantId) {
         throw new ForbiddenException('Tenant context required to list users');
       }
       const scoped = await this.userService.fetchAllByTenantId({
-        ...queryParams,
+        ...params,
         tenantId: callerTenantId,
       });
       return UserDtoMapper.ToPaginatedResponse(scoped);
@@ -111,16 +125,26 @@ export class UserController {
     // cross-tenant listing is preserved.
     if (callerTenantId) {
       const scoped = await this.userService.fetchAllByTenantId({
-        ...queryParams,
+        ...params,
         tenantId: callerTenantId,
       });
       return UserDtoMapper.ToPaginatedResponse(scoped);
     }
 
     const result = await this.userService.fetchAll({
-      ...queryParams,
+      ...params,
     });
     return UserDtoMapper.ToPaginatedResponse(result);
+  }
+
+  /**
+   * TASK-375 — fill in {@link DEFAULT_USERS_SORT} when the caller supplies no
+   * `sort`, leaving an explicit `sort` (and all other CSV `filters`/`search`
+   * params) untouched. `||` (not `??`) also defaults an empty-string sort,
+   * which `deserializeSortString` would otherwise treat as "no order".
+   */
+  private withDefaultSort(queryParams: PaginatedQuery): PaginatedQuery {
+    return { ...queryParams, sort: queryParams.sort || DEFAULT_USERS_SORT };
   }
 
   @ApiEndpoint({
@@ -153,7 +177,7 @@ export class UserController {
     this.assertCanReadTenant(tenantId);
 
     const result = await this.userService.fetchAllByTenantId({
-      ...queryParams,
+      ...this.withDefaultSort(queryParams),
       tenantId,
     });
     return UserDtoMapper.ToPaginatedResponse(result);

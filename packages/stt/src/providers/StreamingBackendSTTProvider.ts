@@ -22,7 +22,7 @@
  * via `STTProcessor.setStreamingTransport(...)`.
  */
 
-import type { TranscriptionResult, STTStats, ProviderConfig } from '../types/index.js';
+import type { TranscriptionResult, STTStats, ProviderConfig, WordTimestamp } from '../types/index.js';
 import { BaseSTTProvider } from './BaseSTTProvider.js';
 import { float32ToInt16, prepareFloat32ForWhisper } from '../utils/audioResampler.js';
 
@@ -59,6 +59,13 @@ export interface StreamingTranscriptPayload {
   speakerConfidence?: number;
   inference?: number;
   seq?: number;
+  /**
+   * Word-level timestamps from the backend transcript (TASK-372 D9, Option B).
+   * Mirrors `WsTranscriptResult.wordTimestamps` from `@arcaai/vox`; carried
+   * through to {@link TranscriptionResult.words} so the SDK store can expose
+   * word timings to consumers.
+   */
+  wordTimestamps?: WordTimestamp[];
 }
 
 /**
@@ -254,6 +261,11 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     }
     if (payload.speakerConfidence !== undefined) {
       result.confidence = payload.speakerConfidence;
+    }
+    // TASK-372 D9 (Option B) — preserve word-level timings so they survive into
+    // the SDK store (`audio.transcriptSegments[].words`) instead of being dropped.
+    if (payload.wordTimestamps && payload.wordTimestamps.length > 0) {
+      result.words = payload.wordTimestamps;
     }
     return result;
   }

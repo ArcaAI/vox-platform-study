@@ -9,8 +9,10 @@
 import { useState, useCallback } from 'react';
 import { useApiOperation } from './useApiOperation';
 import { AUDIT_LOG_ENDPOINTS } from '../core/constants';
-import { extractArray, extractPaginated } from '../utils/responseUtils';
+import { extractArray, extractPaginated, extractCursorPaginated } from '../utils/responseUtils';
+import type { CursorPageResult } from '../utils/responseUtils';
 import { appendFilters, appendPagination } from '../utils/urlUtils';
+import { DEFAULT_PAGE_SIZE } from '../types/common';
 import type { PaginationParams } from '../types/common';
 
 export interface AuditLogResponsibleUser {
@@ -55,6 +57,26 @@ export interface AuditLogFilterParams extends PaginationParams {
   userId?: string;
 }
 
+/**
+ * TASK-373 client follow-up — cursor (keyset) audit-log query, the cursor
+ * sibling of {@link AuditLogFilterParams}. Mirrors the server `CursorQuery`
+ * (opaque `cursor` token + `limit`) and carries the SAME A8 filters the offset
+ * `list()` supports (`from`/`to`/`action`/`resourceType`/`userId`), pushed to
+ * the repository `where` clause. There is no offset `page`/`sort` — keyset
+ * order is fixed to `(createdAt, id)` DESC server-side.
+ */
+export interface AuditLogCursorParams {
+  /** Opaque cursor token from the previous page's `nextCursor`; omit/`null` on the first page. */
+  cursor?: string | null;
+  /** Items per page; defaults to {@link DEFAULT_PAGE_SIZE} when omitted (server clamps to 1–100). */
+  limit?: number;
+  from?: string;
+  to?: string;
+  action?: string;
+  resourceType?: string;
+  userId?: string;
+}
+
 export interface UseAuditLogReturn {
   entries: AuditLogEntry[];
   /**
@@ -67,6 +89,15 @@ export interface UseAuditLogReturn {
   isLoading: boolean;
   error: Error | null;
   list: (params?: AuditLogFilterParams) => Promise<AuditLogEntry[]>;
+  /**
+   * TASK-373 client follow-up — cursor (keyset) sibling of {@link list}. Calls
+   * `GET /admin/audit-logs/cursor` and returns the server
+   * `CursorPaginatedResponse` normalized via `extractCursorPaginated` into the
+   * client `PageResult`-shaped cursor page (`{ rows, nextCursor, hasMore, limit }`).
+   * Unlike {@link list} it does NOT touch the offset `entries`/`count` state —
+   * cursor consumers accumulate rows across pages themselves.
+   */
+  listByCursor: (query?: AuditLogCursorParams) => Promise<CursorPageResult<AuditLogEntry>>;
   getById: (id: string) => Promise<AuditLogEntry>;
   exportCsv: (filters?: AuditLogFilterParams) => Promise<string>;
   byResource: (resourceType: string, resourceId: string) => Promise<AuditLogEntry[]>;
@@ -81,6 +112,24 @@ function toFilterQuery(params?: AuditLogFilterParams): Record<string, string | u
     action: params?.action,
     resourceType: params?.resourceType,
     userId: params?.userId,
+  };
+}
+
+/**
+ * Build the cursor query record (cursor + limit + the same A8 filters). The
+ * `cursor` is omitted on the first page (`null`/`undefined`); `limit` always
+ * emitted (defaulting to {@link DEFAULT_PAGE_SIZE}). Fed to the same
+ * `appendFilters` helper the offset path uses for its filters.
+ */
+function toCursorFilterQuery(query?: AuditLogCursorParams): Record<string, string | undefined> {
+  return {
+    cursor: query?.cursor ?? undefined,
+    limit: String(query?.limit ?? DEFAULT_PAGE_SIZE),
+    from: query?.from,
+    to: query?.to,
+    action: query?.action,
+    resourceType: query?.resourceType,
+    userId: query?.userId,
   };
 }
 
@@ -105,6 +154,18 @@ export function useAuditLog(): UseAuditLogReturn {
         setEntries(data);
         setCount(total);
         return data;
+      }),
+    [execute],
+  );
+
+  const listByCursor = useCallback(
+    (query?: AuditLogCursorParams) =>
+      execute<CursorPageResult<AuditLogEntry>>('listByCursor', async (client) => {
+        // Keyset sibling of `list()`: same `appendFilters` builder, but against
+        // the cursor endpoint with a `cursor`/`limit` contract (no `page`).
+        const url = appendFilters(AUDIT_LOG_ENDPOINTS.CURSOR, toCursorFilterQuery(query));
+        const raw = await client.get(url);
+        return extractCursorPaginated<AuditLogEntry>(raw);
       }),
     [execute],
   );
@@ -141,5 +202,5 @@ export function useAuditLog(): UseAuditLogReturn {
     [execute],
   );
 
-  return { entries, count, isLoading, error, list, getById, exportCsv, byResource, byUser };
+  return { entries, count, isLoading, error, list, listByCursor, getById, exportCsv, byResource, byUser };
 }

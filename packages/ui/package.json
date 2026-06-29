@@ -15,6 +15,11 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
     },
+    "./components/shared": {
+      "types": "./dist/components/shared/index.d.ts",
+      "import": "./dist/components/shared/index.mjs",
+      "require": "./dist/components/shared/index.js"
+    },
     "./hooks/use-mobile": "./src/hooks/use-mobile.ts",
     "./*": "./src/*.tsx"
   },

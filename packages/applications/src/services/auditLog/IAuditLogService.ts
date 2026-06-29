@@ -1,5 +1,5 @@
 import { EntityId, AuditLogEntity, AuditAction, ResourceType } from '@arcaai/domains';
-import { FetchResponse, PaginatedQuery } from '../../common';
+import { FetchResponse, PaginatedQuery, CursorQuery, CursorPage } from '../../common';
 import { ResponsibleUserResponse } from './dto';
 
 /**
@@ -24,6 +24,12 @@ export type ResponsibleUserMap = Record<string, ResponsibleUserResponse>;
 /** TASK-328 A8 — a filtered page plus its resolved acting users. */
 export interface FilteredAuditLogResult {
   result: FetchResponse<AuditLogEntity>;
+  responsibleUsers: ResponsibleUserMap;
+}
+
+/** TASK-373 — a cursor (keyset) page plus its resolved acting users. */
+export interface CursorFilteredAuditLogResult {
+  page: CursorPage<AuditLogEntity>;
   responsibleUsers: ResponsibleUserMap;
 }
 
@@ -67,6 +73,20 @@ export interface IAuditLogService {
    * @returns The page plus a `responsibleUserId` → label map.
    */
   fetchAllFiltered(props: PaginatedQuery & AuditLogFilters): Promise<FilteredAuditLogResult>;
+
+  /**
+   * TASK-373 — fetch a cursor (keyset) page of audit logs and resolve the
+   * acting user for each row. The opt-in cursor counterpart of
+   * {@link fetchAllFiltered}: same filters + tenant scoping (CLS tenant,
+   * SUPER_ADMIN bypass), but ordered by the stable `(createdAt, id)` DESC
+   * keyset and paginated by an opaque cursor instead of page/limit.
+   *
+   * @param props - Cursor (`cursor`/`limit`) + audit filters.
+   * @returns The keyset page (`data`/`nextCursor`/`hasMore`) plus a
+   *   `responsibleUserId` → label map.
+   * @throws BadRequestException when `cursor` is present but malformed.
+   */
+  fetchPageByCursor(props: CursorQuery & AuditLogFilters): Promise<CursorFilteredAuditLogResult>;
 
   /**
    * TASK-328 A8 — load the ENTIRE filtered, tenant-scoped result set (capped)

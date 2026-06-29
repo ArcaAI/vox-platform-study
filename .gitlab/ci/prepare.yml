@@ -92,6 +92,14 @@ prepare-test-db:
     - echo "── Seeding test data..."
     - pnpm --filter @arcaai/database seed
 
+    # TASK-376 — fold the additive media fixture into the test-DB seed so the
+    # media E2E (consultation 90000000-…-376) has data after a CI seed. The
+    # script is idempotent (upsert-by-id) and STORAGE-BEST-EFFORT: CI runs no
+    # MinIO service, so it seeds DB rows only and logs a warning rather than
+    # failing. (DB errors still surface — only object-storage absence is guarded.)
+    - echo "── Seeding TASK-376 media fixture (DB rows; MinIO objects best-effort)..."
+    - pnpm exec tsx packages/applications/scripts/task-376-media-seed.ts
+
     - echo "══ Test database ready ══"
   rules:
     - if: $SKIP_TESTS == "true"

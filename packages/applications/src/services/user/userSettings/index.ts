@@ -2,5 +2,6 @@
 export * from './dto';
 export * from './IUserSettingsService';
 export * from './userSettings.dto.mapper';
+export * from './userSettings.namespaces';
 export * from './userSettings.service.module';
 export * from './userSettings.service';

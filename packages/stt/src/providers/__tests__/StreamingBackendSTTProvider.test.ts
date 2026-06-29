@@ -222,6 +222,64 @@ describe('StreamingBackendSTTProvider — TASK-298 D-4', () => {
       expect(result.speakerId).toBe('speaker-1');
     });
 
+    // TASK-372 D9 (Option B) — word-level timestamps must survive
+    // normalizeTranscript so the SDK store can expose them to consumers.
+    it('carries word-level timestamps through normalizeTranscript into result.words', () => {
+      const cb = vi.fn();
+      provider.onTranscription(cb);
+
+      const words = [
+        { word: 'hello', start: 0.0, end: 0.5, confidence: 0.98 },
+        { word: 'world', start: 0.5, end: 1.2, confidence: 0.91 },
+      ];
+      wsClient.__emitTranscript({
+        type: 'transcript',
+        text: 'hello world',
+        startTime: 0,
+        endTime: 1.2,
+        isFinal: true,
+        wordTimestamps: words,
+      });
+
+      expect(cb).toHaveBeenCalledTimes(1);
+      const result = cb.mock.calls[0]![0];
+      expect(result.words).toEqual(words);
+    });
+
+    it('leaves result.words undefined when the payload has no wordTimestamps (back-compat)', () => {
+      const cb = vi.fn();
+      provider.onTranscription(cb);
+
+      wsClient.__emitTranscript({
+        type: 'transcript',
+        text: 'no words here',
+        startTime: 0,
+        endTime: 0.4,
+        isFinal: true,
+      });
+
+      expect(cb).toHaveBeenCalledTimes(1);
+      const result = cb.mock.calls[0]![0];
+      expect(result.words).toBeUndefined();
+    });
+
+    it('ignores an empty wordTimestamps array (no empty words field)', () => {
+      const cb = vi.fn();
+      provider.onTranscription(cb);
+
+      wsClient.__emitTranscript({
+        type: 'transcript',
+        text: 'empty words',
+        startTime: 0,
+        endTime: 0.4,
+        isFinal: true,
+        wordTimestamps: [],
+      });
+
+      const result = cb.mock.calls[0]![0];
+      expect(result.words).toBeUndefined();
+    });
+
     it('forwards WS errors to the error callback', () => {
       const errCb = vi.fn();
       provider.onError(errCb);

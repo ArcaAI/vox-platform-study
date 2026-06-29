@@ -661,6 +661,9 @@ export const ADMIN_USER_PROFILE_ENDPOINTS = {
  */
 export const AUDIT_LOG_ENDPOINTS = {
   LIST: '/admin/audit-logs',
+  // TASK-373 — cursor (keyset) list; like EXPORT it is a STATIC segment declared
+  // on the API BEFORE the `/:id` param route so `cursor` is not parsed as an id.
+  CURSOR: '/admin/audit-logs/cursor',
   // TASK-328 A8 — server-side CSV export; declared on the API BEFORE `/:id`.
   EXPORT: '/admin/audit-logs/export',
   GET: (id: string) => `/admin/audit-logs/${encodeURIComponent(id)}`,
