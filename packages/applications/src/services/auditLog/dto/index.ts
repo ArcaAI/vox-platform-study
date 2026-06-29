@@ -2,3 +2,5 @@
 export * from './auditLog.response';
 export * from './paginatedAuditLog.response';
 export * from './auditLogQuery.query';
+export * from './cursorPaginatedAuditLog.response';
+export * from './auditLogCursor.query';

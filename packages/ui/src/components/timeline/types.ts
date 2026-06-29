@@ -36,7 +36,14 @@ export interface TimelineTranscriptSegment {
 
 export interface TimelineImage {
   id: string;
+  /** Grid (and lightbox-fallback) source — typically a thumbnail. */
   src: string;
+  /**
+   * Optional full-resolution source for the zoom lightbox. When present, the
+   * lightbox swaps to this on open (and restores `src` on close); when absent
+   * the lightbox falls back to `src`. Additive / back-compatible.
+   */
+  zoomSrc?: string;
   alt: string;
   width: number;
   height: number;

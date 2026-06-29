@@ -127,6 +127,24 @@ describe('B-2: TranscriptSegment type', () => {
         expect(segment.confidence).toBe(0.95);
         expect(segment.language).toBe('en');
     });
+
+    // TASK-372 D9 (Option B) — word-level timestamps are carried through the
+    // store so consumers can read word timings from `audio.transcriptSegments`.
+    it('should support an optional word-level `words` field', () => {
+        const segment: TranscriptSegment = {
+            text: 'Hello world',
+            startTime: 0,
+            endTime: 1.2,
+            isFinal: true,
+            words: [
+                { word: 'Hello', start: 0.0, end: 0.5, confidence: 0.98 },
+                { word: 'world', start: 0.5, end: 1.2 }, // confidence optional
+            ],
+        };
+        expect(segment.words).toHaveLength(2);
+        expect(segment.words?.[0]).toEqual({ word: 'Hello', start: 0.0, end: 0.5, confidence: 0.98 });
+        expect(segment.words?.[1]?.confidence).toBeUndefined();
+    });
 });
 
 // =============================================================================
@@ -167,6 +185,23 @@ describe('B-2: UseArcaAudio exposes transcriptSegments and language', () => {
         currentMockStore = { ...mockStoreDefaults, transcriptSegments: [], audioLanguage: 'en' };
         const { result } = renderHook(() => useArca());
         expect(result.current.audio.language).toBe('en');
+    });
+
+    // TASK-372 D9 (Option B) — words on stored segments must reach consumers.
+    it('should expose word-level timestamps on exposed segments', () => {
+        const words = [
+            { word: 'Hello', start: 0.0, end: 0.5, confidence: 0.98 },
+            { word: 'world', start: 0.5, end: 1.2, confidence: 0.9 },
+        ];
+        currentMockStore = {
+            ...mockStoreDefaults,
+            transcriptSegments: [
+                { text: 'Hello world', startTime: 0, endTime: 1.2, isFinal: true, words },
+            ],
+            audioLanguage: 'en',
+        };
+        const { result } = renderHook(() => useArca());
+        expect(result.current.audio.transcriptSegments[0]?.words).toEqual(words);
     });
 });
 

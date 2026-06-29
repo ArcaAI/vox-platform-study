@@ -23,6 +23,18 @@ import { CreateOAuthUserRequest, CreateUserRequest, UpdateUserRequest } from './
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 
+/**
+ * TASK-375 §8 — the Users resource's Prisma model name. Passed to
+ * `withFormatted{Paginated,Count}Props` so the shared deserializer coerces
+ * EVERY boolean/number/date column of `User` from its stringly-typed CSV
+ * `filters` value to the column's real type before the `where` reaches Prisma
+ * (e.g. `isServiceAccount` → boolean, `version` → number, `createdAt` /
+ * `lastLoginAt` → Date). Supersedes the per-column boolean opt-in
+ * (DEFECT-F1's `['isServiceAccount']` allow-list); String/enum columns stay strings.
+ * Passed to BOTH the data and count builders so they stay in lock-step.
+ */
+const USER_FILTER_MODEL = 'User';
+
 // TODO: Implement this
 
 @Injectable()
@@ -162,9 +174,9 @@ export class UserService extends BaseService implements IUserService {
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<UserEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { limit, page, search } = props;
-    const users = await this.userRepository.findAll(withFormattedPaginatedProps(props));
+    const users = await this.userRepository.findAll(withFormattedPaginatedProps(props, USER_FILTER_MODEL));
 
-    const count = await this.userRepository.count(withFormattedCountProps(props));
+    const count = await this.userRepository.count(withFormattedCountProps(props, USER_FILTER_MODEL));
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: {
@@ -189,12 +201,12 @@ export class UserService extends BaseService implements IUserService {
     } as Record<string, unknown>;
 
     const users = await this.userRepository.findAll({
-      ...withFormattedPaginatedProps(props),
+      ...withFormattedPaginatedProps(props, USER_FILTER_MODEL),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       where: tenantWhere as any,
     });
     const count = await this.userRepository.count({
-      ...withFormattedCountProps(props),
+      ...withFormattedCountProps(props, USER_FILTER_MODEL),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       where: tenantWhere as any,
     });
@@ -217,13 +229,13 @@ export class UserService extends BaseService implements IUserService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { userId, limit, page, search } = props;
     const users = await this.userRepository.findAll({
-      ...withFormattedPaginatedProps(props),
+      ...withFormattedPaginatedProps(props, USER_FILTER_MODEL),
       where: {
         createdBy: userId,
       },
     });
     const count = await this.userRepository.count({
-      ...withFormattedCountProps(props),
+      ...withFormattedCountProps(props, USER_FILTER_MODEL),
       where: {
         createdBy: userId,
       },

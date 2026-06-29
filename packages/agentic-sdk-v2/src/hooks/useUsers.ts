@@ -54,13 +54,34 @@ export interface SearchUsersOptions {
   limit?: number;
 }
 
+/**
+ * TASK-375 client follow-up — full list query for {@link UseUsersReturn.listPaginated}.
+ * Extends the page/limit {@link PaginationParams} with the backend `PaginatedQuery`
+ * server-side params, mirroring `AuditLogFilterParams` and the `@arcaai/ui`
+ * `toPaginatedQuery` CSV contract:
+ *
+ * - `search` — free-text search term.
+ * - `filters` — comma-separated `field:value` pairs (e.g. `resourceStatus:ENABLED,isServiceAccount:false`).
+ * - `sort` — comma-separated `field:asc|desc` rules (e.g. `username:asc,createdAt:desc`).
+ * - `searchFields` — comma-separated fields the `search` term applies to.
+ *
+ * Every field is optional, so callers passing only `page`/`limit` (or nothing)
+ * are fully back-compatible.
+ */
+export interface UserListQuery extends PaginationParams {
+  search?: string;
+  filters?: string;
+  sort?: string;
+  searchFields?: string;
+}
+
 export interface UseUsersReturn {
   users: User[];
   currentUser: User | null;
   isLoading: boolean;
   error: Error | null;
   list: (pagination?: PaginationParams) => Promise<User[]>;
-  listPaginated: (pagination?: PaginationParams) => Promise<PaginatedResponse<User>>;
+  listPaginated: (query?: UserListQuery) => Promise<PaginatedResponse<User>>;
   search: (query: string, options?: SearchUsersOptions) => Promise<User[]>;
   get: (id: string) => Promise<User>;
   getByExternalId: (externalId: string) => Promise<User>;
@@ -70,6 +91,16 @@ export interface UseUsersReturn {
   enable: (id: string) => Promise<User>;
   disable: (id: string) => Promise<User>;
   assignDepartments: (userId: string, input: AssignDepartmentsInput) => Promise<User>;
+}
+
+/** Extract the backend `PaginatedQuery` server-side params (skip page/limit). */
+function toListFilterQuery(query?: UserListQuery): Record<string, string | undefined> {
+  return {
+    search: query?.search,
+    sort: query?.sort,
+    filters: query?.filters,
+    searchFields: query?.searchFields,
+  };
 }
 
 export function useUsers(): UseUsersReturn {
@@ -90,9 +121,13 @@ export function useUsers(): UseUsersReturn {
   );
 
   const listPaginated = useCallback(
-    (pagination?: PaginationParams) =>
+    (query?: UserListQuery) =>
       execute<PaginatedResponse<User>>('listPaginated', async (client) => {
-        const raw = await client.get(appendPagination(USER_ENDPOINTS.LIST, pagination));
+        // Forward the full backend `PaginatedQuery` (CSV filters + sort + search),
+        // built like the offset audit-log query: filters first, then page/limit.
+        const pagination = query && (query.page !== undefined || query.limit !== undefined) ? { page: query.page, limit: query.limit } : undefined;
+        const url = appendPagination(appendFilters(USER_ENDPOINTS.LIST, toListFilterQuery(query)), pagination);
+        const raw = await client.get(url);
         const result = extractPaginated<User>(raw);
         setUsers(result.data);
         return result;

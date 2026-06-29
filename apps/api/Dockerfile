@@ -16,6 +16,13 @@ WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY apps/api/package.json ./apps/api/
+# pnpm resolves the FULL workspace graph before pruning dev deps, so every
+# workspace package referenced (even transitively / dev-only) must have its
+# package.json present or `pnpm install` aborts with ERR_PNPM_WORKSPACE_PKG_NOT_FOUND.
+# @arcaai/types = runtime dep of @arcaai/applications; eslint-plugin-arcaai-internal
+# = dev dep of api + config-eslint. Without these, NOTHING installs (incl. sharp).
+COPY packages/types/package.json ./packages/types/
+COPY packages/eslint-plugin-arcaai-internal/package.json ./packages/eslint-plugin-arcaai-internal/
 COPY packages/applications/package.json ./packages/applications/
 COPY packages/database/package.json ./packages/database/
 COPY packages/domains/package.json ./packages/domains/
@@ -95,6 +102,11 @@ WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
+# Same workspace-graph completeness requirement as the dependencies stage —
+# these must be present for `pnpm install --prod` (which installs sharp + its
+# platform-native optional dep, e.g. @img/sharp-linux-x64) to resolve.
+COPY packages/types/package.json ./packages/types/
+COPY packages/eslint-plugin-arcaai-internal/package.json ./packages/eslint-plugin-arcaai-internal/
 COPY packages/applications/package.json ./packages/applications/
 COPY packages/database/package.json ./packages/database/
 COPY packages/domains/package.json ./packages/domains/
@@ -109,6 +121,14 @@ RUN pnpm install --prod --no-frozen-lockfile && \
     pnpm store prune && \
     rm -rf ~/.pnpm-store
 
+# Fail the build loudly if sharp's native binary can't load in THIS image,
+# instead of silently degrading thumbnailUrl to the full-size URL at runtime
+# (TASK-375 sharp follow-up). Resolved from @arcaai/applications, which owns the
+# `sharp` dep — pnpm's isolated node_modules does NOT hoist it to /app/node_modules,
+# so `node -e "require('sharp')"` from the app root would falsely fail.
+RUN cd /app/packages/applications && \
+    node -e "const s=require('sharp'); console.log('[build] sharp native binary OK — libvips', s.versions.vips)"
+
 # Copy built API application
 COPY --from=builder --chown=api:hope /app/apps/api/dist ./apps/api/dist
 
@@ -121,6 +141,10 @@ COPY --from=builder --chown=api:hope /app/packages/exceptions/dist ./packages/ex
 COPY --from=builder --chown=api:hope /app/packages/exceptions/package.json ./packages/exceptions/package.json
 COPY --from=builder --chown=api:hope /app/packages/logger/dist ./packages/logger/dist
 COPY --from=builder --chown=api:hope /app/packages/logger/package.json ./packages/logger/package.json
+# @arcaai/types ships a runtime enum (StorageProvider) that the compiled storage
+# providers require() at boot, so its dist must be present like the other deps.
+COPY --from=builder --chown=api:hope /app/packages/types/dist ./packages/types/dist
+COPY --from=builder --chown=api:hope /app/packages/types/package.json ./packages/types/package.json
 
 # Copy packages that don't build but are needed at runtime (source code packages)
 COPY --from=builder --chown=api:hope /app/packages/database ./packages/database

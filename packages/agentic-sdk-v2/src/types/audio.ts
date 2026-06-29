@@ -136,6 +136,14 @@ export interface TranscriptionResult {
   latencyMs?: number;
   /** Duration of the audio segment in seconds */
   duration?: number;
+  /**
+   * Word-level timestamps (TASK-372 D9, Option B). Carried from the streaming
+   * backend's `WsTranscriptResult.wordTimestamps` through
+   * `StreamingBackendSTTProvider.normalizeTranscript` so the store's
+   * {@link TranscriptSegment.words} can expose word timings to consumers.
+   * Optional/back-compatible — absent for engines that don't emit word timings.
+   */
+  words?: TranscriptWord[];
 }
 
 /**
@@ -208,6 +216,25 @@ export interface AudioOptions {
 // =============================================================================
 
 /**
+ * A single word-level timestamp within a transcript segment (TASK-372 D9).
+ *
+ * Originates from stt-v2 `SegmentResult.word_timestamps` →
+ * `WsTranscriptResult.wordTimestamps` and is carried through the SDK store so
+ * consumers can render word timings / click-to-seek directly from
+ * `audio.transcriptSegments` (rather than only from the raw socket).
+ */
+export interface TranscriptWord {
+  /** The word text */
+  word: string;
+  /** Start time in seconds from session start */
+  start: number;
+  /** End time in seconds from session start */
+  end: number;
+  /** Confidence score (0-1). Absent for engines (e.g. Whisper) that don't score words. */
+  confidence?: number;
+}
+
+/**
  * A single segment of structured transcript data with timing and diarization.
  */
 export interface TranscriptSegment {
@@ -218,6 +245,11 @@ export interface TranscriptSegment {
   speakerLabel?: string;
   confidence?: number;
   language?: string;
+  /**
+   * Word-level timestamps (TASK-372 D9, Option B), when the backend provides
+   * them. Optional/back-compatible — existing consumers are unaffected.
+   */
+  words?: TranscriptWord[];
 }
 
 /**

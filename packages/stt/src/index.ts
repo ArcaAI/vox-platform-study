@@ -85,6 +85,7 @@ export {
 
   // Transcription
   type TranscriptionTimestamp,
+  type WordTimestamp, // TASK-372 D9 — word-level timestamps carried through TranscriptionResult.words
   type TranscriptionResult,
 
   // Statistics

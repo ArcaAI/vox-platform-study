@@ -38,7 +38,11 @@ export {
   useAdminTranscriptionJobs,
   useApiKeys,
   useArca,
+  // TASK-374 §5.3.2 follow-up — surface the focused domain hooks (siblings of
+  // useArcaSession/useArcaSummary) so consumers can use them without the useArca() aggregate.
+  useArcaAudio,
   useArcaConfig,
+  useArcaContext,
   useArcaSession,
   // TASK-299 D-13 — surface the dedicated summary hook from the core entry.
   useArcaSummary,
@@ -77,6 +81,7 @@ export type {
   ApiKey,
   ApiKeyUsage,
   ApiKeyWithRawKey,
+  AuditLogCursorParams,
   AuditLogEntry,
   AuditLogFilterParams,
   AuditLogResponsibleUser,
@@ -143,6 +148,8 @@ export type {
   UseTenantStorageConfigReturn,
   UseUserDepartmentsReturn,
   UserDepartmentAssignment,
+  // TASK-375 client follow-up — full list query forwarded by useUsers().listPaginated.
+  UserListQuery,
   AssignUserDepartmentInput,
   UseUserSettingsReturn,
   UseUsersReturn,
@@ -239,6 +246,9 @@ export type {
   STTPluginState,
   TranscriptionResult,
   TranscriptionSegment,
+  // WS-B store segment + TASK-372 D9 word-level timestamps it now carries
+  TranscriptSegment,
+  TranscriptWord,
   VADEvent,
   VADEventType,
 } from './types';
@@ -468,6 +478,8 @@ export {
   computePromptDiff,
   computeSummaryDiff,
   createUnifiedPatch,
+  // TASK-373 client follow-up — cursor (keyset) response normalizer (offset sibling: extractPaginated).
+  extractCursorPaginated,
   extractPromptVariables,
   formatDate,
   formatDateTime,
@@ -498,6 +510,10 @@ export {
   buildTranscriptHighlights,
   confidencePercent,
 } from './utils';
+
+// TASK-373 client follow-up — cursor page result type (PageResult<T>-shaped),
+// returned by `extractCursorPaginated`.
+export type { CursorPageResult } from './utils';
 
 // =============================================================================
 // Core Classes (Advanced Usage)

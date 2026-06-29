@@ -6,3 +6,5 @@ export * from './providers';
 export * from './IBlobStorageService';
 export * from './blob-storage.service';
 export * from './blob-storage.module';
+// TASK-375 (thumbnails) — real downscaled image derivatives + by-convention key.
+export * from './image-thumbnail.service';

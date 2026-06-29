@@ -119,6 +119,8 @@ export type {
   TranscriptionSegment,
   // WS-B: Structured transcript and start options
   TranscriptSegment,
+  // TASK-372 D9 — word-level timestamps carried through the store
+  TranscriptWord,
   VADEvent,
   VADEventType,
 } from './audio';

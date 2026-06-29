@@ -5,7 +5,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { extractArray } from '../responseUtils';
+import { extractArray, extractCursorPaginated } from '../responseUtils';
+import { DEFAULT_PAGE_SIZE } from '../../types/common';
 
 describe('extractArray', () => {
     it('should return the array when response is already an array', () => {
@@ -95,5 +96,80 @@ describe('extractArray', () => {
     it('should handle RBAC-style wrapper with total and pageSize', () => {
         const rbac = { data: [{ id: 'r-1', name: 'Admin' }], total: 1, page: 1, pageSize: 10 };
         expect(extractArray(rbac)).toEqual(rbac.data);
+    });
+});
+
+// TASK-373 client follow-up — cursor (keyset) normalizer. Maps the server
+// `CursorPaginatedResponse<T>` (`{ data, nextCursor, hasMore, limit }`, from
+// `GET /admin/audit-logs/cursor`) into the client `PageResult<T>` cursor shape
+// (`@arcaai/ui` `lib/shared/pagination.ts`): `{ rows, nextCursor, hasMore, limit }`.
+describe('extractCursorPaginated', () => {
+    it('maps a server cursor response { data, nextCursor, hasMore, limit } to the client page shape', () => {
+        const raw = {
+            data: [{ id: 'a-1' }, { id: 'a-2' }],
+            nextCursor: 'eyJrIjoiMjAyNiIsImlkIjoiYS0yIn0',
+            hasMore: true,
+            limit: 2,
+        };
+        expect(extractCursorPaginated(raw)).toEqual({
+            rows: [{ id: 'a-1' }, { id: 'a-2' }],
+            nextCursor: 'eyJrIjoiMjAyNiIsImlkIjoiYS0yIn0',
+            hasMore: true,
+            limit: 2,
+        });
+    });
+
+    it('reads rows from the server `data` key (not `rows`)', () => {
+        const raw = { data: [{ id: 'x' }], nextCursor: null, hasMore: false, limit: 10 };
+        const result = extractCursorPaginated<{ id: string }>(raw);
+        expect(result.rows).toEqual([{ id: 'x' }]);
+    });
+
+    it('preserves nextCursor=null and hasMore=false on the last page', () => {
+        const raw = { data: [{ id: 'last' }], nextCursor: null, hasMore: false, limit: 10 };
+        const result = extractCursorPaginated(raw);
+        expect(result.nextCursor).toBeNull();
+        expect(result.hasMore).toBe(false);
+    });
+
+    it('derives hasMore from nextCursor when hasMore is absent', () => {
+        const raw = { data: [{ id: '1' }], nextCursor: 'cursor-token', limit: 10 };
+        const result = extractCursorPaginated(raw);
+        expect(result.hasMore).toBe(true);
+        expect(result.nextCursor).toBe('cursor-token');
+    });
+
+    it('defaults hasMore to false when neither hasMore nor nextCursor are present', () => {
+        const raw = { data: [{ id: '1' }], limit: 10 };
+        const result = extractCursorPaginated(raw);
+        expect(result.hasMore).toBe(false);
+        expect(result.nextCursor).toBeNull();
+    });
+
+    it('falls back to DEFAULT_PAGE_SIZE when limit is missing or invalid', () => {
+        expect(extractCursorPaginated({ data: [] }).limit).toBe(DEFAULT_PAGE_SIZE);
+        expect(extractCursorPaginated({ data: [], limit: 0 }).limit).toBe(DEFAULT_PAGE_SIZE);
+        expect(extractCursorPaginated({ data: [], limit: -5 }).limit).toBe(DEFAULT_PAGE_SIZE);
+    });
+
+    it('handles an empty data array', () => {
+        expect(extractCursorPaginated({ data: [], nextCursor: null, hasMore: false, limit: 20 })).toEqual({
+            rows: [],
+            nextCursor: null,
+            hasMore: false,
+            limit: 20,
+        });
+    });
+
+    it('returns safe defaults for null/undefined/non-object input', () => {
+        const expected = { rows: [], nextCursor: null, hasMore: false, limit: DEFAULT_PAGE_SIZE };
+        expect(extractCursorPaginated(null)).toEqual(expected);
+        expect(extractCursorPaginated(undefined)).toEqual(expected);
+        expect(extractCursorPaginated('nope' as unknown)).toEqual(expected);
+    });
+
+    it('coerces a non-string nextCursor to null', () => {
+        const raw = { data: [{ id: '1' }], nextCursor: 123 as unknown, hasMore: true, limit: 10 };
+        expect(extractCursorPaginated(raw).nextCursor).toBeNull();
     });
 });

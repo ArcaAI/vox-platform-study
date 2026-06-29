@@ -27,6 +27,10 @@ function createMockAuditLogService() {
         fetchById: vi.fn(),
         fetchAllByResource: vi.fn(),
         fetchAllCreatedByUser: vi.fn().mockResolvedValue({ data: [], count: 0, limit: 10, page: 1 }),
+        // TASK-373 — cursor (keyset) page envelope.
+        fetchPageByCursor: vi
+            .fn()
+            .mockResolvedValue({ page: { data: [], nextCursor: null, hasMore: false, limit: 10 }, responsibleUsers: {} }),
     };
 }
 
@@ -252,6 +256,61 @@ describe('TASK-328 A8 — AuditLogController.exportCsv', () => {
 
         expect(toCsv).toHaveBeenCalledWith([], {}, { includeTenant: false });
         toCsv.mockRestore();
+    });
+});
+
+// -----------------------------------------------------------------------------
+// TASK-373 — AuditLogController.fetchByCursor (cursor/keyset pagination).
+// The cursor route mirrors the same tenant guard as fetchAll, forwards the
+// cursor/limit/filters to the service, and maps the keyset page into the
+// nextCursor/hasMore response envelope. The offset routes are untouched.
+// -----------------------------------------------------------------------------
+describe('TASK-373 — AuditLogController.fetchByCursor (cursor pagination)', () => {
+    let svc: ReturnType<typeof createMockAuditLogService>;
+
+    beforeEach(() => {
+        svc = createMockAuditLogService();
+    });
+
+    it('rejects a non-super-admin with NO tenant context (ForbiddenException, service untouched)', async () => {
+        const cls = createMockCls({ id: 'u-1', tenantId: null, roles: ['DOCTOR'] }, null);
+        const controller = new AuditLogController(svc as never, cls as never);
+
+        await expect(controller.fetchByCursor({} as never)).rejects.toBeInstanceOf(ForbiddenException);
+        expect(svc.fetchPageByCursor).not.toHaveBeenCalled();
+    });
+
+    it('forwards cursor/limit and the A8 filters to fetchPageByCursor', async () => {
+        const cls = createMockCls({ id: 'u-1', tenantId: 't-OWN', roles: ['DOCTOR'] }, 't-OWN');
+        const controller = new AuditLogController(svc as never, cls as never);
+
+        await controller.fetchByCursor({ cursor: 'abc', limit: 25, action: 'UPDATE', userId: 'user-xyz' } as never);
+
+        expect(svc.fetchPageByCursor).toHaveBeenCalledWith(
+            expect.objectContaining({ cursor: 'abc', limit: 25, action: 'UPDATE', userId: 'user-xyz' }),
+        );
+    });
+
+    it('maps the keyset page into the cursor response envelope (nextCursor/hasMore)', async () => {
+        const cls = createMockCls({ id: 'u-1', tenantId: 't-OWN', roles: ['DOCTOR'] }, 't-OWN');
+        const controller = new AuditLogController(svc as never, cls as never);
+        svc.fetchPageByCursor.mockResolvedValue({
+            page: { data: [], nextCursor: 'next-token', hasMore: true, limit: 10 },
+            responsibleUsers: {},
+        });
+
+        const res = await controller.fetchByCursor({ limit: 10 } as never);
+
+        expect(res).toEqual(expect.objectContaining({ nextCursor: 'next-token', hasMore: true, limit: 10, data: [] }));
+    });
+
+    it('allows a SUPER_ADMIN with no tenant context (operator cross-tenant audit reads)', async () => {
+        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+        const controller = new AuditLogController(svc as never, cls as never);
+
+        await controller.fetchByCursor({} as never);
+
+        expect(svc.fetchPageByCursor).toHaveBeenCalledTimes(1);
     });
 });
 

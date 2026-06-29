@@ -141,6 +141,9 @@ export function useArcaAudio() {
                 speakerLabel: result.speakerId,
                 confidence: result.confidence,
                 language: result.language,
+                // TASK-372 D9 (Option B) — carry word-level timings through to
+                // the store so consumers read words from audio.transcriptSegments.
+                words: result.words,
               };
               store.addTranscriptSegment(segment);
 

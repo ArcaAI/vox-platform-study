@@ -1730,6 +1730,146 @@ describe('ContextService', () => {
         });
     });
 
+    // -------------------------------------------------------------------------
+    // TASK-375 (item 4) — storage-resolved media URLs. getContextItems feeds the
+    // admin timeline (GET /consultations/:id/context); ATTACHMENT items must
+    // carry an accessible (presigned) `url` (+ mimeType / image thumbnail) so the
+    // UI can render image/pdf/audio/file attachments. Resolution is OPTIONAL:
+    // when the MediaRepository + IBlobStorageService are not wired (legacy
+    // direct construction) the items simply degrade to no `url`.
+    // -------------------------------------------------------------------------
+    describe('getContextItems — storage-resolved media URLs (TASK-375)', () => {
+        const mockMediaRepository = { findAll: vi.fn() };
+        const mockBlobStorage = { presignGet: vi.fn(), listObjects: vi.fn() };
+
+        const buildServiceWithStorage = () =>
+            new ContextService(
+                mockContextItemRepository as any,
+                mockContextItemVersionRepository as any,
+                mockAudioRecordingRepository as any,
+                mockSummaryMetaRepository as any,
+                mockNamedEntityRepository as any,
+                mockConsultationRepository as any,
+                mockEventEmitter as any,
+                mockClsService as any,
+                undefined, // secretsService
+                mockMediaRepository as any,
+                mockBlobStorage as any,
+            );
+
+        it('presigns the real downscaled thumbnail derivative when it exists', async () => {
+            const item = createMockContextItemEntity({ id: 'ci-1', type: ContextItemType.ATTACHMENT });
+            (item as any).mediaId = 'media-1';
+            mockContextItemRepository.findByConsultation.mockResolvedValue([item]);
+            mockMediaRepository.findAll.mockResolvedValue([
+                { id: 'media-1', uri: 's3://bucket-x/path/img.png', mimeType: 'image/png' },
+            ]);
+            // A `.thumb.webp` derivative was generated on upload → it shows up in
+            // the existence listing keyed by the derived key.
+            mockBlobStorage.listObjects.mockResolvedValue({
+                objects: [{ key: 'path/img.png.thumb.webp', size: 1234 }],
+                isTruncated: false,
+            });
+            mockBlobStorage.presignGet.mockImplementation(({ key }: { key: string }) =>
+                Promise.resolve(key.endsWith('.thumb.webp') ? 'https://signed.example/thumb.webp' : 'https://signed.example/img.png'),
+            );
+
+            const result = await buildServiceWithStorage().getContextItems('consultation-1');
+
+            expect(mockMediaRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({ where: { id: { in: ['media-1'] } } }),
+            );
+            // Existence is checked against the deterministic derived key.
+            expect(mockBlobStorage.listObjects).toHaveBeenCalledWith(
+                expect.objectContaining({ bucket: 'bucket-x', prefix: 'path/img.png.thumb.webp' }),
+            );
+            expect(mockBlobStorage.presignGet).toHaveBeenCalledWith(
+                expect.objectContaining({ bucket: 'bucket-x', key: 'path/img.png' }),
+            );
+            expect(mockBlobStorage.presignGet).toHaveBeenCalledWith(
+                expect.objectContaining({ bucket: 'bucket-x', key: 'path/img.png.thumb.webp' }),
+            );
+            expect(result[0].url).toBe('https://signed.example/img.png');
+            expect(result[0].mimeType).toBe('image/png');
+            // The thumbnail is the SEPARATE derivative URL, not the full-size image.
+            expect(result[0].thumbnailUrl).toBe('https://signed.example/thumb.webp');
+        });
+
+        it('falls back to the full-size url as the thumbnail for an image with NO derivative', async () => {
+            const item = createMockContextItemEntity({ id: 'ci-1b', type: ContextItemType.ATTACHMENT });
+            (item as any).mediaId = 'media-1b';
+            mockContextItemRepository.findByConsultation.mockResolvedValue([item]);
+            mockMediaRepository.findAll.mockResolvedValue([
+                { id: 'media-1b', uri: 's3://bucket-x/legacy/old.png', mimeType: 'image/png' },
+            ]);
+            // No derivative exists (pre-existing / older media) → empty listing.
+            mockBlobStorage.listObjects.mockResolvedValue({ objects: [], isTruncated: false });
+            mockBlobStorage.presignGet.mockResolvedValue('https://signed.example/old.png');
+
+            const result = await buildServiceWithStorage().getContextItems('consultation-1');
+
+            // Only the full-size object is presigned; the (absent) derivative is not.
+            expect(mockBlobStorage.presignGet).toHaveBeenCalledTimes(1);
+            expect(result[0].url).toBe('https://signed.example/old.png');
+            expect(result[0].mimeType).toBe('image/png');
+            expect(result[0].thumbnailUrl).toBe('https://signed.example/old.png');
+        });
+
+        it('resolves url + mimeType but NO thumbnail for a non-image (pdf) attachment', async () => {
+            const item = createMockContextItemEntity({ id: 'ci-2', type: ContextItemType.ATTACHMENT });
+            (item as any).mediaId = 'media-2';
+            mockContextItemRepository.findByConsultation.mockResolvedValue([item]);
+            mockMediaRepository.findAll.mockResolvedValue([
+                { id: 'media-2', uri: 's3://bucket-x/path/report.pdf', mimeType: 'application/pdf' },
+            ]);
+            mockBlobStorage.presignGet.mockResolvedValue('https://signed.example/report.pdf');
+
+            const result = await buildServiceWithStorage().getContextItems('consultation-1');
+
+            expect(result[0].url).toBe('https://signed.example/report.pdf');
+            expect(result[0].mimeType).toBe('application/pdf');
+            expect(result[0].thumbnailUrl).toBeUndefined();
+        });
+
+        it('does not touch storage for items without a mediaId', async () => {
+            const item = createMockContextItemEntity({ id: 'ci-3', type: ContextItemType.TRANSCRIPT });
+            mockContextItemRepository.findByConsultation.mockResolvedValue([item]);
+
+            const result = await buildServiceWithStorage().getContextItems('consultation-1');
+
+            expect(mockMediaRepository.findAll).not.toHaveBeenCalled();
+            expect(mockBlobStorage.presignGet).not.toHaveBeenCalled();
+            expect(result[0].url).toBeUndefined();
+        });
+
+        it('degrades to no url when a media uri is not an s3:// url (and never throws)', async () => {
+            const item = createMockContextItemEntity({ id: 'ci-4', type: ContextItemType.ATTACHMENT });
+            (item as any).mediaId = 'media-4';
+            mockContextItemRepository.findByConsultation.mockResolvedValue([item]);
+            mockMediaRepository.findAll.mockResolvedValue([
+                { id: 'media-4', uri: 'https://legacy.example/file.png', mimeType: 'image/png' },
+            ]);
+
+            const result = await buildServiceWithStorage().getContextItems('consultation-1');
+
+            expect(mockBlobStorage.presignGet).not.toHaveBeenCalled();
+            expect(result[0].url).toBeUndefined();
+            expect(result[0].mediaId).toBe('media-4');
+        });
+
+        it('degrades to no url when storage deps are absent (legacy construction)', async () => {
+            const item = createMockContextItemEntity({ id: 'ci-5', type: ContextItemType.ATTACHMENT });
+            (item as any).mediaId = 'media-5';
+            mockContextItemRepository.findByConsultation.mockResolvedValue([item]);
+
+            // `service` is the 8-arg instance from the outer beforeEach (no storage wired)
+            const result = await service.getContextItems('consultation-1');
+
+            expect(result[0].url).toBeUndefined();
+            expect(result[0].mediaId).toBe('media-5');
+        });
+    });
+
     // ============================================
     // getSharedContext Tests
     // ============================================

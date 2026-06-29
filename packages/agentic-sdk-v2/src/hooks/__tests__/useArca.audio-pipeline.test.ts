@@ -344,6 +344,35 @@ describe('useArca — audio actions', () => {
         });
       });
 
+      // TASK-372 D9 (Option B) — word timings emitted on the wire must reach
+      // the store via the final-segment bridge so consumers can read words
+      // from `audio.transcriptSegments`.
+      it('should carry word-level timestamps into the stored transcript segment', () => {
+        mockFetch.mockResolvedValueOnce(createMockResponse(createMockContextItem()));
+
+        const words = [
+          { word: 'patient', start: 0.0, end: 0.4, confidence: 0.97 },
+          { word: 'coughing', start: 0.4, end: 1.0, confidence: 0.88 },
+        ];
+        onTranscriptionCb({ text: 'patient coughing', isFinal: true, segments: [], words });
+
+        expect(mockStoreData.addTranscriptSegment).toHaveBeenCalledTimes(1);
+        const segment = mockStoreData.addTranscriptSegment.mock.calls[0][0];
+        expect(segment.text).toBe('patient coughing');
+        expect(segment.isFinal).toBe(true);
+        expect(segment.words).toEqual(words);
+      });
+
+      it('should store a final segment with undefined words when none are provided (back-compat)', () => {
+        mockFetch.mockResolvedValueOnce(createMockResponse(createMockContextItem()));
+
+        onTranscriptionCb({ text: 'no word data', isFinal: true, segments: [] });
+
+        expect(mockStoreData.addTranscriptSegment).toHaveBeenCalledTimes(1);
+        const segment = mockStoreData.addTranscriptSegment.mock.calls[0][0];
+        expect(segment.words).toBeUndefined();
+      });
+
       it('should auto-trigger NER on final transcription when knowledge pipeline is ready', async () => {
         const mockEntities = [{ id: 'e1', entityType: 'DISEASE', text: 'flu' }];
         const mockPipeline = {

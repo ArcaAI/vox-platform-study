@@ -151,3 +151,135 @@ the original migration in
 [`02-vault-migration.md`](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/02-vault-migration.md),
 and the HA deployment notes at
 [`research/deployments/deploy-vm430-432-vault.md`](../../research/deployments/deploy-vm430-432-vault.md).
+
+---
+
+## API production image — `sharp` native binary (TASK-375 thumbnail follow-up)
+
+The NestJS API image (`apps/api/Dockerfile`) bundles **`sharp`** (a native
+module). `@arcaai/applications`' `ImageThumbnailService` uses it to generate WebP
+thumbnails on image upload (TASK-375 §4.2 / 2026-06-27 Change History). If
+`sharp`'s platform-native binary can't load at runtime, thumbnail generation
+throws and the read path **silently degrades `thumbnailUrl` to the full-size
+image URL** — no crash, just oversized payloads. This section documents how the
+image guarantees the binary is present, and how to verify it.
+
+### Base image is already glibc — no Alpine/musl or system `vips` needed
+
+The runtime stage is **`node:22-slim`** (Debian Bookworm, **glibc 2.36**), not
+Alpine/musl. `sharp@0.35.2`'s default prebuilt (`@img/sharp-linux-{x64,arm64}`
+plus the bundled `@img/sharp-libvips-*`) loads out of the box — libvips 8.18.3
+ships *inside* the prebuilt, so no `apt-get install … libvips`/build deps are
+required. Verified directly on both deploy arches:
+
+```bash
+# arm64 (Apple-Silicon host) and linux/amd64 (add: --platform linux/amd64)
+docker run --rm node:22-slim bash -lc \
+  'npm i -g pnpm >/dev/null && cd /tmp && pnpm init >/dev/null && \
+   pnpm add sharp@0.35.2 >/dev/null && \
+   node -e "console.log(require(\"sharp\").versions.vips)"'
+# → 8.18.3   (both arm64 and amd64; @img/sharp-linux-x64 / -arm64 + libvips installed)
+```
+
+Because the base is glibc, the task's Alpine/musl branch (install
+`@img/sharp-linuxmusl-*` + `vips`, or switch to a glibc base) does **not** apply
+— the image is already on the reliable glibc path.
+
+### What actually blocked `sharp`, and the fix
+
+`sharp` itself is fine; the blocker was that the API image **could not build at
+all**. The hand-maintained per-package `COPY …/package.json` lists (in both the
+`dependencies` and `production` stages) were missing two workspace packages added
+after the list was last curated: `@arcaai/types` (a **runtime** dep of
+`@arcaai/applications`, TASK-318) and `eslint-plugin-arcaai-internal` (a dev dep
+of `@arcaai/api` + `@arcaai/config-eslint`, TASK-307). pnpm resolves the **whole**
+workspace graph before pruning dev deps, so a single missing `package.json`
+aborts the install:
+
+```text
+ERR_PNPM_WORKSPACE_PKG_NOT_FOUND  In apps/api: "eslint-plugin-arcaai-internal@workspace:*"
+  is in the dependencies but no package named "eslint-plugin-arcaai-internal" is present
+```
+
+With the install dead, **no** prod dependency installed — `sharp` included. The
+surgical, Docker-only fix:
+
+1. **`dependencies` + `production` stages** — add the two missing
+   `COPY packages/{types,eslint-plugin-arcaai-internal}/package.json` lines so
+   `pnpm install [--prod]` resolves and installs `sharp` + its platform optional
+   dep (`@img/sharp-linux-x64` on amd64, `…-arm64` on arm64).
+2. **`production` runtime copy** — add `packages/types/dist` (its
+   `StorageProvider` **enum** is `require()`d at boot by the compiled storage
+   providers), mirroring the existing domains/exceptions/logger copies.
+3. **Build-time smoke gate** — right after `pnpm install --prod`, the build now
+   runs `require('sharp')` from `@arcaai/applications`. If the native binary
+   can't load, **the build fails loudly** instead of the app silently degrading
+   at runtime. (It must resolve from the applications package: pnpm's isolated
+   `node_modules` does **not** hoist `sharp` to `/app/node_modules`, so a naïve
+   `node -e "require('sharp')"` from the image root would falsely fail.)
+
+### Build + verify
+
+```bash
+# Build for the DEPLOYMENT target arch. On an Apple-Silicon host targeting x86-64
+# servers, add --platform linux/amd64 so the amd64 sharp binary is installed:
+docker build --target production -f apps/api/Dockerfile -t hope-api:local .
+#   → build log shows the gate passing:  [build] sharp native binary OK — libvips 8.18.3
+
+# Smoke-test the native binary inside the built image. Resolve from the package
+# that OWNS sharp — the image root does not (pnpm isolated layout). cwd MUST be set
+# BEFORE node launches: a `node -e` script's require() paths are fixed from cwd at
+# startup, so an in-script `process.chdir('/app/packages/applications')` runs too
+# late and fails with `Cannot find module 'sharp'`. Use `sh -c "cd … && node -e …"`
+# (this also matches the build-time gate, which uses `cd … && node -e`):
+docker run --rm hope-api:local \
+  sh -c "cd /app/packages/applications && \
+         node -e \"const s=require('sharp'); console.log('sharp ok', s.versions)\""
+#   → sharp ok { … vips: '8.18.3', … sharp: '0.35.2' }
+#   (require.resolve('sharp') → /app/node_modules/.pnpm/sharp@0.35.2/node_modules/sharp/dist/index.cjs)
+```
+
+**Verified (real output, this change):** a faithful reproduction of the
+production stage's exact commands (`pnpm install --prod` → `pnpm store prune` →
+`rm -rf ~/.pnpm-store`) on `node:22-slim` with the two COPY lines added installs
+`@img/sharp-linux-arm64@0.35.2` and, **after pruning**, `require('sharp')` from
+the applications dir prints `SHARP_OK … "vips":"8.18.3" … "sharp":"0.35.2"`. So
+the binary survives the prune and ships in the final image.
+
+> ✅ **RESOLVED (2026-06-27) — clean-build `@arcaai/types` TS2307.** The full image
+> now builds end-to-end (real `--target production` build, native arm64).
+>
+> **Root cause (not a build-graph ordering bug).** `@arcaai/types`' build is
+> `tsc --build` (incremental). Turbo *does* already schedule `@arcaai/types#build`
+> ahead of `@arcaai/applications#build` — verified with
+> `turbo run build --filter=@arcaai/applications... --dry-run` — so `^build`
+> ordering was never the problem. The build **no-op'd**: `tsconfig.tsbuildinfo` is
+> gitignored (`*.tsbuildinfo`) but was **not** `.dockerignore`d, so
+> `COPY packages/ ./packages/` carried a *host-stale* buildinfo into the container
+> while `**/dist` was excluded. `tsc --build` trusts that buildinfo, declares the
+> project "up to date", and **skips emit even though `dist` is absent** (confirmed
+> empirically). With `packages/types/dist` never created, `@arcaai/applications`'
+> plain `tsc` couldn't resolve the dep → `TS2307: Cannot find module '@arcaai/types'`.
+> It only "worked locally" because developer disks already have a real
+> `packages/types/dist`.
+>
+> **Fix (build-graph / infra only — one line).** Add `**/*.tsbuildinfo` to
+> `.dockerignore`, right beside `**/dist`, classifying the incremental cache as a
+> build artifact rebuilt in-container. The stale cache can no longer leak in, so the
+> already-correctly-scheduled `@arcaai/types#build` does a clean emit. No
+> `packages/types` change; **local/dev builds are unaffected** — `.dockerignore`
+> only governs the Docker build context, never local `turbo`/`tsc`.
+>
+> **Verified (real output, this change).** `@arcaai/types:build` now executes
+> (`cache bypass, force executing` → `tsc --build`); turbo reports
+> `Tasks: 8 successful, 8 total`; **zero** `TS2307`/`error TS`; the production stage
+> `COPY … /app/packages/types/dist` succeeds; the build-time gate prints
+> `[build] sharp native binary OK — libvips 8.18.3`; and the final image ships
+> `/app/packages/types/dist/index.js` (runtime `StorageProvider` enum =
+> `MINIO`/`AWS_S3`/`AZURE_BLOB`) alongside `/app/apps/api/dist/main.js`. The in-image
+> sharp smoke (corrected `cd` form above) prints
+> `sharp ok { … vips: '8.18.3' … sharp: '0.35.2' }`.
+
+> **Cross-reference:** TASK-375 (Admin Backend Enhancements) `README.md` §7 +
+> the 2026-06-27 "Real downscaled image thumbnails" Change History entry — the
+> `sharp@^0.35.2` follow-up this image change supports.

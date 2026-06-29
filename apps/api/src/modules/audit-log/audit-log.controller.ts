@@ -5,6 +5,8 @@ import {
   AuditLogDtoMapper,
   AuditLogResponse,
   AuditLogQuery,
+  AuditLogCursorQuery,
+  CursorPaginatedAuditLogResponse,
   isSuperAdmin,
   IActiveUserContext,
 } from '@arcaai/applications';
@@ -116,6 +118,41 @@ export class AuditLogController {
 
     const { rows, responsibleUsers } = await this.auditLogService.exportFiltered(queryParams);
     return AuditLogDtoMapper.ToCsv(rows, responsibleUsers, { includeTenant });
+  }
+
+  /**
+   * TASK-373 — cursor (keyset) page of the audit-log list.
+   *
+   * Declared BEFORE the `/:id` route so `GET /admin/audit-logs/cursor` is never
+   * captured as an id lookup. The opt-in, count-free counterpart of
+   * {@link fetchAll}: same A8 filters + the same tenant guard, paginated by an
+   * opaque `cursor` and returning `nextCursor`/`hasMore`. The offset `fetchAll`
+   * route is left untouched (clients choose per-request which to use).
+   */
+  @Get('cursor')
+  @ApiOperation({
+    summary: 'Fetch audit logs (cursor pagination)',
+    description:
+      'Returns a keyset (cursor) page of audit logs ordered by (createdAt, id) DESC. ' +
+      'Pass the previous response\'s `nextCursor` to page forward; `hasMore` signals more pages. ' +
+      'Supports the same TASK-328 A8 filters (from/to/action/resourceType/userId) as the offset list.',
+  })
+  @ApiOkResponse({ type: CursorPaginatedAuditLogResponse, description: 'A cursor page of audit logs.' })
+  @ApiResponse({ status: 400, description: 'Invalid cursor' })
+  @ApiResponse({ status: 403, description: 'Tenant context required to query audit logs' })
+  @CanRead('AuditLog')
+  async fetchByCursor(@Query() queryParams: AuditLogCursorQuery): Promise<CursorPaginatedAuditLogResponse> {
+    // Mirror the fetchAll/fetchByUser guard so the cross-tenant enumeration
+    // rule is observable at the request entry point (service buildTenantWhere
+    // already enforces it). SUPER_ADMIN keeps the cross-tenant read.
+    const user = this.cls.get('user');
+    const callerTenantId = this.cls.get('tenantId');
+    if (!isSuperAdmin(user) && !callerTenantId) {
+      throw new ForbiddenException('Tenant context required to query audit logs');
+    }
+
+    const { page, responsibleUsers } = await this.auditLogService.fetchPageByCursor(queryParams);
+    return AuditLogDtoMapper.ToCursorResponse(page, responsibleUsers);
   }
 
   /**
