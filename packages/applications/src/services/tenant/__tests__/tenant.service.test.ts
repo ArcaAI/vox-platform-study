@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TenantService } from '../tenant.service';
-import { SysEventType, ResourceStatusType, ResourceType } from '@arcaai/domains';
+import { SysEventType, ResourceStatusType, ResourceType, TenantFactory, TenantPlan } from '@arcaai/domains';
 
 // Mock ClsService - represents the request context
 const mockClsService = {
@@ -103,8 +103,20 @@ const mockAiModelRepository = {
 // callback with a stub tx client so the loop executes; tests then assert
 // on tx propagation, conflict rollback, and broadcast suppression.
 const mockTxClient = { __tx: true } as const;
+// TASK-386 (#4/#5) — `getUsageStats` reads aggregates straight off the extended
+// client. Delegates default to empty/zero so suites that never call it are
+// unaffected; the getUsageStats tests override per-case.
+const mockExtendedClient = {
+    userRoleAssignment: { findMany: vi.fn().mockResolvedValue([]) },
+    media: { aggregate: vi.fn().mockResolvedValue({ _sum: { size: null } }) },
+    tenantBucket: { aggregate: vi.fn().mockResolvedValue({ _sum: { quotaBytes: null } }) },
+    audioRecording: { aggregate: vi.fn().mockResolvedValue({ _sum: { duration: null } }) },
+    summaryMeta: { count: vi.fn().mockResolvedValue(0) },
+    consultation: { count: vi.fn().mockResolvedValue(0) },
+};
 const mockDatabaseService = {
     getClient: vi.fn(),
+    client: mockExtendedClient,
     baseClient: {
         $transaction: vi.fn().mockImplementation(async (callback: (tx: typeof mockTxClient) => Promise<unknown>) => callback(mockTxClient)),
     },
@@ -397,6 +409,25 @@ describe('TenantService', () => {
             expect(result.id).toBe('new-tenant-id');
             expect(result.key).toBe('NEW_TENANT');
             expect(result.name).toBe('New Tenant');
+        });
+
+        // TASK-392 (Q4 / proposal §5) — new tenants default to TRIAL (overridable).
+        it('defaults the plan to TRIAL when the request omits it', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+
+            await service.create({ key: 'NEW_TRIAL', name: 'New Trial' });
+
+            expect(TenantFactory.CreateTenant).toHaveBeenCalledWith(expect.objectContaining({ plan: TenantPlan.TRIAL }));
+        });
+
+        it('respects an explicit plan on create (no TRIAL override)', async () => {
+            const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
+            mockTenantRepository.create.mockResolvedValue(newTenant);
+
+            await service.create({ key: 'NEW_ENT', name: 'New Ent', plan: TenantPlan.ENTERPRISE });
+
+            expect(TenantFactory.CreateTenant).toHaveBeenCalledWith(expect.objectContaining({ plan: TenantPlan.ENTERPRISE }));
         });
 
         // TASK-356 Phase 1 (D-5) — clone-per-tenant model catalog.
@@ -2451,6 +2482,64 @@ describe('TenantService', () => {
             );
             const [, payload] = updatedBroadcasts[0] as [string, { data: Array<Record<string, unknown>> }];
             expect(payload.data[0]).toMatchObject({ previousVersion: 5, newVersion: 6 });
+        });
+    });
+
+    // ============================================================
+    // TASK-386 (#4 / #5 / E5) — getUsageStats extended with storage + clinical
+    // roll-ups. Counts are read straight off the extended client, scoped by the
+    // explicit tenantId arg (mirrors the existing distinct-users query).
+    // ============================================================
+    describe('TASK-386 — getUsageStats storage + clinical roll-ups (#4/#5)', () => {
+        beforeEach(() => {
+            mockTenantRepository.findById.mockResolvedValue(createMockTenantEntity({ id: 'tenant-1' }));
+            mockDepartmentRepository.count.mockResolvedValue(2);
+            mockPromptTemplateRepository.count.mockResolvedValue(3);
+            mockAsrPipelineRepository.count.mockResolvedValue(1);
+            mockExtendedClient.userRoleAssignment.findMany.mockResolvedValue([{ userId: 'u-1' }, { userId: 'u-2' }]);
+        });
+
+        it('aggregates storage used, transcription minutes, summaries-24h and consultations', async () => {
+            mockExtendedClient.media.aggregate.mockResolvedValue({ _sum: { size: 5_000 } });
+            mockExtendedClient.audioRecording.aggregate.mockResolvedValue({ _sum: { duration: 180_000 } }); // 3 min
+            mockExtendedClient.summaryMeta.count.mockResolvedValue(7);
+            mockExtendedClient.consultation.count.mockResolvedValue(42);
+            mockExtendedClient.tenantBucket.aggregate.mockResolvedValue({ _sum: { quotaBytes: null } });
+
+            const result = await service.getUsageStats('tenant-1');
+
+            expect(result).toMatchObject({
+                totalUsers: 2,
+                totalDepartments: 2,
+                totalPromptTemplates: 3,
+                totalPipelines: 1,
+                storageUsedBytes: 5_000,
+                transcriptionMinutes: 3,
+                summaries24h: 7,
+                totalConsultations: 42,
+            });
+            // No bucket has a quota configured → null (not 0).
+            expect(result.storageQuotaBytes).toBeNull();
+        });
+
+        it('returns the summed bucket quota (BigInt→number) when configured', async () => {
+            mockExtendedClient.tenantBucket.aggregate.mockResolvedValue({ _sum: { quotaBytes: 1_073_741_824n } });
+
+            const result = await service.getUsageStats('tenant-1');
+
+            expect(result.storageQuotaBytes).toBe(1_073_741_824);
+        });
+
+        it('only counts summaries generated within the last 24h', async () => {
+            await service.getUsageStats('tenant-1');
+
+            const callArg = mockExtendedClient.summaryMeta.count.mock.calls[0][0];
+            expect(callArg.where.tenantId).toBe('tenant-1');
+            expect(callArg.where.generatedAt.gte).toBeInstanceOf(Date);
+            // The cutoff is ~24h before "now" (allow a generous window for test timing).
+            const ageMs = Date.now() - callArg.where.generatedAt.gte.getTime();
+            expect(ageMs).toBeGreaterThanOrEqual(23 * 60 * 60 * 1000);
+            expect(ageMs).toBeLessThanOrEqual(25 * 60 * 60 * 1000);
         });
     });
 });

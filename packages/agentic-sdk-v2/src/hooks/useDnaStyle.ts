@@ -10,7 +10,29 @@ import { extractArray } from '../utils/responseUtils';
 import { DNA_STYLE_ENDPOINTS } from '../core/constants';
 import { SSEClient, type SSEApiClient } from '../core/SSEClient';
 import { withIdempotencyKey } from '../utils/idempotency';
+import { appendFilters } from '../utils/urlUtils';
 import type { DnaReport, DnaStyleVersion, DnaGenerateInput, DnaUpdateInput, DnaJobStatus } from '../types';
+
+/**
+ * TASK-388 #13 — filters for the admin cross-user report list. A global admin
+ * may target a tenant via `tenantId`; a tenant admin is pinned to their CLS
+ * tenant server-side. `doctorId` narrows to one in-tenant doctor.
+ */
+export interface AdminDnaListFilters {
+  doctorId?: string;
+  tenantId?: string;
+  includeDisabled?: boolean;
+  page?: number;
+  limit?: number;
+}
+
+/** TASK-388 #13 — paginated admin report envelope (mirrors the backend shape). */
+export interface AdminDnaReportPage {
+  data: DnaReport[];
+  count: number;
+  page: number;
+  limit: number;
+}
 
 /**
  * TASK-299 D-7 — SSE callbacks for DNA report generation.
@@ -79,6 +101,19 @@ export interface UseDnaStyleReturn {
    */
   streamJobStatus: (jobId: string, callbacks: DnaJobStreamCallbacks) => () => void;
   getByDoctor: (doctorId: string) => Promise<DnaReport>;
+  // ─── TASK-388 #13 — admin cross-user (PHI-gated) reads/generate ─────
+  // These hit the `/admin/dna-writing-styles` controller (requires
+  // `manage:DnaWritingStyleReport`); the service tenant-scopes the caller and
+  // even SUPER_ADMIN cannot cross tenants. Distinct from the self-only
+  // `getByDoctor`/`getVersions` above.
+  /** Latest DNA report for another in-tenant doctor (admin). */
+  adminGetReportForDoctor: (doctorId: string) => Promise<DnaReport>;
+  /** Version history for a report, bypassing owner check (admin, tenant-scoped). */
+  adminGetVersions: (reportId: string) => Promise<DnaStyleVersion[]>;
+  /** Queue a DNA generation for another in-tenant doctor (admin). */
+  adminGenerateForDoctor: (doctorId: string, input?: DnaGenerateInput & { idempotencyKey?: string }) => Promise<{ jobId: string }>;
+  /** Paginated cross-user report list; narrow with `doctorId` (admin, tenant-scoped). */
+  adminListReports: (filters?: AdminDnaListFilters) => Promise<AdminDnaReportPage>;
 }
 
 export function useDnaStyle(): UseDnaStyleReturn {
@@ -337,6 +372,56 @@ export function useDnaStyle(): UseDnaStyleReturn {
     [execute],
   );
 
+  // ─── TASK-388 #13 — admin cross-user (PHI-gated) methods ────────────
+  const adminGetReportForDoctor = useCallback(
+    (doctorId: string): Promise<DnaReport> =>
+      execute<DnaReport>('adminGetReportForDoctor', async (client) => {
+        const data = await client.get<DnaReport>(DNA_STYLE_ENDPOINTS.ADMIN_BY_DOCTOR(doctorId));
+        setStyle(data);
+        return data;
+      }),
+    [execute],
+  );
+
+  const adminGetVersions = useCallback(
+    (reportId: string): Promise<DnaStyleVersion[]> =>
+      execute<DnaStyleVersion[]>('adminGetVersions', async (client) => {
+        const raw = await client.get(DNA_STYLE_ENDPOINTS.ADMIN_VERSIONS(reportId));
+        const items = extractArray<DnaStyleVersion>(raw);
+        setVersions(items);
+        return items;
+      }),
+    [execute],
+  );
+
+  const adminGenerateForDoctor = useCallback(
+    (doctorId: string, input?: DnaGenerateInput & { idempotencyKey?: string }): Promise<{ jobId: string }> => {
+      const { idempotencyKey, ...rest } = (input ?? {}) as Record<string, unknown> & { idempotencyKey?: string };
+      const body = withIdempotencyKey(rest as Record<string, unknown>, idempotencyKey);
+      return execute<{ jobId: string }>('adminGenerateForDoctor', (client) =>
+        client.post<{ jobId: string }>(DNA_STYLE_ENDPOINTS.GENERATE_FOR_DOCTOR(doctorId), body),
+      );
+    },
+    [execute],
+  );
+
+  const adminListReports = useCallback(
+    (filters?: AdminDnaListFilters): Promise<AdminDnaReportPage> =>
+      execute<AdminDnaReportPage>('adminListReports', async (client) => {
+        const url = filters
+          ? appendFilters(DNA_STYLE_ENDPOINTS.ADMIN_LIST, {
+              doctorId: filters.doctorId,
+              tenantId: filters.tenantId,
+              includeDisabled: filters.includeDisabled ? 'true' : undefined,
+              page: filters.page !== undefined ? String(filters.page) : undefined,
+              limit: filters.limit !== undefined ? String(filters.limit) : undefined,
+            })
+          : DNA_STYLE_ENDPOINTS.ADMIN_LIST;
+        return client.get<AdminDnaReportPage>(url);
+      }),
+    [execute],
+  );
+
   return {
     style,
     versions,
@@ -355,5 +440,9 @@ export function useDnaStyle(): UseDnaStyleReturn {
     pollJobStatus,
     streamJobStatus,
     getByDoctor,
+    adminGetReportForDoctor,
+    adminGetVersions,
+    adminGenerateForDoctor,
+    adminListReports,
   };
 }

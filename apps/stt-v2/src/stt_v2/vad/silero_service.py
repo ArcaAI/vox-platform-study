@@ -18,6 +18,7 @@ from typing import Any
 import numpy as np
 
 from ..core.config.settings import get_settings
+from ..core.metrics import track_model_inference
 from .dto import SpeechSegment, VADResult, VADSessionState
 
 logger = logging.getLogger(__name__)
@@ -122,21 +123,23 @@ class SileroVADService:
         state = np.zeros(_SILERO_STATE_SHAPE, dtype=np.float32)
         sr_array = np.array(sample_rate, dtype=np.int64)
 
-        # Collect per-frame probabilities
+        # Collect per-frame probabilities. TASK-386 — count this full-file VAD
+        # pass as one silero-vad-v5 inference (running gauge + latency).
         probs: list[float] = []
-        for offset in range(0, len(samples), frame_size):
-            chunk = samples[offset : offset + frame_size]
-            if len(chunk) < frame_size:
-                chunk = np.pad(chunk, (0, frame_size - len(chunk)))
+        with track_model_inference("silero-vad-v5"):
+            for offset in range(0, len(samples), frame_size):
+                chunk = samples[offset : offset + frame_size]
+                if len(chunk) < frame_size:
+                    chunk = np.pad(chunk, (0, frame_size - len(chunk)))
 
-            input_data = chunk.reshape(1, -1).astype(np.float32)
-            ort_out = self._session.run(
-                None,
-                {"input": input_data, "state": state, "sr": sr_array},
-            )
-            prob = float(ort_out[0][0][0])
-            state = ort_out[1]
-            probs.append(prob)
+                input_data = chunk.reshape(1, -1).astype(np.float32)
+                ort_out = self._session.run(
+                    None,
+                    {"input": input_data, "state": state, "sr": sr_array},
+                )
+                prob = float(ort_out[0][0][0])
+                state = ort_out[1]
+                probs.append(prob)
 
         # Convert probabilities → segments using threshold + timing rules
         segments = self._probs_to_segments(

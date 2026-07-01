@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException, StreamableFile } from '@nestjs/common';
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { UserController } from '../user.controller';
 
@@ -57,6 +57,23 @@ const createMockUserProfileService = () => ({
 
 const createMockVoiceProfileService = () => ({
     listByUserId: vi.fn(),
+});
+
+// TASK-381 V2 — the bulk department-reconcile dependency, injected before the
+// CLS arg so the positional construction below matches the real 8-arg constructor.
+const createMockUserDepartmentService = () => ({
+    setDepartments: vi.fn(),
+});
+
+// TASK-388 #8 — reset-password service, injected before the CLS arg (9-arg ctor).
+const createMockUserPasswordService = () => ({
+    setTemporaryPassword: vi.fn(),
+    createResetLink: vi.fn(),
+});
+
+// TASK-388 #10 — export serialization service, injected before the CLS arg (10-arg ctor).
+const createMockUserExportService = () => ({
+    build: vi.fn(),
 });
 
 const fakeUserEntity = {
@@ -130,6 +147,9 @@ describe('UserController', () => {
     let mockUserRoleAssignmentService: ReturnType<typeof createMockUserRoleAssignmentService>;
     let mockUserProfileService: ReturnType<typeof createMockUserProfileService>;
     let mockVoiceProfileService: ReturnType<typeof createMockVoiceProfileService>;
+    let mockUserDepartmentService: ReturnType<typeof createMockUserDepartmentService>;
+    let mockUserPasswordService: ReturnType<typeof createMockUserPasswordService>;
+    let mockUserExportService: ReturnType<typeof createMockUserExportService>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -139,6 +159,9 @@ describe('UserController', () => {
         mockUserRoleAssignmentService = createMockUserRoleAssignmentService();
         mockUserProfileService = createMockUserProfileService();
         mockVoiceProfileService = createMockVoiceProfileService();
+        mockUserDepartmentService = createMockUserDepartmentService();
+        mockUserPasswordService = createMockUserPasswordService();
+        mockUserExportService = createMockUserExportService();
         // Default to a SUPER_ADMIN context so the generic CRUD specs below
         // exercise the cross-tenant operator path (fetchAll). Tenant-scoping
         // specs construct their own per-case CLS mock.
@@ -150,6 +173,9 @@ describe('UserController', () => {
             mockUserRoleAssignmentService as any,
             mockUserProfileService as any,
             mockVoiceProfileService as any,
+            mockUserDepartmentService as any,
+            mockUserPasswordService as any,
+            mockUserExportService as any,
             mockCls as any,
         );
     });
@@ -171,6 +197,22 @@ describe('UserController', () => {
             const result = await controller.create({ username: 'new_user', password: 'pass123' } as any);
 
             expect(result).toBeDefined();
+            expect(result.username).toBe('john_doe');
+        });
+    });
+
+    // TASK-381 V2 — PATCH /admin/users/:id/departments bulk-reconciles a user's
+    // memberships, then returns the refreshed user (the SDK `assignDepartments`
+    // contract). SUPER_ADMIN default context bypasses the per-id scope guard.
+    describe('PATCH /admin/users/:id/departments (setDepartments — V2 bulk reconcile)', () => {
+        it('reconciles departments via the service then returns the refreshed user', async () => {
+            mockUserService.fetchById.mockResolvedValue(fakeUserEntity);
+            const body = { departmentIds: ['dept-1', 'dept-2'], primaryDepartmentId: 'dept-1' };
+
+            const result = await controller.setDepartments('user-1', body as any);
+
+            expect(mockUserDepartmentService.setDepartments).toHaveBeenCalledWith('user-1', body);
+            expect(mockUserService.fetchById).toHaveBeenCalledWith('user-1');
             expect(result.username).toBe('john_doe');
         });
     });
@@ -255,6 +297,9 @@ describe('UserController', () => {
                 mockUserRoleAssignmentService as any,
                 mockUserProfileService as any,
                 mockVoiceProfileService as any,
+                mockUserDepartmentService as any,
+                mockUserPasswordService as any,
+                mockUserExportService as any,
                 cls as any,
             );
 
@@ -286,6 +331,9 @@ describe('UserController', () => {
                 mockUserRoleAssignmentService as any,
                 mockUserProfileService as any,
                 mockVoiceProfileService as any,
+                mockUserDepartmentService as any,
+                mockUserPasswordService as any,
+                mockUserExportService as any,
                 cls as any,
             );
 
@@ -394,6 +442,9 @@ describe('UserController', () => {
                 mockUserRoleAssignmentService as any,
                 mockUserProfileService as any,
                 mockVoiceProfileService as any,
+                mockUserDepartmentService as any,
+                mockUserPasswordService as any,
+                mockUserExportService as any,
                 cls as any,
             );
 
@@ -546,6 +597,256 @@ describe('UserController', () => {
         });
     });
 
+    // ------------------------------------------------------------------------
+    // TASK-388 #8 — POST /admin/users/:id/reset-password (both flows).
+    // ------------------------------------------------------------------------
+    describe('POST /admin/users/:id/reset-password (resetPassword)', () => {
+        it('mode="temporary": sets a temporary password and returns the plaintext', async () => {
+            mockUserPasswordService.setTemporaryPassword.mockResolvedValue({ temporaryPassword: 'Temp1234' });
+
+            const result = await controller.resetPassword('user-1', { mode: 'temporary' } as any);
+
+            expect(mockUserPasswordService.setTemporaryPassword).toHaveBeenCalledWith('user-1', { temporaryPassword: undefined });
+            expect(result).toEqual({ mode: 'temporary', temporaryPassword: 'Temp1234' });
+            expect(mockUserPasswordService.createResetLink).not.toHaveBeenCalled();
+        });
+
+        it('mode="temporary": forwards an admin-supplied temporary password', async () => {
+            mockUserPasswordService.setTemporaryPassword.mockResolvedValue({ temporaryPassword: 'ChosenPass1' });
+
+            await controller.resetPassword('user-1', { mode: 'temporary', temporaryPassword: 'ChosenPass1' } as any);
+
+            expect(mockUserPasswordService.setTemporaryPassword).toHaveBeenCalledWith('user-1', { temporaryPassword: 'ChosenPass1' });
+        });
+
+        it('mode="link" (default): mints a reset link and returns the token metadata', async () => {
+            mockUserPasswordService.createResetLink.mockResolvedValue({
+                token: 'tok',
+                resetPath: '/reset-password?token=tok',
+                expiresInSeconds: 3600,
+                emailSent: true,
+            });
+
+            const result = await controller.resetPassword('user-1', {} as any);
+
+            expect(mockUserPasswordService.createResetLink).toHaveBeenCalledWith('user-1');
+            expect(result).toMatchObject({ mode: 'link', token: 'tok', emailSent: true, expiresInSeconds: 3600 });
+            expect(mockUserPasswordService.setTemporaryPassword).not.toHaveBeenCalled();
+        });
+
+        it('enforces the by-id tenant-scope guard (cross-tenant target → 404, service untouched)', async () => {
+            const cls = createMockCls({ id: 'admin-a', tenantId: 't-A', roles: ['TENANT_ADMIN'] }, 't-A');
+            mockUserRoleAssignmentService.findActiveTenantIdsForUser.mockResolvedValue(['t-B']);
+            const scoped = new UserController(
+                mockUserService as any,
+                mockApiKeyService as any,
+                mockUserSettingsService as any,
+                mockUserRoleAssignmentService as any,
+                mockUserProfileService as any,
+                mockVoiceProfileService as any,
+                mockUserDepartmentService as any,
+                mockUserPasswordService as any,
+                mockUserExportService as any,
+                cls as any,
+            );
+
+            await expect(scoped.resetPassword('victim', { mode: 'temporary' } as any)).rejects.toBeInstanceOf(NotFoundException);
+            expect(mockUserPasswordService.setTemporaryPassword).not.toHaveBeenCalled();
+        });
+    });
+
+    // ------------------------------------------------------------------------
+    // TASK-388 #9 — POST /admin/users/bulk-actions (server-side bulk actions).
+    //
+    // Replaces the client `Promise.allSettled` loop with one endpoint that
+    // returns per-item success/failure. Action set (FLAG): enable | disable |
+    // delete | assign-departments (mirrors the FE bulk bar's real client loops
+    // — disable + assign-department — plus their trivial siblings enable/delete;
+    // assign-role is deferred). Reuses the existing per-id scope guard.
+    // ------------------------------------------------------------------------
+    describe('POST /admin/users/bulk-actions (bulkActions)', () => {
+        it('action="disable": updates each id to DISABLED, returns per-item results', async () => {
+            mockUserService.update.mockResolvedValue(fakeUserEntity);
+
+            const result = await controller.bulkActions({ action: 'disable', ids: ['user-1', 'user-2'] } as any);
+
+            expect(mockUserService.update).toHaveBeenCalledTimes(2);
+            expect(mockUserService.update).toHaveBeenCalledWith('user-1', { resourceStatus: 'DISABLED' });
+            expect(mockUserService.update).toHaveBeenCalledWith('user-2', { resourceStatus: 'DISABLED' });
+            expect(result).toMatchObject({ action: 'disable', total: 2, succeeded: 2, failed: 0 });
+            expect(result.results).toEqual([
+                { id: 'user-1', success: true },
+                { id: 'user-2', success: true },
+            ]);
+        });
+
+        it('action="enable": updates each id to ENABLED', async () => {
+            mockUserService.update.mockResolvedValue(fakeUserEntity);
+
+            await controller.bulkActions({ action: 'enable', ids: ['user-1'] } as any);
+
+            expect(mockUserService.update).toHaveBeenCalledWith('user-1', { resourceStatus: 'ENABLED' });
+        });
+
+        it('action="delete": soft-deletes each id', async () => {
+            mockUserService.deleteById.mockResolvedValue(fakeUserEntity);
+
+            await controller.bulkActions({ action: 'delete', ids: ['user-1', 'user-2'] } as any);
+
+            expect(mockUserService.deleteById).toHaveBeenCalledTimes(2);
+            expect(mockUserService.deleteById).toHaveBeenCalledWith('user-1');
+        });
+
+        it('action="assign-departments": reconciles memberships per id with the shared payload', async () => {
+            mockUserDepartmentService.setDepartments.mockResolvedValue(undefined);
+
+            await controller.bulkActions({
+                action: 'assign-departments',
+                ids: ['user-1', 'user-2'],
+                departmentIds: ['dept-1', 'dept-2'],
+                primaryDepartmentId: 'dept-1',
+            } as any);
+
+            expect(mockUserDepartmentService.setDepartments).toHaveBeenCalledTimes(2);
+            expect(mockUserDepartmentService.setDepartments).toHaveBeenCalledWith('user-1', {
+                departmentIds: ['dept-1', 'dept-2'],
+                primaryDepartmentId: 'dept-1',
+            });
+        });
+
+        it('records per-item failure and KEEPS PROCESSING the rest (no early throw)', async () => {
+            mockUserService.update
+                .mockResolvedValueOnce(fakeUserEntity)
+                .mockRejectedValueOnce(new Error('row locked'))
+                .mockResolvedValueOnce(fakeUserEntity);
+
+            const result = await controller.bulkActions({ action: 'disable', ids: ['user-1', 'user-2', 'user-3'] } as any);
+
+            expect(mockUserService.update).toHaveBeenCalledTimes(3);
+            expect(result).toMatchObject({ total: 3, succeeded: 2, failed: 1 });
+            expect(result.results).toContainEqual({ id: 'user-2', success: false, error: 'row locked' });
+        });
+
+        it('returns empty aggregate when no ids provided (service untouched)', async () => {
+            const result = await controller.bulkActions({ action: 'disable', ids: [] } as any);
+
+            expect(result).toMatchObject({ action: 'disable', total: 0, succeeded: 0, failed: 0 });
+            expect(result.results).toEqual([]);
+            expect(mockUserService.update).not.toHaveBeenCalled();
+        });
+
+        it('validates EVERY id — a cross-tenant id is recorded as failed and is NOT mutated', async () => {
+            const cls = createMockCls({ id: 'admin-a', tenantId: 't-A', roles: ['TENANT_ADMIN'] }, 't-A');
+            mockUserRoleAssignmentService.findActiveTenantIdsForUser.mockImplementation((id: string) =>
+                id === 'mine' ? Promise.resolve(['t-A']) : Promise.resolve(['t-B']),
+            );
+            mockUserService.update.mockResolvedValue(fakeUserEntity);
+            const scoped = new UserController(
+                mockUserService as any,
+                mockApiKeyService as any,
+                mockUserSettingsService as any,
+                mockUserRoleAssignmentService as any,
+                mockUserProfileService as any,
+                mockVoiceProfileService as any,
+                mockUserDepartmentService as any,
+                mockUserPasswordService as any,
+                mockUserExportService as any,
+                cls as any,
+            );
+
+            const result = await scoped.bulkActions({ action: 'disable', ids: ['mine', 'theirs'] } as any);
+
+            expect(mockUserService.update).toHaveBeenCalledTimes(1);
+            expect(mockUserService.update).toHaveBeenCalledWith('mine', { resourceStatus: 'DISABLED' });
+            expect(result).toMatchObject({ succeeded: 1, failed: 1 });
+            expect(result.results).toContainEqual(expect.objectContaining({ id: 'theirs', success: false }));
+        });
+    });
+
+    // ------------------------------------------------------------------------
+    // TASK-388 #10 — GET /admin/users/export (csv/xlsx/pdf).
+    // ------------------------------------------------------------------------
+    describe('GET /admin/users/export (exportUsers)', () => {
+        const fakeFile = { buffer: Buffer.from('data'), contentType: 'text/csv; charset=utf-8', filename: 'users.csv' };
+
+        it('materialises the scoped set and delegates serialization, returning a StreamableFile', async () => {
+            mockUserService.fetchAll.mockResolvedValue(fakeFetchResponse);
+            mockUserExportService.build.mockResolvedValue(fakeFile);
+
+            const result = await controller.exportUsers({ format: 'csv' } as any);
+
+            expect(mockUserService.fetchAll).toHaveBeenCalledWith(
+                expect.objectContaining({ page: 1, limit: 10000, sort: 'createdAt:desc' }),
+            );
+            expect(mockUserExportService.build).toHaveBeenCalledWith('csv', [
+                { id: 'user-1', username: 'john_doe', email: '', type: 'User', status: 'ENABLED', departments: '' },
+            ]);
+            expect(result).toBeInstanceOf(StreamableFile);
+        });
+
+        it('defaults the format to csv when none is supplied', async () => {
+            mockUserService.fetchAll.mockResolvedValue(fakeFetchResponse);
+            mockUserExportService.build.mockResolvedValue(fakeFile);
+
+            await controller.exportUsers({} as any);
+
+            expect(mockUserExportService.build).toHaveBeenCalledWith('csv', expect.any(Array));
+        });
+
+        it('forwards format=xlsx to the export service', async () => {
+            mockUserService.fetchAll.mockResolvedValue(fakeFetchResponse);
+            mockUserExportService.build.mockResolvedValue({ ...fakeFile, filename: 'users.xlsx' });
+
+            await controller.exportUsers({ format: 'xlsx' } as any);
+
+            expect(mockUserExportService.build).toHaveBeenCalledWith('xlsx', expect.any(Array));
+        });
+
+        it('scopes a non-super-admin export to the caller tenant (never cross-tenant)', async () => {
+            mockUserService.fetchAllByTenantId.mockResolvedValue(fakeFetchResponse);
+            mockUserExportService.build.mockResolvedValue(fakeFile);
+            const cls = createMockCls({ id: 'u-1', tenantId: 't-A', roles: ['TENANT_ADMIN'] }, 't-A');
+            const scoped = new UserController(
+                mockUserService as any,
+                mockApiKeyService as any,
+                mockUserSettingsService as any,
+                mockUserRoleAssignmentService as any,
+                mockUserProfileService as any,
+                mockVoiceProfileService as any,
+                mockUserDepartmentService as any,
+                mockUserPasswordService as any,
+                mockUserExportService as any,
+                cls as any,
+            );
+
+            await scoped.exportUsers({ format: 'csv' } as any);
+
+            expect(mockUserService.fetchAllByTenantId).toHaveBeenCalledWith(
+                expect.objectContaining({ tenantId: 't-A', limit: 10000 }),
+            );
+            expect(mockUserService.fetchAll).not.toHaveBeenCalled();
+        });
+
+        it('rejects a non-super-admin with NO tenant context (ForbiddenException, nothing serialized)', async () => {
+            const cls = createMockCls({ id: 'u-1', tenantId: null, roles: ['TENANT_ADMIN'] }, null);
+            const scoped = new UserController(
+                mockUserService as any,
+                mockApiKeyService as any,
+                mockUserSettingsService as any,
+                mockUserRoleAssignmentService as any,
+                mockUserProfileService as any,
+                mockVoiceProfileService as any,
+                mockUserDepartmentService as any,
+                mockUserPasswordService as any,
+                mockUserExportService as any,
+                cls as any,
+            );
+
+            await expect(scoped.exportUsers({ format: 'csv' } as any)).rejects.toBeInstanceOf(ForbiddenException);
+            expect(mockUserExportService.build).not.toHaveBeenCalled();
+        });
+    });
+
     describe('GET /admin/users/:id/roles (fetchUserRoleAssignments)', () => {
         it('should call userRoleAssignmentService.fetchAllByUserId with userId and query params', async () => {
             mockUserRoleAssignmentService.fetchAllByUserId.mockResolvedValue(fakeUserRoleAssignmentFetchResponse);
@@ -674,6 +975,9 @@ describe('UserController', () => {
                 mockUserRoleAssignmentService as any,
                 mockUserProfileService as any,
                 mockVoiceProfileService as any,
+                mockUserDepartmentService as any,
+                mockUserPasswordService as any,
+                mockUserExportService as any,
                 cls as any,
             );
 

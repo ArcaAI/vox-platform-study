@@ -54,6 +54,72 @@ export interface SearchUsersOptions {
   limit?: number;
 }
 
+/** TASK-388 #8 — admin reset-password. */
+export type ResetPasswordMode = 'temporary' | 'link';
+
+export interface ResetPasswordInput {
+  /** `temporary` sets a temp password; `link` (default) mints an emailed reset link. */
+  mode?: ResetPasswordMode;
+  /** Explicit temporary password (mode=temporary). Generated server-side when omitted. */
+  temporaryPassword?: string;
+}
+
+export interface ResetPasswordResult {
+  mode: ResetPasswordMode;
+  /** Present for mode=temporary — convey out-of-band. */
+  temporaryPassword?: string;
+  /** Present for mode=link. */
+  token?: string;
+  resetPath?: string;
+  expiresInSeconds?: number;
+  emailSent?: boolean;
+}
+
+export interface CompletePasswordResetInput {
+  token: string;
+  newPassword: string;
+}
+
+export interface CompletePasswordResetResult {
+  success: boolean;
+}
+
+/** TASK-388 #9 — server-side bulk user actions. */
+export type BulkUserActionType = 'enable' | 'disable' | 'delete' | 'assign-departments';
+
+export interface BulkUserActionInput {
+  action: BulkUserActionType;
+  ids: string[];
+  /** Required for action=assign-departments. */
+  departmentIds?: string[];
+  primaryDepartmentId?: string;
+}
+
+export interface BulkUserActionItemResult {
+  id: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface BulkUserActionResult {
+  action: string;
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: BulkUserActionItemResult[];
+}
+
+/** TASK-388 #10 — server-side export. */
+export type UserExportFormat = 'csv' | 'xlsx' | 'pdf';
+
+export interface UserExportQuery {
+  format: UserExportFormat;
+  search?: string;
+  filters?: string;
+  sort?: string;
+  searchFields?: string;
+}
+
 /**
  * TASK-375 client follow-up — full list query for {@link UseUsersReturn.listPaginated}.
  * Extends the page/limit {@link PaginationParams} with the backend `PaginatedQuery`
@@ -91,6 +157,14 @@ export interface UseUsersReturn {
   enable: (id: string) => Promise<User>;
   disable: (id: string) => Promise<User>;
   assignDepartments: (userId: string, input: AssignDepartmentsInput) => Promise<User>;
+  /** TASK-388 #8 — admin reset-password (temporary password OR emailed link). */
+  resetPassword: (userId: string, input?: ResetPasswordInput) => Promise<ResetPasswordResult>;
+  /** TASK-388 #8 — public completion of a reset link (token-carried). */
+  completePasswordReset: (input: CompletePasswordResetInput) => Promise<CompletePasswordResetResult>;
+  /** TASK-388 #9 — server-side bulk action with per-item results. */
+  bulkAction: (input: BulkUserActionInput) => Promise<BulkUserActionResult>;
+  /** TASK-388 #10 — server-side export (csv | xlsx | pdf) as a Blob. */
+  exportUsers: (query: UserExportQuery) => Promise<Blob>;
 }
 
 /** Extract the backend `PaginatedQuery` server-side params (skip page/limit). */
@@ -213,6 +287,53 @@ export function useUsers(): UseUsersReturn {
     [execute],
   );
 
+  // TASK-388 #8 — admin reset-password. `mode=temporary` returns the plaintext to
+  // convey out-of-band; `mode=link` (default) returns the token/link (also emailed
+  // best-effort). No local state mutation — this is a side-effect action.
+  const resetPassword = useCallback(
+    (userId: string, input?: ResetPasswordInput) =>
+      execute<ResetPasswordResult>('resetPassword', (client) =>
+        client.post<ResetPasswordResult>(USER_ENDPOINTS.RESET_PASSWORD(userId), input ?? {}),
+      ),
+    [execute],
+  );
+
+  // TASK-388 #8 — public completion; consumes the single-use token to set a new password.
+  const completePasswordReset = useCallback(
+    (input: CompletePasswordResetInput) =>
+      execute<CompletePasswordResetResult>('completePasswordReset', (client) =>
+        client.post<CompletePasswordResetResult>(USER_ENDPOINTS.PASSWORD_RESET_COMPLETE, input),
+      ),
+    [execute],
+  );
+
+  // TASK-388 #9 — server-side bulk action (one round-trip, per-item results).
+  const bulkAction = useCallback(
+    (input: BulkUserActionInput) =>
+      execute<BulkUserActionResult>('bulkAction', (client) =>
+        client.post<BulkUserActionResult>(USER_ENDPOINTS.BULK_ACTIONS, input),
+      ),
+    [execute],
+  );
+
+  // TASK-388 #10 — server-side export as a Blob (csv | xlsx | pdf). Forwards the
+  // same PaginatedQuery CSV filters/sort/search as the list so the export mirrors
+  // the on-screen view; the caller triggers the file download.
+  const exportUsers = useCallback(
+    (query: UserExportQuery) =>
+      execute<Blob>('exportUsers', (client) => {
+        const url = appendFilters(USER_ENDPOINTS.EXPORT, {
+          format: query.format,
+          search: query.search,
+          filters: query.filters,
+          sort: query.sort,
+          searchFields: query.searchFields,
+        });
+        return client.getBlob(url);
+      }),
+    [execute],
+  );
+
   return {
     users,
     currentUser,
@@ -229,5 +350,9 @@ export function useUsers(): UseUsersReturn {
     enable,
     disable,
     assignDepartments,
+    resetPassword,
+    completePasswordReset,
+    bulkAction,
+    exportUsers,
   };
 }

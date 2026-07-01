@@ -827,4 +827,55 @@ describe('AuditLogDtoMapper', () => {
             });
         });
     });
+
+    // TASK-390 #25 (AU2) — structured column/row extraction feeding the shared
+    // csv/xlsx/pdf table exporter. Same column order + cell mapping as ToCsv, but
+    // returned as data (not a serialised string) so the API can render xlsx/pdf.
+    describe('ToExportRows (TASK-390 #25 xlsx/pdf export)', () => {
+        it('returns the CSV column order as {key,header} columns (header === key)', () => {
+            const { columns } = AuditLogDtoMapper.ToExportRows([], {});
+            expect(columns.map((c) => c.key)).toEqual([
+                'id', 'createdAt', 'action', 'resourceType', 'resourceId',
+                'responsibleUserId', 'responsibleUserName', 'responsibleUserEmail',
+                'responsibleIp', 'eventType', 'success', 'data',
+            ]);
+            expect(columns.every((c) => c.header === c.key)).toBe(true);
+        });
+
+        it('maps each entity into a keyed row matching the ToCsv cells', () => {
+            const entity = createMockAuditLogEntity({
+                id: 'a1',
+                responsibleUserId: 'u1',
+                action: AuditAction.CREATE,
+                data: { name: 'Test' },
+                createdAt: new Date('2026-02-01T10:00:00.000Z'),
+            });
+            const users = { u1: { id: 'u1', displayName: 'Alice Nguyen', email: 'alice@example.com' } } as any;
+
+            const { rows } = AuditLogDtoMapper.ToExportRows([entity] as any, users);
+
+            expect(rows).toHaveLength(1);
+            expect(rows[0]).toMatchObject({
+                id: 'a1',
+                action: AuditAction.CREATE,
+                createdAt: '2026-02-01T10:00:00.000Z',
+                responsibleUserId: 'u1',
+                responsibleUserName: 'Alice Nguyen',
+                responsibleUserEmail: 'alice@example.com',
+                data: JSON.stringify({ name: 'Test' }),
+            });
+        });
+
+        it('appends a tenantId column + cell only when includeTenant is set', () => {
+            const entity = createMockAuditLogEntity({ id: 'a1', tenantId: 't-9', responsibleUserId: null });
+
+            const scoped = AuditLogDtoMapper.ToExportRows([entity] as any, {});
+            expect(scoped.columns.some((c) => c.key === 'tenantId')).toBe(false);
+            expect('tenantId' in scoped.rows[0]).toBe(false);
+
+            const global = AuditLogDtoMapper.ToExportRows([entity] as any, {}, { includeTenant: true });
+            expect(global.columns[global.columns.length - 1].key).toBe('tenantId');
+            expect(global.rows[0].tenantId).toBe('t-9');
+        });
+    });
 });

@@ -194,13 +194,15 @@ describe('Prompt Template types', () => {
   });
 
   describe('AssignDepartmentPromptInput', () => {
-    it('should accept assignment fields', () => {
+    it('should accept assignment fields incl. the OCC expectedVersion', () => {
       const input: AssignDepartmentPromptInput = {
         departmentId: 'dept-001',
         promptTemplateId: 'prompt-001',
         field: 'newPatientPromptId',
+        expectedVersion: 1,
       };
       expect(input.field).toBe('newPatientPromptId');
+      expect(input.expectedVersion).toBe(1);
     });
   });
 });

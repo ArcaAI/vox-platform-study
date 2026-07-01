@@ -1,5 +1,5 @@
-import { StreamingAudioBridgeService, StreamingSessionService } from '@arcaai/applications';
-import { Logger } from '@nestjs/common';
+import { ISocketRegistryService, StreamingAudioBridgeService, StreamingSessionService } from '@arcaai/applications';
+import { Inject, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import type { IncomingMessage } from 'http';
 import type { Subscription } from 'rxjs';
@@ -116,12 +116,18 @@ interface SessionInfo {
 }
 
 @WebSocketGateway({ path: '/ws/stt-v2/stream' })
-export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit, OnModuleDestroy {
   @WebSocketServer()
   server!: Server;
 
   private readonly logger = new Logger(SttWsGateway.name);
   private readonly sessions = new Map<WebSocket, SessionInfo>();
+  /**
+   * TASK-386 (#5/#17) — republishes this instance's live-socket count so the
+   * per-instance Redis key never expires between connect/disconnect bursts (key
+   * TTL is 45s in `SocketRegistryService`). Cleared on module destroy.
+   */
+  private socketHeartbeat?: ReturnType<typeof setInterval>;
 
   constructor(
     private readonly sessionService: StreamingSessionService,
@@ -133,7 +139,68 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // TASK-351 P1-3 (M6 part 2): retries failed upstream session removals
     // with backoff so STT-v2 sessions are not leaked on disconnect.
     private readonly removalRetry: SessionRemovalRetryService,
+    // TASK-386 (#5/#17): publishes this instance's open-socket count to Redis
+    // for the platform-metrics aggregate. Optional so the gateway still boots
+    // in stacks that don't wire the platform-metrics module (best-effort).
+    @Optional()
+    @Inject(ISocketRegistryService)
+    private readonly socketRegistry?: ISocketRegistryService,
   ) {}
+
+  onModuleInit(): void {
+    // Publish an initial 0 immediately, then refresh on a cadence well under the
+    // 45s key TTL so a live instance never expires between socket events.
+    this.publishSocketCount();
+    this.socketHeartbeat = setInterval(() => this.publishSocketCount(), 20_000);
+    // Don't keep the event loop alive for the heartbeat alone.
+    this.socketHeartbeat.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.socketHeartbeat) {
+      clearInterval(this.socketHeartbeat);
+      this.socketHeartbeat = undefined;
+    }
+  }
+
+  /**
+   * TASK-386 (#5/#17) — best-effort publish of THIS instance's live-socket count
+   * to the Redis registry. Never throws: a Redis blip must not affect the WS
+   * data path.
+   *
+   * TASK-392 (concurrency) — also publishes the per-tenant breakdown so the
+   * entitlements concurrency gate can compare a tenant's live active sessions
+   * against `maxConcurrentSessions` across a horizontally-scaled deployment.
+   */
+  private publishSocketCount(): void {
+    void this.socketRegistry?.publishLocalCount(this.getActiveSessionCount()).catch((err) => {
+      this.logger.debug({
+        message: 'Failed to publish open-socket count',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+    void this.socketRegistry?.publishLocalTenantCounts(this.getPerTenantSessionCounts()).catch((err) => {
+      this.logger.debug({
+        message: 'Failed to publish per-tenant open-socket counts',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
+  /**
+   * TASK-392 (concurrency) — THIS instance's live open-socket count grouped by
+   * tenant. Null-tenant sessions (legacy/system) are excluded: they are ungated
+   * and must not consume any tenant's concurrency budget.
+   */
+  private getPerTenantSessionCounts(): Record<string, number> {
+    const counts: Record<string, number> = {};
+    for (const session of this.sessions.values()) {
+      const tenantId = session.tenantId;
+      if (!tenantId) continue;
+      counts[tenantId] = (counts[tenantId] ?? 0) + 1;
+    }
+    return counts;
+  }
 
   async handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {
     const url = new URL(req.url || '', 'http://localhost');
@@ -218,6 +285,8 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     };
 
     this.sessions.set(client, session);
+    // TASK-386 (#5/#17) — refresh the multi-instance open-socket aggregate.
+    this.publishSocketCount();
 
     this.logger.log({
       message: 'WebSocket client connected',
@@ -400,6 +469,8 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   handleDisconnect(client: WebSocket): void {
     const session = this.sessions.get(client);
     this.sessions.delete(client);
+    // TASK-386 (#5/#17) — refresh the multi-instance open-socket aggregate.
+    this.publishSocketCount();
 
     if (session) {
       session.resultSubscription?.unsubscribe();

@@ -409,28 +409,44 @@ describe('ApiHealthController', () => {
     });
 
     // ─────────────────────────────────────────────────────────────────
-    // TASK-336 OB-12 — admin-gate /health/services{/:key}
+    // TASK-336 OB-12 / TASK-386 #21·E6 — admin-gate /health/services{/:key}
     //   Pre-OB-12 these carried @Authorize() (any authenticated caller —
-    //   a plain doctor could read downstream ops health). OB-12 tightens
-    //   them to the same SUPER_ADMIN gate the other ops/admin surfaces use
-    //   (`manage all`, e.g. RateLimitAdminController). The k8s probes
-    //   (/live, /ready, /startup, /) stay public.
+    //   a plain doctor could read downstream ops health). OB-12 tightened
+    //   them to the SUPER_ADMIN `manage all` gate.
+    //
+    //   TASK-386 (#21/E6) WIDENS them to `@CanAny(['manage','all'],
+    //   ['read','TenantTelemetry'])` so a tenant-admin with the seeded
+    //   read:TenantTelemetry rule can read downstream service health, while a
+    //   plain doctor (neither permission) still gets 403. Mode flips to OR.
+    //   The k8s probes (/live, /ready, /startup, /) stay public.
     // ─────────────────────────────────────────────────────────────────
-    describe('TASK-336 OB-12 — admin-gate /health/services', () => {
-        it('requires `manage all` on checkServices()', () => {
+    describe('TASK-336 OB-12 / TASK-386 #21 — admin-gate /health/services', () => {
+        const PERMISSION_MODE_KEY = 'permission_mode';
+
+        it('accepts EITHER `manage all` OR `read TenantTelemetry` on checkServices()', () => {
             const required = Reflect.getMetadata(
                 REQUIRED_PERMISSIONS_KEY,
                 ApiHealthController.prototype.checkServices,
             );
-            expect(required).toEqual([{ action: 'manage', subject: 'all' }]);
+            const mode = Reflect.getMetadata(PERMISSION_MODE_KEY, ApiHealthController.prototype.checkServices);
+            expect(required).toEqual([
+                { action: 'manage', subject: 'all' },
+                { action: 'read', subject: 'TenantTelemetry' },
+            ]);
+            expect(mode).toBe('OR');
         });
 
-        it('requires `manage all` on checkServiceByKey()', () => {
+        it('accepts EITHER `manage all` OR `read TenantTelemetry` on checkServiceByKey()', () => {
             const required = Reflect.getMetadata(
                 REQUIRED_PERMISSIONS_KEY,
                 ApiHealthController.prototype.checkServiceByKey,
             );
-            expect(required).toEqual([{ action: 'manage', subject: 'all' }]);
+            const mode = Reflect.getMetadata(PERMISSION_MODE_KEY, ApiHealthController.prototype.checkServiceByKey);
+            expect(required).toEqual([
+                { action: 'manage', subject: 'all' },
+                { action: 'read', subject: 'TenantTelemetry' },
+            ]);
+            expect(mode).toBe('OR');
         });
 
         it('keeps the k8s probes public (no permissions on liveness/readiness/startup)', () => {

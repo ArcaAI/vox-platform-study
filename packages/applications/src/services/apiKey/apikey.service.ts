@@ -21,6 +21,7 @@ import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, wi
 import { assertUserBelongsToTenant } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 import { CreateApiKeyResult, IApiKeyService } from './IApiKeyService';
 import { CreateApiKeyRequest, UpdateApiKeyRequest } from './dto';
@@ -89,6 +90,9 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     // fixtures that construct ApiKeyService directly still work (they
     // get plain SHA-256 with no pepper, matching the existing fallback).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-392 (Phase 3, C6) — optional (append-only DI); enforces the plan
+    // `maxApiKeys` quota on create (kill-switch-gated, no-op when OFF).
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
     super(eventEmitter, clsService, ResourceType.ApiKey);
   }
@@ -244,6 +248,15 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
         userId,
         effectiveTenantId,
       );
+    }
+
+    // TASK-392 (Phase 3, C6) — plan quota precheck. Scoped to a concrete tenant
+    // (tenantless SERVICE_ACCOUNT keys are ungated). Kill-switch-gated (Q9); the
+    // COUNT only runs when enforcement is ON, and `assertQuantityQuota` throws
+    // `QuotaExceededException` (→ 409) if issuing one more exceeds `maxApiKeys`.
+    if (effectiveTenantId && this.entitlements?.isEnforcementEnabled()) {
+      const currentCount = await this.apiKeyRepository.count({ where: { tenantId: effectiveTenantId } });
+      await this.entitlements.assertQuantityQuota(effectiveTenantId, 'maxApiKeys', currentCount);
     }
 
     // eslint-disable-next-line turbo/no-undeclared-env-vars
@@ -439,7 +452,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    */
   async fetchById(id: EntityId): Promise<ApiKeyEntity> {
     const apiKey = await this.apiKeyRepository.findById(id);
-    this.assertTenantOwnership(apiKey, id);
+    this.assertKeyAccess(apiKey, id);
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: apiKey.id,
@@ -459,7 +472,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    */
   async update(id: EntityId, request: UpdateApiKeyRequest): Promise<ApiKeyEntity> {
     const apiKey = await this.apiKeyRepository.findById(id);
-    this.assertTenantOwnership(apiKey, id);
+    this.assertKeyAccess(apiKey, id);
 
     const previousData = {
       keyName: apiKey.keyName,
@@ -514,7 +527,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    */
   async deleteById(id: EntityId): Promise<ApiKeyEntity> {
     const existing = await this.apiKeyRepository.findById(id);
-    this.assertTenantOwnership(existing, id);
+    this.assertKeyAccess(existing, id);
 
     const apiKey = await this.apiKeyRepository.softDelete(id);
 
@@ -542,7 +555,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    */
   async revokeKey(id: EntityId): Promise<ApiKeyEntity> {
     const apiKey = await this.apiKeyRepository.findById(id);
-    this.assertTenantOwnership(apiKey, id);
+    this.assertKeyAccess(apiKey, id);
 
     if (apiKey.keyStatus === ApiKeyStatus.REVOKED) {
       throw new ArgumentInvalidException('API key is already revoked.');
@@ -591,8 +604,10 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     }
     // TASK-305 D.5.2 — block cross-tenant rotation. Without this a Tenant-A
     // admin could mint a Tenant-B-tagged key by rotating one (the new key
-    // inherits `oldKey.tenantId`).
-    this.assertTenantOwnership(oldKey, apiKeyId);
+    // inherits `oldKey.tenantId`). TASK-390 follow-up — `assertKeyAccess` also
+    // enforces owner-scope: an owner-only caller (no `manage:ApiKey`) cannot
+    // rotate another user's key even within the same tenant.
+    this.assertKeyAccess(oldKey, apiKeyId);
 
     if (oldKey.keyStatus === ApiKeyStatus.REVOKED) {
       throw new ArgumentInvalidException('Cannot rotate a revoked API key');
@@ -1018,6 +1033,39 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   private assertTenantOwnership(apiKey: ApiKeyEntity, id: string): void {
     if (this.isSuperAdmin()) return;
     if (apiKey.tenantId !== this.tenantId) {
+      throw new NotFoundException(`API key ${id} not found`);
+    }
+  }
+
+  /**
+   * TASK-390 follow-up (owner-scope) — true when the caller may act on ANY key
+   * in scope: a tenant admin holding the tenant-wide `manage:ApiKey` grant, or
+   * SUPER_ADMIN (`manage:all`). Owner-only callers hold just the seeded
+   * `api-key-own-manage` grants (`read`/`update`/`delete` conditioned on
+   * `userId`) and therefore CANNOT `manage` — they are confined to their own
+   * keys. Mirrors the CASL-ability check in
+   * `PromptManagementService.callerCanManageTemplates()`: read the compiled
+   * `userAbility` the guard pins to CLS and probe the broad `manage` grant.
+   */
+  private callerCanManageAllKeys(): boolean {
+    if (this.isSuperAdmin()) return true;
+    const ability = this.clsService.get('userAbility') as { can?: (action: string, subject: string) => boolean } | undefined;
+    return !!ability && typeof ability.can === 'function' && ability.can('manage', 'ApiKey');
+  }
+
+  /**
+   * TASK-390 follow-up — access gate for by-id key operations
+   * (fetch/update/delete/revoke/rotate). Layers the owner-scope check on top of
+   * the tenant gate: a caller WITHOUT the tenant-wide `manage:ApiKey` grant
+   * (i.e. holding only `api-key-own-manage`) may act ONLY on keys they own.
+   * Throws `NotFoundException` — never `Forbidden` — matching the module's
+   * existing not-authorized convention (`assertTenantOwnership`) so we never
+   * leak that another user's key exists.
+   */
+  private assertKeyAccess(apiKey: ApiKeyEntity, id: string): void {
+    this.assertTenantOwnership(apiKey, id);
+    if (this.callerCanManageAllKeys()) return;
+    if (apiKey.userId !== this.requestUserId) {
       throw new NotFoundException(`API key ${id} not found`);
     }
   }

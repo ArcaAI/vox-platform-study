@@ -1139,6 +1139,69 @@ describe('PromptManagementService', () => {
         });
     });
 
+    // ─── diffVersions (TASK-389 #14) ────────────────────────────
+
+    describe('diffVersions', () => {
+        const setupVersions = () => {
+            mockTemplateRepo.findById.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', tenantId: 'tenant-1' }));
+            mockVersionRepo.findByVersionNumber.mockImplementation(async (_id: string, n: number) => {
+                if (n === 1) return createMockVersionEntity({ promptTemplateId: 'tpl-1', versionNumber: 1, content: 'line a\nline b', variables: { fmt: 'SOAP' } });
+                if (n === 2) return createMockVersionEntity({ promptTemplateId: 'tpl-1', versionNumber: 2, content: 'line a\nline c', variables: { fmt: 'NARRATIVE' } });
+                return null;
+            });
+        };
+
+        it('returns a combined content+variables line diff with stats', async () => {
+            setupVersions();
+
+            const result = await service.diffVersions('tpl-1', 1, 2);
+
+            expect(result.promptTemplateId).toBe('tpl-1');
+            expect(result.fromVersion).toBe(1);
+            expect(result.toVersion).toBe(2);
+            // combined diff has real segments and non-zero add/remove counts
+            expect(Array.isArray(result.changes)).toBe(true);
+            expect(result.changes.some((c) => c.added)).toBe(true);
+            expect(result.changes.some((c) => c.removed)).toBe(true);
+            expect(result.stats.additions).toBeGreaterThan(0);
+            expect(result.stats.deletions).toBeGreaterThan(0);
+            expect(typeof result.patch).toBe('string');
+        });
+
+        it('breaks the diff down per field (content + variables), flagging which changed', async () => {
+            setupVersions();
+
+            const result = await service.diffVersions('tpl-1', 1, 2);
+
+            const content = result.fields.find((f) => f.field === 'content');
+            const variables = result.fields.find((f) => f.field === 'variables');
+            expect(content?.changed).toBe(true);
+            expect(variables?.changed).toBe(true);
+            expect(content?.stats.additions).toBeGreaterThan(0);
+        });
+
+        it('throws NotFound when the template does not exist', async () => {
+            mockTemplateRepo.findById.mockResolvedValue(null);
+
+            await expect(service.diffVersions('missing', 1, 2)).rejects.toThrow(NotFoundException);
+        });
+
+        it('throws NotFound for a cross-tenant template (tenant guard)', async () => {
+            mockTemplateRepo.findById.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-x', tenantId: 'other-tenant' }));
+
+            await expect(service.diffVersions('tpl-x', 1, 2)).rejects.toThrow(NotFoundException);
+        });
+
+        it('throws NotFound when a requested version is missing', async () => {
+            mockTemplateRepo.findById.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', tenantId: 'tenant-1' }));
+            mockVersionRepo.findByVersionNumber.mockImplementation(async (_id: string, n: number) =>
+                n === 1 ? createMockVersionEntity({ versionNumber: 1 }) : null,
+            );
+
+            await expect(service.diffVersions('tpl-1', 1, 99)).rejects.toThrow(NotFoundException);
+        });
+    });
+
     // ─── softDeletePromptTemplate ───────────────────────────────
 
     describe('softDeletePromptTemplate', () => {
@@ -1368,7 +1431,10 @@ describe('PromptManagementService', () => {
                 expect(result).not.toBeNull();
             });
 
-            it('returns null when caller is not the owner of a USER_PERSONAL template', async () => {
+            it('returns null when a NON-admin caller is not the owner of a USER_PERSONAL template', async () => {
+                // TASK-388 #12 — the end-user (no manage:PromptTemplate) path stays
+                // strictly owner-bound: a peer's personal prompt is never disclosed.
+                abilityCan.mockReturnValue(false);
                 const personal = createMockTemplateEntity({
                     id: 'tpl-P',
                     tenantId: 'tenant-1',
@@ -1378,6 +1444,42 @@ describe('PromptManagementService', () => {
                 mockTemplateRepo.findById.mockResolvedValue(personal);
 
                 const result = await service.getPromptTemplate('tpl-P');
+
+                expect(result).toBeNull();
+            });
+
+            // TASK-388 #12 — an admin (manage:PromptTemplate) MAY read another
+            // in-tenant user's USER_PERSONAL prompt (admin cross-owner read).
+            it('returns the template when an ADMIN reads another user USER_PERSONAL in-tenant', async () => {
+                abilityCan.mockReturnValue(true);
+                const personal = createMockTemplateEntity({
+                    id: 'tpl-P',
+                    tenantId: 'tenant-1',
+                    scope: 'USER_PERSONAL',
+                    ownerUserId: 'someone-else',
+                });
+                mockTemplateRepo.findById.mockResolvedValue(personal);
+
+                const result = await service.getPromptTemplate('tpl-P');
+
+                expect(result).not.toBeNull();
+                expect(result!.id).toBe('tpl-P');
+            });
+
+            // TASK-388 #12 — admin cross-owner read does NOT cross tenants
+            // (manage:PromptTemplate is tenant-scoped): a foreign-tenant personal
+            // prompt is still hidden even for a manage-capable caller.
+            it('returns null for a cross-tenant USER_PERSONAL even for an admin', async () => {
+                abilityCan.mockReturnValue(true);
+                const foreign = createMockTemplateEntity({
+                    id: 'tpl-XP',
+                    tenantId: 'tenant-OTHER',
+                    scope: 'USER_PERSONAL',
+                    ownerUserId: 'someone-else',
+                });
+                mockTemplateRepo.findById.mockResolvedValue(foreign);
+
+                const result = await service.getPromptTemplate('tpl-XP');
 
                 expect(result).toBeNull();
             });
@@ -2106,6 +2208,96 @@ describe('PromptManagementService', () => {
                 expect(profileSvc.upsertByUserId).toHaveBeenCalledWith('user-id-1', { preferredPromptTemplateId: null });
                 expect(res.preferredPromptTemplateId).toBeNull();
             });
+        });
+    });
+
+    // ─── TASK-388 #12 — admin per-user prompt scope (USER_PERSONAL/ownerUserId) ──
+    describe('TASK-388 #12 — admin USER_PERSONAL create + owner filters', () => {
+        it('createPromptTemplate stamps scope=USER_PERSONAL + the provided ownerUserId (admin-for-user)', async () => {
+            mockTemplateRepo.findByName.mockResolvedValue(null);
+            mockTemplateRepo.create.mockResolvedValue(
+                createMockTemplateEntity({ scope: 'USER_PERSONAL', ownerUserId: 'target-user' }),
+            );
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
+
+            await service.createPromptTemplate({
+                name: 'For a user',
+                content: 'X',
+                category: 'CUSTOM',
+                scope: 'USER_PERSONAL',
+                ownerUserId: 'target-user',
+            } as never);
+
+            expect(PromptTemplateFactory.CreatePromptTemplate).toHaveBeenCalledWith(
+                expect.objectContaining({ scope: 'USER_PERSONAL', ownerUserId: 'target-user' }),
+            );
+        });
+
+        it('createPromptTemplate falls back ownerUserId to the caller when scope=USER_PERSONAL and no owner given', async () => {
+            mockTemplateRepo.findByName.mockResolvedValue(null);
+            mockTemplateRepo.create.mockResolvedValue(
+                createMockTemplateEntity({ scope: 'USER_PERSONAL', ownerUserId: 'user-id-1' }),
+            );
+            mockVersionRepo.create.mockResolvedValue(createMockVersionEntity());
+
+            await service.createPromptTemplate({
+                name: 'Mine via admin route',
+                content: 'X',
+                category: 'CUSTOM',
+                scope: 'USER_PERSONAL',
+            } as never);
+
+            expect(PromptTemplateFactory.CreatePromptTemplate).toHaveBeenCalledWith(
+                expect.objectContaining({ scope: 'USER_PERSONAL', ownerUserId: 'user-id-1' }),
+            );
+        });
+
+        it('createPromptTemplate rejects ownerUserId when scope is not USER_PERSONAL', async () => {
+            mockTemplateRepo.findByName.mockResolvedValue(null);
+
+            await expect(
+                service.createPromptTemplate({
+                    name: 'Bad',
+                    content: 'X',
+                    category: 'CUSTOM',
+                    ownerUserId: 'target-user',
+                } as never),
+            ).rejects.toThrow(BadRequestException);
+            expect(mockTemplateRepo.create).not.toHaveBeenCalled();
+        });
+
+        it('createPromptTemplate still requires manage ability (CASL) for USER_PERSONAL admin-for-user', async () => {
+            abilityCan.mockReturnValue(false);
+
+            await expect(
+                service.createPromptTemplate({
+                    name: 'No manage',
+                    content: 'X',
+                    category: 'CUSTOM',
+                    scope: 'USER_PERSONAL',
+                    ownerUserId: 'target-user',
+                } as never),
+            ).rejects.toThrow(ForbiddenException);
+        });
+
+        it('listPromptTemplates applies scope + ownerUserId filters', async () => {
+            const mockQb = createMockQueryBuilder();
+            mockTemplateRepo.$.mockReturnValue(mockQb);
+            mockQb.ToList.mockResolvedValue([]);
+
+            await service.listPromptTemplates({ scope: 'USER_PERSONAL', ownerUserId: 'target-user' });
+
+            expect(mockQb.Where).toHaveBeenCalledWith({ scope: 'USER_PERSONAL' });
+            expect(mockQb.Where).toHaveBeenCalledWith({ ownerUserId: 'target-user' });
+        });
+
+        it('listPromptTemplatesPaginated folds scope + ownerUserId into the where clause', async () => {
+            mockTemplateRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
+
+            await service.listPromptTemplatesPaginated({ scope: 'USER_PERSONAL', ownerUserId: 'target-user' });
+
+            const [where] = mockTemplateRepo.findPaginated.mock.calls[0];
+            expect(where).toMatchObject({ tenantId: 'tenant-1', scope: 'USER_PERSONAL', ownerUserId: 'target-user' });
         });
     });
 });

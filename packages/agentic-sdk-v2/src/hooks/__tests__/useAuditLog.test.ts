@@ -21,14 +21,16 @@ describe('useAuditLog', () => {
     let mockStore: any;
     const mockGet = vi.fn();
     const mockGetCsv = vi.fn();
+    const mockGetBlob = vi.fn();
 
     beforeEach(() => {
         mockLogger = createMockLogger();
         mockGet.mockReset();
         mockGetCsv.mockReset();
+        mockGetBlob.mockReset();
 
         mockStore = {
-            apiClient: { get: mockGet, getCsv: mockGetCsv, post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+            apiClient: { get: mockGet, getCsv: mockGetCsv, getBlob: mockGetBlob, post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
             logger: mockLogger,
         };
         (useAgenticStore as any).mockReturnValue(mockStore);
@@ -192,6 +194,35 @@ describe('useAuditLog', () => {
             await act(async () => { await result.current.exportCsv(); });
 
             expect(mockGetCsv).toHaveBeenCalledWith(AUDIT_LOG_ENDPOINTS.EXPORT);
+        });
+    });
+
+    describe('exportFile (TASK-390 #25)', () => {
+        it('getBlob on the EXPORT endpoint with format=xlsx (+ filters) and returns the Blob', async () => {
+            const blob = new Blob(['x'], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            mockGetBlob.mockResolvedValue(blob);
+            const { result } = renderHook(() => useAuditLog());
+
+            let resp: unknown;
+            await act(async () => { resp = await result.current.exportFile('xlsx', { action: 'CREATE' }); });
+
+            expect(mockGetBlob).toHaveBeenCalledTimes(1);
+            const calledUrl = mockGetBlob.mock.calls[0][0] as string;
+            expect(calledUrl.startsWith(`${AUDIT_LOG_ENDPOINTS.EXPORT}?`)).toBe(true);
+            expect(calledUrl).toContain('format=xlsx');
+            expect(calledUrl).toContain('action=CREATE');
+            expect(resp).toBe(blob);
+        });
+
+        it('passes format=pdf through to getBlob', async () => {
+            const blob = new Blob(['%PDF'], { type: 'application/pdf' });
+            mockGetBlob.mockResolvedValue(blob);
+            const { result } = renderHook(() => useAuditLog());
+
+            await act(async () => { await result.current.exportFile('pdf'); });
+
+            const calledUrl = mockGetBlob.mock.calls[0][0] as string;
+            expect(calledUrl).toContain('format=pdf');
         });
     });
 

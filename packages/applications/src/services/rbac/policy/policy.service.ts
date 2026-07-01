@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PolicyFactory, PolicyRepository, ResourceStatusType, ResourceType, SysEventType } from '@arcaai/domains';
@@ -36,6 +36,29 @@ export class PolicyService extends BaseService implements IPolicyService {
   private static readonly VALID_ACTIONS = ['manage', 'create', 'read', 'list', 'update', 'delete', 'archive', 'export'];
 
   private static readonly VALID_TEMPLATE_VARIABLES = ['user.id', 'user.tenantId', 'context.tenantId'];
+
+  /**
+   * TASK-390 #22 (R3) — AUTH-SENSITIVE. The seeded system-critical GLOBAL
+   * policies that back super-admin / RBAC administration platform-wide.
+   * Deleting, disabling, re-scoping, or stripping the load-bearing rule from
+   * any of these would lock every super-admin out — so the service refuses
+   * those mutations regardless of caller (even SUPER_ADMIN). Everything else
+   * (all TENANT policies + any non-protected GLOBAL policy) stays fully
+   * editable. Protected by NAME (stable, matches `01-policy.ts`); the required
+   * rule tuples are the minimum grant each policy must retain.
+   *
+   * FLAG (see docs/implementation/TASK-390 §3.1): name-based protection — if a
+   * deployment renames these seeded policies, update this map.
+   */
+  private static readonly PROTECTED_SYSTEM_POLICIES: Record<string, ReadonlyArray<{ action: string; subject: string }>> = {
+    'system-full-access': [{ action: 'manage', subject: 'all' }],
+    'rbac-system-manage': [
+      { action: 'manage', subject: 'Role' },
+      { action: 'manage', subject: 'Policy' },
+      { action: 'manage', subject: 'RolePolicy' },
+      { action: 'manage', subject: 'UserRoleAssignment' },
+    ],
+  };
 
   constructor(
     private readonly policyRepository: PolicyRepository,
@@ -163,6 +186,12 @@ export class PolicyService extends BaseService implements IPolicyService {
   }
 
   async update(id: string, request: UpdatePolicyRequest): Promise<PolicyRecord> {
+    // TASK-390 #22 — refuse mutations that would neutralise a system-critical
+    // policy. `update` (unlike `patch`) did not previously read the row; the
+    // guard fetches it (skips silently when the row is absent/non-protected).
+    const existingForGuard = (await this.policyRepository.findById(id)) as { name: string } | null;
+    if (existingForGuard) this.assertProtectedMutationAllowed(existingForGuard, request);
+
     if (request.rules) {
       const validation = this.validateRules(request.rules);
       if (!validation.valid) {
@@ -195,6 +224,9 @@ export class PolicyService extends BaseService implements IPolicyService {
     if (!existing) {
       throw new NotFoundException('Policy not found');
     }
+
+    // TASK-390 #22 — protect system-critical policies from destructive edits.
+    this.assertProtectedMutationAllowed(existing as { name: string }, request);
 
     if (request.rules) {
       const validation = this.validateRules(request.rules);
@@ -231,6 +263,10 @@ export class PolicyService extends BaseService implements IPolicyService {
       throw new NotFoundException('Policy not found');
     }
 
+    // TASK-390 #22 — a protected system policy can never be deleted (would
+    // lock out super-admins / RBAC administration platform-wide).
+    this.assertProtectedDeletionAllowed(existing);
+
     const user = this.requestUser;
     await this.policyRepository.softDelete(id, user?.id);
 
@@ -248,6 +284,47 @@ export class PolicyService extends BaseService implements IPolicyService {
     });
 
     return { id, name: existing.name };
+  }
+
+  /**
+   * TASK-390 #22 — refuse to delete a protected system policy.
+   */
+  private assertProtectedDeletionAllowed(existing: { name: string }): void {
+    if (existing.name in PolicyService.PROTECTED_SYSTEM_POLICIES) {
+      throw new ForbiddenException(
+        `Policy '${existing.name}' is a protected system policy and cannot be deleted (it grants super-admin / RBAC access platform-wide).`,
+      );
+    }
+  }
+
+  /**
+   * TASK-390 #22 — refuse mutations that would neutralise a protected system
+   * policy: re-scoping away from GLOBAL, disabling it, or removing/denying a
+   * load-bearing rule. Non-destructive edits (name, description, adding rules)
+   * are allowed; non-protected policies are unaffected.
+   */
+  private assertProtectedMutationAllowed(existing: { name: string }, request: UpdatePolicyRequest): void {
+    const requiredRules = PolicyService.PROTECTED_SYSTEM_POLICIES[existing.name];
+    if (!requiredRules) return;
+
+    if (request.scope !== undefined && request.scope !== 'GLOBAL') {
+      throw new ForbiddenException(`Policy '${existing.name}' is a protected system policy; its scope cannot be changed from GLOBAL.`);
+    }
+
+    if (request.resourceStatus !== undefined && String(request.resourceStatus) !== String(ResourceStatusType.ENABLED)) {
+      throw new ForbiddenException(`Policy '${existing.name}' is a protected system policy and cannot be disabled.`);
+    }
+
+    if (request.rules !== undefined) {
+      for (const required of requiredRules) {
+        const retained = request.rules.some((r) => r.action === required.action && r.subject === required.subject && r.inverted !== true);
+        if (!retained) {
+          throw new ForbiddenException(
+            `Policy '${existing.name}' is a protected system policy; the '${required.action}:${required.subject}' rule cannot be removed or denied.`,
+          );
+        }
+      }
+    }
   }
 
   private checkConditionsForVariables(conditions: Record<string, unknown>, ruleIndex: number, warnings: string[]): void {

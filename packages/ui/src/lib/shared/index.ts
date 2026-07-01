@@ -21,3 +21,5 @@ export { type SortRule, type FilterRule, type DataQueryState, DEFAULT_QUERY_STAT
 export { type AsyncCollection } from './async-collection';
 
 export { type Density, type DensityProps, type AsyncStateProps, type BaseSurfaceProps, DENSITY_ROW_HEIGHT, DENSITY_PADDING_Y } from './surface';
+
+export { useExpansion, type UseExpansionParams, type UseExpansionResult, type ExpansionMode } from './use-expansion';

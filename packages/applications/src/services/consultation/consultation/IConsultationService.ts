@@ -1,5 +1,11 @@
 import { ConsultationStatus } from '@arcaai/domains';
-import { OpenConsultationRequest, UpdateConsultationRequest, ConsultationResponse, PaginatedConsultationResponse } from './dto';
+import {
+  OpenConsultationRequest,
+  UpdateConsultationRequest,
+  ConsultationResponse,
+  ConsultationAggregateResponse,
+  PaginatedConsultationResponse,
+} from './dto';
 
 /**
  * Consultation Service Interface
@@ -79,6 +85,18 @@ export abstract class IConsultationService {
     departmentId?: string;
     status?: ConsultationStatus;
   }): Promise<PaginatedConsultationResponse>;
+
+  /**
+   * TASK-386 (#20 / E4) — zero-filled, server-side date-range aggregation of
+   * new vs. revisit consultation counts (day/month buckets). SUPER_ADMIN with
+   * no working tenant aggregates cross-tenant; everyone else is pinned to their
+   * CLS tenant.
+   */
+  abstract aggregateConsultationsForTenant(params: {
+    from: string | Date;
+    to: string | Date;
+    granularity?: 'day' | 'month';
+  }): Promise<ConsultationAggregateResponse>;
 
   /**
    * Check whether a doctor has any consultation with a given patient

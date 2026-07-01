@@ -1,13 +1,16 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Inject, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { DepartmentRepository, DepartmentFactory, ResourceType, SysEventType } from '@arcaai/domains';
+import { DepartmentRepository, DepartmentFactory, ResourceType, ResourceStatusType, SysEventType, UserRepository } from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
+import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { IDepartmentService } from './IDepartmentService';
 import { DepartmentResponse, CreateDepartmentRequest, UpdateDepartmentRequest, UpdateDepartmentPromptConfigRequest } from './dto';
 import { DepartmentDtoMapper } from './department.dto.mapper';
-import { BaseService, assertParentInScope } from '../../common';
+import { BaseService, assertParentInScope, isSuperAdmin, FetchResponse, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
+import { UserDtoMapper } from '../user/user/user.dto.mapper';
+import { PaginatedUserResponse } from '../user/user/dto';
 
 @Injectable()
 export class DepartmentService extends BaseService implements IDepartmentService {
@@ -15,6 +18,14 @@ export class DepartmentService extends BaseService implements IDepartmentService
     private readonly departmentRepository: DepartmentRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-387 (#6 / D2) — appended last (append-only DI) so existing positional
+    // callers / unit tests keep working. Used to list users of a department via
+    // the `UserDepartment` join without a cross-service injection.
+    private readonly userRepository: UserRepository,
+    // TASK-392 (Phase 3, C3) — optional so existing positional constructors in
+    // unit tests keep working; when present, `create` enforces the plan
+    // `maxDepartments` quota (kill-switch-gated, no-op when OFF).
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Department);
   }
@@ -105,6 +116,54 @@ export class DepartmentService extends BaseService implements IDepartmentService
   }
 
   /**
+   * TASK-387 (#6 / D2) — reverse listing of the users assigned to a department,
+   * paginated with the house `PaginatedQuery` / `PaginatedResponse` shape.
+   *
+   * Tenant scope: the department is loaded first; a non-super-admin caller may
+   * only read a department in their own tenant (else `NotFoundException`, to
+   * avoid leaking a foreign department's existence). SUPER_ADMIN reads
+   * cross-tenant. The user query filters through the `UserDepartment` join and
+   * excludes soft-deleted memberships (mirrors `UserService.fetchAllByTenantId`).
+   */
+  async getDepartmentUsers(departmentId: string, query: PaginatedQuery): Promise<PaginatedUserResponse> {
+    const department = await this.departmentRepository.findById(departmentId);
+    if (!department) {
+      throw new NotFoundException(`Department ${departmentId} not found`);
+    }
+
+    if (!isSuperAdmin(this.requestUser) && department.tenantId !== this.tenantId) {
+      throw new NotFoundException(`Department ${departmentId} not found`);
+    }
+
+    // Prisma relational filter — `DbFilters` doesn't model `some`. Scope by the
+    // DEPARTMENT's tenant so a super-admin operator (no CLS tenant) still gets
+    // the right rows. `resourceStatus: { not: DELETED }` drops soft-deleted
+    // memberships.
+    const deptWhere = {
+      UserDepartments: { some: { departmentId, tenantId: department.tenantId, resourceStatus: { not: ResourceStatusType.DELETED } } },
+    } as Record<string, unknown>;
+
+    const { limit, page } = query;
+    const users = await this.userRepository.findAll({
+      ...withFormattedPaginatedProps(query),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      where: deptWhere as any,
+    });
+    const count = await this.userRepository.count({
+      ...withFormattedCountProps(query),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      where: deptWhere as any,
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      resourceId: departmentId,
+      data: { departmentId, items: users.map((user) => user.id) },
+    });
+
+    return UserDtoMapper.ToPaginatedResponse(new FetchResponse({ data: users, count, limit: limit ?? 0, page: page ?? 0 }));
+  }
+
+  /**
    * Create a new department
    */
   async create(dto: CreateDepartmentRequest): Promise<DepartmentResponse> {
@@ -113,6 +172,15 @@ export class DepartmentService extends BaseService implements IDepartmentService
 
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
+    }
+
+    // TASK-392 (Phase 3, C3) — plan quota precheck. Only pay the COUNT when the
+    // kill-switch is ON (Q9); `assertQuantityQuota` throws `QuotaExceededException`
+    // (→ 409) when creating one more would exceed `maxDepartments`, grandfathering
+    // existing rows (Q10 block-new-only). Unlimited/ungated tenants are a no-op.
+    if (this.entitlements?.isEnforcementEnabled()) {
+      const currentCount = await this.departmentRepository.count({ where: { tenantId } });
+      await this.entitlements.assertQuantityQuota(tenantId, 'maxDepartments', currentCount);
     }
 
     // Check if code already exists (only if code is provided)
@@ -260,6 +328,8 @@ export class DepartmentService extends BaseService implements IDepartmentService
     if (dto.preSummaryPromptId !== undefined) department.preSummaryPromptId = dto.preSummaryPromptId;
     if (dto.newPatientPromptId !== undefined) department.newPatientPromptId = dto.newPatientPromptId;
     if (dto.revisitPromptId !== undefined) department.revisitPromptId = dto.revisitPromptId;
+    // TASK-387 (#7) — default DNA writing-style prompt slot.
+    if (dto.dnaWritingStylePromptId !== undefined) department.dnaWritingStylePromptId = dto.dnaWritingStylePromptId;
 
     if (!department.hasChanges) {
       throw new ArgumentInvalidException('No changes to write to.');

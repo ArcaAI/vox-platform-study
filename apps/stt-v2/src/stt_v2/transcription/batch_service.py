@@ -39,6 +39,11 @@ from ..core.exceptions import (
     TranscriptionError,
 )
 from ..core.initial_prompt import compose_prompt, get_initial_prompt
+from ..core.metrics import (
+    record_transcription,
+    record_transcription_error,
+    track_model_inference,
+)
 from ..models.azure_speech_loader import normalize_language_for_azure
 from ..models.base_loader import LoadedModel
 from ..models.cache import get_model_cache
@@ -326,36 +331,40 @@ class BatchTranscriptionService:
                 if not first_word_time:
                     first_word_time.append(time.time())
 
-            if processed.vad_applied and processed.segments:
-                # Per-segment ASR — transcribe each speech segment independently
-                # with sub-splitting for segments > chunk_length_s
-                raw_result = await self._run_per_segment_inference(
-                    processed.samples,
-                    processed.sample_rate,
-                    processed.segments,
-                    asr_model,
-                    spec.inference,
-                    job_id=job_id,
-                    progress_callback=lambda p: update_progress(35 + int(p * 0.4)),
-                    chunk_callback=effective_chunk_cb,
-                    first_word_hook=_on_first_word,
-                    initial_prompt=initial_prompt,
-                    inline_identifier=inline_identifier,
-                    inline_diarization_config=inline_diarization_config,
-                )
-            else:
-                # Full-audio ASR (no VAD or no segments detected)
-                raw_result = await self._run_inference(
-                    processed.samples,
-                    processed.sample_rate,
-                    asr_model,
-                    spec.inference,
-                    progress_callback=lambda p: update_progress(35 + int(p * 0.4)),
-                    chunk_callback=effective_chunk_cb,
-                    first_word_hook=_on_first_word,
-                    prompt=compose_prompt(initial_prompt, None),
-                    initial_prompt=initial_prompt,
-                )
+            # TASK-386 — per-model running gauge + inference latency for the
+            # ASR model (e.g. whisper-large-v3-turbo). The context manager is
+            # exception-safe so the gauge never leaks on inference failure.
+            with track_model_inference(asr_model.model_slug):
+                if processed.vad_applied and processed.segments:
+                    # Per-segment ASR — transcribe each speech segment independently
+                    # with sub-splitting for segments > chunk_length_s
+                    raw_result = await self._run_per_segment_inference(
+                        processed.samples,
+                        processed.sample_rate,
+                        processed.segments,
+                        asr_model,
+                        spec.inference,
+                        job_id=job_id,
+                        progress_callback=lambda p: update_progress(35 + int(p * 0.4)),
+                        chunk_callback=effective_chunk_cb,
+                        first_word_hook=_on_first_word,
+                        initial_prompt=initial_prompt,
+                        inline_identifier=inline_identifier,
+                        inline_diarization_config=inline_diarization_config,
+                    )
+                else:
+                    # Full-audio ASR (no VAD or no segments detected)
+                    raw_result = await self._run_inference(
+                        processed.samples,
+                        processed.sample_rate,
+                        asr_model,
+                        spec.inference,
+                        progress_callback=lambda p: update_progress(35 + int(p * 0.4)),
+                        chunk_callback=effective_chunk_cb,
+                        first_word_hook=_on_first_word,
+                        prompt=compose_prompt(initial_prompt, None),
+                        initial_prompt=initial_prompt,
+                    )
 
             timing.inference_seconds = time.time() - inference_start
 
@@ -524,6 +533,17 @@ class BatchTranscriptionService:
 
             update_progress(100)
 
+            # TASK-386 — wire the (previously dead) transcription domain metrics.
+            # audio_seconds feeds stt_v2_audio_duration_seconds (_sum/60 = the
+            # platform "transcription minutes" signal).
+            record_transcription(
+                pipeline=pipeline_config.slug,
+                engine=getattr(asr_model.format, "value", str(asr_model.format)),
+                status="success",
+                latency_seconds=timing.total_seconds,
+                audio_seconds=processed.duration_seconds,
+            )
+
             logger.info(
                 f"[{job_id}] Transcription complete: {len(result.text)} chars, "
                 f"{result.processing_time_seconds:.2f}s "
@@ -537,6 +557,19 @@ class BatchTranscriptionService:
 
         except Exception as e:
             logger.error(f"[{job_id}] Transcription failed: {e}")
+            # TASK-386 — record the failed job + error type (engine is "unknown"
+            # when the failure happened before the ASR model resolved).
+            record_transcription(
+                pipeline=pipeline_config.slug,
+                engine="unknown",
+                status="error",
+                latency_seconds=time.time() - pipeline_start,
+                audio_seconds=0.0,
+            )
+            record_transcription_error(
+                pipeline=pipeline_config.slug,
+                error_type=type(e).__name__,
+            )
             raise TranscriptionError(f"Transcription failed: {e}") from e
 
     async def _preseed_speaker(

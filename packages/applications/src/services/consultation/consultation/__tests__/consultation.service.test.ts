@@ -59,6 +59,16 @@ const mockUserRepository = {
     findFirst: vi.fn(),
 };
 
+// TASK-386 (#20 / E4) — CoreDatabaseService for the date-range aggregation.
+// Only `client.consultation.findMany` is exercised; default to [] so the
+// other suites that never touch aggregation are unaffected.
+const mockConsultationDelegate = {
+    findMany: vi.fn(),
+};
+const mockDatabaseService = {
+    client: { consultation: mockConsultationDelegate },
+};
+
 // Helper to create mock consultation entity
 const createMockConsultationEntity = (overrides: Partial<{
     id: string;
@@ -159,6 +169,7 @@ describe('ConsultationService', () => {
             id: 'dept-1',
             tenantId: 'tenant-1',
         });
+        mockConsultationDelegate.findMany.mockResolvedValue([]);
 
         // Create service instance with mocks
         service = new ConsultationService(
@@ -169,6 +180,7 @@ describe('ConsultationService', () => {
             mockUserRepository as any,
             mockEventEmitter as any,
             mockClsService as any,
+            mockDatabaseService as any,
         );
     });
 
@@ -1020,6 +1032,100 @@ describe('ConsultationService', () => {
                     data: expect.objectContaining({ scope: 'tenant', page: 3, pageSize: 10, count: 13 }),
                 }),
             );
+        });
+    });
+
+    // ============================================================
+    // TASK-386 (#20 / E4) — server-side consultation range aggregation.
+    //
+    // Replaces the FE's client-side single-page bucketing. Counts are read
+    // straight off `databaseService.client.consultation.findMany`, zero-filled
+    // across the whole window, and split into new (parentConsultationId IS
+    // NULL) vs revisit. Bucket key/label mirror the FE chart (UTC boundaries).
+    // ============================================================
+    describe('TASK-386 — aggregateConsultationsForTenant (#20 / E4)', () => {
+        it('zero-fills daily buckets and splits new vs revisit by parentConsultationId', async () => {
+            mockConsultationDelegate.findMany.mockResolvedValue([
+                { createdAt: new Date('2026-01-01T08:00:00Z'), parentConsultationId: null },
+                { createdAt: new Date('2026-01-01T18:00:00Z'), parentConsultationId: null },
+                { createdAt: new Date('2026-01-01T20:00:00Z'), parentConsultationId: 'parent-1' },
+                { createdAt: new Date('2026-01-03T09:00:00Z'), parentConsultationId: null },
+            ]);
+
+            const result = await service.aggregateConsultationsForTenant({
+                from: '2026-01-01',
+                to: '2026-01-03',
+                granularity: 'day',
+            });
+
+            expect(result.granularity).toBe('day');
+            expect(result.buckets).toHaveLength(3);
+            expect(result.buckets[0]).toMatchObject({ key: '2026-01-01', label: 'Jan 1', newVisits: 2, revisits: 1, total: 3 });
+            expect(result.buckets[1]).toMatchObject({ key: '2026-01-02', label: 'Jan 2', newVisits: 0, revisits: 0, total: 0 });
+            expect(result.buckets[2]).toMatchObject({ key: '2026-01-03', label: 'Jan 3', newVisits: 1, revisits: 0, total: 1 });
+            expect(result.totals).toEqual({ total: 4, newVisits: 3, revisits: 1 });
+        });
+
+        it('scopes the findMany to the CLS tenant for a tenant-admin', async () => {
+            mockConsultationDelegate.findMany.mockResolvedValue([]);
+
+            await service.aggregateConsultationsForTenant({ from: '2026-01-01', to: '2026-01-02', granularity: 'day' });
+
+            const callArg = mockConsultationDelegate.findMany.mock.calls[0][0];
+            expect(callArg.where.tenantId).toBe('tenant-1');
+            expect(callArg.where.createdAt).toBeDefined();
+            expect(callArg.select).toEqual({ createdAt: true, parentConsultationId: true });
+        });
+
+        it('auto-rolls up to month buckets for spans over 70 days', async () => {
+            mockConsultationDelegate.findMany.mockResolvedValue([]);
+
+            const result = await service.aggregateConsultationsForTenant({ from: '2026-01-01', to: '2026-04-15' });
+
+            expect(result.granularity).toBe('month');
+            expect(result.buckets.map((b) => b.key)).toEqual(['2026-01', '2026-02', '2026-03', '2026-04']);
+            expect(result.buckets[0].label).toBe('Jan');
+        });
+
+        it('throws BadRequestException for an invalid date', async () => {
+            await expect(
+                service.aggregateConsultationsForTenant({ from: 'nonsense', to: '2026-01-02' }),
+            ).rejects.toThrow(BadRequestException);
+        });
+    });
+
+    // ============================================================
+    // TASK-386 (TD3 / DEF-1) — cross-tenant platform read for super-admin.
+    //
+    // The platform dashboard runs as a SUPER_ADMIN with NO working tenant; the
+    // old hard 400 (`Tenant ID is required`) broke it. A super-admin with no
+    // CLS tenant must now read cross-tenant (no tenantId filter → the Prisma
+    // tenantScope extension passes through). Non-super callers are unchanged.
+    // ============================================================
+    describe('TASK-386 — listConsultationsForTenant cross-tenant super-admin (TD3 / DEF-1)', () => {
+        it('OMITS the tenantId filter for a SUPER_ADMIN with no working tenant', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'tenantId') return null;
+                if (key === 'user') return { id: 'su-1', roles: ['SUPER_ADMIN'] };
+                return null;
+            });
+            mockConsultationRepository.findPaginatedWithRelations.mockResolvedValue([]);
+            mockConsultationRepository.count.mockResolvedValue(0);
+
+            await service.listConsultationsForTenant({ page: 1, pageSize: 10 });
+
+            const callArg = mockConsultationRepository.findPaginatedWithRelations.mock.calls[0][0];
+            expect(callArg.filters).not.toHaveProperty('tenantId');
+        });
+
+        it('still throws BadRequestException for a non-super caller with no tenant', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'tenantId') return null;
+                if (key === 'user') return { id: 'u-1', roles: ['TENANT_ADMIN'] };
+                return null;
+            });
+
+            await expect(service.listConsultationsForTenant({ page: 1, pageSize: 10 })).rejects.toThrow(BadRequestException);
         });
     });
 

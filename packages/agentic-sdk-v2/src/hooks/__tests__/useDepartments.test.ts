@@ -21,14 +21,17 @@ describe('useDepartments', () => {
     let mockStore: any;
     const mockGet = vi.fn();
     const mockPatch = vi.fn();
+    // TASK-302 Stream D OCC — `updatePromptConfig` replays the read version as `If-Match`.
+    const mockPatchWithIfMatch = vi.fn();
 
     beforeEach(() => {
         mockLogger = createMockLogger();
         mockGet.mockReset();
         mockPatch.mockReset();
+        mockPatchWithIfMatch.mockReset();
 
         mockStore = {
-            apiClient: { get: mockGet, post: vi.fn(), patch: mockPatch, delete: vi.fn() },
+            apiClient: { get: mockGet, post: vi.fn(), patch: mockPatch, delete: vi.fn(), patchWithIfMatch: mockPatchWithIfMatch },
             logger: mockLogger,
         };
         (useAgenticStore as any).mockReturnValue(mockStore);
@@ -463,6 +466,29 @@ describe('useDepartments', () => {
                 DEPARTMENT_ENDPOINTS.PROMPT_CONFIG('d-1'),
                 { preSummaryPromptId: 'p-123' },
             );
+            expect(resp).toEqual(updated);
+        });
+
+        // TASK-302 Stream D OCC: `PATCH admin/departments/:id/prompt-config` is
+        // `@RequiresIfMatch()`. When the caller supplies the read `expectedVersion`
+        // (DNA writing-style slot flow, TASK-387 #7), it is replayed as the strong
+        // `If-Match` validator so the server CAS-checks it instead of 428-ing.
+        it('should PATCH with If-Match when expectedVersion is supplied', async () => {
+            const updated = { id: 'd-1', name: 'Cardiology', dnaWritingStylePromptId: 'p-9', version: 6 };
+            mockPatchWithIfMatch.mockResolvedValue(updated);
+            const { result } = renderHook(() => useDepartments());
+
+            let resp: unknown;
+            await act(async () => {
+                resp = await result.current.updatePromptConfig('d-1', { dnaWritingStylePromptId: 'p-9', expectedVersion: 5 });
+            });
+
+            expect(mockPatchWithIfMatch).toHaveBeenCalledWith(
+                DEPARTMENT_ENDPOINTS.PROMPT_CONFIG('d-1'),
+                { dnaWritingStylePromptId: 'p-9', expectedVersion: 5 },
+                '"5"',
+            );
+            expect(mockPatch).not.toHaveBeenCalled();
             expect(resp).toEqual(updated);
         });
     });

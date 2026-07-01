@@ -16,6 +16,7 @@ export interface IDepartmentEntity extends IBaseTenantEntity {
   preSummaryPromptId?: string | null;
   newPatientPromptId?: string | null;
   revisitPromptId?: string | null;
+  dnaWritingStylePromptId?: string | null;
   promptConfig?: Record<string, unknown> | null;
 
   ParentDepartment?: Entities.DepartmentEntity | null;
@@ -32,6 +33,7 @@ export class DepartmentEntity extends BaseTenantEntity {
   private _preSummaryPromptId?: IDepartmentEntity['preSummaryPromptId'];
   private _newPatientPromptId?: IDepartmentEntity['newPatientPromptId'];
   private _revisitPromptId?: IDepartmentEntity['revisitPromptId'];
+  private _dnaWritingStylePromptId?: IDepartmentEntity['dnaWritingStylePromptId'];
   private _promptConfig?: IDepartmentEntity['promptConfig'];
   private _ParentDepartment?: IDepartmentEntity['ParentDepartment'];
   private _ChildDepartments?: IDepartmentEntity['ChildDepartments'];
@@ -47,6 +49,7 @@ export class DepartmentEntity extends BaseTenantEntity {
     this._preSummaryPromptId = init.preSummaryPromptId;
     this._newPatientPromptId = init.newPatientPromptId;
     this._revisitPromptId = init.revisitPromptId;
+    this._dnaWritingStylePromptId = init.dnaWritingStylePromptId;
     this._promptConfig = init.promptConfig;
     this._ParentDepartment = init.ParentDepartment;
     this._ChildDepartments = init.ChildDepartments;
@@ -115,6 +118,14 @@ export class DepartmentEntity extends BaseTenantEntity {
 
   set revisitPromptId(value: IDepartmentEntity['revisitPromptId']) {
     this.setProperty('revisitPromptId', value);
+  }
+
+  get dnaWritingStylePromptId(): IDepartmentEntity['dnaWritingStylePromptId'] {
+    return this._dnaWritingStylePromptId;
+  }
+
+  set dnaWritingStylePromptId(value: IDepartmentEntity['dnaWritingStylePromptId']) {
+    this.setProperty('dnaWritingStylePromptId', value);
   }
 
   get promptConfig(): IDepartmentEntity['promptConfig'] {

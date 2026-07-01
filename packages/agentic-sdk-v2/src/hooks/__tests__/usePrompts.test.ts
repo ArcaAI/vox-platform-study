@@ -236,41 +236,33 @@ describe('usePrompts', () => {
     });
 
     describe('assignToDepartment', () => {
-        it('should POST to PROMPT_TEMPLATE_ENDPOINTS.ASSIGN_DEPARTMENT', async () => {
+        it('translates the {promptTemplateId, field} input onto the backend {[field], expectedVersion} contract', async () => {
             mockPost.mockResolvedValue(undefined);
             const { result } = renderHook(() => usePrompts());
 
             await act(async () => {
-                await result.current.assignToDepartment({ departmentId: 'dept-1', promptTemplateId: 'pt-1', field: 'newPatientPromptId' });
+                await result.current.assignToDepartment({ departmentId: 'dept-1', promptTemplateId: 'pt-1', field: 'newPatientPromptId', expectedVersion: 5 });
             });
 
-            expect(mockPost).toHaveBeenCalledWith(PROMPT_TEMPLATE_ENDPOINTS.ASSIGN_DEPARTMENT, { departmentId: 'dept-1', promptTemplateId: 'pt-1', field: 'newPatientPromptId' });
+            // The unknown SDK keys (`promptTemplateId`/`field`) are dropped and the
+            // field is hoisted to its own key so `forbidNonWhitelisted` accepts it.
+            expect(mockPost).toHaveBeenCalledWith(PROMPT_TEMPLATE_ENDPOINTS.ASSIGN_DEPARTMENT, { departmentId: 'dept-1', newPatientPromptId: 'pt-1', expectedVersion: 5 });
         });
     });
 
+    // TASK-389 #14 (AG8/A3) — compareVersions now hits the SERVER-side diff
+    // endpoint in ONE request (was: GET both versions + diff client-side).
     describe('compareVersions', () => {
-        it('should fetch two versions and return diff result', async () => {
-            mockGet
-                .mockResolvedValueOnce({ content: 'old prompt content' })
-                .mockResolvedValueOnce({ content: 'new prompt content' });
-            const { result } = renderHook(() => usePrompts());
-
-            let diff: unknown;
-            await act(async () => {
-                diff = await result.current.compareVersions('pt-1', 1, 2);
+        it('should GET the server diff endpoint once and return the diff result', async () => {
+            mockGet.mockResolvedValue({
+                promptTemplateId: 'pt-1',
+                fromVersion: 1,
+                toVersion: 2,
+                fields: [{ field: 'content', changed: true, changes: [], stats: { additions: 1, deletions: 1, unchanged: 0 } }],
+                changes: [{ value: 'old', removed: true }, { value: 'new', added: true }],
+                patch: 'PATCH',
+                stats: { additions: 1, deletions: 1, unchanged: 0 },
             });
-
-            expect(mockGet).toHaveBeenCalledTimes(2);
-            expect((diff as any).changes).toBeDefined();
-            expect((diff as any).stats).toBeDefined();
-        });
-
-        // TASK-328 A4 — the version diff must also reflect `variables` (JSON)
-        // changes, not just content.
-        it('includes variables JSON changes in the diff even when content is identical', async () => {
-            mockGet
-                .mockResolvedValueOnce({ content: 'same content', variables: [{ name: 'topic', type: 'string', required: true }] })
-                .mockResolvedValueOnce({ content: 'same content', variables: [{ name: 'subject', type: 'string', required: true }] });
             const { result } = renderHook(() => usePrompts());
 
             let diff: any;
@@ -278,12 +270,32 @@ describe('usePrompts', () => {
                 diff = await result.current.compareVersions('pt-1', 1, 2);
             });
 
-            // content is identical, so any additions/deletions must come from
-            // the variables block.
-            expect(diff.stats.additions + diff.stats.deletions).toBeGreaterThan(0);
-            const combined = diff.changes.map((c: any) => c.value).join('');
-            expect(combined).toContain('topic');
-            expect(combined).toContain('subject');
+            expect(mockGet).toHaveBeenCalledTimes(1);
+            expect(mockGet).toHaveBeenCalledWith(PROMPT_TEMPLATE_ENDPOINTS.DIFF('pt-1', 1, 2));
+            expect(diff.changes).toBeDefined();
+            expect(diff.stats).toEqual({ additions: 1, deletions: 1, unchanged: 0 });
+            expect(diff.patch).toBe('PATCH');
+        });
+
+        it('maps only the combined {changes, patch, stats} from the server superset (drops per-field breakdown)', async () => {
+            mockGet.mockResolvedValue({
+                promptTemplateId: 'pt-1',
+                fromVersion: 1,
+                toVersion: 2,
+                fields: [{ field: 'variables', changed: true, changes: [], stats: { additions: 2, deletions: 0, unchanged: 0 } }],
+                changes: [{ value: 'x' }],
+                patch: 'p',
+                stats: { additions: 2, deletions: 0, unchanged: 1 },
+            });
+            const { result } = renderHook(() => usePrompts());
+
+            let diff: any;
+            await act(async () => {
+                diff = await result.current.compareVersions('pt-1', 1, 2);
+            });
+
+            expect(diff).toEqual({ changes: [{ value: 'x' }], patch: 'p', stats: { additions: 2, deletions: 0, unchanged: 1 } });
+            expect(diff.fields).toBeUndefined();
         });
     });
 
@@ -310,6 +322,49 @@ describe('usePrompts', () => {
             await act(async () => { await result.current.test('pt-1'); });
 
             expect(mockPost).toHaveBeenCalledWith(PROMPT_TEMPLATE_ENDPOINTS.TEST('pt-1'), {});
+        });
+
+        // TASK-389 #15 (AG12/A5) — the raw backend PromptTestMetrics is kept on
+        // `metricDetail` and projected into the flat [0,1] `metrics` display map.
+        it('maps the backend metrics breakdown into a [0,1] display map + raw detail', async () => {
+            mockPost.mockResolvedValue({
+                id: 'pt-1', score: 0.72, output: 'out', testedAt: '2026-06-02T00:00:00.000Z', version: 7,
+                metrics: { wordCount: 120, nonEmpty: true, lengthScore: 0.8, jsonExpected: false, jsonValid: null, variablesDeclared: 2, variableCoverage: 0.5 },
+            });
+            const { result } = renderHook(() => usePrompts());
+
+            let resp: any;
+            await act(async () => { resp = await result.current.test('pt-1'); });
+
+            // display map: only [0,1] dimensions; jsonValidity omitted (not expected).
+            expect(resp.metrics).toEqual({ length: 0.8, nonEmpty: 1, variableCoverage: 0.5 });
+            // raw typed breakdown preserved without loss.
+            expect(resp.metricDetail).toEqual({ wordCount: 120, nonEmpty: true, lengthScore: 0.8, jsonExpected: false, jsonValid: null, variablesDeclared: 2, variableCoverage: 0.5 });
+        });
+
+        it('includes jsonValidity only when JSON is expected', async () => {
+            mockPost.mockResolvedValue({
+                id: 'pt-1', score: 0.9, output: '{}', testedAt: '', version: 3,
+                metrics: { wordCount: 5, nonEmpty: true, lengthScore: 0.6, jsonExpected: true, jsonValid: true, variablesDeclared: 0, variableCoverage: null },
+            });
+            const { result } = renderHook(() => usePrompts());
+
+            let resp: any;
+            await act(async () => { resp = await result.current.test('pt-1'); });
+
+            expect(resp.metrics).toEqual({ length: 0.6, nonEmpty: 1, jsonValidity: 1 });
+            expect(resp.metrics.variableCoverage).toBeUndefined();
+        });
+
+        it('omits metrics entirely when the backend returns no breakdown', async () => {
+            mockPost.mockResolvedValue({ id: 'pt-1', score: 0.5, output: 'x', testedAt: '', version: 4 });
+            const { result } = renderHook(() => usePrompts());
+
+            let resp: any;
+            await act(async () => { resp = await result.current.test('pt-1'); });
+
+            expect(resp.metrics).toBeUndefined();
+            expect(resp.metricDetail).toBeUndefined();
         });
 
         it('should set error on failure', async () => {
@@ -503,7 +558,7 @@ describe('usePrompts', () => {
 
             await act(async () => {
                 try {
-                    await result.current.assignToDepartment({ departmentId: 'dept-1', promptTemplateId: 'pt-1', field: 'newPatientPromptId' });
+                    await result.current.assignToDepartment({ departmentId: 'dept-1', promptTemplateId: 'pt-1', field: 'newPatientPromptId', expectedVersion: 1 });
                 } catch { /* expected */ }
             });
 
@@ -556,7 +611,7 @@ describe('usePrompts', () => {
         it('assignToDepartment should throw', async () => {
             const { result } = renderHook(() => usePrompts());
             await expect(act(async () => {
-                await result.current.assignToDepartment({ departmentId: 'dept-1', promptTemplateId: 'pt-1', field: 'newPatientPromptId' });
+                await result.current.assignToDepartment({ departmentId: 'dept-1', promptTemplateId: 'pt-1', field: 'newPatientPromptId', expectedVersion: 1 });
             })).rejects.toThrow('SDK not initialized');
         });
 
@@ -710,11 +765,12 @@ describe('usePrompts', () => {
                     departmentId: 'dept-1',
                     promptTemplateId: 'pt-1',
                     field: 'summaryPromptId',
+                    expectedVersion: 2,
                 });
             });
 
             expect(mockPost).toHaveBeenCalledWith(PROMPT_TEMPLATE_ENDPOINTS.ASSIGN_DEPARTMENT, {
-                departmentId: 'dept-1', promptTemplateId: 'pt-1', field: 'summaryPromptId',
+                departmentId: 'dept-1', summaryPromptId: 'pt-1', expectedVersion: 2,
             });
         });
 
@@ -727,11 +783,12 @@ describe('usePrompts', () => {
                     departmentId: 'dept-2',
                     promptTemplateId: 'pt-2',
                     field: 'preSummaryPromptId',
+                    expectedVersion: 3,
                 });
             });
 
             expect(mockPost).toHaveBeenCalledWith(PROMPT_TEMPLATE_ENDPOINTS.ASSIGN_DEPARTMENT, {
-                departmentId: 'dept-2', promptTemplateId: 'pt-2', field: 'preSummaryPromptId',
+                departmentId: 'dept-2', preSummaryPromptId: 'pt-2', expectedVersion: 3,
             });
         });
 
@@ -744,11 +801,12 @@ describe('usePrompts', () => {
                     departmentId: 'dept-3',
                     promptTemplateId: 'pt-3',
                     field: 'revisitPromptId',
+                    expectedVersion: 4,
                 });
             });
 
             expect(mockPost).toHaveBeenCalledWith(PROMPT_TEMPLATE_ENDPOINTS.ASSIGN_DEPARTMENT, {
-                departmentId: 'dept-3', promptTemplateId: 'pt-3', field: 'revisitPromptId',
+                departmentId: 'dept-3', revisitPromptId: 'pt-3', expectedVersion: 4,
             });
         });
 
@@ -761,11 +819,12 @@ describe('usePrompts', () => {
                     departmentId: 'dept-4',
                     promptTemplateId: 'pt-4',
                     field: 'newPatientPromptId',
+                    expectedVersion: 5,
                 });
             });
 
             expect(mockPost).toHaveBeenCalledWith(PROMPT_TEMPLATE_ENDPOINTS.ASSIGN_DEPARTMENT, {
-                departmentId: 'dept-4', promptTemplateId: 'pt-4', field: 'newPatientPromptId',
+                departmentId: 'dept-4', newPatientPromptId: 'pt-4', expectedVersion: 5,
             });
         });
     });

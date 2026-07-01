@@ -237,6 +237,84 @@ describe('UserDepartmentService', () => {
     });
   });
 
+  // TASK-381 V2 — bulk reconcile a user's memberships to EXACTLY the target set.
+  describe('setDepartments', () => {
+    it('reconciles to exactly the target set — adds missing, soft-deletes extras, leaves matches', async () => {
+      mockRepo.findAll
+        .mockResolvedValueOnce([
+          makeEntity({ id: 'ud-1', departmentId: 'dept-1' }),
+          makeEntity({ id: 'ud-2', departmentId: 'dept-2' }),
+        ]) // current active set
+        .mockResolvedValueOnce([]) // soft-deleted dup check for the added dept-3
+        .mockResolvedValueOnce([]) // demoteExistingPrimaries (no primary requested)
+        .mockResolvedValueOnce([
+          makeEntity({ id: 'ud-1', departmentId: 'dept-1' }),
+          makeEntity({ id: 'ud-new', departmentId: 'dept-3' }),
+        ]); // final read-back
+      mockRepo.softDelete.mockResolvedValue(makeEntity({ id: 'ud-2', departmentId: 'dept-2', resourceStatus: ResourceStatusType.DELETED }));
+      mockRepo.create.mockResolvedValue(makeEntity({ id: 'ud-new', departmentId: 'dept-3' }));
+
+      const result = await service.setDepartments('user-1', { departmentIds: ['dept-1', 'dept-3'] });
+
+      // dept-2 removed, dept-3 added, dept-1 untouched (no create/delete for it).
+      expect(mockRepo.softDelete).toHaveBeenCalledWith('ud-2', 'current-user-id');
+      expect(mockRepo.create).toHaveBeenCalledTimes(1);
+      expect(result.map((r) => r.departmentId)).toEqual(['dept-1', 'dept-3']);
+    });
+
+    it('restores a soft-deleted row rather than creating a duplicate when re-adding', async () => {
+      const softDeleted = makeEntity({ id: 'ud-del', departmentId: 'dept-7', resourceStatus: ResourceStatusType.DELETED });
+      mockRepo.findAll
+        .mockResolvedValueOnce([]) // current active set (empty)
+        .mockResolvedValueOnce([softDeleted]) // soft-deleted dup check for dept-7 → reactivate
+        .mockResolvedValueOnce([]) // demoteExistingPrimaries
+        .mockResolvedValueOnce([makeEntity({ id: 'ud-del', departmentId: 'dept-7' })]); // final
+      mockRepo.restore.mockResolvedValue(makeEntity({ id: 'ud-del', departmentId: 'dept-7' }));
+
+      await service.setDepartments('user-1', { departmentIds: ['dept-7'] });
+
+      expect(mockRepo.restore).toHaveBeenCalledWith('ud-del', 'current-user-id');
+      expect(mockRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('enforces the single-primary invariant — demotes existing primaries then promotes the requested one', async () => {
+      mockRepo.findAll
+        .mockResolvedValueOnce([makeEntity({ id: 'ud-1', departmentId: 'dept-1', isPrimary: true })]) // current
+        .mockResolvedValueOnce([]) // soft-deleted dup check for added dept-2
+        .mockResolvedValueOnce([makeEntity({ id: 'ud-1', departmentId: 'dept-1', isPrimary: true })]) // demoteExistingPrimaries
+        .mockResolvedValueOnce([makeEntity({ id: 'ud-2', departmentId: 'dept-2', isPrimary: false })]) // set-primary lookup
+        .mockResolvedValueOnce([
+          makeEntity({ id: 'ud-1', departmentId: 'dept-1', isPrimary: false }),
+          makeEntity({ id: 'ud-2', departmentId: 'dept-2', isPrimary: true }),
+        ]); // final
+      mockRepo.create.mockResolvedValue(makeEntity({ id: 'ud-2', departmentId: 'dept-2' }));
+      mockRepo.update.mockImplementation((_id: string, entity: unknown) => Promise.resolve(entity));
+
+      await service.setDepartments('user-1', { departmentIds: ['dept-1', 'dept-2'], primaryDepartmentId: 'dept-2' });
+
+      // Existing dept-1 primary demoted (update to isPrimary:false) AND dept-2 promoted.
+      expect(mockRepo.update).toHaveBeenCalledWith('ud-1', expect.objectContaining({ isPrimary: false }));
+      expect(mockRepo.update).toHaveBeenCalledWith('ud-2', expect.objectContaining({ isPrimary: true }));
+    });
+
+    it('verifies EVERY target department is in the caller tenant FIRST — a foreign one is a 404 with no writes', async () => {
+      mockDepartmentRepo.findById.mockImplementation((id: string) =>
+        Promise.resolve(id === 'dept-foreign' ? { id, tenantId: 'tenant-2' } : { id, tenantId: 'tenant-1' }),
+      );
+
+      await expect(service.setDepartments('user-1', { departmentIds: ['dept-1', 'dept-foreign'] })).rejects.toThrow(NotFoundException);
+      expect(mockRepo.softDelete).not.toHaveBeenCalled();
+      expect(mockRepo.create).not.toHaveBeenCalled();
+      expect(mockRepo.findAll).not.toHaveBeenCalled();
+    });
+
+    it('requires a tenant context', async () => {
+      mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? null : { id: 'current-user-id' }));
+
+      await expect(service.setDepartments('user-1', { departmentIds: ['dept-1'] })).rejects.toThrow(BadRequestException);
+    });
+  });
+
   describe('update', () => {
     it('sets primary under optimistic concurrency and demotes others', async () => {
       const target = makeEntity({ id: 'ud-1', userId: 'user-1', isPrimary: false, version: 3, hasChanges: true, changes: { isPrimary: true } });

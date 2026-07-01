@@ -9,12 +9,19 @@
 
 ## 1. Purpose & Scope
 
-This suite gives QA/QC engineers repeatable, requirement-traceable manual test cases for two admin-console capability areas:
+This suite gives QA/QC engineers repeatable, requirement-traceable manual test cases. Suites **01–02** are the original **requirement-based** capability areas; suites **03–09** are **surface suites** relocated from their tickets (TASK-372 / 379–384) under TASK-385, each covering one redesigned Admin Console surface:
 
 | Area | File | Capabilities covered |
 |------|------|----------------------|
 | **A. Multi-Tenancy Management** | [`01-multi-tenancy-management.md`](./01-multi-tenancy-management.md) | Listing, Create, Update, Destroy, Monitor, Tenant Config Management, Select working tenant (super/global admin) |
 | **B. User & Access Control (per tenant)** | [`02-user-access-control.md`](./02-user-access-control.md) | Create, Update, Role management, Activate/Deactivate, Destroy |
+| **C. Shared components** | [`03-shared-components.md`](./03-shared-components.md) | `VirtualizedDataGrid` · `HistoryTimelineList` · `LiveTranscript` (QA checklist across 6 environments) |
+| **D. Tenant detail pages** | [`04-tenant-detail.md`](./04-tenant-detail.md) | Fleet→detail, header/tabs, edit, enable/disable, configuration, storage, departments, app-shell |
+| **E. Tenant dashboard (18d)** | [`05-tenant-dashboard.md`](./05-tenant-dashboard.md) | Headline/secondary KPIs, consultation chart, recent activity, audio-pipeline strip, states, tenant-admin scope |
+| **F. Users management** | [`06-users-management.md`](./06-users-management.md) | Users grid, Create dialog, user detail panels a–g, bulk actions, RBAC |
+| **G. Agent management** | [`07-agent-management.md`](./07-agent-management.md) | Agent slots by department, instruction editor, version diff, test playground |
+| **H. Platform dashboard + monitoring** | [`08-platform-dashboard-monitoring.md`](./08-platform-dashboard-monitoring.md) | Cross-tenant dashboard, monitoring/system-health, super-admin gating, REAL-vs-TARGET integrity |
+| **I. Responsive admin surfaces** | [`09-responsive.md`](./09-responsive.md) | App shell, grids→cards, tabs→Select, dialogs full-screen, KPI reflow, a11y across breakpoints |
 
 ### Out of scope (validated by other suites)
 Consultation/clinical workflow, audio/STT/summary generation, prompt-template & department content authoring, SDK developer surfaces, API-key lifecycle deep-dive (covered only where it intersects user management), and automated tests (Vitest/Playwright/pytest).
@@ -45,7 +52,7 @@ All cases trace to these business-requirement documents (no implementation files
 4. Log any defect with the **TC ID** (e.g., `MT-02.3`) so it is traceable to a requirement.
 
 ### 3.2 Test case ID scheme
-`<SUITE>-<NN>.<n>` → e.g. `MT-02.3` = Multi-Tenancy suite 02, case 3. Suites: `MT-xx` (Area A), `UAC-xx` (Area B).
+`<SUITE>-<NN>.<n>` → e.g. `MT-02.3` = Multi-Tenancy suite 02, case 3. Suites: `MT-` (01, Area A), `UAC-` (02, Area B); relocated surface suites — `TD-` (04 tenant detail), `TDB-` (05 tenant dashboard), `T381-` (06 users), `T382-` (07 agents), `PDM-` (08 platform), `RSP-` (09 responsive). Suite 03 (shared components) is a pass/fail QA checklist with no TC-IDs.
 
 ### 3.3 Status legend
 | Mark | Meaning |
@@ -144,6 +151,20 @@ Fill the **Available now?** column once during a test cycle; it gates the depend
 | UAC-03 | Role management (assign, custom roles, policies, hierarchy, tenant-scoped, no-escalation, system-protect) | US 27, 36–42; AC | ☐ | |
 | UAC-04 | Activate / Deactivate user | US 29; AC | ☐ | |
 | UAC-05 | Destroy (archive/soft-delete) user | US 29; AC | ☐ | |
+
+### Surface suites (relocated under TASK-385)
+
+Surface-oriented suites (03–09) relocated from their tickets; each maps to a per-surface matrix in [`docs/qa/traceability/`](../traceability/README.md).
+
+| Suite | File | TC prefix | Source ticket |
+|-------|------|-----------|---------------|
+| C · Shared components | [`03-shared-components.md`](./03-shared-components.md) | _(QA checklist)_ | TASK-372 |
+| D · Tenant detail pages | [`04-tenant-detail.md`](./04-tenant-detail.md) | `TD-` | TASK-379 |
+| E · Tenant dashboard (18d) | [`05-tenant-dashboard.md`](./05-tenant-dashboard.md) | `TDB-` | TASK-380 |
+| F · Users management | [`06-users-management.md`](./06-users-management.md) | `T381-` | TASK-381 |
+| G · Agent management | [`07-agent-management.md`](./07-agent-management.md) | `T382-` | TASK-382 |
+| H · Platform dashboard + monitoring | [`08-platform-dashboard-monitoring.md`](./08-platform-dashboard-monitoring.md) | `PDM-` | TASK-383 |
+| I · Responsive admin surfaces | [`09-responsive.md`](./09-responsive.md) | `RSP-` | TASK-384 |
 
 ---
 

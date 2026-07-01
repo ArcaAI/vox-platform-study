@@ -5,6 +5,7 @@
 export enum ResourceStatusType {
   ENABLED = 'ENABLED',
   DISABLED = 'DISABLED',
+  SUSPENDED = 'SUSPENDED',
   ARCHIVED = 'ARCHIVED',
   DELETED = 'DELETED',
 }

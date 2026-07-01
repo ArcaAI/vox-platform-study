@@ -10,11 +10,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/tabs';
 import { Textarea } from '@arcaai/ui/textarea';
 import { ConfigConflictError, useGlobalSettings, useUserSettings, type GlobalSetting } from '@arcaai/vox';
 import { createFileRoute } from '@tanstack/react-router';
-import { AlertTriangle, Pencil, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useState, type FormEvent } from 'react';
+import { AlertTriangle, Lock, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Fragment, useEffect, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { ConfirmDelete } from '@/features/common/confirm-delete';
 import { PageHeader } from '@/components/layout/page-header';
+import { groupByNamespace, isSettingLocked } from '@/features/settings/global-settings';
+import { isSuperAdmin } from '@/features/tenants/permissions';
+import { useAuthStore } from '@/store/auth-store';
 
 export const Route = createFileRoute('/_authenticated/settings')({
     component: SettingsPage,
@@ -206,6 +209,11 @@ function GlobalEditDialog({
 function GlobalSettingsTab() {
     const { settings, isLoading, error, list, get, create, update, remove } = useGlobalSettings();
     const [editing, setEditing] = useState<GlobalSetting | null>(null);
+    // TASK-391 #24 — locked rows are super-admin-writable only (server enforces
+    // the `locked` guard; the console mirrors it by disabling the controls).
+    const roles = useAuthStore((s) => s.user?.roles);
+    const superAdmin = isSuperAdmin(roles);
+    const groups = groupByNamespace(settings);
 
     useEffect(() => {
         void list().catch(() => undefined);
@@ -276,7 +284,6 @@ function GlobalSettingsTab() {
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Namespace</TableHead>
                             <TableHead>Key</TableHead>
                             <TableHead>Value</TableHead>
                             <TableHead>Type</TableHead>
@@ -286,43 +293,98 @@ function GlobalSettingsTab() {
                     <TableBody>
                         {isLoading && settings.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                                <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
                                     Loading…
                                 </TableCell>
                             </TableRow>
                         ) : settings.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                                <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
                                     No settings yet.
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            settings.map((setting) => (
-                                <TableRow key={setting.id}>
-                                    <TableCell className="font-mono text-xs text-muted-foreground">{setting.namespace || '—'}</TableCell>
-                                    <TableCell className="font-medium">{setting.key}</TableCell>
-                                    <TableCell className="max-w-xs truncate font-mono text-xs text-muted-foreground" title={previewValue(setting.value)}>
-                                        {previewValue(setting.value)}
-                                    </TableCell>
-                                    <TableCell className="text-muted-foreground">{setting.dataType || '—'}</TableCell>
-                                    <TableCell className="text-right">
-                                        <div className="flex justify-end gap-1">
-                                            <Button variant="ghost" size="icon" className="size-8" onClick={() => void openEdit(setting)} aria-label={`Edit ${setting.key}`}>
-                                                <Pencil className="size-4" />
-                                            </Button>
-                                            <ConfirmDelete
-                                                trigger={
-                                                    <Button variant="ghost" size="icon" className="size-8" aria-label={`Delete ${setting.key}`}>
-                                                        <Trash2 className="size-4" />
-                                                    </Button>
-                                                }
-                                                title={`Delete “${setting.key}”?`}
-                                                description="This cannot be undone."
-                                                onConfirm={() => onDelete(setting)}
-                                            />
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
+                            groups.map((group) => (
+                                <Fragment key={group.key || '__ungrouped__'}>
+                                    <TableRow className="bg-muted/40 hover:bg-muted/40">
+                                        <TableCell colSpan={4} className="py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                            {group.label}
+                                        </TableCell>
+                                    </TableRow>
+                                    {group.settings.map((setting) => {
+                                        const locked = isSettingLocked(setting);
+                                        const canWrite = !locked || superAdmin;
+                                        return (
+                                            <TableRow key={setting.id}>
+                                                <TableCell className="font-medium">
+                                                    <div className="flex items-center gap-2">
+                                                        {setting.key}
+                                                        {locked ? (
+                                                            <span title="Locked — super-admin only" className="inline-flex text-muted-foreground">
+                                                                <Lock className="size-3.5" aria-label="Locked" />
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="max-w-xs truncate font-mono text-xs text-muted-foreground" title={previewValue(setting.value)}>
+                                                    {previewValue(setting.value)}
+                                                </TableCell>
+                                                <TableCell className="text-muted-foreground">{setting.dataType || '—'}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex justify-end gap-1">
+                                                        {canWrite ? (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="size-8"
+                                                                onClick={() => void openEdit(setting)}
+                                                                aria-label={`Edit ${setting.key}`}
+                                                            >
+                                                                <Pencil className="size-4" />
+                                                            </Button>
+                                                        ) : (
+                                                            <span title="Locked — super-admin only" className="inline-flex">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="size-8"
+                                                                    disabled
+                                                                    aria-label={`Edit ${setting.key} (locked — super-admin only)`}
+                                                                >
+                                                                    <Pencil className="size-4" />
+                                                                </Button>
+                                                            </span>
+                                                        )}
+                                                        {canWrite ? (
+                                                            <ConfirmDelete
+                                                                trigger={
+                                                                    <Button variant="ghost" size="icon" className="size-8" aria-label={`Delete ${setting.key}`}>
+                                                                        <Trash2 className="size-4" />
+                                                                    </Button>
+                                                                }
+                                                                title={`Delete “${setting.key}”?`}
+                                                                description="This cannot be undone."
+                                                                onConfirm={() => onDelete(setting)}
+                                                            />
+                                                        ) : (
+                                                            <span title="Locked — super-admin only" className="inline-flex">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="size-8"
+                                                                    disabled
+                                                                    aria-label={`Delete ${setting.key} (locked — super-admin only)`}
+                                                                >
+                                                                    <Trash2 className="size-4" />
+                                                                </Button>
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </Fragment>
                             ))
                         )}
                     </TableBody>

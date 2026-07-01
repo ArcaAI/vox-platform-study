@@ -277,24 +277,26 @@ describe('WS-4 endpoint constants', () => {
   // ===========================================================================
 
   describe('structural completeness', () => {
-    it('DNA_STYLE_ENDPOINTS should have exactly 14 keys', () => {
+    it('DNA_STYLE_ENDPOINTS should have exactly 16 keys', () => {
       // TASK-329 P5 added MINE + SET_DEFAULT (12 -> 14) for the playground.
+      // TASK-388 #13 added ADMIN_BY_DOCTOR + ADMIN_VERSIONS (14 -> 16) for admin cross-user PHI reads.
       const keys = Object.keys(DNA_STYLE_ENDPOINTS);
-      expect(keys).toHaveLength(14);
+      expect(keys).toHaveLength(16);
       expect(keys).toEqual(expect.arrayContaining([
         'GENERATE', 'GENERATE_FOR_DOCTOR', 'JOB_STATUS', 'JOB_STREAM', 'MY_STYLE', 'MINE', 'UPDATE',
         'SET_DEFAULT', 'VERSIONS', 'ADMIN_LIST', 'ADMIN_JOB_STATUS', 'ADMIN_JOB_STREAM', 'ADMIN_DASHBOARD', 'BY_DOCTOR',
       ]));
     });
 
-    it('PROMPT_TEMPLATE_ENDPOINTS should have exactly 13 keys', () => {
+    it('PROMPT_TEMPLATE_ENDPOINTS should have exactly 14 keys', () => {
       const keys = Object.keys(PROMPT_TEMPLATE_ENDPOINTS);
       // TASK-328 A4 added TEST + USAGE_ANALYTICS (10 -> 12).
       // TASK-331 doc-09 added AVAILABLE — the end-user (clinician) plane (12 -> 13).
-      expect(keys).toHaveLength(13);
+      // TASK-389 #14 (AG8/A3) added DIFF — the server-side version-diff route (13 -> 14).
+      expect(keys).toHaveLength(14);
       expect(keys).toEqual(expect.arrayContaining([
         'CREATE', 'LIST', 'AVAILABLE', 'GET', 'UPDATE', 'DELETE', 'VERSIONS', 'VERSION',
-        'ASSIGN_DEPARTMENT', 'USAGE', 'ACTIVATE_VERSION', 'TEST', 'USAGE_ANALYTICS',
+        'ASSIGN_DEPARTMENT', 'USAGE', 'ACTIVATE_VERSION', 'TEST', 'USAGE_ANALYTICS', 'DIFF',
       ]));
     });
 
@@ -306,9 +308,10 @@ describe('WS-4 endpoint constants', () => {
       expect(PROMPT_TEMPLATE_ENDPOINTS.USAGE_ANALYTICS).toBe('/admin/prompt-templates/analytics/usage');
     });
 
-    it('DEPARTMENT_ENDPOINTS should have exactly 9 keys', () => {
+    it('DEPARTMENT_ENDPOINTS should have exactly 10 keys', () => {
+      // TASK-387 (#6 / D2) added USERS (9 -> 10) for the reverse dept->users listing.
       const keys = Object.keys(DEPARTMENT_ENDPOINTS);
-      expect(keys).toHaveLength(9);
+      expect(keys).toHaveLength(10);
       expect(keys).toEqual(expect.arrayContaining([
         'LIST', 'GET', 'CREATE', 'UPDATE', 'DELETE', 'ROOTS', 'CHILDREN', 'BY_CODE', 'PROMPT_CONFIG',
       ]));
@@ -328,13 +331,19 @@ describe('WS-4 endpoint constants', () => {
       ]));
     });
 
-    it('TENANT_ENDPOINTS should have exactly 8 keys', () => {
+    // TASK-386 (E5) added USAGE (8 -> 9).
+    // TASK-387 (#1 / F6) added SUSPEND + ARCHIVE + RESTORE and (#2 / F9) added TAGS (9 -> 13).
+    it('TENANT_ENDPOINTS should have exactly 13 keys', () => {
       const keys = Object.keys(TENANT_ENDPOINTS);
-      expect(keys).toHaveLength(8);
+      expect(keys).toHaveLength(13);
       expect(keys).toEqual(expect.arrayContaining([
         'LIST', 'GET', 'GET_BY_CODE_NAME', 'CREATE', 'UPDATE', 'DELETE',
-        'GET_CONFIGS', 'UPDATE_CONFIGS',
+        'GET_CONFIGS', 'UPDATE_CONFIGS', 'USAGE',
       ]));
+    });
+
+    it('should use /admin/tenants/:id/usage for USAGE (TASK-386 E5)', () => {
+      expect(TENANT_ENDPOINTS.USAGE('tenant-1')).toBe('/admin/tenants/tenant-1/usage');
     });
 
     it('static endpoints should be strings', () => {

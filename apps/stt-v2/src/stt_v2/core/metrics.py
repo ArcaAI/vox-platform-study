@@ -7,6 +7,10 @@ AI Pipeline Performance dashboard in Grafana.
 
 from __future__ import annotations
 
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 from prometheus_client import Counter, Gauge, Histogram
 
 # ---------------------------------------------------------------------------
@@ -109,3 +113,98 @@ WORKER_JOBS_TOTAL = Counter(
     "Total Dramatiq jobs processed",
     ["queue", "status"],
 )
+
+# ---------------------------------------------------------------------------
+# Cross-service per-model contract metrics (TASK-386)
+# ---------------------------------------------------------------------------
+# Standardized {service, model} pair emitted IDENTICALLY by every HOPE model
+# service (STT, SMR, NLP, Guardrail) so the platform-metrics backend can read
+# per-model "running" + "avg latency" with ONE PromQL pattern. The name and
+# label keys must stay byte-identical across services — see
+# docs/implementation/TASK-386-Platform-Metrics-Backend/METRIC-CONTRACT.md.
+
+SERVICE_NAME = "stt"
+
+MODEL_RUNNING_INSTANCES = Gauge(
+    "model_running_instances",
+    "In-flight inference operations currently running, by service and model.",
+    ["service", "model"],
+)
+
+MODEL_INFERENCE_LATENCY = Histogram(
+    "model_inference_latency_seconds",
+    "Per-inference wall-clock latency in seconds, by service and model.",
+    ["service", "model"],
+    buckets=[
+        0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0,
+        2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0,
+    ],
+)
+
+
+@contextmanager
+def track_model_inference(model: str, service: str = SERVICE_NAME) -> Iterator[None]:
+    """Track one model inference: bump the running gauge for its duration and
+    observe its latency.
+
+    Safe for sync or async call-sites (``with track_model_inference(...):``
+    around an ``await`` times the whole awaited block). The gauge is always
+    decremented, even when the inference raises.
+    """
+    MODEL_RUNNING_INSTANCES.labels(service=service, model=model).inc()
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        MODEL_INFERENCE_LATENCY.labels(service=service, model=model).observe(
+            time.perf_counter() - start
+        )
+        MODEL_RUNNING_INSTANCES.labels(service=service, model=model).dec()
+
+
+# ---------------------------------------------------------------------------
+# Domain helpers — wired into the real STT code paths (TASK-386)
+# ---------------------------------------------------------------------------
+# These wrap the (previously dead) domain metrics above so the call-sites in
+# batch_service / session_manager stay one-liners.
+
+
+def record_transcription(
+    *,
+    pipeline: str,
+    engine: str,
+    status: str,
+    latency_seconds: float,
+    audio_seconds: float,
+) -> None:
+    """Record one completed/failed batch transcription job.
+
+    ``audio_seconds`` feeds ``stt_v2_audio_duration_seconds`` whose ``_sum``
+    is the platform "transcription minutes" signal (``_sum / 60``).
+    """
+    TRANSCRIPTION_TOTAL.labels(pipeline=pipeline, engine=engine, status=status).inc()
+    TRANSCRIPTION_LATENCY.labels(pipeline=pipeline, engine=engine).observe(
+        max(0.0, latency_seconds)
+    )
+    if audio_seconds > 0:
+        TRANSCRIPTION_AUDIO_DURATION.observe(audio_seconds)
+
+
+def record_transcription_error(*, pipeline: str, error_type: str) -> None:
+    TRANSCRIPTION_ERRORS.labels(pipeline=pipeline, error_type=error_type).inc()
+
+
+def observe_streaming_inference(seconds: float) -> None:
+    """Observe one per-utterance streaming ASR inference latency."""
+    STREAMING_INFERENCE_LATENCY.observe(max(0.0, seconds))
+
+
+def streaming_session_started(active_count: int) -> None:
+    """A streaming session was created: count it and sync the active gauge."""
+    STREAMING_SESSIONS_TOTAL.labels(status="started").inc()
+    STREAMING_SESSIONS_ACTIVE.set(active_count)
+
+
+def streaming_session_ended(active_count: int) -> None:
+    """A streaming session was removed: sync the active gauge to the live count."""
+    STREAMING_SESSIONS_ACTIVE.set(max(0, active_count))

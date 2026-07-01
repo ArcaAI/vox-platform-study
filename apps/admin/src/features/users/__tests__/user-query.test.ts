@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toUserListQuery } from '../user-query';
+import { deriveUserStatus, toUserListQuery, USER_STATUS_FACET_OPTIONS, USER_TYPE_FACET_OPTIONS, userTypeLabel } from '../user-query';
 
 describe('toUserListQuery (Users server-side query wiring)', () => {
     // DEFECT-P1: the grid's `OffsetPageRequest.page` is 0-based (TanStack table
@@ -52,5 +52,46 @@ describe('toUserListQuery (Users server-side query wiring)', () => {
         expect(query.sort).toBeUndefined();
         expect(query.filters).toBeUndefined();
         expect(query.search).toBeUndefined();
+    });
+});
+
+describe('deriveUserStatus (20u dot+label status, design labels over the resourceStatus enum)', () => {
+    it('maps the real resourceStatus enum to the design status label + semantic role', () => {
+        expect(deriveUserStatus({ resourceStatus: 'ENABLED' })).toEqual({ label: 'Active', colorRole: 'success' });
+        expect(deriveUserStatus({ resourceStatus: 'DISABLED' })).toEqual({ label: 'Inactive', colorRole: 'warning' });
+        expect(deriveUserStatus({ resourceStatus: 'ARCHIVED' })).toEqual({ label: 'Archived', colorRole: 'neutral' });
+    });
+
+    it('surfaces an Invited status only when the backend signals it (never fabricated from a missing login)', () => {
+        expect(deriveUserStatus({ resourceStatus: 'INVITED' })).toEqual({ label: 'Invited', colorRole: 'info' });
+    });
+
+    it('is case-insensitive and falls back to Unknown/neutral for absent/garbage status', () => {
+        expect(deriveUserStatus({ resourceStatus: 'enabled' })).toEqual({ label: 'Active', colorRole: 'success' });
+        expect(deriveUserStatus({})).toEqual({ label: 'Unknown', colorRole: 'neutral' });
+        expect(deriveUserStatus({ resourceStatus: 'WAT' })).toEqual({ label: 'Unknown', colorRole: 'neutral' });
+    });
+});
+
+describe('Users grid facet options (server-side filter values)', () => {
+    it('Status facet labels map to the real resourceStatus enum values', () => {
+        expect(USER_STATUS_FACET_OPTIONS).toEqual([
+            { label: 'Active', value: 'ENABLED' },
+            { label: 'Inactive', value: 'DISABLED' },
+            { label: 'Archived', value: 'ARCHIVED' },
+        ]);
+    });
+
+    it('Type facet maps to the isServiceAccount boolean (serialized as a string for the CSV filter)', () => {
+        expect(USER_TYPE_FACET_OPTIONS).toEqual([
+            { label: 'Human', value: 'false' },
+            { label: 'Service account', value: 'true' },
+        ]);
+    });
+
+    it('userTypeLabel reflects the service-account flag', () => {
+        expect(userTypeLabel(true)).toBe('Service account');
+        expect(userTypeLabel(false)).toBe('Human');
+        expect(userTypeLabel(undefined)).toBe('Human');
     });
 });

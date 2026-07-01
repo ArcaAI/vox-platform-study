@@ -8,15 +8,42 @@ import { useState, useCallback } from 'react';
 import { useApiOperation } from './useApiOperation';
 import { extractArray } from '../utils/responseUtils';
 import { MONITORING_ENDPOINTS } from '../core/constants';
-import type { ServiceUptime, SessionCounts, HeartbeatRecord } from '../types/monitoring';
+import type { ServiceSessionCount, ServiceUptime, SessionCounts, HeartbeatRecord } from '../types/monitoring';
 
+const SESSION_SERVICE_KEYS = ['smr', 'stt', 'nlp', 'guardrail', 'harness'] as const;
+
+/**
+ * Normalize the backend `SessionsResponse`
+ *   `{ services: { smr|stt|nlp|guardrail|harness: { active } }, totalUsers, refreshedAt }`
+ * into `SessionCounts`, computing the DERIVED tile values (TASK-386):
+ *   - `activeSessions` ≈ live consultations ≈ `services.stt.active` (the live STT stream).
+ *   - `processingJobs` ≈ background inference ≈ SMR + NLP + guardrail + harness active.
+ * Falls back to all-zero on a missing/malformed body so tiles render 0, never NaN.
+ */
 function normalizeSessionCounts(raw: Record<string, unknown> | null | undefined): SessionCounts {
-  if (!raw || typeof raw !== 'object') {
-    return { active: 0, total: 0, activeSessions: 0, processingJobs: 0 };
-  }
-  const activeSessions = typeof raw.activeSessions === 'number' ? raw.activeSessions : typeof raw.active === 'number' ? raw.active : 0;
-  const processingJobs = typeof raw.processingJobs === 'number' ? raw.processingJobs : 0;
-  return { ...raw, active: activeSessions, total: typeof raw.total === 'number' ? raw.total : 0, activeSessions, processingJobs };
+  const rawServices = (raw && typeof raw === 'object' ? (raw as { services?: unknown }).services : null) ?? {};
+  const readActive = (key: string): ServiceSessionCount => {
+    const entry = (rawServices as Record<string, unknown>)[key];
+    const active = entry && typeof entry === 'object' && typeof (entry as { active?: unknown }).active === 'number' ? (entry as { active: number }).active : 0;
+    return { active };
+  };
+
+  const services = {
+    smr: readActive('smr'),
+    stt: readActive('stt'),
+    nlp: readActive('nlp'),
+    guardrail: readActive('guardrail'),
+    harness: readActive('harness'),
+  };
+
+  const totalUsers = raw && typeof (raw as { totalUsers?: unknown }).totalUsers === 'number' ? (raw as { totalUsers: number }).totalUsers : 0;
+  const refreshedAt = raw && typeof (raw as { refreshedAt?: unknown }).refreshedAt === 'string' ? (raw as { refreshedAt: string }).refreshedAt : undefined;
+
+  const activeSessions = services.stt.active;
+  const processingJobs = services.smr.active + services.nlp.active + services.guardrail.active + services.harness.active;
+  const total = SESSION_SERVICE_KEYS.reduce((sum, key) => sum + services[key].active, 0);
+
+  return { services, totalUsers, refreshedAt, activeSessions, processingJobs, active: activeSessions, total };
 }
 
 export interface UseMonitoringReturn {

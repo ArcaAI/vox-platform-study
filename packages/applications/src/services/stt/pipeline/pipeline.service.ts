@@ -6,12 +6,13 @@ import {
   ResourceType,
   SysEventType,
 } from '@arcaai/domains';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Inject, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { parse } from 'yaml';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IPipelineService } from './IPipelineService';
 import { CreatePipelineRequest, PaginatedPipelineResponse, PipelineResponse, PipelineVersionResponse, UpdatePipelineRequest } from './dto';
 import { PipelineDtoMapper } from './pipeline.dto.mapper';
@@ -24,6 +25,9 @@ export class PipelineService extends BaseService implements IPipelineService {
     protected override readonly clsService: ClsService<IActiveUserContext>,
     // TASK-328 A6 — version snapshots written on config-YAML changes.
     private readonly versionRepository: AsrPipelineVersionRepository,
+    // TASK-392 (Phase 3, C5) — optional (append-only DI); enforces the plan
+    // `maxAsrPipelines` quota on create (kill-switch-gated, no-op when OFF).
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
     super(eventEmitter, clsService, ResourceType.AsrPipeline);
   }
@@ -37,6 +41,12 @@ export class PipelineService extends BaseService implements IPipelineService {
 
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
+    }
+
+    // TASK-392 (Phase 3, C5) — plan quota precheck (kill-switch-gated, Q9/Q10).
+    if (this.entitlements?.isEnforcementEnabled()) {
+      const currentCount = await this.pipelineRepository.count({ where: { tenantId } });
+      await this.entitlements.assertQuantityQuota(tenantId, 'maxAsrPipelines', currentCount);
     }
 
     // Check if slug already exists

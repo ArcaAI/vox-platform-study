@@ -8,6 +8,7 @@ import {
   TestPromptTemplateRequest,
   PromptTestResultResponse,
   PromptUsageAnalyticsResponse,
+  PromptVersionDiffResponse,
   DepartmentResponse,
   HttpMethod,
 } from '@arcaai/applications';
@@ -61,6 +62,9 @@ export class PromptManagementController {
   @ApiQuery({ name: 'departmentId', required: false, type: String })
   @ApiQuery({ name: 'search', required: false, type: String })
   @ApiQuery({ name: 'includeDisabled', required: false, type: Boolean, description: 'Include disabled templates in results' })
+  // TASK-388 #12 — admin scope/owner narrowing (e.g. list a user's personal prompts).
+  @ApiQuery({ name: 'scope', required: false, enum: ['TENANT_DEFAULT', 'DEPARTMENT_DEFAULT', 'USER_PERSONAL'], description: 'Filter by prompt scope' })
+  @ApiQuery({ name: 'ownerUserId', required: false, type: String, description: 'Filter USER_PERSONAL prompts by owner user id' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   async list(
@@ -71,6 +75,8 @@ export class PromptManagementController {
       departmentId?: string;
       search?: string;
       includeDisabled?: string;
+      scope?: string;
+      ownerUserId?: string;
       page?: number;
       limit?: number;
     },
@@ -85,6 +91,9 @@ export class PromptManagementController {
       departmentId: queryParams.departmentId,
       search: queryParams.search,
       includeDisabled: queryParams.includeDisabled === 'true',
+      // TASK-388 #12 — admin scope/owner filters.
+      scope: queryParams.scope,
+      ownerUserId: queryParams.ownerUserId,
       page: Number(queryParams.page) || 1,
       limit: Number(queryParams.limit) || 50,
     });
@@ -193,6 +202,31 @@ export class PromptManagementController {
     const result = await svc.getVersion(id, versionNumber);
     if (!result) throw new NotFoundException(`Version ${versionNumber} not found for template ${id}`);
     return result;
+  }
+
+  // TASK-389 #14 (AG8/A3) — server-side field-level version diff. Inherits the
+  // class-level `manage:PromptTemplate` (admin plane, same as the sibling
+  // getVersions/getVersion reads). The static `diff` path segment keeps this
+  // clear of `:id/versions/:versionNumber` and `.../activate`.
+  @Get(':id/versions/:from/diff/:to')
+  @ApiOperation({
+    summary: 'Diff two versions of a prompt template (server-side)',
+    description:
+      'Returns a structured field-level diff (content + variables) plus a ' +
+      'combined line diff between the "from" and "to" version numbers. ' +
+      'Tenant-scoped: a cross-tenant/unknown template id is 404.',
+  })
+  @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })
+  @ApiParam({ name: 'from', description: 'Base version number', type: Number })
+  @ApiParam({ name: 'to', description: 'Target version number', type: Number })
+  @ApiResponse({ status: 200, description: 'Structured version diff', type: PromptVersionDiffResponse })
+  @ApiResponse({ status: 404, description: 'Template or version not found' })
+  async diffVersions(
+    @Param('id') id: string,
+    @Param('from', ParseIntPipe) from: number,
+    @Param('to', ParseIntPipe) to: number,
+  ): Promise<PromptVersionDiffResponse> {
+    return this.promptService.diffVersions(id, from, to);
   }
 
   @Get(':id/usage')

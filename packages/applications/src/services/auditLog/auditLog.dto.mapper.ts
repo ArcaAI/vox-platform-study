@@ -23,6 +23,23 @@ const CSV_COLUMNS = [
 ] as const;
 
 /**
+ * TASK-390 #25 (AU2) — a column/row table extracted from an audit set, shaped to
+ * feed the shared `table-export` renderer (structurally compatible with its
+ * `TableColumn`). Kept dependency-free here (no `apps/api` import) so the
+ * applications layer stays framework-agnostic.
+ */
+export interface AuditExportColumn {
+  key: string;
+  header: string;
+  width?: number;
+}
+
+export interface AuditExportTable {
+  columns: AuditExportColumn[];
+  rows: Record<string, unknown>[];
+}
+
+/**
  * RFC 4180 field escaping: wrap in double quotes (and double any embedded
  * quote) whenever the value contains a comma, quote, or newline. Everything
  * else passes through verbatim.
@@ -89,31 +106,65 @@ export class AuditLogDtoMapper {
     const lines: string[] = [columns.join(',')];
 
     for (const row of rows) {
-      const user = row.responsibleUserId ? responsibleUsers[row.responsibleUserId] : undefined;
-      const createdAt = row.createdAt instanceof Date ? row.createdAt.toISOString() : (row.createdAt ?? '');
-
-      const cells: Record<string, unknown> = {
-        id: row.id,
-        createdAt,
-        action: row.action,
-        resourceType: row.resourceType,
-        resourceId: row.resourceId ?? '',
-        responsibleUserId: row.responsibleUserId ?? '',
-        responsibleUserName: user?.displayName ?? '',
-        responsibleUserEmail: user?.email ?? '',
-        responsibleIp: row.responsibleIp ?? '',
-        eventType: row.eventType ?? '',
-        success: row.success === null || row.success === undefined ? '' : String(row.success),
-        data: row.data === null || row.data === undefined ? '' : JSON.stringify(row.data),
-      };
-
-      if (options.includeTenant) {
-        cells.tenantId = row.tenantId ?? '';
-      }
-
+      const cells = this.buildExportCells(row, responsibleUsers, options);
       lines.push(columns.map((col) => escapeCsvField(cells[col])).join(','));
     }
 
     return lines.join('\n');
+  }
+
+  /**
+   * TASK-390 #25 (AU2) — structured (column/row) view of a filtered audit set,
+   * feeding the shared `table-export` renderer so the same data drives the
+   * xlsx and pdf exports. Column order + cell mapping are shared with
+   * {@link ToCsv} (via {@link buildExportCells}); `header === key` so the xlsx
+   * header row and pdf column labels match the CSV header exactly. The
+   * `includeTenant` (OB-07) tenant column follows the same rule as ToCsv.
+   */
+  static ToExportRows(
+    rows: AuditLogEntity[],
+    responsibleUsers: ResponsibleUserMap = {},
+    options: { includeTenant?: boolean } = {},
+  ): AuditExportTable {
+    const keys: string[] = options.includeTenant ? [...CSV_COLUMNS, 'tenantId'] : [...CSV_COLUMNS];
+    return {
+      columns: keys.map((key) => ({ key, header: key })),
+      rows: rows.map((row) => this.buildExportCells(row, responsibleUsers, options)),
+    };
+  }
+
+  /**
+   * Single source of truth for one audit row's export cells (keyed by
+   * {@link CSV_COLUMNS}, + `tenantId` when requested). Shared by {@link ToCsv}
+   * and {@link ToExportRows} so CSV, xlsx and pdf never drift apart.
+   */
+  private static buildExportCells(
+    row: AuditLogEntity,
+    responsibleUsers: ResponsibleUserMap,
+    options: { includeTenant?: boolean },
+  ): Record<string, unknown> {
+    const user = row.responsibleUserId ? responsibleUsers[row.responsibleUserId] : undefined;
+    const createdAt = row.createdAt instanceof Date ? row.createdAt.toISOString() : (row.createdAt ?? '');
+
+    const cells: Record<string, unknown> = {
+      id: row.id,
+      createdAt,
+      action: row.action,
+      resourceType: row.resourceType,
+      resourceId: row.resourceId ?? '',
+      responsibleUserId: row.responsibleUserId ?? '',
+      responsibleUserName: user?.displayName ?? '',
+      responsibleUserEmail: user?.email ?? '',
+      responsibleIp: row.responsibleIp ?? '',
+      eventType: row.eventType ?? '',
+      success: row.success === null || row.success === undefined ? '' : String(row.success),
+      data: row.data === null || row.data === undefined ? '' : JSON.stringify(row.data),
+    };
+
+    if (options.includeTenant) {
+      cells.tenantId = row.tenantId ?? '';
+    }
+
+    return cells;
   }
 }

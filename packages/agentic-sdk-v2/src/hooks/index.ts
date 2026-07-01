@@ -48,12 +48,32 @@ export { USER_ROLES, type UserRole } from './useRoles';
 export { useApiKeys, type UseApiKeysReturn } from './useApiKeys';
 export type { ApiKey, ApiKeyWithRawKey, CreateApiKeyInput, UpdateApiKeyInput, ApiKeyUsage } from './useApiKeys';
 
+// Plan-entitlements hook (TASK-392 Phase 5)
+export { useEntitlements, type UseEntitlementsReturn } from './useEntitlements';
+export type {
+  EntitlementPlan,
+  TrialInfo,
+  CapabilityUsageRow,
+  ResolvedFeatures,
+  EntitlementCapabilities,
+  PlanEntitlement,
+  UpdatePlanEntitlementInput,
+  TenantEntitlementOverride,
+  UpsertTenantOverrideInput,
+  DowngradeDisabledGroup,
+  DowngradeReport,
+  TrialExpiryReport,
+} from './useEntitlements';
+
 // Storage management hook (TASK-032 WS-G)
 export { useStorage, type UseStorageReturn } from './useStorage';
 export type { Bucket, StorageFile, StorageFileWithUrl } from './useStorage';
 
 // Monitoring hook (TASK-032 WS-G)
 export { useMonitoring, type UseMonitoringReturn } from './useMonitoring';
+
+// Platform runtime metrics hook (TASK-386 #16 — E1/E2/E3 super-admin tiles)
+export { usePlatformMetrics, type UsePlatformMetricsReturn } from './usePlatformMetrics';
 
 // Auth hook (TASK-032 WS-A)
 export { useAuth, type UseAuthReturn } from './useAuth';
@@ -104,7 +124,7 @@ export type {
 
 // Tenant management hook (TASK-218)
 export { useTenants, type UseTenantsReturn } from './useTenants';
-export type { Tenant, CreateTenantInput, UpdateTenantInput } from './useTenants';
+export type { Tenant, CreateTenantInput, UpdateTenantInput, TenantUsageStats } from './useTenants';
 
 // Policy management hook (TASK-218)
 export { usePolicies, type UsePoliciesReturn } from './usePolicies';

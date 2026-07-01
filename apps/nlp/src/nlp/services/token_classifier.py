@@ -7,6 +7,7 @@ from transformers import AutoModelForTokenClassification, AutoTokenizer, pipelin
 
 from nlp.core.config import TokenClassificationConfig
 from nlp.core.logging import get_logger
+from nlp.core.metrics import MODEL_MEDICAL_NER, track_model_inference
 from nlp.schemas.classification import TokenClassificationRequest, TokenClassificationResponse
 from nlp.schemas.common import Entity, TextPosition
 
@@ -81,7 +82,9 @@ class TransformerTokenClassifier(TokenClassifier):
             await self.initialize()
 
         try:
-            pipeline_results = self.pipeline(request.text)
+            # TASK-386 — per-model running gauge + inference latency (Medical-NER).
+            with track_model_inference(MODEL_MEDICAL_NER):
+                pipeline_results = self.pipeline(request.text)
 
             # tokenized = self.tokenizer(text, return_tensors="pt", add_special_tokens=True)
             # tokens = self.tokenizer.convert_ids_to_tokens(tokenized["input_ids"][0])

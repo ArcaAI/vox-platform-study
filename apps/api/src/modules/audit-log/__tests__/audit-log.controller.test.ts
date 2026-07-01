@@ -13,9 +13,18 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, StreamableFile } from '@nestjs/common';
 import { AuditLogDtoMapper } from '@arcaai/applications';
 import { AuditLogController } from '../audit-log.controller';
+
+/** Collect a StreamableFile's bytes into a Buffer (the export handler streams). */
+async function readStreamableFile(file: StreamableFile): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+    for await (const chunk of file.getStream()) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+}
 
 function createMockAuditLogService() {
     return {
@@ -212,14 +221,54 @@ describe('TASK-328 A8 — AuditLogController.exportCsv', () => {
             responsibleUsers: { u1: { id: 'u1', displayName: 'Alice Nguyen', email: 'alice@example.com' } },
         });
 
-        const csv = await controller.exportCsv({ action: 'CREATE' } as never);
+        // TASK-390 #25 — csv is now streamed (StreamableFile) but the bytes are
+        // the same TASK-328 CSV; read the stream back to assert content.
+        const file = await controller.exportCsv({ action: 'CREATE' } as never);
+        expect(file).toBeInstanceOf(StreamableFile);
+        expect(file.options.type).toContain('text/csv');
+        expect(file.options.disposition).toContain('audit-logs.csv');
 
         expect(svc.exportFiltered).toHaveBeenCalledWith(expect.objectContaining({ action: 'CREATE' }));
-        const lines = csv.split('\n');
+        const lines = (await readStreamableFile(file)).toString('utf-8').split('\n');
         expect(lines[0]).toContain('id,createdAt,action,resourceType');
         expect(lines).toHaveLength(2);
         expect(lines[1]).toContain('audit-1');
         expect(lines[1]).toContain('Alice Nguyen');
+    });
+
+    // TASK-390 #25 (AU2) — xlsx/pdf reuse the same filtered set through the shared
+    // table exporter, returning the matching content-type + filename.
+    it('streams an .xlsx (spreadsheet content-type, PK zip signature) for format=xlsx', async () => {
+        const cls = createMockCls({ id: 'u-1', tenantId: 't-OWN', roles: ['DOCTOR'] }, 't-OWN');
+        const controller = new AuditLogController(svc as never, cls as never);
+        svc.exportFiltered.mockResolvedValue({
+            rows: [{ id: 'audit-1', action: 'CREATE', resourceType: 'User', createdAt: new Date('2026-02-01T10:00:00.000Z') }],
+            responsibleUsers: {},
+        });
+
+        const file = await controller.exportCsv({ format: 'xlsx' } as never);
+
+        expect(file).toBeInstanceOf(StreamableFile);
+        expect(file.options.type).toContain('spreadsheetml');
+        expect(file.options.disposition).toContain('audit-logs.xlsx');
+        const buf = await readStreamableFile(file);
+        expect(buf.subarray(0, 2).toString('latin1')).toBe('PK');
+    });
+
+    it('streams a .pdf (%PDF header) for format=pdf', async () => {
+        const cls = createMockCls({ id: 'u-1', tenantId: 't-OWN', roles: ['DOCTOR'] }, 't-OWN');
+        const controller = new AuditLogController(svc as never, cls as never);
+        svc.exportFiltered.mockResolvedValue({
+            rows: [{ id: 'audit-1', action: 'CREATE', resourceType: 'User', createdAt: new Date('2026-02-01T10:00:00.000Z') }],
+            responsibleUsers: {},
+        });
+
+        const file = await controller.exportCsv({ format: 'pdf' } as never);
+
+        expect(file.options.type).toBe('application/pdf');
+        expect(file.options.disposition).toContain('audit-logs.pdf');
+        const buf = await readStreamableFile(file);
+        expect(buf.subarray(0, 4).toString('latin1')).toBe('%PDF');
     });
 
     it('allows SUPER_ADMIN with no tenant context', async () => {

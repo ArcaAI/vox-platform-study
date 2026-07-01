@@ -35,6 +35,8 @@ volumes:
   # TASK-330 Phase 3: HF TEI reranker model/weights cache (avoids re-downloading
   # BAAI/bge-reranker-v2-m3 on every `up`).
   reranker-data:
+  # TASK-386: Prometheus TSDB for the dev platform-metrics backend.
+  prometheus-data:
 
 services:
   # HashiCorp Vault - Secret Management
@@ -247,5 +249,43 @@ services:
     command: ["--model-id", "${HOPE_RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}"]
     volumes:
       - reranker-data:/data
+
+  # ==========================================================================
+  # Prometheus — DEV platform-metrics backend (TASK-386). Scrapes the API
+  # gateway + every Python service /metrics (running on the HOST, reached via
+  # host.docker.internal) and answers the NestJS PrometheusQueryService at
+  # PROMETHEUS_URL=http://localhost:9090.
+  #
+  # OPT-IN by design (like vault/temporal/rag): gated behind the `observability`
+  # profile so a plain `docker compose up` / `start-infra.sh --all` does NOT
+  # start it and existing stacks are untouched. Start with:
+  #   docker compose -f infrastructure/docker/docker-compose.yml \
+  #                  -f infrastructure/docker/docker-compose.dev.yml \
+  #                  --profile observability up -d prometheus
+  #
+  #   Prometheus UI: http://localhost:9090
+  # ==========================================================================
+  prometheus:
+    container_name: hope-prometheus
+    image: prom/prometheus:v3.1.0
+    profiles: ["observability"]
+    networks:
+      - hope-network
+    restart: unless-stopped
+    ports:
+      - '${PROMETHEUS_PORT:-9090}:9090'
+    # Reach HOST-run services (API + Python) from inside the container. Docker
+    # Desktop provides host.docker.internal automatically; this mapping makes it
+    # work on Linux too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
 
 

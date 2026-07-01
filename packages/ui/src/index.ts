@@ -399,6 +399,8 @@ export * from './components/data-grid';
 export {
   HistoryTimelineList,
   useTimeline,
+  ScrollSpyTimeline,
+  useScrollSpy,
   MarkdownRenderer,
   PdfRenderer,
   ImageGridRenderer,
@@ -424,7 +426,15 @@ export type {
   HistoryTimelineListProps,
   UseTimelineParams,
   UseTimelineResult,
+  ScrollSpyTimelineProps,
+  TimelineMilestone,
+  UseScrollSpyParams,
+  UseScrollSpyResult,
 } from './components/timeline';
+
+// TASK-378 — Collection foundations: CardGrid + EntityCard + ItemList.
+export { CardGrid, EntityCard, ItemList } from './components/collection';
+export type { CardGridProps, EntityCardProps, ItemListProps } from './components/collection';
 
 // LiveTranscript — canonical realtime transcript (supersedes custom TranscriptViewer, D6).
 // The `TranscriptSegment` / `TranscriptWord` sub-components are omitted (their names
@@ -441,3 +451,50 @@ export type {
   UseLiveTranscriptResult,
   ActiveWord,
 } from './components/live-transcript';
+
+// ============================================
+// TASK-377 — Shared Metrics / Reporting / Chart primitives (PHASE-2-PLAN §3)
+// `ServiceStatusBar` / `ServiceStatusBarProps` are intentionally NOT re-exported
+// here — the names collide with the legacy `components/custom/service-status-bar`
+// (still imported by apps/admin). The new canonical semantic bar ships via the
+// subpath '@arcaai/ui/components/metrics' (mirrors the StatusBadge precedent).
+// ============================================
+export {
+  StatusDot,
+  StatCard,
+  MetricChart,
+  ServiceStatusItem,
+  DateRangeSelector,
+  TenantFilter,
+  MetricTable,
+  RunningTasksList,
+  ModelsList,
+} from './components/metrics';
+export type {
+  StatusDotProps,
+  StatCardProps,
+  StatCardAccent,
+  StatCardDelta,
+  DeltaDirection,
+  DeltaIntent,
+  MetricChartProps,
+  MetricChartKind,
+  MetricSeries,
+  ServiceStatus,
+  ServiceStatusItemProps,
+  DateRangeSelectorProps,
+  RangePreset,
+  DateRange,
+  TenantFilterProps,
+  TenantOption,
+  MetricTableProps,
+  MetricColumn,
+  MetricColumnAlign,
+  MetricColumnFormat,
+  RunningTasksListProps,
+  RunningTask,
+  TaskStatus,
+  ModelsListProps,
+  ModelInfo,
+  ModelStatus,
+} from './components/metrics';

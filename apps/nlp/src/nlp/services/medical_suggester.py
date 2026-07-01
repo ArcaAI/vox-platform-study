@@ -6,6 +6,7 @@ import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
 
 from nlp.core.config import MedicalSuggesterConfig
+from nlp.core.metrics import MODEL_SYMPTOMS_DISEASE, track_model_inference
 from nlp.schemas.classification import TokenClassificationRequest
 from nlp.schemas.common import Entity
 from nlp.schemas.diagnosis import (
@@ -215,7 +216,10 @@ class MedicalSuggester:
             return {}
 
         try:
-            pipeline_results = self.text_classifier_pipeline(symptom_text)
+            # TASK-386 — per-model running gauge + inference latency
+            # (symps-disease-bert).
+            with track_model_inference(MODEL_SYMPTOMS_DISEASE):
+                pipeline_results = self.text_classifier_pipeline(symptom_text)
 
             pipeline_results.sort(key=lambda x: x["score"], reverse=True)
 

@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -16,6 +16,7 @@ import { ActiveUserRoleAssignmentRow, AuthRoleSummary, IUserRoleAssignmentServic
 import { CreateUserRoleAssignmentRequest, UpdateUserRoleAssignmentRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { SUPER_ADMIN_ROLE } from '../../tenant/constants';
 
 // TODO: Implement this
@@ -33,8 +34,26 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
     // class cannot express, so we fall back to the raw client at this single
     // boundary — same precedent as `TenantService.getTenantUsage`.
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
+    // TASK-392 (Phase 3, C2) — optional (append-only DI); enforces the plan
+    // `maxUsers` SEAT quota when an assignment adds a NEW distinct member to the
+    // tenant (kill-switch-gated, no-op when OFF).
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
     super(eventEmitter, clsService, ResourceType.UserRoleAssignment);
+  }
+
+  /**
+   * TASK-392 (Phase 3, C2) — count a tenant's occupied SEATS: distinct users
+   * with at least one ENABLED role-assignment (mirrors
+   * `TenantService.getUsageStats().totalUsers`).
+   */
+  private async countTenantSeats(tenantId: string): Promise<number> {
+    const rows = await this.databaseService.baseClient.userRoleAssignment.findMany({
+      where: { tenantId, resourceStatus: ResourceStatusType.ENABLED },
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+    return rows.length;
   }
 
   async findActiveAssignmentForUserInTenant(userId: string, tenantId: string): Promise<ActiveUserRoleAssignmentRow | null> {
@@ -143,6 +162,19 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
       effectiveTenantId = requestedTenantId;
     } else {
       effectiveTenantId = callerTenantId;
+    }
+
+    // TASK-392 (Phase 3, C2) — a "seat" = a distinct user with an ENABLED
+    // assignment in the tenant. Adding an assignment for a user who is NOT yet
+    // an active member consumes a new seat; granting an additional role to an
+    // existing member does not. Enforce the plan `maxUsers` quota only for the
+    // new-member case. Kill-switch-gated (Q9), no-op for unlimited tenants (Q3).
+    if (effectiveTenantId && this.entitlements?.isEnforcementEnabled()) {
+      const alreadyMember = await this.findActiveAssignmentForUserInTenant(request.userId, effectiveTenantId);
+      if (!alreadyMember) {
+        const seats = await this.countTenantSeats(effectiveTenantId);
+        await this.entitlements.assertQuantityQuota(effectiveTenantId, 'maxUsers', seats);
+      }
     }
 
     try {

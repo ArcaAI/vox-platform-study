@@ -4,9 +4,10 @@ import { CommonServiceModule } from '../baseServices';
 import { ApiKeyService } from './apikey.service';
 import { IApiKeyService } from './IApiKeyService';
 import { ApiKeyRateLimiter, IApiKeyRateLimiter } from './apikey-rate-limiter.service';
+import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule],
+  imports: [CommonServiceModule, CoreDatabaseModule, EntitlementsServiceModule],
   providers: [
     {
       provide: IApiKeyService,

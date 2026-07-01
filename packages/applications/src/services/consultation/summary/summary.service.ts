@@ -33,6 +33,7 @@ import { BaseService, assertParentInScope, encryptPhiFields } from '../../../com
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { SecretsService } from '../../baseServices/_meta/secrets';
+import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
@@ -85,6 +86,9 @@ export class SummaryService extends BaseService implements ISummaryService {
     // (SummaryServiceModule) always supplies it. When unset, DNA gating is a
     // no-op and behaviour is byte-identical to the pre-Phase-6 path.
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
+    // TASK-392 (Phase 3, M3) — optional (append-only DI); enforces the plan
+    // `monthlySummaries` meter on generation (kill-switch-gated, → 429 over cap).
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -110,6 +114,10 @@ export class SummaryService extends BaseService implements ISummaryService {
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
+
+    // TASK-392 (Phase 3, M3) — a generated summary consumes a monthly meter unit.
+    // Kill-switch-gated (Q9); → 429 once the tenant is over the monthly cap.
+    await this.entitlements?.assertMeterQuota(tenantId, 'monthlySummaries');
 
     // TASK-305 D.4 (audit C-1 / C-3) — verify the parent Consultation
     // belongs to the caller's tenant before invoking the (expensive) SMR
@@ -193,6 +201,10 @@ export class SummaryService extends BaseService implements ISummaryService {
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
+
+    // TASK-392 (Phase 3, M3) — a generated summary consumes a monthly meter unit.
+    // Kill-switch-gated (Q9); → 429 once the tenant is over the monthly cap.
+    await this.entitlements?.assertMeterQuota(tenantId, 'monthlySummaries');
 
     // TASK-305 D.4 (audit C-1 / C-3) — verify the parent Consultation
     // belongs to the caller's tenant, then validate every explicit

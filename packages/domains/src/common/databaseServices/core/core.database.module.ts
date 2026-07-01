@@ -31,6 +31,7 @@ import { MediaRepository } from '../../../repositories/generated/core/MediaRepos
 import { NamedEntityRepository } from '../../../repositories/generated/core/NamedEntityRepository';
 import { NotificationRepository } from '../../../repositories/generated/core/NotificationRepository';
 import { PermissionRepository } from '../../../repositories/generated/core/PermissionRepository';
+import { PlanEntitlementRepository } from '../../../repositories/generated/core/PlanEntitlementRepository';
 import { PipelinePolicyChangeRepository } from '../../../repositories/generated/core/PipelinePolicyChangeRepository';
 import { PipelinePolicyRepository } from '../../../repositories/generated/core/PipelinePolicyRepository';
 import { PromptTemplateRepository } from '../../../repositories/generated/core/PromptTemplateRepository';
@@ -43,9 +44,11 @@ import { StorageAccessKeyRepository } from '../../../repositories/generated/core
 import { SummaryMetaRepository } from '../../../repositories/generated/core/SummaryMetaRepository';
 import { TagRepository } from '../../../repositories/generated/core/TagRepository';
 import { TenantBucketRepository } from '../../../repositories/generated/core/TenantBucketRepository';
+import { TenantEntitlementRepository } from '../../../repositories/generated/core/TenantEntitlementRepository';
 import { TenantFrontendConfigRepository } from '../../../repositories/generated/core/TenantFrontendConfigRepository';
 import { TenantRepository } from '../../../repositories/generated/core/TenantRepository';
 import { TenantStorageConfigRepository } from '../../../repositories/generated/core/TenantStorageConfigRepository';
+import { TenantUsageMeterRepository } from '../../../repositories/generated/core/TenantUsageMeterRepository';
 import { TranscriptionJobRepository } from '../../../repositories/generated/core/TranscriptionJobRepository';
 import { UserDepartmentRepository } from '../../../repositories/generated/core/UserDepartmentRepository';
 import { UserMediaRepository } from '../../../repositories/generated/core/UserMediaRepository';
@@ -98,6 +101,10 @@ const repositories = [
   TagRepository,
   TenantRepository,
   TenantFrontendConfigRepository,
+  // Plan entitlements (TASK-392) — per-plan matrix, per-tenant override, rolling meters
+  PlanEntitlementRepository,
+  TenantEntitlementRepository,
+  TenantUsageMeterRepository,
   UserMediaRepository,
   UserProfileRepository,
   UserRepository,

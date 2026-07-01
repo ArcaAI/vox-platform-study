@@ -46,5 +46,11 @@ export * from './tenant-frontend-config';
 export * from './queue-admin';
 // TASK-316 — DB-backed, admin-controlled rate-limit configuration.
 export * from './rate-limit';
+// TASK-392 — DB-backed plan entitlements (matrix + per-tenant override + kill-switch).
+export * from './entitlements';
+// TASK-392 (Q5) — rolling-monthly usage metering (live aggregate + reconcile job).
+export * from './metering';
 // TASK-307 W6.2 — RBAC services exposed for controllers (closes C-10 / H-9).
 export * from './rbac';
+// TASK-386 — platform runtime metrics (E1/E2/E3) + multi-instance socket registry.
+export * from './platform-metrics';

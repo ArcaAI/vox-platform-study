@@ -9,6 +9,10 @@
 //     / REDIS_PASS that loadVaultSecrets() overlays — intentional per plan)
 //   - packages/tools/src/gen-dev-token/** (standalone CLI dev tool; no
 //     NestJS DI container available)
+//   - packages/applications/scripts/** (TASK-376 dev-tooling scripts —
+//     build-excluded via tsconfig rootDir=src + ESLint-ignored; they
+//     intentionally bypass the NestJS DI graph / SecretsService and read
+//     MINIO_* from .env.dev, same rationale as gen-dev-token)
 //
 // Run as: pnpm --filter @arcaai/applications test -- secrets-coverage
 import { describe, it, expect } from 'vitest';
@@ -46,6 +50,7 @@ describe('Phase 3 coverage — no stray process.env secret reads', () => {
         normalized.startsWith('packages/database/src/prisma/db_main/seed/') ||
         normalized === 'packages/applications/src/services/baseServices/_meta/config/config.service.ts' ||
         normalized.startsWith('packages/tools/src/gen-dev-token/') ||
+        normalized.startsWith('packages/applications/scripts/') ||
         normalized.includes('/.env')
       );
     };

@@ -1,4 +1,4 @@
-import { Injectable, Inject, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, Optional, BadRequestException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -19,6 +19,9 @@ import {
 } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException, NotFoundException } from '@arcaai/exceptions';
 import { IUserService } from './IUserService';
+import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
+import { IUserProfileService } from '../userProfile/IUserProfileService';
+import { UpdateUserProfileRequest } from '../userProfile/dto/updateUserProfile.request';
 import { CreateOAuthUserRequest, CreateUserRequest, UpdateUserRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
@@ -48,12 +51,34 @@ export class UserService extends BaseService implements IUserService {
     // TASK-331 r2605 #3 — `baseClient.$transaction(callback)` is the canonical
     // Prisma-7 atomic idiom in this codebase (see TenantService TASK-302 D.4).
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
+    // TASK-381 (V1) — `email` is a `UserProfile` field; the create flow upserts
+    // it onto the profile after the identity row exists.
+    @Inject(IUserProfileService) private readonly userProfileService: IUserProfileService,
+    // TASK-392 (Phase 3, C2) — optional (append-only DI); enforces the plan
+    // `maxUsers` SEAT quota when onboarding a user WITH a role (kill-switch-gated).
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
     super(eventEmitter, clsService, ResourceType.User);
   }
 
+  /**
+   * TASK-392 (Phase 3, C2) — count a tenant's occupied SEATS: distinct users
+   * with at least one ENABLED role-assignment (mirrors
+   * `TenantService.getUsageStats().totalUsers`). Uses the unscoped `baseClient`
+   * with an explicit `tenantId` filter — this can run inside/around the create
+   * transaction where CLS scoping is awkward.
+   */
+  private async countTenantSeats(tenantId: string): Promise<number> {
+    const rows = await this.databaseService.baseClient.userRoleAssignment.findMany({
+      where: { tenantId, resourceStatus: ResourceStatusType.ENABLED },
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+    return rows.length;
+  }
+
   async create(request: CreateUserRequest): Promise<UserEntity> {
-    const { roleId, departmentId, isPrimaryDepartment, ...userRequest } = request;
+    const { roleId, departmentId, isPrimaryDepartment, email, ...userRequest } = request;
     const wantsMembership = Boolean(roleId || departmentId);
 
     const newUser = UserFactory.CreateUser({
@@ -75,6 +100,7 @@ export class UserService extends BaseService implements IUserService {
         createdAt: user.createdAt,
         data: user.toObject() as object,
       });
+      await this.persistProfileEmail(user.id, email);
       return user;
     }
 
@@ -86,6 +112,16 @@ export class UserService extends BaseService implements IUserService {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new BadRequestException('Tenant context required to assign role/department');
+    }
+
+    // TASK-392 (Phase 3, C2) — onboarding a NEW user with a role consumes a new
+    // seat (the user is brand-new, so it is always a distinct seat). Enforce the
+    // plan `maxUsers` quota before the write. Kill-switch-gated (Q9); the seat
+    // COUNT only runs when enforcement is ON. A department-only create (no
+    // roleId) adds no seat, so it is not gated.
+    if (roleId && this.entitlements?.isEnforcementEnabled()) {
+      const seats = await this.countTenantSeats(tenantId);
+      await this.entitlements.assertQuantityQuota(tenantId, 'maxUsers', seats);
     }
 
     // Create the identity + membership rows atomically so a partial failure
@@ -145,7 +181,18 @@ export class UserService extends BaseService implements IUserService {
         data: departmentAssignment.toObject() as object,
       });
     }
+    await this.persistProfileEmail(user.id, email);
     return user;
+  }
+
+  /**
+   * TASK-381 (V1) — `email` is a `UserProfile` field, not a `User` column. When
+   * the admin create-user payload carries an email, upsert it onto the profile
+   * after the identity row exists (keyed by userId). No-op when email is absent.
+   */
+  private async persistProfileEmail(userId: string, email?: string): Promise<void> {
+    if (!email) return;
+    await this.userProfileService.upsertByUserId(userId, { email } as UpdateUserProfileRequest);
   }
 
   async createExternalUser(request: CreateOAuthUserRequest): Promise<UserEntity> {

@@ -41,4 +41,21 @@ export class CreatePromptTemplateRequest {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  // TASK-388 #12 — admin per-user prompt scope. Defaults to `TENANT_DEFAULT`
+  // server-side; `USER_PERSONAL` provisions a personal prompt owned by
+  // `ownerUserId` (an in-tenant user; falls back to the caller when omitted).
+  // `DEPARTMENT_DEFAULT` remains department-assigned via the department config.
+  @ApiPropertyOptional({
+    description: 'Prompt scope (admin). Defaults to TENANT_DEFAULT.',
+    enum: ['TENANT_DEFAULT', 'DEPARTMENT_DEFAULT', 'USER_PERSONAL'],
+  })
+  @IsOptional()
+  @IsIn(['TENANT_DEFAULT', 'DEPARTMENT_DEFAULT', 'USER_PERSONAL'])
+  scope?: 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USER_PERSONAL';
+
+  @ApiPropertyOptional({ description: 'Owner user ID — required/implied only when scope=USER_PERSONAL' })
+  @IsOptional()
+  @IsString()
+  ownerUserId?: string;
 }

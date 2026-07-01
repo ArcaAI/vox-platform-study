@@ -54,7 +54,12 @@ describe('useMonitoring', () => {
                 { service: 'stt', status: 'up', uptimeSeconds: 3600 },
                 { service: 'smr', status: 'up', uptimeSeconds: 7200 },
             ];
-            const sessionsData = { active: 5, total: 100 };
+            // TASK-386 — real backend SessionsResponse shape (per-service active + totalUsers).
+            const sessionsData = {
+                services: { smr: { active: 2 }, stt: { active: 5 }, nlp: { active: 1 }, guardrail: { active: 0 }, harness: { active: 0 } },
+                totalUsers: 4,
+                refreshedAt: '2026-07-01T00:00:00.000Z',
+            };
             mockGet
                 .mockResolvedValueOnce(uptimeData)
                 .mockResolvedValueOnce(sessionsData);
@@ -65,7 +70,8 @@ describe('useMonitoring', () => {
             expect(mockGet).toHaveBeenCalledWith(MONITORING_ENDPOINTS.UPTIME);
             expect(mockGet).toHaveBeenCalledWith(MONITORING_ENDPOINTS.SESSIONS);
             expect(result.current.uptime).toEqual(uptimeData);
-            expect(result.current.sessions).toMatchObject({ active: 5, total: 100, activeSessions: 5, processingJobs: 0 });
+            // activeSessions = stt.active (5); processingJobs = smr+nlp+guardrail+harness (3); total = 8.
+            expect(result.current.sessions).toMatchObject({ activeSessions: 5, processingJobs: 3, active: 5, total: 8, totalUsers: 4 });
         });
 
         it('should set error on failure', async () => {
@@ -95,10 +101,14 @@ describe('useMonitoring', () => {
         });
     });
 
-    describe('SessionCounts type contract', () => {
-        it('should expose activeSessions and processingJobs from sessions response', async () => {
+    describe('SessionCounts type contract (TASK-386 — backend SessionsResponse)', () => {
+        it('derives activeSessions (stt) + processingJobs (smr+nlp+guardrail+harness) from the services map', async () => {
             const uptimeData = [{ service: 'stt', status: 'up', uptimeSeconds: 3600 }];
-            const sessionsData = { active: 2, total: 50, activeSessions: 2, processingJobs: 3 };
+            const sessionsData = {
+                services: { smr: { active: 1 }, stt: { active: 2 }, nlp: { active: 1 }, guardrail: { active: 1 }, harness: { active: 0 } },
+                totalUsers: 6,
+                refreshedAt: '2026-07-01T00:00:00.000Z',
+            };
             mockGet
                 .mockResolvedValueOnce(uptimeData)
                 .mockResolvedValueOnce(sessionsData);
@@ -106,15 +116,15 @@ describe('useMonitoring', () => {
 
             await act(async () => { await result.current.refresh(); });
 
-            expect(result.current.sessions).toHaveProperty('activeSessions');
             expect(result.current.sessions?.activeSessions).toBe(2);
-            expect(result.current.sessions).toHaveProperty('processingJobs');
             expect(result.current.sessions?.processingJobs).toBe(3);
+            expect(result.current.sessions?.services.stt.active).toBe(2);
+            expect(result.current.sessions?.totalUsers).toBe(6);
         });
 
-        it('should default activeSessions to active field when activeSessions not present', async () => {
+        it('defaults to all-zero when the services map is absent/malformed', async () => {
             const uptimeData = [{ service: 'stt', status: 'up', uptimeSeconds: 3600 }];
-            const sessionsData = { active: 7, total: 100 };
+            const sessionsData = { totalUsers: 0 };
             mockGet
                 .mockResolvedValueOnce(uptimeData)
                 .mockResolvedValueOnce(sessionsData);
@@ -122,8 +132,9 @@ describe('useMonitoring', () => {
 
             await act(async () => { await result.current.refresh(); });
 
-            expect(result.current.sessions?.activeSessions).toBe(7);
+            expect(result.current.sessions?.activeSessions).toBe(0);
             expect(result.current.sessions?.processingJobs).toBe(0);
+            expect(result.current.sessions?.total).toBe(0);
         });
     });
 

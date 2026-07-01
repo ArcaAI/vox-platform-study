@@ -16,5 +16,6 @@ export * from './modelFilterTypes';
 export * from './paginatedQueryParamConverters';
 export * from './phi-field-encryption';
 export * from './tenant-guards';
+export * from './telemetry-scope';
 export * from './typed-event-emitter';
 export * from './worker-session';

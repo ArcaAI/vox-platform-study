@@ -24,6 +24,12 @@ model TenantBucket {
   // Path layout for file organization within the bucket
   pathPattern String @default("{yyyy}/{MM}/{dd}/{user_name}")
 
+  // TASK-386 (#5) — optional storage quota in bytes for this bucket. NULL means
+  // "no quota configured" (the consumption roll-up surfaces null, not 0). BigInt
+  // so TB-scale quotas are representable; the read-API converts to a JS number
+  // (bytes stay well within 2^53 for any realistic quota).
+  quotaBytes BigInt?
+
   // Resource status + Audit
   resourceStatus          ResourceStatusType @default(ENABLED)
   resourceStatusUpdatedAt DateTime?

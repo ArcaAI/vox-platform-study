@@ -9,12 +9,16 @@ import {
   UserDepartmentServiceModule,
   VoiceProfileServiceModule,
   PipelineServiceModule,
+  // TASK-388 #8 — reset-password service (temp password + emailed link + completion).
+  UserPasswordServiceModule,
 } from '@arcaai/applications';
 import { UserController } from './user.controller';
 import { UserPreferencesController } from './controllers/user-preferences.controller';
 import { UserRolesController } from './controllers/user-roles.controller';
 import { UserSettingsController } from './controllers/user-settings.controller';
 import { UserDepartmentsController } from './controllers/user-departments.controller';
+import { PasswordResetController } from './controllers/password-reset.controller';
+import { UserExportService } from './user-export.service';
 
 @Module({
   imports: [
@@ -31,7 +35,18 @@ import { UserDepartmentsController } from './controllers/user-departments.contro
     // TASK-298 D-5 — UserSettingsController uses PipelineService to validate
     // the `arcaai-sdk:selectedPipelineId` value against the caller's tenant.
     PipelineServiceModule,
+    // TASK-388 #8 — admin reset-password + public completion.
+    UserPasswordServiceModule,
   ],
-  controllers: [UserController, UserPreferencesController, UserRolesController, UserSettingsController, UserDepartmentsController],
+  controllers: [
+    UserController,
+    UserPreferencesController,
+    UserRolesController,
+    UserSettingsController,
+    UserDepartmentsController,
+    PasswordResetController,
+  ],
+  // TASK-388 #10 — export serialization (exceljs/pdfkit) consumed by UserController.
+  providers: [UserExportService],
 })
 export class UserModule {}

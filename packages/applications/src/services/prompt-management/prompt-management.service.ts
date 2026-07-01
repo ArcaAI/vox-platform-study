@@ -4,6 +4,9 @@ import { ConfigService } from '@nestjs/config';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+// TASK-389 #14 (AG8/A3) — server-side prompt-version diff. Same `diff` (jsdiff)
+// engine the SDK used client-side, so the combined line diff is byte-identical.
+import { diffLines, createPatch } from 'diff';
 import { encryptPhiFields } from '../../common';
 import {
   PromptTemplateRepository,
@@ -33,12 +36,17 @@ import {
   PromptTestResultResponse,
   PromptUsageAnalyticsResponse,
   PreferredPromptTemplateResponse,
+  PromptVersionDiffResponse,
+  PromptFieldDiffDto,
+  PromptDiffChangeDto,
+  PromptDiffStatsDto,
 } from './dto';
 import { PromptManagementDtoMapper } from './prompt-management.dto.mapper';
 import { mapSmrGenerateResponse } from '../consultation/summary/smr-v2-generate';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { HarnessPolicyService } from '../harness-policy/harness-policy.service';
 import { IDepartmentService } from '../department/IDepartmentService';
+import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 // TASK-356 Phase 6 (S2) — the doctor self-service "set my preferred template"
 // write delegates to the existing UserProfile upsert (which Phase 5 reads back).
 import { IUserProfileService } from '../user/userProfile/IUserProfileService';
@@ -149,9 +157,25 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // back). Optional + trailing so existing positional unit fixtures keep their
     // arity; production DI supplies it via UserProfileServiceModule.
     @Optional() @Inject(IUserProfileService) private readonly userProfileService?: IUserProfileService,
+    // TASK-392 (Phase 3, C4) — optional (append-only DI); enforces the plan
+    // `maxPromptTemplates` quota on the create paths (kill-switch-gated, no-op OFF).
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
     super(eventEmitter, clsService, ResourceType.PromptTemplate);
     this.smrServiceUrl = this.configService?.get<string>('SMR_URL') ?? 'http://localhost:8862';
+  }
+
+  /**
+   * TASK-392 (Phase 3, C4) — shared quota precheck for both create paths. The
+   * plan `maxPromptTemplates` count spans ALL of a tenant's templates
+   * (tenant-default + personal), matching the usage snapshot in
+   * `EntitlementsService.getCapabilities`. Kill-switch-gated (Q9) so the COUNT
+   * only runs when enforcement is ON; a no-op for unlimited/ungated tenants (Q3).
+   */
+  private async assertPromptTemplateQuota(tenantId: string): Promise<void> {
+    if (!this.entitlements?.isEnforcementEnabled()) return;
+    const currentCount = await this.promptTemplateRepository.count({ where: { tenantId } });
+    await this.entitlements.assertQuantityQuota(tenantId, 'maxPromptTemplates', currentCount);
   }
 
   private readonly logger = new Logger(PromptManagementService.name);
@@ -172,9 +196,28 @@ export class PromptManagementService extends BaseService implements IPromptManag
     if (!this.callerCanManageTemplates()) {
       throw new ForbiddenException('Caller cannot create tenant-default prompt templates');
     }
+    await this.assertPromptTemplateQuota(tenantId);
 
     const existing = await this.promptTemplateRepository.findByName(tenantId, dto.name);
     if (existing) throw new BadRequestException(`Prompt template with name '${dto.name}' already exists`);
+
+    // TASK-388 #12 — resolve the requested scope + owner. Default stays
+    // TENANT_DEFAULT. USER_PERSONAL provisions a personal prompt owned by
+    // `ownerUserId` (an in-tenant user, surfaced by the admin UI; falls back to
+    // the caller when omitted). `ownerUserId` is meaningless for the shared
+    // scopes, so a mismatch is a client error rather than a silently-ignored
+    // field. The prompt row is always tenant-stamped to the caller's tenant, so
+    // an owner outside the tenant cannot leak (reads are tenant+owner scoped).
+    const scope = dto.scope ?? SCOPE_TENANT_DEFAULT;
+    let ownerUserId: string | null = null;
+    if (scope === SCOPE_USER_PERSONAL) {
+      ownerUserId = dto.ownerUserId ?? userId ?? null;
+      if (!ownerUserId) {
+        throw new BadRequestException('ownerUserId (or a caller user context) is required for USER_PERSONAL scope');
+      }
+    } else if (dto.ownerUserId) {
+      throw new BadRequestException('ownerUserId is only valid when scope=USER_PERSONAL');
+    }
 
     const template = PromptTemplateFactory.CreatePromptTemplate({
       tenantId,
@@ -186,8 +229,8 @@ export class PromptManagementService extends BaseService implements IPromptManag
       status: dto.status ?? 'DRAFT',
       variables: dto.variables ?? null,
       departmentId: dto.departmentId ?? null,
-      scope: SCOPE_TENANT_DEFAULT,
-      ownerUserId: null,
+      scope,
+      ownerUserId,
       tags: dto.tags ?? [],
       createdBy: userId ?? null,
     });
@@ -219,6 +262,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const userId = this.requestUserId;
     if (!tenantId) throw new BadRequestException('Tenant ID is required');
     if (!userId) throw new BadRequestException('Caller user ID is required');
+    await this.assertPromptTemplateQuota(tenantId);
 
     const template = PromptTemplateFactory.CreatePromptTemplate({
       tenantId,
@@ -362,7 +406,16 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const template = await this.promptTemplateRepository.findById(id);
     if (!template) return null;
     if (this.tenantId && template.tenantId !== this.tenantId) return null;
-    if (template.scope === SCOPE_USER_PERSONAL && template.ownerUserId !== this.requestUserId) {
+    // TASK-388 #12 — a USER_PERSONAL prompt is readable by its owner OR by an
+    // admin holding `manage:PromptTemplate` (tenant-scoped, so the cross-tenant
+    // guard above already confines an admin to their own tenant). Non-owner,
+    // non-admin callers are denied (null — no existence leak), preserving the
+    // end-user self-only contract.
+    if (
+      template.scope === SCOPE_USER_PERSONAL &&
+      template.ownerUserId !== this.requestUserId &&
+      !this.callerCanManageTemplates()
+    ) {
       return null;
     }
     return PromptManagementDtoMapper.toTemplateResponse(template);
@@ -380,6 +433,9 @@ export class PromptManagementService extends BaseService implements IPromptManag
     if (filters?.category) qb.Where({ category: filters.category });
     if (filters?.status) qb.Where({ status: filters.status });
     if (filters?.departmentId) qb.Where({ departmentId: filters.departmentId });
+    // TASK-388 #12 — admin scope/owner narrowing (e.g. list a user's personal prompts).
+    if (filters?.scope) qb.Where({ scope: filters.scope });
+    if (filters?.ownerUserId) qb.Where({ ownerUserId: filters.ownerUserId });
     if (filters?.search) qb.Where({ name: { contains: filters.search, mode: 'insensitive' } });
     const models = await qb.ToList();
     const mapper = PromptTemplateEntityMapper.getInstance();
@@ -406,6 +462,9 @@ export class PromptManagementService extends BaseService implements IPromptManag
     if (filters?.category) where.category = filters.category;
     if (filters?.status) where.status = filters.status;
     if (filters?.departmentId) where.departmentId = filters.departmentId;
+    // TASK-388 #12 — admin scope/owner narrowing folded into the paginated where.
+    if (filters?.scope) where.scope = filters.scope;
+    if (filters?.ownerUserId) where.ownerUserId = filters.ownerUserId;
     if (filters?.search) where.name = { contains: filters.search, mode: 'insensitive' };
 
     const { data, count } = await this.promptTemplateRepository.findPaginated(where, page, limit);
@@ -500,6 +559,115 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const version = await this.promptVersionRepository.findByVersionNumber(templateId, versionNumber);
     if (!version) return null;
     return PromptManagementDtoMapper.toVersionResponse(version);
+  }
+
+  /**
+   * TASK-389 #14 (AG8/A3) — compute a structured, field-level diff between two
+   * versions of a prompt template SERVER-side (previously the SDK GET both
+   * versions and diffed locally). Returns:
+   *   - `fields[]`  — per-field (`content`, `variables`) line diffs, each
+   *     flagged `changed` for a future field-aware UI;
+   *   - `changes/patch/stats` — the COMBINED (content + variables) line diff,
+   *     byte-identical to the SDK's prior `serializeVersionForDiff` +
+   *     `computePromptDiff`, so `compareVersions` keeps returning `DiffResult`.
+   *
+   * Tenant-scoped: the template is loaded + ownership-asserted first, so a
+   * cross-tenant id is a 404 (never leaks another tenant's version history).
+   *
+   * @throws NotFoundException — template missing/cross-tenant, or either
+   *   requested version does not exist.
+   */
+  async diffVersions(templateId: string, fromVersion: number, toVersion: number): Promise<PromptVersionDiffResponse> {
+    const template = await this.promptTemplateRepository.findById(templateId);
+    if (!template) throw new NotFoundException(`Prompt template ${templateId} not found`);
+    this.assertOwnedByTenant(template, templateId);
+
+    const [from, to] = await Promise.all([
+      this.getVersion(templateId, fromVersion),
+      this.getVersion(templateId, toVersion),
+    ]);
+    if (!from) throw new NotFoundException(`Version ${fromVersion} not found for template ${templateId}`);
+    if (!to) throw new NotFoundException(`Version ${toVersion} not found for template ${templateId}`);
+
+    const fields: PromptFieldDiffDto[] = [];
+
+    // Field: content (always compared).
+    const contentDiff = this.buildLineDiff(from.content ?? '', to.content ?? '');
+    fields.push({
+      field: 'content',
+      changed: contentDiff.stats.additions > 0 || contentDiff.stats.deletions > 0,
+      before: from.content ?? '',
+      after: to.content ?? '',
+      changes: contentDiff.changes,
+      stats: contentDiff.stats,
+    });
+
+    // Field: variables (only when either version declares them).
+    if ((from.variables ?? null) !== null || (to.variables ?? null) !== null) {
+      const beforeVars = JSON.stringify(from.variables ?? null, null, 2);
+      const afterVars = JSON.stringify(to.variables ?? null, null, 2);
+      const varsDiff = this.buildLineDiff(beforeVars, afterVars);
+      fields.push({
+        field: 'variables',
+        changed: varsDiff.stats.additions > 0 || varsDiff.stats.deletions > 0,
+        before: beforeVars,
+        after: afterVars,
+        changes: varsDiff.changes,
+        stats: varsDiff.stats,
+      });
+    }
+
+    // Combined diff — parity with the SDK's previous client-side blob so the
+    // returned `DiffResult` is unchanged for existing consumers.
+    const combined = this.buildLineDiff(
+      this.serializeVersionForDiff(from.content ?? '', from.variables),
+      this.serializeVersionForDiff(to.content ?? '', to.variables),
+    );
+
+    return {
+      promptTemplateId: templateId,
+      fromVersion,
+      toVersion,
+      fields,
+      changes: combined.changes,
+      patch: combined.patch,
+      stats: combined.stats,
+    };
+  }
+
+  /**
+   * TASK-389 #14 — serialize a version's content + variables into one text blob
+   * (mirrors the SDK's `serializeVersionForDiff`). When `variables` is absent
+   * the blob is just the content, preserving the content-only diff behaviour.
+   */
+  private serializeVersionForDiff(content: string, variables?: unknown): string {
+    if (variables === undefined || variables === null) return content;
+    return `${content}\n\n--- variables ---\n${JSON.stringify(variables, null, 2)}`;
+  }
+
+  /**
+   * TASK-389 #14 — line-level diff (jsdiff `diffLines`) → the SDK `DiffResult`
+   * shape (changes/patch/stats), matching the SDK `computeDiff('lines')`.
+   */
+  private buildLineDiff(oldText: string, newText: string): { changes: PromptDiffChangeDto[]; patch: string; stats: PromptDiffStatsDto } {
+    const raw = diffLines(oldText, newText);
+    const changes: PromptDiffChangeDto[] = raw.map((c) => ({
+      value: c.value,
+      added: c.added || undefined,
+      removed: c.removed || undefined,
+      count: c.count,
+    }));
+    let additions = 0;
+    let deletions = 0;
+    let unchanged = 0;
+    for (const c of changes) {
+      const count = c.count ?? 1;
+      if (c.added) additions += count;
+      else if (c.removed) deletions += count;
+      else unchanged += count;
+    }
+    const patch = createPatch('content', oldText, newText, '', '');
+    return { changes, patch, stats: { additions, deletions, unchanged } };
   }
 
   async getUsageStats(templateId: string): Promise<{ totalUsages: number; lastUsedAt: string | null }> {
@@ -649,6 +817,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // Cross-service callers (e.g. the prompt-management UI) read the
     // Department first and echo back its version on this DTO.
     return this.departmentService.updatePromptConfig(dto.departmentId, {
+      preSummaryPromptId: dto.preSummaryPromptId,
       newPatientPromptId: dto.newPatientPromptId,
       revisitPromptId: dto.revisitPromptId,
       expectedVersion: dto.expectedVersion,

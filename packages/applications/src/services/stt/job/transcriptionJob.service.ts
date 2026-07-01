@@ -14,6 +14,7 @@ import { ClsService } from 'nestjs-cls';
 import { BaseService, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
+import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { ITranscriptionJobService } from './ITranscriptionJobService';
 import {
   CreateBatchJobRequest,
@@ -36,6 +37,10 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
     // keep their arity; when wired, the completed job's resultText/resultMetadata
     // are encrypted before persist (dual-write soak).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-392 (Phase 3, M2) — optional (append-only DI); enforces the plan
+    // `monthlyTranscriptionMinutes` meter on submit (kill-switch-gated, → 429
+    // once the tenant has consumed its rolling-monthly minutes).
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
     super(eventEmitter, clsService, ResourceType.TranscriptionJob);
   }
@@ -72,6 +77,11 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
     if (dto.jobType === TranscriptionJobType.BATCH && !dto.mediaId) {
       throw new BadRequestException('Media ID is required for batch transcription jobs');
     }
+
+    // TASK-392 (Phase 3, M2) — block a new transcription submit once the tenant
+    // has consumed its rolling-monthly transcription-minutes allowance.
+    // Kill-switch-gated (Q9); → 429 when at/over the cap.
+    await this.entitlements?.assertMeterQuota(tenantId, 'monthlyTranscriptionMinutes');
 
     const job = TranscriptionJobFactory.CreateTranscriptionJob({
       tenantId,

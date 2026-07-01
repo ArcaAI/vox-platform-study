@@ -198,6 +198,8 @@ export type {
   // TASK-328 A4 — quality/score testing + usage analytics
   TestPromptInput,
   PromptTestResult,
+  // TASK-389 #15 (AG12/A5) — raw per-dimension breakdown behind PromptTestResult
+  PromptTestMetrics,
   PromptUsageByDepartment,
   PromptUsageByDoctor,
   PromptUsageByDay,
@@ -300,6 +302,21 @@ export type { Role, UserRoleAssignment } from '../hooks/useRoles';
 
 // Health check types (TASK-034 WS-H)
 export type { ComponentCheck, ComponentStatus, HealthStatus, ServiceHealthStatus } from './health';
+
+// Monitoring types (TASK-032 WS-A; SessionCounts realigned to backend SessionsResponse in TASK-386)
+export type { HeartbeatRecord, ServiceSessionCount, ServiceUptime, SessionCounts } from './monitoring';
+
+// Platform runtime metrics types (TASK-386 #16 — E1/E2/E3)
+export type {
+  ConsumptionConsultations,
+  ConsumptionRollup,
+  OpenSockets,
+  PlatformMetrics,
+  PlatformModelMetric,
+  PlatformModelsSummary,
+  PlatformServiceMetric,
+  RequestVolumePoint,
+} from './platform-metrics';
 
 // Voice embedding types (TASK-265 W0-7 — voice-profile rewrite)
 export type { VoiceProfile, EnrollFiles } from '../hooks/useVoiceEmbedding';

@@ -9,6 +9,15 @@ model Tenant {
   key         String  @unique
   description String?
 
+  // TASK-387 (#3) — commercial plan (nullable; existing rows read NULL). See
+  // docs/implementation/TASK-387-Tenant-Data-Model-Backlog for the product flag.
+  plan TenantPlan?
+
+  // TASK-392 (Q4) — trial clock (additive, nullable). Set when a tenant is
+  // created/assigned the TRIAL plan (default = create + 7 days). A scheduled
+  // job auto-downgrades TRIAL → STARTER once `trialEndsAt < now`.
+  trialEndsAt DateTime?
+
   // resource status fields
   resourceStatus          ResourceStatusType @default(ENABLED)
   resourceStatusUpdatedAt DateTime?

@@ -4,7 +4,7 @@ import {
   TenantDtoMapper,
   PaginatedTenantConfigResponse,
   TenantConfigResponse,
-  GlobalSettingDtoMapper,
+  TenantConfigDtoMapper,
   IActiveUserContext,
   ITenantFrontendConfigService,
   LOCAL_RAW_CAPTURE_CAPABILITY_KEY,
@@ -57,7 +57,7 @@ export class MyTenantController {
   async myConfig(): Promise<PaginatedTenantConfigResponse> {
     const tenantId = this.resolveTenantId();
     const result = await this.tenantService.fetchTenantConfigs({ tenantId, limit: 200, page: 1 });
-    const response = GlobalSettingDtoMapper.ToPaginatedResponse(result) as PaginatedTenantConfigResponse;
+    const response = TenantConfigDtoMapper.ToPaginatedResponse(result);
 
     // TASK-332 — surface the server-computed effective local raw-capture flag
     // (platform capability AND tenant toggle) as a synthetic, read-only config
@@ -67,11 +67,12 @@ export class MyTenantController {
     const effective = await this.tenantFrontendConfigService.resolveEffectiveLocalRawCapture(tenantId);
     const rawCaptureRow = this.buildLocalRawCaptureRow(tenantId, effective);
 
-    return {
-      ...response,
+    return new PaginatedTenantConfigResponse({
+      page: response.page,
+      limit: response.limit,
       count: response.count + 1,
       data: [...response.data, rawCaptureRow],
-    } as PaginatedTenantConfigResponse;
+    });
   }
 
   /**
@@ -130,7 +131,7 @@ export class MyTenantController {
     // 428 fired in the param decorator if it would have been undefined.
     const effectiveConfigs = expectedFromHeader !== undefined ? configs.map((c) => ({ ...c, expectedVersion: expectedFromHeader })) : configs;
     const result = await this.tenantService.updateTenantConfigs(tenantId, effectiveConfigs);
-    return GlobalSettingDtoMapper.ToPaginatedResponse(result) as PaginatedTenantConfigResponse;
+    return TenantConfigDtoMapper.ToPaginatedResponse(result);
   }
 
   private resolveTenantId(): string {

@@ -1,6 +1,6 @@
 import { ApiErrorResponse, IClsContext } from '@arcaai/applications';
 import { PrismaClientKnownRequestError, PrismaClientValidationError } from '@arcaai/database';
-import { BaseException, DataNotFoundException, OptimisticConcurrencyException } from '@arcaai/exceptions';
+import { BaseException, DataNotFoundException, OptimisticConcurrencyException, QuotaExceededException } from '@arcaai/exceptions';
 import { BadRequestException, CallHandler, ExecutionContext, HttpException, HttpStatus, Injectable, Logger, NestInterceptor } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { Observable, throwError } from 'rxjs';
@@ -194,6 +194,26 @@ export class ExceptionInterceptor implements NestInterceptor {
           return throwError(() => err);
         }
 
+        // TASK-392 (Q10, Phase 4) — entitlements quota blocks map to precise
+        // client statuses instead of the generic 500 the `BaseException` branch
+        // below would produce (QuotaExceededException extends BaseException, so
+        // this MUST run first — same ordering rationale as the OCC branch). The
+        // body is `err.toJSON()`, carrying `code: 'DOMAIN.QUOTA_EXCEEDED'` +
+        // `metadata: { capability, limit, used, requested, tenantId }` so the SDK
+        // / admin console can point at the exact capability that blocked.
+        if (err instanceof QuotaExceededException) {
+          const capability = (err.metadata as { capability?: string } | undefined)?.capability;
+          const status = mapQuotaCapabilityToHttp(capability);
+          this.logger.debug({
+            message: 'Entitlements quota block',
+            ...baseContext,
+            correlationId: err.correlationId,
+            capability,
+            status,
+          });
+          return throwError(() => new HttpException(err.toJSON(), status));
+        }
+
         if (err instanceof BaseException) {
           this.logger.warn({
             message: 'Application exception',
@@ -242,6 +262,34 @@ export class ExceptionInterceptor implements NestInterceptor {
 // removed), the response contract doesn't shift. Any code outside the
 // table below falls back to 400 / 'Bad Request' to preserve the legacy
 // generic-default behaviour.
+// TASK-392 (Q10) — entitlements capability → HTTP status.
+//
+//   - rolling-monthly METER caps (Q5)         → 429 Too Many Requests
+//   - concurrency cap (simultaneous sessions) → 429 Too Many Requests
+//   - the tenant storage quota (Q6)           → 413 Payload Too Large
+//   - a feature-gate denial (F-series)        → 403 Forbidden
+//   - every quantity cap (users/depts/…)      → 409 Conflict (default)
+//
+// Keyed off the `capability` in the exception metadata so meter over-limit and
+// concurrency over-capacity (both retry-later semantics) are distinguishable
+// from a hard quantity conflict.
+const QUOTA_RATE_CAPABILITIES = new Set([
+  'monthlyConsultations',
+  'monthlyTranscriptionMinutes',
+  'monthlySummaries',
+  // TASK-392 (concurrency) — a simultaneous-session cap is retry-later, not a
+  // permanent conflict; 429 lets the caller back off and retry once a session
+  // frees up.
+  'maxConcurrentSessions',
+]);
+
+function mapQuotaCapabilityToHttp(capability: string | undefined): HttpStatus {
+  if (capability && QUOTA_RATE_CAPABILITIES.has(capability)) return HttpStatus.TOO_MANY_REQUESTS;
+  if (capability === 'storageQuotaBytes') return HttpStatus.PAYLOAD_TOO_LARGE;
+  if (capability && capability.startsWith('feature')) return HttpStatus.FORBIDDEN;
+  return HttpStatus.CONFLICT;
+}
+
 function mapPrismaCodeToHttp(code: string): { status: HttpStatus; label: string } {
   switch (code) {
     case 'P2002':

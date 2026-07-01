@@ -8,13 +8,14 @@ import {
   TenantDtoMapper,
   HttpMethod,
   PaginatedTenantConfigResponse,
-  GlobalSettingDtoMapper,
+  TenantConfigDtoMapper,
   UpdateTenantConfigRequest,
+  SetTenantTagsRequest,
   IActiveUserContext,
   isSuperAdmin,
   FetchResponse,
 } from '@arcaai/applications';
-import { Controller, Body, Param, Get, Inject, Query, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Controller, Body, Param, Get, Post, Put, HttpCode, Inject, Query, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { ApiEndpoint, CanAny, CanManage } from '../../decorators';
@@ -247,6 +248,81 @@ export class TenantController {
     return TenantDtoMapper.ToResponse(result);
   }
 
+  // ── TASK-387 (#1 / F6) — tenant lifecycle transitions ──────────────────────
+  // suspend/archive/restore are privileged operator actions (like create/delete)
+  // so they are pinned to `manage:Tenant` (SUPER_ADMIN). Non-OCC: these are
+  // explicit admin state changes, not last-write-wins field edits. The service
+  // additionally blocks the system tenant (DEF-ADM-002) on suspend/archive.
+
+  @Post(':id/suspend')
+  @HttpCode(200)
+  @CanManage('Tenant')
+  @ApiOperation({ summary: 'Suspend a tenant (reversible operator hold)' })
+  @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
+  @ApiResponse({ status: 200, description: 'Tenant suspended', type: TenantResponse })
+  @ApiResponse({ status: 403, description: 'The system tenant cannot be suspended (DEF-ADM-002)' })
+  @ApiResponse({ status: 404, description: 'Tenant not found' })
+  async suspend(@Param('id') id: string): Promise<TenantResponse> {
+    this.assertTenantInScope(id);
+    const result = await this.tenantService.suspend(id);
+    return TenantDtoMapper.ToResponse(result);
+  }
+
+  @Post(':id/archive')
+  @HttpCode(200)
+  @CanManage('Tenant')
+  @ApiOperation({ summary: 'Archive a tenant (recoverable cold state)' })
+  @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
+  @ApiResponse({ status: 200, description: 'Tenant archived', type: TenantResponse })
+  @ApiResponse({ status: 403, description: 'The system tenant cannot be archived (DEF-ADM-002)' })
+  @ApiResponse({ status: 404, description: 'Tenant not found' })
+  async archive(@Param('id') id: string): Promise<TenantResponse> {
+    this.assertTenantInScope(id);
+    const result = await this.tenantService.archive(id);
+    return TenantDtoMapper.ToResponse(result);
+  }
+
+  @Post(':id/restore')
+  @HttpCode(200)
+  @CanManage('Tenant')
+  @ApiOperation({ summary: 'Restore a suspended/archived tenant to ENABLED' })
+  @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
+  @ApiResponse({ status: 200, description: 'Tenant restored', type: TenantResponse })
+  @ApiResponse({ status: 404, description: 'Tenant not found' })
+  async restore(@Param('id') id: string): Promise<TenantResponse> {
+    this.assertTenantInScope(id);
+    const result = await this.tenantService.restore(id);
+    return TenantDtoMapper.ToResponse(result);
+  }
+
+  // ── TASK-387 (#2 / F9) — tenant tags ───────────────────────────────────────
+  // Tags are a lightweight `String[]` scalar on Tenant (see ticket doc for the
+  // representation decision). Read/set are tenant-scoped: a TENANT_ADMIN may
+  // manage tags on their OWN tenant (class-level `update:Tenant`), SUPER_ADMIN
+  // cross-tenant. `assertTenantInScope` enforces the per-row boundary.
+
+  @Get(':id/tags')
+  @ApiOperation({ summary: "Read a tenant's tags" })
+  @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
+  @ApiResponse({ status: 200, description: 'Tenant tags' })
+  @ApiResponse({ status: 404, description: 'Tenant not found' })
+  async getTags(@Param('id') id: string): Promise<{ tags: string[] }> {
+    this.assertTenantInScope(id);
+    const result = await this.tenantService.fetchById(id);
+    return { tags: result.tags ?? [] };
+  }
+
+  @Put(':id/tags')
+  @ApiOperation({ summary: "Replace a tenant's full tag set (idempotent set-semantics)" })
+  @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
+  @ApiResponse({ status: 200, description: 'Updated tenant', type: TenantResponse })
+  @ApiResponse({ status: 404, description: 'Tenant not found' })
+  async setTags(@Param('id') id: string, @Body() request: SetTenantTagsRequest): Promise<TenantResponse> {
+    this.assertTenantInScope(id);
+    const result = await this.tenantService.setTags(id, request.tags);
+    return TenantDtoMapper.ToResponse(result);
+  }
+
   @ApiEndpoint({
     returnedModel: PaginatedTenantConfigResponse,
     path: 'configs/:identifier',
@@ -261,7 +337,7 @@ export class TenantController {
       tenantId: identifier,
       codeName: identifier,
     });
-    return GlobalSettingDtoMapper.ToPaginatedResponse(result) as PaginatedTenantConfigResponse;
+    return TenantConfigDtoMapper.ToPaginatedResponse(result);
   }
 
   @ApiEndpoint({
@@ -289,6 +365,6 @@ export class TenantController {
       expectedVersion,
     })) as UpdateTenantConfigRequest[];
     const result = await this.tenantService.updateTenantConfigs(identifier, sanitizedConfigs);
-    return GlobalSettingDtoMapper.ToPaginatedResponse(result) as PaginatedTenantConfigResponse;
+    return TenantConfigDtoMapper.ToPaginatedResponse(result);
   }
 }

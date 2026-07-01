@@ -3,6 +3,8 @@ import {
   IApiKeyService,
   IUserSettingsService,
   IUserRoleAssignmentService,
+  IUserDepartmentService,
+  SetUserDepartmentsRequest,
   IUserProfileService,
   UpdateUserProfileRequest,
   UserProfileResponse,
@@ -26,6 +28,10 @@ import {
   PaginatedUserRoleAssignmentResponse,
   isSuperAdmin,
   IActiveUserContext,
+  // TASK-388 #8 — reset-password (admin flows).
+  UserPasswordService,
+  ResetPasswordRequest,
+  ResetPasswordResponse,
 } from '@arcaai/applications';
 import {
   Body,
@@ -41,11 +47,22 @@ import {
   Query,
   Get,
   Patch,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { ApiEndpoint, CanManage } from '../../decorators';
-import { UpdateUserStatusRequest, BulkDeleteUsersRequest, BulkDeleteUsersResponse, BulkDeleteUserFailure } from './dto';
+import {
+  UpdateUserStatusRequest,
+  BulkDeleteUsersRequest,
+  BulkDeleteUsersResponse,
+  BulkDeleteUserFailure,
+  BulkUserActionRequest,
+  BulkUserActionResponse,
+  BulkUserActionItemResult,
+  ExportUsersQuery,
+} from './dto';
+import { UserExportService, UserExportRow } from './user-export.service';
 import { VoiceProfileResponse } from '../voice-profile/dto/voice-profile.response';
 
 /**
@@ -65,6 +82,9 @@ const DEFAULT_USERS_SORT = 'createdAt:desc';
 // Phase 0 Item 3 (TASK-302 Stream A): explicit permission required.
 @CanManage('User')
 export class UserController {
+  /** TASK-388 #10 — hard cap on export rows (FLAG: large tenants stream/paginate in a follow-up). */
+  private static readonly EXPORT_LIMIT = 10000;
+
   constructor(
     @Inject(IUserService)
     private readonly userService: IUserService,
@@ -78,6 +98,13 @@ export class UserController {
     private readonly userProfileService: IUserProfileService,
     @Inject(IVoiceProfileService)
     private readonly voiceProfileService: IVoiceProfileService,
+    // TASK-381 V2 — bulk department reconcile for the Users surface.
+    @Inject(IUserDepartmentService)
+    private readonly userDepartmentService: IUserDepartmentService,
+    // TASK-388 #8 — admin reset-password (temporary password + emailed link).
+    private readonly userPasswordService: UserPasswordService,
+    // TASK-388 #10 — server-side export (csv/xlsx/pdf) serialization.
+    private readonly userExportService: UserExportService,
     private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
@@ -89,6 +116,22 @@ export class UserController {
   async create(@Body() request: CreateUserRequest): Promise<UserResponse> {
     const result = await this.userService.create(request);
     return UserDtoMapper.ToResponse(result);
+  }
+
+  // TASK-381 V2 — bulk reconcile a user's department memberships. Backs the SDK
+  // `useUsers.assignDepartments` ({ departmentIds, primaryDepartmentId }) used by
+  // the Create-User dialog's initial departments and the bulk "Assign department"
+  // action; returns the updated user so the client can refresh its row.
+  @Patch(':id/departments')
+  @ApiOperation({ summary: "Set a user's department memberships (bulk reconcile)" })
+  @ApiParam({ name: 'id', description: 'User ID', type: String })
+  @ApiResponse({ status: 200, description: 'Updated user', type: UserResponse })
+  @ApiResponse({ status: 404, description: 'User or a target department not found (or cross-tenant)' })
+  async setDepartments(@Param('id') id: string, @Body() request: SetUserDepartmentsRequest): Promise<UserResponse> {
+    await this.assertUserInScope(id);
+    await this.userDepartmentService.setDepartments(id, request);
+    const user = await this.userService.fetchById(id);
+    return UserDtoMapper.ToResponse(user);
   }
 
   @ApiEndpoint({
@@ -145,6 +188,77 @@ export class UserController {
    */
   private withDefaultSort(queryParams: PaginatedQuery): PaginatedQuery {
     return { ...queryParams, sort: queryParams.sort || DEFAULT_USERS_SORT };
+  }
+
+  // -------------------------------------------------------------------------
+  // TASK-388 #10 — server-side export (csv | xlsx | pdf).
+  //
+  // Declared BEFORE the `/:id` route so `GET /admin/users/export` is never
+  // captured as an id lookup (mirrors AuditLogController.exportCsv). Honours the
+  // SAME tenant scope + CSV filters/sort as `fetchAll`; the set is materialised
+  // server-side (capped) so the download always respects tenant boundaries.
+  // -------------------------------------------------------------------------
+  @Get('export')
+  @ApiOperation({
+    summary: 'Export users (csv | xlsx | pdf)',
+    description:
+      'Streams the tenant-scoped Users list as a file attachment, honouring the same filters/sort/search as the list. ' +
+      `Capped at ${UserController.EXPORT_LIMIT} rows (FLAG). CASL-gated by the class-level manage:User.`,
+  })
+  @ApiQuery({ name: 'format', required: false, enum: ['csv', 'xlsx', 'pdf'] })
+  @ApiResponse({ status: 200, description: 'File attachment (csv/xlsx/pdf)' })
+  @ApiResponse({ status: 403, description: 'Tenant context required to export users' })
+  async exportUsers(@Query() query: ExportUsersQuery): Promise<StreamableFile> {
+    const rows = await this.collectExportRows(query);
+    const file = await this.userExportService.build(query.format ?? 'csv', rows);
+    return new StreamableFile(file.buffer, {
+      type: file.contentType,
+      disposition: `attachment; filename="${file.filename}"`,
+    });
+  }
+
+  /**
+   * Materialise the tenant-scoped (capped) user set for an export, applying the
+   * exact scoping branches as {@link fetchAll}: a non-super-admin is pinned to
+   * their CLS tenant (403 with no context); a super-admin honours an elevated
+   * `X-Tenant-Id` selection, else reads cross-tenant.
+   */
+  private async collectExportRows(query: ExportUsersQuery): Promise<UserExportRow[]> {
+    const user = this.cls.get('user');
+    const callerTenantId = this.cls.get('tenantId');
+    const params = this.withDefaultSort({ ...query, page: 1, limit: UserController.EXPORT_LIMIT });
+
+    let result;
+    if (!isSuperAdmin(user)) {
+      if (!callerTenantId) {
+        throw new ForbiddenException('Tenant context required to export users');
+      }
+      result = await this.userService.fetchAllByTenantId({ ...params, tenantId: callerTenantId });
+    } else if (callerTenantId) {
+      result = await this.userService.fetchAllByTenantId({ ...params, tenantId: callerTenantId });
+    } else {
+      result = await this.userService.fetchAll(params);
+    }
+
+    return result.data.map((entity) => this.toExportRow(UserDtoMapper.ToResponse(entity)));
+  }
+
+  /**
+   * Map a `UserResponse` to a flat export row. `email` + `departments` are read
+   * defensively: `UserResponse` does not currently carry them, so they render
+   * blank today — server-side email/department-name enrichment is a flagged
+   * follow-up (avoids an N+1 across the profile/department services here).
+   */
+  private toExportRow(r: UserResponse): UserExportRow {
+    const enriched = r as unknown as { email?: string; departmentIds?: string[]; resourceStatus?: string };
+    return {
+      id: r.id,
+      username: r.username,
+      email: enriched.email ?? '',
+      type: r.isServiceAccount ? 'Service account' : 'User',
+      status: enriched.resourceStatus ?? '',
+      departments: Array.isArray(enriched.departmentIds) ? enriched.departmentIds.join(', ') : '',
+    };
   }
 
   @ApiEndpoint({
@@ -317,6 +431,73 @@ export class UserController {
     return { succeeded, failed };
   }
 
+  /**
+   * TASK-388 #9 — server-side bulk user actions with per-item partial-failure
+   * semantics. Replaces the client `Promise.allSettled` loop on the admin Users
+   * surface with a single endpoint so one round-trip mutates N users and the
+   * caller learns exactly which ids failed.
+   *
+   * Every id is validated through the same by-id tenant-scope guard as the
+   * single-user routes (`assertUserInScope`), so a cross-tenant target is
+   * recorded under the failed set (404) and is never mutated. The loop mirrors
+   * the existing `bulkDelete` precedent (per-id catch, no early throw, no
+   * `$transaction`) — see that method for the AC-10 rationale.
+   *
+   * Action set (FLAG): enable | disable | delete | assign-departments.
+   */
+  @Post('bulk-actions')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Apply a bulk action (enable/disable/delete/assign-departments) to many users',
+    description:
+      'Per-item success/failure; the call never throws mid-batch. Each id is tenant-scope-guarded (a cross-tenant ' +
+      'id is reported as failed, not mutated). CASL-gated by the class-level manage:User.',
+  })
+  @ApiResponse({ status: 200, description: 'Per-item results', type: BulkUserActionResponse })
+  async bulkActions(@Body() body: BulkUserActionRequest): Promise<BulkUserActionResponse> {
+    const results: BulkUserActionItemResult[] = [];
+
+    for (const id of body.ids) {
+      try {
+        await this.assertUserInScope(id);
+        await this.applyBulkAction(id, body);
+        results.push({ id, success: true });
+      } catch (err) {
+        results.push({ id, success: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    const succeeded = results.filter((r) => r.success).length;
+    return {
+      action: body.action,
+      total: body.ids.length,
+      succeeded,
+      failed: results.length - succeeded,
+      results,
+    };
+  }
+
+  /** Dispatch a single bulk action to the owning service. Throws propagate to the per-id catch. */
+  private async applyBulkAction(id: string, body: BulkUserActionRequest): Promise<void> {
+    switch (body.action) {
+      case 'enable':
+        await this.userService.update(id, { resourceStatus: 'ENABLED' } as UpdateUserRequest);
+        return;
+      case 'disable':
+        await this.userService.update(id, { resourceStatus: 'DISABLED' } as UpdateUserRequest);
+        return;
+      case 'delete':
+        await this.userService.deleteById(id);
+        return;
+      case 'assign-departments':
+        await this.userDepartmentService.setDepartments(id, {
+          departmentIds: body.departmentIds ?? [],
+          primaryDepartmentId: body.primaryDepartmentId,
+        } as SetUserDepartmentsRequest);
+        return;
+    }
+  }
+
   @ApiEndpoint({
     returnedModel: PaginatedApiKeyResponse,
     path: ':id/api-keys',
@@ -370,6 +551,40 @@ export class UserController {
     await this.assertUserInScope(id);
     const updated = await this.userSettingsService.upsertByUserKeyNamespace(id, namespace, key, request);
     return UserSettingsDtoMapper.ToResponse(updated);
+  }
+
+  // -------------------------------------------------------------------------
+  // TASK-388 #8 — admin reset-password (both flows)
+  // -------------------------------------------------------------------------
+
+  @Post(':id/reset-password')
+  @ApiOperation({
+    summary: 'Reset a user password (admin): set a temporary password OR mint an emailed reset link',
+    description:
+      'mode="temporary" sets (or generates) a login-compatible temporary password and returns the plaintext to convey ' +
+      'out-of-band. mode="link" (default) mints a single-use, expiring reset token, best-effort emails it, and also ' +
+      'returns the token/link so the flow works when email is unconfigured. Tenant-scoped + CASL-gated (manage:User).',
+  })
+  @ApiParam({ name: 'id', description: 'User ID', type: String })
+  @ApiResponse({ status: 200, description: 'Reset performed', type: ResetPasswordResponse })
+  @ApiResponse({ status: 404, description: 'User not found (or cross-tenant)' })
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Param('id') id: string, @Body() request: ResetPasswordRequest): Promise<ResetPasswordResponse> {
+    await this.assertUserInScope(id);
+    if (request.mode === 'temporary') {
+      const { temporaryPassword } = await this.userPasswordService.setTemporaryPassword(id, {
+        temporaryPassword: request.temporaryPassword,
+      });
+      return new ResetPasswordResponse({ mode: 'temporary', temporaryPassword });
+    }
+    const link = await this.userPasswordService.createResetLink(id);
+    return new ResetPasswordResponse({
+      mode: 'link',
+      token: link.token,
+      resetPath: link.resetPath,
+      expiresInSeconds: link.expiresInSeconds,
+      emailSent: link.emailSent,
+    });
   }
 
   @ApiEndpoint({

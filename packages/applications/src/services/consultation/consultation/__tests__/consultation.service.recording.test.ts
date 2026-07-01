@@ -56,6 +56,9 @@ describe('ConsultationService — recording lifecycle (WS2)', () => {
       mockUserRepository as any,
       mockEventEmitter as any,
       mockClsService as any,
+      // TASK-386 — CoreDatabaseService (8th ctor arg); recording lifecycle never
+      // touches the aggregation client, so a bare stub suffices.
+      { client: { consultation: { findMany: vi.fn().mockResolvedValue([]) } } } as any,
     );
   });
 

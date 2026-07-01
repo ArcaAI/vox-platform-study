@@ -1,4 +1,5 @@
 import { Button } from '@arcaai/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@arcaai/ui/dropdown-menu';
 import { Input } from '@arcaai/ui/input';
 import { Label } from '@arcaai/ui/label';
 import { StatusBadge } from '@arcaai/ui/components/shared';
@@ -7,11 +8,12 @@ import type { DataQueryState } from '@arcaai/ui/lib/shared';
 import { useAuditLog, type AuditLogEntry } from '@arcaai/vox';
 import { createFileRoute } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
-import { CheckCircle2, Download, RotateCcw, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Download, RotateCcw, XCircle } from 'lucide-react';
 import { useCallback, useMemo, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/layout/page-header';
 import type { AuditCursorFilters } from '@/features/audit-log/audit-cursor-query';
+import { AUDIT_EXPORT_FORMATS, auditExportFilename, type AuditExportFormat } from '@/features/audit-log/audit-export';
 import { useAuditLogCursor } from '@/features/audit-log/use-audit-log-cursor';
 import { useGridLayoutPersistence } from '@/features/data-grid/use-grid-persistence';
 import { GRID_LAYOUT_NAMESPACE } from '@/lib/constants';
@@ -32,8 +34,7 @@ function userLabel(entry: AuditLogEntry): string {
     return entry.responsibleUser?.displayName || entry.responsibleUser?.email || entry.responsibleUserId || '—';
 }
 
-function downloadCsv(filename: string, csv: string): void {
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+function triggerDownload(filename: string, blob: Blob): void {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -69,7 +70,7 @@ function FilterField({
 
 function AuditLogPage() {
     const adapter = useGridLayoutPersistence();
-    const { exportCsv } = useAuditLog();
+    const { exportCsv, exportFile } = useAuditLog();
 
     const [draft, setDraft] = useState<AuditCursorFilters>({});
     const [filters, setFilters] = useState<AuditCursorFilters>({});
@@ -125,12 +126,20 @@ function AuditLogPage() {
         resetPaging();
     };
 
-    const onExport = async () => {
+    // TASK-391 #25 — export honours the active filters in the chosen format. CSV
+    // keeps the text path (`exportCsv`); xlsx/pdf stream binary via `exportFile`.
+    const onExport = async (format: AuditExportFormat) => {
         setIsExporting(true);
         try {
-            const csv = await exportCsv(filters);
-            downloadCsv(`audit-logs-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-            toast.success('Audit log exported');
+            const filename = auditExportFilename(format);
+            if (format === 'csv') {
+                const csv = await exportCsv(filters);
+                triggerDownload(filename, new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+            } else {
+                const blob = await exportFile(format, filters);
+                triggerDownload(filename, blob);
+            }
+            toast.success(`Audit log exported (${format.toUpperCase()})`);
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Export failed');
         } finally {
@@ -210,12 +219,24 @@ function AuditLogPage() {
         <div>
             <PageHeader
                 title="Audit Log"
-                description="Tenant compliance trail with keyset (cursor) pagination — page forward to load more entries. Filter by action, resource or user, then export to CSV."
+                description="Tenant compliance trail with keyset (cursor) pagination — page forward to load more entries. Filter by action, resource or user, then export to CSV, Excel or PDF."
                 actions={
-                    <Button variant="outline" onClick={onExport} disabled={isExporting}>
-                        <Download className="size-4" />
-                        Export CSV
-                    </Button>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline" disabled={isExporting}>
+                                <Download className="size-4" />
+                                Export
+                                <ChevronDown className="size-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            {AUDIT_EXPORT_FORMATS.map((option) => (
+                                <DropdownMenuItem key={option.format} onSelect={() => void onExport(option.format)}>
+                                    {option.label}
+                                </DropdownMenuItem>
+                            ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 }
             />
 

@@ -42,6 +42,8 @@ const mockUserRepository = {
 const mockUserRoleAssignmentRepository = { create: vi.fn() };
 const mockUserDepartmentRepository = { create: vi.fn() };
 const mockDatabaseService = { baseClient: { $transaction: vi.fn() } };
+// TASK-381 (V1) — profile upsert for the optional create-user email.
+const mockUserProfileService = { upsertByUserId: vi.fn() };
 
 /**
  * Creates a complete mock user entity matching the real UserEntity structure.
@@ -168,6 +170,7 @@ describe('UserService', () => {
             mockEventEmitter as any,
             mockClsService as any,
             mockDatabaseService as any,
+            mockUserProfileService as any,
         );
     });
 
@@ -191,6 +194,29 @@ describe('UserService', () => {
             expect(result.id).toBe('new-user-id');
             expect(result.username).toBe('newuser');
             expect(result.isServiceAccount).toBe(false);
+        });
+
+        it('persists the optional email onto the user profile (TASK-381 V1)', async () => {
+            const newUser = createMockUserEntity({ id: 'new-user-id', username: 'maya' });
+            mockUserRepository.create.mockResolvedValue(newUser);
+
+            await service.create({
+                username: 'maya',
+                password: 'password123',
+                isServiceAccount: false,
+                email: 'maya@acmehealth.org',
+            });
+
+            expect(mockUserProfileService.upsertByUserId).toHaveBeenCalledWith('new-user-id', { email: 'maya@acmehealth.org' });
+        });
+
+        it('does not touch the profile when no email is supplied (TASK-381 V1)', async () => {
+            const newUser = createMockUserEntity({ id: 'new-user-id' });
+            mockUserRepository.create.mockResolvedValue(newUser);
+
+            await service.create({ username: 'noemail', password: 'password123', isServiceAccount: false });
+
+            expect(mockUserProfileService.upsertByUserId).not.toHaveBeenCalled();
         });
 
         it('should emit ResourceCreated event with complete event data', async () => {

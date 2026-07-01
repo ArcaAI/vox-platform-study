@@ -18,6 +18,7 @@ import { seedGlobalSetting } from './11-global-setting';
 import { seedRateLimitSettings } from './12-rate-limit-settings';
 import { seedHarnessPolicy } from './13-harness-policy';
 import { seedPipelinePolicy } from './14-pipeline-policy';
+import { seedEntitlements } from './15-entitlements';
 import { seedUser } from './91-user';
 
 /**
@@ -121,6 +122,9 @@ export const seed = async () => {
         console.log('');
         // TASK-316 — platform-wide rate-limit config (single-tenant rows).
         await seedRateLimitSettings(client);
+        console.log('');
+        // TASK-392 — plan entitlement matrix + enforcement kill-switch (OFF).
+        await seedEntitlements(client);
         console.log('');
 
         // Phase 5: Depends on Phase 4

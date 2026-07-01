@@ -1,10 +1,11 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Inject, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   ConsultationRepository,
   ConsultationFactory,
   ConsultationStatus,
+  CoreDatabaseService,
   DepartmentRepository,
   ResourceType,
   SysEventType,
@@ -17,13 +18,15 @@ import {
   OpenConsultationRequest,
   UpdateConsultationRequest,
   ConsultationResponse,
+  ConsultationAggregateResponse,
   PaginatedConsultationResponse,
   CONSULTATION_STATUS,
   ConsultationLifecycleStatus,
 } from './dto';
 import { ConsultationDtoMapper } from './consultation.dto.mapper';
-import { BaseService, assertEqualTenants, assertParentInScope, assertUserBelongsToTenant } from '../../../common';
+import { BaseService, assertEqualTenants, assertParentInScope, assertUserBelongsToTenant, isSuperAdmin } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 
 /**
  * Consultation Service
@@ -42,6 +45,14 @@ export class ConsultationService extends BaseService implements IConsultationSer
     private readonly userRepository: UserRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-386 (#20 / E4) — date-range aggregation reads counts straight off the
+    // Prisma client (house precedent `tenant.service.ts:898`); no new repository.
+    @Inject('CORE_DATABASE_SERVICE')
+    private readonly databaseService: CoreDatabaseService,
+    // TASK-392 (Phase 3, M1) — optional (append-only DI); enforces the plan
+    // `monthlyConsultations` meter when STARTING a new consultation
+    // (kill-switch-gated, → 429 when over the rolling-monthly cap).
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -124,6 +135,11 @@ export class ConsultationService extends BaseService implements IConsultationSer
       return ConsultationDtoMapper.toResponse(withRelations ?? existing, false);
     }
 
+    // TASK-392 (Phase 3, M1) — a genuinely NEW consultation consumes a monthly
+    // meter unit. Only the create branch is metered (returning an existing
+    // consultation does not). Kill-switch-gated; → 429 when over the cap.
+    await this.entitlements?.assertMeterQuota(tenantId, 'monthlyConsultations');
+
     // Create new consultation
     const consultation = ConsultationFactory.CreateNewVisit({
       tenantId,
@@ -174,6 +190,10 @@ export class ConsultationService extends BaseService implements IConsultationSer
     });
 
     const appointmentDate = request.appointmentDate ? new Date(request.appointmentDate) : new Date(new Date().toISOString().split('T')[0]);
+
+    // TASK-392 (Phase 3, M1) — a re-visit is also a new consultation for meter
+    // purposes. Kill-switch-gated; → 429 when over the rolling-monthly cap.
+    await this.entitlements?.assertMeterQuota(tenantId, 'monthlyConsultations');
 
     const consultation = ConsultationFactory.CreateRevisit({
       tenantId,
@@ -500,14 +520,22 @@ export class ConsultationService extends BaseService implements IConsultationSer
     status?: ConsultationStatus;
   }): Promise<PaginatedConsultationResponse> {
     const tenantId = this.tenantId;
-    if (!tenantId) {
+    // TASK-386 (TD3 / DEF-1) — a SUPER_ADMIN with NO tenant scope reads
+    // cross-tenant: the Prisma `tenantScope` extension passes through when CLS
+    // has no tenant AND the caller is super-admin, so we OMIT the `tenantId`
+    // filter and the platform dashboard sees every tenant's consultations
+    // (was: a hard 400). A non-super caller still requires a tenant context,
+    // and a super-admin pinned to a working tenant (CLS tenantId set) stays
+    // scoped to that tenant.
+    if (!tenantId && !isSuperAdmin(this.requestUser)) {
       throw new BadRequestException('Tenant ID is required');
     }
 
     const { page, pageSize, patientId, doctorId, departmentId, status } = params;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const filters: any = { tenantId };
+    const filters: any = {};
+    if (tenantId) filters.tenantId = tenantId;
     if (patientId) filters.patientId = patientId;
     if (doctorId) filters.doctorId = doctorId;
     if (departmentId) filters.departmentId = departmentId;
@@ -526,7 +554,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     ]);
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
-      data: { scope: 'tenant', page, pageSize, patientId, doctorId, departmentId, status, count },
+      data: { scope: tenantId ? 'tenant' : 'all', page, pageSize, patientId, doctorId, departmentId, status, count },
     });
 
     return {
@@ -535,6 +563,85 @@ export class ConsultationService extends BaseService implements IConsultationSer
       page,
       limit: pageSize,
     };
+  }
+
+  /**
+   * TASK-386 (#20 / E4) — server-side, zero-filled date-range aggregation of
+   * new vs. revisit consultation counts. Replaces the FE's client-side
+   * single-page bucketing (`apps/admin/src/features/tenant-dashboard/chart.ts`)
+   * which under-counts long ranges.
+   *
+   *   - new vs. revisit: `parentConsultationId IS NULL` ⇒ new visit, else revisit.
+   *   - granularity: caller may force `day`/`month`; otherwise a span > 70 days
+   *     rolls up to months (mirrors the FE `granularityFor` heuristic).
+   *   - bucket key/label match the FE format (`yyyy-MM-dd`/`MMM d` for days,
+   *     `yyyy-MM`/`MMM` for months) so the chart renders unchanged; boundaries
+   *     are UTC (server-TZ-stable) rather than the FE's local-time `startOfDay`.
+   *   - scope: SUPER_ADMIN with no working tenant aggregates cross-tenant
+   *     (TD3); everyone else is pinned to their CLS tenant.
+   */
+  async aggregateConsultationsForTenant(params: {
+    from: string | Date;
+    to: string | Date;
+    granularity?: 'day' | 'month';
+  }): Promise<ConsultationAggregateResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId && !isSuperAdmin(this.requestUser)) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const fromDate = new Date(params.from);
+    const toDate = new Date(params.to);
+    if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+      throw new BadRequestException('Invalid from/to date');
+    }
+    if (fromDate.getTime() > toDate.getTime()) {
+      throw new BadRequestException('`from` must be on or before `to`');
+    }
+
+    const spanDays = Math.floor((toDate.getTime() - fromDate.getTime()) / 86_400_000);
+    const granularity: 'day' | 'month' = params.granularity ?? (spanDays > 70 ? 'month' : 'day');
+
+    const buckets = buildAggregateBuckets(fromDate, toDate, granularity);
+    const counts = buckets.map(() => ({ newVisits: 0, revisits: 0 }));
+
+    const rangeStart = buckets[0]?.start ?? startOfUtcDay(fromDate);
+    const rangeEnd = buckets[buckets.length - 1]?.end ?? endOfUtcDay(toDate);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = { createdAt: { gte: rangeStart, lte: rangeEnd } };
+    if (tenantId) where.tenantId = tenantId;
+
+    const rows = await this.databaseService.client.consultation.findMany({
+      where,
+      select: { createdAt: true, parentConsultationId: true },
+    });
+
+    for (const row of rows) {
+      const ts = row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt as unknown as string);
+      if (Number.isNaN(ts.getTime())) continue;
+      const idx = buckets.findIndex((b) => ts >= b.start && ts <= b.end);
+      if (idx === -1) continue;
+      if (row.parentConsultationId) counts[idx].revisits += 1;
+      else counts[idx].newVisits += 1;
+    }
+
+    const resultBuckets = buckets.map((b, i) => ({
+      key: b.key,
+      label: b.label,
+      start: b.start.toISOString(),
+      end: b.end.toISOString(),
+      newVisits: counts[i].newVisits,
+      revisits: counts[i].revisits,
+      total: counts[i].newVisits + counts[i].revisits,
+    }));
+
+    const totals = resultBuckets.reduce(
+      (acc, b) => ({ total: acc.total + b.total, newVisits: acc.newVisits + b.newVisits, revisits: acc.revisits + b.revisits }),
+      { total: 0, newVisits: 0, revisits: 0 },
+    );
+
+    return { buckets: resultBuckets, totals, granularity, refreshedAt: new Date().toISOString() };
   }
 
   async doctorHasPatientRelationship(doctorId: string, patientId: string, tenantId: string): Promise<boolean> {
@@ -745,4 +852,80 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
     return ConsultationDtoMapper.toResponseWithContext(consultation);
   }
+}
+
+// ---------------------------------------------------------------------------
+// TASK-386 (#20) — UTC date-bucket helpers for aggregateConsultationsForTenant.
+//
+// Plain Date math (no date-fns dependency in @arcaai/applications) on UTC
+// boundaries so the result is independent of the server timezone. Key/label
+// formats mirror the FE `tenant-dashboard/chart.ts` so the chart renders the
+// same axis: `yyyy-MM-dd`/`MMM d` for days, `yyyy-MM`/`MMM` for months.
+// ---------------------------------------------------------------------------
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function startOfUtcDay(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+}
+
+function endOfUtcDay(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
+}
+
+function startOfUtcMonth(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0, 0, 0, 0));
+}
+
+function endOfUtcMonth(d: Date): Date {
+  // Day 0 of the next month is the last day of this month.
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+}
+
+interface AggregateBucket {
+  key: string;
+  label: string;
+  start: Date;
+  end: Date;
+}
+
+function buildAggregateBuckets(from: Date, to: Date, granularity: 'day' | 'month'): AggregateBucket[] {
+  const buckets: AggregateBucket[] = [];
+
+  if (granularity === 'month') {
+    let cursor = startOfUtcMonth(from);
+    const last = startOfUtcMonth(to);
+    while (cursor.getTime() <= last.getTime()) {
+      const y = cursor.getUTCFullYear();
+      const m = cursor.getUTCMonth();
+      buckets.push({
+        key: `${y}-${pad2(m + 1)}`,
+        label: MONTH_ABBR[m],
+        start: startOfUtcMonth(cursor),
+        end: endOfUtcMonth(cursor),
+      });
+      cursor = new Date(Date.UTC(y, m + 1, 1));
+    }
+    return buckets;
+  }
+
+  let cursor = startOfUtcDay(from);
+  const last = startOfUtcDay(to);
+  while (cursor.getTime() <= last.getTime()) {
+    const y = cursor.getUTCFullYear();
+    const m = cursor.getUTCMonth();
+    const day = cursor.getUTCDate();
+    buckets.push({
+      key: `${y}-${pad2(m + 1)}-${pad2(day)}`,
+      label: `${MONTH_ABBR[m]} ${day}`,
+      start: startOfUtcDay(cursor),
+      end: endOfUtcDay(cursor),
+    });
+    cursor = new Date(Date.UTC(y, m, day + 1));
+  }
+  return buckets;
 }

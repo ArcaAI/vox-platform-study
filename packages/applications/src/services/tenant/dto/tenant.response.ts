@@ -1,4 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { TenantPlan } from '@arcaai/domains';
 import { BaseResponse, BaseResponseProps } from '../../../common';
 
 export class TenantResponse extends BaseResponse {
@@ -10,6 +11,20 @@ export class TenantResponse extends BaseResponse {
 
   @ApiProperty({ description: 'Description of the tenant', required: false })
   description?: string;
+
+  /**
+   * TASK-387 (#3) — commercial plan. Nullable/undefined when unspecified
+   * (existing tenants read no plan). See the ticket's product FLAG on defaults.
+   */
+  @ApiPropertyOptional({ description: 'Commercial plan', enum: TenantPlan })
+  plan?: TenantPlan | null;
+
+  /**
+   * TASK-387 (#2 / F9) — free-form tenant tags (reuses the existing
+   * `Tenant.tags String[]` scalar; see the ticket's tags-representation decision).
+   */
+  @ApiProperty({ description: 'Tenant tags', type: [String], default: [] })
+  tags!: string[];
 
   /**
    * Row version for optimistic concurrency control (TASK-302 Stream D
@@ -35,6 +50,8 @@ export class TenantResponse extends BaseResponse {
     this.name = init.name;
     this.key = init.key;
     this.description = init.description;
+    this.plan = init.plan ?? null;
+    this.tags = init.tags ?? [];
     this.version = init.version;
   }
 }

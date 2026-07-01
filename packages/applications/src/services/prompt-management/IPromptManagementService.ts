@@ -8,6 +8,7 @@ import {
   PromptTestResultResponse,
   PromptUsageAnalyticsResponse,
   PreferredPromptTemplateResponse,
+  PromptVersionDiffResponse,
 } from './dto';
 import { DepartmentResponse } from '../department/dto';
 
@@ -18,6 +19,12 @@ export interface ListPromptTemplatesFilters {
   departmentId?: string;
   search?: string;
   includeDisabled?: boolean;
+  // TASK-388 #12 — admin scope/owner filters. `scope` narrows to a single
+  // PromptTemplateScope (e.g. `USER_PERSONAL`); `ownerUserId` narrows personal
+  // prompts to one owner. Both are admin-plane conveniences on the tenant-scoped
+  // list — the tenant filter is always applied first.
+  scope?: string;
+  ownerUserId?: string;
   page?: number;
   limit?: number;
 }
@@ -45,6 +52,8 @@ export abstract class IPromptManagementService {
   // TASK-331 doc-09 — end-user readable templates (no admin ability / plane).
   abstract listAvailableForCaller(filters?: { category?: string }): Promise<PromptTemplateResponse[]>;
   abstract getVersions(templateId: string): Promise<PromptVersionResponse[]>;
+  // TASK-389 #14 (AG8/A3) — server-side field-level diff between two versions.
+  abstract diffVersions(templateId: string, fromVersion: number, toVersion: number): Promise<PromptVersionDiffResponse>;
   abstract softDeletePromptTemplate(id: string): Promise<PromptTemplateResponse>;
   abstract assignToDepartment(dto: AssignDepartmentPromptRequest): Promise<DepartmentResponse>;
   // TASK-328 A4

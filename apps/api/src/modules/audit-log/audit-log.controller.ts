@@ -10,10 +10,11 @@ import {
   isSuperAdmin,
   IActiveUserContext,
 } from '@arcaai/applications';
-import { Controller, ForbiddenException, Get, Header, Inject, Param, Query } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Inject, Param, Query, StreamableFile } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiProduces, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { ApiEndpoint, CanRead } from '../../decorators';
+import { buildTableExport } from '../../shared/table-export';
 
 /**
  * AuditLogController - Audit log management endpoints
@@ -85,25 +86,31 @@ export class AuditLogController {
   }
 
   /**
-   * TASK-328 A8 — export the CURRENT filtered result set as CSV.
+   * TASK-328 A8 / TASK-390 #25 (AU2) — export the CURRENT filtered result set.
    *
    * Declared BEFORE the `/:id` route so `GET /admin/audit-logs/export` is never
    * captured as an id lookup. Honours the same filters + tenant scope as
    * {@link fetchAll}; the service materialises the full (capped) filtered set
    * server-side so the download always respects tenant boundaries.
+   *
+   * TASK-390 #25 — `?format=csv|xlsx|pdf` (default `csv`, unchanged legacy
+   * behaviour). `csv` still serialises via {@link AuditLogDtoMapper.ToCsv};
+   * `xlsx`/`pdf` render the SAME structured rows ({@link AuditLogDtoMapper.ToExportRows})
+   * through the shared `table-export` util (reused from TASK-388, not rebuilt).
+   * Returns a {@link StreamableFile} so the per-format content-type/filename are
+   * set from the payload (a static `@Header('text/csv')` could not vary).
    */
   @Get('export')
   @ApiOperation({
-    summary: 'Export audit logs as CSV',
-    description: 'Streams the filtered, tenant-scoped audit logs as a text/csv attachment.',
+    summary: 'Export audit logs (csv | xlsx | pdf)',
+    description: 'Streams the filtered, tenant-scoped audit logs as a csv/xlsx/pdf file attachment.',
   })
-  @ApiProduces('text/csv')
-  @ApiOkResponse({ description: 'CSV export of the filtered audit logs.', schema: { type: 'string' } })
+  @ApiProduces('text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/pdf')
+  @ApiQuery({ name: 'format', required: false, enum: ['csv', 'xlsx', 'pdf'] })
+  @ApiResponse({ status: 200, description: 'File attachment (csv/xlsx/pdf) of the filtered audit logs.' })
   @ApiResponse({ status: 403, description: 'Tenant context required to export audit logs' })
   @CanRead('AuditLog')
-  @Header('Content-Type', 'text/csv; charset=utf-8')
-  @Header('Content-Disposition', 'attachment; filename="audit-logs.csv"')
-  async exportCsv(@Query() queryParams: AuditLogQuery): Promise<string> {
+  async exportCsv(@Query() queryParams: AuditLogQuery): Promise<StreamableFile> {
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
     if (!isSuperAdmin(user) && !callerTenantId) {
@@ -111,13 +118,36 @@ export class AuditLogController {
     }
 
     // OB-07 (TASK-336): a global (cross-tenant) export is a super-admin reading
-    // without a tenant scope — those rows span tenants, so the CSV must carry a
-    // tenantId column. A tenant-scoped export omits it (every row is the same
+    // without a tenant scope — those rows span tenants, so the export must carry
+    // a tenantId column. A tenant-scoped export omits it (every row is the same
     // tenant, so the column would be noise).
     const includeTenant = isSuperAdmin(user) && !callerTenantId;
+    const format = queryParams.format ?? 'csv';
 
     const { rows, responsibleUsers } = await this.auditLogService.exportFiltered(queryParams);
-    return AuditLogDtoMapper.ToCsv(rows, responsibleUsers, { includeTenant });
+
+    if (format === 'csv') {
+      // Preserve the exact TASK-328 CSV bytes (header, RFC-4180 escaping,
+      // OB-07 tenant column) — just wrapped in a StreamableFile.
+      const csv = AuditLogDtoMapper.ToCsv(rows, responsibleUsers, { includeTenant });
+      return new StreamableFile(Buffer.from(csv, 'utf-8'), {
+        type: 'text/csv; charset=utf-8',
+        disposition: 'attachment; filename="audit-logs.csv"',
+      });
+    }
+
+    const { columns, rows: tableRows } = AuditLogDtoMapper.ToExportRows(rows, responsibleUsers, { includeTenant });
+    const file = await buildTableExport(format, {
+      columns,
+      rows: tableRows,
+      baseName: 'audit-logs',
+      title: 'Audit logs export',
+      sheetName: 'Audit logs',
+    });
+    return new StreamableFile(file.buffer, {
+      type: file.contentType,
+      disposition: `attachment; filename="${file.filename}"`,
+    });
   }
 
   /**

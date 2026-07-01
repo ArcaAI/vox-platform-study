@@ -20,6 +20,11 @@
       "import": "./dist/components/shared/index.mjs",
       "require": "./dist/components/shared/index.js"
     },
+    "./components/metrics": {
+      "types": "./dist/components/metrics/index.d.ts",
+      "import": "./dist/components/metrics/index.mjs",
+      "require": "./dist/components/metrics/index.js"
+    },
     "./hooks/use-mobile": "./src/hooks/use-mobile.ts",
     "./*": "./src/*.tsx"
   },

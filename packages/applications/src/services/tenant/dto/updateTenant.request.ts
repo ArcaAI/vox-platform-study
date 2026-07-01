@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsIn, IsInt, Min } from 'class-validator';
 import { BaseRequest } from '../../../common';
-import { ResourceStatusType } from '@arcaai/domains';
+import { ResourceStatusType, TenantPlan } from '@arcaai/domains';
 
 export class UpdateTenantRequest extends BaseRequest {
   @ApiProperty({ description: 'Name of the tenant', required: false })
@@ -23,6 +23,12 @@ export class UpdateTenantRequest extends BaseRequest {
   @IsOptional()
   @IsIn([ResourceStatusType.ENABLED, ResourceStatusType.DISABLED])
   resourceStatus?: ResourceStatusType;
+
+  // TASK-387 (#3) — commercial plan is editable through the OCC PATCH.
+  @ApiPropertyOptional({ description: 'Commercial plan', enum: TenantPlan })
+  @IsOptional()
+  @IsIn(Object.values(TenantPlan))
+  plan?: TenantPlan;
 
   // TASK-302 Stream D Phase E.1.2 — required by the OCC contract. The
   // value is the row version the client was looking at (prior GET).

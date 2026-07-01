@@ -100,9 +100,21 @@ export interface UseAuditLogReturn {
   listByCursor: (query?: AuditLogCursorParams) => Promise<CursorPageResult<AuditLogEntry>>;
   getById: (id: string) => Promise<AuditLogEntry>;
   exportCsv: (filters?: AuditLogFilterParams) => Promise<string>;
+  /**
+   * TASK-390 #25 (AU2) — export the filtered set as a binary file (`xlsx`/`pdf`,
+   * or `csv` as a Blob) for a browser download. Hits the SAME
+   * `GET /admin/audit-logs/export` route as {@link exportCsv} with `?format=`,
+   * honouring the same A8 filters + tenant scope. Returns the raw `Blob` (via
+   * `getBlob`); the caller triggers the download. For CSV-as-text keep using
+   * {@link exportCsv}.
+   */
+  exportFile: (format: AuditExportFormat, filters?: AuditLogFilterParams) => Promise<Blob>;
   byResource: (resourceType: string, resourceId: string) => Promise<AuditLogEntry[]>;
   byUser: (userId: string) => Promise<AuditLogEntry[]>;
 }
+
+/** TASK-390 #25 (AU2) — binary export formats for {@link UseAuditLogReturn.exportFile}. */
+export type AuditExportFormat = 'csv' | 'xlsx' | 'pdf';
 
 /** Extract only the server-side filter params (skip pagination keys). */
 function toFilterQuery(params?: AuditLogFilterParams): Record<string, string | undefined> {
@@ -184,6 +196,18 @@ export function useAuditLog(): UseAuditLogReturn {
     [execute],
   );
 
+  // TASK-390 #25 (AU2) — binary export (xlsx/pdf, or csv-as-Blob). Same EXPORT
+  // route + A8 filters as `exportCsv`, with `?format=` selecting the renderer;
+  // returns the raw bytes as a Blob for the caller to download.
+  const exportFile = useCallback(
+    (format: AuditExportFormat, filters?: AuditLogFilterParams) =>
+      execute<Blob>('exportFile', (client) => {
+        const url = appendFilters(AUDIT_LOG_ENDPOINTS.EXPORT, { format, ...toFilterQuery(filters) });
+        return client.getBlob(url);
+      }),
+    [execute],
+  );
+
   const byResource = useCallback(
     (resourceType: string, resourceId: string) =>
       execute<AuditLogEntry[]>('byResource', async (client) => {
@@ -202,5 +226,5 @@ export function useAuditLog(): UseAuditLogReturn {
     [execute],
   );
 
-  return { entries, count, isLoading, error, list, listByCursor, getById, exportCsv, byResource, byUser };
+  return { entries, count, isLoading, error, list, listByCursor, getById, exportCsv, exportFile, byResource, byUser };
 }

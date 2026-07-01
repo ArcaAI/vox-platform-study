@@ -6,3 +6,4 @@ export * from './paginatedTenantConfig.response';
 export * from './tenantConfig.response';
 export * from './updateTenantConfigRequest';
 export * from './updateTenant.request';
+export * from './setTenantTags.request';

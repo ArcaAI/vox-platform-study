@@ -722,16 +722,18 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       expect(Object.keys(USER_SETTINGS_ENDPOINTS).sort()).toEqual(['list', 'updateByKey']);
     });
 
-    it('API_KEY_ENDPOINTS should have exactly 7 keys', () => {
-      expect(Object.keys(API_KEY_ENDPOINTS)).toHaveLength(7);
+    it('API_KEY_ENDPOINTS should have exactly 8 keys', () => {
+      // TASK-390 #23 (K5) added ROTATE (7 -> 8).
+      expect(Object.keys(API_KEY_ENDPOINTS)).toHaveLength(8);
     });
 
     it('ROLE_ENDPOINTS should have exactly 11 keys', () => {
       expect(Object.keys(ROLE_ENDPOINTS)).toHaveLength(11);
     });
 
-    it('TENANT_ENDPOINTS should have exactly 8 keys', () => {
-      expect(Object.keys(TENANT_ENDPOINTS)).toHaveLength(8);
+    it('TENANT_ENDPOINTS should have exactly 13 keys', () => {
+      // TASK-386 (E5) added USAGE (8 -> 9); TASK-387 added SUSPEND/ARCHIVE/RESTORE/TAGS (9 -> 13).
+      expect(Object.keys(TENANT_ENDPOINTS)).toHaveLength(13);
     });
   });
 

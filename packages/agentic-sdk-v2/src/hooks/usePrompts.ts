@@ -7,9 +7,9 @@
 import { useState, useCallback } from 'react';
 import { useApiOperation } from './useApiOperation';
 import { PROMPT_TEMPLATE_ENDPOINTS } from '../core/constants';
-import { computePromptDiff } from '../utils/diffUtils';
 import { extractArray } from '../utils/responseUtils';
 import { appendFilters } from '../utils/urlUtils';
+import { toPromptTestMetricScores } from '../utils/promptMetrics';
 import type {
   PromptTemplate,
   PromptVersion,
@@ -20,19 +20,9 @@ import type {
   DiffResult,
   TestPromptInput,
   PromptTestResult,
+  PromptTestMetrics,
   PromptUsageAnalytics,
 } from '../types';
-
-/**
- * TASK-328 A4 — serialize a version's content + variables (JSON) into a single
- * text blob so the line diff reflects BOTH the prompt text and the variable
- * definitions. When `variables` is absent the blob is just the content (so the
- * existing content-only diff behaviour is preserved).
- */
-function serializeVersionForDiff(content: string, variables?: unknown): string {
-  if (variables === undefined || variables === null) return content;
-  return `${content}\n\n--- variables ---\n${JSON.stringify(variables, null, 2)}`;
-}
 
 export interface PromptUsageStats {
   totalUsages: number;
@@ -94,6 +84,9 @@ export function usePrompts(): UsePromptsReturn {
               departmentId: filters.departmentId,
               tags: filters.tags,
               search: filters.search || undefined,
+              // TASK-388 #12 — admin scope/owner narrowing.
+              scope: filters.scope,
+              ownerUserId: filters.ownerUserId,
             })
           : PROMPT_TEMPLATE_ENDPOINTS.LIST;
         const raw = await client.get(url);
@@ -164,23 +157,32 @@ export function usePrompts(): UsePromptsReturn {
 
   const assignToDepartment = useCallback(
     (input: AssignDepartmentPromptInput) =>
-      execute<void>('assignToDepartment', (client) => client.post(PROMPT_TEMPLATE_ENDPOINTS.ASSIGN_DEPARTMENT, input) as Promise<void>),
+      execute<void>('assignToDepartment', (client) => {
+        // The backend `assign-department` DTO whitelists
+        // `{ departmentId, preSummaryPromptId?, newPatientPromptId?, revisitPromptId?, expectedVersion }`
+        // and reads the OCC token from the BODY (this POST has no If-Match gate).
+        // Translate the ergonomic `{ promptTemplateId, field }` input onto that
+        // contract so the unknown keys don't trip `forbidNonWhitelisted` (400).
+        const body = {
+          departmentId: input.departmentId,
+          [input.field]: input.promptTemplateId,
+          expectedVersion: input.expectedVersion,
+        };
+        return client.post(PROMPT_TEMPLATE_ENDPOINTS.ASSIGN_DEPARTMENT, body) as Promise<void>;
+      }),
     [execute],
   );
 
   const compareVersions = useCallback(
     (id: string, v1: number, v2: number) =>
       execute<DiffResult>('compareVersions', async (client) => {
-        const [ver1, ver2] = await Promise.all([
-          client.get<PromptVersion>(PROMPT_TEMPLATE_ENDPOINTS.VERSION(id, v1)),
-          client.get<PromptVersion>(PROMPT_TEMPLATE_ENDPOINTS.VERSION(id, v2)),
-        ]);
-        // TASK-328 A4 — diff content AND variables (JSON) so variable
-        // definition changes are visible in the version diff.
-        return computePromptDiff(
-          serializeVersionForDiff(ver1.content, ver1.variables),
-          serializeVersionForDiff(ver2.content, ver2.variables),
-        );
+        // TASK-389 #14 (AG8/A3) — one request to the server-side diff endpoint
+        // (was: GET both versions + diff client-side). The server returns a
+        // superset of DiffResult (per-field breakdown + the combined
+        // content+variables line diff); map the combined `{changes,patch,stats}`
+        // so the returned shape is unchanged for existing consumers.
+        const result = await client.get<DiffResult>(PROMPT_TEMPLATE_ENDPOINTS.DIFF(id, v1, v2));
+        return { changes: result.changes, patch: result.patch, stats: result.stats };
       }),
     [execute],
   );
@@ -201,7 +203,22 @@ export function usePrompts(): UsePromptsReturn {
       execute<PromptTestResult>('test', async (client) => {
         // OCC parity with update(): the server folds the `If-Match` header
         // over the body `expectedVersion`, or uses the body value directly.
-        const data = await client.post<PromptTestResult>(PROMPT_TEMPLATE_ENDPOINTS.TEST(id), input ?? {});
+        // TASK-389 #15 (AG12/A5) — the server's `metrics` is the RAW backend
+        // `PromptTestMetrics`; keep it on `metricDetail` and derive the flat
+        // `[0,1]` display map the admin Test Playground consumes.
+        const raw = await client.post<Omit<PromptTestResult, 'metrics' | 'metricDetail'> & { metrics?: PromptTestMetrics }>(
+          PROMPT_TEMPLATE_ENDPOINTS.TEST(id),
+          input ?? {},
+        );
+        const data: PromptTestResult = {
+          id: raw.id,
+          score: raw.score,
+          output: raw.output,
+          testedAt: raw.testedAt,
+          version: raw.version,
+          metricDetail: raw.metrics,
+          metrics: toPromptTestMetricScores(raw.metrics),
+        };
         // Reflect the new score/output/version onto cached state.
         setPrompts((prev) =>
           prev.map((p) =>

@@ -217,6 +217,21 @@ describe('useApiKeys', () => {
         });
     });
 
+    // TASK-390 #23 (K5) — rotate endpoint.
+    describe('rotate', () => {
+        it('should POST to API_KEY_ENDPOINTS.ROTATE(id) and return the new raw key', async () => {
+            const rotated = { apiKey: { id: 'k-2', keyName: 'Key' }, rawKey: 'hope_live_rotated_chk' };
+            mockPost.mockResolvedValue(rotated);
+            const { result } = renderHook(() => useApiKeys());
+
+            let resp: any;
+            await act(async () => { resp = await result.current.rotate('k-1'); });
+
+            expect(mockPost).toHaveBeenCalledWith(API_KEY_ENDPOINTS.ROTATE('k-1'), undefined);
+            expect(resp).toEqual(rotated);
+        });
+    });
+
     describe('getUsage', () => {
         it('should GET from API_KEY_ENDPOINTS.USAGE(id)', async () => {
             const usage = { totalRequests: 100, lastUsedAt: '2026-02-20T00:00:00Z' };

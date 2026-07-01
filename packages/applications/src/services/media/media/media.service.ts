@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ResourceType, SysEventType, EntityId, MediaEntity, MediaFactory, MediaRepository } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException } from '@arcaai/exceptions';
 import { IMediaService } from './IMediaService';
+import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { CreateMediaRequest, UpdateMediaRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
@@ -16,11 +17,25 @@ export class MediaService extends BaseService implements IMediaService {
     private readonly mediaRepository: MediaRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-392 (Phase 3, C1) — optional (append-only DI); evaluates the tenant
+    // storage SOFT-WARN on upload (kill-switch-gated, never blocks).
+    @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Media);
   }
 
   async create(request: CreateMediaRequest): Promise<MediaEntity> {
+    // TASK-392 (Phase 3, C1) — storage soft-warn (Q6). SOFT: emits a warning
+    // signal when this upload crosses the tenant quota but NEVER blocks the
+    // upload. Defensive swallow so a telemetry failure can't fail an upload.
+    if (request.tenantId && this.entitlements) {
+      try {
+        await this.entitlements.evaluateStorageSoftWarn(request.tenantId, request.size);
+      } catch {
+        // soft-warn is best-effort; ignore.
+      }
+    }
+
     const newMedia = MediaFactory.CreateMedia({
       ...request,
       tenantId: request.tenantId,

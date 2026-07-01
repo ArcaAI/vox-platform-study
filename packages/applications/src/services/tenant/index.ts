@@ -3,5 +3,6 @@ export * from './constants';
 export * from './dto';
 export * from './ITenantService';
 export * from './tenant.dto.mapper';
+export * from './tenantConfig.dto.mapper';
 export * from './tenant.service.module';
 export * from './tenant.service';
