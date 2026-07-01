@@ -31,6 +31,7 @@ const mockUserDepartmentRepository = { create: vi.fn() };
 // rollback semantics — no committed rows, no post-commit side effects).
 const $transaction = vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(TX));
 const mockDatabaseService = { baseClient: { $transaction } };
+const mockUserProfileService = { upsertByUserId: vi.fn() };
 
 function buildService() {
   return new UserService(
@@ -46,6 +47,8 @@ function buildService() {
     mockClsService as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockDatabaseService as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockUserProfileService as any,
   );
 }
 

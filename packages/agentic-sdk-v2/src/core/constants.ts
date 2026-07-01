@@ -202,6 +202,12 @@ export const DNA_STYLE_ENDPOINTS = {
   ADMIN_DASHBOARD: (tenantId?: string) =>
     tenantId ? `/admin/dna-writing-styles/dashboard?tenantId=${encodeURIComponent(tenantId)}` : '/admin/dna-writing-styles/dashboard',
   BY_DOCTOR: (doctorId: string) => `/dna-writing-styles/doctor/${encodeURIComponent(doctorId)}`,
+  // TASK-388 #13 — admin cross-user (PHI-gated) reads. These hit the `/admin`
+  // controller, which requires `manage:DnaWritingStyleReport` and tenant-scopes
+  // the caller (even SUPER_ADMIN cannot cross tenants). Distinct from the
+  // self-only `BY_DOCTOR`/`VERSIONS` end-user routes above.
+  ADMIN_BY_DOCTOR: (doctorId: string) => `/admin/dna-writing-styles/doctor/${encodeURIComponent(doctorId)}`,
+  ADMIN_VERSIONS: (reportId: string) => `/admin/dna-writing-styles/${encodeURIComponent(reportId)}/versions`,
 } as const;
 
 /**
@@ -229,6 +235,9 @@ export const PROMPT_TEMPLATE_ENDPOINTS = {
   DELETE: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}`,
   VERSIONS: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}/versions`,
   VERSION: (id: string, versionNumber: number) => `/admin/prompt-templates/${encodeURIComponent(id)}/versions/${versionNumber}`,
+  // TASK-389 #14 (AG8/A3) — server-side field-level version diff (replaces the
+  // client-side GET-both-then-diff in `compareVersions`).
+  DIFF: (id: string, from: number, to: number) => `/admin/prompt-templates/${encodeURIComponent(id)}/versions/${from}/diff/${to}`,
   ASSIGN_DEPARTMENT: '/admin/prompt-templates/assign-department',
   /** Get usage statistics for a prompt template (TASK-218) */
   USAGE: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}/usage`,
@@ -255,6 +264,8 @@ export const DEPARTMENT_ENDPOINTS = {
   CHILDREN: (id: string) => `/admin/departments/${encodeURIComponent(id)}/children`,
   BY_CODE: (code: string) => `/admin/departments/code/${encodeURIComponent(code)}`,
   PROMPT_CONFIG: (id: string) => `/admin/departments/${encodeURIComponent(id)}/prompt-config`,
+  // TASK-387 (#6 / D2) — reverse dept->users listing.
+  USERS: (id: string) => `/admin/departments/${encodeURIComponent(id)}/users`,
 } as const;
 
 /**
@@ -281,6 +292,27 @@ export const MONITORING_ENDPOINTS = {
 } as const;
 
 /**
+ * Platform runtime metrics endpoints (TASK-386 #16 / E1·E2·E3).
+ *
+ * Matches `PlatformMetricsController` at `@Controller('admin/platform')`.
+ * SUPER_ADMIN-only (class-level `@CanManage('PlatformMetrics')`, satisfied by
+ * the global `manage:all` grant). Responses are Redis-cached (~12s TTL) and
+ * emit no audit event.
+ */
+export const PLATFORM_METRICS_ENDPOINTS = {
+  /** E1 — requests/min, error rate, P95, open sockets, per-service/-model, request-volume series. */
+  METRICS: '/admin/platform/metrics',
+  /** E2 — live open-socket count (multi-instance Redis aggregate). */
+  SOCKETS: '/admin/platform/sockets',
+  /**
+   * E3 — consumption roll-up. Omit `tenantId` for a platform-wide (cross-tenant)
+   * roll-up; pass it to scope to one tenant.
+   */
+  CONSUMPTION: (tenantId?: string) =>
+    tenantId ? `/admin/platform/consumption?tenantId=${encodeURIComponent(tenantId)}` : '/admin/platform/consumption',
+} as const;
+
+/**
  * Tenant config endpoints (SDK-207 WS-4)
  *
  * Matches TenantController config routes.
@@ -294,6 +326,14 @@ export const TENANT_ENDPOINTS = {
   DELETE: (id: string) => `/admin/tenants/${encodeURIComponent(id)}`,
   GET_CONFIGS: (identifier: string) => `/admin/tenants/configs/${encodeURIComponent(identifier)}`,
   UPDATE_CONFIGS: (identifier: string) => `/admin/tenants/configs/${encodeURIComponent(identifier)}`,
+  // TASK-386 (E5) — tenant usage roll-up (users/depts/storage/clinical) for the Tenant Detail tiles.
+  USAGE: (id: string) => `/admin/tenants/${encodeURIComponent(id)}/usage`,
+  // TASK-387 (#1 / F6) — lifecycle transitions (suspend/archive/restore).
+  SUSPEND: (id: string) => `/admin/tenants/${encodeURIComponent(id)}/suspend`,
+  ARCHIVE: (id: string) => `/admin/tenants/${encodeURIComponent(id)}/archive`,
+  RESTORE: (id: string) => `/admin/tenants/${encodeURIComponent(id)}/restore`,
+  // TASK-387 (#2 / F9) — tenant tags read/set.
+  TAGS: (id: string) => `/admin/tenants/${encodeURIComponent(id)}/tags`,
 } as const;
 
 /**
@@ -497,6 +537,27 @@ export const GLOBAL_SETTINGS_ENDPOINTS = {
 } as const;
 
 /**
+ * Plan-entitlements endpoints (TASK-392 Phase 4/5).
+ *
+ * `ADMIN` paths are super-admin-only (`/admin/entitlements/*`, admin-plane per
+ * `isAdminPlanePath`, so the admin JWT is used during impersonation); `ME` is
+ * the tenant self-view on the user plane. `PLAN`/`TENANT_*` builders
+ * `encodeURIComponent` their segments to match the other endpoint groups.
+ */
+export const ENTITLEMENTS_ENDPOINTS = {
+  // Super-admin surface
+  ENABLED: '/admin/entitlements/enabled',
+  PLANS: '/admin/entitlements/plans',
+  PLAN: (plan: string) => `/admin/entitlements/plans/${encodeURIComponent(plan)}`,
+  TENANT_SNAPSHOT: (tenantId: string) => `/admin/entitlements/tenants/${encodeURIComponent(tenantId)}`,
+  TENANT_OVERRIDE: (tenantId: string) => `/admin/entitlements/tenants/${encodeURIComponent(tenantId)}/override`,
+  TENANT_DOWNGRADE: (tenantId: string) => `/admin/entitlements/tenants/${encodeURIComponent(tenantId)}/downgrade`,
+  TRIAL_EXPIRY_RUN: '/admin/entitlements/trial-expiry/run',
+  // Tenant self-view (user plane)
+  ME: '/entitlements/me',
+} as const;
+
+/**
  * User settings endpoints (TASK-265 W0-8 reduction)
  *
  * The API only exposes two real routes — `GET /user/me/settings` and
@@ -507,6 +568,21 @@ export const GLOBAL_SETTINGS_ENDPOINTS = {
 export const USER_SETTINGS_ENDPOINTS = {
   list: '/user/me/settings',
   updateByKey: (namespace: string, key: string) => `/user/me/settings/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`,
+} as const;
+
+/**
+ * TASK-388 #11 — admin settings endpoints for ANOTHER user. Targets
+ * `apps/api/.../user.controller.ts` (@Controller('admin/users')) at
+ * `GET /admin/users/:id/settings` and `PATCH /admin/users/:id/settings/:namespace/:key`
+ * (TASK-245, `assertUserInScope`). Distinct from the self-only
+ * `USER_SETTINGS_ENDPOINTS` above — these let an admin view/edit a target
+ * user's preferences (the typed "preferences" object is an FE aggregation over
+ * the `arcaai-sdk` settings namespace).
+ */
+export const ADMIN_USER_SETTINGS_ENDPOINTS = {
+  list: (userId: string) => `/admin/users/${encodeURIComponent(userId)}/settings`,
+  updateByKey: (userId: string, namespace: string, key: string) =>
+    `/admin/users/${encodeURIComponent(userId)}/settings/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`,
 } as const;
 
 /**
@@ -532,6 +608,14 @@ export const USER_ENDPOINTS = {
   DELETE: (id: string) => `/admin/users/${encodeURIComponent(id)}`,
   BY_TENANT: (tenantId: string) => `/admin/users/tenant/${encodeURIComponent(tenantId)}`,
   ME: '/auth/me',
+  // TASK-388 #8 — admin reset-password (temporary password OR emailed link).
+  RESET_PASSWORD: (id: string) => `/admin/users/${encodeURIComponent(id)}/reset-password`,
+  // TASK-388 #8 — public completion of a reset link (no auth; token-carried).
+  PASSWORD_RESET_COMPLETE: '/users/password-reset/complete',
+  // TASK-388 #9 — server-side bulk user actions (enable/disable/delete/assign-departments).
+  BULK_ACTIONS: '/admin/users/bulk-actions',
+  // TASK-388 #10 — server-side export (csv | xlsx | pdf).
+  EXPORT: '/admin/users/export',
 } as const;
 
 /**
@@ -544,6 +628,9 @@ export const API_KEY_ENDPOINTS = {
   UPDATE: (id: string) => `/admin/api-keys/${encodeURIComponent(id)}`,
   DELETE: (id: string) => `/admin/api-keys/${encodeURIComponent(id)}`,
   REVOKE: (id: string) => `/admin/api-keys/${encodeURIComponent(id)}/revoke`,
+  // TASK-390 #23 (K5) — rotate: mint a new secret (returned once); old key
+  // stays valid for a 24h grace window.
+  ROTATE: (id: string) => `/admin/api-keys/${encodeURIComponent(id)}/rotate`,
   USAGE: (id: string) => `/admin/api-keys/${encodeURIComponent(id)}/usage`,
 } as const;
 
@@ -690,10 +777,25 @@ export const AUDIT_LOG_ENDPOINTS = {
  * (`@Controller('admin/consultations')`).
  */
 export const ADMIN_CONSULTATION_ENDPOINTS = {
-  /** List ALL consultations in the tenant (paginated; page/limit + patientId/doctorId/departmentId filters) */
+  /**
+   * List ALL consultations in scope (paginated; page/limit + patientId/doctorId/departmentId filters).
+   *
+   * TASK-386 (TD3/DEF-1): a SUPER_ADMIN with NO working tenant now gets a
+   * cross-tenant list (previously HTTP 400). A tenant-admin is pinned to their tenant.
+   */
   LIST: '/admin/consultations',
   /** Get a single consultation by ID (tenant-scoped) */
   GET: (id: string) => `/admin/consultations/${encodeURIComponent(id)}`,
+  /**
+   * TASK-386 (#20 / E4): zero-filled new/revisit aggregation over a date range.
+   * Requires `?from=&to=`; optional `&granularity=day|month`. Scope mirrors LIST
+   * (super-admin cross-tenant when unscoped; tenant-admin pinned to their tenant).
+   */
+  AGGREGATE: (params: { from: string; to: string; granularity?: 'day' | 'month' }) => {
+    const qs = new URLSearchParams({ from: params.from, to: params.to });
+    if (params.granularity) qs.set('granularity', params.granularity);
+    return `/admin/consultations/aggregate?${qs.toString()}`;
+  },
 } as const;
 
 /**

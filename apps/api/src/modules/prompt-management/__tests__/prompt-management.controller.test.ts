@@ -40,6 +40,7 @@ const createMockService = () => ({
     listMyPersonalForDepartment: vi.fn(),
     getVersions: vi.fn(),
     getVersion: vi.fn(),
+    diffVersions: vi.fn(),
     getUsageStats: vi.fn(),
     // TASK-328 A4
     testPromptTemplate: vi.fn(),
@@ -287,6 +288,19 @@ describe('PromptManagementController', () => {
             mockService.getVersion.mockResolvedValue(null);
 
             await expect(controller.getVersion('tpl-1', 99)).rejects.toThrow();
+        });
+    });
+
+    // TASK-389 #14 (AG8/A3) — server-side version diff route.
+    describe('GET /prompt-templates/:id/versions/:from/diff/:to (diffVersions)', () => {
+        it('delegates to service.diffVersions with id + from/to version numbers', async () => {
+            const diff = { promptTemplateId: 'tpl-1', fromVersion: 1, toVersion: 2, fields: [], changes: [], patch: '', stats: { additions: 0, deletions: 0, unchanged: 0 } };
+            mockService.diffVersions.mockResolvedValue(diff);
+
+            const result = await controller.diffVersions('tpl-1', 1, 2);
+
+            expect(mockService.diffVersions).toHaveBeenCalledWith('tpl-1', 1, 2);
+            expect(result).toBe(diff);
         });
     });
 

@@ -5,7 +5,7 @@ import { HttpService } from '@nestjs/axios';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../../decorators';
 import { GracefulShutdownService, IGracefulShutdownService } from '../../services';
-import { Authorize } from '../../decorators';
+import { CanAny } from '../../decorators';
 
 const SERVICE_NAME = 'api';
 // eslint-disable-next-line turbo/no-undeclared-env-vars
@@ -179,7 +179,11 @@ export class ApiHealthController {
   // TASK-336 OB-12 — tightened from any-authenticated to SUPER_ADMIN
   // (`manage all`), matching the other ops/admin surfaces; this downstream
   // ops health is not for plain doctors.
-  @Authorize(['manage', 'all'])
+  // TASK-386 (#21) — widened so a TENANT_ADMIN can read downstream service
+  // health for their tenant dashboard (`read:TenantTelemetry`). The payload is
+  // already sanitised platform-infra status (no PHI / per-tenant rows); a plain
+  // DOCTOR still holds neither grant and is rejected.
+  @CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])
   @ApiOperation({ summary: 'Consolidated health check for all downstream microservices (admin only)' })
   @ApiResponse({ status: 200, description: 'Sanitised health status of SMR, NLP, STT, Guardrail, and Harness services' })
   @ApiResponse({ status: 401, description: 'Authentication required' })
@@ -219,7 +223,8 @@ export class ApiHealthController {
   @Get('services/:serviceKey')
   // TASK-307 W5.1 / AC-15 — close audit C-8.
   // TASK-336 OB-12 — SUPER_ADMIN (`manage all`), as for /services above.
-  @Authorize(['manage', 'all'])
+  // TASK-386 (#21) — widened to `read:TenantTelemetry` (see /services above).
+  @CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])
   @ApiOperation({ summary: 'Health check for a single downstream microservice (admin only)' })
   @ApiParam({ name: 'serviceKey', enum: ['smr', 'nlp', 'stt', 'guardrail', 'harness'], description: 'Service key' })
   @ApiResponse({ status: 200, description: 'Sanitised health status of the requested service' })

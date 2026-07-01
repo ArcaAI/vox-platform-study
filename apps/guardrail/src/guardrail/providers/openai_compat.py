@@ -25,6 +25,7 @@ import httpx
 
 from guardrail.core.config import OpenAICompatConfig
 from guardrail.core.logging import get_logger
+from guardrail.core.metrics import track_model_inference
 from guardrail.providers._granite import GRANITE_CRITERIA, build_guardian_block, parse_score
 
 logger = get_logger(__name__)
@@ -337,13 +338,15 @@ class OpenAICompatGuardianProvider:
                 "response_format": {"type": "json_object"},
             }
 
-            response = await self.http_client.post(
-                f"{self.base_url}/chat/completions",
-                json=payload,
-                headers=self._headers(),
-                timeout=self.settings.timeout_s,
-            )
-            response.raise_for_status()
+            # TASK-386 — per-model running gauge + inference latency.
+            with track_model_inference(self.model):
+                response = await self.http_client.post(
+                    f"{self.base_url}/chat/completions",
+                    json=payload,
+                    headers=self._headers(),
+                    timeout=self.settings.timeout_s,
+                )
+                response.raise_for_status()
 
             data = response.json()
             content = (data["choices"][0]["message"]["content"] or "").strip()

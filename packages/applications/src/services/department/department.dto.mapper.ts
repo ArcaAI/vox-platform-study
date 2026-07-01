@@ -16,6 +16,7 @@ export class DepartmentDtoMapper {
       preSummaryPromptId: entity.preSummaryPromptId ?? undefined,
       newPatientPromptId: entity.newPatientPromptId ?? undefined,
       revisitPromptId: entity.revisitPromptId ?? undefined,
+      dnaWritingStylePromptId: entity.dnaWritingStylePromptId ?? undefined,
       promptConfig: (entity.promptConfig as Record<string, unknown>) ?? undefined,
       resourceStatus: entity.resourceStatus ?? undefined,
       // TASK-302 Stream D Phase E.2 — surface `_version` so SDK clients

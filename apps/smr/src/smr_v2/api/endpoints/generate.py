@@ -50,9 +50,12 @@ from smr_v2.core.metrics import (
     GENERATION_ERRORS,
     GENERATION_LATENCY,
     GENERATION_TOTAL,
+    MODEL_INFERENCE_LATENCY,
+    MODEL_RUNNING_INSTANCES,
     QUEUE_SIZE,
     QUEUE_WAIT_TIME,
     RATE_LIMIT_REJECTIONS,
+    SERVICE_NAME,
     TOKENS_TOTAL,
 )
 from smr_v2.models.requests import GenerateRequest
@@ -260,6 +263,8 @@ async def generate(
 
     await task_manager.update_task(task.task_id, status=TaskStatus.RUNNING)
     ACTIVE_GENERATIONS.labels(provider=request_body.provider).inc()
+    # TASK-386 — cross-service per-model running gauge (e.g. gemma-4-e4b).
+    MODEL_RUNNING_INSTANCES.labels(service=SERVICE_NAME, model=model).inc()
     start = time.monotonic()
 
     timeout_s = _get_provider_timeout(settings, request_body.provider)
@@ -317,6 +322,8 @@ async def generate(
 
         GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="completed").inc()
         GENERATION_LATENCY.labels(provider=request_body.provider, model=model).observe(latency_ms / 1000)
+        # TASK-386 — cross-service per-model inference latency (for avg latency).
+        MODEL_INFERENCE_LATENCY.labels(service=SERVICE_NAME, model=model).observe(latency_ms / 1000)
         TOKENS_TOTAL.labels(provider=request_body.provider, model=model, direction="input").inc(usage.get("prompt_tokens", 0))
         TOKENS_TOTAL.labels(provider=request_body.provider, model=model, direction="output").inc(usage.get("completion_tokens", 0))
 
@@ -405,6 +412,7 @@ async def generate(
         raise HTTPException(status_code=502, detail="Generation failed due to an internal error. Check server logs for details.") from exc
     finally:
         ACTIVE_GENERATIONS.labels(provider=request_body.provider).dec()
+        MODEL_RUNNING_INSTANCES.labels(service=SERVICE_NAME, model=model).dec()
         if semaphore:
             CONCURRENT_REQUESTS.labels(provider=request_body.provider).dec()
             semaphore.release()
@@ -440,6 +448,8 @@ async def _run_streaming_generation(
     resolved_provider = provider_name or request_body.provider
     await task_manager.update_task(task_id, status=TaskStatus.RUNNING)
     ACTIVE_GENERATIONS.labels(provider=resolved_provider).inc()
+    # TASK-386 — cross-service per-model running gauge (streaming path).
+    MODEL_RUNNING_INSTANCES.labels(service=SERVICE_NAME, model=resolved_model).inc()
     start = time.monotonic()
     first_chunk_recorded = False
     total_input_tokens = 0
@@ -458,6 +468,8 @@ async def _run_streaming_generation(
         await task_manager.update_task(task_id, status=TaskStatus.COMPLETED)
         GENERATION_TOTAL.labels(provider=resolved_provider, model=resolved_model, status="completed").inc()
         GENERATION_LATENCY.labels(provider=resolved_provider, model=resolved_model).observe(latency_ms / 1000)
+        # TASK-386 — cross-service per-model inference latency (streaming path).
+        MODEL_INFERENCE_LATENCY.labels(service=SERVICE_NAME, model=resolved_model).observe(latency_ms / 1000)
         if total_input_tokens or total_output_tokens:
             TOKENS_TOTAL.labels(provider=resolved_provider, model=resolved_model, direction="input").inc(total_input_tokens)
             TOKENS_TOTAL.labels(provider=resolved_provider, model=resolved_model, direction="output").inc(total_output_tokens)
@@ -477,5 +489,6 @@ async def _run_streaming_generation(
             _update_cb_metric(resolved_provider, cb)
     finally:
         ACTIVE_GENERATIONS.labels(provider=resolved_provider).dec()
+        MODEL_RUNNING_INSTANCES.labels(service=SERVICE_NAME, model=resolved_model).dec()
         if shutdown_manager:
             shutdown_manager.complete_task(task_id)

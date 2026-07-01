@@ -21,7 +21,9 @@ export type WorkerSessionKind =
   // TASK-330 Phase 3 — institutional-RAG knowledge ingestion worker.
   | 'ingest-knowledge'
   // TASK-344 Workstream A2 — server-side OCR enrichment @OnEvent handler.
-  | 'ocr-enrichment';
+  | 'ocr-enrichment'
+  // TASK-392 (Q4/Q10) — trial-expiry + downgrade soft-disable lifecycle job.
+  | 'entitlements-lifecycle';
 
 /**
  * Init shape for `createWorkerSession`.

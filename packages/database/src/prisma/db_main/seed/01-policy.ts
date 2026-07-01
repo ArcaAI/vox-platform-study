@@ -112,6 +112,11 @@ export const DEFAULT_POLICIES = [
             { action: 'read', subject: 'Tenant', conditions: { id: '${context.tenantId}' } },
             { action: 'update', subject: 'Tenant', conditions: { id: '${context.tenantId}' } },
             { action: 'read', subject: 'AuditLog', conditions: { tenantId: '${context.tenantId}' } },
+            // TASK-386 (#21) — tenant-scoped telemetry: tenant admins read their
+            // own tenant's service sessions/health/uptime (the widened
+            // MonitoringController + ApiHealthController `/services` gates accept
+            // `read:TenantTelemetry`). SUPER_ADMIN is covered by `manage:all`.
+            { action: 'read', subject: 'TenantTelemetry', conditions: { tenantId: '${context.tenantId}' } },
             // Clinical documentation harness (TASK-330 Phase 6) — tenant admins
             // self-serve their own tenant's harness: tune the policy + drive the
             // gate/Temporal workflow ops, and read the WORM audit trail + eval

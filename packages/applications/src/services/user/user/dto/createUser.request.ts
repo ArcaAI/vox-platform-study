@@ -11,6 +11,15 @@ export class CreateUserRequest extends BaseRequest {
   @IsString()
   password!: string;
 
+  // TASK-381 (V1) — the admin Create-User dialog collects an email for human
+  // accounts. `email` lives on `UserProfile` (not `User`), so the service
+  // upserts it onto the profile after the identity row is created. Whitelisted
+  // here so the global `forbidNonWhitelisted` pipe doesn't 400 a human create.
+  @ApiProperty({ description: 'Email address (persisted on the user profile)', required: false })
+  @IsString()
+  @IsOptional()
+  email?: string;
+
   @ApiProperty({ description: 'External identifier', required: false })
   @IsString()
   @IsOptional()

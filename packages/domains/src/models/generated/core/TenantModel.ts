@@ -11,6 +11,8 @@ export class Tenant extends BaseDataModel {
   public name: string;
   public key: string;
   public description: string | null;
+  public plan: Enums.TenantPlan | null;
+  public trialEndsAt: Date | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -21,6 +23,8 @@ export class Tenant extends BaseDataModel {
     this.name = data.name;
     this.key = data.key;
     this.description = data.description;
+    this.plan = data.plan;
+    this.trialEndsAt = data.trialEndsAt;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

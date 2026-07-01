@@ -5,6 +5,7 @@ import {
   CreateJobRequest,
   CreateStreamingJobRequest,
   IBlobStorageService,
+  IEntitlementsService,
   ITenantBucketService,
   PipelineService,
   StreamingSessionService,
@@ -88,6 +89,11 @@ export class TranscriptionJobController {
     // and clears it on close, so the `@TenantOwnedResource('StreamSession')`
     // route guard on `closeStreamSession` can 404 cross-tenant probes.
     private readonly streamSessionTenantBinding: StreamSessionTenantBindingService,
+    // TASK-392 (concurrency) — hard-blocks a new streaming session when the
+    // caller's tenant is at/over its resolved `maxConcurrentSessions` (no-op
+    // while the entitlements kill-switch is OFF).
+    @Inject(IEntitlementsService)
+    private readonly entitlements: IEntitlementsService,
   ) {}
 
   private getTenantId(): string {
@@ -308,6 +314,12 @@ export class TranscriptionJobController {
     const tenantId = this.getTenantId();
     const user = this.cls.get('user');
     const sampleRate = body.sampleRate ?? 16000;
+
+    // TASK-392 (concurrency) — HARD-BLOCK a new session when the tenant is at/
+    // over its resolved `maxConcurrentSessions` (live socket-registry count).
+    // Runs before any STT-V2 / bucket I/O so an over-capacity caller is rejected
+    // early with a typed 429. No-op while the entitlements kill-switch is OFF.
+    await this.entitlements.assertConcurrencyQuota(tenantId);
 
     // TASK-298 D-2 — assert tenant ownership of the requested pipeline
     // BEFORE we forward to STT-V2 (which is itself defended by D-3).

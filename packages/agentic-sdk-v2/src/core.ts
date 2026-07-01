@@ -54,10 +54,12 @@ export {
   useDepartments,
   useDnaDashboard,
   useDnaStyle,
+  useEntitlements,
   useGlobalSettings,
   useHealthCheck,
   useMonitoring,
   usePipelines,
+  usePlatformMetrics,
   usePolicies,
   usePrompts,
   useRoles,
@@ -108,6 +110,7 @@ export type {
   TenantBucketDefaults,
   TenantBucketTree,
   TenantStorageConfig,
+  TenantUsageStats,
   UpdateApiKeyInput,
   UpdatePolicyInput,
   UpdateTenantInput,
@@ -131,10 +134,25 @@ export type {
   UseDepartmentsReturn,
   UseDnaDashboardReturn,
   UseDnaStyleReturn,
+  // TASK-392 Phase 5 — plan-entitlements hook + response/request types
+  UseEntitlementsReturn,
+  EntitlementPlan,
+  TrialInfo,
+  CapabilityUsageRow,
+  ResolvedFeatures,
+  EntitlementCapabilities,
+  PlanEntitlement,
+  UpdatePlanEntitlementInput,
+  TenantEntitlementOverride,
+  UpsertTenantOverrideInput,
+  DowngradeDisabledGroup,
+  DowngradeReport,
+  TrialExpiryReport,
   UseGlobalSettingsReturn,
   UseHealthCheckReturn,
   UseMonitoringReturn,
   UsePipelinesReturn,
+  UsePlatformMetricsReturn,
   UsePoliciesReturn,
   UsePromptsReturn,
   User,
@@ -322,9 +340,13 @@ export type { DnaDashboard, DnaDashboardDailyCount, DnaDashboardRecentActivity, 
 export type {
   AssignDepartmentPromptInput,
   CreatePromptInput,
+  DepartmentPromptField,
   PromptListFilters,
   PromptTemplate,
   PromptTemplateCategory,
+  PromptTemplateStatus,
+  PromptTestMetrics,
+  PromptTestResult,
   PromptVariable,
   PromptVersion,
   UpdatePromptInput,
@@ -380,6 +402,19 @@ export { AgenticError, DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from './types';
 
 export type { AuthUser, ImpersonateResponse, LoginResponse } from './types/auth';
 
+// Monitoring + platform runtime metrics types (TASK-032 WS-A; TASK-386 #16)
+export type { HeartbeatRecord, ServiceSessionCount, ServiceUptime, SessionCounts } from './types';
+export type {
+  ConsumptionConsultations,
+  ConsumptionRollup,
+  OpenSockets,
+  PlatformMetrics,
+  PlatformModelMetric,
+  PlatformModelsSummary,
+  PlatformServiceMetric,
+  RequestVolumePoint,
+} from './types';
+
 // Settings + OCC error (TASK-302 Stream D Phase D.4) — exported here so
 // admin-UI consumers can `instanceof ConfigConflictError` without
 // pulling in audio/STT plugin code.
@@ -429,6 +464,7 @@ export {
   NLP_ENDPOINTS,
   PERSONALIZATION_ENDPOINTS,
   PIPELINE_ENDPOINTS,
+  PLATFORM_METRICS_ENDPOINTS,
   POLICY_ENDPOINTS,
   PROMPT_TEMPLATE_ENDPOINTS,
   ROLE_ENDPOINTS,

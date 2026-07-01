@@ -65,6 +65,7 @@ export * from './NotificationRepository';
 // TASK-369 Phase 3C — sibling that patches NotificationRepository.prototype.
 export * from './NotificationRepository.encryption';
 export * from './PermissionRepository';
+export * from './PlanEntitlementRepository';
 export * from './PipelinePolicyChangeRepository';
 // TASK-369 Phase 3D — sibling that patches PipelinePolicyChangeRepository.prototype.
 export * from './PipelinePolicyChangeRepository.encryption';
@@ -83,9 +84,11 @@ export * from './SummaryMetaRepository';
 export * from './SummaryMetaRepository.encryption';
 export * from './TagRepository';
 export * from './TenantBucketRepository';
+export * from './TenantEntitlementRepository';
 export * from './TenantFrontendConfigRepository';
 export * from './TenantStorageConfigRepository';
 export * from './TenantRepository';
+export * from './TenantUsageMeterRepository';
 export * from './TranscriptionJobRepository';
 // TASK-369 Phase 3C — sibling that patches TranscriptionJobRepository.prototype.
 export * from './TranscriptionJobRepository.encryption';

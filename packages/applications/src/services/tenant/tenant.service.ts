@@ -21,6 +21,7 @@ import {
   AsrPipelineVersionFactory,
   AiModelRepository,
   AiModelFactory,
+  TenantPlan,
 } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException } from '@arcaai/exceptions';
 import { ITenantService } from './ITenantService';
@@ -32,6 +33,10 @@ import { ITenantBucketService } from '../tenant-bucket/ITenantBucketService';
 import { GLOBAL_TENANT_KEY, SUPER_ADMIN_ROLE, isUuidIdentifier } from './constants';
 import { DEFAULT_GEN_DEPARTMENT } from './departmentDefaults';
 import { scrubLockedForAudit } from './scrubbing';
+// TASK-392 (Q8) — plan → model clone-subset. Imported from the specific file
+// (not the entitlements barrel) to avoid pulling the request-scoped
+// EntitlementsService and creating a module import cycle.
+import { modelAllowedForTier, modelTierForPlan } from '../entitlements/model-access';
 
 /**
  * Reserved system tenant that owns the platform-wide AI model catalog (the
@@ -83,6 +88,11 @@ export class TenantService extends BaseService implements ITenantService {
   async create(request: CreateTenantRequest): Promise<TenantEntity> {
     const newTenant = TenantFactory.CreateTenant({
       ...request,
+      // TASK-392 (Q4 / proposal §5) — new tenants default to TRIAL (overridable
+      // via `request.plan`), resolving the TASK-387 FLAG#1 open question. The
+      // factory stamps a 7-day PRO-entitled trial clock. Enforcement ships OFF
+      // (Q9), so this is display-only until the kill-switch is flipped per-env.
+      plan: request.plan ?? TenantPlan.TRIAL,
       createdBy: this.requestUser?.id,
     });
 
@@ -129,7 +139,8 @@ export class TenantService extends BaseService implements ITenantService {
     }
 
     try {
-      await this.provisionTenantModelCatalog(tenant.id);
+      // TASK-392 (Q8) — clone only the plan-appropriate model subset.
+      await this.provisionTenantModelCatalog(tenant.id, tenant.plan ?? null);
     } catch (error) {
       this.logger.warn({
         message: 'Failed to provision AI model catalog for new tenant',
@@ -169,14 +180,24 @@ export class TenantService extends BaseService implements ITenantService {
    *    abort the batch; the failure is logged and the loop continues.
    *  - When zero rows are cloned, a warning is emitted for operators.
    */
-  private async provisionTenantModelCatalog(newTenantId: string): Promise<void> {
+  private async provisionTenantModelCatalog(newTenantId: string, plan: TenantPlan | null = null): Promise<void> {
     const sourceModels = await this.aiModelRepository.findAll({
       where: { tenantId: SYSTEM_TENANT_ID },
     });
 
+    // TASK-392 (Q8) — clone only the plan-appropriate SUBSET. Untagged catalog
+    // rows clone into every tier, so this is a no-op for today's (untagged)
+    // seed; ops opt models into higher tiers with a `tier:<full|full_custom>`
+    // tag. A null plan (ungated/system) resolves to the full catalog.
+    const tier = modelTierForPlan(plan);
+
     let clonedCount = 0;
     for (const src of sourceModels) {
       try {
+        if (!modelAllowedForTier(src.tags, tier)) {
+          continue;
+        }
+
         // Idempotency: skip slugs the new tenant already owns (backfill-safe).
         const isUnique = await this.aiModelRepository.isSlugUnique(newTenantId, src.slug);
         if (!isUnique) {
@@ -650,11 +671,19 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * Soft deletes a tenant by ID
+   * Soft deletes a tenant by ID.
+   *
+   * TASK-387 (#1 / DEF-ADM-002) — the reserved system/default tenant is loaded
+   * first and blocked from deletion so an operator cannot soft-delete the
+   * platform's `__GLOBAL__` (or `SYSTEM_TENANT_ID`) row.
+   *
    * @param id - The tenant ID
    * @returns Promise resolving to the deleted tenant
    */
   async deleteById(id: EntityId): Promise<TenantEntity> {
+    const existing = await this.tenantRepository.findById(id);
+    this.assertNotSystemTenant(existing);
+
     const tenant = await this.tenantRepository.softDelete(id);
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
@@ -662,6 +691,95 @@ export class TenantService extends BaseService implements ITenantService {
       data: tenant.toObject() as object,
     });
     return tenant;
+  }
+
+  /**
+   * TASK-387 (#1 / DEF-ADM-002) — blocks lifecycle mutations against the
+   * reserved system tenant. The system tenant is identified either by its
+   * `key` equal to `__GLOBAL__` (compared case-insensitively, mirroring the
+   * DEF-ADM-001 key protection) or by the reserved `SYSTEM_TENANT_ID`.
+   */
+  private assertNotSystemTenant(tenant: TenantEntity): void {
+    const isGlobalKey = (tenant.key ?? '').toUpperCase() === GLOBAL_TENANT_KEY.toUpperCase();
+    if (isGlobalKey || tenant.id === SYSTEM_TENANT_ID) {
+      throw new ForbiddenException('The system tenant cannot be suspended, archived, or deleted.');
+    }
+  }
+
+  /**
+   * TASK-387 (#1 / F6) — moves a tenant to `SUSPENDED` (reversible operator
+   * hold). Blocked on the system tenant. Non-OCC operator transition.
+   */
+  async suspend(id: EntityId): Promise<TenantEntity> {
+    return this.transitionLifecycle(id, (tenant) => tenant.suspend(this.requestUser?.id), { guardSystem: true });
+  }
+
+  /**
+   * TASK-387 (#1 / F6) — moves a tenant to `ARCHIVED` (recoverable cold state).
+   * Blocked on the system tenant. Non-OCC operator transition.
+   */
+  async archive(id: EntityId): Promise<TenantEntity> {
+    return this.transitionLifecycle(id, (tenant) => tenant.archive(this.requestUser?.id), { guardSystem: true });
+  }
+
+  /**
+   * TASK-387 (#1 / F6) — restores a suspended/archived tenant back to
+   * `ENABLED`. Restore is always permitted (a system tenant should never be in
+   * a non-enabled state, but restoring it is harmless).
+   */
+  async restore(id: EntityId): Promise<TenantEntity> {
+    return this.transitionLifecycle(id, (tenant) => tenant.enable(this.requestUser?.id), { guardSystem: false });
+  }
+
+  /**
+   * Shared lifecycle transition: load → (optionally guard system tenant) →
+   * apply the entity state change → persist (non-OCC) → audit.
+   */
+  private async transitionLifecycle(
+    id: EntityId,
+    apply: (tenant: TenantEntity) => TenantEntity,
+    options: { guardSystem: boolean },
+  ): Promise<TenantEntity> {
+    const tenant = await this.tenantRepository.findById(id);
+    if (options.guardSystem) {
+      this.assertNotSystemTenant(tenant);
+    }
+
+    const previousData = tenant.toObject();
+    apply(tenant);
+
+    const updated = await this.tenantRepository.update(id, tenant);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: updated.id,
+      data: { ...tenant.changes },
+      previousData,
+    });
+    return updated;
+  }
+
+  /**
+   * TASK-387 (#2 / F9) — replaces the tenant's full tag set. Non-OCC set
+   * semantics (idempotent). Reuses the existing `Tenant.tags` scalar.
+   */
+  async setTags(id: EntityId, tags: string[]): Promise<TenantEntity> {
+    const tenant = await this.tenantRepository.findById(id);
+
+    const previousData = tenant.toObject();
+    tenant.tags = tags;
+
+    if (!tenant.hasChanges) {
+      return tenant;
+    }
+
+    const updated = await this.tenantRepository.update(id, tenant);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: updated.id,
+      data: { ...tenant.changes },
+      previousData,
+    });
+    return updated;
   }
 
   /**
@@ -891,20 +1009,49 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * Get usage statistics for a tenant
+   * Get usage statistics for a tenant.
+   *
+   * TASK-386 (#4 / #5 / E5) — extended beyond the original four counts with the
+   * storage + clinical roll-ups the Tenant Detail "Overview"/"Storage" tiles
+   * need. All aggregates read `databaseService.client` directly (house
+   * precedent) and are scoped by the explicit `tenantId` argument:
+   *   - storageUsedBytes   = SUM(Media.size)
+   *   - storageQuotaBytes  = SUM(TenantBucket.quotaBytes) over configured
+   *                          buckets, else null ("no quota configured")
+   *   - transcriptionMinutes = SUM(AudioRecording.duration ms)/60000
+   *   - summaries24h       = COUNT(SummaryMeta WHERE generatedAt >= now-24h)
+   *   - totalConsultations = COUNT(Consultation)
+   *
    * @param tenantId - The tenant ID
-   * @returns Usage stats: totalUsers, totalDepartments, totalPromptTemplates, totalPipelines
    */
   async getUsageStats(tenantId: EntityId): Promise<{
     totalUsers: number;
     totalDepartments: number;
     totalPromptTemplates: number;
     totalPipelines: number;
+    storageUsedBytes: number;
+    storageQuotaBytes: number | null;
+    transcriptionMinutes: number;
+    summaries24h: number;
+    totalConsultations: number;
   }> {
     await this.tenantRepository.findById(tenantId);
 
-    const [distinctUserAssignments, totalDepartments, totalPromptTemplates, totalPipelines] = await Promise.all([
-      this.databaseService.client.userRoleAssignment.findMany({
+    const client = this.databaseService.client;
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const [
+      distinctUserAssignments,
+      totalDepartments,
+      totalPromptTemplates,
+      totalPipelines,
+      sizeAgg,
+      quotaAgg,
+      durationAgg,
+      summaries24h,
+      totalConsultations,
+    ] = await Promise.all([
+      client.userRoleAssignment.findMany({
         where: { tenantId },
         select: { userId: true },
         distinct: ['userId'],
@@ -912,13 +1059,26 @@ export class TenantService extends BaseService implements ITenantService {
       this.departmentRepository.count({ where: { tenantId } }),
       this.promptTemplateRepository.count({ where: { tenantId } }),
       this.asrPipelineRepository.count({ where: { tenantId } }),
+      client.media.aggregate({ _sum: { size: true }, where: { tenantId } }),
+      client.tenantBucket.aggregate({ _sum: { quotaBytes: true }, where: { tenantId, quotaBytes: { not: null } } }),
+      client.audioRecording.aggregate({ _sum: { duration: true }, where: { tenantId } }),
+      client.summaryMeta.count({ where: { tenantId, generatedAt: { gte: since24h } } }),
+      client.consultation.count({ where: { tenantId } }),
     ]);
+
+    const durationMs = durationAgg._sum.duration ?? 0;
+    const quotaSum = quotaAgg._sum.quotaBytes;
 
     return {
       totalUsers: distinctUserAssignments.length,
       totalDepartments,
       totalPromptTemplates,
       totalPipelines,
+      storageUsedBytes: sizeAgg._sum.size ?? 0,
+      storageQuotaBytes: quotaSum === null || quotaSum === undefined ? null : Number(quotaSum),
+      transcriptionMinutes: Math.round((durationMs / 60000) * 100) / 100,
+      summaries24h,
+      totalConsultations,
     };
   }
 

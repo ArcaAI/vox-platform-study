@@ -2,18 +2,44 @@ import { ApiProperty } from '@nestjs/swagger';
 import { BaseResponse, BaseResponseProps } from '../../../common';
 import { EntityId, ValueType } from '@arcaai/domains';
 
+/**
+ * Constructor props for {@link TenantConfigResponse}.
+ *
+ * TASK-393 — a dedicated props interface (mirroring `ApiKeyResponseProps`) so a
+ * `TenantConfigResponse` can be built explicitly from a `GlobalSettingEntity`
+ * (which surfaces `Date` timestamps) via {@link TenantConfigDtoMapper}. This
+ * replaces the previous `init: TenantConfigResponse & BaseResponseProps`
+ * constructor whose `string & Date` intersection on the base timestamp fields
+ * blocked direct construction and pushed callers toward the fragile
+ * `GlobalSettingDtoMapper.ToPaginatedResponse(...) as PaginatedTenantConfigResponse`
+ * superset cast.
+ */
+export interface TenantConfigResponseProps extends BaseResponseProps {
+  name: string;
+  description?: string | null;
+  key: string;
+  defaultValue?: string | null;
+  value: string;
+  dataType: ValueType;
+  namespace?: string | null;
+  tenantId: EntityId;
+  tenantCode?: string | null;
+  locked?: boolean;
+  version: number;
+}
+
 export class TenantConfigResponse extends BaseResponse {
   @ApiProperty({ description: 'Name of the configuration' })
   name!: string;
 
   @ApiProperty({ description: 'Description of the configuration', required: false })
-  description?: string;
+  description?: string | null;
 
   @ApiProperty({ description: 'Unique key for the configuration' })
   key!: string;
 
   @ApiProperty({ description: 'Default value for the configuration', required: false })
-  defaultValue?: string;
+  defaultValue?: string | null;
 
   @ApiProperty({ description: 'Value for the configuration' })
   value!: string;
@@ -22,13 +48,38 @@ export class TenantConfigResponse extends BaseResponse {
   dataType!: ValueType;
 
   @ApiProperty({ description: 'Namespace for the configuration', required: false })
-  namespace?: string;
+  namespace?: string | null;
 
   @ApiProperty({ description: 'ID of the tenant this configuration belongs to' })
   tenantId!: EntityId;
 
-  @ApiProperty({ description: 'Code/Key of the tenant this configuration belongs to' })
-  tenantCode!: string;
+  /**
+   * Code/Key of the tenant this configuration belongs to.
+   *
+   * Optional: a tenant-config row is backed by a `GlobalSetting` entity, which
+   * does not itself carry the tenant's code-name. The mapper therefore leaves it
+   * unset; only the synthetic rows that already know the code (e.g. the
+   * `enable-local-raw-capture` flag) populate it.
+   */
+  @ApiProperty({ description: 'Code/Key of the tenant this configuration belongs to', required: false })
+  tenantCode?: string | null;
+
+  /**
+   * Whether this is a locked, platform-owned default (super-admin-only write).
+   *
+   * Surfaced so the SDK's `ConfigManager` can build its `lockedPaths` set and the
+   * admin console can render the lock affordance / disable edits for non-super
+   * admins (TASK-244). Server-side write protection is enforced independently in
+   * `TenantService.updateTenantConfigs`; this flag is the read-side mirror. The
+   * backing entity column is non-null (`@default(false)`), so the mapper always
+   * populates it.
+   */
+  @ApiProperty({
+    description: 'Whether the configuration is a locked, platform-owned default (super-admin-only write).',
+    example: false,
+    required: false,
+  })
+  locked?: boolean;
 
   /**
    * Optimistic-concurrency token — TASK-302 Stream D Phase C.
@@ -47,17 +98,18 @@ export class TenantConfigResponse extends BaseResponse {
   })
   version!: number;
 
-  constructor(init: TenantConfigResponse & BaseResponseProps) {
-    super(init);
-    this.name = init.name;
-    this.description = init.description;
-    this.key = init.key;
-    this.defaultValue = init.defaultValue;
-    this.value = init.value;
-    this.dataType = init.dataType;
-    this.namespace = init.namespace;
-    this.tenantId = init.tenantId;
-    this.tenantCode = init.tenantCode;
-    this.version = init.version;
+  constructor(props: TenantConfigResponseProps) {
+    super(props);
+    this.name = props.name;
+    this.description = props.description;
+    this.key = props.key;
+    this.defaultValue = props.defaultValue;
+    this.value = props.value;
+    this.dataType = props.dataType;
+    this.namespace = props.namespace;
+    this.tenantId = props.tenantId;
+    this.tenantCode = props.tenantCode;
+    this.locked = props.locked;
+    this.version = props.version;
   }
 }

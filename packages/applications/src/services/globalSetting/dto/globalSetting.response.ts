@@ -31,6 +31,26 @@ export class GlobalSettingResponse extends BaseResponse {
   namespace?: string;
 
   /**
+   * TASK-332 / TASK-391 (D2) — platform-owned "locked" default. When true the
+   * row is write-guarded server-side (only SUPER_ADMIN may modify it); the admin
+   * console mirrors this by rendering a lock affordance and disabling edit/delete
+   * for non-super-admins. Exposed so `GET /admin/settings` returns it (the FE
+   * cannot render the guard otherwise).
+   *
+   * Required (its intended shape): the backing entity column is non-null
+   * (`@default(false)`) and the mapper always populates it, so every response
+   * carries a boolean. (TASK-391 D2 briefly declared this optional only to keep
+   * the tenant controllers' `... as PaginatedTenantConfigResponse` superset cast
+   * compiling; TASK-393 removed that cast via `TenantConfigDtoMapper`, so the
+   * required shape is restored.)
+   */
+  @ApiProperty({
+    description: 'Whether the setting is a locked, platform-owned default (super-admin-only write).',
+    example: false,
+  })
+  locked!: boolean;
+
+  /**
    * Optimistic-concurrency token — TASK-302 Stream D Phase C.
    *
    * Clients must echo this value back as `expectedVersion` on the
@@ -55,6 +75,7 @@ export class GlobalSettingResponse extends BaseResponse {
     this.value = init.value;
     this.dataType = init.dataType;
     this.namespace = init.namespace;
+    this.locked = init.locked;
     this.version = init.version;
   }
 }

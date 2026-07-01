@@ -6,6 +6,7 @@ import {
   BlobStorageModule,
   CommonServiceModule,
   ConfigModule,
+  EntitlementsServiceModule,
   JWT_AUTH_GUARD,
   KnowledgeServiceModule,
   LoggingServiceModule,
@@ -38,9 +39,12 @@ import { RateLimitAdminModule } from './modules/admin-rate-limit/rate-limit-admi
 import { ApiKeyModule } from './modules/api-key/api-key.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { AuthModule } from './modules/auth/auth.module';
+// TASK-390 #24 (ST1) — /admin/settings global-settings CRUD (super-admin tier).
+import { GlobalSettingModule } from './modules/global-setting/global-setting.module';
 import { ConsultationModule } from './modules/consultation/consultation.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
+import { EntitlementsApiModule } from './modules/entitlements/entitlements.module';
 // TASK-330 Phase 6 — harness administration & observability console (/admin/harness/*).
 import { HarnessAdminModule } from './modules/harness-admin/harness-admin.module';
 // TASK-356 Phase 5 — realtime-pipeline toggle cascade admin (/admin/harness/pipeline-policy).
@@ -48,6 +52,7 @@ import { PipelinePolicyAdminModule } from './modules/pipeline-policy-admin/pipel
 import { HealthModule } from './modules/health/health.module';
 import { InternalModule } from './modules/internal/internal.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
+import { PlatformMetricsModule } from './modules/platform-metrics/platform-metrics.module';
 import { PipelineModule } from './modules/pipeline/pipeline.module';
 import { AiModelModule } from './modules/ai-model/ai-model.module';
 import { PromptManagementModule } from './modules/prompt-management/prompt-management.module';
@@ -188,6 +193,10 @@ const common = [
   // so the TieredThrottlerGuard (APP_GUARD above) resolves live limits from the
   // GlobalSetting cache, and IRateLimitAdminService for the admin endpoint.
   RateLimitServiceModule,
+  // TASK-392 (Q7) — exports IEntitlementsService so the TieredThrottlerGuard
+  // (APP_GUARD above) can resolve per-tenant plan rate-limit tiers on the hot
+  // path. Placed alongside RateLimitServiceModule (its sibling guard dep).
+  EntitlementsServiceModule,
   ScheduleModule.forRoot(),
   EventEmitterModule.forRoot(),
   SysEventServiceModule,
@@ -234,6 +243,11 @@ const featureModules: any[] = [
   ConsultationModule,
   DepartmentModule,
   DnaWritingStyleModule,
+  // TASK-392 (Phase 4) — /admin/entitlements/* (super-admin matrix/override/kill-switch/downgrade)
+  // + /entitlements/me (tenant self-snapshot). All entitlements endpoints live here.
+  EntitlementsApiModule,
+  // TASK-390 #24 — /admin/settings (global-settings CRUD; wires the existing service).
+  GlobalSettingModule,
   // TASK-330 Phase 3 — institutional-RAG knowledge ingestion (BullMQ worker;
   // registers the IngestKnowledgeDocument queue + processor). Worker-only — no
   // REST controllers in this phase.
@@ -241,6 +255,8 @@ const featureModules: any[] = [
   HealthModule,
   InternalModule,
   MonitoringModule,
+  // TASK-386 (#16) — /admin/platform/{metrics,sockets,consumption} (super-admin).
+  PlatformMetricsModule,
   PromptManagementModule,
   // TASK-330 Phase 6 — /admin/harness/* (policy, observe, workflow ops).
   HarnessAdminModule,

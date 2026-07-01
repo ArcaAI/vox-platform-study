@@ -24,6 +24,7 @@ import numpy as np
 import structlog
 
 from stt_v2.core.initial_prompt import compose_prompt
+from stt_v2.core.metrics import observe_streaming_inference
 from stt_v2.pipeline.dto import InferenceConfig, PostprocessingConfig
 from stt_v2.streaming.preprocessor import AudioUtterance
 from stt_v2.streaming.redis_streams import ResultPublisher
@@ -540,6 +541,9 @@ class StreamingInferenceWorker:
         # The ASR pipeline can be sync or async. If it's a coroutine,
         # we await it; otherwise we call it directly.
         prompt = compose_prompt(self._initial_prompt, self._previous_text or None)
+        # TASK-386 — time the per-utterance ASR inference
+        # (stt_v2_streaming_inference_latency_seconds).
+        _asr_start = time.monotonic()
         try:
             result = self._asr_pipeline(
                 utterance.samples,
@@ -551,6 +555,7 @@ class StreamingInferenceWorker:
 
         if hasattr(result, "__await__"):
             result = await result
+        observe_streaming_inference(time.monotonic() - _asr_start)
 
         # Extract text and word timestamps from pipeline result
         if isinstance(result, dict):

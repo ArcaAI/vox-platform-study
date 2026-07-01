@@ -13,10 +13,11 @@ Usage in service layer:
 from __future__ import annotations
 
 import time
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 
 from opentelemetry import metrics
+from prometheus_client import Gauge, Histogram
 
 
 class NLPMetrics:
@@ -91,3 +92,56 @@ class NLPMetrics:
 
 
 nlp_metrics = NLPMetrics()
+
+
+# ---------------------------------------------------------------------------
+# Cross-service per-model contract metrics (TASK-386)
+# ---------------------------------------------------------------------------
+# NLP's domain metrics above use the OpenTelemetry SDK and are exported via
+# OTLP gRPC (NOT Prometheus-scrapable). The platform-metrics backend reads
+# Prometheus, so the standardized {service, model} pair below is defined with
+# prometheus_client so it is exposed on the existing /metrics endpoint
+# (served from the default Prometheus registry by the FastAPI instrumentator).
+# Name + label keys must stay byte-identical to STT/SMR/Guardrail — see
+# docs/implementation/TASK-386-Platform-Metrics-Backend/METRIC-CONTRACT.md.
+
+SERVICE_NAME = "nlp"
+
+# Canonical platform model ids (apps/admin/src/features/platform-dashboard/models.ts).
+# The HuggingFace source paths (blaze999/Medical-NER,
+# shanover/symps_disease_bert_v3_c41) are mapped to these stable ids so the
+# per-model dashboards line up across services.
+MODEL_MEDICAL_NER = "Medical-NER"
+MODEL_SYMPTOMS_DISEASE = "symps-disease-bert"
+
+MODEL_RUNNING_INSTANCES = Gauge(
+    "model_running_instances",
+    "In-flight inference operations currently running, by service and model.",
+    ["service", "model"],
+)
+
+MODEL_INFERENCE_LATENCY = Histogram(
+    "model_inference_latency_seconds",
+    "Per-inference wall-clock latency in seconds, by service and model.",
+    ["service", "model"],
+    buckets=[
+        0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0,
+        2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0,
+    ],
+)
+
+
+@contextmanager
+def track_model_inference(model: str, service: str = SERVICE_NAME) -> Iterator[None]:
+    """Track one model inference: bump the running gauge for its duration and
+    observe its latency. The gauge is always decremented, even on error.
+    """
+    MODEL_RUNNING_INSTANCES.labels(service=service, model=model).inc()
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        MODEL_INFERENCE_LATENCY.labels(service=service, model=model).observe(
+            time.perf_counter() - start
+        )
+        MODEL_RUNNING_INSTANCES.labels(service=service, model=model).dec()

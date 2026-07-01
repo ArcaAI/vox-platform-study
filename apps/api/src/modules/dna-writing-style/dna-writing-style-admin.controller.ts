@@ -12,7 +12,7 @@ import {
 import { DnaJobResponseDto, DnaJobStatusResponseDto } from './dna-writing-style.dto';
 import { PaginatedDnaReportResponse } from './dto';
 import { JobQueue } from '@arcaai/domains';
-import { Controller, Body, Param, Inject, Get, Query, Sse, type MessageEvent } from '@nestjs/common';
+import { Controller, Body, Param, Inject, Get, Query, Sse, NotFoundException, type MessageEvent } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -71,9 +71,14 @@ export class DnaWritingStyleAdminController {
     description: 'Global-admin only: scope the list to a tenant. Ignored for tenant admins.',
   })
   @ApiQuery({ name: 'includeDisabled', required: false, type: Boolean, description: 'Include disabled reports in results' })
+  // TASK-388 #13 — cross-user read: narrow the list to a single doctor's
+  // reports. The service already PHI-gates results to the caller's tenant.
+  @ApiQuery({ name: 'doctorId', required: false, type: String, description: 'Narrow to one doctor (cross-user admin read; tenant-scoped)' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
-  async list(@Query() queryParams: PaginatedQuery & { tenantId?: string; includeDisabled?: string }): Promise<PaginatedDnaReportResponse> {
+  async list(
+    @Query() queryParams: PaginatedQuery & { tenantId?: string; includeDisabled?: string; doctorId?: string },
+  ): Promise<PaginatedDnaReportResponse> {
     // TASK-331 doc-02 F6 — pagination is pushed down to the repository
     // (`findPaginated` → `db.findMany` + `db.count`) instead of materializing
     // the full tenant result set and slicing it in memory. A global admin may
@@ -82,9 +87,30 @@ export class DnaWritingStyleAdminController {
     return this.dnaService.listReportsPaginated({
       tenantId: queryParams?.tenantId,
       includeDisabled: queryParams?.includeDisabled === 'true',
+      // TASK-388 #13 — cross-user read filter.
+      doctorId: queryParams?.doctorId,
       page: Number(queryParams?.page) || 1,
       limit: Number(queryParams?.limit) || 10,
     });
+  }
+
+  // TASK-388 #13 — admin read of a specific doctor's latest DNA writing-style
+  // report (cross-user). Delegates to the PHI-gated service method, which
+  // `assertUserBelongsToTenant` before any repository read — even SUPER_ADMIN
+  // cannot cross tenants on this PHI-derived artifact. Declared before the
+  // `:reportId`-family routes; `doctor` is a literal segment so it never
+  // collides with `jobs/:jobId`.
+  @Get('doctor/:doctorId')
+  @ApiOperation({
+    summary: "Latest DNA writing-style report for a doctor (admin cross-user, tenant-scoped PHI-gated)",
+  })
+  @ApiParam({ name: 'doctorId', description: 'Target doctor ID', type: String })
+  @ApiResponse({ status: 200, description: 'Latest DNA report for the doctor', type: DnaReportResponse })
+  @ApiResponse({ status: 404, description: 'No report found for the doctor (or doctor is not in the caller tenant)' })
+  async getReportForDoctor(@Param('doctorId') doctorId: string): Promise<DnaReportResponse> {
+    const report = await this.dnaService.getDnaReport(doctorId);
+    if (!report) throw new NotFoundException(`No DNA report found for doctor ${doctorId}`);
+    return report;
   }
 
   @ApiEndpoint({

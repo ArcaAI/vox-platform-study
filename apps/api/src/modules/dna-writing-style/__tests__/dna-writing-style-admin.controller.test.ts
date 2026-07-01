@@ -118,6 +118,19 @@ describe('DnaWritingStyleAdminController', () => {
             );
         });
 
+        // TASK-388 #13 — cross-user DNA read: an admin narrows the list to one
+        // doctor's reports. The service already filters by `doctorId` (and
+        // PHI-gates it to the caller's tenant); this just threads the param.
+        it('forwards the doctorId query param (cross-user read)', async () => {
+            mockDnaService.listReportsPaginated.mockResolvedValue({ data: [], count: 0, page: 1, limit: 10 });
+
+            await controller.list({ doctorId: 'doctor-9', page: 1, limit: 10 } as any);
+
+            expect(mockDnaService.listReportsPaginated).toHaveBeenCalledWith(
+                expect.objectContaining({ doctorId: 'doctor-9' }),
+            );
+        });
+
         it('should default to page 1 and limit 10 when no query params', async () => {
             mockDnaService.listReportsPaginated.mockResolvedValue({ data: [fakeReportEntity], count: 1, page: 1, limit: 10 });
 
@@ -254,6 +267,27 @@ describe('DnaWritingStyleAdminController', () => {
             );
             expect(result.styleText).toBe('New style');
             expect(result.resourceStatus).toBe('DISABLED');
+        });
+    });
+
+    // TASK-388 #13 — admin "latest DNA report for a doctor" read. Delegates to
+    // the PHI-gated `getDnaReport(doctorId)` (asserts the doctor is in the
+    // caller's tenant; even SUPER_ADMIN cannot cross tenants).
+    describe('GET /admin/dna-writing-styles/doctor/:doctorId (getReportForDoctor)', () => {
+        it('delegates to service.getDnaReport and returns the report', async () => {
+            mockDnaService.getDnaReport.mockResolvedValue(fakeReportEntity);
+
+            const result = await controller.getReportForDoctor('doctor-1');
+
+            expect(mockDnaService.getDnaReport).toHaveBeenCalledWith('doctor-1');
+            expect(result.id).toBe('report-1');
+        });
+
+        it('throws NotFoundException when the doctor has no report', async () => {
+            const { NotFoundException } = await import('@nestjs/common');
+            mockDnaService.getDnaReport.mockResolvedValue(null);
+
+            await expect(controller.getReportForDoctor('doctor-x')).rejects.toThrow(NotFoundException);
         });
     });
 

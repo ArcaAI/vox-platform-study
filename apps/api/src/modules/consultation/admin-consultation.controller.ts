@@ -1,4 +1,11 @@
-import { IConsultationService, ConsultationResponse, PaginatedConsultationResponse, PaginatedQuery, HttpMethod } from '@arcaai/applications';
+import {
+  IConsultationService,
+  ConsultationResponse,
+  ConsultationAggregateResponse,
+  PaginatedConsultationResponse,
+  PaginatedQuery,
+  HttpMethod,
+} from '@arcaai/applications';
 import { ConsultationStatus } from '@arcaai/domains';
 import { BadRequestException, Controller, Param, Inject, Query, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
@@ -69,6 +76,35 @@ export class AdminConsultationController {
       throw new BadRequestException(`Invalid status filter. Expected one of: ${Object.values(ConsultationStatus).join(', ')}.`);
     }
     return status as ConsultationStatus;
+  }
+
+  /**
+   * TASK-386 (#20 / E4) — server-side, zero-filled new/revisit aggregation over a
+   * date range. Scope follows the same model as `list` (TD3): a SUPER_ADMIN with
+   * no working tenant aggregates cross-tenant; everyone else is pinned to their
+   * CLS tenant. Declared BEFORE the `:id` route so `GET /aggregate` is not
+   * captured by the `:id` param matcher.
+   */
+  @ApiEndpoint({
+    returnedModel: ConsultationAggregateResponse,
+    method: HttpMethod.GET,
+    path: 'aggregate',
+  })
+  @ApiQuery({ name: 'from', required: true, type: String, description: 'Range start (ISO-8601 / yyyy-MM-dd).' })
+  @ApiQuery({ name: 'to', required: true, type: String, description: 'Range end (ISO-8601 / yyyy-MM-dd).' })
+  @ApiQuery({ name: 'granularity', required: false, enum: ['day', 'month'], description: 'Force bucket granularity; defaults to day (month for >70-day spans).' })
+  async aggregate(
+    @Query() query: { from?: string; to?: string; granularity?: string },
+  ): Promise<ConsultationAggregateResponse> {
+    if (!query.from || !query.to) {
+      throw new BadRequestException('Both `from` and `to` query params are required.');
+    }
+    const granularity = query.granularity === 'day' || query.granularity === 'month' ? query.granularity : undefined;
+    return this.consultationService.aggregateConsultationsForTenant({
+      from: query.from,
+      to: query.to,
+      granularity,
+    });
   }
 
   @ApiEndpoint({

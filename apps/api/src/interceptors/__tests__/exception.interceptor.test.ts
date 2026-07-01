@@ -16,7 +16,7 @@ import { firstValueFrom, throwError } from 'rxjs';
 import { Counter } from 'prom-client';
 
 import { ExceptionInterceptor } from '../exception.interceptor';
-import { DataNotFoundException, OptimisticConcurrencyException, BaseException } from '@arcaai/exceptions';
+import { DataNotFoundException, OptimisticConcurrencyException, BaseException, QuotaExceededException } from '@arcaai/exceptions';
 import { PrismaClientKnownRequestError } from '@arcaai/database';
 import { optimisticLockConflictTotal } from '../../observability/metrics';
 
@@ -202,6 +202,79 @@ describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412 (TASK-3
       expect(warnSpy).not.toHaveBeenCalled();
       expect(errorSpy).not.toHaveBeenCalled();
     });
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// TASK-392 (Q10, Phase 4) — QuotaExceededException → 409 / 429 / 413 / 403.
+//
+// QuotaExceededException extends BaseException, so without a dedicated branch
+// (ordered BEFORE the generic BaseException → 500 branch) an entitlements
+// quota block would surface as a 500. These pin the capability→status contract
+// the SDK + admin console rely on, and preserve the `code` + `metadata` body.
+// ───────────────────────────────────────────────────────────────────────────
+describe('ExceptionInterceptor — QuotaExceededException → precise client status (TASK-392 Q10)', () => {
+  let interceptor: ExceptionInterceptor;
+
+  beforeEach(() => {
+    const cls: any = { getId: () => 'corr-q', get: () => undefined };
+    interceptor = new ExceptionInterceptor(cls);
+  });
+
+  function createMockContext(): ExecutionContext {
+    return {
+      switchToHttp: () => ({ getRequest: () => ({ method: 'POST', url: '/api/v1/users' }), getResponse: () => ({}) }),
+    } as unknown as ExecutionContext;
+  }
+  function createErrorHandler(err: unknown): CallHandler {
+    return { handle: () => throwError(() => err) };
+  }
+  async function catchHttp(err: unknown): Promise<HttpException> {
+    try {
+      await firstValueFrom(interceptor.intercept(createMockContext(), createErrorHandler(err)));
+    } catch (e) {
+      return e as HttpException;
+    }
+    throw new Error('expected interceptor to throw');
+  }
+
+  it('maps a QUANTITY capability (maxUsers) to 409 Conflict', async () => {
+    const caught = await catchHttp(
+      new QuotaExceededException('limit', { capability: 'maxUsers', limit: 5, used: 5, requested: 1, tenantId: 't-1' }),
+    );
+    expect(caught.getStatus()).toBe(HttpStatus.CONFLICT);
+  });
+
+  it('maps a METER capability (monthlyConsultations) to 429 Too Many Requests', async () => {
+    const caught = await catchHttp(
+      new QuotaExceededException('limit', { capability: 'monthlyConsultations', limit: 500, used: 500, requested: 1, tenantId: 't-1' }),
+    );
+    expect(caught.getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
+  });
+
+  it('maps the storage capability to 413 Payload Too Large', async () => {
+    const caught = await catchHttp(
+      new QuotaExceededException('limit', { capability: 'storageQuotaBytes', limit: 100, used: 100, requested: 1, tenantId: 't-1' }),
+    );
+    expect(caught.getStatus()).toBe(HttpStatus.PAYLOAD_TOO_LARGE);
+  });
+
+  // TASK-392 (concurrency) — a simultaneous-session cap is retry-later (429),
+  // not a permanent conflict (409).
+  it('maps the concurrency capability (maxConcurrentSessions) to 429 Too Many Requests', async () => {
+    const caught = await catchHttp(
+      new QuotaExceededException('at capacity', { capability: 'maxConcurrentSessions', limit: 5, used: 5, requested: 1, tenantId: 't-1' }),
+    );
+    expect(caught.getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
+  });
+
+  it('preserves the code + metadata in the response body', async () => {
+    const caught = await catchHttp(
+      new QuotaExceededException('limit', { capability: 'maxApiKeys', limit: 2, used: 2, requested: 1, tenantId: 't-1' }),
+    );
+    const body = caught.getResponse() as { code: string; metadata?: { capability: string } };
+    expect(body.code).toBe('DOMAIN.QUOTA_EXCEEDED');
+    expect(body.metadata?.capability).toBe('maxApiKeys');
   });
 });
 

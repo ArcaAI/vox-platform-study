@@ -15,6 +15,7 @@ import { resourceStatusLabel, resourceStatusRole } from '@/features/data-grid/st
 import { PolicyFormDialog, type PolicyInput } from '@/features/roles/policy-form-dialog';
 import { RoleFormDialog, type RoleFormInput } from '@/features/roles/role-form-dialog';
 import { RolePoliciesSheet } from '@/features/roles/role-policies-sheet';
+import { isProtectedSystemPolicy, PROTECTED_POLICY_REASON } from '@/features/roles/protected-policies';
 import { rolePolicies, type RoleWithPolicies } from '@/features/roles/types';
 
 export const Route = createFileRoute('/_authenticated/roles')({
@@ -319,36 +320,61 @@ function PoliciesTab() {
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            policies.map((policy) => (
-                                <TableRow key={policy.id}>
-                                    <TableCell className="font-medium">{policy.name}</TableCell>
-                                    <TableCell className="text-muted-foreground">{policy.scope || '—'}</TableCell>
-                                    <TableCell className="text-right tabular-nums">{policy.rules?.length ?? 0}</TableCell>
-                                    <TableCell>
-                                        <StatusBadge label={resourceStatusLabel(policy.resourceStatus)} colorRole={resourceStatusRole(policy.resourceStatus)} />
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <div className="flex justify-end gap-1">
-                                            <Button variant="ghost" size="icon" className="size-8" onClick={() => setViewing(policy)} aria-label={`View ${policy.name}`}>
-                                                <Eye className="size-4" />
-                                            </Button>
-                                            <Button variant="ghost" size="icon" className="size-8" onClick={() => setEditing(policy)} aria-label={`Edit ${policy.name}`}>
-                                                <Pencil className="size-4" />
-                                            </Button>
-                                            <ConfirmDelete
-                                                trigger={
-                                                    <Button variant="ghost" size="icon" className="size-8" aria-label={`Delete ${policy.name}`}>
-                                                        <Trash2 className="size-4" />
-                                                    </Button>
-                                                }
-                                                title={`Delete policy “${policy.name}”?`}
-                                                description="Roles referencing this policy will lose its rules. This cannot be undone."
-                                                onConfirm={() => onDelete(policy)}
-                                            />
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            ))
+                            policies.map((policy) => {
+                                const protectedPolicy = isProtectedSystemPolicy(policy);
+                                return (
+                                    <TableRow key={policy.id}>
+                                        <TableCell>
+                                            <div className="flex items-center gap-2 font-medium">
+                                                {policy.name}
+                                                {protectedPolicy ? <StatusBadge label="Protected" colorRole="hope" icon={<ShieldCheck />} /> : null}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-muted-foreground">{policy.scope || '—'}</TableCell>
+                                        <TableCell className="text-right tabular-nums">{policy.rules?.length ?? 0}</TableCell>
+                                        <TableCell>
+                                            <StatusBadge label={resourceStatusLabel(policy.resourceStatus)} colorRole={resourceStatusRole(policy.resourceStatus)} />
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <div className="flex justify-end gap-1">
+                                                <Button variant="ghost" size="icon" className="size-8" onClick={() => setViewing(policy)} aria-label={`View ${policy.name}`}>
+                                                    <Eye className="size-4" />
+                                                </Button>
+                                                <Button variant="ghost" size="icon" className="size-8" onClick={() => setEditing(policy)} aria-label={`Edit ${policy.name}`}>
+                                                    <Pencil className="size-4" />
+                                                </Button>
+                                                {protectedPolicy ? (
+                                                    // TASK-391 #22 — the server refuses to delete/disable this policy
+                                                    // (anti-lockout). Mirror that: disable Delete + explain why, rather
+                                                    // than offer an action the API would 403.
+                                                    <span title={PROTECTED_POLICY_REASON} className="inline-flex">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="size-8"
+                                                            disabled
+                                                            aria-label={`Delete ${policy.name} (protected system policy — cannot be deleted)`}
+                                                        >
+                                                            <Trash2 className="size-4" />
+                                                        </Button>
+                                                    </span>
+                                                ) : (
+                                                    <ConfirmDelete
+                                                        trigger={
+                                                            <Button variant="ghost" size="icon" className="size-8" aria-label={`Delete ${policy.name}`}>
+                                                                <Trash2 className="size-4" />
+                                                            </Button>
+                                                        }
+                                                        title={`Delete policy “${policy.name}”?`}
+                                                        description="Roles referencing this policy will lose its rules. This cannot be undone."
+                                                        onConfirm={() => onDelete(policy)}
+                                                    />
+                                                )}
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })
                         )}
                     </TableBody>
                 </Table>

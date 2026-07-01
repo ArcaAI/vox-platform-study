@@ -12,6 +12,9 @@ export { SecureStorage } from './secureStorage';
 // Diff utilities (SDK-207 WS-4)
 export { computeDiff, computePromptDiff, computeSummaryDiff, createUnifiedPatch } from './diffUtils';
 
+// TASK-389 #15 (AG12/A5) — map backend PromptTestMetrics → display score map.
+export { toPromptTestMetricScores } from './promptMetrics';
+
 // Response utilities (TASK-215; cursor normalizer TASK-373 client follow-up)
 export { extractArray, extractPaginated, extractCursorPaginated } from './responseUtils';
 export type { CursorPageResult } from './responseUtils';

@@ -4,11 +4,13 @@ import {
   CreateDepartmentRequest,
   UpdateDepartmentRequest,
   UpdateDepartmentPromptConfigRequest,
+  PaginatedQuery,
+  PaginatedUserResponse,
   HttpMethod,
   isSuperAdmin,
   IActiveUserContext,
 } from '@arcaai/applications';
-import { Controller, Body, Param, Inject, Query, ForbiddenException } from '@nestjs/common';
+import { Controller, Body, Param, Get, Inject, Query, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 // TASK-302 Stream D Phase E.2 — `@RequiresIfMatch()` + `@ExpectedVersion()`
@@ -98,6 +100,21 @@ export class DepartmentController {
   @ApiParam({ name: 'id', description: 'Parent department ID', type: String })
   async fetchChildren(@Param('id') id: string): Promise<DepartmentResponse[]> {
     return this.departmentService.getChildren(id);
+  }
+
+  // TASK-387 (#6 / D2) — reverse dept->users listing (previously derived
+  // client-side). Tenant-scoped inside the service (no-existence-leak 404 on a
+  // cross-tenant department; SUPER_ADMIN cross-tenant bypass) and paginated with
+  // the house `PaginatedQuery`. Class-level `@CanManage('Department')` gates it.
+  @Get(':id/users')
+  @ApiOperation({ summary: "List a department's members (users)" })
+  @ApiParam({ name: 'id', description: 'Department ID', type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  @ApiResponse({ status: 200, description: 'Paginated department members', type: PaginatedUserResponse })
+  @ApiResponse({ status: 404, description: 'Department not found' })
+  async fetchUsers(@Param('id') id: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedUserResponse> {
+    return this.departmentService.getDepartmentUsers(id, queryParams);
   }
 
   @ApiEndpoint({

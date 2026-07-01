@@ -20,6 +20,14 @@ export interface PromptTemplate {
   /** Draft or Published. Defaults to DRAFT when absent. */
   status?: PromptTemplateStatus;
   departmentId?: string;
+  /**
+   * TASK-388 #12 — prompt scope. `TENANT_DEFAULT` (tenant-wide),
+   * `DEPARTMENT_DEFAULT` (department-assigned), or `USER_PERSONAL` (owned by
+   * `ownerUserId`). Absent = treat as `TENANT_DEFAULT` for back-compat.
+   */
+  scope?: PromptScope;
+  /** TASK-388 #12 — owning user id when `scope === 'USER_PERSONAL'`. */
+  ownerUserId?: string | null;
   content: string;
   variables?: PromptVariable[];
   tags: string[];
@@ -55,6 +63,11 @@ export type PromptTemplateCategory = 'SYSTEM' | 'SUMMARY' | 'DNA_ANALYSIS' | 'CU
  * Draft templates are not used in production workflows.
  */
 export type PromptTemplateStatus = 'DRAFT' | 'PUBLISHED';
+
+/**
+ * TASK-388 #12 — prompt scope. Mirrors the backend `PromptTemplateScope` enum.
+ */
+export type PromptScope = 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USER_PERSONAL';
 
 /**
  * A variable definition within a prompt template.
@@ -101,6 +114,14 @@ export interface CreatePromptInput {
   content: string;
   variables?: PromptVariable[];
   tags?: string[];
+  /**
+   * TASK-388 #12 — admin per-user prompt scope. Defaults to `TENANT_DEFAULT`
+   * server-side. Set `USER_PERSONAL` with `ownerUserId` to provision a personal
+   * prompt for an in-tenant user (requires `manage:PromptTemplate`).
+   */
+  scope?: PromptScope;
+  /** TASK-388 #12 — owner user id; required/implied only when scope=USER_PERSONAL. */
+  ownerUserId?: string;
 }
 
 /**
@@ -130,6 +151,10 @@ export interface PromptListFilters {
   departmentId?: string;
   tags?: string[];
   search?: string;
+  /** TASK-388 #12 — admin scope filter (e.g. `USER_PERSONAL`). */
+  scope?: PromptScope;
+  /** TASK-388 #12 — admin owner filter; narrows personal prompts to one user. */
+  ownerUserId?: string;
   page?: number;
   limit?: number;
 }
@@ -154,6 +179,21 @@ export interface TestPromptInput {
 }
 
 /**
+ * TASK-389 #15 (AG12/A5) — per-dimension breakdown behind the composite score.
+ * Mirrors the backend `PromptTestMetrics` (raw, mixed-type). Dimensions that
+ * don't apply to a template are `null`.
+ */
+export interface PromptTestMetrics {
+  wordCount: number;
+  nonEmpty: boolean;
+  lengthScore: number;
+  jsonExpected: boolean;
+  jsonValid: boolean | null;
+  variablesDeclared: number;
+  variableCoverage: number | null;
+}
+
+/**
  * Result of a prompt quality/score test run.
  */
 export interface PromptTestResult {
@@ -166,6 +206,19 @@ export interface PromptTestResult {
   testedAt: string;
   /** Row version after persisting the test result (OCC token). */
   version: number;
+  /**
+   * TASK-389 #15 (AG12/A5) — per-dimension **display** map (each value in
+   * `[0, 1]`), derived from `metricDetail`. Ready for the admin Test Playground
+   * meter bars (`normalizeMetrics`). Only the genuinely `[0,1]` dimensions are
+   * included; absent when the backend returned no breakdown.
+   */
+  metrics?: Record<string, number>;
+  /**
+   * TASK-389 #15 — the raw, typed backend breakdown (word count, declared
+   * variable count, booleans) preserved without loss, behind the `metrics`
+   * display map. Absent when the backend returned no breakdown.
+   */
+  metricDetail?: PromptTestMetrics;
 }
 
 /** Usage count grouped by department (null = unassigned). */
@@ -208,4 +261,11 @@ export interface AssignDepartmentPromptInput {
   departmentId: string;
   promptTemplateId: string;
   field: DepartmentPromptField;
+  /**
+   * OCC token — the target Department row's current `version` (from a prior
+   * GET). The backend `assign-department` write CAS-checks against it and
+   * returns 412 on version drift. Required: the endpoint rejects a body without
+   * it under the strict (`forbidNonWhitelisted`) validation pipe.
+   */
+  expectedVersion: number;
 }

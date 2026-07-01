@@ -1,17 +1,21 @@
 import { Controller, Get, Inject, Logger, NotFoundException, Param } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { Authorize } from '../../decorators';
+import { CanAny } from '../../decorators';
 import { IServiceHealthMonitoringService } from '@arcaai/applications';
 import { HeartbeatRecord, ServiceUptime, SessionsResponse, UptimeResponse } from './dto';
 
 @ApiTags('monitoring')
 @ApiBearerAuth()
-// TASK-336 OB-12 — ops monitoring is platform-wide infra data. Gate the whole
-// controller to SUPER_ADMIN (`manage all`), matching the other ops/admin
-// surfaces (e.g. RateLimitAdminController). Pre-OB-12 a bare @Authorize() let
-// any authenticated caller (e.g. a doctor) read uptime/sessions.
-@Authorize(['manage', 'all'])
+// TASK-336 OB-12 — ops monitoring is platform-wide infra data. Originally gated
+// to SUPER_ADMIN only (`manage all`).
+// TASK-386 (#21) — widened so a TENANT_ADMIN can read their own tenant's
+// service sessions/health/uptime (`read:TenantTelemetry`) without `manage all`.
+// Service uptime/heartbeats/session-counts are platform-infra status (no PHI,
+// no per-tenant rows), so there is nothing tenant-specific to filter out here;
+// SUPER_ADMIN still passes via `manage:all`, and a plain DOCTOR (neither grant)
+// is still rejected.
+@CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])
 @Throttle({ default: { limit: 300, ttl: 60000 } })
 @Controller('monitoring')
 export class MonitoringController {

@@ -18,6 +18,7 @@ export interface CreateDepartmentProps extends BaseEntityFactoryCreateProps {
   preSummaryPromptId?: IDepartmentEntity['preSummaryPromptId'];
   newPatientPromptId?: IDepartmentEntity['newPatientPromptId'];
   revisitPromptId?: IDepartmentEntity['revisitPromptId'];
+  dnaWritingStylePromptId?: IDepartmentEntity['dnaWritingStylePromptId'];
   promptConfig?: IDepartmentEntity['promptConfig'];
 
   createdAt?: IDepartmentEntity['createdAt'];
@@ -53,6 +54,7 @@ export class DepartmentFactory {
       preSummaryPromptId: props.preSummaryPromptId ?? null,
       newPatientPromptId: props.newPatientPromptId ?? null,
       revisitPromptId: props.revisitPromptId ?? null,
+      dnaWritingStylePromptId: props.dnaWritingStylePromptId ?? null,
       promptConfig: props.promptConfig ?? null,
     });
   }

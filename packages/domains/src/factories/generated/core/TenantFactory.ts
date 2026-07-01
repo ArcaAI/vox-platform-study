@@ -11,6 +11,8 @@ export interface CreateTenantProps extends BaseEntityFactoryCreateProps {
   name: ITenantEntity['name'];
   key: ITenantEntity['key'];
   description?: ITenantEntity['description'];
+  plan?: ITenantEntity['plan'];
+  trialEndsAt?: ITenantEntity['trialEndsAt'];
   tags?: ITenantEntity['tags'];
   Tags?: ITenantEntity['Tags'];
 
@@ -21,14 +23,21 @@ export interface CreateTenantProps extends BaseEntityFactoryCreateProps {
 }
 
 export class TenantFactory {
+  /** TASK-392 (Q4) — a trial is a 7-day PRO-entitled window. */
+  private static readonly TRIAL_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
+
   static CreateTenant(props: CreateTenantProps): TenantEntity {
     const id = generateId();
     const now = new Date();
+    const createdAt = props.createdAt || now;
+    // Plan default stays `null` (TASK-387 factory contract). The TRIAL default
+    // for customer tenants is applied one layer up in `TenantService.create`.
+    const plan = props.plan ?? null;
 
     return new TenantEntity({
       id,
 
-      createdAt: props.createdAt || now,
+      createdAt,
       updatedAt: props.updatedAt || now,
       createdBy: props.createdBy ?? null,
       updatedBy: props.updatedBy || null,
@@ -36,6 +45,12 @@ export class TenantFactory {
       name: props.name,
       key: props.key,
       description: props.description ?? '',
+      plan,
+      // TASK-392 (Q4) — stamp the trial clock when a tenant is created on the
+      // TRIAL plan (unless an explicit end was supplied). The clock therefore
+      // starts at creation for any TRIAL tenant; non-TRIAL tenants carry null.
+      trialEndsAt:
+        props.trialEndsAt ?? (plan === Enums.TenantPlan.TRIAL ? new Date(createdAt.getTime() + TenantFactory.TRIAL_PERIOD_MS) : null),
       tags: props.tags ?? [],
       Tags: props.Tags ?? [],
     });

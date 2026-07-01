@@ -23,8 +23,23 @@ enum ValueType {
 enum ResourceStatusType {
   ENABLED
   DISABLED
+  // TASK-387 (#1 / F6) — operator "hold" state distinct from the routine
+  // DISABLED on/off toggle. A SUSPENDED tenant is reversible via `restore`.
+  SUSPENDED
   ARCHIVED
   DELETED
+
+  @@schema("core")
+}
+
+// TASK-387 (#3) — tenant commercial plan. Nullable on Tenant (existing rows
+// read NULL = "unspecified"). Values are a product default (Enterprise / Pro /
+// Trial / Starter) — see docs/implementation/TASK-387-Tenant-Data-Model-Backlog.
+enum TenantPlan {
+  ENTERPRISE
+  PRO
+  TRIAL
+  STARTER
 
   @@schema("core")
 }

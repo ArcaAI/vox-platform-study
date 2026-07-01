@@ -12,12 +12,18 @@ export interface ITenantEntity extends Omit<IBaseTaggedEntity, 'tenantId'> {
   name: string;
   key: string;
   description?: string | null;
+  // TASK-387 (#3) — commercial plan (nullable; existing rows read null).
+  plan?: Enums.TenantPlan | null;
+  // TASK-392 (Q4) — trial clock; auto-downgrade TRIAL → STARTER on expiry.
+  trialEndsAt?: Date | null;
 }
 
 export class TenantEntity extends BaseTaggedEntity {
   private _name: ITenantEntity['name'];
   private _key: ITenantEntity['key'];
   private _description?: ITenantEntity['description'];
+  private _plan?: ITenantEntity['plan'];
+  private _trialEndsAt?: ITenantEntity['trialEndsAt'];
 
   constructor(init: ITenantEntity) {
     // TenantEntity is its own tenant — no separate tenantId column exists on
@@ -30,6 +36,8 @@ export class TenantEntity extends BaseTaggedEntity {
     this._name = init.name;
     this._key = init.key;
     this._description = init.description;
+    this._plan = init.plan;
+    this._trialEndsAt = init.trialEndsAt;
   }
 
   get name(): ITenantEntity['name'] {
@@ -54,6 +62,45 @@ export class TenantEntity extends BaseTaggedEntity {
 
   set description(value: ITenantEntity['description']) {
     this.setProperty('description', value);
+  }
+
+  get plan(): ITenantEntity['plan'] {
+    return this._plan;
+  }
+
+  set plan(value: ITenantEntity['plan']) {
+    this.setProperty('plan', value);
+  }
+
+  get trialEndsAt(): ITenantEntity['trialEndsAt'] {
+    return this._trialEndsAt;
+  }
+
+  set trialEndsAt(value: ITenantEntity['trialEndsAt']) {
+    this.setProperty('trialEndsAt', value);
+  }
+
+  // ============================================
+  // Custom Domain Methods (TASK-387 #1 / F6)
+  // ============================================
+
+  /**
+   * Suspends the tenant, setting its status to `SUSPENDED` — a reversible
+   * operator hold distinct from the routine `DISABLED` on/off toggle. Restore
+   * with the inherited `enable()` (→ ENABLED). Kept on the subclass (not
+   * `BaseEntity`) because SUSPENDED is a tenant lifecycle state, not a generic
+   * resource state.
+   *
+   * @param updatedBy - (Optional) The id of the user who performed the action.
+   * @returns The current instance for method chaining.
+   */
+  public suspend(updatedBy?: string): this {
+    this.setProperty('resourceStatus', Enums.ResourceStatusType.SUSPENDED);
+    this.setProperty('resourceStatusUpdatedAt', new Date());
+    if (updatedBy) {
+      this.setProperty('resourceStatusUpdatedBy', updatedBy);
+    }
+    return this;
   }
 
   public override validate(): void {

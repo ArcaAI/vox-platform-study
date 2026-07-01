@@ -13,7 +13,7 @@ import {
 } from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { IUserDepartmentService } from './IUserDepartmentService';
-import { AssignUserDepartmentRequest, UpdateUserDepartmentRequest, UserDepartmentResponse } from './dto';
+import { AssignUserDepartmentRequest, SetUserDepartmentsRequest, UpdateUserDepartmentRequest, UserDepartmentResponse } from './dto';
 import { UserDepartmentDtoMapper } from './user-department.dto.mapper';
 import { BaseService, assertParentInScope } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
@@ -144,6 +144,97 @@ export class UserDepartmentService extends BaseService implements IUserDepartmen
     });
 
     return UserDepartmentDtoMapper.toResponse(saved);
+  }
+
+  /**
+   * TASK-381 V2 — reconcile a user's department memberships to EXACTLY
+   * `dto.departmentIds`. Adds the missing departments (restoring a soft-deleted
+   * row to respect the `@@unique([tenantId, userId, departmentId])` key),
+   * soft-deletes the ones no longer wanted, and enforces the single-primary
+   * invariant for `dto.primaryDepartmentId`. Every target department is verified
+   * to live in the caller's tenant FIRST (404-over-403, no cross-tenant leak)
+   * so a partial reconcile can never bind a foreign department.
+   */
+  async setDepartments(userId: string, dto: SetUserDepartmentsRequest): Promise<UserDepartmentResponse[]> {
+    const tenantId = this.requireTenant();
+    const targetIds = Array.from(new Set(dto.departmentIds));
+
+    for (const departmentId of targetIds) {
+      await assertParentInScope(this.departmentRepository, departmentId, tenantId);
+    }
+
+    const current = await this.userDepartmentRepository.findAll({
+      where: { tenantId, userId },
+      page: 1,
+      limit: 500,
+    });
+    const currentDeptIds = new Set(current.map((a) => a.departmentId));
+
+    // Remove memberships that are no longer wanted.
+    for (const assignment of current) {
+      if (targetIds.includes(assignment.departmentId)) continue;
+      const deleted = await this.userDepartmentRepository.softDelete(assignment.id, this.requestUserId ?? undefined);
+      this.broadcastSysEvent(SysEventType.ResourceDeleted, {
+        resourceId: deleted.id,
+        data: { userId, departmentId: assignment.departmentId },
+      });
+    }
+
+    // Add the missing memberships (restore a soft-deleted row rather than
+    // re-create, so the unique key never collides).
+    for (const departmentId of targetIds) {
+      if (currentDeptIds.has(departmentId)) continue;
+
+      const [softDeletedDuplicate] = await this.userDepartmentRepository.findAll({
+        where: { tenantId, userId, departmentId, resourceStatus: ResourceStatusType.DELETED },
+        page: 1,
+        limit: 1,
+      });
+
+      if (softDeletedDuplicate) {
+        await this.userDepartmentRepository.restore(softDeletedDuplicate.id, this.requestUserId ?? undefined);
+      } else {
+        const entity = UserDepartmentFactory.CreateUserDepartment({
+          tenantId,
+          userId,
+          departmentId,
+          isPrimary: false,
+          createdBy: this.requestUserId ?? undefined,
+        });
+        const created = await this.userDepartmentRepository.create(entity);
+        this.broadcastSysEvent(SysEventType.ResourceCreated, {
+          resourceId: created.id,
+          createdAt: created.createdAt,
+          data: { userId, departmentId, isPrimary: false },
+        });
+      }
+    }
+
+    // Enforce the single-primary invariant: clear every primary, then set the
+    // requested one (ignored when it is not part of the target set).
+    const primaryDepartmentId =
+      dto.primaryDepartmentId && targetIds.includes(dto.primaryDepartmentId) ? dto.primaryDepartmentId : undefined;
+    await this.demoteExistingPrimaries(tenantId, userId);
+    if (primaryDepartmentId) {
+      const [primaryRow] = await this.userDepartmentRepository.findAll({
+        where: { tenantId, userId, departmentId: primaryDepartmentId },
+        page: 1,
+        limit: 1,
+      });
+      if (primaryRow && !primaryRow.isPrimary) {
+        primaryRow.isPrimary = true;
+        await this.userDepartmentRepository.update(primaryRow.id, primaryRow);
+      }
+    }
+
+    // Return the resulting active set directly (no `ResourceViewed` event — this
+    // is the tail of a write, not a read).
+    const finalAssignments = await this.userDepartmentRepository.findAll({
+      where: { tenantId, userId },
+      page: 1,
+      limit: 500,
+    });
+    return finalAssignments.map(UserDepartmentDtoMapper.toResponse);
   }
 
   async update(id: string, dto: UpdateUserDepartmentRequest): Promise<UserDepartmentResponse> {

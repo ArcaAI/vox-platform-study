@@ -1,0 +1,84 @@
+# ============================================================================
+# HOPE — DEV Prometheus scrape config (TASK-386 Platform Runtime Metrics)
+# ============================================================================
+# Scrapes the API gateway + every Python service /metrics endpoint and feeds
+# the NestJS PrometheusQueryService (PROMETHEUS_URL=http://localhost:9090).
+#
+# IMPORTANT — host networking:
+#   In DEV the API gateway and the Python services run on the HOST (pnpm/conda),
+#   NOT in containers. Prometheus runs in Docker, so every target is reached via
+#   `host.docker.internal` (Docker Desktop resolves this automatically; on Linux
+#   the compose service maps it to `host-gateway`).
+#
+# Label strategy:
+#   We deliberately do NOT set a `service` target label. The cross-service
+#   per-model metrics already carry their own {service,model} labels, and a
+#   target `service` label would collide (Prometheus would rename theirs to
+#   `exported_service`). Per-service HTTP metrics are distinguished by `job`.
+#
+# Canonical contract: docs/implementation/TASK-386-Platform-Metrics-Backend/METRIC-CONTRACT.md
+# ============================================================================
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: hope-dev
+
+scrape_configs:
+  # ---- Prometheus self-monitoring -----------------------------------------
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # ---- API Gateway (NestJS, @willsoto/nestjs-prometheus) -------------------
+  # Exposes http_requests_total / http_request_duration_seconds (with its own
+  # `service` label) + socket gauges (active_connections_count). Owned by the
+  # NestJS worker; scraped here for the platform dashboard.
+  - job_name: api-gateway
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8868"]
+
+  # ---- STT-v2 (FastAPI) ----------------------------------------------------
+  # http_* (instrumentator) + stt_v2_* domain metrics + model_* per-model
+  # (service="stt", model in {whisper-large-v3-turbo, silero-vad-v5}).
+  - job_name: stt
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8861"]
+
+  # ---- SMR-v2 (FastAPI) ----------------------------------------------------
+  # http_* + smr_v2_* domain metrics + model_* (service="smr", model="gemma-4-e4b").
+  - job_name: smr
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8862"]
+
+  # ---- Guardrail (FastAPI) -------------------------------------------------
+  # model_* per-model (service="guardrail", model="granite-guardian-4.1-8b").
+  # NOTE: guardrail serves /metrics via generate_latest() with NO HTTP
+  # middleware, so it emits NO http_* metrics (per-service request health for
+  # guardrail comes from the API gateway). See contract gap list.
+  - job_name: guardrail
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8863"]
+
+  # ---- NLP (FastAPI) -------------------------------------------------------
+  # nlp_http_* (namespaced instrumentator) + model_* (service="nlp",
+  # model in {Medical-NER, symps-disease-bert}). Domain metrics use OTel/OTLP
+  # (NOT scraped here).
+  - job_name: nlp
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8864"]
+
+  # ---- Harness (FastAPI + Temporal worker) ---------------------------------
+  # http_* only — the harness orchestrates the model services and runs no local
+  # ML model, so it emits no model_* metrics (by design, not a gap).
+  - job_name: harness
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8866"]

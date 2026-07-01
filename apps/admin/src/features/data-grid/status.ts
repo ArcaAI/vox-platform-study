@@ -5,6 +5,7 @@ import type { FilterFn } from '@tanstack/react-table';
 export const RESOURCE_STATUS_OPTIONS = [
     { label: 'Enabled', value: 'ENABLED' },
     { label: 'Disabled', value: 'DISABLED' },
+    { label: 'Suspended', value: 'SUSPENDED' },
     { label: 'Archived', value: 'ARCHIVED' },
 ];
 
@@ -14,6 +15,9 @@ export function resourceStatusRole(status?: string): StatusColorRole {
             return 'success';
         case 'DISABLED':
             return 'warning';
+        // TASK-387 (#1 / F6) — operator hold; more severe than the routine DISABLED toggle.
+        case 'SUSPENDED':
+            return 'destructive';
         case 'ARCHIVED':
             return 'neutral';
         default:

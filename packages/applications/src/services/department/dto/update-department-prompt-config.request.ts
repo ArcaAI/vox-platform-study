@@ -17,6 +17,13 @@ export class UpdateDepartmentPromptConfigRequest {
   @IsString()
   revisitPromptId?: string;
 
+  // TASK-387 (#7) — default DNA writing-style prompt template id for the
+  // department. Loose string ref (parity with the sibling *PromptId slots).
+  @ApiPropertyOptional({ description: 'Default DNA writing-style prompt template ID' })
+  @IsOptional()
+  @IsString()
+  dnaWritingStylePromptId?: string;
+
   /**
    * Optimistic-concurrency token (TASK-302 Stream D Phase E.2).
    *

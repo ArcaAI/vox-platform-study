@@ -128,6 +128,28 @@ export class ApiKeyController {
     return ApiKeyDtoMapper.ToResponse(result);
   }
 
+  // TASK-390 #23 (K5) — rotate: mint a NEW key inheriting the old key's config,
+  // link old→new, and (per the pre-existing service) keep BOTH valid for a 24h
+  // grace window (`rotationExpiresAt`) rather than invalidating immediately.
+  // The new raw key is returned exactly ONCE (same contract as create).
+  @ApiEndpoint({
+    returnedModel: ApiKeyResponse,
+    method: HttpMethod.POST,
+    path: ':id/rotate',
+    by: ['id'],
+  })
+  @ApiParam({ name: 'id', description: 'API Key ID', type: String })
+  @ApiResponse({ status: 201, description: 'API key rotated. New raw key returned only once; old key stays valid for a 24h grace window.', type: CreateApiKeyResponse })
+  @ApiResponse({ status: 404, description: 'API key not found' })
+  @CanUpdate('ApiKey')
+  async rotate(@Param('id') id: string): Promise<CreateApiKeyResponse> {
+    const result = await this.apiKeyService.rotateKey(id);
+    return {
+      apiKey: ApiKeyDtoMapper.ToResponse(result.newApiKey),
+      rawKey: result.newRawKey,
+    };
+  }
+
   @ApiEndpoint({
     returnedModel: ApiKeyResponse,
     path: ':id/usage',

@@ -39,6 +39,7 @@ vi.mock('@arcaai/domains', async () => {
                 value: source.value,
                 dataType: source.dataType,
                 namespace: source.namespace,
+                locked: source.locked,
                 createdAt: source.createdAt ?? new Date(),
                 updatedAt: source.updatedAt ?? new Date(),
             });
@@ -60,6 +61,7 @@ const createMockGlobalSettingEntity = (overrides: Partial<{
     value: string;
     dataType: ValueType;
     namespace: string | null;
+    locked: boolean;
     createdBy: string | null;
     createdAt: Date;
     updatedAt: Date;
@@ -75,6 +77,7 @@ const createMockGlobalSettingEntity = (overrides: Partial<{
     value: 'value' in overrides ? overrides.value! : 'test-value',
     dataType: 'dataType' in overrides ? overrides.dataType! : ValueType.String,
     namespace: 'namespace' in overrides ? overrides.namespace : 'test',
+    locked: 'locked' in overrides ? overrides.locked! : false,
     createdBy: 'createdBy' in overrides ? overrides.createdBy : 'user-123',
     createdAt: 'createdAt' in overrides ? overrides.createdAt! : new Date('2026-01-30T10:00:00Z'),
     updatedAt: 'updatedAt' in overrides ? overrides.updatedAt! : new Date('2026-01-30T10:00:00Z'),
@@ -120,6 +123,24 @@ describe('GlobalSettingDtoMapper', () => {
             const result = GlobalSettingDtoMapper.ToResponse(entity as any);
 
             expect(result.namespace).toBe('custom.namespace');
+        });
+
+        // TASK-391 (D2) — `locked` must flow through to the response so the admin
+        // console can render the super-admin-only lock affordance.
+        it('should map the locked field (true)', () => {
+            const entity = createMockGlobalSettingEntity({ locked: true });
+
+            const result = GlobalSettingDtoMapper.ToResponse(entity as any);
+
+            expect(result.locked).toBe(true);
+        });
+
+        it('should map the locked field (false)', () => {
+            const entity = createMockGlobalSettingEntity({ locked: false });
+
+            const result = GlobalSettingDtoMapper.ToResponse(entity as any);
+
+            expect(result.locked).toBe(false);
         });
 
         it('should handle null description', () => {

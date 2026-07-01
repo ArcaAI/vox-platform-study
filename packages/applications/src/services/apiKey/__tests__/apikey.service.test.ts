@@ -138,13 +138,21 @@ describe('ApiKeyService', () => {
         // history, so we explicitly reset the impl here to keep tests isolated.
         mockEventEmitter.emit.mockReset();
 
-        // Default: return valid user from CLS
+        // Default: return valid user from CLS. The default caller is a
+        // tenant-admin — the api-key admin surface's original persona — so the
+        // pre-existing by-id happy-paths (fetchById/update/delete/revoke/rotate)
+        // keep their tenant-scoped intent. `userAbility.can('manage','ApiKey')`
+        // returns true, so the TASK-390-follow-up owner-scope gate is bypassed
+        // for these tenant-admin cases. Owner-only callers are exercised in the
+        // dedicated "Owner-scope enforcement" block below.
         mockClsService.get.mockImplementation((key: string) => {
             switch (key) {
                 case 'user':
                     return { id: 'current-user-id' };
                 case 'tenantId':
                     return 'tenant-1';
+                case 'userAbility':
+                    return { can: () => true };
                 case 'correlationId':
                     return 'corr-123';
                 case 'requestIp':
@@ -1900,6 +1908,203 @@ describe('ApiKeyService', () => {
 
                 await expect(service.rotateKey('foreign-key')).rejects.toThrow(NotFoundException);
                 expect(mockApiKeyRepository.create).not.toHaveBeenCalled();
+            });
+        });
+    });
+
+    /**
+     * TASK-390 follow-up (owner-scope hardening).
+     *
+     * The api-key admin surface's by-id operations (fetch/update/delete/revoke/
+     * rotate) share `assertKeyAccess`, which layers an OWNER-scope check on top
+     * of the tenant gate. A caller WITHOUT the tenant-wide `manage:ApiKey` grant
+     * — i.e. one holding only the seeded `api-key-own-manage` policy (read/
+     * update/delete conditioned on `userId`) — may act ONLY on keys they own.
+     * Cross-owner access (even same-tenant) is refused with `NotFoundException`
+     * (never Forbidden), matching the module's existing not-authorized
+     * convention so a key's existence is never leaked. Tenant-admins
+     * (`manage:ApiKey`) retain tenant-scope; SUPER_ADMIN retains its broad
+     * cross-tenant scope.
+     */
+    describe('Owner-scope enforcement (TASK-390 follow-up)', () => {
+        // Owner-only caller: authenticated + in-tenant, but WITHOUT manage:ApiKey.
+        const setOwnerOnlyCaller = (userId: string) => {
+            mockClsService.get.mockImplementation((key: string) => {
+                switch (key) {
+                    case 'user': return { id: userId };
+                    case 'tenantId': return 'tenant-1';
+                    case 'userAbility': return { can: () => false }; // no manage:ApiKey
+                    case 'correlationId': return 'corr-owner';
+                    case 'requestIp': return '10.0.0.9';
+                    default: return null;
+                }
+            });
+        };
+
+        // Tenant-admin caller: holds the tenant-wide manage:ApiKey grant.
+        const setTenantAdminCaller = (userId: string) => {
+            mockClsService.get.mockImplementation((key: string) => {
+                switch (key) {
+                    case 'user': return { id: userId };
+                    case 'tenantId': return 'tenant-1';
+                    case 'userAbility': return { can: (a: string, s: string) => a === 'manage' && s === 'ApiKey' };
+                    case 'correlationId': return 'corr-admin';
+                    case 'requestIp': return '10.0.0.10';
+                    default: return null;
+                }
+            });
+        };
+
+        // SUPER_ADMIN caller: manage:all, cross-tenant.
+        const setSuperAdminCaller = (userId: string) => {
+            mockClsService.get.mockImplementation((key: string) => {
+                switch (key) {
+                    case 'user': return { id: userId, roles: ['SUPER_ADMIN'] };
+                    case 'tenantId': return 'tenant-1';
+                    case 'userAbility': return { can: () => true };
+                    case 'correlationId': return 'corr-sa';
+                    case 'requestIp': return '10.0.0.11';
+                    default: return null;
+                }
+            });
+        };
+
+        const otherUsersKey = (overrides: Parameters<typeof createMockApiKeyEntity>[0] = {}) =>
+            createMockApiKeyEntity({ id: 'peer-key', tenantId: 'tenant-1', userId: 'other-user', ...overrides });
+
+        describe('owner-only caller acting on their OWN key succeeds', () => {
+            beforeEach(() => setOwnerOnlyCaller('owner-1'));
+
+            it('fetchById returns the caller\'s own key', async () => {
+                const own = createMockApiKeyEntity({ id: 'own-key', tenantId: 'tenant-1', userId: 'owner-1' });
+                mockApiKeyRepository.findById.mockResolvedValue(own);
+
+                const result = await service.fetchById('own-key');
+
+                expect(result.id).toBe('own-key');
+            });
+
+            it('update mutates the caller\'s own key', async () => {
+                const own = createMockApiKeyEntity({ id: 'own-key', tenantId: 'tenant-1', userId: 'owner-1' });
+                own.hasChanges = true;
+                own.changes = { keyName: 'Renamed' };
+                mockApiKeyRepository.findById.mockResolvedValue(own);
+                mockApiKeyRepository.update.mockResolvedValue(own);
+
+                await service.update('own-key', { keyName: 'Renamed' } as any);
+
+                expect(mockApiKeyRepository.update).toHaveBeenCalledWith('own-key', own);
+            });
+
+            it('deleteById soft-deletes the caller\'s own key', async () => {
+                const own = createMockApiKeyEntity({ id: 'own-key', tenantId: 'tenant-1', userId: 'owner-1' });
+                mockApiKeyRepository.findById.mockResolvedValue(own);
+                mockApiKeyRepository.softDelete.mockResolvedValue(own);
+
+                const result = await service.deleteById('own-key');
+
+                expect(result.id).toBe('own-key');
+                expect(mockApiKeyRepository.softDelete).toHaveBeenCalledWith('own-key');
+            });
+
+            it('revokeKey revokes the caller\'s own key', async () => {
+                const own = createMockApiKeyEntity({ id: 'own-key', tenantId: 'tenant-1', userId: 'owner-1', keyStatus: ApiKeyStatus.ACTIVE });
+                mockApiKeyRepository.findById.mockResolvedValue(own);
+                mockApiKeyRepository.update.mockResolvedValue(own);
+
+                await service.revokeKey('own-key');
+
+                expect(mockApiKeyRepository.update).toHaveBeenCalledWith('own-key', own);
+            });
+
+            it('rotateKey rotates the caller\'s own key', async () => {
+                const own = createMockApiKeyEntity({ id: 'own-key', tenantId: 'tenant-1', userId: 'owner-1', keyStatus: ApiKeyStatus.ACTIVE });
+                const rotated = createMockApiKeyEntity({ id: 'own-key-rotated', userId: 'owner-1' });
+                mockApiKeyRepository.findById.mockResolvedValue(own);
+                mockApiKeyRepository.create.mockResolvedValue(rotated);
+                mockApiKeyRepository.update.mockResolvedValue(own);
+
+                const result = await service.rotateKey('own-key');
+
+                expect(result.newApiKey.id).toBe('own-key-rotated');
+            });
+        });
+
+        describe('owner-only caller acting on ANOTHER user\'s key (same tenant) is refused → 404', () => {
+            beforeEach(() => setOwnerOnlyCaller('owner-1'));
+
+            it('fetchById throws NotFoundException and emits no ResourceViewed event', async () => {
+                mockApiKeyRepository.findById.mockResolvedValue(otherUsersKey());
+
+                await expect(service.fetchById('peer-key')).rejects.toThrow(NotFoundException);
+                expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+            });
+
+            it('update throws NotFoundException and does not persist', async () => {
+                const peer = otherUsersKey();
+                peer.hasChanges = true;
+                peer.changes = { keyName: 'Hijack' };
+                mockApiKeyRepository.findById.mockResolvedValue(peer);
+
+                await expect(service.update('peer-key', { keyName: 'Hijack' } as any)).rejects.toThrow(NotFoundException);
+                expect(mockApiKeyRepository.update).not.toHaveBeenCalled();
+            });
+
+            it('deleteById throws NotFoundException and does not soft-delete', async () => {
+                mockApiKeyRepository.findById.mockResolvedValue(otherUsersKey());
+
+                await expect(service.deleteById('peer-key')).rejects.toThrow(NotFoundException);
+                expect(mockApiKeyRepository.softDelete).not.toHaveBeenCalled();
+            });
+
+            it('revokeKey throws NotFoundException and does not persist', async () => {
+                mockApiKeyRepository.findById.mockResolvedValue(otherUsersKey({ keyStatus: ApiKeyStatus.ACTIVE }));
+
+                await expect(service.revokeKey('peer-key')).rejects.toThrow(NotFoundException);
+                expect(mockApiKeyRepository.update).not.toHaveBeenCalled();
+            });
+
+            it('rotateKey throws NotFoundException and does not create', async () => {
+                mockApiKeyRepository.findById.mockResolvedValue(otherUsersKey({ keyStatus: ApiKeyStatus.ACTIVE }));
+
+                await expect(service.rotateKey('peer-key')).rejects.toThrow(NotFoundException);
+                expect(mockApiKeyRepository.create).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('tenant-admin (manage:ApiKey) retains tenant-scope over another user\'s key', () => {
+            beforeEach(() => setTenantAdminCaller('admin-1'));
+
+            it('fetchById returns another user\'s key in-tenant', async () => {
+                mockApiKeyRepository.findById.mockResolvedValue(otherUsersKey());
+
+                const result = await service.fetchById('peer-key');
+
+                expect(result.id).toBe('peer-key');
+            });
+
+            it('rotateKey rotates another user\'s key in-tenant', async () => {
+                const rotated = createMockApiKeyEntity({ id: 'peer-key-rotated', userId: 'other-user' });
+                mockApiKeyRepository.findById.mockResolvedValue(otherUsersKey({ keyStatus: ApiKeyStatus.ACTIVE }));
+                mockApiKeyRepository.create.mockResolvedValue(rotated);
+                mockApiKeyRepository.update.mockResolvedValue(otherUsersKey({ keyStatus: ApiKeyStatus.ACTIVE }));
+
+                const result = await service.rotateKey('peer-key');
+
+                expect(result.newApiKey.id).toBe('peer-key-rotated');
+            });
+        });
+
+        describe('SUPER_ADMIN retains broad (cross-owner, cross-tenant) scope', () => {
+            beforeEach(() => setSuperAdminCaller('sa-1'));
+
+            it('fetchById returns another user\'s key in another tenant', async () => {
+                const foreign = createMockApiKeyEntity({ id: 'foreign-key', tenantId: 'tenant-2', userId: 'other-user' });
+                mockApiKeyRepository.findById.mockResolvedValue(foreign);
+
+                const result = await service.fetchById('foreign-key');
+
+                expect(result.id).toBe('foreign-key');
             });
         });
     });

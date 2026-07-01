@@ -76,7 +76,12 @@ export default defineConfig({
         port: 5174,
         host: true,
         proxy: {
-            '/api': {
+            // TASK-391 (D1) — scope the proxy to the versioned API prefix only.
+            // The broad `/api` key shadowed the `/api-keys` client route on a hard
+            // load (dev forwarded it to the gateway → 404). Narrowing to `/api/v1`
+            // is safe: the admin SDK targets an absolute base URL (see
+            // `lib/api-config.ts`) and no dev call relies on a non-`/api/v1` path.
+            '/api/v1': {
                 target: 'http://localhost:8868',
                 changeOrigin: true,
             },

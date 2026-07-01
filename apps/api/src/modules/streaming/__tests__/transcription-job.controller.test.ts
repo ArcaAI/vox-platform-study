@@ -89,6 +89,13 @@ const createMockStreamSessionTenantBinding = () => ({
     clear: vi.fn().mockResolvedValue(undefined),
 });
 
+// TASK-392 (concurrency) — the entitlements service gates new streaming
+// sessions against the tenant's resolved `maxConcurrentSessions`. Default:
+// a no-op (kill-switch OFF / under limit) so existing tests are unaffected.
+const createMockEntitlements = () => ({
+    assertConcurrencyQuota: vi.fn().mockResolvedValue(undefined),
+});
+
 describe('TranscriptionJobController', () => {
     let controller: TranscriptionJobController;
     let mockJobService: ReturnType<typeof createMockJobService>;
@@ -100,6 +107,7 @@ describe('TranscriptionJobController', () => {
     let mockPipelineService: ReturnType<typeof createMockPipelineService>;
     let mockStreamTicketService: ReturnType<typeof createMockStreamTicketService>;
     let mockStreamSessionTenantBinding: ReturnType<typeof createMockStreamSessionTenantBinding>;
+    let mockEntitlements: ReturnType<typeof createMockEntitlements>;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -112,6 +120,7 @@ describe('TranscriptionJobController', () => {
         mockPipelineService = createMockPipelineService();
         mockStreamTicketService = createMockStreamTicketService();
         mockStreamSessionTenantBinding = createMockStreamSessionTenantBinding();
+        mockEntitlements = createMockEntitlements();
         controller = new TranscriptionJobController(
             mockJobService as any,
             mockRealtimeService as any,
@@ -122,6 +131,7 @@ describe('TranscriptionJobController', () => {
             mockPipelineService as any,
             mockStreamTicketService as any,
             mockStreamSessionTenantBinding as any,
+            mockEntitlements as any,
         );
     });
 
@@ -431,6 +441,44 @@ describe('TranscriptionJobController', () => {
             await expect(
                 controller.createStreamSession({ pipelineId: 'pipe-1' } as any),
             ).rejects.toThrow();
+        });
+
+        // TASK-392 (concurrency) — the concurrency gate runs on the caller's
+        // tenant before any STT-V2 session is created.
+        it('asserts the tenant concurrency quota before creating the session (TASK-392)', async () => {
+            mockSessionService.createSession.mockResolvedValue({
+                sessionId: 'sess-conc',
+                status: 'active',
+                maxConcurrent: 5,
+                currentActive: 1,
+            });
+
+            await controller.createStreamSession({ pipelineId: 'pipe-1' } as any);
+
+            expect(mockEntitlements.assertConcurrencyQuota).toHaveBeenCalledWith('tenant-1');
+            const gateOrder = mockEntitlements.assertConcurrencyQuota.mock.invocationCallOrder[0];
+            const createOrder = mockSessionService.createSession.mock.invocationCallOrder[0];
+            expect(gateOrder).toBeLessThan(createOrder);
+        });
+
+        // TASK-392 (concurrency) — a hard-block from the gate rejects the request
+        // and never creates a session downstream.
+        it('propagates a concurrency hard-block and does not create the session (TASK-392)', async () => {
+            const { QuotaExceededException } = await import('@arcaai/exceptions');
+            mockEntitlements.assertConcurrencyQuota.mockRejectedValueOnce(
+                new QuotaExceededException('at capacity', {
+                    capability: 'maxConcurrentSessions',
+                    limit: 5,
+                    used: 5,
+                    requested: 1,
+                    tenantId: 'tenant-1',
+                }),
+            );
+
+            await expect(
+                controller.createStreamSession({ pipelineId: 'pipe-1' } as any),
+            ).rejects.toBeInstanceOf(QuotaExceededException);
+            expect(mockSessionService.createSession).not.toHaveBeenCalled();
         });
     });
 

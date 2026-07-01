@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import type { AsyncCollection } from '@/lib/shared';
+import { useExpansion, type AsyncCollection } from '@/lib/shared';
 
 import type { TimelineExpansion, TimelineItemModel } from './types';
 
@@ -40,26 +40,13 @@ export function useTimeline<TItem = TimelineItemModel>(params: UseTimelineParams
     return order === 'asc' ? [...mapped].reverse() : mapped;
   }, [items, order, mapItem]);
 
-  const isControlled = expansion?.value != null;
-  const mode = expansion?.mode ?? 'multiple';
-
-  const [internal, setInternal] = React.useState<string[]>(() => models.filter((m) => m.defaultExpanded).map((m) => m.id));
-  const expandedIds = isControlled ? expansion!.value! : internal;
-
-  const setExpanded = React.useCallback(
-    (id: string, expanded: boolean) => {
-      const has = expandedIds.includes(id);
-      if (expanded === has) return;
-      const next = expanded ? (mode === 'single' ? [id] : [...expandedIds, id]) : expandedIds.filter((x) => x !== id);
-      if (!isControlled) setInternal(next);
-      expansion?.onChange?.(next);
-      onItemExpand?.(id, expanded);
-    },
-    [expandedIds, isControlled, mode, expansion, onItemExpand],
-  );
-
-  const toggle = React.useCallback((id: string) => setExpanded(id, !expandedIds.includes(id)), [expandedIds, setExpanded]);
-  const isExpanded = React.useCallback((id: string) => expandedIds.includes(id), [expandedIds]);
+  const { expandedIds, isExpanded, toggle, setExpanded } = useExpansion({
+    value: expansion?.value,
+    onChange: expansion?.onChange,
+    mode: expansion?.mode,
+    defaultExpandedIds: React.useMemo(() => models.filter((m) => m.defaultExpanded).map((m) => m.id), [models]),
+    onExpandedChange: onItemExpand,
+  });
 
   const hasNextPage = collection?.hasNextPage ?? false;
   const isFetchingNextPage = collection?.isFetchingNextPage ?? false;

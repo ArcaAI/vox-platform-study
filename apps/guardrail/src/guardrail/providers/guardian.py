@@ -9,6 +9,7 @@ import httpx
 
 from guardrail.core.config import OllamaConfig
 from guardrail.core.logging import get_logger
+from guardrail.core.metrics import track_model_inference
 
 logger = get_logger(__name__)
 
@@ -71,12 +72,14 @@ class GuardianProvider:
                 "format": "json",  # Request JSON format from Ollama
             }
 
-            response = await self.http_client.post(
-                f"{self.base_url}/api/generate",
-                json=payload,
-                timeout=self.settings.timeout_s,
-            )
-            response.raise_for_status()
+            # TASK-386 — per-model running gauge + inference latency.
+            with track_model_inference(self.model):
+                response = await self.http_client.post(
+                    f"{self.base_url}/api/generate",
+                    json=payload,
+                    timeout=self.settings.timeout_s,
+                )
+                response.raise_for_status()
 
             result = response.json()
             content = result.get("response", "").strip()

@@ -8,6 +8,7 @@ export interface ITenantBucketEntity extends IBaseTenantEntity {
   bucketType: TenantBucketType;
   purpose?: TenantBucketPurpose;
   pathPattern: string;
+  quotaBytes?: bigint | null;
 }
 
 export class TenantBucketEntity extends BaseTenantEntity {
@@ -17,6 +18,7 @@ export class TenantBucketEntity extends BaseTenantEntity {
   private _bucketType: TenantBucketType;
   private _purpose: TenantBucketPurpose;
   private _pathPattern: string;
+  private _quotaBytes?: bigint | null;
 
   constructor(init: ITenantBucketEntity) {
     super(init);
@@ -26,6 +28,7 @@ export class TenantBucketEntity extends BaseTenantEntity {
     this._bucketType = init.bucketType;
     this._purpose = init.purpose ?? TenantBucketPurpose.CUSTOM;
     this._pathPattern = init.pathPattern;
+    this._quotaBytes = init.quotaBytes ?? null;
   }
 
   get name(): string {
@@ -74,6 +77,14 @@ export class TenantBucketEntity extends BaseTenantEntity {
 
   set pathPattern(value: string) {
     this.setProperty('pathPattern', value);
+  }
+
+  get quotaBytes(): bigint | null | undefined {
+    return this._quotaBytes;
+  }
+
+  set quotaBytes(value: bigint | null | undefined) {
+    this.setProperty('quotaBytes', value);
   }
 
   get isSystemBucket(): boolean {

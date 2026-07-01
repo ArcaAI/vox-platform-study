@@ -27,6 +27,7 @@ import numpy as np
 import structlog
 
 from stt_v2.core.config.settings import get_settings
+from stt_v2.core.metrics import streaming_session_ended, streaming_session_started
 from stt_v2.pipeline.dto import DualCaptureConfig
 from stt_v2.storage.blob_service import BlobService
 from stt_v2.streaming.capacity_guard import CapacityGuard
@@ -545,6 +546,8 @@ class SessionManager:
             self._register_inference_runtime(session, inference_worker)
 
             self._sessions[session_id] = session
+            # TASK-386 — sync the active-streaming-sessions gauge + total counter.
+            streaming_session_started(self.active_session_count)
             self._dual_capture[session_id] = self._resolve_dual_capture(pipeline_config)
             self._publishers[session_id] = publisher
             self._preprocessors[session_id] = preprocessor
@@ -692,6 +695,8 @@ class SessionManager:
         self._final_published_gates.pop(session_id, None)
         self._commit_policies.pop(session_id, None)
         self._sessions.pop(session_id, None)
+        # TASK-386 — keep the active-streaming-sessions gauge in sync on removal.
+        streaming_session_ended(self.active_session_count)
         self._last_snapshot_at.pop(session_id, None)
         self._last_audio_trim_at.pop(session_id, None)
         self._chunk_indices.pop(session_id, None)

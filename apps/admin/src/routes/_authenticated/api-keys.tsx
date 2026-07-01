@@ -9,11 +9,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { StatusBadge, type StatusColorRole } from '@arcaai/ui/components/shared';
 import { useApiKeys, type ApiKey, type ApiKeyWithRawKey } from '@arcaai/vox';
 import { createFileRoute } from '@tanstack/react-router';
-import { AlertTriangle, Ban, Copy, KeyRound, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Ban, Copy, KeyRound, Plus, RotateCw, Trash2 } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { ConfirmDelete } from '@/features/common/confirm-delete';
 import { PageHeader } from '@/components/layout/page-header';
+import { maskedKey, scopesSummary } from '@/features/api-keys/api-key-format';
 import { formatDateTime } from '@/lib/utils';
 
 export const Route = createFileRoute('/_authenticated/api-keys')({
@@ -178,8 +179,95 @@ function CreateKeyDialog({ onCreate }: { onCreate: (input: { name: string; type:
     );
 }
 
+/**
+ * TASK-391 #23 (K5) — rotate a key. Two-phase dialog: a confirm that explains the
+ * 24-hour grace window, then a reveal showing the NEW secret exactly once (the
+ * old key keeps working during the window so integrations can cut over). Calls
+ * the SDK `useApiKeys().rotate(id)`.
+ */
+function RotateKeyDialog({ apiKey, onRotate }: { apiKey: ApiKey; onRotate: (id: string) => Promise<ApiKeyWithRawKey> }) {
+    const [open, setOpen] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [rotated, setRotated] = useState<ApiKeyWithRawKey | null>(null);
+
+    useEffect(() => {
+        if (open) {
+            setSaving(false);
+            setRotated(null);
+        }
+    }, [open]);
+
+    const doRotate = async () => {
+        setSaving(true);
+        try {
+            setRotated(await onRotate(apiKey.id));
+        } catch {
+            // onRotate surfaces the toast; keep the confirm open so the user can retry.
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-8" aria-label={`Rotate ${apiKey.name}`}>
+                    <RotateCw className="size-4" />
+                </Button>
+            </DialogTrigger>
+            <DialogContent>
+                {rotated ? (
+                    <>
+                        <DialogHeader>
+                            <DialogTitle>Copy your new API key</DialogTitle>
+                            <DialogDescription>
+                                This secret is shown only once. The previous key keeps working for a 24-hour grace window so you can migrate integrations without downtime.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-3 py-2">
+                            <Alert>
+                                <KeyRound className="size-4" />
+                                <AlertTitle>{rotated.name ?? apiKey.name}</AlertTitle>
+                                <AlertDescription>Rotated — the old key stays valid for 24 hours, then stops working.</AlertDescription>
+                            </Alert>
+                            <div className="flex items-center gap-2">
+                                <Input readOnly value={rotated.rawKey} className="font-mono text-xs" aria-label="New API key secret" />
+                                <Button type="button" variant="outline" size="icon" onClick={() => void copyToClipboard(rotated.rawKey)} aria-label="Copy new API key">
+                                    <Copy className="size-4" />
+                                </Button>
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button onClick={() => setOpen(false)}>Done</Button>
+                        </DialogFooter>
+                    </>
+                ) : (
+                    <>
+                        <DialogHeader>
+                            <DialogTitle>Rotate “{apiKey.name}”?</DialogTitle>
+                            <DialogDescription>
+                                A new secret is generated now and shown once. The current key stays valid for a 24-hour grace window, so clients can cut over before it stops working.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                            <DialogClose asChild>
+                                <Button type="button" variant="outline">
+                                    Cancel
+                                </Button>
+                            </DialogClose>
+                            <Button type="button" onClick={() => void doRotate()} disabled={saving}>
+                                {saving ? <Spinner className="size-4" /> : 'Rotate key'}
+                            </Button>
+                        </DialogFooter>
+                    </>
+                )}
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function ApiKeysPage() {
-    const { apiKeys, isLoading, error, list, create, revoke, remove } = useApiKeys();
+    const { apiKeys, isLoading, error, list, create, revoke, remove, rotate } = useApiKeys();
 
     useEffect(() => {
         void list().catch(() => undefined);
@@ -216,6 +304,18 @@ function ApiKeysPage() {
         }
     };
 
+    const onRotate = async (id: string) => {
+        try {
+            const result = await rotate(id);
+            toast.success('API key rotated — copy the new secret now');
+            void list().catch(() => undefined);
+            return result;
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to rotate key');
+            throw err;
+        }
+    };
+
     return (
         <div>
             <PageHeader
@@ -235,35 +335,40 @@ function ApiKeysPage() {
                     <TableHeader>
                         <TableRow>
                             <TableHead>Name</TableHead>
-                            <TableHead>Prefix</TableHead>
+                            <TableHead>Key</TableHead>
                             <TableHead>Type</TableHead>
+                            <TableHead>Scopes</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Last used</TableHead>
                             <TableHead>Expires</TableHead>
-                            <TableHead className="w-24 text-right">Actions</TableHead>
+                            <TableHead className="w-32 text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {isLoading && apiKeys.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                                <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                                     Loading…
                                 </TableCell>
                             </TableRow>
                         ) : apiKeys.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                                <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                                     No API keys yet.
                                 </TableCell>
                             </TableRow>
                         ) : (
                             apiKeys.map((key) => {
-                                const isRevoked = (key.status ?? '').toLowerCase() === 'revoked';
+                                const status = (key.status ?? '').toLowerCase();
+                                const isRevoked = status === 'revoked';
+                                // The server refuses to rotate a revoked/expired key — mirror that.
+                                const canRotate = status !== 'revoked' && status !== 'expired';
                                 return (
                                     <TableRow key={key.id}>
                                         <TableCell className="font-medium">{key.name}</TableCell>
-                                        <TableCell className="font-mono text-xs text-muted-foreground">{key.prefix ?? '—'}</TableCell>
+                                        <TableCell className="font-mono text-xs text-muted-foreground">{maskedKey(key)}</TableCell>
                                         <TableCell className="text-muted-foreground">{key.type ?? '—'}</TableCell>
+                                        <TableCell className="text-muted-foreground">{scopesSummary(key.scopes)}</TableCell>
                                         <TableCell>
                                             <StatusBadge label={keyStatusLabel(key.status)} colorRole={keyStatusRole(key.status)} />
                                         </TableCell>
@@ -271,6 +376,15 @@ function ApiKeysPage() {
                                         <TableCell className="text-muted-foreground">{formatDateTime(key.expiresAt)}</TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex justify-end gap-1">
+                                                {canRotate ? (
+                                                    <RotateKeyDialog apiKey={key} onRotate={onRotate} />
+                                                ) : (
+                                                    <span title="Revoked and expired keys cannot be rotated." className="inline-flex">
+                                                        <Button variant="ghost" size="icon" className="size-8" disabled aria-label={`Rotate ${key.name} (unavailable — key is ${status})`}>
+                                                            <RotateCw className="size-4" />
+                                                        </Button>
+                                                    </span>
+                                                )}
                                                 <ConfirmDelete
                                                     trigger={
                                                         <Button variant="ghost" size="icon" className="size-8" disabled={isRevoked} aria-label={`Revoke ${key.name}`}>

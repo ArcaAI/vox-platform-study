@@ -38,6 +38,9 @@ export class DepartmentResponse {
   @ApiPropertyOptional({ description: 'Prompt template ID for revisit patients' })
   revisitPromptId?: string;
 
+  @ApiPropertyOptional({ description: 'Default DNA writing-style prompt template ID for this department (TASK-387 #7)' })
+  dnaWritingStylePromptId?: string;
+
   @ApiPropertyOptional({ description: 'Department prompt configuration' })
   promptConfig?: Record<string, unknown>;
 

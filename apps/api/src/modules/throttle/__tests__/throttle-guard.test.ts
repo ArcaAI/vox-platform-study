@@ -21,9 +21,16 @@ import { APP_GUARD } from '@nestjs/core';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { IRateLimitSettingsService } from '@arcaai/applications';
+import { IEntitlementsService, IRateLimitSettingsService, type TenantRateLimitPolicy } from '@arcaai/applications';
 import { ThrottleConfigModule } from '../throttle.module';
 import { TieredThrottlerGuard } from '../tiered-throttler.guard';
+
+/** Craft an unsigned JWT carrying `tenantId` (the guard decodes, never verifies). */
+function makeJwt(tenantId: string): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ tenantId })).toString('base64url');
+  return `${header}.${payload}.sig`;
+}
 
 @Controller('t')
 class ThrottleTestController {
@@ -236,5 +243,130 @@ describe('TieredThrottlerGuard (DB-backed live overrides)', () => {
     for (let i = 0; i < 12; i++) {
       expect((await hit('/hc/ping')).status).toBe(200);
     }
+  });
+});
+
+/**
+ * TASK-392 (Q7) — per-tenant plan rate-limits on the pre-auth hot path.
+ *
+ * Wires a stub `IEntitlementsService.getTenantRateLimitPolicy` (the cached
+ * plan-tier + per-tenant override resolver) alongside a stub
+ * `IRateLimitSettingsService` (tier baselines). The guard extracts the tenant
+ * from the JWT bearer BEFORE auth, then applies the plan tier to the always-on
+ * `default` tier. Distinct routes per test keep the in-memory counters isolated.
+ */
+@Controller('q7')
+class Q7Controller {
+  @Get('plan')
+  plan() {
+    return { ok: 'plan' };
+  }
+
+  @Get('override')
+  override() {
+    return { ok: 'override' };
+  }
+
+  @Get('off')
+  off() {
+    return { ok: 'off' };
+  }
+
+  @Get('anon')
+  anon() {
+    return { ok: 'anon' };
+  }
+
+  // decorator baseline 5 must beat the plan tier (precedence: decorator > plan).
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Get('decorated')
+  decorated() {
+    return { ok: 'decorated' };
+  }
+}
+
+describe('TieredThrottlerGuard (TASK-392 Q7 — per-tenant plan rate-limits)', () => {
+  let app: INestApplication;
+  const prevEnabled = process.env.RATE_LIMIT_ENABLED;
+
+  // Per-tenant policy stub, keyed by the tenantId decoded from the JWT.
+  const policies: Record<string, TenantRateLimitPolicy | null> = {
+    'tenant-strict': { tier: 'strict', perMinute: null },
+    'tenant-override': { tier: 'strict', perMinute: 4 },
+    'tenant-off': null, // kill-switch OFF / ungated → global tiers unchanged
+  };
+
+  const settings: IRateLimitSettingsService = {
+    isEnabled: () => true,
+    // default tier is generous; strict tier is tight (2/min).
+    getTier: (name) => (name === 'strict' ? { limit: 2, ttl: 60000 } : { limit: 1000, ttl: 60000 }),
+    getRouteOverride: () => undefined,
+  };
+
+  const entitlements = {
+    getTenantRateLimitPolicy: async (tenantId: string): Promise<TenantRateLimitPolicy | null> => policies[tenantId] ?? null,
+  } as unknown as IEntitlementsService;
+
+  const hit = (path: string, tenantId?: string) => {
+    const req = request(app.getHttpServer()).get(path);
+    return tenantId ? req.set('Authorization', `Bearer ${makeJwt(tenantId)}`) : req;
+  };
+
+  beforeAll(async () => {
+    process.env.RATE_LIMIT_ENABLED = 'true';
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [ThrottleConfigModule],
+      controllers: [Q7Controller],
+      providers: [
+        { provide: APP_GUARD, useClass: TieredThrottlerGuard },
+        { provide: IRateLimitSettingsService, useValue: settings },
+        { provide: IEntitlementsService, useValue: entitlements },
+      ],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    await app.init();
+  });
+
+  afterAll(async () => {
+    if (app) await app.close();
+    if (prevEnabled === undefined) {
+      delete process.env.RATE_LIMIT_ENABLED;
+    } else {
+      process.env.RATE_LIMIT_ENABLED = prevEnabled;
+    }
+  });
+
+  it('(a) a tenant on a stricter plan gets its plan tier: /q7/plan 429s on the 3rd call (strict = 2)', async () => {
+    expect((await hit('/q7/plan', 'tenant-strict')).status).toBe(200);
+    expect((await hit('/q7/plan', 'tenant-strict')).status).toBe(200);
+    expect((await hit('/q7/plan', 'tenant-strict')).status).toBe(429);
+  });
+
+  it('(b) per-tenant absolute override is respected: /q7/override allows 4 then 429s on the 5th', async () => {
+    for (let i = 1; i <= 4; i++) {
+      expect((await hit('/q7/override', 'tenant-override')).status).toBe(200);
+    }
+    expect((await hit('/q7/override', 'tenant-override')).status).toBe(429);
+  });
+
+  it('(c) disabled/ungated (policy null) = current behavior: /q7/off never 429s in 8 calls (default tier 1000)', async () => {
+    for (let i = 0; i < 8; i++) {
+      expect((await hit('/q7/off', 'tenant-off')).status).toBe(200);
+    }
+  });
+
+  it('(d) no JWT (unauthenticated) rides the global tiers: /q7/anon never 429s in 8 calls', async () => {
+    for (let i = 0; i < 8; i++) {
+      expect((await hit('/q7/anon')).status).toBe(200);
+    }
+  });
+
+  it('(e) precedence: a @Throttle decorator beats the plan tier — /q7/decorated allows 5 (not 2) then 429s on the 6th', async () => {
+    for (let i = 1; i <= 5; i++) {
+      expect((await hit('/q7/decorated', 'tenant-strict')).status).toBe(200);
+    }
+    expect((await hit('/q7/decorated', 'tenant-strict')).status).toBe(429);
   });
 });

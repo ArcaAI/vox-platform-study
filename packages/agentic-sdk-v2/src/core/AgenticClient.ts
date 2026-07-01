@@ -565,6 +565,86 @@ export class AgenticClient {
   }
 
   /**
+   * TASK-388 #10 — GET a BINARY body (e.g. `xlsx`, `pdf`) as a `Blob` WITHOUT
+   * JSON parsing. Mirrors {@link getCsv} (same auth + correlation headers,
+   * manual fetch, no 401-refresh retry — a foreground export the operator can
+   * repeat after re-auth) but returns the raw bytes so the caller can trigger a
+   * file download. A wildcard `Accept` header lets the server pick the
+   * content-type from the `?format=` query.
+   */
+  async getBlob(endpoint: string, options?: { signal?: AbortSignal }): Promise<Blob> {
+    this.checkRateLimit();
+
+    const requestId = `req_${++this.requestCount}_${Date.now()}`;
+    const url = `${this.baseUrl}${endpoint}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    if (options?.signal) {
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+      }
+    }
+
+    const headers: Record<string, string> = {
+      'X-Request-ID': requestId,
+      Accept: '*/*',
+    };
+    const authToken = this.resolveAuthToken(endpoint);
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    if (this.apiKey) {
+      headers['X-API-Key'] = this.apiKey;
+    }
+    if (this.tenantId) {
+      headers['X-Tenant-ID'] = this.tenantId;
+    }
+    const correlationId = this.logger?.getCorrelationId();
+    if (correlationId) {
+      headers['X-Correlation-ID'] = correlationId;
+    }
+
+    try {
+      const response = await fetch(url, { method: 'GET', headers, signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorCode = classifyHttpError(response.status);
+        throw new AgenticError(errorCode, `HTTP ${response.status}: ${response.statusText}`, {
+          context: { status: response.status, endpoint, requestId },
+        });
+      }
+
+      return await response.blob();
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof AgenticError) {
+        throw error;
+      }
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new AgenticError('NETWORK_ERROR', 'Request timeout', {
+          cause: error,
+          context: { timeout: this.timeout, endpoint, requestId },
+        });
+      }
+      if (error instanceof TypeError) {
+        throw new AgenticError('NETWORK_ERROR', 'Network error - check your connection', {
+          cause: error,
+          context: { endpoint, requestId },
+        });
+      }
+      throw new AgenticError('UNKNOWN_ERROR', 'An unexpected error occurred', {
+        cause: error as Error,
+        context: { endpoint, requestId },
+      });
+    }
+  }
+
+  /**
    * PATCH request that sends an `If-Match` header carrying a strong
    * validator — TASK-302 Stream D Phase D (D.4).
    *

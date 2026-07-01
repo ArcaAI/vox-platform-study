@@ -8,6 +8,8 @@ import { useState, useCallback } from 'react';
 import { useApiOperation } from './useApiOperation';
 import { DEPARTMENT_ENDPOINTS } from '../core/constants';
 import { extractArray } from '../utils/responseUtils';
+import { appendPagination } from '../utils/urlUtils';
+import type { PaginationParams } from '../types/common';
 
 export interface Department {
   id: string;
@@ -18,7 +20,18 @@ export interface Department {
   newPatientPromptId?: string;
   revisitPromptId?: string;
   summaryPromptId?: string;
+  // TASK-387 (#7 / D3) — per-department default DNA writing-style prompt.
+  dnaWritingStylePromptId?: string | null;
   promptMetadata?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/** TASK-387 (#6 / D2) — a member returned by the dept->users listing. */
+export interface DepartmentUser {
+  id: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
   [key: string]: unknown;
 }
 
@@ -36,6 +49,8 @@ export interface UseDepartmentsReturn {
   getChildren: (id: string) => Promise<Department[]>;
   getByCode: (code: string) => Promise<Department>;
   updatePromptConfig: (id: string, data: Record<string, unknown>) => Promise<Department>;
+  // TASK-387 (#6 / D2) — reverse dept->users listing (server-backed, paginated).
+  getUsers: (id: string, pagination?: PaginationParams) => Promise<DepartmentUser[]>;
 }
 
 export function useDepartments(): UseDepartmentsReturn {
@@ -120,7 +135,28 @@ export function useDepartments(): UseDepartmentsReturn {
 
   const updatePromptConfig = useCallback(
     (id: string, data: Record<string, unknown>) =>
-      execute<Department>('updatePromptConfig', (client) => client.patch<Department>(DEPARTMENT_ENDPOINTS.PROMPT_CONFIG(id), data)),
+      execute<Department>('updatePromptConfig', (client) => {
+        // OCC (TASK-302 Stream D Phase E.2): `PATCH admin/departments/:id/prompt-config`
+        // is `@RequiresIfMatch()`, so a plain PATCH is rejected `428`. The caller
+        // passes the version it read (`expectedVersion`, from the GET that loaded the
+        // department); replay it as the strong `If-Match` validator so the server
+        // CAS-checks it (`412` on drift) instead of `428`-ing. The header takes
+        // precedence over the body-field `expectedVersion` server-side. Fall back to a
+        // plain PATCH only when no version was supplied.
+        const expectedVersion = data?.expectedVersion;
+        return typeof expectedVersion === 'number'
+          ? client.patchWithIfMatch<Department>(DEPARTMENT_ENDPOINTS.PROMPT_CONFIG(id), data, `"${expectedVersion}"`)
+          : client.patch<Department>(DEPARTMENT_ENDPOINTS.PROMPT_CONFIG(id), data);
+      }),
+    [execute],
+  );
+
+  const getUsers = useCallback(
+    (id: string, pagination?: PaginationParams) =>
+      execute<DepartmentUser[]>('getUsers', async (client) => {
+        const raw = await client.get(appendPagination(DEPARTMENT_ENDPOINTS.USERS(id), pagination));
+        return extractArray<DepartmentUser>(raw);
+      }),
     [execute],
   );
 
@@ -138,5 +174,6 @@ export function useDepartments(): UseDepartmentsReturn {
     getChildren,
     getByCode,
     updatePromptConfig,
+    getUsers,
   };
 }

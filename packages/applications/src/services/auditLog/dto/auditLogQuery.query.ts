@@ -1,7 +1,10 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsISO8601, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsIn, IsISO8601, IsOptional, IsString } from 'class-validator';
 import { AuditAction, ResourceType } from '@arcaai/domains';
 import { PaginatedQuery } from '../../../common';
+
+/** TASK-390 #25 (AU2) — serialization formats for the audit-log export. */
+export type AuditExportFormat = 'csv' | 'xlsx' | 'pdf';
 
 /**
  * TASK-328 A8 — query-param DTO for the filtered audit-log list + CSV export.
@@ -53,4 +56,15 @@ export class AuditLogQuery extends PaginatedQuery {
   @IsOptional()
   @IsString()
   userId?: string;
+
+  /**
+   * TASK-390 #25 (AU2) — export serialization on `GET /admin/audit-logs/export`.
+   * Defaults to `csv` (unchanged legacy behaviour); `xlsx`/`pdf` render the same
+   * filtered/tenant-scoped set via the shared table exporter. Ignored by the
+   * list/cursor routes.
+   */
+  @ApiPropertyOptional({ description: 'Export format', enum: ['csv', 'xlsx', 'pdf'], default: 'csv' })
+  @IsOptional()
+  @IsIn(['csv', 'xlsx', 'pdf'])
+  format?: AuditExportFormat;
 }

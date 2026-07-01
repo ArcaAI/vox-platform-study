@@ -60,6 +60,12 @@ export interface UseApiKeysReturn {
   update: (id: string, input: UpdateApiKeyInput) => Promise<ApiKey>;
   remove: (id: string) => Promise<void>;
   revoke: (id: string) => Promise<void>;
+  /**
+   * TASK-390 #23 (K5) — rotate the key: the server mints a NEW secret
+   * (returned exactly once as `rawKey`) and keeps the OLD key valid for a 24h
+   * grace window so clients can cut over without downtime.
+   */
+  rotate: (id: string) => Promise<ApiKeyWithRawKey>;
   getUsage: (id: string) => Promise<ApiKeyUsage>;
 }
 
@@ -135,10 +141,16 @@ export function useApiKeys(): UseApiKeysReturn {
     [execute],
   );
 
+  const rotate = useCallback(
+    (id: string) =>
+      execute<ApiKeyWithRawKey>('rotate', (client) => client.post<ApiKeyWithRawKey>(API_KEY_ENDPOINTS.ROTATE(id), undefined)),
+    [execute],
+  );
+
   const getUsage = useCallback(
     (id: string) => execute<ApiKeyUsage>('getUsage', (client) => client.get<ApiKeyUsage>(API_KEY_ENDPOINTS.USAGE(id))),
     [execute],
   );
 
-  return { apiKeys, isLoading, error, list, get, create, update, remove, revoke, getUsage };
+  return { apiKeys, isLoading, error, list, get, create, update, remove, revoke, rotate, getUsage };
 }

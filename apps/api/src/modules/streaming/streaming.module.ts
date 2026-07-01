@@ -1,6 +1,8 @@
 import {
+  EntitlementsServiceModule,
   HarnessPolicyServiceModule,
   PipelineServiceModule,
+  PlatformMetricsServiceModule,
   StreamingSessionServiceModule,
   TenantBucketServiceModule,
   TenantServiceModule,
@@ -31,6 +33,12 @@ import { TranscriptionJobController } from './transcription-job.controller';
     PipelineServiceModule,
     CoreDatabaseModule,
     HarnessPolicyServiceModule, // TASK-356 D-7 — SMR-selection resolver for SmrProxyController
+    // TASK-386 (#5/#17): provides `ISocketRegistryService` so `SttWsGateway`
+    // publishes its per-instance open-socket count for the platform aggregate.
+    PlatformMetricsServiceModule,
+    // TASK-392 (concurrency): provides `IEntitlementsService` so
+    // `TranscriptionJobController` can hard-block over-capacity sessions.
+    EntitlementsServiceModule,
     // TASK-310 W7.A.9 (AC-3): exposes `StreamSessionTenantBindingService`
     // to `TranscriptionJobController` so it can bind on create / clear on close.
     TenantOwnedResourceModule,

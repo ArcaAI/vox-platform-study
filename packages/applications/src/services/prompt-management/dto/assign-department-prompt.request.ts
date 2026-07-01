@@ -6,6 +6,11 @@ export class AssignDepartmentPromptRequest {
   @IsString()
   departmentId: string;
 
+  @ApiPropertyOptional({ description: 'Prompt template ID for the pre-summary slot' })
+  @IsOptional()
+  @IsString()
+  preSummaryPromptId?: string;
+
   @ApiPropertyOptional({ description: 'Prompt template ID for new patients' })
   @IsOptional()
   @IsString()

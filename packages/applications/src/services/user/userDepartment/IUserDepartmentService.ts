@@ -1,5 +1,5 @@
 import { IBaseService } from '../../../interfaces';
-import { AssignUserDepartmentRequest, UpdateUserDepartmentRequest, UserDepartmentResponse } from './dto';
+import { AssignUserDepartmentRequest, SetUserDepartmentsRequest, UpdateUserDepartmentRequest, UserDepartmentResponse } from './dto';
 
 /**
  * Tenant-scoped CRUD for user ↔ department assignments (TASK-328 A1).
@@ -9,6 +9,13 @@ export interface IUserDepartmentService extends IBaseService {
   getByUser(userId: string): Promise<UserDepartmentResponse[]>;
   /** Assign a user to a department (reactivates a prior soft-deleted row). */
   assign(userId: string, dto: AssignUserDepartmentRequest): Promise<UserDepartmentResponse>;
+  /**
+   * TASK-381 V2 — reconcile a user's department memberships to EXACTLY
+   * `dto.departmentIds` (adds missing, soft-deletes the rest) and set
+   * `dto.primaryDepartmentId` as the single primary. Returns the resulting
+   * active assignments.
+   */
+  setDepartments(userId: string, dto: SetUserDepartmentsRequest): Promise<UserDepartmentResponse[]>;
   /** Update an assignment (e.g. toggle primary) under optimistic concurrency. */
   update(id: string, dto: UpdateUserDepartmentRequest): Promise<UserDepartmentResponse>;
   /** Soft-delete an assignment. */

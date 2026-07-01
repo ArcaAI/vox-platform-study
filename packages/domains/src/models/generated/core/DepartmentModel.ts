@@ -16,6 +16,7 @@ export class Department extends BaseTenantDataModel {
   public preSummaryPromptId: string | null;
   public newPatientPromptId: string | null;
   public revisitPromptId: string | null;
+  public dnaWritingStylePromptId: string | null;
   public promptConfig: JsonValue | null;
   public parentDepartmentId: string | null;
   public resourceStatus: Enums.ResourceStatusType;
@@ -41,6 +42,7 @@ export class Department extends BaseTenantDataModel {
     this.preSummaryPromptId = data.preSummaryPromptId;
     this.newPatientPromptId = data.newPatientPromptId;
     this.revisitPromptId = data.revisitPromptId;
+    this.dnaWritingStylePromptId = data.dnaWritingStylePromptId;
     this.promptConfig = data.promptConfig;
     this.parentDepartmentId = data.parentDepartmentId;
     this.resourceStatus = data.resourceStatus;

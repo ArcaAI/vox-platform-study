@@ -1,0 +1,171 @@
+// ============================================================================
+// TASK-392 — Plan Entitlements (additive)
+//
+// DB-backed entitlement model (proposal Q1): a platform-wide per-plan default
+// matrix (`PlanEntitlement`) + a per-tenant admin-editable override
+// (`TenantEntitlement`), plus a rolling-monthly consumption meter
+// (`TenantUsageMeter`, Q5). Enforcement ships OFF by default behind the
+// `entitlements.enabled` GlobalSetting kill-switch (Q9). See
+// docs/implementation/TASK-392-Plan-Entitlements/README.md.
+// ============================================================================
+
+// TASK-392 (Q5) — the three rolling-monthly consumption meters.
+enum UsageMeterMetric {
+  CONSULTATIONS
+  TRANSCRIPTION_MINUTES
+  SUMMARIES
+
+  @@schema("core")
+}
+
+// ---------------------------------------------------------------------------
+// PlanEntitlement — platform-wide per-plan default matrix (proposal §2 / Q1).
+// One row per `TenantPlan`. NOT tenant-scoped (a platform reference table, like
+// Permission/Role): it has no `tenantId` column, so the tenant-scope Prisma
+// extension never filters it. A null quantity/meter column = "unlimited". The
+// resolver reads these rows (falling back to the seeded constants when a row is
+// missing). Admin-editable by super-admins only.
+// ---------------------------------------------------------------------------
+model PlanEntitlement {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // core field — exactly one row per commercial plan
+  plan TenantPlan @unique
+
+  // quantity limits (null = unlimited)
+  maxUsers           Int?
+  maxDepartments     Int?
+  maxPromptTemplates Int?
+  maxAsrPipelines    Int?
+  maxApiKeys         Int?
+  storageQuotaBytes  BigInt?
+
+  // concurrency limit — simultaneous active STT sessions (null = unlimited).
+  // A distinct axis from the total-seat cap (`maxUsers`): "how many doctors can
+  // stream at the same instant", enforced against the live socket-registry.
+  maxConcurrentSessions Int?
+
+  // rolling-monthly meters (null = unlimited)
+  monthlyConsultations        Int?
+  monthlyTranscriptionMinutes Int?
+  monthlySummaries            Int?
+
+  // feature toggles
+  featureDnaReports       Boolean @default(false)
+  featureVoiceEnrollment  Boolean @default(false)
+  featureMonitoringAccess Boolean @default(false)
+
+  // model access tier (clone-subset, Q8) + rate-limit tier (Q7)
+  modelTier     String @default("full")
+  rateLimitTier String @default("default")
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@schema("core")
+}
+
+// ---------------------------------------------------------------------------
+// TenantEntitlement — per-tenant override (proposal Q1 / Q7). One row per
+// tenant. Every limit/feature column is nullable: null = "inherit the plan
+// default", a concrete value overrides it. Also carries the per-tenant
+// rate-limit override ("increase on demand", Q7).
+// ---------------------------------------------------------------------------
+model TenantEntitlement {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi-tenant fields (one override row per tenant)
+  tenantId String @unique
+
+  // per-tenant limit overrides (null = inherit plan default)
+  maxUsers           Int?
+  maxDepartments     Int?
+  maxPromptTemplates Int?
+  maxAsrPipelines    Int?
+  maxApiKeys         Int?
+  storageQuotaBytes  BigInt?
+
+  // per-tenant concurrency override (null = inherit plan default) — "increase
+  // on demand" for simultaneous active STT sessions.
+  maxConcurrentSessions Int?
+
+  monthlyConsultations        Int?
+  monthlyTranscriptionMinutes Int?
+  monthlySummaries            Int?
+
+  // feature overrides (null = inherit)
+  featureDnaReports       Boolean?
+  featureVoiceEnrollment  Boolean?
+  featureMonitoringAccess Boolean?
+
+  // model + rate-limit overrides (null = inherit) — Q7 "increase on demand"
+  modelTier          String?
+  rateLimitTier      String?
+  rateLimitPerMinute Int?
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId], name: "TenantEntitlement_tenantId_idx")
+  @@schema("core")
+}
+
+// ---------------------------------------------------------------------------
+// TenantUsageMeter — rolling-monthly windowed consumption counter (proposal
+// Q5). One row per (tenant, metric, window). `usedCount` is maintained by the
+// rollover/reconcile job from Postgres aggregates (the source of truth, since
+// Prometheus carries no tenantId). Windows are calendar months (UTC).
+// ---------------------------------------------------------------------------
+model TenantUsageMeter {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi-tenant fields
+  tenantId String
+
+  // windowed meter
+  metric       UsageMeterMetric
+  periodStart  DateTime
+  periodEnd    DateTime
+  usedCount    Int       @default(0)
+  reconciledAt DateTime?
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, metric, periodStart], name: "TenantUsageMeter_tenant_metric_period_unique")
+  @@index([tenantId], name: "TenantUsageMeter_tenantId_idx")
+  @@schema("core")
+}

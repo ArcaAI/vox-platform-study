@@ -40,6 +40,7 @@
  *   97000000-xxxx  →  User Voice Profiles (diarization enrollment)
  *   98000000-xxxx  →  Transcription Jobs (ASR job queue rows)
  *   A0000000-xxxx  →  Audit Log Entries
+ *   B0000000-xxxx  →  Plan Entitlements (TASK-392)
  */
 
 // =============================================================================
@@ -593,6 +594,27 @@ export const SEED_GLOBAL_SETTING_IDS = {
     RATE_LIMIT_TIER_HEAVY_TTL: '85000000-0000-0000-0000-000000000306',
     RATE_LIMIT_TIER_RELAXED_LIMIT: '85000000-0000-0000-0000-000000000307',
     RATE_LIMIT_TIER_RELAXED_TTL: '85000000-0000-0000-0000-000000000308',
+
+    // TASK-392 — entitlements enforcement kill-switch (platform tenant only).
+    // Seeded OFF (Q9); flip per-env to turn quota/feature enforcement on.
+    ENTITLEMENTS_ENABLED: '85000000-0000-0000-0000-000000000400',
+} as const;
+
+// =============================================================================
+// PLAN ENTITLEMENTS (TASK-392 — platform-wide per-plan default matrix)
+// =============================================================================
+// One row per TenantPlan (the `plan` column is @unique). NOT tenant-scoped —
+// a platform reference table like Role/Permission. Values mirror
+// packages/applications/src/services/entitlements/entitlements.constants.ts
+// (PLAN_ENTITLEMENT_DEFAULTS) — kept in sync manually (the database package
+// must not depend on @arcaai/applications).
+// =============================================================================
+
+export const SEED_PLAN_ENTITLEMENT_IDS = {
+    STARTER: 'B0000000-0000-0000-0000-000000000001',
+    TRIAL: 'B0000000-0000-0000-0000-000000000002',
+    PRO: 'B0000000-0000-0000-0000-000000000003',
+    ENTERPRISE: 'B0000000-0000-0000-0000-000000000004',
 } as const;
 
 // =============================================================================

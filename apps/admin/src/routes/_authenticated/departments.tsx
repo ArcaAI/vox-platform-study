@@ -16,7 +16,11 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { ConfirmDelete } from '@/features/common/confirm-delete';
 import { PageHeader } from '@/components/layout/page-header';
-import { formatDateTime } from '@/lib/utils';
+import { isSuperAdmin } from '@/features/tenants/permissions';
+import { NoTenantState } from '@/features/tenants/tenant-context';
+import { MOBILE_DIALOG_CONTENT, MOBILE_DIALOG_FOOTER } from '@/lib/responsive';
+import { cn, formatDateTime } from '@/lib/utils';
+import { useAuthStore } from '@/store/auth-store';
 
 export const Route = createFileRoute('/_authenticated/departments')({
     component: DepartmentsPage,
@@ -73,7 +77,7 @@ function DepartmentFormDialog({
     return (
         <Dialog open={isOpen} onOpenChange={setOpen}>
             {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
-            <DialogContent>
+            <DialogContent className={MOBILE_DIALOG_CONTENT}>
                 <form onSubmit={submit}>
                     <DialogHeader>
                         <DialogTitle>{mode === 'create' ? 'New department' : 'Edit department'}</DialogTitle>
@@ -89,7 +93,7 @@ function DepartmentFormDialog({
                             <Input id="dept-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. CARD" />
                         </div>
                     </div>
-                    <DialogFooter>
+                    <DialogFooter className={MOBILE_DIALOG_FOOTER}>
                         <DialogClose asChild>
                             <Button type="button" variant="outline">
                                 Cancel
@@ -299,7 +303,7 @@ function PromptFormDialog({
     return (
         <Dialog open={isOpen} onOpenChange={setOpen}>
             {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
-            <DialogContent className="sm:max-w-2xl">
+            <DialogContent className={cn('sm:max-w-2xl', MOBILE_DIALOG_CONTENT)}>
                 <form onSubmit={submit}>
                     <DialogHeader>
                         <DialogTitle>{isEdit ? 'Edit prompt template' : 'New prompt template'}</DialogTitle>
@@ -372,7 +376,7 @@ function PromptFormDialog({
                             </div>
                         ) : null}
                     </div>
-                    <DialogFooter>
+                    <DialogFooter className={MOBILE_DIALOG_FOOTER}>
                         <DialogClose asChild>
                             <Button type="button" variant="outline">
                                 Cancel
@@ -391,13 +395,13 @@ function PromptFormDialog({
 function PromptViewDialog({ prompt, open, onOpenChange }: { prompt: PromptTemplate | null; open: boolean; onOpenChange: (open: boolean) => void }) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-2xl">
+            <DialogContent className={cn('sm:max-w-2xl', MOBILE_DIALOG_CONTENT)}>
                 <DialogHeader>
                     <DialogTitle>{prompt?.name ?? 'Prompt'}</DialogTitle>
                     <DialogDescription>{prompt?.description || `${prompt?.category ?? ''} · v${prompt?.currentVersionNumber ?? 1}`}</DialogDescription>
                 </DialogHeader>
                 <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-3 text-xs">{prompt?.content}</pre>
-                <DialogFooter>
+                <DialogFooter className={MOBILE_DIALOG_FOOTER}>
                     <DialogClose asChild>
                         <Button variant="outline">Close</Button>
                     </DialogClose>
@@ -547,21 +551,32 @@ function PromptsTab() {
 }
 
 function DepartmentsPage() {
+    const roles = useAuthStore((s) => s.user?.roles);
+    const tenantId = useAuthStore((s) => s.tenantId);
+    // GAP-ADM-001: a super-admin in cross-tenant ("All tenants") mode must pick a
+    // working tenant before managing its departments/prompts, rather than seeing
+    // cross-tenant rows. Tenant-admins are always scoped, so they never see this.
+    const noTenant = isSuperAdmin(roles) && !tenantId;
+
     return (
         <div>
             <PageHeader title="Departments & Prompts" description="Clinical departments and the prompt templates that drive summaries and DNA analysis." />
-            <Tabs defaultValue="departments">
-                <TabsList>
-                    <TabsTrigger value="departments">Departments</TabsTrigger>
-                    <TabsTrigger value="prompts">Prompt templates</TabsTrigger>
-                </TabsList>
-                <TabsContent value="departments" className="mt-4">
-                    <DepartmentsTab />
-                </TabsContent>
-                <TabsContent value="prompts" className="mt-4">
-                    <PromptsTab />
-                </TabsContent>
-            </Tabs>
+            {noTenant ? (
+                <NoTenantState resource="departments and prompt templates" />
+            ) : (
+                <Tabs defaultValue="departments">
+                    <TabsList>
+                        <TabsTrigger value="departments">Departments</TabsTrigger>
+                        <TabsTrigger value="prompts">Prompt templates</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="departments" className="mt-4">
+                        <DepartmentsTab />
+                    </TabsContent>
+                    <TabsContent value="prompts" className="mt-4">
+                        <PromptsTab />
+                    </TabsContent>
+                </Tabs>
+            )}
         </div>
     );
 }

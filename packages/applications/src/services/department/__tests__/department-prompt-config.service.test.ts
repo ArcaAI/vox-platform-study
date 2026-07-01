@@ -125,4 +125,19 @@ describe('DepartmentService.updatePromptConfig (TASK-294 DEF-C3)', () => {
         expect(mockDepartmentRepository.updateWithVersion).toHaveBeenCalledWith('dept-1', dept, 1);
         expect(mockDepartmentRepository.update).not.toHaveBeenCalled();
     });
+
+    // TASK-387 (#7 / D3) — per-department default DNA writing-style prompt slot.
+    it('applies dnaWritingStylePromptId to the entity before the CAS write', async () => {
+        const dept = createMockDepartment({ id: 'dept-1', tenantId: 'tenant-1', version: 1 });
+        mockDepartmentRepository.findById.mockResolvedValue(dept);
+        mockDepartmentRepository.updateWithVersion.mockResolvedValue({ ...dept, version: 2 });
+
+        await service.updatePromptConfig('dept-1', {
+            dnaWritingStylePromptId: 'dna-prompt-1',
+            expectedVersion: 1,
+        } as never);
+
+        expect(dept.dnaWritingStylePromptId).toBe('dna-prompt-1');
+        expect(mockDepartmentRepository.updateWithVersion).toHaveBeenCalledWith('dept-1', dept, 1);
+    });
 });

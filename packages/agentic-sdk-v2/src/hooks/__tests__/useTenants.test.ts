@@ -23,6 +23,9 @@ describe('useTenants', () => {
     const mockPost = vi.fn();
     const mockPatch = vi.fn();
     const mockDelete = vi.fn();
+    // TASK-302 Stream D OCC — `update` now reads the ETag and replays it as `If-Match`.
+    const mockGetWithEtag = vi.fn();
+    const mockPatchWithIfMatch = vi.fn();
 
     beforeEach(() => {
         mockLogger = createMockLogger();
@@ -30,9 +33,18 @@ describe('useTenants', () => {
         mockPost.mockReset();
         mockPatch.mockReset();
         mockDelete.mockReset();
+        mockGetWithEtag.mockReset();
+        mockPatchWithIfMatch.mockReset();
 
         mockStore = {
-            apiClient: { get: mockGet, post: mockPost, patch: mockPatch, delete: mockDelete },
+            apiClient: {
+                get: mockGet,
+                post: mockPost,
+                patch: mockPatch,
+                delete: mockDelete,
+                getWithEtag: mockGetWithEtag,
+                patchWithIfMatch: mockPatchWithIfMatch,
+            },
             logger: mockLogger,
         };
         (useAgenticStore as any).mockReturnValue(mockStore);
@@ -206,8 +218,31 @@ describe('useTenants', () => {
     });
 
     describe('update', () => {
-        it('should PATCH to TENANT_ENDPOINTS.UPDATE(id) with data', async () => {
+        // TASK-302 Stream D OCC: `PATCH admin/tenants/:id` is `@RequiresIfMatch()`, so
+        // `update` reads the row's ETag and replays it as `If-Match` via
+        // `patchWithIfMatch` (getWithEtag→patchWithIfMatch) rather than a plain PATCH
+        // that would 428 live.
+        it('should read the ETag and PATCH with If-Match to TENANT_ENDPOINTS.UPDATE(id)', async () => {
             const updated = { id: 't-1', name: 'Updated Clinic' };
+            mockGetWithEtag.mockResolvedValue({ body: { id: 't-1', name: 'Clinic A' }, etag: '"3"' });
+            mockPatchWithIfMatch.mockResolvedValue(updated);
+            const { result } = renderHook(() => useTenants());
+
+            let resp: unknown;
+            await act(async () => {
+                resp = await result.current.update('t-1', { name: 'Updated Clinic' });
+            });
+
+            expect(mockGetWithEtag).toHaveBeenCalledWith(TENANT_ENDPOINTS.GET('t-1'));
+            expect(mockPatchWithIfMatch).toHaveBeenCalledWith(TENANT_ENDPOINTS.UPDATE('t-1'), { name: 'Updated Clinic' }, '"3"');
+            expect(mockPatch).not.toHaveBeenCalled();
+            expect(result.current.currentTenant).toEqual(updated);
+            expect(resp).toEqual(updated);
+        });
+
+        it('should fall back to a plain PATCH when the row exposes no ETag', async () => {
+            const updated = { id: 't-1', name: 'Updated Clinic' };
+            mockGetWithEtag.mockResolvedValue({ body: { id: 't-1', name: 'Clinic A' }, etag: undefined });
             mockPatch.mockResolvedValue(updated);
             const { result } = renderHook(() => useTenants());
 
@@ -216,8 +251,8 @@ describe('useTenants', () => {
                 resp = await result.current.update('t-1', { name: 'Updated Clinic' });
             });
 
+            expect(mockPatchWithIfMatch).not.toHaveBeenCalled();
             expect(mockPatch).toHaveBeenCalledWith(TENANT_ENDPOINTS.UPDATE('t-1'), { name: 'Updated Clinic' });
-            expect(result.current.currentTenant).toEqual(updated);
             expect(resp).toEqual(updated);
         });
 
@@ -228,7 +263,8 @@ describe('useTenants', () => {
             ];
             const updated = { id: 't-1', name: 'Updated Clinic' };
             mockGet.mockResolvedValue(initial);
-            mockPatch.mockResolvedValue(updated);
+            mockGetWithEtag.mockResolvedValue({ body: initial[0], etag: '"1"' });
+            mockPatchWithIfMatch.mockResolvedValue(updated);
             const { result } = renderHook(() => useTenants());
 
             await act(async () => { await result.current.list(); });
