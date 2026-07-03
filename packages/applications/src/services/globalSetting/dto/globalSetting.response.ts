@@ -67,6 +67,21 @@ export class GlobalSettingResponse extends BaseResponse {
   })
   version!: number;
 
+  /**
+   * TASK-396 — server-authoritative "this row holds a secret" marker. True when
+   * the row has a Vault-encrypted `encryptedValue` OR its key/namespace matches
+   * the secret naming convention (see `GlobalSettingDtoMapper`). When true the
+   * mapper MASKS `value` (returns `''`) on list/get responses; the plaintext is
+   * only ever returned by the gated, audited, super-admin-only reveal endpoint
+   * (`POST /admin/settings/:id/reveal`). The admin console renders the masked
+   * value with an enabled "Reveal" affordance for these rows.
+   */
+  @ApiProperty({
+    description: 'Whether this setting stores a secret (value is masked in list/get; reveal via the dedicated endpoint).',
+    example: false,
+  })
+  isSecret!: boolean;
+
   constructor(init: GlobalSettingResponse & BaseResponseProps) {
     super(init);
     this.name = init.name;
@@ -77,5 +92,6 @@ export class GlobalSettingResponse extends BaseResponse {
     this.namespace = init.namespace;
     this.locked = init.locked;
     this.version = init.version;
+    this.isSecret = init.isSecret ?? false;
   }
 }

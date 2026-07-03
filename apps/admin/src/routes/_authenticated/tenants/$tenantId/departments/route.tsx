@@ -7,5 +7,5 @@ import { createFileRoute, Outlet } from '@tanstack/react-router';
  * shown by the in-page tab nav, never appended to the breadcrumb).
  */
 export const Route = createFileRoute('/_authenticated/tenants/$tenantId/departments')({
-    component: () => <Outlet />,
+  component: () => <Outlet />,
 });

@@ -1,7 +1,8 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  PolicyRepository,
   RbacRoleFactory,
   RbacRoleRepository,
   ResourceStatusType,
@@ -10,10 +11,14 @@ import {
   RolePolicyFactory,
   RolePolicyRepository,
   SysEventType,
+  SYSTEM_TENANT_ID,
+  UserRepository,
 } from '@arcaai/domains';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PolicyEngine } from '../../../authorization/policy.engine';
+import { ICryptoService } from '../../crypto/ICryptoService';
+import { BreakGlassCredentials, BreakGlassOutcome, checkBreakGlass, RBAC_BREAK_GLASS_AUDIT_ACTION } from '../breakGlass';
 import {
   CreateRbacRoleRequest,
   IRbacRoleService,
@@ -23,6 +28,24 @@ import {
   RbacRoleRecord,
   UpdateRbacRoleRequest,
 } from './IRoleService';
+
+/**
+ * TASK-409 — the legacy protected-policy names (mirror of
+ * `PolicyService.PROTECTED_SYSTEM_POLICIES`; detach only needs the names).
+ */
+const PROTECTED_SYSTEM_POLICY_NAMES = new Set(['system-full-access', 'rbac-system-manage']);
+
+/** TASK-409 — operations that can produce a break-glass audit row. */
+type RoleBreakGlassOperation = 'role-delete' | 'role-policy-detach';
+
+/** TASK-409 — target descriptor for break-glass audit rows. */
+interface RoleBreakGlassAuditTarget {
+  targetId: string;
+  targetName: string;
+  targetType: 'Role' | 'RolePolicy';
+  roleId?: string;
+  policyId?: string;
+}
 
 /**
  * TASK-307 W6.3 — Service that absorbs the direct-Prisma access that
@@ -46,6 +69,9 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   constructor(
     private readonly roleRepository: RbacRoleRepository,
     private readonly rolePolicyRepository: RolePolicyRepository,
+    private readonly policyRepository: PolicyRepository,
+    private readonly userRepository: UserRepository,
+    @Inject(ICryptoService) private readonly cryptoService: ICryptoService,
     private readonly policyEngine: PolicyEngine,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
@@ -186,19 +212,26 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     return role;
   }
 
-  async softDelete(id: string): Promise<{ id: string; name: string }> {
+  async softDelete(id: string, breakGlass?: BreakGlassCredentials): Promise<{ id: string; name: string }> {
     const role = await this.roleRepository.findByIdGuardSelect(id);
 
     if (!role) {
       throw new NotFoundException('Role not found');
     }
 
+    // System roles can never be deleted — this fires BEFORE break-glass so no
+    // step-up prompt is offered for an operation that is impossible anyway.
     if (role.isSystemRole) {
       throw new BadRequestException('Cannot delete system role');
     }
 
+    // TASK-409 — deleting a role is a dangerous-but-allowed mutation.
+    await this.requireBreakGlass('role-delete', { targetId: id, targetName: role.name, targetType: 'Role' }, breakGlass, `Deleting role '${role.name}'`);
+
     const user = this.requestUser;
     await this.roleRepository.softDelete(id, user?.id);
+
+    this.emitBreakGlassAudit('role-delete', 'confirmed', { targetId: id, targetName: role.name, targetType: 'Role' });
 
     await this.policyEngine.invalidateRole(id);
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
@@ -256,10 +289,35 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     });
   }
 
-  async removePolicy(roleId: string, policyId: string): Promise<void> {
+  async removePolicy(roleId: string, policyId: string, breakGlass?: BreakGlassCredentials): Promise<void> {
+    // TASK-409 — the detach target must exist (the policy name anchors both
+    // the confirmation contract and the anti-lockout check below).
+    const policy = (await this.policyRepository.findById(policyId)) as { id: string; name: string; isProtected?: boolean } | null;
+    if (!policy) {
+      throw new NotFoundException('Policy not found');
+    }
+
+    const auditTarget = { targetId: `${roleId}:${policyId}`, targetName: policy.name, targetType: 'RolePolicy' as const, roleId, policyId };
+
+    // TASK-409 — detaching a PROTECTED policy (marker OR legacy name) is
+    // absolutely blocked: the seeded attachment to the super-admin role is
+    // exactly what keeps super-admins in. Break-glass does NOT override this.
+    if (policy.isProtected === true || PROTECTED_SYSTEM_POLICY_NAMES.has(policy.name)) {
+      this.emitBreakGlassAudit('role-policy-detach', 'rejected-protected', auditTarget);
+      throw new ForbiddenException(
+        `Policy '${policy.name}' is a protected system policy and cannot be detached from any role (it grants super-admin / RBAC access platform-wide).`,
+      );
+    }
+
+    // TASK-409 — detach is a dangerous-but-allowed mutation: confirm with the
+    // caller's password + the exact POLICY name.
+    await this.requireBreakGlass('role-policy-detach', auditTarget, breakGlass, `Detaching policy '${policy.name}' from the role`);
+
     const user = this.requestUser;
 
     await this.rolePolicyRepository.softDeleteByRoleAndPolicy(roleId, policyId, user?.id);
+
+    this.emitBreakGlassAudit('role-policy-detach', 'confirmed', auditTarget);
 
     await this.policyEngine.invalidateRole(roleId);
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
@@ -273,6 +331,67 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       policyId,
       roleId,
       removedBy: user?.id,
+    });
+  }
+
+  /**
+   * TASK-409 — run the step-up verification; on failure, force-audit the
+   * rejection and surface the mapped HTTP error (428/401/400). The
+   * confirmation name is the TARGET name (role name for role-delete, policy
+   * name for detach).
+   */
+  private async requireBreakGlass(
+    operation: RoleBreakGlassOperation,
+    target: RoleBreakGlassAuditTarget,
+    credentials: BreakGlassCredentials | undefined,
+    operationLabel: string,
+  ): Promise<void> {
+    const result = await checkBreakGlass({
+      operation: operationLabel,
+      expectedName: target.targetName,
+      userId: this.requestUserId,
+      credentials,
+      loadPasswordHash: async () => {
+        const user = await this.userRepository.findById(this.requestUserId as string);
+        return (user as { password: string }).password;
+      },
+      verifyPassword: (password, hash) => this.cryptoService.verify(password, hash),
+    });
+
+    if (!result.ok) {
+      this.emitBreakGlassAudit(operation, result.outcome, target);
+      throw result.error;
+    }
+  }
+
+  /**
+   * TASK-409 — forced audit row for break-glass outcomes (TASK-396 pattern;
+   * see `PolicyService.emitBreakGlassAudit` for the direct-emit rationale).
+   * Roles/policies are platform-global resources — attribute the reserved
+   * system tenant when the caller (super-admin) carries no CLS tenant.
+   * NEVER the password.
+   */
+  private emitBreakGlassAudit(operation: RoleBreakGlassOperation, outcome: BreakGlassOutcome, target: RoleBreakGlassAuditTarget): void {
+    this.eventEmitter.emit(SysEventType.ResourceViewed, {
+      responsibleEntityId: this.requestUser?.id,
+      responsibleIp: this.requestIp,
+      resourceType: this.resourceType,
+      correlationId: this.correlationId,
+      resourceId: target.targetId,
+      tenantId: this.tenantId ?? SYSTEM_TENANT_ID,
+      forceAuditLog: true,
+      data: {
+        action: RBAC_BREAK_GLASS_AUDIT_ACTION,
+        operation,
+        outcome,
+        targetType: target.targetType,
+        targetId: target.targetId,
+        targetName: target.targetName,
+        ...(target.roleId && { roleId: target.roleId }),
+        ...(target.policyId && { policyId: target.policyId }),
+        actorId: this.requestUser?.id,
+        at: new Date().toISOString(),
+      },
     });
   }
 

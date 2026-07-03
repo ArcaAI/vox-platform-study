@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { IJobAdminService, IQueueAdminService, type BulkActionResult, type PaginatedJobResult } from '@arcaai/applications';
-import type { JobDetail, QueueStats } from '@arcaai/domains';
+import type { JobDetail, QueueStats, RedisHealthInfo } from '@arcaai/domains';
 import { Authorize } from '../../decorators';
 import {
   BulkActionResultResponse,
@@ -12,6 +12,7 @@ import {
   ListJobsQuery,
   PaginatedJobsResponse,
   QueueStatsResponse,
+  RedisHealthInfoResponse,
   SuccessResponse,
 } from './dto';
 import { QueueNamePipe } from './pipes/queue-name.pipe';
@@ -49,6 +50,15 @@ export class QueueAdminController {
   @ApiOkResponse({ type: [QueueStatsResponse] })
   listQueues(): Promise<QueueStats[]> {
     return this.queueService.getAllQueueStats();
+  }
+
+  // TASK-403 — declared before the dynamic `:queueName` routes so the static
+  // `health/redis` segment can never be swallowed by a queue-name match.
+  @Get('health/redis')
+  @ApiOperation({ summary: 'Redis connection health for the queue infrastructure (PING latency + INFO stats). Never errors.' })
+  @ApiOkResponse({ type: RedisHealthInfoResponse })
+  getRedisHealth(): Promise<RedisHealthInfo> {
+    return this.queueService.getRedisHealth();
   }
 
   @Get(':queueName')

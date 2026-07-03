@@ -62,6 +62,7 @@ export * from './NamedEntityRepository';
 // TASK-369 Phase 3C — sibling that patches NamedEntityRepository.prototype.
 export * from './NamedEntityRepository.encryption';
 export * from './NotificationRepository';
+export * from './PasswordResetTokenRepository';
 // TASK-369 Phase 3C — sibling that patches NotificationRepository.prototype.
 export * from './NotificationRepository.encryption';
 export * from './PermissionRepository';

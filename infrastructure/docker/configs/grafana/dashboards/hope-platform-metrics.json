@@ -1,0 +1,137 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Running model instances (total)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+      "description": "sum(model_running_instances) across stt/smr/nlp/guardrail. Feeds the TASK-386 platform 'running models' tile.",
+      "targets": [
+        { "expr": "sum(model_running_instances)", "legendFormat": "running", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "steps": [{ "color": "text", "value": null }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+    },
+    {
+      "gridPos": { "h": 5, "w": 18, "x": 6, "y": 0 },
+      "id": 2,
+      "title": "Scrape targets UP (by job)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+      "description": "1 = target UP, 0 = DOWN. Mirrors Prometheus /targets. Python-service jobs stay DOWN until stt-v2/smr/nlp/guardrail run on the host.",
+      "targets": [
+        { "expr": "up", "legendFormat": "{{job}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1,
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 15 }
+        }
+      }
+    },
+    {
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 5 },
+      "id": 3,
+      "title": "Running instances per model",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+      "description": "sum by (service, model) (model_running_instances) — METRIC-CONTRACT §3.",
+      "targets": [
+        { "expr": "sum by (service, model) (model_running_instances)", "legendFormat": "", "refId": "A", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value": "running" } } }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 5 },
+      "id": 4,
+      "title": "Inference latency p95 per model (s)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+      "description": "histogram_quantile(0.95, sum by (le, service, model) (rate(model_inference_latency_seconds_bucket[5m]))) — METRIC-CONTRACT §3/§11.",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, service, model) (rate(model_inference_latency_seconds_bucket[5m])))",
+          "legendFormat": "{{service}} / {{model}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 5 },
+      "id": 5,
+      "title": "Inference latency avg per model (s)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+      "description": "rate(sum)/rate(count) over 5m — METRIC-CONTRACT §3/§11 (per-model avg latency tile).",
+      "targets": [
+        {
+          "expr": "sum by (service, model) (rate(model_inference_latency_seconds_sum[5m])) / sum by (service, model) (rate(model_inference_latency_seconds_count[5m]))",
+          "legendFormat": "{{service}} / {{model}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "id": 6,
+      "title": "HTTP request rate (req/s by job)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+      "description": "sum by (job) (rate(http_requests_total[5m])). Covers api-gateway/stt/smr/harness. NLP HTTP is nlp_http_* (see contract §6); guardrail has no http_*.",
+      "targets": [
+        { "expr": "sum by (job) (rate(http_requests_total[5m]))", "legendFormat": "{{job}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "id": 7,
+      "title": "API per-service request p95 (s)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+      "description": "histogram_quantile(0.95, sum by (le, service) (rate(http_request_duration_seconds_bucket[5m]))) — uses the API gateway's own service label (METRIC-CONTRACT §9).",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, service) (rate(http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 2 }] }
+        }
+      }
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "tags": ["hope", "platform", "task-386"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timezone": "",
+  "title": "HOPE Platform Metrics (dev)",
+  "uid": "hope-platform-metrics",
+  "version": 1
+}

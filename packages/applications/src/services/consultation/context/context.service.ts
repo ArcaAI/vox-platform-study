@@ -988,8 +988,15 @@ export class ContextService extends BaseService implements IContextService {
       data: { consultationId, page, limit, count: allItems.length },
     });
 
+    // TASK-406 (P2-6a) — same storage-resolved media enrichment as
+    // getContextItems (TASK-375 item 4), applied to the PAGE slice only so we
+    // never presign URLs for items that are not returned. Degrades to a no-op
+    // when the storage deps are not wired.
+    const responses = pageItems.map(ContextDtoMapper.toResponse);
+    await this.attachMediaUrls(responses);
+
     return {
-      data: pageItems.map(ContextDtoMapper.toResponse),
+      data: responses,
       count: allItems.length,
       page,
       limit,

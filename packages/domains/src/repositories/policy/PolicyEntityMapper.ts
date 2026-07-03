@@ -17,6 +17,8 @@ export interface PolicyRecord {
   scope: string;
   rules: unknown;
   resourceStatus: string;
+  /** TASK-409 — server-authoritative anti-lockout marker (read-only via API). */
+  isProtected: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,6 +33,8 @@ export interface PolicyRowLike {
   scope: string;
   rules: unknown;
   resourceStatus: string;
+  /** Optional so legacy test fixtures without the TASK-409 column still map. */
+  isProtected?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,6 +47,7 @@ export function mapPolicyRowToRecord(row: PolicyRowLike): PolicyRecord {
     scope: row.scope,
     rules: row.rules,
     resourceStatus: row.resourceStatus,
+    isProtected: row.isProtected ?? false,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

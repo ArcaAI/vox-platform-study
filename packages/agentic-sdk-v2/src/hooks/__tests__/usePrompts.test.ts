@@ -403,6 +403,34 @@ describe('usePrompts', () => {
         });
     });
 
+    // TASK-407 — raw run rows for the Agent Jobs surface.
+    describe('listUsageRecords', () => {
+        it('should GET the bare USAGE_RECORDS path when no params are given', async () => {
+            const page = { data: [], count: 0, page: 0, limit: 20 };
+            mockGet.mockResolvedValue(page);
+            const { result } = renderHook(() => usePrompts());
+
+            let resp: unknown;
+            await act(async () => { resp = await result.current.listUsageRecords(); });
+
+            expect(mockGet).toHaveBeenCalledWith(PROMPT_TEMPLATE_ENDPOINTS.USAGE_RECORDS);
+            expect(resp).toEqual(page);
+        });
+
+        it('should append page/limit/promptTemplateId query params (page 0 preserved)', async () => {
+            mockGet.mockResolvedValue({ data: [], count: 0, page: 0, limit: 5 });
+            const { result } = renderHook(() => usePrompts());
+
+            await act(async () => { await result.current.listUsageRecords({ page: 0, limit: 5, promptTemplateId: 'pt-1' }); });
+
+            const url = mockGet.mock.calls[0][0] as string;
+            expect(url).toContain(PROMPT_TEMPLATE_ENDPOINTS.USAGE_RECORDS);
+            expect(url).toContain('page=0');
+            expect(url).toContain('limit=5');
+            expect(url).toContain('promptTemplateId=pt-1');
+        });
+    });
+
     describe('list edge cases', () => {
         it('should append departmentId query param', async () => {
             mockGet.mockResolvedValue([]);

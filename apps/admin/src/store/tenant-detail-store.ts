@@ -11,21 +11,21 @@ import type { Department } from '@/features/tenants/sdk-types';
  * tenant-detail surface.
  */
 interface TenantDetailState {
-    tenant: Tenant | null;
-    department: Department | null;
-    user: User | null;
-    setTenant: (tenant: Tenant | null) => void;
-    setDepartment: (department: Department | null) => void;
-    setUser: (user: User | null) => void;
-    clear: () => void;
+  tenant: Tenant | null;
+  department: Department | null;
+  user: User | null;
+  setTenant: (tenant: Tenant | null) => void;
+  setDepartment: (department: Department | null) => void;
+  setUser: (user: User | null) => void;
+  clear: () => void;
 }
 
 export const useTenantDetailStore = create<TenantDetailState>((set) => ({
-    tenant: null,
-    department: null,
-    user: null,
-    setTenant: (tenant) => set({ tenant }),
-    setDepartment: (department) => set({ department }),
-    setUser: (user) => set({ user }),
-    clear: () => set({ tenant: null, department: null, user: null }),
+  tenant: null,
+  department: null,
+  user: null,
+  setTenant: (tenant) => set({ tenant }),
+  setDepartment: (department) => set({ department }),
+  setUser: (user) => set({ user }),
+  clear: () => set({ tenant: null, department: null, user: null }),
 }));

@@ -29,44 +29,44 @@ const baseURL = process.env.ADMIN_E2E_BASE_URL ?? `http://localhost:${PORT}`;
 const isCI = ['1', 'true'].includes((process.env.CI ?? '').toLowerCase());
 
 export default defineConfig({
-    testDir: './e2e',
-    testMatch: '**/*.spec.ts',
-    fullyParallel: true,
-    forbidOnly: isCI,
-    retries: isCI ? 2 : 0,
-    workers: isCI ? 1 : undefined,
-    reporter: [['list'], ['html', { open: 'never', outputFolder: 'e2e/.report' }]],
-    timeout: 30_000,
-    expect: { timeout: 10_000 },
-    use: {
-        baseURL,
-        trace: 'on-first-retry',
-        screenshot: 'only-on-failure',
-    },
+  testDir: './e2e',
+  testMatch: '**/*.spec.ts',
+  fullyParallel: true,
+  forbidOnly: isCI,
+  retries: isCI ? 2 : 0,
+  workers: isCI ? 1 : undefined,
+  reporter: [['list'], ['html', { open: 'never', outputFolder: 'e2e/.report' }]],
+  timeout: 30_000,
+  expect: { timeout: 10_000 },
+  use: {
+    baseURL,
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+  },
 
-    // Viewport tiers = the approved Desktop / Tablet / Mobile responsive model.
-    // All Chromium so a single `playwright install chromium` covers every tier.
-    projects: [
-        {
-            name: 'desktop',
-            use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } },
-        },
-        {
-            name: 'tablet',
-            use: { browserName: 'chromium', viewport: { width: 834, height: 1112 }, hasTouch: true },
-        },
-        {
-            name: 'mobile',
-            use: { ...devices['Pixel 5'], browserName: 'chromium', viewport: { width: 390, height: 844 } },
-        },
-    ],
-
-    // Auto-start the admin dev server. The API at :8868 must already be running
-    // (the dev server proxies /api → :8868); login fails fast otherwise.
-    webServer: {
-        command: 'pnpm dev',
-        url: baseURL,
-        timeout: 120_000,
-        reuseExistingServer: !isCI,
+  // Viewport tiers = the approved Desktop / Tablet / Mobile responsive model.
+  // All Chromium so a single `playwright install chromium` covers every tier.
+  projects: [
+    {
+      name: 'desktop',
+      use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } },
     },
+    {
+      name: 'tablet',
+      use: { browserName: 'chromium', viewport: { width: 834, height: 1112 }, hasTouch: true },
+    },
+    {
+      name: 'mobile',
+      use: { ...devices['Pixel 5'], browserName: 'chromium', viewport: { width: 390, height: 844 } },
+    },
+  ],
+
+  // Auto-start the admin dev server. The API at :8868 must already be running
+  // (the dev server proxies /api → :8868); login fails fast otherwise.
+  webServer: {
+    command: 'pnpm dev',
+    url: baseURL,
+    timeout: 120_000,
+    reuseExistingServer: !isCI,
+  },
 });

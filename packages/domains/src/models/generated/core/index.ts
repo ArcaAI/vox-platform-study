@@ -29,6 +29,7 @@ export * from './KnowledgeDocumentModel';
 export * from './MediaModel';
 export * from './NamedEntityModel';
 export * from './NotificationModel';
+export * from './PasswordResetTokenModel';
 export * from './PermissionModel';
 export * from './PipelinePolicyChangeModel';
 export * from './PipelinePolicyModel';

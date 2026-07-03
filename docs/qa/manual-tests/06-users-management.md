@@ -48,17 +48,15 @@ open a tenant to "act on" it), `tenant_admin` (Default/`__GLOBAL__`),
 | Create dialog (T381-C) | Create user (username + password) | ☐ |
 | 38u Detail (T381-D) | View user; 7-tab navigation; header actions | ☐ |
 | 38u-a Profile (T381-Pa) | View/edit profile (REAL subset) | ☐ |
-| 38u-b Preferences (T381-Pb) | Admin-edit another user's prefs — **Target** | ☐ (expect NA) |
+| 38u-b Preferences (T381-Pb) | Admin-edit another user's prefs — **backend REAL (TASK-388)**; FE wiring TASK-394 | ☐ (NA until TASK-394) |
 | 38u-c Agent instructions (T381-Pc) | Per-dept prompt templates (read) | ☐ |
 | 38u-d DNA Style (T381-Pd) | Analyzed writing style (self-view) | ☐ |
 | 38u-e Departments (T381-Pe) | Assign / primary (OCC) / unassign | ☐ |
 | 38u-f DNA Reports (T381-Pf) | Reports + versions + diff (self-view) | ☐ |
 | 38u-g Activity (T381-Pg) | Audit timeline + CSV export | ☐ |
 
-> **TARGET (mark NA, never F):** reset-password; profile name/phone/specialty/MFA;
-> editing another user's Preferences; per-**user** prompt personalization; DNA
-> **edit / new version / cross-user generate**; **Excel/PDF** export; a **server**
-> bulk endpoint. See [README §2](../../implementation/TASK-381-Users-Management/README.md) / matrix U5,U7,U8,U9,U10,U12.
+> **⚠️ Update 2026-07-01 — BACKEND now DELIVERED (TASK-388), FE WIRING IN PROGRESS (TASK-394).**
+> The following were TARGET; their **backends + SDK are now live-green** ([TASK-388](../../implementation/TASK-388-Users-Backend-Backlog/README.md), `task-388-users-backend.spec.ts`): **reset-password**, **server bulk actions**, **Excel/PDF export**, **admin-edit-another-user's Preferences**, **per-user prompt personalization**, **DNA edit / new version / cross-user generate**. **However, the admin-console UI that consumes them is being wired by the parallel worker under TASK-394.** Until TASK-394 lands, the **UI controls below may still render disabled/Target** — so keep them `NA` **when the control is still disabled**, and **re-run once TASK-394 ships** (they should flip to `P`). Do **not** mark them `P` before the FE is wired. Genuinely still TARGET at the product level: profile name/phone/specialty/MFA. See matrix U5,U7,U8,U9,U10,U12 ([`users-management.md`](../traceability/users-management.md)).
 
 ---
 
@@ -79,12 +77,12 @@ open a tenant to "act on" it), `tenant_admin` (Default/`__GLOBAL__`),
 | T381-G.8 | Sort | 1) Sort by a sortable header (e.g. Status) asc/desc | Order flips; pager resets to page 1 on shape change | Positive | — | U1 |
 | T381-G.9 | Pagination | 1) Change page size (10/20/50)<br>2) Next/Prev | Page + size honored; counts `tabular-nums`; pages disjoint | Positive | — | |
 | T381-G.10 | Row kebab — View | 1) Row ⋯ → **View** (or click the Member cell) | Navigates to the 38u detail | Positive | — | |
-| T381-G.11 | Row kebab — Reset password = **Target** | 1) Open row ⋯ | **Reset password · Target** is **disabled** | RBAC/Target | — | NA; U5 |
+| T381-G.11 | Row kebab — Reset password | 1) Open row ⋯ | Until TASK-394: **Reset password · Target** still **disabled** (`NA`). After TASK-394: enabled → temp-secret + force-change (backend **REAL, TASK-388**) | RBAC/Target | — | U5; **BE REAL (TASK-388) · FE TASK-394** |
 | T381-G.12 | Row kebab — Disable/Enable | 1) Manager: ⋯ → **Disable** → confirm | Status flips to Inactive; toast; re-enable restores | Positive | — | U4; UAC-04 |
 | T381-G.13 | Export — CSV (REAL) | 1) **Export ▾** → *Export page as CSV* | A CSV of the current page downloads; toast "Exported N users" | Positive | — | U7 |
-| T381-G.14 | Export — Excel/PDF = **Target** | 1) Open **Export ▾** | *Excel* / *PDF* items are **disabled · Target** | Target | — | NA; U7 |
+| T381-G.14 | Export — Excel/PDF | 1) Open **Export ▾** | Until TASK-394: *Excel* / *PDF* still **disabled · Target** (`NA`). After TASK-394: server xlsx/pdf export (backend **REAL, TASK-388**) | Target | — | U7; **BE REAL (TASK-388) · FE TASK-394** |
 | T381-G.15 | Bulk bar appears | 1) Manager: select ≥1 row checkbox | `UsersBulkBar` shows a live count + **Disable · Assign department · Export · Clear** | Positive | — | bulk `120:9913`; U6 |
-| T381-G.16 | Bulk disable (client loop) | 1) Select 2 rows → **Disable** | Both disabled; partial failure → "N of M …" toast; **Clear** resets | Positive | — | U6 (no server bulk) |
+| T381-G.16 | Bulk disable | 1) Select 2 rows → **Disable** | Both disabled; partial failure → "N of M …" toast; **Clear** resets. *(Today: client loop. Server **bulk** endpoint now **REAL, TASK-388**; FE rewire to it under TASK-394)* | Positive | — | U6; **server bulk BE REAL (TASK-388) · FE TASK-394** |
 | T381-G.17 | Bulk assign department | 1) Select rows → **Assign department** → pick depts → Save | Picker (full-screen on **M**); assignment applied — PATCH `:id/departments` **200** (V2 handler shipped; bulk-reconciles each user to the chosen set) | Positive | — | U6/U11 |
 | T381-G.18 | **M** · grid → card-list + FAB | 1) Resize to mobile (or run **M** project) | Grid becomes a **card-list** (`ul[aria-label="Tenant users"]`); a **New user FAB** (≥44px) replaces the header button; facet bar hidden | Positive | — | TASK-384; FAB `aria-label="New user"` |
 | T381-G.19 | Non-admin has no manage controls | 1) As `doctor`, open Users (if reachable) | No **New user**, no checkboxes, no Disable; **default deny** | RBAC | — | X5; UAC-01.8 |
@@ -118,7 +116,7 @@ open a tenant to "act on" it), `tenant_admin` (Default/`__GLOBAL__`),
 | TC | Title | Steps | Expected result | Type | Status | Notes |
 |----|-------|-------|-----------------|------|--------|-------|
 | T381-D.1 | Header identity | 1) Open a user | Avatar, `h1` username + **status** dot+label; subline `email · @username · roles` | Positive | — | U3 |
-| T381-D.2 | Header actions (manager) | 1) Inspect header | **Edit profile**, **Reset password · Target** (disabled), ⋯ → **Disable/Enable user** | Positive | — | U4; U5=Target |
+| T381-D.2 | Header actions (manager) | 1) Inspect header | **Edit profile**, **Reset password** (disabled · Target until TASK-394 — backend **REAL, TASK-388**), ⋯ → **Disable/Enable user** | Positive | — | U4; U5 **BE REAL (TASK-388) · FE TASK-394** |
 | T381-D.3 | Tab nav (**D/T**) | 1) Click each of the 7 underline tabs | Active tab shows `border-primary`; bar scrolls horizontally on **T** | Positive | — | nav `aria-label="User sections"` |
 | T381-D.4 | Tab nav (**M**) | 1) On mobile, use the section **Select** | `Select` (`aria-label="User section"`, `h-11`) lists all 7; underline bar hidden; header stacks | Positive | — | TASK-384 |
 | T381-D.5 | Not found / no access | 1) `arcaai_admin` opens a `__GLOBAL__` user URL | **Empty** "User not found" + Back to users (**404-over-403**) | Isolation | — | X1; UAC-02.4 |
@@ -135,20 +133,20 @@ open a tenant to "act on" it), `tenant_admin` (Default/`__GLOBAL__`),
 | T381-Pa.1 | **a Profile** `121:11980` | Open Profile | REAL: username, email, **Type**, roles, status, member-since | Positive | — | U3 |
 | T381-Pa.2 | a · Edit (REAL subset) | **Edit profile** → change username/email/status/service-account → Save | Persists; OCC conflict → toast + reload | Positive | — | UAC-02.1 |
 | T381-Pa.3 | a · Target fields | Inspect Full name/Specialty/Phone/MFA/Last login | Shown em-dash + **Target**; not editable | Target | — | NA |
-| T381-Pb.1 | **b Preferences** `121:11981` | Open Preferences | Whole panel **Target**: disabled switches + em-dash behind a `Target` alert | Target | — | NA; U8 (backend exists, UI not wired) |
+| T381-Pb.1 | **b Preferences** `121:11981` | Open Preferences | Until TASK-394: panel still **Target** (disabled switches + `Target` alert; `NA`). After TASK-394: admin can edit another user's prefs (backend + SDK **REAL, TASK-388**) | Target | — | U8; **BE REAL (TASK-388) · FE TASK-394** |
 | T381-Pc.1 | **c Agent instructions** `121:11982` | Open Instructions | REAL: per assigned dept, `PromptTemplate` rows (name, `v{n}·status`, preview) + **Manage** link | Positive | — | U9 |
-| T381-Pc.2 | c · per-user scope | Inspect personalization | Per-**user** override is **Target** (alert) | Target | — | NA |
+| T381-Pc.2 | c · per-user scope | Inspect personalization | Until TASK-394: per-**user** override still **Target** (`NA`). After TASK-394: per-user prompt scope (`USER_PERSONAL`) editable (backend **REAL, TASK-388**) | Target | — | U9; **BE REAL (TASK-388) · FE TASK-394** |
 | T381-Pc.3 | c · empty | User with no departments | "No assigned departments" prompt | Edge | — | |
 | T381-Pd.1 | **d DNA Style** `121:11983` (self) | As `doctor`, open own DNA Style | REAL: style text + trait chips + version badge | Positive | — | U10 |
-| T381-Pd.2 | d · other user | As admin, open another user's DNA Style | Degrades to **empty** (self-scoped endpoint — 403) — not an error | Edge/Isolation | — | matrix V3 |
-| T381-Pd.3 | d · Edit/New version | Inspect controls | **Disabled · Target** | Target | — | NA |
+| T381-Pd.2 | d · other user | As admin, open another user's DNA Style | Today: degrades to **empty** (the doctor-scoped endpoint is 403). *(Admin cross-user read now exists via the admin endpoint, backend **REAL, TASK-388**; FE panel rewire under TASK-394 → will show data)* | Edge/Isolation | — | matrix V3; **BE REAL (TASK-388) · FE TASK-394** |
+| T381-Pd.3 | d · Edit/New version | Inspect controls | Until TASK-394: **Disabled · Target** (`NA`). After TASK-394: cross-user DNA-style edit / new-version (backend **REAL, TASK-388**) | Target | — | U10; **BE REAL (TASK-388) · FE TASK-394** |
 | T381-Pe.1 | **e Departments** `121:11984` | Open Departments | REAL table: Department · Role(Primary/Member) · Assigned · Actions | Positive | — | U11; UAC-02.2 |
 | T381-Pe.2 | e · Assign | **Assign** → picker → Save | Department added; full-screen picker on **M** | Positive | — | |
 | T381-Pe.3 | e · Set primary (OCC) | Set a non-primary as primary | Primary moves; concurrent stale edit → OCC toast + reload | Positive | — | If-Match/OCC |
 | T381-Pe.4 | e · Unassign guard | Try to remove the **primary** | Blocked — promote another first | Negative | — | |
 | T381-Pf.1 | **f DNA Reports** `121:11985` (self) | As `doctor`, open own DNA Reports | REAL: report + version rail + selected analysis + side-by-side **diff** | Positive | — | U12 |
-| T381-Pf.2 | f · Create report | Inspect **Create report** | Enabled only when **self**; disabled · Target for another user | Target | — | NA cross-user |
-| T381-Pf.3 | f · other user | As admin, open another user's Reports | Empty state (self-scoped) | Edge | — | V3 |
+| T381-Pf.2 | f · Create report | Inspect **Create report** | Until TASK-394: enabled only when **self**; disabled · Target for another user (`NA`). After TASK-394: cross-user generate (admin endpoint, backend **REAL, TASK-388**) | Target | — | U12; **BE REAL (TASK-388) · FE TASK-394** |
+| T381-Pf.3 | f · other user | As admin, open another user's Reports | Today: empty state (self-scoped). *(Admin cross-user list/generate now exists, backend **REAL, TASK-388**; FE rewire under TASK-394)* | Edge | — | V3; **BE REAL (TASK-388) · FE TASK-394** |
 | T381-Pg.1 | **g Activity** `121:11986` | Open Activity | REAL: audit timeline (humanized title, dot+**label**, time·actor·IP) | Positive | — | U13; X6 |
 | T381-Pg.2 | g · Export CSV | **Export CSV** | Downloads the user's activity; disabled when empty | Positive | — | |
 
@@ -167,7 +165,7 @@ Run alongside the blocks above; a violation is a defect even if a positive case 
 | T381-X.5 | **X5** default deny | As `doctor`, attempt create/disable/delete | Denied / controls absent | — | G.19 |
 | T381-X.6 | **X6** auditability | Create → update → disable → archive a user; open Activity / Audit | Each mutation logged (actor, IP, timestamp, before/after) | — | Pg.1; UAC-*.audit |
 | T381-X.7 | **X7** confirm destructive | Disable / archive a user | Explicit confirmation required before the change | — | G.12, D.6, UAC-04/05 |
-| T381-X.8 | **X8** secrets once | If a temp password/secret is ever surfaced on create | Shown once at creation only; never re-displayed | — | NA today (no reset-pw); UAC-01.9 |
+| T381-X.8 | **X8** secrets once | If a temp password/secret is ever surfaced on create/reset | Shown once only; never re-displayed | — | Reset-password backend now **REAL (TASK-388)** — X8 becomes testable once the FE reset-pw lands (**TASK-394**); UAC-01.9 |
 
 ---
 

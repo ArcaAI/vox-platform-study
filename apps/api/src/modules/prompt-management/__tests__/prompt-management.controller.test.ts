@@ -45,6 +45,8 @@ const createMockService = () => ({
     // TASK-328 A4
     testPromptTemplate: vi.fn(),
     getUsageAnalytics: vi.fn(),
+    // TASK-407
+    listUsageRecords: vi.fn(),
     softDeletePromptTemplate: vi.fn(),
     assignToDepartment: vi.fn(),
 });
@@ -386,6 +388,57 @@ describe('PromptManagementController', () => {
             expect(result.byDepartment).toHaveLength(1);
             expect(result.byDoctor).toHaveLength(1);
             expect(result.byDay).toHaveLength(1);
+        });
+    });
+
+    // TASK-407 — raw run rows for the tenant-detail Agent Jobs surface.
+    describe('GET /prompt-templates/usage-records (listUsageRecords)', () => {
+        const fakePage = {
+            count: 42,
+            page: 1,
+            limit: 10,
+            data: [
+                {
+                    id: 'run-1',
+                    promptTemplateId: 'tpl-1',
+                    promptVersionNumber: 2,
+                    consultationId: 'cons-1',
+                    doctorId: 'doc-1',
+                    departmentId: 'dept-1',
+                    createdAt: '2026-07-01T09:00:00.000Z',
+                },
+            ],
+        };
+
+        it('parses page/limit query strings into numbers and forwards the template filter', async () => {
+            mockService.listUsageRecords.mockResolvedValue(fakePage);
+
+            await controller.listUsageRecords({ page: '1', limit: '10', promptTemplateId: 'tpl-1' });
+
+            expect(mockService.listUsageRecords).toHaveBeenCalledWith({ page: 1, limit: 10, promptTemplateId: 'tpl-1' });
+        });
+
+        it('passes undefined page/limit when omitted (service applies defaults)', async () => {
+            mockService.listUsageRecords.mockResolvedValue(fakePage);
+
+            await controller.listUsageRecords({});
+
+            expect(mockService.listUsageRecords).toHaveBeenCalledWith({ page: undefined, limit: undefined, promptTemplateId: undefined });
+        });
+
+        it('returns the paginated envelope from the service unchanged', async () => {
+            mockService.listUsageRecords.mockResolvedValue(fakePage);
+
+            const result = await controller.listUsageRecords({ page: '1', limit: '10' });
+
+            expect(result.count).toBe(42);
+            expect(result.data).toHaveLength(1);
+            expect(result.data[0].id).toBe('run-1');
+        });
+
+        it('is declared as a static usage-records path (not shadowed by :id routes)', () => {
+            const path = Reflect.getMetadata(PATH_METADATA, PromptManagementController.prototype.listUsageRecords);
+            expect(path).toBe('usage-records');
         });
     });
 

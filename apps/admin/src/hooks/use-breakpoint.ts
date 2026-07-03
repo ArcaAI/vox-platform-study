@@ -19,43 +19,43 @@ export type Breakpoint = 'mobile' | 'tablet' | 'desktop';
 
 /** Subscribe to a CSS media query. SSR-safe (returns `false` until mounted). */
 export function useMediaQuery(query: string): boolean {
-    const getMatch = React.useCallback(
-        () => (typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : false),
-        [query],
-    );
+  const getMatch = React.useCallback(
+    () => (typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : false),
+    [query],
+  );
 
-    const [matches, setMatches] = React.useState<boolean>(getMatch);
+  const [matches, setMatches] = React.useState<boolean>(getMatch);
 
-    React.useEffect(() => {
-        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-        const mql = window.matchMedia(query);
-        const onChange = () => setMatches(mql.matches);
-        onChange();
-        mql.addEventListener('change', onChange);
-        return () => mql.removeEventListener('change', onChange);
-    }, [query]);
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatches(mql.matches);
+    onChange();
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, [query]);
 
-    return matches;
+  return matches;
 }
 
 export interface BreakpointState {
-    breakpoint: Breakpoint;
-    isMobile: boolean;
-    isTablet: boolean;
-    isDesktop: boolean;
+  breakpoint: Breakpoint;
+  isMobile: boolean;
+  isTablet: boolean;
+  isDesktop: boolean;
 }
 
 /** Resolve the active responsive tier from viewport width. */
 export function useBreakpoint(): BreakpointState {
-    const isTabletUp = useMediaQuery(`(min-width: ${BREAKPOINTS.md}px)`);
-    const isDesktopUp = useMediaQuery(`(min-width: ${BREAKPOINTS.lg}px)`);
+  const isTabletUp = useMediaQuery(`(min-width: ${BREAKPOINTS.md}px)`);
+  const isDesktopUp = useMediaQuery(`(min-width: ${BREAKPOINTS.lg}px)`);
 
-    const breakpoint: Breakpoint = isDesktopUp ? 'desktop' : isTabletUp ? 'tablet' : 'mobile';
+  const breakpoint: Breakpoint = isDesktopUp ? 'desktop' : isTabletUp ? 'tablet' : 'mobile';
 
-    return {
-        breakpoint,
-        isMobile: !isTabletUp,
-        isTablet: isTabletUp && !isDesktopUp,
-        isDesktop: isDesktopUp,
-    };
+  return {
+    breakpoint,
+    isMobile: !isTabletUp,
+    isTablet: isTabletUp && !isDesktopUp,
+    isDesktop: isDesktopUp,
+  };
 }

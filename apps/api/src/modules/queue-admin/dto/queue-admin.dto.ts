@@ -150,3 +150,14 @@ export class CleanQueueResponse {
 export class SuccessResponse {
   @ApiProperty({ default: true }) success!: boolean;
 }
+
+/** TASK-403 — Redis health snapshot for `GET /admin/queues/health/redis`. */
+export class RedisHealthInfoResponse {
+  @ApiProperty({ enum: ['healthy', 'degraded', 'unhealthy'] }) status!: 'healthy' | 'degraded' | 'unhealthy';
+  @ApiProperty({ description: 'PING round-trip in ms (-1 when unreachable).' }) latencyMs!: number;
+  @ApiProperty() connectedClients!: number;
+  @ApiProperty({ example: '48.31M' }) usedMemory!: string;
+  @ApiProperty({ description: 'Server uptime in seconds.' }) uptime!: number;
+  @ApiProperty({ example: '7.2.5' }) version!: string;
+  @ApiProperty({ description: 'Queues registered in this API process.' }) queuesRegistered!: number;
+}

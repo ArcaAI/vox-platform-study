@@ -8,6 +8,8 @@ import type { TenantEntitlementOverride, UpsertTenantOverrideInput } from '@arca
 import { useEffect, useState, type FormEvent } from 'react';
 import { ConfirmDelete } from '@/features/common/confirm-delete';
 import { FEATURE_FIELDS, LIMIT_FIELDS, MODEL_TIERS, RATE_LIMIT_TIERS, limitInputValue, parseLimitInput } from './entitlement-fields';
+import { MOBILE_DIALOG_CONTENT, MOBILE_DIALOG_FOOTER_DEEP } from '@/lib/responsive';
+import { cn } from '@/lib/utils';
 
 const INHERIT = '__inherit__';
 
@@ -76,13 +78,13 @@ export function TenantOverrideDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[72vh] flex-col sm:max-w-[60vw]">
+      <DialogContent className={cn('flex h-[72vh] flex-col sm:max-w-[60vw]', MOBILE_DIALOG_CONTENT)}>
         <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
           <DialogHeader className="shrink-0">
             <DialogTitle>Tenant override</DialogTitle>
             <DialogDescription>
-              Blank / “Inherit” = use the plan default. Set a value to raise or lower just that capability for this tenant. Reversible — clearing reverts to
-              the plan.
+              Blank / “Inherit” = use the plan default. Set a value to raise or lower just that capability for this tenant. Reversible — clearing
+              reverts to the plan.
             </DialogDescription>
           </DialogHeader>
 
@@ -166,7 +168,7 @@ export function TenantOverrideDialog({
             </div>
           </div>
 
-          <DialogFooter className="shrink-0 sm:justify-between">
+          <DialogFooter className={cn('shrink-0 sm:justify-between', MOBILE_DIALOG_FOOTER_DEEP)}>
             {override ? (
               <ConfirmDelete
                 trigger={

@@ -1,6 +1,7 @@
 import { AuthServiceModule, UserDepartmentServiceModule, UserRoleAssignmentServiceModule, UserServiceModule } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
+import { AdminImpersonationController } from './admin-impersonation.controller';
 import { AuthController } from './auth.controller';
 import { StreamTicketModule } from './stream-ticket.module';
 
@@ -31,6 +32,10 @@ import { StreamTicketModule } from './stream-ticket.module';
     CoreDatabaseModule,
     StreamTicketModule,
   ],
-  controllers: [AuthController],
+  // TASK-401 — AdminImpersonationController adds the super-admin-only
+  // `POST /admin/users/:id/impersonate` mint alongside the legacy
+  // `/auth/impersonate` route (same module: it reuses the exact same
+  // service/repository set the AuthController already wires).
+  controllers: [AuthController, AdminImpersonationController],
 })
 export class AuthModule {}

@@ -63,8 +63,8 @@ function KillSwitchCard() {
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Enforcement kill-switch</CardTitle>
         <CardDescription>
-          When OFF (the default), limits are computed and displayed but never block. When ON, over-limit create/usage actions are blocked and downgrades
-          soft-disable overflow resources.
+          When OFF (the default), limits are computed and displayed but never block. When ON, over-limit create/usage actions are blocked and
+          downgrades soft-disable overflow resources.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -290,7 +290,9 @@ function TenantToolsCard() {
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Tenant tools</CardTitle>
-        <CardDescription>Inspect any tenant’s capabilities, set a per-tenant override, downgrade a plan, or run the trial-expiry sweep.</CardDescription>
+        <CardDescription>
+          Inspect any tenant’s capabilities, set a per-tenant override, downgrade a plan, or run the trial-expiry sweep.
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end gap-3">

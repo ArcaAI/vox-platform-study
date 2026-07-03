@@ -382,6 +382,21 @@ describe('NotificationService', () => {
             expect(result.data[1].title).toBe('Notification 2');
         });
 
+        it('coerces Notification-typed filter values via the model registry (TASK-406 P2-6c)', async () => {
+            mockNotificationRepository.findAll.mockResolvedValue([]);
+            mockNotificationRepository.count.mockResolvedValue(0);
+
+            await service.fetchAll({ limit: 10, page: 1, filters: 'read[equals]:false;type[equals]:STANDARD' });
+
+            const expectedFilters = { read: { equals: false }, type: { equals: 'STANDARD' } };
+            expect(mockNotificationRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({ filters: expectedFilters })
+            );
+            expect(mockNotificationRepository.count).toHaveBeenCalledWith(
+                expect.objectContaining({ filters: expectedFilters })
+            );
+        });
+
         it('should return empty result when no notifications exist', async () => {
             mockNotificationRepository.findAll.mockResolvedValue([]);
             mockNotificationRepository.count.mockResolvedValue(0);

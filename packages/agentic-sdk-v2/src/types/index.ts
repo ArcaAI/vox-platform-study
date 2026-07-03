@@ -206,8 +206,8 @@ export type {
   PromptUsageAnalytics,
 } from './prompt';
 
-// Diff types (SDK-207 WS-4)
-export type { DiffChange, DiffMode, DiffResult, DiffStats } from './diff';
+// Diff types (SDK-207 WS-4; TASK-394 P0-2 — prompt version diff superset)
+export type { DiffChange, DiffMode, DiffResult, DiffStats, PromptVersionDiff, PromptVersionDiffField } from './diff';
 
 // Common types
 export type {
@@ -329,6 +329,9 @@ export type {
   UpdateGlobalSettingInput,
   UpdateUserSettingInput,
   UserSetting,
+  // TASK-396 — secret reveal (step-up re-auth).
+  RevealSecretInput,
+  RevealSecretResult,
 } from './settings';
 export { ConfigConflictError } from './settings';
 
@@ -341,3 +344,25 @@ export type {
   CaptureMode,
   TranscriptionMode,
 } from './frontend-pipeline-config';
+
+// Super-admin ops-surface types (TASK-403 — Rate Limits / Queues & Jobs / Prisma Studio)
+export type {
+  BulkJobActionResult,
+  JobDetail,
+  JobOptions,
+  JobStatusFilter,
+  JobSummary,
+  ListJobsParams,
+  PaginatedJobs,
+  PrismaStudioStatus,
+  QueueJobCounts,
+  QueueStats,
+  RateLimitPolicy,
+  RateLimitRoutePolicy,
+  RateLimitTierName,
+  RateLimitTierPolicy,
+  RateLimitValueSource,
+  RedisHealth,
+  SetRateLimitRouteInput,
+  SetRateLimitTierInput,
+} from './ops-admin';

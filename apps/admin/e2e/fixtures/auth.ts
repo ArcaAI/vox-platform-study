@@ -19,39 +19,41 @@ import { test as base, expect, type Page } from '@playwright/test';
 export type PersonaKey = 'superAdmin' | 'tenantAdmin' | 'arcaaiAdmin' | 'doctor';
 
 export interface Persona {
-    username: string;
-    password: string;
-    /** Workspace key; omitted for the cross-tenant super-admin. */
-    tenantKey?: string;
+  username: string;
+  password: string;
+  /** Workspace key; omitted for the cross-tenant super-admin. */
+  tenantKey?: string;
 }
 
 /** Seeded accounts (non-production). Source: docs/qa/manual-tests/README.md §5. */
 export const PERSONAS: Record<PersonaKey, Persona> = {
-    superAdmin: { username: 'super_admin', password: 'password123' },
-    tenantAdmin: { username: 'tenant_admin', password: 'password123', tenantKey: '__GLOBAL__' },
-    arcaaiAdmin: { username: 'arcaai_admin', password: 'password123', tenantKey: 'ARCAAI' },
-    doctor: { username: 'doctor', password: 'password123' },
+  superAdmin: { username: 'super_admin', password: 'password123' },
+  tenantAdmin: { username: 'tenant_admin', password: 'password123', tenantKey: '__GLOBAL__' },
+  arcaaiAdmin: { username: 'arcaai_admin', password: 'password123', tenantKey: 'ARCAAI' },
+  // Non-super-admin logins REQUIRE a workspace key (mirrors tests/helpers,
+  // which always logs the doctor in with DEFAULT_TENANT_KEY) — TASK-403.
+  doctor: { username: 'doctor', password: 'password123', tenantKey: '__GLOBAL__' },
 };
 
 /** Drive the real login form and wait for the post-login landing (`/tenants`). */
 export async function loginAs(page: Page, persona: PersonaKey): Promise<void> {
-    const p = PERSONAS[persona];
-    await page.goto('/login');
-    await page.locator('#username').fill(p.username);
-    await page.locator('#password').fill(p.password);
-    if (p.tenantKey) await page.locator('#tenantKey').fill(p.tenantKey);
-    await page.getByRole('button', { name: 'Sign in' }).click();
-    await page.waitForURL('**/tenants', { timeout: 15_000 });
+  const p = PERSONAS[persona];
+  await page.goto('/login');
+  await page.locator('#username').fill(p.username);
+  await page.locator('#password').fill(p.password);
+  if (p.tenantKey) await page.locator('#tenantKey').fill(p.tenantKey);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.waitForURL('**/tenants', { timeout: 15_000 });
 }
 
 interface AuthFixtures {
-    loginAs: (persona: PersonaKey) => Promise<void>;
+  loginAs: (persona: PersonaKey) => Promise<void>;
 }
 
 export const test = base.extend<AuthFixtures>({
-    loginAs: async ({ page }, use) => {
-        await use((persona: PersonaKey) => loginAs(page, persona));
-    },
+  loginAs: async ({ page }, use) => {
+    await use((persona: PersonaKey) => loginAs(page, persona));
+  },
 });
 
 export { expect };

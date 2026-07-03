@@ -21,6 +21,10 @@ export class PromptManagementDtoMapper {
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),
       resourceStatus: entity.resourceStatus ?? undefined,
+      // TASK-407 — last prompt-test outcome for the Agent Jobs surface.
+      // Vault-encrypted `lastTestOutput` intentionally omitted.
+      lastTestScore: entity.lastTestScore ?? undefined,
+      lastTestAt: entity.lastTestAt ? entity.lastTestAt.toISOString() : undefined,
       // TASK-302 Stream D Phase E.3 — surface `_version` (the OCC token,
       // distinct from `currentVersionNumber`) so SDK clients can echo
       // it back via `If-Match: "<version>"` on the next PATCH.

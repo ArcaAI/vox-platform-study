@@ -162,6 +162,17 @@ describe('usePolicies', () => {
 
             expect(result.current.policies).toEqual([initial[1]]);
         });
+
+        // TASK-409 — break-glass credentials travel as the DELETE body.
+        it('should pass break-glass credentials as the DELETE data option (TASK-409)', async () => {
+            mockDelete.mockResolvedValue(undefined);
+            const { result } = renderHook(() => usePolicies());
+            const creds = { password: 'pw', confirmationName: 'policy-a' };
+
+            await act(async () => { await result.current.remove('p-1', creds); });
+
+            expect(mockDelete).toHaveBeenCalledWith(POLICY_ENDPOINTS.DELETE('p-1'), { data: creds });
+        });
     });
 
     describe('validate', () => {

@@ -10,28 +10,28 @@ import type { CreatePromptInput, PromptTemplateCategory } from '@arcaai/vox';
 export type AgentInstructionService = 'SUMMARIZATION' | 'DNA' | 'GUARDRAIL' | 'NLP' | 'STT';
 
 export interface AgentInstructionDraft {
-    name: string;
-    service: AgentInstructionService;
-    content: string;
+  name: string;
+  service: AgentInstructionService;
+  content: string;
 }
 
 export function serviceToCategory(service: AgentInstructionService): PromptTemplateCategory {
-    switch (service) {
-        case 'SUMMARIZATION':
-            return 'SUMMARY';
-        case 'DNA':
-            return 'DNA_ANALYSIS';
-        default:
-            return 'CUSTOM';
-    }
+  switch (service) {
+    case 'SUMMARIZATION':
+      return 'SUMMARY';
+    case 'DNA':
+      return 'DNA_ANALYSIS';
+    default:
+      return 'CUSTOM';
+  }
 }
 
 export function toCreatePromptInput(draft: AgentInstructionDraft, departmentId: string): CreatePromptInput {
-    return {
-        name: draft.name.trim(),
-        content: draft.content.trim(),
-        category: serviceToCategory(draft.service),
-        departmentId,
-        status: 'PUBLISHED',
-    };
+  return {
+    name: draft.name.trim(),
+    content: draft.content.trim(),
+    category: serviceToCategory(draft.service),
+    departmentId,
+    status: 'PUBLISHED',
+  };
 }

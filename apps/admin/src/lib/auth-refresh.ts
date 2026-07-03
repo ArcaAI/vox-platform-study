@@ -20,11 +20,11 @@ type TokenRefreshedListener = (newAccessToken: string) => void;
 const tokenRefreshedListeners = new Set<TokenRefreshedListener>();
 
 export function registerOnTokenRefreshed(listener: TokenRefreshedListener): void {
-    tokenRefreshedListeners.add(listener);
+  tokenRefreshedListeners.add(listener);
 }
 
 export function unregisterOnTokenRefreshed(listener: TokenRefreshedListener): void {
-    tokenRefreshedListeners.delete(listener);
+  tokenRefreshedListeners.delete(listener);
 }
 
 /**
@@ -32,16 +32,16 @@ export function unregisterOnTokenRefreshed(listener: TokenRefreshedListener): vo
  * Returns 0 for expired, malformed, or missing-exp tokens.
  */
 export function getTokenExpiryMs(token: string): number {
-    if (!token) return 0;
-    try {
-        const parts = token.split('.');
-        if (parts.length < 2) return 0;
-        const payload = JSON.parse(atob(parts[1]));
-        if (typeof payload.exp !== 'number') return 0;
-        return Math.max(0, payload.exp * 1000 - Date.now());
-    } catch {
-        return 0;
-    }
+  if (!token) return 0;
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return 0;
+    const payload = JSON.parse(atob(parts[1]));
+    if (typeof payload.exp !== 'number') return 0;
+    return Math.max(0, payload.exp * 1000 - Date.now());
+  } catch {
+    return 0;
+  }
 }
 
 /**
@@ -50,16 +50,16 @@ export function getTokenExpiryMs(token: string): number {
  * that are still valid.
  */
 export function isTokenExpired(token: string): boolean {
-    if (!token) return false;
-    try {
-        const parts = token.split('.');
-        if (parts.length < 2) return false;
-        const payload = JSON.parse(atob(parts[1]));
-        if (typeof payload.exp !== 'number') return false;
-        return payload.exp * 1000 <= Date.now();
-    } catch {
-        return false;
-    }
+  if (!token) return false;
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return false;
+    const payload = JSON.parse(atob(parts[1]));
+    if (typeof payload.exp !== 'number') return false;
+    return payload.exp * 1000 <= Date.now();
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -73,42 +73,42 @@ export function isTokenExpired(token: string): boolean {
  * Returns `true` if refreshed, `false` otherwise. On failure, logs out.
  */
 export async function tryRefreshToken(): Promise<boolean> {
-    if (inflightRefresh) return inflightRefresh;
-    inflightRefresh = doRefresh();
-    try {
-        return await inflightRefresh;
-    } finally {
-        inflightRefresh = null;
-    }
+  if (inflightRefresh) return inflightRefresh;
+  inflightRefresh = doRefresh();
+  try {
+    return await inflightRefresh;
+  } finally {
+    inflightRefresh = null;
+  }
 }
 
 async function doRefresh(): Promise<boolean> {
-    const { refreshToken } = useAuthStore.getState();
-    if (!refreshToken) return false;
+  const { refreshToken } = useAuthStore.getState();
+  if (!refreshToken) return false;
 
-    try {
-        const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refreshToken }),
-        });
+  try {
+    const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
 
-        if (!res.ok) {
-            useAuthStore.getState().logout();
-            return false;
-        }
-
-        const data: { token?: string; accessToken?: string; refreshToken?: string } = await res.json();
-        const newToken = data.token ?? data.accessToken;
-        if (!newToken) {
-            useAuthStore.getState().logout();
-            return false;
-        }
-        useAuthStore.getState().updateTokens(newToken, data.refreshToken);
-        for (const listener of tokenRefreshedListeners) listener(newToken);
-        return true;
-    } catch {
-        useAuthStore.getState().logout();
-        return false;
+    if (!res.ok) {
+      useAuthStore.getState().logout();
+      return false;
     }
+
+    const data: { token?: string; accessToken?: string; refreshToken?: string } = await res.json();
+    const newToken = data.token ?? data.accessToken;
+    if (!newToken) {
+      useAuthStore.getState().logout();
+      return false;
+    }
+    useAuthStore.getState().updateTokens(newToken, data.refreshToken);
+    for (const listener of tokenRefreshedListeners) listener(newToken);
+    return true;
+  } catch {
+    useAuthStore.getState().logout();
+    return false;
+  }
 }

@@ -60,12 +60,14 @@ history** (32) / **Test playground** (33).
 | 31 Editor (T382-E) | Edit content + `{{vars}}` → save version (OCC) + version rail | ☐ |
 | 32 Diff (T382-V) | Side-by-side version diff + activate/rollback | ☐ |
 | 33 Playground (T382-T) | Run a sample → score + output | ☐ |
-| DNA writing-style slot | 4th default slot | ☐ (expect NA — Target) |
-| Test sub-metrics | per-dimension breakdown | ☐ (expect NA — Target) |
+| DNA writing-style slot | 4th default slot | ☐ (**LANDED — TASK-387**; re-test, was Target) |
+| Test sub-metrics | per-dimension breakdown | ☐ (**LANDED — TASK-389** SDK threads `metrics`; re-test, was Target) |
 
-> **TARGET (mark NA, never F):** the **DNA writing-style** default slot (no backing
-> column) and the **test sub-metrics** breakdown (backend `metrics` exists but the SDK
-> type omits it). See [README §1.3](../../implementation/TASK-382-Agent-Management/README.md) / matrix **AG12, AG13**.
+> **⚠️ Update 2026-07-01 — both former TARGETs now LANDED (re-test, do NOT mark NA):**
+> - **DNA writing-style** default slot — **LANDED** ([TASK-387](../../implementation/TASK-387-Tenant-Data-Model-Backlog/README.md): `dnaWritingStylePromptId` column backs the 4th slot) → **T382-A.4**.
+> - **test sub-metrics** breakdown — **LANDED** ([TASK-389](../../implementation/TASK-389-Agents-Backend-Backlog/README.md): SDK `PromptTestResult` now threads `metrics` + `metricDetail`) → **T382-T.5**.
+> - **version diff** is now **server-side** (TASK-389 `compareVersions`; SDK repointed off client-only diffing) → **T382-V.2** (a richer per-field FE visualization remains a TASK-394 follow-up).
+> See matrix **AG8, AG12, AG13** ([`agent-management.md`](../traceability/agent-management.md)).
 
 ---
 
@@ -79,7 +81,7 @@ history** (32) / **Test playground** (33).
 | T382-A.1 | Surface loads | 1) Open «dept» ▸ **Agent instructions** | Two sections: **Default agents** over **Instruction library**; identity header names the dept | Positive | — | AG1 |
 | T382-A.2 | Four default-agent slots | 1) Inspect Default agents | Exactly **4** slot cards: Pre-summary · New-visit · Re-visit · **DNA writing-style** | Positive | — | AG3 |
 | T382-A.3 | REAL slots resolve | 1) On a dept with a wired pre/new/re slot | The slot shows the assigned prompt name + `category · v#` (`font-mono`) + status badge + Edit/History/Test | Positive | — | AG3 |
-| T382-A.4 | DNA slot is **Target** | 1) Inspect the 4th slot | `hope`/**Target** badge + "No backing column yet"; **no Assign** action (never wired) | Target | — | NA; AG13 |
+| T382-A.4 | DNA writing-style slot | 1) Inspect + assign the 4th slot | **LANDED (TASK-387):** `dnaWritingStylePromptId` now backs the slot — **Assign/Change** wires a prompt (OCC), like the other three | Positive | — | Re-test (was Target); AG13 |
 | T382-A.5 | Library lists dept prompts | 1) Inspect Instruction library | `role="list"` "Agent instructions"; rows = AI sparkle · name · `category · v#` · status · last-test score | Positive | — | AG2 |
 | T382-A.6 | Loading skeletons | 1) Reload with a throttled network | 4 slot skeleton cards + list skeleton rows mirroring layout — no full-page spinner | Positive | — | rule 10 |
 | T382-A.7 | Empty library | 1) Open a dept with no instructions | Sparkles icon + "No agent instructions yet" + guidance; **New instruction** still shown to a manager | Edge | — | AG2 |
@@ -134,7 +136,7 @@ history** (32) / **Test playground** (33).
 | TC | Title | Steps | Expected result | Type | Status | Notes |
 |----|-------|-------|-----------------|------|--------|-------|
 | T382-V.1 | Diff loads | 1) Open ▸ **Version history** | Base/Compare `Select`s (`font-mono`) + a legend (`+added` / `−removed`, `tabular-nums`) | Positive | — | AG8 |
-| T382-V.2 | Diff is computed client-side | 1) Pick Base v1, Compare v2 | Aligned add/remove/context cells; toned `--success`/`--destructive` **with sign glyphs** (never color-only) | Positive | — | AG8 (no server endpoint) |
+| T382-V.2 | Diff (now server-side) | 1) Pick Base v1, Compare v2 | Aligned add/remove/context cells; toned `--success`/`--destructive` **with sign glyphs** (never color-only). **TASK-389:** the diff is now produced by the **server `compareVersions`** endpoint (SDK repointed) rather than diffed in the browser | Positive | — | AG8 — **server diff (TASK-389)**; richer per-field FE viz = TASK-394 |
 | T382-V.3 | Variable diff | 1) Compare versions that changed `{{vars}}` | Added/removed variables are listed distinctly from content lines | Positive | — | AG8 |
 | T382-V.4 | Same-version guard | 1) Set Base = Compare | "Select two different versions to compare." hint; no diff | Edge | — | |
 | T382-V.5 | Activate / rollback (OCC) | 1) **Roll back to v«base»** (or Activate v«compare») → confirm | Live content becomes the chosen version's body; toast; rail **Current** moves | Positive | — | AG9; X7 |
@@ -154,7 +156,7 @@ history** (32) / **Test playground** (33).
 | T382-T.2 | Load example | 1) **Load example** (manager) | Sample input + variable values populate | Positive | — | |
 | T382-T.3 | Run → score + output (OCC) | 1) Fill input/vars → **Run test** | Status **Running**→**Completed**; generated text + headline **score** (`tabular-nums`) + token-toned meter "SMR quality proxy" | Positive | — | AG10/AG11; If-Match |
 | T382-T.4 | SMR-down behavior | 1) Run with SMR unavailable | Inline alert "Test run failed" with the message — **not** a silent failure | Edge | — | AG10 |
-| T382-T.5 | Sub-metrics = **Target** | 1) Inspect the Evaluation block | If no `metrics` returned → honest note that the breakdown is a target; **never fabricated** bars | Target | — | NA; AG12 |
+| T382-T.5 | Sub-metrics breakdown | 1) Inspect the Evaluation block | **LANDED (TASK-389):** the SDK `PromptTestResult` now returns `metrics` + `metricDetail`, so the per-dimension breakdown (faithfulness/coverage/conciseness) renders from real values (still never fabricated when a run omits them) | Positive | — | Re-test (was Target); AG12 |
 | T382-T.6 | Sandbox disclaimer | 1) After a run | Footer states the run is a sandbox and **never written to a patient record** | Positive | — | |
 | T382-T.7 | Empty state | 1) Before any run | `FlaskConical` icon + "No test run yet" + guidance | Edge | — | rule 10 |
 | T382-T.8 | **T** · stacked | 1) Tablet | Single column: **input above output** | Positive | — | TASK-384 |

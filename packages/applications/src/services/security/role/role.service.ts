@@ -10,6 +10,13 @@ import { IActiveUserContext } from '../../../interfaces';
 
 // TODO: Implement this
 
+/**
+ * TASK-406 (P2-6c) — model-aware filter coercion (TASK-375 §8 scheme):
+ * `isSystemRole` → boolean, `version` → number, `createdAt` → Date,
+ * `resourceStatus` → member-validated enum, `metaData` → JSON-path support.
+ */
+const ROLE_FILTER_MODEL = 'Role';
+
 @Injectable()
 export class RoleService extends BaseService implements IRoleService {
   constructor(
@@ -43,9 +50,9 @@ export class RoleService extends BaseService implements IRoleService {
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<RoleEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { limit, page, search } = props;
-    const roles = await this.roleRepository.findAll(withFormattedPaginatedProps(props));
+    const roles = await this.roleRepository.findAll(withFormattedPaginatedProps(props, ROLE_FILTER_MODEL));
 
-    const count = await this.roleRepository.count(withFormattedCountProps(props));
+    const count = await this.roleRepository.count(withFormattedCountProps(props, ROLE_FILTER_MODEL));
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: {
@@ -69,13 +76,13 @@ export class RoleService extends BaseService implements IRoleService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { userId, limit, page, search } = props;
     const roles = await this.roleRepository.findAll({
-      ...withFormattedPaginatedProps(props),
+      ...withFormattedPaginatedProps(props, ROLE_FILTER_MODEL),
       where: {
         createdBy: userId,
       },
     });
     const count = await this.roleRepository.count({
-      ...withFormattedCountProps(props),
+      ...withFormattedCountProps(props, ROLE_FILTER_MODEL),
       where: {
         createdBy: userId,
       },

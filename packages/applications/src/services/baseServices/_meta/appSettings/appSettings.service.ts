@@ -4,7 +4,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 
-import { GlobalSettingEntity, GlobalSettingRepository } from '@arcaai/domains';
+import { GlobalSettingEntity, GlobalSettingRepository, ResourceStatusType } from '@arcaai/domains';
 import { IActiveUserContext } from '../../../../interfaces';
 import { IAppSettingsService } from './IAppSettingsService';
 
@@ -197,7 +197,19 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
       const newCache = new Map<string, GlobalSettingEntity>();
 
       // Fetch all global settings from database
-      const globalSettings = await this.globalSettingRepository.findAll({});
+      const fetchedSettings = await this.globalSettingRepository.findAll({});
+
+      // TASK-402 (Defect 2) — drop soft-DELETED rows at the SERVICE layer.
+      // The repository's DELETED filtering is an invisible property of which
+      // Prisma client variant served the query (the CLS transaction client
+      // inside `runInTransaction` windows bypasses the soft-delete extension),
+      // so a soft-delete + recreate cycle could feed a DELETED+ENABLED pair
+      // for one key into the P0-5 invariant below — failing every refresh and
+      // crashing the next boot. Filtering here makes the invariant AND the
+      // Map<key> cache robust regardless of the serving client: a recreated
+      // key is tolerated by construction and a DELETED row can never shadow
+      // the live one. Genuine duplicates (2× live rows) still refuse to start.
+      const globalSettings = fetchedSettings.filter((s) => s.resourceStatus !== ResourceStatusType.DELETED);
 
       // Phase 0 Item 5 (TASK-302 Stream A) — boot-time duplicate-key invariant.
       // TASK-301 §P0-1: if >1 row exists for the same platform key
@@ -222,8 +234,20 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
         }
       }
 
-      // Populate the new cache
+      // Populate the new cache.
+      // TASK-403 — deterministic winner for cross-tenant duplicates: tenant
+      // provisioning clones every `__GLOBAL__` row (including platform-only
+      // namespaces like `rate-limit.*`) into new tenants, and the P0-5
+      // invariant above only guards duplicates WITHIN the platform tenant.
+      // With plain last-row-wins a tenant clone could shadow the platform row
+      // (surfaced by TASK-403: the rate-limit admin surface resolved a tenant
+      // clone's id and its updates 404'd). The platform row always wins; rows
+      // for keys that exist only on customer tenants still cache as before.
       globalSettings.forEach((setting) => {
+        const existing = newCache.get(setting.key);
+        if (existing && existing.tenantId === GLOBAL_TENANT_ID && setting.tenantId !== GLOBAL_TENANT_ID) {
+          return;
+        }
         newCache.set(setting.key, setting);
       });
 

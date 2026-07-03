@@ -149,4 +149,89 @@ describe('QueueAdminService', () => {
       expect(mockQueue.clean).toHaveBeenCalledWith(30_000, 1000, 'failed');
     });
   });
+
+  // TASK-403 — Redis health probe for the Queues & Jobs admin surface (design
+  // frame `15` health strip). Reads via the first registered queue's shared
+  // ioredis connection: PING → latency, INFO → server stats. Never throws.
+  describe('getRedisHealth (TASK-403)', () => {
+    const REDIS_INFO = [
+      'redis_version:7.2.5',
+      'uptime_in_seconds:86400',
+      'connected_clients:12',
+      'used_memory_human:48.31M',
+    ].join('\r\n');
+
+    const createMockClient = (overrides: Partial<{ ping: () => Promise<string>; info: () => Promise<string> }> = {}) => ({
+      ping: vi.fn(overrides.ping ?? (() => Promise.resolve('PONG'))),
+      info: vi.fn(overrides.info ?? (() => Promise.resolve(REDIS_INFO))),
+    });
+
+    it('reports a healthy Redis with parsed INFO fields and the registered queue count', async () => {
+      const mockQueue = createMockQueue();
+      (mockQueue as Record<string, unknown>).client = Promise.resolve(createMockClient());
+      mockModuleRef.get.mockReturnValue(mockQueue);
+
+      const result = await service.getRedisHealth();
+
+      expect(result.status).toBe('healthy');
+      expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+      expect(result.connectedClients).toBe(12);
+      expect(result.usedMemory).toBe('48.31M');
+      expect(result.uptime).toBe(86_400);
+      expect(result.version).toBe('7.2.5');
+      expect(result.queuesRegistered).toBe(Object.values(JobQueue).length);
+    });
+
+    it('degrades (never throws) when PING is slow', async () => {
+      const mockQueue = createMockQueue();
+      (mockQueue as Record<string, unknown>).client = Promise.resolve(
+        createMockClient({ ping: () => new Promise((resolve) => setTimeout(() => resolve('PONG'), 300)) }),
+      );
+      mockModuleRef.get.mockReturnValue(mockQueue);
+
+      const result = await service.getRedisHealth();
+
+      expect(result.status).toBe('degraded');
+      expect(result.latencyMs).toBeGreaterThanOrEqual(250);
+    });
+
+    it('reports unhealthy (never throws) when the connection errors', async () => {
+      const mockQueue = createMockQueue();
+      (mockQueue as Record<string, unknown>).client = Promise.resolve(
+        createMockClient({ ping: () => Promise.reject(new Error('ECONNREFUSED')) }),
+      );
+      mockModuleRef.get.mockReturnValue(mockQueue);
+
+      const result = await service.getRedisHealth();
+
+      expect(result.status).toBe('unhealthy');
+      expect(result.version).toBe('unknown');
+      expect(result.queuesRegistered).toBe(Object.values(JobQueue).length);
+    });
+
+    it('reports unhealthy when the queue itself cannot be resolved', async () => {
+      mockModuleRef.get.mockImplementation(() => {
+        throw new Error('no such provider');
+      });
+
+      const result = await service.getRedisHealth();
+
+      expect(result.status).toBe('unhealthy');
+    });
+
+    it('tolerates a partial INFO payload with safe fallbacks', async () => {
+      const mockQueue = createMockQueue();
+      (mockQueue as Record<string, unknown>).client = Promise.resolve(
+        createMockClient({ info: () => Promise.resolve('redis_version:7.0.0') }),
+      );
+      mockModuleRef.get.mockReturnValue(mockQueue);
+
+      const result = await service.getRedisHealth();
+
+      expect(result.version).toBe('7.0.0');
+      expect(result.connectedClients).toBe(0);
+      expect(result.usedMemory).toBe('unknown');
+      expect(result.uptime).toBe(0);
+    });
+  });
 });

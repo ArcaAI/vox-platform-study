@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsIn, MinLength } from 'class-validator';
+import { IsOptional, IsString, IsIn } from 'class-validator';
 import { BaseRequest } from '../../../../common';
 
 /**
@@ -18,9 +18,10 @@ export class ResetPasswordRequest extends BaseRequest {
   @IsIn(['temporary', 'link'])
   mode?: 'temporary' | 'link';
 
-  @ApiPropertyOptional({ description: 'Explicit temporary password (mode=temporary). Generated when omitted.' })
+  // TASK-400: complexity is enforced by the configurable service policy (clear
+  // 400 with the unmet rules) — no static @MinLength that would mask it.
+  @ApiPropertyOptional({ description: 'Explicit temporary password (mode=temporary; validated against the complexity policy). Generated when omitted.' })
   @IsOptional()
   @IsString()
-  @MinLength(8)
   temporaryPassword?: string;
 }

@@ -28,6 +28,12 @@ export const ImpersonationDeniedReason = {
   TargetIsSuperAdmin: 'TARGET_IS_SUPER_ADMIN',
   TenantAdminTargetNotAllowed: 'TENANT_ADMIN_TARGET_NOT_ALLOWED',
   CrossTenantDenied: 'CROSS_TENANT_DENIED',
+  // TASK-401 — safeguards added with the super-admin-only endpoint (the first
+  // two are also backported to the legacy /auth/impersonate route).
+  SelfImpersonation: 'SELF_IMPERSONATION',
+  NestedImpersonation: 'NESTED_IMPERSONATION',
+  CallerNotSuperAdmin: 'CALLER_NOT_SUPER_ADMIN',
+  TargetDisabled: 'TARGET_DISABLED',
 } as const;
 
 export type ImpersonationDeniedReasonCode = (typeof ImpersonationDeniedReason)[keyof typeof ImpersonationDeniedReason];
@@ -41,8 +47,13 @@ export interface ImpersonationEventPayload {
   tenantId?: string | null;
   /** `true` for Started/Ended, `false` for Denied. */
   success: boolean;
-  /** Populated on Denied with an `ImpersonationDeniedReasonCode`. */
+  /**
+   * On Denied: an `ImpersonationDeniedReasonCode`.
+   * On Started (TASK-401): the operator-entered free-text justification.
+   */
   reason?: string;
+  /** TASK-401 — ISO expiry of the minted impersonation token (Started only). */
+  expiresAt?: string;
   endpoint: string;
   method: string;
   ip: string;

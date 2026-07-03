@@ -89,18 +89,31 @@ function makeMocks() {
 
   const engine = { invalidateRole: vi.fn().mockResolvedValue(undefined) };
 
-  return { cls, eventEmitter, roleRepo, rolePolicyRepo, engine };
+  // TASK-409 — break-glass dependencies (delete/detach verify the caller's
+  // password + confirmation name; these mocks accept any password so the
+  // TASK-307 behaviour matrix stays focused on the wiring).
+  const policyRepo = { findById: vi.fn().mockResolvedValue({ id: 'policy-1', name: 'team-policy', isProtected: false }) };
+  const userRepo = { findById: vi.fn().mockResolvedValue({ id: ADMIN_USER.id, password: 'stored-hash' }) };
+  const crypto = { verify: vi.fn().mockResolvedValue(true) };
+
+  return { cls, eventEmitter, roleRepo, rolePolicyRepo, policyRepo, userRepo, crypto, engine };
 }
 
 function buildService(mocks: ReturnType<typeof makeMocks>) {
   return new RbacRoleService(
     mocks.roleRepo as never,
     mocks.rolePolicyRepo as never,
+    mocks.policyRepo as never,
+    mocks.userRepo as never,
+    mocks.crypto as never,
     mocks.engine as never,
     mocks.eventEmitter as never,
     mocks.cls as never,
   );
 }
+
+/** TASK-409 — the delete/detach paths now require break-glass confirmation. */
+const BREAK_GLASS = (name: string) => ({ password: 'pw', confirmationName: name });
 
 describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => {
   beforeEach(() => {
@@ -277,7 +290,7 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
       mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: false, name: 'doctor' });
       const service = buildService(mocks);
 
-      const result = await service.softDelete('role-1');
+      const result = await service.softDelete('role-1', BREAK_GLASS('doctor'));
 
       expect(mocks.roleRepo.softDelete).toHaveBeenCalledWith('role-1', ADMIN_USER.id);
 
@@ -361,7 +374,7 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
       const mocks = makeMocks();
       const service = buildService(mocks);
 
-      await service.removePolicy('role-1', 'policy-1');
+      await service.removePolicy('role-1', 'policy-1', BREAK_GLASS('team-policy'));
 
       expect(mocks.rolePolicyRepo.softDeleteByRoleAndPolicy).toHaveBeenCalledWith(
         'role-1',

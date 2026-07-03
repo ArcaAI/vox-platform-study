@@ -37,6 +37,10 @@ volumes:
   reranker-data:
   # TASK-386: Prometheus TSDB for the dev platform-metrics backend.
   prometheus-data:
+  # TASK-397: Grafana state (users, starred dashboards) for the dev
+  # platform-metrics profile. Provisioning (datasource + dashboards) is mounted
+  # read-only from ./configs/grafana, so this only persists runtime UI state.
+  grafana-data:
 
 services:
   # HashiCorp Vault - Secret Management
@@ -256,19 +260,22 @@ services:
   # host.docker.internal) and answers the NestJS PrometheusQueryService at
   # PROMETHEUS_URL=http://localhost:9090.
   #
-  # OPT-IN by design (like vault/temporal/rag): gated behind the `observability`
-  # profile so a plain `docker compose up` / `start-infra.sh --all` does NOT
-  # start it and existing stacks are untouched. Start with:
-  #   docker compose -f infrastructure/docker/docker-compose.yml \
-  #                  -f infrastructure/docker/docker-compose.dev.yml \
-  #                  --profile observability up -d prometheus
+  # OPT-IN by design (like vault/temporal/rag): gated behind a profile so a plain
+  # `docker compose up` / `start-infra.sh --all` does NOT start it and existing
+  # stacks are untouched. TASK-397 adds the `prometheus` profile as the canonical
+  # opt-in for the dev observability stack (Prometheus + Grafana); the original
+  # TASK-386 `observability` profile is kept as an alias so older docs/commands
+  # still work. Start with EITHER:
+  #   docker compose -f infrastructure/docker/docker-compose.dev.yml \
+  #                  --profile prometheus up -d
+  # (or the two-file form, or `--profile observability`).
   #
-  #   Prometheus UI: http://localhost:9090
+  #   Prometheus UI: http://localhost:9090   ·   Grafana UI: http://localhost:3000
   # ==========================================================================
   prometheus:
     container_name: hope-prometheus
     image: prom/prometheus:v3.1.0
-    profiles: ["observability"]
+    profiles: ["observability", "prometheus"]
     networks:
       - hope-network
     restart: unless-stopped
@@ -287,5 +294,57 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.retention.time=15d"
       - "--web.enable-lifecycle"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
+  # ==========================================================================
+  # Grafana — DEV visualization for the platform metrics (TASK-397, builds on
+  # TASK-386). Provisions a single Prometheus datasource (pointing at the
+  # in-network `prometheus:9090`) + a starter "HOPE Platform Metrics" dashboard
+  # (running instances, per-model inference p95/avg latency, request rates).
+  #
+  # OPT-IN via the same profile(s) as Prometheus. Start with:
+  #   docker compose -f infrastructure/docker/docker-compose.dev.yml \
+  #                  --profile prometheus up -d
+  #
+  #   Grafana UI: http://localhost:${GRAFANA_PORT:-3001}  (dev login admin/admin;
+  #   anonymous Viewer is enabled so dashboards open without signing in).
+  # ==========================================================================
+  grafana:
+    container_name: hope-grafana
+    image: grafana/grafana:12.4.2
+    profiles: ["observability", "prometheus"]
+    networks:
+      - hope-network
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    ports:
+      # Host port 3001 per .cursor/rules/09-infrastructure.mdc (container stays 3000).
+      - '${GRAFANA_PORT:-3001}:3000'
+    environment:
+      # Dev-only defaults; override via env for anything shared.
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Convenience for local dev — view the provisioned dashboard without login.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./configs/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./configs/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 

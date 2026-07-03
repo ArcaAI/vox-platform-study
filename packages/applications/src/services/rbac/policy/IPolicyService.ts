@@ -8,6 +8,7 @@
  * agnostic and unit-testable.
  */
 import type { PolicyRule } from '../../../authorization/policy.engine';
+import type { BreakGlassCredentials } from '../breakGlass';
 
 /** Allowed values for the persisted `Policy.scope` column. */
 export type PolicyScope = 'GLOBAL' | 'TENANT';
@@ -40,6 +41,11 @@ export interface UpdatePolicyRequest {
   rules?: PolicyRule[];
   /** Currently only `ENABLED` / `DISABLED` are accepted in PATCH bodies. */
   resourceStatus?: string;
+  /**
+   * TASK-409 — step-up confirmation, required when the edit changes `rules`
+   * on a policy attached to more than one ENABLED role. Never persisted.
+   */
+  breakGlass?: BreakGlassCredentials;
 }
 
 /**
@@ -55,6 +61,8 @@ export interface PolicyRecord {
   scope: string;
   rules: unknown;
   resourceStatus: string;
+  /** TASK-409 — server-authoritative anti-lockout marker (read-only via API). */
+  isProtected: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -71,7 +79,8 @@ export interface IPolicyService {
   create(request: CreatePolicyRequest): Promise<PolicyRecord>;
   update(id: string, request: UpdatePolicyRequest): Promise<PolicyRecord>;
   patch(id: string, request: UpdatePolicyRequest): Promise<PolicyRecord>;
-  softDelete(id: string): Promise<{ id: string; name: string }>;
+  /** TASK-409 — deleting a policy always requires break-glass confirmation. */
+  softDelete(id: string, breakGlass?: BreakGlassCredentials): Promise<{ id: string; name: string }>;
 }
 
 export const IPolicyService = Symbol('IPolicyService');

@@ -5,7 +5,8 @@ import {
     withFormattedPaginatedProps,
     withFormattedCountProps,
 } from './paginatedQueryParamConverters';
-import { AUDIT_LOG_FILTER_FIELD_TYPES, USER_FILTER_FIELD_TYPES } from './modelFilterTypes';
+import { AUDIT_LOG_FILTER_FIELD_TYPES, MODEL_FILTER_FIELD_TYPES, USER_FILTER_FIELD_TYPES } from './modelFilterTypes';
+import { BadRequestException } from '@nestjs/common';
 import { describe, it, expect } from 'vitest';
 
 describe('paginatedQueryParamConverters', () => {
@@ -243,18 +244,23 @@ describe('deserializeFilterString — model-aware coercion (TASK-375 §8 generic
 });
 
 describe('deserializeFilterString — enum / JSON column coercion (TASK-375 §8 follow-up)', () => {
-    // Enum and JSON columns are now FIRST-CLASS recognized by the model field-type
+    // Enum and JSON columns are FIRST-CLASS recognized by the model field-type
     // registry (drift-guarded by the `satisfies ModelFilterFieldTypes<T>` mapped
-    // type) rather than being silently bucketed with "unknown / String". Their
-    // runtime coercion is a conservative PASS-THROUGH (the value stays the
-    // original string): Prisma accepts a string for an enum filter, and JSON
-    // filtering needs path operators the `field[op]:value` CSV grammar can't
-    // express — so neither is ever mis-coerced.
+    // type) rather than being silently bucketed with "unknown / String".
+    // TASK-406 (P2-6b) evolved the contract: enum columns now carry a runtime
+    // MEMBER allow-list (`{ type: 'enum', members }`, sourced from the
+    // `@arcaai/domains` generated enum objects) and an invalid member is
+    // rejected with a 400 instead of being deferred to Prisma; JSON columns
+    // stay safe pass-throughs at the whole-column level (path filtering is the
+    // separate dotted-key grammar below).
 
-    it('registry classifies AuditLog enum columns as "enum"', () => {
-        expect(AUDIT_LOG_FILTER_FIELD_TYPES.resourceType).toBe('enum');
-        expect(AUDIT_LOG_FILTER_FIELD_TYPES.action).toBe('enum');
-        expect(AUDIT_LOG_FILTER_FIELD_TYPES.resourceStatus).toBe('enum');
+    it('registry classifies AuditLog enum columns as member-carrying enum specs (TASK-406)', () => {
+        expect(AUDIT_LOG_FILTER_FIELD_TYPES.resourceType.type).toBe('enum');
+        expect(AUDIT_LOG_FILTER_FIELD_TYPES.resourceType.members).toContain('User');
+        expect(AUDIT_LOG_FILTER_FIELD_TYPES.action.type).toBe('enum');
+        expect(AUDIT_LOG_FILTER_FIELD_TYPES.action.members).toContain('CREATE');
+        expect(AUDIT_LOG_FILTER_FIELD_TYPES.resourceStatus.type).toBe('enum');
+        expect(AUDIT_LOG_FILTER_FIELD_TYPES.resourceStatus.members).toContain('ENABLED');
     });
 
     it('registry classifies AuditLog JSON columns as "json"', () => {
@@ -265,7 +271,8 @@ describe('deserializeFilterString — enum / JSON column coercion (TASK-375 §8 
     });
 
     it('registry classifies User enum + JSON columns', () => {
-        expect(USER_FILTER_FIELD_TYPES.resourceStatus).toBe('enum');
+        expect(USER_FILTER_FIELD_TYPES.resourceStatus.type).toBe('enum');
+        expect(USER_FILTER_FIELD_TYPES.resourceStatus.members).toContain('ENABLED');
         expect(USER_FILTER_FIELD_TYPES.metaData).toBe('json');
     });
 
@@ -282,12 +289,13 @@ describe('deserializeFilterString — enum / JSON column coercion (TASK-375 §8 
         });
     });
 
-    it('does NOT mangle an unrecognized enum string — it passes through (Prisma validates)', () => {
-        // A bogus enum member is NOT coerced to anything; Prisma rejects it
-        // server-side exactly as before — we never silently change the value.
-        expect(deserializeFilterString('action[equals]:NOT_A_REAL_ACTION', 'AuditLog')).toEqual({
-            action: { equals: 'NOT_A_REAL_ACTION' },
-        });
+    it('rejects an unrecognized enum member with a 400 instead of deferring to Prisma (TASK-406)', () => {
+        // TASK-375 passed a bogus member through for Prisma to reject
+        // server-side (a 500-class error). TASK-406 resolves that flagged
+        // deferral: the registry now carries the member allow-list, so an
+        // invalid member is a clean client error naming the allowed members.
+        expect(() => deserializeFilterString('action[equals]:NOT_A_REAL_ACTION', 'AuditLog')).toThrow(BadRequestException);
+        expect(() => deserializeFilterString('action[equals]:NOT_A_REAL_ACTION', 'AuditLog')).toThrow(/NOT_A_REAL_ACTION.*action/s);
     });
 
     it('coerces a JSON column as a safe string pass-through (no path-operator support)', () => {
@@ -307,5 +315,184 @@ describe('deserializeFilterString — enum / JSON column coercion (TASK-375 §8 
             version: { gt: 5 },
             createdAt: { gte: new Date('2026-01-01') },
         });
+    });
+});
+
+describe('deserializeFilterString — enum MEMBER validation (TASK-406 P2-6b)', () => {
+    it('validates members inside AND / OR groups too (recursion reuses the resolved map)', () => {
+        expect(() => deserializeFilterString('AND[action[equals]:CREATE,action[equals]:BOGUS]', 'AuditLog')).toThrow(BadRequestException);
+        expect(() => deserializeFilterString('OR[resourceStatus[equals]:NOPE]', 'User')).toThrow(BadRequestException);
+        // Valid members inside groups still deserialize normally.
+        expect(deserializeFilterString('AND[action[equals]:CREATE,success[equals]:true]', 'AuditLog')).toEqual({
+            AND: [{ action: { equals: 'CREATE' } }, { success: { equals: true } }],
+        });
+    });
+
+    it("keeps a plain 'enum' tag in an EXPLICIT map as an unvalidated pass-through (legacy escape hatch)", () => {
+        // Only member-carrying registry specs validate; an explicit map that
+        // says just 'enum' has no allow-list and keeps TASK-375 behaviour.
+        expect(deserializeFilterString('status[equals]:ANYTHING', { status: 'enum' })).toEqual({
+            status: { equals: 'ANYTHING' },
+        });
+    });
+
+    it('error message names the field, the bad value and the allowed members', () => {
+        try {
+            deserializeFilterString('resourceStatus[equals]:BROKEN', 'User');
+            expect.unreachable('should have thrown');
+        } catch (error) {
+            expect(error).toBeInstanceOf(BadRequestException);
+            const message = (error as BadRequestException).message;
+            expect(message).toContain('resourceStatus');
+            expect(message).toContain('BROKEN');
+            expect(message).toContain('ENABLED');
+            expect(message).toContain('DISABLED');
+        }
+    });
+});
+
+describe('deserializeFilterString — JSON-path filtering (TASK-406 P2-6b)', () => {
+    it('deserializes a dotted key on a declared JSON column into a Prisma path filter', () => {
+        expect(deserializeFilterString('metaData.subType[equals]:recording', 'User')).toEqual({
+            metaData: { path: ['subType'], equals: 'recording' },
+        });
+    });
+
+    it('supports deep paths', () => {
+        expect(deserializeFilterString('metaData.a.b.c[equals]:x', 'User')).toEqual({
+            metaData: { path: ['a', 'b', 'c'], equals: 'x' },
+        });
+    });
+
+    it('coerces JSON literals (numbers / booleans / null) for value operators', () => {
+        expect(deserializeFilterString('metaData.count[gt]:5', 'User')).toEqual({
+            metaData: { path: ['count'], gt: 5 },
+        });
+        expect(deserializeFilterString('metaData.flag[equals]:true', 'User')).toEqual({
+            metaData: { path: ['flag'], equals: true },
+        });
+        expect(deserializeFilterString('metaData.maybe[equals]:null', 'User')).toEqual({
+            metaData: { path: ['maybe'], equals: null },
+        });
+        // A non-JSON token stays the raw string.
+        expect(deserializeFilterString('metaData.kind[equals]:recording-audio', 'User')).toEqual({
+            metaData: { path: ['kind'], equals: 'recording-audio' },
+        });
+    });
+
+    it('keeps raw strings for string_* operators (they only apply to strings)', () => {
+        expect(deserializeFilterString('metaData.subType[string_contains]:rec', 'User')).toEqual({
+            metaData: { path: ['subType'], string_contains: 'rec' },
+        });
+        // Even a numeric-looking token stays a string for string_* ops.
+        expect(deserializeFilterString('metaData.code[string_starts_with]:123', 'User')).toEqual({
+            metaData: { path: ['code'], string_starts_with: '123' },
+        });
+    });
+
+    it('parses array values (hardened bracket parsing keeps [ and ]: inside values intact)', () => {
+        expect(deserializeFilterString('metaData.tags[array_contains]:["a","b"]', 'User')).toEqual({
+            metaData: { path: ['tags'], array_contains: ['a', 'b'] },
+        });
+    });
+
+    it('rejects an operator outside the Prisma JSON path-filter allow-list with a 400', () => {
+        expect(() => deserializeFilterString('metaData.subType[contains]:x', 'User')).toThrow(BadRequestException);
+        expect(() => deserializeFilterString('metaData.subType[contains]:x', 'User')).toThrow(/contains/);
+    });
+
+    it('rejects an empty path segment with a 400', () => {
+        expect(() => deserializeFilterString('metaData..a[equals]:x', 'User')).toThrow(BadRequestException);
+        expect(() => deserializeFilterString('metaData.[equals]:x', 'User')).toThrow(BadRequestException);
+    });
+
+    it('merges multiple operators on the SAME path; conflicting paths on one column → 400 pointing at AND groups', () => {
+        expect(deserializeFilterString('metaData.count[gte]:1;metaData.count[lte]:5', 'User')).toEqual({
+            metaData: { path: ['count'], gte: 1, lte: 5 },
+        });
+        expect(() => deserializeFilterString('metaData.a[equals]:1;metaData.b[equals]:2', 'User')).toThrow(BadRequestException);
+        expect(() => deserializeFilterString('metaData.a[equals]:1;metaData.b[equals]:2', 'User')).toThrow(/AND/);
+    });
+
+    it('expresses different paths on one column via AND groups', () => {
+        expect(deserializeFilterString('AND[metaData.a[equals]:1,metaData.b[equals]:2]', 'User')).toEqual({
+            AND: [{ metaData: { path: ['a'], equals: 1 } }, { metaData: { path: ['b'], equals: 2 } }],
+        });
+    });
+
+    it('leaves dotted keys byte-identical when the root is NOT a declared JSON column', () => {
+        // Unknown root on a known model → literal key, exactly as before.
+        expect(deserializeFilterString('some.path[equals]:x', 'User')).toEqual({
+            'some.path': { equals: 'x' },
+        });
+        // No model context at all → literal key, exactly as before.
+        expect(deserializeFilterString('some.path[equals]:x')).toEqual({
+            'some.path': { equals: 'x' },
+        });
+        // Root is a known but non-JSON column → literal key.
+        expect(deserializeFilterString('version.major[equals]:1', 'User')).toEqual({
+            'version.major': { equals: '1' },
+        });
+    });
+
+    it('whole-column JSON filters (no dot) keep the TASK-375 pass-through', () => {
+        expect(deserializeFilterString('metaData[equals]:x', 'User')).toEqual({
+            metaData: { equals: 'x' },
+        });
+    });
+});
+
+describe('model registry expansion — Tenant/Media/Role/Tag/Webhook/Notification (TASK-406 P2-6c)', () => {
+    it('registers all six additional models', () => {
+        for (const model of ['Tenant', 'Media', 'Role', 'Tag', 'Webhook', 'Notification']) {
+            expect(MODEL_FILTER_FIELD_TYPES[model], `registry entry for ${model}`).toBeDefined();
+        }
+    });
+
+    it('Tenant: number / date / enum(+members) columns coerce', () => {
+        expect(deserializeFilterString('version[gte]:2;trialEndsAt[lte]:2026-08-01;plan[equals]:TRIAL', 'Tenant')).toEqual({
+            version: { gte: 2 },
+            trialEndsAt: { lte: new Date('2026-08-01') },
+            plan: { equals: 'TRIAL' },
+        });
+        expect(() => deserializeFilterString('plan[equals]:GOLD', 'Tenant')).toThrow(BadRequestException);
+    });
+
+    it('Media: size coerces to a number; resourceStatus is member-validated', () => {
+        expect(deserializeFilterString('size[gte]:1000;resourceStatus[equals]:ENABLED', 'Media')).toEqual({
+            size: { gte: 1000 },
+            resourceStatus: { equals: 'ENABLED' },
+        });
+        expect(() => deserializeFilterString('resourceStatus[equals]:NOPE', 'Media')).toThrow(BadRequestException);
+    });
+
+    it('Role: isSystemRole coerces to a boolean', () => {
+        expect(deserializeFilterString('isSystemRole[equals]:true;version[gt]:1', 'Role')).toEqual({
+            isSystemRole: { equals: true },
+            version: { gt: 1 },
+        });
+    });
+
+    it('Tag: version/date columns coerce; strings stay strings', () => {
+        expect(deserializeFilterString('version[gte]:2;createdAt[gte]:2026-01-01;tagValue[equals]:true', 'Tag')).toEqual({
+            version: { gte: 2 },
+            createdAt: { gte: new Date('2026-01-01') },
+            tagValue: { equals: 'true' }, // String column — never mangled
+        });
+    });
+
+    it('Webhook: subscriptionMetadata supports JSON-path filtering', () => {
+        expect(deserializeFilterString('subscriptionMetadata.event[equals]:consultation.created', 'Webhook')).toEqual({
+            subscriptionMetadata: { path: ['event'], equals: 'consultation.created' },
+        });
+    });
+
+    it('Notification: read/keyVersion coerce; type is member-validated', () => {
+        expect(deserializeFilterString('read[equals]:false;keyVersion[gte]:2;type[equals]:STANDARD', 'Notification')).toEqual({
+            read: { equals: false },
+            keyVersion: { gte: 2 },
+            type: { equals: 'STANDARD' },
+        });
+        expect(() => deserializeFilterString('type[equals]:SHINY', 'Notification')).toThrow(BadRequestException);
     });
 });

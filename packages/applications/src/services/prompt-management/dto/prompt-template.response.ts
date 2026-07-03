@@ -50,6 +50,16 @@ export class PromptTemplateResponse {
   @ApiPropertyOptional({ description: 'Resource status', enum: ['ENABLED', 'DISABLED'] })
   resourceStatus?: ResourceStatusType;
 
+  // TASK-407 — the Agent Jobs surface shows each agent's last prompt-test
+  // outcome. Score + timestamp only; `lastTestOutput` is vault-encrypted and
+  // deliberately NOT exposed on list/detail responses (the test route returns
+  // the fresh output directly).
+  @ApiPropertyOptional({ description: 'Score (0-100) of the most recent prompt test run', example: 87 })
+  lastTestScore?: number;
+
+  @ApiPropertyOptional({ description: 'Timestamp of the most recent prompt test run' })
+  lastTestAt?: string;
+
   /**
    * Row `_version` for optimistic concurrency control (TASK-302
    * Stream D Phase E.3). Clients echo this back via

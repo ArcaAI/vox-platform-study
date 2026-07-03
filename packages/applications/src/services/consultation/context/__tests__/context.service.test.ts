@@ -2564,6 +2564,97 @@ describe('ContextService', () => {
         });
     });
 
+    // -------------------------------------------------------------------------
+    // TASK-406 (P2-6a, closing the TASK-375 §7 residual) — the PAGINATED variant
+    // must run the same storage-resolved media enrichment as getContextItems,
+    // and only on the returned page slice (never the whole result set).
+    // -------------------------------------------------------------------------
+    describe('getContextItemsPaginated — storage-resolved media URLs (TASK-406)', () => {
+        const mockMediaRepository = { findAll: vi.fn() };
+        const mockBlobStorage = { presignGet: vi.fn(), listObjects: vi.fn() };
+
+        const buildServiceWithStorage = () =>
+            new ContextService(
+                mockContextItemRepository as any,
+                mockContextItemVersionRepository as any,
+                mockAudioRecordingRepository as any,
+                mockSummaryMetaRepository as any,
+                mockNamedEntityRepository as any,
+                mockConsultationRepository as any,
+                mockEventEmitter as any,
+                mockClsService as any,
+                undefined, // secretsService
+                mockMediaRepository as any,
+                mockBlobStorage as any,
+            );
+
+        it('enriches ATTACHMENT items on the returned page with url + mimeType + thumbnail', async () => {
+            const attachment = createMockContextItemEntity({ id: 'ci-page-1', type: ContextItemType.ATTACHMENT });
+            (attachment as any).mediaId = 'media-p1';
+            mockContextItemRepository.findByConsultation.mockResolvedValue([attachment]);
+            mockMediaRepository.findAll.mockResolvedValue([
+                { id: 'media-p1', uri: 's3://bucket-x/path/img.png', mimeType: 'image/png' },
+            ]);
+            mockBlobStorage.listObjects.mockResolvedValue({
+                objects: [{ key: 'path/img.png.thumb.webp', size: 1234 }],
+                isTruncated: false,
+            });
+            mockBlobStorage.presignGet.mockImplementation(({ key }: { key: string }) =>
+                Promise.resolve(key.endsWith('.thumb.webp') ? 'https://signed.example/thumb.webp' : 'https://signed.example/img.png'),
+            );
+
+            const result = await buildServiceWithStorage().getContextItemsPaginated('consultation-1', {
+                page: 1,
+                limit: 5,
+            });
+
+            expect(result.data[0].url).toBe('https://signed.example/img.png');
+            expect(result.data[0].mimeType).toBe('image/png');
+            expect(result.data[0].thumbnailUrl).toBe('https://signed.example/thumb.webp');
+        });
+
+        it('only enriches the PAGE slice — media lookup never sees off-page items', async () => {
+            const onPage = createMockContextItemEntity({ id: 'ci-on-page', type: ContextItemType.ATTACHMENT });
+            (onPage as any).mediaId = 'media-on-page';
+            const offPage = createMockContextItemEntity({ id: 'ci-off-page', type: ContextItemType.ATTACHMENT });
+            (offPage as any).mediaId = 'media-off-page';
+            // page 2 / limit 1 → slice is [offPage→ actually items[1]]
+            mockContextItemRepository.findByConsultation.mockResolvedValue([onPage, offPage]);
+            mockMediaRepository.findAll.mockResolvedValue([
+                { id: 'media-off-page', uri: 's3://bucket-x/path/b.pdf', mimeType: 'application/pdf' },
+            ]);
+            mockBlobStorage.presignGet.mockResolvedValue('https://signed.example/b.pdf');
+
+            const result = await buildServiceWithStorage().getContextItemsPaginated('consultation-1', {
+                page: 2,
+                limit: 1,
+            });
+
+            // The page-2 slice contains ONLY the second item; the media query
+            // must be scoped to it — the page-1 item's media is never fetched.
+            expect(mockMediaRepository.findAll).toHaveBeenCalledTimes(1);
+            expect(mockMediaRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({ where: { id: { in: ['media-off-page'] } } }),
+            );
+            expect(result.data).toHaveLength(1);
+            expect(result.data[0].id).toBe('ci-off-page');
+            expect(result.data[0].url).toBe('https://signed.example/b.pdf');
+            expect(result.data[0].mimeType).toBe('application/pdf');
+        });
+
+        it('degrades to no url when storage deps are absent (legacy construction)', async () => {
+            const attachment = createMockContextItemEntity({ id: 'ci-legacy', type: ContextItemType.ATTACHMENT });
+            (attachment as any).mediaId = 'media-legacy';
+            mockContextItemRepository.findByConsultation.mockResolvedValue([attachment]);
+
+            // `service` is the outer beforeEach instance with NO storage wired.
+            const result = await service.getContextItemsPaginated('consultation-1', { page: 1, limit: 5 });
+
+            expect(result.data[0].url).toBeUndefined();
+            expect(result.data[0].mediaId).toBe('media-legacy');
+        });
+    });
+
     // ============================================
     // getAggregateNamedEntities Tests (ENH-1)
     // ============================================

@@ -10,6 +10,7 @@ import * as Models from './';
 export class User extends BaseDataModel {
   public username: string;
   public password: string;
+  public passwordChangedAt: Date | null;
   public lastLoginAt: Date | null;
   public lastActiveAt: Date | null;
   public externalId: string | null;
@@ -51,6 +52,7 @@ export class User extends BaseDataModel {
     super(data);
     this.username = data.username;
     this.password = data.password;
+    this.passwordChangedAt = data.passwordChangedAt;
     this.lastLoginAt = data.lastLoginAt;
     this.lastActiveAt = data.lastActiveAt;
     this.externalId = data.externalId;

@@ -19,6 +19,7 @@ import {
   createTestDataRegistry,
   loginSeededUsers,
   cleanupTestData,
+  SEEDED_USERS,
   type TestDataRegistry,
 } from '../../../../tests/helpers';
 
@@ -899,8 +900,25 @@ test.describe('RBAC Controllers', () => {
       const roleId = testRoleIds[testRoleIds.length - 1];
       const policyId = testPolicyIds[testPolicyIds.length - 1];
 
+      // TASK-409 — detach without step-up confirmation is refused (428).
+      const unconfirmed = await request.delete(`/api/v1/admin/rbac/roles/${roleId}/policies/${policyId}`, {
+        headers: { Authorization: `Bearer ${superAdminToken}` },
+      });
+      expect([404, 428]).toContain(unconfirmed.status());
+
+      // With password + exact policy name the detach goes through.
+      const policyLookup = await request.get(`/api/v1/admin/rbac/policies/${policyId}`, {
+        headers: { Authorization: `Bearer ${superAdminToken}` },
+      });
+      if (policyLookup.status() !== 200) {
+        test.skip();
+        return;
+      }
+      const policyName = ((await policyLookup.json()) as { name: string }).name;
+
       const response = await request.delete(`/api/v1/admin/rbac/roles/${roleId}/policies/${policyId}`, {
         headers: { Authorization: `Bearer ${superAdminToken}` },
+        data: { password: SEEDED_USERS.superAdmin.password, confirmationName: policyName },
       });
 
       expect([200, 204, 404]).toContain(response.status());

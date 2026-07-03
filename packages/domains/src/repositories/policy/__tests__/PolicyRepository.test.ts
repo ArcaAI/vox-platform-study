@@ -243,6 +243,7 @@ describe('TASK-311 — PolicyEntityMapper', () => {
       scope: 'TENANT',
       rules: [{ action: 'read', subject: 'User' }],
       resourceStatus: ResourceStatusType.ENABLED,
+      isProtected: true,
       createdAt,
       updatedAt,
       version: 7,
@@ -260,6 +261,7 @@ describe('TASK-311 — PolicyEntityMapper', () => {
       scope: 'TENANT',
       rules: [{ action: 'read', subject: 'User' }],
       resourceStatus: ResourceStatusType.ENABLED,
+      isProtected: true,
       createdAt,
       updatedAt,
     });
@@ -279,5 +281,22 @@ describe('TASK-311 — PolicyEntityMapper', () => {
 
     expect(record.description).toBeNull();
     expect(record.rules).toEqual({ complex: { nested: ['structure'] } });
+  });
+
+  // TASK-409 — rows missing the column (legacy fixtures) default to false so
+  // the record shape is always total.
+  it('defaults isProtected to false when the row omits it (TASK-409)', () => {
+    const record = mapPolicyRowToRecord({
+      id: 'policy-3',
+      name: 'plain-policy',
+      description: null,
+      scope: 'TENANT',
+      rules: [],
+      resourceStatus: ResourceStatusType.ENABLED,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as never);
+
+    expect(record.isProtected).toBe(false);
   });
 });

@@ -7,5 +7,5 @@ import { createFileRoute, Outlet } from '@tanstack/react-router';
  * nav and never appended to the breadcrumb.
  */
 export const Route = createFileRoute('/_authenticated/tenants/$tenantId/departments/$departmentId/agents')({
-    component: () => <Outlet />,
+  component: () => <Outlet />,
 });

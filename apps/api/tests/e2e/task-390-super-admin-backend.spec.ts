@@ -28,6 +28,14 @@ import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/h
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
+// TASK-409 — policy DELETE now demands break-glass step-up (caller's current
+// password + type-the-exact-name). Protected-policy deletes stay 403 with or
+// without it (absolute anti-lockout).
+const breakGlass = (confirmationName: string) => ({
+  password: SEEDED_USERS.superAdmin.password,
+  confirmationName,
+});
+
 // Seeded protected GLOBAL policies (packages/database/.../seed/01-policy.ts).
 const SYSTEM_FULL_ACCESS_ID = '00000000-0000-0000-0001-000000000001';
 const RBAC_SYSTEM_MANAGE_ID = '00000000-0000-0000-0001-000000000010';
@@ -77,7 +85,12 @@ test.describe.serial('TASK-390 #22 — policy CRUD + system-lockout guard', () =
 
   test.afterAll(async ({ request }) => {
     if (throwawayId) {
-      await request.delete(`/api/v1/admin/rbac/policies/${throwawayId}`, { headers: bearer(saGlobalToken) }).catch(() => undefined);
+      await request
+        .delete(`/api/v1/admin/rbac/policies/${throwawayId}`, {
+          headers: bearer(saGlobalToken),
+          data: breakGlass(`t390-throwaway-${UNIQUE}`), // TASK-409 step-up
+        })
+        .catch(() => undefined);
     }
   });
 
@@ -103,7 +116,11 @@ test.describe.serial('TASK-390 #22 — policy CRUD + system-lockout guard', () =
     expect(patch.status(), 'patch policy rules').toBe(200);
     expect(((await patch.json()) as PolicyDto).rules.length).toBe(2);
 
-    const del = await request.delete(`/api/v1/admin/rbac/policies/${throwawayId}`, { headers: bearer(saGlobalToken) });
+    // TASK-409 — deletes now require break-glass step-up confirmation.
+    const del = await request.delete(`/api/v1/admin/rbac/policies/${throwawayId}`, {
+      headers: bearer(saGlobalToken),
+      data: breakGlass(`t390-throwaway-${UNIQUE}`),
+    });
     expect(del.status(), 'soft-delete policy → 204').toBe(204);
     throwawayId = undefined;
   });

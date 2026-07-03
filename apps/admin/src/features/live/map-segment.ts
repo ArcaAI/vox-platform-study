@@ -6,14 +6,14 @@ import type { LiveTranscriptSegment, LiveTranscriptWord } from '@arcaai/ui/compo
  * heavy SDK barrel.
  */
 export interface StoreTranscriptSegment {
-    text: string;
-    startTime: number;
-    endTime: number;
-    isFinal: boolean;
-    speakerLabel?: string;
-    confidence?: number;
-    language?: string;
-    words?: { word: string; start: number; end: number; confidence?: number | null }[];
+  text: string;
+  startTime: number;
+  endTime: number;
+  isFinal: boolean;
+  speakerLabel?: string;
+  confidence?: number;
+  language?: string;
+  words?: { word: string; start: number; end: number; confidence?: number | null }[];
 }
 
 /**
@@ -23,22 +23,22 @@ export interface StoreTranscriptSegment {
  * via `SttV2WebSocketClient.onTranscript` — both share this superset shape.
  */
 export function mapTranscriptSegment(seg: StoreTranscriptSegment, index: number, overrideText?: string): LiveTranscriptSegment {
-    const wordTimestamps: LiveTranscriptWord[] | undefined = seg.words?.map((w) => ({
-        word: w.word,
-        start: w.start,
-        end: w.end,
-        confidence: w.confidence ?? null,
-    }));
+  const wordTimestamps: LiveTranscriptWord[] | undefined = seg.words?.map((w) => ({
+    word: w.word,
+    start: w.start,
+    end: w.end,
+    confidence: w.confidence ?? null,
+  }));
 
-    return {
-        id: `seg-${index}`,
-        text: overrideText ?? seg.text,
-        startTime: seg.startTime,
-        endTime: seg.endTime,
-        isFinal: seg.isFinal,
-        speakerLabel: seg.speakerLabel,
-        confidence: seg.confidence,
-        language: seg.language,
-        wordTimestamps: wordTimestamps && wordTimestamps.length > 0 ? wordTimestamps : undefined,
-    };
+  return {
+    id: `seg-${index}`,
+    text: overrideText ?? seg.text,
+    startTime: seg.startTime,
+    endTime: seg.endTime,
+    isFinal: seg.isFinal,
+    speakerLabel: seg.speakerLabel,
+    confidence: seg.confidence,
+    language: seg.language,
+    wordTimestamps: wordTimestamps && wordTimestamps.length > 0 ? wordTimestamps : undefined,
+  };
 }

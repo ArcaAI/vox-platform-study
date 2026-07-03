@@ -37,7 +37,7 @@
 ## Coverage snapshot
 
 - **18 use cases** mapped (the requested F1–F9 · C1 · S1–S3 · D1–D4 · O2 · AU1) + the app-shell upgrades (SH1–SH5).
-- **Backends are REAL** for all but the four product **TARGET**s carried from TASK-371: tenant **tags** (F9), tenant **SUSPENDED/ARCHIVED archive** (F6), storage **quota/usage** (S3), and aggregate **usage roll-ups** (Overview). These are drawn disabled/em-dash, never fabricated.
+- **Backends are REAL** for all rows. **2026-07-01 update:** the four product **TARGET**s carried from TASK-371 are now **backend-closed** — tenant **tags** + **plan** (F9, [TASK-387](../../implementation/TASK-387-Tenant-Data-Model-Backlog/README.md)), tenant **SUSPENDED/ARCHIVED lifecycle + restore + system-guard** (F6, TASK-387), storage **quota/usage** `quotaBytes` (S3, [TASK-386](../../implementation/TASK-386-Platform-Metrics-Backend/README.md)), and aggregate **usage roll-ups** (Overview/F7, TASK-386). Plus **department→users** reverse listing (D2, TASK-387) and the **per-dept DNA-style slot** (D3, TASK-387). The tenant-config DTO was also **decoupled** from global-settings (C1, [TASK-393](../../implementation/TASK-393-Tenant-Config-DTO-Decouple/README.md)). FE for tenant plan/tags/lifecycle/dept-users/DNA-slot is wired in TASK-387; FE quota/roll-up display consumes the new fields.
 - **TASK-379 added the frontend** for every row + **6 pure-logic Vitest suites** (34 tests: `permissions`, `tenant-key`, `tenant-user-query`, `department-draft`, `agent-instruction-draft`, `occ`) and **two E2E specs** (`apps/api/tests/e2e/task-379-tenant-detail.spec.ts`, `apps/admin/e2e/task-379-tenant-detail.spec.ts`) — **authored; run pending a seeded stack**.
 - The biggest residual **test debt** is the same as TASK-371: tenant **update happy-path** + **enable/disable** and the **department/user-department write** flows had no backend E2E — the new `task-379-tenant-detail.spec.ts` is authored to close exactly those (flips 🟡→🟢 once run green).
 
@@ -54,9 +54,9 @@
 | F3 ↔ T371 F3 | Create tenant (key uniqueness + immutability) | `Dlg · Add Tenant` `110:7669` | 🔒 `POST /admin/tenants` `tenant.controller.ts:102` (`@CanManage('Tenant')`) | `tenant-access-control.spec.ts` (super create→delete; doctor 403); **`task-379` BE** (create→cleanup, authored); FE pure-logic `tenant-key.test.ts` (uniqueness/validate) | 🟡 |
 | F4 ↔ T371 F4 | Edit tenant (name/description; key immutable on edit; OCC) | `Dlg · Add Tenant` `110:7669` (reused) | `PATCH /admin/tenants/:id` `tenant.controller.ts:218` (`@RequiresIfMatch`) | **`task-379` BE** (update happy-path **with `If-Match`** + 428-without, authored — closes T371 F4 gap); FE pure-logic `occ.test.ts` | 🟡 (was 🔴 in T371) |
 | F5 ↔ T371 F5 | Enable / disable tenant | `Dlg · Disable Tenant` `110:8662` (AlertDialog) | `PATCH /admin/tenants/:id {resourceStatus}` `tenant.controller.ts:218` — DTO **`ENABLED\|DISABLED` only** | **`task-379` BE** (enable/disable round-trip, authored — closes T371 F5 test gap); FE: `route.tsx` `handleToggleStatus` + ConfirmDelete (X7) | 🟡 (was 🔴 test in T371) |
-| F6 ↔ T371 F6 | Archive / recoverable-disable framing (X2/X7) | `Dlg · Disable Tenant` `110:8662` ("recoverable archive") | 🔴 **no `SUSPENDED`/`ARCHIVED` status** (DTO limited to ENABLED/DISABLED); 🔒 `DELETE /admin/tenants/:id :244` is the only removal | FE ships disable=recoverable-archive copy only; archive backend = gap | 🎯 (status) · 🟡 (disable) |
-| F7 ↔ T371 F7 | Tenant usage stats (Overview KPIs) | `18p`/`18d` KPI tiles `120:8843` | `GET /admin/tenants/:id/usage` `tenant.controller.ts:156` → `getUsageStats` | `task-219-gaps.spec.ts` **A8** (`totalUsers`,`totalDepartments`) | 🟢 (BE) · 🎯 (roll-ups) |
-| F9 ↔ T371 F9 | Tenant tags | tag chips on `Dlg · Add Tenant` `110:7669` | 🔴 **no `tags` field/endpoint** on tenant DTO | drawn-not-shipped (TARGET) | 🎯 |
+| F6 ↔ T371 F6 | Archive / recoverable-disable framing (X2/X7) | `Dlg · Disable Tenant` `110:8662` ("recoverable archive") | ✅ **LANDED (TASK-387):** `SUSPENDED`/`ARCHIVED` lifecycle + **restore**; system/`__GLOBAL__` tenant **protected** (`DEF-ADM-002` fixed). 🔒 `DELETE /admin/tenants/:id :244` remains for hard removal | backend E2E `task-387-*` (lifecycle + restore + guard); FE lifecycle menu wired | 🟢 |
+| F7 ↔ T371 F7 | Tenant usage stats (Overview KPIs) | `18p`/`18d` KPI tiles `120:8843` | `GET /admin/tenants/:id/usage` `tenant.controller.ts:156` → `getUsageStats`. ✅ **TASK-386:** extended with roll-ups (`quotaBytes`, transcription-min, summaries) | `task-219-gaps.spec.ts` **A8** + `task-386-platform-metrics.spec.ts` (roll-ups) | 🟢 |
+| F9 ↔ T371 F9 | Tenant tags + plan | tag chips + plan on `Dlg · Add Tenant` `110:7669` | ✅ **LANDED (TASK-387):** `tags[]` + `plan` enum on tenant DTO/PATCH (plan feeds entitlements, TASK-392, enforcement OFF by default) | backend E2E `task-387-*` (tags + plan); FE tags dialog + plan badge wired | 🟢 |
 
 ## 1.B — Working-tenant context / app shell (`06 · Multi-Tenancy & Impersonation 61:985`)
 
@@ -83,7 +83,7 @@
 
 | ID | Use case / user story | Design (frame · node) | Backend API | Test | Status |
 |---|---|---|---|---|---|
-| C1 ↔ T371 C1 | Tenant config — feature flags / ASR pipeline / engine; OCC | `22p · Configuration` `109:6768` | `GET/PATCH /admin/tenants/configs/:identifier` `tenant.controller.ts:257`/`:275`; `GET/PUT /admin/tenant-frontend-config` `tenant-frontend-config-admin.controller.ts:36`/`:61` | `optimistic-locking.spec.ts` (OCC/412 on `configs/:id`); `tenant-access-control.spec.ts` (403); **`task-379` BE** (frontend-config GET/PUT + OCC `expectedVersion`, authored); FE pure-logic `occ.test.ts`; FE `configuration.tsx` (system-tenant lock) | 🟡 |
+| C1 ↔ T371 C1 | Tenant config — feature flags / ASR pipeline / engine; OCC | `22p · Configuration` `109:6768` | `GET/PATCH /admin/tenants/configs/:identifier` `tenant.controller.ts:257`/`:275`; `GET/PUT /admin/tenant-frontend-config` `tenant-frontend-config-admin.controller.ts:36`/`:61`. ✅ **TASK-393:** `TenantConfigResponse` **decoupled** from `GlobalSettingResponse` (dedicated mapper; additive `tenantId`/`defaultValue`); no behavior change | `optimistic-locking.spec.ts` (OCC/412 on `configs/:id`); `tenant-access-control.spec.ts` (403); **`task-379` BE** (frontend-config GET/PUT + OCC `expectedVersion`) + TASK-393 mapper unit; FE pure-logic `occ.test.ts`; FE `configuration.tsx` (system-tenant lock) | 🟡 |
 
 ---
 
@@ -93,7 +93,7 @@
 |---|---|---|---|---|---|
 | S1 ↔ T371 S1 | Storage buckets — list / manage | `37p · Storage` `110:6976` | `GET /admin/tenants/storage/buckets` `tenant-bucket.controller.ts:47`; CRUD `:94…:176` | `task-307-*` (cross-tenant isolation), `task-219-gaps` A7 (CRUD); **`task-379` BE** (list buckets for seeded tenant, authored) | 🟢 |
 | S2 ↔ T371 S2 | Provision system buckets | `37p` (implied) | 🔒 `POST /admin/tenants/storage/buckets/provision/:tenantId` `tenant-bucket.controller.ts:165` | none (not exercised by FE — provision is ops-only) | 🟡 BE · 🔴 test |
-| S3 ↔ T371 S3 | Storage quota / usage | `37p` quota meter | ⚠️ **no quota endpoint**; objects/size **not on `TenantBucket`** | FE draws em-dash + explicit TARGET note (never fabricated) | 🎯 |
+| S3 ↔ T371 S3 | Storage quota / usage | `37p` quota meter | ✅ **TASK-386:** `GET /admin/tenants/:id/usage` extended with `quotaBytes` (+ storage-used roll-up) backing the quota meter | `task-386-platform-metrics.spec.ts` (usage incl. `quotaBytes`) | 🟢 |
 
 ---
 
@@ -102,8 +102,8 @@
 | ID | Use case / user story | Design (frame · node) | Backend API | Test | Status |
 |---|---|---|---|---|---|
 | D1 ↔ T371 D1 | Department card-grid + create | `34p · Departments` `110:7195`; foundation `08 · Card-Grid` `82:2231` | `GET /admin/departments` `department.controller.ts:44`; `POST :35` | **`task-379` BE** (list + create→update→soft-delete with `If-Match`, authored — closes T371 D1 gap); FE pure-logic `department-draft.test.ts` (trim/omit-empties) | 🟡 (was 🔴 test in T371) |
-| D2 ↔ T371 D2 | Department detail — members + agent instructions | `36p · Department Detail` `110:7414` | `GET /admin/departments/:id` `department.controller.ts:77`. 🔴 **no `GET /admin/departments/:id/users`** | **`task-379` BE** (get dept by id, authored); FE derives members from tenant-user list + filter (noted) | 🟡 · 🔴 (reverse listing) |
-| D3 ↔ T371 D3 | Default agents per dept (prompt-config) | `36p` / `Dlg · New Agent Instruction` `110:8440` | `PATCH /admin/departments/:id/prompt-config` `department.controller.ts:162`; prompt create `POST /admin/prompt-templates` (see T371 §1.G A2) | FE pure-logic `agent-instruction-draft.test.ts` (`serviceToCategory`/`toCreatePromptInput`); dialog scope-locked DEPARTMENT_DEFAULT | 🟡 · 🎯 (DNA slot) |
+| D2 ↔ T371 D2 | Department detail — members + agent instructions | `36p · Department Detail` `110:7414` | `GET /admin/departments/:id` `department.controller.ts:77`. ✅ **LANDED (TASK-387):** `GET /admin/departments/:id/users` (reverse listing) | **`task-379` BE** (get dept by id) + `task-387-*` (dept→users listing); FE departments panel wired | 🟢 |
+| D3 ↔ T371 D3 | Default agents per dept (prompt-config) | `36p` / `Dlg · New Agent Instruction` `110:8440` | `PATCH /admin/departments/:id/prompt-config` `department.controller.ts:162`; prompt create `POST /admin/prompt-templates` (see T371 §1.G A2). ✅ **DNA-style slot LANDED (TASK-387)** (`dnaWritingStylePromptId`) | FE pure-logic `agent-instruction-draft.test.ts` + `task-387-*` (DNA slot assign); FE default-agent-slots wired | 🟢 |
 | D4 ↔ T371 D4 | Add members to dept (both directions) | `Dlg · Add Members` `110:8201`; `Dlg · Assign Departments` `110:7981` | `POST /admin/users/:id/departments` `user-departments.controller.ts:41` (list `:32`, update `:60`, unassign `:76`) | **`task-379` BE** (assign → list → unassign round-trip, authored — closes T371 D4 gap); FE `CheckboxPickerDialog` | 🟡 (was 🔴 test in T371) |
 
 ---
@@ -125,4 +125,4 @@
 | FE E2E (Playwright UI) | `apps/admin/e2e/task-379-tenant-detail.spec.ts` | list→detail nav, tab switch (underline ↔ `Select`), working-tenant switcher, a dialog (full-screen mobile), NoTenant | 🟡 authored — run pending seeded stack |
 | Manual (FE→BE) | [`MANUAL-E2E-TESTS.md`](../manual-tests/04-tenant-detail.md) | TD-01…TD-08 persona flows; cross-refs `docs/qa/manual-tests/01-multi-tenancy-management.md` | persona checklist |
 
-> **Backend gaps carried forward** (unchanged from TASK-371 backlog; not introduced here): tenant **archive lifecycle** (F6), tenant **tags** (F9), **department→users** reverse listing (D2), **storage quota** (S3), **usage roll-ups** (Overview). These remain backend/test tickets — TASK-379 draws them as disabled/TARGET, never fabricated.
+> **Backend gaps carried forward — now CLOSED (2026-07-01, TASK-386/387):** tenant **archive lifecycle** (F6, TASK-387), tenant **tags** + **plan** (F9, TASK-387), **department→users** reverse listing (D2, TASK-387), **storage quota** (S3, TASK-386), **usage roll-ups** (Overview/F7, TASK-386). What TASK-379 drew as disabled/TARGET is now backend-backed; the rows above are flipped to 🟢. Tenant-config DTO was additionally decoupled from global-settings (C1, TASK-393).

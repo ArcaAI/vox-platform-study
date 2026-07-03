@@ -33,7 +33,13 @@ TASK-379 is the page-based redesign of the tenant surface. Re-test these `MT-xx`
 | **DEF-ADM-002 / MT-04.5** "System tenant Delete not disabled" | Detail page **gates by `canModifyTenant`** — system tenant shows "protected", no Disable | **TD-04.4** |
 | **MT-01.3** "Open tenant detail (modal/blade)" | Detail is now a **page** with 5 tabs + breadcrumb | **TD-01 / TD-02** |
 
-> **Still TARGET (draw/flag only — do NOT fail):** tenant **tags** & domain/plan (Add-tenant dialog footnote), **SUSPENDED/ARCHIVED** archive lifecycle (only ENABLED/DISABLED exist), storage **quota / object-count / size** (S3), and **usage roll-ups** on Overview. Mark these `NA` with a "TARGET" note.
+> **Update 2026-07-01 — most former TARGETs now LANDED (re-test, do not mark NA):**
+> - tenant **tags** + **plan** — **LANDED** ([TASK-387](../../implementation/TASK-387-Tenant-Data-Model-Backlog/README.md); plan feeds entitlements, [TASK-392](../../implementation/TASK-392-Plan-Entitlements/README.md), **enforcement OFF by default**) → **TD-03.8**
+> - **SUSPENDED / ARCHIVED + restore** archive lifecycle — **LANDED** (TASK-387) → **TD-04.7**
+> - storage **quota** (`quotaBytes`) + **usage roll-ups** on Overview — **LANDED** ([TASK-386](../../implementation/TASK-386-Platform-Metrics-Backend/README.md)) → **TD-06.2**; object-count/size may still be em-dash pending object stats
+> - department **member counts** — now backable via `GET /admin/departments/:id/users` (TASK-387) → **TD-07.7**
+>
+> **Genuinely still TARGET (draw/flag only — do NOT fail):** storage **object-count / per-object size** and any bucket **rotate/manage** actions. Mark only these `NA` with a "TARGET" note.
 
 ---
 
@@ -99,7 +105,7 @@ TASK-379 is the page-based redesign of the tenant surface. Re-test these `MT-xx`
 | TD-03.5 | Create-key uniqueness | 1) Open **New tenant**; 2) type an existing key (any case) | Inline "already in use" + blocked submit; available keys show `● Available` | Validation | — | Watch DEF-ADM-001 |
 | TD-03.6 | Mobile full-screen | 1) <768, open Edit/New | Dialog is (near-)full-screen with ≥44px footer actions | Responsive | — | |
 | TD-03.7 | Non-admin denied | 1) As `doctor`, attempt edit via UI/URL | No Edit affordance; mutation denied | RBAC | — | **X5** |
-| TD-03.8 | TARGET fields flagged | 1) Inspect the dialog | "Domain, tags and plan are not yet backed by the API" footnote; no live tag controls | — | — | **TARGET** (NA) |
+| TD-03.8 | Tags + plan controls | 1) Inspect the dialog | **LANDED (TASK-387):** live **tags** chips + **plan** selector persist via PATCH; only **domain** may remain a footnote TARGET | Positive | — | Re-test (was TARGET). Plan → entitlements (TASK-392, enforcement OFF) |
 
 ---
 
@@ -118,10 +124,10 @@ TASK-379 is the page-based redesign of the tenant surface. Re-test these `MT-xx`
 | TD-04.1 | Disable confirms | 1) On `QA_TENANT_A`, click **Disable** | AlertDialog appears ("Disable «Tenant»?", recoverable-archive copy); nothing happens until confirmed | Positive | — | **X7** |
 | TD-04.2 | Disable succeeds | 1) Confirm | Toast; status badge → DISABLED; action toggles to **Enable** | Positive | — | |
 | TD-04.3 | Re-enable | 1) Click **Enable** | Status → ENABLED (direct, no confirm needed) | Positive | — | |
-| TD-04.4 | System tenant protected | 1) Open the `Global` tenant detail | **No Edit/Disable** affordance; shows "The system tenant is protected." | Negative | — | Mitigates DEF-ADM-002 |
+| TD-04.4 | System tenant protected | 1) Open the `Global` tenant detail | **No Edit/Disable** affordance; shows "The system tenant is protected." | Negative | — | **DEF-ADM-002 RESOLVED (TASK-387):** now a **backend guard**, not just FE gating — the server rejects archive/delete of the system/`__GLOBAL__` tenant |
 | TD-04.5 | Cancel aborts | 1) Open Disable confirm; Cancel | No change; tenant stays ENABLED | Edge | — | |
 | TD-04.6 | Audited | 1) Disable; 2) open Audit Log | UPDATE/status entry with actor·IP·timestamp | Audit | — | **X6** |
-| TD-04.7 | No hard archive status | 1) Inspect status options | Only ENABLED/DISABLED exist (no SUSPENDED/ARCHIVED) | — | — | **TARGET** (NA) |
+| TD-04.7 | Archive lifecycle + restore | 1) Inspect status options / lifecycle menu | **LANDED (TASK-387):** `SUSPENDED` / `ARCHIVED` (recoverable, X2) in addition to ENABLED/DISABLED, plus **restore**; system tenant excluded | Positive | — | Re-test (was TARGET). See lifecycle menu |
 
 ---
 
@@ -153,14 +159,14 @@ TASK-379 is the page-based redesign of the tenant surface. Re-test these `MT-xx`
 
 **Requirement.** An admin views the tenant's storage buckets. *(US — storage; partial.)*
 
-**Requirement available at current stage?** ☐ Yes ☑ Partial ☐ No — Notes: bucket **listing** is live; quota/objects/size/rotate/manage are **TARGET**.
+**Requirement available at current stage?** ☑ Yes ☐ Partial ☐ No — Notes: bucket **listing** is live; **quota** (`quotaBytes`) + storage-used are now backed by `GET /admin/tenants/:id/usage` (**TASK-386**); **objects/size/rotate/manage** remain **TARGET**.
 
 **Roles under test:** `SUPER_ADMIN`; `TENANT_ADMIN` (own tenant).
 
 | TC | Title | Steps | Expected result | Type | Status | Notes |
 |----|-------|-------|-----------------|------|--------|-------|
 | TD-06.1 | Buckets list | 1) Open **Storage** | Buckets table renders (name · provider·region · status); loading uses skeletons | Positive | — | |
-| TD-06.2 | TARGET cells flagged | 1) Inspect Objects / Size / Usage | Em-dash (`—`) + explicit "target metric" note; **not** fabricated | — | — | **TARGET** (NA) |
+| TD-06.2 | Quota + usage backed; objects/size TARGET | 1) Inspect Quota / Usage vs Objects / per-object Size | **Quota (`quotaBytes`) + storage-used are REAL (TASK-386)** and populate the meter; **Objects / per-object Size** remain em-dash + "target metric" note (never fabricated) | Positive · TARGET | — | Re-test quota (was TARGET); objects/size still NA |
 | TD-06.3 | Rotate/Manage disabled | 1) Inspect footer actions | Rotate keys / Manage provider are disabled (`title="Not yet available"`) | — | — | **TARGET** (NA) |
 | TD-06.4 | Acting-on banner | 1) As `super_admin` with a working tenant | "Acting on «Tenant»" context banner is present | Isolation | — | |
 | TD-06.5 | Isolation | 1) As `arcaai_admin`, only own buckets | No cross-tenant buckets | Isolation | — | **X1** |
@@ -171,7 +177,7 @@ TASK-379 is the page-based redesign of the tenant surface. Re-test these `MT-xx`
 
 **Requirement.** An admin manages a tenant's departments (create, browse, open detail, add members, set a default agent instruction). *(US — departments.)*
 
-**Requirement available at current stage?** ☑ Yes ☐ Partial ☐ No — Notes: member-count/lead and role-in-department are **TARGET**.
+**Requirement available at current stage?** ☑ Yes ☐ Partial ☐ No — Notes: **Update 2026-07-01** — **member counts** are now backable via `GET /admin/departments/:id/users` (**TASK-387** reverse listing); lead/role-in-department may still be TARGET.
 
 **Roles under test:** `SUPER_ADMIN`; `TENANT_ADMIN` (own tenant).
 
@@ -183,7 +189,7 @@ TASK-379 is the page-based redesign of the tenant surface. Re-test these `MT-xx`
 | TD-07.4 | Add members | 1) **Add members**; 2) pick users; 3) Save | Selected users assigned; member list updates; partial-failure toast if any fail | Positive | — | |
 | TD-07.5 | New agent instruction | 1) **New instruction**; 2) service + prompt; 3) Create | Created; **scope locked to DEPARTMENT_DEFAULT** | Positive | — | D3 |
 | TD-07.6 | Not-found | 1) Open a bad department id | "Department not found" empty state + back link (no existence leak) | Isolation | — | **X1** |
-| TD-07.7 | TARGET counts flagged | 1) Inspect member/instruction counts on cards | Shown as "not yet available" | — | — | **TARGET** (NA) |
+| TD-07.7 | Member counts backed; lead/role TARGET | 1) Inspect member counts vs lead/role-in-dept on cards | **Member counts REAL (TASK-387** `…/departments/:id/users`**)**; lead/role-in-department may still show "not yet available" | Positive · TARGET | — | Re-test member count (was TARGET) |
 
 ---
 
@@ -210,7 +216,7 @@ TASK-379 is the page-based redesign of the tenant surface. Re-test these `MT-xx`
 
 ## Defects & Observations (record per [README §8](./README.md))
 
-> Use `QA-ADM-____`, cite the `TD-xx.y` TC + the requirement source, and set the **Cross-cutting flag** (X1–X8) when a principle is violated. Carry forward DEF-ADM-001 (case-insensitive key) and re-verify DEF-ADM-002 against TD-04.4 (the page now gates the system tenant — confirm the backend `DELETE` is likewise blocked).
+> Use `QA-ADM-____`, cite the `TD-xx.y` TC + the requirement source, and set the **Cross-cutting flag** (X1–X8) when a principle is violated. Carry forward DEF-ADM-001 (case-insensitive key). **DEF-ADM-002 is now RESOLVED (TASK-387):** the backend guard blocks archive/delete of the system/`__GLOBAL__` tenant (not just FE gating) — TD-04.4 re-tests confirmation that the server `DELETE`/lifecycle change is rejected.
 
 ## Results Summary (fill on execution)
 

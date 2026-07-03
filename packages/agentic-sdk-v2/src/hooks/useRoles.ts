@@ -15,6 +15,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useApiOperation } from './useApiOperation';
 import { ADMIN_USER_ROLES_ENDPOINTS, ROLE_ENDPOINTS, USER_ROLES, type UserRole } from '../core/constants';
 import { extractArray } from '../utils/responseUtils';
+import type { BreakGlassCredentials } from './usePolicies';
 
 /**
  * Built-in user role identifiers (TASK-265 W0-10).
@@ -69,9 +70,11 @@ export interface UseRolesReturn {
   getRole: (id: string) => Promise<Role>;
   createRole: (input: CreateRoleInput) => Promise<Role>;
   updateRole: (id: string, input: UpdateRoleInput) => Promise<Role>;
-  deleteRole: (id: string) => Promise<void>;
+  /** TASK-409 — deletion requires break-glass confirmation (confirm the ROLE name). */
+  deleteRole: (id: string, breakGlass?: BreakGlassCredentials) => Promise<void>;
   assignPolicy: (roleId: string, policyId: string, priority?: number) => Promise<unknown>;
-  removePolicy: (roleId: string, policyId: string) => Promise<void>;
+  /** TASK-409 — detach requires break-glass confirmation (confirm the POLICY name). */
+  removePolicy: (roleId: string, policyId: string, breakGlass?: BreakGlassCredentials) => Promise<void>;
 
   // TASK-279 R-05 — admin user-role assignment surface
   // (uses ADMIN_USER_ROLES_ENDPOINTS → /admin/users/:id/roles[/:assignmentId])
@@ -135,9 +138,15 @@ export function useRoles(): UseRolesReturn {
   );
 
   const deleteRole = useCallback(
-    (id: string) =>
+    (id: string, breakGlass?: BreakGlassCredentials) =>
       execute<void>('deleteRole', async (client) => {
-        await client.delete(ROLE_ENDPOINTS.DELETE(id));
+        // Conditional arity keeps the pre-TASK-409 wire shape for callers
+        // that pass no confirmation (the API then replies 428).
+        if (breakGlass) {
+          await client.delete(ROLE_ENDPOINTS.DELETE(id), { data: breakGlass });
+        } else {
+          await client.delete(ROLE_ENDPOINTS.DELETE(id));
+        }
         setRoles((prev) => prev.filter((r) => r.id !== id));
       }),
     [execute],
@@ -152,8 +161,12 @@ export function useRoles(): UseRolesReturn {
   );
 
   const removePolicy = useCallback(
-    (roleId: string, policyId: string) =>
-      execute<void>('removePolicy', (client) => client.delete(ROLE_ENDPOINTS.REMOVE_POLICY(roleId, policyId)) as Promise<void>),
+    (roleId: string, policyId: string, breakGlass?: BreakGlassCredentials) =>
+      execute<void>('removePolicy', (client) =>
+        (breakGlass
+          ? client.delete(ROLE_ENDPOINTS.REMOVE_POLICY(roleId, policyId), { data: breakGlass })
+          : client.delete(ROLE_ENDPOINTS.REMOVE_POLICY(roleId, policyId))) as Promise<void>,
+      ),
     [execute],
   );
 

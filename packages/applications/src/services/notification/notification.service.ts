@@ -30,6 +30,14 @@ import { SUPER_ADMIN_ROLE } from '../tenant/constants';
  */
 const NOTIFICATION_CIPHERTEXT_KEYS = ['encryptedMessageText', 'encryptedMessageRichText', 'encryptedMessageContent', 'keyVersion'] as const;
 
+/**
+ * TASK-406 (P2-6c) — model-aware filter coercion (TASK-375 §8 scheme):
+ * `read` → boolean, `version`/`keyVersion` → number, `createdAt` → Date,
+ * `type`/`resourceStatus` → member-validated enums, `metaData` → JSON-path
+ * support. The encrypted Bytes columns are not filterable.
+ */
+const NOTIFICATION_FILTER_MODEL = 'Notification';
+
 @Injectable()
 export class NotificationService extends BaseService implements INotificationService {
   constructor(
@@ -150,11 +158,11 @@ export class NotificationService extends BaseService implements INotificationSer
 
     const [notifications, count] = await Promise.all([
       this.notificationRepository.findAll({
-        ...withFormattedPaginatedProps(props),
+        ...withFormattedPaginatedProps(props, NOTIFICATION_FILTER_MODEL),
         where: tenantScopedWhere,
       }),
       this.notificationRepository.count({
-        ...withFormattedCountProps(props),
+        ...withFormattedCountProps(props, NOTIFICATION_FILTER_MODEL),
         where: tenantScopedWhere,
       }),
     ]);
@@ -187,13 +195,13 @@ export class NotificationService extends BaseService implements INotificationSer
     }
 
     const notifications = await this.notificationRepository.findAll({
-      ...withFormattedPaginatedProps(props),
+      ...withFormattedPaginatedProps(props, NOTIFICATION_FILTER_MODEL),
       where: {
         tenantId,
       },
     });
     const count = await this.notificationRepository.count({
-      ...withFormattedCountProps(props),
+      ...withFormattedCountProps(props, NOTIFICATION_FILTER_MODEL),
       where: {
         tenantId,
       },
@@ -225,11 +233,11 @@ export class NotificationService extends BaseService implements INotificationSer
 
     const [notifications, count] = await Promise.all([
       this.notificationRepository.findAll({
-        ...withFormattedPaginatedProps(props),
+        ...withFormattedPaginatedProps(props, NOTIFICATION_FILTER_MODEL),
         where: tenantScopedWhere,
       }),
       this.notificationRepository.count({
-        ...withFormattedCountProps(props),
+        ...withFormattedCountProps(props, NOTIFICATION_FILTER_MODEL),
         where: tenantScopedWhere,
       }),
     ]);

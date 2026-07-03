@@ -9,6 +9,15 @@
 
 **Last executed:** 2026-06-27 | **Executed by:** Browser agent (`super_admin`) | **Environment:** `http://localhost:5175`
 
+> **⚠️ Update 2026-07-01 — backend backlog landed (TASK-379 / TASK-386 / TASK-387); several statuses below are now stale and need re-execution:**
+> - **MT-03 Update tenant** (was `NA` — "read-only") → **built** by [TASK-379](../../implementation/TASK-379-Tenant-Detail-Pages/README.md) (edit dialog); see [`04-tenant-detail.md`](./04-tenant-detail.md) **TD-03**. Re-test.
+> - **MT-04 Destroy/Archive + MT-04.5 system-tenant protection** → **`DEF-ADM-002` RESOLVED** by [TASK-387](../../implementation/TASK-387-Tenant-Data-Model-Backlog/README.md): tenant lifecycle now has **`SUSPENDED`/`ARCHIVED` + restore** and the system/`__GLOBAL__` tenant is **protected** from archive/delete. Re-test 04.2–04.6.
+> - **MT-06 Tenant Config** (was `NA` — nav disabled) → **built** by TASK-379 (Configuration surface, OCC); see **TD-05**. Re-test.
+> - **MT-07.2 No-tenant prompt** → **`GAP-ADM-001` RESOLVED** by TASK-379 (NoTenant empty state, SH4); see **TD-08.3**. Re-test.
+> - **MT-05 Monitor** platform metrics (sockets/consumption/roll-ups) now backed by [TASK-386](../../implementation/TASK-386-Platform-Metrics-Backend/README.md) (Prometheus-derived tiles remain env-dependent). See [`08-platform-dashboard-monitoring.md`](./08-platform-dashboard-monitoring.md).
+> - New: tenants now carry **tags** + a **plan** (TASK-387; plan feeds entitlements, TASK-392, **enforcement OFF by default**).
+> The 2026-06-27 execution log below is preserved as-run; affected rows are re-marked `—` (re-test) with a pointer.
+
 ---
 
 ## MT-01 — Tenant Listing
@@ -77,7 +86,7 @@
 
 **Requirement.** An admin can modify an existing tenant's attributes. *(Source: US 63 "manage tenants".)*
 
-**Requirement available at current stage?**  ☐ Yes ☐ Partial ☑ No — Notes: No edit/update functionality found for tenant name or description in the current UI build. Tenant detail view is read-only.
+**Requirement available at current stage?**  ☑ Yes ☐ Partial ☐ No — Notes: **Updated 2026-07-01** — the edit surface **now exists** (TASK-379 tenant edit dialog; TASK-387 added editable **tags** + **plan**). The 2026-06-27 "read-only / NA" results below are **stale — re-test** (see [`04-tenant-detail.md`](./04-tenant-detail.md) TD-03).
 
 **Roles under test:** `SUPER_ADMIN` (positive); `TENANT_ADMIN` for own-tenant scope; `DOCTOR` (negative).
 
@@ -107,7 +116,7 @@
 
 **Requirement.** An admin can remove/decommission a tenant. Per platform principle, destructive removal is a **soft-delete/archive with confirmation**, not a hard delete. *(Source: US 63; AC — soft-delete & confirmation principles X2/X7.)*
 
-**Requirement available at current stage?**  ☐ Yes ☑ Partial ☐ No — Notes: Delete confirmation dialog works (X7 satisfied). However, the system/global tenant is NOT protected from deletion at the UI level (defect DEF-ADM-002). Soft-delete vs hard-delete behavior and archive/audit not verified.
+**Requirement available at current stage?**  ☑ Yes ☐ Partial ☐ No — Notes: Delete confirmation dialog works (X7). **Updated 2026-07-01 (TASK-387):** tenant lifecycle now supports **`SUSPENDED` / `ARCHIVED` + restore** (recoverable archive, X2), and the **system/`__GLOBAL__` tenant is now protected** from archive/delete — **`DEF-ADM-002` RESOLVED** (backend guard TASK-387 + FE TASK-379). The 2026-06-27 `F`/`—` results below are **stale — re-test 04.2–04.6**.
 
 **Roles under test:** `SUPER_ADMIN` (positive); others negative.
 
@@ -127,7 +136,7 @@
 | MT-04.2 | Archive succeeds | 1) Confirm the action | Tenant is removed from the active list (or shown as Archived/Inactive); success message | Positive | — | Not run — archive action was not confirmed to preserve test data. |
 | MT-04.3 | Soft-delete, not hard-delete | 1) After archive, verify record still exists (archived state / via audit or Studio) | Record is archived, not physically removed (X2) | Isolation/Audit | — | Not run — depends on MT-04.2. |
 | MT-04.4 | Archived tenant access blocked | 1) Attempt to sign in / operate as a user belonging to the archived tenant | Access to the archived tenant is blocked/unavailable | Negative | — | Not run — depends on MT-04.2. |
-| MT-04.5 | System/global tenant protected | 1) Attempt to archive the `Global`/system tenant | Action blocked/disabled with explanation | Negative | F | **DEFECT DEF-ADM-002**: Delete button on the `Global` tenant (`__GLOBAL__`) is fully enabled and functional. Clicking it opens the same confirmation dialog as regular tenants. Only protection is description text "System-wide default tenant — do not remove". No UI-level block exists. |
+| MT-04.5 | System/global tenant protected | 1) Attempt to archive the `Global`/system tenant | Action blocked/disabled with explanation | Negative | — | **DEF-ADM-002 RESOLVED (TASK-387)** — the system/`__GLOBAL__` tenant is now protected server-side (guard) and the FE disables archive/delete for it. Re-test to confirm the block + explanation. *(2026-06-27 result was `F`: delete button was enabled.)* |
 | MT-04.6 | Destroy is audited | 1) Archive a tenant<br>2) Open audit logs | DELETE/ARCHIVE entry with actor, timestamp (X6) | Audit | — | Not run — depends on MT-04.2. |
 | MT-04.7 | Non-global-admin cannot destroy | 1) As `tenant_admin`, attempt to archive any tenant | Denied/unavailable | RBAC | — | Not run — requires `tenant_admin` account. |
 | MT-04.8 | Cancel aborts | 1) Open confirm dialog, Cancel | Tenant remains active and unchanged | Edge | P | Triggered delete dialog on QA Tenant A → pressed Cancel → dialog dismissed → tenant remains ENABLED and unchanged in list. |
@@ -170,7 +179,7 @@
 
 **Requirement.** An admin can manage per-tenant configuration: load a tenant's config (e.g., by tenant ID), manage **global settings as tenant-scoped key-value pairs**, toggle **feature flags**, configure **ASR pipelines per tenant**, and select per-tenant processing engines. Changes are isolated to the target tenant. *(Source: US 57, 61, 62, 66.)*
 
-**Requirement available at current stage?**  ☐ Yes ☐ Partial ☑ No — Notes: Configurations navigation item exists in the admin sidebar but is disabled (`pointer-events: none`). The entire MT-06 surface is not yet implemented.
+**Requirement available at current stage?**  ☑ Yes ☐ Partial ☐ No — Notes: **Updated 2026-07-01** — the Configuration surface **now exists** (TASK-379 Configuration page with OCC `If-Match`/`expectedVersion`); see [`04-tenant-detail.md`](./04-tenant-detail.md) **TD-05**. The 2026-06-27 "nav disabled / NA" results below are **stale — re-test**. *(Note: `TenantConfigResponse` was later decoupled from global-settings in TASK-393 — additive `tenantId`/`defaultValue`, no behavior change.)*
 
 **Roles under test:** `SUPER_ADMIN` (any tenant); `TENANT_ADMIN` (own tenant only).
 
@@ -203,7 +212,7 @@
 
 **Requirement.** A super/global admin operates across tenants (`tenantId = null`) and must be able to **select/switch the active working tenant** to scope admin operations to that tenant. When no tenant is selected, the admin is prompted to select a tenant (or impersonate). Tenant-scoped admins do not get a tenant switcher. *(Source: AC — System Roles & Multi-Tenancy; US 57.)*
 
-**Requirement available at current stage?**  ☐ Yes ☑ Partial ☐ No — Notes: Tenant selector/switcher present and functional in header. Switching rescopes data and persists across navigation/refresh. Gap: no "select a tenant" prompt when no tenant is chosen — system shows all users cross-tenant instead (defect/gap MT-07.2).
+**Requirement available at current stage?**  ☑ Yes ☐ Partial ☐ No — Notes: Tenant selector/switcher present and functional; switching rescopes + persists. **Updated 2026-07-01** — the **NoTenant prompt** (was `GAP-ADM-001`) is now built (TASK-379 SH4 empty state on top-level `/users`+`/departments`); see **TD-08.3**. Re-test MT-07.2.
 
 **Roles under test:** `SUPER_ADMIN` (positive); `TENANT_ADMIN` (no-switch negative).
 
@@ -220,7 +229,7 @@
 | TC | Title | Steps | Expected result | Type | Status | Notes |
 |----|-------|-------|-----------------|------|--------|-------|
 | MT-07.1 | Working-tenant selector present | 1) As `super_admin`, locate the tenant selector/switcher | A control to choose the active working tenant is available | Positive | P | Tenant selector combobox present in the top-right header. Dropdown shows search box "Search tenants…" and all tenants: QA Tenant A, Duplicate Test, Global, ArcaAI. |
-| MT-07.2 | No-tenant prompt | 1) With no working tenant set, open a tenant-scoped admin area (e.g., Users) | A prompt instructs the admin to select a tenant (or impersonate) instead of showing empty/ambiguous data | Positive | F | **GAP**: When no tenant is selected, navigating to Users shows a global cross-tenant view of ALL 27 users. No "please select a tenant" prompt is shown. Expected requirement (NoTenant prompt) is not met. |
+| MT-07.2 | No-tenant prompt | 1) With no working tenant set, open a tenant-scoped admin area (e.g., Users) | A prompt instructs the admin to select a tenant (or impersonate) instead of showing empty/ambiguous data | Positive | — | **GAP-ADM-001 RESOLVED (TASK-379)** — top-level `/users`+`/departments` now render a **NoTenant empty state** prompting tenant selection (SH4). Re-test to confirm. *(2026-06-27 result was `F`: showed all 27 users cross-tenant.)* |
 | MT-07.3 | Selecting scopes the session | 1) Select tenant `ArcaAI`<br>2) Open Users / tenant-scoped data | Only `ArcaAI` data is shown (e.g., `arcaai_admin`); other tenants' users are not listed (X1) | Positive/Isolation | P | Selected ArcaAI; nav items gained "NEW" badges. Users scoped to ArcaAI only (arcaai_admin, arcaai_doctor, arcaai_nurse — 3 users). |
 | MT-07.4 | Switching rescopes | 1) Switch from `ArcaAI` to `QA_TENANT_A`<br>2) Re-open Users | View updates to `QA_TENANT_A`'s data; previous tenant's data no longer shown | Positive | P | Switching from ArcaAI (3 users) to QA Tenant A (0 users) correctly rescoped the view. ArcaAI users no longer shown. |
 | MT-07.5 | Selection persists | 1) Select a tenant<br>2) Navigate between admin pages and refresh | Working tenant remains selected (no unexpected reset) | Edge | P | Tenant selection persisted across Overview → Tenants → System Health → Users navigation and after F5 page refresh. |
@@ -244,27 +253,29 @@
 | **Impact** | Data integrity violation; potential routing/lookup ambiguity if backend key matching is case-insensitive. |
 | **Cross-cutting** | None |
 
-### DEF-ADM-002 — System/Global Tenant Delete Button Not Disabled
+### DEF-ADM-002 — System/Global Tenant Delete Button Not Disabled — ✅ RESOLVED (TASK-387)
 
 | Field | Value |
 |-------|-------|
 | **TC** | MT-04.5 |
 | **Severity** | High |
+| **Status** | ✅ **RESOLVED 2026-07-01** — [TASK-387](../../implementation/TASK-387-Tenant-Data-Model-Backlog/README.md) added a **server-side guard** protecting the system/`__GLOBAL__` tenant from archive/delete; FE disables the action (TASK-379). **Re-test MT-04.5 to confirm.** |
 | **Requirement** | US 63; AC — system-tenant protection |
 | **Expected** | Delete button is disabled/hidden for the `Global` (`__GLOBAL__`) system tenant, with an explanation. |
-| **Actual** | Delete button is fully enabled and functional on the Global tenant. Clicking it opens the standard confirmation dialog. Only protection is warning text in the description field ("System-wide default tenant — do not remove"). |
+| **Actual (2026-06-27)** | Delete button is fully enabled and functional on the Global tenant. Clicking it opens the standard confirmation dialog. Only protection is warning text in the description field ("System-wide default tenant — do not remove"). |
 | **Impact** | Accidental or malicious deletion of the system tenant would break the entire platform. |
 | **Cross-cutting** | None |
 
-### GAP-ADM-001 — No "Select a Tenant" Prompt When No Tenant Selected (MT-07.2)
+### GAP-ADM-001 — No "Select a Tenant" Prompt When No Tenant Selected (MT-07.2) — ✅ RESOLVED (TASK-379)
 
 | Field | Value |
 |-------|-------|
 | **TC** | MT-07.2 |
 | **Severity** | Minor |
+| **Status** | ✅ **RESOLVED** — TASK-379 added the **NoTenant empty state** (SH4) on top-level `/users`+`/departments`, prompting tenant selection; see [`04-tenant-detail.md`](./04-tenant-detail.md) **TD-08.3**. **Re-test MT-07.2 to confirm.** |
 | **Requirement** | AC — System Roles & Multi-Tenancy; US 57 |
 | **Expected** | When no working tenant is selected and a tenant-scoped area (e.g., Users) is opened, a prompt instructs the admin to select a tenant. |
-| **Actual** | System shows a global cross-tenant view of all users (27 users). No prompt is displayed. |
+| **Actual (2026-06-27)** | System shows a global cross-tenant view of all users (27 users). No prompt is displayed. |
 | **Impact** | Could cause confusion for admins who see all-tenant data unexpectedly. Less severe than a defect — this is an unimplemented UX requirement. |
 | **Cross-cutting** | None |
 

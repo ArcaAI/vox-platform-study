@@ -12,6 +12,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GlobalSettingService } from '../globalSetting.service';
 import { SysEventType, ValueType } from '@arcaai/domains';
+import { DataNotFoundException } from '@arcaai/exceptions';
 
 // Define ResourceStatus locally to avoid mock issues
 const ResourceStatus = {
@@ -44,6 +45,29 @@ const mockGlobalSettingRepository = {
     update: vi.fn(),
     updateWithVersion: vi.fn(),
     softDelete: vi.fn(),
+    // TASK-396 — reveal reads the decrypted plaintext via this repo helper.
+    findByIdWithDecryptedValue: vi.fn(),
+    // TASK-402 — create() first probes for a soft-DELETED row to revive
+    // (restore-on-create); these tests exercise the plain-create branch, so
+    // the probe defaults to "not found" in beforeEach.
+    findFirst: vi.fn(),
+    restore: vi.fn(),
+};
+
+// TASK-396 — reveal collaborators: UserRepository (password hash for step-up),
+// ICryptoService (bcrypt verify), SecretsService (Vault decrypt, passed through).
+const mockUserRepository = {
+    findById: vi.fn(),
+};
+const mockCryptoService = {
+    hash: vi.fn(),
+    verify: vi.fn(),
+    encrypt: vi.fn(),
+    decrypt: vi.fn(),
+};
+const mockSecretsService = {
+    encrypt: vi.fn(),
+    decrypt: vi.fn(),
 };
 
 /**
@@ -131,6 +155,10 @@ describe('GlobalSettingService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
 
+        // TASK-402 — default the revive probe to "no DELETED row" so every
+        // pre-existing create test keeps exercising the plain-create branch.
+        mockGlobalSettingRepository.findFirst.mockRejectedValue(new DataNotFoundException('globalSetting', '{}'));
+
         // Default: return valid user from CLS
         mockClsService.get.mockImplementation((key: string) => {
             switch (key) {
@@ -147,9 +175,13 @@ describe('GlobalSettingService', () => {
             }
         });
 
-        // Create service instance with mocks
+        // Create service instance with mocks (TASK-396 — constructor now also
+        // takes UserRepository, ICryptoService, SecretsService for reveal).
         service = new GlobalSettingService(
             mockGlobalSettingRepository as any,
+            mockUserRepository as any,
+            mockCryptoService as any,
+            mockSecretsService as any,
             mockEventEmitter as any,
             mockClsService as any,
         );
@@ -807,6 +839,125 @@ describe('GlobalSettingService', () => {
             mockGlobalSettingRepository.softDelete.mockRejectedValue(new Error('Delete failed'));
 
             await expect(service.deleteById('setting-123')).rejects.toThrow('Delete failed');
+        });
+    });
+
+    // =========================================================================
+    // TASK-396 — reveal (super-admin gate + step-up re-auth + audit, no plaintext
+    // in the audit event). Decrypts via the repo's findByIdWithDecryptedValue.
+    // =========================================================================
+    describe('revealSecret (TASK-396)', () => {
+        const PLAINTEXT = 'super-secret-value';
+
+        const asSuperAdmin = () =>
+            mockClsService.get.mockImplementation((key: string) =>
+                key === 'user' ? { id: 'super-1', roles: ['SUPER_ADMIN'] } : key === 'tenantId' ? 'tenant-1' : key === 'correlationId' ? 'corr-1' : null,
+            );
+
+        const wireDecrypt = (overrides?: Parameters<typeof createMockGlobalSettingEntity>[0]) => {
+            const entity = createMockGlobalSettingEntity({ id: 'secret-1', key: 'secrets.api-token', namespace: 'secrets', ...overrides });
+            mockGlobalSettingRepository.findByIdWithDecryptedValue.mockResolvedValue({ entity, plaintext: PLAINTEXT });
+            mockUserRepository.findById.mockResolvedValue({ id: 'super-1', password: 'bcrypt-hash' });
+            return entity;
+        };
+
+        it('rejects a non-super-admin with ForbiddenException (super-admin gate)', async () => {
+            // Default CLS user has no roles ⇒ not a super-admin.
+            const { ForbiddenException } = await import('@nestjs/common');
+            await expect(service.revealSecret('secret-1', 'pw')).rejects.toBeInstanceOf(ForbiddenException);
+            // Fail-closed: no decrypt, no step-up, no audit.
+            expect(mockGlobalSettingRepository.findByIdWithDecryptedValue).not.toHaveBeenCalled();
+            expect(mockCryptoService.verify).not.toHaveBeenCalled();
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+        });
+
+        it('requires a step-up password (empty ⇒ UnauthorizedException)', async () => {
+            asSuperAdmin();
+            wireDecrypt();
+            const { UnauthorizedException } = await import('@nestjs/common');
+            await expect(service.revealSecret('secret-1', '')).rejects.toBeInstanceOf(UnauthorizedException);
+            expect(mockCryptoService.verify).not.toHaveBeenCalled();
+            expect(mockGlobalSettingRepository.findByIdWithDecryptedValue).not.toHaveBeenCalled();
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+        });
+
+        it('rejects a wrong password with UnauthorizedException (no decrypt, no audit)', async () => {
+            asSuperAdmin();
+            wireDecrypt();
+            mockCryptoService.verify.mockResolvedValue(false);
+
+            const { UnauthorizedException } = await import('@nestjs/common');
+            await expect(service.revealSecret('secret-1', 'wrong-pw')).rejects.toBeInstanceOf(UnauthorizedException);
+
+            // Step-up was attempted against the stored hash…
+            expect(mockCryptoService.verify).toHaveBeenCalledWith('wrong-pw', 'bcrypt-hash');
+            // …but the decrypt + audit never happen on failure.
+            expect(mockGlobalSettingRepository.findByIdWithDecryptedValue).not.toHaveBeenCalled();
+            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+        });
+
+        it('returns the decrypted plaintext for a super-admin with the correct password', async () => {
+            asSuperAdmin();
+            const entity = wireDecrypt();
+            mockCryptoService.verify.mockResolvedValue(true);
+
+            const result = await service.revealSecret('secret-1', 'correct-pw');
+
+            expect(result.plaintext).toBe(PLAINTEXT);
+            expect(result.entity).toBe(entity);
+            expect(mockCryptoService.verify).toHaveBeenCalledWith('correct-pw', 'bcrypt-hash');
+            // Decrypt went through the canonical repo helper (same crypto as the writer),
+            // passing the SecretsService through.
+            expect(mockGlobalSettingRepository.findByIdWithDecryptedValue).toHaveBeenCalledWith('secret-1', mockSecretsService);
+        });
+
+        it('writes an audit SysEvent (actor + key + action) that NEVER contains the plaintext', async () => {
+            asSuperAdmin();
+            wireDecrypt({ key: 'secrets.api-token' });
+            mockCryptoService.verify.mockResolvedValue(true);
+
+            await service.revealSecret('secret-1', 'correct-pw');
+
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceViewed,
+                expect.objectContaining({
+                    resourceId: 'secret-1',
+                    responsibleEntityId: 'super-1',
+                    // REQUIRED so SysEventService actually PERSISTS this READ to the
+                    // AuditLog (ResourceViewed is dropped by default for volume).
+                    forceAuditLog: true,
+                    data: expect.objectContaining({
+                        action: 'GLOBAL_SETTING_SECRET_REVEALED',
+                        key: 'secrets.api-token',
+                    }),
+                }),
+            );
+            // Belt-and-suspenders: the plaintext must not appear ANYWHERE in the emitted event.
+            const emitted = mockEventEmitter.emit.mock.calls.find((c) => c[0] === SysEventType.ResourceViewed);
+            expect(JSON.stringify(emitted?.[1] ?? {})).not.toContain(PLAINTEXT);
+        });
+
+        it('attributes the audit to the RESOURCE tenant when the super-admin has no CLS tenant', async () => {
+            // Real super-admins carry a null CLS tenantId; AuditLogProcessor
+            // fail-closes on a null tenant, so the reveal audit must fall back to
+            // the revealed setting's own (persisted) tenantId — otherwise the row
+            // is silently dropped.
+            mockClsService.get.mockImplementation((key: string) =>
+                key === 'user' ? { id: 'super-1', roles: ['SUPER_ADMIN'] } : key === 'tenantId' ? null : key === 'correlationId' ? 'corr-1' : null,
+            );
+            wireDecrypt({ tenantId: 'platform-tenant-000' });
+            mockCryptoService.verify.mockResolvedValue(true);
+
+            await service.revealSecret('secret-1', 'correct-pw');
+
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                SysEventType.ResourceViewed,
+                expect.objectContaining({
+                    resourceId: 'secret-1',
+                    forceAuditLog: true,
+                    tenantId: 'platform-tenant-000',
+                }),
+            );
         });
     });
 

@@ -262,6 +262,21 @@ describe('MediaService', () => {
             );
         });
 
+        it('coerces Media-typed filter values via the model registry (TASK-406 P2-6c)', async () => {
+            mockMediaRepository.findAll.mockResolvedValue([]);
+            mockMediaRepository.count.mockResolvedValue(0);
+
+            await service.fetchAll({ limit: 10, page: 1, filters: 'size[gte]:1000;createdAt[gte]:2026-01-01' });
+
+            const expectedFilters = { size: { gte: 1000 }, createdAt: { gte: new Date('2026-01-01') } };
+            expect(mockMediaRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({ filters: expectedFilters })
+            );
+            expect(mockMediaRepository.count).toHaveBeenCalledWith(
+                expect.objectContaining({ filters: expectedFilters })
+            );
+        });
+
         it('should return empty result when no media files found', async () => {
             mockMediaRepository.findAll.mockResolvedValue([]);
             mockMediaRepository.count.mockResolvedValue(0);

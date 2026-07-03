@@ -29,8 +29,13 @@
 - **X6 auditability** — the `New tenant` create from the dashboard is audited (X6).
 - **X7 confirmation** — destructive/mutating actions confirm (the create dialog).
 
-> **Requirement available at current stage?**  ☐ Yes ☐ Partial ☐ No — Notes: ______________________
-> *(Some metrics are intentionally TARGET — see PDM-04; mark those rows `NA`/document, do not `F`.)*
+> **Requirement available at current stage?**  ☑ Yes ☐ Partial ☐ No — Notes: **Updated 2026-07-01 (TASK-386).**
+>
+> **⚠️ Update 2026-07-01 — platform metrics backend LANDED ([TASK-386](../../implementation/TASK-386-Platform-Metrics-Backend/README.md)):** many former PDM-04 TARGETs are now backed. Split for re-test:
+> - **Now REAL (DB roll-ups):** Transcription-min · Summaries · Storage-used (dashboard secondary row) via `/admin/platform/consumption` + `/admin/tenants/:id/usage` (`quotaBytes`); cross-tenant consultation aggregate via `/admin/consultations/aggregate` (also fixes the bare-super_admin **TD3-400**).
+> - **Now REAL (Redis):** **Total open sockets** via `/admin/platform/sockets`.
+> - **Env-dependent (Prometheus-derived):** **P95**, **Requests/min**, **Error rate**, **Sockets/min**, and per-model **Running / Avg-latency** come from `/admin/platform/metrics` — **REAL when Prometheus is configured, else they correctly degrade to em-dash.** Treat em-dash as expected in a Prometheus-less env (do not `F`); treat a populated value as REAL (do not `F` either).
+> - **F-NAV1** (Monitoring nav guard) already resolved — see PDM-03.3 / Findings.
 
 ---
 
@@ -79,11 +84,11 @@ states). **Dependencies:** overlaps central **MT-05** (Monitor).
 | PDM-02.1 | Monitoring reachable | 1) Open **Observability → Monitoring** | `/system-health` loads; `h2` "Service Monitoring"; breadcrumb `Home / Platform / Monitoring` | Positive | ☐ | |
 | PDM-02.2 | Services table — REAL status | 1) Read the **Services** table | One row per service in order **API · STT · SMR · NLP · Guardrail · Harness**, each a **dot + label** status | Positive | ☐ | |
 | PDM-02.3 | SMR degraded surfaces | 1) When SMR reports degraded | SMR row shows **Degraded** (amber dot+label); consistent with Dashboard PDM-01.3 | Positive | ☐ | |
-| PDM-02.4 | Uptime REAL, P95 TARGET | 1) Read the **Uptime** and **P95** columns | **Uptime** = a real duration; **P95** = em-dash (TARGET, no metric) | Validation | ☐ | See PDM-04 |
+| PDM-02.4 | Uptime REAL; P95 env-dependent | 1) Read the **Uptime** and **P95** columns | **Uptime** = a real duration; **P95** now sourced from `/admin/platform/metrics` (**TASK-386**) — **REAL when Prometheus is configured, else em-dash** | Validation | ☐ | Prometheus-derived; see PDM-04 |
 | PDM-02.5 | Models table — REAL identity | 1) Read the **Models & running tasks** table | 6 grounded models with host service: whisper-large-v3-turbo + silero-vad-v5 (STT), gemma-4-e4b (SMR), granite-guardian-4.1-8b (Guardrail), Medical-NER + symps-disease-bert (NLP) | Positive | ☐ | |
-| PDM-02.6 | Running/latency TARGET | 1) Read **Running** + **Avg latency** | Both em-dash (TARGET — no per-model telemetry) | Validation | ☐ | See PDM-04 |
-| PDM-02.7 | Throughput KPIs TARGET | 1) Read Requests/min · Error rate · Sockets/min · Total sockets | All render em-dash + "Target" hint (no metrics endpoint) | Validation | ☐ | See PDM-04 |
-| PDM-02.8 | Request-volume empty-state | 1) Inspect the request-volume chart | Custom empty "Request-volume telemetry not instrumented" (TARGET), not a fabricated series | Validation | ☐ | |
+| PDM-02.6 | Running/latency env-dependent | 1) Read **Running** + **Avg latency** | Now sourced from `/admin/platform/metrics` (**TASK-386**) — **REAL when Prometheus is configured, else em-dash** (never fabricated) | Validation | ☐ | Prometheus-derived; see PDM-04 |
+| PDM-02.7 | Throughput KPIs — sockets REAL, rest env-dependent | 1) Read Requests/min · Error rate · Sockets/min · **Total sockets** | **Total open sockets = REAL** (`/admin/platform/sockets`, Redis, **TASK-386**); Requests/min · Error rate · Sockets/min are Prometheus-derived → **REAL when configured, else em-dash** | Validation | ☐ | See PDM-04 |
+| PDM-02.8 | Request-volume chart | 1) Inspect the request-volume chart | With Prometheus configured, a real request-volume series renders (**TASK-386**); without it, the honest "telemetry not instrumented" empty state — never a fabricated series | Validation | ☐ | env-dependent |
 | PDM-02.9 | 30s polling refresh | 1) Leave the page open; toggle a service health upstream | Services table refreshes within ~30 s without manual reload | Positive | ☐ | |
 | PDM-02.10 | Error + retry on first-load failure | 1) Make `/health/services` unreachable, load fresh | Centered **retry card** (`role=alert`) + **Retry** | Edge | ☐ | After first success, transient poll fails do NOT flip to error |
 | PDM-02.11 | MetricTable on mobile | 1) Resize < 768 | KPI 1-up; tables stack; 4-col tables **scroll horizontally** within their card (no clipping) | Responsive | ☐ | Card-list variant = backlog (TASK-384) |
@@ -119,9 +124,9 @@ parallel sessions (E5).
 
 | TC | Title | Steps | Expected result | Type | Status | Notes |
 |----|-------|-------|-----------------|------|--------|-------|
-| PDM-04.1 | Dashboard TARGET tiles | 1) Read Transcription min · 24h / Summaries · 24h / Storage used | Each = **em-dash** + a "… · Target" hint — **no fabricated value** | Validation | ☐ | T1 backend ticket |
-| PDM-04.2 | Monitoring TARGET KPIs | 1) Read the 4 throughput KPIs | All em-dash + "Target" | Validation | ☐ | |
-| PDM-04.3 | TARGET columns | 1) Read P95 (Services) + Running/Avg-latency (Models) | All em-dash | Validation | ☐ | |
+| PDM-04.1 | Dashboard tiles now REAL (TASK-386) | 1) Read Transcription min · 24h / Summaries · 24h / Storage used | **Now REAL (DB roll-ups, TASK-386)** — populated from `/admin/platform/consumption` + `/admin/tenants/:id/usage`; **no longer em-dash TARGET** | Positive | ☐ | Was T1 backend ticket — **RESOLVED (TASK-386)**; re-test |
+| PDM-04.2 | Monitoring throughput — sockets REAL, rest env-dependent | 1) Read the 4 throughput KPIs | **Total open sockets = REAL** (Redis); Requests/min · Error rate · Sockets/min = Prometheus-derived → REAL-or-em-dash by env (never fabricated) | Validation | ☐ | TASK-386 |
+| PDM-04.3 | Prometheus-derived columns | 1) Read P95 (Services) + Running/Avg-latency (Models) | Sourced from `/admin/platform/metrics` (**TASK-386**) — REAL when Prometheus configured, else em-dash (never fabricated) | Validation | ☐ | env-dependent |
 | PDM-04.4 | No silent zeros | 1) Confirm TARGET cells are **em-dash**, not `0` | A real `0` (e.g. 0 degraded services) is distinct from a TARGET em-dash | Edge | ☐ | Guards against fabrication-as-zero |
 | PDM-04.5 | REAL where backed | 1) Confirm Active tenants / Total users / service status / uptime / model identity show real values | These are REAL (not em-dash) when the stack is healthy | Positive | ☐ | |
 
@@ -129,6 +134,7 @@ parallel sessions (E5).
 
 ## Findings (raised by this review)
 
+- **T1 (platform runtime metrics) — RESOLVED (2026-07-01, TASK-386).** The former TARGET dashboard tiles (transcription-min / summaries / storage-used) and monitoring throughput are now backed by `/admin/platform/{metrics,sockets,consumption}` + `/admin/consultations/aggregate` (which also fixed the bare-super_admin **TD3-400**). DB roll-ups + open-sockets are REAL; Prometheus-derived values (P95, req/min, error-rate, per-model latency) are env-dependent and degrade to em-dash when Prometheus is absent. See PDM-04.1–.3.
 - **F-NAV1 (Minor, IA) — RESOLVED (2026-06-30).** The **Monitoring** nav item (`/system-health`) is now
   `requireSuperAdmin: true` in `lib/nav.ts:58`, so `getNavSections` **hides** it from tenant-admins like the
   Dashboard item. The API boundary was always default-deny (`@Authorize(['manage','all'])` → 403); the nav now

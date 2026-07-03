@@ -739,6 +739,25 @@ describe('WebhookService', () => {
             expect(result.data[1].name).toBe('Webhook 2');
         });
 
+        it('coerces Webhook-typed filter values via the model registry (TASK-406 P2-6c)', async () => {
+            mockWebhookRepository.findAll.mockResolvedValue([]);
+            mockWebhookRepository.count.mockResolvedValue(0);
+
+            await service.fetchAll({ limit: 10, page: 1, filters: 'version[gte]:2;subscriptionMetadata.event[equals]:consultation.created' });
+
+            // version (Int) coerces; subscriptionMetadata (Json) takes a dotted-path filter.
+            const expectedFilters = {
+                version: { gte: 2 },
+                subscriptionMetadata: { path: ['event'], equals: 'consultation.created' },
+            };
+            expect(mockWebhookRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({ filters: expectedFilters })
+            );
+            expect(mockWebhookRepository.count).toHaveBeenCalledWith(
+                expect.objectContaining({ filters: expectedFilters })
+            );
+        });
+
         it('should return empty result when no webhooks exist', async () => {
             mockWebhookRepository.findAll.mockResolvedValue([]);
             mockWebhookRepository.count.mockResolvedValue(0);

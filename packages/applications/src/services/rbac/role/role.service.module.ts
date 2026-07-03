@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
-import { CoreDatabaseModule, RbacRoleRepository, RolePolicyRepository } from '@arcaai/domains';
+import { CoreDatabaseModule, PolicyRepository, RbacRoleRepository, RolePolicyRepository } from '@arcaai/domains';
 import { CommonServiceModule } from '../../baseServices';
 import { AuthorizationModule } from '../../../authorization/authorization.module';
+import { CryptoServiceModule } from '../../crypto/crypto.service.module';
 import { IRbacRoleService } from './IRoleService';
 import { RbacRoleService } from './role.service';
 
@@ -19,12 +20,18 @@ import { RbacRoleService } from './role.service';
  * registered here rather than in `CoreDatabaseModule` (out-of-scope
  * file). `CoreDatabaseModule` is still imported so the
  * `'CORE_DATABASE_SERVICE'` token both repositories inject is in scope.
+ *
+ * TASK-409 — break-glass needs `ICryptoService` (via CryptoServiceModule) +
+ * `UserRepository` (via CoreDatabaseModule) + `PolicyRepository` (detach
+ * target lookup / protected-policy detach block, registered here per the
+ * TASK-311 D-3 pattern).
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule, AuthorizationModule],
+  imports: [CommonServiceModule, CoreDatabaseModule, AuthorizationModule, CryptoServiceModule],
   providers: [
     RbacRoleRepository,
     RolePolicyRepository,
+    PolicyRepository,
     {
       provide: IRbacRoleService,
       useClass: RbacRoleService,

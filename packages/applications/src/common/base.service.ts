@@ -36,11 +36,20 @@ export abstract class BaseService implements IBaseService {
    * letting an upstream caller override it would let a foreign-tenant
    * payload be misattributed to the active tenant context (or vice versa).
    *
+   * TASK-401 — impersonation provenance: when the CLS user carries an
+   * `impersonatedBy` claim (a write performed under an impersonated session),
+   * the true actor is threaded into the event's `metaData` so the persisted
+   * audit row records BOTH the subject (`responsibleUserId` = the impersonated
+   * user) and the impersonator. Caller-supplied `metaData` keys are preserved;
+   * like `tenantId`, the `impersonatedBy` attribution cannot be overridden by
+   * the payload.
+   *
    * @param type - The system event type
    * @param data - Event payload. Explicit responsibleEntityId/Ip/correlationId
    *               override CLS context; an explicit `tenantId` is IGNORED.
    */
   broadcastSysEvent(type: SysEventType, data: Partial<SysEvent> | Partial<SendContactMessageEvent>): void {
+    const impersonatedBy = this.requestUser?.impersonatedBy;
     this.eventEmitter.emit(type, {
       responsibleEntityId: this.requestUser?.id,
       responsibleIp: this.requestIp,
@@ -48,6 +57,14 @@ export abstract class BaseService implements IBaseService {
       correlationId: this.correlationId,
       ...data,
       tenantId: this.tenantId,
+      ...(impersonatedBy
+        ? {
+            metaData: {
+              ...(typeof data.metaData === 'object' && data.metaData !== null && !Array.isArray(data.metaData) ? data.metaData : {}),
+              impersonatedBy,
+            },
+          }
+        : {}),
     });
   }
 

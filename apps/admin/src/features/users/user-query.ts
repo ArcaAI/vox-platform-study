@@ -25,12 +25,12 @@ import type { User, UserListQuery } from '@arcaai/vox';
  * the backend echoes back is not consumed and never desyncs the displayed page.
  */
 export function toUserListQuery(pagination: PageRequest, serialized: Record<string, string>): UserListQuery {
-    const query: UserListQuery = { limit: pagination.limit };
-    if (pagination.mode === 'offset') query.page = pagination.page + 1;
-    if (serialized.search) query.search = serialized.search;
-    if (serialized.sort) query.sort = serialized.sort;
-    if (serialized.filters) query.filters = serialized.filters;
-    return query;
+  const query: UserListQuery = { limit: pagination.limit };
+  if (pagination.mode === 'offset') query.page = pagination.page + 1;
+  if (serialized.search) query.search = serialized.search;
+  if (serialized.sort) query.sort = serialized.sort;
+  if (serialized.filters) query.filters = serialized.filters;
+  return query;
 }
 
 // ── 20u grid status + facets (PHASE-3 §3) ──────────────────────────────────
@@ -40,42 +40,42 @@ export function toUserListQuery(pagination: PageRequest, serialized: Record<stri
 // missing last-login (which would mislabel real active users).
 
 export interface UserStatusPresentation {
-    label: string;
-    colorRole: StatusColorRole;
+  label: string;
+  colorRole: StatusColorRole;
 }
 
 const USER_STATUS_PRESENTATION: Record<string, UserStatusPresentation> = {
-    ENABLED: { label: 'Active', colorRole: 'success' },
-    DISABLED: { label: 'Inactive', colorRole: 'warning' },
-    ARCHIVED: { label: 'Archived', colorRole: 'neutral' },
-    INVITED: { label: 'Invited', colorRole: 'info' },
-    PENDING: { label: 'Invited', colorRole: 'info' },
+  ENABLED: { label: 'Active', colorRole: 'success' },
+  DISABLED: { label: 'Inactive', colorRole: 'warning' },
+  ARCHIVED: { label: 'Archived', colorRole: 'neutral' },
+  INVITED: { label: 'Invited', colorRole: 'info' },
+  PENDING: { label: 'Invited', colorRole: 'info' },
 };
 
 /** Map a user's `resourceStatus` to the 20u dot+label presentation. */
 export function deriveUserStatus(user: Pick<User, 'resourceStatus'>): UserStatusPresentation {
-    const raw = String(user.resourceStatus ?? '').toUpperCase();
-    return USER_STATUS_PRESENTATION[raw] ?? { label: 'Unknown', colorRole: 'neutral' };
+  const raw = String(user.resourceStatus ?? '').toUpperCase();
+  return USER_STATUS_PRESENTATION[raw] ?? { label: 'Unknown', colorRole: 'neutral' };
 }
 
 export interface FacetOption {
-    label: string;
-    value: string;
+  label: string;
+  value: string;
 }
 
 /** `+ Status` facet — labels are the design vocabulary, values the REAL enum filtered server-side. */
 export const USER_STATUS_FACET_OPTIONS: FacetOption[] = [
-    { label: 'Active', value: 'ENABLED' },
-    { label: 'Inactive', value: 'DISABLED' },
-    { label: 'Archived', value: 'ARCHIVED' },
+  { label: 'Active', value: 'ENABLED' },
+  { label: 'Inactive', value: 'DISABLED' },
+  { label: 'Archived', value: 'ARCHIVED' },
 ];
 
 /** `+ Type` facet — maps to the `isServiceAccount` boolean (serialized as a string for the CSV filter). */
 export const USER_TYPE_FACET_OPTIONS: FacetOption[] = [
-    { label: 'Human', value: 'false' },
-    { label: 'Service account', value: 'true' },
+  { label: 'Human', value: 'false' },
+  { label: 'Service account', value: 'true' },
 ];
 
 export function userTypeLabel(isServiceAccount?: boolean): string {
-    return isServiceAccount ? 'Service account' : 'Human';
+  return isServiceAccount ? 'Service account' : 'Human';
 }

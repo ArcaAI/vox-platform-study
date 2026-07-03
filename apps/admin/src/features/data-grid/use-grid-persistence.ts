@@ -10,6 +10,6 @@ import { createGridLayoutAdapter } from './grid-layout-adapter';
  * carries the load/save logic and is unit-tested independently).
  */
 export function useGridLayoutPersistence(): GridLayoutPersistenceAdapter {
-    const settings = useUserSettings();
-    return useMemo(() => createGridLayoutAdapter(settings), [settings]);
+  const settings = useUserSettings();
+  return useMemo(() => createGridLayoutAdapter(settings), [settings]);
 }

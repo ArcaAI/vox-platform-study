@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsInt, IsString, IsNotEmpty, IsOptional, Max, MaxLength, Min } from 'class-validator';
 
 export class ImpersonateRequest {
   @ApiProperty({
@@ -25,6 +25,45 @@ export class ImpersonateRequest {
   @IsOptional()
   @IsString()
   targetTenantId?: string;
+}
+
+/**
+ * TASK-401 — request body for the super-admin-only
+ * `POST /admin/users/:id/impersonate` endpoint. The target user id travels in
+ * the PATH (`:id`), unlike the legacy `/auth/impersonate` body shape.
+ */
+export class AdminImpersonateRequest {
+  @ApiProperty({
+    description:
+      "Optional tenantId to scope the impersonation to. Must be one of the target user's enabled tenant assignments; defaults to the oldest assignment.",
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  targetTenantId?: string;
+
+  @ApiProperty({
+    description: 'Optional free-text justification. Recorded on the audit trail (start bracket + forced audit row); never embedded in the token.',
+    required: false,
+    maxLength: 500,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+
+  @ApiProperty({
+    description:
+      'Optional TTL override in seconds (10–1800), clamped to the 30-minute ceiling. Intended for automated expiry tests; production callers should omit it and ride the JWT_IMPERSONATION_EXPIRES_IN default (30m).',
+    required: false,
+    minimum: 10,
+    maximum: 1800,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(10)
+  @Max(1800)
+  expiresInSeconds?: number;
 }
 
 export class ImpersonateUserResponse {
@@ -86,4 +125,13 @@ export class ImpersonateResponse {
   })
   @IsString()
   impersonatedBy: string;
+
+  // TASK-401 — expiry surfaced so the FE can render the countdown without
+  // decoding the JWT. Set by the admin endpoint only; the legacy
+  // `/auth/impersonate` response is unchanged (fields stay undefined).
+  @ApiProperty({ description: 'ISO timestamp at which the impersonation token expires', required: false })
+  expiresAt?: string;
+
+  @ApiProperty({ description: 'Seconds until the impersonation token expires (at mint time)', required: false })
+  expiresInSeconds?: number;
 }

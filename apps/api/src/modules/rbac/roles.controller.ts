@@ -2,7 +2,7 @@ import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, HttpCode
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { IRbacRoleService } from '@arcaai/applications';
 import { CanManage, CanAny } from '../../decorators';
-import { CreateRoleDto, UpdateRoleDto, AssignPolicyToRoleDto, RoleResponse, PaginatedRoleResponse, AssignPolicyResponse } from './dto';
+import { BreakGlassDto, CreateRoleDto, UpdateRoleDto, AssignPolicyToRoleDto, RoleResponse, PaginatedRoleResponse, AssignPolicyResponse } from './dto';
 
 /**
  * RBAC Roles Controller
@@ -130,12 +130,16 @@ export class RolesController {
   @Delete(':id')
   @CanManage('Role')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete a role' })
+  @ApiOperation({ summary: 'Delete a role (requires break-glass confirmation)' })
   @ApiResponse({ status: 204, description: 'Role deleted' })
-  @ApiResponse({ status: 400, description: 'Cannot delete system role' })
+  @ApiResponse({ status: 400, description: 'Cannot delete system role / confirmationName mismatch' })
+  @ApiResponse({ status: 401, description: 'Break-glass password incorrect' })
   @ApiResponse({ status: 404, description: 'Role not found' })
-  async remove(@Param('id') id: string): Promise<void> {
-    await this.roleService.softDelete(id);
+  @ApiResponse({ status: 428, description: 'Break-glass confirmation (password + confirmationName) is required' })
+  async remove(@Param('id') id: string, @Body() breakGlass?: BreakGlassDto): Promise<void> {
+    // TASK-409 — role deletion demands the break-glass step-up (DELETE body:
+    // `{ password, confirmationName: <role name> }`).
+    await this.roleService.softDelete(id, breakGlass);
   }
 
   /**
@@ -161,11 +165,21 @@ export class RolesController {
   @Delete(':roleId/policies/:policyId')
   @CanManage('RolePolicy')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Remove a policy from a role' })
+  @ApiOperation({ summary: 'Remove a policy from a role (requires break-glass confirmation)' })
   @ApiResponse({ status: 204, description: 'Policy removed from role' })
-  @ApiResponse({ status: 404, description: 'Assignment not found' })
-  async removePolicy(@Param('roleId') roleId: string, @Param('policyId') policyId: string): Promise<void> {
-    await this.roleService.removePolicy(roleId, policyId);
+  @ApiResponse({ status: 400, description: 'Break-glass confirmationName does not match the policy name' })
+  @ApiResponse({ status: 401, description: 'Break-glass password incorrect' })
+  @ApiResponse({ status: 403, description: 'Protected system policy — detach is always refused' })
+  @ApiResponse({ status: 404, description: 'Policy not found' })
+  @ApiResponse({ status: 428, description: 'Break-glass confirmation (password + confirmationName) is required' })
+  async removePolicy(
+    @Param('roleId') roleId: string,
+    @Param('policyId') policyId: string,
+    @Body() breakGlass?: BreakGlassDto,
+  ): Promise<void> {
+    // TASK-409 — detach demands the break-glass step-up; the confirmation
+    // name is the POLICY name (the object being detached).
+    await this.roleService.removePolicy(roleId, policyId, breakGlass);
   }
 
   private toResponse(role: {

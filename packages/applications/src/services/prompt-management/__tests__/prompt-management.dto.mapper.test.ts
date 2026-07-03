@@ -192,6 +192,46 @@ describe('PromptManagementDtoMapper', () => {
             expect(result.tags).toEqual([]);
         });
 
+        // TASK-407 — Agent Jobs surfaces the last prompt-test outcome. Score +
+        // timestamp map through; the vault-encrypted lastTestOutput must NOT.
+        it('should map lastTestScore/lastTestAt and never expose lastTestOutput', () => {
+            const entity = {
+                id: 'tpl-tested',
+                name: 'Tested',
+                content: 'x',
+                category: 'SUMMARY',
+                lastTestScore: 87,
+                lastTestOutput: 'vault:v1:SECRET',
+                lastTestAt: new Date('2026-07-01T08:30:00Z'),
+                createdAt: new Date('2026-06-01T10:00:00Z'),
+                updatedAt: new Date('2026-06-01T10:00:00Z'),
+            };
+
+            const result = PromptManagementDtoMapper.toTemplateResponse(entity as any);
+
+            expect(result.lastTestScore).toBe(87);
+            expect(result.lastTestAt).toBe('2026-07-01T08:30:00.000Z');
+            expect((result as Record<string, unknown>).lastTestOutput).toBeUndefined();
+        });
+
+        it('should map absent lastTest fields to undefined (never-tested templates)', () => {
+            const entity = {
+                id: 'tpl-untested',
+                name: 'Untested',
+                content: 'x',
+                category: 'SUMMARY',
+                lastTestScore: null,
+                lastTestAt: null,
+                createdAt: new Date('2026-06-01T10:00:00Z'),
+                updatedAt: new Date('2026-06-01T10:00:00Z'),
+            };
+
+            const result = PromptManagementDtoMapper.toTemplateResponse(entity as any);
+
+            expect(result.lastTestScore).toBeUndefined();
+            expect(result.lastTestAt).toBeUndefined();
+        });
+
         it('should handle entity with complex JSON in variables', () => {
             const complexVariables = {
                 nested: { a: 1, b: { c: [1, 2, 3], d: true } },

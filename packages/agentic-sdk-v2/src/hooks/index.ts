@@ -26,6 +26,7 @@ export { useDnaDashboard, type UseDnaDashboardReturn } from './useDnaDashboard';
 
 // Prompt Template management hook (SDK-207 WS-5)
 export { usePrompts, type UsePromptsReturn } from './usePrompts';
+export type { PromptUsageRecord, PaginatedPromptUsageRecords, PromptUsageStats } from './usePrompts';
 
 // Department management hook (SDK-207 WS-5)
 export { useDepartments, type UseDepartmentsReturn } from './useDepartments';
@@ -128,7 +129,7 @@ export type { Tenant, CreateTenantInput, UpdateTenantInput, TenantUsageStats } f
 
 // Policy management hook (TASK-218)
 export { usePolicies, type UsePoliciesReturn } from './usePolicies';
-export type { Policy, CreatePolicyInput, UpdatePolicyInput } from './usePolicies';
+export type { Policy, CreatePolicyInput, UpdatePolicyInput, BreakGlassCredentials } from './usePolicies';
 
 // Audit log hook (QA-003, extended TASK-328 A8; cursor list TASK-373 client follow-up)
 export { useAuditLog, type UseAuditLogReturn } from './useAuditLog';
@@ -148,10 +149,27 @@ export type {
   TenantBucket,
   TenantBucketTree,
   TenantBucketDefaults,
+  TenantBucketObject,
   CreateTenantBucketInput,
   SetTenantBucketDefaultsInput,
   DeleteTenantBucketObjectResult,
 } from './useTenantBuckets';
+
+// Clinical Documentation Harness admin hook (TASK-407 — read-only)
+export { useHarnessAdmin, type UseHarnessAdminReturn } from './useHarnessAdmin';
+export type {
+  HarnessPolicy,
+  HarnessPolicySource,
+  HarnessAuditEvent,
+  HarnessAuditList,
+  HarnessEvalRun,
+  HarnessEvalRunList,
+  HarnessEvalRunDetail,
+  HarnessGateQueue,
+  HarnessGateQueueItem,
+  HarnessWorkflow,
+  HarnessWorkflowList,
+} from './useHarnessAdmin';
 
 // Tenant storage access-key management hook (TASK-323 Phase 0 / TASK-318 R9)
 export { useStorageKeys, type UseStorageKeysReturn } from './useStorageKeys';
@@ -163,6 +181,11 @@ export type { TenantStorageConfig, ListTenantStorageConfigParams, UpsertTenantSt
 
 // Tenant FRONTEND pipeline config hook (TASK-328 A6)
 export { useTenantFrontendConfig, type UseTenantFrontendConfigReturn } from './useTenantFrontendConfig';
+
+// Super-admin ops-surface hooks (TASK-403 — Rate Limits / Queues & Jobs / Prisma Studio)
+export { useRateLimits, type UseRateLimitsReturn } from './useRateLimits';
+export { useQueueAdmin, type UseQueueAdminReturn } from './useQueueAdmin';
+export { usePrismaStudio, type UsePrismaStudioReturn } from './usePrismaStudio';
 
 // Shared connection management (multi-tab)
 export {

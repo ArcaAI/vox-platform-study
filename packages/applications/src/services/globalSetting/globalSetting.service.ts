@@ -1,19 +1,36 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, Inject, UnauthorizedException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { ResourceType, SysEventType, EntityId, GlobalSettingEntity, GlobalSettingFactory, GlobalSettingRepository } from '@arcaai/domains';
-import { InternalServerErrorException, ArgumentInvalidException } from '@arcaai/exceptions';
+import {
+  ResourceType,
+  ResourceStatusType,
+  SysEventType,
+  EntityId,
+  GlobalSettingEntity,
+  GlobalSettingFactory,
+  GlobalSettingRepository,
+  UserRepository,
+} from '@arcaai/domains';
+import { InternalServerErrorException, ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
 import { IGlobalSettingService } from './IGlobalSettingService';
 import { CreateGlobalSettingRequest, UpdateGlobalSettingRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, isSuperAdmin, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
+import { ICryptoService } from '../crypto/ICryptoService';
+import { SecretsService } from '../baseServices/_meta/secrets';
 
 const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
+
+/** TASK-396 — audit action tag written into the reveal SysEvent (never the plaintext). */
+export const GLOBAL_SETTING_SECRET_REVEALED = 'GLOBAL_SETTING_SECRET_REVEALED';
 
 @Injectable()
 export class GlobalSettingService extends BaseService implements IGlobalSettingService {
   constructor(
     private readonly globalSettingRepository: GlobalSettingRepository,
+    private readonly userRepository: UserRepository,
+    @Inject(ICryptoService) private readonly cryptoService: ICryptoService,
+    @Inject(SecretsService) private readonly secretsService: SecretsService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
   ) {
@@ -21,6 +38,50 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   }
 
   async create(request: CreateGlobalSettingRequest): Promise<GlobalSettingEntity> {
+    // TASK-402 (Defect 2) — revive-on-create. The DB unique index
+    // `(tenantId, name, key)` counts soft-DELETED rows, so a plain create
+    // after a soft-delete 409s (P2002) and the key can never come back.
+    // When a DELETED row matches the identity the new row would take, RESTORE
+    // it (UPDATE: ENABLED + version bump — the sanctioned resurrect path) and
+    // apply the request's fields, preserving the row's audit lineage. Follows
+    // the userRoleAssignment.service restore-on-create precedent. The tenant
+    // is resolved exactly like the write path does (explicit request tenant,
+    // else the CLS tenant the tenant-scope extension would inject); with
+    // neither, there is no unique identity to collide with — plain create.
+    const effectiveTenantId = request.tenantId ?? this.tenantId;
+    if (effectiveTenantId) {
+      try {
+        const deleted = await this.globalSettingRepository.findFirst({
+          where: {
+            tenantId: effectiveTenantId,
+            name: request.name,
+            key: request.key,
+            resourceStatus: ResourceStatusType.DELETED,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any,
+        });
+
+        const restored = await this.globalSettingRepository.restore(deleted.id, this.requestUser?.id);
+        await this.updateEntity(restored, {
+          value: request.value,
+          dataType: request.dataType,
+          namespace: request.namespace,
+          description: request.description,
+        });
+        const revived = restored.hasChanges ? await this.globalSettingRepository.update(restored.id, restored) : restored;
+
+        this.broadcastSysEvent(SysEventType.ResourceCreated, {
+          resourceId: revived.id,
+          createdAt: revived.createdAt,
+          data: { ...(revived.toObject() as object), revivedFromDeleted: true },
+        });
+        return revived;
+      } catch (e) {
+        if (!(e instanceof DataNotFoundException)) throw e;
+        // No DELETED row for this identity — fall through to a plain create.
+      }
+    }
+
     const newGlobalSetting = GlobalSettingFactory.CreateGlobalSetting({
       ...request,
       tenantId: request.tenantId,
@@ -178,5 +239,76 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
       data: globalSetting.toObject() as object,
     });
     return globalSetting;
+  }
+
+  /**
+   * TASK-396 — reveal ONE secret setting's plaintext.
+   *
+   * Order of guards (fail-closed):
+   *   1. Super-admin re-check (defense in depth; the controller's CASL
+   *      `manage all` gate is the primary enforcement). Mirrors the `locked`
+   *      posture in `update`.
+   *   2. Step-up re-auth — verify the caller's CURRENT password against the
+   *      stored bcrypt hash (same primitive as login). Password is never logged
+   *      and never persisted.
+   *   3. Decrypt via the SAME crypto path used to WRITE `encryptedValue`
+   *      (`decryptValueFromEntity`, which Transit-decrypts when `encryptedValue`
+   *      is present and falls back to the legacy plaintext `value` otherwise).
+   *   4. Audit — emit a SysEvent carrying actor/tenant/correlation (from CLS) +
+   *      key/id/timestamp. The plaintext is NEVER included.
+   */
+  async revealSecret(id: EntityId, password: string): Promise<{ entity: GlobalSettingEntity; plaintext: string }> {
+    if (!isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException(`Revealing a secret setting requires a ${SUPER_ADMIN_ROLE} user.`);
+    }
+
+    const userId = this.requestUserId;
+    if (!userId) {
+      throw new UnauthorizedException('No authenticated user in context.');
+    }
+    if (!password) {
+      throw new UnauthorizedException('Step-up re-authentication requires your current password.');
+    }
+    const user = await this.userRepository.findById(userId);
+    const passwordOk = await this.cryptoService.verify(password, user.password);
+    if (!passwordOk) {
+      throw new UnauthorizedException('Step-up re-authentication failed: incorrect password.');
+    }
+
+    const { entity, plaintext } = await this.globalSettingRepository.findByIdWithDecryptedValue(id, this.secretsService);
+
+    // Audit — NEVER the plaintext. Two constraints force a direct emit here
+    // instead of `broadcastSysEvent`:
+    //   1. `forceAuditLog: true` — `SysEventService.handleResourceViewedEvent`
+    //      drops READ events by default (volume control) and only persists an
+    //      `AuditLog` row when this flag is set (the "sensitive/compliance read"
+    //      case, which a secret reveal is exactly).
+    //   2. tenant attribution — reveal is SUPER-ADMIN-only, and super-admins
+    //      carry a NULL CLS `tenantId`. `broadcastSysEvent` always sources the
+    //      tenant from CLS (a HIPAA boundary that ignores caller-supplied
+    //      tenantId), so the emitted event would be `tenantId: null` and
+    //      `AuditLogProcessor` fail-closes on a null tenant — silently dropping
+    //      the row. We attribute the audit to the REVEALED RESOURCE's own tenant
+    //      (`entity.tenantId`, a persisted DB value — never caller-supplied),
+    //      falling back to the CLS tenant when present. This is correct
+    //      attribution, not misattribution: the row is tagged with the tenant
+    //      that actually owns the secret.
+    this.eventEmitter.emit(SysEventType.ResourceViewed, {
+      responsibleEntityId: this.requestUser?.id,
+      responsibleIp: this.requestIp,
+      resourceType: this.resourceType,
+      correlationId: this.correlationId,
+      resourceId: entity.id,
+      tenantId: this.tenantId ?? entity.tenantId,
+      forceAuditLog: true,
+      data: {
+        action: GLOBAL_SETTING_SECRET_REVEALED,
+        key: entity.key,
+        namespace: entity.namespace,
+        revealedAt: new Date().toISOString(),
+      },
+    });
+
+    return { entity, plaintext };
   }
 }

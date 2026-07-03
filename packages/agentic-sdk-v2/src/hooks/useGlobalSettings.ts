@@ -10,7 +10,7 @@ import { extractArray } from '../utils/responseUtils';
 import { appendPagination } from '../utils/urlUtils';
 import { GLOBAL_SETTINGS_ENDPOINTS } from '../core/constants';
 import { ConfigConflictError } from '../types/settings';
-import type { GlobalSetting, CreateGlobalSettingInput, UpdateGlobalSettingInput } from '../types/settings';
+import type { GlobalSetting, CreateGlobalSettingInput, UpdateGlobalSettingInput, RevealSecretInput, RevealSecretResult } from '../types/settings';
 import type { PaginationParams } from '../types/common';
 import { AgenticError } from '../types/common';
 
@@ -45,6 +45,13 @@ export interface UseGlobalSettingsReturn {
   create: (input: CreateGlobalSettingInput) => Promise<GlobalSetting>;
   update: (id: string, input: UpdateGlobalSettingInput) => Promise<GlobalSetting>;
   remove: (id: string) => Promise<void>;
+  /**
+   * TASK-396 — reveal ONE secret setting's plaintext. Super-admin only + step-up
+   * re-auth: pass the caller's current password. The result is transient (never
+   * persisted by the SDK). Throws `AgenticError` on 401 (wrong/absent password)
+   * or 403 (not a super-admin).
+   */
+  revealSecret: (id: string, input: RevealSecretInput) => Promise<RevealSecretResult>;
 }
 
 export function useGlobalSettings(): UseGlobalSettingsReturn {
@@ -174,5 +181,17 @@ export function useGlobalSettings(): UseGlobalSettingsReturn {
     [execute],
   );
 
-  return { settings, tenantConfig, isLoading, error, list, getByTenant, getTenantConfig, get, create, update, remove };
+  // TASK-396 — reveal one secret's plaintext. The password is posted (over TLS)
+  // for server-side step-up verification; nothing is cached locally and the
+  // returned plaintext is intentionally NOT written into `settings` state (it
+  // is transient and must never be persisted).
+  const revealSecret = useCallback(
+    (id: string, input: RevealSecretInput) =>
+      execute<RevealSecretResult>('revealSecret', async (client) => {
+        return client.post<RevealSecretResult>(GLOBAL_SETTINGS_ENDPOINTS.REVEAL(id), { password: input.password });
+      }),
+    [execute],
+  );
+
+  return { settings, tenantConfig, isLoading, error, list, getByTenant, getTenantConfig, get, create, update, remove, revealSecret };
 }

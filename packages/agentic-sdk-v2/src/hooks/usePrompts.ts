@@ -18,6 +18,7 @@ import type {
   PromptListFilters,
   AssignDepartmentPromptInput,
   DiffResult,
+  PromptVersionDiff,
   TestPromptInput,
   PromptTestResult,
   PromptTestMetrics,
@@ -27,6 +28,26 @@ import type {
 export interface PromptUsageStats {
   totalUsages: number;
   lastUsedAt: string | null;
+}
+
+/** One raw prompt run row (PromptUsageRecord) for the Agent Jobs surface (TASK-407). */
+export interface PromptUsageRecord {
+  id: string;
+  promptTemplateId: string | null;
+  promptVersionNumber: number | null;
+  consultationId: string | null;
+  doctorId: string | null;
+  departmentId: string | null;
+  createdAt: string;
+  [key: string]: unknown;
+}
+
+/** Paginated envelope for {@link PromptUsageRecord} rows. */
+export interface PaginatedPromptUsageRecords {
+  data: PromptUsageRecord[];
+  count: number;
+  page: number;
+  limit: number;
 }
 
 export interface UsePromptsReturn {
@@ -51,12 +72,21 @@ export interface UsePromptsReturn {
   getUsageStats: (id: string) => Promise<PromptUsageStats>;
   assignToDepartment: (input: AssignDepartmentPromptInput) => Promise<void>;
   compareVersions: (id: string, v1: number, v2: number) => Promise<DiffResult>;
+  /**
+   * TASK-394 P0-2 — like {@link compareVersions} but returns the FULL server
+   * superset ({@link PromptVersionDiff}): the combined `{ changes, patch, stats }`
+   * PLUS the comparison metadata and the per-field breakdown (`content` vs
+   * `variables`). Use this when the UI wants to show which fields changed.
+   */
+  compareVersionsDetailed: (id: string, v1: number, v2: number) => Promise<PromptVersionDiff>;
   /** Activate (rollback to) a specific version of a prompt template. */
   activateVersion: (promptId: string, versionNumber: number) => Promise<PromptTemplate>;
   /** TASK-328 A4 — run a quality/score test against the SMR service. */
   test: (id: string, input?: TestPromptInput) => Promise<PromptTestResult>;
   /** TASK-328 A4 — usage analytics grouped by department / doctor / day. */
   analytics: (filters?: { promptTemplateId?: string }) => Promise<PromptUsageAnalytics>;
+  /** TASK-407 — paginated raw prompt run rows (newest first) for the Agent Jobs surface. */
+  listUsageRecords: (params?: { page?: number; limit?: number; promptTemplateId?: string }) => Promise<PaginatedPromptUsageRecords>;
 }
 
 export function usePrompts(): UsePromptsReturn {
@@ -187,6 +217,15 @@ export function usePrompts(): UsePromptsReturn {
     [execute],
   );
 
+  const compareVersionsDetailed = useCallback(
+    (id: string, v1: number, v2: number) =>
+      // TASK-394 P0-2 — same endpoint as compareVersions, but returns the full
+      // superset (per-field breakdown + comparison metadata) unmapped so the
+      // admin can surface which fields changed.
+      execute<PromptVersionDiff>('compareVersionsDetailed', (client) => client.get<PromptVersionDiff>(PROMPT_TEMPLATE_ENDPOINTS.DIFF(id, v1, v2))),
+    [execute],
+  );
+
   const activateVersion = useCallback(
     (promptId: string, versionNumber: number) =>
       execute<PromptTemplate>('activateVersion', async (client) => {
@@ -244,6 +283,21 @@ export function usePrompts(): UsePromptsReturn {
     [execute],
   );
 
+  const listUsageRecords = useCallback(
+    (params?: { page?: number; limit?: number; promptTemplateId?: string }) =>
+      execute<PaginatedPromptUsageRecords>('listUsageRecords', (client) => {
+        const url = params
+          ? appendFilters(PROMPT_TEMPLATE_ENDPOINTS.USAGE_RECORDS, {
+              page: params.page !== undefined ? String(params.page) : undefined,
+              limit: params.limit !== undefined ? String(params.limit) : undefined,
+              promptTemplateId: params.promptTemplateId,
+            })
+          : PROMPT_TEMPLATE_ENDPOINTS.USAGE_RECORDS;
+        return client.get<PaginatedPromptUsageRecords>(url);
+      }),
+    [execute],
+  );
+
   return {
     prompts,
     currentPrompt,
@@ -259,8 +313,10 @@ export function usePrompts(): UsePromptsReturn {
     getUsageStats,
     assignToDepartment,
     compareVersions,
+    compareVersionsDetailed,
     activateVersion,
     test,
     analytics,
+    listUsageRecords,
   };
 }

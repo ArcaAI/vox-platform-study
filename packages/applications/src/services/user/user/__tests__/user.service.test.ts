@@ -44,6 +44,10 @@ const mockUserDepartmentRepository = { create: vi.fn() };
 const mockDatabaseService = { baseClient: { $transaction: vi.fn() } };
 // TASK-381 (V1) — profile upsert for the optional create-user email.
 const mockUserProfileService = { upsertByUserId: vi.fn() };
+// TASK-402 — create/update passwords are policy-checked + bcrypt-hashed;
+// hashing/policy behavior itself is pinned in user.service.task402.test.ts.
+const mockCryptoService = { hash: vi.fn(async (pw: string) => `$2b$10$hashed::${pw}`), verify: vi.fn() };
+const mockAppSettings = { getValueWithDefault: vi.fn(<T,>(_key: string, defaultValue: T): T => defaultValue) };
 
 /**
  * Creates a complete mock user entity matching the real UserEntity structure.
@@ -171,6 +175,8 @@ describe('UserService', () => {
             mockClsService as any,
             mockDatabaseService as any,
             mockUserProfileService as any,
+            mockCryptoService as any,
+            mockAppSettings as any,
         );
     });
 
@@ -186,7 +192,7 @@ describe('UserService', () => {
 
             const result = await service.create({
                 username: 'newuser',
-                password: 'password123',
+                password: 'Password123!',
                 isServiceAccount: false,
             });
 
@@ -202,7 +208,7 @@ describe('UserService', () => {
 
             await service.create({
                 username: 'maya',
-                password: 'password123',
+                password: 'Password123!',
                 isServiceAccount: false,
                 email: 'maya@acmehealth.org',
             });
@@ -214,7 +220,7 @@ describe('UserService', () => {
             const newUser = createMockUserEntity({ id: 'new-user-id' });
             mockUserRepository.create.mockResolvedValue(newUser);
 
-            await service.create({ username: 'noemail', password: 'password123', isServiceAccount: false });
+            await service.create({ username: 'noemail', password: 'Password123!', isServiceAccount: false });
 
             expect(mockUserProfileService.upsertByUserId).not.toHaveBeenCalled();
         });
@@ -225,7 +231,7 @@ describe('UserService', () => {
 
             await service.create({
                 username: 'newuser',
-                password: 'password123',
+                password: 'Password123!',
                 isServiceAccount: false,
             });
 
@@ -248,7 +254,7 @@ describe('UserService', () => {
             await expect(
                 service.create({
                     username: 'newuser',
-                    password: 'password123',
+                    password: 'Password123!',
                     isServiceAccount: false,
                 })
             ).rejects.toThrow('Failed to create UserEntity');
@@ -264,7 +270,7 @@ describe('UserService', () => {
 
             const result = await service.create({
                 username: 'api-service',
-                password: 'service-password',
+                password: 'ServicePassword123!',
                 isServiceAccount: true,
             });
 
@@ -277,7 +283,7 @@ describe('UserService', () => {
             await expect(
                 service.create({
                     username: 'newuser',
-                    password: 'password123',
+                    password: 'Password123!',
                     isServiceAccount: false,
                 })
             ).rejects.toThrow('Database connection failed');
@@ -810,7 +816,7 @@ describe('UserService', () => {
 
             const result = await service.create({
                 username: 'newuser',
-                password: 'password123',
+                password: 'Password123!',
                 isServiceAccount: false,
             });
 

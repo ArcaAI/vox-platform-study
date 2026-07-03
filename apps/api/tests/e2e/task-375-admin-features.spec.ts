@@ -28,7 +28,10 @@
  *     TASK-376 media fixture (consultation 90000000-…-376), which is folded into
  *     the test-DB seed (`test:db:seed` + the CI prepare-test-db job), so it runs
  *     without manual env. Override with `E2E_CONSULTATION_ID`, or set it to an
- *     EMPTY string to skip when no media fixture/storage is present.
+ *     EMPTY string to skip when no media fixture/storage is present. The
+ *     owner login is env-overridable too (TASK-406 P2-7b):
+ *     `E2E_MEDIA_OWNER_USERNAME` / `E2E_MEDIA_OWNER_PASSWORD` /
+ *     `E2E_MEDIA_OWNER_TENANT_KEY` (defaults: seeded doctor / __GLOBAL__).
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
@@ -63,6 +66,16 @@ const GRID_KEY = 'e2e-task375'; // dedicated key — idempotent upsert, no clean
 // Global-tenant consultation with image/pdf/audio/mixed ATTACHMENT context items.
 // Used as the default when E2E_CONSULTATION_ID is not set.
 const DEFAULT_MEDIA_CONSULTATION_ID = '90000000-0000-0000-0000-000000000376';
+
+// TASK-406 (P2-7b, TASK-376 residual) — the media test reads as the
+// consultation's TENANT-BOUND owner. When E2E_CONSULTATION_ID points at a
+// different tenant's consultation, override the owner credentials via env;
+// they default to the TASK-376 fixture's owner (`doctor` in __GLOBAL__).
+const MEDIA_OWNER = {
+    username: process.env.E2E_MEDIA_OWNER_USERNAME || SEEDED_USERS.doctor.username,
+    password: process.env.E2E_MEDIA_OWNER_PASSWORD || SEEDED_USERS.doctor.password,
+    tenantKey: process.env.E2E_MEDIA_OWNER_TENANT_KEY || DEFAULT_TENANT_KEY,
+};
 
 const authGet = (request: APIRequestContext, path: string, token: string, params?: Record<string, string>) =>
     request.get(path, { headers: { Authorization: `Bearer ${token}` }, params });
@@ -272,15 +285,14 @@ test.describe('TASK-375 — admin features (D8 persistence, Users sort/filter/se
 
         // The consultation-context route is TENANT-SCOPED: the cross-tenant
         // `super_admin` (no tenant binding) is rejected 400 "Tenant ID is
-        // required". Read as the consultation's tenant-bound owner instead. The
-        // TASK-376 seed fixture is owned by `doctor` in the __GLOBAL__ tenant.
-        const owner = await loginUser(
-            request,
-            SEEDED_USERS.doctor.username,
-            SEEDED_USERS.doctor.password,
-            DEFAULT_TENANT_KEY,
-        );
-        expect(owner, 'consultation-owner (doctor) login failed — is the stack seeded?').toBeTruthy();
+        // required". Read as the consultation's tenant-bound owner instead —
+        // env-overridable (TASK-406 P2-7b), defaulting to the TASK-376 fixture
+        // owner `doctor` in the __GLOBAL__ tenant.
+        const owner = await loginUser(request, MEDIA_OWNER.username, MEDIA_OWNER.password, MEDIA_OWNER.tenantKey);
+        expect(
+            owner,
+            `consultation-owner (${MEDIA_OWNER.username}) login failed — is the stack seeded / are the E2E_MEDIA_OWNER_* env overrides correct?`,
+        ).toBeTruthy();
 
         const res = await authGet(request, `/api/v1/consultations/${consultationId}/context`, owner!.token);
         expect(res.status()).toBe(200);

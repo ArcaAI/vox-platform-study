@@ -46,3 +46,34 @@ export interface DiffStats {
  * Diff comparison mode.
  */
 export type DiffMode = 'lines' | 'words' | 'chars';
+
+// =============================================================================
+// Prompt version diff (server superset) — TASK-389 #14 / TASK-394 P0-2
+// =============================================================================
+
+/**
+ * One field's diff within a prompt version comparison (e.g. `content` vs
+ * `variables`). Part of the server superset returned by the prompt version-diff
+ * endpoint that `usePrompts().compareVersions` collapses to the combined
+ * `{ changes, patch, stats }`. Consume it via `compareVersionsDetailed`.
+ */
+export interface PromptVersionDiffField {
+  /** The compared field, e.g. `content` or `variables`. */
+  field: string;
+  /** True when the two versions differ on this field. */
+  changed: boolean;
+  changes: DiffChange[];
+  stats: DiffStats;
+}
+
+/**
+ * The full server superset from the prompt version-diff endpoint. Extends the
+ * back-compat {@link DiffResult} (combined content+variables line diff) with the
+ * comparison metadata and the per-field breakdown.
+ */
+export interface PromptVersionDiff extends DiffResult {
+  promptTemplateId: string;
+  fromVersion: number;
+  toVersion: number;
+  fields: PromptVersionDiffField[];
+}

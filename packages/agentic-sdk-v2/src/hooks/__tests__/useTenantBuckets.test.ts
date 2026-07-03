@@ -105,6 +105,32 @@ describe('useTenantBuckets', () => {
         });
     });
 
+    // TASK-407 — read-only object browser for the Stores detail surface.
+    describe('listObjects', () => {
+        it('GETs LIST_OBJECTS(id) and returns the object rows', async () => {
+            const objects = [{ key: '2026/07/a.wav', size: 1024, lastModified: '2026-07-01T00:00:00Z' }];
+            mockGet.mockResolvedValue(objects);
+            const { result } = renderHook(() => useTenantBuckets());
+
+            let resp: any;
+            await act(async () => { resp = await result.current.listObjects('b-1'); });
+
+            expect(mockGet).toHaveBeenCalledWith(TENANT_BUCKET_ENDPOINTS.LIST_OBJECTS('b-1'));
+            expect(resp).toEqual(objects);
+        });
+
+        it('GETs LIST_OBJECTS(id) with a prefix query', async () => {
+            mockGet.mockResolvedValue([]);
+            const { result } = renderHook(() => useTenantBuckets());
+
+            await act(async () => { await result.current.listObjects('b-1', '2026/07'); });
+
+            const url = mockGet.mock.calls[0][0] as string;
+            expect(url).toContain(TENANT_BUCKET_ENDPOINTS.LIST_OBJECTS('b-1'));
+            expect(url).toContain(`prefix=${encodeURIComponent('2026/07')}`);
+        });
+    });
+
     describe('presignedUrl', () => {
         it('GETs PRESIGNED_URL(id) with required key query', async () => {
             mockGet.mockResolvedValue({ url: 'https://signed' });

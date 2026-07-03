@@ -5,12 +5,15 @@
  *
  * TEST DATA MANAGEMENT:
  * - Uses seeded users (super_admin, tenant_admin, doctor, nurse) for tests
- * - Does NOT create any test data (uses existing seeded accounts)
- * - No cleanup required
+ * - The super-admin-target rejection case creates ONE throwaway user (granted
+ *   the seeded SUPER_ADMIN role) because the seed has a single super admin and
+ *   TASK-401's self-impersonation guard fires before the target check; the
+ *   assignment is removed and the user soft-deleted via the API in cleanup
+ * - No other test data is created
  */
 
 import { test, expect } from '@playwright/test';
-import { SEEDED_USERS, loginUser } from '../../../../tests/helpers';
+import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
 
 test.describe('Auth Advanced Controller', () => {
   // ---------------------------------------------------------------------------
@@ -235,14 +238,74 @@ test.describe('Auth Advanced Controller', () => {
       );
       expect(superAdminLogin, 'super_admin login failed').toBeTruthy();
 
-      const response = await request.post('/api/v1/auth/impersonate', {
-        headers: { Authorization: `Bearer ${superAdminLogin!.token}` },
-        data: { targetUserId: SEEDED_USERS.superAdmin.id },
-      });
+      // TASK-410 fix — the seed has exactly ONE super admin, and TASK-401's
+      // self-impersonation guard evaluates BEFORE the super-admin-target
+      // check, so targeting the seeded super admin (= the caller) only ever
+      // exercised the self guard ("You cannot impersonate yourself"). To keep
+      // the ORIGINAL intent (a super-admin-tier TARGET is rejected) covered,
+      // create a throwaway user, grant it the seeded SUPER_ADMIN role, assert
+      // the rejection, then remove the grant + soft-delete the user via the
+      // API. Fixture ops use a tenant-scoped super-admin session so the role
+      // assignment lands with a concrete tenantId (mirrors task-401 harness).
+      const saGlobal = await loginUser(
+        request,
+        SEEDED_USERS.superAdmin.username,
+        SEEDED_USERS.superAdmin.password,
+        DEFAULT_TENANT_KEY,
+      );
+      expect(saGlobal, 'tenant-scoped super_admin login failed').toBeTruthy();
+      const fixtureHeaders = { Authorization: `Bearer ${saGlobal!.token}` };
 
-      expect(response.status()).toBe(400);
-      const body = await response.json();
-      expect(body.message).toContain('super administrator');
+      const unique = Date.now();
+      const create = await request.post('/api/v1/admin/users', {
+        headers: fixtureHeaders,
+        data: {
+          username: `authadv_sa2_${unique}`,
+          password: 'Password123!',
+          email: `authadv.sa2.${unique}@example.com`,
+        },
+      });
+      expect(create.status(), 'create throwaway super-admin-tier target').toBeLessThan(300);
+      const targetId = ((await create.json()) as { id: string }).id;
+
+      let assignmentId: string | undefined;
+      try {
+        const rolesRes = await request.get('/api/v1/admin/rbac/roles', { headers: fixtureHeaders });
+        expect(rolesRes.status(), 'list rbac roles').toBe(200);
+        const rolesRaw = (await rolesRes.json()) as unknown;
+        const roles = (Array.isArray(rolesRaw) ? rolesRaw : ((rolesRaw as { data?: unknown[] }).data ?? [])) as Array<{
+          id: string;
+          name: string;
+        }>;
+        const superAdminRole = roles.find((r) => r.name === 'SUPER_ADMIN');
+        expect(superAdminRole, 'seeded SUPER_ADMIN role exists').toBeTruthy();
+
+        const assign = await request.post(`/api/v1/admin/users/${targetId}/roles`, {
+          headers: fixtureHeaders,
+          data: { roleId: superAdminRole!.id },
+        });
+        expect([200, 201], 'grant SUPER_ADMIN to the throwaway target').toContain(assign.status());
+        assignmentId = ((await assign.json()) as { id?: string }).id;
+
+        const response = await request.post('/api/v1/auth/impersonate', {
+          headers: { Authorization: `Bearer ${superAdminLogin!.token}` },
+          data: { targetUserId: targetId },
+        });
+
+        expect(response.status()).toBe(400);
+        const body = await response.json();
+        expect(body.message).toContain('super administrator');
+      } finally {
+        // API-only cleanup (both are soft-deletes): drop the SUPER_ADMIN
+        // grant first, then the throwaway user, restoring the single-super-
+        // admin seed posture.
+        if (assignmentId) {
+          await request
+            .delete(`/api/v1/admin/users/${targetId}/roles/${assignmentId}`, { headers: fixtureHeaders })
+            .catch(() => undefined);
+        }
+        await request.delete(`/api/v1/admin/users/${targetId}`, { headers: fixtureHeaders }).catch(() => undefined);
+      }
     });
   });
 

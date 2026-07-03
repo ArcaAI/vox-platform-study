@@ -683,8 +683,12 @@ export class AgenticClient {
   /**
    * DELETE request
    */
-  async delete<T>(endpoint: string, options?: { signal?: AbortSignal }): Promise<T> {
-    return this.request<T>('DELETE', endpoint, undefined, undefined, options?.signal);
+  async delete<T>(endpoint: string, options?: { signal?: AbortSignal; data?: unknown }): Promise<T> {
+    // TASK-409 — `data` carries an optional DELETE body (e.g. the break-glass
+    // `{ password, confirmationName }` confirmation for dangerous RBAC
+    // deletes). Omitted for all pre-existing callers, so the wire format is
+    // unchanged unless a body is explicitly supplied.
+    return this.request<T>('DELETE', endpoint, options?.data, undefined, options?.signal);
   }
 
   /**

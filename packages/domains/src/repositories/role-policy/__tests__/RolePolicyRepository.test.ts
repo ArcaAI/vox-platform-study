@@ -29,6 +29,7 @@ function makePrismaMock() {
       create: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
+      count: vi.fn(),
     },
   };
 }
@@ -111,6 +112,22 @@ describe('TASK-311 — RolePolicyRepository', () => {
       expect(call.data.resourceStatus).toBe(ResourceStatusType.DELETED);
       expect(call.data.resourceStatusUpdatedAt).toBeInstanceOf(Date);
       expect(call.data.resourceStatusUpdatedBy).toBe('user-1');
+    });
+  });
+
+  // TASK-409 — break-glass trigger needs "how many ENABLED roles carry this
+  // policy" to decide whether a rule-edit is dangerous (>1 role blast radius).
+  describe('countEnabledByPolicy (TASK-409)', () => {
+    it('counts only ENABLED assignments for the policy', async () => {
+      const { repo, prisma } = makeRepo();
+      prisma.rolePolicy.count.mockResolvedValue(3);
+
+      const result = await repo.countEnabledByPolicy('policy-1');
+
+      expect(prisma.rolePolicy.count).toHaveBeenCalledWith({
+        where: { policyId: 'policy-1', resourceStatus: ResourceStatusType.ENABLED },
+      });
+      expect(result).toBe(3);
     });
   });
 });

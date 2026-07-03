@@ -87,9 +87,9 @@ export * from './components/custom/code-example';
 export * from './components/custom/dept-prompt-selector';
 export * from './components/custom/dna-style-selector';
 export * from './components/custom/model-selector';
-export * from './components/custom/service-status-bar';
 export * from './components/custom/theme-toggle';
-export * from './components/custom/transcript-viewer';
+// The deprecated `custom/transcript-viewer` was removed by TASK-410 (P2-4) — zero
+// remaining usages (grep-proven); `LiveTranscript` is the canonical transcript (D6).
 export * from './components/custom/multi-column-layout';
 export * from './components/custom/workflow-toggle';
 
@@ -386,10 +386,11 @@ export * from './hooks/registries';
 // Shared contracts: pagination / query-state / async-collection / surface props.
 export * from './lib/shared';
 
-// Shared primitives. `StatusBadge` is intentionally NOT re-exported here — the name
-// collides with the tool-ui formatter `StatusBadge`; import it from
-// '@arcaai/ui/components/shared' (subpath) if a consumer needs the new one.
+// Shared primitives. `StatusBadge` joined the root barrel in TASK-410 (P2-4): the
+// colliding tool-ui formatter `StatusBadge` was removed together with the deprecated
+// tool-ui `DataTable`. The '@arcaai/ui/components/shared' subpath keeps exporting it too.
 export { DensityProvider, useDensity, type DensityProviderProps } from './components/shared/density-provider';
+export { StatusBadge, type StatusBadgeProps, type StatusColorRole } from './components/shared/status-badge';
 
 // VirtualizedDataGrid — canonical data grid (supersedes tool-ui DataTable, D6).
 export * from './components/data-grid';
@@ -454,15 +455,15 @@ export type {
 
 // ============================================
 // TASK-377 — Shared Metrics / Reporting / Chart primitives (PHASE-2-PLAN §3)
-// `ServiceStatusBar` / `ServiceStatusBarProps` are intentionally NOT re-exported
-// here — the names collide with the legacy `components/custom/service-status-bar`
-// (still imported by apps/admin). The new canonical semantic bar ships via the
-// subpath '@arcaai/ui/components/metrics' (mirrors the StatusBadge precedent).
+// TASK-404 retired the legacy `components/custom/service-status-bar`, so the
+// canonical semantic `ServiceStatusBar` now owns the root-barrel name (the
+// subpath '@arcaai/ui/components/metrics' keeps exporting it too).
 // ============================================
 export {
   StatusDot,
   StatCard,
   MetricChart,
+  ServiceStatusBar,
   ServiceStatusItem,
   DateRangeSelector,
   TenantFilter,
@@ -481,6 +482,7 @@ export type {
   MetricChartKind,
   MetricSeries,
   ServiceStatus,
+  ServiceStatusBarProps,
   ServiceStatusItemProps,
   DateRangeSelectorProps,
   RangePreset,

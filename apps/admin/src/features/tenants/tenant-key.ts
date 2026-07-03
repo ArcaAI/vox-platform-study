@@ -5,24 +5,24 @@
  */
 
 export function normalizeTenantKey(key: string): string {
-    return key.trim().toLowerCase();
+  return key.trim().toLowerCase();
 }
 
 /** Case-insensitive membership test. An empty key is "not taken" (caught by required-field validation). */
 export function isTenantKeyTaken(key: string, existingKeys: string[]): boolean {
-    const normalized = normalizeTenantKey(key);
-    if (!normalized) return false;
-    return existingKeys.some((k) => normalizeTenantKey(k) === normalized);
+  const normalized = normalizeTenantKey(key);
+  if (!normalized) return false;
+  return existingKeys.some((k) => normalizeTenantKey(k) === normalized);
 }
 
 export interface TenantKeyValidation {
-    valid: boolean;
-    reason?: 'empty' | 'taken';
+  valid: boolean;
+  reason?: 'empty' | 'taken';
 }
 
 export function validateTenantKey(key: string, existingKeys: string[]): TenantKeyValidation {
-    const normalized = normalizeTenantKey(key);
-    if (!normalized) return { valid: false, reason: 'empty' };
-    if (isTenantKeyTaken(normalized, existingKeys)) return { valid: false, reason: 'taken' };
-    return { valid: true };
+  const normalized = normalizeTenantKey(key);
+  if (!normalized) return { valid: false, reason: 'empty' };
+  if (isTenantKeyTaken(normalized, existingKeys)) return { valid: false, reason: 'taken' };
+  return { valid: true };
 }

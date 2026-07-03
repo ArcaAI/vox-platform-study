@@ -688,6 +688,27 @@ describe('TenantService', () => {
             expect(result.data[1].name).toBe('Tenant 2');
         });
 
+        it('coerces Tenant-typed filter values via the model registry (TASK-406 P2-6c)', async () => {
+            mockTenantRepository.findAll.mockResolvedValue([]);
+            mockTenantRepository.count.mockResolvedValue(0);
+
+            await service.fetchAll({ limit: 10, page: 1, filters: 'version[gte]:2;plan[equals]:TRIAL' });
+
+            const expectedFilters = { version: { gte: 2 }, plan: { equals: 'TRIAL' } };
+            expect(mockTenantRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({ filters: expectedFilters })
+            );
+            expect(mockTenantRepository.count).toHaveBeenCalledWith(
+                expect.objectContaining({ filters: expectedFilters })
+            );
+        });
+
+        it('rejects an invalid Tenant plan enum member with a 400 (TASK-406 P2-6b)', async () => {
+            await expect(
+                service.fetchAll({ limit: 10, page: 1, filters: 'plan[equals]:GOLD' })
+            ).rejects.toThrow(/GOLD/);
+        });
+
         it('should return empty result when no tenants exist', async () => {
             mockTenantRepository.findAll.mockResolvedValue([]);
             mockTenantRepository.count.mockResolvedValue(0);

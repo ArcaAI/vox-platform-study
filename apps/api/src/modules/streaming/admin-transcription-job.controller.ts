@@ -1,7 +1,7 @@
 import { TranscriptionJobService } from '@arcaai/applications';
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { CanManage } from '../../decorators';
+import { CanManage, CanRead } from '../../decorators';
 
 /**
  * TASK-319 F3 — admin transcription-job surface (tenant-wide scope).
@@ -12,11 +12,15 @@ import { CanManage } from '../../decorators';
  * EVERY job in the caller's tenant.
  *
  * Access:
- *   - Class-level `@CanManage('Tenant')` → only TENANT_ADMIN / SUPER_ADMIN.
- *     `TranscriptionJob` is not a CASL subject in the policy seed, so the
- *     tenant-wide view is gated on the tenant-management capability (the same
- *     posture used for other tenant-scoped admin reads). This also satisfies
- *     the F6 boot audit, which rejects an empty `@Authorize()` on /admin routes.
+ *   - Class-level `@CanManage('Tenant')` documents the admin plane and keeps
+ *     the F6 boot audit satisfied (no empty `@Authorize()` on /admin routes),
+ *     exactly like `TenantBucketController`.
+ *   - TASK-407: each read carries a handler-level `@CanRead('AsrPipeline')`
+ *     which OVERRIDES the class gate (the guard uses `getAllAndOverride`).
+ *     `TranscriptionJob` is not a CASL subject; the audio surface is scoped on
+ *     `AsrPipeline` per the §5.8 design permissions, which `tenant-full-access`
+ *     grants tenant admins — a class-only `manage Tenant` had locked them out
+ *     (the seed gives tenant admins read/update Tenant, not manage).
  *
  * Tenant isolation:
  *   - The `tenantScopeFilter` Prisma extension injects `tenantId` into every
@@ -30,6 +34,7 @@ export class AdminTranscriptionJobController {
   constructor(private readonly jobService: TranscriptionJobService) {}
 
   @Get()
+  @CanRead('AsrPipeline')
   @ApiOperation({ summary: 'List ALL transcription jobs in the tenant (paginated)' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -38,12 +43,14 @@ export class AdminTranscriptionJobController {
   }
 
   @Get('stats')
+  @CanRead('AsrPipeline')
   @ApiOperation({ summary: 'Get tenant-wide transcription job status counts' })
   async getStats() {
     return this.jobService.getStatusCounts();
   }
 
   @Get('status/:status')
+  @CanRead('AsrPipeline')
   @ApiOperation({ summary: 'Get tenant-wide transcription jobs by status' })
   @ApiParam({ name: 'status', description: 'Job status filter' })
   async getByStatus(@Param('status') status: string) {
