@@ -2,8 +2,10 @@
  * TASK-376 — media seed (additive / idempotent). Resolves DEFECT-M1.
  *
  * Creates ONE Global-tenant consultation whose context items cover every media
- * shape the admin timeline renders — an image, a PDF, an audio clip, and a
- * "mixed" item (image + attached file + text) — backed by REAL small sample
+ * shape the admin timeline renders — an image, a PDF, an audio clip, a
+ * "mixed" item (image + attached file + text), and (TASK-406 P2-7a) a
+ * RECORDING-shaped fixture (AUDIO_RECORDING container + AudioRecording row +
+ * linked WAV media) — backed by REAL small sample
  * files uploaded into MinIO at the canonical `s3://<bucket>/<key>` convention
  * `StorageController` uses. `ContextService.resolveMediaUrls` then presigns a
  * download `url` (+ `mimeType`, + a real `.thumb.webp` `thumbnailUrl` for the
@@ -58,12 +60,33 @@ const MEDIA_IDS = {
   audio: '96000000-0000-0000-0000-000000000378',
   mixedImage: '96000000-0000-0000-0000-000000000379',
   mixedFile: '96000000-0000-0000-0000-000000000380',
+  // TASK-406 (P2-7a) — the media behind the RECORDING-shaped fixture.
+  recordingWav: '96000000-0000-0000-0000-000000000381',
 } as const;
 const CTX_IDS = {
   image: '91000000-0000-0000-0000-000000000376',
   pdf: '91000000-0000-0000-0000-000000000377',
   audio: '91000000-0000-0000-0000-000000000378',
   mixed: '91000000-0000-0000-0000-000000000379',
+  // TASK-406 (P2-7a) — AUDIO_RECORDING container (production shape: the
+  // container itself carries no media; the AudioRecording row references it).
+  recording: '91000000-0000-0000-0000-000000000380',
+} as const;
+/**
+ * TASK-406 (P2-7a) — the AudioRecording row id (the TASK-375 residual asked for
+ * a "recording-shaped" fixture: an AUDIO_RECORDING context-item container + an
+ * AudioRecording row with duration/format/sampleRate/channels metadata pointing
+ * at a real uploaded WAV — exactly what `ContextService.addAudioRecording`
+ * produces and `GET /consultations/:id/recordings` returns).
+ */
+const RECORDING_ID = '93000000-0000-0000-0000-000000000376';
+const RECORDING_META = {
+  durationMs: 2000,
+  format: 'wav',
+  sampleRate: 16000,
+  channels: 1,
+  language: 'en',
+  recordedAt: new Date('2026-06-01T10:00:00.000Z'),
 } as const;
 
 // --- Canonical Global-tenant buckets (seed/05a-tenant-bucket.ts) -------------
@@ -77,6 +100,7 @@ const KEYS = {
   audio: `${KEY_PREFIX}/sample-audio.wav`,
   mixedImage: `${KEY_PREFIX}/mixed-photo.png`,
   mixedFile: `${KEY_PREFIX}/mixed-note.txt`,
+  recordingWav: `${KEY_PREFIX}/sample-recording.wav`,
 } as const;
 
 /**
@@ -92,6 +116,8 @@ const NOMINAL_SIZES = {
   audio: 32044,
   mixedImage: 63798,
   mixedFile: 116,
+  // 2 s × 16 kHz × 16-bit mono + 44-byte header (see buildSampleWav).
+  recordingWav: 64044,
 } as const;
 
 /** Max wall-clock for the storage-reachability probe before treating MinIO as absent. */
@@ -226,6 +252,9 @@ async function main(): Promise<void> {
       'attachment download + admin PDF rendering end-to-end.',
     ]);
     const wavBuf = buildSampleWav();
+    // TASK-406 (P2-7a) — a second, distinct tone so the recording fixture is a
+    // different real playable file than the plain audio attachment.
+    const recordingWavBuf = buildSampleWav(2, RECORDING_META.sampleRate, 330);
     const noteBuf = Buffer.from(
       'HOPE TASK-376 — mixed attachment note.\nAttached alongside a clinical photo to exercise the image+file+text shape.\n',
       'utf-8',
@@ -247,6 +276,9 @@ async function main(): Promise<void> {
     await putObject(s3, AUDIO_BUCKET, KEYS.audio, wavBuf, 'audio/wav');
     console.log(`[object] ${AUDIO_BUCKET}/${KEYS.audio} (${wavBuf.length}B)`);
 
+    await putObject(s3, AUDIO_BUCKET, KEYS.recordingWav, recordingWavBuf, 'audio/wav');
+    console.log(`[object] ${AUDIO_BUCKET}/${KEYS.recordingWav} (${recordingWavBuf.length}B, recording fixture)`);
+
     await putObject(s3, ATTACH_BUCKET, KEYS.mixedImage, mixedImageBuf, 'image/png');
     console.log(`[object] ${ATTACH_BUCKET}/${KEYS.mixedImage} (${mixedImageBuf.length}B, NO thumb — left for backfill)`);
 
@@ -259,6 +291,7 @@ async function main(): Promise<void> {
     sizes.audio = wavBuf.length;
     sizes.mixedImage = mixedImageBuf.length;
     sizes.mixedFile = noteBuf.length;
+    sizes.recordingWav = recordingWavBuf.length;
     storageAvailable = true;
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
@@ -306,6 +339,7 @@ async function main(): Promise<void> {
     { id: MEDIA_IDS.audio, bucket: AUDIO_BUCKET, key: KEYS.audio, ext: 'wav', mimeType: 'audio/wav', size: sizes.audio, kind: 'audio' },
     { id: MEDIA_IDS.mixedImage, bucket: ATTACH_BUCKET, key: KEYS.mixedImage, ext: 'png', mimeType: 'image/png', size: sizes.mixedImage, kind: 'mixed-image' },
     { id: MEDIA_IDS.mixedFile, bucket: ATTACH_BUCKET, key: KEYS.mixedFile, ext: 'txt', mimeType: 'text/plain', size: sizes.mixedFile, kind: 'mixed-file' },
+    { id: MEDIA_IDS.recordingWav, bucket: AUDIO_BUCKET, key: KEYS.recordingWav, ext: 'wav', mimeType: 'audio/wav', size: sizes.recordingWav, kind: 'recording-audio' },
   ];
   for (const m of mediaRows) {
     const bucketId = m.bucket === ATTACH_BUCKET ? attachBucketRow?.id : audioBucketRow?.id;
@@ -374,6 +408,50 @@ async function main(): Promise<void> {
     console.log(`[contextItem] upserted ${c.id} (ATTACHMENT) → media ${c.mediaId}`);
   }
 
+  // 8) TASK-406 (P2-7a) — the RECORDING-shaped fixture. Mirrors what
+  //    `ContextService.addAudioRecording` writes in production:
+  //    an AUDIO_RECORDING container (SYSTEM-sourced, NO mediaId — the container
+  //    only groups recordings) + an AudioRecording row that references the
+  //    container and the uploaded WAV media, with the audio metadata populated.
+  //    `GET /consultations/:id/recordings` returns exactly this shape.
+  const recordingContainer = {
+    id: CTX_IDS.recording,
+    tenantId: TENANT_ID,
+    consultationId: CONSULTATION_ID,
+    type: 'AUDIO_RECORDING' as const,
+    source: 'SYSTEM' as const,
+    currentVersionNumber: 1,
+    mediaId: null,
+    metaData: { subType: 'recording', caption: 'Recording-shaped audio fixture (TASK-406 / TASK-376 residual).' },
+    createdBy: DOCTOR_ID,
+  };
+  await prisma.contextItem.upsert({
+    where: { id: CTX_IDS.recording },
+    create: recordingContainer,
+    update: recordingContainer,
+  });
+  console.log(`[contextItem] upserted ${CTX_IDS.recording} (AUDIO_RECORDING container)`);
+
+  const recordingRow = {
+    id: RECORDING_ID,
+    tenantId: TENANT_ID,
+    contextItemId: CTX_IDS.recording,
+    mediaId: MEDIA_IDS.recordingWav,
+    duration: RECORDING_META.durationMs,
+    format: RECORDING_META.format,
+    sampleRate: RECORDING_META.sampleRate,
+    channels: RECORDING_META.channels,
+    language: RECORDING_META.language,
+    sequenceNumber: 1,
+    recordedAt: RECORDING_META.recordedAt,
+    metaData: { seed: 'task-376', kind: 'recording-fixture' },
+  };
+  await prisma.audioRecording.upsert({ where: { id: RECORDING_ID }, create: recordingRow, update: recordingRow });
+  console.log(
+    `[audioRecording] upserted ${RECORDING_ID} → media ${MEDIA_IDS.recordingWav} ` +
+      `(${RECORDING_META.durationMs}ms ${RECORDING_META.format}/${RECORDING_META.sampleRate}Hz/mono, seq 1)`,
+  );
+
   await prisma.$disconnect();
   if (s3) {
     s3.destroy();
@@ -390,6 +468,7 @@ async function main(): Promise<void> {
         objectsUploaded: storageAvailable,
         contextItems: CTX_IDS,
         media: MEDIA_IDS,
+        audioRecording: { id: RECORDING_ID, containerContextItemId: CTX_IDS.recording, mediaId: MEDIA_IDS.recordingWav },
         buckets: { attachments: ATTACH_BUCKET, audio: AUDIO_BUCKET },
       },
       null,

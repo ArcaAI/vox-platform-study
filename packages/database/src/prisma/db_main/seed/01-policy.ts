@@ -48,6 +48,9 @@ export const DEFAULT_POLICIES = [
         name: 'system-full-access',
         description: 'Full system access - can manage everything across all tenants',
         scope: PolicyScope.GLOBAL,
+        // TASK-409 — anti-lockout protected marker (rename-proof; pairs with the
+        // legacy name match in PolicyService.PROTECTED_SYSTEM_POLICIES).
+        isProtected: true,
         rules: [
             { action: 'manage', subject: 'all' },
         ],
@@ -57,6 +60,8 @@ export const DEFAULT_POLICIES = [
         name: 'rbac-system-manage',
         description: 'System-level RBAC management - manage all roles, policies, and assignments',
         scope: PolicyScope.GLOBAL,
+        // TASK-409 — anti-lockout protected marker (see system-full-access above).
+        isProtected: true,
         rules: [
             { action: 'manage', subject: 'Role' },
             { action: 'manage', subject: 'Policy' },
@@ -411,6 +416,12 @@ export const seedPolicy = async (client: CorePrismaClient) => {
     console.log('Seeding policies...');
 
     for (const policyData of DEFAULT_POLICIES) {
+        // TASK-409 — only assert `isProtected` when the seed data explicitly
+        // defines it (the two system-critical policies). Policies without the
+        // marker rely on the column default and are never clobbered here.
+        const isProtected = (policyData as { isProtected?: boolean }).isProtected;
+        const protectedPatch = isProtected === undefined ? {} : { isProtected };
+
         // Use findFirst instead of findUnique for Prisma 7 compatibility
         const existing = await client.policy.findFirst({
             where: { name: policyData.name },
@@ -424,6 +435,7 @@ export const seedPolicy = async (client: CorePrismaClient) => {
                     description: policyData.description,
                     scope: policyData.scope,
                     rules: policyData.rules,
+                    ...protectedPatch,
                 },
             });
         } else {
@@ -435,6 +447,7 @@ export const seedPolicy = async (client: CorePrismaClient) => {
                     description: policyData.description,
                     scope: policyData.scope,
                     rules: policyData.rules,
+                    ...protectedPatch,
                 },
             });
         }

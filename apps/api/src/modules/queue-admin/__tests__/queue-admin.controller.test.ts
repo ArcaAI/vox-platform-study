@@ -11,6 +11,7 @@ const mockQueueService = {
   pauseQueue: vi.fn(),
   resumeQueue: vi.fn(),
   cleanQueue: vi.fn(),
+  getRedisHealth: vi.fn(),
 };
 
 const mockJobService = {
@@ -76,6 +77,25 @@ describe('QueueAdminController', () => {
 
       expect(mockQueueService.cleanQueue).toHaveBeenCalledWith('SendEmail', 'failed', 1000, 50);
       expect(result).toEqual({ removedJobIds: ['1', '2', '3'], count: 3 });
+    });
+
+    // TASK-403 — Redis health probe for the Queues & Jobs admin surface.
+    it('returns the Redis health snapshot from the service', async () => {
+      const health = {
+        status: 'healthy',
+        latencyMs: 3,
+        connectedClients: 8,
+        usedMemory: '12.00M',
+        uptime: 1000,
+        version: '7.2.5',
+        queuesRegistered: 15,
+      };
+      mockQueueService.getRedisHealth.mockResolvedValue(health);
+
+      const result = await controller.getRedisHealth();
+
+      expect(mockQueueService.getRedisHealth).toHaveBeenCalledWith();
+      expect(result).toEqual(health);
     });
   });
 

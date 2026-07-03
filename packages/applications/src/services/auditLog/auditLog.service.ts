@@ -495,6 +495,11 @@ export class AuditLogService extends BaseService implements IAuditLogService {
       // explicit start/stop bracket rows emitted by AuthController; absent on
       // the per-request IMPERSONATED_ACTION rows from the audit interceptor.
       phase?: 'START' | 'STOP';
+      // TASK-401 — lifecycle bracket enrichment (super-admin impersonation
+      // endpoint): operator justification, token expiry, resolved tenant.
+      reason?: string;
+      expiresAt?: string;
+      impersonationTenantId?: string;
     } & Record<string, unknown>,
   ): Promise<void> {
     try {
@@ -525,6 +530,12 @@ export class AuditLogService extends BaseService implements IAuditLogService {
               // TASK-331 M-3 — START/STOP for the explicit lifecycle bracket;
               // null for ordinary per-request impersonated actions.
               phase: event.phase ?? null,
+              // TASK-401 — bracket enrichment; only present on rows emitted by
+              // the super-admin impersonation endpoint (undefined elsewhere,
+              // and undefined JSON keys are dropped on serialization).
+              ...(event.reason ? { reason: event.reason } : {}),
+              ...(event.expiresAt ? { expiresAt: event.expiresAt } : {}),
+              ...(event.impersonationTenantId ? { impersonationTenantId: event.impersonationTenantId } : {}),
             }
           : {
               method: event.method || 'oauth',

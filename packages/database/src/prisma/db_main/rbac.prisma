@@ -89,6 +89,12 @@ model Policy {
   // Policy scope
   scope PolicyScope @default(TENANT)
 
+  // TASK-409 — anti-lockout protected marker (rename-proof identification of the
+  // system-critical policies; seeded true for `system-full-access` and
+  // `rbac-system-manage` only). NOT writable through the API — only the seed
+  // (or a DBA) sets it. Mirrors the `Role.isSystemRole` flag convention.
+  isProtected Boolean @default(false)
+
   // resource status fields
   resourceStatus          ResourceStatusType @default(ENABLED)
   resourceStatusUpdatedAt DateTime?

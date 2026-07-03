@@ -31,7 +31,12 @@ export function UsageBar({ row }: { row: CapabilityUsageRow }) {
           {tone === 'near' ? <StatusBadge label="Near limit" colorRole="warning" /> : null}
         </span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={pct ?? undefined} aria-label={capabilityLabel(row.key)}>
+      <div
+        className="h-2 w-full overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-valuenow={pct ?? undefined}
+        aria-label={capabilityLabel(row.key)}
+      >
         {pct !== null ? <div className={cn('h-full rounded-full transition-all', FILL_CLASS[role])} style={{ width: `${pct}%` }} /> : null}
       </div>
     </div>

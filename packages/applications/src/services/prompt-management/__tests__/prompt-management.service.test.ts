@@ -86,6 +86,9 @@ const createMockPromptUsageRecordRepository = () => ({
     groupByDepartment: vi.fn().mockResolvedValue([]),
     groupByDoctor: vi.fn().mockResolvedValue([]),
     groupByDay: vi.fn().mockResolvedValue([]),
+    // TASK-407 — paginated raw run listing (Agent Jobs surface)
+    findAll: vi.fn().mockResolvedValue([]),
+    count: vi.fn().mockResolvedValue(0),
 });
 
 // TASK-328 A4 — SMR/text-generation client is an injected dependency
@@ -2087,6 +2090,81 @@ describe('PromptManagementService', () => {
             mockClsService.get.mockImplementation((key: string) => (key === 'user' ? defaultClsContext.user : null));
 
             await expect(service.getUsageAnalytics()).rejects.toThrow(BadRequestException);
+        });
+    });
+
+    // ─── TASK-407: tenant-scoped raw usage-record listing (Agent Jobs) ─────
+
+    describe('listUsageRecords (TASK-407)', () => {
+        const mkRecord = (overrides: Record<string, unknown> = {}) => ({
+            id: 'run-1',
+            tenantId: 'tenant-1',
+            promptTemplateId: 'tpl-1',
+            promptVersionNumber: 3,
+            consultationId: 'cons-1',
+            doctorId: 'doc-1',
+            departmentId: 'dept-1',
+            createdAt: new Date('2026-07-01T09:00:00Z'),
+            ...overrides,
+        });
+
+        it('returns a paginated envelope of run rows, tenant-scoped, newest first', async () => {
+            mockUsageRepo.findAll.mockResolvedValue([mkRecord(), mkRecord({ id: 'run-2', promptVersionNumber: null })]);
+            mockUsageRepo.count.mockResolvedValue(12);
+
+            const result = await service.listUsageRecords({ page: 0, limit: 2 });
+
+            expect(mockUsageRepo.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    page: 0,
+                    limit: 2,
+                    filters: { tenantId: 'tenant-1' },
+                    sort: [{ createdAt: 'desc' }],
+                }),
+            );
+            expect(mockUsageRepo.count).toHaveBeenCalledWith(expect.objectContaining({ filters: { tenantId: 'tenant-1' } }));
+            expect(result.count).toBe(12);
+            expect(result.page).toBe(0);
+            expect(result.limit).toBe(2);
+            expect(result.data).toHaveLength(2);
+            expect(result.data[0]).toEqual({
+                id: 'run-1',
+                promptTemplateId: 'tpl-1',
+                promptVersionNumber: 3,
+                consultationId: 'cons-1',
+                doctorId: 'doc-1',
+                departmentId: 'dept-1',
+                createdAt: '2026-07-01T09:00:00.000Z',
+            });
+            expect(result.data[1].promptVersionNumber).toBeNull();
+        });
+
+        it('narrows to a single template when promptTemplateId is given', async () => {
+            mockUsageRepo.findAll.mockResolvedValue([]);
+            mockUsageRepo.count.mockResolvedValue(0);
+
+            await service.listUsageRecords({ promptTemplateId: 'tpl-9' });
+
+            expect(mockUsageRepo.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({ filters: { tenantId: 'tenant-1', promptTemplateId: 'tpl-9' } }),
+            );
+        });
+
+        it('defaults to page 0 / limit 20', async () => {
+            mockUsageRepo.findAll.mockResolvedValue([]);
+            mockUsageRepo.count.mockResolvedValue(0);
+
+            const result = await service.listUsageRecords();
+
+            expect(mockUsageRepo.findAll).toHaveBeenCalledWith(expect.objectContaining({ page: 0, limit: 20 }));
+            expect(result.page).toBe(0);
+            expect(result.limit).toBe(20);
+        });
+
+        it('throws BadRequestException when tenantId is missing', async () => {
+            mockClsService.get.mockImplementation((key: string) => (key === 'user' ? defaultClsContext.user : null));
+
+            await expect(service.listUsageRecords()).rejects.toThrow(BadRequestException);
         });
     });
 

@@ -25,6 +25,7 @@ export * from './KnowledgeDocumentEntity';
 export * from './MediaEntity';
 export * from './NamedEntityEntity';
 export * from './NotificationEntity';
+export * from './PasswordResetTokenEntity';
 export * from './PermissionEntity';
 export * from './PlanEntitlementEntity';
 export * from './PipelinePolicyChangeEntity';

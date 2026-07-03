@@ -48,6 +48,16 @@ import { modelAllowedForTier, modelTierForPlan } from '../entitlements/model-acc
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
+ * TASK-406 (P2-6c) — model-aware filter coercion (TASK-375 §8 scheme): coerces
+ * stringly-typed CSV `filters` values to the Tenant columns' real types before
+ * the `where` reaches Prisma (`version` → number, `trialEndsAt`/`createdAt` →
+ * Date, `plan`/`resourceStatus` → member-validated enums, `metaData` →
+ * JSON-path support). Passed to BOTH the data and count builders so they stay
+ * in lock-step.
+ */
+const TENANT_FILTER_MODEL = 'Tenant';
+
+/**
  * Service for managing tenants and their configurations
  * Implements the ITenantService interface
  */
@@ -468,9 +478,9 @@ export class TenantService extends BaseService implements ITenantService {
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<TenantEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { limit, page, search } = props;
-    const tenants = await this.tenantRepository.findAll(withFormattedPaginatedProps(props));
+    const tenants = await this.tenantRepository.findAll(withFormattedPaginatedProps(props, TENANT_FILTER_MODEL));
 
-    const count = await this.tenantRepository.count(withFormattedCountProps(props));
+    const count = await this.tenantRepository.count(withFormattedCountProps(props, TENANT_FILTER_MODEL));
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: {
@@ -494,13 +504,13 @@ export class TenantService extends BaseService implements ITenantService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { codeName, limit, page, search } = props;
     const tenants = await this.tenantRepository.findAll({
-      ...withFormattedPaginatedProps(props),
+      ...withFormattedPaginatedProps(props, TENANT_FILTER_MODEL),
       where: {
         key: codeName,
       },
     });
     const count = await this.tenantRepository.count({
-      ...withFormattedCountProps(props),
+      ...withFormattedCountProps(props, TENANT_FILTER_MODEL),
       where: {
         key: codeName,
       },
@@ -529,13 +539,13 @@ export class TenantService extends BaseService implements ITenantService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { userId, limit, page, search } = props;
     const tenants = await this.tenantRepository.findAll({
-      ...withFormattedPaginatedProps(props),
+      ...withFormattedPaginatedProps(props, TENANT_FILTER_MODEL),
       where: {
         createdBy: userId,
       },
     });
     const count = await this.tenantRepository.count({
-      ...withFormattedCountProps(props),
+      ...withFormattedCountProps(props, TENANT_FILTER_MODEL),
       where: {
         createdBy: userId,
       },

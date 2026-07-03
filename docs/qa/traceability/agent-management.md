@@ -14,8 +14,8 @@
 |---|---|
 | **Ticket** | TASK-382 |
 | **Created** | 2026-06-30 |
-| **Updated** | 2026-06-30 |
-| **Status** | Frames 30–33 mapped; backend contract E2E added; **AG-W slot-assign contract gap RESOLVED + live-validated** (SDK sends `expectedVersion` + the column key → backend 200, OCC reached) |
+| **Updated** | 2026-07-01 |
+| **Status** | Frames 30–33 mapped; backend contract E2E added; **AG-W slot-assign contract gap RESOLVED + live-validated** (SDK sends `expectedVersion` + the column key → backend 200, OCC reached). **2026-07-01 backend backlog landed:** AG8 **server diff** + AG12 **test sub-metrics** ([TASK-389](../../implementation/TASK-389-Agents-Backend-Backlog/README.md)) and AG13 **DNA-style slot** ([TASK-387](../../implementation/TASK-387-Tenant-Data-Model-Backlog/README.md)) — the last 🎯/🟡 rows flipped to 🟢 |
 | **Sources** | Designs = `HOPE-Admin-Console` frames 30/31/32/33 + `Dlg · New Agent Instruction`; Code = `apps/admin/src/{routes/.../agents,features/agents}`; API = `apps/api` + `packages/applications`; SDK = `packages/agentic-sdk-v2`; Tests = `apps/api/tests/e2e`, `apps/admin/e2e`, `features/agents/__tests__` |
 
 ## Legend
@@ -50,9 +50,11 @@
   (`{ departmentId, preSummaryPromptId?, newPatientPromptId?, revisitPromptId?, expectedVersion }`) → **200** with the
   Department OCC write reached (428 missing / 412 stale). Pinned by the backend spec (correct shape → 200; OCC) and the
   admin call site threading `department.version` through `slotAssignInput` (`agents/.../index.tsx:74-79`).
-- **2 🎯 targets** (unchanged, never fabricated): DNA writing-style default slot; test sub-metrics as a UI feature
-  (the backend `metrics` exists but the SDK type omits it — see AG13).
-- `compareVersions` remains **client-side** (no server diff endpoint) — A3 stays 🟡.
+- **The 2 former 🎯 targets — now LANDED (2026-07-01):** the **DNA writing-style default slot** shipped as
+  `dnaWritingStylePromptId` ([TASK-387](../../implementation/TASK-387-Tenant-Data-Model-Backlog/README.md) — AG13), and the **test sub-metrics** are now threaded through the SDK
+  ([TASK-389](../../implementation/TASK-389-Agents-Backend-Backlog/README.md) — `PromptTestResult` gains `metrics` + `metricDetail`, AG12).
+- **`compareVersions` — now SERVER-SIDE (TASK-389):** a server diff endpoint backs `32 · Version Diff`; the SDK is
+  repointed off client-only diffing (AG8 → 🟢). A richer per-field FE diff **visualization** remains a follow-up (TASK-394).
 
 ---
 
@@ -80,7 +82,7 @@
 
 | ID | Use case | Design (frame · node) | Backend API (`/api/v1…` · file:line) | Test | Status |
 |---|---|---|---|---|---|
-| AG8 | Side-by-side version diff (content + variables) | `32 · Version Diff` `120:9567` | 🔴 **no server diff endpoint** — SDK `compareVersions` GETs both versions (`prompt-management.controller.ts:190`) and diffs **client-side** (`usePrompts.ts:171` → `computePromptDiff`) | `task-382-agent-management.spec.ts` (be: both version GETs resolve, contents differ); `features/agents/__tests__/diff-model.test.ts`; cross-link **A3** | 🟡 (client-side) |
+| AG8 | Side-by-side version diff (content + variables) | `32 · Version Diff` `120:9567` | ✅ **LANDED (TASK-389):** server-side `compareVersions` diff endpoint; SDK repointed off client-only diffing (was `usePrompts.ts` → `computePromptDiff`) | `task-382-*` (version GETs) + `task-389-agents-backend.spec.ts` (server diff); `features/agents/__tests__/diff-model.test.ts`; cross-link **A3** | 🟢 (server diff; richer FE per-field viz = TASK-394 follow-up) |
 | AG9 | Rollback / activate a version | `32` Activate / Roll back | `POST /admin/prompt-templates/:id/versions/:n/activate` `prompt-management.controller.ts:259` (server reads current `version` → CAS) | `task-382-agent-management.spec.ts` (be: activate v1 restores original content); `features/agents/__tests__` (mocked); cross-link **A4** | 🟢 |
 
 ## 33 · Test Playground — `120:9681`
@@ -89,13 +91,13 @@
 |---|---|---|---|---|---|
 | AG10 | Run instruction → score + output (OCC write) | `33 · Test Playground` `120:9681` | `POST /admin/prompt-templates/:id/test` `prompt-management.controller.ts:236` (`@RequiresIfMatch` :217) → `testPromptTemplate` (SMR) | `task-382-agent-management.spec.ts` (be: 428 no-header deterministically; 200 score∈[0,1]+output when SMR up — else noted); `playground-format.test.ts`; cross-link **A5** | 🟡 (OCC tested · SMR run env-dependent) |
 | AG11 | Headline score (quality proxy) | `33` Evaluation block | `PromptTestResultResponse.score` `prompt-test-result.response.ts:32` | `task-382-agent-management.spec.ts` (be, on 200); `playground-format.test.ts` (`scoreToneRole` thresholds) | 🟡 |
-| AG12 | Test **sub-metrics** breakdown (faithfulness/coverage/conciseness) | `33` per-dimension bars | ⚠️ backend `PromptTestResultResponse.metrics?` **exists** (deterministic F8) `prompt-test-result.response.ts:45`, but the SDK `PromptTestResult` type **omits** it (`types/prompt.ts:159`) and the admin expects `Record<string,number>` (≠ `PromptTestMetrics`) → rendered only if present, framed as a proxy | `task-382-agent-management.spec.ts` (be: asserts `metrics` shape **iff** returned); cross-link **A5** | 🟡 · 🎯 |
+| AG12 | Test **sub-metrics** breakdown (faithfulness/coverage/conciseness) | `33` per-dimension bars | ✅ **LANDED (TASK-389):** SDK `PromptTestResult` now threads **`metrics` + `metricDetail`** (the backend `PromptTestResultResponse.metrics` already produced them; the SDK type previously omitted it) → admin playground renders the per-dimension breakdown | `task-382-*` + `task-389-agents-backend.spec.ts` (sub-metrics) + SDK unit; cross-link **A5** | 🟢 |
 
 ## Cross-cutting
 
 | ID | Use case | Design (frame · node) | Backend API (`/api/v1…` · file:line) | Test | Status |
 |---|---|---|---|---|---|
-| AG13 | **DNA writing-style** default slot (per dept) | `30` 4th slot card | 🔴 **no `dnaWritingStylePromptId` column** — drawn + flagged `hope`/Target, never wired (`slot-config.ts:51`, `target:true :55`) | `slot-config.test.ts` (TARGET → `slotAssignInput` null); cross-link **D3 / U10** | 🎯 |
+| AG13 | **DNA writing-style** default slot (per dept) | `30` 4th slot card | ✅ **LANDED (TASK-387):** `dnaWritingStylePromptId` column/`promptConfig` key now backs the 4th slot (was drawn-only `target:true`) | `slot-config.test.ts` + `task-387-*` (DNA slot assign); FE default-agent-slots wired; cross-link **D3 / U10** | 🟢 |
 | AG14 | Tenant isolation (404-over-403) | n/a (security invariant) | repo tenant-scope on `GET …/prompt-templates/:id` `prompt-management.controller.ts:110` (throws `NotFound`) | `task-382-agent-management.spec.ts` (be: `tenant_admin`@`__GLOBAL__` reads an ARCAAI prompt → 404) | 🟢 |
 
 ---
@@ -106,10 +108,10 @@
 |---|---|---|
 | **A1** Agent management + default slots | 🔴 *no backend; frontend-unit only* | **AG1/AG2/AG-W** — backend E2E added; library list 🟢; **slot-assign write 🟢** (AG-W contract gap resolved — SDK sends `expectedVersion`) |
 | **A2** Create / edit instruction | 🔴 | **AG4/AG5** — create + update-OCC backend E2E → 🟢 |
-| **A3** Version diff / compare | 🔴 | **AG8** — confirmed **client-side** (no endpoint); building-block version GETs tested → 🟡 |
+| **A3** Version diff / compare | 🔴 | **AG8** — **server diff LANDED (TASK-389)**, SDK repointed → 🟢 (richer FE per-field viz = TASK-394 follow-up) |
 | **A4** Version rollback / activate | 🟡 *(mocked)* | **AG9** — activate backend E2E (content rollback) → 🟢 |
-| **A5** Test playground / evaluate | 🟡 · 🎯 | **AG10/AG11/AG12** — OCC gate tested; score 🟡; sub-metrics 🟡·🎯 (backend `metrics` exists, SDK omits) |
-| **D3** Default agents per dept | 🟡 · 🎯 | **AG3** read 🟢; **AG-W** write 🟢; **AG13** DNA 🎯 |
+| **A5** Test playground / evaluate | 🟡 · 🎯 | **AG10/AG11/AG12** — OCC gate tested; score 🟡; **sub-metrics LANDED (TASK-389)** — SDK threads `metrics`+`metricDetail` → 🟢 |
+| **D3** Default agents per dept | 🟡 · 🎯 | **AG3** read 🟢; **AG-W** write 🟢; **AG13 DNA slot LANDED (TASK-387)** → 🟢 |
 
 ## Backlog rollup (gaps → tickets)
 
@@ -122,14 +124,13 @@
    (`assign-department-prompt.request.ts:9-12`) and the service forwards it via `updatePromptConfig`
    (`prompt-management.service.ts:646-657`), so the pre-summary slot is now reachable from frame 30 too.
 
-**Backend — missing endpoints (inherited from TASK-371)**
-3. **Prompt `compareVersions` (AG8 / A3)** — a server diff endpoint backing `32 · Version Diff` (today client-side).
-4. **Per-dept DNA-style default agent (AG13 / D3 / U10)** — `dnaWritingStylePromptId` column / `promptConfig` key.
+**Backend — endpoints (inherited from TASK-371) — now LANDED (2026-07-01)**
+3. ~~**Prompt `compareVersions` (AG8 / A3)**~~ — ✅ **DONE (TASK-389):** server diff endpoint backs `32 · Version Diff`; SDK repointed. *(Richer per-field FE visualization = TASK-394 follow-up.)*
+4. ~~**Per-dept DNA-style default agent (AG13 / D3 / U10)**~~ — ✅ **DONE (TASK-387):** `dnaWritingStylePromptId` slot column/`promptConfig` key.
 
-**Frontend / SDK alignment**
-5. **Test sub-metrics (AG12 / A5)** — surface the backend `PromptTestResultResponse.metrics` on the SDK
-   `PromptTestResult` type and map `PromptTestMetrics` (booleans/nulls) to the admin's display shape.
+**Frontend / SDK alignment — now LANDED**
+5. ~~**Test sub-metrics (AG12 / A5)**~~ — ✅ **DONE (TASK-389):** SDK `PromptTestResult` now surfaces `metrics` + `metricDetail`; admin renders the per-dimension breakdown.
 
 **Test — run-pending**
 6. The backend spec asserts the deterministic OCC contract everywhere; the **SMR-dependent** test-run assertion
-   (AG10) and the full FE journey run only against a seeded stack (`pnpm test:e2e` / admin Playwright webServer).
+   (AG10) and the full FE journey run only against a seeded stack (`pnpm test:e2e` / admin Playwright webServer). New `task-389-agents-backend.spec.ts` covers server diff + sub-metrics; `task-387-*` covers the DNA slot.

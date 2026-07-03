@@ -1,12 +1,6 @@
 import { useArcaStore } from '@arcaai/vox';
 import { useCallback, useEffect, useRef } from 'react';
-import {
-    getTokenExpiryMs,
-    isTokenExpired,
-    registerOnTokenRefreshed,
-    tryRefreshToken,
-    unregisterOnTokenRefreshed,
-} from '@/lib/auth-refresh';
+import { getTokenExpiryMs, isTokenExpired, registerOnTokenRefreshed, tryRefreshToken, unregisterOnTokenRefreshed } from '@/lib/auth-refresh';
 import { useAuthStore } from '@/store/auth-store';
 
 /** Refresh once 80% of the token lifetime has elapsed, never sooner than 30s. */
@@ -25,48 +19,48 @@ const MIN_REFRESH_MS = 30_000;
  * Must render inside `<AgenticProvider>` so `useArcaStore()` resolves.
  */
 export function useAutoRefresh(): void {
-    const apiClient = useArcaStore((s) => s.apiClient);
-    const accessToken = useAuthStore((s) => s.accessToken);
+  const apiClient = useArcaStore((s) => s.apiClient);
+  const accessToken = useAuthStore((s) => s.accessToken);
 
-    const apiClientRef = useRef(apiClient);
-    apiClientRef.current = apiClient;
+  const apiClientRef = useRef(apiClient);
+  apiClientRef.current = apiClient;
 
-    const handleUnauthorized = useCallback((): Promise<boolean> => tryRefreshToken(), []);
+  const handleUnauthorized = useCallback((): Promise<boolean> => tryRefreshToken(), []);
 
-    useEffect(() => {
-        if (!apiClient) return;
+  useEffect(() => {
+    if (!apiClient) return;
 
-        const syncListener = (newToken: string) => {
-            apiClientRef.current?.updateAccessToken(newToken);
-        };
+    const syncListener = (newToken: string) => {
+      apiClientRef.current?.updateAccessToken(newToken);
+    };
 
-        registerOnTokenRefreshed(syncListener);
-        apiClient.setOnUnauthorized(handleUnauthorized);
+    registerOnTokenRefreshed(syncListener);
+    apiClient.setOnUnauthorized(handleUnauthorized);
 
-        return () => unregisterOnTokenRefreshed(syncListener);
-    }, [apiClient, handleUnauthorized]);
+    return () => unregisterOnTokenRefreshed(syncListener);
+  }, [apiClient, handleUnauthorized]);
 
-    useEffect(() => {
-        if (!accessToken) return;
+  useEffect(() => {
+    if (!accessToken) return;
 
-        if (isTokenExpired(accessToken)) {
-            const { refreshToken } = useAuthStore.getState();
-            if (refreshToken) {
-                tryRefreshToken().then((ok) => {
-                    if (!ok) useAuthStore.getState().logout();
-                });
-            }
-            return;
-        }
+    if (isTokenExpired(accessToken)) {
+      const { refreshToken } = useAuthStore.getState();
+      if (refreshToken) {
+        tryRefreshToken().then((ok) => {
+          if (!ok) useAuthStore.getState().logout();
+        });
+      }
+      return;
+    }
 
-        const expiryMs = getTokenExpiryMs(accessToken);
-        if (expiryMs <= 0) return;
+    const expiryMs = getTokenExpiryMs(accessToken);
+    if (expiryMs <= 0) return;
 
-        const refreshAt = Math.max(expiryMs * REFRESH_THRESHOLD, MIN_REFRESH_MS);
-        const timerId = setTimeout(() => {
-            void tryRefreshToken();
-        }, refreshAt);
+    const refreshAt = Math.max(expiryMs * REFRESH_THRESHOLD, MIN_REFRESH_MS);
+    const timerId = setTimeout(() => {
+      void tryRefreshToken();
+    }, refreshAt);
 
-        return () => clearTimeout(timerId);
-    }, [accessToken]);
+    return () => clearTimeout(timerId);
+  }, [accessToken]);
 }

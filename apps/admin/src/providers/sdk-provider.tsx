@@ -11,8 +11,8 @@ const API_BASE_URL = getApiBaseUrl();
  * `useArcaStore()` resolves. Renders nothing.
  */
 function AutoRefreshInit() {
-    useAutoRefresh();
-    return null;
+  useAutoRefresh();
+  return null;
 }
 
 /**
@@ -25,32 +25,32 @@ function AutoRefreshInit() {
  * from `sessionStorage` (TASK-374).
  */
 export function SDKProvider({ children }: { children: ReactNode }) {
-    const accessToken = useAuthStore((s) => s.accessToken);
-    const tenantId = useAuthStore((s) => s.tenantId);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const tenantId = useAuthStore((s) => s.tenantId);
 
-    const config = useMemo<AgenticConfig>(
-        () => ({
-            api: {
-                baseUrl: API_BASE_URL,
-                accessToken: accessToken || undefined,
-                tenantId: tenantId || undefined,
-            },
-            // Declares the capture pipeline for the Live Session surface; nothing
-            // heavy initializes until `audio.start()` is called there.
-            audio: {
-                noiseFilter: true,
-                vad: true,
-                stt: true,
-            },
-            autoWireTokenRefresh: false,
-        }),
-        [accessToken, tenantId],
-    );
+  const config = useMemo<AgenticConfig>(
+    () => ({
+      api: {
+        baseUrl: API_BASE_URL,
+        accessToken: accessToken || undefined,
+        tenantId: tenantId || undefined,
+      },
+      // Declares the capture pipeline for the Live Session surface; nothing
+      // heavy initializes until `audio.start()` is called there.
+      audio: {
+        noiseFilter: true,
+        vad: true,
+        stt: true,
+      },
+      autoWireTokenRefresh: false,
+    }),
+    [accessToken, tenantId],
+  );
 
-    return (
-        <AgenticProvider config={config}>
-            <AutoRefreshInit />
-            {children}
-        </AgenticProvider>
-    );
+  return (
+    <AgenticProvider config={config}>
+      <AutoRefreshInit />
+      {children}
+    </AgenticProvider>
+  );
 }

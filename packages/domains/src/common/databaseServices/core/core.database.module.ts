@@ -30,6 +30,7 @@ import { KnowledgeDocumentRepository } from '../../../repositories/generated/cor
 import { MediaRepository } from '../../../repositories/generated/core/MediaRepository';
 import { NamedEntityRepository } from '../../../repositories/generated/core/NamedEntityRepository';
 import { NotificationRepository } from '../../../repositories/generated/core/NotificationRepository';
+import { PasswordResetTokenRepository } from '../../../repositories/generated/core/PasswordResetTokenRepository';
 import { PermissionRepository } from '../../../repositories/generated/core/PermissionRepository';
 import { PlanEntitlementRepository } from '../../../repositories/generated/core/PlanEntitlementRepository';
 import { PipelinePolicyChangeRepository } from '../../../repositories/generated/core/PipelinePolicyChangeRepository';
@@ -108,6 +109,8 @@ const repositories = [
   UserMediaRepository,
   UserProfileRepository,
   UserRepository,
+  // Password security (TASK-400) — revocable single-use reset tokens
+  PasswordResetTokenRepository,
   UserDepartmentRepository,
   UserRoleAssignmentRepository,
   UserSettingsRepository,

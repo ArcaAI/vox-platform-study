@@ -32,6 +32,9 @@ const mockUserDepartmentRepository = { create: vi.fn() };
 const $transaction = vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(TX));
 const mockDatabaseService = { baseClient: { $transaction } };
 const mockUserProfileService = { upsertByUserId: vi.fn() };
+// TASK-402 — create-time passwords are hashed; behavior pinned in task402 spec.
+const mockCryptoService = { hash: vi.fn(async (pw: string) => `$2b$10$hashed::${pw}`), verify: vi.fn() };
+const mockAppSettings = { getValueWithDefault: vi.fn(<T,>(_key: string, defaultValue: T): T => defaultValue) };
 
 function buildService() {
   return new UserService(
@@ -49,6 +52,10 @@ function buildService() {
     mockDatabaseService as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockUserProfileService as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockCryptoService as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockAppSettings as any,
   );
 }
 
@@ -80,7 +87,7 @@ describe('UserService — TASK-331 #3 create-with-membership', () => {
 
     const result = await service.create({
       username: 'newuser',
-      password: 'pw',
+      password: 'Password123!',
       isServiceAccount: false,
       roleId: 'role-1',
       departmentId: 'dept-1',
@@ -124,7 +131,7 @@ describe('UserService — TASK-331 #3 create-with-membership', () => {
 
     await expect(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      service.create({ username: 'newuser', password: 'pw', roleId: 'role-1', departmentId: 'dept-1' } as any),
+      service.create({ username: 'newuser', password: 'Password123!', roleId: 'role-1', departmentId: 'dept-1' } as any),
     ).rejects.toThrow(/department write failed/);
 
     // Broadcasting happens AFTER the transaction commits, so a failed tx emits
@@ -136,7 +143,7 @@ describe('UserService — TASK-331 #3 create-with-membership', () => {
     const service = buildService();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await service.create({ username: 'roleonly', password: 'pw', roleId: 'role-1' } as any);
+    await service.create({ username: 'roleonly', password: 'Password123!', roleId: 'role-1' } as any);
 
     expect($transaction).toHaveBeenCalledTimes(1);
     expect(mockUserRoleAssignmentRepository.create).toHaveBeenCalledTimes(1);
@@ -149,7 +156,7 @@ describe('UserService — TASK-331 #3 create-with-membership', () => {
 
     await expect(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      service.create({ username: 'newuser', password: 'pw', roleId: 'role-1' } as any),
+      service.create({ username: 'newuser', password: 'Password123!', roleId: 'role-1' } as any),
     ).rejects.toBeInstanceOf(BadRequestException);
 
     expect($transaction).not.toHaveBeenCalled();
@@ -160,7 +167,7 @@ describe('UserService — TASK-331 #3 create-with-membership', () => {
     const service = buildService();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await service.create({ username: 'plain', password: 'pw' } as any);
+    const result = await service.create({ username: 'plain', password: 'Password123!' } as any);
 
     expect(mockUserRepository.create).toHaveBeenCalledTimes(1);
     // No tx argument on the plain path.

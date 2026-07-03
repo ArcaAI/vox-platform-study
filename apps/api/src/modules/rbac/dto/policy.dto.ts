@@ -91,6 +91,25 @@ export class CreatePolicyDto {
 }
 
 /**
+ * TASK-409 — break-glass step-up confirmation for dangerous RBAC mutations
+ * (policy delete, role delete, detach-from-role, multi-role rule edits).
+ * Both fields are optional at the DTO layer ON PURPOSE: the service maps a
+ * missing confirmation to `428 Precondition Required` (not a generic 400),
+ * so clients can distinguish "you must confirm" from "your input is wrong".
+ */
+export class BreakGlassDto {
+  @ApiPropertyOptional({ description: "Caller's CURRENT password (step-up re-authentication; never logged)" })
+  @IsOptional()
+  @IsString()
+  password?: string;
+
+  @ApiPropertyOptional({ description: 'Exact name of the policy/role being mutated (type-to-confirm)' })
+  @IsOptional()
+  @IsString()
+  confirmationName?: string;
+}
+
+/**
  * DTO for updating a policy
  */
 export class UpdatePolicyDto {
@@ -127,6 +146,16 @@ export class UpdatePolicyDto {
   @IsOptional()
   @IsIn(['ENABLED', 'DISABLED'])
   resourceStatus?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-409 — break-glass confirmation, required when editing the rules of a policy attached to more than one role. Never persisted.',
+    type: BreakGlassDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BreakGlassDto)
+  breakGlass?: BreakGlassDto;
 }
 
 /**
@@ -150,6 +179,12 @@ export class PolicyResponse {
 
   @ApiProperty({ description: 'Resource status' })
   resourceStatus: string;
+
+  @ApiProperty({
+    description:
+      'TASK-409 — true for the anti-lockout protected system policies (seed-managed, read-only; deletion/detach/disable are refused server-side)',
+  })
+  isProtected: boolean;
 
   @ApiProperty({ description: 'Created at timestamp' })
   createdAt: Date;

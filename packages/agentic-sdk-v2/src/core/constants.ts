@@ -247,6 +247,8 @@ export const PROMPT_TEMPLATE_ENDPOINTS = {
   TEST: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}/test`,
   /** Usage analytics grouped by department / doctor / day (TASK-328 A4) */
   USAGE_ANALYTICS: '/admin/prompt-templates/analytics/usage',
+  /** Paginated raw prompt run rows (PromptUsageRecord), newest first (TASK-407) */
+  USAGE_RECORDS: '/admin/prompt-templates/usage-records',
 } as const;
 
 /**
@@ -534,6 +536,8 @@ export const GLOBAL_SETTINGS_ENDPOINTS = {
   DELETE: (id: string) => `/admin/settings/${encodeURIComponent(id)}`,
   BY_TENANT: (tenantId: string) => `/admin/settings/tenant/${encodeURIComponent(tenantId)}`,
   TENANT_CONFIG: (tenantId: string) => `/admin/settings/tenant/${encodeURIComponent(tenantId)}/config`,
+  // TASK-396 — super-admin-only, step-up-authenticated, audited secret reveal.
+  REVEAL: (id: string) => `/admin/settings/${encodeURIComponent(id)}/reveal`,
 } as const;
 
 /**
@@ -612,6 +616,10 @@ export const USER_ENDPOINTS = {
   RESET_PASSWORD: (id: string) => `/admin/users/${encodeURIComponent(id)}/reset-password`,
   // TASK-388 #8 — public completion of a reset link (no auth; token-carried).
   PASSWORD_RESET_COMPLETE: '/users/password-reset/complete',
+  // TASK-400 — public self-service forgot-password (no auth; always 202).
+  FORGOT_PASSWORD: '/auth/forgot-password',
+  // TASK-401 — super-admin-only time-boxed impersonation mint ("act as").
+  IMPERSONATE: (id: string) => `/admin/users/${encodeURIComponent(id)}/impersonate`,
   // TASK-388 #9 — server-side bulk user actions (enable/disable/delete/assign-departments).
   BULK_ACTIONS: '/admin/users/bulk-actions',
   // TASK-388 #10 — server-side export (csv | xlsx | pdf).
@@ -837,6 +845,8 @@ export const TENANT_BUCKET_ENDPOINTS = {
   CREATE: '/admin/tenants/storage/buckets',
   /** Delete a custom bucket */
   DELETE: (id: string) => `/admin/tenants/storage/buckets/${encodeURIComponent(id)}`,
+  /** List objects in a bucket (storage-provider op; optional `?prefix=`) (TASK-407) */
+  LIST_OBJECTS: (id: string) => `/admin/tenants/storage/buckets/${encodeURIComponent(id)}/objects`,
   /** Delete a single object in a bucket (storage-provider op; required `?key=`) (TASK-328 A7) */
   DELETE_OBJECT: (id: string) => `/admin/tenants/storage/buckets/${encodeURIComponent(id)}/objects`,
   /** Provision system buckets for a tenant */
@@ -875,6 +885,30 @@ export const TENANT_STORAGE_CONFIG_ENDPOINTS = {
   UPSERT: '/admin/tenants/storage/config',
   /** Delete a storage config */
   DELETE: (id: string) => `/admin/tenants/storage/config/${encodeURIComponent(id)}`,
+} as const;
+
+/**
+ * Clinical Documentation Harness admin endpoints (TASK-407, read-only subset).
+ *
+ * Controller: `apps/api/src/modules/harness-admin/harness-admin.controller.ts`
+ * (`@Controller('admin/harness')`). Policy/audit/eval/gate-queue are DB-backed
+ * and always available; `WORKFLOWS` proxies the harness Temporal client and
+ * returns 503 when the harness service (`:8866`) is down — callers must
+ * degrade honestly.
+ */
+export const HARNESS_ADMIN_ENDPOINTS = {
+  /** Effective harness policy for the caller tenant (tenant row → global default → code default) */
+  POLICY: '/admin/harness/policy',
+  /** WORM audit trail (newest-first) + chain-integrity verdict */
+  AUDIT: '/admin/harness/audit',
+  /** Eval runs (newest-first, paginated) */
+  EVAL_RUNS: '/admin/harness/eval-runs',
+  /** One eval run with per-case scores */
+  EVAL_RUN: (id: string) => `/admin/harness/eval-runs/${encodeURIComponent(id)}`,
+  /** Consultations awaiting clinician review + SLA/escalation state */
+  GATE_QUEUE: '/admin/harness/gate-queue',
+  /** Temporal document workflows (503 when the harness service is unavailable) */
+  WORKFLOWS: '/admin/harness/workflows',
 } as const;
 
 /**
@@ -970,6 +1004,49 @@ export const VOICE_EMBEDDING_ENDPOINTS = {
   delete: (profileId: string) => `/voice-profile/${encodeURIComponent(profileId)}`,
   activate: (profileId: string) => `/voice-profile/${encodeURIComponent(profileId)}/activate`,
   deactivate: (profileId: string) => `/voice-profile/${encodeURIComponent(profileId)}/deactivate`,
+} as const;
+
+/**
+ * Rate-limit admin endpoints (TASK-403, backend substrate TASK-316).
+ *
+ * Matches `RateLimitAdminController` at `@Controller('admin/rate-limit')` —
+ * super-admin only (`manage all`). Every mutation returns the fresh full
+ * `RateLimitPolicy`.
+ */
+export const RATE_LIMIT_ADMIN_ENDPOINTS = {
+  POLICY: '/admin/rate-limit',
+  SET_ENABLED: '/admin/rate-limit/enabled',
+  SET_TIER: (tier: string) => `/admin/rate-limit/tiers/${encodeURIComponent(tier)}`,
+  SET_ROUTE: (routeId: string) => `/admin/rate-limit/routes/${encodeURIComponent(routeId)}`,
+} as const;
+
+/**
+ * Queue admin endpoints (TASK-403, backend substrate TASK-250/336).
+ *
+ * Matches `QueueAdminController` at `@Controller('admin/queues')` — super-admin
+ * only (`manage all`). Deliberately NON-destructive: the SDK exposes no
+ * clean/remove/pause builders, so the admin console cannot invoke them.
+ */
+export const QUEUE_ADMIN_ENDPOINTS = {
+  LIST: '/admin/queues',
+  REDIS_HEALTH: '/admin/queues/health/redis',
+  GET: (queueName: string) => `/admin/queues/${encodeURIComponent(queueName)}`,
+  JOBS: (queueName: string) => `/admin/queues/${encodeURIComponent(queueName)}/jobs`,
+  JOB: (queueName: string, jobId: string) => `/admin/queues/${encodeURIComponent(queueName)}/jobs/${encodeURIComponent(jobId)}`,
+  RETRY_JOB: (queueName: string, jobId: string) => `/admin/queues/${encodeURIComponent(queueName)}/jobs/${encodeURIComponent(jobId)}/retry`,
+  BULK_JOBS: (queueName: string) => `/admin/queues/${encodeURIComponent(queueName)}/jobs/bulk`,
+} as const;
+
+/**
+ * Prisma Studio endpoints (TASK-403).
+ *
+ * `STATUS` is always registered (`PrismaStudioStatusController`); `SHELL` is
+ * the dev-only served HTML (`PrismaStudioController`, TASK-307/336) used for
+ * the link-out — it 404s when Studio is disabled.
+ */
+export const PSTUDIO_ENDPOINTS = {
+  STATUS: '/admin/pstudio/status',
+  SHELL: '/admin/pstudio',
 } as const;
 
 /**

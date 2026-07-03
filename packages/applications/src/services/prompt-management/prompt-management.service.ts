@@ -40,7 +40,9 @@ import {
   PromptFieldDiffDto,
   PromptDiffChangeDto,
   PromptDiffStatsDto,
+  PromptUsageRecordResponse,
 } from './dto';
+import { Paginated } from '../../common/dto/paginated.response';
 import { PromptManagementDtoMapper } from './prompt-management.dto.mapper';
 import { mapSmrGenerateResponse } from '../consultation/summary/smr-v2-generate';
 import { SecretsService } from '../baseServices/_meta/secrets';
@@ -750,6 +752,48 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const totalUsages = byDoctor.reduce((sum, row) => sum + row.count, 0);
 
     return { totalUsages, byDepartment, byDoctor, byDay };
+  }
+
+  /**
+   * TASK-407 — tenant-scoped raw `PromptUsageRecord` listing (newest first)
+   * for the tenant-detail "Agent Jobs" surface. Complements the aggregated
+   * `getUsageAnalytics` with the individual run rows. Read-only; the optional
+   * `promptTemplateId` narrows to a single agent.
+   */
+  async listUsageRecords(filters?: {
+    page?: number;
+    limit?: number;
+    promptTemplateId?: string;
+  }): Promise<Paginated<PromptUsageRecordResponse>> {
+    const tenantId = this.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant ID is required');
+
+    const page = filters?.page ?? 0;
+    const limit = filters?.limit ?? 20;
+    const where: Record<string, unknown> = { tenantId };
+    if (filters?.promptTemplateId) where.promptTemplateId = filters.promptTemplateId;
+
+    const [records, count] = await Promise.all([
+      this.promptUsageRecordRepository.findAll({
+        page,
+        limit,
+        filters: where,
+        sort: [{ createdAt: 'desc' }],
+      }),
+      this.promptUsageRecordRepository.count({ filters: where }),
+    ]);
+
+    const data: PromptUsageRecordResponse[] = records.map((r) => ({
+      id: r.id,
+      promptTemplateId: r.promptTemplateId ?? null,
+      promptVersionNumber: r.promptVersionNumber ?? null,
+      consultationId: r.consultationId ?? null,
+      doctorId: r.doctorId ?? null,
+      departmentId: r.departmentId ?? null,
+      createdAt: r.createdAt.toISOString(),
+    }));
+
+    return new Paginated({ count, page, limit, data });
   }
 
   async softDeletePromptTemplate(id: string): Promise<PromptTemplateResponse> {

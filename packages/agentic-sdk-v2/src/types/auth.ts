@@ -30,6 +30,13 @@ export interface LoginResponse {
   user: AuthUser & { tenantId?: string; tenantKey?: string };
   token: string;
   refreshToken: string;
+  /**
+   * TASK-400 — true when the password rotation window
+   * (`security.password.maxAgeDays`) has been exceeded. Warning only: login
+   * still succeeds; clients decide how to nudge. Absent when rotation is
+   * disabled (default) or the password is within the window.
+   */
+  passwordExpired?: boolean;
 }
 
 export interface LogoutResponse {
@@ -60,4 +67,20 @@ export interface ImpersonateResponse {
   user: AuthUser & { tenantId?: string };
   token: string;
   impersonatedBy: string;
+  /** TASK-401 — ISO expiry of the time-boxed impersonation token (admin mint only). */
+  expiresAt?: string;
+  /** TASK-401 — seconds until expiry at mint time (admin mint only). */
+  expiresInSeconds?: number;
+}
+
+/**
+ * TASK-401 — options for the super-admin-only `useUsers().impersonate()` mint
+ * (`POST /admin/users/:id/impersonate`). All optional; the reason is recorded
+ * on the audit trail only (never embedded in the token).
+ */
+export interface AdminImpersonateOptions {
+  reason?: string;
+  targetTenantId?: string;
+  /** TTL override in seconds (10–1800); intended for automated expiry tests. */
+  expiresInSeconds?: number;
 }

@@ -13,9 +13,9 @@ const TENANT_ADMIN_ROLES = ['TENANT_ADMIN'];
 
 /** Minimal tenant shape the gates need (system flag / key / id); avoids an SDK value import. */
 export interface TenantLike {
-    id?: string | null;
-    key?: string | null;
-    isSystem?: boolean | null;
+  id?: string | null;
+  key?: string | null;
+  isSystem?: boolean | null;
 }
 
 /**
@@ -27,28 +27,28 @@ const SYSTEM_TENANT_KEY = '__GLOBAL__';
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 export function isSuperAdmin(roles?: string[] | null): boolean {
-    return !!roles && roles.some((r) => SUPER_ADMIN_ROLES.includes(r));
+  return !!roles && roles.some((r) => SUPER_ADMIN_ROLES.includes(r));
 }
 
 export function isTenantAdmin(roles?: string[] | null): boolean {
-    return !!roles && roles.some((r) => TENANT_ADMIN_ROLES.includes(r));
+  return !!roles && roles.some((r) => TENANT_ADMIN_ROLES.includes(r));
 }
 
 /** Provisioning a new tenant is gated by the server's `@CanManage('Tenant')` → super-admin only. */
 export function canCreateTenant(roles?: string[] | null): boolean {
-    return isSuperAdmin(roles);
+  return isSuperAdmin(roles);
 }
 
 /** The system/global tenant is protected (DEF-ADM-001): never editable/disablable from the console. */
 export function isSystemTenant(tenant?: TenantLike | null): boolean {
-    if (!tenant) return false;
-    if (tenant.isSystem === true) return true;
-    return String(tenant.key ?? '').toLowerCase() === 'system';
+  if (!tenant) return false;
+  if (tenant.isSystem === true) return true;
+  return String(tenant.key ?? '').toLowerCase() === 'system';
 }
 
 /** Edit/disable a tenant: super-admin AND not the protected system tenant. */
 export function canModifyTenant(tenant: TenantLike | null | undefined, roles?: string[] | null): boolean {
-    return isSuperAdmin(roles) && !isSystemTenant(tenant);
+  return isSuperAdmin(roles) && !isSystemTenant(tenant);
 }
 
 /**
@@ -59,14 +59,14 @@ export function canModifyTenant(tenant: TenantLike | null | undefined, roles?: s
  * precisely the tenant the API would answer 403 for.
  */
 export function isLifecycleProtectedTenant(tenant?: TenantLike | null): boolean {
-    if (!tenant) return false;
-    if (tenant.isSystem === true) return true;
-    if (String(tenant.id ?? '') === SYSTEM_TENANT_ID) return true;
-    const key = String(tenant.key ?? '').toLowerCase();
-    return key === SYSTEM_TENANT_KEY.toLowerCase() || key === 'system';
+  if (!tenant) return false;
+  if (tenant.isSystem === true) return true;
+  if (String(tenant.id ?? '') === SYSTEM_TENANT_ID) return true;
+  const key = String(tenant.key ?? '').toLowerCase();
+  return key === SYSTEM_TENANT_KEY.toLowerCase() || key === 'system';
 }
 
 /** Suspend/archive/restore a tenant: super-admin AND not the DEF-ADM-002 system tenant. */
 export function canManageTenantLifecycle(tenant: TenantLike | null | undefined, roles?: string[] | null): boolean {
-    return isSuperAdmin(roles) && !isLifecycleProtectedTenant(tenant);
+  return isSuperAdmin(roles) && !isLifecycleProtectedTenant(tenant);
 }

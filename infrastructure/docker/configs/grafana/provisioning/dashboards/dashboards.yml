@@ -1,0 +1,23 @@
+# ============================================================================
+# HOPE — DEV Grafana dashboard provisioning (TASK-397, builds on TASK-386)
+# ============================================================================
+# Auto-discovers dashboard JSON files under /var/lib/grafana/dashboards (mounted
+# read-only from ./configs/grafana/dashboards). New/changed JSON appears within
+# updateIntervalSeconds. The starter platform dashboard lands in the "HOPE"
+# folder.
+# ============================================================================
+
+apiVersion: 1
+
+providers:
+  - name: "HOPE Platform Metrics"
+    orgId: 1
+    folder: "HOPE"
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

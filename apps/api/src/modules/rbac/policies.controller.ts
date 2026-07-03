@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { IPolicyService } from '@arcaai/applications';
 import { CanManage, CanAny } from '../../decorators';
 import {
+  BreakGlassDto,
   CreatePolicyDto,
   UpdatePolicyDto,
   PolicyResponse,
@@ -119,6 +120,10 @@ export class PoliciesController {
       description: dto.description,
       scope: dto.scope as 'GLOBAL' | 'TENANT' | undefined,
       rules: dto.rules,
+      // TASK-409 — step-up confirmation for multi-role rule edits. Note the
+      // explicit field mapping here (and in patch/create) is what implements
+      // the "server-side strip": `isProtected` can never reach the service.
+      breakGlass: dto.breakGlass,
     });
     return this.toResponse(policy);
   }
@@ -138,6 +143,8 @@ export class PoliciesController {
       scope: dto.scope as 'GLOBAL' | 'TENANT' | undefined,
       rules: dto.rules,
       resourceStatus: dto.resourceStatus,
+      // TASK-409 — step-up confirmation for multi-role rule edits.
+      breakGlass: dto.breakGlass,
     });
     return this.toResponse(policy);
   }
@@ -148,17 +155,24 @@ export class PoliciesController {
   @Delete(':id')
   @CanManage('Policy')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete a policy' })
+  @ApiOperation({ summary: 'Delete a policy (requires break-glass confirmation)' })
   @ApiResponse({ status: 204, description: 'Policy deleted' })
+  @ApiResponse({ status: 400, description: 'Break-glass confirmationName does not match the policy name' })
+  @ApiResponse({ status: 401, description: 'Break-glass password incorrect' })
+  @ApiResponse({ status: 403, description: 'Protected system policy — deletion is always refused' })
   @ApiResponse({ status: 404, description: 'Policy not found' })
-  async remove(@Param('id') id: string): Promise<void> {
+  @ApiResponse({ status: 428, description: 'Break-glass confirmation (password + confirmationName) is required' })
+  async remove(@Param('id') id: string, @Body() breakGlass?: BreakGlassDto): Promise<void> {
     // The service throws NestJS `NotFoundException` when the row is
     // missing, which the global filter maps to 404. Pre-W6 the
     // controller raised a bare `Error('Policy not found')` (mapped to
     // 500); the RBAC E2E suite accepts `[404, 500]` for this case
     // (`apps/api/tests/e2e/rbac.spec.ts` line 159), so the new 404 is
     // within the contract.
-    await this.policyService.softDelete(id);
+    //
+    // TASK-409 — deletion now demands the break-glass step-up (DELETE body:
+    // `{ password, confirmationName }`); missing → 428, wrong → 401/400.
+    await this.policyService.softDelete(id, breakGlass);
   }
 
   /**
@@ -179,6 +193,7 @@ export class PoliciesController {
     scope: string;
     rules: unknown;
     resourceStatus: string;
+    isProtected?: boolean;
     createdAt: Date;
     updatedAt: Date;
   }): PolicyResponse {
@@ -190,6 +205,9 @@ export class PoliciesController {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       rules: policy.rules as any[],
       resourceStatus: policy.resourceStatus,
+      // TASK-409 — surface the anti-lockout marker so clients can render the
+      // protected affordance without relying on hard-coded names.
+      isProtected: policy.isProtected === true,
       createdAt: policy.createdAt,
       updatedAt: policy.updatedAt,
     };

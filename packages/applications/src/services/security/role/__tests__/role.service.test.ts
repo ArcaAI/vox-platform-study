@@ -274,6 +274,21 @@ describe('RoleService', () => {
             expect(result.data[1].name).toBe('Role 2');
         });
 
+        it('coerces Role-typed filter values via the model registry (TASK-406 P2-6c)', async () => {
+            mockRoleRepository.findAll.mockResolvedValue([]);
+            mockRoleRepository.count.mockResolvedValue(0);
+
+            await service.fetchAll({ limit: 10, page: 1, filters: 'isSystemRole[equals]:true;version[gte]:2' });
+
+            const expectedFilters = { isSystemRole: { equals: true }, version: { gte: 2 } };
+            expect(mockRoleRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({ filters: expectedFilters })
+            );
+            expect(mockRoleRepository.count).toHaveBeenCalledWith(
+                expect.objectContaining({ filters: expectedFilters })
+            );
+        });
+
         it('should return empty result when no roles exist', async () => {
             mockRoleRepository.findAll.mockResolvedValue([]);
             mockRoleRepository.count.mockResolvedValue(0);

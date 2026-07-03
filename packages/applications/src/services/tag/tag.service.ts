@@ -10,6 +10,14 @@ import { IActiveUserContext } from '../../interfaces';
 
 // TODO: Implement this
 
+/**
+ * TASK-406 (P2-6c) — model-aware filter coercion (TASK-375 §8 scheme):
+ * `version` → number, `createdAt` → Date, `resourceStatus` → member-validated
+ * enum, `metaData` → JSON-path support; String columns (tagValue, …) are
+ * never mangled.
+ */
+const TAG_FILTER_MODEL = 'Tag';
+
 @Injectable()
 export class TagService extends BaseService implements ITagService {
   constructor(
@@ -69,9 +77,9 @@ export class TagService extends BaseService implements ITagService {
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<TagEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { limit, page, search } = props;
-    const tags = await this.tagRepository.findAll(withFormattedPaginatedProps(props));
+    const tags = await this.tagRepository.findAll(withFormattedPaginatedProps(props, TAG_FILTER_MODEL));
 
-    const count = await this.tagRepository.count(withFormattedCountProps(props));
+    const count = await this.tagRepository.count(withFormattedCountProps(props, TAG_FILTER_MODEL));
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: {
@@ -90,13 +98,13 @@ export class TagService extends BaseService implements ITagService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { tenantId, limit, page, search } = props;
     const tags = await this.tagRepository.findAll({
-      ...withFormattedPaginatedProps(props),
+      ...withFormattedPaginatedProps(props, TAG_FILTER_MODEL),
       where: {
         tenantId,
       },
     });
     const count = await this.tagRepository.count({
-      ...withFormattedCountProps(props),
+      ...withFormattedCountProps(props, TAG_FILTER_MODEL),
       where: {
         tenantId,
       },
@@ -120,13 +128,13 @@ export class TagService extends BaseService implements ITagService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { userId, limit, page, search } = props;
     const tags = await this.tagRepository.findAll({
-      ...withFormattedPaginatedProps(props),
+      ...withFormattedPaginatedProps(props, TAG_FILTER_MODEL),
       where: {
         createdBy: userId,
       },
     });
     const count = await this.tagRepository.count({
-      ...withFormattedCountProps(props),
+      ...withFormattedCountProps(props, TAG_FILTER_MODEL),
       where: {
         createdBy: userId,
       },

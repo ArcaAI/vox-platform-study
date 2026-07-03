@@ -10,8 +10,8 @@ const EM_DASH = '\u2014';
 
 /** Locale-grouped integer, or an em-dash for nullish / non-finite input. */
 export function formatCount(value?: number | null): string {
-    if (value == null || !Number.isFinite(value)) return EM_DASH;
-    return value.toLocaleString('en-US');
+  if (value == null || !Number.isFinite(value)) return EM_DASH;
+  return value.toLocaleString('en-US');
 }
 
 const BYTE_UNITS = ['B', 'kB', 'MB', 'GB', 'TB', 'PB'] as const;
@@ -22,14 +22,14 @@ const BYTE_UNITS = ['B', 'kB', 'MB', 'GB', 'TB', 'PB'] as const;
  * Nullish / non-finite → em-dash; 1 decimal place, trailing `.0` trimmed.
  */
 export function formatBytes(value?: number | null): string {
-    if (value == null || !Number.isFinite(value) || value < 0) return EM_DASH;
-    if (value < 1000) return `${Math.round(value)} B`;
-    let size = value;
-    let unit = 0;
-    while (size >= 1000 && unit < BYTE_UNITS.length - 1) {
-        size /= 1000;
-        unit += 1;
-    }
-    const rounded = size >= 100 ? Math.round(size) : Math.round(size * 10) / 10;
-    return `${rounded} ${BYTE_UNITS[unit]}`;
+  if (value == null || !Number.isFinite(value) || value < 0) return EM_DASH;
+  if (value < 1000) return `${Math.round(value)} B`;
+  let size = value;
+  let unit = 0;
+  while (size >= 1000 && unit < BYTE_UNITS.length - 1) {
+    size /= 1000;
+    unit += 1;
+  }
+  const rounded = size >= 100 ? Math.round(size) : Math.round(size * 10) / 10;
+  return `${rounded} ${BYTE_UNITS[unit]}`;
 }

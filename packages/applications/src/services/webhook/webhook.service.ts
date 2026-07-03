@@ -9,6 +9,13 @@ import { assertEqualTenants, BaseService, FetchResponse, PaginatedQuery, withFor
 import { IActiveUserContext } from '../../interfaces';
 import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 
+/**
+ * TASK-406 (P2-6c) — model-aware filter coercion (TASK-375 §8 scheme):
+ * `version` → number, `createdAt` → Date, `resourceStatus` → member-validated
+ * enum, `metaData`/`subscriptionMetadata` → JSON-path support.
+ */
+const WEBHOOK_FILTER_MODEL = 'Webhook';
+
 @Injectable()
 export class WebhookService extends BaseService implements IWebhookService {
   private readonly logger = new Logger(WebhookService.name);
@@ -62,8 +69,8 @@ export class WebhookService extends BaseService implements IWebhookService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { limit, page, search } = props;
     const baseWhere = this.isSuperAdmin() ? {} : { tenantId: this.tenantId };
-    const paginatedProps = withFormattedPaginatedProps(props);
-    const countProps = withFormattedCountProps(props);
+    const paginatedProps = withFormattedPaginatedProps(props, WEBHOOK_FILTER_MODEL);
+    const countProps = withFormattedCountProps(props, WEBHOOK_FILTER_MODEL);
     const webhooks = await this.webhookRepository.findAll({
       ...paginatedProps,
       where: { ...paginatedProps.where, ...baseWhere },
@@ -104,13 +111,13 @@ export class WebhookService extends BaseService implements IWebhookService {
     }
 
     const webhooks = await this.webhookRepository.findAll({
-      ...withFormattedPaginatedProps(props),
+      ...withFormattedPaginatedProps(props, WEBHOOK_FILTER_MODEL),
       where: {
         tenantId,
       },
     });
     const count = await this.webhookRepository.count({
-      ...withFormattedCountProps(props),
+      ...withFormattedCountProps(props, WEBHOOK_FILTER_MODEL),
       where: {
         tenantId,
       },
@@ -134,13 +141,13 @@ export class WebhookService extends BaseService implements IWebhookService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { userId, limit, page, search } = props;
     const webhooks = await this.webhookRepository.findAll({
-      ...withFormattedPaginatedProps(props),
+      ...withFormattedPaginatedProps(props, WEBHOOK_FILTER_MODEL),
       where: {
         createdBy: userId,
       },
     });
     const count = await this.webhookRepository.count({
-      ...withFormattedCountProps(props),
+      ...withFormattedCountProps(props, WEBHOOK_FILTER_MODEL),
       where: {
         createdBy: userId,
       },

@@ -1,6 +1,12 @@
-# TASK-387 — Tenant Plan Entitlements Matrix (PROPOSAL)
+# TASK-387 — Tenant Plan Entitlements Matrix (PROPOSAL → RATIFIED)
 
-> **⚠️ DRAFT — AWAITING USER REVIEW.** This is a **research + design proposal only**. It contains **no feature code, no enforcement, and no schema changes**. Every numeric limit below is a `⟨DRAFT⟩` **placeholder** for the user to set — do **not** read any number here as a final product decision. The intent is to give the user a concrete, codebase-grounded starting point to edit.
+> **✅ RATIFIED / ACCEPTED AS-IS (2026-07-02).** This document originated the entitlements
+> design. The user has since **ratified the matrix as-is** and it shipped under **TASK-392**.
+> The **concrete, ratified numbers are in `docs/implementation/TASK-392-Plan-Entitlements/README.md` §2**
+> (mirrored by `seed/15-entitlements.ts` + `entitlements.constants.ts`) — that is the source of truth.
+> The §2 tables **below** are the ORIGINAL `⟨DRAFT⟩` placeholders and are retained **for provenance
+> only** (they are intentionally left unchanged and are NOT the final values). The §6 Q1–Q10 answers
+> below are the ratified decisions. Enforcement is ratified **ON for DEV + STAGING** (OFF for TEST/CI).
 
 
 |                 |                                                                                                                                                                                                                                                                                                                  |
@@ -8,7 +14,8 @@
 | **Ticket**      | TASK-387 (follow-up design artifact)                                                                                                                                                                                                                                                                             |
 | **Title**       | Draft entitlement matrix for `Tenant.plan` tiers (ENTERPRISE / PRO / TRIAL / STARTER)                                                                                                                                                                                                                            |
 | **Created**     | 2026-07-01                                                                                                                                                                                                                                                                                                       |
-| **Status**      | **DRAFT — awaiting user review** (proposal only; nothing built)                                                                                                                                                                                                                                                  |
+| **Updated**     | 2026-07-02                                                                                                                                                                                                                                                                                                       |
+| **Status**      | **RATIFIED / ACCEPTED AS-IS** — shipped as TASK-392; ratified numbers live in TASK-392 §2 (this doc's §2 tables are original draft placeholders, kept for provenance)                                                                                                                                             |
 | **Context**     | The `Tenant.plan` enum landed in TASK-387 as **display-only** (see README §3 FLAG #1: "any billing/entitlement semantics attached to a plan … are product decisions — deliberately **not** wired"). This doc proposes what those semantics *could* be, grounded in what the codebase can actually enforce today. |
 | **Scope guard** | Read-only research + this markdown file. No edits to code, schema, the TASK-387 README, `apps/admin/`**, the api-key backend, or the TASK-390 README.                                                                                                                                                            |
 
@@ -278,4 +285,8 @@ Answer: block-new-only and also disable redundant resources by newest created-at
 
 ---
 
-**END OF DRAFT.** No code, schema, DB, or config was changed to produce this document. Awaiting user review of §2 numbers and §6 open questions before any implementation is proposed.
+**END OF PROPOSAL — RATIFIED.** The §6 Q1–Q10 decisions were accepted and the matrix was ratified
+**as-is** (no number changes). Implementation shipped under **TASK-392**; the ratified, live values
+are in `docs/implementation/TASK-392-Plan-Entitlements/README.md` §2. The §2 draft placeholders above
+are retained unchanged for provenance only. Enforcement is ratified **ON for DEV + STAGING**, **OFF
+for TEST/CI**.

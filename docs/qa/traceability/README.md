@@ -11,8 +11,8 @@
 |---|---|
 | **Ticket** | TASK-371 |
 | **Created** | 2026-06-29 |
-| **Updated** | 2026-06-30 |
-| **Status** | §1 Tenant-management mapped · **§2 super-admin platform tier added** — designs done (6 frames, [UNBUILT-SURFACES-DESIGN.md](../../designs/admin/unbuilt-super-admin-surfaces.md); **layout-pattern reworked v2 2026-06-30** — matrix/form/cards/tree, de-avatared), **Dashboard + Monitoring built** ([TASK-383](../../implementation/TASK-383-Platform-Dashboard-Monitoring/README.md)), responsive pass done ([TASK-384](../../implementation/TASK-384-Responsive-Admin-Surfaces/README.md)) |
+| **Updated** | 2026-07-01 |
+| **Status** | §1 Tenant-management mapped · **§2 super-admin platform tier added** — designs done (6 frames, [UNBUILT-SURFACES-DESIGN.md](../../designs/admin/unbuilt-super-admin-surfaces.md); **layout-pattern reworked v2 2026-06-30** — matrix/form/cards/tree, de-avatared), **Dashboard + Monitoring built** ([TASK-383](../../implementation/TASK-383-Platform-Dashboard-Monitoring/README.md)), responsive pass done ([TASK-384](../../implementation/TASK-384-Responsive-Admin-Surfaces/README.md)). **2026-07-01 backend-backlog landing (TASK-386→393):** the former §Backlog backend gaps #1–#14 are now **backend-closed** — platform metrics ([TASK-386](../../implementation/TASK-386-Platform-Metrics-Backend/README.md)), tenant lifecycle/tags/plan + dept→users + per-dept DNA slot ([TASK-387](../../implementation/TASK-387-Tenant-Data-Model-Backlog/README.md)), users reset-pw/bulk/export/prefs/per-user-prompts/cross-user-DNA ([TASK-388](../../implementation/TASK-388-Users-Backend-Backlog/README.md), **backend; FE wiring in progress under TASK-394**), agent server-diff + test sub-metrics ([TASK-389](../../implementation/TASK-389-Agents-Backend-Backlog/README.md)), super-admin policy-guard/api-key-rotate/global-settings/audit-export ([TASK-390](../../implementation/TASK-390-Super-Admin-Tier-Backend/README.md)) + FE ([TASK-391](../../implementation/TASK-391-Super-Admin-Tier-FE/README.md)), plan entitlements ([TASK-392](../../implementation/TASK-392-Plan-Entitlements/README.md), **enforcement OFF by default**), tenant-config DTO decouple ([TASK-393](../../implementation/TASK-393-Tenant-Config-DTO-Decouple/README.md)). Rows below flipped accordingly. |
 | **Sources** | Designs = `HOPE-Admin-Console` (Figma) + [README §5](../../implementation/TASK-371-Admin-Console-Redesign/README.md) + [UNBUILT-SURFACES-DESIGN.md](../../designs/admin/unbuilt-super-admin-surfaces.md); Use cases = [README §1.3](../../implementation/TASK-371-Admin-Console-Redesign/README.md) capability map + §2 current-state gaps; API = live source (`apps/api`, `packages/applications`); Tests = `apps/api/tests/e2e`, `docs/qa/manual-tests` |
 
 ## Legend
@@ -38,10 +38,9 @@
 ## Coverage snapshot
 
 - **40 use cases** mapped across 8 sub-areas.
-- **~32** have a backend endpoint; **8** are backend gaps/targets: tenant **archive-status** · tenant **tags** · user **reset-password** · user **export** · prompt **compareVersions** · storage **quota** · dashboard **live sockets/consumption** · user **DNA reports**.
-- Only **~8** have solid automated **backend E2E**; the majority are partial (negative/RBAC-only, frontend-unit, or manual-checklist).
-- The biggest test debt is **mutations**: tenant update happy-path, tenant lifecycle, and *all* user/department/prompt write flows have **no backend E2E** today.
-- **§2 — super-admin platform tier (added 2026-06-30):** 7 surfaces mapped. Backends are mostly **REAL** — RBAC roles (`admin/rbac/roles`), API Keys (`admin/api-keys`), Rate Limits (`admin/rate-limit` 🔒), Queues & Jobs (`admin/queues` 🔒), Monitoring/Health (`monitoring/*` · `health/*`). **Backend gaps:** CASL **policy-rules editing**, **global-settings CRUD**, **api-key rotate**. **Frontends mostly not built** — the old `/roles`, `/api-keys`, `/settings` pages predate the redesign; only `/dashboard` + `/system-health` are built ([TASK-383](../../implementation/TASK-383-Platform-Dashboard-Monitoring/README.md)). The 6 designs were **reworked off the table pattern (v2, 2026-06-30)** — matrix / sectioned-form / cards / master-detail tree, de-avatared — and are now design-gate-cleared for implementation (see UNBUILT-SURFACES-DESIGN.md §8).
+- **Update 2026-07-01 (TASK-386→393):** the former 8 backend gaps/targets are now **backend-closed** — tenant **archive-status/lifecycle** (TASK-387) · tenant **tags** (TASK-387) · user **reset-password** (TASK-388) · user **export** xlsx/pdf (TASK-388) · prompt **compareVersions** server diff (TASK-389) · storage **quota** `quotaBytes` (TASK-386) · dashboard **live sockets/consumption** (TASK-386) · user **DNA reports** cross-user (TASK-388). The **users-cluster** backends (reset-pw/bulk/export/prefs/per-user-prompts/cross-user-DNA) are **backend-delivered but their FE is still being wired under TASK-394** — see the per-row notes + [`users-management.md`](./users-management.md).
+- Backend E2E coverage grew materially this landing (live specs `task-386…task-390b`); the remaining test debt is the **FE** journeys for the TASK-388 users cluster (TASK-394) + the authored-not-yet-run admin E2E for the tenant/agent surfaces.
+- **§2 — super-admin platform tier (added 2026-06-30; backends + FE landed 2026-07-01):** 7 surfaces mapped. Backends are now **REAL across the board** — RBAC roles (`admin/rbac/roles`), API Keys (`admin/api-keys` + **rotate**, TASK-390 #23), Rate Limits (`admin/rate-limit` 🔒), Queues & Jobs (`admin/queues` 🔒), Monitoring/Health (`monitoring/*` · `health/*`), CASL **policy-rules editing + anti-lockout guard** (TASK-390 #22), **global-settings CRUD** (`admin/settings`, TASK-390 #24), **audit xlsx/pdf export** (TASK-390 #25). **Frontends for Roles / API Keys / Settings / Audit are now built + wired** ([TASK-391](../../implementation/TASK-391-Super-Admin-Tier-FE/README.md), live FE E2E 42/0) in place of the legacy routes; Rate Limits (14) / Queues (15) / Settings-richness remain design-cleared follow-ups. `/dashboard` + `/system-health` were built earlier ([TASK-383](../../implementation/TASK-383-Platform-Dashboard-Monitoring/README.md)) and now consume the TASK-386 metrics.
 
 ---
 
@@ -56,16 +55,16 @@
 | F3 | Create tenant (US 61; uniqueness pattern #8 `DEF-ADM-001`) | `Dlg · Add Tenant` `110:7669` | 🔒 `POST /admin/tenants` `tenant.controller.ts:102` (`@CanManage('Tenant')`) → `create :83` | `tenant-access-control.spec.ts` (super create→delete; doctor 403); dup-key only **manual** `MT-02` | 🟡 |
 | F4 | Edit tenant (US 62; closes gap #1 `MT-03` read-only) | `Dlg · Add Tenant` `110:7669` (reused) / `22p · Configuration` `109:6768` | `PATCH /admin/tenants/:id` `tenant.controller.ts:218` (`update:Tenant`, `@RequiresIfMatch`) → `update :610` | **401 only** — no happy-path E2E; manual `MT-03 = NA` | 🔴 |
 | F5 | Enable / disable tenant (US 63) | `Dlg · Disable Tenant` `110:8662` (AlertDialog) | ⚠️ `PATCH /admin/tenants/:id {resourceStatus}` — DTO allows **`ENABLED\|DISABLED` only** `updateTenant.request.ts:22` | 🔴 no tenant-level `resourceStatus` test (only roles/buckets: `task-219-gaps` A1/A7) | 🟡 API · 🔴 test |
-| F6 | Archive / soft-delete tenant (X2 soft-delete · X7 confirm; closes gap #3 `DEF-ADM-002`) | `Dlg · Disable Tenant` `110:8662` ("recoverable archive") | 🔴 **no `SUSPENDED`/`ARCHIVED` status** (DTO limited to ENABLED/DISABLED). 🔒 `DELETE /admin/tenants/:id` `:244` → `deleteById :657` is the only removal | 🔴 manual `MT-04` not run; `DEF-ADM-002` (system tenant unprotected) open | 🔴 |
+| F6 | Archive / soft-delete tenant (X2 soft-delete · X7 confirm; closes gap #3 `DEF-ADM-002`) | `Dlg · Disable Tenant` `110:8662` ("recoverable archive") | ✅ **LANDED (TASK-387):** `SUSPENDED`/`ARCHIVED` added to tenant lifecycle + **restore**; system/`__GLOBAL__` tenant now **protected** (`DEF-ADM-002` fixed). 🔒 `DELETE /admin/tenants/:id` `:244` remains for hard removal | 🟢 backend E2E `task-387-*` (lifecycle transitions + restore + system-guard); FE lifecycle menu wired | 🟢 |
 | F7 | Tenant usage stats (US 58/103) | `18d` KPI tiles `120:8843` | `GET /admin/tenants/:id/usage` `tenant.controller.ts:156` → `getUsageStats :898` | `task-219-gaps.spec.ts` **A8** (asserts `totalUsers`,`totalDepartments`) | 🟢 |
 | F8 | Working-tenant switch / "Acting on" context (US 66, 94; closes gaps #4 NoTenant, #5 banner) | `06 · Multi-Tenancy & Impersonation` `61:985` + banner across detail pages | `GET /tenant/me` `my-tenant.controller.ts:42`; cross-tenant via header + `isSuperAdmin` | `tenant-access-control.spec.ts` (super-admin no-tenant → 400 on `/tenant/me`) | 🟡 |
-| F9 | Tenant tags | tag chips on `13 · Tenant Management` rows | 🔴 **no `tags` field/endpoint** on tenant DTO | 🔴 | 🎯 |
+| F9 | Tenant tags + plan | tag chips + plan badge on `13 · Tenant Management` rows | ✅ **LANDED (TASK-387):** `tags[]` + `plan` enum on tenant DTO/PATCH; plan feeds entitlements (TASK-392, enforcement OFF by default) | 🟢 backend E2E `task-387-*` (tags CRUD + plan set); FE tags dialog + plan badge wired | 🟢 |
 
 ## 1.B — Tenant Overview / Dashboard (`18p` / `18d`)
 
 | ID | Use case / user story | Design (frame · node) | Backend API | Test | Status |
 |---|---|---|---|---|---|
-| O1 | Tenant dashboard headline KPIs — active users, departments, running sessions, services (US 53–58, 103) | `18d · Tenant Dashboard` `120:8843` + states `120:10826/10998/11169/11341` | ⚠️ `GET /admin/tenants/:id/usage` (users/depts) `:156`. **Running sessions · open sockets · consumption = 🎯** (no endpoint) | `task-219-gaps` A8 (usage only) | 🟡 · 🎯 |
+| O1 | Tenant dashboard headline KPIs — active users, departments, running sessions, services (US 53–58, 103) | `18d · Tenant Dashboard` `120:8843` + states `120:10826/10998/11169/11341` | ⚠️ `GET /admin/tenants/:id/usage` (users/depts) `:156`, extended by **TASK-386** (`quotaBytes`, transcription-min, summaries). ✅ **TASK-386** added **platform** `/admin/platform/{sockets,consumption}` + `/admin/consultations/aggregate` endpoints; the **tenant-dashboard's own Open-sockets/Consumption tiles remain a FE-wiring follow-up** (see [`tenant-dashboard.md`](./tenant-dashboard.md) TD2 + backlog #2/#3). Running-sessions/service-health stay 🔒 super-admin-only | `task-219-gaps` A8 + `task-386-platform-metrics.spec.ts` | 🟡 · 🎯 (sockets/consumption tiles = FE follow-up) |
 | O2 | Recent-activity feed (US 42, 89) | `18d` audit feed | `GET /admin/audit-logs` `audit-log.controller.ts:65` | `audit-log.spec.ts` (full) | 🟢 |
 | O3 | Audio-pipeline status strip — STT/VAD/SMR/Guardrail/NLP (US 53) | `18d` pipeline strip | 🎯 service-health endpoints out of this scope (cross-ref Monitoring §future) | 🔴 | 🎯 |
 
@@ -77,14 +76,14 @@
 | U2 | Create user (US 27) | `Dlg · Create User` `120:10354` | `POST /admin/users` `user.controller.ts:89` → `UserService.create :55` | 🔴 no automated create; manual `UAC-01` | 🔴 |
 | U3 | View / edit user detail — profile (US 28) | `38u · User Detail` `120:10575` + `38u-a · Profile` `121:11980` | `GET/PATCH /admin/users/:id` `:157`/`:236`; profile `:429`/`:439` | 🟡 frontend-unit `users.task328`; no backend mutation E2E | 🟡 |
 | U4 | Enable / disable (deactivate) user (US 30) | `20u` quick-disable · `38u` | `PATCH /admin/users/:id/status` `user.controller.ts:251` | 🔴 manual `UAC-04` | 🔴 |
-| U5 | Reset user password (US 31) | `20u` row action · `38u` | 🔴 **no endpoint** (per README §5.14.1: both link-reset **and** admin-temp-password are TARGET) | 🔴 | 🔴 |
-| U6 | Bulk actions — assign dept / reset / disable / export (US 26) | `20u · Bulk Selected` `120:9913` | ⚠️ only `DELETE /admin/users/bulk` `:300`; no bulk enable/disable/assign | 🔴 | 🔴 |
-| U7 | Export users CSV/Excel/PDF (US 26) | `20u` Export ▾ | 🔴 **no endpoint** (only audit-log CSV exists) | 🔴 | 🎯 |
-| U8 | View/update user preferences (US 28) | `38u-b · Preferences` `121:11981` | `GET/PATCH /admin/users/:id/settings` `:351`/`:364`. *Admin editing another user's prefs = ⚠️ TARGET* | 🟡 `task-375` (own settings) | 🟡 |
-| U9 | Personalized agent instructions, per dept (US 117–126) | `38u-c` `121:11982` | `prompt-templates` personal + preferred `prompt-template.controller.ts:55/74/86` | 🟡 frontend-unit | 🟡 |
-| U10 | DNA writing-style instructions (US 117–126) | `38u-d` `121:11983` | ⚠️ `prompt-templates`; *per-dept DNA-style default slot = 🎯* | 🔴 | 🟡 · 🎯 |
+| U5 | Reset user password (US 31) | `20u` row action · `38u` | ✅ **BACKEND LANDED (TASK-388):** admin reset-password endpoint (temp-secret, force-change-at-next-login, audited) | 🟢 backend E2E `task-388-users-backend.spec.ts`; **FE row/detail action wiring in progress (TASK-394)** | 🟢 BE · 🎯 FE (TASK-394) |
+| U6 | Bulk actions — assign dept / reset / disable / export (US 26) | `20u · Bulk Selected` `120:9913` | ✅ **BACKEND LANDED (TASK-388):** server bulk enable/disable/assign-dept (beyond the prior `DELETE /admin/users/bulk` `:300`) | 🟢 backend E2E `task-388-*`; **FE bulk-bar wiring in progress (TASK-394)** | 🟢 BE · 🎯 FE (TASK-394) |
+| U7 | Export users Excel/PDF (US 26) | `20u` Export ▾ | ✅ **BACKEND LANDED (TASK-388):** users xlsx/pdf export endpoint | 🟢 backend E2E `task-388-*`; **FE Export ▾ wiring in progress (TASK-394)** | 🟢 BE · 🎯 FE (TASK-394) |
+| U8 | View/update user preferences (US 28) | `38u-b · Preferences` `121:11981` | `GET/PATCH /admin/users/:id/settings` `:351`/`:364`. ✅ **TASK-388:** admin-edit-another-user's-prefs now supported server-side + SDK | 🟢 `task-375` (own) + `task-388-*` (admin-edit-other); **FE admin-edit panel wiring in progress (TASK-394)** | 🟢 BE · 🟡 FE (own done; admin-edit-other TASK-394) |
+| U9 | Personalized agent instructions, per dept (US 117–126) | `38u-c` `121:11982` | `prompt-templates` personal + preferred `prompt-template.controller.ts:55/74/86`. ✅ **TASK-388:** admin-managed **per-user prompt scope** (`USER_PERSONAL`) cross-user | 🟢 `task-388-*` (per-user prompt scope); **FE per-user-prompts panel wiring in progress (TASK-394)** | 🟢 BE · 🟡 FE (TASK-394) |
+| U10 | DNA writing-style instructions (US 117–126) | `38u-d` `121:11983` | ✅ **per-dept DNA-style default slot LANDED (TASK-387)** (`dnaWritingStylePromptId`); ✅ **cross-user DNA-style edit/new-version (TASK-388)** | 🟢 `task-387-*` (slot) + `task-388-*` (cross-user); **FE DNA-style panel wiring in progress (TASK-394)** | 🟢 BE · 🟡 FE (TASK-394) |
 | U11 | Department assignment (US 28) | `38u-e` `121:11984`; `Dlg · Assign Departments` `110:7981` | `GET/POST/PATCH/DELETE /admin/users/:id/departments` `user-departments.controller.ts:32/41/60/76` | 🟡 frontend-unit `users.task328` (CRUD+OCC, mocked); no backend E2E | 🟡 |
-| U12 | DNA reports + versions (US 117–126) | `38u-f` `121:11985` | 🎯 no DNA-report endpoint found in this scope | 🔴 | 🎯 |
+| U12 | DNA reports + versions (US 117–126) | `38u-f` `121:11985` | ✅ **BACKEND LANDED (TASK-388):** cross-user DNA-report generation | 🟢 backend E2E `task-388-*`; **FE DNA-reports panel wiring in progress (TASK-394)** | 🟢 BE · 🎯 FE (TASK-394) |
 | U13 | User activity history (US 42) | `38u-g` `121:11986` | `GET /admin/audit-logs/user/:userId` `audit-log.controller.ts:237` | `audit-log.spec.ts` (Fetch by User) | 🟢 |
 
 ## 1.D — Departments (`34p` · `36p`)
@@ -92,15 +91,15 @@
 | ID | Use case / user story | Design (frame · node) | Backend API | Test | Status |
 |---|---|---|---|---|---|
 | D1 | Department card-grid + create (US 43–44) | `34p · Departments` `110:7195`; foundation `08 · Card-Grid` `82:2231` | `GET /admin/departments` `department.controller.ts:44`; `POST :35` | 🟡 frontend-unit `department-create-summary-template`; no backend E2E | 🟡 |
-| D2 | Department detail — members + agent instructions (US 43) | `36p · Department Detail — Cardiology` `110:7414` | `GET /admin/departments/:id :77`. 🔴 **no `GET /admin/departments/:id/users`** (reverse listing) | 🔴 | 🟡 · 🔴 |
-| D3 | Default agents per dept — pre-summary / new-visit / re-visit / DNA (US 45–52) | `36p` / `30 · Agent Management` slots | `PATCH /admin/departments/:id/prompt-config` `:162`; `POST /admin/prompt-templates/assign-department` `:290`. *DNA-style slot = 🎯* | 🔴 | 🟡 · 🎯 |
+| D2 | Department detail — members + agent instructions (US 43) | `36p · Department Detail — Cardiology` `110:7414` | `GET /admin/departments/:id :77`. ✅ **LANDED (TASK-387):** `GET /admin/departments/:id/users` (reverse listing) | 🟢 backend E2E `task-387-*` (dept→users listing); FE departments panel wired | 🟢 |
+| D3 | Default agents per dept — pre-summary / new-visit / re-visit / DNA (US 45–52) | `36p` / `30 · Agent Management` slots | `PATCH /admin/departments/:id/prompt-config` `:162`; `POST /admin/prompt-templates/assign-department` `:290`. ✅ **DNA-style slot LANDED (TASK-387)** (`dnaWritingStylePromptId`) | 🟢 backend E2E `task-387-*` (DNA slot assign); FE default-agent-slots wired | 🟢 |
 | D4 | Add members to dept (both directions) (US 28) | `Dlg · Add Members` `110:8201`; `Dlg · Assign Departments` `110:7981` | `POST /admin/users/:id/departments` `user-departments.controller.ts:41` | 🟡 frontend-unit; no backend E2E | 🟡 |
 
 ## 1.E — Configuration (`22p`)
 
 | ID | Use case / user story | Design (frame · node) | Backend API | Test | Status |
 |---|---|---|---|---|---|
-| C1 | Tenant config — KV / feature flags / ASR pipeline / engine (US 66; closes gap #2 `MT-06`) | `22p · Configuration` `109:6768` | `GET/PATCH /admin/tenants/configs/:identifier` `:257`/`:275`; `GET/PUT /admin/tenant-frontend-config` `tenant-frontend-config-admin.controller.ts:36/61` | 🟡 `optimistic-locking.spec.ts` (OCC/If-Match), `tenant-access-control` (403); value-validation **not** asserted; manual `MT-06 = NA` | 🟡 |
+| C1 | Tenant config — KV / feature flags / ASR pipeline / engine (US 66; closes gap #2 `MT-06`) | `22p · Configuration` `109:6768` | `GET/PATCH /admin/tenants/configs/:identifier` `:257`/`:275`; `GET/PUT /admin/tenant-frontend-config` `tenant-frontend-config-admin.controller.ts:36/61`. ✅ **TASK-393:** `TenantConfigResponse` **decoupled** from `GlobalSettingResponse` (dedicated mapper; additive `tenantId`/`defaultValue`) — replaces the fragile superset cast; no behavior change | 🟡 `optimistic-locking.spec.ts` (OCC/If-Match), `tenant-access-control` (403) + TASK-393 mapper unit; value-validation **not** asserted; manual `MT-06 = NA` | 🟡 |
 
 ## 1.F — Storage (`37p`)
 
@@ -108,7 +107,7 @@
 |---|---|---|---|---|---|
 | S1 | Storage buckets — list / create / manage (US 60, 65) | `37p · Storage` `110:6976` | `/admin/tenants/storage/buckets*` `tenant-bucket.controller.ts:47…176` | 🟢 `task-307-*` (cross-tenant isolation), `task-219-gaps` A7 (CRUD) | 🟢 |
 | S2 | Provision system buckets for a tenant | `37p` (implied) | 🔒 `POST /admin/tenants/storage/buckets/provision/:tenantId` `:165` → `provisionSystemBuckets :217` | 🔴 | 🟡 · 🔴 |
-| S3 | Storage quota / usage (quota bar 92%) | `37p` quota meter | ⚠️ **no quota endpoint**; tenant-level usage via `GET /admin/tenants/:id/usage` | 🔴 quota never asserted | 🎯 |
+| S3 | Storage quota / usage (quota bar 92%) | `37p` quota meter | ✅ **TASK-386:** `GET /admin/tenants/:id/usage` extended with `quotaBytes` (+ storage-used roll-up) backing the quota meter | 🟢 `task-386-platform-metrics.spec.ts` (usage incl. `quotaBytes`) | 🟢 |
 
 ## 1.G — Agent instructions / prompts (`30`–`33`)
 
@@ -116,57 +115,57 @@
 |---|---|---|---|---|---|
 | A1 | Agent management by department + default-agent slots (US 45–52) | `30 · Agent Management` `120:9200` | `GET /admin/prompt-templates :66` + `assign-department :290` + dept `prompt-config :162` | 🔴 no backend; frontend-unit only | 🔴 |
 | A2 | Create / edit agent instruction (editor) (US 43–52) | `31 · Agent Instruction Editor` `120:9454`; `Dlg · New Agent Instruction` `110:8440` | `POST /admin/prompt-templates :51`; `PATCH …/:id :145` | 🔴 | 🔴 |
-| A3 | Version diff / compare | `32 · Version Diff` `120:9567` | 🔴 **no `compareVersions` endpoint** (only `GET …/:id/versions :178` + `…/:versionNumber :190`) | 🔴 | 🔴 |
+| A3 | Version diff / compare | `32 · Version Diff` `120:9567` | ✅ **LANDED (TASK-389):** server-side `compareVersions` diff endpoint; SDK repointed off client-only diffing | 🟢 backend E2E `task-389-agents-backend.spec.ts` (diff); FE consumes via SDK (richer per-field visualization = follow-up under TASK-394) | 🟢 (FE enhanced-diff view follow-up) |
 | A4 | Version rollback / activate | `32` (activate action) | `POST /admin/prompt-templates/:id/versions/:versionNumber/activate :259` | 🟡 frontend-unit `prompt-activate-version` (mocked) | 🟡 |
-| A5 | Test playground / evaluate output | `33 · Test Playground` `120:9681` | `POST /admin/prompt-templates/:id/test :236`. *Eval score 0.92 = 🎯* | 🔴 | 🟡 · 🎯 |
+| A5 | Test playground / evaluate output | `33 · Test Playground` `120:9681` | `POST /admin/prompt-templates/:id/test :236`. ✅ **TASK-389:** SDK `PromptTestResult` now threads **`metrics` + `metricDetail`** sub-metrics (backend already produced them) | 🟢 backend E2E `task-389-*` (sub-metrics) + SDK unit; admin playground consumes `result.metrics` | 🟢 |
 
 ## 1.H — Audit log (`12`)
 
 | ID | Use case / user story | Design (frame · node) | Backend API | Test | Status |
 |---|---|---|---|---|---|
 | AU1 | Audit viewer — actor / resource / correlation + filters (US 42, 64, 89, 107) | `12 · Audit Log` `70:1843` | `GET /admin/audit-logs :65`, `…/cursor :144`, `…/:id :177`, `…/resource/:type/:id :205` | 🟢 `audit-log.spec.ts` (auth/structure/actions/isolation) + `task-326` | 🟢 |
-| AU2 | Export audit trail | `12` export action | ⚠️ `GET /admin/audit-logs/export` **CSV only** `:106` (no Excel/PDF) | 🔴 no explicit export-CSV test found | 🟡 |
+| AU2 | Export audit trail | `12` export action | ✅ **LANDED (TASK-390):** `GET /admin/audit-logs/export` now supports **xlsx + pdf** (beyond CSV) `:106`; FE wired (TASK-391) | 🟢 backend E2E `task-390-*` (export formats); FE Audit export live (TASK-391) | 🟢 |
 
 ---
 
 # 2. Platform Operations & Identity (Super-Admin)
 
-> Added 2026-06-30 from [UNBUILT-SURFACES-DESIGN.md](../../designs/admin/unbuilt-super-admin-surfaces.md). **Dashboard + Monitoring are built** (TASK-383); the other surfaces are **designed only** — their layouts were **reworked off the table pattern (v2, 2026-06-30)** into matrix / sectioned-form / cards / master-detail-tree and are design-gate-cleared for implementation (per-area notes below; UNBUILT-SURFACES-DESIGN.md §8). Backend `file:line` refs verified live 2026-06-30; new-surface frontends are not built, so Test = ⬚ (n/a until built).
+> Added 2026-06-30 from [UNBUILT-SURFACES-DESIGN.md](../../designs/admin/unbuilt-super-admin-surfaces.md). **Dashboard + Monitoring built** (TASK-383, now consuming TASK-386 metrics). **2026-07-01:** **Roles & Policies (2.C), API Keys (2.D), Settings (2.G)** are now **built + wired** — backends closed by [TASK-390](../../implementation/TASK-390-Super-Admin-Tier-Backend/README.md) and FE by [TASK-391](../../implementation/TASK-391-Super-Admin-Tier-FE/README.md) (live FE E2E 42/0). **Rate Limits (2.E) + Queues & Jobs (2.F)** backends exist (🔒) but their FE remains design-cleared, not yet built (Test = ⬚). Backend `file:line` refs verified live 2026-06-30. Layouts were **reworked off the table pattern (v2, 2026-06-30)** into matrix / sectioned-form / cards / master-detail-tree (UNBUILT-SURFACES-DESIGN.md §8).
 
 ## 2.A — Platform Dashboard (`10`) — **built** (TASK-383)
 
 | ID | Use case / user story | Design (frame · node) | Backend API (`/api/v1…` · file:line) | Test | Status |
 |---|---|---|---|---|---|
 | P1 | Cross-tenant KPIs — active tenants · live sessions · processing jobs · degraded services | `10 · Dashboard` `69:1265` → built `/dashboard` (`routes/_authenticated/dashboard.tsx`) | `GET /monitoring/sessions` `monitoring.controller.ts:69`; `GET /monitoring/uptime` `:25`; tenants `GET /admin/tenants` + `:id/usage` | frontend-unit (TASK-383, +14) | 🟡 |
-| P2 | Secondary KPIs — total users · transcription min · summaries · storage | `10` secondary row | ⚠️ users via `admin/users`; **transcription-min · summaries · storage = 🎯** | TASK-383 unit | 🟡 · 🎯 |
-| P3 | Cross-tenant consultation chart + date/tenant filter | `10` chart | 🎯 no aggregate-metrics endpoint (built on `useAdminConsultations` client bucketing) | TASK-383 unit | 🎯 |
+| P2 | Secondary KPIs — total users · transcription min · summaries · storage | `10` secondary row | ✅ **TASK-386:** transcription-min · summaries · storage now backed by DB roll-ups (`/admin/platform/consumption` + `/admin/tenants/:id/usage`, incl. `quotaBytes` — fully live) | TASK-383 unit + `task-386-platform-metrics.spec.ts` (PM3/PM5); backend E2E authored | 🟡 (REAL via TASK-386; E2E authored-not-run) |
+| P3 | Cross-tenant consultation chart + date/tenant filter | `10` chart | ✅ **TASK-386:** `GET /admin/consultations/aggregate` (server-side date/tenant roll-up, live) + bare-super_admin `GET /admin/consultations` now returns cross-tenant (TD3-400 fix); chart FE re-wire to the aggregate is the remaining step | TASK-383 unit + `task-386-*` (PM4 aggregate, PM7 cross-tenant) | 🟡 · 🎯 (chart FE wiring) |
 
 ## 2.B — Monitoring / System Health (`11`) — **built** (TASK-383)
 
 | ID | Use case / user story | Design (frame · node) | Backend API | Test | Status |
 |---|---|---|---|---|---|
-| M1 | Per-service health + uptime table (SMR degraded) | `11 · Monitoring` `70:1692` → rebuilt `/system-health` | `GET /health/services` `health.controller.ts:176`, `…/:serviceKey :219`; `GET /monitoring/uptime` `:25` | TASK-383 unit | 🟡 |
-| M2 | Throughput KPIs (req/min · error rate · sockets) + request-volume chart | `11` KPI row + chart | 🎯 no metrics endpoint (P95 / req-min / sockets) | — | 🎯 |
-| M3 | Models & running-tasks table | `11` models table | 🎯 no per-model runtime metrics | — | 🎯 |
+| M1 | Per-service health + uptime table (SMR degraded) | `11 · Monitoring` `70:1692` → rebuilt `/system-health` | `GET /health/services` `health.controller.ts:176`, `…/:serviceKey :219`; `GET /monitoring/uptime` `:25`. ✅ **TASK-386:** per-service **P95** via `/admin/platform/metrics` (Prometheus-derived → env-dependent) | TASK-383 unit + `task-386-*` | 🟡 (P95 env-dependent) |
+| M2 | Throughput KPIs (req/min · error rate · sockets) + request-volume chart | `11` KPI row + chart | ✅ **TASK-386:** `/admin/platform/sockets` (**open/total sockets = REAL via Redis, live**); `/admin/platform/metrics` → req/min · error-rate · sockets/min · request-volume are **Prometheus-derived → env-dependent** (em-dash without the `prometheus` profile) | `task-386-platform-metrics.spec.ts` (PM1/PM2); FE E2E authored | 🟡 (sockets live; throughput env-dependent) |
+| M3 | Models & running-tasks table | `11` models table | identity REAL (`PLATFORM_MODELS`). ✅ **TASK-386:** per-model **running + avg-latency** via `/admin/platform/metrics` — **Prometheus-derived → env-dependent** | `models.test.ts`; `task-386-*` | 🟡 (identity REAL; running/latency env-dependent) |
 
-## 2.C — Roles & Policies (`24` / `24b`) — designed, FE not built
-
-| ID | Use case / user story | Design (frame · node) | Backend API | Test | Status |
-|---|---|---|---|---|---|
-| R1 | Roles roster + hierarchy + CRUD | `24 · Roles & Policies` `166:12233` | `GET /admin/rbac/roles` `roles.controller.ts:32`, `:id :56`, `POST :72`, `PUT :91`, `PATCH :110`, `DELETE :130` | ⬚ | 🔴 (FE = old `/roles`; **pattern-rework: master-detail + tree**) |
-| R2 | Attach / detach policy to role (priority) | `24` "N policies" | `POST/DELETE /admin/rbac/roles/:roleId/policies/:policyId` `:144` / `:161` | ⬚ | 🔴 |
-| R3 | Edit a policy's CASL ability rules (builder) | `24b · Policy / Ability Builder` `167:12507` | 🔴 **no `Policy` CRUD / rules-edit endpoint** (policies are seed-only; no `policies.controller.ts`) | ⬚ | 🔴 · 🎯 (**wrong pattern → matrix/rule-builder**) |
-| R4 | Per-role assigned-user count · effective-ability preview | `24` / `24b` | 🎯 no roll-up / simulation endpoint | ⬚ | 🎯 |
-
-## 2.D — API Keys (`25`) — designed, FE not built
+## 2.C — Roles & Policies (`24` / `24b`) — **built + wired** (backend TASK-390 · FE TASK-391)
 
 | ID | Use case / user story | Design (frame · node) | Backend API | Test | Status |
 |---|---|---|---|---|---|
-| K1 | List / search keys (masked) | `25 · API Keys` `167:12781` | `GET /admin/api-keys` `api-key.controller.ts:54` (tenant-scoped or all); scopes `:31` | ⬚ | 🔴 (FE = old `/api-keys`) |
-| K2 | Create key — secret shown once (X8) | `25b` (spec-only dialog) | `POST /admin/api-keys` `:39` → `rawKey` once | ⬚ | 🔴 |
-| K3 | View key + usage | `25` row → detail | `GET /admin/api-keys/:id` `:76`; `…/:id/usage` `:131` (scalar) | ⬚ | 🔴 · 🎯 (usage-over-time) |
-| K4 | Update / revoke / delete key | `25` kebab | `PATCH …/:id :89`; `POST …/:id/revoke :117`; `DELETE …/:id :103` | ⬚ | 🔴 |
-| K5 | Rotate key (grace window) | `25` rotate (spec) | 🔴 **no rotate endpoint** (model has rotation fields) | ⬚ | 🔴 · 🎯 |
+| R1 | Roles roster + hierarchy + CRUD | `24 · Roles & Policies` `166:12233` | `GET /admin/rbac/roles` `roles.controller.ts:32`, `:id :56`, `POST :72`, `PUT :91`, `PATCH :110`, `DELETE :130` | FE live E2E `task-391-roles-policies.spec.ts` (part of 42/0) | 🟢 (new master-detail + tree FE, TASK-391) |
+| R2 | Attach / detach policy to role (priority) | `24` "N policies" | `POST/DELETE /admin/rbac/roles/:roleId/policies/:policyId` `:144` / `:161` | FE live E2E `task-391-*` | 🟢 |
+| R3 | Edit a policy's CASL ability rules (builder) + **anti-lockout guard** | `24b · Policy / Ability Builder` `167:12507` | ✅ **LANDED (TASK-390):** Policy CRUD / rules-edit + **anti-lockout guard** (cannot strip the last super-admin `manage all`); FE matrix/rule-builder wired (TASK-391) | backend E2E `task-390-super-admin.spec.ts` (guard) + FE live E2E `task-391-*` | 🟢 |
+| R4 | Per-role assigned-user count · effective-ability preview | `24` / `24b` | 🎯 no roll-up / simulation endpoint (effective-ability preview remains a follow-up) | ⬚ | 🎯 |
+
+## 2.D — API Keys (`25`) — **built + wired** (backend TASK-390 · FE TASK-391)
+
+| ID | Use case / user story | Design (frame · node) | Backend API | Test | Status |
+|---|---|---|---|---|---|
+| K1 | List / search keys (masked) | `25 · API Keys` `167:12781` | `GET /admin/api-keys` `api-key.controller.ts:54` (tenant-scoped or all); scopes `:31` | FE live E2E `task-391-api-keys.spec.ts` (part of 42/0) | 🟢 (new FE, TASK-391) |
+| K2 | Create key — secret shown once (X8) | `25b` (spec-only dialog) | `POST /admin/api-keys` `:39` → `rawKey` once | FE live E2E `task-391-*` | 🟢 |
+| K3 | View key + usage | `25` row → detail | `GET /admin/api-keys/:id` `:76`; `…/:id/usage` `:131` (scalar) | FE live E2E `task-391-*` (scalar usage) | 🟢 · 🎯 (usage-over-time chart follow-up) |
+| K4 | Update / revoke / delete key | `25` kebab | `PATCH …/:id :89`; `POST …/:id/revoke :117`; `DELETE …/:id :103` | FE live E2E `task-391-*` | 🟢 |
+| K5 | Rotate key (grace window) + owner-scope | `25` rotate (spec) | ✅ **LANDED (TASK-390):** rotate endpoint (grace window) + **owner-scope** (rotate limited to key owner/super-admin); SDK + FE wired (TASK-391) | backend E2E `task-390-super-admin.spec.ts` + `task-390b-*` (rotate + owner-scope) | 🟢 |
 
 ## 2.E — Rate Limits (`14`) — designed, FE not built 🔒
 
@@ -186,38 +185,41 @@
 | Q2 | Pause / resume / clean a queue | `15` row actions | 🔒 `POST …/:queueName/{pause,resume,clean}` `:62` / `:72` / `:82` | ⬚ | 🔴 |
 | Q3 | Jobs list + retry / promote / remove + bulk | `15` jobs drawer | 🔒 `GET …/:queueName/jobs :94`; `…/jobs/bulk :102`; `…/:jobId :111`; retry `:120`; promote `:131`; `DELETE :142` | ⬚ | 🔴 |
 
-## 2.G — Settings (`16`) — designed, **backend gap**
+## 2.G — Settings (`16`) — **built + wired** (backend TASK-390 · FE TASK-391)
 
 | ID | Use case / user story | Design (frame · node) | Backend API | Test | Status |
 |---|---|---|---|---|---|
-| ST1 | Global settings KV editor by namespace | `16 · Settings` `168:13603` | 🔴 **no dedicated `admin/global-settings` CRUD**; `GlobalSetting` seeded + consumed; only `rate-limit.*` via `admin/rate-limit`, tenant-scoped via `admin/tenants/configs/:identifier` (C1) | ⬚ | 🔴 · 🎯 (**pattern-rework: sectioned form, typed controls**) |
-| ST2 | Locked-row protection + secret masking | `16` Access col | ⚠️ enforced at write-path; no editor endpoint to enforce against | ⬚ | 🎯 |
-| ST3 | Bulk import / export settings | `16` (TARGET) | 🎯 | ⬚ | 🎯 |
+| ST1 | Global settings KV editor by namespace | `16 · Settings` `168:13603` | ✅ **LANDED (TASK-390):** dedicated `admin/settings` global-settings CRUD (namespaced); FE sectioned-form wired (TASK-391) | backend E2E `task-390-super-admin.spec.ts` + FE live E2E `task-391-settings.spec.ts` | 🟢 |
+| ST2 | Locked-row protection + secret masking | `16` Access col | ✅ **TASK-391:** `locked` field on `GlobalSettingResponse` (restored required in TASK-393) drives disabled+lock UI; write-path still enforces | backend E2E `task-390-*` (locked write-block) + FE live E2E `task-391-*` | 🟢 |
+| ST3 | Bulk import / export settings | `16` (TARGET) | 🎯 (bulk import/export remains a follow-up) | ⬚ | 🎯 |
 
 ---
 
 ## Backlog rollup (gaps → tickets)
 
-Derived from the 🔴 / 🎯 rows above — candidate backend/test tickets:
+Derived from the 🔴 / 🎯 rows above — candidate backend/test tickets. **2026-07-01 update: items 1–14 are now backend-closed (TASK-386→393); struck items are done.**
 
-**Backend — missing endpoints**
-1. **Tenant archive lifecycle** (F6) — add `SUSPENDED`/`ARCHIVED` to tenant `resourceStatus` + soft-delete semantics; protect system tenant (`DEF-ADM-002`, X2/X4).
-2. **Tenant tags** (F9) — `tags` field + management endpoint.
-3. **User reset-password** (U5) — both emailed-link (audited) and admin-set temp password forcing change at next login.
-4. **User export** (U7) — CSV/Excel/PDF (currently only audit CSV).
-5. **User bulk actions** (U6) — bulk enable/disable/assign-dept beyond `DELETE /admin/users/bulk`.
-6. **Prompt `compareVersions`** (A3) — diff endpoint backing `32 · Version Diff`.
-7. **Department → users listing** (D2) — `GET /admin/departments/:id/users`.
-8. **Per-dept DNA-style default agent** (D3/U10) — column/`promptConfig` key.
-9. **Dashboard live metrics** (O1/O3) — running sessions, open sockets, consumption, audio-pipeline health.
-10. **Storage quota** (S3) — quota limit + enforcement/read endpoint.
-11. **CASL policy-rules editing** (R3) — no `Policy` CRUD / rules-update endpoint backs the `24b` ability builder (policies are seed-only; no `policies.controller.ts`).
-12. **Global-settings CRUD** (ST1) — no `admin/global-settings` endpoint behind the `16 · Settings` editor (values are seeded + consumed; only `rate-limit.*` and tenant configs are writable).
-13. **API-key rotate** (K5) — model has rotation fields but no dedicated rotate endpoint (only create/revoke/delete).
-14. **Platform runtime metrics** (P2/P3 · M2/M3 · RL5 · K3) — transcription-min/summaries/storage roll-ups, P95/req-min/open-sockets, per-model runtime, rate-limit live counters, api-key usage-over-time.
+**Backend — endpoints (formerly missing → now LANDED unless noted)**
+1. ✅ **Tenant archive lifecycle** (F6) — `SUSPENDED`/`ARCHIVED` + restore + system-tenant protection (`DEF-ADM-002` fixed). **DONE — TASK-387.**
+2. ✅ **Tenant tags** (F9) — `tags[]` (+ `plan` enum). **DONE — TASK-387.**
+3. ✅ **User reset-password** (U5) — admin temp-secret + force-change-at-next-login (audited). **DONE (backend) — TASK-388; FE wiring TASK-394.**
+4. ✅ **User export** (U7) — xlsx/pdf. **DONE (backend) — TASK-388; FE wiring TASK-394.**
+5. ✅ **User bulk actions** (U6) — bulk enable/disable/assign-dept. **DONE (backend) — TASK-388; FE wiring TASK-394.**
+6. ✅ **Prompt `compareVersions`** (A3) — server diff endpoint. **DONE — TASK-389.**
+7. ✅ **Department → users listing** (D2) — `GET /admin/departments/:id/users`. **DONE — TASK-387.**
+8. ✅ **Per-dept DNA-style default agent** (D3/U10) — `dnaWritingStylePromptId` slot. **DONE — TASK-387.**
+9. ✅ **Dashboard live metrics** (O1/P2/P3) — open sockets (Redis), consumption + transcription-min/summaries/storage roll-ups, cross-tenant aggregate (TD3-400 fix). **DONE — TASK-386.** *(Prometheus-derived tiles remain env-dependent.)*
+10. ✅ **Storage quota** (S3) — `quotaBytes` on `…/usage`. **DONE — TASK-386.**
+11. ✅ **CASL policy-rules editing** (R3) — Policy CRUD + anti-lockout guard. **DONE — TASK-390** (FE TASK-391).
+12. ✅ **Global-settings CRUD** (ST1) — `admin/settings` namespaced CRUD. **DONE — TASK-390** (FE TASK-391).
+13. ✅ **API-key rotate** (K5) — rotate + owner-scope. **DONE — TASK-390** (FE TASK-391).
+14. ✅ **Platform runtime metrics** (P2/P3 · M2/M3) — `/admin/platform/{metrics,sockets,consumption}` + `/admin/consultations/aggregate`. **DONE — TASK-386.** *(P95/req-min/per-model latency are Prometheus-derived → env-dependent; rate-limit live counters (RL5) + api-key usage-over-time (K3) remain 🎯 follow-ups.)*
+15. **Plan entitlements** (new, TASK-392) — quantity limits / monthly meters / feature toggles / rate-limit tiers / model access resolved from tenant `plan`. **DONE — TASK-392; enforcement OFF by default** (resolution + metering live; gates opt-in).
 
-**Frontend — designed, not yet built** (backends mostly exist; legacy routes predate the redesign)
-- `24 · Roles & Policies` + `24b · Policy Builder` · `25 · API Keys` · `14 · Rate Limits` · `15 · Queues & Jobs` · `16 · Settings` — implement the new frames, replacing the legacy `/roles`, `/api-keys`, `/settings` pages. **Design-gate cleared — rework done (v2) below.**
+**Frontend — build status**
+- ✅ **Roles & Policies** (`24`/`24b`) · **API Keys** (`25`) · **Settings** (`16`) · **Audit export** (`12`) — **built + wired (TASK-391, live FE E2E 42/0)**, replacing the legacy `/roles`, `/api-keys`, `/settings` pages.
+- ⏳ **Users cluster FE** (U5/U6/U7/U8/U9/U10/U12) — backend delivered (TASK-388); **FE wiring in progress under TASK-394.**
+- 🎯 **Rate Limits** (`14`) · **Queues & Jobs** (`15`) — backends exist (🔒); FE still design-cleared, not yet built.
 
 **Design — layout-pattern rework** ✅ **DONE (v2, 2026-06-30 — verified by eye, all PASS)** · screenshots `*-v2.png` · log: UNBUILT-SURFACES-DESIGN.md §8
 - ✅ `24b · Policy / Ability Builder` — flat table → **permission matrix** (subjects × actions, allow/deny/conditional) + **rule-detail editor** (cannot-toggle · conditions · reason · CASL JSON mirror). `admin-24b-policy-builder-v2.png`
@@ -227,11 +229,9 @@ Derived from the 🔴 / 🎯 rows above — candidate backend/test tickets:
 - ✅ `24 · Roles & Policies` — **master-detail + inheritance tree** + real **effective-abilities preview** (not just counts). `admin-24-roles-v2.png`
 - ✅ cross-cutting — decorative 2-letter avatars dropped on non-person entities (monochrome type icons / key tile); avatars reserved for people. `admin-25-api-keys-v2.png`
 
-**Test — missing automated backend E2E** (design + endpoint exist, no E2E)
-- Tenant **update happy-path** (F4) · tenant **enable/disable** (F5).
-- User **create** (U2) · **disable** (U4) · **department assignment** (U11, backend).
-- **Department CRUD** (D1) + **prompt-config / default agents** (D3).
-- **Prompt** create/update/activate (A2/A4) and **test** (A5).
-- **Storage provision** (S2).
+**Test — automated backend E2E**
+- ✅ **Now covered by the 386→390 landing:** tenant **lifecycle transitions + restore + system-guard** (F6, `task-387`), **dept→users + DNA slot** (D2/D3, `task-387`), **users reset-pw/bulk/export/prefs/per-user-prompts/cross-user-DNA** (U5–U12 backend, `task-388`), **prompt server-diff + test sub-metrics** (A3/A5, `task-389`), **platform metrics/sockets/consumption/aggregate** (P2/P3/M2/M3/S3/O1, `task-386`), **policy-guard / api-key rotate / global-settings / audit export** (R3/K5/ST1/AU2, `task-390`,`task-390b`).
+- ⏳ **Still gaps** (design + endpoint exist, no backend E2E): tenant **update happy-path** (F4, field edits) · tenant **enable/disable** (F5) · user **create** (U2) · **disable** (U4) · **department assignment** (U11, backend) · **Department CRUD** (D1) · **Prompt** create/update/activate (A2/A4) · **Storage provision** (S2).
+- ⏳ **FE E2E** for the TASK-388 users cluster is deferred to **TASK-394** (backend green today; FE journeys not yet wired).
 
 > **Design-vs-backend reconciliation** is also tracked narratively in [README §5.14.1](../../implementation/TASK-371-Admin-Console-Redesign/README.md). This matrix is the row-level, testable view of the same gaps.

@@ -7,5 +7,5 @@ import { createFileRoute, Outlet } from '@tanstack/react-router';
  * tab nav, never appended to the breadcrumb). Mirrors `departments/route.tsx`.
  */
 export const Route = createFileRoute('/_authenticated/tenants/$tenantId/users')({
-    component: () => <Outlet />,
+  component: () => <Outlet />,
 });

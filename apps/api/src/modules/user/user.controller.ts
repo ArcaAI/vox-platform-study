@@ -32,8 +32,13 @@ import {
   UserPasswordService,
   ResetPasswordRequest,
   ResetPasswordResponse,
+  // TASK-398 P1-6 — imperative CASL check for the bulk assign-role arm.
+  type AppAbility,
+  // TASK-398 P1-7 — batched email/department-name enrichment for exports.
+  type UserExportEnrichment,
 } from '@arcaai/applications';
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -51,7 +56,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { ApiEndpoint, CanManage } from '../../decorators';
+import { ApiEndpoint, CanManage, UserAbility } from '../../decorators';
 import {
   UpdateUserStatusRequest,
   BulkDeleteUsersRequest,
@@ -222,6 +227,11 @@ export class UserController {
    * exact scoping branches as {@link fetchAll}: a non-super-admin is pinned to
    * their CLS tenant (403 with no context); a super-admin honours an elevated
    * `X-Tenant-Id` selection, else reads cross-tenant.
+   *
+   * TASK-398 P1-7 — rows are enriched with email + department NAMES via ONE
+   * batched `getExportEnrichment(allIds)` call (two grouped `findMany`s joined
+   * in memory inside the service) so the export never fans out per-user
+   * (no N+1). The list DTO itself is unchanged — this is export-path only.
    */
   private async collectExportRows(query: ExportUsersQuery): Promise<UserExportRow[]> {
     const user = this.cls.get('user');
@@ -240,24 +250,28 @@ export class UserController {
       result = await this.userService.fetchAll(params);
     }
 
-    return result.data.map((entity) => this.toExportRow(UserDtoMapper.ToResponse(entity)));
+    const ids = result.data.map((entity) => entity.id);
+    const enrichment = await this.userService.getExportEnrichment(ids, callerTenantId);
+
+    return result.data.map((entity) => this.toExportRow(UserDtoMapper.ToResponse(entity), enrichment[entity.id]));
   }
 
   /**
-   * Map a `UserResponse` to a flat export row. `email` + `departments` are read
-   * defensively: `UserResponse` does not currently carry them, so they render
-   * blank today — server-side email/department-name enrichment is a flagged
-   * follow-up (avoids an N+1 across the profile/department services here).
+   * Map a `UserResponse` (+ its TASK-398 enrichment) to a flat export row.
+   * `email`/`departments` come from the batched enrichment lookup — the list
+   * DTO still doesn't carry them; a user with no profile/memberships renders
+   * blank. `status` stays defensive: `resourceStatus` is on the entity but not
+   * typed on the response.
    */
-  private toExportRow(r: UserResponse): UserExportRow {
-    const enriched = r as unknown as { email?: string; departmentIds?: string[]; resourceStatus?: string };
+  private toExportRow(r: UserResponse, enrichment?: UserExportEnrichment): UserExportRow {
+    const raw = r as unknown as { resourceStatus?: string };
     return {
       id: r.id,
       username: r.username,
-      email: enriched.email ?? '',
+      email: enrichment?.email ?? '',
       type: r.isServiceAccount ? 'Service account' : 'User',
-      status: enriched.resourceStatus ?? '',
-      departments: Array.isArray(enriched.departmentIds) ? enriched.departmentIds.join(', ') : '',
+      status: raw.resourceStatus ?? '',
+      departments: enrichment?.departmentNames?.join(', ') ?? '',
     };
   }
 
@@ -443,18 +457,36 @@ export class UserController {
    * the existing `bulkDelete` precedent (per-id catch, no early throw, no
    * `$transaction`) — see that method for the AC-10 rationale.
    *
-   * Action set (FLAG): enable | disable | delete | assign-departments.
+   * Action set: enable | disable | delete | assign-departments | assign-role.
+   *
+   * TASK-398 P1-6 — `assign-role` mirrors the AC-02 posture of the single-user
+   * `POST :id/roles` route. That route swaps the class-level `manage:User` for
+   * `manage:UserRoleAssignment` via a method-level `@CanManage` override; here
+   * a decorator would (wrongly) re-gate ALL arms, so the same check runs
+   * imperatively against the request ability — only for the assign-role arm,
+   * and BEFORE any mutation. Per-item tier/tenant guards then run inside
+   * `userRoleAssignmentService.create` exactly as on the single-user route.
    */
   @Post('bulk-actions')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Apply a bulk action (enable/disable/delete/assign-departments) to many users',
+    summary: 'Apply a bulk action (enable/disable/delete/assign-departments/assign-role) to many users',
     description:
       'Per-item success/failure; the call never throws mid-batch. Each id is tenant-scope-guarded (a cross-tenant ' +
-      'id is reported as failed, not mutated). CASL-gated by the class-level manage:User.',
+      'id is reported as failed, not mutated). CASL-gated by the class-level manage:User; the assign-role arm ' +
+      'additionally requires manage:UserRoleAssignment (the AC-02 posture of POST :id/roles).',
   })
   @ApiResponse({ status: 200, description: 'Per-item results', type: BulkUserActionResponse })
-  async bulkActions(@Body() body: BulkUserActionRequest): Promise<BulkUserActionResponse> {
+  async bulkActions(@Body() body: BulkUserActionRequest, @UserAbility() ability?: AppAbility): Promise<BulkUserActionResponse> {
+    if (body.action === 'assign-role') {
+      if (!ability?.can('manage', 'UserRoleAssignment')) {
+        throw new ForbiddenException('You do not have permission to assign roles');
+      }
+      if (!body.roleId) {
+        throw new BadRequestException('roleId is required for the assign-role action');
+      }
+    }
+
     const results: BulkUserActionItemResult[] = [];
 
     for (const id of body.ids) {
@@ -494,6 +526,12 @@ export class UserController {
           departmentIds: body.departmentIds ?? [],
           primaryDepartmentId: body.primaryDepartmentId,
         } as SetUserDepartmentsRequest);
+        return;
+      case 'assign-role':
+        // Same call shape as the single-user `assignRole`; the service's
+        // AC-02 guards (tier ceiling + caller-tenant containment) throw here
+        // and surface as this item's per-id failure.
+        await this.userRoleAssignmentService.create({ roleId: body.roleId, userId: id } as CreateUserRoleAssignmentRequest);
         return;
     }
   }

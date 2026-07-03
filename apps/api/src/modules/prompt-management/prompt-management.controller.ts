@@ -9,6 +9,9 @@ import {
   PromptTestResultResponse,
   PromptUsageAnalyticsResponse,
   PromptVersionDiffResponse,
+  PromptUsageRecordResponse,
+  PaginatedPromptUsageRecordResponse,
+  Paginated,
   DepartmentResponse,
   HttpMethod,
 } from '@arcaai/applications';
@@ -107,6 +110,27 @@ export class PromptManagementController {
   @ApiResponse({ status: 200, description: 'Usage analytics aggregates', type: PromptUsageAnalyticsResponse })
   async getUsageAnalytics(@Query() queryParams: { promptTemplateId?: string }): Promise<PromptUsageAnalyticsResponse> {
     return this.promptService.getUsageAnalytics({ promptTemplateId: queryParams.promptTemplateId });
+  }
+
+  // TASK-407 — tenant-scoped raw run rows for the tenant-detail "Agent Jobs"
+  // surface (complements the aggregated analytics above). Static path, so it
+  // is also declared BEFORE the `:id` param routes. Inherits the class-level
+  // `manage PromptTemplate` posture (tenant-admin own tenant; super-admin
+  // cross-tenant via X-Tenant-Id).
+  @Get('usage-records')
+  @ApiOperation({ summary: 'Paginated prompt run history (PromptUsageRecord rows), newest first (TASK-407)' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (0-based)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Rows per page (default 20)' })
+  @ApiQuery({ name: 'promptTemplateId', required: false, type: String, description: 'Narrow to a single template' })
+  @ApiResponse({ status: 200, description: 'Paginated usage record rows', type: PaginatedPromptUsageRecordResponse })
+  async listUsageRecords(
+    @Query() queryParams: { page?: string; limit?: string; promptTemplateId?: string },
+  ): Promise<Paginated<PromptUsageRecordResponse>> {
+    return this.promptService.listUsageRecords({
+      page: queryParams.page !== undefined ? Number(queryParams.page) || 0 : undefined,
+      limit: queryParams.limit !== undefined ? Number(queryParams.limit) || 20 : undefined,
+      promptTemplateId: queryParams.promptTemplateId,
+    });
   }
 
   @ApiEndpoint({

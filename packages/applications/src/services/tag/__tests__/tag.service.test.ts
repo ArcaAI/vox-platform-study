@@ -291,6 +291,22 @@ describe('TagService', () => {
             expect(result.data[1].tagValue).toBe('Tag 2');
         });
 
+        it('coerces Tag-typed filter values via the model registry (TASK-406 P2-6c)', async () => {
+            mockTagRepository.findAll.mockResolvedValue([]);
+            mockTagRepository.count.mockResolvedValue(0);
+
+            await service.fetchAll({ limit: 10, page: 1, filters: 'version[gte]:2;tagValue[equals]:true' });
+
+            // version (Int) coerces; tagValue is a String column and must NOT be mangled.
+            const expectedFilters = { version: { gte: 2 }, tagValue: { equals: 'true' } };
+            expect(mockTagRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({ filters: expectedFilters })
+            );
+            expect(mockTagRepository.count).toHaveBeenCalledWith(
+                expect.objectContaining({ filters: expectedFilters })
+            );
+        });
+
         it('should return empty result when no tags exist', async () => {
             mockTagRepository.findAll.mockResolvedValue([]);
             mockTagRepository.count.mockResolvedValue(0);

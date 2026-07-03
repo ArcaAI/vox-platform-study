@@ -10,13 +10,13 @@
 
 /** Server-side filters pushed to the `where` clause (mirrors the SDK `AuditLogCursorParams` filter subset). */
 export interface AuditCursorFilters {
-    action?: string;
-    resourceType?: string;
-    userId?: string;
-    /** ISO-8601 boundary. */
-    from?: string;
-    /** ISO-8601 boundary. */
-    to?: string;
+  action?: string;
+  resourceType?: string;
+  userId?: string;
+  /** ISO-8601 boundary. */
+  from?: string;
+  /** ISO-8601 boundary. */
+  to?: string;
 }
 
 /**
@@ -26,12 +26,12 @@ export interface AuditCursorFilters {
  * normalizes missing fields to `''` so equivalent filter sets compare equal.
  */
 export function auditCursorFilterKey(filters: AuditCursorFilters, limit: number): string {
-    return JSON.stringify({
-        limit,
-        action: filters.action ?? '',
-        resourceType: filters.resourceType ?? '',
-        userId: filters.userId ?? '',
-        from: filters.from ?? '',
-        to: filters.to ?? '',
-    });
+  return JSON.stringify({
+    limit,
+    action: filters.action ?? '',
+    resourceType: filters.resourceType ?? '',
+    userId: filters.userId ?? '',
+    from: filters.from ?? '',
+    to: filters.to ?? '',
+  });
 }

@@ -16,10 +16,12 @@
  *        `assertTenantInScope` (:63): non-super-admin reading ANOTHER tenant → 403.
  *   2. GET /admin/audit-logs         audit-log.controller.ts:65 (fetchAll)
  *      — @CanRead('AuditLog'); tenant-scoped, super-admin cross-tenant.
- *   3. GET /monitoring/sessions      monitoring.controller.ts:69 🔒
- *      — controller @Authorize(['manage','all']) → SUPER_ADMIN only.
- *   4. GET /health/services          health.controller.ts:176 🔒
- *      — @Authorize(['manage','all']) → SUPER_ADMIN only.
+ *   3. GET /monitoring/sessions      monitoring.controller.ts 🔒
+ *      — controller @CanAny(['manage','all'],['read','TenantTelemetry']):
+ *        SUPER_ADMIN via manage:all, TENANT_ADMIN via the TASK-386 (#21)
+ *        read:TenantTelemetry grant; a plain DOCTOR (neither) → 403.
+ *   4. GET /health/services          health.controller.ts 🔒
+ *      — same @CanAny posture as /monitoring/sessions (TASK-386 #21).
  *   5. GET /admin/consultations      admin-consultation.controller.ts:52 (list)
  *      — @CanManage('Consultation') → TENANT_ADMIN / SUPER_ADMIN; DOCTOR → 403.
  *
@@ -137,7 +139,7 @@ test.describe('TASK-380 — Tenant Dashboard (18d) backend sources', () => {
         expect(Array.isArray(body.data)).toBe(true);
     });
 
-    // --- TD1/TD2 — Monitoring sessions (🔒 super-admin only) --------------------
+    // --- TD1/TD2 — Monitoring sessions (🔒 manage:all OR read:TenantTelemetry) --
 
     test('TD2: super_admin reads /monitoring/sessions shape (services + totalUsers)', async ({ request }) => {
         const res = await authGet(request, '/api/v1/monitoring/sessions', superToken);
@@ -147,17 +149,24 @@ test.describe('TASK-380 — Tenant Dashboard (18d) backend sources', () => {
         expect(typeof body.totalUsers, 'totalUsers is numeric').toBe('number');
     });
 
-    test('TD2: tenant_admin is FORBIDDEN from /monitoring/sessions (🔒 manage all)', async ({ request }) => {
+    // TASK-410 fix (spec drift) — TASK-386 (#21) intentionally granted
+    // TENANT_ADMIN the seeded `read:TenantTelemetry` rule so the tenant
+    // dashboard can read platform-infra session counts; the previous 403
+    // expectation pinned the pre-TASK-386 posture.
+    test('TD2: tenant_admin (own tenant, read:TenantTelemetry) reads /monitoring/sessions', async ({ request }) => {
         const res = await authGet(request, '/api/v1/monitoring/sessions', tenantAdminToken);
-        expect(res.status(), 'monitoring is SUPER_ADMIN-only → tenant_admin 403 (KPI degrades on the dashboard)').toBe(403);
+        expect(res.status(), 'tenant_admin holds read:TenantTelemetry (TASK-386 #21) → 200').toBe(200);
+        const body = (await res.json()) as SessionsResponse;
+        expect(typeof body.services, 'sessions has a per-service map').toBe('object');
+        expect(typeof body.totalUsers, 'totalUsers is numeric').toBe('number');
     });
 
     test('TD2: doctor is FORBIDDEN from /monitoring/sessions', async ({ request }) => {
         const res = await authGet(request, '/api/v1/monitoring/sessions', doctorToken);
-        expect(res.status()).toBe(403);
+        expect(res.status(), 'a plain doctor holds neither manage:all nor read:TenantTelemetry → 403').toBe(403);
     });
 
-    // --- TD1/TD5 — Service health (🔒 super-admin only) ------------------------
+    // --- TD1/TD5 — Service health (🔒 manage:all OR read:TenantTelemetry) ------
 
     test('TD5: super_admin reads /health/services shape (status + per-service map)', async ({ request }) => {
         const res = await authGet(request, '/api/v1/health/services', superToken);
@@ -170,9 +179,20 @@ test.describe('TASK-380 — Tenant Dashboard (18d) backend sources', () => {
         expect(Object.keys(body.services).length, 'at least one downstream service reported').toBeGreaterThan(0);
     });
 
-    test('TD5: tenant_admin is FORBIDDEN from /health/services (🔒 manage all)', async ({ request }) => {
+    // TASK-410 fix (spec drift) — same TASK-386 (#21) widening as TD2: the
+    // tenant dashboard's audio-pipeline strip reads downstream health, so a
+    // TENANT_ADMIN with read:TenantTelemetry now gets 200 (was 403).
+    test('TD5: tenant_admin (own tenant, read:TenantTelemetry) reads /health/services', async ({ request }) => {
         const res = await authGet(request, '/api/v1/health/services', tenantAdminToken);
-        expect(res.status(), 'health/services is SUPER_ADMIN-only → tenant_admin 403 (pipeline degrades)').toBe(403);
+        expect(res.status(), 'tenant_admin holds read:TenantTelemetry (TASK-386 #21) → 200').toBe(200);
+        const body = (await res.json()) as ServiceHealthResponse;
+        expect(typeof body.status, 'overall status string present').toBe('string');
+        expect(typeof body.services, 'per-service health map present').toBe('object');
+    });
+
+    test('TD5: doctor is FORBIDDEN from /health/services (neither grant)', async ({ request }) => {
+        const res = await authGet(request, '/api/v1/health/services', doctorToken);
+        expect(res.status(), 'a plain doctor holds neither manage:all nor read:TenantTelemetry → 403').toBe(403);
     });
 
     test('TD5: the PUBLIC /health liveness probe stays open (sanity vs the gated /services)', async ({ request }) => {

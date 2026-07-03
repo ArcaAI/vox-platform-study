@@ -11,6 +11,14 @@ import { IActiveUserContext } from '../../../interfaces';
 
 // TODO: Implement this
 
+/**
+ * TASK-406 (P2-6c) — model-aware filter coercion (TASK-375 §8 scheme): coerces
+ * CSV `filters` values to the Media columns' real types (`size`/`version` →
+ * number, `createdAt` → Date, `resourceStatus` → member-validated enum,
+ * `metaData` → JSON-path support). Passed to BOTH the data and count builders.
+ */
+const MEDIA_FILTER_MODEL = 'Media';
+
 @Injectable()
 export class MediaService extends BaseService implements IMediaService {
   constructor(
@@ -59,9 +67,9 @@ export class MediaService extends BaseService implements IMediaService {
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<MediaEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { limit, page, search } = props;
-    const medias = await this.mediaRepository.findAll(withFormattedPaginatedProps(props));
+    const medias = await this.mediaRepository.findAll(withFormattedPaginatedProps(props, MEDIA_FILTER_MODEL));
 
-    const count = await this.mediaRepository.count(withFormattedCountProps(props));
+    const count = await this.mediaRepository.count(withFormattedCountProps(props, MEDIA_FILTER_MODEL));
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: {
@@ -80,13 +88,13 @@ export class MediaService extends BaseService implements IMediaService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { tenantId, limit, page, search } = props;
     const medias = await this.mediaRepository.findAll({
-      ...withFormattedPaginatedProps(props),
+      ...withFormattedPaginatedProps(props, MEDIA_FILTER_MODEL),
       where: {
         tenantId,
       },
     });
     const count = await this.mediaRepository.count({
-      ...withFormattedCountProps(props),
+      ...withFormattedCountProps(props, MEDIA_FILTER_MODEL),
       where: {
         tenantId,
       },
@@ -110,13 +118,13 @@ export class MediaService extends BaseService implements IMediaService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { userId, limit, page, search } = props;
     const medias = await this.mediaRepository.findAll({
-      ...withFormattedPaginatedProps(props),
+      ...withFormattedPaginatedProps(props, MEDIA_FILTER_MODEL),
       where: {
         createdBy: userId,
       },
     });
     const count = await this.mediaRepository.count({
-      ...withFormattedCountProps(props),
+      ...withFormattedCountProps(props, MEDIA_FILTER_MODEL),
       where: {
         createdBy: userId,
       },

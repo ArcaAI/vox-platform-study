@@ -426,6 +426,17 @@ describe('useRoles', () => {
 
             expect(result.current.roles).toEqual([initial[1]]);
         });
+
+        // TASK-409 — break-glass credentials travel as the DELETE body.
+        it('should pass break-glass credentials as the DELETE data option (TASK-409)', async () => {
+            mockDelete.mockResolvedValue(undefined);
+            const { result } = renderHook(() => useRoles());
+            const creds = { password: 'pw', confirmationName: 'Admin' };
+
+            await act(async () => { await result.current.deleteRole('r-1', creds); });
+
+            expect(mockDelete).toHaveBeenCalledWith(ROLE_ENDPOINTS.DELETE('r-1'), { data: creds });
+        });
     });
 
     describe('assignPolicy', () => {
@@ -489,6 +500,17 @@ describe('useRoles', () => {
             await act(async () => { await result.current.removePolicy('r-1', 'p-1'); });
 
             expect(mockDelete).toHaveBeenCalledWith(ROLE_ENDPOINTS.REMOVE_POLICY('r-1', 'p-1'));
+        });
+
+        // TASK-409 — break-glass credentials travel as the DELETE body.
+        it('should pass break-glass credentials as the DELETE data option (TASK-409)', async () => {
+            mockDelete.mockResolvedValue(undefined);
+            const { result } = renderHook(() => useRoles());
+            const creds = { password: 'pw', confirmationName: 'team-policy' };
+
+            await act(async () => { await result.current.removePolicy('r-1', 'p-1', creds); });
+
+            expect(mockDelete).toHaveBeenCalledWith(ROLE_ENDPOINTS.REMOVE_POLICY('r-1', 'p-1'), { data: creds });
         });
     });
 

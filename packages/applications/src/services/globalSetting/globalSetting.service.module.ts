@@ -3,11 +3,14 @@ import { GlobalSettingService } from './globalSetting.service';
 import { IGlobalSettingService } from './IGlobalSettingService';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
+import { CryptoServiceModule } from '../crypto/crypto.service.module';
 
-// TODO: Implement this
+// TASK-396 — reveal needs ICryptoService (bcrypt step-up verify) in addition to
+// SecretsService (Vault decrypt, via CommonServiceModule) + UserRepository /
+// GlobalSettingRepository (via CoreDatabaseModule).
 
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule],
+  imports: [CommonServiceModule, CoreDatabaseModule, CryptoServiceModule],
   providers: [
     {
       provide: IGlobalSettingService,

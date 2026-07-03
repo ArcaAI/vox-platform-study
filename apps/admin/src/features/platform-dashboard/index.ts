@@ -8,3 +8,4 @@
 export * from './service-table';
 export * from './models';
 export * from './format';
+export * from './request-volume';

@@ -9,7 +9,9 @@ import {
   PromptUsageAnalyticsResponse,
   PreferredPromptTemplateResponse,
   PromptVersionDiffResponse,
+  PromptUsageRecordResponse,
 } from './dto';
+import { Paginated } from '../../common/dto/paginated.response';
 import { DepartmentResponse } from '../department/dto';
 
 export interface ListPromptTemplatesFilters {
@@ -59,4 +61,10 @@ export abstract class IPromptManagementService {
   // TASK-328 A4
   abstract testPromptTemplate(id: string, dto: TestPromptTemplateRequest): Promise<PromptTestResultResponse>;
   abstract getUsageAnalytics(filters?: { promptTemplateId?: string }): Promise<PromptUsageAnalyticsResponse>;
+  // TASK-407 — tenant-scoped raw run listing for the Agent Jobs surface.
+  abstract listUsageRecords(filters?: {
+    page?: number;
+    limit?: number;
+    promptTemplateId?: string;
+  }): Promise<Paginated<PromptUsageRecordResponse>>;
 }

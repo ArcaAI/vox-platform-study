@@ -19,6 +19,8 @@
  * explicitly out of W6 scope.
  */
 
+import type { BreakGlassCredentials } from '../breakGlass';
+
 export interface RbacRoleListQuery {
   page: number;
   pageSize: number;
@@ -80,9 +82,11 @@ export interface IRbacRoleService {
   create(request: CreateRbacRoleRequest): Promise<RbacRoleRecord>;
   update(id: string, request: UpdateRbacRoleRequest): Promise<RbacRoleRecord>;
   patch(id: string, request: UpdateRbacRoleRequest): Promise<RbacRoleRecord>;
-  softDelete(id: string): Promise<{ id: string; name: string }>;
+  /** TASK-409 — deleting a role always requires break-glass confirmation. */
+  softDelete(id: string, breakGlass?: BreakGlassCredentials): Promise<{ id: string; name: string }>;
   assignPolicy(roleId: string, policyId: string, dto: RbacRolePolicyAssignmentInput): Promise<void>;
-  removePolicy(roleId: string, policyId: string): Promise<void>;
+  /** TASK-409 — detaching a policy requires break-glass (confirm the POLICY name). */
+  removePolicy(roleId: string, policyId: string, breakGlass?: BreakGlassCredentials): Promise<void>;
 }
 
 export const IRbacRoleService = Symbol('IRbacRoleService');

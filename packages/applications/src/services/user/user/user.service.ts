@@ -18,13 +18,16 @@ import {
   CoreDatabaseService,
 } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException, NotFoundException } from '@arcaai/exceptions';
-import { IUserService } from './IUserService';
+import { IUserService, UserExportEnrichment } from './IUserService';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IUserProfileService } from '../userProfile/IUserProfileService';
 import { UpdateUserProfileRequest } from '../userProfile/dto/updateUserProfile.request';
 import { CreateOAuthUserRequest, CreateUserRequest, UpdateUserRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { ICryptoService } from '../../crypto/ICryptoService';
+import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
+import { resolvePasswordPolicy, validatePasswordComplexity } from '../userPassword/password-policy';
 
 /**
  * TASK-375 §8 — the Users resource's Prisma model name. Passed to
@@ -54,11 +57,30 @@ export class UserService extends BaseService implements IUserService {
     // TASK-381 (V1) — `email` is a `UserProfile` field; the create flow upserts
     // it onto the profile after the identity row exists.
     @Inject(IUserProfileService) private readonly userProfileService: IUserProfileService,
+    // TASK-402 (Defect 1) — creation/update-time passwords must be bcrypt-hashed
+    // and policy-checked like every other password write path (the login
+    // comparator is bcrypt; plaintext at rest could never log in).
+    @Inject(ICryptoService) private readonly cryptoService: ICryptoService,
+    @Inject(IAppSettingsService) private readonly appSettings: IAppSettingsService,
     // TASK-392 (Phase 3, C2) — optional (append-only DI); enforces the plan
     // `maxUsers` SEAT quota when onboarding a user WITH a role (kill-switch-gated).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
   ) {
     super(eventEmitter, clsService, ResourceType.User);
+  }
+
+  /**
+   * TASK-402 (Defect 1) — validate against the TASK-400 complexity policy
+   * (GlobalSettings-overridable) and bcrypt-hash a password destined for
+   * persistence. Same voice as `UserPasswordService.assertPasswordPolicy`:
+   * the 400 lists every unmet rule.
+   */
+  private async validateAndHashPassword(password: string): Promise<string> {
+    const failures = validatePasswordComplexity(password, resolvePasswordPolicy(this.appSettings));
+    if (failures.length > 0) {
+      throw new BadRequestException(failures.join('. '));
+    }
+    return this.cryptoService.hash(password);
   }
 
   /**
@@ -81,12 +103,26 @@ export class UserService extends BaseService implements IUserService {
     const { roleId, departmentId, isPrimaryDepartment, email, ...userRequest } = request;
     const wantsMembership = Boolean(roleId || departmentId);
 
+    // TASK-402 (Defect 1) — policy-check + bcrypt the creation-time password
+    // BEFORE the factory so both the plain and the atomic membership branches
+    // persist a hash, never plaintext. An empty password is the "no local
+    // credential" placeholder (OAuth/`createExternalUser` semantics): it is
+    // neither validated nor hashed, and the account stays non-loginable until
+    // a password-module write.
+    const hasCreationPassword = Boolean(userRequest.password);
+    const password = hasCreationPassword ? await this.validateAndHashPassword(userRequest.password) : userRequest.password;
+
     const newUser = UserFactory.CreateUser({
       ...userRequest,
+      password,
       externalId: userRequest.externalId || null,
       isServiceAccount: userRequest.isServiceAccount ?? false,
       createdBy: this.requestUser?.id,
     });
+    if (hasCreationPassword) {
+      // Rotation parity with the password module (TASK-400 `maxAgeDays`).
+      newUser.passwordChangedAt = new Date();
+    }
 
     if (!wantsMembership) {
       const user = await this.userRepository.create(newUser);
@@ -332,7 +368,17 @@ export class UserService extends BaseService implements IUserService {
     const user = await this.userRepository.findById(id);
 
     const previousData = user.toObject();
-    this.updateEntity(user, request);
+    // TASK-402 (Defect 1) — a password update goes through the same policy +
+    // bcrypt path as creation (the generic assignment used to store the DTO's
+    // plaintext verbatim). The handler re-stamps `passwordChangedAt` so the
+    // TASK-400 rotation check sees this write like any password-module write.
+    await this.updateEntity(user, request, {
+      password: async ({ entity, value }) => {
+        const hashed = await this.validateAndHashPassword(String(value));
+        entity.passwordChangedAt = new Date();
+        return hashed;
+      },
+    });
 
     if (!user.hasChanges) {
       throw new ArgumentInvalidException(`No changes to write to.`);
@@ -355,5 +401,53 @@ export class UserService extends BaseService implements IUserService {
       data: user.toObject() as object,
     });
     return user;
+  }
+
+  /**
+   * TASK-398 (P1-7) — export enrichment read-model: profile email + active
+   * department NAMES for every id in ONE pass. Exactly two grouped queries
+   * (`userId IN (...)`) + an in-memory join — never per-row lookups — so a
+   * 10 000-row export costs the same round-trips as a 10-row one.
+   *
+   * Uses the unscoped `baseClient` (same precedent as `countTenantSeats`): the
+   * caller has already materialised a tenant-scoped id set, and the optional
+   * explicit `tenantId` predicate re-applies that boundary to the membership
+   * rows so a tenant export never carries another tenant's department names.
+   * Department names order primary-first, then assignment age. No SysEvent —
+   * auxiliary read; the export's fetch already broadcasts `ResourceViewed`.
+   */
+  async getExportEnrichment(userIds: string[], tenantId?: string): Promise<Record<string, UserExportEnrichment>> {
+    const result: Record<string, UserExportEnrichment> = {};
+    if (userIds.length === 0) return result;
+    for (const id of userIds) {
+      result[id] = { email: '', departmentNames: [] };
+    }
+
+    const [profiles, memberships] = await Promise.all([
+      this.databaseService.baseClient.userProfile.findMany({
+        where: { userId: { in: userIds }, resourceStatus: { not: ResourceStatusType.DELETED } },
+        select: { userId: true, email: true },
+      }),
+      this.databaseService.baseClient.userDepartment.findMany({
+        where: {
+          userId: { in: userIds },
+          resourceStatus: ResourceStatusType.ENABLED,
+          ...(tenantId ? { tenantId } : {}),
+        },
+        select: { userId: true, Department: { select: { name: true } } },
+        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+      }),
+    ]);
+
+    for (const profile of profiles as Array<{ userId: string; email: string | null }>) {
+      const entry = result[profile.userId];
+      if (entry) entry.email = profile.email ?? '';
+    }
+    for (const membership of memberships as Array<{ userId: string; Department: { name: string } | null }>) {
+      const entry = result[membership.userId];
+      const name = membership.Department?.name;
+      if (entry && name) entry.departmentNames.push(name);
+    }
+    return result;
   }
 }

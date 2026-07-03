@@ -29,6 +29,12 @@ export class TenantBucketResponse {
   @ApiProperty({ description: 'Whether this is a system bucket' })
   isSystemBucket: boolean;
 
+  // TASK-407 — surface the TASK-386 quota column so the tenant-detail Stores
+  // surface can render per-bucket quota. BigInt → number (bucket quotas stay
+  // far below Number.MAX_SAFE_INTEGER); null = unlimited.
+  @ApiPropertyOptional({ description: 'Storage quota in bytes (null = unlimited)', nullable: true, example: 10737418240 })
+  quotaBytes?: number | null;
+
   @ApiPropertyOptional({ description: 'Resource status', enum: ResourceStatusType })
   resourceStatus?: ResourceStatusType;
 

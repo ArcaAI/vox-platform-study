@@ -25,6 +25,7 @@ export * from './KnowledgeDocumentEntityMapper';
 export * from './MediaEntityMapper';
 export * from './NamedEntityEntityMapper';
 export * from './NotificationEntityMapper';
+export * from './PasswordResetTokenEntityMapper';
 export * from './PermissionEntityMapper';
 export * from './PlanEntitlementEntityMapper';
 export * from './PipelinePolicyChangeEntityMapper';

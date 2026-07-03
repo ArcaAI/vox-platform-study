@@ -10,18 +10,18 @@ import type { UserListQuery } from '@arcaai/vox';
  * `PaginatedQuery` is 1-based, so translate `page + 1` here.
  */
 export interface TenantMemberQueryState {
-    /** 0-based grid page. */
-    page: number;
-    limit: number;
-    search?: string;
-    /** `resourceStatus` facet value (e.g. `ENABLED`). */
-    status?: string;
+  /** 0-based grid page. */
+  page: number;
+  limit: number;
+  search?: string;
+  /** `resourceStatus` facet value (e.g. `ENABLED`). */
+  status?: string;
 }
 
 export function buildTenantUserListQuery(state: TenantMemberQueryState): UserListQuery {
-    const query: UserListQuery = { page: state.page + 1, limit: state.limit };
-    const search = state.search?.trim();
-    if (search) query.search = search;
-    if (state.status) query.filters = `resourceStatus:${state.status}`;
-    return query;
+  const query: UserListQuery = { page: state.page + 1, limit: state.limit };
+  const search = state.search?.trim();
+  if (search) query.search = search;
+  if (state.status) query.filters = `resourceStatus:${state.status}`;
+  return query;
 }

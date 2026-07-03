@@ -13,6 +13,8 @@ export class TenantBucketDtoMapper {
       purpose: entity.purpose,
       pathPattern: entity.pathPattern,
       isSystemBucket: entity.isSystemBucket,
+      // TASK-407 — BigInt is not JSON-serializable; quotas are well below 2^53.
+      quotaBytes: entity.quotaBytes != null ? Number(entity.quotaBytes) : null,
       resourceStatus: entity.resourceStatus ?? undefined,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),

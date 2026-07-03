@@ -16,5 +16,5 @@
 export const DEFAULT_API_BASE_URL = 'http://localhost:8868/api/v1';
 
 export function getApiBaseUrl(): string {
-    return import.meta.env.VITE_API_URL || DEFAULT_API_BASE_URL;
+  return import.meta.env.VITE_API_URL || DEFAULT_API_BASE_URL;
 }

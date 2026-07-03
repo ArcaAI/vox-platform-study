@@ -47,11 +47,25 @@ function makeMocks() {
   const eventEmitter = { emit: vi.fn() };
   const policyRepo = { findMany: vi.fn(), count: vi.fn(), findById: vi.fn(), create: vi.fn(), update: vi.fn(), softDelete: vi.fn().mockResolvedValue(undefined) };
   const engine = { invalidatePolicy: vi.fn().mockResolvedValue(undefined) };
-  return { cls, eventEmitter, policyRepo, engine };
+  // TASK-409 — break-glass dependencies (the delete path verifies password +
+  // confirmation name; these mocks accept any password so the TASK-390 guard
+  // matrix stays focused on the protected-set behaviour).
+  const rolePolicyRepo = { countEnabledByPolicy: vi.fn().mockResolvedValue(0) };
+  const userRepo = { findById: vi.fn().mockResolvedValue({ id: ADMIN_USER.id, password: 'stored-hash' }) };
+  const crypto = { verify: vi.fn().mockResolvedValue(true) };
+  return { cls, eventEmitter, policyRepo, engine, rolePolicyRepo, userRepo, crypto };
 }
 
 function buildService(m: ReturnType<typeof makeMocks>) {
-  return new PolicyService(m.policyRepo as never, m.engine as never, m.eventEmitter as never, m.cls as never);
+  return new PolicyService(
+    m.policyRepo as never,
+    m.engine as never,
+    m.rolePolicyRepo as never,
+    m.userRepo as never,
+    m.crypto as never,
+    m.eventEmitter as never,
+    m.cls as never,
+  );
 }
 
 describe('TASK-390 #22 — PolicyService system-lockout guard', () => {
@@ -77,9 +91,9 @@ describe('TASK-390 #22 — PolicyService system-lockout guard', () => {
       expect(mocks.policyRepo.softDelete).not.toHaveBeenCalled();
     });
 
-    it('allows deleting a non-protected policy', async () => {
+    it('allows deleting a non-protected policy (with TASK-409 break-glass confirmation)', async () => {
       mocks.policyRepo.findById.mockResolvedValue(row());
-      await service.softDelete('policy-x');
+      await service.softDelete('policy-x', { password: 'pw', confirmationName: 'team-policy' });
       expect(mocks.policyRepo.softDelete).toHaveBeenCalledWith('policy-x', ADMIN_USER.id);
     });
   });

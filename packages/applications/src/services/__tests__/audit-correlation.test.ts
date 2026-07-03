@@ -163,7 +163,16 @@ describe('Audit-log version correlation (TASK-302 Stream D Phase C.8) — cross-
             softDelete: vi.fn(),
         };
 
-        const service = new (GlobalSettingService as any)(globalSettingRepo, eventEmitter, cls);
+        // TASK-396 — constructor also takes UserRepository, ICryptoService,
+        // SecretsService (used only by revealSecret; `update` ignores them).
+        const service = new (GlobalSettingService as any)(
+            globalSettingRepo,
+            { findById: vi.fn() },
+            { verify: vi.fn() },
+            { decrypt: vi.fn() },
+            eventEmitter,
+            cls,
+        );
 
         await service.update('gs-1', { value: 'new', expectedVersion: 7 } as any);
 

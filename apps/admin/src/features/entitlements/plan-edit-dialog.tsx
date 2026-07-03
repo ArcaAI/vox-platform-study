@@ -8,6 +8,8 @@ import { Switch } from '@arcaai/ui/switch';
 import type { PlanEntitlement, UpdatePlanEntitlementInput } from '@arcaai/vox';
 import { useEffect, useState, type FormEvent } from 'react';
 import { FEATURE_FIELDS, LIMIT_FIELDS, MODEL_TIERS, RATE_LIMIT_TIERS, limitInputValue, parseLimitInput } from './entitlement-fields';
+import { MOBILE_DIALOG_CONTENT, MOBILE_DIALOG_FOOTER } from '@/lib/responsive';
+import { cn } from '@/lib/utils';
 import { planLabel, type TenantPlan } from '@/features/tenants/tenant-plan';
 
 /**
@@ -56,7 +58,7 @@ export function PlanEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[70vh] flex-col sm:max-w-[60vw]">
+      <DialogContent className={cn('flex h-[70vh] flex-col sm:max-w-[60vw]', MOBILE_DIALOG_CONTENT)}>
         <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
           <DialogHeader className="shrink-0">
             <DialogTitle>Edit {plan ? planLabel(plan.plan as TenantPlan) : ''} plan defaults</DialogTitle>
@@ -92,7 +94,11 @@ export function PlanEditDialog({
                     <Label htmlFor={`plan-${f.key}`} className="cursor-pointer">
                       {f.label}
                     </Label>
-                    <Switch id={`plan-${f.key}`} checked={Boolean(features[f.key])} onCheckedChange={(v) => setFeatures((prev) => ({ ...prev, [f.key]: v }))} />
+                    <Switch
+                      id={`plan-${f.key}`}
+                      checked={Boolean(features[f.key])}
+                      onCheckedChange={(v) => setFeatures((prev) => ({ ...prev, [f.key]: v }))}
+                    />
                   </div>
                 ))}
               </div>
@@ -132,7 +138,7 @@ export function PlanEditDialog({
             </div>
           </div>
 
-          <DialogFooter className="shrink-0">
+          <DialogFooter className={cn('shrink-0', MOBILE_DIALOG_FOOTER)}>
             <DialogClose asChild>
               <Button type="button" variant="outline">
                 Cancel

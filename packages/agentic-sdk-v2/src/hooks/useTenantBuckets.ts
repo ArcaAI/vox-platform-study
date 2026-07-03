@@ -51,6 +51,8 @@ export interface UseTenantBucketsReturn {
   list: () => Promise<TenantBucket[]>;
   get: (id: string) => Promise<TenantBucket | null>;
   tree: (id: string, prefix?: string) => Promise<TenantBucketTree>;
+  /** Read-only object listing for the Stores detail browser (TASK-407); optional key prefix filter. */
+  listObjects: (id: string, prefix?: string) => Promise<TenantBucketObject[]>;
   presignedUrl: (id: string, key: string) => Promise<{ url: string }>;
   getDefaults: () => Promise<TenantBucketDefaults>;
   setDefaults: (input: SetTenantBucketDefaultsInput) => Promise<TenantBucketDefaults>;
@@ -65,6 +67,14 @@ export interface UseTenantBucketsReturn {
 export interface DeleteTenantBucketObjectResult {
   key: string;
   deleted: boolean;
+}
+
+/** One object row from the read-only bucket browser (TASK-407). */
+export interface TenantBucketObject {
+  key: string;
+  size: number;
+  lastModified?: string;
+  [key: string]: unknown;
 }
 
 export function useTenantBuckets(): UseTenantBucketsReturn {
@@ -91,6 +101,15 @@ export function useTenantBuckets(): UseTenantBucketsReturn {
   const tree = useCallback(
     (id: string, prefix?: string) =>
       execute<TenantBucketTree>('tree', (client) => client.get<TenantBucketTree>(appendFilters(TENANT_BUCKET_ENDPOINTS.TREE(id), { prefix }))),
+    [execute],
+  );
+
+  const listObjects = useCallback(
+    (id: string, prefix?: string) =>
+      execute<TenantBucketObject[]>('listObjects', async (client) => {
+        const raw = await client.get(appendFilters(TENANT_BUCKET_ENDPOINTS.LIST_OBJECTS(id), { prefix }));
+        return extractArray<TenantBucketObject>(raw);
+      }),
     [execute],
   );
 
@@ -145,5 +164,5 @@ export function useTenantBuckets(): UseTenantBucketsReturn {
     [execute],
   );
 
-  return { buckets, isLoading, error, list, get, tree, presignedUrl, getDefaults, setDefaults, create, remove, deleteObject, provision };
+  return { buckets, isLoading, error, list, get, tree, listObjects, presignedUrl, getDefaults, setDefaults, create, remove, deleteObject, provision };
 }

@@ -9,12 +9,17 @@ import {
   IUserService,
   SecretsService,
   createJwt,
+  // TASK-400 — password rotation surfaced at login (warning-only).
+  isPasswordExpired,
+  resolvePasswordPolicy,
 } from '@arcaai/applications';
 import {
   ConsultationRepository,
   EventTypes,
   ResourceStatusType,
+  ResourceType,
   RoleRepository,
+  SysEventType,
   TenantRepository,
   UserRepository,
   UserRoleAssignmentRepository,
@@ -284,10 +289,19 @@ export class AuthController {
         tenantKey: resolvedTenantKey,
       });
 
+      // TASK-400 — rotation check (warning only, never blocks). Disabled by
+      // default (maxAgeDays=0); a NULL passwordChangedAt (legacy user) never
+      // counts as expired, so enabling the knob cannot lock anyone out.
+      const passwordExpired = isPasswordExpired(
+        (user as { passwordChangedAt?: Date | null }).passwordChangedAt ?? null,
+        resolvePasswordPolicy(this.appSettingsService).maxAgeDays,
+      );
+
       return {
         user: userResponse,
         token,
         refreshToken,
+        ...(passwordExpired ? { passwordExpired } : {}),
       };
     } catch (error) {
       if (error instanceof UnauthorizedException || error instanceof BadRequestException) {
@@ -473,6 +487,20 @@ export class AuthController {
     const adminUser = this.clsService.get('user');
     if (!adminUser) {
       throw new UnauthorizedException('User not found in context');
+    }
+
+    // TASK-401 — nested impersonation is never allowed: an impersonated
+    // session (impersonatedBy claim present) cannot start another. Backported
+    // to this legacy route so no nesting path remains.
+    if (adminUser.impersonatedBy) {
+      this.recordImpersonationDenied(req, adminUser.id, request.targetUserId, ImpersonationDeniedReason.NestedImpersonation);
+      throw new ForbiddenException('An impersonated session cannot start another impersonation');
+    }
+
+    // TASK-401 — self-impersonation guard (backported alongside the nested one).
+    if (request.targetUserId === adminUser.id) {
+      this.recordImpersonationDenied(req, adminUser.id, request.targetUserId, ImpersonationDeniedReason.SelfImpersonation);
+      throw new BadRequestException('You cannot impersonate yourself');
     }
 
     const adminRoles = await this.getUserRoles(adminUser.id);
@@ -874,6 +902,27 @@ export class AuthController {
       userAgent: req.headers['user-agent'] || 'Unknown',
       timestamp: new Date(),
     } satisfies ImpersonationEventPayload);
+
+    // TASK-401 — forced audit row for the lifecycle END, symmetric with the
+    // USER_IMPERSONATION_STARTED row minted by AdminImpersonationController
+    // (TASK-396 forceAuditLog pattern). The impersonation token always carries
+    // the resolved tenant, so CLS attribution is correct here.
+    this.eventEmitter?.emit(SysEventType.ResourceViewed, {
+      responsibleEntityId: user.impersonatedBy,
+      responsibleIp: req.ip || '127.0.0.1',
+      resourceType: ResourceType.User,
+      resourceId: user.id,
+      correlationId: this.clsService.get('correlationId') ?? undefined,
+      tenantId: this.clsService.get('tenantId') ?? user.tenantId ?? undefined,
+      forceAuditLog: true,
+      data: {
+        action: 'USER_IMPERSONATION_ENDED',
+        impersonatorUserId: user.impersonatedBy,
+        targetUserId: user.id,
+        tenantId: this.clsService.get('tenantId') ?? user.tenantId ?? null,
+        endedAt: new Date().toISOString(),
+      },
+    });
     return { success: true };
   }
 

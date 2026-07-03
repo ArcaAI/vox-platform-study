@@ -6,10 +6,11 @@
 
 import { useState, useCallback } from 'react';
 import { useApiOperation } from './useApiOperation';
-import { USER_ENDPOINTS } from '../core/constants';
+import { USER_ENDPOINTS, AUTH_ENDPOINTS } from '../core/constants';
 import { extractArray, extractPaginated } from '../utils/responseUtils';
 import { appendPagination, appendFilters } from '../utils/urlUtils';
 import type { PaginationParams, PaginatedResponse } from '../types/common';
+import type { AdminImpersonateOptions, ImpersonateResponse } from '../types/auth';
 
 export interface User {
   id: string;
@@ -84,8 +85,18 @@ export interface CompletePasswordResetResult {
   success: boolean;
 }
 
-/** TASK-388 #9 — server-side bulk user actions. */
-export type BulkUserActionType = 'enable' | 'disable' | 'delete' | 'assign-departments';
+/** TASK-400 — public self-service forgot-password (anti-enumeration: always the same ack). */
+export interface RequestPasswordResetInput {
+  email: string;
+}
+
+export interface RequestPasswordResetResult {
+  success: boolean;
+  message: string;
+}
+
+/** TASK-388 #9 — server-side bulk user actions (+ TASK-398 `assign-role`). */
+export type BulkUserActionType = 'enable' | 'disable' | 'delete' | 'assign-departments' | 'assign-role';
 
 export interface BulkUserActionInput {
   action: BulkUserActionType;
@@ -93,6 +104,8 @@ export interface BulkUserActionInput {
   /** Required for action=assign-departments. */
   departmentIds?: string[];
   primaryDepartmentId?: string;
+  /** Required for action=assign-role (TASK-398). */
+  roleId?: string;
 }
 
 export interface BulkUserActionItemResult {
@@ -161,6 +174,21 @@ export interface UseUsersReturn {
   resetPassword: (userId: string, input?: ResetPasswordInput) => Promise<ResetPasswordResult>;
   /** TASK-388 #8 — public completion of a reset link (token-carried). */
   completePasswordReset: (input: CompletePasswordResetInput) => Promise<CompletePasswordResetResult>;
+  /** TASK-400 — public self-service forgot-password (always resolves with the generic ack). */
+  requestPasswordReset: (input: RequestPasswordResetInput) => Promise<RequestPasswordResetResult>;
+  /**
+   * TASK-401 — super-admin-only time-boxed impersonation mint ("act as").
+   * Returns the target session payload (token + user + expiry). The CALLER owns
+   * the token swap (e.g. the admin app's auth store) — unlike
+   * `useAuth().impersonate()`, nothing is stashed inside the SDK client here.
+   */
+  impersonate: (userId: string, options?: AdminImpersonateOptions) => Promise<ImpersonateResponse>;
+  /**
+   * TASK-401 — end an active impersonation early: revokes the impersonation
+   * token's jti server-side (audited). Must be called while the client still
+   * sends the impersonation token; the caller then restores its original session.
+   */
+  endImpersonation: () => Promise<{ success: boolean }>;
   /** TASK-388 #9 — server-side bulk action with per-item results. */
   bulkAction: (input: BulkUserActionInput) => Promise<BulkUserActionResult>;
   /** TASK-388 #10 — server-side export (csv | xlsx | pdf) as a Blob. */
@@ -307,6 +335,35 @@ export function useUsers(): UseUsersReturn {
     [execute],
   );
 
+  // TASK-400 — public forgot-password; the reset link travels ONLY via email.
+  const requestPasswordReset = useCallback(
+    (input: RequestPasswordResetInput) =>
+      execute<RequestPasswordResetResult>('requestPasswordReset', (client) =>
+        client.post<RequestPasswordResetResult>(USER_ENDPOINTS.FORGOT_PASSWORD, input),
+      ),
+    [execute],
+  );
+
+  // TASK-401 — super-admin impersonation mint; thin wrapper (token swap is the
+  // caller's job) so the admin app can retain its original session for restore.
+  const impersonate = useCallback(
+    (userId: string, options?: AdminImpersonateOptions) =>
+      execute<ImpersonateResponse>('impersonate', (client) =>
+        client.post<ImpersonateResponse>(USER_ENDPOINTS.IMPERSONATE(userId), options ?? {}),
+      ),
+    [execute],
+  );
+
+  // TASK-401 — early end: server-side jti revocation via the existing
+  // /auth/revoke-impersonation route (called with the impersonation token).
+  const endImpersonation = useCallback(
+    () =>
+      execute<{ success: boolean }>('endImpersonation', (client) =>
+        client.post<{ success: boolean }>(AUTH_ENDPOINTS.REVOKE_IMPERSONATION, {}),
+      ),
+    [execute],
+  );
+
   // TASK-388 #9 — server-side bulk action (one round-trip, per-item results).
   const bulkAction = useCallback(
     (input: BulkUserActionInput) =>
@@ -352,6 +409,9 @@ export function useUsers(): UseUsersReturn {
     assignDepartments,
     resetPassword,
     completePasswordReset,
+    requestPasswordReset,
+    impersonate,
+    endImpersonation,
     bulkAction,
     exportUsers,
   };

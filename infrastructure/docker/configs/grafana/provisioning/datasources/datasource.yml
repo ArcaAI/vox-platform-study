@@ -1,0 +1,24 @@
+# ============================================================================
+# HOPE — DEV Grafana datasource provisioning (TASK-397, builds on TASK-386)
+# ============================================================================
+# Single Prometheus datasource for the dev platform-metrics profile. Grafana
+# and Prometheus share the compose `hope-network`, so Grafana reaches Prometheus
+# by its service name (`prometheus:9090`) — NOT host.docker.internal (that is
+# only how Prometheus reaches the HOST-run API/Python /metrics endpoints).
+#
+# The fixed `uid` (hope-prometheus) lets the provisioned starter dashboard bind
+# to this datasource deterministically (no manual datasource pick on import).
+# ============================================================================
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: hope-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST

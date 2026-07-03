@@ -402,13 +402,36 @@ export async function createTestRole(
 export async function deleteTestRole(
   request: APIRequestContext,
   token: string,
-  roleId: string
+  roleId: string,
+  /**
+   * TASK-409 — role deletion requires break-glass step-up (caller's current
+   * password + the exact role name). Defaults to the seeded test password;
+   * the name is fetched from the API when not supplied.
+   */
+  breakGlass: { password?: string; confirmationName?: string } = {}
 ): Promise<boolean> {
   const url = `/api/v1/admin/rbac/roles/${roleId}`;
+
+  let confirmationName = breakGlass.confirmationName;
+  if (!confirmationName) {
+    try {
+      const lookup = await request.get(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (lookup.status() === 200) {
+        confirmationName = ((await lookup.json()) as { name?: string }).name;
+      }
+    } catch {
+      // fall through — the DELETE below will surface the real failure
+    }
+  }
+
   let response;
   try {
     response = await request.delete(url, {
       headers: { Authorization: `Bearer ${token}` },
+      data: {
+        password: breakGlass.password ?? SEEDED_USERS.superAdmin.password,
+        confirmationName,
+      },
     });
   } catch (error) {
     throw wrapTransportError('DELETE', url, error);
@@ -480,13 +503,36 @@ export async function createTestPolicy(
 export async function deleteTestPolicy(
   request: APIRequestContext,
   token: string,
-  policyId: string
+  policyId: string,
+  /**
+   * TASK-409 — policy deletion requires break-glass step-up (caller's current
+   * password + the exact policy name). Defaults to the seeded test password;
+   * the name is fetched from the API when not supplied.
+   */
+  breakGlass: { password?: string; confirmationName?: string } = {}
 ): Promise<boolean> {
   const url = `/api/v1/admin/rbac/policies/${policyId}`;
+
+  let confirmationName = breakGlass.confirmationName;
+  if (!confirmationName) {
+    try {
+      const lookup = await request.get(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (lookup.status() === 200) {
+        confirmationName = ((await lookup.json()) as { name?: string }).name;
+      }
+    } catch {
+      // fall through — the DELETE below will surface the real failure
+    }
+  }
+
   let response;
   try {
     response = await request.delete(url, {
       headers: { Authorization: `Bearer ${token}` },
+      data: {
+        password: breakGlass.password ?? SEEDED_USERS.superAdmin.password,
+        confirmationName,
+      },
     });
   } catch (error) {
     throw wrapTransportError('DELETE', url, error);

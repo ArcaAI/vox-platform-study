@@ -6,6 +6,6 @@ import { createFileRoute, Outlet } from '@tanstack/react-router';
  * Tenants` breadcrumb prefix. Renders only the outlet — no extra chrome.
  */
 export const Route = createFileRoute('/_authenticated/tenants')({
-    staticData: { crumb: [{ label: 'Platform', to: null }, { label: 'Tenants' }] },
-    component: () => <Outlet />,
+  staticData: { crumb: [{ label: 'Platform', to: null }, { label: 'Tenants' }] },
+  component: () => <Outlet />,
 });

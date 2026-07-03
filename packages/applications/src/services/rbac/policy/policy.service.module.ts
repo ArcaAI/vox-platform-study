@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
-import { CoreDatabaseModule, PolicyRepository } from '@arcaai/domains';
+import { CoreDatabaseModule, PolicyRepository, RolePolicyRepository } from '@arcaai/domains';
 import { CommonServiceModule } from '../../baseServices';
 import { AuthorizationModule } from '../../../authorization/authorization.module';
+import { CryptoServiceModule } from '../../crypto/crypto.service.module';
 import { IPolicyService } from './IPolicyService';
 import { PolicyService } from './policy.service';
 
@@ -15,11 +16,17 @@ import { PolicyService } from './policy.service';
  * `packages/domains/src/common/databaseServices/core/core.database.module.ts`
  * out of edits. `CoreDatabaseModule` is still imported so the
  * `'CORE_DATABASE_SERVICE'` token the repository injects is in scope.
+ *
+ * TASK-409 — break-glass needs `ICryptoService` (bcrypt step-up verify, via
+ * CryptoServiceModule) + `UserRepository` (via CoreDatabaseModule) +
+ * `RolePolicyRepository` (multi-role blast-radius count, registered here per
+ * the TASK-311 D-3 pattern).
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule, AuthorizationModule],
+  imports: [CommonServiceModule, CoreDatabaseModule, AuthorizationModule, CryptoServiceModule],
   providers: [
     PolicyRepository,
+    RolePolicyRepository,
     {
       provide: IPolicyService,
       useClass: PolicyService,

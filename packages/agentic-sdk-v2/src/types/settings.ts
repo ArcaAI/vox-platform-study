@@ -13,7 +13,34 @@ export interface GlobalSetting {
   namespace?: string;
   description?: string;
   tenantId?: string;
+  /**
+   * TASK-396 — server-authoritative "this row holds a secret" marker. When
+   * true the server masks `value` on list/get; the admin console renders the
+   * mask with an enabled "Reveal" affordance, and the plaintext is fetched via
+   * `revealSecret(id, { password })`.
+   */
+  isSecret?: boolean;
   [key: string]: unknown;
+}
+
+/**
+ * TASK-396 — step-up input for {@link UseGlobalSettingsReturn.revealSecret}.
+ * `password` is the caller's CURRENT account password, re-verified server-side;
+ * it is sent over TLS and never stored client-side.
+ */
+export interface RevealSecretInput {
+  password: string;
+}
+
+/**
+ * TASK-396 — the transient decrypted-secret payload returned by the reveal
+ * endpoint. Callers show `value` briefly and must never persist it.
+ */
+export interface RevealSecretResult {
+  id: string;
+  key: string;
+  value: string;
+  revealedAt: string;
 }
 
 export interface CreateGlobalSettingInput {

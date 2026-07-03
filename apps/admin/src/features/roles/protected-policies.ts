@@ -13,13 +13,17 @@
  * Delete — instead of offering an action the API would reject (defense in depth;
  * the console prefers to hide/disable what the server would 4xx).
  *
- * FLAG: this is name-based. If a deployment renames these seeded policies, both
- * the backend guard and this constant must be updated together.
+ * TASK-409 — the server now returns an authoritative `isProtected` marker on
+ * every policy (rename-proof, seed-managed, read-only). The check below
+ * prefers that marker; the name list remains as the legacy fallback for API
+ * responses that predate the column.
  */
 
-/** Minimal policy shape the guard needs (name is enough to identify the set). */
+/** Minimal policy shape the guard needs. */
 export interface ProtectedPolicyLike {
-    name?: string | null;
+  name?: string | null;
+  /** TASK-409 — server-authoritative anti-lockout marker. */
+  isProtected?: boolean | null;
 }
 
 /**
@@ -33,13 +37,17 @@ export type ProtectedSystemPolicyName = (typeof PROTECTED_SYSTEM_POLICY_NAMES)[n
 
 /** Human-readable reason shown on the disabled Delete affordance + Protected badge. */
 export const PROTECTED_POLICY_REASON =
-    'Protected system policy — cannot be deleted or disabled (anti-lockout). Renaming and adding rules are still allowed.';
+  'Protected system policy — cannot be deleted or disabled (anti-lockout). Renaming and adding rules are still allowed.';
 
 /**
- * Whether a policy is in the anti-lockout protected set. Matches by exact `name`
- * (case-sensitive, mirroring the seed + backend guard).
+ * Whether a policy is in the anti-lockout protected set.
+ *
+ * TASK-409 — prefers the server-authoritative `isProtected` marker; falls back
+ * to the exact-`name` match (case-sensitive, mirroring the seed + backend
+ * guard) for payloads that predate the column.
  */
 export function isProtectedSystemPolicy(policy: ProtectedPolicyLike | null | undefined): boolean {
-    const name = policy?.name;
-    return typeof name === 'string' && (PROTECTED_SYSTEM_POLICY_NAMES as readonly string[]).includes(name);
+  if (policy?.isProtected === true) return true;
+  const name = policy?.name;
+  return typeof name === 'string' && (PROTECTED_SYSTEM_POLICY_NAMES as readonly string[]).includes(name);
 }

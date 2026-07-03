@@ -24,7 +24,7 @@ export class AuditLogProcessor extends WorkerHost {
   }
 
   async process(job: Job<AuditLogJob>): Promise<void> {
-    const { action, responsibleUserId, responsibleIp, resourceId, resourceType, data, previousData, correlationId, tenantId } = job.data;
+    const { action, responsibleUserId, responsibleIp, resourceId, resourceType, data, previousData, metadata, correlationId, tenantId } = job.data;
 
     // TASK-305 D.9.3 follow-up — fail-closed when tenantId is missing.
     // Guards against legacy queue entries that predate the multi-tenancy
@@ -56,6 +56,9 @@ export class AuditLogProcessor extends WorkerHost {
         resourceType,
         data: data ?? {},
         previousData: previousData ?? {},
+        // TASK-401 — impersonation provenance (and any other event metaData)
+        // lands on the row's plaintext `metadata` JSONB column (non-PHI).
+        metadata: metadata ?? null,
         correlationId,
         tenantId,
       });

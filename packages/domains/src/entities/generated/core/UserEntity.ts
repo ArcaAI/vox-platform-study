@@ -11,6 +11,8 @@ import * as Entities from '../../../entities';
 export interface IUserEntity extends Omit<IBaseTaggedEntity, 'tenantId'> {
   username: string;
   password: string;
+  /** TASK-400 — stamped whenever the password is set through the password module. NULL = legacy/unknown. */
+  passwordChangedAt?: Date | null;
   lastLoginAt?: Date | null;
   lastActiveAt?: Date | null;
   externalId?: string | null;
@@ -30,6 +32,7 @@ export interface IUserEntity extends Omit<IBaseTaggedEntity, 'tenantId'> {
 export class UserEntity extends BaseTaggedEntity {
   private _username: IUserEntity['username'];
   private _password: IUserEntity['password'];
+  private _passwordChangedAt?: IUserEntity['passwordChangedAt'];
   private _lastLoginAt?: IUserEntity['lastLoginAt'];
   private _lastActiveAt?: IUserEntity['lastActiveAt'];
   private _externalId?: IUserEntity['externalId'];
@@ -58,6 +61,7 @@ export class UserEntity extends BaseTaggedEntity {
     super({ ...init, tenantId: '' });
     this._username = init.username;
     this._password = init.password;
+    this._passwordChangedAt = init.passwordChangedAt;
     this._lastLoginAt = init.lastLoginAt;
     this._lastActiveAt = init.lastActiveAt;
     this._externalId = init.externalId;
@@ -88,6 +92,14 @@ export class UserEntity extends BaseTaggedEntity {
 
   set password(value: IUserEntity['password']) {
     this.setProperty('password', value);
+  }
+
+  get passwordChangedAt(): IUserEntity['passwordChangedAt'] {
+    return this._passwordChangedAt;
+  }
+
+  set passwordChangedAt(value: IUserEntity['passwordChangedAt']) {
+    this.setProperty('passwordChangedAt', value);
   }
 
   get lastLoginAt(): IUserEntity['lastLoginAt'] {

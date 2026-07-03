@@ -6,11 +6,11 @@ import { useAuthStore } from '@/store/auth-store';
 import { useTenantDetailStore } from '@/store/tenant-detail-store';
 
 export interface DepartmentScope {
-    department: Department | null;
-    tenant: Tenant | null;
-    superAdmin: boolean;
-    /** Write access: an admin role on a non-system tenant (mirrors the server CASL gate). */
-    canManage: boolean;
+  department: Department | null;
+  tenant: Tenant | null;
+  superAdmin: boolean;
+  /** Write access: an admin role on a non-system tenant (mirrors the server CASL gate). */
+  canManage: boolean;
 }
 
 /**
@@ -20,13 +20,13 @@ export interface DepartmentScope {
  * is no prop-drilling or duplicate fetch (mirrors the existing TASK-379 pattern).
  */
 export function useDepartmentScope(): DepartmentScope {
-    const department = useTenantDetailStore((s) => s.department);
-    const tenant = useTenantDetailStore((s) => s.tenant);
-    const roles = useAuthStore((s) => s.user?.roles);
-    return {
-        department,
-        tenant,
-        superAdmin: isSuperAdmin(roles),
-        canManage: !isSystemTenant(tenant) && isAdminRole(roles ?? undefined),
-    };
+  const department = useTenantDetailStore((s) => s.department);
+  const tenant = useTenantDetailStore((s) => s.tenant);
+  const roles = useAuthStore((s) => s.user?.roles);
+  return {
+    department,
+    tenant,
+    superAdmin: isSuperAdmin(roles),
+    canManage: !isSystemTenant(tenant) && isAdminRole(roles ?? undefined),
+  };
 }

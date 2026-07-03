@@ -713,8 +713,9 @@ describe('TASK-210 Phase 6: SDK v2 route standardization', () => {
       );
     });
 
-    it('GLOBAL_SETTINGS_ENDPOINTS should have exactly 7 keys', () => {
-      expect(Object.keys(GLOBAL_SETTINGS_ENDPOINTS)).toHaveLength(7);
+    it('GLOBAL_SETTINGS_ENDPOINTS should have exactly 8 keys', () => {
+      // TASK-396 added REVEAL (7 -> 8).
+      expect(Object.keys(GLOBAL_SETTINGS_ENDPOINTS)).toHaveLength(8);
     });
 
     it('USER_SETTINGS_ENDPOINTS should have exactly 2 keys (TASK-265 W0-8 reduction)', () => {

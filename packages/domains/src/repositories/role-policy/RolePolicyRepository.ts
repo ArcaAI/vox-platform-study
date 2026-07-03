@@ -28,6 +28,7 @@ interface RolePolicyDelegateLike {
   create: (args: unknown) => Promise<unknown>;
   update: (args: unknown) => Promise<unknown>;
   updateMany: (args: unknown) => Promise<unknown>;
+  count: (args: unknown) => Promise<number>;
 }
 
 @Injectable()
@@ -58,6 +59,17 @@ export class RolePolicyRepository {
         resourceStatusUpdatedAt: new Date(),
         resourceStatusUpdatedBy: updatedBy,
       },
+    });
+  }
+
+  /**
+   * TASK-409 — number of ENABLED role assignments carrying this policy.
+   * `PolicyService` uses it to decide whether a rule-edit needs break-glass
+   * (a policy attached to >1 role has a multi-role blast radius).
+   */
+  async countEnabledByPolicy(policyId: string): Promise<number> {
+    return this.delegate.count({
+      where: { policyId, resourceStatus: ResourceStatusType.ENABLED },
     });
   }
 }

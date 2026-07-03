@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ForbiddenException, NotFoundException, StreamableFile } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException, StreamableFile } from '@nestjs/common';
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { UserController } from '../user.controller';
 
@@ -24,6 +24,13 @@ const createMockUserService = () => ({
     fetchByExternalId: vi.fn(),
     update: vi.fn(),
     deleteById: vi.fn(),
+    // TASK-398 (P1-7) — export enrichment read-model; default = nothing enriched.
+    getExportEnrichment: vi.fn().mockResolvedValue({}),
+});
+
+// TASK-398 (P1-6) — fake CASL ability for the bulk assign-role posture checks.
+const abilityGranting = (granted: boolean) => ({
+    can: vi.fn((action: string, subject: string) => (action === 'manage' && subject === 'UserRoleAssignment' ? granted : true)),
 });
 
 const createMockApiKeyService = () => ({
@@ -764,6 +771,104 @@ describe('UserController', () => {
     });
 
     // ------------------------------------------------------------------------
+    // TASK-398 (P1-6) — the deferred `assign-role` bulk arm. Mirrors the
+    // single-user `POST :id/roles` semantics: same service (`create` enforces
+    // the AC-02 tier/tenant guards per item) and the SAME CASL posture — the
+    // arm requires `manage:UserRoleAssignment` (checked imperatively via the
+    // request ability, since the class-level gate is only `manage:User`).
+    // ------------------------------------------------------------------------
+    describe('POST /admin/users/bulk-actions action="assign-role" (TASK-398 P1-6)', () => {
+        it('assigns the role to every id via userRoleAssignmentService.create, per-item envelope', async () => {
+            mockUserRoleAssignmentService.create.mockResolvedValue(fakeUserRoleAssignmentEntity);
+
+            const result = await controller.bulkActions(
+                { action: 'assign-role', ids: ['user-1', 'user-2'], roleId: 'role-9' } as any,
+                abilityGranting(true) as any,
+            );
+
+            expect(mockUserRoleAssignmentService.create).toHaveBeenCalledTimes(2);
+            expect(mockUserRoleAssignmentService.create).toHaveBeenCalledWith({ roleId: 'role-9', userId: 'user-1' });
+            expect(mockUserRoleAssignmentService.create).toHaveBeenCalledWith({ roleId: 'role-9', userId: 'user-2' });
+            expect(result).toMatchObject({ action: 'assign-role', total: 2, succeeded: 2, failed: 0 });
+        });
+
+        it('rejects a caller WITHOUT manage:UserRoleAssignment with 403 before any mutation (AC-02 posture)', async () => {
+            await expect(
+                controller.bulkActions({ action: 'assign-role', ids: ['user-1'], roleId: 'role-9' } as any, abilityGranting(false) as any),
+            ).rejects.toBeInstanceOf(ForbiddenException);
+
+            expect(mockUserRoleAssignmentService.create).not.toHaveBeenCalled();
+        });
+
+        it('rejects a missing roleId with 400 before any mutation', async () => {
+            await expect(
+                controller.bulkActions({ action: 'assign-role', ids: ['user-1'] } as any, abilityGranting(true) as any),
+            ).rejects.toBeInstanceOf(BadRequestException);
+
+            expect(mockUserRoleAssignmentService.create).not.toHaveBeenCalled();
+        });
+
+        it('does NOT apply the UserRoleAssignment posture to the other arms (disable works without it)', async () => {
+            mockUserService.update.mockResolvedValue(fakeUserEntity);
+
+            const result = await controller.bulkActions(
+                { action: 'disable', ids: ['user-1'] } as any,
+                abilityGranting(false) as any,
+            );
+
+            expect(result).toMatchObject({ action: 'disable', succeeded: 1 });
+        });
+
+        it('records a per-item service failure (e.g. AC-02 tier guard) and keeps processing', async () => {
+            mockUserRoleAssignmentService.create
+                .mockRejectedValueOnce(new Error('Only a SUPER_ADMIN may assign the SUPER_ADMIN role'))
+                .mockResolvedValueOnce(fakeUserRoleAssignmentEntity);
+
+            const result = await controller.bulkActions(
+                { action: 'assign-role', ids: ['user-1', 'user-2'], roleId: 'role-sa' } as any,
+                abilityGranting(true) as any,
+            );
+
+            expect(result).toMatchObject({ total: 2, succeeded: 1, failed: 1 });
+            expect(result.results).toContainEqual({
+                id: 'user-1',
+                success: false,
+                error: 'Only a SUPER_ADMIN may assign the SUPER_ADMIN role',
+            });
+        });
+
+        it('validates EVERY id — a cross-tenant target is recorded failed and never reaches the service', async () => {
+            const cls = createMockCls({ id: 'admin-a', tenantId: 't-A', roles: ['TENANT_ADMIN'] }, 't-A');
+            mockUserRoleAssignmentService.findActiveTenantIdsForUser.mockImplementation((id: string) =>
+                id === 'mine' ? Promise.resolve(['t-A']) : Promise.resolve(['t-B']),
+            );
+            mockUserRoleAssignmentService.create.mockResolvedValue(fakeUserRoleAssignmentEntity);
+            const scoped = new UserController(
+                mockUserService as any,
+                mockApiKeyService as any,
+                mockUserSettingsService as any,
+                mockUserRoleAssignmentService as any,
+                mockUserProfileService as any,
+                mockVoiceProfileService as any,
+                mockUserDepartmentService as any,
+                mockUserPasswordService as any,
+                mockUserExportService as any,
+                cls as any,
+            );
+
+            const result = await scoped.bulkActions(
+                { action: 'assign-role', ids: ['mine', 'theirs'], roleId: 'role-9' } as any,
+                abilityGranting(true) as any,
+            );
+
+            expect(mockUserRoleAssignmentService.create).toHaveBeenCalledTimes(1);
+            expect(mockUserRoleAssignmentService.create).toHaveBeenCalledWith({ roleId: 'role-9', userId: 'mine' });
+            expect(result).toMatchObject({ succeeded: 1, failed: 1 });
+            expect(result.results).toContainEqual(expect.objectContaining({ id: 'theirs', success: false }));
+        });
+    });
+
+    // ------------------------------------------------------------------------
     // TASK-388 #10 — GET /admin/users/export (csv/xlsx/pdf).
     // ------------------------------------------------------------------------
     describe('GET /admin/users/export (exportUsers)', () => {
@@ -782,6 +887,53 @@ describe('UserController', () => {
                 { id: 'user-1', username: 'john_doe', email: '', type: 'User', status: 'ENABLED', departments: '' },
             ]);
             expect(result).toBeInstanceOf(StreamableFile);
+        });
+
+        // TASK-398 (P1-7) — email + department-NAME enrichment on the export path.
+        it('enriches rows with email + department names via ONE batched getExportEnrichment call', async () => {
+            mockUserService.fetchAll.mockResolvedValue(fakeFetchResponse);
+            mockUserService.getExportEnrichment.mockResolvedValue({
+                'user-1': { email: 'john@example.com', departmentNames: ['Cardiology', 'Radiology'] },
+            });
+            mockUserExportService.build.mockResolvedValue(fakeFile);
+
+            await controller.exportUsers({ format: 'csv' } as any);
+
+            // ONE call carrying the FULL id set (the no-N+1 contract at this layer).
+            expect(mockUserService.getExportEnrichment).toHaveBeenCalledTimes(1);
+            expect(mockUserService.getExportEnrichment).toHaveBeenCalledWith(['user-1'], undefined);
+            expect(mockUserExportService.build).toHaveBeenCalledWith('csv', [
+                {
+                    id: 'user-1',
+                    username: 'john_doe',
+                    email: 'john@example.com',
+                    type: 'User',
+                    status: 'ENABLED',
+                    departments: 'Cardiology, Radiology',
+                },
+            ]);
+        });
+
+        it('threads the caller tenant into the enrichment (tenant-scoped export)', async () => {
+            mockUserService.fetchAllByTenantId.mockResolvedValue(fakeFetchResponse);
+            mockUserExportService.build.mockResolvedValue(fakeFile);
+            const cls = createMockCls({ id: 'u-1', tenantId: 't-A', roles: ['TENANT_ADMIN'] }, 't-A');
+            const scoped = new UserController(
+                mockUserService as any,
+                mockApiKeyService as any,
+                mockUserSettingsService as any,
+                mockUserRoleAssignmentService as any,
+                mockUserProfileService as any,
+                mockVoiceProfileService as any,
+                mockUserDepartmentService as any,
+                mockUserPasswordService as any,
+                mockUserExportService as any,
+                cls as any,
+            );
+
+            await scoped.exportUsers({ format: 'csv' } as any);
+
+            expect(mockUserService.getExportEnrichment).toHaveBeenCalledWith(['user-1'], 't-A');
         });
 
         it('defaults the format to csv when none is supplied', async () => {

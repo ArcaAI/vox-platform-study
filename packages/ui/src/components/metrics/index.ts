@@ -1,9 +1,7 @@
 // TASK-377 — Shared Metrics / Reporting / Chart primitives (PHASE-2-PLAN §3).
-// Subpath barrel: `@arcaai/ui/components/metrics`. This exposes the FULL set,
-// including the canonical semantic `ServiceStatusBar`, which is intentionally NOT
-// re-exported from the root barrel because the name collides with the legacy
-// `components/custom/service-status-bar` (still imported by apps/admin). Consumers
-// of the new canonical bar import it from this subpath.
+// Subpath barrel: `@arcaai/ui/components/metrics`. Since TASK-404 retired the
+// legacy `components/custom/service-status-bar`, the canonical semantic
+// `ServiceStatusBar` is also re-exported from the root barrel.
 
 export * from './status-dot';
 export * from './stat-card';

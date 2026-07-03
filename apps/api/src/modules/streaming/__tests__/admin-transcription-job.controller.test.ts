@@ -65,5 +65,18 @@ describe('AdminTranscriptionJobController', () => {
                 | undefined;
             expect(meta).toEqual([{ action: 'manage', subject: 'Tenant' }]);
         });
+
+        // TASK-407 — the guard resolves permissions with getAllAndOverride, so a
+        // class-only `manage Tenant` gate actually EXCLUDED tenant admins (the
+        // seed grants them read/update Tenant, not manage). The design (§5.8)
+        // scopes Audio Processing on AsrPipeline, which `tenant-full-access`
+        // grants — so the reads carry a handler-level `read AsrPipeline` gate,
+        // mirroring TenantBucketController's class-manage + handler-read shape.
+        it.each(['list', 'getStats', 'getByStatus'] as const)('%s is handler-gated by read AsrPipeline (tenant admins pass, doctors do not)', (method) => {
+            const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, AdminTranscriptionJobController.prototype[method]) as
+                | Array<{ action: string; subject: string }>
+                | undefined;
+            expect(meta).toEqual([{ action: 'read', subject: 'AsrPipeline' }]);
+        });
     });
 });

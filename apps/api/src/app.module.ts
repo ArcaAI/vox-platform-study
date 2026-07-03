@@ -57,6 +57,7 @@ import { PipelineModule } from './modules/pipeline/pipeline.module';
 import { AiModelModule } from './modules/ai-model/ai-model.module';
 import { PromptManagementModule } from './modules/prompt-management/prompt-management.module';
 import { PrismaStudioModule, shouldEnablePrismaStudio } from './modules/pstudio/pstudio.module';
+import { PrismaStudioStatusModule } from './modules/pstudio/pstudio-status.module';
 import { QueueAdminModule } from './modules/queue-admin/queue-admin.module';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { StorageAccessKeyModule } from './modules/storage-access-key/storage-access-key.module';
@@ -263,6 +264,9 @@ const featureModules: any[] = [
   // TASK-356 Phase 5 — /admin/harness/pipeline-policy (realtime-toggle cascade admin).
   PipelinePolicyAdminModule,
   QueueAdminModule,
+  // TASK-403 — always-on availability probe for the dev-only Prisma Studio
+  // shell (the shell module below stays conditionally registered).
+  PrismaStudioStatusModule,
   RbacModule,
   StorageModule,
   StorageAccessKeyModule,

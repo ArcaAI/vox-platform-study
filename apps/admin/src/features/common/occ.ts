@@ -11,11 +11,11 @@ const OCC_CONFLICT_MESSAGE = 'This changed since you loaded it. We refreshed the
 
 /** Pull an HTTP status off an error-like object (top-level `status`/`statusCode`). */
 function readStatus(value: unknown): number | undefined {
-    if (!value || typeof value !== 'object') return undefined;
-    const record = value as { status?: unknown; statusCode?: unknown };
-    if (typeof record.status === 'number') return record.status;
-    if (typeof record.statusCode === 'number') return record.statusCode;
-    return undefined;
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as { status?: unknown; statusCode?: unknown };
+  if (typeof record.status === 'number') return record.status;
+  if (typeof record.statusCode === 'number') return record.statusCode;
+  return undefined;
 }
 
 /**
@@ -24,17 +24,17 @@ function readStatus(value: unknown): number | undefined {
  * nests the HTTP status under `context` (`{ context: { status: 409 } }`).
  */
 export function isOccConflict(error: unknown): boolean {
-    if (!error || typeof error !== 'object') return false;
-    const status = readStatus(error) ?? readStatus((error as { context?: unknown }).context);
-    return status !== undefined && OCC_CONFLICT_STATUSES.has(status);
+  if (!error || typeof error !== 'object') return false;
+  const status = readStatus(error) ?? readStatus((error as { context?: unknown }).context);
+  return status !== undefined && OCC_CONFLICT_STATUSES.has(status);
 }
 
 export interface OccResolution {
-    conflict: boolean;
-    /** Present only on conflict — the refetch-and-retry guidance to surface. */
-    message?: string;
+  conflict: boolean;
+  /** Present only on conflict — the refetch-and-retry guidance to surface. */
+  message?: string;
 }
 
 export function reduceOccConflict(error: unknown): OccResolution {
-    return isOccConflict(error) ? { conflict: true, message: OCC_CONFLICT_MESSAGE } : { conflict: false };
+  return isOccConflict(error) ? { conflict: true, message: OCC_CONFLICT_MESSAGE } : { conflict: false };
 }

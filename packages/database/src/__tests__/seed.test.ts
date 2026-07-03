@@ -267,6 +267,14 @@ describe('Policy Seed Data', () => {
             expect(systemFullAccess?.scope).toBe(PolicyScope.GLOBAL);
         });
 
+        // TASK-409 — the anti-lockout guard identifies the protected set by the
+        // `isProtected` column (rename-proof), with the name match as fallback.
+        // The seed MUST mark exactly the two system-critical GLOBAL policies.
+        it('should mark exactly system-full-access and rbac-system-manage as isProtected (TASK-409)', () => {
+            const protectedNames = DEFAULT_POLICIES.filter((p) => (p as { isProtected?: boolean }).isProtected === true).map((p) => p.name);
+            expect(protectedNames.sort()).toEqual(['rbac-system-manage', 'system-full-access']);
+        });
+
         it('should include tenant-full-access policy', () => {
             const tenantFullAccess = DEFAULT_POLICIES.find((p) => p.name === 'tenant-full-access');
             expect(tenantFullAccess).toBeDefined();

@@ -35,7 +35,10 @@ test.describe('TASK-392 — Entitlements console (super-admin)', () => {
     // Seed carries the four commercial plans; Enterprise is a stable label.
     await expect(page.getByText('Enterprise').first()).toBeVisible();
 
-    await page.getByRole('button', { name: /Edit .* plan/ }).first().click();
+    await page
+      .getByRole('button', { name: /Edit .* plan/ })
+      .first()
+      .click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText('Limits')).toBeVisible();

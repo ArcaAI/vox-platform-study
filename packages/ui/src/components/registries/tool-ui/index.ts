@@ -12,7 +12,8 @@ export type { CitationProps, CitationListProps } from './citation';
 
 export { CodeBlock as ToolUICodeBlock } from './code-block';
 
-export { DataTable } from './data-table';
+// The deprecated tool-ui `DataTable` was removed by TASK-410 (P2-4) — zero remaining
+// usages (grep-proven); `VirtualizedDataGrid` is the canonical data grid (TASK-372 D6).
 
 export { ImageGallery } from './image-gallery';
 export type { ImageGalleryProps } from './image-gallery';

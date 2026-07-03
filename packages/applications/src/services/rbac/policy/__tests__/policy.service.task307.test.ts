@@ -73,17 +73,29 @@ function makeMocks() {
 
   const engine = { invalidatePolicy: vi.fn().mockResolvedValue(undefined) };
 
-  return { cls, eventEmitter, policyRepo, engine };
+  // TASK-409 — break-glass dependencies (delete path verifies the caller's
+  // password and confirmation name before mutating).
+  const rolePolicyRepo = { countEnabledByPolicy: vi.fn().mockResolvedValue(0) };
+  const userRepo = { findById: vi.fn().mockResolvedValue({ id: ADMIN_USER.id, password: 'stored-hash' }) };
+  const crypto = { verify: vi.fn().mockResolvedValue(true) };
+
+  return { cls, eventEmitter, policyRepo, engine, rolePolicyRepo, userRepo, crypto };
 }
 
 function buildService(mocks: ReturnType<typeof makeMocks>) {
   return new PolicyService(
     mocks.policyRepo as never,
     mocks.engine as never,
+    mocks.rolePolicyRepo as never,
+    mocks.userRepo as never,
+    mocks.crypto as never,
     mocks.eventEmitter as never,
     mocks.cls as never,
   );
 }
+
+/** TASK-409 — the delete path now requires break-glass confirmation. */
+const BREAK_GLASS = (name: string) => ({ password: 'pw', confirmationName: name });
 
 describe('TASK-307 W6.2 — PolicyService (closes C-10 / H-9 / AC-24)', () => {
   beforeEach(() => {
@@ -296,10 +308,10 @@ describe('TASK-307 W6.2 — PolicyService (closes C-10 / H-9 / AC-24)', () => {
 
     it('flips resourceStatus to DELETED, invalidates cache, and emits Deleted event', async () => {
       const mocks = makeMocks();
-      mocks.policyRepo.findById.mockResolvedValue({ name: 'team-policy' });
+      mocks.policyRepo.findById.mockResolvedValue({ id: 'policy-1', name: 'team-policy' });
       const service = buildService(mocks);
 
-      const result = await service.softDelete('policy-1');
+      const result = await service.softDelete('policy-1', BREAK_GLASS('team-policy'));
 
       expect(mocks.policyRepo.findById).toHaveBeenCalledWith('policy-1');
       expect(mocks.policyRepo.softDelete).toHaveBeenCalledWith('policy-1', ADMIN_USER.id);

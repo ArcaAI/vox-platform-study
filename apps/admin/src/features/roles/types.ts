@@ -8,15 +8,15 @@ import type { Role } from '@arcaai/vox';
  * local view type.
  */
 export interface RolePolicyRef {
-    id: string;
-    name: string;
-    priority?: number;
+  id: string;
+  name: string;
+  priority?: number;
 }
 
 export type RoleWithPolicies = Role & { policies?: RolePolicyRef[]; isSystemRole?: boolean };
 
 /** Safely read a role's attached policies (empty array when absent). */
 export function rolePolicies(role: Role): RolePolicyRef[] {
-    const p = (role as RoleWithPolicies).policies;
-    return Array.isArray(p) ? p.filter((x): x is RolePolicyRef => Boolean(x && x.id)) : [];
+  const p = (role as RoleWithPolicies).policies;
+  return Array.isArray(p) ? p.filter((x): x is RolePolicyRef => Boolean(x && x.id)) : [];
 }

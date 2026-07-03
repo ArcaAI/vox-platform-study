@@ -220,6 +220,52 @@ describe('GlobalSettingDtoMapper', () => {
         });
     });
 
+    // TASK-396 — server-authoritative secret detection + value masking. A row is
+    // secret when it has an `encryptedValue` OR its namespace/key matches the
+    // convention; its `value` is masked ('') on list/get (plaintext only via reveal).
+    describe('TASK-396 secret masking', () => {
+        it('flags encryptedValue rows as secret and masks the value', () => {
+            const entity = { ...createMockGlobalSettingEntity({ namespace: 'general', key: 'ordinary', value: 'plaintext' }), encryptedValue: Buffer.from('vault:v1:abc') };
+
+            const result = GlobalSettingDtoMapper.ToResponse(entity as any);
+
+            expect(result.isSecret).toBe(true);
+            expect(result.value).toBe('');
+        });
+
+        it('flags the `secrets` namespace as secret and masks the value', () => {
+            const entity = createMockGlobalSettingEntity({ namespace: 'secrets', key: 'anything', value: 'plaintext' });
+
+            const result = GlobalSettingDtoMapper.ToResponse(entity as any);
+
+            expect(result.isSecret).toBe(true);
+            expect(result.value).toBe('');
+        });
+
+        it('flags convention-named keys as secret and masks the value', () => {
+            for (const key of ['integrations.api-key', 'smtp.password', 'oauth.client-secret', 'svc.access-token', 'x.credential', 'tls.private-key']) {
+                const entity = createMockGlobalSettingEntity({ namespace: 'general', key, value: 'plaintext' });
+                const result = GlobalSettingDtoMapper.ToResponse(entity as any);
+                expect(result.isSecret, key).toBe(true);
+                expect(result.value, key).toBe('');
+            }
+        });
+
+        it('does not flag ordinary settings and preserves the value', () => {
+            const entity = createMockGlobalSettingEntity({ namespace: 'general', key: 'max-concurrent-sessions', value: '10' });
+
+            const result = GlobalSettingDtoMapper.ToResponse(entity as any);
+
+            expect(result.isSecret).toBe(false);
+            expect(result.value).toBe('10');
+        });
+
+        it('isSecretEntity is a pure predicate over the convention', () => {
+            expect(GlobalSettingDtoMapper.isSecretEntity(createMockGlobalSettingEntity({ key: 'token.rotate', namespace: 'general' }) as any)).toBe(true);
+            expect(GlobalSettingDtoMapper.isSecretEntity(createMockGlobalSettingEntity({ key: 'plain-flag', namespace: 'general' }) as any)).toBe(false);
+        });
+    });
+
     describe('ToPaginatedResponse', () => {
         it('should map FetchResponse to PaginatedGlobalSettingResponse', () => {
             const entities = [

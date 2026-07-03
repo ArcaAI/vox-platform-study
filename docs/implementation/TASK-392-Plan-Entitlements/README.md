@@ -5,13 +5,19 @@
 | **Ticket**  | TASK-392                                                                                      |
 | **Title**   | Plan-entitlements system (resolution, metering, enforcement, feature gates, SDK/FE)          |
 | **Created** | 2026-07-01                                                                                    |
-| **Updated** | 2026-07-01                                                                                    |
-| **Status**  | Completed (enforcement OFF by default)                                                         |
+| **Updated** | 2026-07-02                                                                                    |
+| **Status**  | Completed — **matrix RATIFIED as-is**; enforcement **ON in DEV + STAGING**, **OFF in TEST**    |
 | **Source**  | `docs/implementation/TASK-387-Tenant-Data-Model-Backlog/ENTITLEMENTS-PROPOSAL.md` (APPROVED) |
 
 > Implements the APPROVED entitlements proposal + the §6 Q1–Q10 resolved decisions.
-> The proposal is READ-ONLY reference. Enforcement ships **OFF by default** behind a
-> global kill-switch (`entitlements.enabled`), so a partial landing is safe.
+> The proposal is READ-ONLY reference.
+>
+> **RATIFIED (2026-07-02):** the user ratified the §2 matrix **AS-IS** (STARTER / PRO·TRIAL /
+> ENTERPRISE seats, the C7 concurrency limits, and every storage/meter value — **no number
+> changes**) and directed **enabling enforcement in DEV + STAGING**. The `entitlements.enabled`
+> kill-switch is now driven by a durable, per-environment **seed default** (see §6.4): DEV +
+> STAGING come up **ON**; TEST/CI stay **OFF** (the shared E2E baseline assumes OFF). Live
+> enforcement-ON was re-proven against the `:8868` TEST stack and then reverted to OFF (§6.4).
 
 ---
 
@@ -39,7 +45,13 @@ overrides, surfaced read-only first, then enforced behind a kill-switch.
 
 ---
 
-## 2. Proposed starting matrix (Q2)
+## 2. Ratified matrix (Q2)
+
+> **RATIFIED AS-IS (2026-07-02).** The user accepted every number in §2a/§2b **without change** —
+> STARTER / PRO·TRIAL / ENTERPRISE seats (C2), the C7 concurrency limits, the C1 storage quotas,
+> and the M1–M3 monthly meters. These values are the live source of truth: they match the seed
+> (`seed/15-entitlements.ts`) and the in-code fallback (`entitlements.constants.ts`), and were
+> re-verified live in `hope_test` (§6.4). No further tuning is pending.
 
 > `null` (rendered `∞`) = unlimited/ungated for that dimension. **TRIAL mirrors PRO** (Q4:
 > trial = 1-week PRO experience). Every number is DB-backed + tunable; enforcement is off by
@@ -277,6 +289,26 @@ Two additional enforcement items landed, TDD + layer-chain, still behind `entitl
 
 - **Test-DB hygiene / reversibility:** the PRO E2E tenant ships **soft-deleted** (`resourceStatus=DELETED`) — the Prisma soft-delete filter hides it from `findById`, which is exactly why the pre-auth policy lookup + snapshot need a *visible* tenant. The script flips it `DELETED → ENABLED` for the run and **restores it to `DELETED`** on exit (reversible status flip — no delete). Additive schema only; no `DELETE`/`DROP`/`TRUNCATE`; no `db reset`; no commits/pushes. Seed leaves `entitlements.enabled = false`.
 
+### 6.4 Ratification + DEV/STAGING enablement + live re-proof (2026-07-02)
+
+Closeout of the epic after the user **ratified the §2 matrix AS-IS** (no number changes) and directed **enforcement ON in DEV + STAGING**.
+
+- **Kill-switch mechanism (confirmed):** `entitlements.enabled` is a **GlobalSetting** (Boolean, namespace `entitlements`), read **request-time** via `EntitlementsService.isEnforcementEnabled()` (`AppSettingsService` cache) and flipped at runtime by `PUT /api/v1/admin/entitlements/enabled` (super-admin; refreshes the cache). It is **not** boot-time — no rebuild/restart is needed to toggle it.
+- **Durable per-environment seed default (DEV + STAGING = ON):** `seed/15-entitlements.ts` now derives the **fresh-DB** value from `process.env.ENTITLEMENTS_ENABLED_DEFAULT` (truthy set `1/true/yes/on`) → `create.value`; `defaultValue` stays the canonical `'false'` (reset target). The upsert **`update` branch intentionally omits `value`**, so a re-seed **never clobbers a live operator toggle**.
+  - **DEV:** `.env.dev` sets `ENTITLEMENTS_ENABLED_DEFAULT=true` → a freshly-seeded DEV DB comes up **ON**.
+  - **STAGING:** set `ENTITLEMENTS_ENABLED_DEFAULT=true` in the staging deploy/host env (documented in `.env.production`); this environment cannot be deployed from here, so **staging activates on its next deploy + seed**.
+  - **TEST/CI:** intentionally **omit** the var → the shared E2E baseline stays **OFF**. **PROD:** unset → OFF (prod enablement is a separate decision).
+  - **Live DEV DB note:** the currently-running DEV `hope` DB **predates this epic** (no `core."PlanEntitlement"` table, no `entitlements.enabled` row), so forcing enforcement ON via a lone row would be unsafe (resolver reads a missing table). It was **left untouched**; the durable config brings DEV up ON on its next migrate + seed.
+- **Live enforcement-ON re-proof on the `:8868` TEST stack** (super-admin JWT; **self-reverting**, request-time toggle — no restart):
+  - Baseline: kill-switch **OFF**; ArcaAI (`plan=null`) snapshot `gated=false`, apiKeys **unlimited**.
+  - ON + `plan→STARTER`: snapshot `gated=true, enforcementEnabled=true` with the **ratified STARTER numbers live** — `apiKeys 2`, `users 5`, `departments 2`, `promptTemplates 10`, `asrPipelines 1`, `storageBytes 5368709120` (5 GiB), `concurrentSessions 5`; meters `500 / 1000 / 500`.
+  - Metered path (3rd API key, tenant at 2/2) → **`409 DOMAIN.QUOTA_EXCEEDED`** — *"Plan limit reached for 'maxApiKeys' (2/2)…"*, metadata `{capability:maxApiKeys, limit:2, used:2, requested:1}` (interceptor: quantity cap → **409**).
+  - **Reverted to OFF** → the **same create succeeds (`201`)**, proving OFF = pure no-op even at 2/2; probe key **soft-deleted**; ArcaAI plan restored to `null`.
+  - **Final shared-stack state:** `entitlements.enabled=false` (DB **and** live API), `/api/v1/health` **200**, ArcaAI back to **2** keys, no leftover probe rows. The shared TEST stack ends **OFF** by design.
+- **Folded-in test hygiene (TASK-395 supersession):** the P1-4 sectioned settings form replaced the KV table, so the stale `task-391-settings` `#24 · settings are grouped by namespace` assertion (`getByRole('cell', …)`) was refreshed to the sectioned-form **section heading** (deep-dive coverage lives in `task-395-settings-form`). `task-391-settings` + `task-395-settings-form` run **30/30 green** across desktop/tablet/mobile (verified with entitlements OFF).
+
+No commits/pushes; no `DELETE`/`DROP`/`TRUNCATE`; no `db reset`; no `build:api` (config/seed + doc/spec only).
+
 ## 7. Change History
 
 - 2026-07-01 — Ticket created; matrix + decisions + plan documented (Phase 0 gate).
@@ -284,4 +316,7 @@ Two additional enforcement items landed, TDD + layer-chain, still behind `entitl
 - 2026-07-01 — **Phase 2 landed** (`TenantUsageMeter` + live-aggregate/reconcile metering service + self-scheduling job); wired live M1–M3 meters into the capability snapshot.
 - 2026-07-01 — **Phase 3 core landed** (typed `QuotaExceededException`; pure `wouldExceedLimit` / `selectResourcesToDisable` / `isTrialExpired`; kill-switch-gated `assertQuantityQuota`). Create-path wiring + trial-expiry/downgrade jobs + Phases 4–5 tracked as follow-ups (§6.1).
 - 2026-07-01 — **Phases 3-wiring + 3-jobs + 4 + 5 landed** (§6.1): quota/meter/storage prechecks wired into C1–C6 + M1–M3 create/submit paths; trial-expiry + newest-first downgrade soft-disable jobs; NEW entitlements admin + self controllers with 409/429/413/403 error mapping + CASL gates; model clone-subset (Q8) + `resolvePlanRateLimit` (Q7, guard binding deferred + documented); SDK `useEntitlements` hook; admin matrix editor / override dialog / usage bars / trial banner. **Full integration + live enforcement-ON E2E verified 22/22** on the freed `:8868` stack (§6.2); `build:api` compiled the whole tree clean — **no TASK-393 fix needed**. Enforcement remains OFF by default; no commits/pushes; no destructive SQL. Status → **Completed**.
+- 2026-07-02 — **Epic closeout (§6.4):** matrix **RATIFIED as-is** (no number changes); made the `entitlements.enabled` seed default **env-driven** (`ENTITLEMENTS_ENABLED_DEFAULT`) so **DEV** (`.env.dev`) + **STAGING** (host env, next deploy) come up **ON** while **TEST/CI/PROD** stay OFF; **re-proved live enforcement ON** on `:8868` (`409 maxApiKeys 2/2` + STARTER snapshot) then **reverted the shared stack to OFF** (create `201`, health 200); refreshed the stale `task-391-settings` namespace assertion to the TASK-395 sectioned form (`task-391-settings` + `task-395-settings-form` **30/30 green**). Config/seed + docs/spec only; no `build:api`; no commits/pushes; no destructive SQL.
 - 2026-07-01 — **Follow-up enforcement round (§6.3):** finished the **Q7 rate-limit guard binding** (pre-auth *unverified*-JWT `tenantId` extraction in `TieredThrottlerGuard` → `resolvePlanRateLimit` + per-tenant override on the hot path; global-tier fallback when OFF / unresolvable) **and** added **concurrency seat-gating (C7)** — additive `maxConcurrentSessions` on `PlanEntitlement` + `TenantEntitlement` (seed ENTERPRISE 100 / PRO·TRIAL 25 / STARTER 5), per-tenant socket-registry aggregate, **hard-block** `assertConcurrencyQuota` at `createStreamSession` (429 + `SysEvent`, fail-open on Redis outage, no-op when OFF, ungated for null-plan), `concurrentSessions` snapshot row + FE usage bar + matrix/override field + SDK types. Verified: applications 110 / api 129 / admin 14 unit, admin type-check clean, `build:api` 8/8 + SDK + admin build, health 200, **live E2E 27/27** (Q7 tier + override on the hot path; concurrency under/over/disabled hard-block; disabled = no change; TASK-393 regression 200). Additive-only; reversible status flips only; no destructive SQL; no commits/pushes; enforcement still **OFF by default**.
+- 2026-07-02 — **DEV DB activation performed (ops, user-approved):** entitlements are now **live on the DEV `hope` DB** (`localhost:5432`) via **additive `prisma db push` + seed** — closing the §6.4 "Live DEV DB note". `migrate deploy` was **not usable**: the DEV DB was built with `db push` and has **no `_prisma_migrations` baseline** (all 31 migrations reported pending; deploy would fail on the baseline's first `CREATE TYPE` — enum types already exist — stranding a failed-migration state). Instead: (1) read-only `prisma migrate diff` pre-check confirmed the pending delta was **additive-only** (enums `TenantPlan` + `UsageMeterMetric`, `ResourceStatusType += SUSPENDED`, tables `PlanEntitlement`/`TenantEntitlement`/`TenantUsageMeter`, columns `Tenant.plan`/`Tenant.trialEndsAt`/`Department.dnaWritingStylePromptId`/`TenantBucket.quotaBytes` — zero drops); (2) non-force `pnpm db:push` (no `--force-reset`/`--accept-data-loss`) applied it clean; (3) `pnpm db:seed` (`.env.dev` → `ENTITLEMENTS_ENABLED_DEFAULT=true`) ran its earlier phases (policies → tenants/buckets → roles/departments → STT → prompts → users, idempotent upserts) but **aborted fail-closed at the API-key step** — the dev in-memory Vault had lost its state (`secret/hope/API_KEY_PEPPER` 404, no `transit/` mount), so the remaining **Vault-free** steps were executed directly from the same seed modules (`11-global-setting` → `12-rate-limit-settings` → `15-entitlements`). **Verified read-only:** `entitlements.enabled = true` (defaultValue stays `'false'`) + **4 `PlanEntitlement` rows** matching the ratified §2 matrix (STARTER 5/2/2/5 GiB·5, TRIAL=PRO 25/10/10/100 GiB·25, ENTERPRISE 100/40/50/1000 GiB·100). **Follow-up:** re-init dev Vault (`pnpm infra:up` / dev-init.sh) then re-run `pnpm db:seed` to finish the Vault-dependent fixtures (api-keys, DNA, consultations, audit log). TEST stack (`hope_test`@5433, `:8868`) untouched; no destructive SQL; no reset; no commits/pushes.
+- 2026-07-02 — **DEV seed completed (follow-up done):** restored dev Vault state by re-running the existing `hope-vault-init` sidecar only (`docker start -a hope-vault-init` — idempotent dev-init.sh; no other container touched/restarted; pepper + `transit/` `hope-globalsetting`/`hope-phi` verified), then the full `NODE_ENV=development pnpm db:seed` completed clean — Vault-dependent fixtures now seeded (HMAC-peppered API keys, DNA reports/versions, consultations + Transit-encrypted PHI, audit log); `entitlements.enabled=true` + 4 `PlanEntitlement` rows re-verified intact; `:8868` health 200 (uptime continuous) and all container uptimes unchanged.

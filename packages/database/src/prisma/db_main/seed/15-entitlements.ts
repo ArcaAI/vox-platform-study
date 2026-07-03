@@ -10,9 +10,10 @@ import { SEED_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS, SEED_PLAN_ENTIT
  *      `TenantPlan`). This is the proposed STARTER → TRIAL → PRO → ENTERPRISE
  *      matrix anchored at ~100 seats for ENTERPRISE. `null` = unlimited.
  *   2. The enforcement kill-switch (`entitlements.enabled` GlobalSetting) under
- *      the platform tenant — seeded **OFF** (Q9). Until an operator flips it
- *      per-env, every quota/feature check is a no-op, so this whole epic lands
- *      safely dark.
+ *      the platform tenant. Ships **OFF** by default (Q9) so the epic lands
+ *      safely dark; the fresh-DB seed value is **env-driven** (TASK-392 closeout)
+ *      so DEV + STAGING come up **ON** while TEST/CI/PROD stay **OFF** — see the
+ *      `ENTITLEMENTS_ENABLED_DEFAULT` note below.
  *
  * Values mirror
  * `packages/applications/src/services/entitlements/entitlements.constants.ts`
@@ -26,6 +27,26 @@ import { SEED_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS, SEED_PLAN_ENTIT
 
 const CREATED_BY = SEED_USER_IDS.SUPER_ADMIN;
 const GIB = 1024 ** 3;
+
+/**
+ * TASK-392 closeout — the kill-switch's SEED-TIME initial value is now
+ * environment-driven so an env can come up with enforcement already ON without
+ * any code change, while keeping the default SAFE (OFF):
+ *
+ *   - DEV  → `.env.dev` sets `ENTITLEMENTS_ENABLED_DEFAULT=true` → fresh DEV seed = ON.
+ *   - STAGING → its deploy/host env sets `ENTITLEMENTS_ENABLED_DEFAULT=true` → ON on the
+ *     next deploy+seed (staging uses host env; there is no committed `.env.staging`).
+ *   - TEST/CI → `.env.test` (and CI) never set the var → default **false** → OFF, so the
+ *     shared E2E baseline stays OFF even after a `pnpm test:db:reset`.
+ *   - PRODUCTION → host env unset → OFF (prod enablement is a separate decision).
+ *
+ * This only affects a FRESH row (the `create` branch). On an existing DB the
+ * kill-switch upsert's `update` branch intentionally omits `value`, so a re-seed
+ * NEVER clobbers a live operator toggle (flip it any time via
+ * `PUT /admin/entitlements/enabled`). `defaultValue` stays the canonical `'false'`.
+ */
+const TRUTHY_ENV = new Set(['1', 'true', 'yes', 'on']);
+const ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT = TRUTHY_ENV.has((process.env.ENTITLEMENTS_ENABLED_DEFAULT ?? '').trim().toLowerCase());
 
 interface PlanEntitlementSeed {
     id: string;
@@ -144,7 +165,9 @@ export const seedEntitlements = async (client: CorePrismaClient) => {
             namespace: 'entitlements',
             name: 'Entitlements Enabled',
             key: 'entitlements.enabled',
-            value: 'false',
+            // Fresh-DB initial value is env-driven (DEV/STAGING=ON, TEST/CI/PROD=OFF).
+            // `defaultValue` stays the canonical safe 'false' (reset target).
+            value: String(ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT),
             defaultValue: 'false',
             dataType: ValueType.Boolean,
             description: 'Global entitlements enforcement kill-switch. Set to true to enable quota/feature gating platform-wide.',
@@ -152,7 +175,7 @@ export const seedEntitlements = async (client: CorePrismaClient) => {
             createdBy: CREATED_BY,
         },
     });
-    console.log('  entitlements/entitlements.enabled = false');
+    console.log(`  entitlements/entitlements.enabled = ${ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT} (fresh-DB seed default; env ENTITLEMENTS_ENABLED_DEFAULT)`);
 
-    console.log(`Seeded ${PLAN_ENTITLEMENTS.length} plan entitlements + kill-switch (OFF)`);
+    console.log(`Seeded ${PLAN_ENTITLEMENTS.length} plan entitlements + kill-switch (fresh-DB default ${ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT ? 'ON' : 'OFF'})`);
 };

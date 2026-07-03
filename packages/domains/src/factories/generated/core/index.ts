@@ -25,6 +25,7 @@ export * from './KnowledgeDocumentFactory';
 export * from './MediaFactory';
 export * from './NamedEntityFactory';
 export * from './NotificationFactory';
+export * from './PasswordResetTokenFactory';
 export * from './PermissionFactory';
 export * from './PlanEntitlementFactory';
 export * from './PipelinePolicyChangeFactory';

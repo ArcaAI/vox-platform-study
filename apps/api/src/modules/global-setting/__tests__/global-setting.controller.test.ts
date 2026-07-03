@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { GlobalSettingController } from '../global-setting.controller';
 
 // The real GlobalSettingDtoMapper.ToResponse (AutoClassMapper) runs against
@@ -29,6 +30,7 @@ const createMockService = () => ({
   fetchById: vi.fn(),
   update: vi.fn(),
   deleteById: vi.fn(),
+  revealSecret: vi.fn(),
 });
 
 const createMockCls = () => ({ get: vi.fn() });
@@ -129,6 +131,40 @@ describe('GlobalSettingController', () => {
 
       expect(mockService.deleteById).toHaveBeenCalledWith('gs-1');
       expect(result.id).toBe('gs-1');
+    });
+  });
+
+  // TASK-396 — reveal ONE secret. Super-admin-only (CASL) + step-up re-auth.
+  describe('POST /admin/settings/:id/reveal (reveal)', () => {
+    it('delegates to service.revealSecret with the id + step-up password and returns the plaintext', async () => {
+      mockService.revealSecret.mockResolvedValue({ entity: fakeEntity({ id: 'gs-7', key: 'secrets.api-token' }), plaintext: 'plaintext-secret' });
+
+      const result = await controller.reveal('gs-7', { password: 'my-password' } as any);
+
+      expect(mockService.revealSecret).toHaveBeenCalledWith('gs-7', 'my-password');
+      expect(result.id).toBe('gs-7');
+      expect(result.key).toBe('secrets.api-token');
+      expect(result.value).toBe('plaintext-secret');
+      expect(typeof result.revealedAt).toBe('string');
+    });
+
+    // The reveal route carries a method-level `@Authorize(['manage','all'])`
+    // which OVERRIDES the class-level `@CanManage('GlobalSetting')` — the
+    // UnifiedAuthGuard resolves required-permission metadata via
+    // getAllAndOverride([handler, class]). Result: SUPER_ADMIN-only; a tenant
+    // admin (has manage:GlobalSetting, not manage:all) is 403.
+    it('is gated SUPER_ADMIN-only via @Authorize(["manage","all"]) (overrides the class gate)', () => {
+      const methodMeta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, GlobalSettingController.prototype.reveal) as
+        | Array<{ action: string; subject: string }>
+        | undefined;
+      expect(methodMeta).toEqual([{ action: 'manage', subject: 'all' }]);
+
+      // The class default is the broader manage:GlobalSetting (tenant admins included),
+      // proving the method-level gate is a deliberate tightening.
+      const classMeta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, GlobalSettingController) as
+        | Array<{ action: string; subject: string }>
+        | undefined;
+      expect(classMeta).toEqual([{ action: 'manage', subject: 'GlobalSetting' }]);
     });
   });
 });

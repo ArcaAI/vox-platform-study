@@ -12,6 +12,7 @@ export class Policy extends BaseDataModel {
   public description: string | null;
   public rules: JsonValue;
   public scope: Enums.PolicyScope;
+  public isProtected: boolean;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -24,6 +25,7 @@ export class Policy extends BaseDataModel {
     this.description = data.description;
     this.rules = data.rules;
     this.scope = data.scope;
+    this.isProtected = data.isProtected;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

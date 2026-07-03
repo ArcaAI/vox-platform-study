@@ -288,15 +288,17 @@ describe('WS-4 endpoint constants', () => {
       ]));
     });
 
-    it('PROMPT_TEMPLATE_ENDPOINTS should have exactly 14 keys', () => {
+    it('PROMPT_TEMPLATE_ENDPOINTS should have exactly 15 keys', () => {
       const keys = Object.keys(PROMPT_TEMPLATE_ENDPOINTS);
       // TASK-328 A4 added TEST + USAGE_ANALYTICS (10 -> 12).
       // TASK-331 doc-09 added AVAILABLE — the end-user (clinician) plane (12 -> 13).
       // TASK-389 #14 (AG8/A3) added DIFF — the server-side version-diff route (13 -> 14).
-      expect(keys).toHaveLength(14);
+      // TASK-407 added USAGE_RECORDS — tenant-wide agent-run history (14 -> 15).
+      expect(keys).toHaveLength(15);
       expect(keys).toEqual(expect.arrayContaining([
         'CREATE', 'LIST', 'AVAILABLE', 'GET', 'UPDATE', 'DELETE', 'VERSIONS', 'VERSION',
         'ASSIGN_DEPARTMENT', 'USAGE', 'ACTIVATE_VERSION', 'TEST', 'USAGE_ANALYTICS', 'DIFF',
+        'USAGE_RECORDS',
       ]));
     });
 

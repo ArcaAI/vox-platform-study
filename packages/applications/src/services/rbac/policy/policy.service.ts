@@ -1,10 +1,21 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Inject, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { PolicyFactory, PolicyRepository, ResourceStatusType, ResourceType, SysEventType } from '@arcaai/domains';
+import {
+  PolicyFactory,
+  PolicyRepository,
+  ResourceStatusType,
+  ResourceType,
+  RolePolicyRepository,
+  SysEventType,
+  SYSTEM_TENANT_ID,
+  UserRepository,
+} from '@arcaai/domains';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PolicyEngine, type PolicyRule } from '../../../authorization/policy.engine';
+import { ICryptoService } from '../../crypto/ICryptoService';
+import { BreakGlassCredentials, BreakGlassOutcome, checkBreakGlass, RBAC_BREAK_GLASS_AUDIT_ACTION } from '../breakGlass';
 import {
   CreatePolicyRequest,
   IPolicyService,
@@ -14,6 +25,17 @@ import {
   PolicyValidationResult,
   UpdatePolicyRequest,
 } from './IPolicyService';
+
+/** Minimal row shape the TASK-390/409 guards need from `findById`. */
+interface PolicyGuardRow {
+  id: string;
+  name: string;
+  isProtected?: boolean;
+  rules?: unknown;
+}
+
+/** TASK-409 — operations that can produce a break-glass audit row. */
+type BreakGlassOperation = 'policy-delete' | 'policy-edit' | 'policy-rule-edit';
 
 /**
  * TASK-307 W6.2 — Service that absorbs the direct-Prisma access that
@@ -47,8 +69,11 @@ export class PolicyService extends BaseService implements IPolicyService {
    * editable. Protected by NAME (stable, matches `01-policy.ts`); the required
    * rule tuples are the minimum grant each policy must retain.
    *
-   * FLAG (see docs/implementation/TASK-390 §3.1): name-based protection — if a
-   * deployment renames these seeded policies, update this map.
+   * TASK-409 — the name match is now the LEGACY fallback: the primary marker
+   * is the `Policy.isProtected` column (rename-proof, seeded true for the two
+   * system policies, read-only through the API). A policy is protected when
+   * `isProtected === true` OR its name matches this map (defense in depth for
+   * databases that have not re-run the seed).
    */
   private static readonly PROTECTED_SYSTEM_POLICIES: Record<string, ReadonlyArray<{ action: string; subject: string }>> = {
     'system-full-access': [{ action: 'manage', subject: 'all' }],
@@ -60,9 +85,26 @@ export class PolicyService extends BaseService implements IPolicyService {
     ],
   };
 
+  /**
+   * TASK-409 — the universe of system-critical grants. For a protected policy
+   * whose name is NOT in the legacy map (i.e. it was renamed and only the
+   * `isProtected` marker identifies it), a rules edit must retain whichever
+   * of these grants the policy currently carries.
+   */
+  private static readonly SYSTEM_CRITICAL_RULES: ReadonlyArray<{ action: string; subject: string }> = [
+    { action: 'manage', subject: 'all' },
+    { action: 'manage', subject: 'Role' },
+    { action: 'manage', subject: 'Policy' },
+    { action: 'manage', subject: 'RolePolicy' },
+    { action: 'manage', subject: 'UserRoleAssignment' },
+  ];
+
   constructor(
     private readonly policyRepository: PolicyRepository,
     private readonly policyEngine: PolicyEngine,
+    private readonly rolePolicyRepository: RolePolicyRepository,
+    private readonly userRepository: UserRepository,
+    @Inject(ICryptoService) private readonly cryptoService: ICryptoService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
   ) {
@@ -186,10 +228,13 @@ export class PolicyService extends BaseService implements IPolicyService {
   }
 
   async update(id: string, request: UpdatePolicyRequest): Promise<PolicyRecord> {
+    // TASK-409 — `isProtected` is read-only through the API.
+    this.rejectExplicitIsProtectedWrite(request);
+
     // TASK-390 #22 — refuse mutations that would neutralise a system-critical
     // policy. `update` (unlike `patch`) did not previously read the row; the
     // guard fetches it (skips silently when the row is absent/non-protected).
-    const existingForGuard = (await this.policyRepository.findById(id)) as { name: string } | null;
+    const existingForGuard = (await this.policyRepository.findById(id)) as PolicyGuardRow | null;
     if (existingForGuard) this.assertProtectedMutationAllowed(existingForGuard, request);
 
     if (request.rules) {
@@ -199,9 +244,16 @@ export class PolicyService extends BaseService implements IPolicyService {
       }
     }
 
+    // TASK-409 — rule-edits with a multi-role blast radius need break-glass.
+    const breakGlassUsed = existingForGuard ? await this.requireRuleEditBreakGlass(existingForGuard, request) : false;
+
     const user = this.requestUser;
     const data = PolicyFactory.buildUpdateInput(request, user?.id);
     const policy = (await this.policyRepository.update(id, data)) as PolicyRecord;
+
+    if (breakGlassUsed && existingForGuard) {
+      this.emitBreakGlassAudit('policy-rule-edit', 'confirmed', { policyId: id, policyName: existingForGuard.name });
+    }
 
     await this.policyEngine.invalidatePolicy(id);
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
@@ -220,13 +272,16 @@ export class PolicyService extends BaseService implements IPolicyService {
   }
 
   async patch(id: string, request: UpdatePolicyRequest): Promise<PolicyRecord> {
+    // TASK-409 — `isProtected` is read-only through the API.
+    this.rejectExplicitIsProtectedWrite(request);
+
     const existing = await this.policyRepository.findById(id);
     if (!existing) {
       throw new NotFoundException('Policy not found');
     }
 
     // TASK-390 #22 — protect system-critical policies from destructive edits.
-    this.assertProtectedMutationAllowed(existing as { name: string }, request);
+    this.assertProtectedMutationAllowed(existing as PolicyGuardRow, request);
 
     if (request.rules) {
       const validation = this.validateRules(request.rules);
@@ -235,9 +290,16 @@ export class PolicyService extends BaseService implements IPolicyService {
       }
     }
 
+    // TASK-409 — rule-edits with a multi-role blast radius need break-glass.
+    const breakGlassUsed = await this.requireRuleEditBreakGlass(existing as PolicyGuardRow, request);
+
     const user = this.requestUser;
     const data = PolicyFactory.buildUpdateInput(request, user?.id);
     const policy = (await this.policyRepository.update(id, data)) as PolicyRecord;
+
+    if (breakGlassUsed) {
+      this.emitBreakGlassAudit('policy-rule-edit', 'confirmed', { policyId: id, policyName: (existing as PolicyGuardRow).name });
+    }
 
     await this.policyEngine.invalidatePolicy(id);
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
@@ -256,19 +318,26 @@ export class PolicyService extends BaseService implements IPolicyService {
     return policy;
   }
 
-  async softDelete(id: string): Promise<{ id: string; name: string }> {
-    const existing = (await this.policyRepository.findById(id)) as { name: string } | null;
+  async softDelete(id: string, breakGlass?: BreakGlassCredentials): Promise<{ id: string; name: string }> {
+    const existing = (await this.policyRepository.findById(id)) as PolicyGuardRow | null;
 
     if (!existing) {
       throw new NotFoundException('Policy not found');
     }
 
     // TASK-390 #22 — a protected system policy can never be deleted (would
-    // lock out super-admins / RBAC administration platform-wide).
+    // lock out super-admins / RBAC administration platform-wide). TASK-409:
+    // break-glass does NOT override this — the check precedes it.
     this.assertProtectedDeletionAllowed(existing);
+
+    // TASK-409 — deleting any policy is a dangerous-but-allowed mutation:
+    // require the step-up confirmation (current password + exact name).
+    await this.requireBreakGlass('policy-delete', existing, breakGlass, `Deleting policy '${existing.name}'`);
 
     const user = this.requestUser;
     await this.policyRepository.softDelete(id, user?.id);
+
+    this.emitBreakGlassAudit('policy-delete', 'confirmed', { policyId: id, policyName: existing.name });
 
     await this.policyEngine.invalidatePolicy(id);
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
@@ -287,10 +356,37 @@ export class PolicyService extends BaseService implements IPolicyService {
   }
 
   /**
-   * TASK-390 #22 — refuse to delete a protected system policy.
+   * TASK-409 — a policy is protected when the server-authoritative
+   * `isProtected` marker is set OR the legacy seeded name matches
+   * (defense in depth; the name fallback covers databases that have not
+   * re-run the seed since the column landed).
    */
-  private assertProtectedDeletionAllowed(existing: { name: string }): void {
-    if (existing.name in PolicyService.PROTECTED_SYSTEM_POLICIES) {
+  private isProtectedPolicy(existing: PolicyGuardRow): boolean {
+    return existing.isProtected === true || existing.name in PolicyService.PROTECTED_SYSTEM_POLICIES;
+  }
+
+  /**
+   * TASK-409 — the rule tuples a protected policy must retain. Known seeded
+   * names use the pinned TASK-390 map; a RENAMED protected policy (marker
+   * only) must retain whichever system-critical grants it currently carries.
+   */
+  private requiredRulesFor(existing: PolicyGuardRow): ReadonlyArray<{ action: string; subject: string }> {
+    const byName = PolicyService.PROTECTED_SYSTEM_POLICIES[existing.name];
+    if (byName) return byName;
+
+    const currentRules = Array.isArray(existing.rules) ? (existing.rules as Array<{ action?: string; subject?: string; inverted?: boolean }>) : [];
+    return PolicyService.SYSTEM_CRITICAL_RULES.filter((required) =>
+      currentRules.some((r) => r.action === required.action && r.subject === required.subject && r.inverted !== true),
+    );
+  }
+
+  /**
+   * TASK-390 #22 / TASK-409 — refuse to delete a protected system policy
+   * (marker OR name). The rejection is force-audited.
+   */
+  private assertProtectedDeletionAllowed(existing: PolicyGuardRow): void {
+    if (this.isProtectedPolicy(existing)) {
+      this.emitBreakGlassAudit('policy-delete', 'rejected-protected', { policyId: existing.id, policyName: existing.name });
       throw new ForbiddenException(
         `Policy '${existing.name}' is a protected system policy and cannot be deleted (it grants super-admin / RBAC access platform-wide).`,
       );
@@ -302,29 +398,126 @@ export class PolicyService extends BaseService implements IPolicyService {
    * policy: re-scoping away from GLOBAL, disabling it, or removing/denying a
    * load-bearing rule. Non-destructive edits (name, description, adding rules)
    * are allowed; non-protected policies are unaffected.
+   *
+   * TASK-409 — protection now keys off `isProtected` OR the legacy name, and
+   * every rejection is force-audited.
    */
-  private assertProtectedMutationAllowed(existing: { name: string }, request: UpdatePolicyRequest): void {
-    const requiredRules = PolicyService.PROTECTED_SYSTEM_POLICIES[existing.name];
-    if (!requiredRules) return;
+  private assertProtectedMutationAllowed(existing: PolicyGuardRow, request: UpdatePolicyRequest): void {
+    if (!this.isProtectedPolicy(existing)) return;
+
+    const reject = (message: string): never => {
+      this.emitBreakGlassAudit('policy-edit', 'rejected-protected', { policyId: existing.id, policyName: existing.name });
+      throw new ForbiddenException(message);
+    };
 
     if (request.scope !== undefined && request.scope !== 'GLOBAL') {
-      throw new ForbiddenException(`Policy '${existing.name}' is a protected system policy; its scope cannot be changed from GLOBAL.`);
+      reject(`Policy '${existing.name}' is a protected system policy; its scope cannot be changed from GLOBAL.`);
     }
 
     if (request.resourceStatus !== undefined && String(request.resourceStatus) !== String(ResourceStatusType.ENABLED)) {
-      throw new ForbiddenException(`Policy '${existing.name}' is a protected system policy and cannot be disabled.`);
+      reject(`Policy '${existing.name}' is a protected system policy and cannot be disabled.`);
     }
 
     if (request.rules !== undefined) {
-      for (const required of requiredRules) {
+      for (const required of this.requiredRulesFor(existing)) {
         const retained = request.rules.some((r) => r.action === required.action && r.subject === required.subject && r.inverted !== true);
         if (!retained) {
-          throw new ForbiddenException(
+          reject(
             `Policy '${existing.name}' is a protected system policy; the '${required.action}:${required.subject}' rule cannot be removed or denied.`,
           );
         }
       }
     }
+  }
+
+  /**
+   * TASK-409 — `isProtected` is server-managed (seed only). The API layer's
+   * `forbidNonWhitelisted` ValidationPipe already 400s unknown body fields;
+   * this is the service-level defense in depth for non-HTTP callers.
+   */
+  private rejectExplicitIsProtectedWrite(request: UpdatePolicyRequest): void {
+    if ((request as Record<string, unknown>).isProtected !== undefined) {
+      throw new BadRequestException(`'isProtected' is read-only: the protected marker is managed by the platform seed and cannot be changed via the API.`);
+    }
+  }
+
+  /**
+   * TASK-409 — rule-edits of a policy attached to MORE THAN ONE enabled role
+   * change authorization for several roles at once, so they require the
+   * break-glass confirmation. Returns whether break-glass was enforced (the
+   * caller emits the 'confirmed' audit only after the mutation succeeds).
+   */
+  private async requireRuleEditBreakGlass(existing: PolicyGuardRow, request: UpdatePolicyRequest): Promise<boolean> {
+    if (request.rules === undefined) return false;
+
+    const enabledRoleCount = await this.rolePolicyRepository.countEnabledByPolicy(existing.id);
+    if (enabledRoleCount <= 1) return false;
+
+    await this.requireBreakGlass(
+      'policy-rule-edit',
+      existing,
+      request.breakGlass,
+      `Editing the rules of policy '${existing.name}' (attached to ${enabledRoleCount} roles)`,
+    );
+    return true;
+  }
+
+  /**
+   * TASK-409 — run the step-up verification; on failure, force-audit the
+   * rejection and surface the mapped HTTP error (428/401/400).
+   */
+  private async requireBreakGlass(
+    operation: BreakGlassOperation,
+    target: PolicyGuardRow,
+    credentials: BreakGlassCredentials | undefined,
+    operationLabel: string,
+  ): Promise<void> {
+    const result = await checkBreakGlass({
+      operation: operationLabel,
+      expectedName: target.name,
+      userId: this.requestUserId,
+      credentials,
+      loadPasswordHash: async () => {
+        const user = await this.userRepository.findById(this.requestUserId as string);
+        return (user as { password: string }).password;
+      },
+      verifyPassword: (password, hash) => this.cryptoService.verify(password, hash),
+    });
+
+    if (!result.ok) {
+      this.emitBreakGlassAudit(operation, result.outcome, { policyId: target.id, policyName: target.name });
+      throw result.error;
+    }
+  }
+
+  /**
+   * TASK-409 — forced audit row for break-glass outcomes (TASK-396 pattern):
+   * direct emit (not `broadcastSysEvent`) because (1) `forceAuditLog: true`
+   * is required for the READ-typed event to persist an AuditLog row and
+   * (2) super-admins carry a NULL CLS tenant, and `AuditLogProcessor`
+   * fail-closes on a null tenant — policies are platform-global resources, so
+   * the row is attributed to the reserved system tenant. NEVER the password.
+   */
+  private emitBreakGlassAudit(operation: BreakGlassOperation, outcome: BreakGlassOutcome, target: { policyId: string; policyName: string }): void {
+    this.eventEmitter.emit(SysEventType.ResourceViewed, {
+      responsibleEntityId: this.requestUser?.id,
+      responsibleIp: this.requestIp,
+      resourceType: this.resourceType,
+      correlationId: this.correlationId,
+      resourceId: target.policyId,
+      tenantId: this.tenantId ?? SYSTEM_TENANT_ID,
+      forceAuditLog: true,
+      data: {
+        action: RBAC_BREAK_GLASS_AUDIT_ACTION,
+        operation,
+        outcome,
+        targetType: 'Policy',
+        targetId: target.policyId,
+        targetName: target.policyName,
+        actorId: this.requestUser?.id,
+        at: new Date().toISOString(),
+      },
+    });
   }
 
   private checkConditionsForVariables(conditions: Record<string, unknown>, ruleIndex: number, warnings: string[]): void {

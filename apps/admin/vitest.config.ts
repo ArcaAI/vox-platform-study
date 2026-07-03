@@ -11,33 +11,33 @@ import { defineConfig } from 'vitest/config';
 const STUB_PACKAGES = [/^@arcaai\/ui\//, /^@arcaai\/vox/];
 
 function stubExternalPackages(): Plugin {
-    return {
-        name: 'stub-external-packages',
-        enforce: 'pre',
-        resolveId(source) {
-            if (STUB_PACKAGES.some((re) => re.test(source))) {
-                return `\0stub:${source}`;
-            }
-        },
-        load(id) {
-            if (id.startsWith('\0stub:')) {
-                return 'export default {}';
-            }
-        },
-    };
+  return {
+    name: 'stub-external-packages',
+    enforce: 'pre',
+    resolveId(source) {
+      if (STUB_PACKAGES.some((re) => re.test(source))) {
+        return `\0stub:${source}`;
+      }
+    },
+    load(id) {
+      if (id.startsWith('\0stub:')) {
+        return 'export default {}';
+      }
+    },
+  };
 }
 
 export default defineConfig({
-    plugins: [stubExternalPackages(), react()],
-    resolve: {
-        alias: {
-            '@': resolve(__dirname, 'src'),
-        },
+  plugins: [stubExternalPackages(), react()],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
     },
-    test: {
-        globals: true,
-        environment: 'jsdom',
-        setupFiles: ['./src/__tests__/setup.ts'],
-        include: ['src/**/*.test.{ts,tsx}'],
-    },
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/__tests__/setup.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
+  },
 });

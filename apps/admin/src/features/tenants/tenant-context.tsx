@@ -11,20 +11,17 @@ import { cn } from '@/lib/utils';
  * specific tenant, so the cross-tenant blast radius is always explicit.
  */
 export function ActingOnBanner({ tenantName, description, className }: { tenantName: string; description?: ReactNode; className?: string }) {
-    return (
-        <div
-            role="status"
-            className={cn('flex items-start gap-2.5 rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-2.5 text-sm', className)}
-        >
-            <Info aria-hidden className="mt-0.5 size-4 shrink-0 text-primary" />
-            <div className="min-w-0">
-                <p className="font-medium text-foreground">
-                    Acting on: <span className="text-primary">{tenantName}</span>
-                </p>
-                {description ? <p className="text-muted-foreground">{description}</p> : null}
-            </div>
-        </div>
-    );
+  return (
+    <div role="status" className={cn('flex items-start gap-2.5 rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-2.5 text-sm', className)}>
+      <Info aria-hidden className="mt-0.5 size-4 shrink-0 text-primary" />
+      <div className="min-w-0">
+        <p className="font-medium text-foreground">
+          Acting on: <span className="text-primary">{tenantName}</span>
+        </p>
+        {description ? <p className="text-muted-foreground">{description}</p> : null}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -34,22 +31,20 @@ export function ActingOnBanner({ tenantName, description, className }: { tenantN
  * "View all tenants" escape hatch is offered.
  */
 export function NoTenantState({ resource = 'data' }: { resource?: string }) {
-    return (
-        <Empty>
-            <EmptyHeader>
-                <EmptyMedia variant="icon">
-                    <Building2 />
-                </EmptyMedia>
-                <EmptyTitle>Select a tenant to continue</EmptyTitle>
-                <EmptyDescription>
-                    Choose a working tenant from the switcher in the sidebar to view and manage its {resource}.
-                </EmptyDescription>
-            </EmptyHeader>
-            <EmptyContent>
-                <Button asChild variant="outline">
-                    <Link to="/tenants">View all tenants</Link>
-                </Button>
-            </EmptyContent>
-        </Empty>
-    );
+  return (
+    <Empty>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Building2 />
+        </EmptyMedia>
+        <EmptyTitle>Select a tenant to continue</EmptyTitle>
+        <EmptyDescription>Choose a working tenant from the switcher in the sidebar to view and manage its {resource}.</EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button asChild variant="outline">
+          <Link to="/tenants">View all tenants</Link>
+        </Button>
+      </EmptyContent>
+    </Empty>
+  );
 }

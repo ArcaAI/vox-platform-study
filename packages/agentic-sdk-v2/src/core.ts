@@ -56,12 +56,18 @@ export {
   useDnaStyle,
   useEntitlements,
   useGlobalSettings,
+  // TASK-407 — read-only Clinical Documentation Harness admin surface
+  useHarnessAdmin,
   useHealthCheck,
   useMonitoring,
   usePipelines,
   usePlatformMetrics,
   usePolicies,
+  // TASK-403 — super-admin ops-surface hooks
+  usePrismaStudio,
   usePrompts,
+  useQueueAdmin,
+  useRateLimits,
   useRoles,
   useStorage,
   useStorageKeys,
@@ -87,6 +93,7 @@ export type {
   AuditLogEntry,
   AuditLogFilterParams,
   AuditLogResponsibleUser,
+  BreakGlassCredentials,
   Bucket,
   CreateApiKeyInput,
   CreatePolicyInput,
@@ -108,6 +115,7 @@ export type {
   Tenant,
   TenantBucket,
   TenantBucketDefaults,
+  TenantBucketObject,
   TenantBucketTree,
   TenantStorageConfig,
   TenantUsageStats,
@@ -149,12 +157,32 @@ export type {
   DowngradeReport,
   TrialExpiryReport,
   UseGlobalSettingsReturn,
+  // TASK-407 — harness admin hook + read-model types
+  UseHarnessAdminReturn,
+  HarnessPolicy,
+  HarnessPolicySource,
+  HarnessAuditEvent,
+  HarnessAuditList,
+  HarnessEvalRun,
+  HarnessEvalRunList,
+  HarnessEvalRunDetail,
+  HarnessGateQueue,
+  HarnessGateQueueItem,
+  HarnessWorkflow,
+  HarnessWorkflowList,
   UseHealthCheckReturn,
   UseMonitoringReturn,
   UsePipelinesReturn,
   UsePlatformMetricsReturn,
   UsePoliciesReturn,
+  // TASK-403 — super-admin ops-surface hook returns
+  UsePrismaStudioReturn,
   UsePromptsReturn,
+  // TASK-407 — raw prompt run rows (Agent Jobs surface)
+  PromptUsageRecord,
+  PaginatedPromptUsageRecords,
+  UseQueueAdminReturn,
+  UseRateLimitsReturn,
   User,
   UseRolesReturn,
   UserRoleAssignment,
@@ -356,7 +384,7 @@ export type {
 // Types - Diff (SDK-207 WS-4)
 // =============================================================================
 
-export type { DiffChange, DiffMode, DiffResult, DiffStats } from './types';
+export type { DiffChange, DiffMode, DiffResult, DiffStats, PromptVersionDiff, PromptVersionDiffField } from './types';
 
 // =============================================================================
 // Types - STT-V2 Streaming
@@ -400,7 +428,7 @@ export type {
 
 export { AgenticError, DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from './types';
 
-export type { AuthUser, ImpersonateResponse, LoginResponse } from './types/auth';
+export type { AuthUser, ImpersonateResponse, AdminImpersonateOptions, LoginResponse } from './types/auth';
 
 // Monitoring + platform runtime metrics types (TASK-032 WS-A; TASK-386 #16)
 export type { HeartbeatRecord, ServiceSessionCount, ServiceUptime, SessionCounts } from './types';
@@ -438,6 +466,31 @@ export type {
 } from './types';
 
 // =============================================================================
+// Types - Super-admin ops surfaces (TASK-403)
+// =============================================================================
+
+export type {
+  BulkJobActionResult,
+  JobDetail,
+  JobOptions,
+  JobStatusFilter,
+  JobSummary,
+  ListJobsParams,
+  PaginatedJobs,
+  PrismaStudioStatus,
+  QueueJobCounts,
+  QueueStats,
+  RateLimitPolicy,
+  RateLimitRoutePolicy,
+  RateLimitTierName,
+  RateLimitTierPolicy,
+  RateLimitValueSource,
+  RedisHealth,
+  SetRateLimitRouteInput,
+  SetRateLimitTierInput,
+} from './types';
+
+// =============================================================================
 // Constants - Endpoint Definitions
 // =============================================================================
 
@@ -467,6 +520,10 @@ export {
   PLATFORM_METRICS_ENDPOINTS,
   POLICY_ENDPOINTS,
   PROMPT_TEMPLATE_ENDPOINTS,
+  // TASK-403 — super-admin ops-surface endpoints
+  PSTUDIO_ENDPOINTS,
+  QUEUE_ADMIN_ENDPOINTS,
+  RATE_LIMIT_ADMIN_ENDPOINTS,
   ROLE_ENDPOINTS,
   SERVICE_HEALTH_ENDPOINTS,
   SMR_ENDPOINTS,

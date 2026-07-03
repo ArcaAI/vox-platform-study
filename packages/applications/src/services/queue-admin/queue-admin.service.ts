@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { getQueueToken } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { JobQueue, type QueueStats } from '@arcaai/domains';
+import { JobQueue, type QueueStats, type RedisHealthInfo } from '@arcaai/domains';
+
+/** PING round-trips at or above this are reported as `degraded` (TASK-403). */
+const REDIS_DEGRADED_LATENCY_MS = 250;
 
 @Injectable()
 export class QueueAdminService {
@@ -52,9 +55,61 @@ export class QueueAdminService {
     return queue.clean(gracePeriodMs, limit, status);
   }
 
+  /**
+   * Probe the shared BullMQ Redis connection (TASK-403 Queues & Jobs surface).
+   * Uses the first registered queue's ioredis client: PING for latency and
+   * INFO for server stats. Never throws — connection errors are reported as
+   * `unhealthy` so the admin surface can always render.
+   */
+  async getRedisHealth(): Promise<RedisHealthInfo> {
+    const queuesRegistered = Object.values(JobQueue).length;
+    try {
+      const queue = this.getQueue(Object.values(JobQueue)[0]);
+      const client = await queue.client;
+
+      const pingStart = Date.now();
+      await client.ping();
+      const latencyMs = Date.now() - pingStart;
+
+      const info = parseRedisInfo(await client.info());
+
+      return {
+        status: latencyMs >= REDIS_DEGRADED_LATENCY_MS ? 'degraded' : 'healthy',
+        latencyMs,
+        connectedClients: Number(info.connected_clients ?? 0) || 0,
+        usedMemory: info.used_memory_human ?? 'unknown',
+        uptime: Number(info.uptime_in_seconds ?? 0) || 0,
+        version: info.redis_version ?? 'unknown',
+        queuesRegistered,
+      };
+    } catch {
+      return {
+        status: 'unhealthy',
+        latencyMs: -1,
+        connectedClients: 0,
+        usedMemory: 'unknown',
+        uptime: 0,
+        version: 'unknown',
+        queuesRegistered,
+      };
+    }
+  }
+
   private getQueue(queueName: string): Queue {
     return this.moduleRef.get<Queue>(getQueueToken(queueName), {
       strict: false,
     });
   }
+}
+
+/** Parse `redis-cli INFO`-style `key:value` lines into a lookup map. */
+function parseRedisInfo(raw: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const line of raw.split(/\r?\n/)) {
+    const idx = line.indexOf(':');
+    if (idx > 0 && !line.startsWith('#')) {
+      result[line.slice(0, idx)] = line.slice(idx + 1).trim();
+    }
+  }
+  return result;
 }

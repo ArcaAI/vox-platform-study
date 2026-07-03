@@ -332,6 +332,49 @@ describe('useGlobalSettings', () => {
         });
     });
 
+    /* ------------------------------------------------------------------ */
+    /*  TASK-396: revealSecret (super-admin, step-up re-auth)              */
+    /* ------------------------------------------------------------------ */
+
+    describe('revealSecret (TASK-396)', () => {
+        it('should POST the password to GLOBAL_SETTINGS_ENDPOINTS.REVEAL(id) and return the plaintext payload', async () => {
+            const payload = { id: 'gs-secret-1', key: 'secrets.api-token', value: 'super-secret-plaintext', revealedAt: '2026-07-02T00:00:00.000Z' };
+            mockPost.mockResolvedValue(payload);
+            const { result } = renderHook(() => useGlobalSettings());
+
+            let resp: unknown;
+            await act(async () => { resp = await result.current.revealSecret('gs-secret-1', { password: 'password123' }); });
+
+            expect(mockPost).toHaveBeenCalledWith(GLOBAL_SETTINGS_ENDPOINTS.REVEAL('gs-secret-1'), { password: 'password123' });
+            expect(resp).toEqual(payload);
+        });
+
+        it('should NOT persist the revealed plaintext into settings state (transient)', async () => {
+            const existing = [{ id: 'gs-secret-1', key: 'secrets.api-token', value: '', tenantId: 't-1', isSecret: true }];
+            mockGet.mockResolvedValue(existing);
+            mockPost.mockResolvedValue({ id: 'gs-secret-1', key: 'secrets.api-token', value: 'plaintext', revealedAt: '2026-07-02T00:00:00.000Z' });
+            const { result } = renderHook(() => useGlobalSettings());
+
+            await act(async () => { await result.current.list(); });
+            await act(async () => { await result.current.revealSecret('gs-secret-1', { password: 'password123' }); });
+
+            // The masked row is untouched — the plaintext never leaks into state.
+            expect(result.current.settings).toEqual(existing);
+        });
+
+        it('should surface a wrong/absent-password rejection as an error (401)', async () => {
+            mockPost.mockRejectedValue(new Error('Unauthorized'));
+            const { result } = renderHook(() => useGlobalSettings());
+
+            await act(async () => {
+                try { await result.current.revealSecret('gs-secret-1', { password: 'wrong' }); } catch { /* expected */ }
+            });
+
+            expect(result.current.error?.message).toBe('Unauthorized');
+            expect(result.current.isLoading).toBe(false);
+        });
+    });
+
     describe('SDK not initialized', () => {
         it('should throw when apiClient is null', async () => {
             mockStore.apiClient = null;

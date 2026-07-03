@@ -15,11 +15,12 @@ export type UserExportFile = TableExportFile;
 export interface UserExportRow {
   id: string;
   username: string;
+  /** Human-readable email (TASK-398 P1-7 batched enrichment; blank when no profile). */
   email: string;
   /** 'Service account' | 'User' */
   type: string;
   status: string;
-  /** Comma-joined department identifiers (name enrichment is a flagged follow-up). */
+  /** Comma-joined department NAMES (TASK-398 P1-7; primary first, blank when none). */
   departments: string;
 }
 

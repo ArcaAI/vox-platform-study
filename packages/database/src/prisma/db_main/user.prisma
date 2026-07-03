@@ -63,6 +63,10 @@ model User {
   // core fields
   username         String    @unique
   password         String
+  // TASK-400 — rotation tracking: stamped whenever the password is set through
+  // the password module (reset completion, temporary password). NULL = legacy /
+  // unknown → the max-age check treats it as "never expired" (no lockout).
+  passwordChangedAt DateTime?
   lastLoginAt      DateTime?
   lastActiveAt     DateTime?
   externalId       String?   @unique
@@ -100,6 +104,7 @@ model User {
   VoiceProfiles         UserVoiceProfile[]      @relation("_User_VoiceProfiles")
   OwnedPromptTemplates  PromptTemplate[]        @relation("_User_OwnedPromptTemplates")
   UserDepartments       UserDepartment[]        @relation("_User_UserDepartments")
+  PasswordResetTokens   PasswordResetToken[]    @relation("_User_PasswordResetTokens")
 
   // indexing
   @@index([username], name: "User_username_idx")

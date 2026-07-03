@@ -6,16 +6,16 @@ import type { Department } from '@/features/tenants/sdk-types';
  * never receives `''` for an unset code/description.
  */
 export interface DepartmentDraft {
-    name: string;
-    code?: string;
-    description?: string;
+  name: string;
+  code?: string;
+  description?: string;
 }
 
 export function toCreateDepartmentRequest(draft: DepartmentDraft): Partial<Department> {
-    const request: Partial<Department> = { name: draft.name.trim() };
-    const code = draft.code?.trim();
-    if (code) request.code = code;
-    const description = draft.description?.trim();
-    if (description) request.description = description;
-    return request;
+  const request: Partial<Department> = { name: draft.name.trim() };
+  const code = draft.code?.trim();
+  if (code) request.code = code;
+  const description = draft.description?.trim();
+  if (description) request.description = description;
+  return request;
 }

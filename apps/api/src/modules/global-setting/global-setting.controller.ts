@@ -4,15 +4,17 @@ import {
   PaginatedGlobalSettingResponse,
   CreateGlobalSettingRequest,
   UpdateGlobalSettingRequest,
+  RevealGlobalSettingRequest,
+  RevealGlobalSettingResponse,
   PaginatedQuery,
   IActiveUserContext,
   IGlobalSettingService,
   HttpMethod,
 } from '@arcaai/applications';
-import { Body, Controller, Get, Inject, Param, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { ApiEndpoint, CanCreate, CanManage, CanRead, CanUpdate, CanDelete, ExpectedVersion, RequiresIfMatch } from '../../decorators';
+import { ApiEndpoint, Authorize, CanCreate, CanManage, CanRead, CanUpdate, CanDelete, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 
 /**
  * TASK-390 #24 (ST1) — Global-settings admin CRUD.
@@ -159,5 +161,48 @@ export class GlobalSettingController {
     // Domain softDelete — never a hard delete.
     const result = await this.globalSettingService.deleteById(id);
     return GlobalSettingDtoMapper.ToResponse(result);
+  }
+
+  /**
+   * TASK-396 — reveal ONE secret setting's decrypted plaintext.
+   *
+   * SUPER-ADMIN ONLY: the method-level `@Authorize(['manage','all'])`
+   * OVERRIDES the class-level `@CanManage('GlobalSetting')` (the
+   * `UnifiedAuthGuard` resolves required-permission metadata via
+   * `getAllAndOverride([handler, class])`). Only the `system-full-access`
+   * policy grants `manage:all`, so tenant admins — who hold `manage:GlobalSetting`
+   * but not `manage:all` — get 403. Same posture as the queue/rate-limit admin
+   * surfaces.
+   *
+   * Step-up re-auth: the body carries the caller's current password, verified
+   * server-side against the stored bcrypt hash (never logged, never persisted).
+   * Never a bulk reveal — single `:id` only. Every call is audit-logged in the
+   * service (SysEvent, plaintext excluded).
+   */
+  @Post(':id/reveal')
+  @HttpCode(200)
+  @Authorize(['manage', 'all'])
+  @ApiOperation({
+    summary: 'Reveal a secret setting (super-admin, step-up re-auth, audited)',
+    description:
+      'Returns the decrypted plaintext of ONE global setting. SUPER_ADMIN only ' +
+      '(CASL `manage:all`). Requires step-up re-authentication: the request body ' +
+      "must carry the caller's current account password, verified server-side " +
+      'against the stored hash. Every reveal is audit-logged; the plaintext is ' +
+      'never logged. Never bulk-reveals.',
+  })
+  @ApiParam({ name: 'id', description: 'Global setting ID', type: String })
+  @ApiResponse({ status: 200, description: 'Decrypted secret (transient)', type: RevealGlobalSettingResponse })
+  @ApiResponse({ status: 401, description: 'Step-up re-authentication required or password incorrect' })
+  @ApiResponse({ status: 403, description: 'Forbidden — reveal is SUPER_ADMIN only' })
+  @ApiResponse({ status: 404, description: 'Global setting not found' })
+  async reveal(@Param('id') id: string, @Body() request: RevealGlobalSettingRequest): Promise<RevealGlobalSettingResponse> {
+    const { entity, plaintext } = await this.globalSettingService.revealSecret(id, request.password);
+    return new RevealGlobalSettingResponse({
+      id: entity.id,
+      key: entity.key,
+      value: plaintext,
+      revealedAt: new Date().toISOString(),
+    });
   }
 }
