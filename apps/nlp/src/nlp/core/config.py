@@ -60,6 +60,8 @@ class NLPServiceConfig(BaseSettings):
     opentelemetry_endpoint: str | None = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
     otlp_endpoint: str | None = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
     resource_attributes_raw: str | None = Field(default=None)
+    # TASK-411 master switch: gates traces, metrics, AND log export (default off).
+    otel_enabled: bool = Field(default=os.getenv("NLP_OTEL_ENABLED", "false").lower() == "true")
     traces_enabled: bool = Field(default=os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true")
     metrics_enabled: bool = Field(default=os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true")
 
@@ -75,6 +77,7 @@ class NLPServiceConfig(BaseSettings):
         kwargs.setdefault("workers", int(os.getenv("WORKERS", "1")))
         kwargs.setdefault("otlp_endpoint", os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
         kwargs.setdefault("resource_attributes_raw", os.getenv("OTEL_RESOURCE_ATTRIBUTES"))
+        kwargs.setdefault("otel_enabled", os.getenv("NLP_OTEL_ENABLED", "false").lower() == "true")
         kwargs.setdefault("traces_enabled", os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true")
         kwargs.setdefault("metrics_enabled", os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true")
         super().__init__(**kwargs)

@@ -1,7 +1,8 @@
 """Tests for NLP observability: OTel LoggerProvider, log export, trace correlation,
-config parsing, PHI sanitization, and metrics.
+config parsing, PHI sanitization, metrics, and the OTel master switch.
 
-23 tests across 6 groups — characterization tests verifying the TASK-253 implementation.
+30 tests across 7 groups — characterization tests verifying the TASK-253 implementation
+plus the TASK-411 `NLP_OTEL_ENABLED` master-switch gate.
 """
 
 from __future__ import annotations
@@ -78,6 +79,9 @@ def _make_service_config(**overrides):
     cfg.resource_attributes = overrides.get("resource_attributes", {})
     cfg.traces_enabled = overrides.get("traces_enabled", True)
     cfg.metrics_enabled = overrides.get("metrics_enabled", True)
+    # TASK-411 master switch: defaults to True here so activation tests keep
+    # exercising the enabled path (the real config defaults to False).
+    cfg.otel_enabled = overrides.get("otel_enabled", True)
     return cfg
 
 
@@ -170,9 +174,9 @@ class TestLoggerProviderSetup:
     """Verify setup_opentelemetry creates and wires the LoggerProvider."""
 
     def test_setup_creates_logger_provider(self, fastapi_app):
-        """When otlp_endpoint is set, setup_opentelemetry must create a
-        LoggerProvider and store it on app.state.logger_provider."""
-        with _patched_otel_settings():
+        """When the master switch is on and otlp_endpoint is set, setup_opentelemetry
+        must create a LoggerProvider and store it on app.state.logger_provider."""
+        with _patched_otel_settings(otel_enabled=True):
             setup_opentelemetry(fastapi_app)
             try:
                 assert hasattr(fastapi_app.state, "logger_provider")
@@ -182,7 +186,7 @@ class TestLoggerProviderSetup:
 
     def test_setup_adds_logging_handler_to_root(self, fastapi_app):
         """After setup, the root Python logger must have an OTel LoggingHandler."""
-        with _patched_otel_settings():
+        with _patched_otel_settings(otel_enabled=True):
             setup_opentelemetry(fastapi_app)
             try:
                 root = logging.getLogger()
@@ -192,8 +196,9 @@ class TestLoggerProviderSetup:
                 shutdown_opentelemetry(fastapi_app)
 
     def test_setup_skipped_without_endpoint(self, fastapi_app):
-        """When otlp_endpoint is None, no LoggerProvider is created."""
-        with _patched_otel_settings(otlp_endpoint=None):
+        """When otlp_endpoint is None (even with the switch on), no LoggerProvider
+        is created."""
+        with _patched_otel_settings(otel_enabled=True, otlp_endpoint=None):
             setup_opentelemetry(fastapi_app)
 
             assert not hasattr(fastapi_app.state, "logger_provider") or \
@@ -206,7 +211,7 @@ class TestLoggerProviderSetup:
         fastapi_app.state.tracer_provider = None
         fastapi_app.state.meter_provider = None
 
-        with _patched_otel_settings():
+        with _patched_otel_settings(otel_enabled=True):
             shutdown_opentelemetry(fastapi_app)
 
         mock_provider.shutdown.assert_called_once()
@@ -381,6 +386,22 @@ class TestConfigParsing:
             cfg = NLPServiceConfig(otlp_endpoint=None)
             assert cfg.otlp_endpoint is None
 
+    def test_otel_enabled_defaults_to_false(self, monkeypatch):
+        """TASK-411 A1: otel_enabled must default to False when NLP_OTEL_ENABLED is unset."""
+        from nlp.core.config import NLPServiceConfig
+
+        monkeypatch.delenv("NLP_OTEL_ENABLED", raising=False)
+        cfg = NLPServiceConfig()
+        assert cfg.otel_enabled is False
+
+    def test_otel_enabled_true_from_env(self, monkeypatch):
+        """TASK-411 A1: NLP_OTEL_ENABLED=true must switch otel_enabled to True."""
+        from nlp.core.config import NLPServiceConfig
+
+        monkeypatch.setenv("NLP_OTEL_ENABLED", "true")
+        cfg = NLPServiceConfig()
+        assert cfg.otel_enabled is True
+
 
 # ---------------------------------------------------------------------------
 # Test Group 5: PHI Sanitization
@@ -436,7 +457,7 @@ class TestMetrics:
     def test_setup_creates_meter_provider_with_reader(self, fastapi_app):
         """When metrics_enabled=True, setup_opentelemetry must create a
         MeterProvider with at least one PeriodicExportingMetricReader."""
-        with _patched_otel_settings(metrics_enabled=True):
+        with _patched_otel_settings(otel_enabled=True, metrics_enabled=True):
             setup_opentelemetry(fastapi_app)
             try:
                 assert hasattr(fastapi_app.state, "meter_provider")
@@ -470,3 +491,84 @@ class TestMetrics:
         assert "nlp.inference.duration_ms" in metric_names, \
             f"Expected 'nlp.inference.duration_ms' in {metric_names}"
         provider.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Test Group 7: OTel Master Switch — NLP_OTEL_ENABLED (TASK-411)
+# ---------------------------------------------------------------------------
+
+class TestOtelMasterSwitch:
+    """Verify the NLP_OTEL_ENABLED master switch gates traces, metrics, AND logs."""
+
+    def test_disabled_switch_skips_all_providers(self, fastapi_app):
+        """A2: endpoint set + otel_enabled=False → setup_opentelemetry returns early:
+        no TracerProvider, no MeterProvider, no LoggerProvider, no root OTel handler,
+        FastAPI app not instrumented."""
+        with _patched_otel_settings(otel_enabled=False):
+            setup_opentelemetry(fastapi_app)
+
+            assert not hasattr(fastapi_app.state, "tracer_provider") or \
+                fastapi_app.state.tracer_provider is None
+            assert not hasattr(fastapi_app.state, "meter_provider") or \
+                fastapi_app.state.meter_provider is None
+            assert not hasattr(fastapi_app.state, "logger_provider") or \
+                fastapi_app.state.logger_provider is None
+
+            root = logging.getLogger()
+            otel_handlers = [h for h in root.handlers if isinstance(h, LoggingHandler)]
+            assert otel_handlers == [], "No OTel LoggingHandler may be added when disabled"
+
+            assert getattr(fastapi_app, "_is_instrumented_by_opentelemetry", False) is False, \
+                "FastAPI app must not be instrumented when otel_enabled=False"
+
+    def test_disabled_switch_logs_single_info_line(self, fastapi_app, caplog):
+        """A2: the disabled path logs one info-level line and no warning."""
+        with _patched_otel_settings(otel_enabled=False), \
+                caplog.at_level(logging.INFO, logger="observability"):
+            setup_opentelemetry(fastapi_app)
+
+        disabled_infos = [
+            r for r in caplog.records
+            if r.name == "observability" and r.levelno == logging.INFO
+            and "NLP_OTEL_ENABLED" in r.getMessage()
+        ]
+        assert len(disabled_infos) == 1, \
+            f"Expected exactly one 'disabled' info log, got {[r.getMessage() for r in caplog.records]}"
+
+    def test_enabled_switch_creates_all_providers(self, fastapi_app):
+        """A3: endpoint set + otel_enabled=True → tracer/meter/logger providers created
+        exactly as before (regression guard)."""
+        with _patched_otel_settings(otel_enabled=True):
+            setup_opentelemetry(fastapi_app)
+            try:
+                assert isinstance(fastapi_app.state.tracer_provider, TracerProvider)
+                assert isinstance(fastapi_app.state.meter_provider, MeterProvider)
+                assert isinstance(fastapi_app.state.logger_provider, LoggerProvider)
+
+                root = logging.getLogger()
+                otel_handlers = [h for h in root.handlers if isinstance(h, LoggingHandler)]
+                assert len(otel_handlers) >= 1
+            finally:
+                shutdown_opentelemetry(fastapi_app)
+
+    def test_enabled_without_endpoint_stays_disabled(self, fastapi_app, caplog):
+        """A4: otel_enabled=True + endpoint unset → disabled; the existing
+        misconfiguration warning is still emitted."""
+        with _patched_otel_settings(otel_enabled=True, otlp_endpoint=None), \
+                caplog.at_level(logging.WARNING, logger="observability"):
+            setup_opentelemetry(fastapi_app)
+
+        assert not hasattr(fastapi_app.state, "logger_provider") or \
+            fastapi_app.state.logger_provider is None
+        warnings = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING and "OTEL_EXPORTER_OTLP_ENDPOINT" in r.getMessage()
+        ]
+        assert warnings, "Expected the endpoint-missing warning when enabled but unconfigured"
+
+    def test_shutdown_noop_when_setup_skipped(self, fastapi_app):
+        """A5: shutdown_opentelemetry must not raise when setup was skipped
+        (otel_enabled=False)."""
+        with _patched_otel_settings(otel_enabled=False):
+            setup_opentelemetry(fastapi_app)
+            shutdown_opentelemetry(fastapi_app)
