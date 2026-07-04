@@ -1,0 +1,13 @@
+@import 'tailwindcss';
+@import '@arcaai/ui/globals.css';
+@source '../../../../packages/ui/src';
+
+/*
+ * The canonical tokens declare --font-sans as the literal family "Inter".
+ * next/font registers Inter under a hashed family name exposed through the
+ * --font-inter variable (set on <html> in src/app/layout.tsx), so re-point
+ * the sans token at it; the fallback stack mirrors the token source.
+ */
+@theme inline {
+    --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}

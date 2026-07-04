@@ -1,0 +1,16 @@
+{
+    "extends": "@arcaai/config-ts/nextjs.json",
+    "compilerOptions": {
+        "baseUrl": ".",
+        "paths": {
+            // Fallback chain: app files first, then the transpiled @arcaai/ui
+            // sources — Turbopack applies THIS tsconfig to packages/ui/src too
+            // (transpilePackages), so the package's internal `@/` imports
+            // (components/lib/hooks, none of which exist in our src) must
+            // resolve through the second entry.
+            "@/*": ["./src/*", "../../packages/ui/src/*"]
+        }
+    },
+    "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx", ".next/types/**/*.ts"],
+    "exclude": ["node_modules", ".next"]
+}
