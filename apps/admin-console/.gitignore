@@ -1,0 +1,4 @@
+.next/
+.turbo/
+out/
+next-env.d.ts
