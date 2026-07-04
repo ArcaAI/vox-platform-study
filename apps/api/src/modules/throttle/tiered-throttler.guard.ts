@@ -1,12 +1,6 @@
 import { Inject, Injectable, Optional, type ExecutionContext } from '@nestjs/common';
 import { ThrottlerGuard, type ThrottlerRequest } from '@nestjs/throttler';
-import {
-  IEntitlementsService,
-  IRateLimitSettingsService,
-  resolvePlanRateLimit,
-  resolveRouteId,
-  type RateLimitTierName,
-} from '@arcaai/applications';
+import { IEntitlementsService, IRateLimitSettingsService, resolvePlanRateLimit, resolveRouteId, type RateLimitTierName } from '@arcaai/applications';
 
 // `@nestjs/throttler` does NOT re-export its constants barrel, so the
 // `THROTTLER_LIMIT` / `THROTTLER_TTL` keys (written by `@Throttle({ <name>:

@@ -6,60 +6,61 @@ A medical AI platform built as a monorepo with [Turborepo](https://turbo.build/r
 
 ```
 apps/
-  api/          NestJS API Gateway — auth, routing, WebSocket proxy
-  stt-v2/       FastAPI — speech-to-text, multi-model ASR, diarization
-  smr/          FastAPI — medical conversation summarization
-  nlp/          FastAPI — medical NLP, classification, NER
-  admin/        React admin dashboard
-  tts/          Text-to-speech service
-  mlflow/       ML experiment tracking
+  api/          NestJS API Gateway (8868) — auth, multi-tenancy, REST/WS/SSE, system of record
+  stt-v2/       FastAPI (8861) — speech-to-text, multi-model ASR, diarization + batch worker
+  smr/          FastAPI (8862) — LLM summarization / text generation
+  guardrail/    FastAPI (8863) — content-safety, PII, medical validation
+  nlp/          FastAPI (8864) — medical NER, classification, diagnosis suggestions
+  harness/      FastAPI (8866) — clinical documentation harness + Temporal worker
+  ui-playground/ React SDK playground + admin console (5175) — DEPRECATED
+  example/      Minimal live-transcription demo (5173)
 
 packages/
-  agentic-sdk-v2/   @arcaai/vox — React SDK for medical consultations
-  applications/     @arcaai/applications — shared NestJS business logic
-  database/         @arcaai/database — Prisma ORM, PostgreSQL
-  domains/          @arcaai/domains — DDD entities, repositories, mappers
+  # Backend (DDD layers: database → domains → applications → apps/api)
+  database/         @arcaai/database — Prisma 7 multi-file schema, client extensions
+  domains/          @arcaai/domains — entities, factories, mappers, repositories
+  applications/     @arcaai/applications — application services, DTOs, NestJS modules
   exceptions/       @arcaai/exceptions — custom exception hierarchy
   logger/           @arcaai/logger — Winston structured logging
-  tools/            @arcaai/tools — CLI code generators
+  types/ utils/     @arcaai/types, @arcaai/utils — shared types and utilities
+  tools/            @arcaai/tools — CLI code generators (entity/mapper/repo/...)
+
+  # Browser SDK
+  agentic-sdk-v2/   @arcaai/vox — React SDK for medical consultations
   room/             @arcaai/room — audio processing framework
   vad/              @arcaai/vad — voice activity detection (Silero VAD v5)
   noise-filter/     @arcaai/noise-filter — AI noise cancellation (RNNoise)
-  med-ner/          @arcaai/med-ner — medical named entity recognition
+  stt/              @arcaai/stt — local Whisper STT WebWorker
+  med-ner/          @arcaai/med-ner — client-side medical NER
   pipeline/         @arcaai/pipeline — sequential/parallel processing
-  ui/               @arcaai/ui — shared React component library
+
+  # UI & config
+  ui/               @arcaai/ui — shared React component library (shadcn/Radix)
   config-*/         shared ESLint, TypeScript, Tailwind, Rollup configs
+  eslint-plugin-arcaai-internal/  custom architecture lint rules
 
-infrastructure/
-  docker/           Docker Compose for local dev (PostgreSQL, Redis, MinIO, Vault, Qdrant)
-  single-deployment/ Production deployment scripts and configs
-
-knowledge/          Technical documentation and knowledge base
-docs/               Implementation ticket documentation
+infrastructure/     Docker Compose (local dev), Grafana dashboards, Vault HA blueprint
+deployment/         k3s + ArgoCD GitOps manifests (cluster deployment)
+scripts/            Dev/test/CI operational scripts
+tests/              Shared test helpers, contracts, SDK E2E, isolated test infra
+docs/               Architecture, development guide, ticket documentation
 ```
 
 ## Quick Start
 
 ```sh
-# Prerequisites: Node.js >= 22, pnpm, Docker, conda (for Python services)
+# Prerequisites: Node.js >= 22, pnpm 10, Docker, conda + uv (Python services),
+# LM Studio on :1234 for local LLM inference
 
-# 1. Install dependencies
-pnpm install
-
-# 2. Start dev infrastructure (PostgreSQL, Redis, MinIO)
-pnpm docker:dev:up
-
-# 3. Push database schema and seed
-pnpm db:all
-
-# 4. Build everything
-pnpm build
-
-# 5. Start the API server
-pnpm dev:api
+pnpm install       # 1. Install dependencies (+ gitleaks pre-commit hook)
+pnpm py:setup      # 2. Create the shared conda env `arcaenv` (Python services)
+pnpm dev:setup     # 3. Infra up + DB schema/seed + Vault bootstrap (idempotent)
+pnpm build         # 4. Build everything
+pnpm dev:stack     # 5. Start the full clinical-workspace stack
+pnpm dev:doctor    # 6. Verify all services are green
 ```
 
-For the full setup guide including Python services, environment files, and testing, see **[knowledge/SETUP.md](knowledge/SETUP.md)**.
+For the full setup guide, daily workflows, testing, and troubleshooting, see **[docs/development-guide.md](docs/development-guide.md)**.
 
 ## Key Commands
 
@@ -71,48 +72,49 @@ For the full setup guide including Python services, environment files, and testi
 | `DRY_RUN=1 pnpm dev:stack` | Print the launch plan without starting anything |
 | `pnpm dev:doctor` | Health-check all services, docker infra, LLM engines, and the STT key |
 | `pnpm infra:up` | Start docker infra incl. Vault + Temporal profiles |
-| `pnpm infra:down` | Stop docker infra |
-| `pnpm infra:status` | Show docker infra container status |
-| `pnpm infra:logs` | Follow docker infra logs |
+| `pnpm infra:down` / `infra:status` / `infra:logs` | Stop / inspect / follow docker infra |
 | `pnpm dev:api` | Start API Gateway (development) |
 | `pnpm dev:stt-v2` | Start STT-v2 service (no reload; `:watch` for scoped reload) |
 | `pnpm dev:smr-v2` | Start SMR-v2 service with the LM Studio provider registered |
-| `pnpm dev:nlp` | Start NLP service |
-| `pnpm dev:guardrail` | Start Guardrail service |
-| `pnpm dev:harness` | Start the harness API service |
+| `pnpm dev:nlp` / `dev:guardrail` / `dev:harness` | Start NLP / Guardrail / harness API service |
 | `pnpm dev:harness:worker` | Start the harness Temporal worker |
 | `pnpm dev:<service>:watch` | Scoped-reload variant (stt-v2, smr-v2, guardrail, nlp, harness) |
 | `pnpm build` | Build all packages and apps |
-| `pnpm test:unit` | Run TypeScript unit tests |
-| `pnpm ok` | Full reset: push DB, seed, build everything |
+| `pnpm test:unit` / `test:integration` / `test:e2e` | Run the TypeScript test suites (`.env.test`, isolated infra) |
+| `pnpm py:<svc>:test` | Run a Python service's pytest suite (stt-v2, smr-v2, nlp, guardrail, harness) |
+| `pnpm ok` | Full reset: push DB (destructive), seed, build everything |
 | `pnpm db:studio` | Open Prisma Studio |
 | `pnpm gen:token` | Generate a dev JWT token |
 
 Python dev services bind `127.0.0.1` by default; export `HOST=0.0.0.0` to expose one on the LAN deliberately.
 
-See [knowledge/SETUP.md](knowledge/SETUP.md) for the complete script reference, and
-[docs/implementation/TASK-346-Local-Dev-Service-Scripts/README.md](docs/implementation/TASK-346-Local-Dev-Service-Scripts/README.md)
+See [scripts/README.md](scripts/README.md) for the complete script reference, and
+[docs/archive/TASK-346-Local-Dev-Service-Scripts/README.md](docs/archive/TASK-346-Local-Dev-Service-Scripts/README.md)
 for the dev-script design (defaults, env precedence, preflight checks).
 
 ## Documentation
 
 | Resource | Description |
 |----------|-------------|
-| [knowledge/](knowledge/README.md) | Technical knowledge base (architecture, services, packages) |
-| [knowledge/SETUP.md](knowledge/SETUP.md) | Local development setup, scripts reference, testing guide |
-| [docs/implementation/](docs/implementation/) | Ticket-based implementation documentation |
+| [docs/README.md](docs/README.md) | Documentation index — start here |
+| [docs/development-guide.md](docs/development-guide.md) | Developer guide: setup, daily workflows, testing, troubleshooting |
+| [docs/architecture/overview.md](docs/architecture/overview.md) | System topology, ports, data flows, deployment topologies |
+| [docs/development-patterns-and-standards.md](docs/development-patterns-and-standards.md) | Coding patterns and layer standards (code-verified) |
+| [docs/implementation/](docs/implementation/) | Active ticket-based implementation documentation |
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Monorepo | Turborepo + pnpm workspaces |
-| API Gateway | NestJS, TypeScript |
-| Python Services | FastAPI, conda, uv |
+| API Gateway | NestJS 11, TypeScript 5.9 |
+| Python Services | FastAPI, Python 3.11 (conda `arcaenv` + uv workspace lock) |
 | Database | PostgreSQL 18, Prisma 7 |
 | Cache/Queue | Redis 8, BullMQ |
 | Object Storage | MinIO |
 | Vector DB | Qdrant |
-| Frontend SDK | React, TypeScript |
+| Workflows | Temporal (clinical documentation harness) |
+| Secrets | HashiCorp Vault (Transit PHI encryption, dynamic DB creds) |
+| Frontend SDK | React 19, TypeScript |
 | Testing | Vitest, Playwright, pytest |
-| Infrastructure | Docker Compose, systemd |
+| Infrastructure | Docker Compose (local), k3s + ArgoCD (cluster) |

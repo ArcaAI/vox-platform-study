@@ -875,10 +875,15 @@ export class SmrProxyController {
 
     if (mime === 'application/pdf') {
       try {
-        const mod = await import('pdf-parse');
-        const pdfParse = ((mod as { default?: unknown }).default ?? mod) as (data: Buffer) => Promise<{ text: string }>;
-        const parsed = await pdfParse(buffer);
-        return parsed.text;
+        // pdf-parse v2 replaced the callable default export with the PDFParse class.
+        const { PDFParse } = await import('pdf-parse');
+        const parser = new PDFParse({ data: new Uint8Array(buffer) });
+        try {
+          const parsed = await parser.getText();
+          return parsed.text;
+        } finally {
+          await parser.destroy();
+        }
       } catch (err) {
         this.logger.warn({
           message: 'PDF text extraction failed; skipping attachment',

@@ -37,10 +37,7 @@ export interface HarnessProgressEvent {
 
 /** Classification of a raw SSE `message` payload. */
 export type HarnessProgressMessage =
-  | { kind: 'event'; event: HarnessProgressEvent }
-  | { kind: 'closed'; event: HarnessProgressEvent }
-  | { kind: 'heartbeat' }
-  | { kind: 'invalid' };
+  { kind: 'event'; event: HarnessProgressEvent } | { kind: 'closed'; event: HarnessProgressEvent } | { kind: 'heartbeat' } | { kind: 'invalid' };
 
 // 'failed' arrives on the failure terminal event (TASK-348 / MAJ-1 contract:
 // stage key "failed", closed:true). Unknown statuses still coerce to pending.

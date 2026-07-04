@@ -59,7 +59,9 @@ describe('PlatformMetricsService.getPlatformMetrics (#1)', () => {
     prometheus = makePrometheus();
     sockets = { getAggregateCount: vi.fn(async () => 7), publishLocalCount: vi.fn() };
     cache = makeCache();
-    service = new PlatformMetricsService(prometheus as any, sockets as any, cache as any, { client: {} } as any);
+    // TASK-413 — repository args (never exercised by these Prometheus-focused
+    // specs; getConsumptionRollup has its own suite with real repo stubs).
+    service = new PlatformMetricsService(prometheus as any, sockets as any, cache as any, {} as any, {} as any, {} as any, {} as any, {} as any);
   });
 
   it('maps the Prometheus rate to requests/min', async () => {

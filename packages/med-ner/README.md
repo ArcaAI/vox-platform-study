@@ -1,382 +1,156 @@
 # @arcaai/med-ner
 
-Medical Named Entity Recognition (NER) plugin for @arcaai/room using Transformers.js.
+Medical Named Entity Recognition in the browser via Transformers.js. Extracts diseases, medications, procedures, anatomy, lab values, symptoms, dosage/frequency/duration, genes, and chemicals from text. Inference runs either on the main thread or — recommended — in a dedicated Web Worker so the ~hundreds-of-MB model stack never blocks the UI. Models are pinned to specific Hugging Face revisions for supply-chain safety.
 
-Extracts medical entities from text including diseases, medications, procedures, anatomy, lab values, symptoms, and more.
+Last updated: 2026-07-04
 
-## Features
+## Where it fits
 
-- **Browser-native NER** - Runs entirely in the browser using Transformers.js and ONNX Runtime
-- **Multiple models** - Support for various biomedical NER models from Hugging Face
-- **Type-safe** - Full TypeScript support with comprehensive types
-- **React hooks** - Easy integration with React applications via `useMedNER` hook
-- **Configurable** - Adjustable confidence thresholds, entity type filtering, and more
-- **Automatic entity merging** - Handles B-I-O tagging and overlapping entities
-- **Long text support** - Automatic chunking for texts longer than model max length
+| Direction | Package | Relationship |
+|---|---|---|
+| Depends on | `@huggingface/transformers` | Token-classification pipeline (ONNX) |
+| Depends on | `@arcaai/room` (peer, `^0.1.0`) | Type-only import (`TrackProcessor`, `ProcessorOptions`) |
+| Consumed by | `@arcaai/vox` (optional peer) | NER stage of `KnowledgePipeline`; hook re-exported at `@arcaai/vox/plugins/med-ner` |
 
-## Installation
+This is a text processor, not an audio processor: `MedNERProcessor` is a standalone class you `init()` and call `extract(text)` on. `react` is an optional peer dependency (only needed for `useMedNER`).
 
-```bash
-pnpm add @arcaai/med-ner
-# or
-npm install @arcaai/med-ner
+## Directory structure
+
+```
+packages/med-ner/
+├── src/
+│   ├── processors/    # MedNERProcessor (+ createMedNER factory)
+│   ├── workers/       # medner.worker.ts (worker host) + MedNERWorkerClient (RPC wrapper)
+│   ├── hooks/         # useMedNER (React)
+│   ├── types/         # MedicalEntityType, EntitySpan, MedNEROptions, MODEL_MAP (pinned revisions)
+│   ├── utils/         # Entity merge/filter/highlight utils, token-aware chunking,
+│   │                  # escapeHtml, browser/WebGPU support detection
+│   └── index.ts       # Public barrel export
+├── e2e/               # Playwright browser tests (serve.mjs + fixtures)
+└── tsup.config.ts     # Main bundle + worker bundle (dist/workers/medner.worker.js) + e2e bundle
 ```
 
-## Quick Start
+Subpath export: `@arcaai/med-ner/worker` → the built worker file.
 
-### Using the Processor Directly
+## Public API overview
+
+### Processor
 
 ```typescript
-import { createMedNER, MedicalEntityType } from '@arcaai/med-ner';
+import { createMedNER } from '@arcaai/med-ner';
 
-// Create processor
 const ner = createMedNER({
   model: 'biomedical',
   threshold: 0.6,
+  // Recommended: off-main-thread inference
+  workerFactory: () =>
+    new Worker(new URL('@arcaai/med-ner/dist/workers/medner.worker.js', import.meta.url), {
+      type: 'module',
+    }),
 });
 
-// Initialize (downloads model on first use)
-await ner.init();
+await ner.init(); // downloads + caches the model on first use
 
-// Extract entities
 const result = await ner.extract(
   'Patient diagnosed with Type 2 Diabetes and prescribed Metformin 500mg twice daily.'
 );
+// result.entities: [{ text, type, score, start, end, rawLabel }, ...]
 
-console.log(result.entities);
-// [
-//   { text: 'Type 2 Diabetes', type: 'DISEASE', score: 0.95, start: 24, end: 39 },
-//   { text: 'Metformin', type: 'MEDICATION', score: 0.92, start: 55, end: 64 },
-//   { text: '500mg', type: 'DOSAGE', score: 0.88, start: 65, end: 70 },
-// ]
-
-// Cleanup when done
 await ner.destroy();
 ```
 
-### Using the React Hook
+When `workerFactory` is provided, all inference runs in the worker and the main thread never imports `@huggingface/transformers`. When omitted, the processor falls back to main-thread inference — appropriate for SSR, jsdom tests, or environments without `Worker`.
+
+### React hook
 
 ```tsx
 import { useMedNER } from '@arcaai/med-ner';
 
 function MedicalTextAnalyzer() {
-  const {
-    isReady,
-    isProcessing,
-    entities,
-    extract,
-    error,
-  } = useMedNER({
+  const { isReady, isProcessing, entities, extract, error } = useMedNER({
     model: 'biomedical',
     threshold: 0.6,
     autoInit: true,
-    onEntitiesExtracted: (result) => {
-      console.log('Found', result.entities.length, 'entities');
-    },
   });
-
-  const [text, setText] = useState('');
-
-  const handleAnalyze = async () => {
-    if (text.trim()) {
-      await extract(text);
-    }
-  };
 
   return (
     <div>
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder="Enter medical text..."
-      />
-
-      <button onClick={handleAnalyze} disabled={!isReady || isProcessing}>
-        {isProcessing ? 'Analyzing...' : 'Analyze'}
+      <button
+        onClick={() => extract('Patient has hypertension and takes Lisinopril.')}
+        disabled={!isReady || isProcessing}
+      >
+        Analyze
       </button>
-
-      {error && <div className="error">{error.message}</div>}
-
-      {entities.length > 0 && (
-        <ul>
-          {entities.map((entity, i) => (
-            <li key={i}>
-              <strong>{entity.text}</strong> ({entity.type}) - {(entity.score * 100).toFixed(1)}%
-            </li>
-          ))}
-        </ul>
-      )}
+      {error && <div>{error.message}</div>}
+      <ul>
+        {entities.map((e, i) => (
+          <li key={i}>{e.text} ({e.type}) — {(e.score * 100).toFixed(1)}%</li>
+        ))}
+      </ul>
     </div>
   );
 }
 ```
 
-## Configuration
+The hook additionally exposes `isLoading` / `loadProgress`, `result`, `stats`, `processor`, and methods `init`, `extractBatch(texts)`, `clear`, `resetStats`, `updateOptions`, `destroy`.
 
-### Processor Options
+### Options (`MedNEROptions`)
 
-```typescript
-const ner = createMedNER({
-  // Model selection
-  model: 'biomedical',  // 'default' | 'biomedical' | 'clinical' | HuggingFace model ID
+| Option | Default | Description |
+|---|---|---|
+| `model` | `'default'` | `'default' \| 'biomedical' \| 'clinical'` or any HF model ID with ONNX weights |
+| `threshold` | `0.5` | Minimum confidence; lower-scoring entities are dropped |
+| `entityTypes` | all | Restrict output to specific `MedicalEntityType` values |
+| `mergeAdjacent` / `mergeOverlapping` | `true` / `true` | B-I-O merge and overlap resolution |
+| `maxTokens` / `stride` | `384` / `64` | Token-aware chunking for long texts (headroom for `[CLS]`/`[SEP]`) |
+| `maxLength` / `chunkOverlap` | `512` / `50` | Deprecated character-based limits; prefer `maxTokens` / `stride` |
+| `dtype` | `'q8'` browser, `'fp32'` Node | Quantization: `'fp32' \| 'fp16' \| 'q8' \| 'q4'` |
+| `workerFactory` | — | Factory returning a `Worker` hosting `medner.worker.js` |
+| `onProgress` | — | Model download/load progress callback |
+| `enableStats` / `statsInterval` | `false` / `1000` | Emit stats events |
 
-  // Confidence threshold (0-1)
-  threshold: 0.5,
+`MedNERProcessor` methods: `init()`, `extract(text)`, `destroy()`, `isSupported()`, `isInitialized()`, `isProcessing()`, `getModelId()`, `getOptions()`, `updateOptions()`, `getStats()`, `resetStats()`, `on()` / `off()`.
 
-  // Filter to specific entity types
-  entityTypes: [MedicalEntityType.DISEASE, MedicalEntityType.MEDICATION],
+### Models (pinned revisions)
 
-  // Merge adjacent entities of same type (B-I-O handling)
-  mergeAdjacent: true,
+`MODEL_MAP` pins each preset to a validated Hugging Face commit SHA, so an upstream re-push cannot silently change inference results:
 
-  // Merge overlapping entities (keep highest score)
-  mergeOverlapping: true,
+| Preset | Hugging Face model |
+|---|---|
+| `default` | `Xenova/bert-base-NER` (general NER) |
+| `biomedical` | `Kushtrim/bert-base-cased-biomedical-ner` |
+| `clinical` | `samrawal/bert-base-uncased_clinical-ner` |
 
-  // Max text length before chunking
-  maxLength: 512,
+Compute device is resolved automatically per environment (`getRecommendedDevice()` → `'webgpu'` when usable, else `'wasm'`).
 
-  // Chunk overlap for long texts
-  chunkOverlap: 50,
+### Utilities
 
-  // Enable statistics tracking
-  enableStats: false,
+Entity helpers: `filterEntitiesByThreshold`, `filterEntitiesByType`, `mergeAdjacentEntities`, `mergeOverlappingEntities`, `sortEntitiesByScore` / `ByPosition`, `getTopEntities`, `groupEntitiesByType`, `countEntitiesByType`, `deduplicateEntities`, `getAverageConfidence`, `highlightEntities` (HTML output, XSS-safe via `escapeHtml`), `entitiesToJSON`.
 
-  // Stats emission interval (ms)
-  statsInterval: 1000,
+Chunking: `chunkByTokens`, `segmentSentences`, `mergeChunkEntities`. Support probing: `isMedNERSupported()`, `getMedNERBrowserSupport()`, `isWebGPUSupported()`, `getRecommendedDtype()`.
 
-  // Model quantization (affects size/speed/accuracy)
-  dtype: 'q8',  // 'fp32' | 'fp16' | 'q8' | 'q4'
+## Runtime requirements
 
-  // Progress callback for model loading
-  onProgress: (progress) => {
-    console.log(`Loading: ${progress.progress}%`);
-  },
-});
-```
+- Requires WebAssembly, `fetch`, and IndexedDB (model caching). WebGPU is used opportunistically.
+- Models download from the Hugging Face Hub on first `init()` and are cached in the browser by Transformers.js; nothing ships in the package. Budget model-sized downloads (BERT-base ONNX, tens to hundreds of MB depending on `dtype`).
+- The worker bundle is self-contained (Transformers.js bundled in). Bundlers that support `new URL(..., import.meta.url)` (Vite, webpack 5) resolve the worker path automatically.
+- iOS Safari works but is memory-constrained; prefer `dtype: 'q8'` or `'q4'`.
+- Browser-only main entry (`"use client"`); ships a `react-server` exports-condition stub.
 
-### Available Models
+## Commands
 
-| Model | ID | Description |
-|-------|----|-----------|
-| Default | `default` | General NER (Xenova/bert-base-NER) |
-| Biomedical | `biomedical` | Biomedical entities (Kushtrim/bert-base-cased-biomedical-ner) |
-| Clinical | `clinical` | Clinical notes (samrawal/bert-base-uncased_clinical-ner) |
-| Custom | `owner/model-name` | Any HuggingFace model with ONNX weights |
+From this directory:
 
-## Medical Entity Types
+| Command | Action |
+|---|---|
+| `pnpm build` | tsup build (main + worker + e2e bundles) |
+| `pnpm test` / `pnpm test:watch` / `pnpm test:coverage` | Vitest unit tests |
+| `pnpm test:e2e` | Playwright browser tests (`pnpm e2e:serve` serves fixtures); `:ui`, `:headed`, `:chromium` variants exist |
+| `pnpm lint` | ESLint (`--max-warnings 0`) |
+| `pnpm type-check` | `tsc --noEmit` |
+| `pnpm clean` / `pnpm nuke` | Remove build output (nuke also removes `node_modules`) |
 
-```typescript
-enum MedicalEntityType {
-  DISEASE,      // Diseases and conditions
-  MEDICATION,   // Drugs and medications
-  PROCEDURE,    // Medical procedures
-  ANATOMY,      // Body parts and organs
-  LAB_VALUE,    // Lab tests and values
-  SYMPTOM,      // Symptoms and signs
-  DOSAGE,       // Dosage information
-  FREQUENCY,    // Frequency (e.g., "twice daily")
-  DURATION,     // Duration (e.g., "for 7 days")
-  GENE,         // Genes and proteins
-  CHEMICAL,     // Chemical compounds
-  OTHER,        // Other medical entities
-}
-```
-
-## API Reference
-
-### MedNERProcessor
-
-```typescript
-class MedNERProcessor {
-  // Properties
-  readonly name: string;
-
-  // Initialization
-  async init(): Promise<void>;
-  async destroy(): Promise<void>;
-
-  // State
-  isSupported(): boolean;
-  isInitialized(): boolean;
-  isProcessing(): boolean;
-
-  // Extraction
-  async extract(text: string): Promise<MedNERResult>;
-
-  // Configuration
-  getModelId(): string;
-  getOptions(): MedNEROptions;
-  updateOptions(options: Partial<MedNEROptions>): void;
-
-  // Statistics
-  getStats(): MedNERStats;
-  resetStats(): void;
-
-  // Events
-  on(event: string, callback: Function): void;
-  off(event: string, callback: Function): void;
-}
-```
-
-### useMedNER Hook
-
-```typescript
-function useMedNER(options: UseMedNEROptions): {
-  // State
-  isReady: boolean;
-  isProcessing: boolean;
-  isLoading: boolean;
-  loadProgress: ModelLoadProgress | null;
-  entities: EntitySpan[];
-  result: MedNERResult | null;
-  stats: MedNERStats | null;
-  error: Error | null;
-  processor: MedNERProcessor | null;
-
-  // Methods
-  init: () => Promise<void>;
-  extract: (text: string) => Promise<MedNERResult>;
-  extractBatch: (texts: string[]) => Promise<MedNERResult[]>;
-  clear: () => void;
-  resetStats: () => void;
-  updateOptions: (options: Partial<MedNEROptions>) => void;
-  destroy: () => Promise<void>;
-};
-```
-
-## Utility Functions
-
-### Entity Processing
-
-```typescript
-import {
-  filterEntitiesByThreshold,
-  filterEntitiesByType,
-  mergeAdjacentEntities,
-  mergeOverlappingEntities,
-  sortEntitiesByScore,
-  sortEntitiesByPosition,
-  getTopEntities,
-  highlightEntities,
-  deduplicateEntities,
-  groupEntitiesByType,
-  countEntitiesByType,
-  getAverageConfidence,
-} from '@arcaai/med-ner';
-
-// Filter by confidence
-const highConfidence = filterEntitiesByThreshold(entities, 0.8);
-
-// Filter by type
-const diseases = filterEntitiesByType(entities, [MedicalEntityType.DISEASE]);
-
-// Get top 5 entities
-const top5 = getTopEntities(entities, 5);
-
-// Highlight in HTML
-const html = highlightEntities(text, entities);
-
-// Count by type
-const counts = countEntitiesByType(entities);
-console.log(`Diseases: ${counts[MedicalEntityType.DISEASE]}`);
-```
-
-### Browser Support Detection
-
-```typescript
-import {
-  isMedNERSupported,
-  getMedNERBrowserSupport,
-  logBrowserSupport,
-} from '@arcaai/med-ner';
-
-// Quick check
-if (!isMedNERSupported()) {
-  console.error('NER not supported in this browser');
-}
-
-// Detailed support info
-const support = getMedNERBrowserSupport();
-console.log(support);
-// {
-//   webAssembly: true,
-//   indexedDB: true,
-//   fetch: true,
-//   nerSupported: true,
-//   recommendedDtype: 'q8'
-// }
-
-// Log to console with formatting
-logBrowserSupport();
-```
-
-## Integration with @arcaai/vox
-
-```typescript
-import { AgenticProvider, useArca } from '@arcaai/vox';
-
-const config = {
-  api: {
-    baseUrl: 'https://api.arcaai.com',
-    apiKey: 'your-api-key',
-  },
-  plugins: {
-    ner: {
-      enabled: true,
-      autoExtract: true,  // Auto-extract from transcriptions
-      entityTypes: ['DISEASE', 'MEDICATION', 'SYMPTOM'],
-    },
-  },
-};
-
-function App() {
-  return (
-    <AgenticProvider config={config}>
-      <ConsultationPage />
-    </AgenticProvider>
-  );
-}
-
-function ConsultationPage() {
-  const { context } = useArca();
-
-  // Extract entities from context
-  const entities = await context.extractEntities();
-}
-```
-
-## Examples
-
-See the `examples/` directory for complete examples:
-
-- `basic-usage.tsx` - Simple extraction example
-- `with-react-hook.tsx` - Using useMedNER hook
-- `custom-model.tsx` - Loading a custom model
-- `batch-processing.tsx` - Processing multiple texts
-- `highlighted-text.tsx` - Displaying highlighted entities
-
-## Browser Support
-
-| Browser | Support | Notes |
-|---------|---------|-------|
-| Chrome 80+ | ✅ | Recommended |
-| Firefox 78+ | ✅ | Good performance |
-| Safari 15+ | ✅ | May be slower |
-| Edge 80+ | ✅ | Chromium-based |
-| iOS Safari | ⚠️ | Limited by memory |
-
-### Requirements
-
-- WebAssembly support
-- Fetch API
-- IndexedDB (for model caching)
-
-## Performance Tips
-
-1. **Use quantized models** - Set `dtype: 'q8'` or `dtype: 'q4'` for faster loading and lower memory usage
-2. **Cache models** - Models are cached in IndexedDB after first download
-3. **Chunk long texts** - The processor automatically chunks long texts, but you can adjust `maxLength` and `chunkOverlap`
-4. **Filter entity types** - If you only need specific types, use `entityTypes` option to skip post-processing
+From the repo root: `pnpm --filter @arcaai/med-ner build` (same pattern for `test`, `lint`, etc.).
 
 ## License
 

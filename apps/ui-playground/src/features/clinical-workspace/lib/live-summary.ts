@@ -110,10 +110,7 @@ export function buildSoapSectionViews(runningSummary: string, sections: LiveSumm
 
 /** Classification of a raw SSE `message` payload. */
 export type LiveSummaryMessage =
-  | { kind: 'event'; event: LiveSummaryEvent }
-  | { kind: 'closed'; event: LiveSummaryEvent }
-  | { kind: 'heartbeat' }
-  | { kind: 'invalid' };
+  { kind: 'event'; event: LiveSummaryEvent } | { kind: 'closed'; event: LiveSummaryEvent } | { kind: 'heartbeat' } | { kind: 'invalid' };
 
 function isHeartbeat(value: Record<string, unknown>): boolean {
   if (value.type === 'heartbeat' || value.heartbeat === true) return true;

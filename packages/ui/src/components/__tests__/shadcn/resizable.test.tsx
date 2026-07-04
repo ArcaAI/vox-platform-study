@@ -9,7 +9,7 @@ test.describe('Resizable', () => {
   test.describe('ResizablePanelGroup', () => {
     test('renders with default props', async ({ mount }) => {
       const component = await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>Panel 1</ResizablePanel>
           <ResizableHandle />
           <ResizablePanel>Panel 2</ResizablePanel>
@@ -20,7 +20,7 @@ test.describe('Resizable', () => {
 
     test('has data-slot attribute', async ({ mount }) => {
       const component = await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>Content</ResizablePanel>
         </ResizablePanelGroup>
       )
@@ -32,7 +32,7 @@ test.describe('Resizable', () => {
 
     test('applies custom className', async ({ mount }) => {
       const component = await mount(
-        <ResizablePanelGroup direction="horizontal" className="custom-group">
+        <ResizablePanelGroup orientation="horizontal" className="custom-group">
           <ResizablePanel>Content</ResizablePanel>
         </ResizablePanelGroup>
       )
@@ -41,7 +41,7 @@ test.describe('Resizable', () => {
 
     test('has flex layout', async ({ mount }) => {
       const component = await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>Content</ResizablePanel>
         </ResizablePanelGroup>
       )
@@ -50,39 +50,34 @@ test.describe('Resizable', () => {
       await expect(component).toHaveClass(/w-full/)
     })
 
-    test('supports horizontal direction', async ({ mount }) => {
+    test('supports horizontal orientation', async ({ mount }) => {
       const component = await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>Panel 1</ResizablePanel>
           <ResizableHandle />
           <ResizablePanel>Panel 2</ResizablePanel>
         </ResizablePanelGroup>
       )
-      await expect(component).toHaveAttribute(
-        'data-panel-group-direction',
-        'horizontal'
-      )
+      // v4 drives layout via inline flex-direction (data-panel-group-direction is gone)
+      await expect(component).toHaveCSS('flex-direction', 'row')
     })
 
-    test('supports vertical direction', async ({ mount }) => {
+    test('supports vertical orientation', async ({ mount }) => {
       const component = await mount(
-        <ResizablePanelGroup direction="vertical">
+        <ResizablePanelGroup orientation="vertical">
           <ResizablePanel>Panel 1</ResizablePanel>
           <ResizableHandle />
           <ResizablePanel>Panel 2</ResizablePanel>
         </ResizablePanelGroup>
       )
-      await expect(component).toHaveAttribute(
-        'data-panel-group-direction',
-        'vertical'
-      )
+      await expect(component).toHaveCSS('flex-direction', 'column')
     })
   })
 
   test.describe('ResizablePanel', () => {
     test('renders children', async ({ mount }) => {
       const component = await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>Panel content</ResizablePanel>
         </ResizablePanelGroup>
       )
@@ -91,7 +86,7 @@ test.describe('Resizable', () => {
 
     test('has data-slot attribute', async ({ mount, page }) => {
       await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>Content</ResizablePanel>
         </ResizablePanelGroup>
       )
@@ -101,7 +96,7 @@ test.describe('Resizable', () => {
 
     test('renders multiple panels', async ({ mount, page }) => {
       await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>First</ResizablePanel>
           <ResizableHandle />
           <ResizablePanel>Second</ResizablePanel>
@@ -117,7 +112,7 @@ test.describe('Resizable', () => {
   test.describe('ResizableHandle', () => {
     test('renders between panels', async ({ mount, page }) => {
       await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>Left</ResizablePanel>
           <ResizableHandle />
           <ResizablePanel>Right</ResizablePanel>
@@ -129,7 +124,7 @@ test.describe('Resizable', () => {
 
     test('has data-slot attribute', async ({ mount, page }) => {
       await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>Left</ResizablePanel>
           <ResizableHandle />
           <ResizablePanel>Right</ResizablePanel>
@@ -141,7 +136,7 @@ test.describe('Resizable', () => {
 
     test('applies custom className', async ({ mount, page }) => {
       await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>Left</ResizablePanel>
           <ResizableHandle className="custom-handle" />
           <ResizablePanel>Right</ResizablePanel>
@@ -153,7 +148,7 @@ test.describe('Resizable', () => {
 
     test('has correct styling', async ({ mount, page }) => {
       await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>Left</ResizablePanel>
           <ResizableHandle />
           <ResizablePanel>Right</ResizablePanel>
@@ -171,7 +166,7 @@ test.describe('Resizable', () => {
       page,
     }) => {
       await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>Left</ResizablePanel>
           <ResizableHandle withHandle />
           <ResizablePanel>Right</ResizablePanel>
@@ -184,7 +179,7 @@ test.describe('Resizable', () => {
 
     test('does not render grip handle by default', async ({ mount, page }) => {
       await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>Left</ResizablePanel>
           <ResizableHandle />
           <ResizablePanel>Right</ResizablePanel>
@@ -199,12 +194,12 @@ test.describe('Resizable', () => {
   test.describe('composition', () => {
     test('renders full horizontal layout', async ({ mount, page }) => {
       await mount(
-        <ResizablePanelGroup direction="horizontal">
-          <ResizablePanel defaultSize={25}>
+        <ResizablePanelGroup orientation="horizontal">
+          <ResizablePanel defaultSize="25%">
             <div>Sidebar</div>
           </ResizablePanel>
           <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={75}>
+          <ResizablePanel defaultSize="75%">
             <div>Main Content</div>
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -222,11 +217,11 @@ test.describe('Resizable', () => {
 
     test('renders nested panel groups', async ({ mount, page }) => {
       await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>Left</ResizablePanel>
           <ResizableHandle />
           <ResizablePanel>
-            <ResizablePanelGroup direction="vertical">
+            <ResizablePanelGroup orientation="vertical">
               <ResizablePanel>Top</ResizablePanel>
               <ResizableHandle />
               <ResizablePanel>Bottom</ResizablePanel>
@@ -243,7 +238,7 @@ test.describe('Resizable', () => {
   test.describe('accessibility', () => {
     test('handle is focusable', async ({ mount, page }) => {
       await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>Left</ResizablePanel>
           <ResizableHandle />
           <ResizablePanel>Right</ResizablePanel>
@@ -256,7 +251,7 @@ test.describe('Resizable', () => {
 
     test('handle has separator role', async ({ mount, page }) => {
       await mount(
-        <ResizablePanelGroup direction="horizontal">
+        <ResizablePanelGroup orientation="horizontal">
           <ResizablePanel>Left</ResizablePanel>
           <ResizableHandle />
           <ResizablePanel>Right</ResizablePanel>

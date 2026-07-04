@@ -47,10 +47,7 @@ export interface HarnessAssuranceEvent {
 
 /** Classification of a raw SSE `message` payload. */
 export type HarnessAssuranceMessage =
-  | { kind: 'event'; event: HarnessAssuranceEvent }
-  | { kind: 'closed'; event: HarnessAssuranceEvent }
-  | { kind: 'heartbeat' }
-  | { kind: 'invalid' };
+  { kind: 'event'; event: HarnessAssuranceEvent } | { kind: 'closed'; event: HarnessAssuranceEvent } | { kind: 'heartbeat' } | { kind: 'invalid' };
 
 function isHeartbeat(value: Record<string, unknown>): boolean {
   if (value.type === 'heartbeat' || value.heartbeat === true) return true;

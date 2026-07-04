@@ -44,10 +44,9 @@
  *   const { session, audio, context, summary, isReady } = useArca();
  *
  *   const handleStart = async () => {
- *     await session.create({
+ *     await session.open({
  *       patientId: 'patient-123',
  *       appointmentDate: '2026-01-12',
- *       doctorId: 'doctor-456',
  *     });
  *     await audio.start();
  *   };

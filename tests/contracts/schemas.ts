@@ -79,72 +79,6 @@ export const SttTaskStatusResponseSchema = z.object({
 });
 
 // ============================================================================
-// TTS Service Schemas
-// ============================================================================
-
-/**
- * TTS Health Response Schema
- */
-export const TtsHealthResponseSchema = z.object({
-  status: z.enum(['healthy', 'degraded', 'unhealthy']),
-  timestamp: z.number().optional(),
-  message: z.string().optional(),
-});
-
-/**
- * TTS Synthesis Request Schema
- */
-export const TtsSynthesisRequestSchema = z.object({
-  text: z.string().min(1),
-  voice: z.string().optional(),
-  style: z.string().optional(),
-  styleDegree: z.number().optional(),
-  rate: z.string().optional(),
-  pitch: z.string().optional(),
-  format: z.string().optional(),
-  useBatch: z.boolean().optional(),
-});
-
-/**
- * TTS Synthesis Response Schema
- */
-export const TtsSynthesisResponseSchema = z.object({
-  synthesis_id: z.string(),
-  message: z.string(),
-  download_url: z.string(),
-  format: z.string().optional(),
-  file_size: z.string().optional(),
-  text_length: z.number().optional(),
-  character_count: z.number().optional(),
-  voice_used: z.string().optional(),
-  stored_in_minio: z.boolean().optional(),
-  synthesis_duration: z.string().optional(),
-});
-
-/**
- * TTS Voices Response Schema
- */
-export const TtsVoicesResponseSchema = z.object({
-  voices: z.array(z.object({}).passthrough()),
-  total_count: z.number(),
-  default_voices: z.record(z.string(), z.string()).optional(),
-  supported_languages: z.array(z.string()).optional(),
-  message: z.string().optional(),
-});
-
-/**
- * TTS Batch Status Response Schema
- */
-export const TtsBatchStatusResponseSchema = z.object({
-  job_id: z.string(),
-  status: z.enum(['running', 'completed', 'failed', 'pending']),
-  created_at: z.string().optional(),
-  text_length: z.number().optional(),
-  voice: z.string().optional(),
-  format: z.string().optional(),
-});
-
-// ============================================================================
 // SMR Service Schemas
 // ============================================================================
 
@@ -280,12 +214,6 @@ export type SttStartSessionRequest = z.infer<typeof SttStartSessionRequestSchema
 export type SttStartSessionResponse = z.infer<typeof SttStartSessionResponseSchema>;
 export type SttTranscribeFileResponse = z.infer<typeof SttTranscribeFileResponseSchema>;
 export type SttTaskStatusResponse = z.infer<typeof SttTaskStatusResponseSchema>;
-
-export type TtsHealthResponse = z.infer<typeof TtsHealthResponseSchema>;
-export type TtsSynthesisRequest = z.infer<typeof TtsSynthesisRequestSchema>;
-export type TtsSynthesisResponse = z.infer<typeof TtsSynthesisResponseSchema>;
-export type TtsVoicesResponse = z.infer<typeof TtsVoicesResponseSchema>;
-export type TtsBatchStatusResponse = z.infer<typeof TtsBatchStatusResponseSchema>;
 
 export type SmrHealthResponse = z.infer<typeof SmrHealthResponseSchema>;
 export type SmrSyncSummaryRequest = z.infer<typeof SmrSyncSummaryRequestSchema>;

@@ -1,12 +1,46 @@
 # @arcaai/database
 
-Database package for the HOPE platform, containing Prisma schema definitions, database client configuration, migration management, and seeding scripts.
+Data-access foundation for the HOPE platform: the Prisma 7 schema (multi-file, PostgreSQL), the generated Prisma client, client extensions for soft-delete filtering and tenant scoping, migrations, and phased seed scripts.
 
-## Overview
+Last updated: 2026-07-04
 
-The `@arcaai/database` package provides the data access layer for the HOPE platform using Prisma 7 with the PostgreSQL adapter. It includes a singleton Prisma client with a soft-delete extension that automatically filters deleted records, schema definitions following standardized model conventions, and database seeding utilities.
+## Position in the stack
 
-## Usage
+First link in the DDD layer chain:
+
+```
+packages/database  →  packages/domains  →  packages/applications  →  apps/api
+(Prisma schema)       (entities/repos)      (application services)    (controllers)
+```
+
+Direct workspace consumers: `@arcaai/domains`, `@arcaai/applications`, `@arcaai/api`. Python services (`apps/stt-v2`, `apps/smr`, `apps/nlp`, `apps/guardrail`, `apps/harness`) do not use this package; they talk to the API gateway.
+
+## Directory structure
+
+```
+packages/database/
+├── prisma.config.ts            # Prisma CLI config: env loading + migration URL resolution
+├── src/
+│   ├── client.ts               # Client factories, soft-delete extension, singletons
+│   ├── env.ts                  # NODE_ENV-aware .env loading (.env.dev/.env.test/...)
+│   ├── migration-url.ts        # DIRECT_URL vs DATABASE_URL resolver for migrations
+│   ├── vault-client.ts         # Vault-issued short-lived credential PrismaClient wrapper
+│   ├── extensions/
+│   │   └── tenant-scope.ts     # Tenant-scope $extends + TENANT_SCOPED_MODELS allow-list
+│   ├── generated/              # Generated Prisma client (created by db:generate, not committed)
+│   ├── prisma/db_main/         # Multi-file schema: schema.prisma + one .prisma per domain
+│   │   ├── migrations/         # Committed SQL migrations
+│   │   ├── seed/               # Phased seed scripts (00-constants ... 91-user)
+│   │   └── manual/             # Manual SQL (vault-admin-bootstrap.sql)
+│   ├── __tests__/              # Unit tests (client, env, seeds, extensions)
+│   └── integration/            # Integration tests (require a live Postgres)
+├── scripts/                    # Operational CLIs (decrypt-row, vault smoke tests, backfills)
+├── tests/pgbouncer-validation/ # PgBouncer validation rig (root pgbv:* scripts)
+├── Dockerfile, migrate.sh      # Migration/seed container for deployments
+└── k3s-job-db-migration.yaml   # k3s Job manifest running migrate.sh
+```
+
+## Client usage
 
 ```typescript
 import { getExtendedPrismaClient } from '@arcaai/database';
@@ -15,231 +49,96 @@ const prisma = getExtendedPrismaClient();
 const users = await prisma.user.findMany();
 ```
 
-## Structure
+| Export | Purpose |
+|---|---|
+| `getExtendedPrismaClient()` | Default singleton. Composed `soft-delete + tenant-scope` client — use this everywhere |
+| `getPlatformAdminPrismaClient_Unscoped()` | Raw client that bypasses both extensions. ESLint-gated to an allow-list (seeds, scripts, `CoreDatabaseService`); see below |
+| `createNewPrismaClient()` / `createNewExtendedPrismaClient()` | Fresh instances with their own pools (test isolation) |
+| `getPrismaClientWithVault()` / `VaultPrismaClient` | Client backed by Vault-issued short-lived DB credentials |
+| `setTenantContextProvider(provider)` | Host registration hook for the tenant-scope extension (wired by `apps/api/src/database/tenant-context.provider.ts`) |
+| `Prisma`, generated model types, `PrismaClient*Error` | Re-exported from the generated client |
 
-- `src/client.ts` - Prisma client singleton with soft-delete extension
-- `src/prisma/db_main/` - Prisma schema files and seed scripts
-- `src/generated/` - Auto-generated Prisma client
+The subpath export `@arcaai/database/client` exposes the raw generated client module.
 
-## Development
+### Connection pooling (Prisma 7)
 
-### Setup
+In Prisma 7 the driver adapter (`@prisma/adapter-pg`) owns pool sizing — the legacy `connection_limit` URL parameter is ignored. `src/client.ts` reads:
 
-Create a `.env` file with your database connection string:
+| Env var | Default | Purpose |
+|---|---|---|
+| `DATABASE_URL` | required | Runtime connection string (PgBouncer port 6432 in production) |
+| `DIRECT_URL` | unset | Un-pooled URL used by `prisma.config.ts` for migrations (advisory locks do not survive PgBouncer transaction pooling) |
+| `PRISMA_PG_MAX` | `5` | `max` connections per pool, per pod. Budget rule: `pods × PRISMA_PG_MAX ≤ 0.7 × PG max_connections` |
 
-```
-DATABASE_URL="postgresql://username:password@localhost:5432/hope"
-```
+The pool pins `connectionTimeoutMillis = 5000` and `idleTimeoutMillis = 300000`. Full rationale: [docs/archive/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md](../../docs/archive/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md).
 
-#### Pool sizing (Prisma 7 — TASK-302 Stream C Phase 0)
+### Environment loading
 
-In Prisma 7, the driver adapter (`@prisma/adapter-pg`) owns pool sizing —
-the legacy `connection_limit` URL parameter is ignored. The HOPE client
-in `src/client.ts` reads two env vars:
+`src/env.ts` (and `prisma.config.ts`) load a monorepo-root env file by `NODE_ENV`: `.env.dev` (development, falls back to `.env`), `.env.test`, `.env.staging`, `.env.production`. In CI (`CI=true`) and production, only host environment variables are used.
 
-| Env var          | Default | Purpose                                          |
-|------------------|---------|--------------------------------------------------|
-| `PRISMA_PG_MAX`  | `5`     | `max` connections per pool (per pod).            |
-| `DIRECT_URL`     | unset   | Un-pooled URL consumed by `prisma.config.ts` for migrations. Required after the PgBouncer cutover (TASK-302 Stream C Phase 2A/2B); optional today. |
+## Client extensions
 
-The client also pins `connectionTimeoutMillis = 5_000` and
-`idleTimeoutMillis = 300_000` so a saturated pool fails fast and idle
-backends survive Patroni / PgBouncer keep-alives.
+### Soft delete
 
-**Budget rule** for `PRISMA_PG_MAX`:
+`applySoftDeleteExtension` injects `resourceStatus: { not: 'DELETED' }` into `findMany`, `findFirst`, `findUnique`, `count`, `aggregate`, and `groupBy` unless the caller filters `resourceStatus` explicitly. Immutable tables (version history, usage records, WORM audit) are listed in `MODELS_WITHOUT_SOFT_DELETE` and skipped; `modelHasSoftDelete(model)` exposes the check.
 
-```
-pods × PRISMA_PG_MAX ≤ 0.7 × PG max_connections
-```
+### Tenant scope
 
-See [`docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md`](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md)
-for the full rationale, validation rig, and rollout plan.
+`src/extensions/tenant-scope.ts` enforces tenant isolation at the client layer (multi-tenancy hardening, archived ticket [TASK-305](../../docs/archive/TASK-305-Multi-Tenancy-Hardening/README.md)):
 
-### Commands
+- `TENANT_SCOPED_MODELS` — allow-list of tenant-scoped models (currently 43). `User`/`UserProfile`/`UserSettings` are deliberately absent: user identity is global, and tenant membership is modeled via the scoped join tables `UserRoleAssignment` and `UserDepartment`.
+- Reads merge `where: { tenantId: <CLS tenant> }` into caller args; writes assert `data.tenantId` equals the CLS tenant (auto-injected when missing, error on mismatch).
+- `SYSTEM_SHARED_READ_MODELS` — catalog models (e.g. seeded ASR pipelines) whose reads widen to `tenantId IN [caller, SYSTEM]`; writes are never widened.
+- `SYSTEM_TENANT_ID` (`00000000-0000-0000-0000-000000000000`) — reserved system tenant owning platform-wide rows.
+- Super-admin bypass applies only when no CLS context exists (seeds, CLI); with an active CLS tenant the scope still applies.
 
-- `pnpm build` - Build the package
-- `pnpm dev` - Build in watch mode
-- `pnpm lint` - Lint the code
-- `pnpm seed` - Run the database seeding script
+The context provider is registered at API bootstrap via `setTenantContextProvider` (`apps/api/src/database/tenant-context.provider.ts` reads `tenantId`/roles from `nestjs-cls`). Cross-aggregate guards (parent/child tenant equality, user-tenant membership) live one layer up in `packages/applications/src/common/tenant-guards.ts`.
 
-### Schema Management
+### Unscoped client guard
 
-```bash
-# Generate Prisma client after schema changes
-npx prisma generate
+`getPlatformAdminPrismaClient_Unscoped` bypasses both extensions. A `no-restricted-imports` rule in `packages/config-eslint/base.js` fails the build when it is imported outside the documented allow-list (seed runner, `packages/database/scripts/`, integration-test fixtures, and `CoreDatabaseService` in `@arcaai/domains`). Enumerate current call sites with `rg getPlatformAdminPrismaClient_Unscoped`.
 
-# Create and apply a new migration
-npx prisma migrate dev --name describe_your_changes
+## Schema conventions
 
-# Deploy migrations to production
-npx prisma migrate deploy
-```
+Schema lives in `src/prisma/db_main/` as one `.prisma` file per domain (`consultation.prisma`, `user.prisma`, `harness.prisma`, ...) plus `schema.prisma` (datasource + generator). Key conventions, verified in the schema:
 
-## Key Features
+- Generator: `prisma-client` provider, output `src/generated/core-prisma-client`; datasource uses schemas `["public", "core"]` with the `vector` extension (pgvector).
+- Every model declares `@@schema("core")` and follows the standard field order: meta (`metaData`, `version`, `id @default(uuid(7))`), `tenantId` (for tenant-scoped models, NOT NULL), business fields, relations, resource status (`resourceStatus` + `resourceStatusUpdatedAt/By`), audit fields (`createdBy`, `updatedBy`, `createdAt`, `updatedAt`), optional `tags String[]`.
+- Soft delete via `resourceStatus: DELETED`; never hard-delete rows.
+- Composite `[tenantId, ...]` indexes lead the query-hot paths; WORM tables (`HarnessAuditEvent`, `*PolicyChange`) are append-only with UPDATE/DELETE revoked in migrations.
+- Encrypted PHI columns use the `encrypted*` naming convention; decrypt-on-read is handled by the domains repository layer (archived ticket TASK-369).
 
-- **Prisma 7** with `@prisma/adapter-pg` for PostgreSQL
-- **Soft-Delete Extension** - Automatically filters `resourceStatus: DELETED` records
-- **Tenant-Scope Extension** - Injects `tenantId` from `nestjs-cls` on every read and asserts equality on every write (see "Tenant scoping & RLS posture" below)
-- **Singleton Pattern** - `getExtendedPrismaClient()` (composed default) + `getPlatformAdminPrismaClient_Unscoped()` (lint-gated platform-admin escape hatch)
-- **Standardized Models** - All models include UUIDv7 IDs, audit fields, multi-tenancy, and resource status
+## Commands
 
-## Tenant scoping & RLS posture (TASK-305)
+Package scripts (run as `pnpm --filter @arcaai/database <script>`; most have root-level `pnpm db:*` aliases):
 
-The HOPE platform enforces tenant isolation in **three composed layers**.
-Each layer is a complete fallback for the layer above it; together they
-form the defence-in-depth posture mandated by HIPAA §164.312(a)(1),
-GDPR Art.32 and SOC2 CC6.1.
+| Script | Command | Notes |
+|---|---|---|
+| `db:generate` | `prisma generate` + regenerate the client index via `@arcaai/tools` | Run after every schema change |
+| `db:migrate` | `prisma migrate dev --skip-generate` | Create + apply a dev migration |
+| `db:migrate:create` | `prisma migrate dev --create-only` | Generate SQL for review without applying |
+| `db:migrate:deploy` | `prisma migrate deploy` | Production/CI migration deploy |
+| `db:migrate:status` | `prisma migrate status` | |
+| `db:migrate:reset` | `prisma migrate reset` | Destructive; requires explicit approval |
+| `db:push` / `db:push:force` | `prisma db push [--force-reset --accept-data-loss]` | Schema sync without migrations (dev/test only) |
+| `db:studio` | `prisma studio` | |
+| `seed` | `tsx src/index.ts` | Runs the phased seed suite (root alias `pnpm db:seed`) |
+| `decrypt:row` | `tsx scripts/decrypt-row.ts` | Read-only PHI decrypt CLI |
+| `build` | `tsc` | |
+| `test` | `vitest run` | Unit tests only (excludes `integration/**` and `*.postgres.test.ts`) |
 
-### Layer 1 — Schema substrate (Prisma + Postgres)
+Additional test entry points:
 
-Migration `20*_task_305_phase_a_*.sql` lands:
+- Live-Postgres WORM guard: `pnpm --filter @arcaai/database exec vitest run --config vitest.worm.config.ts`
+- PgBouncer validation rig: root `pnpm pgbv:up` / `pnpm pgbv:test` / `pnpm pgbv:down` (compose file under `tests/pgbouncer-validation/`)
+- Test database lifecycle: root `pnpm test:db:push`, `pnpm test:db:seed`, `pnpm test:db:reset` (run against `.env.test`)
 
-- `tenantId` is **NOT NULL** on every tenant-scoped model (27 in
-  total) — the `'50000000-…'` sentinel default is removed everywhere.
-- Scoped uniques: `Webhook(tenantId, name)` replaces the old global
-  `Webhook.name @unique`; `Tag(tenantId, resourceTypeName, resourceId, tagKey)`
-  is now constrained instead of an unbounded growth surface.
-- 14 composite `[tenantId, X]` indexes lead query-hot paths
-  (`Consultation`, `ContextItem`, `NamedEntity`, `SummaryMeta`,
-  `AudioRecording`, etc.) so future RLS policies don't trigger
-  seq-scan regressions.
-- The reserved `system` Tenant row (UUID
-  `00000000-0000-0000-0000-000000000000`) seeded by
-  `prisma/db_main/seed/05-system-tenant.ts` absorbs former nullable
-  rows where no real tenant exists (login audit, platform events).
+## Migrations and seeding
 
-Foreign keys back to `Tenant` were **NOT** added — the bloat across
-every Prisma model was rejected; the tenant-scope extension + RLS
-together cover the same isolation invariant without per-model
-relation fields.
+Migration workflow: edit the relevant `.prisma` file, run `pnpm db:migrate` (or `db:migrate:create` to review SQL first), inspect the generated SQL under `src/prisma/db_main/migrations/`, then `pnpm db:generate`. Never edit a committed migration; roll forward instead.
 
-### Layer 2 — Prisma `$extends` (application-runtime)
+`prisma.config.ts` prefers `DIRECT_URL` over `DATABASE_URL` for migrations (see `src/migration-url.ts`) so Prisma Migrate's advisory locks bypass PgBouncer.
 
-`src/extensions/tenant-scope.ts` ships
-`applyTenantScopeExtension(prisma, options)`. The composed default
-client is built by `createExtendedPrismaClient()` as
-`prisma → softDelete → tenantScope → engine`. Highlights:
+Seeds live in `src/prisma/db_main/seed/` and run in file order (`00-constants.ts`, `01-policy.ts`, ... `15-entitlements.ts`, `91-user.ts`). `00-constants.ts` defines the reserved UUIDs, including `SYSTEM_TENANT_ID`. Seeds use the unscoped client because no CLS context exists at seed time.
 
-- 27-model allow-list (`TENANT_SCOPED_MODELS`, mirrors the schema).
-- All 16 Prisma ops hooked: `findFirst`, `findFirstOrThrow`,
-  `findUnique`, `findUniqueOrThrow`, `findMany`, `count`, `aggregate`,
-  `groupBy`, `create`, `createMany`, `upsert`, `update`, `updateMany`,
-  `delete`, `deleteMany`.
-- **Read ops**: merge `where: { tenantId: ctxTenantId }` into the
-  caller's args (or throw if the caller passed an explicit different
-  `tenantId`).
-- **Write ops**: enforce `data.tenantId === ctxTenantId`; auto-inject
-  when missing; throw on caller-supplied mismatch (bidirectional
-  detection — read and write).
-- **SUPER_ADMIN bypass**: when `options.isSuperAdmin()` is true AND no
-  CLS context exists, the extension passes through unchanged (seed
-  scripts, startup hooks, etc.). When CLS *does* set a tenant id and
-  the caller is SUPER_ADMIN, the extension still applies the merge —
-  the bypass is only the "no context = system" path.
-
-The NestJS wiring lives in
-`apps/api/src/database/tenant-context.provider.ts`
-(`ClsTenantContextProvider`) — a tiny adapter that reads `tenantId` /
-`user.roles` from `nestjs-cls` and registers itself via
-`setTenantContextProvider(this)` on application bootstrap.
-
-### Layer 3 — Service / domain guards (cross-aggregate)
-
-The extension cannot reach cross-aggregate equality (parent tenant vs
-child tenant) or User-tenant membership (does this user have an
-`ENABLED` `UserRoleAssignment` in the target tenant?). Those checks
-live in `packages/applications/src/common/tenant-guards.ts`:
-
-- `assertEqualTenants(parent, child)` — used by
-  `DepartmentService.create/update`, `ContextService` parent/array
-  loaders, `SummaryService.regenerate`, etc.
-- `assertUserBelongsToTenant(userRoleAssignmentRepo, userId, tenantId)`
-  — used by `Consultation.createConsultation/createRevisit`,
-  `NotificationService.create`, `ApiKeyService.issue`,
-  `DnaWritingStyleService.start`.
-- `assertParentInScope(repo, parentId, callerTenantId)` — sugar for
-  the common "load parent, assert same tenant" idiom.
-
-`BaseTenantEntity.validate()` is the floor: throws if `tenantId` is
-empty so a buggy factory path surfaces as a runtime failure, not a
-silent write to the sentinel tenant.
-
-### Using the unscoped client (`getPlatformAdminPrismaClient_Unscoped`)
-
-The default export — `getExtendedPrismaClient()` — is what every
-service and repository should use. The unscoped client
-(`getPlatformAdminPrismaClient_Unscoped`) **bypasses both** soft-delete
-and tenant-scope and is reserved for platform-admin flows, seed
-scripts and the tenant CRUD service itself.
-
-A custom ESLint rule in `packages/config-eslint/base.js` enforces this
-contract: importing the symbol from anywhere outside the allow-list
-fails CI. As of TASK-305 the allow-list contains 8 call-sites
-(`rg getPlatformAdminPrismaClient_Unscoped` to enumerate at any time):
-
-| # | File | Reason |
-|---|------|--------|
-| 1 | `packages/database/src/client.ts` | Definition site. |
-| 2 | `packages/database/src/index.ts` | Re-export with `⚠️` JSDoc. |
-| 3 | `packages/database/src/prisma/db_main/seed/index.ts` | Seed runner — no CLS context exists at seed time. |
-| 4 | `packages/database/scripts/decrypt-row.ts` | Read-only PHI decrypt CLI (TASK-369). |
-| 5 | `packages/database/src/integration/soft-delete.integration.test.ts` | Integration test fixture. |
-| 6 | `packages/database/src/integration/database-e2e.integration.test.ts` | Integration test fixture. |
-| 7 | `packages/domains/src/integration/repository-soft-delete.integration.test.ts` | Integration test fixture. |
-| 8 | `packages/domains/src/common/databaseServices/core/core.database.service.ts` | `CoreDatabaseService.baseClient` (transitional — tracked for removal). |
-
-Anywhere else, the import is a build error. To use the symbol
-intentionally inside an allow-listed path, add a line-level
-`// eslint-disable-next-line no-restricted-imports` comment that
-references TASK-305 §B.4 and explains why.
-
-### Row-Level Security (RLS) — rollout status
-
-**Not yet deployed.** Plan §3.3 Phase C is drafted (see
-`docs/implementation/TASK-305-Multi-Tenancy-Hardening/README.md`) but
-deferred pending TASK-302 (PgBouncer / Vault dynamic credentials,
-`hope_tenant_user NOSUPERUSER NOBYPASSRLS` role split).
-
-The application-layer guards (layers 2 and 3 above) provide the same
-isolation invariant today. RLS adds a defence-in-depth DB-layer policy
-that backstops any future code path that escapes the extension —
-ad-hoc `psql` sessions, future BI dashboards, raw `$queryRawUnsafe`
-calls, etc.
-
-When RLS lands, every `$transaction(callback)` will open with:
-
-```sql
-SELECT set_config('app.tenant_id', $1, true);
-```
-
-(The `true` arg makes the GUC `LOCAL` — transaction-scoped — so it
-won't leak across PgBouncer pool connections.) The 7 PHI tables in
-scope are: `Consultation`, `ContextItem`, `AudioRecording`,
-`SummaryMeta`, `NamedEntity`, `ContextItemVersion`, `AuditLog`. The
-remaining 20 tenant-scoped models are handed off to TASK-302 Phase 3.
-
-### Sample CLS payload shape
-
-The provider expects (and the extension consumes) this object —
-mirroring the `IActiveUserContext` interface in
-`packages/applications/src/interfaces/IActiveUserContext.ts`:
-
-```ts
-{
-  tenantId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-  user: {
-    id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
-    tenantId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-    roles: ['DOCTOR'],          // 'SUPER_ADMIN' flips the bypass bit
-    permissions: [],
-  },
-}
-```
-
-Tests that need this shape should import
-`createCrossTenantFixture()` from `tests/cross-tenant/fixtures.ts`
-(TASK-305 Phase E.1) rather than re-rolling it locally.
-
-## License
-
-MIT
+For containerized deployments, `Dockerfile` + `migrate.sh` build a job image that generates the client, runs `migrate deploy` (production/staging) or `db push` (dev), then seeds; `k3s-job-db-migration.yaml` is the corresponding k3s Job.

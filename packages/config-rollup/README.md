@@ -1,35 +1,45 @@
 # @arcaai/config-rollup
 
-Shared Rollup build configuration for the HOPE monorepo, providing a base configuration for bundling TypeScript packages.
+Shared Rollup configuration factory for bundling TypeScript packages in the HOPE monorepo. Exports `createConfig()` (a full CJS bundle pipeline with TypeScript, Babel, minification, and code obfuscation) and `createEntriesFromDirectories()` (multi-entry discovery) from `base.js`.
 
-## Overview
+Last updated: 2026-07-04
 
-This package provides a reusable Rollup configuration factory used by frontend packages in the HOPE monorepo. It includes TypeScript compilation, Babel transpilation, minification, code obfuscation, and various Rollup plugins for handling CommonJS modules, JSON files, and Node.js built-ins.
+## Status
 
-## Usage
+No workspace package currently ships a `rollup.config.*` that imports this package — the bundled packages (`room`, `vad`, `noise-filter`, `stt`, `agentic-sdk-v2`, `ui`) all build with tsup. The package remains a devDependency of the repo root (alongside `rollup ^4`) and is copied in the `apps/api` and `apps/ui-playground` Dockerfiles for workspace installs. Treat it as available-but-dormant infrastructure.
 
-Import and extend the base configuration in your package's `rollup.config.js`:
+## Exports
+
+`main` points to [base.js](./base.js) (ES module):
 
 ```javascript
-import { createConfig } from '@arcaai/config-rollup';
+import { createConfig, createEntriesFromDirectories } from '@arcaai/config-rollup';
 
 export default createConfig({
   input: 'src/index.ts',
-  output: { dir: 'dist' },
+  outDir: 'dist',
 });
 ```
 
-## Included Plugins
+### createConfig(options)
 
-- `rollup-plugin-typescript2` - TypeScript compilation
-- `@rollup/plugin-babel` - Babel transpilation
-- `rollup-plugin-terser` - Code minification
-- `rollup-plugin-obfuscator` - Code obfuscation
-- `@rollup/plugin-commonjs` - CommonJS module support
-- `@rollup/plugin-node-resolve` - Node.js module resolution
-- `@rollup/plugin-json` - JSON file importing
-- `@rollup/plugin-replace` - Environment variable replacement
+| Option | Default | Description |
+|---|---|---|
+| `input` | required | Entry point(s) |
+| `outDir` | required | Output directory (CJS, named exports) |
+| `minify` | `true` | Terser minification (skipped when `isDev`) |
+| `obfuscate` | `true` | javascript-obfuscator hardening (skipped when `isDev`) |
+| `sourceMap` | `true` | Emit source maps |
+| `externals` | `[]` | Extra externals (merged with built-in list incl. `node_modules`, `@prisma/client`, `express`, ...) |
+| `isDev` | `NODE_ENV === 'development'` | Disables minify/obfuscate |
+| `preserveModules` / `preserveModulesRoot` | `false` / `null` | Preserve module structure in output |
 
-## License
+Plugin pipeline: `rollup-plugin-node-externals`, `@rollup/plugin-node-resolve`, `@rollup/plugin-commonjs`, `@rollup/plugin-json`, `@rollup/plugin-replace` (`process.env.NODE_ENV`), `rollup-plugin-typescript2` (uses the consumer's `./tsconfig.json`), `@rollup/plugin-babel`, `rollup-plugin-node-builtins`, `rollup-plugin-node-globals`, then conditionally `@rollup/plugin-terser` and `rollup-plugin-obfuscator`. Circular-dependency warnings are suppressed.
 
-MIT
+### createEntriesFromDirectories(srcDir)
+
+Builds an entry map from `srcDir/index.ts` plus every first-level directory containing an `index.ts` (emitted as `<dir>/index`).
+
+## Notes
+
+- The package ships no type declarations for the factory (JS only); add them if the package is revived for new consumers.

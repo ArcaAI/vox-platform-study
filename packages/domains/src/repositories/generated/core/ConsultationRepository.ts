@@ -377,6 +377,28 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
   }
 
   /**
+   * TASK-413 — minimal projection of consultations created inside
+   * [rangeStart, rangeEnd] (inclusive), for the TASK-386 (#20 / E4) new-vs-
+   * revisit range aggregation. Rows are returned raw (`createdAt` +
+   * `parentConsultationId` only) — the service zero-fills and buckets them,
+   * so no entity mapping happens here. `tenantId` is applied ONLY when
+   * truthy: a SUPER_ADMIN with no working tenant reads cross-tenant (TD3).
+   */
+  async findCreatedInRange(
+    rangeStart: Date,
+    rangeEnd: Date,
+    tenantId?: string | null,
+  ): Promise<Array<{ createdAt: Date; parentConsultationId: string | null }>> {
+    const where: Record<string, unknown> = { createdAt: { gte: rangeStart, lte: rangeEnd } };
+    if (tenantId) where.tenantId = tenantId;
+
+    return await (this as any).db.findMany({
+      where,
+      select: { createdAt: true, parentConsultationId: true },
+    });
+  }
+
+  /**
    * Find consultations by date range
    */
   async findByDateRange(tenantId: string, startDate: Date, endDate: Date): Promise<ConsultationEntity[]> {

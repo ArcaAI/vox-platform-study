@@ -4,7 +4,7 @@ import { render } from '@testing-library/react'
 vi.mock('cobe', () => ({
   default: vi.fn(() => ({
     destroy: vi.fn(),
-    toggle: vi.fn(),
+    update: vi.fn(),
   })),
 }))
 
@@ -44,7 +44,9 @@ describe('Globe', () => {
   })
 
   afterEach(() => {
-    vi.runAllTimers()
+    // runOnlyPendingTimers: the v2 Globe drives itself with a perpetual rAF loop,
+    // so runAllTimers would follow the rescheduling forever.
+    vi.runOnlyPendingTimers()
     vi.useRealTimers()
   })
 
@@ -54,7 +56,7 @@ describe('Globe', () => {
         <Globe />
       </div>
     )
-    vi.runAllTimers()
+    vi.runOnlyPendingTimers()
     expect(container.firstChild).toBeTruthy()
   })
 })

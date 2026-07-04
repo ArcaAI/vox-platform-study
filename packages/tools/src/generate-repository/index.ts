@@ -5,8 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as handlebars from 'handlebars';
 import chalk from 'chalk';
-import * as inquirer from 'inquirer';
-import glob from 'glob';
+import inquirer from 'inquirer';
 import { Paths } from '../utils';
 
 // Register Handlebars helpers

@@ -99,4 +99,18 @@ export class AudioRecordingRepository extends Repository<AudioRecordingEntity, A
     });
     return result._sum.duration ?? 0;
   }
+
+  /**
+   * TASK-413 — SUM(duration) in milliseconds for the platform consumption
+   * roll-up (TASK-386 #18). `tenantId = null` means platform-wide (no tenant
+   * filter). Returns the raw nullable sum — the caller owns the null→0
+   * presentation.
+   */
+  async sumDurationForTenant(tenantId: string | null): Promise<number | null> {
+    const result = await (this as any).db.aggregate({
+      _sum: { duration: true },
+      where: tenantId ? { tenantId } : {},
+    });
+    return result._sum.duration;
+  }
 }

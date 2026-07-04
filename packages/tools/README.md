@@ -1,226 +1,134 @@
 # @arcaai/tools
 
-This package contains various CLI tools and utilities for the HOPE monorepo.
+Internal CLI toolbox for the HOPE monorepo: a Prisma multi-domain commander, DDD code generators (data models, entities, mappers, repositories, factories, service modules, controllers), and development credential generators (JWT tokens, API keys). All tools run via `ts-node` package scripts — there are no `bin` entries and the package is not consumed as a library by any other workspace package.
 
-## Available Tools
+Last updated: 2026-07-04
 
-### Prisma Commander
+## Running the Tools
 
-Interactive and non-interactive CLI for managing Prisma database operations.
+Every tool is a script in [package.json](./package.json). Invoke them either through the root-level aliases or with `pnpm --filter`:
 
-#### Quick Start
+| Root alias (from repo root) | Package script | Purpose |
+|---|---|---|
+| `pnpm gen:prisma` | `prisma-commander` | Prisma operations across schema domains |
+| `pnpm gen:model` | `generate-data-model` | Generate data models from Prisma schema |
+| `pnpm gen:entity` | `generate-data-entity` | Generate domain entities |
+| `pnpm gen:mapper` | `generate-mapper` | Generate entity/model mappers |
+| `pnpm gen:repository` | `generate-repository` | Generate repository classes |
+| `pnpm gen:factory` | `generate-factory` | Generate factory classes |
+| `pnpm gen:service` | `generate-service-module` | Generate application service modules |
+| `pnpm gen:controller` | `generate-controller` | Generate NestJS controllers |
+| `pnpm gen:token` | `gen-dev-token` | Generate a development JWT |
+| `pnpm gen:api-key` | `gen-api-key` (runs `create`) | Create a development API key |
 
-```bash
-# Interactive mode (default) - prompts for activity and domains
-pnpm prisma-commander
+Package scripts without a root alias: `generate-prisma-index`, `generate-data-model:all|:check`, `generate-data-entity:all|:check`, `generate-factory:all|:check`, `typecheck`.
 
-# Or explicitly
-pnpm prisma-commander interactive
-```
-
-#### Non-Interactive Commands
-
-```bash
-# Generate Prisma clients
-pnpm prisma-commander generate --all
-pnpm prisma-commander generate --domain db_main
-pnpm prisma-commander generate -d db_main db_audit
-
-# Push schema to database
-pnpm prisma-commander push --all
-pnpm prisma-commander push --domain db_main
-pnpm prisma-commander push --domain db_main --force  # Force reset with data loss
-
-# Create migration
-pnpm prisma-commander migrate --all
-pnpm prisma-commander migrate --domain db_main --name add_users_table
-
-# Run seeds
-pnpm prisma-commander seed
-
-# Start Prisma Studio
-pnpm prisma-commander studio --domain db_main
-
-# List available activities
-pnpm prisma-commander list:activities
-pnpm prisma-commander la
-
-# List available domains
-pnpm prisma-commander list:domains
-pnpm prisma-commander ld
-```
-
-#### Available Activities
-
-| Activity | Command | Description |
-|----------|---------|-------------|
-| `generate` | `generate` | Regenerate Prisma clients for selected domains |
-| `push` | `push` | Push schema to database (db push) |
-| `push:force` | `push --force` | Force push with data loss (--force-reset) |
-| `migrate` | `migrate` | Create a new migration (migrate dev) |
-| `seed` | `seed` | Run database seed scripts |
-| `studio` | `studio` | Start Prisma Studio for database inspection |
-
-#### Command Options
-
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--domain <names...>` | `-d` | Domain name(s) to process |
-| `--all` | `-a` | Process all domains |
-| `--force` | `-f` | Force operation (for push) |
-| `--name <name>` | `-n` | Migration name (for migrate) |
-| `--help` | `-h` | Show help |
-
----
-
-### Development Token Generator
-
-Generate JWT tokens for development and testing.
-
-#### Usage
+Pass tool flags directly after the alias — pnpm forwards them to the underlying script (verified: `pnpm gen:token -l`). Do not insert a `--` separator; pnpm forwards it literally and the tools then ignore the flags that follow it.
 
 ```bash
-# Generate token for default user (super_admin)
-pnpm gen-dev-token
-
-# List available users
-pnpm gen-dev-token -- -l
-
-# Generate for specific user
-pnpm gen-dev-token -- -u admin
-
-# Custom expiration
-pnpm gen-dev-token -- -e 7d
-
-# Override tenant
-pnpm gen-dev-token -- -t "tenant-uuid"
-
-# Override roles
-pnpm gen-dev-token -- -r "ADMIN,MANAGER"
-
-# Print full payload
-pnpm gen-dev-token -- -p
-
-# Show help
-pnpm gen-dev-token -- --help
+pnpm gen:token -u admin -e 7d
+# equivalent to:
+pnpm --filter @arcaai/tools gen-dev-token -u admin -e 7d
 ```
 
-See [gen-dev-token/README.md](src/gen-dev-token/README.md) for detailed documentation.
+## Prisma Commander
 
----
-
-### Code Generators
-
-#### Data Model Generator
-
-Generate data models from Prisma schema.
+Interactive and non-interactive CLI for managing Prisma operations across the schema domains discovered in `packages/database` (e.g. `db_main`). It finds the monorepo root via `pnpm-workspace.yaml`/`turbo.json` and loads `.env.dev` / `.env.test` / `.env.staging` based on `NODE_ENV` (skipped in CI/production).
 
 ```bash
-pnpm generate-data-model
+# Interactive mode (default when no subcommand is given)
+pnpm gen:prisma
+
+# Non-interactive subcommands
+pnpm gen:prisma generate --all              # regenerate Prisma clients
+pnpm gen:prisma generate --domain db_main
+pnpm gen:prisma push --all                  # prisma db push
+pnpm gen:prisma push --domain db_main --force   # force reset (data loss)
+pnpm gen:prisma migrate --domain db_main --name add_users_table
+pnpm gen:prisma seed                        # run seed scripts
+pnpm gen:prisma studio --domain db_main     # Prisma Studio
+pnpm gen:prisma list:activities             # alias: la
+pnpm gen:prisma list:domains                # alias: ld
 ```
 
-#### Data Entity Generator
+| Option | Short | Applies to | Description |
+|---|---|---|---|
+| `--domain <names...>` | `-d` | generate, push, migrate, studio | Domain name(s) to process |
+| `--all` | `-a` | generate, push, migrate | Process all domains |
+| `--force` | `-f` | push | Force reset (`--force-reset --accept-data-loss`) |
+| `--name <name>` | `-n` | migrate | Migration name |
 
-Generate data entities from Prisma schema.
+## Code Generators
+
+Generators read the Prisma DMMF and emit code into `packages/domains` / `packages/applications` following the repo's DDD layering. Most support interactive prompts plus flags; the `:all` variants run non-interactively for every model and the `:check` variants verify coverage without writing.
 
 ```bash
-pnpm generate-data-entity
+pnpm gen:model                                         # interactive
+pnpm --filter @arcaai/tools generate-data-model:all    # all models, overwrite
+pnpm --filter @arcaai/tools generate-data-model:check  # coverage check only
+
+pnpm gen:entity && pnpm gen:mapper && pnpm gen:repository && pnpm gen:factory
+
+# Service module generator (service interface + implementation + module + DTOs + DTO mapper)
+pnpm gen:service -n UserProfile -o packages/applications/src/services -g user
+
+pnpm gen:controller                                    # NestJS controller
+
+pnpm --filter @arcaai/tools generate-prisma-index      # index.ts files for generated Prisma clients
 ```
 
-#### Mapper Generator
+## Development Credentials
 
-Generate mappers between entities and models.
+### gen-dev-token
+
+Generates a JWT for testing API endpoints. See [src/gen-dev-token/README.md](./src/gen-dev-token/README.md) for full documentation.
 
 ```bash
-pnpm generate-mapper
+pnpm gen:token                    # token for the default user (super_admin)
+pnpm gen:token -l                 # list available users
+pnpm gen:token -u admin -e 7d     # specific user, custom expiry
+pnpm gen:token -t "tenant-uuid" -r "ADMIN,MANAGER" -p   # override tenant/roles, print payload
 ```
 
-#### Repository Generator
+Requires `JWT_SECRET_KEY` in the workspace-root env file (the tool loads `.env` / `.env.dev` automatically).
 
-Generate repository classes.
+### gen-api-key
+
+Creates development API keys in the database (the package script always invokes the `create` subcommand).
 
 ```bash
-pnpm generate-repository
+pnpm gen:api-key
+pnpm gen:api-key --name "Example App API Key" --type SDK --scopes read,write
+
+# The `list` subcommand is only reachable by invoking the entry point directly:
+pnpm --filter @arcaai/tools exec ts-node src/gen-api-key/index.ts list
 ```
 
-#### Factory Generator
+`create` options: `-n/--name`, `-t/--type` (SDK, WEBHOOK, INTEGRATION, SERVICE_ACCOUNT), `--tenant`, `--user`, `-s/--scopes`, `-r/--rate-limit`, `-e/--environment`, `-d/--description`. Raw keys are shown only at creation time.
 
-Generate factory classes.
-
-```bash
-pnpm generate-factory
-```
-
-#### Service Module Generator
-
-Generate complete service modules including:
-- Service interface
-- Service implementation
-- Service module
-- DTO mapper
-- DTOs (Create, Update, Response, Paginated Response)
-
-```bash
-# Interactive mode
-pnpm generate-service-module
-
-# Command-line options
-pnpm generate-service-module -n UserProfile -o packages/applications/src/services -g user
-
-# Show help
-pnpm generate-service-module --help
-```
-
-#### Controller Generator
-
-Generate NestJS controllers.
-
-```bash
-pnpm generate-controller
-```
-
----
-
-### Prisma Index Generator
-
-Generate index.ts files for Prisma generated clients.
-
-```bash
-pnpm generate-prisma-index
-```
-
----
-
-## Development
-
-### Adding a New Tool
-
-1. Create a new folder under `src/` with your tool name
-2. Create an `index.ts` entry point
-3. Add a script to `package.json`
-4. Export from `src/index.ts` if needed
-5. Update this README
-
-### Project Structure
+## Project Structure
 
 ```
 src/
-├── gen-dev-token/              # Development token generation
+├── gen-api-key/                # Development API key creation (commander CLI)
+├── gen-dev-token/              # Development JWT generation (has its own README)
 ├── generate-controller/        # NestJS controller generator
-├── generate-data-entity/       # Data entity generator
+├── generate-data-entity/       # Domain entity generator
 ├── generate-data-model/        # Data model generator
 ├── generate-factory/           # Factory class generator
 ├── generate-mapper/            # Mapper generator
 ├── generate-repository/        # Repository generator
-├── generate-service-module/    # Service module generator
-├── prisma-commander/           # Prisma CLI utility
-│   ├── index.ts               # CLI entry point
-│   ├── types/                 # TypeScript types
-│   └── utils/                 # Utilities
-│       ├── activities.ts      # Activity implementations
-│       ├── cli.ts             # Interactive CLI
-│       ├── domainScanner.ts   # Domain discovery
-│       └── generatePrismaIndex.ts
-├── utils/                      # Shared utilities
-└── index.ts                   # Package exports
+├── generate-service-module/    # Service module + DTO generator
+├── generate-prisma-index.ts    # index.ts generator for Prisma clients
+├── prisma-commander/           # Prisma CLI (index.ts, types/, utils/)
+├── utils/                      # Shared helpers (DMMF access, ts-morph, naming, env loading)
+└── index.ts                    # Namespaced exports (Utils, PrismaCommander, GenDevToken, ...)
 ```
+
+## Adding a New Tool
+
+1. Create a folder under `src/` with an `index.ts` entry point (commander-based CLIs are the convention).
+2. Add a script to [package.json](./package.json) (`ts-node src/<tool>/index.ts`).
+3. Optionally add a root-level `gen:*` alias in the repo root `package.json`.
+4. Export from [src/index.ts](./src/index.ts) if the internals should be importable.
+5. Update this README.

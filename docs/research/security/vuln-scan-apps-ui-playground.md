@@ -1,5 +1,7 @@
 # Vulnerability Scan Report — `apps/ui-playground`
 
+> **Note (2026-07-04)**: `apps/ui-playground` is **deprecated** (no development/maintenance plan). This report is retained as a point-in-time scan record.
+
 **Date**: 2026-03-24
 **Last Updated**: 2026-04-06
 **Scope**: Deep vulnerability scan — dependencies, code patterns, infrastructure

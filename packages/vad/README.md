@@ -1,49 +1,43 @@
 # @arcaai/vad
 
-Voice Activity Detection plugin for `@arcaai/room` using Silero VAD v5. Provides accurate, real-time speech detection with configurable thresholds and timing parameters.
+Voice Activity Detection plugin for `@arcaai/room` built on Silero VAD (v5 or legacy) via `@ricky0123/vad-web` and ONNX Runtime WebAssembly. Detects speech in real time, emits speech start/end events with the captured audio segment, and exposes both a `VADProcessor` class and a `useVAD` React hook.
 
-## Features
+Last updated: 2026-07-04
 
-- **Silero VAD v5 Model**: State-of-the-art voice activity detection supporting 6000+ languages
-- **Real-Time Processing**: Low-latency detection via AudioWorklet and ONNX Runtime WebAssembly
-- **Configurable Thresholds**: Fine-tune detection sensitivity for your use case
-- **Speech Segment Extraction**: Get audio data for detected speech segments
-- **React Integration**: Easy-to-use `useVAD` hook for React applications
-- **Event-Based API**: Subscribe to speech start/end events
-- **Statistics Monitoring**: Real-time stats for debugging and UI feedback
-- **Full TypeScript Support**: Comprehensive type definitions
+## Where it fits
 
-## Installation
+| Direction | Package | Relationship |
+|---|---|---|
+| Depends on | `@arcaai/room` (peer, `^0.1.0`) | Extends `BaseProcessor`; attaches to an `AudioTrack` |
+| Depends on | `@ricky0123/vad-web` | Wraps its `MicVAD` runtime (Silero ONNX models + worklet) |
+| Consumed by | `@arcaai/vox` | Middle stage of `TranscriptionPipeline` (NoiseFilter → VAD → STT); segments gate STT |
 
-```bash
-pnpm add @arcaai/vad
-# or
-npm install @arcaai/vad
-# or
-yarn add @arcaai/vad
+`react` is an optional peer dependency (only needed for `useVAD`).
+
+## Directory structure
+
+```
+packages/vad/
+├── src/
+│   ├── processors/    # VADProcessor (+ createVAD factory) wrapping MicVAD
+│   ├── hooks/         # useVAD (React)
+│   ├── utils/         # Browser support, 16 kHz resampler, FrameAccumulator/AudioRingBuffer
+│   ├── types/         # VADOptions, VADStats, event payloads, VADError
+│   ├── constants.ts   # Pinned CDN versions (VAD_WEB_VERSION, ORT_WEB_VERSION) + default asset paths
+│   └── index.ts       # Public barrel export
+├── examples/          # basic-usage.tsx, transcription-integration.ts
+├── assets/            # Model notes only — ONNX models load from vad-web/CDN or a self-hosted path
+├── e2e/               # Playwright browser tests
+└── tsup.config.ts     # ESM (.mjs) + CJS (.cjs) build
 ```
 
-## Requirements
+## Public API overview
 
-- `@arcaai/room` ^0.1.0 (peer dependency)
-- Browser with WebAssembly and AudioWorklet support
-- React 18+ (optional, for hook usage)
-
-## Quick Start
-
-### With React Hooks
+### React hook
 
 ```tsx
 import { RoomProvider, useAudioTrack } from '@arcaai/room';
 import { useVAD } from '@arcaai/vad';
-
-function App() {
-  return (
-    <RoomProvider>
-      <VoiceRecorder />
-    </RoomProvider>
-  );
-}
 
 function VoiceRecorder() {
   const { track, isCapturing, startCapture, stopCapture } = useAudioTrack({
@@ -51,417 +45,15 @@ function VoiceRecorder() {
     echoCancellation: true,
   });
 
-  const {
-    isSpeaking,
-    speechProbability,
-    stats,
-    isActive,
-  } = useVAD({
+  const { isSpeaking, speechProbability, stats } = useVAD({
     track,
     model: 'v5',
     positiveSpeechThreshold: 0.5,
     minSpeechMs: 250,
     autoAttach: true,
-    onSpeechStart: () => {
-      console.log('Speech started');
-    },
     onSpeechEnd: (audio) => {
-      console.log('Speech ended, got', audio.length, 'samples at 16kHz');
-      // Send to transcription service
-    },
-  });
-
-  return (
-    <div>
-      <button onClick={isCapturing ? stopCapture : startCapture}>
-        {isCapturing ? 'Stop' : 'Start Recording'}
-      </button>
-
-      <div>VAD Active: {isActive ? 'Yes' : 'No'}</div>
-      <div>Speaking: {isSpeaking ? 'Yes' : 'No'}</div>
-      <div>Probability: {(speechProbability * 100).toFixed(1)}%</div>
-      <div>Speech Segments: {stats?.speechSegmentsDetected ?? 0}</div>
-    </div>
-  );
-}
-```
-
-### With AudioTrack Directly
-
-```typescript
-import { AudioTrack, AudioContextManager } from '@arcaai/room';
-import { VADProcessor } from '@arcaai/vad';
-
-async function setupVAD() {
-  // Get AudioContext
-  const audioContext = AudioContextManager.getContext();
-
-  // Create audio track
-  const track = new AudioTrack({ audioContext });
-  await track.initialize({
-    noiseSuppression: true,
-    echoCancellation: true,
-  });
-
-  // Create VAD processor
-  const vad = new VADProcessor({
-    model: 'v5',
-    positiveSpeechThreshold: 0.5,
-    minSpeechMs: 250,
-  });
-
-  // Listen for speech events
-  vad.on('data', (payload) => {
-    switch (payload.type) {
-      case 'vad-speech-start':
-        console.log('Speech started at', payload.data.timestamp);
-        break;
-
-      case 'vad-speech-end':
-        console.log('Speech ended:', {
-          segment: payload.data.segmentNumber,
-          durationSec: payload.data.durationSec,
-          streamStart: payload.data.streamStartSec,
-          streamEnd: payload.data.streamEndSec,
-          samples: payload.data.audio.length,
-        });
-        // payload.data.audio is Float32Array at 16kHz
-        break;
-
-      case 'vad-frame':
-        // Per-frame probability updates
-        console.log('Speech probability:', payload.data.probability);
-        break;
-    }
-  });
-
-  // Attach VAD to track
-  await track.setProcessor(vad);
-
-  return { track, vad };
-}
-```
-
-### Using Factory Function
-
-```typescript
-import { createVAD } from '@arcaai/vad';
-
-const vad = createVAD({
-  model: 'v5',
-  positiveSpeechThreshold: 0.5,
-  negativeSpeechThreshold: 0.35,
-  minSpeechMs: 250,
-  preSpeechPadMs: 300,
-  onSpeechEnd: (audio) => {
-    // Process speech segment
-    sendToTranscription(audio);
-  },
-});
-
-// Attach to track
-await audioTrack.setProcessor(vad);
-
-// Check state
-console.log('Speaking:', vad.isSpeaking());
-console.log('Stats:', vad.getStats());
-
-// Cleanup
-await vad.destroy();
-```
-
-## API Reference
-
-### VADProcessor
-
-Main processor class that extends `BaseProcessor` from `@arcaai/room`.
-
-#### Constructor Options
-
-```typescript
-interface VADOptions {
-  // Model Selection
-  model?: 'v5' | 'legacy';              // Default: 'v5'
-
-  // Detection Thresholds
-  positiveSpeechThreshold?: number;     // Default: 0.5 (0-1)
-  negativeSpeechThreshold?: number;     // Default: 0.35 (0-1)
-
-  // Timing (in milliseconds)
-  preSpeechPadMs?: number;              // Default: 300
-  postSpeechPadMs?: number;             // Default: 300
-  minSpeechMs?: number;                 // Default: 250
-  redemptionMs?: number;                // Default: 1400
-
-  // Asset Paths (optional, uses CDN by default)
-  baseAssetPath?: string;
-  onnxWASMBasePath?: string;
-
-  // Processing Options
-  sampleRate?: number;                  // Default: 16000
-  enableStats?: boolean;                // Default: false
-  statsInterval?: number;               // Default: 1000ms
-  submitUserSpeechOnPause?: boolean;    // Default: false
-
-  // Debug mode — log VAD config on initialization
-  debugMode?: boolean;                  // Default: false
-}
-```
-
-#### Methods
-
-| Method | Description |
-|--------|-------------|
-| `isSupported()` | Check if VAD is supported in current browser |
-| `isSpeaking()` | Check if currently detecting speech |
-| `getSpeechProbability()` | Get current speech probability (0-1) |
-| `getStats()` | Get current processing statistics |
-| `getModel()` | Get the VAD model being used |
-| `getOptions()` | Get current options |
-| `updateOptions(options)` | Update options dynamically |
-| `updateThresholds(pos, neg)` | Update detection thresholds |
-| `pause()` | Pause VAD processing |
-| `start()` | Resume VAD processing |
-| `resetStats()` | Reset statistics counters |
-| `enable()` | Enable the processor |
-| `disable()` | Disable the processor |
-| `destroy()` | Clean up and release resources |
-
-#### Events
-
-```typescript
-// Speech start detected
-vad.on('data', (payload) => {
-  if (payload.type === 'vad-speech-start') {
-    const { timestamp } = payload.data;
-    console.log('Speech started at', timestamp);
-  }
-});
-
-// Confirmed speech start (exceeds min speech duration)
-vad.on('data', (payload) => {
-  if (payload.type === 'vad-speech-real-start') {
-    const { timestamp } = payload.data;
-    console.log('Real speech confirmed at', timestamp);
-  }
-});
-
-// Speech ended with audio data
-vad.on('data', (payload) => {
-  if (payload.type === 'vad-speech-end') {
-    const { audio, startTime, endTime, duration } = payload.data;
-    // audio is Float32Array at 16kHz sample rate
-    console.log('Speech segment:', duration, 'ms');
-  }
-});
-
-// Misfire (speech too short)
-vad.on('data', (payload) => {
-  if (payload.type === 'vad-misfire') {
-    const { duration, timestamp } = payload.data;
-    console.log('VAD misfire, speech was only', duration, 'ms');
-  }
-});
-
-// Per-frame probability
-vad.on('data', (payload) => {
-  if (payload.type === 'vad-frame') {
-    const { isSpeech, probability, notSpeechProbability, timestamp } = payload.data;
-    // Update UI with probability
-  }
-});
-
-// Statistics (if enableStats: true)
-vad.on('data', (payload) => {
-  if (payload.type === 'vad-stats') {
-    const stats = payload.data;
-    console.log('Frames processed:', stats.framesProcessed);
-    console.log('Speech segments:', stats.speechSegmentsDetected);
-  }
-});
-
-// Standard processor events
-vad.on('ready', () => console.log('VAD ready'));
-vad.on('enabled', () => console.log('VAD enabled'));
-vad.on('disabled', () => console.log('VAD disabled'));
-vad.on('error', (payload) => console.error(payload.error));
-```
-
-### useVAD Hook
-
-React hook for VAD integration.
-
-```typescript
-const {
-  // State
-  isActive,
-  isSpeaking,
-  speechProbability,
-  currentSpeechDuration,
-  stats,
-  processor,
-  isAttached,
-  error,
-
-  // Actions
-  attach,
-  detach,
-  pause,
-  resume,
-  resetStats,
-  updateOptions,
-} = useVAD({
-  track,                    // AudioTrack from useAudioTrack
-  autoAttach: true,         // Auto-attach when track available
-  model: 'v5',
-  positiveSpeechThreshold: 0.5,
-  onSpeechStart: () => {},
-  onSpeechEnd: (audio) => {},
-  onVADMisfire: () => {},
-  onFrameProcessed: (probs, frame) => {},
-});
-```
-
-### Statistics
-
-```typescript
-interface VADStats {
-  isActive: boolean;              // Whether VAD is processing
-  isSpeaking: boolean;            // Current speech state
-  speechProbability: number;      // Current probability (0-1)
-  currentSpeechDuration: number;  // Duration of current speech (ms)
-  framesProcessed: number;        // Total frames processed
-  speechSegmentsDetected: number; // Number of speech segments
-  misfireCount: number;           // Number of misfires
-  averageSpeechProbability: number; // Average probability
-  timestamp: number;              // Stats collection time
-}
-```
-
-### Browser Support Utilities
-
-```typescript
-import {
-  isVADSupported,
-  getVADBrowserSupport,
-  getRecommendedModel,
-  logVADBrowserSupport,
-} from '@arcaai/vad';
-
-// Quick check
-if (isVADSupported()) {
-  console.log('VAD is supported');
-}
-
-// Detailed support info
-const support = getVADBrowserSupport();
-console.log('WebAssembly:', support.webAssembly);
-console.log('AudioWorklet:', support.audioWorklet);
-console.log('SharedArrayBuffer:', support.sharedArrayBuffer);
-console.log('VAD Supported:', support.vadSupported);
-console.log('Recommended Model:', support.recommendedModel);
-
-// Get recommended model for current browser
-const model = getRecommendedModel(); // 'v5' or 'legacy'
-
-// Log support info for debugging
-logVADBrowserSupport();
-```
-
-## Browser Support
-
-| Browser | VAD Support | AudioWorklet | Notes |
-|---------|------------|--------------|-------|
-| Chrome 66+ | Full | Yes | Recommended |
-| Firefox 76+ | Full | Yes | - |
-| Safari 17.4+ | Full | Yes | AudioWorklet support |
-| Safari < 17.4 | Partial | No | Falls back to legacy model |
-| Edge 79+ | Full | Yes | Chromium-based |
-| iOS Safari | Partial | Varies | Use legacy model |
-
-### Cross-Origin Isolation
-
-For optimal performance with multi-threaded ONNX Runtime, enable cross-origin isolation:
-
-```javascript
-// vite.config.js
-export default defineConfig({
-  server: {
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
-    },
-  },
-});
-```
-
-## Model Configuration
-
-### Silero VAD v5 (Recommended)
-
-- **Frame Size**: 512 samples
-- **Sample Rate**: 16kHz
-- **Languages**: 6000+ supported
-- **Performance**: Better accuracy in noisy environments
-
-```typescript
-const vad = new VADProcessor({
-  model: 'v5',
-  positiveSpeechThreshold: 0.5,
-  negativeSpeechThreshold: 0.35,
-});
-```
-
-### Legacy Model
-
-- **Frame Size**: 1536 samples
-- **Sample Rate**: 16kHz
-- **Compatibility**: Broader browser support
-
-```typescript
-const vad = new VADProcessor({
-  model: 'legacy',
-  positiveSpeechThreshold: 0.5,
-  negativeSpeechThreshold: 0.35,
-});
-```
-
-## Timing Parameters
-
-### preSpeechPadMs
-Amount of audio to include before detected speech start. Helps capture initial low-energy speech sounds.
-
-### postSpeechPadMs
-Amount of audio to include after detected speech end. Helps capture trailing speech.
-
-### minSpeechMs
-Minimum duration for a segment to be considered valid speech. Shorter segments trigger `onVADMisfire`.
-
-### redemptionMs
-Duration of consecutive non-speech required to conclude speech has ended.
-
-## Integration with Transcription
-
-```typescript
-import { useAudioTrack } from '@arcaai/room';
-import { useVAD } from '@arcaai/vad';
-
-function TranscriptionApp() {
-  const { track, startCapture, stopCapture, isCapturing } = useAudioTrack({
-    noiseSuppression: true,
-  });
-
-  const [transcripts, setTranscripts] = useState<string[]>([]);
-
-  const { isSpeaking, speechProbability } = useVAD({
-    track,
-    model: 'v5',
-    minSpeechMs: 300,
-    onSpeechEnd: async (audio) => {
-      // audio is Float32Array at 16kHz
-      // Send to your transcription API
-      const transcript = await transcribe(audio);
-      setTranscripts((prev) => [...prev, transcript]);
+      // audio is a Float32Array at 16 kHz — hand it to transcription
+      console.log('Speech segment:', audio.length, 'samples');
     },
   });
 
@@ -470,81 +62,94 @@ function TranscriptionApp() {
       <button onClick={isCapturing ? stopCapture : startCapture}>
         {isCapturing ? 'Stop' : 'Start'}
       </button>
-      <div>Speaking: {isSpeaking ? '🎤' : '⏸️'}</div>
-      <div>Confidence: {(speechProbability * 100).toFixed(0)}%</div>
-      <ul>
-        {transcripts.map((t, i) => (
-          <li key={i}>{t}</li>
-        ))}
-      </ul>
+      <div>Speaking: {isSpeaking ? 'Yes' : 'No'}</div>
+      <div>Probability: {(speechProbability * 100).toFixed(1)}%</div>
+      <div>Segments: {stats?.speechSegmentsDetected ?? 0}</div>
     </div>
   );
 }
 ```
 
-## Architecture
+Complete runnable versions live in [`examples/basic-usage.tsx`](examples/basic-usage.tsx) and [`examples/transcription-integration.ts`](examples/transcription-integration.ts).
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      VADProcessor                            │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
-│  │ MediaStream  │───▶│   MicVAD     │───▶│   Events     │  │
-│  │    Track     │    │ (vad-web)    │    │              │  │
-│  └──────────────┘    └──────────────┘    └──────────────┘  │
-│          │                  │                    │          │
-│          ▼                  ▼                    ▼          │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
-│  │  Passthrough │    │ Silero VAD   │    │ SpeechStart  │  │
-│  │    Audio     │    │  v5 ONNX     │    │ SpeechEnd    │  │
-│  │              │    │  (512 frame) │    │ Frame Data   │  │
-│  └──────────────┘    └──────────────┘    └──────────────┘  │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## Performance Tips
-
-1. **Use v5 Model**: Better accuracy and smaller frame size
-2. **Tune Thresholds**: Adjust for your audio environment
-3. **Enable Cross-Origin Isolation**: For multi-threaded ONNX
-4. **Use Noise Suppression**: Combine with `@arcaai/noise-filter`
-5. **Debounce UI Updates**: Don't update on every frame
-
-## Troubleshooting
-
-### VAD not detecting speech
-- Lower `positiveSpeechThreshold` (e.g., 0.3)
-- Increase `preSpeechPadMs` to capture quieter speech starts
-- Check if audio input is working with `useAudioLevel`
-
-### Too many false positives
-- Raise `positiveSpeechThreshold` (e.g., 0.7)
-- Increase `minSpeechMs` to filter short noises
-- Use `@arcaai/noise-filter` to reduce background noise
-
-### Model loading issues on iOS
-- Use `model: 'legacy'` for better compatibility
-- Check CORS headers for model files
-
-### AudioWorklet not available
-- Safari < 17.4 doesn't support AudioWorklet
-- The library falls back automatically when possible
-
-## Debug Mode
-
-Set `debugMode: true` to log VAD configuration on initialization:
+### Processor usage
 
 ```typescript
-const vad = new VADProcessor({
-  debugMode: true,
-  model: 'v5',
-  positiveSpeechThreshold: 0.5,
+import { createVAD } from '@arcaai/vad';
+
+const vad = createVAD({ model: 'v5', positiveSpeechThreshold: 0.5 });
+
+vad.on('data', (payload) => {
+  switch (payload.type) {
+    case 'vad-speech-start':      // speech onset detected
+    case 'vad-speech-real-start': // confirmed (exceeded minSpeechMs)
+      break;
+    case 'vad-speech-end':
+      // payload.data.audio: Float32Array @ 16 kHz, plus segment timing metadata
+      break;
+    case 'vad-misfire':           // segment shorter than minSpeechMs
+    case 'vad-frame':             // per-frame probability
+    case 'vad-stats':             // when enableStats: true
+      break;
+  }
 });
+
+await audioTrack.setProcessor(vad);
 ```
 
-Logs the full VAD configuration (model, thresholds, timing parameters) to the console with `[ARCAAI:DEBUG]` prefix. When used via `@arcaai/vox` with `debug: true`, this is enabled automatically.
+### Options (`VADOptions`)
+
+| Option | Default | Description |
+|---|---|---|
+| `model` | `'v5'` | `'v5'` (512-sample frames) or `'legacy'` (1536-sample frames) |
+| `positiveSpeechThreshold` | `0.5` | Probability above which a frame counts as speech |
+| `negativeSpeechThreshold` | `0.35` | Probability below which a frame counts as non-speech |
+| `preSpeechPadMs` / `postSpeechPadMs` | `300` / `300` | Audio padding around detected speech |
+| `minSpeechMs` | `250` | Segments shorter than this fire `vad-misfire` |
+| `redemptionMs` | `1400` | Contiguous non-speech required to end a segment |
+| `silenceResetMs` | `5000` | Rebuild MicVAD after this much silence to reset the Silero LSTM state; `0` disables |
+| `sampleRate` | `16000` | Output rate for speech-end audio (model always runs at 16 kHz) |
+| `baseAssetPath` / `onnxWASMBasePath` | pinned jsDelivr CDN | Self-host the vad-web assets / ORT WASM binaries |
+| `submitUserSpeechOnPause` | `false` | Emit the in-flight segment when pausing |
+| `enableStats` / `statsInterval` | `false` / `1000` | Emit `vad-stats` data events |
+| `debugMode` | `false` | Log configuration with the `[ARCAAI:DEBUG]` prefix |
+
+Key `VADProcessor` methods: `isSpeaking()`, `getSpeechProbability()`, `getStats()`, `getModel()`, `getOptions()`, `updateOptions(options)`, `updateThresholds(pos, neg)`, `pause()`, `start()`, `reset()` (force-rebuild MicVAD / LSTM state), `resetStats()`, plus inherited `enable()` / `disable()` / `destroy()`.
+
+## Model assets and version pinning
+
+ONNX models and the vad-web worklet are not bundled. By default they load from jsDelivr using version-pinned URLs derived from the exported constants `VAD_WEB_VERSION` (`0.0.30`) and `ORT_WEB_VERSION` (`1.27.0`) — see `src/constants.ts`. These must match `package.json`; a unit test enforces the invariant, because the ONNX Runtime WASM ABI is not stable across minor versions.
+
+For production, prefer self-hosting: copy the `@ricky0123/vad-web` dist assets and `onnxruntime-web` WASM binaries to your server and set `baseAssetPath` / `onnxWASMBasePath`.
+
+## Runtime requirements
+
+- Browser only: WebAssembly + AudioWorklet (Chrome 66+, Firefox 76+, Safari 17.4+, Edge 79+). Older Safari/iOS can use `model: 'legacy'`; `getRecommendedModel()` picks one automatically.
+- Microphone permission is handled by the `@arcaai/room` track you attach to.
+- Multi-threaded ONNX Runtime requires cross-origin isolation (COOP/COEP headers, `window.crossOriginIsolated === true`); without it, inference silently runs single-threaded. Same gating as `@arcaai/stt` — see `../stt/README.md` for the exact headers.
+- Support probing: `isVADSupported()`, `getVADBrowserSupport()`, `logVADBrowserSupport()`.
+- Ships a `react-server` exports-condition stub for RSC safety.
+
+## Tuning tips
+
+- VAD misses quiet speech: lower `positiveSpeechThreshold`, raise `preSpeechPadMs`.
+- Too many false positives: raise `positiveSpeechThreshold` and `minSpeechMs`, and put `@arcaai/noise-filter` before VAD in the pipeline.
+- Long multi-speaker sessions: keep the default `silenceResetMs` so the Silero LSTM state cannot drift.
+
+## Commands
+
+From this directory:
+
+| Command | Action |
+|---|---|
+| `pnpm build` | tsup build; `pnpm build:e2e` also copies `dist/` into `e2e/fixtures/` |
+| `pnpm test` / `pnpm test:watch` / `pnpm test:coverage` | Vitest unit tests |
+| `pnpm test:e2e` | Playwright browser tests; `:ui`, `:headed`, `:chromium` variants exist |
+| `pnpm lint` | ESLint (`--max-warnings 0`) |
+| `pnpm type-check` | `tsc --noEmit` |
+| `pnpm clean` / `pnpm nuke` | Remove build output (nuke also removes `node_modules`) |
+
+From the repo root: `pnpm --filter @arcaai/vad build` (same pattern for `test`, `lint`, etc.).
 
 ## License
 

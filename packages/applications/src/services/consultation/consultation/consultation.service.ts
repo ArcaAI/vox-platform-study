@@ -5,7 +5,6 @@ import {
   ConsultationRepository,
   ConsultationFactory,
   ConsultationStatus,
-  CoreDatabaseService,
   DepartmentRepository,
   ResourceType,
   SysEventType,
@@ -45,10 +44,6 @@ export class ConsultationService extends BaseService implements IConsultationSer
     private readonly userRepository: UserRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-386 (#20 / E4) — date-range aggregation reads counts straight off the
-    // Prisma client (house precedent `tenant.service.ts:898`); no new repository.
-    @Inject('CORE_DATABASE_SERVICE')
-    private readonly databaseService: CoreDatabaseService,
     // TASK-392 (Phase 3, M1) — optional (append-only DI); enforces the plan
     // `monthlyConsultations` meter when STARTING a new consultation
     // (kill-switch-gated, → 429 when over the rolling-monthly cap).
@@ -608,14 +603,9 @@ export class ConsultationService extends BaseService implements IConsultationSer
     const rangeStart = buckets[0]?.start ?? startOfUtcDay(fromDate);
     const rangeEnd = buckets[buckets.length - 1]?.end ?? endOfUtcDay(toDate);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: any = { createdAt: { gte: rangeStart, lte: rangeEnd } };
-    if (tenantId) where.tenantId = tenantId;
-
-    const rows = await this.databaseService.client.consultation.findMany({
-      where,
-      select: { createdAt: true, parentConsultationId: true },
-    });
+    // TASK-413 — routed through ConsultationRepository (TASK-311 AC-8); the
+    // repository applies the same createdAt range + optional-tenant filter.
+    const rows = await this.consultationRepository.findCreatedInRange(rangeStart, rangeEnd, tenantId);
 
     for (const row of rows) {
       const ts = row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt as unknown as string);

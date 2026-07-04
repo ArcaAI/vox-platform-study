@@ -29,12 +29,7 @@ type RequestMethod =
   | 'msRequestFullscreen';
 
 type ExitMethod =
-  | 'exitFullscreen'
-  | 'webkitExitFullscreen'
-  | 'webkitExitFullScreen'
-  | 'webkitCancelFullScreen'
-  | 'mozCancelFullScreen'
-  | 'msExitFullscreen';
+  'exitFullscreen' | 'webkitExitFullscreen' | 'webkitExitFullScreen' | 'webkitCancelFullScreen' | 'mozCancelFullScreen' | 'msExitFullscreen';
 
 type FullscreenEnabledProperty = 'fullScreen' | 'webkitIsFullScreen' | 'webkitDisplayingFullscreen' | 'mozFullScreen' | 'msFullscreenElement';
 

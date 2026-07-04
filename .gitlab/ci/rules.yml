@@ -172,6 +172,22 @@
       changes:
         - apps/guardrail/**/*
 
+# ── Harness (Clinical Documentation Harness) ─────────────────────────────────
+
+.rules-harness:
+  rules:
+    - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/harness/**/*
+        compare_to: refs/heads/main
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+      changes:
+        - apps/harness/**/*
+
 # ── Database (Prisma migrations) ────────────────────────────────────────────
 
 .rules-database:
@@ -254,6 +270,7 @@
           - "apps/smr/**/*.py"
           - "apps/nlp/**/*.py"
           - "apps/guardrail/**/*.py"
+          - "apps/harness/**/*.py"
           - "apps/stt-v2/**/requirements*.txt"
           - "apps/smr/**/requirements*.txt"
           - "apps/nlp/**/requirements*.txt"
@@ -261,6 +278,7 @@
           - "apps/smr/**/pyproject.toml"
           - "apps/nlp/**/pyproject.toml"
           - "apps/guardrail/**/pyproject.toml"
+          - "apps/harness/**/pyproject.toml"
         compare_to: refs/heads/main
     - if: $PIPELINE_TYPE == "dev"
     - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
@@ -269,6 +287,7 @@
         - "apps/smr/**/*.py"
         - "apps/nlp/**/*.py"
         - "apps/guardrail/**/*.py"
+        - "apps/harness/**/*.py"
 
 # ── SDK packages (for publish stage) ────────────────────────────────────────
 

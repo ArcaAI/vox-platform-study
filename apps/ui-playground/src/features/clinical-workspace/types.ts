@@ -110,15 +110,7 @@ export interface CreateStreamSessionResponse {
 // =============================================================================
 
 export type WorkspaceContextType =
-  | 'CASE_NOTE'
-  | 'WORKNOTE'
-  | 'TRANSCRIPT'
-  | 'ATTACHMENT'
-  | 'AUDIO_RECORDING'
-  | 'RAW_SUMMARY'
-  | 'MODIFIED_SUMMARY'
-  | 'SIGNED_NOTE'
-  | string;
+  'CASE_NOTE' | 'WORKNOTE' | 'TRANSCRIPT' | 'ATTACHMENT' | 'AUDIO_RECORDING' | 'RAW_SUMMARY' | 'MODIFIED_SUMMARY' | 'SIGNED_NOTE' | string;
 
 /** POST /consultations/:id/context body (mirrors AddContextRequest). */
 export interface AddContextRequest {

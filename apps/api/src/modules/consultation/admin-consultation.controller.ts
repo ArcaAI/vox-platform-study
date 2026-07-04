@@ -92,10 +92,13 @@ export class AdminConsultationController {
   })
   @ApiQuery({ name: 'from', required: true, type: String, description: 'Range start (ISO-8601 / yyyy-MM-dd).' })
   @ApiQuery({ name: 'to', required: true, type: String, description: 'Range end (ISO-8601 / yyyy-MM-dd).' })
-  @ApiQuery({ name: 'granularity', required: false, enum: ['day', 'month'], description: 'Force bucket granularity; defaults to day (month for >70-day spans).' })
-  async aggregate(
-    @Query() query: { from?: string; to?: string; granularity?: string },
-  ): Promise<ConsultationAggregateResponse> {
+  @ApiQuery({
+    name: 'granularity',
+    required: false,
+    enum: ['day', 'month'],
+    description: 'Force bucket granularity; defaults to day (month for >70-day spans).',
+  })
+  async aggregate(@Query() query: { from?: string; to?: string; granularity?: string }): Promise<ConsultationAggregateResponse> {
     if (!query.from || !query.to) {
       throw new BadRequestException('Both `from` and `to` query params are required.');
     }

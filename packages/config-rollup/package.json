@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "main": "base.js",
-  "types": "base.d.ts",
   "peerDependencies": {
     "typescript": "^5.0.0"
   },

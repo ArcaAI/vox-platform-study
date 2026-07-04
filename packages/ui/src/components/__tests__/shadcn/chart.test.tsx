@@ -49,7 +49,9 @@ test.describe('ChartContainer', () => {
       )
 
       const child = page.locator('[data-testid="chart-child"]')
-      await expect(child).toBeVisible()
+      // recharts 3 renders children inside a 0x0 measuring div with visible overflow,
+      // so a plain (non-chart) child has no bounding box — assert attachment + text.
+      await expect(child).toBeAttached()
       await expect(child).toHaveText('Chart content')
     })
 

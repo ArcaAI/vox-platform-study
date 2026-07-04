@@ -40,10 +40,10 @@ dependencies = [
     # --- HTTP client (API Gateway communication) ---
     "httpx>=0.28.1",
     # --- Task queue ---
-    # NOTE: dramatiq 2.0.x pins redis<7.0 — do NOT bump redis past 6.x
-    # until dramatiq releases a version that supports redis-py 7+
+    # NOTE: dramatiq 2.2.0 supports redis>=4.0,<9.0 — keep the redis cap in
+    # lock-step with dramatiq's declared upper bound when bumping either.
     "dramatiq[redis]>=2.0.0",
-    "redis[hiredis]>=5.2.0,<7.0",
+    "redis[hiredis]>=5.2.0,<9.0",
     # --- Object storage ---
     # minio SDK backs both the `minio` and `aws_s3` providers (S3-compatible).
     "minio>=7.2.20",
@@ -75,10 +75,6 @@ dependencies = [
     "numpy>=2.0.0",
     # --- Azure Speech SDK (cloud ASR engine, imported top-level in batch_service) ---
     "azure-cognitiveservices-speech>=1.47.0",
-    # --- Qdrant client: LEGACY/UNUSED (diarization is now in-memory/session-scoped; see
-    #     README Overview note). Retained only because `uv lock` cannot currently re-resolve
-    #     (pre-existing stt-v2[ml] vs stt-v2[nemo] transformers conflict); drop when fixed. ---
-    "qdrant-client>=1.13.0",
     # --- Cadence punctuation runtime compatibility (Gemma3 bidirectional mask path) ---
     "cadence-punctuation>=1.1.0",
 ]
@@ -231,7 +227,7 @@ warn_return_any = true
 # are intentionally NOT listed here so mypy type-checks their usage against the
 # stubs.
 [[tool.mypy.overrides]]
-module = ["transformers", "torch", "torchaudio", "soundfile", "librosa", "minio", "dramatiq", "nemo_toolkit", "nemo", "nemo.*", "pyannote.*", "qdrant_client.*", "azure.*", "speechbrain.*", "optimum.*", "pyrnnoise", "onnxruntime", "cadence", "accelerate", "flash_attn", "faster_whisper"]
+module = ["transformers", "torch", "torchaudio", "soundfile", "librosa", "minio", "dramatiq", "nemo_toolkit", "nemo", "nemo.*", "pyannote.*", "azure.*", "speechbrain.*", "optimum.*", "pyrnnoise", "onnxruntime", "cadence", "accelerate", "flash_attn", "faster_whisper"]
 ignore_missing_imports = true
 
 # pytest configuration

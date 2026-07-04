@@ -68,7 +68,9 @@ export class QueueAdminService {
       const client = await queue.client;
 
       const pingStart = Date.now();
-      await client.ping();
+      // bullmq 5.79 narrowed `queue.client` to its adapter-agnostic IRedisClient,
+      // which omits PING; the ioredis-backed proxy still forwards it at runtime.
+      await (client as unknown as { ping(): Promise<string> }).ping();
       const latencyMs = Date.now() - pingStart;
 
       const info = parseRedisInfo(await client.info());

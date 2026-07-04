@@ -1,6 +1,6 @@
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
-import { createPrismaAbility, PrismaQuery, accessibleBy } from '@casl/prisma';
-import { PureAbility } from '@casl/ability';
+import { createPrismaAbility, accessibleBy, type PrismaQueryOf, type PrismaTypeMap } from '@casl/prisma';
+import { Ability } from '@casl/ability';
 import { CoreDatabaseService, ResourceStatusType } from '@arcaai/domains';
 import { IRedisCacheService } from '../services/baseServices/redis';
 
@@ -12,9 +12,17 @@ import { IRedisCacheService } from '../services/baseServices/redis';
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
- * CASL Ability type for the application
+ * CASL Ability type for the application.
+ *
+ * casl 7 / casl-prisma 2 (TASK-413): `PureAbility` was renamed to `Ability`,
+ * and `PrismaQuery` is now derived from `@prisma/client`'s generated
+ * `Prisma.TypeMap`. This repo generates its client into
+ * `packages/database/src/generated` (the bare `@prisma/client` TypeMap is a
+ * stub), so we build the query type from a loose string-keyed TypeMap —
+ * the same permissive `[string, string]` + JSON-conditions semantics the
+ * engine has always had (rules are DB-stored JSON).
  */
-export type AppAbility = PureAbility<[string, string], PrismaQuery>;
+export type AppAbility = Ability<[string, string], PrismaQueryOf<PrismaTypeMap<string>>>;
 
 /**
  * Policy rule structure (stored in database as JSON)
@@ -66,10 +74,10 @@ interface ScopeOverrides {
  *   // User has permission
  * }
  *
- * // Get Prisma filter for accessible records
+ * // Get Prisma filter for accessible records (casl-prisma 2: .ofType())
  * const filter = policyEngine.getAccessibleBy(ability, 'read');
  * const users = await prisma.user.findMany({
- *   where: filter.User,
+ *   where: filter.ofType('User'),
  * });
  * ```
  */
@@ -176,13 +184,14 @@ export class PolicyEngine {
    *
    * @param ability - CASL ability instance
    * @param action - Action to check (default: 'read')
-   * @returns Object with filters for each subject
+   * @returns AccessibleRecords — call `.ofType('Model')` for a WhereInput
+   *   (casl-prisma 2 replaced the proxy shape `filter.Model`)
    *
    * @example
    * ```typescript
    * const filter = policyEngine.getAccessibleBy(ability, 'read');
    * const users = await prisma.user.findMany({
-   *   where: filter.User,
+   *   where: filter.ofType('User'),
    * });
    * ```
    */

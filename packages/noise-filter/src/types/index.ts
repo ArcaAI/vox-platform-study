@@ -230,10 +230,7 @@ export type WorkletInboundMessage =
  * Messages sent from the RNNoise AudioWorklet.
  */
 export type WorkletOutboundMessage =
-  | { type: 'ready' }
-  | { type: 'stats'; stats: NoiseFilterStats }
-  | { type: 'error'; message: string }
-  | { type: 'destroyed' };
+  { type: 'ready' } | { type: 'stats'; stats: NoiseFilterStats } | { type: 'error'; message: string } | { type: 'destroyed' };
 
 // ============================================================================
 // Browser Support Types

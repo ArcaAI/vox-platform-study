@@ -119,7 +119,7 @@ Self-hosted trade-offs: zero license cost, but you own patching, HA, backups, an
 │ Tier 3: Tenant-specific secrets (lazy, per-tenant)      │
 │ - BYOK provider keys for an individual tenant           │
 │ - Tenant-issued webhook signing secrets                 │
-│ - Per-tenant MLflow tokens, etc.                        │
+│ - Per-tenant integration tokens, etc.                   │
 │ Either: per-tenant entries in secrets manager           │
 │ Or:     KMS-envelope-encrypted GlobalSetting column     │
 └─────────────────────────────────────────────────────────┘

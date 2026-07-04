@@ -102,7 +102,7 @@ export class DnaWritingStyleAdminController {
   // collides with `jobs/:jobId`.
   @Get('doctor/:doctorId')
   @ApiOperation({
-    summary: "Latest DNA writing-style report for a doctor (admin cross-user, tenant-scoped PHI-gated)",
+    summary: 'Latest DNA writing-style report for a doctor (admin cross-user, tenant-scoped PHI-gated)',
   })
   @ApiParam({ name: 'doctorId', description: 'Target doctor ID', type: String })
   @ApiResponse({ status: 200, description: 'Latest DNA report for the doctor', type: DnaReportResponse })

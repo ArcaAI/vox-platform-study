@@ -139,7 +139,11 @@ export class ApiKeyController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'API Key ID', type: String })
-  @ApiResponse({ status: 201, description: 'API key rotated. New raw key returned only once; old key stays valid for a 24h grace window.', type: CreateApiKeyResponse })
+  @ApiResponse({
+    status: 201,
+    description: 'API key rotated. New raw key returned only once; old key stays valid for a 24h grace window.',
+    type: CreateApiKeyResponse,
+  })
   @ApiResponse({ status: 404, description: 'API key not found' })
   @CanUpdate('ApiKey')
   async rotate(@Param('id') id: string): Promise<CreateApiKeyResponse> {

@@ -1,40 +1,74 @@
 # @arcaai/vox
 
-ARCAAI Agentic SDK v2 for medical consultation workflows.
+React SDK for ARCAAI medical consultation workflows. Provides a configuration-driven provider (`AgenticProvider`), a unified `useArca()` hook plus 40+ focused hooks, a real-time audio pipeline (noise filtering, voice activity detection, speech-to-text), consultation/context/summary management against the HOPE API gateway, and multi-tenant-safe browser state (per-provider Zustand stores, namespaced persistence, cross-tab sync).
 
-## Features
+Last updated: 2026-07-04
 
-- **Unified API** - Single `useArca()` hook for all SDK functionality
-- **Configuration-Driven** - Enable features via configuration, not code
-- **Real-time Audio** - Noise filtering, voice activity detection, speech-to-text
-- **Context Management** - Case notes, transcriptions, medical entity extraction
-- **AI Summarization** - Medical summary generation with DNA writing style
-- **Multi-Doctor Support** - New-visit and re-visit consultation workflows
-- **Cross-Tab Sync** - Session sharing across browser tabs
-- **WebWorker STT** - ML inference runs off main thread
+## Where it fits
 
-## Installation
+| Direction | Package / app | Relationship |
+|---|---|---|
+| Depends on | `@arcaai/room` | Audio capture, `AudioTrack`, processor contract, `AudioMixer` |
+| Depends on | `@arcaai/noise-filter`, `@arcaai/vad`, `@arcaai/stt` | Stages of the transcription pipeline |
+| Optional peer | `@arcaai/med-ner` | Browser NER stage; hook at `@arcaai/vox/plugins/med-ner` |
+| Optional peer | `highlight.run` | Optional logging transport |
+| Talks to | `apps/api` (NestJS gateway, port 8868) | REST + WebSocket/SSE (streaming ASR via the STT-V2 service behind the gateway) |
+| Consumed by | `apps/ui-playground` (deprecated) | Only current in-repo consumer |
 
-```bash
-npm install @arcaai/vox
+Peer dependencies: `react` / `react-dom` `^18.3.0 || ^19.0.4`.
+
+## Entry points
+
+| Import | Contents |
+|---|---|
+| `@arcaai/vox` | Everything: core + audio plugin hooks and pipelines |
+| `@arcaai/vox/core` | Provider, hooks, types, client — no audio/ML plugin code |
+| `@arcaai/vox/plugins` | `useVAD`, `useSTT`, `useNoiseFilter`, `useArcaAudio`, `PluginManager`, pipelines |
+| `@arcaai/vox/plugins/med-ner` | `useMedNER` only — isolates the optional `@arcaai/med-ner` dependency so the main plugins entry never fails when it is not installed |
+
+Use `/core` for admin/dashboard surfaces that only need API access; audio and ML dependencies stay out of that graph.
+
+## Directory structure
+
+```
+packages/agentic-sdk-v2/
+├── src/
+│   ├── index.ts / core.ts / plugins.ts / plugins-med-ner.ts   # Entry points
+│   ├── providers/     # AgenticProvider (owns one store instance per mount)
+│   ├── hooks/         # useArca + focused domain/admin hooks (~45)
+│   ├── store/         # Zustand store: createAgenticStore, useArcaStore, useStoreApi
+│   ├── core/          # AgenticClient, ConfigManager/ConfigSchema (valibot),
+│   │                  # PluginManager, TranscriptionPipeline, KnowledgePipeline,
+│   │                  # SttV2WebSocketClient, SSEClient, StreamingSessionManager,
+│   │                  # SharedConnectionManager/Worker, SimpleCrossTabSync,
+│   │                  # PersonalizationManager, ModelRegistry, LocalVoiceEmbedder,
+│   │                  # DualStreamRecorder, ProcessedAudioTap, FileTranscriptionService,
+│   │                  # logger/ (SDKLogger + transports)
+│   ├── types/         # Config, consultation, context, summary, STT-V2, admin types
+│   └── utils/         # Diff, dates, errors, idempotency, citations, voice embedding
+├── docs/API-Reference.md   # Full generated API reference
+├── e2e/               # Playwright tests (fixtures + specs)
+├── CHANGELOG.md
+└── tsup.config.ts     # ESM + CJS for all four entries
 ```
 
-## Quick Start
+## Quick start
 
 ```tsx
 import { AgenticProvider, useArca } from '@arcaai/vox';
 
 const config = {
   api: {
-    baseUrl: 'https://api.arcaai.com',
-    apiKey: 'your-api-key',
+    baseUrl: 'https://api.arcaai.example.com',
+    accessToken: 'jwt-from-your-auth-flow', // or apiKey for system keys
+    tenantId: 'tenant-id',
   },
-  debug: true,
   audio: {
     noiseFilter: { enabled: true, level: 'high' },
     vad: { enabled: true },
     stt: { enabled: true, language: 'en-US' },
   },
+  debug: false,
 };
 
 function App() {
@@ -46,18 +80,15 @@ function App() {
 }
 
 function ConsultationPage() {
-  const { session, audio, context, summary, isReady } = useArca();
+  const { session, audio, context, summary, isReady, error } = useArca();
 
   const handleStart = async () => {
-    await session.create({
-      patientId: 'patient-123',
-      appointmentDate: '2026-01-28',
-      doctorId: 'doctor-456',
-    });
-    await audio.start();
+    // Get-or-create today's consultation for the patient
+    await session.open({ patientId: 'patient-123' });
+    await audio.start(); // pass { pipelineId } to stream via the backend ASR pipeline
   };
 
-  if (!isReady) return <div>Loading...</div>;
+  if (!isReady) return <div>Loading…</div>;
 
   return (
     <div>
@@ -65,12 +96,9 @@ function ConsultationPage() {
         <button onClick={handleStart}>Start Consultation</button>
       ) : (
         <>
-          <p>Audio Level: {audio.level}%</p>
-          <p>Speaking: {audio.isSpeaking ? 'Yes' : 'No'}</p>
-          {audio.currentTranscript && <p>{audio.currentTranscript}...</p>}
-
-          <h2>Transcriptions</h2>
-          {context.transcriptions.map(t => <p key={t.id}>{t.content}</p>)}
+          <p>Level: {audio.level}% — Speaking: {audio.isSpeaking ? 'Yes' : 'No'}</p>
+          {audio.currentTranscript && <p>{audio.currentTranscript}…</p>}
+          {context.transcriptions.map((t) => <p key={t.id}>{t.content}</p>)}
         </>
       )}
     </div>
@@ -78,83 +106,113 @@ function ConsultationPage() {
 }
 ```
 
-## Bundle Optimization
+`useArca()` returns `{ session, audio, context, summary, pipelines, lifecycle, isAudioSource, isReady, error, withRetry }`. The same domains are available as focused hooks (`useArcaSession`, `useArcaAudio`, `useArcaContext`, `useArcaSummary`, `useArcaConfig`) when you do not want the aggregate.
 
-Use selective imports for smaller bundles:
+## Architecture
 
-```tsx
-// Full SDK (~5.5MB)
-import { AgenticProvider, useArca } from '@arcaai/vox';
+### Provider and store
 
-// Core only (~200KB) - no audio plugins
-import { AgenticProvider, useArca } from '@arcaai/vox/core';
+Each `AgenticProvider` mount creates its own Zustand store via `createAgenticStore()` and publishes it through context. Read it with the public accessors:
 
-// Plugins only (~5.3MB) - for lazy loading
-import { useVAD, useSTT } from '@arcaai/vox/plugins';
+- `useArcaStore(selector)` — reactive, context-backed (same hook the SDK uses internally).
+- `useStoreApi()` — the nearest provider's `StoreApi` for imperative `.getState()` reads.
+
+Both throw outside an `AgenticProvider`. The exported `useAgenticStore` is a deprecated module singleton kept only for backwards compatibility — no provider initializes it, so its `apiClient`/`configManager` stay `null`; do not use it in new code. On tenant switch the provider calls `store.clearTenantSessionData()` before the new tenant config resolves, wiping tenant-scoped PHI/session state.
+
+### Audio pipeline (TranscriptionPipeline)
+
+`PluginManager` builds a `TranscriptionPipeline` that composes the audio packages as lazily-created stages on a `@arcaai/room` track:
+
+```
+Microphone → @arcaai/room AudioTrack
+  → NoiseFilter stage (@arcaai/noise-filter, RNNoise WASM)
+  → VAD stage (@arcaai/vad, Silero v5)
+  → STT stage (@arcaai/stt: local Whisper worker, or backend streaming)
+  → transcription events → store → context items
 ```
 
-## Documentation
+Per-capture runtime options flow through `useArcaAudio.start(options)` (`AudioStartOptions`): `pipelineId` (selects the backend ASR pipeline and switches the STT stage to a streaming transport built on `StreamingSessionManager` + `SttV2WebSocketClient`), `language`, `deviceId`, and `secondaryDeviceId` (second microphone mixed in via `AudioMixer` before the pipeline). `DualStreamRecorder` can record raw and processed tracks in parallel, and `createProcessedAudioTap` exposes the genuine post-RNNoise audio as a recordable stream without running the full pipeline.
 
-- [Full Documentation](../../docs/agentic-sdk-v2/README.md)
-- [API Reference](../../docs/agentic-sdk-v2/api-reference.md)
-- [Architecture](../../docs/agentic-sdk-v2/architecture.md)
-- [Examples](../../docs/agentic-sdk-v2/examples.md)
-- [Migration from v1](../../docs/agentic-sdk-v2/migration-guide.md)
+### Knowledge pipeline
 
-## Debug Mode
+`KnowledgePipeline` post-processes transcription text with per-stage `location` (`browser`/`backend`/`auto`/`disabled`) and `triggerMode` (`auto`/`manual`): NER (browser via optional `@arcaai/med-ner`, or backend NLP), spell-check, and summarization (backend SMR via `AgenticClient`).
 
-Set `debug: true` in the configuration to enable verbose audio pipeline logging. When active, the SDK logs to the browser console with `[ARCAAI:DEBUG]` prefix — including pipeline configuration dumps at startup and structured transcript JSON for every final transcription result.
+### Transports and cross-tab behaviour
 
-```tsx
-const config = {
-  api: { baseUrl: '...', apiKey: '...' },
-  debug: true,
-};
-```
+| Component | Purpose |
+|---|---|
+| `AgenticClient` | REST client: auth/refresh (single-slot 401 handler, `autoWireTokenRefresh`), idempotency keys, optimistic locking (ETag/If-Match) |
+| `SttV2WebSocketClient` | Streaming ASR WebSocket (audio frames out, transcripts in, reconnect) |
+| `SSEClient` | Server-sent events (job progress) |
+| `FileTranscriptionService` / `TranscriptionJobService` | File-based transcription jobs |
+| `SharedConnectionManager` + `SharedConnectionWorker` | One shared WS/SSE connection across tabs (SharedWorker), dedup keyed per user |
+| `SimpleCrossTabSync` | BroadcastChannel `agentic.<tenantId>`, HMAC-authenticated messages (`CrossTabHmacKeyManager`, per-tenant HKDF subkeys) |
 
-See the [full documentation](../../docs/agentic-sdk-v2/README.md) for details on the transcript JSON format.
+### Consultation session lifecycle
+
+1. `session.open({ patientId, appointmentDate? })` — get-or-create the consultation; related visits are exposed via `session.relatedConsultations` and `useConsultationChain`.
+2. `audio.start(...)` — capture + pipeline; transcripts land in `context.transcriptions`; entities in `context.entities`.
+3. `context.addCaseNote(...)`, `context.extractEntities()` — enrich the record.
+4. `summary.generateSummary(...)` (or `generateSummaryAsync` for job-based generation with SSE progress) — versioning, diffs, and approval flows are exposed on `useArcaSummary`.
+5. `audio.stop()`, then `useArcaSession().close()` (or a status `update`) closes out the visit; `reopen()` reverses it.
+
+### Personalization and models
+
+`PersonalizationManager` (IndexedDB) and `ModelRegistry` (custom STT/VAD/NER model definitions with load progress) persist per `${tenantId}::${userId}` namespace and re-key on auth/tenant switch. `LocalVoiceEmbedder` provides in-browser speaker embeddings (WavLM) for voice enrollment alongside the backend `useVoiceEmbedding`.
+
+### Logging
+
+`SDKLogger` with pluggable transports (`ConsoleTransport`, `HighlightTransport`, `LokiTransport`, `OTelTransport`), PII redaction, and W3C trace-context helpers. Configure via `config.logging`; access with `useSDKLogger()`.
+
+## Hooks overview
+
+| Group | Hooks |
+|---|---|
+| Consultation | `useArca`, `useArcaSession`, `useArcaAudio`, `useArcaContext`, `useArcaSummary`, `useArcaConfig`, `useConsultationChain`, `useConsultationJob`, `useAudioRecordings` |
+| Auth and tenancy | `useAuth`, `useTenants`, `useTenantFrontendConfig`, `useTenantStorageConfig`, `useTenantBuckets`, `useEntitlements` |
+| Admin | `useUsers`, `useRoles`, `useDepartments`, `useUserDepartments`, `usePolicies`, `usePrompts`, `useApiKeys`, `useAuditLog`, `useAdminConsultations`, `useAdminTranscriptionJobs`, `useHarnessAdmin`, `useQueueAdmin`, `useRateLimits`, `usePrismaStudio` |
+| Platform | `useHealthCheck`, `useMonitoring`, `usePlatformMetrics`, `usePipelines`, `useGlobalSettings`, `useUserSettings`, `useStorage`, `useStorageKeys` |
+| Voice and DNA | `useVoiceEmbedding`, `useLocalVoiceEmbedding`, `useDnaStyle`, `useDnaDashboard` |
+| Audio plugins | `useVAD`, `useSTT`, `useNoiseFilter` (from `/plugins`), `useMedNER` (from `/plugins/med-ner`) |
+
+Full signatures and types: [docs/API-Reference.md](docs/API-Reference.md). Release history: [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
-- **React 18.3.0+** or **React 19.0.4+** (security patched versions)
-- Modern browser with Web Audio API support
-- API key from ARCAAI
+- React `^18.3.0` or `^19.0.4` (security-patched versions; the SDK is client-side only and every entry carries `"use client"`).
+- Modern browser with Web Audio API; microphone permission is requested when audio starts.
+- Local Whisper STT benefits from cross-origin isolation (COOP/COEP) for multi-threaded inference — see `../stt/README.md`.
+- To use browser NER, install the optional peer `@arcaai/med-ner` and import from `@arcaai/vox/plugins/med-ner`.
+- Do not embed long-lived API keys in production client code; prefer short-lived access tokens via your auth flow. This SDK processes medical data — deploy in line with HIPAA/GDPR obligations.
 
-## Security
+## Debug mode
 
-### React Version Requirements
+Set `debug: true` in the config to enable verbose `[ARCAAI:DEBUG]` console logging: pipeline configuration dumps at startup and structured transcript JSON for every final transcription result. The flag propagates `debugMode` into the noise-filter, VAD, and STT processors automatically.
 
-This SDK requires React versions that include security patches:
+## Commands
 
-- **React 18**: Use version `18.3.0` or higher
-- **React 19**: Use version `19.0.4`, `19.1.5`, or `19.2.4` and higher
+From this directory:
 
-These versions address CVE-2025-55182 (React Server Components vulnerability). While this SDK is a **client-side library** and does not use React Server Components, we recommend using patched React versions for your overall application security.
+| Command | Action |
+|---|---|
+| `pnpm build` / `pnpm dev` | tsup build of all four entries / watch mode |
+| `pnpm test` / `pnpm test:watch` | Vitest unit tests |
+| `pnpm test:e2e` | Builds, then Playwright (`e2e/playwright.config.ts`); `:ui`, `:headed`, `:chromium` variants exist |
+| `pnpm lint` | ESLint on `src` |
+| `pnpm typecheck` | `tsc --noEmit` |
+| `pnpm clean` / `pnpm nuke` | Remove build output (nuke also removes `node_modules`) |
 
-### Client-Side Only
+From the repo root: `pnpm --filter @arcaai/vox build` (same pattern for `test`, `lint`, etc.).
 
-This SDK is designed for client-side usage only. All components include the `"use client"` directive to ensure they are not accidentally used in server-side rendering contexts.
+## Related packages
 
-### API Key Security
-
-- Never expose API keys in client-side code for production
-- Use environment variables and server-side proxies for API authentication
-- Consider implementing token-based authentication for production deployments
-
-### Data Privacy
-
-This SDK processes medical data. Ensure compliance with:
-- HIPAA (United States)
-- GDPR (European Union)
-- Other applicable healthcare data regulations
-
-## Related Packages
-
-- `@arcaai/room` - Audio track and processor pipeline
-- `@arcaai/noise-filter` - RNNoise-based noise filtering
-- `@arcaai/stt` - Speech-to-text (local Whisper + backend)
-- `@arcaai/vad` - Voice activity detection (Silero)
-- `@arcaai/med-ner` - Medical named entity recognition (optional)
+| Package | Role |
+|---|---|
+| `@arcaai/room` | Audio capture, tracks, processor pipeline |
+| `@arcaai/noise-filter` | RNNoise WASM noise cancellation |
+| `@arcaai/vad` | Silero voice activity detection |
+| `@arcaai/stt` | Whisper STT (worker) + backend streaming |
+| `@arcaai/med-ner` | Optional browser medical NER |
 
 ## License
 

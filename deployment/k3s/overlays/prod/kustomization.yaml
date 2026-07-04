@@ -61,10 +61,20 @@ patches:
         path: /spec/rules/0/host
         value: ui.hope.local
 
-components:
-  - ../../components/registry
-
-# newTag values are auto-updated by the CI promote-prod job on each v* tag push.
+# Image tags are pinned here and are NOT updated by CI (no promote-prod job
+# exists). On `v*` tag pipelines CI automatically builds and pushes semver tags
+# (`X.Y.Z`, `X.Y`, `X`, plus `sha-<sha8>`) — never `latest`. Promote by bumping
+# `newTag` on the `prod` branch: manually, or via the optional semver ImageUpdater
+# templated in deployment/argocd/bootstrap.prod.yaml.example (git write-back to
+# `prod`). Either way the prod Application is MANUAL-sync — ArgoCD applies the
+# change only when an operator syncs. NOTE: `0.0.0` below is a placeholder; set a
+# real released version when promoting.
+# CAVEAT (pre-existing, found in TASK-413): kustomize applies the
+# ../../components/registry newName rewrite BEFORE this images block, so these
+# newTag pins do not currently reach the rendered manifests — images render as
+# registry.taphuynh.dev/arca/hope-v2/*:latest (a tag CI never pushes). Fixing
+# requires matching the rewritten names here (or merging the rewrite into this
+# block), which changes rendered output and needs its own review.
 images:
   - name: hope-v2/api
     newTag: "0.0.0"

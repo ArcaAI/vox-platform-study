@@ -21,14 +21,19 @@ The `@arcaai/stt` package uses `@huggingface/transformers` which automatically d
 
 Models are cached in the browser's IndexedDB storage via the Transformers.js library. The first load may take a few seconds depending on network speed, but subsequent loads will be instant.
 
-### Custom Model Path
+### Custom Models
 
-If you need to host models on your own server, you can configure a custom model path:
+Local models are selected via `features.modelId`, which accepts either a Whisper size (`tiny`, `base`, `small`, ...) or a full Hugging Face repo id:
 
 ```typescript
 import { createSTT } from '@arcaai/stt';
 
 const stt = createSTT({
-  modelPath: 'https://your-cdn.com/models/whisper-tiny.en',
+  features: {
+    provider: 'local',
+    modelId: 'onnx-community/whisper-base',
+  },
 });
 ```
+
+Namespaced repo ids are loaded verbatim; bare sizes resolve to `onnx-community/whisper-<size>` (see `resolveLocalWhisperModel` in `../src/types/index.ts`).

@@ -2,6 +2,7 @@
 
 import { useMemo, useCallback, memo } from 'react';
 import { BarChart, LineChart, Bar, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
+import type { ActiveDotProps } from 'recharts';
 
 import {
   cn,
@@ -85,7 +86,7 @@ export const Chart = memo(function Chart({
               dataKey={s.key}
               fill={seriesColors[i]}
               radius={4}
-              onClick={(data) => handleDataPointClick(s.key, s.label, data.payload, data.index)}
+              onClick={(data, index) => handleDataPointClick(s.key, s.label, data.payload as Record<string, unknown>, index)}
               cursor={onDataPointClick ? 'pointer' : undefined}
             />
           ))}
@@ -99,14 +100,20 @@ export const Chart = memo(function Chart({
               stroke={seriesColors[i]}
               strokeWidth={2}
               dot={{ r: 4, cursor: onDataPointClick ? 'pointer' : undefined }}
-              activeDot={{
-                r: 6,
-                cursor: onDataPointClick ? 'pointer' : undefined,
-                // Recharts types are incorrect - onClick receives (event, dotData) at runtime
-                onClick: ((_: unknown, dotData: { payload: Record<string, unknown>; index: number }) => {
-                  handleDataPointClick(s.key, s.label, dotData.payload, dotData.index);
-                }) as unknown as React.MouseEventHandler,
-              }}
+              // Recharts v3: object-form activeDot no longer receives dot data in onClick —
+              // render the active dot ourselves so the click handler can close over payload/index.
+              activeDot={(dotProps: ActiveDotProps) => (
+                <circle
+                  cx={dotProps.cx}
+                  cy={dotProps.cy}
+                  r={6}
+                  fill={dotProps.fill}
+                  stroke={dotProps.stroke}
+                  strokeWidth={dotProps.strokeWidth}
+                  cursor={onDataPointClick ? 'pointer' : undefined}
+                  onClick={() => handleDataPointClick(s.key, s.label, dotProps.payload as Record<string, unknown>, dotProps.index)}
+                />
+              )}
             />
           ))}
       </ChartComponent>

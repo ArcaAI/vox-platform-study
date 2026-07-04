@@ -1,5 +1,7 @@
 # Security Audit Report — `apps/ui-playground`
 
+> **Note (2026-07-04)**: `apps/ui-playground` is **deprecated** (no development/maintenance plan). This report is retained as a point-in-time audit record.
+
 **Application**: ArcaVox Playground (UI Playground)
 **Framework**: React 19 / Vite 7 / TanStack Router
 **Audit Date**: 2026-03-24

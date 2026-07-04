@@ -525,7 +525,7 @@ function ResizableColumnLayout({
 
   return (
     <ResizablePanelGroup
-      direction="horizontal"
+      orientation="horizontal"
       data-slot="multi-column-layout"
       className={cn('overflow-hidden rounded-lg border', className)}
       style={{ height }}
@@ -548,7 +548,13 @@ function ResizableColumnLayout({
 
         return (
           <React.Fragment key={col.id}>
-            <ResizablePanel defaultSize={defaultSizes[visualIdx]} minSize={col.minSize ?? 10} maxSize={col.maxSize} id={col.id} order={visualIdx}>
+            {/* react-resizable-panels v4 treats bare numbers as pixels — sizes are percentages, so pass "%" strings */}
+            <ResizablePanel
+              defaultSize={`${defaultSizes[visualIdx]}%`}
+              minSize={`${col.minSize ?? 10}%`}
+              maxSize={col.maxSize != null ? `${col.maxSize}%` : undefined}
+              id={col.id}
+            >
               {panelContent}
             </ResizablePanel>
             {!isLast && <ResizableHandle disabled={!colResizable && entries[visualIdx + 1]?.config.resizable === false} />}

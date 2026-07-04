@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { CoreDatabaseService } from '@arcaai/domains';
+import { AudioRecordingRepository, ConsultationRepository, MediaRepository, SummaryMetaRepository, TenantBucketRepository } from '@arcaai/domains';
 import { IPlatformMetricsService } from './IPlatformMetricsService';
 import { IPrometheusQueryService, PrometheusSample } from './prometheus-query.service';
 import { ISocketRegistryService } from './socket-registry.service';
@@ -54,7 +54,13 @@ export class PlatformMetricsService implements IPlatformMetricsService {
     @Inject(IPrometheusQueryService) private readonly prometheus: IPrometheusQueryService,
     @Inject(ISocketRegistryService) private readonly sockets: ISocketRegistryService,
     @Inject(IRedisCacheService) private readonly cache: IRedisCacheService,
-    @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
+    // TASK-413 — the consumption roll-up reads route through domain
+    // repositories (TASK-311 AC-8) instead of the raw Prisma client.
+    private readonly audioRecordingRepository: AudioRecordingRepository,
+    private readonly summaryMetaRepository: SummaryMetaRepository,
+    private readonly mediaRepository: MediaRepository,
+    private readonly tenantBucketRepository: TenantBucketRepository,
+    private readonly consultationRepository: ConsultationRepository,
   ) {}
 
   async getPlatformMetrics(): Promise<PlatformMetricsResponse> {
@@ -98,28 +104,26 @@ export class PlatformMetricsService implements IPlatformMetricsService {
 
   async getConsumptionRollup(tenantId: string | null): Promise<ConsumptionRollupResponse> {
     return this.cached(`platform:consumption:${tenantId ?? 'all'}`, async () => {
-      const client = this.databaseService.client;
       const tenantWhere = tenantId ? { tenantId } : {};
       const startOfToday = new Date();
       startOfToday.setUTCHours(0, 0, 0, 0);
       const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-      const [durationAgg, summaries24h, sizeAgg, quotaAgg, totalConsultations, consultationsToday] = await Promise.all([
-        client.audioRecording.aggregate({ _sum: { duration: true }, where: tenantWhere }),
-        client.summaryMeta.count({ where: { ...tenantWhere, generatedAt: { gte: since24h } } }),
-        client.media.aggregate({ _sum: { size: true }, where: tenantWhere }),
-        client.tenantBucket.aggregate({ _sum: { quotaBytes: true }, where: { ...tenantWhere, quotaBytes: { not: null } } }),
-        client.consultation.count({ where: tenantWhere }),
-        client.consultation.count({ where: { ...tenantWhere, createdAt: { gte: startOfToday } } }),
+      const [durationSum, summaries24h, sizeSum, quotaSum, totalConsultations, consultationsToday] = await Promise.all([
+        this.audioRecordingRepository.sumDurationForTenant(tenantId),
+        this.summaryMetaRepository.countGeneratedSince(since24h, tenantId),
+        this.mediaRepository.sumSizeForTenant(tenantId),
+        this.tenantBucketRepository.sumConfiguredQuotaBytes(tenantId),
+        this.consultationRepository.count({ filters: tenantWhere }),
+        this.consultationRepository.count({ filters: { ...tenantWhere, createdAt: { gte: startOfToday } } }),
       ]);
 
-      const durationMs = durationAgg._sum.duration ?? 0;
-      const quotaSum = quotaAgg._sum.quotaBytes;
+      const durationMs = durationSum ?? 0;
 
       return {
         transcriptionMinutes: round2(durationMs / 60000),
         summaries24h,
-        storageUsedBytes: sizeAgg._sum.size ?? 0,
+        storageUsedBytes: sizeSum ?? 0,
         storageQuotaBytes: quotaSum === null || quotaSum === undefined ? null : Number(quotaSum),
         consultations: { total: totalConsultations, today: consultationsToday },
         refreshedAt: new Date().toISOString(),

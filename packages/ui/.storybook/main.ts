@@ -23,10 +23,11 @@ const config: StorybookConfig = {
   ],
   framework: getAbsolutePath('@storybook/react-vite'),
   viteFinal: async (config) => {
-    // Add path alias for @/* -> ./src/*
+    // Mirror the tsconfig path aliases (order matters: most specific first)
     config.resolve = config.resolve || {}
     config.resolve.alias = {
       ...config.resolve.alias,
+      '@/components/ui': resolve(__dirname, '../src/components/shadcn'),
       '@': resolve(__dirname, '../src'),
     }
     return config

@@ -89,6 +89,8 @@
     "globalEnv": [
         "NEXT_PUBLIC_API_HOST",
         "NODE_ENV",
+        "API_URL",
+        "ADMIN_SESSION_SECRET",
         "DATABASE_URL",
         "PORT",
         "STT_V2_URL",
@@ -110,6 +112,7 @@
         "REDIS_PASS",
         "OTEL_DEBUG",
         "OTEL_EXPORTER_OTLP_ENDPOINT",
+        "OTEL_SDK_DISABLED",
         "OTEL_SERVICE_NAME",
         "OTEL_SERVICE_VERSION",
         "HOSTNAME",

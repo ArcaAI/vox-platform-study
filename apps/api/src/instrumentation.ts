@@ -28,7 +28,8 @@ if (!endpoint || sdkDisabled) {
       'deployment.environment.name': process.env.NODE_ENV || 'production',
     }),
     traceExporter: new OTLPTraceExporter({ url: endpoint }),
-    logRecordProcessors: [new BatchLogRecordProcessor(new OTLPLogExporter({ url: endpoint }))],
+    // sdk-logs 0.220: BatchLogRecordProcessor takes an options object, not a positional exporter.
+    logRecordProcessors: [new BatchLogRecordProcessor({ exporter: new OTLPLogExporter({ url: endpoint }) })],
     instrumentations: [
       getNodeAutoInstrumentations({
         '@opentelemetry/instrumentation-fs': { enabled: false },
