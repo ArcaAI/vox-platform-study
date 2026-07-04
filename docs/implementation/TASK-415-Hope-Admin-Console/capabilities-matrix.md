@@ -3,7 +3,7 @@
 - **Date**: 2026-07-04
 - **Purpose**: TASK-415 deliverable. The authoritative capability inventory for the planned Next.js Admin Console, feeding (1) UX-UI design (Figma frames in `HOPE-Admin-Console`), (2) frontend route/menu/guard implementation, and (3) API integration. Every endpoint below was verified against its controller in `apps/api/src/modules/`.
 - **Sources**: `docs/traceability-matrix.md` (36-row capability inventory), `.cursor/rules/12-design-workflow.mdc` (Figma tier taxonomy), `apps/api/src/modules/**/*.controller.ts` (route + guard verification), `packages/database/src/prisma/db_main/seed/{01-policy.ts,03-role.ts}` (role/policy model).
-- **Review**: user review applied 2026-07-04 — `GLOBAL_ADMIN` is the canonical elevated role (merge tracked in TASK-417), AI model registry moved to tier 10–19 (global-admin only), Prisma Studio targeted for production behind a dedicated permission (TASK-419), gaps resolved into follow-up tickets TASK-419/TASK-420 + backlog items.
+- **Review**: user review applied 2026-07-04 — `GLOBAL_ADMIN` is the canonical elevated role (merge tracked in TASK-417), AI model registry moved to tier 10–19 (global-admin only), Prisma Studio targeted for production behind a dedicated permission (TASK-419), gaps resolved into follow-up tickets TASK-419/TASK-420 + backlog items. Pre-Phase-2 review same day: section 3 restructured to the approved Figma standards (naming grammar, ranges 01–05/06–09/10–49, groups Foundation / Global admins' / Tenant admins') and the batch design-train process per rule `12-design-workflow.mdc` §2.
 - **Convention**: all HTTP paths below are relative to the global prefix `/api/v1`. `*` compresses sibling routes on the same base path.
 
 ## 1. Role & Access Model Summary
@@ -29,7 +29,7 @@ Mechanics the console must honor:
 - **Impersonation**: `POST /admin/users/:id/impersonate` (global admin, `manage:all`) plus legacy `POST /auth/impersonate` and `POST /auth/revoke-impersonation`; all impersonated mutations are audit-flagged (`ImpersonationAuditInterceptor`).
 - **Session & hydration**: `POST /auth/login|refresh|logout`, `GET /auth/me`; menus and abilities hydrate from `POST /rbac/check/my-permissions`. SSE/WS use single-use 30-second tickets from `POST /auth/stream-ticket`.
 
-### Foundations (tier 00–09) — console-wide auth surfaces
+### Foundations (frames 01–09) — console-wide auth surfaces
 
 Not a menu section; these back the login shell and session plumbing every screen depends on.
 
@@ -92,39 +92,60 @@ Not a menu section; these back the login shell and session plumbing every screen
 
 ## 3. Proposed Navigation & Figma Frame Map
 
-Menu visibility mirrors the tier prefixes (rule `12-design-workflow.mdc`): the sidebar renders a section only when `POST /rbac/check/my-permissions` grants at least one ability behind it. Proposed frame numbers seed the Figma file `HOPE-Admin-Console`; foundations frames 00–09 are referenced by every screen and not repeated.
+Menu visibility mirrors the number-range prefixes (rule `12-design-workflow.mdc` §3): the sidebar renders a section only when `POST /rbac/check/my-permissions` grants at least one ability behind it. Frames live in the Figma file `HOPE-Admin-Console`, organized into exactly three groups — **Foundation**, **Global admins'**, **Tenant admins'** — and named per the grammar `<NN>[.<sub>][-<device>] - <Name>` (device omitted = desktop 1440; sub-numbers for detail/sub-screens, e.g. `12.1 - Tenant Detail`).
 
-| Frame | Tier | Screen | Route | Matrix rows |
-|---|---|---|---|---|
-| 10 | 10–19 | Platform dashboard | `/dashboard` | 1 |
-| 11 | 10–19 | Monitoring & system status | `/monitoring` | 2 |
-| 12 | 10–19 | Tenant management (list + detail incl. frontend-config tab) | `/tenants`, `/tenants/[id]` | 3, 6 |
-| 13 | 10–19 | Entitlements & plans | `/entitlements` | 4 |
-| 14 | 10–19 | Tenant storage administration | `/tenants/storage` | 5 |
-| 15 | 10–19 | AI model registry | `/ai-models` | 11 |
-| 16 | 10–19 | Rate limits | `/rate-limits` | 7 |
-| 17 | 10–19 | Queues, jobs & schedulers | `/queues`, `/queues/[name]`, `/schedulers` | 8, 9 |
-| 18 | 10–19 | Audit logs | `/audit-logs` | 10 (also renders tenant-scoped) |
-| 19 | 10–19 | Prisma Studio | `/pstudio` | 12 |
-| 20 | 20–29 | Users (grid + detail tabs) | `/users`, `/users/[id]` | 13, 14, 15, 16 |
-| 21 | 20–29 | RBAC roles | `/rbac/roles` | 17 |
-| 22 | 20–29 | RBAC policies | `/rbac/policies` | 18 |
-| 23 | 20–29 | API keys | `/api-keys` | 20 |
-| 24 | 20–29 | Settings & secrets | `/settings` | 21 |
-| 25 | 20–29 | Tenant profile & account | `/tenant-profile`, `/account` | 22 |
-| 30 | 30–49 | Departments | `/departments` | 23 |
-| 31 | 30–49 | Storage browser | `/storage` | 24 |
-| 32 | 30–49 | Agents / prompt templates | `/agents` | 25 |
-| 33 | 30–49 | DNA writing styles | `/dna-writing-styles` | 26 |
-| 34 | 30–49 | Audio pipelines | `/audio/pipelines` | 27 |
-| 35 | 30–49 | Transcription jobs | `/audio/transcription-jobs` | 28 |
-| 36 | 30–49 | Harness policy & live config | `/harness/policy` | 29 |
-| 37 | 30–49 | Harness observability | `/harness/observability` | 30 |
-| 38 | 30–49 | Harness workflows | `/harness/workflows` | 31 |
-| 39 | 30–49 | Realtime pipeline policy | `/harness/pipeline-policy` | 32 |
-| 40 | 30–49 | Consultations | `/consultations` | 33 |
+### Group: Foundation (01–09) — referenced by every screen, never redrawn
 
-Row 19 (ability hydration) is bootstrap plumbing, not a screen. Frames 50–59 (Playground) are deferred to TASK-420 — see section 6. For tier 30–49, global admins see a NoTenant empty state until a working tenant is selected; every mutation shows the "Acting on: «Tenant»" banner.
+| Frame | Name | Contents |
+|---|---|---|
+| 01 | `01 - Color Palette & Tokens` | Calm Clinical Teal semantic tokens from `packages/ui/src/styles/globals.css`, light + dark, contrast-verified pairs |
+| 02 | `02 - Typography & Iconography` | Type scale, heading hierarchy, lucide icon usage, mono for IDs/code |
+| 03 | `03 - Spacing, Radius & Elevation` | 8-pt grid, roundness scale, borders, shadows/elevation |
+| 04 | `04 - Accessibility Standards` | Focus rings, landmarks, touch-target sizes, reduced-motion, color-independence rules (WCAG 2.2 AA) |
+| 05 | `05 - Interaction & Feedback States` | Hover/active/disabled/loading states, toasts, confirms, destructive patterns, skeleton rules |
+| 06 | `06 - Core Components` | `@arcaai/ui` primitives as published Figma components (buttons, inputs, badges, dialogs, data-grid, charts) |
+| 07 | `07 - App Shell & Navigation` | Sidebar (tier-grouped), topbar, working-tenant switcher + "Acting on" banner, command palette, theme toggle |
+| 08 | `08 - Layouts & Data Patterns` | Page layouts, form patterns (incl. If-Match/ETag save), filter bars, pagination, detail tabs |
+| 09 | `09 - Screen Templates` | List/data-grid template, detail template, dashboard template, empty/error/NoTenant/404 states, login shell |
+
+### Group: Global admins' (10–29) — global-only 10–19 + shared-audience 20–29
+
+| Frame | Name | Route | Matrix rows |
+|---|---|---|---|
+| 10 | `10 - Platform Dashboard` | `/dashboard` | 1 |
+| 11 | `11 - Monitoring & System Status` | `/monitoring` | 2 |
+| 12 | `12 - Tenants List` · `12.1 - Tenant Detail` (tabs incl. frontend config) | `/tenants`, `/tenants/[id]` | 3, 6 |
+| 13 | `13 - Entitlements & Plans` | `/entitlements` | 4 |
+| 14 | `14 - Tenant Storage Administration` | `/tenants/storage` | 5 |
+| 15 | `15 - AI Model Registry` | `/ai-models` | 11 |
+| 16 | `16 - Rate Limits` | `/rate-limits` | 7 |
+| 17 | `17 - Queues & Jobs` · `17.1 - Schedulers` | `/queues`, `/queues/[name]`, `/schedulers` | 8, 9 |
+| 18 | `18 - Audit Logs` | `/audit-logs` | 10 (also renders tenant-scoped) |
+| 19 | `19 - Prisma Studio` | `/pstudio` | 12 |
+| 20 | `20 - Users` · `20.1 - User Detail` (tabs) | `/users`, `/users/[id]` | 13, 14, 15, 16 |
+| 21 | `21 - RBAC Roles` | `/rbac/roles` | 17 |
+| 22 | `22 - RBAC Policies` | `/rbac/policies` | 18 |
+| 23 | `23 - API Keys` | `/api-keys` | 20 |
+| 24 | `24 - Settings & Secrets` | `/settings` | 21 |
+| 25 | `25 - Tenant Profile & Account` | `/tenant-profile`, `/account` | 22 |
+
+### Group: Tenant admins' (30–49)
+
+| Frame | Name | Route | Matrix rows |
+|---|---|---|---|
+| 30 | `30 - Departments` | `/departments` | 23 |
+| 31 | `31 - Storage Browser` | `/storage` | 24 |
+| 32 | `32 - Agents & Prompt Templates` | `/agents` | 25 |
+| 33 | `33 - DNA Writing Styles` | `/dna-writing-styles` | 26 |
+| 34 | `34 - Audio Pipelines` | `/audio/pipelines` | 27 |
+| 35 | `35 - Transcription Jobs` | `/audio/transcription-jobs` | 28 |
+| 36 | `36 - Harness Policy & Live Config` | `/harness/policy` | 29 |
+| 37 | `37 - Harness Observability` | `/harness/observability` | 30 |
+| 38 | `38 - Harness Workflows` | `/harness/workflows` | 31 |
+| 39 | `39 - Realtime Pipeline Policy` | `/harness/pipeline-policy` | 32 |
+| 40 | `40 - Consultations` | `/consultations` | 33 |
+
+Row 19 of section 2 (ability hydration) is bootstrap plumbing, not a screen. Frames 50–59 (Playground) are reserved and deferred to TASK-420 — see section 6. Shared-audience frames 20–29 sit in the Global admins' group (global admins are the superset persona); each carries a Dev Mode annotation of its tenant-scoped rendering. For range 30–49, global admins see a NoTenant empty state until a working tenant is selected; every mutation shows the "Acting on: «Tenant»" banner. Every screen frame must include default + loading + empty + error states in both themes before it counts as "fully available" for the approval gate (rule 12 §2).
 
 ## 4. Dashboard Data Sources
 

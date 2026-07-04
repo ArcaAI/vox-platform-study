@@ -1,7 +1,9 @@
 {
     "extends": "@arcaai/config-ts/nextjs.json",
     "compilerOptions": {
-        "baseUrl": ".",
+        // TS 6: `types` defaults to [] (no @types auto-discovery); server code
+        // relies on Node globals (process.env). React types resolve via imports.
+        "types": ["node"],
         "paths": {
             // Fallback chain: app files first, then the transpiled @arcaai/ui
             // sources — Turbopack applies THIS tsconfig to packages/ui/src too
