@@ -1,5 +1,5 @@
 /**
- * ESLint 9 FLAT config preset for Next.js apps (TASK-315 Phase 1b).
+ * ESLint 9 FLAT config preset for Next.js apps (TASK-415 Phase 1b).
  *
  * Consumed by future Next.js apps (e.g. `apps/admin-console`) via:
  *

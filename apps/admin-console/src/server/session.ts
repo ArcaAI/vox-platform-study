@@ -81,7 +81,7 @@ export async function clearSession(): Promise<void> {
     cookieStore.delete(SESSION_COOKIE_NAME);
 }
 
-/** SUPER_ADMIN / GLOBAL_ADMIN — the elevated cross-tenant set. */
+/** The elevated cross-tenant set — GLOBAL_ADMIN canonical, SUPER_ADMIN legacy until TASK-417. */
 export function isElevated(user: Pick<SessionUser, 'roles'> | null | undefined): boolean {
     return rolesAreElevated(user?.roles);
 }

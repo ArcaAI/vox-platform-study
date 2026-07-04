@@ -6,7 +6,7 @@
  * now−24h, storageUsedBytes = SUM(Media.size), storageQuotaBytes = SUM(quotaBytes)
  * (null until a bucket sets one).
  *
- * TASK-413 — the reads now route through domain repositories (TASK-311 AC-8)
+ * TASK-414 — the reads now route through domain repositories (TASK-311 AC-8)
  * instead of `databaseService.client`, so the mocks stub the repositories.
  * The Prisma call shapes are pinned by the repository unit tests in
  * `packages/domains/src/repositories/generated/core/__tests__/`.

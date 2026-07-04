@@ -52,6 +52,6 @@ Test location shorthand:
 ## Known gaps / honest notes
 
 - **Row 23 / 29 / 36**: service or schema exists without a public REST surface (eval, notifications/webhooks) or without any consuming service (FedL models). These are recorded as-is, not invented.
-- The former `tests/contracts/tts.contract.test.ts` (targeting the removed `apps/tts` service) and its schemas were removed in TASK-413.
+- The former `tests/contracts/tts.contract.test.ts` (targeting the removed `apps/tts` service) and its schemas were removed in TASK-414.
 - The NLP k3s manifest (`deployment/k3s/base/nlp.yaml`) exists but is not registered in the base kustomization — NLP currently deploys only in dev/host setups.
 - `apps/ui-playground` (deprecated) still consumes many of the admin surfaces above; no new capabilities should target it.

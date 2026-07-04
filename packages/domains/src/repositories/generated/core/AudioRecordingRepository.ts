@@ -101,7 +101,7 @@ export class AudioRecordingRepository extends Repository<AudioRecordingEntity, A
   }
 
   /**
-   * TASK-413 — SUM(duration) in milliseconds for the platform consumption
+   * TASK-414 — SUM(duration) in milliseconds for the platform consumption
    * roll-up (TASK-386 #18). `tenantId = null` means platform-wide (no tenant
    * filter). Returns the raw nullable sum — the caller owns the null→0
    * presentation.

@@ -1,5 +1,5 @@
 /**
- * TASK-413 — ConsultationRepository.findCreatedInRange.
+ * TASK-414 — ConsultationRepository.findCreatedInRange.
  *
  * Moves the TASK-386 (#20 / E4) date-range aggregation read out of
  * `ConsultationService` (which accessed `databaseService.client` directly,
@@ -29,7 +29,7 @@ vi.mock('../../../../common/unitsOfWork/core', () => ({ CoreUnitOfWorkService: v
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const makeUow = (delegateByModel: Record<string, any>) => ({ getDatabaseService: () => delegateByModel });
 
-describe('ConsultationRepository.findCreatedInRange (TASK-413)', () => {
+describe('ConsultationRepository.findCreatedInRange (TASK-414)', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let delegate: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,7 +72,7 @@ describe('ConsultationRepository.findCreatedInRange (TASK-413)', () => {
     });
   });
 
-  it('propagates delegate errors (no swallow — mirrors the pre-TASK-413 service behaviour)', async () => {
+  it('propagates delegate errors (no swallow — mirrors the pre-TASK-414 service behaviour)', async () => {
     delegate.findMany.mockRejectedValue(new Error('boom'));
 
     await expect(repo.findCreatedInRange(rangeStart, rangeEnd, 'tenant-1')).rejects.toThrow('boom');

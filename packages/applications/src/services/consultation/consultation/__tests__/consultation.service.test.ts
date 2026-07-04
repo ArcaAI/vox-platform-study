@@ -1029,7 +1029,7 @@ describe('ConsultationService', () => {
     // TASK-386 (#20 / E4) — server-side consultation range aggregation.
     //
     // Replaces the FE's client-side single-page bucketing. Counts are read
-    // via `ConsultationRepository.findCreatedInRange` (TASK-413 moved the
+    // via `ConsultationRepository.findCreatedInRange` (TASK-414 moved the
     // read behind the repository per TASK-311 AC-8), zero-filled across the
     // whole window, and split into new (parentConsultationId IS NULL) vs
     // revisit. Bucket key/label mirror the FE chart (UTC boundaries).

@@ -401,7 +401,7 @@ test-guardrail:
 
 # ── Harness tests (pytest) ───────────────────────────────────────────────────
 #
-# TASK-413 — closes the gap where `build-harness` declared an optional
+# TASK-414 — closes the gap where `build-harness` declared an optional
 # `test-harness` need that didn't exist anywhere in `.gitlab/`. The suite is
 # hermetic (no DB/Redis; Temporal, LLM, and reranker clients are stubbed;
 # Qdrant runs via the qdrant-client in-memory local mode), so no external test

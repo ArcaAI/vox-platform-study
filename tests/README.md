@@ -14,7 +14,7 @@ This directory holds the monorepo-level test assets: shared helpers, fixtures, g
 
 | Path | Contents |
 |---|---|
-| `contracts/` | Zod schemas (`schemas.ts`) defining the API Gateway <-> Python service request/response contracts, plus Vitest suites validating representative payloads for STT and SMR. Also exports the schemas for reuse. (The former `tts.contract.test.ts` and its schemas were removed in TASK-413 along with the retired TTS service.) |
+| `contracts/` | Zod schemas (`schemas.ts`) defining the API Gateway <-> Python service request/response contracts, plus Vitest suites validating representative payloads for STT and SMR. Also exports the schemas for reuse. (The former `tts.contract.test.ts` and its schemas were removed in TASK-414 along with the retired TTS service.) |
 | `cross-tenant/` | `createCrossTenantFixture()` — deterministic two-tenant / three-user synthetic fixture (tenant A/B, non-super-admin users, one super admin, CLS-context shaper) used by tenant-isolation tests anywhere in the monorepo, plus its pinning test. |
 | `e2e/sdk/` | Playwright specs for the `@arcaai/vox` SDK consultation API, with a dedicated `playwright.config.ts`. Not wired to a root pnpm alias — run manually (see below). |
 | `fixtures/` | Database fixture builders (users, roles/policies, tenants) with deterministic test IDs, used by integration and E2E suites. |
