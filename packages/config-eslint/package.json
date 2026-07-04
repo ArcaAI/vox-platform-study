@@ -13,6 +13,7 @@
         "storybook.js"
     ],
     "devDependencies": {
+        "@eslint/compat": "^2.1.0",
         "@next/eslint-plugin-next": "^16.2.10",
         "@typescript-eslint/eslint-plugin": "^7.18.0",
         "@typescript-eslint/parser": "^7.18.0",

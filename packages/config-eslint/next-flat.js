@@ -22,6 +22,7 @@
  *   6. house rule conventions carried over from base.js
  *   7. eslint-config-prettier LAST to disable formatting-conflict rules
  */
+const { fixupPluginRules } = require('@eslint/compat');
 const nextPlugin = require('@next/eslint-plugin-next');
 const prettierConfig = require('eslint-config-prettier');
 const reactPlugin = require('eslint-plugin-react');
@@ -52,6 +53,13 @@ module.exports = [
         // languageOptions (jsx parser features for plain .jsx files).
         ...reactPlugin.configs.flat.recommended,
         name: 'arcaai/react',
+        // eslint-plugin-react 7.37.x still calls context.getFilename(),
+        // removed in ESLint 10 — fixupPluginRules restores the legacy
+        // context methods (harmless on ESLint 9). Drop once the plugin
+        // declares ESLint 10 support.
+        plugins: {
+            react: fixupPluginRules(reactPlugin),
+        },
         settings: {
             react: {
                 version: 'detect',
