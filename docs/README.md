@@ -44,7 +44,7 @@ docs/
 Active, ticket-based implementation documentation. One folder per ticket: `[TICKET]-[Short-Name]/README.md`, updated throughout the ticket lifecycle (single main document per ticket — no per-fix files).
 
 - **Numbering**: `TASK-XXX`. To assign a new number, take the highest existing ticket across `implementation/` and `archive/` and increment by 1.
-- **Latest ticket**: TASK-412 (documentation realignment — this docs restructure).
+- **Latest ticket**: TASK-416 (k3s image pipeline fixes — pending). Recent: TASK-412 (documentation realignment), TASK-413 (dependency audit), TASK-414 (known-issues remediation), TASK-415 (Hope admin console).
 - **Required sections**: header (ticket, dates, status), requirement analysis, current-state evaluation, implementation plan (user-approved before coding), implementation summary, change history.
 - **Status values**: `Pending | In Progress | Completed | Blocked | Review`.
 - Completed/historical tickets are periodically moved to [`archive/`](./archive/).

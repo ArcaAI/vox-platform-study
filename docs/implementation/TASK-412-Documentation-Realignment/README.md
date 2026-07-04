@@ -70,7 +70,7 @@ All rules corrected against the verified pattern docs and current best practices
 
 ### Known issues flagged for engineering follow-up (not fixed here)
 
-> **Follow-up:** all 11 items below were remediated in [TASK-413](../TASK-413-Known-Issues-Remediation/README.md) (2026-07-04), except the FedL-model/MinIO-bucket removal (deferred, needs approval for DROP/data deletion).
+> **Follow-up:** all 11 items below were remediated in [TASK-414](../TASK-414-Known-Issues-Remediation/README.md) (2026-07-04), except the FedL-model/MinIO-bucket removal, which was moved to the backlog for discussion (`docs/backlog/FEDL-MLFLOW-LEGACY-2026-07-04.md`).
 
 1. Root `package.json` still defines `dev:admin` targeting the removed `@arcaai/admin`.
 2. `tests/contracts/tts.contract.test.ts` (+ TTS schemas) target a removed service.

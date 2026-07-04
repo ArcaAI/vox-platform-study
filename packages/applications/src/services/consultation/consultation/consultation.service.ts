@@ -603,7 +603,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     const rangeStart = buckets[0]?.start ?? startOfUtcDay(fromDate);
     const rangeEnd = buckets[buckets.length - 1]?.end ?? endOfUtcDay(toDate);
 
-    // TASK-413 — routed through ConsultationRepository (TASK-311 AC-8); the
+    // TASK-414 — routed through ConsultationRepository (TASK-311 AC-8); the
     // repository applies the same createdAt range + optional-tenant filter.
     const rows = await this.consultationRepository.findCreatedInRange(rangeStart, rangeEnd, tenantId);
 

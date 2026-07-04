@@ -117,7 +117,7 @@ lint-python:
     - ruff check apps/smr/src/ --output-format=gitlab || LINT_FAILED=1
     - ruff check apps/nlp/src/ apps/nlp/tests/ --output-format=gitlab || LINT_FAILED=1
     - ruff check apps/guardrail/src/ --output-format=gitlab || LINT_FAILED=1
-    # TASK-413 — harness joins the gate (tests live in-package under src/).
+    # TASK-414 — harness joins the gate (tests live in-package under src/).
     - ruff check apps/harness/src/ --output-format=gitlab || LINT_FAILED=1
     - |
       if [ "${LINT_FAILED:-0}" = "1" ]; then

@@ -1,10 +1,10 @@
 /**
- * TASK-413 — repository aggregate methods backing
+ * TASK-414 — repository aggregate methods backing
  * `PlatformMetricsService.getConsumptionRollup` (TASK-386 #18).
  *
  * The service previously issued these five reads straight off
  * `databaseService.client` (violating the TASK-311 AC-8 layering rule).
- * Each method pins the exact pre-TASK-413 Prisma call shape:
+ * Each method pins the exact pre-TASK-414 Prisma call shape:
  *
  *   • AudioRecordingRepository.sumDurationForTenant → aggregate _sum.duration
  *   • SummaryMetaRepository.countGeneratedSince     → count generatedAt >= since
@@ -33,7 +33,7 @@ vi.mock('../../../../common/unitsOfWork/core', () => ({ CoreUnitOfWorkService: v
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const makeUow = (delegateByModel: Record<string, any>) => ({ getDatabaseService: () => delegateByModel });
 
-describe('AudioRecordingRepository.sumDurationForTenant (TASK-413)', () => {
+describe('AudioRecordingRepository.sumDurationForTenant (TASK-414)', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let delegate: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -64,7 +64,7 @@ describe('AudioRecordingRepository.sumDurationForTenant (TASK-413)', () => {
   });
 });
 
-describe('SummaryMetaRepository.countGeneratedSince (TASK-413)', () => {
+describe('SummaryMetaRepository.countGeneratedSince (TASK-414)', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let delegate: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -97,7 +97,7 @@ describe('SummaryMetaRepository.countGeneratedSince (TASK-413)', () => {
   });
 });
 
-describe('MediaRepository.sumSizeForTenant (TASK-413)', () => {
+describe('MediaRepository.sumSizeForTenant (TASK-414)', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let delegate: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -128,7 +128,7 @@ describe('MediaRepository.sumSizeForTenant (TASK-413)', () => {
   });
 });
 
-describe('TenantBucketRepository.sumConfiguredQuotaBytes (TASK-413)', () => {
+describe('TenantBucketRepository.sumConfiguredQuotaBytes (TASK-414)', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let delegate: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

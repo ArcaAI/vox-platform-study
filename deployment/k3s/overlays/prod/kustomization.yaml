@@ -69,7 +69,7 @@ patches:
 # `prod`). Either way the prod Application is MANUAL-sync — ArgoCD applies the
 # change only when an operator syncs. NOTE: `0.0.0` below is a placeholder; set a
 # real released version when promoting.
-# CAVEAT (pre-existing, found in TASK-413): kustomize applies the
+# CAVEAT (pre-existing, found in TASK-414): kustomize applies the
 # ../../components/registry newName rewrite BEFORE this images block, so these
 # newTag pins do not currently reach the rendered manifests — images render as
 # registry.taphuynh.dev/arca/hope-v2/*:latest (a tag CI never pushes). Fixing

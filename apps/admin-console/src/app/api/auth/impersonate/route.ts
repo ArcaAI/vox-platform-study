@@ -17,7 +17,7 @@ interface GatewayImpersonateResponse {
 }
 
 /**
- * Starts impersonation (super-admin only; POST /admin/users/:id/impersonate).
+ * Starts impersonation (global-admin only; POST /admin/users/:id/impersonate).
  * The minted act-as token replaces the bearer on proxied requests while the
  * original token pair is kept for restoration. No UI consumes this yet.
  */

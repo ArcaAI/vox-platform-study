@@ -1,12 +1,10 @@
-# TASK-413 — Known-Issues Remediation (Post-Cleanup Residuals)
+# TASK-414 — Known-Issues Remediation (Post-Cleanup Residuals)
 
-- **Ticket:** TASK-413
+- **Ticket:** TASK-414
 - **Created:** 2026-07-04
 - **Updated:** 2026-07-04
 - **Status:** Completed
 - **Type:** bugfix / infrastructure / refactor
-
-> **Numbering collision:** a concurrent session created `docs/implementation/TASK-413-Dependency-Audit-And-Upgrade/` ~24 min after this folder. This ticket claimed TASK-413 first; the dependency-audit ticket should be renumbered (TASK-414) by its owner.
 
 ## Requirement Analysis
 
@@ -18,7 +16,7 @@ TASK-412 (documentation realignment) surfaced 11 code-side stale leftovers and i
 |---|---|---|
 | 1 | Root `package.json` dead `dev:admin` script (`@arcaai/admin` removed) | Remove script; sweep for other `@arcaai/admin` references |
 | 2 | `tests/contracts/tts.contract.test.ts` + TTS schemas target removed service | Delete test, remove TTS schemas, update doc mentions |
-| 3 | Orphaned `infrastructure/docker/mlflow/` Dockerfile; legacy FedL Prisma models; MinIO `mlflow` bucket | Remove orphaned Dockerfile folder. **FedL model removal and MinIO bucket deletion DEFERRED** — requires DROP-table migration / data deletion, pending explicit user approval (candidate follow-up ticket) |
+| 3 | Orphaned `infrastructure/docker/mlflow/` Dockerfile; legacy FedL Prisma models; MinIO `mlflow` bucket | Remove orphaned Dockerfile folder. **FedL model + MinIO bucket removal parked to backlog** (user decision 2026-07-04): `docs/backlog/FEDL-MLFLOW-LEGACY-2026-07-04.md` — schema stays until discussed |
 | 4 | Duplicate `components:` keys in `deployment/k3s/overlays/{dev,prod}/kustomization.yaml` (invalid YAML) | Merge into single valid list, preserve entries, validate parse/kustomize build |
 | 5 | Deploy-flow contradiction: overlay comments claim in-repo tag updates; CI writes to separate `hope-deployments` repo; ArgoCD Image Updater examples track `:latest` which CI never pushes; missing `nlp` image alias | Correct comments to real flow; align or remove Image Updater annotations in `.example` files (minimal honest fix); fix `nlp` alias if annotations kept |
 | 6 | No Postgres manifest in `k3s/base` while config points at `hope-postgres` | Do not create a manifest; document external-provisioning expectation in `configmap.yaml` comment + `deployment/README.md` |
@@ -38,7 +36,7 @@ All 11 issues remediated except the explicitly deferred data-destructive part of
 
 - **1** — `dev:admin` removed from root `package.json` (JSON validated; no other `@arcaai/admin` references remain).
 - **2** — `tests/contracts/tts.contract.test.ts` deleted; TTS schemas + type exports removed from `tests/contracts/schemas.ts` (no other consumers, verified by grep); contract suite green afterwards (48 tests, STT + SMR); `tests/README.md`, `docs/traceability-matrix.md`, `docs/development-guide.md` notes updated.
-- **3 (partial)** — orphaned `infrastructure/docker/mlflow/` (Dockerfile + requirements.txt) deleted; rows removed from `infrastructure/README.md` and `infrastructure/docker/README.md`. `MLFLOW_*` entries in `env.stt-dev.example` retained — `apps/stt-v2` settings still read them. **Deferred (needs approval):** dropping legacy FedL Prisma models (DROP-table migration) and deleting the MinIO `mlflow` bucket (data deletion).
+- **3 (partial)** — orphaned `infrastructure/docker/mlflow/` (Dockerfile + requirements.txt) deleted; rows removed from `infrastructure/README.md` and `infrastructure/docker/README.md`. `MLFLOW_*` entries in `env.stt-dev.example` retained — `apps/stt-v2` settings still read them. **FedL Prisma models + MinIO `mlflow` bucket:** kept, parked to `docs/backlog/FEDL-MLFLOW-LEGACY-2026-07-04.md` for discussion (user decision 2026-07-04 — no removal without approval).
 - **7** — 15 stale `../research/...` links in `infrastructure/SECURITY_DEPLOYMENT_GUIDE.md` fixed to `../docs/research/...`; every target verified to exist.
 - **9** — `config-eslint` `files`: `nest.js` → `nestjs.js`; `config-rollup` nonexistent `"types": "base.d.ts"` removed; both READMEs' defect notes cleared.
 - **10** — `@arcaai/vox` `src/index.ts` JSDoc corrected to `session.open()` (no `doctorId`); `packages/stt/assets/README.md` fictional `modelPath` option replaced with the real `features.modelId` mechanism (verified against `STTOptions` / `resolveLocalWhisperModel`).
@@ -60,7 +58,9 @@ All 11 issues remediated except the explicitly deferred data-destructive part of
 
 ## Newly Discovered Issues (found during remediation — need decisions, not fixed here)
 
-Found by the deployment review while fixing issues 4–6 (all pre-date TASK-413; confirmed via `kubectl kustomize` renders):
+> **Follow-up:** tracked in [TASK-416 — K3s Image Pipeline Fixes](../TASK-416-K3s-Image-Pipeline-Fixes/README.md) (status Pending, plan awaiting approval).
+
+Found by the deployment review while fixing issues 4–6 (all pre-date TASK-414; confirmed via `kubectl kustomize` renders):
 
 1. **Overlay `newTag` pins never take effect.** The `registry` component's `newName` rewrite runs before the overlay `images:` blocks, whose entries still match the original `hope-v2/*` names — so every service renders as `registry.taphuynh.dev/arca/hope-v2/*:latest` in both dev and prod, and `latest` is a tag CI never pushes. Fix requires matching the rewritten names in the overlays (changes rendered output; dev auto-syncs from `main`, so needs deliberate review). Caveat comments added in both overlays + README "Known gap" note.
 2. **`guardrail` image is unmanaged everywhere** — not rewritten by the registry component, not pinned by any overlay, not tracked by Image Updater; renders as an unpullable unqualified docker.io name.
@@ -71,3 +71,4 @@ Found by the deployment review while fixing issues 4–6 (all pre-date TASK-413;
 | Date | Description | Files |
 |---|---|---|
 | 2026-07-04 | Ticket opened; remediation executed (2 parallel agents + direct fixes); all 11 issues closed except deferred FedL/mlflow-bucket data removal; 3 newly discovered deployment gaps recorded. Status → Completed. | ~30 files: root `package.json`, `tests/contracts/*`, `infrastructure/{README.md,docker/README.md,SECURITY_DEPLOYMENT_GUIDE.md}`, `packages/{config-eslint,config-rollup}/{package.json,README.md}`, `packages/agentic-sdk-v2/src/index.ts`, `packages/stt/assets/README.md`, `deployment/**` (6), `packages/applications` services+tests (6), `packages/domains` repositories+tests (7), `.gitlab-ci.yml` + `.gitlab/ci/*` (4), rules/docs alignment (4) |
+| 2026-07-04 (later) | Ticket renumbered TASK-413 → TASK-414 (user resolved numbering collision; dependency audit keeps TASK-413). All 30+ TASK-413 references in remediation code/docs/CI/deployment comments updated to TASK-414, incl. renaming `platform-consumption-aggregates.task413.test.ts` → `.task414.test.ts`. FedL/mlflow removal parked to `docs/backlog/FEDL-MLFLOW-LEGACY-2026-07-04.md` (user decision: keep schema, discuss first). Deployment gaps spun out into follow-up ticket TASK-416 (Pending). | ticket references across `packages/{applications,domains}`, `.gitlab/ci/*`, `deployment/**`, docs/rules; `docs/backlog/FEDL-MLFLOW-LEGACY-2026-07-04.md` (new); `docs/implementation/TASK-416-K3s-Image-Pipeline-Fixes/README.md` (new) |

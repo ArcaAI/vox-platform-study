@@ -119,7 +119,7 @@ export class SummaryMetaRepository extends Repository<SummaryMetaEntity, Summary
   }
 
   /**
-   * TASK-413 — COUNT of summaries generated at/after `since` for the platform
+   * TASK-414 — COUNT of summaries generated at/after `since` for the platform
    * consumption roll-up (TASK-386 #18, "summaries in the last 24 h").
    * `tenantId = null` means platform-wide (no tenant filter).
    */

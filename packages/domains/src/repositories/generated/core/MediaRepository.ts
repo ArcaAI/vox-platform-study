@@ -17,7 +17,7 @@ export class MediaRepository extends Repository<MediaEntity, Media> {
   // ============================================
 
   /**
-   * TASK-413 — SUM(size) in bytes for the platform consumption roll-up
+   * TASK-414 — SUM(size) in bytes for the platform consumption roll-up
    * (TASK-386 #18, "storage used"). `tenantId = null` means platform-wide
    * (no tenant filter). Returns the raw nullable sum — the caller owns the
    * null→0 presentation.

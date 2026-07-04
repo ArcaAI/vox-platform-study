@@ -63,7 +63,7 @@ patches:
 # main) to promote a build. NOTE: `dev` below is a placeholder tag that CI does
 # not push — pods can only pull once `newTag` points at a real tag such as
 # `dev-<sha8>` or `sha-<sha8>`.
-# CAVEAT (pre-existing, found in TASK-413): kustomize applies the
+# CAVEAT (pre-existing, found in TASK-414): kustomize applies the
 # ../../components/registry newName rewrite BEFORE this images block, so these
 # newTag pins do not currently reach the rendered manifests — images render as
 # registry.taphuynh.dev/arca/hope-v2/*:latest (a tag CI never pushes). Fixing
