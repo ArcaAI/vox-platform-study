@@ -39,6 +39,10 @@ def _phi_sanitization_hook(span: trace.Span, scope: dict[str, Any]) -> None:
 
 
 def setup_opentelemetry(app: FastAPI) -> None:
+    if not settings.service.otel_enabled:
+        logger.info("OpenTelemetry disabled (NLP_OTEL_ENABLED=false)")
+        return
+
     if not settings.service.otlp_endpoint:
         logger.warning("OTEL_EXPORTER_OTLP_ENDPOINT not set — OpenTelemetry disabled")
         return
@@ -127,7 +131,7 @@ def setup_opentelemetry(app: FastAPI) -> None:
 
 
 def shutdown_opentelemetry(app: FastAPI) -> None:
-    if not settings.service.otlp_endpoint:
+    if not (settings.service.otel_enabled and settings.service.otlp_endpoint):
         return
 
     if hasattr(app.state, "tracer_provider") and app.state.tracer_provider:

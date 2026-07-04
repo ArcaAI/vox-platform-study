@@ -39,6 +39,8 @@
         "infra:down": "./scripts/dev-infra.sh down",
         "infra:status": "./scripts/dev-infra.sh status",
         "infra:logs": "./scripts/dev-infra.sh logs",
+        "infra:observability:up": "docker compose -f infrastructure/docker/docker-compose.dev.yml --profile prometheus up -d prometheus grafana",
+        "infra:observability:down": "docker compose -f infrastructure/docker/docker-compose.dev.yml --profile prometheus stop prometheus grafana",
         "docker:dev:up": "./scripts/start-infra.sh",
         "docker:dev:up:all": "./scripts/start-infra.sh --all",
         "docker:dev:down": "./scripts/start-infra.sh --stop",

@@ -154,6 +154,38 @@ and the HA deployment notes at
 
 ---
 
+## Observability (optional, default off)
+
+**Invariant (TASK-411):** services may expose `/metrics` (passive pull), but must
+**never** require a reachable observability backend (Prometheus / Grafana / OTel
+collector / Loki / Tempo) to start, serve traffic, or stay quiet in logs. Local
+dev runs with **zero** observability tools by default.
+
+### Opt-in pull stack (Prometheus + Grafana)
+
+```bash
+pnpm infra:observability:up     # Prometheus :9090 · Grafana :3001
+pnpm infra:observability:down
+```
+
+Alias for the TASK-397 canonical command
+(`docker compose -f infrastructure/docker/docker-compose.dev.yml --profile prometheus up -d prometheus grafana`).
+Without it the Admin Console metrics tiles render em-dashes **by design** (TASK-386).
+
+### Opt-in push telemetry (OTel / OTLP)
+
+Per-service master switches — all default **OFF**:
+
+| Service | To enable export |
+|---|---|
+| API gateway | Set `OTEL_EXPORTER_OTLP_ENDPOINT` (only read by `pnpm start` / `start:prod` / Docker — never `pnpm dev`). Kill-switch: `OTEL_SDK_DISABLED=true`. |
+| NLP | `NLP_OTEL_ENABLED=true` **and** `OTEL_EXPORTER_OTLP_ENDPOINT`. |
+| STT / SMR / Guardrail / Harness | Their existing `*_OTEL_ENABLED` flags (`OTEL_ENABLED`, `SMR_V2_OTEL_ENABLED`, `GUARDRAIL_V2_OTEL_ENABLED`, `HARNESS_OTEL_ENABLED`). |
+
+See TASK-411 (this invariant + the opt-in gates) and TASK-397 (dev `prometheus` profile).
+
+---
+
 ## API production image — `sharp` native binary (TASK-375 thumbnail follow-up)
 
 The NestJS API image (`apps/api/Dockerfile`) bundles **`sharp`** (a native
