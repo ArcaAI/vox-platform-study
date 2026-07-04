@@ -117,4 +117,15 @@ export class SummaryMetaRepository extends Repository<SummaryMetaEntity, Summary
 
     return models.map((model: SummaryMeta) => (this as any)._mapper.toDomainEntity(model));
   }
+
+  /**
+   * TASK-413 — COUNT of summaries generated at/after `since` for the platform
+   * consumption roll-up (TASK-386 #18, "summaries in the last 24 h").
+   * `tenantId = null` means platform-wide (no tenant filter).
+   */
+  async countGeneratedSince(since: Date, tenantId: string | null): Promise<number> {
+    return await (this as any).db.count({
+      where: { ...(tenantId ? { tenantId } : {}), generatedAt: { gte: since } },
+    });
+  }
 }

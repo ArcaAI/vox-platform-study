@@ -9,7 +9,12 @@ loop body is a deterministic workflow and guides/generate/sensors are Activities
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from harness.services.api_client import AssembleResponse, DraftResponse
+    from harness.services.sensor_runner import SensorRunOutput
+    from harness.services.smr_client import SmrGenerationResult
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -537,7 +542,12 @@ class HarnessDocWorkflow:
             # the loop body readable AND keep the replay-critical computational/legacy
             # loop above DELIBERATELY UNTOUCHED (Slice-4b re-delivery + regen mirror it
             # here rather than re-entering it). Both close over the pre-loop locals.
-            async def _deliver_early(gen_, sens_, asm_, reduced_):
+            async def _deliver_early(
+                gen_: SmrGenerationResult,
+                sens_: SensorRunOutput,
+                asm_: AssembleResponse,
+                reduced_: bool,
+            ) -> DraftResponse:
                 """Early persist (phase=EARLY): readable draft, verdict + RAG-triad withheld.
 
                 Used for the first delivery AND each Slice-4b regen re-delivery. NOTE
@@ -572,7 +582,9 @@ class HarnessDocWorkflow:
                     retry_policy=_API_RETRY,
                 )
 
-            async def _regen_compute():
+            async def _regen_compute() -> tuple[
+                AssembleResponse, SmrGenerationResult, SensorRunOutput, bool
+            ]:
                 """One regen pass (assemble → generate → extract → run_sensors).
 
                 Mirrors the computational loop body so the Slice-4b regen-if-untouched
@@ -712,7 +724,7 @@ class HarnessDocWorkflow:
                 if signals_enabled and self._edited:
                     continue
 
-                inferential_results: list[SensorResult] = []
+                inferential_results = []
                 if inferential is not None:
                     guardrail_decisions = inferential.guardrail_decisions
                     rag_triad_score = inferential.rag_triad_score
@@ -787,6 +799,10 @@ class HarnessDocWorkflow:
                 retry_policy=_API_RETRY,
             )
         else:
+            # The legacy loop always folds the inferential pass into `verdict`
+            # before breaking; only the optimistic path can exit the loop before
+            # the first aggregate, and it never reaches this branch.
+            assert verdict is not None
             decision = str(verdict.decision)
 
             # 3) Persist the draft -> PENDING_REVIEW (clinician confirm-before-commit).

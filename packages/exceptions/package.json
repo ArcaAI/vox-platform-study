@@ -14,14 +14,14 @@
     "devDependencies": {
         "@arcaai/config-eslint": "workspace:*",
         "@arcaai/config-ts": "workspace:*",
-        "@types/node": "^25.5.0",
-        "@typescript-eslint/eslint-plugin": "^8.57.1",
-        "@typescript-eslint/parser": "^8.57.1",
+        "@types/node": "^25.9.4",
+        "@typescript-eslint/eslint-plugin": "^8.62.1",
+        "@typescript-eslint/parser": "^8.62.1",
         "eslint": "^9.39.4",
         "ts-node": "^10.9.2",
         "typescript": "^5.9.3"
     },
     "dependencies": {
-        "nestjs-cls": "^5.4.3"
+        "nestjs-cls": "^6.2.1"
     }
 }

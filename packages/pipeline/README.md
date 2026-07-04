@@ -1,30 +1,40 @@
 # @arcaai/pipeline
 
-Pipeline infrastructure for sequential and parallel processing with state management.
+Generic, framework-agnostic pipeline infrastructure for sequential and parallel stage execution with typed events, state tracking, and orchestration across multiple pipelines. Pure TypeScript with a single runtime dependency (`eventemitter3`); no React, no browser APIs, no other `@arcaai` packages.
 
-## Features
+Last updated: 2026-07-04
 
-- **Sequential Pipeline**: Execute stages in order, passing output from one stage to the next
-- **Parallel Pipeline**: Execute stages concurrently with manual or automatic triggering
-- **Pipeline Orchestrator**: Coordinate multiple pipelines with unified state management
-- **Stage Management**: Enable/disable stages, configure timeouts and retries
-- **Event System**: Subscribe to pipeline and stage lifecycle events
-- **Pause/Resume/Cancel**: Full control over pipeline execution
+## Where it fits
 
-## Installation
+This package is a standalone utility and currently has no in-repo consumers. Note that `@arcaai/vox` implements its own `TranscriptionPipeline` and `KnowledgePipeline` in `packages/agentic-sdk-v2/src/core/` — those are separate, domain-specific implementations that do not build on this package. Use `@arcaai/pipeline` when you need general-purpose staged processing with pause/resume/cancel semantics.
 
-```bash
-pnpm add @arcaai/pipeline
+## Directory structure
+
+```
+packages/pipeline/
+├── src/
+│   ├── core/
+│   │   ├── PipelineStage.ts        # Abstract stage base (onInit/onExecute/onDestroy)
+│   │   ├── SequentialPipeline.ts   # Ordered stage chain, output feeds next input
+│   │   ├── ParallelPipeline.ts     # Concurrent stages, auto/manual triggering
+│   │   └── PipelineOrchestrator.ts # Registers pipelines, connects data flow
+│   ├── types/                      # PipelineState, PipelineContext, StageConfig,
+│   │                               # PipelineEvent(+Map), IPipeline, IPipelineStage
+│   ├── __tests__/                  # Vitest unit tests
+│   └── index.ts                    # Public barrel export
+├── e2e/                            # Playwright config
+└── tsup.config.ts                  # ESM (.mjs) + CJS (.cjs) build
 ```
 
-## Usage
+## Public API overview
 
-### Sequential Pipeline
+### Defining a stage
+
+Extend `PipelineStage<TInput, TOutput>` and implement `onExecute` (plus optional `onInit` / `onDestroy`):
 
 ```typescript
 import { SequentialPipeline, PipelineStage } from '@arcaai/pipeline';
 
-// Create a custom stage
 class TransformStage extends PipelineStage<string, number> {
   constructor() {
     super('transform');
@@ -35,118 +45,94 @@ class TransformStage extends PipelineStage<string, number> {
   }
 }
 
-// Create pipeline
 const pipeline = new SequentialPipeline<string, number>('my-pipeline');
 pipeline.addStage(new TransformStage(), { priority: 10 });
 
-// Execute
-const result = await pipeline.execute('42');
-console.log(result); // 42
+const result = await pipeline.execute('42'); // 42
 ```
 
-### Parallel Pipeline
+Stage options (`StageConfig`): `enabled`, `priority` (lower runs earlier), `timeout`, `retry` (`{ maxRetries, retryDelayMs, ... }`), and free-form `options`.
+
+### Parallel pipeline
+
+Stages run concurrently; each is `required` or optional, and triggers `'auto'` (on `execute`) or `'manual'` (via `triggerStage`):
 
 ```typescript
 import { ParallelPipeline } from '@arcaai/pipeline';
 
 const pipeline = new ParallelPipeline<string, unknown>('processing');
-
-// Add stages with different trigger modes
 pipeline.addStage(nerStage, { required: true, triggerMode: 'auto' });
 pipeline.addStage(spellCheckStage, { required: false, triggerMode: 'manual' });
 
-// Execute auto stages
-const result = await pipeline.execute(inputText);
-
-// Manually trigger optional stages
-await pipeline.triggerStage('spell-check');
+const result = await pipeline.execute(inputText); // runs auto stages
+await pipeline.triggerStage('spell-check');       // run an optional stage on demand
+const spellOutput = pipeline.getStageResult('spell-check');
 ```
 
-### Pipeline Orchestrator
+### Orchestrator
+
+Coordinates multiple pipelines and pipes output from one into another:
 
 ```typescript
-import { PipelineOrchestrator, SequentialPipeline, ParallelPipeline } from '@arcaai/pipeline';
+import { PipelineOrchestrator } from '@arcaai/pipeline';
 
 const orchestrator = new PipelineOrchestrator();
-
-// Register pipelines
 orchestrator.register('transcription', transcriptionPipeline);
 orchestrator.register('knowledge', knowledgePipeline);
-
-// Connect for data flow
 orchestrator.connect('transcription', 'knowledge', { autoExecute: true });
 
-// Initialize all
 await orchestrator.init();
+const transcript = await orchestrator.execute('transcription', audioData);
 
-// Execute
-await orchestrator.execute('transcription', audioData);
-
-// Check state
 const state = orchestrator.getState();
-console.log('Can close:', state.canClose);
+console.log('Safe to close:', orchestrator.canClose());
 ```
 
-## Events
+`connect` accepts an optional `transform` function applied to the data before it reaches the target pipeline.
+
+### Events
+
+All pipelines implement `IPipeline` and emit typed events from the `PipelineEvent` enum: `Started`, `Completed`, `Error`, `Paused`, `Resumed`, `Cancelled`, `StateChange`, `StageStarted`, `StageCompleted`, `StageFailed`, `StageSkipped`, `Data`.
 
 ```typescript
 import { PipelineEvent } from '@arcaai/pipeline';
 
-pipeline.on(PipelineEvent.Started, ({ runId }) => {
-  console.log('Pipeline started:', runId);
-});
-
+pipeline.on(PipelineEvent.Started, ({ runId }) => console.log('run', runId));
 pipeline.on(PipelineEvent.StageCompleted, ({ stageName, durationMs }) => {
-  console.log(`Stage ${stageName} completed in ${durationMs}ms`);
+  console.log(`${stageName} finished in ${durationMs}ms`);
 });
-
-pipeline.on(PipelineEvent.Error, ({ error, stage }) => {
-  console.error(`Error in ${stage}:`, error);
-});
+pipeline.on(PipelineEvent.Error, ({ error, stage }) => console.error(stage, error));
 ```
 
-## API Reference
+### Method summary
 
-### PipelineStage
+| Class | Key methods |
+|---|---|
+| `PipelineStage<TIn, TOut>` | `init()`, `execute(input, context)`, `destroy()`, `enabled` / `initialized` getters; override `onInit` / `onExecute` / `onDestroy` |
+| `SequentialPipeline<TIn, TOut>` | `addStage(stage, config?)`, `removeStage(name)`, `getStage(name)`, `execute(input, context?)`, `pause()`, `resume()`, `cancel()`, `reset()`, `init()`, `destroy()`, `getState()` |
+| `ParallelPipeline<TIn, TOut>` | Same lifecycle plus `addStage(stage, { required, triggerMode, ... })`, `triggerStage(name)`, `getStageResult(name)` |
+| `PipelineOrchestrator` | `register(name, pipeline)`, `unregister(name)`, `connect(source, target, options?)`, `disconnect(source, target)`, `execute(name, input, context?)`, `init()`, `destroy()`, `pauseAll()`, `resumeAll()`, `cancelAll()`, `getState()`, `canClose()` |
 
-Base class for implementing pipeline stages.
+Execution context: every run receives a `PipelineContext` (`runId`, `pipelineName`, `startTime`, `metadata`, optional `abortSignal` and `logger`) that flows through all stages.
 
-### SequentialPipeline
+## Runtime requirements
 
-Executes stages in sequence.
+None beyond a modern JavaScript runtime. Works in browsers and Node.js; no workers, WASM, or DOM APIs. Ships ESM (`.mjs`) and CJS (`.cjs`) builds with type declarations.
 
-| Method | Description |
-|--------|-------------|
-| `addStage(stage, options?)` | Add a stage to the pipeline |
-| `removeStage(name)` | Remove a stage |
-| `execute(input, context?)` | Execute the pipeline |
-| `pause()` | Pause execution |
-| `resume()` | Resume execution |
-| `cancel()` | Cancel execution |
-| `reset()` | Reset to initial state |
+## Commands
 
-### ParallelPipeline
+From this directory:
 
-Executes stages concurrently.
+| Command | Action |
+|---|---|
+| `pnpm build` | tsup build |
+| `pnpm test` / `pnpm test:watch` / `pnpm test:coverage` | Vitest unit tests |
+| `pnpm test:e2e` | Playwright tests; `:ui`, `:headed`, `:chromium` variants exist |
+| `pnpm lint` | ESLint (`--max-warnings 0`) |
+| `pnpm type-check` | `tsc --noEmit` |
+| `pnpm clean` / `pnpm nuke` | Remove build output (nuke also removes `node_modules`) |
 
-| Method | Description |
-|--------|-------------|
-| `addStage(stage, options?)` | Add a stage (with triggerMode) |
-| `execute(input)` | Execute auto-triggered stages |
-| `triggerStage(name)` | Manually trigger a stage |
-| `getStageResult(name)` | Get result from a stage |
-
-### PipelineOrchestrator
-
-Coordinates multiple pipelines.
-
-| Method | Description |
-|--------|-------------|
-| `register(name, pipeline)` | Register a pipeline |
-| `connect(source, target, options?)` | Connect pipelines for data flow |
-| `execute(pipeline, input)` | Execute a pipeline |
-| `pauseAll()` | Pause all pipelines |
-| `canClose()` | Check if safe to close |
+From the repo root: `pnpm --filter @arcaai/pipeline build` (same pattern for `test`, `lint`, etc.).
 
 ## License
 

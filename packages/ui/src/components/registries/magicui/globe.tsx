@@ -9,7 +9,6 @@ const MOVEMENT_DAMPING = 1400;
 const GLOBE_CONFIG: COBEOptions = {
   width: 800,
   height: 800,
-  onRender: () => {},
   devicePixelRatio: 2,
   phi: 0,
   theta: 0.3,
@@ -77,16 +76,20 @@ export function Globe({ className, config = GLOBE_CONFIG }: { className?: string
       ...config,
       width: width * 2,
       height: width * 2,
-      onRender: (state) => {
-        if (!pointerInteracting.current) phi += 0.005;
-        state.phi = phi + rs.get();
-        state.width = width * 2;
-        state.height = width * 2;
-      },
     });
+
+    // cobe v2 removed the per-frame onRender option — drive rotation via globe.update()
+    let frame = 0;
+    const renderLoop = () => {
+      if (!pointerInteracting.current) phi += 0.005;
+      globe.update({ phi: phi + rs.get(), width: width * 2, height: width * 2 });
+      frame = requestAnimationFrame(renderLoop);
+    };
+    frame = requestAnimationFrame(renderLoop);
 
     setTimeout(() => (canvasRef.current!.style.opacity = '1'), 0);
     return () => {
+      cancelAnimationFrame(frame);
       globe.destroy();
       window.removeEventListener('resize', onResize);
     };

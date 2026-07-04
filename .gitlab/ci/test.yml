@@ -22,7 +22,7 @@
 # ── Skip controls ────────────────────────────────────────────────────────────
 # Set SKIP_TESTS=true to skip ALL test jobs, or use the granular variants:
 #   SKIP_TESTS_TS — skip TypeScript tests (test-api, test-packages, test-sdk, test-apps, test-ui-ct)
-#   SKIP_TESTS_PY — skip Python tests (test-stt-v2, test-smr, test-nlp)
+#   SKIP_TESTS_PY — skip Python tests (test-stt-v2, test-smr, test-guardrail, test-nlp, test-harness)
 #
 # Usage:
 #   GitLab UI → Run pipeline → add variable SKIP_TESTS = true
@@ -230,7 +230,7 @@ test-apps:
 
 test-ui-ct:
   stage: test
-  image: mcr.microsoft.com/playwright:v1.58.0-noble
+  image: mcr.microsoft.com/playwright:v1.61.1-noble
   tags: [test]
   allow_failure: true
   cache:
@@ -399,6 +399,48 @@ test-guardrail:
       when: never
     - !reference [.rules-guardrail, rules]
 
+# ── Harness tests (pytest) ───────────────────────────────────────────────────
+#
+# TASK-413 — closes the gap where `build-harness` declared an optional
+# `test-harness` need that didn't exist anywhere in `.gitlab/`. The suite is
+# hermetic (no DB/Redis; Temporal, LLM, and reranker clients are stubbed;
+# Qdrant runs via the qdrant-client in-memory local mode), so no external test
+# infra is wired. On top of the `.[test,eval]` CI install documented in
+# apps/harness/pyproject.toml, the `rag` extra is required at collection time
+# (unguarded `qdrant_client` test imports).
+
+test-harness:
+  stage: test
+  image: python:3.11-slim
+  tags: [test]
+  needs:
+    - job: lint-python
+      optional: true
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+  cache:
+    - key: pip-harness
+      paths:
+        - .pip-cache/
+      policy: pull-push
+      fallback_keys:
+        - pip-$CI_DEFAULT_BRANCH
+  script:
+    - cd apps/harness
+    - pip install --quiet --retries 5 --timeout 120 ".[test,eval,rag]"
+    - PYTHONPATH=src python -m pytest src/harness/tests/ -v --tb=short --junitxml=../../junit-harness.xml -x
+  artifacts:
+    when: always
+    reports:
+      junit: junit-harness.xml
+    expire_in: 30 days
+  rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_PY == "true"
+      when: never
+    - !reference [.rules-harness, rules]
+
 # ── API E2E tests (Playwright) ──────────────────────────────────────────────
 #
 # Boots the NestJS API against the shared test database + Redis and exercises
@@ -417,7 +459,7 @@ test-guardrail:
 
 test-api-e2e:
   stage: test
-  image: mcr.microsoft.com/playwright:v1.58.0-noble
+  image: mcr.microsoft.com/playwright:v1.61.1-noble
   tags: [test]
   cache:
     - key:

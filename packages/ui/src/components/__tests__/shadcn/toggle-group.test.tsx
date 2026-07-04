@@ -245,10 +245,11 @@ test.describe('ToggleGroup', () => {
   })
 
   test.describe('accessibility', () => {
-    test('group has group role', async ({ mount, page }) => {
+    test('group has radiogroup role', async ({ mount, page }) => {
       await mount(<SingleToggleGroup />)
 
-      await expect(page.getByRole('group')).toBeVisible()
+      // radix-ui 1.1.12+ renders single-select toggle groups with radio semantics
+      await expect(page.getByRole('radiogroup')).toBeVisible()
     })
 
     test('items have button role', async ({ mount, page }) => {

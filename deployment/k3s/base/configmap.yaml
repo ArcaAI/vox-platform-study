@@ -27,6 +27,14 @@ data:
   STT_V2_URL: "http://hope-stt-v2:8861"
 
   # -- Database --
+  # PostgreSQL is provisioned EXTERNALLY — no Postgres manifest exists in this
+  # kustomization, and nothing here creates a Service named `hope-postgres`, so
+  # the name does not resolve in-cluster out of the box. The operator must either
+  # create an alias Service for the external host (ExternalName, or a
+  # selector-less Service + Endpoints for a raw IP — same pattern as
+  # hope-lmstudio in lmstudio.yaml) or replace `hope-postgres` here AND in the
+  # secrets' DATABASE_URL / STT_V2_DATABASE_URL with the real reachable host.
+  # See deployment/README.md → "Database provisioning".
   POSTGRES_HOST: "hope-postgres"
   POSTGRES_PORT: "5432"
 

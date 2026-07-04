@@ -34,6 +34,7 @@ const mockConsultationRepository = {
     findPaginatedWithSharedAccess: vi.fn(),
     countWithSharedAccess: vi.fn(),
     findDistinctPatientIds: vi.fn(),
+    findCreatedInRange: vi.fn(),
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -57,16 +58,6 @@ const mockUserDepartmentRepository = {
 
 const mockUserRepository = {
     findFirst: vi.fn(),
-};
-
-// TASK-386 (#20 / E4) — CoreDatabaseService for the date-range aggregation.
-// Only `client.consultation.findMany` is exercised; default to [] so the
-// other suites that never touch aggregation are unaffected.
-const mockConsultationDelegate = {
-    findMany: vi.fn(),
-};
-const mockDatabaseService = {
-    client: { consultation: mockConsultationDelegate },
 };
 
 // Helper to create mock consultation entity
@@ -169,7 +160,7 @@ describe('ConsultationService', () => {
             id: 'dept-1',
             tenantId: 'tenant-1',
         });
-        mockConsultationDelegate.findMany.mockResolvedValue([]);
+        mockConsultationRepository.findCreatedInRange.mockResolvedValue([]);
 
         // Create service instance with mocks
         service = new ConsultationService(
@@ -180,7 +171,6 @@ describe('ConsultationService', () => {
             mockUserRepository as any,
             mockEventEmitter as any,
             mockClsService as any,
-            mockDatabaseService as any,
         );
     });
 
@@ -1039,13 +1029,14 @@ describe('ConsultationService', () => {
     // TASK-386 (#20 / E4) — server-side consultation range aggregation.
     //
     // Replaces the FE's client-side single-page bucketing. Counts are read
-    // straight off `databaseService.client.consultation.findMany`, zero-filled
-    // across the whole window, and split into new (parentConsultationId IS
-    // NULL) vs revisit. Bucket key/label mirror the FE chart (UTC boundaries).
+    // via `ConsultationRepository.findCreatedInRange` (TASK-413 moved the
+    // read behind the repository per TASK-311 AC-8), zero-filled across the
+    // whole window, and split into new (parentConsultationId IS NULL) vs
+    // revisit. Bucket key/label mirror the FE chart (UTC boundaries).
     // ============================================================
     describe('TASK-386 — aggregateConsultationsForTenant (#20 / E4)', () => {
         it('zero-fills daily buckets and splits new vs revisit by parentConsultationId', async () => {
-            mockConsultationDelegate.findMany.mockResolvedValue([
+            mockConsultationRepository.findCreatedInRange.mockResolvedValue([
                 { createdAt: new Date('2026-01-01T08:00:00Z'), parentConsultationId: null },
                 { createdAt: new Date('2026-01-01T18:00:00Z'), parentConsultationId: null },
                 { createdAt: new Date('2026-01-01T20:00:00Z'), parentConsultationId: 'parent-1' },
@@ -1066,19 +1057,19 @@ describe('ConsultationService', () => {
             expect(result.totals).toEqual({ total: 4, newVisits: 3, revisits: 1 });
         });
 
-        it('scopes the findMany to the CLS tenant for a tenant-admin', async () => {
-            mockConsultationDelegate.findMany.mockResolvedValue([]);
+        it('scopes the repository read to the CLS tenant for a tenant-admin', async () => {
+            mockConsultationRepository.findCreatedInRange.mockResolvedValue([]);
 
             await service.aggregateConsultationsForTenant({ from: '2026-01-01', to: '2026-01-02', granularity: 'day' });
 
-            const callArg = mockConsultationDelegate.findMany.mock.calls[0][0];
-            expect(callArg.where.tenantId).toBe('tenant-1');
-            expect(callArg.where.createdAt).toBeDefined();
-            expect(callArg.select).toEqual({ createdAt: true, parentConsultationId: true });
+            const [rangeStart, rangeEnd, tenantId] = mockConsultationRepository.findCreatedInRange.mock.calls[0];
+            expect(rangeStart).toBeInstanceOf(Date);
+            expect(rangeEnd).toBeInstanceOf(Date);
+            expect(tenantId).toBe('tenant-1');
         });
 
         it('auto-rolls up to month buckets for spans over 70 days', async () => {
-            mockConsultationDelegate.findMany.mockResolvedValue([]);
+            mockConsultationRepository.findCreatedInRange.mockResolvedValue([]);
 
             const result = await service.aggregateConsultationsForTenant({ from: '2026-01-01', to: '2026-04-15' });
 

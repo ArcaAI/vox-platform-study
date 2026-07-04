@@ -5,16 +5,7 @@ import { cn } from '@/lib/utils';
 
 type AnimationType = 'text' | 'word' | 'character' | 'line';
 type AnimationVariant =
-  | 'fadeIn'
-  | 'blurIn'
-  | 'blurInUp'
-  | 'blurInDown'
-  | 'slideUp'
-  | 'slideDown'
-  | 'slideLeft'
-  | 'slideRight'
-  | 'scaleUp'
-  | 'scaleDown';
+  'fadeIn' | 'blurIn' | 'blurInUp' | 'blurInDown' | 'slideUp' | 'slideDown' | 'slideLeft' | 'slideRight' | 'scaleUp' | 'scaleDown';
 
 interface TextAnimateProps extends MotionProps {
   /**

@@ -15,23 +15,18 @@ def settings():
 
 
 def collect_route_paths(app):
-    paths = []
-    seen = set()
+    """Return the effective HTTP route paths served by the app.
 
-    def visit(node):
-        path = getattr(node, "path", None)
-        if isinstance(path, str) and path not in seen:
-            seen.add(path)
-            paths.append(path)
-
-        routes = getattr(node, "routes", None)
-        if routes:
-            for child in routes:
-                visit(child)
-
+    FastAPI >= 0.139 includes routers lazily (``app.routes`` holds opaque
+    ``_IncludedRouter`` wrappers instead of flattened ``APIRoute``s), so walk
+    the OpenAPI schema — the public view of the effective routing table — and
+    add any plain routes that are excluded from the schema.
+    """
+    paths = list(app.openapi()["paths"].keys())
     for route in app.routes:
-        visit(route)
-
+        path = getattr(route, "path", None)
+        if isinstance(path, str) and path not in paths:
+            paths.append(path)
     return paths
 
 

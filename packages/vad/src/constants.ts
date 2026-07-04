@@ -28,7 +28,7 @@ export const VAD_WEB_VERSION = '0.0.30';
  * Installed version of `onnxruntime-web`. Used to build the default
  * `onnxWASMBasePath` when the consumer does not provide one.
  */
-export const ORT_WEB_VERSION = '1.24.3';
+export const ORT_WEB_VERSION = '1.27.0';
 
 /**
  * Default jsDelivr URL for `@ricky0123/vad-web` assets (worklet + ONNX model).

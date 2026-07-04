@@ -1,34 +1,42 @@
 # @arcaai/noise-filter
 
-AI-powered noise cancellation plugin for `@arcaai/room`. Uses RNNoise (Mozilla's open-source deep learning noise suppression) via WebAssembly for high-quality, real-time noise cancellation in the browser.
+AI-powered noise cancellation plugin for `@arcaai/room`. Runs RNNoise (a hybrid DSP + deep-learning noise suppressor) as WebAssembly inside an AudioWorklet for real-time, low-latency noise removal in the browser. The WASM binary ships inside the package — there is no runtime CDN dependency.
 
-## Features
+Last updated: 2026-07-04
 
-- **AI-Powered Noise Cancellation**: Uses RNNoise deep learning model for superior noise reduction
-- **Real-Time Processing**: AudioWorklet-based processing for low-latency operation
-- **Configurable Levels**: Adjustable noise cancellation intensity (low, medium, high)
-- **Fallback Support**: Graceful degradation to WebRTC native NS when needed
-- **Statistics Monitoring**: Real-time stats including VAD probability and CPU load
-- **Full TypeScript Support**: Comprehensive type definitions
+## Where it fits
 
-## Installation
+| Direction | Package | Relationship |
+|---|---|---|
+| Depends on | `@arcaai/room` (peer, `^0.1.0`) | Extends `BaseProcessor`; attaches to an `AudioTrack` |
+| Depends on | `@jitsi/rnnoise-wasm` | Source of the `rnnoise.wasm` binary (copied at build time) |
+| Consumed by | `@arcaai/vox` | First stage of `TranscriptionPipeline` (NoiseFilter → VAD → STT) |
 
-```bash
-pnpm add @arcaai/noise-filter
-# or
-npm install @arcaai/noise-filter
-# or
-yarn add @arcaai/noise-filter
+`react` is an optional peer dependency (only needed for the `useNoiseFilter` hook).
+
+## Directory structure
+
+```
+packages/noise-filter/
+├── src/
+│   ├── processors/     # NoiseFilterProcessor (+ createNoiseFilter factory),
+│   │                   # RNNoiseProcessor (low-level engine), worklet RNNoise loader
+│   ├── worklets/       # rnnoise.worklet.ts (AudioWorkletProcessor) + registration helpers
+│   ├── hooks/          # useNoiseFilter (React)
+│   ├── types/          # NoiseFilterOptions, stats, worklet messages, errors
+│   ├── utils/          # Browser support detection
+│   ├── wasmAsset.ts    # getDefaultWasmUrl() — resolves the bundled WASM binary
+│   └── index.ts        # Public barrel export
+├── assets/rnnoise.wasm # Bundled RNNoise binary (synced from @jitsi/rnnoise-wasm at build)
+├── e2e/                # Playwright browser tests
+└── tsup.config.ts      # Main bundle + worklet bundle (dist/worklets/rnnoise.worklet.js)
 ```
 
-## Requirements
+Subpath exports: `@arcaai/noise-filter/worklet` (the built AudioWorklet module) and `@arcaai/noise-filter/wasm` (the `rnnoise.wasm` asset).
 
-- `@arcaai/room` ^0.1.0 (peer dependency)
-- Browser with WebAssembly and AudioWorklet support
+## Public API overview
 
-## Quick Start
-
-### Using the useNoiseFilter Hook (Recommended)
+### React hook
 
 ```tsx
 import { useAudioTrack } from '@arcaai/room';
@@ -36,352 +44,103 @@ import { useNoiseFilter } from '@arcaai/noise-filter';
 
 function AudioRecorder() {
   const { track, isCapturing, startCapture, stopCapture } = useAudioTrack({
-    noiseSuppression: false, // Disable native NS, we use RNNoise
+    noiseSuppression: false, // disable native NS — RNNoise replaces it
     echoCancellation: true,
   });
 
-  const {
-    isActive,
-    isEnabled,
-    noiseLevel,
-    noiseReductionDb,
-    vadProbability,
-    stats,
-    toggle,
-    setLevel,
-    error,
-  } = useNoiseFilter({
-    track,
-    noiseCancellation: true,
-    noiseCancellationLevel: 'high',
-    autoAttach: true,
-    enableStats: true,
-    onStatsUpdate: (stats) => {
-      console.log('Noise reduction:', stats.noiseReductionDb, 'dB');
-    },
-  });
+  const { isEnabled, noiseLevel, noiseReductionDb, toggle, setLevel, error } =
+    useNoiseFilter({
+      track,
+      noiseCancellation: true,
+      noiseCancellationLevel: 'high',
+      autoAttach: true,
+      enableStats: true,
+    });
 
   return (
     <div>
       <button onClick={isCapturing ? stopCapture : startCapture}>
         {isCapturing ? 'Stop' : 'Start Recording'}
       </button>
-      <div>Noise Filter: {isEnabled ? 'ON' : 'OFF'}</div>
-      <div>Level: {noiseLevel}</div>
-      <div>Noise Reduction: {noiseReductionDb.toFixed(1)} dB</div>
-      <button onClick={() => toggle()}>Toggle Filter</button>
-      <select
-        value={noiseLevel}
-        onChange={(e) => setLevel(e.target.value as 'low' | 'medium' | 'high')}
-      >
-        <option value="low">Low</option>
-        <option value="medium">Medium</option>
-        <option value="high">High</option>
-      </select>
-      {error && <div className="error">{error.message}</div>}
+      <div>Filter: {isEnabled ? 'ON' : 'OFF'} ({noiseLevel})</div>
+      <div>Noise reduction: {noiseReductionDb.toFixed(1)} dB</div>
+      <button onClick={() => toggle()}>Toggle</button>
+      {error && <div>{error.message}</div>}
     </div>
   );
 }
 ```
 
-The `useNoiseFilter` hook provides:
-- **State management**: `isActive`, `isEnabled`, `noiseLevel`, `isUsingFallback`
-- **Metrics**: `noiseReductionDb`, `vadProbability`, `stats`
-- **Methods**: `attach`, `detach`, `enable`, `disable`, `toggle`, `setLevel`, `updateOptions`
-- **Error handling**: `error` state with automatic error propagation
-
-### With useProcessors (Manual Approach)
-
-```tsx
-import { useAudioTrack, useProcessors } from '@arcaai/room';
-import { NoiseFilterProcessor } from '@arcaai/noise-filter';
-import { useEffect } from 'react';
-
-function AudioRecorder() {
-  const { track, isCapturing, startCapture, stopCapture } = useAudioTrack({
-    // Disable native noise suppression since we use RNNoise
-    noiseSuppression: false,
-    echoCancellation: true,
-  });
-
-  const { addProcessor, removeProcessor } = useProcessors({ track });
-
-  useEffect(() => {
-    if (track) {
-      const noiseFilter = new NoiseFilterProcessor({
-        noiseCancellation: true,
-        noiseCancellationLevel: 'high',
-        enableStats: true,
-      });
-
-      // Listen for stats
-      noiseFilter.on('data', (payload) => {
-        if (payload.type === 'noise-stats') {
-          console.log('Noise reduction:', payload.data.noiseReductionDb, 'dB');
-          console.log('VAD probability:', payload.data.vadProbability);
-        }
-      });
-
-      addProcessor(noiseFilter);
-
-      return () => {
-        removeProcessor(noiseFilter);
-      };
-    }
-  }, [track, addProcessor, removeProcessor]);
-
-  return (
-    <button onClick={isCapturing ? stopCapture : startCapture}>
-      {isCapturing ? 'Stop' : 'Start Recording'}
-    </button>
-  );
-}
-```
-
-### With AudioTrack Directly
+### Processor usage
 
 ```typescript
 import { AudioTrack, AudioContextManager } from '@arcaai/room';
-import { NoiseFilterProcessor } from '@arcaai/noise-filter';
-
-async function setupAudioWithNoiseFilter() {
-  // Get AudioContext
-  const audioContext = AudioContextManager.getContext();
-
-  // Create audio track
-  const track = new AudioTrack({ audioContext });
-  await track.initialize({
-    noiseSuppression: false, // Disable native, we use RNNoise
-    echoCancellation: true,
-  });
-
-  // Create and attach noise filter
-  const noiseFilter = new NoiseFilterProcessor({
-    noiseCancellation: true,
-    noiseCancellationLevel: 'medium',
-  });
-
-  await track.setProcessor(noiseFilter);
-
-  // The track.mediaStreamTrack now has noise-filtered audio
-  return track;
-}
-```
-
-### Using Factory Function
-
-```typescript
 import { createNoiseFilter } from '@arcaai/noise-filter';
+
+const audioContext = await AudioContextManager.getInstance({ sampleRate: 48000 }).acquire();
+const track = new AudioTrack({ audioContext });
+await track.initialize({ noiseSuppression: false, echoCancellation: true });
 
 const noiseFilter = createNoiseFilter({
   noiseCancellation: true,
-  noiseCancellationLevel: 'high',
-  autoGainControl: true,
-  echoCancellation: true,
+  noiseCancellationLevel: 'medium',
+  enableStats: true,
 });
-
-// Attach to track
-await audioTrack.setProcessor(noiseFilter);
-
-// Adjust level dynamically
-await noiseFilter.setNoiseLevel('medium');
-
-// Check stats
-const stats = noiseFilter.getStats();
-console.log(stats);
-```
-
-## API Reference
-
-### NoiseFilterProcessor
-
-Main processor class that extends `BaseProcessor` from `@arcaai/room`.
-
-#### Constructor Options
-
-```typescript
-interface NoiseFilterOptions {
-  // Enable AI-powered noise cancellation (default: true)
-  noiseCancellation?: boolean;
-
-  // Noise cancellation intensity: 'low' | 'medium' | 'high' (default: 'medium')
-  noiseCancellationLevel?: NoiseCancellationLevel;
-
-  // Enable echo cancellation via WebRTC native (default: true)
-  echoCancellation?: boolean;
-
-  // Enable auto gain control via WebRTC native (default: true)
-  autoGainControl?: boolean;
-
-  // Custom path to RNNoise WASM files (optional)
-  wasmPath?: string;
-
-  // Processing mode: 'quality' | 'performance' (default: 'quality')
-  processingMode?: ProcessingMode;
-
-  // Sample rate in Hz (default: 48000)
-  sampleRate?: number;
-
-  // Enable statistics emission (default: false)
-  enableStats?: boolean;
-
-  // Stats emission interval in ms (default: 1000)
-  statsInterval?: number;
-
-  // Debug mode — log noise filter config on initialization
-  debugMode?: boolean;     // Default: false
-}
-```
-
-#### Methods
-
-| Method | Description |
-|--------|-------------|
-| `setNoiseLevel(level)` | Set noise cancellation intensity |
-| `getNoiseLevel()` | Get current noise level |
-| `getStats()` | Get current processing statistics |
-| `isUsingFallback()` | Check if using fallback mode |
-| `updateOptions(options)` | Update options dynamically |
-| `enable()` | Enable the processor |
-| `disable()` | Disable the processor |
-| `destroy()` | Clean up and release resources |
-
-#### Events
-
-```typescript
-// Listen for noise stats
 noiseFilter.on('data', (payload) => {
   if (payload.type === 'noise-stats') {
-    const stats: NoiseFilterStats = payload.data;
-    console.log('Active:', stats.isActive);
-    console.log('Noise Reduction:', stats.noiseReductionDb, 'dB');
-    console.log('VAD Probability:', stats.vadProbability);
-    console.log('Latency:', stats.latencyMs, 'ms');
-    console.log('CPU Load:', stats.cpuLoad);
+    console.log(payload.data.noiseReductionDb, 'dB', payload.data.vadProbability);
   }
 });
 
-// Standard processor events
-noiseFilter.on('ready', () => console.log('Processor ready'));
-noiseFilter.on('enabled', () => console.log('Processor enabled'));
-noiseFilter.on('disabled', () => console.log('Processor disabled'));
-noiseFilter.on('error', (payload) => console.error(payload.error));
+await track.setProcessor(noiseFilter);
+// track.mediaStreamTrack now carries noise-filtered audio
 ```
 
-### Statistics
+### Options (`NoiseFilterOptions`)
 
-```typescript
-interface NoiseFilterStats {
-  isActive: boolean;        // Whether noise cancellation is active
-  noiseReductionDb: number; // Estimated noise reduction in dB
-  vadProbability: number;   // Voice Activity Detection confidence (0-1)
-  latencyMs: number;        // Processing latency in ms
-  framesProcessed: number;  // Total frames processed
-  framesDropped: number;    // Frames dropped due to lag
-  cpuLoad: number;          // CPU load estimate (0-1)
-  timestamp: number;        // Stats collection timestamp
-}
-```
+| Option | Default | Description |
+|---|---|---|
+| `noiseCancellation` | `true` | Enable RNNoise processing |
+| `noiseCancellationLevel` | `'medium'` | Intensity: `'low' \| 'medium' \| 'high'` |
+| `echoCancellation` | `true` | WebRTC-native echo cancellation on the source |
+| `autoGainControl` | `true` | WebRTC-native AGC on the source |
+| `wasmPath` | bundled asset | Override the RNNoise WASM URL (self-hosting) |
+| `processingMode` | `'quality'` | `'quality' \| 'performance'` |
+| `sampleRate` | `48000` | RNNoise operates at 48 kHz |
+| `enableStats` / `statsInterval` | `false` / `1000` | Emit `noise-stats` data events |
+| `debugMode` | `false` | Log configuration with the `[ARCAAI:DEBUG]` prefix |
 
-### Browser Support Utilities
+Key `NoiseFilterProcessor` methods: `setNoiseLevel(level)`, `getNoiseLevel()`, `getStats()`, `isUsingFallback()`, `updateOptions(options)`, plus the inherited `enable()` / `disable()` / `destroy()` lifecycle.
 
-```typescript
-import {
-  isRNNoiseSupported,
-  getNoiseFilterBrowserSupport,
-  logBrowserSupport,
-} from '@arcaai/noise-filter';
+Low-level exports: `RNNoiseProcessor`, `RNNOISE_FRAME_SIZE` (480 samples = 10 ms at 48 kHz), `RNNOISE_SAMPLE_RATE` (48000), worklet helpers (`registerRNNoiseWorklet`, `createRNNoiseWorkletNode`, `isWorkletRegistered`, `cleanupWorkletResources`, `WORKLET_PROCESSOR_NAME`), and `getDefaultWasmUrl()`.
 
-// Check if RNNoise is supported
-if (isRNNoiseSupported()) {
-  console.log('Full RNNoise support available');
-}
+## WASM and worklet assets
 
-// Get detailed support info
-const support = getNoiseFilterBrowserSupport();
-console.log('WebAssembly:', support.webAssembly);
-console.log('AudioWorklet:', support.audioWorklet);
-console.log('RNNoise Supported:', support.rnnoiseSupported);
-console.log('Native Fallback:', support.nativeFallbackAvailable);
+- The `rnnoise.wasm` binary is copied from `@jitsi/rnnoise-wasm` into `assets/rnnoise.wasm` (and `dist/assets/`) during `pnpm build`, and resolved at runtime via `new URL('../assets/rnnoise.wasm', import.meta.url)`. No CDN fetch is involved.
+- The AudioWorklet module builds to `dist/worklets/rnnoise.worklet.js` (kept as `.js` because `audioWorklet.addModule` loads it by URL). It is also reachable via the `@arcaai/noise-filter/worklet` subpath export.
+- Bundlers that understand `new URL(..., import.meta.url)` (Vite, webpack 5) pick both assets up automatically. To self-host manually, pass `wasmPath` in options.
 
-// Log support info for debugging
-logBrowserSupport();
-```
+## Runtime requirements and fallbacks
 
-## Browser Support
+- Requires WebAssembly plus AudioWorklet (Chrome 66+, Firefox 76+, Safari 17.4+, Edge 79+).
+- When AudioWorklet is unavailable, processing falls back to `ScriptProcessorNode`; if RNNoise itself cannot load, the processor falls back to WebRTC native noise suppression. Check with `isUsingFallback()` or `getNoiseFilterBrowserSupport()`.
+- The RNNoise ring buffer is calibrated for 48 kHz frame timing; other AudioContext rates produce audible artefacts. See the sample-rate enforcement section of the `@arcaai/room` README (`../room/README.md`).
+- Browser-only; the package ships a `react-server` exports-condition stub for RSC safety.
 
-| Browser | RNNoise | AudioWorklet | Fallback |
-|---------|---------|--------------|----------|
-| Chrome 66+ | Full | Yes | Yes |
-| Firefox 76+ | Full | Yes | Yes |
-| Safari 17.4+ | Full | Yes | Yes |
-| Safari < 17.4 | Partial | No | Yes |
-| Edge 79+ | Full | Yes | Yes |
+## Commands
 
-### Fallback Behavior
+From this directory:
 
-When AudioWorklet is not supported:
-1. **ScriptProcessorNode**: Falls back to deprecated but widely-supported ScriptProcessor
-2. **Native NS**: Falls back to WebRTC native noise suppression if RNNoise fails
+| Command | Action |
+|---|---|
+| `pnpm build` | tsup build (main bundle + worklet, syncs WASM asset) |
+| `pnpm test` / `pnpm test:watch` / `pnpm test:coverage` | Vitest unit tests |
+| `pnpm test:e2e` | Playwright browser tests; `:ui`, `:headed`, `:chromium` variants exist |
+| `pnpm lint` | ESLint (`--max-warnings 0`) |
+| `pnpm type-check` | `tsc --noEmit` |
+| `pnpm clean` / `pnpm nuke` | Remove build output (nuke also removes `node_modules`) |
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                 NoiseFilterProcessor                         │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
-│  │ MediaStream  │───▶│ AudioWorklet │───▶│   Processed  │  │
-│  │   Source     │    │   (RNNoise)  │    │    Output    │  │
-│  └──────────────┘    └──────────────┘    └──────────────┘  │
-│                              │                              │
-│                              ▼                              │
-│                      ┌──────────────┐                       │
-│                      │ RNNoise WASM │                       │
-│                      │   (480-sample│                       │
-│                      │    frames)   │                       │
-│                      └──────────────┘                       │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## RNNoise Technology
-
-RNNoise is a noise suppression library that combines traditional signal processing with deep learning:
-
-- **Model Size**: ~85KB WASM binary
-- **Frame Size**: 480 samples (10ms at 48kHz)
-- **Latency**: ~10ms algorithmic delay
-- **CPU Usage**: Very low (~1-2% on modern CPUs)
-
-It excels at removing:
-- Keyboard typing
-- Fan and AC noise
-- Background chatter
-- Traffic noise
-- Humming and buzzing
-
-## Performance Tips
-
-1. **Use AudioWorklet**: Ensure AudioWorklet is supported for best performance
-2. **Sample Rate**: Use 48kHz for optimal RNNoise performance
-3. **Mobile Devices**: Consider using `processingMode: 'performance'`
-4. **Stats Interval**: Increase `statsInterval` if you don't need frequent updates
-
-## Debug Mode
-
-Set `debugMode: true` to log noise filter configuration on initialization:
-
-```typescript
-const nf = new NoiseFilterProcessor({
-  debugMode: true,
-  noiseCancellation: true,
-  noiseCancellationLevel: 'high',
-});
-```
-
-Logs the full noise filter configuration (level, processing mode, sample rate, echo cancellation, AGC) to the console with `[ARCAAI:DEBUG]` prefix. When used via `@arcaai/vox` with `debug: true`, this is enabled automatically.
+From the repo root: `pnpm --filter @arcaai/noise-filter build` (same pattern for `test`, `lint`, etc.).
 
 ## License
 

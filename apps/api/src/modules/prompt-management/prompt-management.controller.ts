@@ -66,7 +66,12 @@ export class PromptManagementController {
   @ApiQuery({ name: 'search', required: false, type: String })
   @ApiQuery({ name: 'includeDisabled', required: false, type: Boolean, description: 'Include disabled templates in results' })
   // TASK-388 #12 — admin scope/owner narrowing (e.g. list a user's personal prompts).
-  @ApiQuery({ name: 'scope', required: false, enum: ['TENANT_DEFAULT', 'DEPARTMENT_DEFAULT', 'USER_PERSONAL'], description: 'Filter by prompt scope' })
+  @ApiQuery({
+    name: 'scope',
+    required: false,
+    enum: ['TENANT_DEFAULT', 'DEPARTMENT_DEFAULT', 'USER_PERSONAL'],
+    description: 'Filter by prompt scope',
+  })
   @ApiQuery({ name: 'ownerUserId', required: false, type: String, description: 'Filter USER_PERSONAL prompts by owner user id' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })

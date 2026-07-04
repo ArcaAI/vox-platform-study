@@ -172,11 +172,7 @@ export class RolesController {
   @ApiResponse({ status: 403, description: 'Protected system policy — detach is always refused' })
   @ApiResponse({ status: 404, description: 'Policy not found' })
   @ApiResponse({ status: 428, description: 'Break-glass confirmation (password + confirmationName) is required' })
-  async removePolicy(
-    @Param('roleId') roleId: string,
-    @Param('policyId') policyId: string,
-    @Body() breakGlass?: BreakGlassDto,
-  ): Promise<void> {
+  async removePolicy(@Param('roleId') roleId: string, @Param('policyId') policyId: string, @Body() breakGlass?: BreakGlassDto): Promise<void> {
     // TASK-409 — detach demands the break-glass step-up; the confirmation
     // name is the POLICY name (the object being detached).
     await this.roleService.removePolicy(roleId, policyId, breakGlass);

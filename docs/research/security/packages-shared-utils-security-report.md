@@ -10,7 +10,7 @@
 
 ## Executive Summary
 
-This report covers a comprehensive security audit of seven shared/utility packages in the HOPE healthcare AI monorepo. These packages form the foundational layer consumed by all applications (`apps/api`, `apps/smr`, `apps/stt-v2`, `apps/nlp`, `apps/ui-playground`, `apps/example`).
+This report covers a comprehensive security audit of seven shared/utility packages in the HOPE healthcare AI monorepo. These packages form the foundational layer consumed by all applications (`apps/api`, `apps/smr`, `apps/stt-v2`, `apps/nlp`, `apps/ui-playground` (deprecated), `apps/example`).
 
 > **Note (2026-04-06)**: `apps/tts` and `apps/admin` referenced in the original audit no longer exist in the monorepo and have been removed from this report's scope.
 

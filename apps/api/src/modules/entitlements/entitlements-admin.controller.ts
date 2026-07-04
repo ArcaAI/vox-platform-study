@@ -121,7 +121,8 @@ export class EntitlementsAdminController {
 
   @Post('tenants/:tenantId/downgrade')
   @ApiOperation({
-    summary: 'Downgrade a tenant plan (Q10). Plan change always applies; newest-first soft-disable of overflow rows runs only when enforcement is ON.',
+    summary:
+      'Downgrade a tenant plan (Q10). Plan change always applies; newest-first soft-disable of overflow rows runs only when enforcement is ON.',
   })
   @ApiParam({ name: 'tenantId' })
   triggerDowngrade(@Param('tenantId') tenantId: string, @Body() body: TriggerDowngradeRequest): Promise<DowngradeReport> {

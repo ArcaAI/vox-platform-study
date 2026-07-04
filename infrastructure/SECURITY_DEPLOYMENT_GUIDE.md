@@ -14,15 +14,15 @@ owned by other workstreams and are intentionally not duplicated here.
 
 | Layer | Mechanism | Where configured | Runbook |
 |---|---|---|---|
-| **At rest — Postgres** | LUKS/dm-crypt on data+WAL disks | host/VM (operator) | [encryption-at-rest-luks-minio-sse-runbook.md](../research/deployments/encryption-at-rest-luks-minio-sse-runbook.md) §1–4 |
+| **At rest — Postgres** | LUKS/dm-crypt on data+WAL disks | host/VM (operator) | [encryption-at-rest-luks-minio-sse-runbook.md](../docs/research/deployments/encryption-at-rest-luks-minio-sse-runbook.md) §1–4 |
 | **At rest — MinIO** | SSE-S3 via KES/KMS | `mc encrypt set` + dev compose hooks | at-rest runbook §5 |
 | **At rest — Redis** | Persistence off, or LUKS volume | `docker-compose.yml` (comment) | at-rest runbook §0/§4 |
-| **At rest — backups** | pgBackRest AES-256-CBC (client-side) | [`pgbackrest.conf`](../research/configs/postgres-ha/pgbackrest/pgbackrest.conf) | at-rest runbook §6 |
+| **At rest — backups** | pgBackRest AES-256-CBC (client-side) | [`pgbackrest.conf`](../docs/research/configs/postgres-ha/pgbackrest/pgbackrest.conf) | at-rest runbook §6 |
 | **In transit — Postgres** | TLS (`sslmode=require`→`verify-full`) | env files (see §2) | this guide §2 |
 | **In transit — MinIO** | HTTPS (`MINIO_USE_SSL=true`) | `.env.production` | this guide §2 |
-| **Field-level PHI** | Vault Transit key `hope-phi` | app (CryptoService) | [vault-transit-key-rotation.md](../research/deployments/vault-transit-key-rotation.md) |
-| **Key mgmt / DR** | Vault Shamir unseal + escrow | Vault VMs 430–432 | [dr-break-glass-runbook.md](../research/deployments/dr-break-glass-runbook.md) |
-| **Monitoring** | Prometheus alerts | [`vault-transit-alerts.yml`](../research/configs/postgres-ha/prometheus/vault-transit-alerts.yml) | DR runbook §2 |
+| **Field-level PHI** | Vault Transit key `hope-phi` | app (CryptoService) | [vault-transit-key-rotation.md](../docs/research/deployments/vault-transit-key-rotation.md) |
+| **Key mgmt / DR** | Vault Shamir unseal + escrow | Vault VMs 430–432 | [dr-break-glass-runbook.md](../docs/research/deployments/dr-break-glass-runbook.md) |
+| **Monitoring** | Prometheus alerts | [`vault-transit-alerts.yml`](../docs/research/configs/postgres-ha/prometheus/vault-transit-alerts.yml) | DR runbook §2 |
 
 ---
 
@@ -55,7 +55,7 @@ plaintext (loopback, no cert); production/staging examples enforce TLS.
 
 ## 3. Backups — pgBackRest encryption (Phase 4)
 
-- [`pgbackrest.conf`](../research/configs/postgres-ha/pgbackrest/pgbackrest.conf):
+- [`pgbackrest.conf`](../docs/research/configs/postgres-ha/pgbackrest/pgbackrest.conf):
   `repo1-cipher-type=aes-256-cbc`; the passphrase + S3 creds are **env-injected**
   (`PGBACKREST_REPO1_CIPHER_PASS`, `PGBACKREST_REPO1_S3_KEY[_SECRET]`) via the
   patroni container, sourced from Vault — **never committed**.
@@ -90,9 +90,9 @@ These cannot be done from the repo. Owner: SRE.
 
 ## 5. Runbook directory
 
-- At-rest (LUKS / MinIO SSE / Redis / backup verify): [`research/deployments/encryption-at-rest-luks-minio-sse-runbook.md`](../research/deployments/encryption-at-rest-luks-minio-sse-runbook.md)
-- DR / break-glass (Vault unseal + LUKS recovery + restore): [`research/deployments/dr-break-glass-runbook.md`](../research/deployments/dr-break-glass-runbook.md)
-- Transit key rotation + rewrap (`hope-phi`): [`research/deployments/vault-transit-key-rotation.md`](../research/deployments/vault-transit-key-rotation.md)
-- Vault/Transit alerts: [`research/configs/postgres-ha/prometheus/vault-transit-alerts.yml`](../research/configs/postgres-ha/prometheus/vault-transit-alerts.yml)
-- Upstream infra deploy guides: `research/deployments/deploy-vm430-432-vault.md`,
+- At-rest (LUKS / MinIO SSE / Redis / backup verify): [`docs/research/deployments/encryption-at-rest-luks-minio-sse-runbook.md`](../docs/research/deployments/encryption-at-rest-luks-minio-sse-runbook.md)
+- DR / break-glass (Vault unseal + LUKS recovery + restore): [`docs/research/deployments/dr-break-glass-runbook.md`](../docs/research/deployments/dr-break-glass-runbook.md)
+- Transit key rotation + rewrap (`hope-phi`): [`docs/research/deployments/vault-transit-key-rotation.md`](../docs/research/deployments/vault-transit-key-rotation.md)
+- Vault/Transit alerts: [`docs/research/configs/postgres-ha/prometheus/vault-transit-alerts.yml`](../docs/research/configs/postgres-ha/prometheus/vault-transit-alerts.yml)
+- Upstream infra deploy guides: `docs/research/deployments/deploy-vm430-432-vault.md`,
   `deploy-vm500-502-postgres-ha.md`, `deploy-vm402-minio.md`.

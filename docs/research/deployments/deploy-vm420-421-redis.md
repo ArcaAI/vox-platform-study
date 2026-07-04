@@ -106,7 +106,7 @@ Redis logical databases (`SELECT N`) isolate concerns without running multiple p
 | 1 | **Application cache + rate limiting** | `IRedisCacheService` — get/set/setex/del, `ApiKeyRateLimiter`, `RateLimitingService` |
 | 2 | **STT Pub/Sub + Streams** | `RedisSubscriberService` (stt:transcription:*), `StreamingAudioBridgeService` (stt:audio:*, stt:control:*, stt:result:*), STT-V2 Python (redis.asyncio) |
 | 3 | **SMR Pub/Sub + Streams** | `SmrStreamConsumerService` (smr:stream:*), SMR Python `TaskManager` (smr:task:*) |
-| 4 | **Celery broker + results** | SMR/MLflow/FedL async tasks |
+| 4 | **Celery broker + results** | SMR async tasks (legacy — former MLflow/FedL consumers were removed with those apps) |
 | 5 | **Dramatiq broker + results** | STT-V2 `RedisBroker` + `RedisBackend` |
 
 > **Note**: Pub/Sub in Redis is global — it works across all databases. The database number only isolates key-based operations (GET/SET/XADD/etc). Pub/Sub channel naming conventions (`stt:`, `smr:`) provide logical isolation.

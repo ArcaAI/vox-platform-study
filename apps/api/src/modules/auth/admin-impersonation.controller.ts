@@ -1,4 +1,12 @@
-import { IActiveUserContext, IAppSettingsService, IAuthService, IUserDepartmentService, IUserRoleAssignmentService, SecretsService, createJwt } from '@arcaai/applications';
+import {
+  IActiveUserContext,
+  IAppSettingsService,
+  IAuthService,
+  IUserDepartmentService,
+  IUserRoleAssignmentService,
+  SecretsService,
+  createJwt,
+} from '@arcaai/applications';
 import { EventTypes, ResourceStatusType, ResourceType, SysEventType, UserRepository } from '@arcaai/domains';
 import {
   BadRequestException,

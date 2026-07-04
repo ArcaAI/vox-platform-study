@@ -12,7 +12,10 @@
 #   1. ArgoCD installed on the K3s cluster
 #   2. Secrets pre-created:
 #        kubectl apply -f secrets.dev.yaml -n hope-v2-dev
-#   3. Argo CD Image Updater v2 (CRD-based) installed + registry config mounted:
+#   3. (Optional) Argo CD Image Updater v2 (CRD-based) — NOT required for dev.
+#      This template defines no ImageUpdater CR (dev image tags are updated
+#      manually; see the note at the end of this file). Install it only if you
+#      use the prod semver ImageUpdater (bootstrap.prod.yaml.example):
 #        kubectl apply -n argocd \
 #          -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
 #        kubectl -n argocd patch deployment argocd-image-updater-controller --type=strategic -p '
@@ -47,6 +50,8 @@ stringData:
 
 ---
 # -- Shared: Image Updater registry credentials --
+# Only consumed by ArgoCD Image Updater. Dev defines no ImageUpdater CR (see the
+# note at the end of this file), so this Secret is unused unless one is added.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -58,6 +63,8 @@ stringData:
 
 ---
 # -- Shared: Image Updater registry configuration --
+# Only consumed by ArgoCD Image Updater. Dev defines no ImageUpdater CR (see the
+# note at the end of this file), so this ConfigMap is unused unless one is added.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -145,51 +152,20 @@ spec:
       jsonPointers:
         - /spec/replicas
 
----
-# -- Dev Image Updater: digest strategy, tracks :latest tag changes --
-apiVersion: argocd-image-updater.argoproj.io/v1alpha1
-kind: ImageUpdater
-metadata:
-  name: hope-v2-dev-image-updater
-  namespace: argocd
-spec:
-  commonUpdateSettings:
-    updateStrategy: "digest"
-    allowTags: "regexp:^latest$"
-  writeBackConfig:
-    method: "git:secret:argocd/repo-creds"
-    gitConfig:
-      branch: "main"
-  applicationRefs:
-    - namePattern: "hope-v2-dev"
-      images:
-        - alias: "api"
-          imageName: "registry.taphuynh.dev/arca/hope-v2/api:latest"
-          manifestTargets:
-            kustomize:
-              name: "hope-v2/api"
-        - alias: "ui"
-          imageName: "registry.taphuynh.dev/arca/hope-v2/ui-playground:latest"
-          manifestTargets:
-            kustomize:
-              name: "hope-v2/ui-playground"
-        - alias: "smr"
-          imageName: "registry.taphuynh.dev/arca/hope-v2/smr:latest"
-          manifestTargets:
-            kustomize:
-              name: "hope-v2/smr"
-        - alias: "stt"
-          imageName: "registry.taphuynh.dev/arca/hope-v2/stt-v2-ml-runtime:latest"
-          manifestTargets:
-            kustomize:
-              name: "hope-v2/stt-v2-ml-runtime"
-        - alias: "stt-worker"
-          imageName: "registry.taphuynh.dev/arca/hope-v2/stt-v2-worker:latest"
-          manifestTargets:
-            kustomize:
-              name: "hope-v2/stt-v2-worker"
-        - alias: "db"
-          imageName: "registry.taphuynh.dev/arca/hope-v2/database:latest"
-          manifestTargets:
-            kustomize:
-              name: "hope-v2/database"
+# =============================================================================
+# NOTE — Dev image updates are MANUAL (no ImageUpdater CR).
+#
+# A previous version of this template shipped an ImageUpdater CR with
+# updateStrategy "digest" tracking `:latest` — it could never fire, because CI
+# never pushes a `latest` tag (see ".gitlab-ci.yml" → "Image versioning"): dev
+# branch builds are manually triggered and push `dev-<sha8>` + `sha-<sha8>`
+# only, and the CI deploy-staging job writes to the separate hope-deployments
+# repo, not to this repo's overlays.
+#
+# Until an automated dev tag stream is agreed on, promote dev builds by editing
+# `newTag` in deployment/k3s/overlays/dev/kustomization.yaml on `main` — the
+# hope-v2-dev Application above auto-syncs it. If automation is wanted later, an
+# ImageUpdater CR with updateStrategy "newest-build" and
+# allowTags 'regexp:^dev-[0-9a-f]{8}$' would match what CI actually pushes
+# (cf. the semver ImageUpdater in bootstrap.prod.yaml.example).
+# =============================================================================

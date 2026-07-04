@@ -16,25 +16,25 @@
   "dependencies": {
     "@arcaai/database": "workspace:*",
     "@arcaai/exceptions": "workspace:*",
-    "@nestjs/common": "^11.1.17",
-    "@nestjs/core": "^11.1.17",
-    "@nestjs/event-emitter": "^3.0.1",
-    "@prisma/adapter-pg": "^7.5.0",
-    "@prisma/client": "^7.5.0",
+    "@nestjs/common": "^11.1.27",
+    "@nestjs/core": "^11.1.27",
+    "@nestjs/event-emitter": "^3.1.0",
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
     "class-transformer": "^0.5.1",
-    "nestjs-cls": "^5.4.3",
+    "nestjs-cls": "^6.2.1",
     "reflect-metadata": "^0.2.2",
     "uuidv7": "^1.2.1"
   },
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",
-    "@nestjs/testing": "^11.1.17",
-    "@types/node": "^25.5.0",
-    "@typescript-eslint/eslint-plugin": "^8.57.1",
-    "@typescript-eslint/parser": "^8.57.1",
+    "@nestjs/testing": "^11.1.27",
+    "@types/node": "^25.9.4",
+    "@typescript-eslint/eslint-plugin": "^8.62.1",
+    "@typescript-eslint/parser": "^8.62.1",
     "eslint": "^9.39.4",
     "rimraf": "^6.1.3",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.9"
   }
 }

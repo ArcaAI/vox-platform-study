@@ -92,4 +92,20 @@ export class TenantBucketRepository extends Repository<TenantBucketEntity, Tenan
       sort: [{ slug: 'asc' }],
     });
   }
+
+  /**
+   * TASK-413 — SUM(quotaBytes) over buckets that have a quota configured
+   * (`quotaBytes IS NOT NULL`), for the platform consumption roll-up
+   * (TASK-386 #18, "storage quota"). `tenantId = null` means platform-wide
+   * (no tenant filter). Returns the raw nullable BigInt sum — the caller
+   * owns the null-vs-Number presentation.
+   */
+  async sumConfiguredQuotaBytes(tenantId: string | null): Promise<bigint | null> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (this as any).db.aggregate({
+      _sum: { quotaBytes: true },
+      where: { ...(tenantId ? { tenantId } : {}), quotaBytes: { not: null } },
+    });
+    return result._sum.quotaBytes;
+  }
 }

@@ -7,7 +7,7 @@ This directory holds the local-dev Docker Compose stacks for HOPE.
 | `docker-compose.yml` | Core services always required for local dev (Postgres, Redis, MinIO). |
 | `docker-compose.dev.yml` | Optional extensions (Vault, Qdrant) — opt-in via Compose profiles. |
 | `configs/vault/` | Vault dev-mode bootstrap (Phase 1A, TASK-302 Stream B). |
-| `mlflow/`, `python-base/`, `scripts/` | Service-specific assets. |
+| `python-base/`, `scripts/` | Service-specific assets. |
 | `README-STT-ORCHESTRA.md`, `QDRANT-SETUP.md`, `QDRANT-QUICK-REFERENCE.md` | Per-service runbooks. |
 
 ---
@@ -146,11 +146,11 @@ docker exec hope-vault sh -lc 'VAULT_TOKEN=root vault write -wrap-ttl=120s -f -f
 ```
 
 See the full plan + production HA / multi-cloud blueprint in
-[`TASK-312-Vault-Workflow-Hardening/README.md`](../../docs/implementation/TASK-312-Vault-Workflow-Hardening/README.md),
+[`TASK-312-Vault-Workflow-Hardening/README.md`](../../docs/archive/TASK-312-Vault-Workflow-Hardening/README.md) (archived),
 the original migration in
-[`02-vault-migration.md`](../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/02-vault-migration.md),
+[`02-vault-migration.md`](../../docs/archive/TASK-302-System-Config-Implementation-Roadmap/02-vault-migration.md) (archived),
 and the HA deployment notes at
-[`research/deployments/deploy-vm430-432-vault.md`](../../research/deployments/deploy-vm430-432-vault.md).
+[`docs/research/deployments/deploy-vm430-432-vault.md`](../../docs/research/deployments/deploy-vm430-432-vault.md).
 
 ---
 

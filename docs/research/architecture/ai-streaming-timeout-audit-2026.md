@@ -46,7 +46,7 @@ Main findings:
 
 - `infrastructure/docker/docker-compose.yml`
 - `infrastructure/docker/docker-compose.dev.yml`
-- `apps/ui-playground/src/features/summarization/api/smr-client.ts`
+- `apps/ui-playground/src/features/summarization/api/smr-client.ts` (deprecated app)
 - `packages/agentic-sdk-v2/src/core/SSEClient.ts`
 - `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts`
 

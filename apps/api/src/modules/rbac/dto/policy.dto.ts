@@ -148,8 +148,7 @@ export class UpdatePolicyDto {
   resourceStatus?: string;
 
   @ApiPropertyOptional({
-    description:
-      'TASK-409 — break-glass confirmation, required when editing the rules of a policy attached to more than one role. Never persisted.',
+    description: 'TASK-409 — break-glass confirmation, required when editing the rules of a policy attached to more than one role. Never persisted.',
     type: BreakGlassDto,
   })
   @IsOptional()

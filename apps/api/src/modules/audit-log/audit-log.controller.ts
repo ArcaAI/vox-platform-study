@@ -164,7 +164,7 @@ export class AuditLogController {
     summary: 'Fetch audit logs (cursor pagination)',
     description:
       'Returns a keyset (cursor) page of audit logs ordered by (createdAt, id) DESC. ' +
-      'Pass the previous response\'s `nextCursor` to page forward; `hasMore` signals more pages. ' +
+      "Pass the previous response's `nextCursor` to page forward; `hasMore` signals more pages. " +
       'Supports the same TASK-328 A8 filters (from/to/action/resourceType/userId) as the offset list.',
   })
   @ApiOkResponse({ type: CursorPaginatedAuditLogResponse, description: 'A cursor page of audit logs.' })

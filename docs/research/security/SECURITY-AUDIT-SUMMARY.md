@@ -14,7 +14,7 @@
 |-------|------------------------|
 | **API Gateway** | `apps/api` — NestJS 11, TypeScript (port 8868) |
 | **Python Services** | `apps/stt-v2` (port 8861), `apps/smr` (port 8862), `apps/nlp` (port 8864) |
-| **Frontend** | `apps/ui-playground` — React 19/Vite/TanStack Router (port 5175) |
+| **Frontend** | `apps/ui-playground` — React 19/Vite/TanStack Router (port 5175) — **deprecated** (no development/maintenance plan) |
 | **Example** | `apps/example` — Live transcription demo (React/Vite) |
 | **Core DDD** | `packages/database`, `packages/domains`, `packages/applications`, `packages/exceptions`, `packages/logger`, `packages/types`, `packages/tools` |
 | **SDK & Audio** | `packages/agentic-sdk-v2`, `packages/room`, `packages/stt`, `packages/vad`, `packages/noise-filter`, `packages/pipeline`, `packages/med-ner`, `packages/utils` |
@@ -177,7 +177,7 @@ The HOPE platform demonstrates solid architectural foundations (Prisma ORM for p
 - **Key Issues**: Zero authentication, hardcoded default credentials, wildcard CORS, no audio file MIME validation, PHI logging, ML model trust
 - **Report**: [`apps-stt-v2-security-report.md`](./apps-stt-v2-security-report.md)
 
-### apps/ui-playground — SDK Playground
+### apps/ui-playground — SDK Playground (deprecated)
 - **Risk Score**: Medium
 - **Findings**: 16 total (1 Critical, 4 High, 5 Medium)
 - **Key Issues**: Tokens in localStorage (19 file refs), client-side JWT decode without verification, WebSocket URL user-editable, no CSP headers

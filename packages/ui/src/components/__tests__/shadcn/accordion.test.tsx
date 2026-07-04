@@ -370,6 +370,9 @@ test.describe('Accordion', () => {
       )
 
       const trigger = component.locator('[data-slot="accordion-trigger"]')
+      // radix-ui collapsible now only exposes aria-controls while the content is
+      // mounted (open) — pointing at a non-existent id when collapsed was invalid ARIA.
+      await trigger.click()
       const ariaControls = await trigger.getAttribute('aria-controls')
       expect(ariaControls).toBeTruthy()
     })

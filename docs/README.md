@@ -1,369 +1,91 @@
-# 📚 HOPE Documentation System — Complete Overview
+# HOPE Documentation Index
 
-**Last Updated:** 2026-03-14  
-**Status:** ✅ Complete & Ready for Use  
-**Location:** [docs/CODEMAPS/](./CODEMAPS/)
+Last updated: 2026-07-04
 
----
+Index of everything under `docs/`. Start here.
 
-## 🎯 What Was Created
-
-A comprehensive **architectural documentation system** (codemaps) for the HOPE medical AI platform. The system provides detailed technical maps of every service and shared package.
-
-### Files Created
+## Directory Map
 
 ```
-docs/CODEMAPS/
-├── INDEX.md                              # ⭐ Start here
-├── database.md                           # Schema reference
-├── environment.md                        # Config variables
-├── infrastructure.md                     # Docker setup
-│
-├── services/
-│   ├── api-gateway.md                    # NestJS API Gateway
-│   ├── stt-v2.md                         # Speech-to-text service
-│   ├── smr-v2.md                         # Summarization service
-│   └── nlp.md                            # NLP / Classification service
-│
-└── packages/
-    ├── agentic-sdk-v2.md                 # React SDK for consultations
-    ├── applications.md                   # NestJS service layer
-    ├── database.md                       # Prisma ORM + types
-    └── domains.md                        # DDD entities & business logic
+docs/
+├── README.md                              # This index
+├── architecture/                          # Authoritative system design (code-verified)
+│   ├── overview.md                        # System context, topology, flows, deployments
+│   └── data-and-domain-model.md           # Prisma domain model, tenancy, audit, lifecycle
+├── traceability-matrix.md                 # Capability → service → models → routes → tests
+├── development-patterns-and-standards.md  # Coding patterns & layer standards
+├── development-guide.md                   # Hands-on developer guide (setup, workflows)
+├── section-syntax.md                      # Optional tabbed-rendering markers for docs
+├── implementation/                        # Active ticket documentation (TASK-XXX)
+├── backlog/                               # Parked residuals / deferred work
+├── operations/                            # Operator runbooks (day-2)
+├── research/                              # Research, infra guides, audits, prior art
+└── archive/                               # Historical tickets — read-only record
 ```
 
-**Plus:** Summary documentation at [docs/DOCUMENTATION-INIT.md](./DOCUMENTATION-INIT.md)
+## Architecture
 
----
+| Document | Contents |
+|---|---|
+| [architecture/overview.md](./architecture/overview.md) | What HOPE does, actors/tenants, service topology (apps, ports, protocols, dependencies), C4-style context and container diagrams, core data-flow sequences (live transcription, summarization, clinical documentation harness), API gateway structure, DDD layering, deployment topologies (local compose, k3s + ArgoCD, Vault) |
+| [architecture/data-and-domain-model.md](./architecture/data-and-domain-model.md) | Prisma schema layout, standard model field template, entity groups (model → purpose → relations → owning module), multi-tenancy mechanics, soft-delete convention, sys-event/audit pipeline, PHI encryption, what lives in Postgres vs MinIO vs Qdrant vs Redis vs Vault |
+| [traceability-matrix.md](./traceability-matrix.md) | One row per business capability: app/service, key packages/modules, Prisma models, verified API endpoints, test locations — with honest gap markers |
 
-## 📖 What Each Document Includes
+## Development
 
-### Core Structure (All Codemaps)
+| Document | Contents |
+|---|---|
+| [development-patterns-and-standards.md](./development-patterns-and-standards.md) | Layer-by-layer coding standards and patterns (database → domains → applications → API; Python services; SDK) |
+| [development-guide.md](./development-guide.md) | Practical developer guide: environment setup, dev stack, testing, common workflows |
+| [section-syntax.md](./section-syntax.md) | Optional `<!-- @section -->` / `<!-- @example -->` / `<!-- @tabs -->` markers for docs that render with Content/Example tabs; files without markers render as plain markdown |
 
-1. **Purpose** — Why this component exists and what it does
-2. **Directory Structure** — How files are organized with descriptions
-3. **Key Components/Modules** — Major building blocks and their roles
-4. **Request/Data Flow** — How data moves through the system (ASCII diagrams)
-5. **External Dependencies** — Libraries, services, integrations
-6. **Configuration** — Environment variables and settings
-7. **Testing** — How to test this component
-8. **Related Codemaps** — Cross-references to connected documentation
+## Implementation Tickets — `implementation/`
 
-### Plus (service/package specific)
+Active, ticket-based implementation documentation. One folder per ticket: `[TICKET]-[Short-Name]/README.md`, updated throughout the ticket lifecycle (single main document per ticket — no per-fix files).
 
-- **API Endpoints** — REST/WebSocket routes
-- **Database Schema** — Tables, relationships, indexes
-- **Security Architecture** — Auth, isolation, secrets
-- **Examples & Patterns** — Code snippets showing best practices
-- **Performance Considerations** — Caching, optimization
+- **Numbering**: `TASK-XXX`. To assign a new number, take the highest existing ticket across `implementation/` and `archive/` and increment by 1.
+- **Latest ticket**: TASK-412 (documentation realignment — this docs restructure).
+- **Required sections**: header (ticket, dates, status), requirement analysis, current-state evaluation, implementation plan (user-approved before coding), implementation summary, change history.
+- **Status values**: `Pending | In Progress | Completed | Blocked | Review`.
+- Completed/historical tickets are periodically moved to [`archive/`](./archive/).
 
----
+## Backlog — `backlog/`
 
-## 🚀 Quick Start
+Deliberately parked work items with context and pickup instructions. Current: [RESIDUALS-2026-07-02.md](./backlog/RESIDUALS-2026-07-02.md) (audit-payload field redaction sweep; MS-Graph live email credentials).
 
-### For New Team Members
-**Time: 10-15 minutes**
+## Operations — `operations/`
 
-1. **[docs/CODEMAPS/INDEX.md](./CODEMAPS/INDEX.md)** — High-level overview
-2. Choose an area you'll work on
-3. Read the corresponding codemap
-4. Check "Related Codemaps" for context
+Day-2 operator runbooks.
 
-### For Developers Adding a Feature
-**Time: 5-10 minutes**
+| Document | Contents |
+|---|---|
+| [operations/vault/README.md](./operations/vault/README.md) | HOPE HA Vault operator runbook: architecture (3-node Raft + Transit auto-unseal), bootstrap, rotation, failover, recovery, monitoring |
 
-1. Find your service/package in INDEX.md
-2. Read the relevant codemap
-3. Understand the data flow diagram
-4. Reference code files via provided links
+## Research — `research/`
 
-### For DevOps/Infrastructure
-**Time: 15 minutes**
+Technical research, homelab infrastructure guides, security audits, and architecture prior art. See [research/README.md](./research/README.md) for the full index.
 
-1. **[docs/CODEMAPS/infrastructure.md](./CODEMAPS/infrastructure.md)** — Docker setup
-2. **[docs/CODEMAPS/environment.md](./CODEMAPS/environment.md)** — Configuration
-3. **[docs/CODEMAPS/database.md](./CODEMAPS/database.md)** — Schema
+| Subfolder | Contents |
+|---|---|
+| [research/infrastructure/](./research/infrastructure/) | Proxmox host setup, GPU passthrough, network topology, shared storage |
+| [research/deployments/](./research/deployments/) | Per-VM/CT deployment guides (k3s, MinIO, GitLab, Postgres HA, Vault, Redis), DR and encryption-at-rest runbooks |
+| [research/networking/](./research/networking/) | SSH/Cloudflare Tunnel access, database connectivity |
+| [research/ai-ml/](./research/ai-ml/) | Whisper ONNX optimization research |
+| [research/architecture/](./research/architecture/) | Streaming-timeout audit, encounter-workflow fit-gap analysis, system-config/multi-tenancy design notes (prior art — where it conflicts with `docs/architecture/`, the latter wins) |
+| [research/security/](./research/security/) | Security audit reports and vulnerability scans per app/package |
+| [research/clinical-harness/](./research/clinical-harness/) | Medical-AI research backing the clinical documentation harness (TASK-330) |
+| [research/configs/](./research/configs/) | Ready-to-deploy config files (GitLab, MinIO, Postgres HA, Redis, Langfuse) |
 
----
+## Archive — `archive/`
 
-## 📍 Navigation by Role
+Historical ticket documentation (`MODEL-*`, `QA-*`, `SDK-*`, `SEC-*`, `STT-*`, `TASK-001` … ). Kept as an immutable record of past decisions — **do not edit**; references inside archived documents may describe removed components (e.g. `knowledge/`, `apps/admin`, `apps/tts`) and are intentionally left as-is.
 
-### Backend Developer
-→ Read: `API Gateway` → `Applications` → `Domains` → `Database`
+## Related (outside `docs/`)
 
-### ML/Python Engineer
-→ Read: `STT V2` or `SMR V2` or `NLP` → `Database` (read-only)
-
-### Frontend Developer
-→ Read: `Agentic SDK V2` → `API Gateway` (API contracts)
-
-### DevOps Engineer
-→ Read: `Infrastructure` → `Environment` → `Database`
-
-### Product Manager / Tech Lead
-→ Read: `INDEX.md` then `API Gateway` (architecture overview)
-
----
-
-## 🎯 Key Documentation Highlights
-
-### Architecture Diagrams
-- System topology (clients → API → services → database)
-- Component relationships
-- Data flow for each major operation
-
-### Entry Points
-Every codemap includes the actual file path to start reading code:
-
-```
-Entry Point: [src/main.ts](../../../apps/api/src/main.ts)
-```
-
-Click the link to jump to the actual source code.
-
-### Configuration Reference
-Complete environment variable documentation:
-- Development values
-- Production values  
-- Validation rules
-- Secrets management
-
-### API Contracts
-All API endpoints documented:
-- HTTP routes
-- Request/response formats
-- Error handling
-
-### Database Schema
-Detailed schema reference including:
-- Table definitions
-- Relationships
-- Indexes
-- Isolation strategies
-
----
-
-## 💡 How to Use Codemaps
-
-### For Understanding Flow
-1. Find your starting point (e.g., POST /consultations endpoint)
-2. Follow the data flow diagram in the codemap
-3. Navigate to each component
-4. Check "Related Codemaps" for context
-
-### For Debugging
-1. Identify which component is failing
-2. Open its codemap
-3. Review "Configuration" section
-4. Check "External Dependencies" for connectivity issues
-5. Jump to code files via provided links
-
-### For Adding Features
-1. Read the module structure
-2. Understand data flow for similar feature
-3. Find the pattern used (request → validation → service → repository → DB)
-4. Implement following same pattern
-
-### For Documentation Maintenance
-1. Timestamp at top shows last update date
-2. File paths included for verification
-3. Check if paths still exist and content is current
-4. Update "Related Codemaps" links when changing structure
-
----
-
-## 🔄 Document Layout Formula
-
-Each codemap follows this structure (for consistency):
-
-```markdown
-# [Service/Package] Codemap
-
-**Last Updated:** 2026-03-09
-**Package:** @arcaai/name (or service name)
-**Entry Point:** [src/file.ts](path/to/src/file.ts)
-
-## 📋 Purpose
-[What it does, why it exists]
-
-## 🗂️ Directory Structure
-[File organization with descriptions]
-
-## 🔌 Key Components
-[Main modules and their roles]
-
-## 🔄 Request/Data Flow
-[ASCII diagram showing flow]
-
-## 🔗 External Dependencies
-[Libraries and integrations]
-
-## ⚙️ Configuration
-[Environment variables]
-
-## 🧪 Testing
-[How to test]
-
-## 🔗 Related Codemaps
-[Links to connected docs]
-
-## Status
-[Current status]
-```
-
----
-
-## 📊 Cross-References
-
-### By Business Domain
-
-**Authentication & Security**
-- API Gateway: [Security Architecture](./CODEMAPS/services/api-gateway.md#-security-architecture)
-- Applications: [Auth Module](./CODEMAPS/packages/applications.md#modules)
-
-**Data & Storage**
-- Database: [Schema](./CODEMAPS/database.md)
-- Database Package: [Models](./CODEMAPS/packages/database.md#-database-schema)
-
-**Medical Features**
-- NLP: [Tasks](./CODEMAPS/services/nlp.md#-supported-nlp-tasks)
-- STT V2: [Diarization](./CODEMAPS/services/stt-v2.md#-diarization-module)
-
-**Real-Time**
-- API Gateway: [Module Structure](./CODEMAPS/services/api-gateway.md#-directory-structure)
-- SDK: [WebSocket Integration](./CODEMAPS/packages/agentic-sdk-v2.md)
-
-**Infrastructure**
-- Infrastructure: [Docker Compose](./CODEMAPS/infrastructure.md#-docker-compose-development)
-- Environment: [Setup](./CODEMAPS/environment.md#-development-environment-envlocal)
-
----
-
-## ✅ Quality Checklist
-
-- ✅ All backend services documented (API, STT-v2, SMR-v2, NLP)
-- ✅ All core packages documented (Database, Domains, Applications, SDK)
-- ✅ Infrastructure and configuration explained
-- ✅ Database schema detailed
-- ✅ Data flows diagrammed
-- ✅ File paths verified
-- ✅ External dependencies listed
-- ✅ Cross-references created
-- ✅ Examples provided
-- ✅ Timestamps current
-
----
-
-## 🔐 Keeping Documentation Current
-
-### When to Update
-- New major feature → Update relevant codemaps
-- API changes → Update service codemaps
-- New packages → Create new codemaps
-- Architecture changes → Update infrastructure
-- Dependency updates → Refresh dependency sections
-
-### Quick Update Process
-1. Open the codemap file
-2. Update the **Last Updated** date at top
-3. Review affected sections
-4. Verify file paths still exist
-5. Commit changes
-
----
-
-## 📚 Connected Resources
-
-### In Repository
-- **[knowledge/README.md](../knowledge/README.md)** — Knowledge base index
-- **[knowledge/SETUP.md](../knowledge/SETUP.md)** — Local development setup
-- **[README.md](../README.md)** — Project overview
-
-### External Resources
-- NestJS Documentation
-- FastAPI Documentation
-- Prisma Documentation  
-- PostgreSQL Documentation
-
----
-
-## 🎓 Best Practices
-
-### When Reading Codemaps
-- Start with the index/overview
-- Follow related codemaps for context
-- Click file paths to see actual code
-- Reference data flow diagrams
-
-### When Maintaining Code
-- Keep codemap directory structure aligned with actual code
-- Update timestamps when making changes
-- Verify file paths in links still work
-- Update "Related Codemaps" if structure changes
-
-### When Onboarding
-- Have new members read INDEX.md first
-- Have them summarize what they learned
-- Direct them to specific codemaps for their role
-- Have them trace data flow for a feature
-
----
-
-## 🔗 Navigation Map
-
-```
-START HERE
-    ↓
-docs/CODEMAPS/INDEX.md
-    ├── Backend Dev? → docs/CODEMAPS/services/api-gateway.md
-    ├── Python Dev? → docs/CODEMAPS/services/[stt-v2|smr-v2|nlp].md
-    ├── Frontend Dev? → docs/CODEMAPS/packages/agentic-sdk-v2.md
-    ├── DevOps? → docs/CODEMAPS/infrastructure.md
-    └── Need setup? → docs/CODEMAPS/environment.md
-```
-
----
-
-## 🚦 Status Summary
-
-| Component | Status | Last Updated | Ready |
-|-----------|--------|--------------|-------|
-| API Gateway | ✅ Complete | 2026-03-09 | Yes |
-| STT V2 | ✅ Complete | 2026-03-09 | Yes |
-| SMR V2 | ✅ Complete | 2026-03-09 | Yes |
-| NLP | ✅ Complete | 2026-03-09 | Yes |
-| SDK V2 | ✅ Complete | 2026-03-09 | Yes |
-| Database | ✅ Complete | 2026-03-09 | Yes |
-| Domains | ✅ Complete | 2026-03-09 | Yes |
-| Applications | ✅ Complete | 2026-03-09 | Yes |
-| Infrastructure | ✅ Complete | 2026-03-09 | Yes |
-| Environment | ✅ Complete | 2026-03-09 | Yes |
-| Schema | ✅ Complete | 2026-03-09 | Yes |
-
----
-
-## 🎯 Next Steps
-
-### For Developers
-- [ ] Read INDEX.md
-- [ ] Find your component
-- [ ] Review the codemap
-- [ ] Click links to source code
-
-### For Documentation
-- [ ] Review all codemaps for accuracy
-- [ ] Test all file path links
-- [ ] Add specialized guides (deployment, scaling)
-- [ ] Create stub codemaps for remaining packages
-
-### For DevOps
-- [ ] Use Infrastructure codemap
-- [ ] Setup local development
-- [ ] Configure deployment environment
-
----
-
-**Documentation System v1.0**  
-**Status: ✅ Ready for Use**
-
-For questions or to request updates, refer to the specific codemap or contact the engineering team.
+| Location | Contents |
+|---|---|
+| [`../README.md`](../README.md) | Monorepo quick start and command reference |
+| `apps/*/README.md`, `packages/*/README.md` | Per-app / per-package documentation |
+| [`../infrastructure/docker/README.md`](../infrastructure/docker/README.md) | Local Docker infrastructure guide |
+| [`../deployment/README.md`](../deployment/README.md) | k3s + ArgoCD deployment guide |
+| [`../infrastructure/SECURITY_DEPLOYMENT_GUIDE.md`](../infrastructure/SECURITY_DEPLOYMENT_GUIDE.md) | Production security posture |

@@ -49,12 +49,12 @@
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",
     "@arcaai/config-ts": "workspace:*",
-    "@playwright/test": "^1.58.2",
+    "@playwright/test": "^1.61.1",
     "http-server": "^14.1.1",
     "rimraf": "^6.1.3",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.9"
   },
   "publishConfig": {
     "access": "public",

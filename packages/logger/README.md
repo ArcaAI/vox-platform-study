@@ -1,220 +1,103 @@
 # @arcaai/logger
 
-A flexible, configurable logging library for arcaai applications based on Winston.
+Standalone Winston-based logging library for HOPE backend services. It wraps `winston` behind a small `Logger` class with typed options, seven log levels, and console/file/rotating-file transports, plus an `addTransport()` escape hatch for custom transports (for example S3-compatible storage via `winston-s3-transport`).
 
-## Features
+Last updated: 2026-07-04
 
-- Multiple log levels: error, warn, info, http, debug, verbose, silly
-- Multiple transport options: console, file, rotating file, S3/MinIO buckets
-- Customizable formatting including timestamps, colors, and JSON output
-- Metadata support for structured logging
-- Simple API with both functional and class-based approaches
+## Position in the stack
 
-## Installation
+`@arcaai/logger` is a leaf utility package with no HOPE-internal dependencies. It is declared as a dependency of `@arcaai/applications` and `apps/api` and is built by the `build:packages` pipeline (`pnpm build:packages` at the repo root).
 
-```bash
-# If using npm
-npm install @arcaai/logger
+Note: the API gateway's runtime request logging is currently implemented by the `LoggingService` inside `@arcaai/applications` (`src/services/baseServices/logging/`), not by this package. `@arcaai/logger` has no direct imports in workspace source today; it remains available as a self-contained Winston wrapper for scripts and services that need one.
 
-# If using yarn
-yarn add @arcaai/logger
+## Directory structure
 
-# If using pnpm
-pnpm add @arcaai/logger
+```
+src/
+├── index.ts          # Logger class, LogLevel enum, LoggerOptions/S3Config types,
+│                     # createLogger factory, default logger instance, legacy log()
+└── __tests__/
+    └── log.test.ts   # Vitest unit tests
 ```
 
-## Basic Usage
+## API
+
+### Exports
+
+| Export | Kind | Purpose |
+|---|---|---|
+| `default` | `Logger` instance | Pre-configured logger (console transport, INFO level) |
+| `Logger` | class | Configurable logger wrapping a `winston.Logger` |
+| `createLogger(options?)` | factory | `new Logger(options)` shorthand |
+| `LogLevel` | enum | `ERROR`, `WARN`, `INFO`, `HTTP`, `DEBUG`, `VERBOSE`, `SILLY` |
+| `LoggerOptions` | type | Constructor options (level, service, transports, format) |
+| `S3Config` | type | Configuration shape for an S3/MinIO transport |
+| `log(msg, meta?)` | function | Legacy helper; logs at INFO via the default logger |
+
+### Basic usage
 
 ```typescript
-// Import the default logger
 import logger from '@arcaai/logger';
 
-// Log at different levels
 logger.info('Application started');
 logger.warn('Configuration file not found, using defaults');
 logger.error('Failed to connect to database', { dbHost: 'localhost', port: 5432 });
-
-// Add metadata to any log
-logger.info('User authenticated', { userId: '123', role: 'admin' });
 ```
 
-## Legacy API
-
-```typescript
-// Import the simple log function (logs at INFO level)
-import { log } from '@arcaai/logger';
-
-log('Hello, world!');
-log('User action', { userId: '123', action: 'login' });
-```
-
-## Custom Logger Configuration
+### Custom logger
 
 ```typescript
 import { createLogger, LogLevel } from '@arcaai/logger';
 
-// Create a custom logger with specific configuration
 const logger = createLogger({
   level: LogLevel.DEBUG,
   service: 'user-service',
   transports: {
     console: true,
-    file: {
-      enabled: true,
-      filename: 'user-service.log',
-      dirname: 'logs'
-    }
+    file: { enabled: true, filename: 'user-service.log', dirname: 'logs' },
   },
-  format: {
-    timestamp: true,
-    colorize: true,
-    json: false
-  }
+  format: { timestamp: true, colorize: true, json: false },
 });
 
 logger.debug('Detailed debug information');
-logger.info('Operation completed successfully');
 ```
 
-## S3/MinIO Configuration
+### Transports
 
-Send logs directly to an S3-compatible storage service:
+| Transport | Enabled via | Implementation |
+|---|---|---|
+| Console | `transports.console: true` | `winston.transports.Console` |
+| File | `transports.file.enabled` | `winston.transports.File` (`filename`, `dirname`, `maxSize`, `maxFiles`) |
+| Rotating file | `transports.rotate.enabled` | `winston-daily-rotate-file` (`datePattern`, `maxSize`, `maxFiles`) |
+| S3 / MinIO | `logger.addTransport(...)` | Not constructed by the factory; consumers instantiate `winston-s3-transport` themselves and attach it |
+
+The `Logger` constructor only builds console, file, and rotate transports. The `transports.s3` option block and the `S3Config` type describe the configuration shape, but the S3 transport itself must be added by the consumer:
 
 ```typescript
-import { createLogger, LogLevel } from '@arcaai/logger';
+import { createLogger } from '@arcaai/logger';
+import S3Transport from 'winston-s3-transport';
 
-// Create a logger with S3 transport
-const logger = createLogger({
-  service: 'api-service',
-  transports: {
-    console: true,  // Also log to console
-    s3: {
-      enabled: true,
-      bucket: 'application-logs',
-      folder: 'api-service',
-      filename: 'api-%DATE%.log',
-      frequency: 'daily',
-      // AWS S3 credentials
-      accessKeyId: 'YOUR_ACCESS_KEY',
-      secretAccessKey: 'YOUR_SECRET_KEY',
-      region: 'us-west-2'
-    }
-  },
-  format: {
-    timestamp: true,
-    json: true  // JSON format is recommended for cloud storage
-  }
-});
-
-// For MinIO or other S3-compatible services
-const minioLogger = createLogger({
-  service: 'analytics-service',
-  transports: {
-    s3: {
-      enabled: true,
-      bucket: 'logs',
-      // MinIO specific configuration
-      endpoint: 'http://minio.example.com:9000',
-      forcePathStyle: true,
-      accessKeyId: 'MINIO_ACCESS_KEY',
-      secretAccessKey: 'MINIO_SECRET_KEY',
-      folder: 'analytics',
-      filename: 'analytics-%DATE%.log',
-      frequency: 'hourly'
-    }
-  }
-});
+const logger = createLogger({ service: 'api-service', format: { json: true } });
+logger.addTransport(new S3Transport({ /* bucket, credentials, ... */ }));
 ```
 
-## Configuration Options
+### Formatting
 
-### Log Levels
+`format` options: `timestamp` (prefix each line), `colorize` (console colors), `json` (structured JSON output; recommended for shipping to object storage or log aggregators). Non-JSON output renders as `<timestamp> <level>: [<service>] <message> <meta-json>`.
 
-- `ERROR`: Error events that might still allow the application to continue running
-- `WARN`: Warning events that indicate potential issues
-- `INFO`: Informational messages that highlight the progress of the application
-- `HTTP`: HTTP request-specific messages
-- `DEBUG`: Detailed debugging information
-- `VERBOSE`: More detailed debugging messages
-- `SILLY`: The most detailed level for tracing
+## Commands
 
-### Transport Options
+| Command | package.json script | From repo root |
+|---|---|---|
+| Build | `tsc` | `pnpm --filter @arcaai/logger build` |
+| Watch | `tsc -w` | `pnpm --filter @arcaai/logger dev` |
+| Test | `vitest run` | `pnpm --filter @arcaai/logger test` |
+| Test (watch) | `vitest --watch` | `pnpm --filter @arcaai/logger test:watch` |
+| Lint | `eslint "src/**/*.ts*" --max-warnings 0` | `pnpm --filter @arcaai/logger lint` |
+| Clean | `rimraf dist tsconfig.tsbuildinfo` | `pnpm --filter @arcaai/logger clean` |
 
-- **Console**: Output logs to the console
-  ```typescript
-  transports: {
-    console: true
-  }
-  ```
+## Dependencies
 
-- **File**: Output logs to a file
-  ```typescript
-  transports: {
-    file: {
-      enabled: true,
-      filename: 'application.log', // Filename
-      dirname: 'logs',            // Directory
-      maxSize: '10m',             // Max file size before rotating
-      maxFiles: '7d'              // Retention period
-    }
-  }
-  ```
-
-- **Rotating File**: Output logs to files that rotate based on time
-  ```typescript
-  transports: {
-    rotate: {
-      enabled: true,
-      dirname: 'logs',                     // Directory
-      filename: 'application-%DATE%.log',  // Filename pattern
-      datePattern: 'yyyy-MM-dd',          // Date format for rotation
-      maxSize: '20m',                      // Max file size
-      maxFiles: '14d'                      // Retention period
-    }
-  }
-  ```
-
-- **S3/MinIO**: Output logs to S3-compatible storage
-  ```typescript
-  transports: {
-    s3: {
-      enabled: true,
-      bucket: 'logs',                      // S3 bucket name
-      folder: 'application-logs',          // Folder within bucket
-      filename: 'application-%DATE%.log',  // Filename pattern
-      frequency: 'daily',                  // Rotation frequency ('daily', 'hourly', 'minutely', or number of minutes)
-      accessKeyId: 'ACCESS_KEY',           // S3 access key
-      secretAccessKey: 'SECRET_KEY',       // S3 secret key
-      region: 'us-west-2',                 // AWS region (for AWS S3)
-      endpoint: 'http://minio:9000',       // Custom endpoint (for MinIO)
-      forcePathStyle: true                 // Path style access (for MinIO)
-    }
-  }
-  ```
-
-### Formatting Options
-
-- **Timestamp**: Add timestamps to logs
-  ```typescript
-  format: {
-    timestamp: true
-  }
-  ```
-
-- **Colorize**: Add colors to console output
-  ```typescript
-  format: {
-    colorize: true
-  }
-  ```
-
-- **JSON**: Output logs in JSON format
-  ```typescript
-  format: {
-    json: true
-  }
-  ```
-
-## Contributing
-
-Please refer to the contribution guidelines in the repository root.
+- `winston` — core logging engine
+- `winston-daily-rotate-file` — time-based file rotation transport
+- `winston-s3-transport` — S3-compatible transport (consumer-attached, see above)

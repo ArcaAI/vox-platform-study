@@ -88,7 +88,11 @@ export function toPdfBuffer<T>(columns: TableColumn<T>[], rows: T[], title: stri
 
     doc.fontSize(9).fillColor('#111');
     doc.text(columns.map((c) => c.header).join('  |  '));
-    doc.moveTo(doc.x, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).strokeColor('#ccc').stroke();
+    doc
+      .moveTo(doc.x, doc.y)
+      .lineTo(doc.page.width - doc.page.margins.right, doc.y)
+      .strokeColor('#ccc')
+      .stroke();
     doc.moveDown(0.3);
 
     doc.fillColor('#333');

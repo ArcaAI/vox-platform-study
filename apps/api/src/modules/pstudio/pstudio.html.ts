@@ -1,4 +1,7 @@
-const STUDIO_VERSION = '0.15.0';
+// Keep in lock-step with the @prisma/studio-core version resolved in
+// packages/applications (BFF executor) and apps/ui-playground (bundled UI) so
+// the CDN shell speaks the same BFF wire format as the server executor.
+const STUDIO_VERSION = '0.31.2';
 
 /**
  * Server-rendered standalone Prisma Studio shell (dev-only).

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useConversation } from '@elevenlabs/react';
+import { ConversationProvider, useConversation } from '@elevenlabs/react';
 import { ArrowUpIcon, ChevronDown, Keyboard, Mic, MicOff, PhoneIcon, XIcon } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -51,7 +51,7 @@ export interface ConversationBarProps {
   onSendMessage?: (message: string) => void;
 }
 
-export const ConversationBar = React.forwardRef<HTMLDivElement, ConversationBarProps>(
+const ConversationBarInner = React.forwardRef<HTMLDivElement, ConversationBarProps>(
   ({ agentId, className, waveformClassName, onConnect, onDisconnect, onError, onMessage, onSendMessage }, ref) => {
     const [isMuted, setIsMuted] = React.useState(false);
     const [agentState, setAgentState] = React.useState<'disconnected' | 'connecting' | 'connected' | 'disconnecting' | null>('disconnected');
@@ -69,14 +69,15 @@ export const ConversationBar = React.forwardRef<HTMLDivElement, ConversationBarP
         setKeyboardOpen(false);
       },
       onMessage: (message: { source: 'user' | 'ai'; message: string }) => {
-        onMessage?.(message);
+        onMessage?.({ source: message.source, message: message.message });
       },
+      // v1 moved session status out of startSession into a hook-level callback
+      onStatusChange: ({ status }: { status: 'disconnected' | 'connecting' | 'connected' | 'disconnecting' }) => setAgentState(status),
       micMuted: isMuted,
-      onError: (error: unknown) => {
-        console.error('Error:', error);
+      onError: (message: string) => {
+        console.error('Error:', message);
         setAgentState('disconnected');
-        const errorObj = error instanceof Error ? error : new Error(typeof error === 'string' ? error : JSON.stringify(error));
-        onError?.(errorObj);
+        onError?.(new Error(message));
       },
     });
 
@@ -95,10 +96,9 @@ export const ConversationBar = React.forwardRef<HTMLDivElement, ConversationBarP
 
         await getMicStream();
 
-        await conversation.startSession({
+        conversation.startSession({
           agentId,
           connectionType: 'webrtc',
-          onStatusChange: (status: { status: 'disconnected' | 'connecting' | 'connected' | 'disconnecting' }) => setAgentState(status.status),
         });
       } catch (error) {
         console.error('Error starting conversation:', error);
@@ -277,5 +277,17 @@ export const ConversationBar = React.forwardRef<HTMLDivElement, ConversationBarP
     );
   },
 );
+
+ConversationBarInner.displayName = 'ConversationBarInner';
+
+/**
+ * @elevenlabs/react v1 requires a `ConversationProvider` ancestor for `useConversation`;
+ * wrap internally so the component stays drop-in.
+ */
+export const ConversationBar = React.forwardRef<HTMLDivElement, ConversationBarProps>((props, ref) => (
+  <ConversationProvider>
+    <ConversationBarInner ref={ref} {...props} />
+  </ConversationProvider>
+));
 
 ConversationBar.displayName = 'ConversationBar';
