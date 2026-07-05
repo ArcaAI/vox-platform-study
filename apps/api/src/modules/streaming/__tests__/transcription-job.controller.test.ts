@@ -376,8 +376,8 @@ describe('TranscriptionJobController', () => {
         it('should resolve and forward tenant audioBucketName when available', async () => {
             mockTenantBucketService.getBucketBySlug.mockResolvedValue({
                 id: 'b-1',
-                name: 'hope-audio-arcaai',
-                slug: 'audio',
+                name: 'hope-recordings-arcaai',
+                slug: 'recordings',
             });
             mockSessionService.createSession.mockResolvedValue({
                 sessionId: 'sess-1',
@@ -388,10 +388,11 @@ describe('TranscriptionJobController', () => {
 
             await controller.createStreamSession({ pipelineId: 'pipe-1' });
 
-            expect(mockTenantBucketService.getBucketBySlug).toHaveBeenCalledWith('audio');
+            // TASK-426 — the default system slug is now `recordings`.
+            expect(mockTenantBucketService.getBucketBySlug).toHaveBeenCalledWith('recordings');
             expect(mockSessionService.createSession).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    audioBucketName: 'hope-audio-arcaai',
+                    audioBucketName: 'hope-recordings-arcaai',
                 }),
             );
         });

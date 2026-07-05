@@ -3,11 +3,17 @@ import { gatewayUrl } from '@/server/gateway';
 import { refreshSession } from '@/server/refresh';
 import { clearSession, getSession, isElevated, setSession, type SessionPayload } from '@/server/session';
 
-/** Request headers forwarded verbatim to the gateway (allowlist). */
-const FORWARDED_REQUEST_HEADERS = ['content-type', 'if-match', 'idempotency-key'] as const;
+/**
+ * Request headers forwarded verbatim to the gateway (allowlist).
+ * `user-agent` rides along so gateway audit rows record the operator's
+ * browser, not undici's "node" default (TASK-422).
+ */
+const FORWARDED_REQUEST_HEADERS = ['content-type', 'if-match', 'idempotency-key', 'user-agent'] as const;
 
-/** Response headers surfaced back to the browser (allowlist). */
-const FORWARDED_RESPONSE_HEADERS = ['content-type', 'etag'] as const;
+/** Response headers surfaced back to the browser (allowlist). Cache-Control
+ * rides along so the gateway's `no-store` surfaces (e.g. the Prisma Studio
+ * shell, TASK-336 OB-11 / BUG-003) keep their caching posture. */
+const FORWARDED_RESPONSE_HEADERS = ['content-type', 'etag', 'cache-control'] as const;
 
 const BODYLESS_METHODS = new Set(['GET', 'HEAD']);
 

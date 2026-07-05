@@ -19,7 +19,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
     return (
         // suppressHydrationWarning: next-themes mutates <html> before hydration.
-        <html lang="en" className={inter.variable} suppressHydrationWarning>
+        // scroll-pt-32: keeps focus/anchor scrolls clear of the sticky console
+        // chrome — topbar h-14 + up to two session banners (WCAG 2.4.11).
+        <html lang="en" className={`${inter.variable} scroll-pt-32`} suppressHydrationWarning>
             <body className="bg-background text-foreground min-h-svh font-sans antialiased">{children}</body>
         </html>
     );

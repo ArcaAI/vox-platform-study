@@ -76,7 +76,8 @@ const CASES: ReadonlyArray<ProbeCase> = [
     {
         name: 'W3.6 — GET storage/buckets/:name',
         method: 'GET',
-        path: '/api/v1/storage/buckets/hope-audio-arcaai',
+        // TASK-426 — seed slug renamed audio → recordings.
+        path: '/api/v1/storage/buckets/hope-recordings-arcaai',
         principal: 'tenantAdmin',
         expectStatuses: [404],
     },

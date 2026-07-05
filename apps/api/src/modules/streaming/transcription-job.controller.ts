@@ -199,12 +199,15 @@ export class TranscriptionJobController {
       consultationId: body.consultationId,
     });
 
-    // 3. Resolve the tenant's default audio bucket: configured purpose → legacy
-    //    slug → global constant.
+    // 3. Resolve the tenant's default audio bucket: configured purpose →
+    //    `recordings` slug (TASK-426 default) → legacy `audio` slug → global
+    //    constant.
     let uploadBucket = AUDIO_BUCKET;
     try {
       const tenantBucket =
-        (await this.tenantBucketService.getBucketByPurpose(TenantBucketPurpose.AUDIO)) ?? (await this.tenantBucketService.getBucketBySlug('audio'));
+        (await this.tenantBucketService.getBucketByPurpose(TenantBucketPurpose.AUDIO)) ??
+        (await this.tenantBucketService.getBucketBySlug('recordings')) ??
+        (await this.tenantBucketService.getBucketBySlug('audio'));
       if (tenantBucket) {
         uploadBucket = tenantBucket.name;
       }
@@ -329,13 +332,15 @@ export class TranscriptionJobController {
     // still rejects the whole step before anything is forwarded to STT-V2.
     //
     // Bucket resolution: the tenant's default audio bucket (configured
-    // purpose → legacy slug) so STT-v2 writes audio to the tenant's bucket
-    // instead of the global 'hope-audio', plus a storage descriptor for
-    // DEDICATED (S3/Azure) tenants.
+    // purpose → `recordings` slug → legacy `audio` slug) so STT-v2 writes
+    // audio to the tenant's bucket instead of the global 'hope-audio', plus a
+    // storage descriptor for DEDICATED (S3/Azure) tenants.
     const resolveAudioBucket = async (): Promise<{ audioBucketName: string | undefined; storage: StorageDescriptor | null }> => {
       try {
         const tenantBucket =
-          (await this.tenantBucketService.getBucketByPurpose(TenantBucketPurpose.AUDIO)) ?? (await this.tenantBucketService.getBucketBySlug('audio'));
+          (await this.tenantBucketService.getBucketByPurpose(TenantBucketPurpose.AUDIO)) ??
+          (await this.tenantBucketService.getBucketBySlug('recordings')) ??
+          (await this.tenantBucketService.getBucketBySlug('audio'));
         const audioBucketName = tenantBucket?.name;
         const storage = audioBucketName ? await this.blobStorage.resolveDescriptor(audioBucketName) : null;
         return { audioBucketName, storage };

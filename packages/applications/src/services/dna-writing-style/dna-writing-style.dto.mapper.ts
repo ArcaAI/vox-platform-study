@@ -4,10 +4,13 @@ import { DnaVersionResponse } from './dto/dna-version.response';
 import { DnaDashboardUsageEntry } from './dto/dna-dashboard.response';
 
 export class DnaWritingStyleDtoMapper {
-  static toReportResponse(entity: DnaWritingStyleReportEntity): DnaReportResponse {
+  static toReportResponse(entity: DnaWritingStyleReportEntity, doctorUsername?: string): DnaReportResponse {
     return {
       id: entity.id,
       doctorId: entity.doctorId ?? '',
+      // TASK-424 — human-readable doctor label resolved server-side; left
+      // undefined when the user cannot be resolved (deleted/missing id).
+      doctorUsername,
       reportData: entity.reportData ?? undefined,
       styleText: entity.styleText ?? undefined,
       isLatest: entity.isLatest ?? false,

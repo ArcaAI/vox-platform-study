@@ -25,9 +25,13 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
             <SidebarProvider>
                 <AppSidebar />
                 <SidebarInset>
-                    <SiteHeader session={safeSession} />
-                    <ImpersonationBanner session={safeSession} />
-                    <WorkingTenantBanner session={safeSession} />
+                    {/* BUG-004: topbar + session banners are shell chrome — pinned while
+                        only the page content scrolls (frame 07; rule 11 §App Shell). */}
+                    <div className="bg-background sticky top-0 z-40">
+                        <SiteHeader session={safeSession} />
+                        <ImpersonationBanner session={safeSession} />
+                        <WorkingTenantBanner session={safeSession} />
+                    </div>
                     <div className="flex flex-1 flex-col p-4 md:p-6">{children}</div>
                 </SidebarInset>
             </SidebarProvider>

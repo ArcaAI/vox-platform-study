@@ -38,6 +38,7 @@ const mockRepo = {
 // depends on the DepartmentRepository.
 const mockDepartmentRepo = {
   findById: vi.fn(),
+  findAll: vi.fn(),
 };
 
 // TASK-305 Phase F — `findActiveDepartmentForUserInTenant` reads via the
@@ -119,6 +120,9 @@ describe('UserDepartmentService', () => {
     // TASK-305 Phase F — default to an in-tenant department so the integrity
     // check passes for the happy-path tests. Cross-tenant tests override this.
     mockDepartmentRepo.findById.mockResolvedValue({ id: 'dept-1', tenantId: 'tenant-1' });
+    // TASK-424 — getByUser batch-resolves department labels; default to none so
+    // pre-existing tests keep the fields undefined unless they opt in.
+    mockDepartmentRepo.findAll.mockResolvedValue([]);
 
     service = new UserDepartmentService(
       mockRepo as never,
@@ -234,6 +238,51 @@ describe('UserDepartmentService', () => {
       expect(mockRepo.findAll).toHaveBeenCalledWith(
         expect.objectContaining({ where: { tenantId: 'tenant-1', userId: 'user-1' } }),
       );
+    });
+
+    // TASK-424 — the admin console renders department NAMES/CODES, not raw UUIDs.
+    // getByUser batch-resolves the distinct departmentIds in ONE query.
+    it('resolves departmentName/departmentCode from a single batch lookup', async () => {
+      mockRepo.findAll.mockResolvedValueOnce([
+        makeEntity({ id: 'ud-1', departmentId: 'dept-1', isPrimary: true }),
+        makeEntity({ id: 'ud-2', departmentId: 'dept-2' }),
+      ]);
+      mockDepartmentRepo.findAll.mockResolvedValueOnce([
+        { id: 'dept-1', name: 'Cardiology', code: 'CARD' },
+        { id: 'dept-2', name: 'Neurology', code: 'NEURO' },
+      ]);
+
+      const result = await service.getByUser('user-1');
+
+      expect(result[0].departmentName).toBe('Cardiology');
+      expect(result[0].departmentCode).toBe('CARD');
+      expect(result[1].departmentName).toBe('Neurology');
+      expect(result[1].departmentCode).toBe('NEURO');
+      // ONE batch query for the distinct department ids (no N+1).
+      expect(mockDepartmentRepo.findAll).toHaveBeenCalledTimes(1);
+      expect(mockDepartmentRepo.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: { in: ['dept-1', 'dept-2'] } } }),
+      );
+    });
+
+    it('leaves the label fields undefined when a department is missing (deleted) without throwing', async () => {
+      mockRepo.findAll.mockResolvedValueOnce([makeEntity({ id: 'ud-1', departmentId: 'dept-gone' })]);
+      mockDepartmentRepo.findAll.mockResolvedValueOnce([]); // department no longer resolvable
+
+      const result = await service.getByUser('user-1');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].departmentName).toBeUndefined();
+      expect(result[0].departmentCode).toBeUndefined();
+    });
+
+    it('does not query departments when the user has no assignments', async () => {
+      mockRepo.findAll.mockResolvedValueOnce([]);
+
+      const result = await service.getByUser('user-1');
+
+      expect(result).toHaveLength(0);
+      expect(mockDepartmentRepo.findAll).not.toHaveBeenCalled();
     });
   });
 

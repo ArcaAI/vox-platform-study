@@ -1,4 +1,4 @@
-import { gatewayUrl } from '@/server/gateway';
+import { clientUserAgentHeader, gatewayUrl } from '@/server/gateway';
 import { toSafeSession } from '@/server/safe-user';
 import { getSession, setSession } from '@/server/session';
 
@@ -6,7 +6,7 @@ import { getSession, setSession } from '@/server/session';
  * Ends impersonation: best-effort gateway revocation of the act-as token's
  * jti, then restores the original admin token pair in the session.
  */
-export async function POST(): Promise<Response> {
+export async function POST(request: Request): Promise<Response> {
     const session = await getSession();
     if (!session) {
         return Response.json({ message: 'Unauthorized' }, { status: 401 });
@@ -18,7 +18,7 @@ export async function POST(): Promise<Response> {
     try {
         await fetch(gatewayUrl('auth/revoke-impersonation'), {
             method: 'POST',
-            headers: { authorization: `Bearer ${session.impersonation.accessToken}` },
+            headers: { authorization: `Bearer ${session.impersonation.accessToken}`, ...clientUserAgentHeader(request) },
             cache: 'no-store',
             redirect: 'manual',
         });

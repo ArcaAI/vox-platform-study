@@ -1,4 +1,4 @@
-import { gatewayErrorMessage, gatewayUrl } from '@/server/gateway';
+import { clientUserAgentHeader, gatewayErrorMessage, gatewayUrl } from '@/server/gateway';
 import { toSafeSession } from '@/server/safe-user';
 import { setSession, type SessionPayload } from '@/server/session';
 
@@ -41,7 +41,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const gatewayResponse = await fetch(gatewayUrl('auth/login'), {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...clientUserAgentHeader(request) },
         body: JSON.stringify({
             username: body.username,
             password: body.password,

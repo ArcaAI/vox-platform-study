@@ -2,29 +2,34 @@ import { TenantBucketEntity } from '../../../entities/generated/core/TenantBucke
 import { TenantBucketPurpose, TenantBucketType } from '../../../enums';
 import { generateId } from '../../../utils';
 
+/**
+ * Default system buckets provisioned for every tenant:
+ *   - `attachments` — files uploaded by users while working (consultation
+ *     documents, lab results, any files).
+ *   - `recordings`  — audio recordings captured during live transcription
+ *     (raw pre-normalization and processed post-normalization variants).
+ *     Replaces the legacy `audio` slug; keeps the AUDIO purpose so
+ *     streaming/batch bucket resolution is unchanged.
+ */
 export const SYSTEM_BUCKET_SLUGS = {
-  AUDIO: 'audio',
   ATTACHMENTS: 'attachments',
-  MISC: 'misc',
+  RECORDINGS: 'recordings',
 } as const;
 
 const SYSTEM_BUCKET_DESCRIPTIONS: Record<string, string> = {
-  [SYSTEM_BUCKET_SLUGS.AUDIO]: 'Tenant audio storage (streaming and batch jobs)',
-  [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: 'Tenant attachment storage (consultation files)',
-  [SYSTEM_BUCKET_SLUGS.MISC]: 'Tenant misc assets (background, avatars, images)',
+  [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: 'Tenant attachment storage (consultation documents, lab results, user-uploaded files)',
+  [SYSTEM_BUCKET_SLUGS.RECORDINGS]: 'Tenant audio recordings from live transcription (raw and processed)',
 };
 
 const SYSTEM_BUCKET_PATH_PATTERNS: Record<string, string> = {
-  [SYSTEM_BUCKET_SLUGS.AUDIO]: '{yyyy}/{MM}',
   [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: '{yyyy}/{MM}/{dd}',
-  [SYSTEM_BUCKET_SLUGS.MISC]: '{category}',
+  [SYSTEM_BUCKET_SLUGS.RECORDINGS]: '{yyyy}/{MM}',
 };
 
 /** Logical purpose for each system bucket slug (drives `findByPurpose` resolution). */
 const SYSTEM_BUCKET_PURPOSES: Record<string, TenantBucketPurpose> = {
-  [SYSTEM_BUCKET_SLUGS.AUDIO]: TenantBucketPurpose.AUDIO,
   [SYSTEM_BUCKET_SLUGS.ATTACHMENTS]: TenantBucketPurpose.ATTACHMENTS,
-  [SYSTEM_BUCKET_SLUGS.MISC]: TenantBucketPurpose.MISC,
+  [SYSTEM_BUCKET_SLUGS.RECORDINGS]: TenantBucketPurpose.AUDIO,
 };
 
 function sanitizeBucketName(input: string): string {
@@ -113,9 +118,8 @@ export class TenantBucketFactory {
 
   static CreateDefaultSystemBuckets(tenantId: string, tenantKey: string, createdBy?: string): TenantBucketEntity[] {
     return [
-      this.CreateSystemBucket(tenantId, tenantKey, SYSTEM_BUCKET_SLUGS.AUDIO, undefined, createdBy),
       this.CreateSystemBucket(tenantId, tenantKey, SYSTEM_BUCKET_SLUGS.ATTACHMENTS, undefined, createdBy),
-      this.CreateSystemBucket(tenantId, tenantKey, SYSTEM_BUCKET_SLUGS.MISC, undefined, createdBy),
+      this.CreateSystemBucket(tenantId, tenantKey, SYSTEM_BUCKET_SLUGS.RECORDINGS, undefined, createdBy),
     ];
   }
 }

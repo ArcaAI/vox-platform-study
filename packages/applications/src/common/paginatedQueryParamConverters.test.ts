@@ -496,3 +496,201 @@ describe('model registry expansion — Tenant/Media/Role/Tag/Webhook/Notificatio
         expect(() => deserializeFilterString('type[equals]:SHINY', 'Notification')).toThrow(BadRequestException);
     });
 });
+
+describe('deserializeFilterString — list operators in / notIn (TASK-423)', () => {
+    // `field[in]:v1|v2|v3` / `field[notIn]:v1|v2` deserialize to Prisma's
+    // `{ in: [...] }` / `{ notIn: [...] }`. Items are '|'-separated and EACH
+    // item runs through the same per-column coercion as a scalar token
+    // (numbers/dates/booleans coerce, enum members validate with a 400, plain
+    // strings pass through). Empty items are rejected with a 400 — never
+    // silently dropped.
+
+    it('deserializes [in] into an array (no field types — items stay strings)', () => {
+        expect(deserializeFilterString('status[in]:A|B|C')).toEqual({
+            status: { in: ['A', 'B', 'C'] },
+        });
+    });
+
+    it('deserializes a single-item [in] into a one-element array', () => {
+        expect(deserializeFilterString('status[in]:A')).toEqual({
+            status: { in: ['A'] },
+        });
+    });
+
+    it('deserializes [notIn] into an array', () => {
+        expect(deserializeFilterString('status[notIn]:A|B')).toEqual({
+            status: { notIn: ['A', 'B'] },
+        });
+    });
+
+    it('coerces EACH item with the column type (number / date / boolean)', () => {
+        expect(deserializeFilterString('version[in]:1|2|3', 'User')).toEqual({
+            version: { in: [1, 2, 3] },
+        });
+        expect(deserializeFilterString('createdAt[in]:2026-01-01|2026-02-01', 'User')).toEqual({
+            createdAt: { in: [new Date('2026-01-01'), new Date('2026-02-01')] },
+        });
+        expect(deserializeFilterString('isServiceAccount[in]:true|false', 'User')).toEqual({
+            isServiceAccount: { in: [true, false] },
+        });
+    });
+
+    it('validates EACH enum member of a list (a valid list passes through)', () => {
+        expect(deserializeFilterString('action[in]:CREATE|UPDATE', 'AuditLog')).toEqual({
+            action: { in: ['CREATE', 'UPDATE'] },
+        });
+        expect(deserializeFilterString('resourceStatus[notIn]:DELETED|ARCHIVED', 'User')).toEqual({
+            resourceStatus: { notIn: ['DELETED', 'ARCHIVED'] },
+        });
+    });
+
+    it('rejects an invalid enum member ANYWHERE in the list with a 400 naming the allowed members', () => {
+        try {
+            deserializeFilterString('action[in]:CREATE|BOGUS', 'AuditLog');
+            expect.unreachable('should have thrown');
+        } catch (error) {
+            expect(error).toBeInstanceOf(BadRequestException);
+            const message = (error as BadRequestException).message;
+            expect(message).toContain('BOGUS');
+            expect(message).toContain('action');
+            expect(message).toContain('CREATE'); // the allowed members are listed
+        }
+    });
+
+    it('rejects empty list items (trailing "|", "a||b", empty value) with a 400', () => {
+        // Decision: empty items 400 rather than being filtered out — they
+        // always indicate a client serializer bug, and silently dropping them
+        // could turn the token into `{ in: [] }` (matches nothing).
+        expect(() => deserializeFilterString('status[in]:A|')).toThrow(BadRequestException);
+        expect(() => deserializeFilterString('status[in]:A||B')).toThrow(BadRequestException);
+        expect(() => deserializeFilterString('status[in]:')).toThrow(BadRequestException);
+        expect(() => deserializeFilterString('status[notIn]:|A')).toThrow(BadRequestException);
+    });
+
+    it('works inside AND[…]/OR[…] groups (no collision between the "," group separator and "|" items)', () => {
+        expect(deserializeFilterString('AND[action[in]:CREATE|UPDATE,success[equals]:true]', 'AuditLog')).toEqual({
+            AND: [{ action: { in: ['CREATE', 'UPDATE'] } }, { success: { equals: true } }],
+        });
+        expect(deserializeFilterString('OR[resourceStatus[in]:ENABLED|DISABLED,version[gte]:2]', 'User')).toEqual({
+            OR: [{ resourceStatus: { in: ['ENABLED', 'DISABLED'] } }, { version: { gte: 2 } }],
+        });
+    });
+
+    it('still 400s for [in] on a JSON dotted path (NOT added to the JSON path operator allow-list)', () => {
+        expect(() => deserializeFilterString('metaData.tags[in]:a|b', 'User')).toThrow(BadRequestException);
+        expect(() => deserializeFilterString('metaData.tags[in]:a|b', 'User')).toThrow(/Unsupported JSON path filter operator 'in'/);
+    });
+});
+
+describe('deserializeFilterString — case-insensitive string operators (TASK-423)', () => {
+    it('deserializes icontains / istartsWith / iendsWith / iequals to the base op + mode insensitive', () => {
+        expect(deserializeFilterString('username[icontains]:doc')).toEqual({
+            username: { contains: 'doc', mode: 'insensitive' },
+        });
+        expect(deserializeFilterString('username[istartsWith]:dr')).toEqual({
+            username: { startsWith: 'dr', mode: 'insensitive' },
+        });
+        expect(deserializeFilterString('username[iendsWith]:son')).toEqual({
+            username: { endsWith: 'son', mode: 'insensitive' },
+        });
+        expect(deserializeFilterString('username[iequals]:doctor')).toEqual({
+            username: { equals: 'doctor', mode: 'insensitive' },
+        });
+    });
+
+    it('keeps i-op values RAW strings (String-column operators — never coerced)', () => {
+        // `mode: 'insensitive'` is only valid on Prisma String columns, where
+        // coercion is a no-op anyway — so a date-looking value stays a string.
+        expect(deserializeFilterString('username[icontains]:2026-01-01', 'User')).toEqual({
+            username: { contains: '2026-01-01', mode: 'insensitive' },
+        });
+    });
+
+    it('merges multiple i-ops on ONE field into a single insensitive filter object', () => {
+        expect(deserializeFilterString('username[icontains]:doc;username[istartsWith]:dr')).toEqual({
+            username: { contains: 'doc', startsWith: 'dr', mode: 'insensitive' },
+        });
+    });
+
+    it('never leaks mode onto a sibling case-sensitive op on the same field (nests under AND instead)', () => {
+        expect(deserializeFilterString('username[startsWith]:Dr;username[icontains]:smith')).toEqual({
+            username: { startsWith: 'Dr' },
+            AND: [{ username: { contains: 'smith', mode: 'insensitive' } }],
+        });
+        // Token order does not matter — same shape either way.
+        expect(deserializeFilterString('username[icontains]:smith;username[startsWith]:Dr')).toEqual({
+            username: { startsWith: 'Dr' },
+            AND: [{ username: { contains: 'smith', mode: 'insensitive' } }],
+        });
+    });
+
+    it('appends to an existing AND group without clobbering it', () => {
+        expect(deserializeFilterString('AND[version[gte]:2];username[contains]:Dr;username[icontains]:smith', 'User')).toEqual({
+            AND: [{ version: { gte: 2 } }, { username: { contains: 'smith', mode: 'insensitive' } }],
+            username: { contains: 'Dr' },
+        });
+    });
+
+    it('works inside OR groups (each group element folds its own buckets)', () => {
+        expect(deserializeFilterString('OR[username[icontains]:doc,email[icontains]:doc]')).toEqual({
+            OR: [{ username: { contains: 'doc', mode: 'insensitive' } }, { email: { contains: 'doc', mode: 'insensitive' } }],
+        });
+    });
+
+    it('unchanged: plain contains/startsWith/endsWith stay case-sensitive (no mode key)', () => {
+        expect(deserializeFilterString('username[contains]:doctor')).toEqual({
+            username: { contains: 'doctor' },
+        });
+    });
+
+    it("a literal '__proto__' field key never pollutes Object.prototype (own-key hardening)", () => {
+        // Filter keys are attacker-controlled query-string input. Before the
+        // TASK-423 hardening, `filterObject['__proto__'][op] = value` reached
+        // Object.prototype and polluted EVERY object in the process.
+        try {
+            const result = deserializeFilterString('__proto__[in]:a|b;__proto__[icontains]:x;__proto__[equals]:y') as Record<
+                string,
+                unknown
+            >;
+            expect(({} as Record<string, unknown>).in).toBeUndefined();
+            expect(({} as Record<string, unknown>).contains).toBeUndefined();
+            expect(({} as Record<string, unknown>).equals).toBeUndefined();
+            expect(({} as Record<string, unknown>).mode).toBeUndefined();
+            // The key parses as an ordinary OWN property (Prisma will reject
+            // the unknown column, same as any other bogus field name).
+            expect(Object.keys(result)).toContain('__proto__');
+        } finally {
+            // Hygiene for a FAILING run: never leak pollution into other tests.
+            /* eslint-disable @typescript-eslint/no-explicit-any */
+            delete (Object.prototype as any).in;
+            delete (Object.prototype as any).contains;
+            delete (Object.prototype as any).equals;
+            delete (Object.prototype as any).mode;
+            /* eslint-enable @typescript-eslint/no-explicit-any */
+        }
+    });
+});
+
+describe('deserializeFilterString — range merge + wrapper integration (TASK-423)', () => {
+    it('merges gte+lte tokens for one regular (non-JSON) column into a single range object', () => {
+        expect(deserializeFilterString('createdAt[gte]:2026-01-01;createdAt[lte]:2026-12-31', 'User')).toEqual({
+            createdAt: { gte: new Date('2026-01-01'), lte: new Date('2026-12-31') },
+        });
+    });
+
+    it('merges gte+lte without a model too (values stay strings, still one object)', () => {
+        expect(deserializeFilterString('version[gte]:1;version[lte]:5')).toEqual({
+            version: { gte: '1', lte: '5' },
+        });
+    });
+
+    it('new operators flow through withFormatted{Paginated,Count}Props like any other token', () => {
+        const props = { filters: 'resourceStatus[in]:ENABLED|DISABLED;username[icontains]:doc' };
+        const expected = {
+            resourceStatus: { in: ['ENABLED', 'DISABLED'] },
+            username: { contains: 'doc', mode: 'insensitive' },
+        };
+        expect(withFormattedPaginatedProps(props, 'User').filters).toEqual(expected);
+        expect(withFormattedCountProps(props, 'User').filters).toEqual(expected);
+    });
+});

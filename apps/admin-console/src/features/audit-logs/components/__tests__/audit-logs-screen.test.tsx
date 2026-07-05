@@ -99,8 +99,24 @@ function countResponse(count: number): Response {
     return Response.json({ data: [], count, limit: 1, page: 0 });
 }
 
-function stubAuditRoutes(): RecordedCall[] {
+/** useTenantNames probes the shared tenant catalog through the BFF proxy. */
+const TENANTS_BASE = '/api/hope/admin/tenants';
+
+interface CatalogTenant {
+    id: string;
+    name: string;
+    key: string;
+}
+
+const ACME_CATALOG: CatalogTenant[] = [{ id: 'tnt_9f2ka7', name: 'Acme Clinic', key: 'acme' }];
+
+function tenantCatalogResponse(tenants: CatalogTenant[] = ACME_CATALOG): Response {
+    return Response.json({ data: tenants, count: tenants.length, limit: 500, page: 0 });
+}
+
+function stubAuditRoutes(tenants: CatalogTenant[] = ACME_CATALOG): RecordedCall[] {
     return stubFetch((url) => {
+        if (url.startsWith(`${TENANTS_BASE}?`)) return tenantCatalogResponse(tenants);
         if (url.startsWith(`${BASE}/cursor`)) {
             const cursor = queryOf(url).get('cursor');
             if (cursor === 'cur-2') return cursorResponse(PAGE_TWO, null);
@@ -126,11 +142,23 @@ describe('AuditLogsScreen', () => {
         expect(await screen.findByText('ana@arca.ai')).toBeDefined();
         expect(screen.getByText('system')).toBeDefined();
         expect(screen.getByText('UPDATE')).toBeDefined();
+        // Tenant column resolves the id to a human-readable name; the id stays as metadata.
+        expect((await screen.findAllByText('Acme Clinic')).length).toBeGreaterThan(0);
         expect(screen.getAllByText('tnt_9f2ka7').length).toBeGreaterThan(0);
         expect(screen.getByText('OK')).toBeDefined();
         expect(screen.getByText('Fail')).toBeDefined();
         expect(screen.getByRole('table', { name: 'Audit events' })).toBeDefined();
         expect(await screen.findByText(/38,204 events/)).toBeDefined();
+    });
+
+    it('falls back to the raw tenant id when the tenant is not in the catalog', async () => {
+        stubAuditRoutes([{ id: 'tnt_other', name: 'Other Clinic', key: 'other' }]);
+        renderWithProviders(<AuditLogsScreen />);
+
+        await screen.findByText('ana@arca.ai');
+        // The row's tenant is unresolved, so the raw id renders and no name shows.
+        expect(screen.getAllByText('tnt_9f2ka7').length).toBeGreaterThan(0);
+        expect(screen.queryByText('Acme Clinic')).toBeNull();
     });
 
     it('maps URL filter state onto the cursor request and never sends a search param', async () => {
@@ -205,6 +233,7 @@ describe('AuditLogsScreen', () => {
         // happy-dom would actually navigate the anchor; intercept the download click.
         const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
         const calls = stubFetch((url) => {
+            if (url.startsWith(`${TENANTS_BASE}?`)) return tenantCatalogResponse();
             if (url.startsWith(`${BASE}/export`)) {
                 return new Response('binary-xlsx', {
                     status: 200,
@@ -240,6 +269,7 @@ describe('AuditLogsScreen', () => {
 
     it('shows the filtered empty state with a clear-filters action', async () => {
         stubFetch((url) => {
+            if (url.startsWith(`${TENANTS_BASE}?`)) return tenantCatalogResponse();
             if (url.startsWith(`${BASE}/cursor`)) return cursorResponse([], null);
             if (url.startsWith(`${BASE}?`)) return countResponse(0);
             return undefined;
@@ -252,6 +282,7 @@ describe('AuditLogsScreen', () => {
 
     it('shows a neutral empty state when there are no events at all', async () => {
         stubFetch((url) => {
+            if (url.startsWith(`${TENANTS_BASE}?`)) return tenantCatalogResponse();
             if (url.startsWith(`${BASE}/cursor`)) return cursorResponse([], null);
             if (url.startsWith(`${BASE}?`)) return countResponse(0);
             return undefined;
@@ -265,6 +296,7 @@ describe('AuditLogsScreen', () => {
     it('shows a block error state and retries the cursor request', async () => {
         let fail = true;
         const calls = stubFetch((url) => {
+            if (url.startsWith(`${TENANTS_BASE}?`)) return tenantCatalogResponse();
             if (url.startsWith(`${BASE}/cursor`)) {
                 if (fail) return Response.json({ message: 'Audit API unreachable' }, { status: 503 });
                 return cursorResponse(PAGE_ONE, null);

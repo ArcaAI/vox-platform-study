@@ -1,8 +1,8 @@
 import { IPrismaStudioService, IAuditLogService } from '@arcaai/applications';
 import { AuditAction, ResourceType } from '@arcaai/domains';
-import { Controller, Get, Post, Body, Req, Res, HttpCode, Inject, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Res, HttpCode, Inject, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiExcludeEndpoint, ApiBearerAuth } from '@nestjs/swagger';
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { Authorize, CanManage } from '../../decorators';
 import { getStudioHtml } from './pstudio.html';
 
@@ -44,22 +44,19 @@ export class PrismaStudioController {
 
   // TASK-307 W5.2 (AC-16, audit C-9): GET does not accept a JWT via `?token=`
   // query string. Authentication is enforced at the guard layer.
-  // TASK-336 OB-11 (audit OB-11): the bearer token is NO LONGER embedded in the
-  // served HTML — the shell sources it from the URL fragment at runtime — so the
-  // response body carries no secret. We also mark it no-store so no proxy / CDN
-  // caches the dev-only studio shell.
+  // TASK-336 OB-11: the served body carries no secret; it is also no-store so
+  // no proxy / CDN caches the studio shell.
+  // BUG-003: the shell posts queries back to the path that served it
+  // (window.location.pathname), so the authenticating BFF proxy in front of
+  // this route carries the credential on GET and POST alike. No Host-derived
+  // absolute endpoint is embedded (it bypassed the proxy → empty bearer → 401).
   @Get()
   @Authorize(['manage', 'PrismaStudio'])
   @ApiBearerAuth()
   @ApiExcludeEndpoint()
-  serveStudio(@Req() req: Request, @Res() res: Response) {
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.get('host');
-    const studioEndpointUrl = `${protocol}://${host}/api/v1/admin/pstudio`;
-
-    const html = getStudioHtml(studioEndpointUrl);
+  serveStudio(@Res() res: Response) {
     res.setHeader('Cache-Control', 'no-store');
-    res.type('text/html').send(html);
+    res.type('text/html').send(getStudioHtml());
   }
 
   @Post()

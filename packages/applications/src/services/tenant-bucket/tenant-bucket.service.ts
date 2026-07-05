@@ -84,6 +84,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     }
 
     const normalizedPrefix = this.normalizePrefix(prefix);
+    await this.ensureProviderBucket(bucket.name);
     const { objects: files } = await this.blobStorage.listObjects({ bucket: bucket.name, prefix: normalizedPrefix });
 
     const nodes = this.buildTreeNodes(files, normalizedPrefix);
@@ -414,6 +415,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     }
 
     const normalizedPrefix = this.normalizePrefix(prefix);
+    await this.ensureProviderBucket(bucket.name);
     const { objects } = await this.blobStorage.listObjects({ bucket: bucket.name, prefix: normalizedPrefix });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
@@ -446,6 +448,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     }
 
     // Provider-side object write (NOT a SQL op — there is no per-object DB row).
+    await this.ensureProviderBucket(bucket.name);
     await this.blobStorage.putObject({ bucket: bucket.name, key: fileKey, body, contentType });
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
@@ -472,6 +475,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     }
 
     // Provider-side object removal (NOT a SQL op — there is no per-object DB row).
+    await this.ensureProviderBucket(bucket.name);
     await this.blobStorage.deleteObject({ bucket: bucket.name, key: fileKey });
 
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
@@ -509,6 +513,31 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
     });
 
     return { url };
+  }
+
+  /**
+   * TASK-426 — seeded/system bucket rows can predate the physical bucket (the
+   * DB seed provisions rows only and defers provider buckets to "the storage
+   * flow"). Ensure the provider-side bucket exists before a data-plane call so
+   * a freshly-seeded bucket lists as empty instead of failing with
+   * NoSuchBucket. When the existence check itself fails (storage down,
+   * credentials) we skip creation and let the data-plane call surface the real
+   * error; a lost create race ("already exists/owned") is logged and ignored.
+   */
+  private async ensureProviderBucket(bucketName: string): Promise<void> {
+    const exists = await this.blobStorage.bucketExists(bucketName).catch(() => true);
+    if (exists) return;
+
+    try {
+      await this.blobStorage.createBucket(bucketName);
+      this.logger.log({ message: 'Provisioned missing provider bucket on demand', bucketName });
+    } catch (error) {
+      this.logger.warn({
+        message: 'On-demand provider bucket creation failed; continuing',
+        bucketName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private normalizePrefix(prefix?: string): string {

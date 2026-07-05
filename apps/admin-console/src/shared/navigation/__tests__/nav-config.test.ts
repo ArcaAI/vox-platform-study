@@ -42,6 +42,13 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04)', () 
         expect(byTier('20-29').every((entry) => entry.implemented)).toBe(true);
         expect(byTier('30-49').every((entry) => entry.implemented)).toBe(true);
     });
+
+    it('ships a unique icon per entry (the icon-collapsed rail renders icons only)', () => {
+        for (const entry of NAV_ENTRIES) {
+            expect(entry.icon, `${entry.route} is missing an icon`).toBeDefined();
+        }
+        expect(new Set(NAV_ENTRIES.map((entry) => entry.icon)).size).toBe(NAV_ENTRIES.length);
+    });
 });
 
 describe('visibleNavEntries', () => {

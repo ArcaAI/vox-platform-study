@@ -1,4 +1,4 @@
-import { activeAccessToken, gatewayErrorMessage, gatewayUrl } from '@/server/gateway';
+import { activeAccessToken, clientUserAgentHeader, gatewayErrorMessage, gatewayUrl } from '@/server/gateway';
 import { getSession, isElevated } from '@/server/session';
 
 /**
@@ -22,6 +22,7 @@ export async function POST(request: Request): Promise<Response> {
     const headers = new Headers({
         authorization: `Bearer ${activeAccessToken(session)}`,
         'content-type': 'application/json',
+        ...clientUserAgentHeader(request),
     });
     // The ticket inherits the CLS tenant, so the working-tenant scope must
     // ride along exactly as it does on proxied requests.

@@ -168,6 +168,36 @@ describe('handleProxy', () => {
         expect(await response.json()).toEqual({ id: 'dept-1' });
     });
 
+    // TASK-422 — the gateway audits `user-agent` (e.g. IMPERSONATED_ACTION rows
+    // minted per proxied request); without forwarding it records the BFF's
+    // undici default ("node") instead of the operator's browser.
+    it('forwards the browser User-Agent so gateway audit rows record the real client', async () => {
+        await seedSession(baseSession);
+        const calls = installFetchMock(() => Response.json({}));
+
+        const request = new Request('http://console.local/api/hope/admin/users', {
+            headers: { 'user-agent': 'Mozilla/5.0 (TestBrowser)' },
+        });
+        await handleProxy(request, ['admin', 'users']);
+
+        expect(calls[0].headers.get('user-agent')).toBe('Mozilla/5.0 (TestBrowser)');
+    });
+
+    // BUG-003: the gateway marks the Prisma Studio shell `no-store` (TASK-336
+    // OB-11); dropping it at the proxy silently voided that posture on the only
+    // supported access path.
+    it('forwards the gateway Cache-Control so no-store responses stay uncached', async () => {
+        await seedSession(baseSession);
+        installFetchMock(
+            () => new Response('<!DOCTYPE html>', { status: 200, headers: { 'content-type': 'text/html', 'cache-control': 'no-store' } }),
+        );
+
+        const response = await handleProxy(new Request('http://console.local/api/hope/admin/pstudio'), ['admin', 'pstudio']);
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get('cache-control')).toBe('no-store');
+    });
+
     it('passes gateway error statuses through untouched (e.g. 412 precondition failed)', async () => {
         await seedSession(baseSession);
         installFetchMock(() => Response.json({ message: 'Precondition Failed' }, { status: 412 }));

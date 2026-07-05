@@ -229,8 +229,12 @@ function AgentsScreenBody() {
                 </span>
             </FilterBar>
             <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)]">
+                {/* Keyed remounts reset panel-local state on selection change.
+                    The prefixes keep the two keyed siblings unique — duplicate
+                    keys make React orphan the old panel instead of unmounting
+                    it, stacking one extra Versions card per selection (BUG-002). */}
                 {selected ? (
-                    <VersionsPanel key={selected.id} template={selected} />
+                    <VersionsPanel key={`versions-${selected.id}`} template={selected} />
                 ) : (
                     <Card className="py-4">
                         <CardContent className="text-muted-foreground px-4 text-sm">Select a template to inspect its versions.</CardContent>
@@ -260,7 +264,7 @@ function AgentsScreenBody() {
                     ) : null}
                 </div>
                 {selected ? (
-                    <TestRunPanel key={selected.id} template={selected} />
+                    <TestRunPanel key={`test-run-${selected.id}`} template={selected} />
                 ) : (
                     <Card className="py-4">
                         <CardContent className="text-muted-foreground px-4 text-sm">Select a template to run a test.</CardContent>

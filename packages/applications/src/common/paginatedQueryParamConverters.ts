@@ -89,6 +89,45 @@ const JSON_PATH_FILTER_OPERATORS: ReadonlySet<string> = new Set([
 const JSON_STRING_OPERATORS: ReadonlySet<string> = new Set(['string_contains', 'string_starts_with', 'string_ends_with']);
 
 /**
+ * TASK-423 — list operators: the token value is a '|'-separated list
+ * (`field[in]:v1|v2|v3`) deserializing to Prisma's `{ in: [...] }` /
+ * `{ notIn: [...] }`, with EACH item coerced/validated per the column spec.
+ * NOTE: a literal '|' inside an item is NOT expressible in a list token —
+ * the grid serializer must not emit list filters for values containing '|'.
+ */
+const LIST_FILTER_OPERATORS: ReadonlySet<string> = new Set(['in', 'notIn']);
+
+/**
+ * TASK-423 — case-insensitive string operators → the Prisma base operator they
+ * deserialize to, alongside `mode: 'insensitive'`. String-column operators
+ * only: the value intentionally BYPASSES {@link coerceFilterValue} (Prisma's
+ * `mode` is only valid on String columns, where coercion is a no-op anyway —
+ * coercing would produce nonsense like `{ equals: Date, mode: 'insensitive' }`
+ * on misuse).
+ */
+const INSENSITIVE_STRING_OPERATORS: ReadonlyMap<string, string> = new Map([
+  ['iequals', 'equals'],
+  ['icontains', 'contains'],
+  ['istartsWith', 'startsWith'],
+  ['iendsWith', 'endsWith'],
+]);
+
+/**
+ * TASK-423 hardening — filter KEYS are attacker-controlled query-string input,
+ * so field entries must be created as OWN properties: a plain
+ * `filterObject[key] = {}` / truthiness guard with key `'__proto__'` walks the
+ * prototype chain and pollutes `Object.prototype` for the whole process (and
+ * `'toString'`-like keys silently write onto shared built-ins). For every
+ * normal key this is byte-identical to the previous `{}` init + merge.
+ */
+function ensureOwnFieldObject(target: object, key: string): Record<string, unknown> {
+  if (!Object.prototype.hasOwnProperty.call(target, key)) {
+    Object.defineProperty(target, key, { value: {}, enumerable: true, writable: true, configurable: true });
+  }
+  return (target as Record<string, Record<string, unknown>>)[key];
+}
+
+/**
  * Coerce a JSON-path filter value: for value operators the token is parsed as a
  * JSON literal when possible (`5` → number, `true` → boolean, `null` → null,
  * `["a"]` → array, `"x"` → string) and kept as the raw string otherwise
@@ -142,6 +181,13 @@ export function deserializeFilterString<T = DefaultDbFieldType>(filtersString: s
 function deserializeFilterStringWithMap<T = DefaultDbFieldType>(filtersString: string, fieldTypes?: FilterFieldTypeMap): DbFilters {
   const fields = filtersString.split(';');
   const filterObject: DbFilters<T> = {};
+  // TASK-423 — case-insensitive ops accumulate per field in a SIDE bucket
+  // (folded back in after parsing) so their shared `mode: 'insensitive'` can
+  // never leak onto a sibling case-sensitive op on the same field: Prisma's
+  // `mode` applies to the WHOLE field filter object, so the two families must
+  // not share one object. A Map (not `{}`) so hostile keys like '__proto__'
+  // stay plain data.
+  const insensitiveBuckets = new Map<string, Record<string, unknown>>();
 
   fields.forEach((field) => {
     if (field.startsWith('AND[')) {
@@ -192,16 +238,57 @@ function deserializeFilterStringWithMap<T = DefaultDbFieldType>(filtersString: s
         return;
       }
 
-      const opKey = op as keyof DbFilters<T>[keyof T];
-      if (!filterObject[key as keyof T]) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        filterObject[key as keyof T] = {} as any;
+      // TASK-423 — list operators (`in` / `notIn`): split the value on '|'
+      // and coerce each item with the column spec (enum members validate per
+      // item, exactly like a scalar token). Empty items (trailing '|',
+      // 'a||b', or an entirely empty value) are REJECTED with a 400 rather
+      // than silently filtered: they always indicate a client serializer bug,
+      // and dropping them could silently turn the token into `{ in: [] }`
+      // (matches nothing).
+      if (LIST_FILTER_OPERATORS.has(op)) {
+        const items = value.split('|');
+        if (items.some((item) => item.length === 0)) {
+          throw new BadRequestException(`Invalid value for list filter '${key}[${op}]': items must be non-empty '|'-separated values.`);
+        }
+        const coercedItems = items.map((item) => coerceFilterValue(key, item, fieldTypes?.[key]));
+        ensureOwnFieldObject(filterObject, key)[op] = coercedItems;
+        return;
       }
+
+      // TASK-423 — case-insensitive string ops: accumulate on the side bucket
+      // (see above); multiple i-ops on one field safely SHARE one object and
+      // one `mode`. The raw string value is kept on purpose (see the operator
+      // map doc).
+      const insensitiveOp = INSENSITIVE_STRING_OPERATORS.get(op);
+      if (insensitiveOp) {
+        let bucket = insensitiveBuckets.get(key);
+        if (!bucket) {
+          bucket = { mode: 'insensitive' };
+          insensitiveBuckets.set(key, bucket);
+        }
+        bucket[insensitiveOp] = value;
+        return;
+      }
+
       const coercedValue = coerceFilterValue(key, value, fieldTypes?.[key]);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (filterObject[key as keyof T] as any)[opKey] = coercedValue;
+      ensureOwnFieldObject(filterObject, key)[op] = coercedValue;
     }
   });
+
+  // TASK-423 — fold the case-insensitive buckets back in. A field with ONLY
+  // i-ops keeps the flat `{ field: { contains, mode } }` shape; a field that
+  // ALSO carries case-sensitive ops gets its insensitive bucket appended to
+  // the top-level AND (top-level fields are implicitly AND-ed in Prisma), so
+  // the bucket's `mode` cannot clobber the sensitive ops. This runs AFTER the
+  // token loop, so an explicit `AND[…]` group is appended to — never clobbered.
+  for (const [key, bucket] of insensitiveBuckets) {
+    if (!Object.prototype.hasOwnProperty.call(filterObject, key)) {
+      Object.defineProperty(filterObject, key, { value: bucket, enumerable: true, writable: true, configurable: true });
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      filterObject.AND = [...(filterObject.AND ?? []), { [key]: bucket } as any];
+    }
+  }
 
   return filterObject;
 }

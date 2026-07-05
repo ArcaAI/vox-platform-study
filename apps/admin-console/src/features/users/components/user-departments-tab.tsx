@@ -16,10 +16,13 @@ import {
 } from '@arcaai/ui/components/shadcn/dialog';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { GatewayError } from '@/shared/api';
+import { useDepartmentOptions } from '@/shared/catalog';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
+import { NameWithId } from '@/shared/data/name-with-id';
 import { formatDateTime } from '@/shared/format';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { EmptyState } from '@/shared/state/empty-state';
@@ -27,10 +30,19 @@ import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useAssignDepartment, useRemoveDepartment, useUpdateDepartment, useUserDepartments } from '../api/hooks';
 import type { UserDepartment } from '../api/types';
 
+/** Row label: "Name (CODE)" when the wire populated the department, else the raw id. */
+function departmentLabel(row: UserDepartment): string {
+    if (!row.departmentName) return row.departmentId;
+    return row.departmentCode ? `${row.departmentName} (${row.departmentCode})` : row.departmentName;
+}
+
 function AssignDepartmentDialog({ userId, open, onOpenChange }: { userId: string; open: boolean; onOpenChange: (open: boolean) => void }) {
     const assign = useAssignDepartment();
+    const departments = useDepartmentOptions();
     const [departmentId, setDepartmentId] = useState('');
     const [isPrimary, setIsPrimary] = useState(false);
+
+    const departmentFallback = departments.isError || (!departments.isLoading && departments.options.length === 0);
 
     function handleOpenChange(next: boolean) {
         if (!next) {
@@ -61,21 +73,36 @@ function AssignDepartmentDialog({ userId, open, onOpenChange }: { userId: string
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>Assign department</DialogTitle>
-                    <DialogDescription>Adds a department membership. Department ids come from the Departments screen.</DialogDescription>
+                    <DialogDescription>Adds a department membership to this user. Pick the department to assign.</DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                     <div className="flex flex-col gap-2">
                         <Label htmlFor="assign-department-id">
-                            Department ID <span aria-hidden className="text-destructive">*</span>
+                            Department <span aria-hidden className="text-destructive">*</span>
                         </Label>
-                        <Input
-                            id="assign-department-id"
-                            value={departmentId}
-                            onChange={(event) => setDepartmentId(event.target.value)}
-                            autoComplete="off"
-                            className="font-mono"
-                            required
-                        />
+                        {departmentFallback ? (
+                            <Input
+                                id="assign-department-id"
+                                value={departmentId}
+                                onChange={(event) => setDepartmentId(event.target.value)}
+                                autoComplete="off"
+                                className="font-mono"
+                                required
+                            />
+                        ) : (
+                            <Select value={departmentId} onValueChange={setDepartmentId}>
+                                <SelectTrigger id="assign-department-id" className="w-full">
+                                    <SelectValue placeholder="Select a department" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {departments.options.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                            {option.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
                     </div>
                     <div className="flex items-center gap-2">
                         <Checkbox id="assign-department-primary" checked={isPrimary} onCheckedChange={(checked) => setIsPrimary(checked === true)} />
@@ -140,7 +167,11 @@ export function UserDepartmentsTab({ id }: { id: string }) {
     }
 
     const columns: DataTableColumn<UserDepartment>[] = [
-        { key: 'department', header: 'Department ID', mono: true, cell: (row) => row.departmentId },
+        {
+            key: 'department',
+            header: 'Department',
+            cell: (row) => <NameWithId name={row.departmentName ? departmentLabel(row) : undefined} id={row.departmentId} />,
+        },
         {
             key: 'primary',
             header: 'Primary',
@@ -154,7 +185,7 @@ export function UserDepartmentsTab({ id }: { id: string }) {
                     <Button
                         variant="ghost"
                         size="sm"
-                        aria-label={`Make ${row.departmentId} primary`}
+                        aria-label={`Make ${departmentLabel(row)} primary`}
                         disabled={update.isPending}
                         onClick={(event) => {
                             event.stopPropagation();
@@ -176,7 +207,7 @@ export function UserDepartmentsTab({ id }: { id: string }) {
             header: <span className="sr-only">Actions</span>,
             className: 'w-12 text-right',
             cell: (row) => (
-                <Button variant="ghost" size="icon-sm" aria-label={`Remove department ${row.departmentId}`} onClick={() => setRemoval(row)}>
+                <Button variant="ghost" size="icon-sm" aria-label={`Remove department ${departmentLabel(row)}`} onClick={() => setRemoval(row)}>
                     <IconTrash aria-hidden />
                 </Button>
             ),
@@ -214,7 +245,7 @@ export function UserDepartmentsTab({ id }: { id: string }) {
                 <ConfirmDialog
                     open
                     onOpenChange={(open) => !open && setRemoval(null)}
-                    title={`Remove ${removal.departmentId}?`}
+                    title={`Remove ${departmentLabel(removal)}?`}
                     description="The user loses this department membership immediately."
                     confirmLabel="Remove"
                     destructive

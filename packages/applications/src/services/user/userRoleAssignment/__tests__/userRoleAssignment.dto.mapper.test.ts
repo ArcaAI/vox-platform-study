@@ -297,6 +297,33 @@ describe('UserRoleAssignmentDtoMapper', () => {
         });
     });
 
+    // TASK-424 — the admin console renders role NAMES, not raw UUIDs. The
+    // repository now eager-loads the Role relation into the entity's `Roles`
+    // array so the mapper can surface `roleName`.
+    describe('roleName population', () => {
+        it('surfaces roleName from the loaded Roles relation', () => {
+            const entity = {
+                ...createMockUserRoleAssignmentEntity({ id: 'assignment-role', roleId: 'role-clin' }),
+                Roles: [{ name: 'Clinician' }]
+            } as any;
+
+            const result = UserRoleAssignmentDtoMapper.ToResponse(entity);
+
+            expect(result.roleName).toBe('Clinician');
+        });
+
+        it('leaves roleName undefined when Roles is empty', () => {
+            const entity = {
+                ...createMockUserRoleAssignmentEntity({ id: 'assignment-no-role' }),
+                Roles: []
+            } as any;
+
+            const result = UserRoleAssignmentDtoMapper.ToResponse(entity);
+
+            expect(result.roleName).toBeUndefined();
+        });
+    });
+
     describe('edge cases', () => {
         it('should handle entity with null tenantId', () => {
             const entity = createMockUserRoleAssignmentEntity({

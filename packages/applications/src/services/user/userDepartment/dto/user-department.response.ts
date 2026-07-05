@@ -11,6 +11,12 @@ export class UserDepartmentResponse {
   @ApiProperty({ description: 'Assigned department ID' })
   departmentId: string;
 
+  @ApiPropertyOptional({ description: 'Human-readable name of the assigned department' })
+  departmentName?: string;
+
+  @ApiPropertyOptional({ description: 'Short code of the assigned department' })
+  departmentCode?: string;
+
   @ApiProperty({ description: "Whether this is the user's primary department" })
   isPrimary: boolean;
 

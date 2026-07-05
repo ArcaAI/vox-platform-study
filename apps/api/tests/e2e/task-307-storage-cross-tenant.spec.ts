@@ -6,7 +6,7 @@
  * resolved any free-form `:name` directly to `s3Service.{getFile,
  * deleteBucket,…}` with only a path-traversal regex for hygiene; a
  * tenant-A user with the `delete:Storage` CASL permission could
- * enumerate every known bucket suffix (`hope-audio-<tenant>`,
+ * enumerate every known bucket suffix (`hope-recordings-<tenant>`,
  * `hope-attachments-<tenant>`) and delete or download tenant-B
  * contents.
  *
@@ -21,11 +21,11 @@
  *
  * TASK-309 AC-2 / AC-3 — genuine probe strengthening. This spec was
  * already using real bucket NAMES (the seed in
- * `05a-tenant-bucket.ts` ships `hope-audio-<tenant>` and
+ * `05a-tenant-bucket.ts` ships `hope-recordings-<tenant>` and
  * `hope-attachments-<tenant>` for every customer tenant), so the
  * cross-tenant 404s prove the interceptor logic and not just a
  * missing-bucket short-circuit. The upgrade in this revision is to
- * EXPLICITLY confirm that the ARCAAI audio + attachments buckets
+ * EXPLICITLY confirm that the ARCAAI recordings + attachments buckets
  * exist (visible to the ARCAAI-scoped super_admin) BEFORE the
  * __GLOBAL__ tenant_admin probes them — without this, a regression
  * that accidentally deleted the seed buckets would silently turn
@@ -39,7 +39,7 @@ import {
     loginUser,
 } from '../../../../tests/helpers';
 
-const ARCAAI_AUDIO_BUCKET = 'hope-audio-arcaai'; // matches seed/05a-tenant-bucket
+const ARCAAI_RECORDINGS_BUCKET = 'hope-recordings-arcaai'; // matches seed/05a-tenant-bucket (TASK-426: recordings)
 const ARCAAI_ATTACHMENTS_BUCKET = 'hope-attachments-arcaai';
 
 interface BucketRow {
@@ -83,11 +83,11 @@ test.describe('TASK-309 AC-2/AC-3 — Storage bucket ownership genuine probe (AC
         );
         expect(arcaaiBuckets.status(), 'list ARCAAI buckets').toBe(200);
         const rows = (await arcaaiBuckets.json()) as BucketRow[];
-        const audio = rows.find((b) => b.name === ARCAAI_AUDIO_BUCKET);
+        const recordings = rows.find((b) => b.name === ARCAAI_RECORDINGS_BUCKET);
         const attachments = rows.find((b) => b.name === ARCAAI_ATTACHMENTS_BUCKET);
         expect(
-            audio,
-            `ARCAAI seed must include "${ARCAAI_AUDIO_BUCKET}" — without this the cross-tenant probe degrades to "missing bucket"`,
+            recordings,
+            `ARCAAI seed must include "${ARCAAI_RECORDINGS_BUCKET}" — without this the cross-tenant probe degrades to "missing bucket"`,
         ).toBeTruthy();
         expect(
             attachments,
@@ -97,7 +97,7 @@ test.describe('TASK-309 AC-2/AC-3 — Storage bucket ownership genuine probe (AC
 
     test('GET /storage/buckets/:name probing ARCAAI bucket from __GLOBAL__ → 404', async ({ request }) => {
         const response = await request.get(
-            `/api/v1/storage/buckets/${ARCAAI_AUDIO_BUCKET}`,
+            `/api/v1/storage/buckets/${ARCAAI_RECORDINGS_BUCKET}`,
             { headers: { Authorization: `Bearer ${tenantAdminToken}` } },
         );
         expect(response.status()).toBe(404);
@@ -105,7 +105,7 @@ test.describe('TASK-309 AC-2/AC-3 — Storage bucket ownership genuine probe (AC
 
     test('GET /storage/buckets/:name/files probing ARCAAI bucket from __GLOBAL__ → 404', async ({ request }) => {
         const response = await request.get(
-            `/api/v1/storage/buckets/${ARCAAI_AUDIO_BUCKET}/files`,
+            `/api/v1/storage/buckets/${ARCAAI_RECORDINGS_BUCKET}/files`,
             { headers: { Authorization: `Bearer ${tenantAdminToken}` } },
         );
         expect(response.status()).toBe(404);
@@ -132,7 +132,7 @@ test.describe('TASK-309 AC-2/AC-3 — Storage bucket ownership genuine probe (AC
 
     test('GET /storage/buckets/:name/files/:key on ARCAAI bucket from __GLOBAL__ → 404 (no presigned-URL leak)', async ({ request }) => {
         const response = await request.get(
-            `/api/v1/storage/buckets/${ARCAAI_AUDIO_BUCKET}/files/anything.wav`,
+            `/api/v1/storage/buckets/${ARCAAI_RECORDINGS_BUCKET}/files/anything.wav`,
             { headers: { Authorization: `Bearer ${tenantAdminToken}` } },
         );
         expect(response.status()).toBe(404);

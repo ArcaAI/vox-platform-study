@@ -224,6 +224,27 @@ describe('AgentsScreen', () => {
         await waitFor(() => expect(calls.some((call) => pathOf(call) === '/api/hope/admin/prompt-templates/pt-2/versions')).toBe(true));
     });
 
+    it('replaces the side panels on selection change instead of stacking version cards (BUG-002)', async () => {
+        stubAgents();
+        renderWithProviders(<AgentsScreen />);
+
+        // Auto-select mounts the first row's panels.
+        expect(await screen.findByLabelText('Versions of Cardiology Notes')).toBeDefined();
+
+        fireEvent.click(screen.getByText('Discharge Summary'));
+        expect(await screen.findByLabelText('Versions of Discharge Summary')).toBeDefined();
+
+        fireEvent.click(screen.getByText('Radiology Report'));
+        expect(await screen.findByLabelText('Versions of Radiology Report')).toBeDefined();
+
+        // The previous panels must be unmounted — exactly one versions panel
+        // and one test-run panel may exist at any time.
+        expect(screen.queryByLabelText('Versions of Cardiology Notes')).toBeNull();
+        expect(screen.queryByLabelText('Versions of Discharge Summary')).toBeNull();
+        expect(screen.getAllByLabelText(/^Versions of /)).toHaveLength(1);
+        expect(screen.getAllByLabelText('Sample input')).toHaveLength(1);
+    });
+
     it('activates an older version behind a confirm dialog', async () => {
         const calls = stubAgents((call) => {
             if (call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-1/versions/6/activate') {

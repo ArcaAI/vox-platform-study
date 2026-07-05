@@ -1,4 +1,4 @@
-import { gatewayErrorMessage, gatewayUrl } from '@/server/gateway';
+import { clientUserAgentHeader, gatewayErrorMessage, gatewayUrl } from '@/server/gateway';
 import { toSafeSession } from '@/server/safe-user';
 import { getSession, isElevated, setSession } from '@/server/session';
 
@@ -48,6 +48,7 @@ export async function POST(request: Request): Promise<Response> {
         headers: {
             authorization: `Bearer ${session.accessToken}`,
             'content-type': 'application/json',
+            ...clientUserAgentHeader(request),
         },
         body: JSON.stringify({
             ...(body.targetTenantId ? { targetTenantId: body.targetTenantId } : {}),

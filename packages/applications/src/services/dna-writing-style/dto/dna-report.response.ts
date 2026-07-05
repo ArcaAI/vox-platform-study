@@ -8,6 +8,9 @@ export class DnaReportResponse {
   @ApiProperty({ description: 'Doctor ID' })
   doctorId: string;
 
+  @ApiPropertyOptional({ description: "Doctor's username (resolved server-side for display)" })
+  doctorUsername?: string;
+
   @ApiPropertyOptional({ description: 'Report data (JSON)' })
   reportData?: Record<string, unknown>;
 
