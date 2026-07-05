@@ -49,4 +49,42 @@ test.describe('prisma studio screen', () => {
         await expect(openLink).toBeVisible();
         await expect(openLink).toHaveAttribute('href', '/api/hope/admin/pstudio');
     });
+
+    /**
+     * BUG-003 regression: the served shell posts queries back to the path it
+     * was served from, so the session-cookie-authenticated proxy carries the
+     * credential on the POST too. Before the fix the shell posted directly to
+     * the gateway with an empty bearer and every query 401ed. Runs in-page so
+     * the httpOnly session cookie applies (page.request drops it — see
+     * helpers/auth.ts).
+     */
+    test('executes a studio query through the session-guarded proxy', async ({ page }) => {
+        await openPstudio(page);
+        const iframe = page.locator('iframe[title="Prisma Studio"]');
+        test.skip((await iframe.count()) === 0, 'Prisma Studio is disabled in this environment');
+
+        const result = await page.evaluate(async () => {
+            const shell = await fetch('/api/hope/admin/pstudio');
+            const query = await fetch('/api/hope/admin/pstudio', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ query: { sql: 'select 1 as ok', parameters: [] } }),
+            });
+            return {
+                shellStatus: shell.status,
+                shellContentType: shell.headers.get('content-type'),
+                shellCacheControl: shell.headers.get('cache-control'),
+                queryStatus: query.status,
+                queryBody: (await query.json()) as [unknown, Array<{ ok: number }>?],
+            };
+        });
+
+        expect(result.shellStatus).toBe(200);
+        expect(result.shellContentType).toContain('text/html');
+        expect(result.shellCacheControl).toBe('no-store');
+        expect(result.queryStatus).toBe(200);
+        const [queryError, rows] = result.queryBody;
+        expect(queryError).toBeNull();
+        expect(rows?.[0]?.ok).toBe(1);
+    });
 });

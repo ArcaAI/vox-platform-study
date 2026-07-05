@@ -15,8 +15,10 @@ import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
+import { useTenantNames } from '@/shared/catalog';
 import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
 import { FilterBar, FilterSearch, FilterSelect, type FilterOption } from '@/shared/data/filter-bar';
+import { NameWithId } from '@/shared/data/name-with-id';
 import { CursorPagination } from '@/shared/data/table-pagination';
 import { formatDateTime, formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
@@ -108,6 +110,7 @@ export function AuditLogsScreen() {
     const cursor = cursorStack.at(-1);
     const cursorParams: AuditLogCursorParams = { ...filterParams, limit, ...(cursor ? { cursor } : {}) };
 
+    const tenantNames = useTenantNames();
     const logsQuery = useAuditLogsCursor(cursorParams);
     // Keyset envelopes carry no total; the offset list's count supplies the
     // frame's "n events" meta + "Showing x of y" without fetching rows.
@@ -180,7 +183,11 @@ export function AuditLogsScreen() {
                 </span>
             ),
         },
-        { key: 'tenant', header: 'Tenant', mono: true, cell: (row) => row.tenantId || EM_DASH },
+        {
+            key: 'tenant',
+            header: 'Tenant',
+            cell: (row) => (row.tenantId ? <NameWithId name={tenantNames.get(row.tenantId)} id={row.tenantId} /> : EM_DASH),
+        },
         { key: 'result', header: 'Result', cell: (row) => <AuditResultIndicator success={row.success} /> },
     ];
 

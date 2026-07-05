@@ -16,7 +16,7 @@
  *
  * Test scenario — every seed environment ships system buckets for every
  * tenant (`05a-tenant-bucket.ts`):
- *   - super_admin → discovers tenant ARCAAI's `audio` bucket id.
+ *   - super_admin → discovers tenant ARCAAI's `recordings` bucket id.
  *   - tenant_admin (in `__GLOBAL__`) probes that id → must respond 404.
  */
 import { test, expect } from '@playwright/test';
@@ -66,9 +66,10 @@ test.describe('TASK-307 W3.5 — TenantBucket ownership (AC-8)', () => {
         );
         expect(listResp.status(), 'list ARCAAI buckets').toBe(200);
         const rows = (await listResp.json()) as BucketRow[];
-        const audio = rows.find((b) => b.slug === 'audio');
-        expect(audio, 'ARCAAI seed should ship an audio bucket').toBeTruthy();
-        arcaaiBucketId = audio!.id;
+        // TASK-426 — the default audio-purpose system slug is `recordings`.
+        const recordings = rows.find((b) => b.slug === 'recordings');
+        expect(recordings, 'ARCAAI seed should ship a recordings bucket').toBeTruthy();
+        arcaaiBucketId = recordings!.id;
     });
 
     test('tenant_admin from __GLOBAL__ probing ARCAAI bucket by id → 404 (no 200 leak)', async ({ request }) => {

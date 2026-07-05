@@ -80,7 +80,36 @@ export class UserDepartmentService extends BaseService implements IUserDepartmen
       data: { userId, items: assignments.map((a) => a.id) },
     });
 
-    return assignments.map(UserDepartmentDtoMapper.toResponse);
+    // TASK-424 — the admin console renders department NAMES/CODES, not raw
+    // UUIDs. Batch-resolve the distinct departmentIds in ONE query (no N+1) and
+    // build an id→department map. Departments are tenant-scoped (the extended
+    // client injects the tenant predicate) and the assignments above are already
+    // tenant-filtered, so a foreign department can never enter this set. A
+    // deleted/unresolvable department simply leaves the label fields undefined.
+    const departmentById = await this.resolveDepartmentLabels(assignments.map((a) => a.departmentId));
+
+    return assignments.map((assignment) => UserDepartmentDtoMapper.toResponse(assignment, departmentById.get(assignment.departmentId)));
+  }
+
+  /**
+   * Resolve a set of (possibly duplicated) departmentIds to an
+   * `id → { name, code }` map in ONE query. Returns an empty map when there are
+   * no ids so callers can skip the department lookup entirely.
+   */
+  private async resolveDepartmentLabels(departmentIds: string[]): Promise<Map<string, { name?: string | null; code?: string | null }>> {
+    const ids = Array.from(new Set(departmentIds));
+    const map = new Map<string, { name?: string | null; code?: string | null }>();
+    if (ids.length === 0) return map;
+
+    const departments = await this.departmentRepository.findAll({
+      where: { id: { in: ids } },
+      page: 1,
+      limit: ids.length,
+    });
+    for (const department of departments) {
+      map.set(department.id, { name: department.name, code: department.code });
+    }
+    return map;
   }
 
   async assign(userId: string, dto: AssignUserDepartmentRequest): Promise<UserDepartmentResponse> {
@@ -91,7 +120,9 @@ export class UserDepartmentService extends BaseService implements IUserDepartmen
     // TASK-305 Phase F — the department must exist AND live in the caller's
     // tenant; otherwise the membership row would reference a foreign-tenant
     // department. NotFoundException avoids leaking cross-tenant existence.
-    await assertParentInScope(this.departmentRepository, departmentId, tenantId);
+    // TASK-424 — reuse the already-loaded department to surface its name/code
+    // on the returned row (no extra query).
+    const department = await assertParentInScope(this.departmentRepository, departmentId, tenantId);
 
     // Reject a live duplicate before touching anything else.
     const [activeDuplicate] = await this.userDepartmentRepository.findAll({
@@ -143,7 +174,7 @@ export class UserDepartmentService extends BaseService implements IUserDepartmen
       data: { userId, departmentId, isPrimary },
     });
 
-    return UserDepartmentDtoMapper.toResponse(saved);
+    return UserDepartmentDtoMapper.toResponse(saved, { name: department.name, code: department.code });
   }
 
   /**
@@ -234,7 +265,9 @@ export class UserDepartmentService extends BaseService implements IUserDepartmen
       page: 1,
       limit: 500,
     });
-    return finalAssignments.map(UserDepartmentDtoMapper.toResponse);
+    // TASK-424 — `toResponse` now takes an optional label arg, so it can no
+    // longer be passed straight to `Array.map` (which would forward the index).
+    return finalAssignments.map((assignment) => UserDepartmentDtoMapper.toResponse(assignment));
   }
 
   async update(id: string, dto: UpdateUserDepartmentRequest): Promise<UserDepartmentResponse> {

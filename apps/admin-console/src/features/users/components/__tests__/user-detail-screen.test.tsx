@@ -6,7 +6,7 @@
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { useBreadcrumbStore } from '@/shared/navigation/breadcrumb-store';
 import { renderWithProviders } from '@/test/render';
 import type { User, UserDepartment, UserProfile, UserRoleAssignment, UserSetting, VoiceProfile } from '../../api/types';
@@ -61,6 +61,8 @@ const DEPARTMENTS: UserDepartment[] = [
         id: 'da-1',
         userId: 'u-1',
         departmentId: 'd-cardio',
+        departmentName: 'Cardiology',
+        departmentCode: 'CARD',
         isPrimary: true,
         tenantId: 't-1',
         resourceStatus: 'ENABLED',
@@ -179,6 +181,21 @@ function stubDetailFetch(overrides?: (url: string, init?: RequestInit) => Respon
         if (method === 'GET' && url === '/api/hope/admin/users/u-1/profile') return Response.json(PROFILE);
         if (method === 'GET' && url === '/api/hope/admin/users/u-1/voice-profiles') return Response.json(VOICE_PROFILES);
         if (method === 'GET' && url === '/api/hope/admin/users/u-1/api-keys') return Response.json({ data: [API_KEY], count: 1, limit: 25, page: 0 });
+        // Shared id -> name catalogs (TASK-424): tenants (Paginated), rbac roles ({data,total,page,pageSize}), departments (plain array).
+        if (method === 'GET' && url.startsWith('/api/hope/admin/tenants')) {
+            return Response.json({ data: [{ id: 't-1', name: 'Acme Clinic', key: 'acme' }], count: 1, limit: 500, page: 0 });
+        }
+        if (method === 'GET' && url.startsWith('/api/hope/admin/rbac/roles')) {
+            return Response.json({
+                data: [{ id: 'role-clinician', name: 'Clinician', isSystemRole: false, resourceStatus: 'ENABLED', createdAt: '2025-01-01T00:00:00.000Z', updatedAt: '2025-01-01T00:00:00.000Z' }],
+                total: 1,
+                page: 1,
+                pageSize: 500,
+            });
+        }
+        if (method === 'GET' && url.startsWith('/api/hope/admin/departments')) {
+            return Response.json([{ id: 'dept-1', code: 'CARD', name: 'Cardiology', isRootDepartment: true }]);
+        }
         if (method === 'POST' && url === '/api/auth/impersonate') {
             return Response.json({ impersonation: { targetUserId: 'u-1', targetUsername: 'mia.okafor', expiresAt: '2025-07-01T10:00:00.000Z' } });
         }
@@ -198,6 +215,21 @@ function stubDetailFetch(overrides?: (url: string, init?: RequestInit) => Respon
         if (method === 'DELETE' && url === '/api/hope/admin/users/u-1') return Response.json(DETAIL);
         return undefined;
     });
+}
+
+// Radix Select scrolls the highlighted item into view on open; happy-dom has no layout engine.
+beforeAll(() => {
+    if (!Element.prototype.scrollIntoView) {
+        Element.prototype.scrollIntoView = () => {};
+    }
+});
+
+/** Open a Radix Select trigger and pick an option by its visible label (happy-dom pointer path). */
+async function selectOption(trigger: HTMLElement, optionName: string | RegExp) {
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    const option = await screen.findByRole('option', { name: optionName });
+    fireEvent.pointerUp(option, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    fireEvent.click(option);
 }
 
 afterEach(() => {
@@ -275,20 +307,34 @@ describe('UserDetailScreen', () => {
         await waitFor(() => expect(push).toHaveBeenCalledWith('/users'));
     });
 
-    it('lists role assignments and assigns a new role through the dialog', async () => {
+    it('lists role assignments with the role name primary and the scope tenant resolved by name', async () => {
+        stubDetailFetch();
+        renderWithProviders(<UserDetailScreen id="u-1" />);
+
+        // Role name is the primary label; the raw role id is demoted to metadata.
+        expect(await screen.findByText('Clinician')).toBeDefined();
+        expect(screen.getByText('role-clinician')).toBeDefined();
+        // Scope tenant id resolves to the catalog display name, with the id still shown.
+        expect(await screen.findByText('Acme Clinic')).toBeDefined();
+        expect(screen.getByText('t-1')).toBeDefined();
+    });
+
+    it('assigns a role by selecting from the catalog and posts without a tenant for a global scope', async () => {
         const calls = stubDetailFetch();
         renderWithProviders(<UserDetailScreen id="u-1" />);
 
-        expect(await screen.findByText('Clinician')).toBeDefined();
-
+        await screen.findByText('Clinician');
         fireEvent.click(screen.getByRole('button', { name: /assign role/i }));
         const dialog = await screen.findByRole('dialog');
-        fireEvent.change(within(dialog).getByLabelText(/role id/i), { target: { value: 'role-billing' } });
+
+        // The role field is now a catalog-fed select offering the "Clinician" option.
+        await selectOption(within(dialog).getByLabelText(/^role/i), 'Clinician');
+        // Tenant defaults to the first "Global (cross-tenant)" option -> tenantId omitted.
         fireEvent.click(within(dialog).getByRole('button', { name: /^assign$/i }));
 
         await waitFor(() => {
             const post = calls.find((call) => call.method === 'POST' && call.url === '/api/hope/admin/users/u-1/roles');
-            expect(post?.body).toEqual({ roleId: 'role-billing' });
+            expect(post?.body).toEqual({ roleId: 'role-clinician' });
         });
     });
 
@@ -331,18 +377,28 @@ describe('UserDetailScreen', () => {
         expect(screen.getByRole('button', { name: /reload latest/i })).toBeDefined();
     });
 
-    it('assigns a department through the dialog', async () => {
+    it('shows the department name and code as the primary label', async () => {
+        stubDetailFetch();
+        renderWithProviders(<UserDetailScreen id="u-1" />, { searchParams: '?tab=departments' });
+
+        expect(await screen.findByText('Cardiology (CARD)')).toBeDefined();
+        // The raw department id remains as secondary metadata beneath the name.
+        expect(screen.getByText('d-cardio')).toBeDefined();
+    });
+
+    it('assigns a department by selecting from the catalog', async () => {
         const calls = stubDetailFetch();
         renderWithProviders(<UserDetailScreen id="u-1" />, { searchParams: '?tab=departments' });
 
         fireEvent.click(await screen.findByRole('button', { name: /assign department/i }));
         const dialog = await screen.findByRole('dialog');
-        fireEvent.change(within(dialog).getByLabelText(/department id/i), { target: { value: 'd-radiology' } });
+
+        await selectOption(within(dialog).getByLabelText(/^department/i), 'Cardiology (CARD)');
         fireEvent.click(within(dialog).getByRole('button', { name: /^assign$/i }));
 
         await waitFor(() => {
             const post = calls.find((call) => call.method === 'POST' && call.url === '/api/hope/admin/users/u-1/departments');
-            expect(post?.body).toEqual({ departmentId: 'd-radiology' });
+            expect(post?.body).toEqual({ departmentId: 'dept-1' });
         });
     });
 

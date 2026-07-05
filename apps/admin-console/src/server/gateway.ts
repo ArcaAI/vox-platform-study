@@ -7,6 +7,17 @@ export function gatewayUrl(path: string, search = ''): string {
     return `${serverEnv().API_URL}/api/v1/${path}${search}`;
 }
 
+/**
+ * TASK-422 — the browser's User-Agent, forwarded on BFF → gateway calls so
+ * audit rows (LOGIN, impersonation brackets, per-request impersonated
+ * actions) record the operator's real client. Without it, Node's fetch
+ * (undici) sends its hardcoded default and the gateway audits "node".
+ */
+export function clientUserAgentHeader(request: Request): Record<string, string> {
+    const userAgent = request.headers.get('user-agent');
+    return userAgent ? { 'user-agent': userAgent } : {};
+}
+
 /** The token requests act with: the impersonation token while active. */
 export function activeAccessToken(session: SessionPayload): string {
     return session.impersonation?.accessToken ?? session.accessToken;

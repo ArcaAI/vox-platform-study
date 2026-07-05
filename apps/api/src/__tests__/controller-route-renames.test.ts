@@ -175,19 +175,18 @@ describe('Pstudio auth decorators (post-TASK-307 W5.2)', () => {
 // ─── Pstudio Hardcoded URL Regression Guards (retuned by W5.2) ──────────
 
 describe('Pstudio hardcoded URL regression guards', () => {
-    it('should reference /api/v1/admin/pstudio in usage message', () => {
+    // BUG-003 — the controller no longer constructs ANY absolute studio
+    // endpoint (the Host-derived URL bypassed the console BFF proxy → empty
+    // bearer → 401). The shell posts back to window.location.pathname instead.
+    it('BUG-003 — does not construct a Host-derived studioEndpointUrl at all', () => {
         const source = readController('pstudio/pstudio.controller.ts');
-        expect(source).toContain('/api/v1/admin/pstudio');
+        expect(source).not.toContain('studioEndpointUrl');
+        expect(source).not.toMatch(/\$\{protocol\}:\/\/\$\{host\}/);
     });
 
     it('should NOT reference old /api/pstudio in usage message', () => {
         const source = readController('pstudio/pstudio.controller.ts');
         expect(source).not.toMatch(/Usage:.*\/api\/pstudio\?token=/);
-    });
-
-    it('should construct studioEndpointUrl with /api/v1/admin/pstudio', () => {
-        const source = readController('pstudio/pstudio.controller.ts');
-        expect(source).toContain('/api/v1/admin/pstudio`');
     });
 
     it('should NOT construct studioEndpointUrl with old /api/pstudio', () => {

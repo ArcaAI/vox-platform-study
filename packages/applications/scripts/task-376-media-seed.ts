@@ -91,7 +91,8 @@ const RECORDING_META = {
 
 // --- Canonical Global-tenant buckets (seed/05a-tenant-bucket.ts) -------------
 const ATTACH_BUCKET = 'hope-attachments-global';
-const AUDIO_BUCKET = 'hope-audio-global';
+// TASK-426 — the audio-purpose system bucket slug is `recordings`.
+const AUDIO_BUCKET = 'hope-recordings-global';
 
 const KEY_PREFIX = 'task-376';
 const KEYS = {

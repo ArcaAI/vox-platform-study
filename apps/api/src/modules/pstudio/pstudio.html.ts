@@ -4,20 +4,24 @@
 const STUDIO_VERSION = '0.31.2';
 
 /**
- * Server-rendered standalone Prisma Studio shell (dev-only).
+ * Server-rendered standalone Prisma Studio shell.
  *
- * TASK-336 OB-11 — the bearer JWT is NO LONGER inlined into this HTML. The
- * served body must stay secret-free (it can otherwise leak via proxy / CDN /
- * browser-history logs). The shell reads the token from the URL fragment
- * (`#token=…`, which the browser never sends to the server), uses it for the
- * BFF client, then immediately scrubs it from history.
+ * BUG-003 — the shell is consumed through an authenticating BFF proxy (the
+ * admin console's /api/hope/admin/pstudio route): the GET that served this
+ * HTML carried the operator's credential injected server-side from the sealed
+ * session cookie. The shell therefore posts its queries back to the SAME
+ * path it was served from (`window.location.pathname`), so the session cookie
+ * rides along and the proxy injects the bearer on every query too. No token
+ * ever reaches the browser (supersedes the TASK-336 OB-11 `#token=` fragment
+ * hand-off, which was unsatisfiable under the BFF cookie session and left the
+ * POSTs hitting the gateway directly with an empty bearer → 401).
  *
  * TASK-336 BR-02 — HOPE's tables all live in the `core` schema; studio-core's
  * postgres adapter hardcodes `defaultSchema: "public"`, which is empty here and
  * makes the UI render "No tables found". We override the adapter's
  * `defaultSchema` to `core` so the table list resolves.
  */
-export function getStudioHtml(studioEndpointUrl: string): string {
+export function getStudioHtml(): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -102,27 +106,14 @@ export function getStudioHtml(studioEndpointUrl: string): string {
             banner.style.display = 'block';
         }
 
-        // OB-11: read the bearer token from the URL fragment (never sent to the
-        // server, absent from this response body) and immediately scrub it from
-        // history so it does not linger in the address bar / back-forward cache.
-        function readAndScrubToken() {
-            const raw = window.location.hash.indexOf('#') === 0 ? window.location.hash.slice(1) : '';
-            const token = new URLSearchParams(raw).get('token') || '';
-            if (token) {
-                window.history.replaceState(null, '', window.location.pathname + window.location.search);
-            }
-            return token;
-        }
-
         function App() {
             const adapter = useMemo(() => {
-                const token = readAndScrubToken();
-                if (!token) {
-                    showError('No access token supplied. Open Prisma Studio from the admin console (the token is passed via the URL fragment).');
-                }
+                // BUG-003: query the exact path that served this shell. The
+                // authenticating proxy in front of it (console BFF) receives
+                // the session cookie on these same-origin POSTs and injects
+                // the operator's bearer server-side — no token in the browser.
                 const executor = createStudioBFFClient({
-                    url: '${studioEndpointUrl}',
-                    customHeaders: { 'Authorization': 'Bearer ' + token },
+                    url: window.location.pathname,
                 });
                 // BR-02: HOPE tables live in the core schema; studio-core defaults
                 // to the (empty) public schema, which renders "No tables found".

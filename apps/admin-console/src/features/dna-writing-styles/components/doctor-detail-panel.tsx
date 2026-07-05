@@ -12,6 +12,7 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
+import { NameWithId } from '@/shared/data/name-with-id';
 import { formatDateTime, formatRelativeTime } from '@/shared/format';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { EmptyState } from '@/shared/state/empty-state';
@@ -199,7 +200,7 @@ export function DoctorDetailPanel({ doctorId, onGenerate }: { doctorId: string; 
             <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
                     <DetailRow label="Doctor">
-                        <span className="font-mono text-xs break-all">{payload.doctorId}</span>
+                        <NameWithId name={payload.doctorUsername} id={payload.doctorId} />
                     </DetailRow>
                     <DetailRow label="Report">
                         <span className="font-mono text-xs break-all">{payload.id}</span>

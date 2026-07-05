@@ -14,6 +14,7 @@ import { Progress } from '@arcaai/ui/components/shadcn/progress';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
 import { FilterBar, FilterSearch, FilterSelect, type FilterOption } from '@/shared/data/filter-bar';
+import { NameWithId } from '@/shared/data/name-with-id';
 import { TablePagination } from '@/shared/data/table-pagination';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
@@ -184,7 +185,7 @@ function DnaWritingStylesBody() {
     const hasFilters = Boolean(doctor || disabled === 'true');
 
     const columns: DataTableColumn<DnaReport>[] = [
-        { key: 'doctor', header: 'Doctor', mono: true, cell: (row) => <span className="font-medium">{row.doctorId}</span> },
+        { key: 'doctor', header: 'Doctor', cell: (row) => <NameWithId name={row.doctorUsername} id={row.doctorId} /> },
         {
             key: 'version',
             header: 'Version',

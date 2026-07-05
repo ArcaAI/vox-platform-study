@@ -68,7 +68,7 @@ function report(overrides: Partial<DnaReport> = {}): DnaReport {
 }
 
 const REPORTS: DnaReport[] = [
-    report(),
+    report({ doctorUsername: 'dr.house' }),
     report({ id: 'rep-2', doctorId: 'doc-2', currentVersionNumber: 1, isLatest: false, version: 1, updatedAt: '2026-06-20T10:00:00.000Z' }),
 ];
 
@@ -185,9 +185,12 @@ describe('DnaWritingStylesScreen', () => {
         stubDna();
         renderWithProviders(<DnaWritingStylesScreen />);
 
-        // Grid rows (doctor ids are mono per frame 02).
-        expect(await screen.findByText('doc-2')).toBeDefined();
+        // Grid rows: the human-readable doctor username is the primary label,
+        // while the raw id stays present as secondary metadata.
+        expect(await screen.findByText('dr.house')).toBeDefined();
         expect(screen.getAllByText('doc-1').length).toBeGreaterThanOrEqual(1);
+        // A row without a resolved username falls back to the raw id.
+        expect(screen.getByText('doc-2')).toBeDefined();
         expect(screen.getByText('v3')).toBeDefined();
         expect(screen.getByText('Latest')).toBeDefined();
         expect(screen.getAllByText('Active').length).toBe(2);

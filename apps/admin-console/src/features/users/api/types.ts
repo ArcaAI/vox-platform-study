@@ -126,6 +126,8 @@ export interface UserDepartment {
     id: string;
     userId: string;
     departmentId: string;
+    departmentName?: string;
+    departmentCode?: string;
     isPrimary: boolean;
     tenantId: string;
     resourceStatus?: ResourceStatus;

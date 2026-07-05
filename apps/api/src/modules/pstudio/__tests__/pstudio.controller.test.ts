@@ -119,12 +119,20 @@ describe('PrismaStudioController (TASK-326 X1 — audit)', () => {
 });
 
 // -----------------------------------------------------------------------------
-// TASK-336 OB-11 — serveStudio must not inline the bearer JWT into the HTML it
-// returns (the token would otherwise sit in the response body / proxy / CDN /
-// browser-history logs). The shell now reads the token from the URL fragment;
-// the served HTML therefore never contains the request's bearer credential.
+// TASK-336 OB-11 + BUG-003 — the served shell must carry NO credential and no
+// client-side credential plumbing at all: auth rides the session cookie through
+// the BFF proxy that fronts this route (the proxy injects the bearer
+// server-side on GET and POST alike). The body is also no-store so no
+// proxy / CDN caches the studio shell.
+//
+// BUG-003 root cause locked here: the previous shell embedded a Host-derived
+// absolute gateway endpoint and expected a `#token=` URL-fragment hand-off.
+// Under the admin-console BFF session (httpOnly cookie, token never
+// client-readable) no fragment token exists, so the studio's POSTs hit the
+// gateway directly with an empty bearer → UnifiedAuthGuard 401. The shell must
+// instead post back to the SAME path that served it (window.location.pathname).
 // -----------------------------------------------------------------------------
-describe('PrismaStudioController.serveStudio (TASK-336 OB-11)', () => {
+describe('PrismaStudioController.serveStudio (TASK-336 OB-11 + BUG-003)', () => {
     let controller: PrismaStudioController;
 
     beforeEach(() => {
@@ -134,36 +142,46 @@ describe('PrismaStudioController.serveStudio (TASK-336 OB-11)', () => {
         );
     });
 
-    function mockReqRes(authHeader: string) {
-        const res = {
+    function mockRes() {
+        return {
             type: vi.fn().mockReturnThis(),
             send: vi.fn().mockReturnThis(),
             status: vi.fn().mockReturnThis(),
             setHeader: vi.fn(),
         };
-        const req = {
-            headers: { authorization: authHeader },
-            protocol: 'https',
-            get: (key: string) => (key === 'host' ? 'admin.example.test' : undefined),
-        };
-        return { req, res };
     }
 
-    it('does NOT inline the request bearer token into the served HTML', () => {
-        const { req, res } = mockReqRes('Bearer super-secret-jwt-value');
+    function servedHtml(res = mockRes()): string {
+        controller.serveStudio(res as never);
+        return (res.send.mock.calls[0]?.[0] ?? '') as string;
+    }
 
-        controller.serveStudio(req as never, res as never);
+    it('serves HTML with no bearer credential or Authorization plumbing (OB-11)', () => {
+        const res = mockRes();
+        const html = servedHtml(res);
 
         expect(res.type).toHaveBeenCalledWith('text/html');
-        const html = (res.send.mock.calls[0]?.[0] ?? '') as string;
-        expect(html).not.toContain('super-secret-jwt-value');
+        expect(html).not.toContain('Authorization');
+        expect(html).not.toContain('Bearer');
     });
 
-    it('marks the dev-only studio shell as no-store', () => {
-        const { req, res } = mockReqRes('Bearer x');
-
-        controller.serveStudio(req as never, res as never);
+    it('marks the studio shell as no-store', () => {
+        const res = mockRes();
+        servedHtml(res);
 
         expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+    });
+
+    it('posts studio queries back to the path that served the shell', () => {
+        expect(servedHtml()).toContain('window.location.pathname');
+    });
+
+    it('does not embed a Host-derived absolute BFF endpoint', () => {
+        expect(servedHtml()).not.toMatch(/createStudioBFFClient\(\{\s*url:\s*['"`]http/);
+        expect(servedHtml()).not.toContain('://${host}');
+    });
+
+    it('does not rely on a #token URL-fragment contract', () => {
+        expect(servedHtml()).not.toContain('#token');
     });
 });

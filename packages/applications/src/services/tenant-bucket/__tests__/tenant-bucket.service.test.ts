@@ -37,6 +37,7 @@ const mockBlobStorage = {
     deleteObject: vi.fn(),
     listObjects: vi.fn(),
     presignGet: vi.fn(),
+    bucketExists: vi.fn(),
 };
 
 // Retained only for the best-effort S3/MinIO setBucketPolicy hardening.
@@ -101,20 +102,20 @@ vi.mock('@arcaai/domains', async (importOriginal) => {
             })),
             CreateDefaultSystemBuckets: vi.fn((tenantId, tenantKey) => [
                 {
-                    id: 'new-system-audio',
+                    id: 'new-system-attachments',
                     tenantId,
-                    name: `hope-audio-${tenantKey}`,
-                    slug: 'audio',
+                    name: `hope-attachments-${tenantKey}`,
+                    slug: 'attachments',
                     bucketType: BUCKET_TYPE_SYSTEM,
                     isSystemBucket: true,
                     createdAt: new Date(),
                     updatedAt: new Date(),
                 },
                 {
-                    id: 'new-system-attachments',
+                    id: 'new-system-recordings',
                     tenantId,
-                    name: `hope-attachments-${tenantKey}`,
-                    slug: 'attachments',
+                    name: `hope-recordings-${tenantKey}`,
+                    slug: 'recordings',
                     bucketType: BUCKET_TYPE_SYSTEM,
                     isSystemBucket: true,
                     createdAt: new Date(),
@@ -130,6 +131,10 @@ describe('TenantBucketService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+
+        // Default: the physical bucket already exists, so data-plane ops do
+        // not trigger the on-demand provisioning path (TASK-426).
+        mockBlobStorage.bucketExists.mockResolvedValue(true);
 
         mockClsService.get.mockImplementation((key: string) => {
             switch (key) {
@@ -194,12 +199,12 @@ describe('TenantBucketService', () => {
 
             const result = await service.provisionSystemBuckets('tenant-1');
 
-            // TenantBucketFactory.CreateDefaultSystemBuckets currently returns
-            // [audio, attachments] — keep the assertion in lock-step with that
-            // list (rather than hard-coding 2) so adding a future system slug
-            // only requires updating the factory, not this test.
+            // TenantBucketFactory.CreateDefaultSystemBuckets returns
+            // [attachments, recordings] — keep the assertion in lock-step with
+            // that list (rather than hard-coding 2) so adding a future system
+            // slug only requires updating the factory, not this test.
             expect(result).toHaveLength(2);
-            expect(result.map((b) => b.slug).sort()).toEqual(['attachments', 'audio']);
+            expect(result.map((b) => b.slug).sort()).toEqual(['attachments', 'recordings']);
             expect(mockTenantBucketRepository.create).toHaveBeenCalledTimes(2);
             expect(mockBlobStorage.createBucket).toHaveBeenCalledTimes(2);
         });
@@ -207,9 +212,9 @@ describe('TenantBucketService', () => {
         it('should only provision missing system buckets when some already exist', async () => {
             const mockTenant = { id: 'tenant-1', key: 'arcaai', name: 'ArcaAI' };
             mockTenantRepository.findById.mockResolvedValue(mockTenant);
-            // `audio` is already provisioned — only `attachments` should be created.
+            // `recordings` is already provisioned — only `attachments` should be created.
             mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([
-                createMockBucketEntity({ slug: 'audio' }),
+                createMockBucketEntity({ slug: 'recordings' }),
             ]);
             mockTenantBucketRepository.create.mockImplementation((entity: any) => entity);
             mockBlobStorage.createBucket.mockResolvedValue(undefined);
@@ -226,7 +231,7 @@ describe('TenantBucketService', () => {
             const mockTenant = { id: 'tenant-1', key: 'arcaai', name: 'ArcaAI' };
             mockTenantRepository.findById.mockResolvedValue(mockTenant);
             mockTenantBucketRepository.findSystemBuckets.mockResolvedValue([
-                createMockBucketEntity({ slug: 'audio' }),
+                createMockBucketEntity({ slug: 'recordings' }),
                 createMockBucketEntity({ slug: 'attachments' }),
             ]);
 
@@ -447,6 +452,98 @@ describe('TenantBucketService', () => {
 
             await expect(service.listObjects('bucket-1')).rejects.toThrow(ForbiddenException);
             expect(mockBlobStorage.listObjects).not.toHaveBeenCalled();
+        });
+    });
+
+    // TASK-426 — seeded bucket rows may predate the physical bucket (the seed
+    // creates DB rows only). Data-plane ops must provision the provider bucket
+    // on demand instead of failing with NoSuchBucket.
+    describe('on-demand provider bucket provisioning (TASK-426)', () => {
+        it('listObjects creates the missing physical bucket and then lists (empty)', async () => {
+            const bucket = createMockBucketEntity({ id: 'bucket-1', name: 'hope-attachments-global' });
+            mockTenantBucketRepository.findById.mockResolvedValue(bucket);
+            mockBlobStorage.bucketExists.mockResolvedValue(false);
+            mockBlobStorage.createBucket.mockResolvedValue(undefined);
+            mockBlobStorage.listObjects.mockResolvedValue({ objects: [], isTruncated: false });
+
+            const result = await service.listObjects('bucket-1');
+
+            expect(mockBlobStorage.bucketExists).toHaveBeenCalledWith('hope-attachments-global');
+            expect(mockBlobStorage.createBucket).toHaveBeenCalledWith('hope-attachments-global');
+            expect(result).toEqual([]);
+        });
+
+        it('listObjects does NOT create the bucket when it already exists', async () => {
+            const bucket = createMockBucketEntity({ id: 'bucket-1', name: 'hope-attachments-global' });
+            mockTenantBucketRepository.findById.mockResolvedValue(bucket);
+            mockBlobStorage.bucketExists.mockResolvedValue(true);
+            mockBlobStorage.listObjects.mockResolvedValue({ objects: [], isTruncated: false });
+
+            await service.listObjects('bucket-1');
+
+            expect(mockBlobStorage.createBucket).not.toHaveBeenCalled();
+        });
+
+        it('listObjects still lists when the concurrent create races ("already exists")', async () => {
+            const bucket = createMockBucketEntity({ id: 'bucket-1', name: 'hope-attachments-global' });
+            mockTenantBucketRepository.findById.mockResolvedValue(bucket);
+            mockBlobStorage.bucketExists.mockResolvedValue(false);
+            mockBlobStorage.createBucket.mockRejectedValue(new Error('BucketAlreadyOwnedByYou'));
+            mockBlobStorage.listObjects.mockResolvedValue({ objects: [], isTruncated: false });
+
+            const result = await service.listObjects('bucket-1');
+
+            expect(result).toEqual([]);
+        });
+
+        it('getBucketTree creates the missing physical bucket before listing', async () => {
+            const bucket = createMockBucketEntity({ id: 'bucket-1', name: 'hope-recordings-global' });
+            mockTenantBucketRepository.findById.mockResolvedValue(bucket);
+            mockBlobStorage.bucketExists.mockResolvedValue(false);
+            mockBlobStorage.createBucket.mockResolvedValue(undefined);
+            mockBlobStorage.listObjects.mockResolvedValue({ objects: [], isTruncated: false });
+
+            const result = await service.getBucketTree('bucket-1');
+
+            expect(mockBlobStorage.createBucket).toHaveBeenCalledWith('hope-recordings-global');
+            expect(result.nodes).toEqual([]);
+        });
+
+        it('uploadObject creates the missing physical bucket before putting', async () => {
+            const bucket = createMockBucketEntity({ id: 'bucket-1', name: 'hope-attachments-global' });
+            mockTenantBucketRepository.findById.mockResolvedValue(bucket);
+            mockBlobStorage.bucketExists.mockResolvedValue(false);
+            mockBlobStorage.createBucket.mockResolvedValue(undefined);
+            mockBlobStorage.putObject.mockResolvedValue(undefined);
+
+            await service.uploadObject('bucket-1', '2026/07/05/file.pdf', Buffer.from('x'), 'application/pdf');
+
+            expect(mockBlobStorage.createBucket).toHaveBeenCalledWith('hope-attachments-global');
+            expect(mockBlobStorage.putObject).toHaveBeenCalled();
+        });
+
+        it('deleteObject creates the missing physical bucket before deleting (no-op delete)', async () => {
+            const bucket = createMockBucketEntity({ id: 'bucket-1', name: 'hope-attachments-global' });
+            mockTenantBucketRepository.findById.mockResolvedValue(bucket);
+            mockBlobStorage.bucketExists.mockResolvedValue(false);
+            mockBlobStorage.createBucket.mockResolvedValue(undefined);
+            mockBlobStorage.deleteObject.mockResolvedValue(undefined);
+
+            const result = await service.deleteObject('bucket-1', '2026/07/05/file.pdf');
+
+            expect(mockBlobStorage.createBucket).toHaveBeenCalledWith('hope-attachments-global');
+            expect(result.deleted).toBe(true);
+        });
+
+        it('lets the data-plane error surface when the existence check itself fails', async () => {
+            const bucket = createMockBucketEntity({ id: 'bucket-1', name: 'hope-attachments-global' });
+            mockTenantBucketRepository.findById.mockResolvedValue(bucket);
+            mockBlobStorage.bucketExists.mockRejectedValue(new Error('storage unreachable'));
+            mockBlobStorage.listObjects.mockRejectedValue(new Error('storage unreachable'));
+
+            await expect(service.listObjects('bucket-1')).rejects.toThrow('storage unreachable');
+            // The provisioning path must not mask the real failure by creating.
+            expect(mockBlobStorage.createBucket).not.toHaveBeenCalled();
         });
     });
 

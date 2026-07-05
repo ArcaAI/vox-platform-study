@@ -2,36 +2,40 @@ import { describe, it, expect } from 'vitest';
 import { getStudioHtml } from '../pstudio.html';
 
 // -----------------------------------------------------------------------------
-// TASK-336 — Lane G
-//   OB-11: the bearer JWT must NOT be inlined into the served Studio HTML
-//          (it leaks via response body / proxy / CDN / history). The shell
-//          sources the token from the URL fragment at runtime and scrubs it.
+// BUG-003 (supersedes the TASK-336 OB-11 fragment hand-off)
+//   The shell is served through an authenticating BFF proxy (admin console
+//   /api/hope/admin/pstudio) whose session is an httpOnly cookie — no token is
+//   ever client-readable, so a `#token=` fragment contract is unsatisfiable.
+//   The shell must post queries back to the SAME path that served it
+//   (window.location.pathname): the session cookie rides the same-origin POST
+//   and the proxy injects the bearer server-side. A Host-derived absolute
+//   endpoint would bypass the proxy (empty bearer → UnifiedAuthGuard 401).
+// TASK-336 (still enforced)
+//   OB-11: no credential material in the served HTML.
 //   BR-02: HOPE's tables all live in the `core` schema. studio-core's postgres
 //          adapter hardcodes `defaultSchema: "public"` (empty here) → the UI
 //          renders "No tables found". The shell overrides defaultSchema = core.
 // -----------------------------------------------------------------------------
 
-const ENDPOINT = 'https://admin.example.test/api/v1/admin/pstudio';
-
-describe('getStudioHtml (TASK-336 OB-11 + BR-02)', () => {
-  it('embeds the studio BFF endpoint URL', () => {
-    expect(getStudioHtml(ENDPOINT)).toContain(ENDPOINT);
+describe('getStudioHtml (BUG-003 + TASK-336 OB-11/BR-02)', () => {
+  it('posts queries back to the path that served the shell (BUG-003)', () => {
+    expect(getStudioHtml()).toMatch(/createStudioBFFClient\(\{\s*url:\s*window\.location\.pathname/);
   });
 
-  it('takes no token parameter (single-arg signature) — OB-11', () => {
-    expect(getStudioHtml.length).toBe(1);
+  it('takes no endpoint/token parameters — nothing request-derived is embedded', () => {
+    expect(getStudioHtml.length).toBe(0);
+    expect(getStudioHtml()).not.toMatch(/createStudioBFFClient\(\{\s*url:\s*['"`]http/);
   });
 
-  it('does NOT inline a bearer token — sources it from the URL fragment (OB-11)', () => {
-    const html = getStudioHtml(ENDPOINT);
-    // No server-side token interpolation placeholder survives in the output.
-    expect(html).not.toMatch(/Bearer \$\{/);
-    // The page reads the credential from location.hash and scrubs it.
-    expect(html).toContain('location.hash');
-    expect(html).toContain('replaceState');
+  it('carries no credential material or fragment-token plumbing (OB-11)', () => {
+    const html = getStudioHtml();
+    expect(html).not.toContain('Authorization');
+    expect(html).not.toContain('Bearer');
+    expect(html).not.toContain('#token');
+    expect(html).not.toContain('location.hash');
   });
 
   it("overrides the adapter defaultSchema to 'core' (BR-02)", () => {
-    expect(getStudioHtml(ENDPOINT)).toMatch(/defaultSchema:\s*['"]core['"]/);
+    expect(getStudioHtml()).toMatch(/defaultSchema:\s*['"]core['"]/);
   });
 });

@@ -8,6 +8,8 @@
 export interface DnaReport {
     id: string;
     doctorId: string;
+    /** Human-readable doctor username resolved server-side (DnaReportResponse contract). */
+    doctorUsername?: string;
     reportData?: Record<string, unknown>;
     styleText?: string;
     /** Whether this is the doctor's active/latest report. */

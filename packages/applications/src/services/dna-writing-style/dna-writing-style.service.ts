@@ -171,7 +171,50 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
 
     const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
     if (!report) return null;
-    return DnaWritingStyleDtoMapper.toReportResponse(report);
+    // TASK-424 — resolve the doctor's username server-side for display.
+    const doctorUsername = await this.resolveDoctorUsername(report.doctorId ?? doctorId);
+    return DnaWritingStyleDtoMapper.toReportResponse(report, doctorUsername);
+  }
+
+  /**
+   * TASK-424 — resolve a single doctor's `User.username` for display. `User`
+   * is a global (non-tenant-scoped) model, so this read is safe for tenant
+   * admins. `userRepository.findById` THROWS `DataNotFoundException` when the
+   * user is missing (deleted id), so we swallow it and leave the label
+   * undefined rather than failing the read.
+   */
+  private async resolveDoctorUsername(doctorId?: string | null): Promise<string | undefined> {
+    if (!doctorId) return undefined;
+    try {
+      const user = await this.userRepository.findById(doctorId);
+      return user?.username ?? undefined;
+    } catch {
+      // DataNotFoundException — deleted/missing user; leave the label undefined.
+      return undefined;
+    }
+  }
+
+  /**
+   * TASK-424 — batch-resolve a page's distinct `doctorId`s to a
+   * `id → username` map in ONE query (no N+1), mirroring
+   * `AuditLogService.resolveResponsibleUsers`. Returns an empty map (and
+   * issues NO query) when there are no ids to resolve.
+   */
+  private async resolveDoctorUsernames(doctorIds: Array<string | null | undefined>): Promise<Record<string, string>> {
+    const ids = Array.from(new Set(doctorIds.filter((id): id is string => Boolean(id))));
+    if (ids.length === 0) return {};
+
+    const users = await this.userRepository.findAll({
+      where: { id: { in: ids } },
+      page: 1,
+      limit: ids.length,
+    });
+
+    const map: Record<string, string> = {};
+    for (const user of users) {
+      if (user.username) map[user.id] = user.username;
+    }
+    return map;
   }
 
   /**
@@ -431,7 +474,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     const models = await qb.ToList();
     const mapper = DnaWritingStyleReportEntityMapper.getInstance();
     const reports = models.map((m) => mapper.toDomainEntity(m));
-    return reports.map(DnaWritingStyleDtoMapper.toReportResponse);
+    return reports.map((report) => DnaWritingStyleDtoMapper.toReportResponse(report));
   }
 
   /**
@@ -456,8 +499,13 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     if (filters?.doctorId) where.doctorId = filters.doctorId;
 
     const { data, count } = await this.dnaReportRepository.findPaginated(where, page, limit);
+    // TASK-424 — batch-resolve the page's distinct doctors to usernames in a
+    // single query (skipped entirely when the page is empty).
+    const usernameById = await this.resolveDoctorUsernames(data.map((report) => report.doctorId));
     return {
-      data: data.map(DnaWritingStyleDtoMapper.toReportResponse),
+      data: data.map((report) =>
+        DnaWritingStyleDtoMapper.toReportResponse(report, report.doctorId ? usernameById[report.doctorId] : undefined),
+      ),
       count,
       page,
       limit,

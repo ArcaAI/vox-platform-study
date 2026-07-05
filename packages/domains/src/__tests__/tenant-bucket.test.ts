@@ -86,15 +86,15 @@ describe('TenantBucket Domain Layer', () => {
             const entity = TenantBucketFactory.CreateSystemBucket(
                 'tenant-1',
                 'arcaai',
-                'audio',
-                'Tenant audio storage',
+                'recordings',
+                'Tenant audio recordings storage',
             );
 
             expect(entity.id).toBeDefined();
             expect(entity.id.length).toBeGreaterThan(0);
             expect(entity.tenantId).toBe('tenant-1');
-            expect(entity.name).toBe('hope-audio-arcaai');
-            expect(entity.slug).toBe('audio');
+            expect(entity.name).toBe('hope-recordings-arcaai');
+            expect(entity.slug).toBe('recordings');
             expect(entity.bucketType).toBe(TenantBucketType.SYSTEM);
             expect(entity.pathPattern).toBe('{yyyy}/{MM}');
         });
@@ -118,28 +118,27 @@ describe('TenantBucket Domain Layer', () => {
             expect(entity.bucketType).toBe(TenantBucketType.CUSTOM);
         });
 
-        it('should create default system buckets for a tenant', async () => {
+        it('should create the two default system buckets (attachments + recordings) for a tenant', async () => {
             const { TenantBucketFactory } = await import('../factories/generated/core/TenantBucketFactory');
-            const { TenantBucketType } = await import('../enums');
+            const { TenantBucketType, TenantBucketPurpose } = await import('../enums');
 
             const buckets = TenantBucketFactory.CreateDefaultSystemBuckets('tenant-1', 'arcaai');
 
-            expect(buckets).toHaveLength(3);
+            expect(buckets).toHaveLength(2);
 
-            const audioBucket = buckets[0];
-            expect(audioBucket.slug).toBe('audio');
-            expect(audioBucket.name).toBe('hope-audio-arcaai');
-            expect(audioBucket.bucketType).toBe(TenantBucketType.SYSTEM);
-
-            const attachmentsBucket = buckets[1];
+            const attachmentsBucket = buckets[0];
             expect(attachmentsBucket.slug).toBe('attachments');
             expect(attachmentsBucket.name).toBe('hope-attachments-arcaai');
             expect(attachmentsBucket.bucketType).toBe(TenantBucketType.SYSTEM);
+            expect(attachmentsBucket.purpose).toBe(TenantBucketPurpose.ATTACHMENTS);
 
-            const miscBucket = buckets[2];
-            expect(miscBucket.slug).toBe('misc');
-            expect(miscBucket.name).toBe('hope-misc-arcaai');
-            expect(miscBucket.bucketType).toBe(TenantBucketType.SYSTEM);
+            // Recordings replaces the legacy `audio` slug but keeps the AUDIO
+            // purpose so streaming/batch bucket resolution stays intact.
+            const recordingsBucket = buckets[1];
+            expect(recordingsBucket.slug).toBe('recordings');
+            expect(recordingsBucket.name).toBe('hope-recordings-arcaai');
+            expect(recordingsBucket.bucketType).toBe(TenantBucketType.SYSTEM);
+            expect(recordingsBucket.purpose).toBe(TenantBucketPurpose.AUDIO);
         });
 
         it('should sanitize tenant key in bucket name', async () => {

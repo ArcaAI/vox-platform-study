@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { JobQueue, ResourceStatusType, SysEventType } from '@arcaai/domains';
-import { OptimisticConcurrencyException } from '@arcaai/exceptions';
+import { OptimisticConcurrencyException, DataNotFoundException } from '@arcaai/exceptions';
 import { DnaWritingStyleService } from '../dna-writing-style.service';
 
 // ─── Mock Factories ─────────────────────────────────────────────────
@@ -74,6 +74,10 @@ const createMockUserDepartmentRepository = () => ({
 
 const createMockUserRepository = () => ({
     findFirst: vi.fn(),
+    // TASK-424 — id→username resolution: batch (`findAll`) for the paginated
+    // admin list and single (`findById`) for the doctor detail read.
+    findAll: vi.fn().mockResolvedValue([]),
+    findById: vi.fn(),
 });
 
 const createMockQueue = () => ({
@@ -338,6 +342,32 @@ describe('DnaWritingStyleService', () => {
             const result = await service.getDnaReport('doctor-no-report');
 
             expect(result).toBeNull();
+        });
+
+        // TASK-424 — human-readable label resolution for the detail read.
+        it('resolves doctorUsername when the user exists', async () => {
+            mockReportRepo.findLatestForDoctor.mockResolvedValue(
+                createMockReportEntity({ doctorId: 'doctor-id-1' }),
+            );
+            mockUserRepo.findById.mockResolvedValue({ id: 'doctor-id-1', username: 'dr.house' });
+
+            const result = await service.getDnaReport('doctor-id-1');
+
+            expect(mockUserRepo.findById).toHaveBeenCalledWith('doctor-id-1');
+            expect(result!.doctorUsername).toBe('dr.house');
+        });
+
+        it('leaves doctorUsername undefined when the user lookup throws (deleted/missing)', async () => {
+            mockReportRepo.findLatestForDoctor.mockResolvedValue(
+                createMockReportEntity({ doctorId: 'doctor-id-1' }),
+            );
+            mockUserRepo.findById.mockRejectedValue(
+                new DataNotFoundException('User', 'doctor-id-1'),
+            );
+
+            const result = await service.getDnaReport('doctor-id-1');
+
+            expect(result!.doctorUsername).toBeUndefined();
         });
     });
 
@@ -1299,6 +1329,54 @@ describe('DnaWritingStyleService', () => {
             });
 
             await expect(tenantAdmin.listReportsPaginated()).rejects.toThrow(BadRequestException);
+        });
+
+        // TASK-424 — human-readable label resolution for the admin list.
+        it('resolves doctorUsername for rows whose doctor exists and leaves it undefined otherwise', async () => {
+            mockReportRepo.findPaginated.mockResolvedValue({
+                data: [
+                    createMockReportEntity({ id: 'r1', doctorId: 'doc-1' }),
+                    createMockReportEntity({ id: 'r2', doctorId: 'doc-2' }),
+                ],
+                count: 2,
+            });
+            // Only doc-1 resolves; doc-2 is missing (e.g. deleted) → undefined.
+            mockUserRepo.findAll.mockResolvedValue([{ id: 'doc-1', username: 'dr.strange' }]);
+
+            const result = await service.listReportsPaginated({ page: 1, limit: 2 });
+
+            expect(result.data[0].doctorUsername).toBe('dr.strange');
+            expect(result.data[1].doctorUsername).toBeUndefined();
+        });
+
+        it('issues at most ONE user query per call and dedupes doctor ids', async () => {
+            mockReportRepo.findPaginated.mockResolvedValue({
+                data: [
+                    createMockReportEntity({ id: 'r1', doctorId: 'doc-1' }),
+                    createMockReportEntity({ id: 'r2', doctorId: 'doc-1' }),
+                    createMockReportEntity({ id: 'r3', doctorId: 'doc-2' }),
+                ],
+                count: 3,
+            });
+            mockUserRepo.findAll.mockResolvedValue([
+                { id: 'doc-1', username: 'dr.who' },
+                { id: 'doc-2', username: 'dr.no' },
+            ]);
+
+            await service.listReportsPaginated({ page: 1, limit: 3 });
+
+            expect(mockUserRepo.findAll).toHaveBeenCalledTimes(1);
+            const [props] = mockUserRepo.findAll.mock.calls[0];
+            expect(props.where).toEqual({ id: { in: ['doc-1', 'doc-2'] } });
+        });
+
+        it('skips the user query entirely when the page is empty', async () => {
+            mockReportRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
+
+            const result = await service.listReportsPaginated({ page: 1, limit: 50 });
+
+            expect(mockUserRepo.findAll).not.toHaveBeenCalled();
+            expect(result.data).toEqual([]);
         });
     });
 
