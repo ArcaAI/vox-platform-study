@@ -203,16 +203,16 @@ packages/applications/src/services/department/
 
 ### 1.7 Dependency-direction rules — exactly what the lint config encodes
 
-ESLint runs as legacy `.eslintrc.js` config under ESLint 9 with `ESLINT_USE_FLAT_CONFIG=false` (every package's `lint` script sets it; e.g. `packages/applications/package.json`). Shared config: `packages/config-eslint/base.js` (+ `library.js` for packages), custom plugin: `packages/eslint-plugin-arcaai-internal/` (rules registered in its `index.js`).
+ESLint runs on ESLint 9 flat config (TASK-418): every package has an `eslint.config.mjs` spreading a preset from `packages/config-eslint/flat/` (`library.js` for packages, `nestjs.js` for apps/api, `next.js` for apps/admin-console), custom plugin: `packages/eslint-plugin-arcaai-internal/` (rules registered in its `index.js`).
 
-The four enforced architecture rules (all in `packages/config-eslint/base.js`):
+The four enforced architecture rules (all in `packages/config-eslint/flat/core.js`):
 
 1. `arcaai-internal/no-controller-direct-prisma` (error) — scope `**/modules/**/*.controller.ts` (i.e. `apps/api`). Forbids any `<x>.databaseService.client` chain in controllers. Escape hatch: `/** @allowedDirectPrisma <reason> */` within 3 lines above. Rule source: `packages/eslint-plugin-arcaai-internal/rules/no-controller-direct-prisma.js`. Current allow-list usage: zero occurrences in `apps/api/src` (verified).
 2. Service-layer analogue via built-in `no-restricted-syntax` — scope `**/services/**/*.service.ts`, AST selector matching `<x>.databaseService.client`; message: route through a domain-layer repository (TASK-311 AC-8). `excludedFiles` pins: `**/services/audit/**`, `**/services/tenant/**`, `**/services/user/userRoleAssignment/**`, `**/services/baseServices/**` (the last is permanent — it hosts `CoreDatabaseService`/unit-of-work plumbing).
 3. `arcaai-internal/no-direct-downstream-url-env` (error) — scope `**/modules/**/*.ts`. Forbids `process.env.SMR_URL|SMR_SERVICE_URL|STT_V2_URL|NLP_URL|GUARDRAIL_URL|HARNESS_URL` (dot or bracket access). Callers must inject `IConfigService` and call `getConfigValue('SMR_URL')` (`packages/applications/src/services/baseServices/_meta/config/config.service.ts`). Rule source: `packages/eslint-plugin-arcaai-internal/rules/no-direct-downstream-url-env.js`.
 4. `no-restricted-imports` (error, repo-wide) — bans importing `getPlatformAdminPrismaClient_Unscoped` from `@arcaai/database` (and deep paths). Allowed only for seeds (`packages/database/src/prisma/db_main/seed/**`), back-fill scripts (`packages/database/scripts/**`), test fixtures, and the transitional `CoreDatabaseService.baseClient`.
 
-Additional conventions from `base.js`: `@typescript-eslint/no-unused-vars` honors the `_`-prefix convention for intentionally-unused identifiers. Note: `library.js` adds `eslint-plugin-only-warn`, which downgrades all violations to warnings inside packages (see 7.2).
+Additional conventions from `flat/core.js`: `@typescript-eslint/no-unused-vars` honors the `_`-prefix convention for intentionally-unused identifiers. Note: `flat/library.js` adds `eslint-plugin-only-warn`, which downgrades all violations to warnings inside packages (see 7.2).
 
 Import-direction do/don'ts (encoded partly by lint, partly by convention, both verified):
 
@@ -368,11 +368,11 @@ Service unit tests mock repositories + `EventEmitter2` + `ClsService` and assert
 
 ### 5.3 ESLint
 
-ESLint 9 is installed but configs are LEGACY `.eslintrc.js` files run with `ESLINT_USE_FLAT_CONFIG=false` (each package's lint script; e.g. `apps/api/package.json`). Shared presets in `packages/config-eslint/` (`base.js`, `library.js`, `nestjs.js`, `react-internal.js`, `next.js`, `storybook.js`, `prettier-base.js`); custom rules in `packages/eslint-plugin-arcaai-internal/`. There is NO flat `eslint.config.js` anywhere — do not add one without migrating everything. Architecture rules: see 1.7.
+ESLint 9 flat config everywhere (TASK-418; admin-console runs ESLint 10 app-local against the same presets). Each package/app has an `eslint.config.mjs` spreading a surface preset from `packages/config-eslint/flat/` (`core.js` foundation + `library.js` / `nestjs.js` / `next.js` / `react-library.js`; `prettier-base.js` is the shared Prettier config, not an ESLint preset); custom rules in `packages/eslint-plugin-arcaai-internal/`. The legacy `.eslintrc.js` estate and the `ESLINT_USE_FLAT_CONFIG=false` escape are gone — do not reintroduce eslintrc-format configs. Architecture rules: see 1.7.
 
 ### 5.4 Prettier
 
-Root `.prettierrc.js` extends `packages/config-eslint/prettier-base.js`: `singleQuote: true`, `printWidth: 150`, `tabWidth: 2`. Enforced through `plugin:prettier/recommended` in the ESLint base config (violations surface as lint warnings) and `pnpm format`.
+Root `.prettierrc.js` extends `packages/config-eslint/prettier-base.js`: `singleQuote: true`, `printWidth: 150`, `tabWidth: 2`. Enforced through `eslint-plugin-prettier/recommended` in the flat core config (violations surface as lint warnings) and `pnpm format`.
 
 ### 5.5 GitLab CI (`.gitlab-ci.yml` + `.gitlab/ci/*.yml`)
 
@@ -464,13 +464,13 @@ No generic idempotency-key middleware exists. Idempotent behavior is implemented
 ## 7. Known internal inconsistencies (verified 2026-07-04)
 
 1. ~~Service-layer direct-Prisma rule violated in consultation/platform-metrics services~~ (remediated in TASK-414): both services now go through domain repository methods (`ConsultationRepository.findCreatedInRange`, plus aggregate methods on `AudioRecordingRepository`/`SummaryMetaRepository`/`MediaRepository`/`TenantBucketRepository`); zero `databaseService` references remain in either file.
-2. ...and those diagnostics don't fail CI because `packages/config-eslint/library.js` loads `eslint-plugin-only-warn`, downgrading everything in `packages/*` to warnings. The architecture rules are hard errors in `apps/api` (which extends `base.js` directly) but effectively advisory in `packages/applications`.
-3. Excluded-service debt is codified: `base.js` `excludedFiles` still exempts `services/audit/**`, `services/tenant/**`, `services/user/userRoleAssignment/**` from the repository rule; `tenant.service.ts` and `audit/authorization-audit.service.ts` still use `databaseService.client` directly.
+2. ...and those diagnostics don't fail CI because `packages/config-eslint/flat/library.js` loads `eslint-plugin-only-warn`, downgrading everything in `packages/*` to warnings. The architecture rules are hard errors in `apps/api` (which uses `flat/nestjs.js`) but effectively advisory in `packages/applications`.
+3. Excluded-service debt is codified: the `flat/core.js` service-boundary `ignores` still exempts `services/audit/**`, `services/tenant/**`, `services/user/userRoleAssignment/**` from the repository rule; `tenant.service.ts` and `audit/authorization-audit.service.ts` still use `databaseService.client` directly.
 4. Test placement and naming are split: unit tests use both colocated `__tests__/` folders AND sibling `*.test.ts` files (e.g. `packages/applications/src/common/applyChangesToEntity.test.ts` next to `packages/applications/src/common/__tests__/cursorPagination.test.ts`); Python test dirs are `src/<pkg>/tests/` for smr/guardrail/harness but top-level `tests/` for stt-v2/nlp; e2e uses `.spec.ts` while unit uses `.test.ts`.
 5. ~~Harness missing from CI quality gates~~ (remediated in TASK-414): a `test-harness` job now exists in `.gitlab/ci/test.yml` (mirrors the smr/guardrail pattern; hermetic suite, installs `.[test,eval,rag]`), and `lint-python` (validate.yml) now includes `apps/harness/src/`.
 6. Two `CoreUnitOfWorkService` implementations exist: `packages/domains/src/common/unitsOfWork/core/core.unitOfWork.ts` (used by repositories) and `packages/applications/src/services/baseServices/unitsOfWork/core/core.unitOfWork.ts` (application wrapper). The applications one documents that the `startTransaction/endTransaction` wrapper pattern has NO production callers — the proven pattern is `baseClient.$transaction(callback)`; docs that recommend `startTransaction()/endTransaction()` are stale.
 7. ~~Legacy naming drift~~ (remediated in TASK-414): the dead `dev:admin` root script and the TTS contract test/schemas were removed; the `.gitlab-ci.yml` header now marks ui-playground as deprecated.
-8. ESLint version split: root/devDeps install ESLint 9, `packages/config-eslint` pins ESLint 8 presets (`@typescript-eslint` v7, `eslint ^8.57.1` devDep) and everything runs in legacy-config mode via `ESLINT_USE_FLAT_CONFIG=false` — "ESLint 9 flat config" is NOT the reality; don't write flat configs.
+8. ~~ESLint version split (legacy eslintrc under `ESLINT_USE_FLAT_CONFIG=false`, config-eslint pinned to ESLint 8 + typescript-eslint 7)~~ (remediated in TASK-418): the whole estate now runs ESLint 9 flat config from the `packages/config-eslint/flat/` preset family (typescript-eslint 8; rule parity verified per package); the legacy presets and env escape were deleted.
 9. Tailwind config duality: `packages/config-tailwind/tailwind.config.ts` exists but is an empty shell; the actual theme lives in `packages/ui/src/styles/globals.css` (Tailwind v4 CSS-first). Some package.json files still carry the config-tailwind dependency for legacy reasons.
 10. Auth decorators live in `packages/applications` (`src/authorization/decorators.ts`) but are re-exported through `apps/api/src/decorators/index.ts`; both import paths appear in controllers. Prefer the `../../decorators` re-export inside `apps/api`.
 

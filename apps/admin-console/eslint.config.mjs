@@ -1,3 +1,3 @@
-import next from '@arcaai/config-eslint/next-flat.js';
+import next from '@arcaai/config-eslint/flat/next.js';
 
 export default next;

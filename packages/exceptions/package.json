@@ -9,14 +9,12 @@
         "clean": "rimraf dist tsconfig.tsbuildinfo",
         "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
         "dev": "tsc -w",
-        "lint": "ESLINT_USE_FLAT_CONFIG=false eslint \"src/**/*.ts*\" --max-warnings 0"
+        "lint": "eslint \"src/**/*.ts*\" --max-warnings 0"
     },
     "devDependencies": {
         "@arcaai/config-eslint": "workspace:*",
         "@arcaai/config-ts": "workspace:*",
         "@types/node": "^25.9.4",
-        "@typescript-eslint/eslint-plugin": "^8.62.1",
-        "@typescript-eslint/parser": "^8.62.1",
         "eslint": "^9.39.4",
         "ts-node": "^10.9.2",
         "typescript": "^5.9.3"

@@ -12,8 +12,8 @@
  *
  * The rule is a tight denylist on the known downstream URL keys —
  * other env reads (NODE_ENV, npm_package_version, ...) stay legal.
- * Scope is wired in `packages/config-eslint/base.js` via an
- * `overrides` block for the modules glob, mirroring the
+ * Scope is wired in `packages/config-eslint/flat/core.js` via a
+ * config entry scoped to the modules glob, mirroring the
  * `no-controller-direct-prisma` precedent (W6.4).
  */
 'use strict';

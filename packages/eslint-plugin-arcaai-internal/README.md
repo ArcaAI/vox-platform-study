@@ -1,8 +1,8 @@
 # eslint-plugin-arcaai-internal
 
-Repo-internal ESLint plugin hosting ARCAAI's custom lint rules. It exists so `@arcaai/config-eslint` can register the rules through the standard `plugins: ['arcaai-internal']` string-name mechanism of the legacy ESLint config format. The rules encode HOPE's layering guarantees: controllers and modules in `apps/api` must go through services/repositories and the typed config service rather than reaching into Prisma or `process.env` directly.
+Repo-internal ESLint plugin hosting ARCAAI's custom lint rules. `@arcaai/config-eslint` registers it as a plain flat-config plugin object under the `arcaai-internal` namespace (`flat/core.js`, TASK-418), so rule IDs are `arcaai-internal/<rule>`. The rules encode HOPE's layering guarantees: controllers and modules in `apps/api` must go through services/repositories and the typed config service rather than reaching into Prisma or `process.env` directly.
 
-Last updated: 2026-07-04
+Last updated: 2026-07-05
 
 ## Rules
 
@@ -35,10 +35,12 @@ const url = this.configService.getConfigValue('SMR_URL');          // OK
 
 ## How It Is Wired (verified)
 
-`@arcaai/config-eslint` depends on this package (`workspace:*`) and its `base.js` enables the rules via scoped overrides:
+`@arcaai/config-eslint` depends on this package (`workspace:*`) and its `flat/core.js` enables the rules via scoped config entries:
 
 - `arcaai-internal/no-controller-direct-prisma`: `error` for `**/modules/**/*.controller.ts` — in practice only `apps/api` matches this path shape.
 - `arcaai-internal/no-direct-downstream-url-env`: `error` for `**/modules/**/*.ts`.
+
+In `packages/*` these surface as warnings (`flat/library.js` loads `eslint-plugin-only-warn`); in `apps/api` (`flat/nestjs.js`) they are hard errors.
 
 `apps/api` also declares the plugin directly in its devDependencies. See [../config-eslint/README.md](../config-eslint/README.md) for the full shared-config picture.
 
@@ -56,4 +58,4 @@ node packages/eslint-plugin-arcaai-internal/__tests__/no-direct-downstream-url-e
 1. Create the rule in `rules/<rule-name>.js` (CommonJS, standard ESLint rule shape with `meta` + `create`).
 2. Register it in the `rules` map of [index.js](./index.js).
 3. Add RuleTester coverage in `__tests__/<rule-name>.test.js`.
-4. Enable it in `packages/config-eslint/base.js` (typically via a scoped `overrides` block) and document it here and in the config-eslint README.
+4. Enable it in `packages/config-eslint/flat/core.js` (typically via a scoped `files:` config entry) and document it here and in the config-eslint README.

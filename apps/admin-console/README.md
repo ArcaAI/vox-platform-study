@@ -11,6 +11,7 @@ Follows `.cursor/rules/13-nextjs-apps.mdc`: BFF-mandatory auth (tokens never cli
 | `pnpm dev` (root: `pnpm dev:admin`) | Dev server on port 5176 |
 | `pnpm build` / `pnpm start` | Production build (standalone) / serve on port 3000 |
 | `pnpm test` / `pnpm test:watch` | Vitest (node project for `*.test.ts`, happy-dom for `*.test.tsx`) |
+| `pnpm test:e2e` | Playwright smoke + axe a11y (`tests/e2e/`); requires the dev server (`pnpm dev`) and API :8868 running — specs skip with instructions otherwise. `ADMIN_CONSOLE_URL`/`E2E_ADMIN_USERNAME`/`E2E_ADMIN_PASSWORD` override the defaults (seeded `super_admin`) |
 | `pnpm lint` / `pnpm check-types` | ESLint (0 warnings) / `tsc --noEmit` |
 
 ## Environment
@@ -31,6 +32,13 @@ Development loads the monorepo-root `.env.dev` (host env wins); CI/production us
 - `src/proxy.ts` — Next 16 request proxy: session-cookie presence gate (pages redirect to `/login?from=…`, APIs get 401).
 - `src/shared/auth/` — `useSession`/`usePermissions` hooks, CASL-mirror `can`/`canAny`/`isElevated`, `<RequirePermission>`.
 - `src/shared/navigation/nav-config.ts` — the full 29-route map from the capabilities matrix (2026-07-04 review) with `implemented` flags; the sidebar renders implemented entries the caller's ability grants.
-- `src/features/` — feature modules (only `auth` so far); `src/config/` — zod-validated env.
+- `src/shared/api/` — client HTTP core for the typed data layer: `request()` through the BFF proxy, `Paginated`/`CursorPaginated` envelopes, `GatewayError` (401 / 404-over-403 / 412 drift / 428 missing-precondition), ETag capture + `versionFromEtag()` for the If-Match **and** body-`expectedVersion` OCC contract, FormData uploads, `getBlob()` exports.
+- `src/features/<domain>/api/` — typed endpoint clients + TanStack Query v5 hooks + query-key factories per capability domain (tiers 10–29, pre-built ahead of the design gate): `platform`, `monitoring`, `tenants`, `entitlements`, `storage`, `ai-models`, `rate-limits`, `queues`, `audit-logs`, `pstudio`, `users`, `rbac`, `api-keys`, `settings`, `account`. Convention per domain: `types.ts` (wire DTOs), `client.ts` (endpoint functions), `keys.ts` (key factory rooted at `[domain]`), `hooks.ts` (`'use client'` queries/mutations; mutations invalidate the domain root), tests in `__tests__/`. Envelope deviations are encoded where the gateway deviates (ai-models `{data,total,totalPages}`, queue jobs `{items,total}`, RBAC `{data,total,page,pageSize}`). Impersonation calls the BFF's own `/api/auth/impersonate` (never the proxy) so the act-as token lands in the session.
+- `src/config/` — zod-validated env.
+- `tests/e2e/` — Playwright specs (`auth-smoke`, `login-a11y` with `@axe-core/playwright`, helpers in `helpers/stack.ts` that probe app/API availability and skip cleanly).
 
 Streams (SSE/WS) do NOT traverse the BFF: mint a ticket via `POST /api/auth/stream-ticket`, then connect the browser directly to `NEXT_PUBLIC_API_HOST`.
+
+## Deployment
+
+`Dockerfile` (multi-stage pnpm + turbo build, `next build` standalone output, node:22-alpine, non-root `console` user, port 3000, `/login` healthcheck; `NEXT_PUBLIC_API_HOST` is a build arg — it is inlined into the client bundle at image build time). k3s: `deployment/k3s/base/admin-console.yaml` (Deployment + Service nodePort 30081 + Ingress `admin.hope.local`; dev overlay host `admin-dev.hope.local`), env from `hope-config` (`API_URL`, `NEXT_PUBLIC_API_HOST`) and `hope-secrets` (`ADMIN_SESSION_SECRET`). CI: `build-admin-console` in `.gitlab/ci/build.yml`.

@@ -6,6 +6,8 @@ images:
     newName: registry.taphuynh.dev/arca/hope-v2/api
   - name: hope-v2/ui-playground
     newName: registry.taphuynh.dev/arca/hope-v2/ui-playground
+  - name: hope-v2/admin-console
+    newName: registry.taphuynh.dev/arca/hope-v2/admin-console
   - name: hope-v2/nlp
     newName: registry.taphuynh.dev/arca/hope-v2/nlp
   - name: hope-v2/smr

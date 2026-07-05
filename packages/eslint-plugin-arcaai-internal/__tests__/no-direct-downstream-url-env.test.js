@@ -22,7 +22,7 @@ const { RuleTester } = require('@arcaai/config-eslint/node_modules/eslint');
 const rule = require('../rules/no-direct-downstream-url-env');
 
 const ruleTester = new RuleTester({
-  parserOptions: {
+  languageOptions: {
     ecmaVersion: 2022,
     sourceType: 'module',
   },

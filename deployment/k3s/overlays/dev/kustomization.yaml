@@ -36,6 +36,9 @@ patches:
       - op: replace
         path: /data/OTEL_METRICS_ENABLED
         value: "false"
+      - op: replace
+        path: /data/NEXT_PUBLIC_API_HOST
+        value: "http://api-dev.hope.local"
 
   # --- API Ingress: dev hostname ---
   - target:
@@ -55,6 +58,15 @@ patches:
         path: /spec/rules/0/host
         value: ui-dev.hope.local
 
+  # --- Admin Console Ingress: dev hostname ---
+  - target:
+      kind: Ingress
+      name: hope-admin-console
+    patch: |
+      - op: replace
+        path: /spec/rules/0/host
+        value: admin-dev.hope.local
+
 # Image tags are pinned here and are NOT updated by CI. CI builds on the `dev`
 # branch are manually triggered and push `dev-<sha8>` + `sha-<sha8>` image tags
 # (never `latest`, never a plain `dev` tag); the CI deploy-staging job writes Helm
@@ -73,6 +85,8 @@ images:
   - name: hope-v2/api
     newTag: dev
   - name: hope-v2/ui-playground
+    newTag: dev
+  - name: hope-v2/admin-console
     newTag: dev
   - name: hope-v2/nlp
     newTag: dev

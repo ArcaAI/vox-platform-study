@@ -96,7 +96,7 @@ The context provider is registered at API bootstrap via `setTenantContextProvide
 
 ### Unscoped client guard
 
-`getPlatformAdminPrismaClient_Unscoped` bypasses both extensions. A `no-restricted-imports` rule in `packages/config-eslint/base.js` fails the build when it is imported outside the documented allow-list (seed runner, `packages/database/scripts/`, integration-test fixtures, and `CoreDatabaseService` in `@arcaai/domains`). Enumerate current call sites with `rg getPlatformAdminPrismaClient_Unscoped`.
+`getPlatformAdminPrismaClient_Unscoped` bypasses both extensions. A `no-restricted-imports` rule in `packages/config-eslint/flat/core.js` fails the build when it is imported outside the documented allow-list (seed runner, `packages/database/scripts/`, integration-test fixtures, and `CoreDatabaseService` in `@arcaai/domains`). Enumerate current call sites with `rg getPlatformAdminPrismaClient_Unscoped`.
 
 ## Schema conventions
 

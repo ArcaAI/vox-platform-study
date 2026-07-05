@@ -234,19 +234,19 @@ pnpm docker:test:down
 
 ## 9. Code quality
 
-- `pnpm lint` — turbo runs each package's ESLint (legacy `.eslintrc.js` configs under ESLint 9 with `ESLINT_USE_FLAT_CONFIG=false`; do not add flat configs).
+- `pnpm lint` — turbo runs each package's ESLint (ESLint 9 flat config: per-package `eslint.config.mjs` spreading the `packages/config-eslint/flat/` presets; do not reintroduce eslintrc-format configs).
 - `pnpm format` — Prettier over `**/*.{ts,tsx,md}` (`singleQuote`, `printWidth: 150`).
 - `pnpm build` / `pnpm build:api` / `build:packages` / `build:modules` / `build:sdk` — scoped turbo builds.
 - Python per service: `pnpm py:<svc>:lint` (ruff), `py:<svc>:format` (black, line length 100), `py:<svc>:typecheck` (mypy), where `<svc>` is `stt-v2`, `smr-v2`, `nlp`, `guardrail`, `harness`.
 
-Architecture lint rules you will actually hit (defined in `packages/config-eslint/base.js` + `packages/eslint-plugin-arcaai-internal/`):
+Architecture lint rules you will actually hit (defined in `packages/config-eslint/flat/core.js` + `packages/eslint-plugin-arcaai-internal/`):
 
 - `arcaai-internal/no-controller-direct-prisma` — controllers must not touch `databaseService.client`; go through a service + repository.
 - Service-layer `no-restricted-syntax` — application services must not use `databaseService.client` either; route through a domain repository.
 - `arcaai-internal/no-direct-downstream-url-env` — never read `process.env.SMR_URL|STT_V2_URL|NLP_URL|GUARDRAIL_URL|HARNESS_URL` in gateway modules; inject `IConfigService.getConfigValue(...)`.
 - `no-restricted-imports` — the unscoped Prisma client (`getPlatformAdminPrismaClient_Unscoped`) is banned everywhere except seeds, back-fill scripts, and test fixtures — it bypasses both tenant scoping and soft-delete filtering.
 
-Caveat: inside `packages/*` these rules are downgraded to warnings (`eslint-plugin-only-warn` in `library.js`); in `apps/api` they are hard errors. Treat warnings in packages as errors anyway — CI lint gates run over both.
+Caveat: inside `packages/*` these rules are downgraded to warnings (`eslint-plugin-only-warn` in `flat/library.js`); in `apps/api` (`flat/nestjs.js`) they are hard errors. Treat warnings in packages as errors anyway — CI lint gates run over both.
 
 ## 10. Ticket and documentation workflow
 
