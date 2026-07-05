@@ -13,7 +13,7 @@
     "start:prod": "node --import ./dist/instrumentation.js dist/main.js",
     "clean": "rimraf dist *.tsbuildinfo",
     "nuke": "rimraf dist node_modules .turbo *.tsbuildinfo",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",

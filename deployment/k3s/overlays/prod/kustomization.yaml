@@ -61,6 +61,15 @@ patches:
         path: /spec/rules/0/host
         value: ui.hope.local
 
+  # --- Admin Console Ingress: prod hostname ---
+  - target:
+      kind: Ingress
+      name: hope-admin-console
+    patch: |
+      - op: replace
+        path: /spec/rules/0/host
+        value: admin.hope.local
+
 # Image tags are pinned here and are NOT updated by CI (no promote-prod job
 # exists). On `v*` tag pipelines CI automatically builds and pushes semver tags
 # (`X.Y.Z`, `X.Y`, `X`, plus `sha-<sha8>`) — never `latest`. Promote by bumping
@@ -79,6 +88,8 @@ images:
   - name: hope-v2/api
     newTag: "0.0.0"
   - name: hope-v2/ui-playground
+    newTag: "0.0.0"
+  - name: hope-v2/admin-console
     newTag: "0.0.0"
   - name: hope-v2/nlp
     newTag: "0.0.0"

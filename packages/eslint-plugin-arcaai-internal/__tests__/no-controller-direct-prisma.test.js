@@ -17,14 +17,14 @@
  */
 'use strict';
 
-// Pin to the workspace ESLint v8 (legacy `eslintrc` config). The rule
-// itself is config-format agnostic; the test just needs the RuleTester
-// that understands `parserOptions`.
+// Pin to the workspace ESLint v9 that `@arcaai/config-eslint` resolves (the
+// same major the flat presets run under). The rule itself is config-format
+// agnostic; the test just needs the flat-config RuleTester.
 const { RuleTester } = require('@arcaai/config-eslint/node_modules/eslint');
 const rule = require('../rules/no-controller-direct-prisma');
 
 const ruleTester = new RuleTester({
-  parserOptions: {
+  languageOptions: {
     ecmaVersion: 2022,
     sourceType: 'module',
   },

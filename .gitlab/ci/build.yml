@@ -131,6 +131,29 @@ build-ui-playground:
       allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
 
+# ── Admin Console ────────────────────────────────────────────────────────────
+
+build-admin-console:
+  extends: .build-template
+  needs:
+    - job: warm-up-base-images
+      optional: true
+    - job: typecheck
+      optional: true
+  variables:
+    SERVICE_NAME: admin-console
+    DOCKER_CONTEXT: "."
+    DOCKERFILE: apps/admin-console/Dockerfile
+    # Browser-reachable gateway origin, inlined into the client bundle.
+    BUILD_ARGS: "--build-arg NEXT_PUBLIC_API_HOST=$NEXT_PUBLIC_API_HOST"
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+      when: never
+    - if: $PIPELINE_TYPE == "cicd" || $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "feature"
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+
 # ── Live Transcription Example UI ───────────────────────────────────────────
 
 build-example-ui:

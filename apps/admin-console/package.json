@@ -9,6 +9,7 @@
         "lint": "eslint src --max-warnings 0",
         "test": "vitest run",
         "test:watch": "vitest",
+        "test:e2e": "playwright test",
         "check-types": "tsc --noEmit"
     },
     "dependencies": {
@@ -29,6 +30,8 @@
     "devDependencies": {
         "@arcaai/config-eslint": "workspace:*",
         "@arcaai/config-ts": "workspace:*",
+        "@axe-core/playwright": "^4.12.1",
+        "@playwright/test": "^1.61.1",
         "@tailwindcss/postcss": "^4.3.2",
         "@testing-library/react": "^16.3.2",
         "@types/node": "^26.1.0",

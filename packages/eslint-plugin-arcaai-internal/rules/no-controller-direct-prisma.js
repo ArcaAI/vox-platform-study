@@ -22,10 +22,11 @@
  * The escape-hatch comment must appear within the previous 3 source
  * lines so reviewers can see the justification next to the bypass.
  *
- * The rule is wired by `base.js` via an `overrides` block scoped to
- * `apps/api/src/modules/**` — it does not affect domain / application
- * / database packages where direct Prisma access is legitimate
- * (service layer).
+ * The rule is wired by `packages/config-eslint/flat/core.js` via a
+ * config entry scoped to `*.controller.ts` files under a `modules/`
+ * directory (in practice apps/api) — it does not affect domain /
+ * application / database packages where direct Prisma access is
+ * legitimate (service layer).
  */
 'use strict';
 

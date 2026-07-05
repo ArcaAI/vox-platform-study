@@ -21,6 +21,8 @@ data:
 
   # -- Internal Service URLs --
   API_URL: "http://hope-api:8868"
+  # Browser-reachable gateway origin (admin-console direct SSE/WS streams).
+  NEXT_PUBLIC_API_HOST: "http://api.hope.local"
   GUARDRAIL_URL: "http://hope-guardrail:8863"
   NLP_URL: "http://hope-nlp:8864"
   SMR_URL: "http://hope-smr:8862"

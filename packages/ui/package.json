@@ -36,7 +36,7 @@
     "build": "tsup && tailwindcss -i ./src/styles/globals.css -o ./dist/styles.css",
     "check-types": "tsc --noEmit",
     "dev": "tsup --watch --onSuccess 'tailwindcss -i ./src/styles/globals.css -o ./dist/styles.css'",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint src --max-warnings 0",
+    "lint": "eslint src --max-warnings 0",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "test": "vitest run",

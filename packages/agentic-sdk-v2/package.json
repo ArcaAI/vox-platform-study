@@ -47,7 +47,7 @@
     "clean": "rimraf dist tsconfig.tsbuildinfo e2e/fixtures/dist",
     "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo e2e/fixtures/dist",
     "typecheck": "tsc --noEmit",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint src --ext .ts,.tsx",
+    "lint": "eslint src",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "pnpm build && playwright test --config=e2e/playwright.config.ts",

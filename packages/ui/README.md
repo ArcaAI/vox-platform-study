@@ -167,7 +167,7 @@ All scripts from [package.json](./package.json), runnable from the repo root wit
 | `build` | `tsup && tailwindcss -i ./src/styles/globals.css -o ./dist/styles.css` |
 | `dev` | tsup watch + Tailwind rebuild on success |
 | `check-types` | `tsc --noEmit` |
-| `lint` | `ESLINT_USE_FLAT_CONFIG=false eslint src --max-warnings 0` |
+| `lint` | `eslint src --max-warnings 0` |
 | `test` / `test:watch` / `test:coverage` | Vitest unit tests |
 | `test:ct` / `test:ct:ui` / `test:ct:debug` / `test:ct:report` | Playwright component tests (`playwright-ct.config.ts`) |
 | `test:all` | Vitest + Playwright CT |
