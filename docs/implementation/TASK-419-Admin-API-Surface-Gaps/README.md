@@ -14,6 +14,7 @@ The TASK-415 review resolved several capability gaps into concrete gateway work 
 3. **Guardrail / NLP admin surface** — configuration lives inside the Python services with no gateway admin exposure; design a safe admin read/config plane.
 4. **Prisma Studio in production behind a dedicated permission** (TASK-415 Decision 7) — replace the dev-only fail-closed gate (`shouldEnablePrismaStudio`) with production-capable registration guarded by a dedicated CASL subject (e.g. `manage:PrismaStudio`) granted only to `GLOBAL_ADMIN` policy sets; keep the truthful `/status` probe.
 5. **AI model registry guard re-pin** (TASK-415 Decision 6) — `/admin/ai-models*` is class-guarded `manage:AiModel` (tenant-scoped); re-pin to global-admin-only to match the console posture.
+6. **Stream-ticket scopes for admin SSE routes** (found during TASK-415 Phase 6, 2026-07-05) — `GET /admin/dna-writing-styles/jobs/:jobId/stream` and `GET /audio/transcription-jobs/:id/stream` lack `@StreamScope`, so single-use tickets minted via `POST /auth/stream-ticket` are rejected (401) at the gateway. The console currently ships labeled polling fallbacks on both screens; adding the decorators lets the `useEventStream` ticket path replace them (no console changes needed beyond removing the fallback labels).
 
 ## Current State Evaluation
 

@@ -36,11 +36,11 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04)', () 
         expect(NAV_SECTIONS.map((section) => section.tier)).toEqual(['10-19', '20-29', '30-49']);
     });
 
-    it('marks phases 4-5 (tiers 10-29) implemented; tier 30-49 stays design-gated', () => {
+    it('marks every tier implemented (all design gates cleared 2026-07-05)', () => {
         const byTier = (tier: string) => NAV_ENTRIES.filter((entry) => entry.tier === tier);
         expect(byTier('10-19').every((entry) => entry.implemented)).toBe(true);
         expect(byTier('20-29').every((entry) => entry.implemented)).toBe(true);
-        expect(byTier('30-49').every((entry) => !entry.implemented)).toBe(true);
+        expect(byTier('30-49').every((entry) => entry.implemented)).toBe(true);
     });
 });
 

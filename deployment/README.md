@@ -29,6 +29,7 @@ deployment/
     │   ├── ollama.yaml                # LLM engine Deployment + Service (GPU, 100Gi model PVC)
     │   ├── lmstudio.yaml              # ExternalName Service alias for the out-of-cluster LM Studio host
     │   ├── api.yaml                   # Deployment + Service + Ingress (8868)
+    │   ├── admin-console.yaml         # Deployment + Service + Ingress (3000) — Next.js admin console (TASK-415)
     │   ├── guardrail.yaml             # Deployment + Service (8863)
     │   ├── reranker.yaml              # TEI reranker Deployment + Service (public image)
     │   ├── smr.yaml                   # Deployment + Service (8862)
@@ -53,7 +54,7 @@ Defined by the ArgoCD bootstrap templates in `argocd/`:
 | Development | `hope-v2-dev` | `deployment/k3s/overlays/dev` | `main` | Automated (prune + self-heal) |
 | Production | `hope-v2-prod` | `deployment/k3s/overlays/prod` | `prod` | Manual |
 
-Ingress hostnames are patched per overlay: `api-dev.hope.local` / `ui-dev.hope.local` (dev), `api.hope.local` / `ui.hope.local` (prod). Replace with real DNS names when wiring a public domain.
+Ingress hostnames are patched per overlay: `api-dev.hope.local` / `ui-dev.hope.local` / `admin-dev.hope.local` (dev), `api.hope.local` / `ui.hope.local` / `admin.hope.local` (prod). Replace with real DNS names when wiring a public domain.
 
 ## How it works
 
@@ -104,6 +105,7 @@ Either way the database itself must exist and accept connections before bootstra
 | Service | Kind | Port | Exposed via Ingress |
 |---|---|---|---|
 | hope-api | Deployment | 8868 | Yes |
+| hope-admin-console | Deployment | 3000 | Yes (`admin[-dev].hope.local`) |
 | hope-ui (ui-playground, deprecated) | Deployment | 3000 | Yes |
 | hope-nlp | Deployment | 8864 | No |
 | hope-smr | Deployment | 8862 | No |
@@ -117,6 +119,16 @@ Either way the database itself must exist and accept connections before bootstra
 | hope-db-migrate | Job (PreSync hook) | — | — |
 
 Resource requests/limits are set per manifest in `k3s/base/` and patched per overlay where needed.
+
+### Admin console (hope-admin-console) notes
+
+The Next.js admin console (TASK-415) has three deployment-sensitive settings:
+
+- **`CORS_ALLOWED_ORIGINS` (API side) must include the console origin.** The console's REST traffic is same-origin through its BFF proxy (no CORS involved), but SSE/WS streams connect the **browser directly to the gateway** using single-use stream tickets, which is a cross-origin request from the console hostname (e.g. `https://admin.hope.local`). The base configmap ships `"*"`; any prod overlay that restricts the list must keep the console origin in it (see the comment in `k3s/base/configmap.yaml`).
+- **`NEXT_PUBLIC_API_HOST` is baked in at image build time.** Next.js inlines `NEXT_PUBLIC_*` into the client bundle during `next build`, so the runtime configmap value only affects server rendering. The image must be built with the browser-reachable gateway origin for the target environment (CI build arg), and rebuilt if that origin changes.
+- **`ADMIN_SESSION_SECRET`** (session-cookie encryption key) must exist in the `hope-secrets` Secret — see `secrets.dev.yaml.example` / `secrets.prod.yaml.example`.
+
+For clusters deployed from the separate **`hope-deployments`** repo (Helm values, see CI/CD below), the same three items must be set there: the `admin-console` image entry (CI `deploy-staging` writes tags), values for `API_URL` / `NEXT_PUBLIC_API_HOST` / the session-secret reference, the admin ingress host, and the API chart's `CORS_ALLOWED_ORIGINS` including that host's origin. That repo is external to this one — verify the exact keys against its charts when wiring it up.
 
 ## CI/CD (GitLab)
 
