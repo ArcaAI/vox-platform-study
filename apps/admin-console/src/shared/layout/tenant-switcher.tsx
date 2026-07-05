@@ -47,15 +47,18 @@ export function TenantSwitcher({ session }: { session: SafeSession }) {
         staleTime: 60_000,
     });
 
-    const activeTenant = tenants?.find((tenant) => tenant.id === session.workingTenantId);
+    const activeTenantName = session.workingTenantName ?? tenants?.find((tenant) => tenant.id === session.workingTenantId)?.name;
 
-    async function applySelection(tenantId: string | null) {
+    async function applySelection(tenant: TenantListItem | null) {
         setSaving(true);
         try {
             await fetch('/api/auth/working-tenant', {
-                method: tenantId ? 'POST' : 'DELETE',
-                ...(tenantId
-                    ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tenantId }) }
+                method: tenant ? 'POST' : 'DELETE',
+                ...(tenant
+                    ? {
+                          headers: { 'content-type': 'application/json' },
+                          body: JSON.stringify({ tenantId: tenant.id, tenantName: tenant.name }),
+                      }
                     : {}),
             });
             // Scope changed: server components re-read the session, queries refetch.
@@ -70,7 +73,7 @@ export function TenantSwitcher({ session }: { session: SafeSession }) {
         <div className="flex items-center gap-2">
             {session.workingTenantId ? (
                 <Badge variant="secondary" className="max-w-48 truncate">
-                    Acting on: {activeTenant?.name ?? session.workingTenantId}
+                    Acting on: {activeTenantName ?? session.workingTenantId}
                 </Badge>
             ) : null}
             <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -92,7 +95,7 @@ export function TenantSwitcher({ session }: { session: SafeSession }) {
                     ) : (
                         <>
                             {(tenants ?? []).map((tenant) => (
-                                <DropdownMenuItem key={tenant.id} onSelect={() => void applySelection(tenant.id)}>
+                                <DropdownMenuItem key={tenant.id} onSelect={() => void applySelection(tenant)}>
                                     <span className="truncate">{tenant.name}</span>
                                 </DropdownMenuItem>
                             ))}

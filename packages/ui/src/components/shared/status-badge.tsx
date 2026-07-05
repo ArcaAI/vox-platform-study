@@ -10,14 +10,20 @@ import { cn } from '@/lib/utils';
  */
 export type StatusColorRole = 'primary' | 'success' | 'warning' | 'destructive' | 'ai' | 'info' | 'hope' | 'neutral';
 
+/**
+ * Tinted roles use the `*-strong` text tokens: the base role colors fall just
+ * short of the 4.5:1 WCAG AA ratio for 12px text over their own /10 tint in
+ * the light theme (e.g. success 4.11:1). The strong tokens resolve to a darker
+ * ramp step in light and to the base role color in dark.
+ */
 const ROLE_CLASSES: Record<StatusColorRole, string> = {
-  primary: 'border-primary/25 bg-primary/10 text-primary',
-  success: 'border-success/25 bg-success/10 text-success',
-  warning: 'border-warning/30 bg-warning/10 text-warning',
-  destructive: 'border-destructive/25 bg-destructive/10 text-destructive',
+  primary: 'border-primary/25 bg-primary/10 text-primary-strong',
+  success: 'border-success/25 bg-success/10 text-success-strong',
+  warning: 'border-warning/30 bg-warning/10 text-warning-strong',
+  destructive: 'border-destructive/25 bg-destructive/10 text-destructive-strong',
   ai: 'border-ai/25 bg-ai/10 text-ai',
   info: 'border-info/25 bg-info/10 text-info',
-  hope: 'border-hope/30 bg-hope/10 text-hope',
+  hope: 'border-hope/30 bg-hope/10 text-hope-strong',
   neutral: 'border-border bg-muted text-muted-foreground',
 };
 

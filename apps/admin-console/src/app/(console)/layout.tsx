@@ -4,6 +4,7 @@ import { SidebarInset, SidebarProvider } from '@arcaai/ui/components/shadcn/side
 import { toSafeSession } from '@/server/safe-user';
 import { getSession } from '@/server/session';
 import { AppSidebar } from '@/shared/layout/app-sidebar';
+import { ImpersonationBanner, WorkingTenantBanner } from '@/shared/layout/session-banners';
 import { SiteHeader } from '@/shared/layout/site-header';
 import { Providers } from '@/shared/providers';
 
@@ -25,6 +26,8 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
                 <AppSidebar />
                 <SidebarInset>
                     <SiteHeader session={safeSession} />
+                    <ImpersonationBanner session={safeSession} />
+                    <WorkingTenantBanner session={safeSession} />
                     <div className="flex flex-1 flex-col p-4 md:p-6">{children}</div>
                 </SidebarInset>
             </SidebarProvider>
