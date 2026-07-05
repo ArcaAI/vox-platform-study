@@ -3,10 +3,9 @@ import { canAny, type PermissionRule } from '@/shared/auth/ability';
 /**
  * Full route map from the capabilities matrix (section 3, frames 10-40, as
  * reviewed 2026-07-04: AI models re-tiered to 10-19, tenant frontend config
- * folded into the tenant-detail tab). Feature screens are BLOCKED behind the
- * Figma design gate: every entry ships with implemented=false except the
- * dashboard placeholder. Flip the flag as screens land — the sidebar only
- * renders implemented entries.
+ * folded into the tenant-detail tab). All design gates cleared (B0/B1/B2
+ * approved 2026-07-05): every route is implemented. The sidebar only renders
+ * implemented entries the caller's ability grants.
  */
 export type NavTier = '10-19' | '20-29' | '30-49';
 
@@ -59,23 +58,23 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     { route: '/account', label: 'Account', tier: '20-29', required: [], implemented: true },
 
     // Tier 30-49 — tenant-admin scope (a global admin needs a working tenant)
-    { route: '/departments', label: 'Departments', tier: '30-49', required: [['manage', 'Department']], implemented: false },
-    { route: '/storage', label: 'Storage browser', tier: '30-49', required: [['read', 'Storage'], ['manage', 'Storage']], implemented: false },
-    { route: '/agents', label: 'Agents', tier: '30-49', required: [['manage', 'PromptTemplate']], implemented: false },
-    { route: '/dna-writing-styles', label: 'DNA writing styles', tier: '30-49', required: [['manage', 'DnaWritingStyleReport']], implemented: false },
-    { route: '/audio/pipelines', label: 'Audio pipelines', tier: '30-49', required: [['manage', 'AsrPipeline']], implemented: false },
-    { route: '/audio/transcription-jobs', label: 'Transcription jobs', tier: '30-49', required: [['read', 'AsrPipeline'], ['manage', 'Tenant']], implemented: false },
-    { route: '/harness/policy', label: 'Harness policy', tier: '30-49', required: [['read', 'HarnessPolicy'], ['manage', 'HarnessPolicy']], implemented: false },
+    { route: '/departments', label: 'Departments', tier: '30-49', required: [['manage', 'Department']], implemented: true },
+    { route: '/storage', label: 'Storage browser', tier: '30-49', required: [['read', 'Storage'], ['manage', 'Storage']], implemented: true },
+    { route: '/agents', label: 'Agents', tier: '30-49', required: [['manage', 'PromptTemplate']], implemented: true },
+    { route: '/dna-writing-styles', label: 'DNA writing styles', tier: '30-49', required: [['manage', 'DnaWritingStyleReport']], implemented: true },
+    { route: '/audio/pipelines', label: 'Audio pipelines', tier: '30-49', required: [['manage', 'AsrPipeline']], implemented: true },
+    { route: '/audio/transcription-jobs', label: 'Transcription jobs', tier: '30-49', required: [['read', 'AsrPipeline'], ['manage', 'Tenant']], implemented: true },
+    { route: '/harness/policy', label: 'Harness policy', tier: '30-49', required: [['read', 'HarnessPolicy'], ['manage', 'HarnessPolicy']], implemented: true },
     {
         route: '/harness/observability',
         label: 'Harness observability',
         tier: '30-49',
         required: [['read', 'HarnessAudit'], ['read', 'HarnessEval'], ['read', 'HarnessWorkflow']],
-        implemented: false,
+        implemented: true,
     },
-    { route: '/harness/workflows', label: 'Harness workflows', tier: '30-49', required: [['read', 'HarnessWorkflow'], ['manage', 'HarnessWorkflow']], implemented: false },
-    { route: '/harness/pipeline-policy', label: 'Pipeline policy', tier: '30-49', required: [['read', 'PipelinePolicy'], ['manage', 'PipelinePolicy']], implemented: false },
-    { route: '/consultations', label: 'Consultations', tier: '30-49', required: [['manage', 'Consultation']], implemented: false },
+    { route: '/harness/workflows', label: 'Harness workflows', tier: '30-49', required: [['read', 'HarnessWorkflow'], ['manage', 'HarnessWorkflow']], implemented: true },
+    { route: '/harness/pipeline-policy', label: 'Pipeline policy', tier: '30-49', required: [['read', 'PipelinePolicy'], ['manage', 'PipelinePolicy']], implemented: true },
+    { route: '/consultations', label: 'Consultations', tier: '30-49', required: [['manage', 'Consultation']], implemented: true },
 ];
 
 /** Implemented entries the caller's ability grants, in declaration order. */

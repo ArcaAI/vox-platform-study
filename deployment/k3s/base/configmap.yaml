@@ -9,6 +9,11 @@ data:
   NODE_ENV: "production"
   LOG_LEVEL: "info"
   DEBUG: "false"
+  # When restricting this in prod (overlay patch), the list MUST include the
+  # admin-console origin (e.g. https://admin.hope.local): the console's REST
+  # calls are same-origin through its BFF proxy and need no CORS, but SSE/WS
+  # streams connect the BROWSER DIRECTLY to the gateway (stream-ticket auth,
+  # TASK-415 rule 13) and are cross-origin from the console's hostname.
   CORS_ALLOWED_ORIGINS: "*"
   ENABLE_PRISMA_STUDIO: "false"
 
