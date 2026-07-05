@@ -63,9 +63,9 @@ test.describe('authenticated round-trip (seeded global admin)', () => {
 
     test('successful login lands on the dashboard', async ({ page }) => {
         await signIn(page);
-        // Placeholder dashboard (design gate): shell nav + Empty-state title.
+        // Designed dashboard (frame 10): shell nav + the screen's h1.
         await expect(page.getByRole('link', { name: 'HOPE Admin' })).toBeVisible();
-        await expect(page.getByText('Screens land after the design gate', { exact: false })).toBeVisible();
+        await expect(page.getByRole('heading', { level: 1, name: 'Platform Dashboard' })).toBeVisible();
     });
 
     test('logout drops the session and the gate re-engages', async ({ page }) => {

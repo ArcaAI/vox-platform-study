@@ -37,26 +37,26 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     // Tier 10-19 — global admin (cross-tenant). Tenant frontend config is a
     // tenant-detail tab (matrix row 6), not a standalone nav entry.
     { route: '/dashboard', label: 'Dashboard', tier: '10-19', required: [['manage', 'PlatformMetrics']], implemented: true },
-    { route: '/monitoring', label: 'Monitoring', tier: '10-19', required: [['manage', 'all'], ['read', 'TenantTelemetry']], implemented: false },
-    { route: '/tenants', label: 'Tenants', tier: '10-19', required: [['manage', 'Tenant'], ['update', 'Tenant']], implemented: false },
-    { route: '/entitlements', label: 'Entitlements & plans', tier: '10-19', required: [['manage', 'all']], implemented: false },
-    { route: '/tenants/storage', label: 'Tenant storage', tier: '10-19', required: [['manage', 'Tenant'], ['read', 'Storage']], implemented: false },
+    { route: '/monitoring', label: 'Monitoring', tier: '10-19', required: [['manage', 'all'], ['read', 'TenantTelemetry']], implemented: true },
+    { route: '/tenants', label: 'Tenants', tier: '10-19', required: [['manage', 'Tenant'], ['update', 'Tenant']], implemented: true },
+    { route: '/entitlements', label: 'Entitlements & plans', tier: '10-19', required: [['manage', 'all']], implemented: true },
+    { route: '/tenants/storage', label: 'Tenant storage', tier: '10-19', required: [['manage', 'Tenant'], ['read', 'Storage']], implemented: true },
     // Global-admin only per the 2026-07-04 review (backend guard re-pin: TASK-419).
-    { route: '/ai-models', label: 'AI models', tier: '10-19', required: [['manage', 'all']], implemented: false },
-    { route: '/rate-limits', label: 'Rate limits', tier: '10-19', required: [['manage', 'all']], implemented: false },
-    { route: '/queues', label: 'Queues & jobs', tier: '10-19', required: [['manage', 'all']], implemented: false },
-    { route: '/schedulers', label: 'Schedulers', tier: '10-19', required: [['manage', 'all']], implemented: false },
-    { route: '/audit-logs', label: 'Audit logs', tier: '10-19', required: [['read', 'AuditLog']], implemented: false },
-    { route: '/pstudio', label: 'Prisma Studio', tier: '10-19', required: [['manage', 'all']], implemented: false },
+    { route: '/ai-models', label: 'AI models', tier: '10-19', required: [['manage', 'all']], implemented: true },
+    { route: '/rate-limits', label: 'Rate limits', tier: '10-19', required: [['manage', 'all']], implemented: true },
+    { route: '/queues', label: 'Queues & jobs', tier: '10-19', required: [['manage', 'all']], implemented: true },
+    { route: '/schedulers', label: 'Schedulers', tier: '10-19', required: [['manage', 'all']], implemented: true },
+    { route: '/audit-logs', label: 'Audit logs', tier: '10-19', required: [['read', 'AuditLog']], implemented: true },
+    { route: '/pstudio', label: 'Prisma Studio', tier: '10-19', required: [['manage', 'all']], implemented: true },
 
     // Tier 20-29 — shared (cross-tenant or tenant-scoped)
-    { route: '/users', label: 'Users', tier: '20-29', required: [['manage', 'User']], implemented: false },
-    { route: '/rbac/roles', label: 'Roles', tier: '20-29', required: [['read', 'Role'], ['manage', 'Role']], implemented: false },
-    { route: '/rbac/policies', label: 'Policies', tier: '20-29', required: [['read', 'Policy'], ['manage', 'Policy']], implemented: false },
-    { route: '/api-keys', label: 'API keys', tier: '20-29', required: [['read', 'ApiKey'], ['manage', 'ApiKey']], implemented: false },
-    { route: '/settings', label: 'Settings & secrets', tier: '20-29', required: [['manage', 'GlobalSetting']], implemented: false },
-    { route: '/tenant-profile', label: 'Tenant profile', tier: '20-29', required: [['read', 'Tenant'], ['update', 'Tenant']], implemented: false },
-    { route: '/account', label: 'Account', tier: '20-29', required: [], implemented: false },
+    { route: '/users', label: 'Users', tier: '20-29', required: [['manage', 'User']], implemented: true },
+    { route: '/rbac/roles', label: 'Roles', tier: '20-29', required: [['read', 'Role'], ['manage', 'Role']], implemented: true },
+    { route: '/rbac/policies', label: 'Policies', tier: '20-29', required: [['read', 'Policy'], ['manage', 'Policy']], implemented: true },
+    { route: '/api-keys', label: 'API keys', tier: '20-29', required: [['read', 'ApiKey'], ['manage', 'ApiKey']], implemented: true },
+    { route: '/settings', label: 'Settings & secrets', tier: '20-29', required: [['manage', 'GlobalSetting']], implemented: true },
+    { route: '/tenant-profile', label: 'Tenant profile', tier: '20-29', required: [['read', 'Tenant'], ['update', 'Tenant']], implemented: true },
+    { route: '/account', label: 'Account', tier: '20-29', required: [], implemented: true },
 
     // Tier 30-49 — tenant-admin scope (a global admin needs a working tenant)
     { route: '/departments', label: 'Departments', tier: '30-49', required: [['manage', 'Department']], implemented: false },

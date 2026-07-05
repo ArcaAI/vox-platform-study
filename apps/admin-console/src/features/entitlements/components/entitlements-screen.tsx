@@ -1,0 +1,232 @@
+'use client';
+
+import { useState } from 'react';
+import { IconClockExclamation, IconFilterOff, IconLicense } from '@tabler/icons-react';
+import { parseAsString, useQueryState } from 'nuqs';
+import { toast } from 'sonner';
+import { Badge } from '@arcaai/ui/components/shadcn/badge';
+import { Button } from '@arcaai/ui/components/shadcn/button';
+import { Card } from '@arcaai/ui/components/shadcn/card';
+import { Label } from '@arcaai/ui/components/shadcn/label';
+import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
+import { Switch } from '@arcaai/ui/components/shadcn/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
+import { GatewayError } from '@/shared/api';
+import type { TenantPlan } from '@/features/tenants/api/types';
+import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
+import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
+import { FilterBar, FilterSearch } from '@/shared/data/filter-bar';
+import { formatNumber } from '@/shared/format';
+import { PageHeader } from '@/shared/page/page-header';
+import { EmptyState } from '@/shared/state/empty-state';
+import { useEnforcementEnabled, usePlanEntitlements, useRunTrialExpiry, useSetEnforcementEnabled } from '../api/hooks';
+import type { PlanEntitlement } from '../api/types';
+import { PlanEditDialog } from './plan-edit-dialog';
+import { FEATURE_FIELDS, PLAN_LABELS, planSummary } from './plan-meta';
+import { TenantOverridePanel } from './tenant-override-panel';
+
+/** Platform-wide enforcement kill-switch — disabling requires a confirm. */
+function EnforcementCard() {
+    const { data, isLoading, error, refetch } = useEnforcementEnabled();
+    const setEnforcement = useSetEnforcementEnabled();
+    const [confirmOpen, setConfirmOpen] = useState(false);
+
+    function apply(enabled: boolean) {
+        setEnforcement.mutate(enabled, {
+            onSuccess: (result) => {
+                toast.success(result.enabled ? 'Entitlement enforcement enabled' : 'Entitlement enforcement disabled');
+                setConfirmOpen(false);
+            },
+            onError: (mutationError) => {
+                toast.error(mutationError instanceof GatewayError ? mutationError.message : 'Could not update enforcement.');
+                setConfirmOpen(false);
+            },
+        });
+    }
+
+    return (
+        <Card className="flex flex-row items-center justify-between gap-4 p-4">
+            <div className="flex min-w-0 flex-col gap-1">
+                <Label htmlFor="entitlements-enforcement">Entitlement enforcement</Label>
+                <p className="text-muted-foreground text-sm">
+                    Platform-wide kill-switch. When off, plan limits and feature gates are evaluated but not enforced.
+                </p>
+            </div>
+            {isLoading ? (
+                <Skeleton className="h-5 w-9 shrink-0 rounded-full" />
+            ) : error ? (
+                <Button variant="outline" size="sm" onClick={() => refetch()}>
+                    Retry
+                </Button>
+            ) : (
+                <Switch
+                    id="entitlements-enforcement"
+                    checked={data?.enabled ?? false}
+                    disabled={setEnforcement.isPending}
+                    onCheckedChange={(next) => (next ? apply(true) : setConfirmOpen(true))}
+                />
+            )}
+            <ConfirmDialog
+                open={confirmOpen}
+                onOpenChange={setConfirmOpen}
+                title="Disable enforcement?"
+                description="Every tenant immediately bypasses plan limits and feature gates until enforcement is re-enabled."
+                confirmLabel="Disable enforcement"
+                destructive
+                onConfirm={() => apply(false)}
+                isPending={setEnforcement.isPending}
+            />
+        </Card>
+    );
+}
+
+/** Frame 13 plans table: client-side search over the fixed plan set. */
+function PlansTab() {
+    const { data, isLoading, error, refetch } = usePlanEntitlements();
+    const [search, setSearch] = useQueryState('search', parseAsString.withDefault(''));
+    const [editing, setEditing] = useState<TenantPlan | null>(null);
+
+    const plans = data ?? [];
+    const rows = search ? plans.filter((plan) => PLAN_LABELS[plan.plan].toLowerCase().includes(search.toLowerCase())) : plans;
+
+    const columns: DataTableColumn<PlanEntitlement>[] = [
+        { key: 'plan', header: 'Plan', cell: (row) => <span className="font-medium">{PLAN_LABELS[row.plan]}</span> },
+        {
+            key: 'entitlements',
+            header: 'Key entitlements',
+            cell: (row) => <span className="text-muted-foreground">{planSummary(row)}</span>,
+        },
+        {
+            key: 'features',
+            header: 'Features',
+            cell: (row) => {
+                const enabled = FEATURE_FIELDS.filter((field) => row[field.key]);
+                if (enabled.length === 0) return <span className="text-muted-foreground">{'\u2014'}</span>;
+                return (
+                    <span className="flex flex-wrap gap-1">
+                        {enabled.map((field) => (
+                            <Badge key={field.key} variant="secondary">
+                                {field.label}
+                            </Badge>
+                        ))}
+                    </span>
+                );
+            },
+        },
+        { key: 'modelTier', header: 'Model tier', mono: true, cell: (row) => row.modelTier },
+        { key: 'rateLimitTier', header: 'Rate limit', mono: true, cell: (row) => row.rateLimitTier },
+        { key: 'version', header: 'Version', mono: true, cell: (row) => `v${row.version}` },
+    ];
+
+    const empty = search ? (
+        <EmptyState
+            icon={IconFilterOff}
+            title="No plans match your search"
+            description="Try a different search or clear it."
+            action={
+                <Button variant="outline" onClick={() => setSearch(null)}>
+                    <IconFilterOff aria-hidden />
+                    Clear search
+                </Button>
+            }
+        />
+    ) : (
+        <EmptyState
+            icon={IconLicense}
+            title="No plan entitlements yet"
+            description="Tenants keep implicit defaults until the gateway seeds plan entitlements."
+        />
+    );
+
+    return (
+        <div className="flex flex-col gap-4">
+            <FilterBar shown={rows.length} total={plans.length}>
+                <FilterSearch
+                    label="Search plans"
+                    placeholder={'Search plans\u2026'}
+                    value={search}
+                    onChange={(value) => setSearch(value || null)}
+                />
+            </FilterBar>
+            <DataTable
+                aria-label="Plan entitlements"
+                columns={columns}
+                rows={rows}
+                rowKey={(row) => row.id}
+                isLoading={isLoading}
+                error={error}
+                onRetry={() => refetch()}
+                empty={empty}
+                onRowClick={(row) => setEditing(row.plan)}
+                skeletonRows={4}
+            />
+            <PlanEditDialog plan={editing} onOpenChange={(open) => !open && setEditing(null)} />
+        </div>
+    );
+}
+
+/** Frame 13 — Entitlements & plans: enforcement switch, plan matrix, overrides. */
+export function EntitlementsScreen() {
+    const plansQuery = usePlanEntitlements();
+    const runTrialExpiry = useRunTrialExpiry();
+    const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('plans'));
+    const [trialExpiryOpen, setTrialExpiryOpen] = useState(false);
+    const tab = tabParam === 'overrides' ? 'overrides' : 'plans';
+
+    function handleTrialExpiryConfirmed() {
+        runTrialExpiry.mutate(undefined, {
+            onSuccess: (report) => {
+                toast.success(`Trial expiry sweep done \u2014 examined ${formatNumber(report.examined)}, downgraded ${formatNumber(report.downgraded)}`);
+                setTrialExpiryOpen(false);
+            },
+            onError: (error) => {
+                toast.error(error instanceof GatewayError ? error.message : 'Could not run the trial-expiry sweep.');
+                setTrialExpiryOpen(false);
+            },
+        });
+    }
+
+    return (
+        <div className="flex flex-col gap-4">
+            <PageHeader
+                title="Entitlements & Plans"
+                meta={
+                    <>
+                        {plansQuery.data ? <span>{formatNumber(plansQuery.data.length)} plans</span> : <Skeleton className="h-4 w-16" />}
+                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
+                            GET /admin/entitlements/plans
+                        </span>
+                    </>
+                }
+                actions={
+                    <Button variant="outline" onClick={() => setTrialExpiryOpen(true)}>
+                        <IconClockExclamation aria-hidden />
+                        Run trial expiry
+                    </Button>
+                }
+            />
+            <EnforcementCard />
+            <Tabs value={tab} onValueChange={(next) => setTabParam(next === 'plans' ? null : next)} className="gap-4">
+                <TabsList variant="line">
+                    <TabsTrigger value="plans">Plans</TabsTrigger>
+                    <TabsTrigger value="overrides">Tenant overrides</TabsTrigger>
+                </TabsList>
+                <TabsContent value="plans">
+                    <PlansTab />
+                </TabsContent>
+                <TabsContent value="overrides">
+                    <TenantOverridePanel />
+                </TabsContent>
+            </Tabs>
+            <ConfirmDialog
+                open={trialExpiryOpen}
+                onOpenChange={setTrialExpiryOpen}
+                title="Run trial expiry?"
+                description="Examines every trial tenant and downgrades the expired ones to their fallback plan."
+                confirmLabel="Run trial expiry"
+                onConfirm={handleTrialExpiryConfirmed}
+                isPending={runTrialExpiry.isPending}
+            />
+        </div>
+    );
+}

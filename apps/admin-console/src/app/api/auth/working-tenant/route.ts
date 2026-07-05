@@ -16,8 +16,9 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     let tenantId: unknown;
+    let tenantName: unknown;
     try {
-        ({ tenantId } = (await request.json()) as { tenantId?: unknown });
+        ({ tenantId, tenantName } = (await request.json()) as { tenantId?: unknown; tenantName?: unknown });
     } catch {
         return Response.json({ message: 'Invalid request body' }, { status: 400 });
     }
@@ -25,7 +26,11 @@ export async function POST(request: Request): Promise<Response> {
         return Response.json({ message: 'tenantId is required' }, { status: 400 });
     }
 
-    const updated = { ...session, workingTenantId: tenantId };
+    const updated = {
+        ...session,
+        workingTenantId: tenantId,
+        workingTenantName: typeof tenantName === 'string' && tenantName.length > 0 ? tenantName : undefined,
+    };
     await setSession(updated);
     return Response.json(toSafeSession(updated));
 }
@@ -38,7 +43,7 @@ export async function DELETE(): Promise<Response> {
     if (!isElevated(session.user)) {
         return Response.json({ message: 'Only elevated users can select a working tenant' }, { status: 403 });
     }
-    const updated = { ...session, workingTenantId: undefined };
+    const updated = { ...session, workingTenantId: undefined, workingTenantName: undefined };
     await setSession(updated);
     return Response.json(toSafeSession(updated));
 }

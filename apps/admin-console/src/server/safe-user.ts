@@ -14,7 +14,9 @@ export interface SafeSession {
     };
     isElevated: boolean;
     workingTenantId: string | null;
+    workingTenantName: string | null;
     impersonatingUserId: string | null;
+    impersonatingUsername: string | null;
 }
 
 export function toSafeSession(session: SessionPayload): SafeSession {
@@ -23,6 +25,8 @@ export function toSafeSession(session: SessionPayload): SafeSession {
         user: { id, username, email, roles },
         isElevated: isElevated(session.user),
         workingTenantId: session.workingTenantId ?? null,
+        workingTenantName: session.workingTenantName ?? null,
         impersonatingUserId: session.impersonation?.targetUserId ?? null,
+        impersonatingUsername: session.impersonation?.targetUsername ?? null,
     };
 }

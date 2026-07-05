@@ -121,6 +121,14 @@
   --info-foreground: #ffffff;
   --link: var(--indigo-600);
 
+  /* Text-on-tint roles: darker steps that keep >=4.5:1 (WCAG 2.2 AA) when the
+     role color is used as 12px text over its own /10 tint (StatusBadge etc). */
+  --primary-strong: var(--teal-700);
+  --success-strong: var(--green-700);
+  --warning-strong: var(--saffron-800);
+  --destructive-strong: var(--red-700);
+  --hope-strong: var(--saffron-800);
+
   --chart-1: var(--teal-500);
   --chart-2: var(--indigo-500);
   --chart-3: var(--saffron-500);
@@ -178,6 +186,13 @@
   --info: var(--indigo-400);
   --info-foreground: #11122e;
   --link: var(--indigo-300);
+
+  /* Dark role colors already clear 4.5:1 on their /10 tints — reuse them. */
+  --primary-strong: var(--primary);
+  --success-strong: var(--success);
+  --warning-strong: var(--warning);
+  --destructive-strong: var(--destructive);
+  --hope-strong: var(--hope);
 
   --chart-1: var(--teal-400);
   --chart-2: var(--indigo-400);
@@ -238,6 +253,11 @@
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
   --color-link: var(--link);
+  --color-primary-strong: var(--primary-strong);
+  --color-success-strong: var(--success-strong);
+  --color-warning-strong: var(--warning-strong);
+  --color-destructive-strong: var(--destructive-strong);
+  --color-hope-strong: var(--hope-strong);
 
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);

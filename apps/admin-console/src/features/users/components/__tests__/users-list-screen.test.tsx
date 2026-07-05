@@ -1,0 +1,285 @@
+/**
+ * Frame 20 — Users list screen. fetch is stubbed at the network boundary
+ * (the api layer has its own tests); assertions here are the rendered list
+ * states, the request URLs the filters produce, row/bulk actions and the
+ * create-user POST.
+ */
+
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { renderWithProviders } from '@/test/render';
+import type { User, UserRoleAssignment } from '../../api/types';
+import { UsersListScreen } from '../users-list-screen';
+
+const push = vi.hoisted(() => vi.fn());
+
+vi.mock('next/navigation', () => ({
+    useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn(), back: vi.fn() }),
+}));
+
+vi.mock('sonner', () => ({
+    toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+function roleAssignment(overrides: Partial<UserRoleAssignment> = {}): UserRoleAssignment {
+    return {
+        id: 'ra-1',
+        projectId: null,
+        createdAt: '2025-06-01T10:00:00.000Z',
+        updatedAt: '2025-06-01T10:00:00.000Z',
+        resourceStatus: 'ENABLED',
+        resourceStatusUpdatedAt: null,
+        resourceStatusUpdatedBy: null,
+        createdBy: null,
+        updatedBy: null,
+        userId: 'u-1',
+        roleId: 'role-clinician',
+        roleName: 'Clinician',
+        tenantId: 't-1',
+        ...overrides,
+    };
+}
+
+function user(overrides: Partial<User> = {}): User {
+    return {
+        id: 'u-1',
+        projectId: null,
+        createdAt: '2025-06-01T10:00:00.000Z',
+        updatedAt: '2025-06-28T10:00:00.000Z',
+        resourceStatus: 'ENABLED',
+        resourceStatusUpdatedAt: null,
+        resourceStatusUpdatedBy: null,
+        createdBy: null,
+        updatedBy: null,
+        username: 'mia.okafor',
+        lastLoginAt: '2025-06-30T09:12:00.000Z',
+        lastActiveAt: '2025-06-30T10:00:00.000Z',
+        isServiceAccount: false,
+        UserRoleAssignments: [roleAssignment()],
+        ...overrides,
+    };
+}
+
+const USERS = [
+    user(),
+    user({
+        id: 'u-2',
+        username: 'jonas.weber',
+        resourceStatus: 'DISABLED',
+        isServiceAccount: true,
+        UserRoleAssignments: [],
+        lastActiveAt: undefined,
+    }),
+];
+
+interface RecordedCall {
+    url: string;
+    method: string;
+    body: unknown;
+}
+
+function stubFetch(handler: (url: string, init?: RequestInit) => Response | undefined): RecordedCall[] {
+    const calls: RecordedCall[] = [];
+    vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+            const url = String(input);
+            calls.push({ url, method: init?.method ?? 'GET', body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined });
+            const response = handler(url, init);
+            if (!response) throw new Error(`Unhandled fetch: ${init?.method ?? 'GET'} ${url}`);
+            return response;
+        }),
+    );
+    return calls;
+}
+
+function listResponse(rows: User[]): Response {
+    return Response.json({ data: rows, count: rows.length, limit: 25, page: 0 });
+}
+
+/** Happy-path handlers for the list plus the row/bulk mutations; overrides win. */
+function stubListFetch(overrides?: (url: string, init?: RequestInit) => Response | undefined): RecordedCall[] {
+    return stubFetch((url, init) => {
+        const method = init?.method ?? 'GET';
+        const custom = overrides?.(url, init);
+        if (custom) return custom;
+        if (method === 'GET' && url.startsWith('/api/hope/admin/users?')) return listResponse(USERS);
+        if (method === 'PATCH' && url === '/api/hope/admin/users/u-1/status') return Response.json(user({ resourceStatus: 'DISABLED' }));
+        if (method === 'DELETE' && url === '/api/hope/admin/users/u-1') return Response.json(user());
+        if (method === 'POST' && url === '/api/hope/admin/users/bulk-actions') {
+            return Response.json({ action: 'disable', total: 2, succeeded: 2, failed: 0, results: [] });
+        }
+        if (method === 'POST' && url === '/api/hope/admin/users/u-1/reset-password') {
+            return Response.json({ mode: 'link', token: 'tok-1', resetPath: '/reset-password?token=tok-1', emailSent: false });
+        }
+        if (method === 'POST' && url === '/api/hope/admin/users') return Response.json(user({ id: 'u-new', username: 'anna' }));
+        return undefined;
+    });
+}
+
+function openRowMenu(username: string) {
+    const trigger = screen.getByRole('button', { name: new RegExp(`open actions for ${username}`, 'i') });
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+}
+
+afterEach(() => {
+    vi.unstubAllGlobals();
+    push.mockClear();
+    cleanup();
+});
+
+describe('UsersListScreen', () => {
+    it('renders user rows with roles, status and type from the list payload', async () => {
+        stubListFetch();
+        renderWithProviders(<UsersListScreen />);
+
+        expect(await screen.findByText('mia.okafor')).toBeDefined();
+        expect(screen.getByText('jonas.weber')).toBeDefined();
+        expect(screen.getByText('Clinician')).toBeDefined();
+        expect(screen.getByText('Active')).toBeDefined();
+        expect(screen.getByText('Disabled')).toBeDefined();
+        expect(screen.getByText('Service account')).toBeDefined();
+        expect(screen.getByText(/2 users/i)).toBeDefined();
+    });
+
+    it('shows the no-users empty state with a create CTA when the list is empty', async () => {
+        stubListFetch(() => listResponse([]));
+        renderWithProviders(<UsersListScreen />);
+
+        expect(await screen.findByText(/no users yet/i)).toBeDefined();
+        expect(screen.getAllByRole('button', { name: /new user/i }).length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('offers Clear filters instead of the create CTA when filters match nothing', async () => {
+        stubListFetch(() => listResponse([]));
+        renderWithProviders(<UsersListScreen />, { searchParams: '?search=zzz' });
+
+        expect(await screen.findByText(/no users match/i)).toBeDefined();
+        expect(screen.getByRole('button', { name: /clear filters/i })).toBeDefined();
+    });
+
+    it('renders the block error state and retries the request', async () => {
+        const calls = stubFetch(() => Response.json({ message: 'Service unavailable' }, { status: 503 }));
+        renderWithProviders(<UsersListScreen />);
+
+        expect(await screen.findByRole('alert')).toBeDefined();
+        expect(screen.getByText(/service unavailable/i)).toBeDefined();
+
+        fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+        await waitFor(() => expect(calls.length).toBe(2));
+    });
+
+    it('maps search/status/type/page URL state onto the gateway list request', async () => {
+        const calls = stubListFetch();
+        renderWithProviders(<UsersListScreen />, { searchParams: '?search=mia&status=DISABLED&type=true&page=2&limit=50' });
+
+        await screen.findByText('mia.okafor');
+        const requested = new URL(calls[0].url, 'http://test.local');
+        expect(requested.pathname).toBe('/api/hope/admin/users');
+        expect(requested.searchParams.get('search')).toBe('mia');
+        expect(requested.searchParams.get('searchFields')).toBe('username,externalId');
+        expect(requested.searchParams.get('filters')).toBe('resourceStatus:DISABLED,isServiceAccount:true');
+        expect(requested.searchParams.get('page')).toBe('2');
+        expect(requested.searchParams.get('limit')).toBe('50');
+    });
+
+    it('requests the default sort and reflects header sorting in the URL state', async () => {
+        const calls = stubListFetch();
+        const onUrlUpdate = vi.fn();
+        renderWithProviders(<UsersListScreen />, { onUrlUpdate });
+
+        await screen.findByText('mia.okafor');
+        expect(new URL(calls[0].url, 'http://test.local').searchParams.get('sort')).toBe('createdAt:desc');
+
+        fireEvent.click(screen.getByRole('button', { name: /^user/i }));
+        await waitFor(() => {
+            const last = onUrlUpdate.mock.calls.at(-1)?.[0] as { searchParams: URLSearchParams };
+            expect(last.searchParams.get('sort')).toBe('username:asc');
+        });
+    });
+
+    it('navigates to the user detail when a row is clicked', async () => {
+        stubListFetch();
+        renderWithProviders(<UsersListScreen />);
+
+        fireEvent.click(await screen.findByText('jonas.weber'));
+        expect(push).toHaveBeenCalledWith('/users/u-2');
+    });
+
+    it('disables a user from the row menu through its confirm dialog', async () => {
+        const calls = stubListFetch();
+        renderWithProviders(<UsersListScreen />);
+
+        await screen.findByText('mia.okafor');
+        openRowMenu('mia.okafor');
+        fireEvent.click(await screen.findByRole('menuitem', { name: /disable/i }));
+
+        const dialog = await screen.findByRole('alertdialog');
+        fireEvent.click(within(dialog).getByRole('button', { name: /^disable$/i }));
+
+        await waitFor(() => {
+            const patch = calls.find((call) => call.method === 'PATCH' && call.url === '/api/hope/admin/users/u-1/status');
+            expect(patch?.body).toEqual({ resourceStatus: 'DISABLED' });
+        });
+    });
+
+    it('requires typing the username to arm the row delete', async () => {
+        const calls = stubListFetch();
+        renderWithProviders(<UsersListScreen />);
+
+        await screen.findByText('mia.okafor');
+        openRowMenu('mia.okafor');
+        fireEvent.click(await screen.findByRole('menuitem', { name: /delete/i }));
+
+        const dialog = await screen.findByRole('alertdialog');
+        const confirm = within(dialog).getByRole('button', { name: /delete user/i }) as HTMLButtonElement;
+        expect(confirm.disabled).toBe(true);
+
+        fireEvent.change(within(dialog).getByLabelText(/to confirm/i), { target: { value: 'mia.okafor' } });
+        expect(confirm.disabled).toBe(false);
+        fireEvent.click(confirm);
+
+        await waitFor(() => expect(calls.some((call) => call.method === 'DELETE' && call.url === '/api/hope/admin/users/u-1')).toBe(true));
+    });
+
+    it('runs a bulk disable over the selected rows through its confirm dialog', async () => {
+        const calls = stubListFetch();
+        renderWithProviders(<UsersListScreen />);
+
+        await screen.findByText('mia.okafor');
+        fireEvent.click(screen.getByRole('checkbox', { name: /select mia.okafor/i }));
+        fireEvent.click(screen.getByRole('checkbox', { name: /select jonas.weber/i }));
+        expect(screen.getByText(/2 selected/i)).toBeDefined();
+
+        fireEvent.click(screen.getByRole('button', { name: /^disable$/i }));
+        const dialog = await screen.findByRole('alertdialog');
+        fireEvent.click(within(dialog).getByRole('button', { name: /^disable$/i }));
+
+        await waitFor(() => {
+            const post = calls.find((call) => call.method === 'POST' && call.url === '/api/hope/admin/users/bulk-actions');
+            expect(post?.body).toEqual({ action: 'disable', ids: ['u-1', 'u-2'] });
+        });
+    });
+
+    it('creates a user through the dialog and navigates to the new detail page', async () => {
+        const calls = stubListFetch((url, init) => {
+            if ((init?.method ?? 'GET') === 'GET' && url.startsWith('/api/hope/admin/users?')) return listResponse([]);
+            return undefined;
+        });
+        renderWithProviders(<UsersListScreen />);
+        await screen.findByText(/no users yet/i);
+
+        fireEvent.click(screen.getAllByRole('button', { name: /new user/i })[0]);
+        const dialog = await screen.findByRole('dialog');
+
+        fireEvent.change(within(dialog).getByLabelText(/^username/i), { target: { value: 'anna' } });
+        fireEvent.change(within(dialog).getByLabelText(/^password/i), { target: { value: 'pw-123456' } });
+        fireEvent.click(within(dialog).getByRole('button', { name: /create user/i }));
+
+        await waitFor(() => {
+            const post = calls.find((call) => call.method === 'POST' && call.url === '/api/hope/admin/users');
+            expect(post?.body).toEqual({ username: 'anna', password: 'pw-123456' });
+        });
+        await waitFor(() => expect(push).toHaveBeenCalledWith('/users/u-new'));
+    });
+});

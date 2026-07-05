@@ -22,6 +22,8 @@ export interface ImpersonationState {
     originalAccessToken: string;
     originalRefreshToken: string;
     targetUserId: string;
+    /** Display name for the global "Impersonating" banner. */
+    targetUsername?: string;
 }
 
 export interface SessionPayload {
@@ -30,6 +32,8 @@ export interface SessionPayload {
     user: SessionUser;
     /** Elevated users only: tenant scope sent as X-Tenant-Id by the proxy. */
     workingTenantId?: string;
+    /** Display name for the "Acting on" banner (avoids a client re-fetch). */
+    workingTenantName?: string;
     impersonation?: ImpersonationState;
 }
 

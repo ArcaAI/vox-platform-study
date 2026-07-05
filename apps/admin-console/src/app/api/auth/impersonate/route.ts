@@ -70,6 +70,7 @@ export async function POST(request: Request): Promise<Response> {
             originalAccessToken: session.accessToken,
             originalRefreshToken: session.refreshToken,
             targetUserId: data.user.id,
+            targetUsername: data.user.username,
         },
     };
     await setSession(updated);
