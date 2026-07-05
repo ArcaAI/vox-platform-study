@@ -36,10 +36,12 @@ import { ThrottleConfigModule, TieredThrottlerGuard } from './modules/throttle';
 
 // Feature modules
 import { RateLimitAdminModule } from './modules/admin-rate-limit/rate-limit-admin.module';
+// TASK-419 item 3 — /admin/ai-services read-only Guardrail/NLP proxy plane.
+import { AiServiceAdminModule } from './modules/ai-service-admin/ai-service-admin.module';
 import { ApiKeyModule } from './modules/api-key/api-key.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { AuthModule } from './modules/auth/auth.module';
-// TASK-390 #24 (ST1) — /admin/settings global-settings CRUD (super-admin tier).
+// TASK-390 #24 (ST1) — /admin/settings global-settings CRUD (global-admin tier).
 import { GlobalSettingModule } from './modules/global-setting/global-setting.module';
 import { ConsultationModule } from './modules/consultation/consultation.module';
 import { DepartmentModule } from './modules/department/department.module';
@@ -52,6 +54,8 @@ import { PipelinePolicyAdminModule } from './modules/pipeline-policy-admin/pipel
 import { HealthModule } from './modules/health/health.module';
 import { InternalModule } from './modules/internal/internal.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
+// TASK-419 item 2 — /admin/notifications (read/update/delete over system-emitted rows).
+import { NotificationModule } from './modules/notification/notification.module';
 import { PlatformMetricsModule } from './modules/platform-metrics/platform-metrics.module';
 import { PipelineModule } from './modules/pipeline/pipeline.module';
 import { AiModelModule } from './modules/ai-model/ai-model.module';
@@ -60,6 +64,8 @@ import { PrismaStudioModule, shouldEnablePrismaStudio } from './modules/pstudio/
 import { PrismaStudioStatusModule } from './modules/pstudio/pstudio-status.module';
 import { QueueAdminModule } from './modules/queue-admin/queue-admin.module';
 import { RbacModule } from './modules/rbac/rbac.module';
+// TASK-419 item 2 — /admin/resource-subscriptions (CRUD + toggle).
+import { ResourceSubscriptionModule } from './modules/resource-subscription/resource-subscription.module';
 import { StorageAccessKeyModule } from './modules/storage-access-key/storage-access-key.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { StreamingModule } from './modules/streaming/streaming.module';
@@ -69,6 +75,8 @@ import { TenantStorageConfigModule } from './modules/tenant-storage-config/tenan
 import { TenantModule } from './modules/tenant/tenant.module';
 import { UserModule } from './modules/user/user.module';
 import { VoiceProfileModule } from './modules/voice-profile/voice-profile.module';
+// TASK-419 item 2 — /admin/webhooks (CRUD + delivery-log reads).
+import { WebhookModule } from './modules/webhook/webhook.module';
 
 const interceptors = [
   {
@@ -225,7 +233,7 @@ const common = [
   VaultRotationWorkerModule,
   // TASK-305 Phase B.7 — Wires ClsService → tenantScopeFilter Prisma
   // extension at app bootstrap. Until this module is loaded, the
-  // extension treats every query as super-admin pass-through (the
+  // extension treats every query as global-admin pass-through (the
   // safe default for CLI / seed scripts that run without CLS).
   TenantContextProviderModule,
   // TASK-307 W3.2 — Registers the global TenantOwnedResourceInterceptor as
@@ -238,13 +246,14 @@ const common = [
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const featureModules: any[] = [
   RateLimitAdminModule,
+  AiServiceAdminModule,
   ApiKeyModule,
   AuthModule,
   AuditLogModule,
   ConsultationModule,
   DepartmentModule,
   DnaWritingStyleModule,
-  // TASK-392 (Phase 4) — /admin/entitlements/* (super-admin matrix/override/kill-switch/downgrade)
+  // TASK-392 (Phase 4) — /admin/entitlements/* (global-admin matrix/override/kill-switch/downgrade)
   // + /entitlements/me (tenant self-snapshot). All entitlements endpoints live here.
   EntitlementsApiModule,
   // TASK-390 #24 — /admin/settings (global-settings CRUD; wires the existing service).
@@ -256,7 +265,9 @@ const featureModules: any[] = [
   HealthModule,
   InternalModule,
   MonitoringModule,
-  // TASK-386 (#16) — /admin/platform/{metrics,sockets,consumption} (super-admin).
+  // TASK-419 item 2 — /admin/notifications (read/update/delete; no admin POST).
+  NotificationModule,
+  // TASK-386 (#16) — /admin/platform/{metrics,sockets,consumption} (global-admin).
   PlatformMetricsModule,
   PromptManagementModule,
   // TASK-330 Phase 6 — /admin/harness/* (policy, observe, workflow ops).
@@ -268,6 +279,8 @@ const featureModules: any[] = [
   // shell (the shell module below stays conditionally registered).
   PrismaStudioStatusModule,
   RbacModule,
+  // TASK-419 item 2 — /admin/resource-subscriptions (CRUD + toggle).
+  ResourceSubscriptionModule,
   StorageModule,
   StorageAccessKeyModule,
   StreamingModule,
@@ -279,12 +292,14 @@ const featureModules: any[] = [
   TenantFrontendConfigModule,
   UserModule,
   VoiceProfileModule,
+  // TASK-419 item 2 — /admin/webhooks (CRUD + delivery-log reads).
+  WebhookModule,
 ];
 
-// TASK-307 W5.2 (AC-16, audit C-9): Embedded Prisma Studio is gated
-// fail-closed — both NODE_ENV=development AND ENABLE_PRISMA_STUDIO=true
-// must be set, so it can never accidentally surface in staging /
-// preview / production.
+// TASK-419 item 4 (supersedes TASK-307 W5.2): Embedded Prisma Studio is
+// production-capable but fail-closed — the module registers only when the
+// operator explicitly sets ENABLE_PRISMA_STUDIO=true, and every route is
+// additionally guarded by the dedicated `manage:PrismaStudio` permission.
 // eslint-disable-next-line turbo/no-undeclared-env-vars
 if (shouldEnablePrismaStudio({ NODE_ENV: process.env.NODE_ENV, ENABLE_PRISMA_STUDIO: process.env.ENABLE_PRISMA_STUDIO })) {
   featureModules.push(PrismaStudioModule);

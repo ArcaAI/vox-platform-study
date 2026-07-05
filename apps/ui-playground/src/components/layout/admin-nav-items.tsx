@@ -23,17 +23,17 @@ import type { DraggableNavItem } from './draggable-nav-group';
 /**
  * TASK-327 T5 — admin nav is scope-driven, not visibility-driven.
  *
- * Any admin (SUPER_ADMIN / TENANT_ADMIN — `isAdmin`) sees the full admin menu
+ * Any admin (GLOBAL_ADMIN / TENANT_ADMIN — `isAdmin`) sees the full admin menu
  * set; data is scoped server-side by the `X-Tenant-Id` header, so there's no
  * need to HIDE menus per role. The exceptions are the global-scope-only ops
  * surfaces — Prisma Studio (TASK-326 Q4), System Health (TASK-336 OB-01),
  * Rate Limits (TASK-336 IC-05) and Queues & Jobs (TASK-336 OB-03 / TASK-250) —
  * which are gated by `isGlobalScope`. Rate Limits, Queues & Jobs and the
- * scheduler controls all back SUPER_ADMIN-only controllers over platform-wide
+ * scheduler controls all back GLOBAL_ADMIN-only controllers over platform-wide
  * infrastructure; System Health is a platform-wide read. None needs a selected
  * tenant, so they are not in the tenant-scoped gating set below.
  *
- * TASK-331 #1 — a global-scope admin (SUPER_ADMIN) has no implicit tenant, so
+ * TASK-331 #1 — a global-scope admin (GLOBAL_ADMIN) has no implicit tenant, so
  * the tenant-scoped pages are DISABLED until they pick one in the header
  * ScopeSwitcher. The Overview, the Tenants management area, the cross-tenant
  * Users directory and the global Prisma Studio stay enabled so the admin can
@@ -91,7 +91,7 @@ export function buildAdminNavItems(opts: {
     );
   }
 
-  // Global-scope-only ops surfaces (super-admin). System Health, Rate Limits
+  // Global-scope-only ops surfaces (global-admin). System Health, Rate Limits
   // and Queues & Jobs (TASK-336 OB-01 / IC-05 / OB-03) join Prisma Studio here;
   // ordering is resolved by `orderItemsById` below, which keeps Prisma Studio
   // segregated last.

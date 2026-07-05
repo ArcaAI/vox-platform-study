@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import { ENTITLEMENTS_ENDPOINTS, isAdminPlanePath } from '../constants';
 
 describe('TASK-392 ENTITLEMENTS_ENDPOINTS', () => {
-  it('exposes the full super-admin + self-view surface', () => {
+  it('exposes the full global-admin + self-view surface', () => {
     expect(Object.keys(ENTITLEMENTS_ENDPOINTS)).toEqual(
       expect.arrayContaining([
         'ENABLED',

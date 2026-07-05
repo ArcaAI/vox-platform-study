@@ -15,7 +15,7 @@ import { CanAny, CanDelete, CanRead, CanUpdate } from '../../decorators';
  * Mirrors `TenantBucketController`: class-level
  * `@CanAny(['manage','Tenant'],['update','Tenant'])` gates the surface
  * (TASK-331 doc-04 F1 — tenant admins reach it via tenant-scoped
- * `update:Tenant`; SUPER_ADMIN via `manage:all`), method-level
+ * `update:Tenant`; GLOBAL_ADMIN via `manage:all`), method-level
  * `@Can*('Storage')` adds the specific operation (already granted to tenant
  * admins by `tenant-full-access`'s `manage:Storage`), and
  * `@TenantOwnedResource` guards the per-record delete route.

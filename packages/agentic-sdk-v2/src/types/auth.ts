@@ -74,7 +74,7 @@ export interface ImpersonateResponse {
 }
 
 /**
- * TASK-401 — options for the super-admin-only `useUsers().impersonate()` mint
+ * TASK-401 — options for the global-admin-only `useUsers().impersonate()` mint
  * (`POST /admin/users/:id/impersonate`). All optional; the reason is recorded
  * on the audit trail only (never embedded in the token).
  */

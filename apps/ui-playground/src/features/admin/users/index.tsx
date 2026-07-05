@@ -223,7 +223,7 @@ function UserFormDialog({
   const [selectedTenantId, setSelectedTenantId] = useState('');
 
   // TASK-331 r2605 #3 — membership is created in the ACTIVE tenant (a
-  // super-admin's selected tenant, or a tenant-admin's own). The create POST
+  // global-admin's selected tenant, or a tenant-admin's own). The create POST
   // carries it as `X-Tenant-Id` and the API attributes the role/department to
   // it, so departments are listed for that tenant only.
   const activeTenantId = useAuthStore((s) => s.tenantId);
@@ -374,7 +374,7 @@ function UserFormDialog({
                 {/* TASK-331 r2605 #3 — optional membership, created atomically
                     with the user in the active tenant so the account can log in
                     without a separate role/department step. Shown only once a
-                    tenant is active (a super-admin must pick one first). */}
+                    tenant is active (a global-admin must pick one first). */}
                 {!isEdit && activeTenantId && (
                   <div className="space-y-3 rounded-md border p-3">
                     <div>

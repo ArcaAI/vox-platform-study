@@ -333,7 +333,7 @@ describe('useGlobalSettings', () => {
     });
 
     /* ------------------------------------------------------------------ */
-    /*  TASK-396: revealSecret (super-admin, step-up re-auth)              */
+    /*  TASK-396: revealSecret (global-admin, step-up re-auth)              */
     /* ------------------------------------------------------------------ */
 
     describe('revealSecret (TASK-396)', () => {

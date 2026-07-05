@@ -61,8 +61,8 @@ interface HealthServicesResponse {
 const authGet = (request: APIRequestContext, path: string, token: string, params?: Record<string, string>) =>
     request.get(path, { headers: { Authorization: `Bearer ${token}` }, params });
 
-// The 🔒 platform-ops endpoints, gated to SUPER_ADMIN (`manage all`).
-const SUPER_ADMIN_ONLY_PATHS = ['/api/v1/monitoring/sessions', '/api/v1/monitoring/uptime', '/api/v1/health/services'] as const;
+// The 🔒 platform-ops endpoints, gated to GLOBAL_ADMIN (`manage all`).
+const GLOBAL_ADMIN_ONLY_PATHS = ['/api/v1/monitoring/sessions', '/api/v1/monitoring/uptime', '/api/v1/health/services'] as const;
 
 test.describe('TASK-383 — platform dashboard + monitoring (cross-tenant data sources)', () => {
     let token: string;
@@ -146,7 +146,7 @@ test.describe('TASK-383 — platform dashboard + monitoring (cross-tenant data s
         const doctor = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
         expect(doctor, 'doctor login failed — is the stack seeded?').toBeTruthy();
 
-        for (const path of SUPER_ADMIN_ONLY_PATHS) {
+        for (const path of GLOBAL_ADMIN_ONLY_PATHS) {
             const res = await authGet(request, path, doctor!.token);
             // @Authorize(['manage','all']) → a DOCTOR lacks the ability → 403 Forbidden.
             expect(res.status(), `${path} is super-admin-only (doctor must be forbidden)`).toBe(403);
@@ -154,7 +154,7 @@ test.describe('TASK-383 — platform dashboard + monitoring (cross-tenant data s
     });
 
     test('G1: the same super-admin reaches all three 🔒 endpoints (positive scope)', async ({ request }) => {
-        for (const path of SUPER_ADMIN_ONLY_PATHS) {
+        for (const path of GLOBAL_ADMIN_ONLY_PATHS) {
             const res = await authGet(request, path, token);
             expect(res.status(), `${path} is reachable by super_admin`).toBe(200);
         }

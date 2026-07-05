@@ -104,7 +104,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   /**
    * TASK-305 D.5.3 (audit C-9) — Queue a DNA-style generation job for a
    * doctor. The doctor must be a role-assigned member of the caller's
-   * tenant; SUPER_ADMIN does NOT bypass this guard because writing-style
+   * tenant; GLOBAL_ADMIN does NOT bypass this guard because writing-style
    * artifacts are derived from PHI (transcripts, prior notes), and exposing
    * them across tenants is itself a PHI leak.
    */
@@ -239,7 +239,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
 
     // TASK-305 D.5.3 (audit C-9) — PHI guard. Even an admin caller using
     // `bypassOwnershipCheck` (the per-doctor ownership escape) cannot reach
-    // across tenants, and even SUPER_ADMIN cannot — the writing style
+    // across tenants, and even GLOBAL_ADMIN cannot — the writing style
     // captures the doctor's voice/style derived from PHI.
     this.assertReportInScope(report, reportId);
 
@@ -399,14 +399,14 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
 
   private isGlobalRole(): boolean {
     const roles = this.requestUser?.roles ?? [];
-    return roles.some((r) => r === 'SUPER_ADMIN' || r === 'GLOBAL_ADMIN');
+    return roles.includes('GLOBAL_ADMIN');
   }
 
   /**
    * TASK-305 D.5.3 (audit C-9) — Assert the loaded report belongs to the
    * caller's tenant. Throws `NotFoundException` (not `Forbidden`) so the API
    * never reveals that a record exists for another tenant. Note: writing
-   * style is PHI-derived, so SUPER_ADMIN does NOT bypass this check.
+   * style is PHI-derived, so GLOBAL_ADMIN does NOT bypass this check.
    */
   private assertReportInScope(report: { tenantId?: string | null }, reportId: string): void {
     const tenantId = this.tenantId;
@@ -468,7 +468,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
    * TASK-328 A5 — Aggregate DNA dashboard.
    *
    * Tenant scoping mirrors `listReports`: a global admin
-   * (SUPER_ADMIN/GLOBAL_ADMIN) may target a specific tenant via `tenantId`, or
+   * (GLOBAL_ADMIN) may target a specific tenant via `tenantId`, or
    * omit it for an all-tenants roll-up. A tenant admin is always pinned to
    * their CLS tenant — any `tenantId` argument is ignored so they cannot read
    * another tenant's PHI-derived activity.

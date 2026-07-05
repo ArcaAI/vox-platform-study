@@ -7,7 +7,7 @@
  * denied (403) — surfaced here as a clean `AgenticError('FORBIDDEN')`.
  *
  * Tenant scoping is enforced server-side: a global admin
- * (SUPER_ADMIN/GLOBAL_ADMIN) may pass `tenantId` to scope the aggregate (or
+ * (GLOBAL_ADMIN) may pass `tenantId` to scope the aggregate (or
  * omit it for an all-tenants roll-up); a tenant admin is pinned to their CLS
  * tenant and any supplied `tenantId` is ignored.
  */

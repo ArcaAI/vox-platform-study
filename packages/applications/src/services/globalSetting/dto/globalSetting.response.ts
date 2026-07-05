@@ -32,7 +32,7 @@ export class GlobalSettingResponse extends BaseResponse {
 
   /**
    * TASK-332 / TASK-391 (D2) — platform-owned "locked" default. When true the
-   * row is write-guarded server-side (only SUPER_ADMIN may modify it); the admin
+   * row is write-guarded server-side (only GLOBAL_ADMIN may modify it); the admin
    * console mirrors this by rendering a lock affordance and disabling edit/delete
    * for non-super-admins. Exposed so `GET /admin/settings` returns it (the FE
    * cannot render the guard otherwise).

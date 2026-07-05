@@ -95,10 +95,11 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // editable harness policy HarnessPolicy + append-only HarnessPolicyChange
     // → 40. TASK-349 added Highlight (TASK-344 model, caught by the drift
     // guard below) → 41. TASK-356 Phase 5 added the realtime-cascade
-    // PipelinePolicy + append-only PipelinePolicyChange → 43. (The drift guard
-    // below is the durable check; this count stays as a quick human-readable
-    // tripwire.)
-    expect(TENANT_SCOPED_MODELS.size).toBe(43);
+    // PipelinePolicy + append-only PipelinePolicyChange → 43. TASK-392 added
+    // TenantUsageMeter → 44 (TenantEntitlement is INTENTIONALLY_UNSCOPED,
+    // below). (The drift guard below is the durable check; this count stays
+    // as a quick human-readable tripwire.)
+    expect(TENANT_SCOPED_MODELS.size).toBe(44);
   });
 
   it('includes every PHI-bearing model', () => {
@@ -161,11 +162,31 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
 
   /**
    * Models that carry a `tenantId` scalar but are DELIBERATELY excluded from
-   * tenant-scope injection. Empty today — every tenantId model is scoped. Add
-   * a name here ONLY for a conscious, reviewed exception (with a justifying
-   * comment), never to silence this guard for a real tenant-scoped model.
+   * tenant-scope injection. Add a name here ONLY for a conscious, reviewed
+   * exception (with a justifying comment), never to silence this guard for a
+   * real tenant-scoped model.
    */
-  const INTENTIONALLY_UNSCOPED: ReadonlySet<string> = new Set<string>([]);
+  const INTENTIONALLY_UNSCOPED: ReadonlySet<string> = new Set<string>([
+    // TASK-392 — per-tenant entitlement override (`tenantId @unique`), a
+    // platform-administration row rather than customer data. It is read via
+    // the EXTENDED client from contexts whose CLS tenant can never match the
+    // target row, so CLS-based scope injection would silently break them:
+    //   1. The pre-auth throttler (`tiered-throttler.guard.ts` →
+    //      `getTenantRateLimitPolicy` → `findByTenant`) resolves the
+    //      caller-tenant's rate-limit override BEFORE auth populates CLS —
+    //      CLS is active but empty (not elevated), so a scoped read would
+    //      throw and per-tenant rate-limit overrides (Q7 "increase on
+    //      demand") would silently stop applying.
+    //   2. GLOBAL_ADMIN override CRUD (`/admin/entitlements/tenants/:id`)
+    //      targets ANY tenant while the admin's working-tenant CLS context
+    //      (X-Tenant-Id, `resolve-active-tenant.ts`) may point elsewhere —
+    //      the extension only bypasses when NO CLS tenant exists, so scoping
+    //      would 404/mismatch legitimate cross-tenant admin operations.
+    // Isolation still holds: every read path filters by an explicit
+    // `tenantId` (`findByTenant`), the row carries no PHI, and the only
+    // write surface is the GLOBAL_ADMIN-gated admin controller.
+    'TenantEntitlement',
+  ]);
 
   /** Every `model X { … tenantId String … }` declared across db_main/*.prisma. */
   function schemaModelsWithTenantId(): string[] {
@@ -440,11 +461,12 @@ describe('Read operations on tenant-scoped models', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Missing tenantId — throw vs pass-through based on super-admin flag
+// Missing tenantId — throw vs pass-through based on the isSuperAdmin flag
+// (true = caller holds the elevated GLOBAL_ADMIN role)
 // ---------------------------------------------------------------------------
 
 describe('Missing tenantId behaviour', () => {
-  it('throws on tenant-scoped read when getTenantId returns null and not super admin', async () => {
+  it('throws on tenant-scoped read when getTenantId returns null and not elevated', async () => {
     const config = captureExtensionConfig({
       getTenantId: () => null,
       isSuperAdmin: () => false,
@@ -487,7 +509,7 @@ describe('Missing tenantId behaviour', () => {
     expect(query).toHaveBeenCalledWith({ where: { id: 'x' } });
   });
 
-  it('passes through writes when super admin and no tenantId', async () => {
+  it('passes through writes when elevated (isSuperAdmin true) and no tenantId', async () => {
     const config = captureExtensionConfig({
       getTenantId: () => null,
       isSuperAdmin: () => true,

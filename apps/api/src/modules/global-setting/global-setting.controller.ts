@@ -30,12 +30,12 @@ import { ApiEndpoint, Authorize, CanCreate, CanManage, CanRead, CanUpdate, CanDe
  * (the §3a review labels the item `admin/global-settings`; see the TASK-390
  * README §3.3 for the naming reconciliation FLAG).
  *
- * Authorization: class-level `manage:GlobalSetting` (super-admin via
+ * Authorization: class-level `manage:GlobalSetting` (global-admin via
  * `manage:all`; tenant admins via the seeded `tenant-full-access` /
  * `global-settings-manage` policies, tenant-scoped). GET routes relax to
  * `read:GlobalSetting`. OCC on PATCH via the `If-Match` header (the global
  * `ETagInterceptor` emits `ETag: "<version>"` on the single-object GET).
- * `locked` platform-owned rows stay super-admin-only (enforced in the service).
+ * `locked` platform-owned rows stay global-admin-only (enforced in the service).
  */
 @ApiBearerAuth()
 @ApiTags('admin-global-settings')
@@ -120,7 +120,7 @@ export class GlobalSettingController {
       "Compare-And-Set against the row's `_version` column. When the header is " +
       'present, its value overrides the body-field `expectedVersion`. On ' +
       'version drift the response is `412 Precondition Failed`; a missing ' +
-      'header is `428 Precondition Required`. `locked` rows are super-admin-only.',
+      'header is `428 Precondition Required`. `locked` rows are global-admin-only.',
   })
   @ApiHeader({
     name: 'If-Match',
@@ -129,7 +129,7 @@ export class GlobalSettingController {
     example: '"7"',
   })
   @ApiParam({ name: 'id', description: 'Global setting ID', type: String })
-  @ApiResponse({ status: 403, description: 'Forbidden - locked setting requires SUPER_ADMIN' })
+  @ApiResponse({ status: 403, description: 'Forbidden - locked setting requires GLOBAL_ADMIN' })
   @ApiResponse({ status: 404, description: 'Global setting not found' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
@@ -166,7 +166,7 @@ export class GlobalSettingController {
   /**
    * TASK-396 — reveal ONE secret setting's decrypted plaintext.
    *
-   * SUPER-ADMIN ONLY: the method-level `@Authorize(['manage','all'])`
+   * GLOBAL-ADMIN ONLY: the method-level `@Authorize(['manage','all'])`
    * OVERRIDES the class-level `@CanManage('GlobalSetting')` (the
    * `UnifiedAuthGuard` resolves required-permission metadata via
    * `getAllAndOverride([handler, class])`). Only the `system-full-access`
@@ -183,9 +183,9 @@ export class GlobalSettingController {
   @HttpCode(200)
   @Authorize(['manage', 'all'])
   @ApiOperation({
-    summary: 'Reveal a secret setting (super-admin, step-up re-auth, audited)',
+    summary: 'Reveal a secret setting (global-admin, step-up re-auth, audited)',
     description:
-      'Returns the decrypted plaintext of ONE global setting. SUPER_ADMIN only ' +
+      'Returns the decrypted plaintext of ONE global setting. GLOBAL_ADMIN only ' +
       '(CASL `manage:all`). Requires step-up re-authentication: the request body ' +
       "must carry the caller's current account password, verified server-side " +
       'against the stored hash. Every reveal is audit-logged; the plaintext is ' +
@@ -194,7 +194,7 @@ export class GlobalSettingController {
   @ApiParam({ name: 'id', description: 'Global setting ID', type: String })
   @ApiResponse({ status: 200, description: 'Decrypted secret (transient)', type: RevealGlobalSettingResponse })
   @ApiResponse({ status: 401, description: 'Step-up re-authentication required or password incorrect' })
-  @ApiResponse({ status: 403, description: 'Forbidden — reveal is SUPER_ADMIN only' })
+  @ApiResponse({ status: 403, description: 'Forbidden — reveal is GLOBAL_ADMIN only' })
   @ApiResponse({ status: 404, description: 'Global setting not found' })
   async reveal(@Param('id') id: string, @Body() request: RevealGlobalSettingRequest): Promise<RevealGlobalSettingResponse> {
     const { entity, plaintext } = await this.globalSettingService.revealSecret(id, request.password);

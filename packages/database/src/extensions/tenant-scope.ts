@@ -113,6 +113,15 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // pipeline-policy.prisma (2) — TASK-356 Phase 5 realtime-cascade policy.
   'PipelinePolicy', // also a SYSTEM-shared read model (global-default row, below)
   'PipelinePolicyChange', // append-only WORM change log (no soft-delete)
+  // entitlement.prisma (1) — TASK-392 rolling-monthly usage meters. The
+  // reconcile job reads/writes these via the UNSCOPED `baseClient` (explicit
+  // tenantId filters, no CLS — same escape hatch as the audit-retention
+  // purge), so scoping here is behaviour-neutral for it while protecting any
+  // future extended-client/repository access. `TenantEntitlement` is NOT
+  // here — see INTENTIONALLY_UNSCOPED in the drift-guard test (pre-auth
+  // throttler + global-admin cross-tenant override CRUD read it through the
+  // extended client without a matching CLS tenant).
+  'TenantUsageMeter',
 ]);
 
 /**
@@ -199,7 +208,7 @@ export function isSystemSharedReadModel(model: string): boolean {
 /**
  * Pluggable provider that returns the *current* tenant id (typically
  * from `nestjs-cls`) and optionally signals whether the caller carries
- * the SUPER_ADMIN role (cross-tenant audit / platform-admin paths).
+ * the GLOBAL_ADMIN role (cross-tenant audit / platform-admin paths).
  *
  * The provider is intentionally framework-agnostic so this package
  * does not have to depend on `nestjs-cls`. NestJS wires its CLS-backed

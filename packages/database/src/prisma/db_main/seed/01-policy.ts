@@ -69,6 +69,20 @@ export const DEFAULT_POLICIES = [
             { action: 'manage', subject: 'UserRoleAssignment' },
         ],
     },
+    {
+        id: '00000000-0000-0000-0001-000000000080',
+        name: 'prisma-studio-manage',
+        description: 'Access the embedded Prisma Studio database browser (dedicated production-capable grant)',
+        scope: PolicyScope.GLOBAL,
+        // TASK-419 item 4 — Prisma Studio runs raw SQL against the unscoped
+        // client (untenanted, privileged). Access is a DEDICATED subject so it
+        // can be granted/delegated without handing out `manage:all`; the module
+        // itself additionally requires the ENABLE_PRISMA_STUDIO env flag
+        // (fail-closed default). Granted to the GLOBAL_ADMIN policy set.
+        rules: [
+            { action: 'manage', subject: 'PrismaStudio' },
+        ],
+    },
 
     // =========================================================================
     // TENANT SCOPE POLICIES - Administration
@@ -127,10 +141,13 @@ export const DEFAULT_POLICIES = [
             // gate/Temporal workflow ops, and read the WORM audit trail + eval
             // runs. All tenant-scoped (the admin controller + policy service
             // additionally pin every read/write to the caller's tenant).
+            // TASK-419 item 1 — HarnessEval upgraded read → manage: golden-set
+            // curation (`POST /admin/harness/golden-sets*`) is a tenant-admin
+            // capability. HarnessAudit stays read-only (WORM).
             { action: 'manage', subject: 'HarnessPolicy', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'manage', subject: 'HarnessWorkflow', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'read', subject: 'HarnessAudit', conditions: { tenantId: '${context.tenantId}' } },
-            { action: 'read', subject: 'HarnessEval', conditions: { tenantId: '${context.tenantId}' } },
+            { action: 'manage', subject: 'HarnessEval', conditions: { tenantId: '${context.tenantId}' } },
             // Realtime-pipeline toggle cascade (TASK-356 Phase 5) — tenant admins
             // manage their own tenant's PipelinePolicy rows (auto-summary / auto-NER
             // / harness-vs-legacy routing). A SEPARATE subject from HarnessPolicy so
@@ -378,13 +395,14 @@ export const DEFAULT_POLICIES = [
         // re-usable platform grant for a non-super harness-operator role.)
         id: '00000000-0000-0000-0001-000000000070',
         name: 'harness-platform-manage',
-        description: 'Platform-level clinical documentation harness administration — manage policy + Temporal workflow ops and read the WORM audit trail + eval runs across all tenants',
+        description: 'Platform-level clinical documentation harness administration — manage policy + Temporal workflow ops + eval datasets/runs and read the WORM audit trail across all tenants',
         scope: PolicyScope.GLOBAL,
         rules: [
             { action: 'manage', subject: 'HarnessPolicy' },
             { action: 'manage', subject: 'HarnessWorkflow' },
             { action: 'read', subject: 'HarnessAudit' },
-            { action: 'read', subject: 'HarnessEval' },
+            // TASK-419 item 1 — manage (was read): golden-set curation.
+            { action: 'manage', subject: 'HarnessEval' },
             // TASK-356 Phase 5 — platform-wide realtime-pipeline cascade admin
             // (incl. the SYSTEM-tenant global-default row). `manage` implies `read`.
             { action: 'manage', subject: 'PipelinePolicy' },
@@ -398,13 +416,14 @@ export const DEFAULT_POLICIES = [
         // policy for custom (e.g. harness-operator) tenant roles.
         id: '00000000-0000-0000-0001-000000000071',
         name: 'harness-tenant-manage',
-        description: 'Tenant-scoped clinical documentation harness administration — manage the tenant policy + Temporal workflow ops and read the WORM audit trail + eval runs within the tenant',
+        description: 'Tenant-scoped clinical documentation harness administration — manage the tenant policy + Temporal workflow ops + eval datasets/runs and read the WORM audit trail within the tenant',
         scope: PolicyScope.TENANT,
         rules: [
             { action: 'manage', subject: 'HarnessPolicy', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'manage', subject: 'HarnessWorkflow', conditions: { tenantId: '${context.tenantId}' } },
             { action: 'read', subject: 'HarnessAudit', conditions: { tenantId: '${context.tenantId}' } },
-            { action: 'read', subject: 'HarnessEval', conditions: { tenantId: '${context.tenantId}' } },
+            // TASK-419 item 1 — manage (was read): golden-set curation.
+            { action: 'manage', subject: 'HarnessEval', conditions: { tenantId: '${context.tenantId}' } },
             // TASK-356 Phase 5 — tenant-scoped realtime-pipeline cascade admin.
             // `manage` implies `read`; the controller pins every op to the tenant.
             { action: 'manage', subject: 'PipelinePolicy', conditions: { tenantId: '${context.tenantId}' } },

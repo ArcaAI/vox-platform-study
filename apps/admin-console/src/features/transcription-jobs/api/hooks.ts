@@ -8,7 +8,7 @@ import { TERMINAL_JOB_STATUSES, type TranscriptionJobStatus } from './types';
 /** Frame 35 header contract: the whole surface auto-refreshes every 30 s. */
 const REFRESH_MS = 30_000;
 
-/** Poll cadence for a selected, still-running job (SSE fallback, TASK-419 gap). */
+/** Fallback poll cadence for a selected, still-running job while its SSE stream is down. */
 const SELECTED_JOB_POLL_MS = 5_000;
 
 /** `enabled: false` while a status filter swaps the list for GET status/:status. */
@@ -35,16 +35,18 @@ export function useTranscriptionJobsByStatus(status: TranscriptionJobStatus | nu
 }
 
 /**
- * Selected-job detail. Polls every 5 s while the job is non-terminal so the
- * stream panel stays live even while the SSE route's ticket auth 401s
- * (@StreamScope missing until TASK-419); stops once the job settles.
+ * Selected-job detail: one read for the facts panel; live updates ride the
+ * ticket-authenticated SSE stream (primary transport). `pollAsFallback` is
+ * the documented error fallback — pass it while the stream sits on `error`
+ * and the detail re-polls every 5 s until the job settles.
  */
-export function useTranscriptionJob(id: string | null) {
+export function useTranscriptionJob(id: string | null, pollAsFallback = false) {
     return useQuery({
         queryKey: transcriptionJobKeys.detail(id ?? ''),
         queryFn: () => getTranscriptionJob(id as string),
         enabled: !!id,
         refetchInterval: (query) => {
+            if (!pollAsFallback) return false;
             const status = query.state.data?.status;
             if (status && TERMINAL_JOB_STATUSES.includes(status)) return false;
             return SELECTED_JOB_POLL_MS;

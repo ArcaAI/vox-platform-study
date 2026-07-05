@@ -70,7 +70,7 @@ describe('SchedulerAdminController', () => {
   });
 
   describe('access gate', () => {
-    it('is class-gated by @Authorize(["manage","all"]) (SUPER_ADMIN only)', () => {
+    it('is class-gated by @Authorize(["manage","all"]) (GLOBAL_ADMIN only)', () => {
       const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, SchedulerAdminController) as
         | Array<{ action: string; subject: string }>
         | undefined;

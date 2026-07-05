@@ -40,7 +40,7 @@ export interface RequestVolumePoint {
   sockets: number;
 }
 
-/** E1 — platform runtime metrics (super-admin). */
+/** E1 — platform runtime metrics (global-admin). */
 export interface PlatformMetrics {
   requestsPerMinute: number;
   errorRatePct: number;
@@ -70,7 +70,7 @@ export interface ConsumptionConsultations {
 }
 
 /**
- * E3 / #18 — consumption / usage roll-up. Platform-wide for a super-admin (no
+ * E3 / #18 — consumption / usage roll-up. Platform-wide for a global-admin (no
  * scope) or per-tenant when `tenantId` is supplied. All figures are
  * Postgres-derived; `storageQuotaBytes` is `null` until at least one in-scope
  * bucket sets a quota (#5).

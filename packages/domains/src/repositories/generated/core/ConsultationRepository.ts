@@ -382,7 +382,7 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
    * revisit range aggregation. Rows are returned raw (`createdAt` +
    * `parentConsultationId` only) — the service zero-fills and buckets them,
    * so no entity mapping happens here. `tenantId` is applied ONLY when
-   * truthy: a SUPER_ADMIN with no working tenant reads cross-tenant (TD3).
+   * truthy: a GLOBAL_ADMIN with no working tenant reads cross-tenant (TD3).
    */
   async findCreatedInRange(
     rangeStart: Date,

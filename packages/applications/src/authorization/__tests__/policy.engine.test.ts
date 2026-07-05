@@ -724,7 +724,7 @@ describe('PolicyEngine', () => {
   // Tenant scoping of the role-assignment lookup (TASK-305 Phase A alignment).
   //
   // `UserRoleAssignment.tenantId` became a required, non-nullable column;
-  // platform-wide assignments (e.g. SUPER_ADMIN) live under SYSTEM_TENANT_ID
+  // platform-wide assignments (e.g. GLOBAL_ADMIN) live under SYSTEM_TENANT_ID
   // ('00000000-…'), not NULL. The loader must (a) always include the system
   // tenant, (b) add the request tenant only when present, and (c) never put a
   // raw `undefined` into the Prisma filter — Prisma 7 rejects

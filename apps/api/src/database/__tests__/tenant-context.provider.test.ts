@@ -11,7 +11,7 @@
  *      we want — the call site forgot to plumb tenant context).
  *   3. Inside CLS, tenantId set on the store directly → returns it.
  *   4. Inside CLS, tenantId set on the user → falls back to user.tenantId.
- *   5. Inside CLS, user has SUPER_ADMIN_ROLE → isSuperAdmin true.
+ *   5. Inside CLS, user has GLOBAL_ADMIN_ROLE → isSuperAdmin true.
  *
  * Bootstrap / shutdown side-effects (`setTenantContextProvider`) are
  * covered by spying on the module rather than running NestJS lifecycle.
@@ -92,20 +92,20 @@ describe('ClsTenantContextProvider', () => {
     expect(provider.getTenantId()).toBe('tenant-from-user');
   });
 
-  it('isSuperAdmin reflects the SUPER_ADMIN role on the user', () => {
+  // TASK-417 — SUPER_ADMIN is retired: the literal must NOT elevate at the
+  // DB-extension layer anymore.
+  it('isSuperAdmin is FALSE for the retired SUPER_ADMIN role literal', () => {
     const provider = new ClsTenantContextProvider(
       makeCls({
         active: true,
         store: { tenantId: 't', user: { roles: ['SUPER_ADMIN', 'User'] } },
       }),
     );
-    expect(provider.isSuperAdmin()).toBe(true);
+    expect(provider.isSuperAdmin()).toBe(false);
   });
 
-  // AC-06 (TASK-336) — GLOBAL_ADMIN must receive the same cross-tenant
-  // pass-through at the DB-extension layer as SUPER_ADMIN, otherwise an
-  // elevated GLOBAL_ADMIN passes the controller guard but is blocked by the
-  // tenant-scope Prisma extension.
+  // AC-06 (TASK-336) / TASK-417 — GLOBAL_ADMIN is the single elevated role
+  // that receives the cross-tenant pass-through at the DB-extension layer.
   it('isSuperAdmin reflects the GLOBAL_ADMIN role on the user', () => {
     const provider = new ClsTenantContextProvider(
       makeCls({

@@ -83,7 +83,7 @@ function tenantOpts(tenantId?: string): RequestOptions | undefined {
  * can't set an `Authorization` header, so the live-summary stream is opened
  * with a short-lived `?ticket=` minted here (admin bearer token + the active
  * `X-Tenant-Id`, which the backend validates against the consultation's tenant
- * at mint time). A super-admin's selected tenant propagates via `tenantId`.
+ * at mint time). A global-admin's selected tenant propagates via `tenantId`.
  */
 export function fetchStreamTicket(scope: string, tenantId?: string): Promise<StreamTicketResponse> {
   return adminClient.post<StreamTicketResponse>('/auth/stream-ticket', { scope }, tenantOpts(tenantId));

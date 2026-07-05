@@ -8,7 +8,7 @@ import { adminClient } from '../../api/admin-client';
 //   - PUT  /admin/rate-limit/tiers/:tier  → { limit?, ttl? }
 //   - PUT  /admin/rate-limit/routes/:routeId → { limit?, ttl?, enabled? }
 //
-// IC-05: SUPER_ADMIN-only controller (`@Authorize(['manage','all'])`). It had
+// IC-05: GLOBAL_ADMIN-only controller (`@Authorize(['manage','all'])`). It had
 // no console consumer. Every setter returns the recomputed effective policy,
 // so we replace the cached policy from the mutation result. This client only
 // consumes the existing API — no backend changes.

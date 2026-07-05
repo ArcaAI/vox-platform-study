@@ -396,7 +396,7 @@ describe('AuditLogService', () => {
      * All fetch methods MUST inject `this.tenantId` from CLS into the repository
      * `where` clause; `fetchById` MUST throw `NotFoundException` (never
      * `Forbidden` — that would leak existence) when the loaded entity's tenant
-     * does not match the caller. Only `SUPER_ADMIN` may bypass.
+     * does not match the caller. Only `GLOBAL_ADMIN` may bypass.
      */
     describe('Multi-tenant scoping (TASK-305 D.8)', () => {
         describe('fetchAll', () => {
@@ -418,10 +418,10 @@ describe('AuditLogService', () => {
                 );
             });
 
-            it('should NOT inject tenantId for SUPER_ADMIN caller', async () => {
+            it('should NOT inject tenantId for GLOBAL_ADMIN caller', async () => {
                 mockClsService.get.mockImplementation((key: string) => {
                     switch (key) {
-                        case 'user': return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
+                        case 'user': return { id: 'super-admin-id', roles: ['GLOBAL_ADMIN'] };
                         case 'tenantId': return 'tenant-1';
                         case 'correlationId': return 'corr-123';
                         case 'requestIp': return '192.168.1.1';
@@ -463,10 +463,10 @@ describe('AuditLogService', () => {
                 );
             });
 
-            it('should NOT inject tenantId for SUPER_ADMIN caller (cross-tenant resource lookup)', async () => {
+            it('should NOT inject tenantId for GLOBAL_ADMIN caller (cross-tenant resource lookup)', async () => {
                 mockClsService.get.mockImplementation((key: string) => {
                     switch (key) {
-                        case 'user': return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
+                        case 'user': return { id: 'super-admin-id', roles: ['GLOBAL_ADMIN'] };
                         case 'tenantId': return 'tenant-1';
                         default: return null;
                     }
@@ -528,10 +528,10 @@ describe('AuditLogService', () => {
                 );
             });
 
-            it('should NOT inject tenantId for SUPER_ADMIN caller (cross-tenant export)', async () => {
+            it('should NOT inject tenantId for GLOBAL_ADMIN caller (cross-tenant export)', async () => {
                 mockClsService.get.mockImplementation((key: string) => {
                     switch (key) {
-                        case 'user': return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
+                        case 'user': return { id: 'super-admin-id', roles: ['GLOBAL_ADMIN'] };
                         case 'tenantId': return 'tenant-1';
                         default: return null;
                     }
@@ -574,10 +574,10 @@ describe('AuditLogService', () => {
                 );
             });
 
-            it('should return the audit log when SUPER_ADMIN reads a cross-tenant entry', async () => {
+            it('should return the audit log when GLOBAL_ADMIN reads a cross-tenant entry', async () => {
                 mockClsService.get.mockImplementation((key: string) => {
                     switch (key) {
-                        case 'user': return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
+                        case 'user': return { id: 'super-admin-id', roles: ['GLOBAL_ADMIN'] };
                         case 'tenantId': return 'tenant-1';
                         default: return null;
                     }
@@ -595,7 +595,7 @@ describe('AuditLogService', () => {
         });
 
         describe('Missing tenant context', () => {
-            it('should throw NotFoundException on fetchAll when caller has no tenantId and is not SUPER_ADMIN', async () => {
+            it('should throw NotFoundException on fetchAll when caller has no tenantId and is not GLOBAL_ADMIN', async () => {
                 mockClsService.get.mockImplementation((key: string) => {
                     switch (key) {
                         case 'user': return { id: 'user-no-tenant', roles: ['Doctor'] };
@@ -1293,7 +1293,7 @@ describe('AuditLogService', () => {
 
         it('falls back to the system tenant when the operator has no CLS tenant (super-admin)', async () => {
             mockClsService.get.mockImplementation((key: string) => {
-                if (key === 'user') return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
+                if (key === 'user') return { id: 'super-admin-id', roles: ['GLOBAL_ADMIN'] };
                 if (key === 'requestIp') return '10.0.0.1';
                 return null; // no tenantId
             });

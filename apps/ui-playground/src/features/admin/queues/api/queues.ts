@@ -13,7 +13,7 @@ import { adminClient } from '../../api/admin-client';
 //   - POST   /admin/queues/:queueName/jobs/:jobId/retry|promote → { success }
 //   - DELETE /admin/queues/:queueName/jobs/:jobId   → { success }
 //
-// OB-03: SUPER_ADMIN-only controller (`@Authorize(['manage','all'])`). This
+// OB-03: GLOBAL_ADMIN-only controller (`@Authorize(['manage','all'])`). This
 // client only consumes the existing API — no backend changes.
 //
 // IMPORTANT — the job-list `page` is ZERO-BASED (BullMQ semantics), distinct

@@ -36,9 +36,9 @@ import { TenantUsageResponse } from './dto';
  * TASK-331 doc-04 F1/Q2 — class-level posture is `manage:Tenant` OR
  * `update:Tenant`, so a TENANT_ADMIN (who has tenant-scoped `update:Tenant`
  * via `tenant-full-access`) can reach the read/update/config routes for their
- * own tenant, while SUPER_ADMIN (`manage:all`) keeps full cross-tenant access.
+ * own tenant, while GLOBAL_ADMIN (`manage:all`) keeps full cross-tenant access.
  * Tenant `create`/`delete` are privilege-escalation paths and are pinned to
- * `manage:Tenant` at the method level below (SUPER_ADMIN-only). Per-row reads
+ * `manage:Tenant` at the method level below (GLOBAL_ADMIN-only). Per-row reads
  * still inline-assert tenant scope via `assertTenantInScope`.
  */
 @ApiBearerAuth()
@@ -58,7 +58,7 @@ export class TenantController {
    * with `manage:Tenant` or tenant-scoped `update:Tenant` to reach the per-row
    * routes, but the underlying CASL policy is `tenantId: ${user.tenantId}`. The
    * `:id` path param breaks that condition silently — so each per-row
-   * handler must inline-assert the tenant scope itself. SUPER_ADMIN
+   * handler must inline-assert the tenant scope itself. GLOBAL_ADMIN
    * bypasses (cross-tenant ops are an operator's job).
    */
   private assertTenantInScope(targetTenantId: string): void {
@@ -71,13 +71,13 @@ export class TenantController {
 
   /**
    * AC-10 (TASK-336) — scope guard for the tenant-config routes, which take a
-   * dual `:identifier` (tenant UUID OR code-name). A non-super-admin may only
+   * dual `:identifier` (tenant UUID OR code-name). A non-global-admin may only
    * address their own tenant. We can decide this up-front ONLY for a UUID
    * identifier; a code-name is deferred to the service's own
    * no-existence-leak guard (it resolves code-name → tenant, then 404s
    * cross-tenant). Throws `NotFoundException` (NOT `ForbiddenException`) so the
    * controller does NOT weaken that no-existence-leak posture for config rows.
-   * SUPER_ADMIN bypasses (cross-tenant operator flows + console tenant picker).
+   * GLOBAL_ADMIN bypasses (cross-tenant operator flows + console tenant picker).
    */
   private assertConfigInScope(identifier: string): void {
     const user = this.cls.get('user');
@@ -96,7 +96,7 @@ export class TenantController {
     method: HttpMethod.POST,
   })
   @ApiResponse({ status: 400, description: 'Bad request - invalid input' })
-  // TASK-331 doc-04 Q2 — creating tenants is SUPER_ADMIN-only. Method-level
+  // TASK-331 doc-04 Q2 — creating tenants is GLOBAL_ADMIN-only. Method-level
   // metadata overrides the class `@CanAny(...)`, so a TENANT_ADMIN (who lacks
   // `manage:Tenant`) is refused here even though it can reach read/update.
   @CanManage('Tenant')
@@ -116,7 +116,7 @@ export class TenantController {
     // extension, and the class-level `@CanAny(['manage','Tenant'],['update','Tenant'])`
     // admits any TENANT_ADMIN (their CASL policy is `tenantId: ${user.tenantId}`). Without
     // this guard a tenant admin could enumerate every tenant on the platform.
-    // Non-super-admins are restricted to their own tenant; SUPER_ADMIN keeps the
+    // Non-global-admins are restricted to their own tenant; GLOBAL_ADMIN keeps the
     // full cross-tenant listing (admin/operator surfaces). Mirrors the write-path
     // posture on `update`/`delete`.
     const user = this.cls.get('user');
@@ -240,7 +240,7 @@ export class TenantController {
   })
   @ApiParam({ name: 'id', description: 'Tenant ID', type: String })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
-  // TASK-331 doc-04 Q2 — deleting tenants is SUPER_ADMIN-only (see create()).
+  // TASK-331 doc-04 Q2 — deleting tenants is GLOBAL_ADMIN-only (see create()).
   @CanManage('Tenant')
   async delete(@Param('id') id: string): Promise<TenantResponse> {
     this.assertTenantInScope(id);
@@ -250,7 +250,7 @@ export class TenantController {
 
   // ── TASK-387 (#1 / F6) — tenant lifecycle transitions ──────────────────────
   // suspend/archive/restore are privileged operator actions (like create/delete)
-  // so they are pinned to `manage:Tenant` (SUPER_ADMIN). Non-OCC: these are
+  // so they are pinned to `manage:Tenant` (GLOBAL_ADMIN). Non-OCC: these are
   // explicit admin state changes, not last-write-wins field edits. The service
   // additionally blocks the system tenant (DEF-ADM-002) on suspend/archive.
 
@@ -298,7 +298,7 @@ export class TenantController {
   // ── TASK-387 (#2 / F9) — tenant tags ───────────────────────────────────────
   // Tags are a lightweight `String[]` scalar on Tenant (see ticket doc for the
   // representation decision). Read/set are tenant-scoped: a TENANT_ADMIN may
-  // manage tags on their OWN tenant (class-level `update:Tenant`), SUPER_ADMIN
+  // manage tags on their OWN tenant (class-level `update:Tenant`), GLOBAL_ADMIN
   // cross-tenant. `assertTenantInScope` enforces the per-row boundary.
 
   @Get(':id/tags')

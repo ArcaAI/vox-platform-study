@@ -49,9 +49,9 @@ function DisabledCard() {
                 title="Prisma Studio is disabled"
                 description={
                     <>
-                        The studio shell is off in this environment (fail-closed). The gateway enables it only when both{' '}
-                        <code className="font-mono">NODE_ENV=development</code> and <code className="font-mono">ENABLE_PRISMA_STUDIO=true</code> are
-                        set — production enablement behind a dedicated permission is tracked in TASK-419. No broken iframe is shown.
+                        The studio shell is off in this environment (fail-closed). The gateway enables it only when the operator sets{' '}
+                        <code className="font-mono">ENABLE_PRISMA_STUDIO=true</code>; access additionally requires the dedicated{' '}
+                        <code className="font-mono">manage:PrismaStudio</code> permission (TASK-419). No broken iframe is shown.
                     </>
                 }
             />

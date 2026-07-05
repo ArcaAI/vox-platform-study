@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { DnaWritingStyleAdminController } from '../dna-writing-style-admin.controller';
+import { STREAM_SCOPE_METADATA } from '../../auth/decorators/stream-scope.decorator';
 
 const fakeReportEntity = {
     id: 'report-1',
@@ -272,7 +273,7 @@ describe('DnaWritingStyleAdminController', () => {
 
     // TASK-388 #13 — admin "latest DNA report for a doctor" read. Delegates to
     // the PHI-gated `getDnaReport(doctorId)` (asserts the doctor is in the
-    // caller's tenant; even SUPER_ADMIN cannot cross tenants).
+    // caller's tenant; even GLOBAL_ADMIN cannot cross tenants).
     describe('GET /admin/dna-writing-styles/doctor/:doctorId (getReportForDoctor)', () => {
         it('delegates to service.getDnaReport and returns the report', async () => {
             mockDnaService.getDnaReport.mockResolvedValue(fakeReportEntity);
@@ -450,6 +451,17 @@ describe('DnaWritingStyleAdminController', () => {
             mockDnaQueue.getJob.mockResolvedValue(null);
 
             await expect(controller.getJobStatus('nonexistent')).rejects.toThrow();
+        });
+    });
+
+    // TASK-419 item 6 — single-use tickets from POST /auth/stream-ticket must
+    // authenticate the SSE route: JwtAuthGuard rejects tickets on routes without
+    // @StreamScope, so the console's `dna_job:<jobId>` tickets 401'd before this
+    // declaration existed (the console shipped a labeled polling fallback).
+    describe('GET /admin/dna-writing-styles/jobs/:jobId/stream (SSE)', () => {
+        it('declares @StreamScope({ namespace: "dna_job", param: "jobId" }) for ticket auth (TASK-419)', () => {
+            const meta = Reflect.getMetadata(STREAM_SCOPE_METADATA, DnaWritingStyleAdminController.prototype.streamJobStatus);
+            expect(meta).toEqual({ namespace: 'dna_job', param: 'jobId' });
         });
     });
 });

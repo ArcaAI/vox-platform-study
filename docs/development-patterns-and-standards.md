@@ -417,7 +417,7 @@ Local dev Vault runs in Docker (`hope-vault`); `scripts/refresh-vault-creds.sh` 
 1. `UnifiedAuthGuard` resolves the caller and populates CLS (`tenantId`, `user`) — `packages/applications/src/authorization/unified-auth.guard.ts`, registered as global `APP_GUARD`.
 2. Controllers gate with `@CanXxx`/`@Authorize`; some also require tenant context explicitly for list endpoints (see `department.controller.ts#fetchAll`).
 3. Services verify ownership on every by-id mutation — tenant mismatch throws `NotFoundException` ("not found", never "forbidden") to avoid existence leaks; helpers in `packages/applications/src/common/tenant-guards.ts` (`assertParentInScope` for parent references).
-4. The Prisma tenant-scope extension injects `tenantId` into reads/writes of `TENANT_SCOPED_MODELS` from the CLS provider (`packages/database/src/extensions/tenant-scope.ts`); SUPER_ADMIN bypasses; SYSTEM-shared catalogs widen reads only.
+4. The Prisma tenant-scope extension injects `tenantId` into reads/writes of `TENANT_SCOPED_MODELS` from the CLS provider (`packages/database/src/extensions/tenant-scope.ts`); GLOBAL_ADMIN bypasses; SYSTEM-shared catalogs widen reads only.
 5. SSE-specific ownership guard `TenantOwnedResourceSseGuard` re-runs assertions before the stream opens (`apps/api/src/app.module.ts`).
 6. Cross-tenant e2e suites lock the 404 contracts (`apps/api/tests/e2e/task-307-*-cross-tenant.spec.ts`).
 

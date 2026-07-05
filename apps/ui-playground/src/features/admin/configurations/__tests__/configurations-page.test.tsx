@@ -2,7 +2,7 @@
  * ConfigurationManagementPage Tests (TASK-244)
  *
  * Covers:
- * 1. Role-based access: SUPER_ADMIN sees the cross-tenant picker; TENANT_ADMIN sees own tenant only
+ * 1. Role-based access: GLOBAL_ADMIN sees the cross-tenant picker; TENANT_ADMIN sees own tenant only
  * 2. Config listing, searching, and filtering
  * 3. Config editing: type-aware editor (boolean select, JSON textarea, string input)
  * 4. Save flow with dirty state detection
@@ -117,7 +117,7 @@ vi.mock('@arcaai/ui/dialog', () => ({
 
 // ── Store mocks ─────────────────────────────────────────────────────
 
-let mockRoles: string[] = ['SUPER_ADMIN'];
+let mockRoles: string[] = ['GLOBAL_ADMIN'];
 let mockTenantId = 'tenant-001';
 let mockTenantName = 'Test Tenant';
 
@@ -189,7 +189,7 @@ function renderPage() {
 describe('ConfigurationManagementPage', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        mockRoles = ['SUPER_ADMIN'];
+        mockRoles = ['GLOBAL_ADMIN'];
         mockTenantId = 'tenant-001';
         mockTenantName = 'Test Tenant';
     });
@@ -214,7 +214,7 @@ describe('ConfigurationManagementPage', () => {
     // must scope the config list to that header tenant for every role.
     describe('tenant scoping (header ScopeSwitcher)', () => {
         it('does NOT render an in-page tenant picker column', () => {
-            mockRoles = ['SUPER_ADMIN'];
+            mockRoles = ['GLOBAL_ADMIN'];
             renderPage();
 
             expect(screen.queryByTestId('column-config-tenants')).not.toBeInTheDocument();
@@ -229,8 +229,8 @@ describe('ConfigurationManagementPage', () => {
             expect(screen.queryByTestId('column-config-tenants')).not.toBeInTheDocument();
         });
 
-        it('scopes configs to the header store tenantId for SUPER_ADMIN', () => {
-            mockRoles = ['SUPER_ADMIN'];
+        it('scopes configs to the header store tenantId for GLOBAL_ADMIN', () => {
+            mockRoles = ['GLOBAL_ADMIN'];
             mockTenantId = 'tenant-001';
             renderPage();
 
@@ -251,11 +251,11 @@ describe('ConfigurationManagementPage', () => {
 
     // IC-07 (TASK-336) — the platform/global defaults live on the `__GLOBAL__`
     // tenant and were only reachable by hunting for it in the header switcher.
-    // A dedicated SUPER_ADMIN-only "Platform defaults" toggle re-scopes the
+    // A dedicated GLOBAL_ADMIN-only "Platform defaults" toggle re-scopes the
     // existing (GET/PATCH) config editor to `__GLOBAL__`.
     describe('platform settings section (IC-07)', () => {
-        it('lets SUPER_ADMIN switch the config scope to the global (__GLOBAL__) tenant', () => {
-            mockRoles = ['SUPER_ADMIN'];
+        it('lets GLOBAL_ADMIN switch the config scope to the global (__GLOBAL__) tenant', () => {
+            mockRoles = ['GLOBAL_ADMIN'];
             mockTenantId = 'tenant-001';
             renderPage();
 
@@ -407,8 +407,8 @@ describe('ConfigurationManagementPage', () => {
             expect(saveBtn).not.toBeDisabled();
         });
 
-        it('should call updateTenantConfigs.mutate for SUPER_ADMIN on save', async () => {
-            mockRoles = ['SUPER_ADMIN'];
+        it('should call updateTenantConfigs.mutate for GLOBAL_ADMIN on save', async () => {
+            mockRoles = ['GLOBAL_ADMIN'];
             renderPage();
 
             fireEvent.click(screen.getByTestId('item-cfg-1'));

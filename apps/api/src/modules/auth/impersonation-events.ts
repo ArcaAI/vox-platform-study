@@ -22,14 +22,19 @@ export type ImpersonationEventName = (typeof ImpersonationEvents)[keyof typeof I
 /**
  * Reasons an impersonation attempt is denied. Stable codes so consumers can
  * alert/aggregate on them without parsing free-text.
+ *
+ * TASK-417 note: the `*_SUPER_ADMIN` wire codes are PERSISTED audit vocabulary
+ * and are intentionally retained after the SUPER_ADMIN→GLOBAL_ADMIN role
+ * consolidation — renaming them would orphan existing audit rows and break
+ * alerting. Semantically they now mean "the GLOBAL_ADMIN (elevated) tier".
  */
 export const ImpersonationDeniedReason = {
   CallerNotAdmin: 'CALLER_NOT_ADMIN',
   TargetIsSuperAdmin: 'TARGET_IS_SUPER_ADMIN',
   TenantAdminTargetNotAllowed: 'TENANT_ADMIN_TARGET_NOT_ALLOWED',
   CrossTenantDenied: 'CROSS_TENANT_DENIED',
-  // TASK-401 — safeguards added with the super-admin-only endpoint (the first
-  // two are also backported to the legacy /auth/impersonate route).
+  // TASK-401 — safeguards added with the elevated-only admin endpoint (the
+  // first two are also backported to the legacy /auth/impersonate route).
   SelfImpersonation: 'SELF_IMPERSONATION',
   NestedImpersonation: 'NESTED_IMPERSONATION',
   CallerNotSuperAdmin: 'CALLER_NOT_SUPER_ADMIN',

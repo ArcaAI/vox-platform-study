@@ -78,7 +78,7 @@ describe('useAdminLiveSummaryStream', () => {
     expect(result.current.status).toBe('open');
   });
 
-  it('forwards the selected tenant to the ticket mint (super-admin scope)', async () => {
+  it('forwards the selected tenant to the ticket mint (global-admin scope)', async () => {
     renderHook(() => useAdminLiveSummaryStream({ consultationId: 'c1', enabled: true, tenantId: 't-9' }));
     await waitFor(() => expect(h.fetchStreamTicket).toHaveBeenCalledWith('consultation_live_summary:c1', 't-9'));
   });

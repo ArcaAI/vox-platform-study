@@ -102,7 +102,7 @@ const ENTITLEMENTS: EntitlementCapabilities = {
 
 const NO_TENANT_BODY = {
     statusCode: 400,
-    message: 'Tenant context is required. Super-admins must use /admin/tenants endpoints to manage other tenants.',
+    message: 'Tenant context is required. Global-admins must use /admin/tenants endpoints to manage other tenants.',
     error: 'Bad Request',
 };
 

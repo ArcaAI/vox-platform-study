@@ -1088,16 +1088,16 @@ describe('ConsultationService', () => {
     // ============================================================
     // TASK-386 (TD3 / DEF-1) — cross-tenant platform read for super-admin.
     //
-    // The platform dashboard runs as a SUPER_ADMIN with NO working tenant; the
+    // The platform dashboard runs as a GLOBAL_ADMIN with NO working tenant; the
     // old hard 400 (`Tenant ID is required`) broke it. A super-admin with no
     // CLS tenant must now read cross-tenant (no tenantId filter → the Prisma
     // tenantScope extension passes through). Non-super callers are unchanged.
     // ============================================================
     describe('TASK-386 — listConsultationsForTenant cross-tenant super-admin (TD3 / DEF-1)', () => {
-        it('OMITS the tenantId filter for a SUPER_ADMIN with no working tenant', async () => {
+        it('OMITS the tenantId filter for a GLOBAL_ADMIN with no working tenant', async () => {
             mockClsService.get.mockImplementation((key: string) => {
                 if (key === 'tenantId') return null;
-                if (key === 'user') return { id: 'su-1', roles: ['SUPER_ADMIN'] };
+                if (key === 'user') return { id: 'su-1', roles: ['GLOBAL_ADMIN'] };
                 return null;
             });
             mockConsultationRepository.findPaginatedWithRelations.mockResolvedValue([]);

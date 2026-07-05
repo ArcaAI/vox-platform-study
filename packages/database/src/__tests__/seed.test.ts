@@ -254,11 +254,12 @@ describe('Policy Seed Data', () => {
     });
 
     describe('Default Policies', () => {
-        it('should define 20 policies', () => {
+        it('should define 21 policies', () => {
             // TASK-331 doc-09 — +1 for the `prompt-template-read` policy.
             // TASK-330 Phase 6 — +2 for the clinical documentation harness
             // policies (`harness-platform-manage`, `harness-tenant-manage`).
-            expect(DEFAULT_POLICIES.length).toBe(20);
+            // TASK-419 item 4 — +1 for the `prisma-studio-manage` policy.
+            expect(DEFAULT_POLICIES.length).toBe(21);
         });
 
         it('should include system-full-access policy', () => {
@@ -339,6 +340,38 @@ describe('Policy Seed Data', () => {
             expect(policy?.scope).toBe(PolicyScope.TENANT);
         });
 
+        // TASK-419 item 4 — Prisma Studio in production behind a DEDICATED
+        // permission. The subject is `PrismaStudio` (not covered by any
+        // tenant-scoped grant); GLOBAL scope, unconditional — the studio is a
+        // privileged, untenanted raw-DB surface.
+        it('should include prisma-studio-manage policy (GLOBAL, manage:PrismaStudio) (TASK-419)', () => {
+            const policy = DEFAULT_POLICIES.find((p) => p.name === 'prisma-studio-manage');
+            expect(policy).toBeDefined();
+            expect(policy?.scope).toBe(PolicyScope.GLOBAL);
+            expect(policy?.rules).toEqual([{ action: 'manage', subject: 'PrismaStudio' }]);
+        });
+
+        // TASK-419 item 1 — golden-dataset curation (`POST /admin/harness/
+        // golden-sets*`) is guarded by `manage:HarnessEval`. Datasets are
+        // tenant-owned rows, so the harness policies carry `manage` (not just
+        // `read`) on HarnessEval: unconditional at platform scope, pinned to
+        // the caller's tenant at tenant scope. HarnessAudit stays read-only.
+        it.each(['harness-platform-manage', 'harness-tenant-manage', 'tenant-full-access'])(
+            'should grant manage HarnessEval in %s (TASK-419 item 1)',
+            (policyName) => {
+                const policy = DEFAULT_POLICIES.find((p) => p.name === policyName);
+                const rule = policy?.rules.find((r) => r.subject === 'HarnessEval');
+                expect(rule).toBeDefined();
+                const actions = Array.isArray(rule?.action) ? rule?.action : [rule?.action];
+                expect(actions).toContain('manage');
+                if (policy?.scope === PolicyScope.TENANT) {
+                    expect(JSON.stringify(rule?.conditions)).toContain('${context.tenantId}');
+                } else {
+                    expect(rule?.conditions).toBeUndefined();
+                }
+            },
+        );
+
         // TASK-356 Phase 5 — realtime-pipeline cascade admin RBAC (a SEPARATE
         // PipelinePolicy subject from HarnessPolicy). Platform = unconditional;
         // tenant = pinned to the caller's tenant. `manage` implies `read`.
@@ -418,8 +451,8 @@ describe('PolicyScope Values', () => {
 
 describe('Role Seed Data', () => {
     describe('System Roles', () => {
-        it('should define 5 system roles', () => {
-            expect(SYSTEM_ROLES.length).toBe(5);
+        it('should define 4 system roles', () => {
+            expect(SYSTEM_ROLES.length).toBe(4);
         });
 
         it('should mark all system roles as isSystemRole: true', () => {
@@ -428,10 +461,17 @@ describe('Role Seed Data', () => {
             });
         });
 
-        it('should include SUPER_ADMIN role', () => {
-            const superAdmin = SYSTEM_ROLES.find((r) => r.name === 'SUPER_ADMIN');
-            expect(superAdmin).toBeDefined();
-            expect(superAdmin?.isSystemRole).toBe(true);
+        // TASK-417 — SUPER_ADMIN is consolidated into GLOBAL_ADMIN and must
+        // never be seeded again (the data migration soft-retired the row).
+        it('should NOT seed a SUPER_ADMIN role anywhere (TASK-417)', () => {
+            expect(DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN')).toBeUndefined();
+        });
+
+        it('should include GLOBAL_ADMIN as the canonical elevated system role (TASK-417)', () => {
+            const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'GLOBAL_ADMIN');
+            expect(globalAdmin).toBeDefined();
+            expect(globalAdmin?.isSystemRole).toBe(true);
+            expect(globalAdmin?.parentRoleId).toBeNull();
         });
 
         it('should include TENANT_ADMIN role', () => {
@@ -482,9 +522,12 @@ describe('Role Seed Data', () => {
     });
 
     describe('Role-Policy Assignments', () => {
-        it('should assign system-full-access to SUPER_ADMIN', () => {
-            const superAdmin = DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN');
-            expect(superAdmin?.policies).toContain('system-full-access');
+        // TASK-417 — GLOBAL_ADMIN carries every policy SUPER_ADMIN had.
+        it('should assign the full elevated policy set to GLOBAL_ADMIN', () => {
+            const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'GLOBAL_ADMIN');
+            expect(globalAdmin?.policies).toContain('system-full-access');
+            expect(globalAdmin?.policies).toContain('rbac-system-manage');
+            expect(globalAdmin?.policies).toContain('global-settings-manage');
         });
 
         it('should assign tenant-full-access to TENANT_ADMIN', () => {
@@ -509,6 +552,14 @@ describe('Role Seed Data', () => {
         it('should assign consultation-read-assigned to NURSE', () => {
             const nurse = DEFAULT_ROLES.find((r) => r.name === 'NURSE');
             expect(nurse?.policies).toContain('consultation-read-assigned');
+        });
+
+        // TASK-419 item 4 — the GLOBAL_ADMIN policy set carries the dedicated
+        // Prisma Studio grant (manage:all would also pass the guard, but the
+        // explicit policy makes the studio delegable without full access).
+        it('should assign prisma-studio-manage to GLOBAL_ADMIN (TASK-419)', () => {
+            const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'GLOBAL_ADMIN');
+            expect(globalAdmin?.policies).toContain('prisma-studio-manage');
         });
 
         it('should assign user-profile-own to all clinical roles', () => {

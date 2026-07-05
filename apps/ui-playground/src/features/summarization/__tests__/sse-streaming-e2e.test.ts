@@ -204,8 +204,8 @@ describe('SSE Streaming E2E Behavior', () => {
     });
 
     it('should not generate when impersonation is required', () => {
-      const roles = ['SUPER_ADMIN'];
-      const ADMIN_ROLES = ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'];
+      const roles = ['GLOBAL_ADMIN'];
+      const ADMIN_ROLES = ['GLOBAL_ADMIN', 'TENANT_ADMIN'];
       const DOCTOR_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
       const isImpersonating = false;
 
@@ -217,8 +217,8 @@ describe('SSE Streaming E2E Behavior', () => {
     });
 
     it('should allow generation when admin is impersonating a doctor', () => {
-      const roles = ['SUPER_ADMIN'];
-      const ADMIN_ROLES = ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'];
+      const roles = ['GLOBAL_ADMIN'];
+      const ADMIN_ROLES = ['GLOBAL_ADMIN', 'TENANT_ADMIN'];
       const DOCTOR_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
       const isImpersonating = true;
 

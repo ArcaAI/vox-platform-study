@@ -3,7 +3,7 @@
  *
  *  - Any admin (incl. TENANT_ADMIN) sees the full admin menu set EXCEPT
  *    Prisma Studio.
- *  - Global scope (SUPER_ADMIN) additionally sees Prisma Studio.
+ *  - Global scope (GLOBAL_ADMIN) additionally sees Prisma Studio.
  *  - Non-admins see no admin nav items (the Administration group is hidden).
  *  - A global-scope admin with NO tenant selected has the tenant-scoped pages
  *    disabled (but still listed); Overview / Tenants / Users / Prisma Studio
@@ -44,8 +44,8 @@ describe('buildAdminNavItems (TASK-327 T5)', () => {
   });
 
   // TASK-336 OB-01 / IC-05 / OB-03 — System Health, Rate Limits and Queues & Jobs
-  // are global-scope ops surfaces (super-admin only), surfaced alongside Prisma Studio.
-  it('global scope (SUPER_ADMIN) additionally sees System Health, Rate Limits and Queues & Jobs', () => {
+  // are global-scope ops surfaces (global-admin only), surfaced alongside Prisma Studio.
+  it('global scope (GLOBAL_ADMIN) additionally sees System Health, Rate Limits and Queues & Jobs', () => {
     const got = ids(buildAdminNavItems({ isAdmin: true, isGlobalScope: true, tenantSelected: true, order: DEFAULT_ADMIN_MENU_ORDER }));
     expect(got).toContain('system-health');
     expect(got).toContain('rate-limits');
@@ -62,7 +62,7 @@ describe('buildAdminNavItems (TASK-327 T5)', () => {
     expect(got).not.toContain('backend-pipeline');
   });
 
-  it('global scope (SUPER_ADMIN) additionally sees Prisma Studio', () => {
+  it('global scope (GLOBAL_ADMIN) additionally sees Prisma Studio', () => {
     const got = ids(buildAdminNavItems({ isAdmin: true, isGlobalScope: true, tenantSelected: true, order: DEFAULT_ADMIN_MENU_ORDER }));
     expect(got).toContain('studio');
   });

@@ -134,7 +134,7 @@ describe('GlobalSettingController', () => {
     });
   });
 
-  // TASK-396 — reveal ONE secret. Super-admin-only (CASL) + step-up re-auth.
+  // TASK-396 — reveal ONE secret. Global-admin-only (CASL) + step-up re-auth.
   describe('POST /admin/settings/:id/reveal (reveal)', () => {
     it('delegates to service.revealSecret with the id + step-up password and returns the plaintext', async () => {
       mockService.revealSecret.mockResolvedValue({ entity: fakeEntity({ id: 'gs-7', key: 'secrets.api-token' }), plaintext: 'plaintext-secret' });
@@ -151,9 +151,9 @@ describe('GlobalSettingController', () => {
     // The reveal route carries a method-level `@Authorize(['manage','all'])`
     // which OVERRIDES the class-level `@CanManage('GlobalSetting')` — the
     // UnifiedAuthGuard resolves required-permission metadata via
-    // getAllAndOverride([handler, class]). Result: SUPER_ADMIN-only; a tenant
+    // getAllAndOverride([handler, class]). Result: GLOBAL_ADMIN-only; a tenant
     // admin (has manage:GlobalSetting, not manage:all) is 403.
-    it('is gated SUPER_ADMIN-only via @Authorize(["manage","all"]) (overrides the class gate)', () => {
+    it('is gated GLOBAL_ADMIN-only via @Authorize(["manage","all"]) (overrides the class gate)', () => {
       const methodMeta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, GlobalSettingController.prototype.reveal) as
         | Array<{ action: string; subject: string }>
         | undefined;

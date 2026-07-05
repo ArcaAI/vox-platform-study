@@ -39,6 +39,12 @@ const mockWebhookRepository = {
     softDelete: vi.fn(),
 };
 
+// TASK-419 item 2 — delivery-log reads (`fetchRunHistory`).
+const mockWebhookRunHistoryRepository = {
+    findAll: vi.fn(),
+    count: vi.fn(),
+};
+
 /**
  * Creates a complete mock webhook entity matching the real WebhookEntity structure.
  * This ensures tests don't pass due to incomplete mock data.
@@ -159,6 +165,7 @@ describe('WebhookService', () => {
         // Create service instance with mocks
         service = new WebhookService(
             mockWebhookRepository as any,
+            mockWebhookRunHistoryRepository as any,
             mockEventEmitter as any,
             mockClsService as any,
         );
@@ -304,8 +311,8 @@ describe('WebhookService', () => {
      * Tenant-A user could create webhooks attributed to Tenant-B by simply
      * setting the DTO field. The new `resolveEffectiveTenantId` helper mirrors
      * the W3.2 NotificationService pattern at the structural level:
-     *   - Non-SUPER_ADMIN: silently pin to CLS `tenantId` (ignore the DTO field)
-     *   - SUPER_ADMIN: honor `request.tenantId` for cross-tenant impersonation
+     *   - Non-GLOBAL_ADMIN: silently pin to CLS `tenantId` (ignore the DTO field)
+     *   - GLOBAL_ADMIN: honor `request.tenantId` for cross-tenant impersonation
      *     (admin UI flows / migration tooling)
      *   - Both branches throw `BadRequestException` if no tenant context resolves
      *
@@ -343,7 +350,7 @@ describe('WebhookService', () => {
             });
         };
 
-        it('pins tenantId to CLS when a non-SUPER_ADMIN caller passes a cross-tenant request.tenantId', async () => {
+        it('pins tenantId to CLS when a non-GLOBAL_ADMIN caller passes a cross-tenant request.tenantId', async () => {
             const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-1' });
             mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
 
@@ -358,7 +365,7 @@ describe('WebhookService', () => {
             expect(factoryInput.tenantId).toBe('tenant-1');
         });
 
-        it('pins tenantId to CLS when a non-SUPER_ADMIN caller omits request.tenantId', async () => {
+        it('pins tenantId to CLS when a non-GLOBAL_ADMIN caller omits request.tenantId', async () => {
             const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-1' });
             mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
 
@@ -372,8 +379,8 @@ describe('WebhookService', () => {
             expect(factoryInput.tenantId).toBe('tenant-1');
         });
 
-        it('honors request.tenantId for SUPER_ADMIN callers (cross-tenant impersonation)', async () => {
-            setRequestUserRoles(['SUPER_ADMIN']);
+        it('honors request.tenantId for GLOBAL_ADMIN callers (cross-tenant impersonation)', async () => {
+            setRequestUserRoles(['GLOBAL_ADMIN']);
             const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-B' });
             mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
 
@@ -391,7 +398,7 @@ describe('WebhookService', () => {
 
     /**
      * TASK-306 W5.7.6 (306-F2) — `WebhookService.resolveEffectiveTenantId`
-     * silently coerces a non-SUPER_ADMIN cross-tenant create attempt to
+     * silently coerces a non-GLOBAL_ADMIN cross-tenant create attempt to
      * the CLS tenant (the W5.1.4 contract). Persistence is correct, but
      * SOC has no observability for the coercion event — a foreign-tenant
      * DTO `tenantId` produces an identical persisted state to a properly-
@@ -399,7 +406,7 @@ describe('WebhookService', () => {
      *
      * The fix adds a one-shot `logger.warn` ONLY on the cross-tenant
      * coercion branch. Same-tenant and tenantId-omitted writes stay
-     * silent (those are benign / expected); SUPER_ADMIN cross-tenant
+     * silent (those are benign / expected); GLOBAL_ADMIN cross-tenant
      * writes also stay silent (those are explicitly allowed).
      */
     describe('TASK-306 W5.7.6 — resolveEffectiveTenantId observability', () => {
@@ -428,7 +435,7 @@ describe('WebhookService', () => {
             });
         };
 
-        it('logs a warn when a non-SUPER_ADMIN passes a foreign tenantId (silent coercion observability)', async () => {
+        it('logs a warn when a non-GLOBAL_ADMIN passes a foreign tenantId (silent coercion observability)', async () => {
             const warnSpy = vi.spyOn(service['logger'], 'warn');
             const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-1' });
             mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
@@ -450,7 +457,7 @@ describe('WebhookService', () => {
             );
         });
 
-        it('does NOT log a warn when a non-SUPER_ADMIN omits request.tenantId (benign happy path)', async () => {
+        it('does NOT log a warn when a non-GLOBAL_ADMIN omits request.tenantId (benign happy path)', async () => {
             const warnSpy = vi.spyOn(service['logger'], 'warn');
             const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-1' });
             mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
@@ -464,8 +471,8 @@ describe('WebhookService', () => {
             expect(warnSpy).not.toHaveBeenCalled();
         });
 
-        it('does NOT log a warn when a SUPER_ADMIN cross-tenant creates (explicit allow)', async () => {
-            setRequestUserRoles(['SUPER_ADMIN']);
+        it('does NOT log a warn when a GLOBAL_ADMIN cross-tenant creates (explicit allow)', async () => {
+            setRequestUserRoles(['GLOBAL_ADMIN']);
             const warnSpy = vi.spyOn(service['logger'], 'warn');
             const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-B' });
             mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
@@ -486,12 +493,12 @@ describe('WebhookService', () => {
      * tenant-blind on every read/write surface except `create` (W5.1.4).
      * This block exercises the full sweep across the remaining 5 methods:
      *   - 5.3.2 fetchAll: inject `{ tenantId: this.tenantId }` filter
-     *     (SUPER_ADMIN bypass)
+     *     (GLOBAL_ADMIN bypass)
      *   - 5.3.3 fetchById: load-then-assert via assertEqualTenants
      *   - 5.3.4 update: assert tenant after the pre-write findById
      *   - 5.3.5 deleteById: load + assert + softDelete
      *   - 5.3.6 fetchAllByTenantId: CLS gate (refuse cross-tenant DTO
-     *     tenantId for non-SUPER_ADMIN — mirrors W5.1.5
+     *     tenantId for non-GLOBAL_ADMIN — mirrors W5.1.5
      *     Notification/ApiKey pattern)
      *
      * The CLS default in `beforeEach` is `tenant-1`. Tests use `tenant-2`
@@ -525,7 +532,7 @@ describe('WebhookService', () => {
         };
 
         describe('fetchAll (5.3.2)', () => {
-            it('injects the CLS tenantId into the findAll + count where clauses for non-SUPER_ADMIN callers', async () => {
+            it('injects the CLS tenantId into the findAll + count where clauses for non-GLOBAL_ADMIN callers', async () => {
                 mockWebhookRepository.findAll.mockResolvedValue([]);
                 mockWebhookRepository.count.mockResolvedValue(0);
 
@@ -539,8 +546,8 @@ describe('WebhookService', () => {
                 );
             });
 
-            it('omits the tenant filter when the caller is a SUPER_ADMIN (cross-tenant list)', async () => {
-                setRequestUserRoles(['SUPER_ADMIN']);
+            it('omits the tenant filter when the caller is a GLOBAL_ADMIN (cross-tenant list)', async () => {
+                setRequestUserRoles(['GLOBAL_ADMIN']);
                 mockWebhookRepository.findAll.mockResolvedValue([]);
                 mockWebhookRepository.count.mockResolvedValue(0);
 
@@ -582,8 +589,8 @@ describe('WebhookService', () => {
                 );
             });
 
-            it('returns the cross-tenant webhook when the caller is a SUPER_ADMIN (admin bypass)', async () => {
-                setRequestUserRoles(['SUPER_ADMIN']);
+            it('returns the cross-tenant webhook when the caller is a GLOBAL_ADMIN (admin bypass)', async () => {
+                setRequestUserRoles(['GLOBAL_ADMIN']);
                 const otherWebhook = createMockWebhookEntity({ id: 'webhook-foreign', tenantId: 'tenant-2' });
                 mockWebhookRepository.findById.mockResolvedValue(otherWebhook);
 
@@ -630,8 +637,8 @@ describe('WebhookService', () => {
                 expect(mockWebhookRepository.updateWithVersion).not.toHaveBeenCalled();
             });
 
-            it('updates a cross-tenant webhook when the caller is a SUPER_ADMIN (admin bypass)', async () => {
-                setRequestUserRoles(['SUPER_ADMIN']);
+            it('updates a cross-tenant webhook when the caller is a GLOBAL_ADMIN (admin bypass)', async () => {
+                setRequestUserRoles(['GLOBAL_ADMIN']);
                 const otherWebhook = createMockWebhookEntity({
                     id: 'webhook-foreign',
                     tenantId: 'tenant-2',
@@ -671,8 +678,8 @@ describe('WebhookService', () => {
                 expect(mockWebhookRepository.softDelete).not.toHaveBeenCalled();
             });
 
-            it('deletes a cross-tenant webhook when the caller is a SUPER_ADMIN (admin bypass)', async () => {
-                setRequestUserRoles(['SUPER_ADMIN']);
+            it('deletes a cross-tenant webhook when the caller is a GLOBAL_ADMIN (admin bypass)', async () => {
+                setRequestUserRoles(['GLOBAL_ADMIN']);
                 const otherWebhook = createMockWebhookEntity({ id: 'webhook-foreign', tenantId: 'tenant-2' });
                 mockWebhookRepository.softDelete.mockResolvedValue({ ...otherWebhook, deletedAt: new Date() });
 
@@ -705,8 +712,8 @@ describe('WebhookService', () => {
                 expect(mockWebhookRepository.findAll).not.toHaveBeenCalled();
             });
 
-            it('returns rows for a cross-tenant SUPER_ADMIN read (bypass)', async () => {
-                setRequestUserRoles(['SUPER_ADMIN']);
+            it('returns rows for a cross-tenant GLOBAL_ADMIN read (bypass)', async () => {
+                setRequestUserRoles(['GLOBAL_ADMIN']);
                 const webhooks = [createMockWebhookEntity({ id: 'webhook-x', tenantId: 'tenant-2' })];
                 mockWebhookRepository.findAll.mockResolvedValue(webhooks);
                 mockWebhookRepository.count.mockResolvedValue(1);
@@ -1095,7 +1102,7 @@ describe('WebhookService', () => {
     describe('edge cases', () => {
         it('should handle service creation without user context', async () => {
             // TASK-306 P1.4 — `create` now requires a CLS `tenantId` (or DTO
-            // tenantId via SUPER_ADMIN). Preserve the original test intent
+            // tenantId via GLOBAL_ADMIN). Preserve the original test intent
             // ("no user") by still surfacing a valid tenantId from CLS — the
             // missing-tenant edge case is independently covered by the
             // helper test below.
@@ -1188,6 +1195,59 @@ describe('WebhookService', () => {
             });
 
             expect(result.url).toBe('https://example.com/webhook?param=value&other=test');
+        });
+    });
+
+    // =========================================================================
+    // TASK-419 item 2 — delivery log (`fetchRunHistory`): webhook-scoped read
+    // of WebhookRunHistory. The run-history rows carry no tenantId; tenancy is
+    // enforced through the parent webhook (load-then-assert, 404 cross-tenant).
+    // =========================================================================
+    describe('fetchRunHistory (TASK-419 item 2)', () => {
+        const runRow = {
+            id: 'run-1',
+            status: 'SUCCESS',
+            response: { ok: true },
+            responeStatusCode: 200,
+            webhookId: 'webhook-id-1',
+            createdAt: new Date('2026-07-01T00:00:00Z'),
+            updatedAt: new Date('2026-07-01T00:00:00Z'),
+        };
+
+        it('returns the paginated delivery log for an owned webhook (newest-first)', async () => {
+            mockWebhookRepository.findById.mockResolvedValue(createMockWebhookEntity());
+            mockWebhookRunHistoryRepository.findAll.mockResolvedValue([runRow]);
+            mockWebhookRunHistoryRepository.count.mockResolvedValue(3);
+
+            const result = await service.fetchRunHistory('webhook-id-1', { page: 1, limit: 10 });
+
+            expect(mockWebhookRunHistoryRepository.findAll).toHaveBeenCalledWith(
+                expect.objectContaining({ where: { webhookId: 'webhook-id-1' }, sort: [{ createdAt: 'desc' }], page: 1, limit: 10 }),
+            );
+            expect(mockWebhookRunHistoryRepository.count).toHaveBeenCalledWith({ where: { webhookId: 'webhook-id-1' } });
+            expect(result.count).toBe(3);
+            expect(result.data).toEqual([runRow]);
+        });
+
+        it('throws NotFoundException on a cross-tenant webhook id (no delivery read fires)', async () => {
+            mockWebhookRepository.findById.mockResolvedValue(createMockWebhookEntity({ tenantId: 'tenant-2' }));
+
+            await expect(service.fetchRunHistory('webhook-id-1', {})).rejects.toThrow('Resource not found');
+            expect(mockWebhookRunHistoryRepository.findAll).not.toHaveBeenCalled();
+        });
+
+        it('lets GLOBAL_ADMIN read another tenant delivery log (admin tooling bypass)', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'user') return { id: 'admin-1', roles: ['GLOBAL_ADMIN'] };
+                if (key === 'tenantId') return 'tenant-9';
+                return null;
+            });
+            mockWebhookRepository.findById.mockResolvedValue(createMockWebhookEntity({ tenantId: 'tenant-2' }));
+            mockWebhookRunHistoryRepository.findAll.mockResolvedValue([]);
+            mockWebhookRunHistoryRepository.count.mockResolvedValue(0);
+
+            const result = await service.fetchRunHistory('webhook-id-1', {});
+            expect(result.count).toBe(0);
         });
     });
 });

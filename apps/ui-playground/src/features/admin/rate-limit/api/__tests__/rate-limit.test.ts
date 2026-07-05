@@ -35,7 +35,7 @@ function createWrapper() {
 const POLICY = { enabled: true, enabledSource: 'default', tiers: [], routes: [] };
 
 // ---------------------------------------------------------------------------
-// IC-05 — surface the EXISTING SUPER_ADMIN rate-limit admin API. The hooks must
+// IC-05 — surface the EXISTING GLOBAL_ADMIN rate-limit admin API. The hooks must
 // hit the exact controller routes with the typed bodies.
 // ---------------------------------------------------------------------------
 describe('Rate Limits (IC-05) API hooks', () => {

@@ -10,7 +10,7 @@ import { SchedulerInfoResponse, SuccessResponse, ToggleSchedulerRequest, UpdateS
  * scheduler-admin application layer (`@nestjs/schedule` SchedulerRegistry +
  * dynamic, GlobalSetting-backed cron). Reachable at `/api/v1/admin/schedulers`.
  *
- * Access: gated to SUPER_ADMIN via `@Authorize(['manage','all'])` — schedulers
+ * Access: gated to GLOBAL_ADMIN via `@Authorize(['manage','all'])` — schedulers
  * are platform-wide infrastructure, identical posture to {@link QueueAdminController}.
  *
  * Thin delegate to `ISchedulerAdminService`. Only `dynamic` schedulers can be

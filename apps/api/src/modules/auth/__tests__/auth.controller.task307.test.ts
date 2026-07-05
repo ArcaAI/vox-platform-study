@@ -324,7 +324,7 @@ describe('AuthController — TASK-307 W1.2 / W1.5 / W1.6 — login token issuanc
         ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('W1.2 — SUPER_ADMIN without tenantKey gets an empty-string tenantId in refreshTokenService.issue', async () => {
+    it('W1.2 — GLOBAL_ADMIN without tenantKey gets an empty-string tenantId in refreshTokenService.issue', async () => {
         const hashedPassword = await bcrypt.hash('pass123', 10);
         const user = createUser({ password: hashedPassword, tenantId: null });
         const refreshTokenService = createMockRefreshTokenService();
@@ -332,7 +332,7 @@ describe('AuthController — TASK-307 W1.2 / W1.5 / W1.6 — login token issuanc
         const controller = buildController({
             refreshTokenService,
             userRepository: createMockUserRepository(new Map([[user.id, user]])),
-            databaseService: createMockDatabaseService([{ Role: createRole('SUPER_ADMIN', ['*']) }]),
+            databaseService: createMockDatabaseService([{ Role: createRole('GLOBAL_ADMIN', ['*']) }]),
             tenantRepository: createMockTenantRepository(),
         });
 

@@ -30,7 +30,7 @@ const baseSession: SessionPayload = {
         id: 'user-1',
         username: 'root',
         email: 'root@example.com',
-        roles: ['SUPER_ADMIN'],
+        roles: ['GLOBAL_ADMIN'],
     },
 };
 

@@ -7,7 +7,7 @@
  * defence-in-depth assertion at the controller layer so the rule is
  * visible at the request entry point.
  *
- * Pattern mirrors TASK-305 W1.4: SUPER_ADMIN bypasses the tenant scope;
+ * Pattern mirrors TASK-305 W1.4: GLOBAL_ADMIN bypasses the tenant scope;
  * every other caller must have a tenantId in CLS.
  */
 
@@ -60,7 +60,7 @@ describe('TASK-307 W5.7 — AuditLogController.fetchByUser tenant scoping (AC-21
         svc = createMockAuditLogService();
     });
 
-    it('non-super-admin without a tenant context in CLS is REJECTED with ForbiddenException', async () => {
+    it('non-global-admin without a tenant context in CLS is REJECTED with ForbiddenException', async () => {
         const cls = createMockCls({ id: 'u-1', tenantId: null, roles: ['DOCTOR'] }, null);
         const controller = new AuditLogController(svc as never, cls as never);
 
@@ -70,7 +70,7 @@ describe('TASK-307 W5.7 — AuditLogController.fetchByUser tenant scoping (AC-21
         expect(svc.fetchAllCreatedByUser).not.toHaveBeenCalled();
     });
 
-    it('non-super-admin WITH a tenant context is allowed (service-layer buildTenantWhere takes it from here)', async () => {
+    it('non-global-admin WITH a tenant context is allowed (service-layer buildTenantWhere takes it from here)', async () => {
         const cls = createMockCls({ id: 'u-1', tenantId: 't-OWN', roles: ['DOCTOR'] }, 't-OWN');
         const controller = new AuditLogController(svc as never, cls as never);
 
@@ -82,8 +82,8 @@ describe('TASK-307 W5.7 — AuditLogController.fetchByUser tenant scoping (AC-21
         );
     });
 
-    it('SUPER_ADMIN without a tenant context is allowed (operator cross-tenant audit reads)', async () => {
-        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+    it('GLOBAL_ADMIN without a tenant context is allowed (operator cross-tenant audit reads)', async () => {
+        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['GLOBAL_ADMIN'] }, null);
         const controller = new AuditLogController(svc as never, cls as never);
 
         await controller.fetchByUser('any-user', {} as never);
@@ -108,7 +108,7 @@ describe('TASK-307 W5.7 — AuditLogController.fetchByUser tenant scoping (AC-21
 // The unscoped `fetchAll` list route is the cross-tenant enumeration surface
 // (audit X5). The service already scopes via `buildTenantWhere`, but we mirror
 // the `fetchByUser` controller guard so the rule is observable at the request
-// entry point and a non-super-admin with no tenant cannot reach the service.
+// entry point and a non-global-admin with no tenant cannot reach the service.
 // -----------------------------------------------------------------------------
 describe('TASK-326 X5 — AuditLogController.fetchAll tenant scoping', () => {
     let svc: ReturnType<typeof createMockAuditLogService>;
@@ -117,7 +117,7 @@ describe('TASK-326 X5 — AuditLogController.fetchAll tenant scoping', () => {
         svc = createMockAuditLogService();
     });
 
-    it('rejects a non-super-admin with NO tenant context (ForbiddenException, service untouched)', async () => {
+    it('rejects a non-global-admin with NO tenant context (ForbiddenException, service untouched)', async () => {
         const cls = createMockCls({ id: 'u-1', tenantId: null, roles: ['DOCTOR'] }, null);
         const controller = new AuditLogController(svc as never, cls as never);
 
@@ -125,7 +125,7 @@ describe('TASK-326 X5 — AuditLogController.fetchAll tenant scoping', () => {
         expect(svc.fetchAllFiltered).not.toHaveBeenCalled();
     });
 
-    it('allows a non-super-admin WITH a tenant context (service-layer buildTenantWhere scopes it)', async () => {
+    it('allows a non-global-admin WITH a tenant context (service-layer buildTenantWhere scopes it)', async () => {
         const cls = createMockCls({ id: 'u-1', tenantId: 't-OWN', roles: ['DOCTOR'] }, 't-OWN');
         const controller = new AuditLogController(svc as never, cls as never);
 
@@ -134,8 +134,8 @@ describe('TASK-326 X5 — AuditLogController.fetchAll tenant scoping', () => {
         expect(svc.fetchAllFiltered).toHaveBeenCalledTimes(1);
     });
 
-    it('allows a SUPER_ADMIN with no tenant context (operator cross-tenant audit reads)', async () => {
-        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+    it('allows a GLOBAL_ADMIN with no tenant context (operator cross-tenant audit reads)', async () => {
+        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['GLOBAL_ADMIN'] }, null);
         const controller = new AuditLogController(svc as never, cls as never);
 
         await controller.fetchAll({} as never);
@@ -191,7 +191,7 @@ describe('TASK-328 A8 — AuditLogController.exportCsv', () => {
         svc = createMockAuditLogService();
     });
 
-    it('rejects a non-super-admin with NO tenant context (service untouched)', async () => {
+    it('rejects a non-global-admin with NO tenant context (service untouched)', async () => {
         const cls = createMockCls({ id: 'u-1', tenantId: null, roles: ['DOCTOR'] }, null);
         const controller = new AuditLogController(svc as never, cls as never);
 
@@ -271,8 +271,8 @@ describe('TASK-328 A8 — AuditLogController.exportCsv', () => {
         expect(buf.subarray(0, 4).toString('latin1')).toBe('%PDF');
     });
 
-    it('allows SUPER_ADMIN with no tenant context', async () => {
-        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+    it('allows GLOBAL_ADMIN with no tenant context', async () => {
+        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['GLOBAL_ADMIN'] }, null);
         const controller = new AuditLogController(svc as never, cls as never);
 
         await controller.exportCsv({} as never);
@@ -280,11 +280,11 @@ describe('TASK-328 A8 — AuditLogController.exportCsv', () => {
     });
 
     // OB-07 (TASK-336) — the controller decides tenant attribution: a global
-    // (cross-tenant) export = SUPER_ADMIN with no tenant scope → ToCsv must be
+    // (cross-tenant) export = GLOBAL_ADMIN with no tenant scope → ToCsv must be
     // asked to include the tenant column; a tenant-scoped export must not. The
     // column rendering itself is covered by the applications mapper unit test.
-    it('OB-07 — global export (SUPER_ADMIN, no tenant scope) requests the tenant column', async () => {
-        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+    it('OB-07 — global export (GLOBAL_ADMIN, no tenant scope) requests the tenant column', async () => {
+        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['GLOBAL_ADMIN'] }, null);
         const controller = new AuditLogController(svc as never, cls as never);
         const toCsv = vi.spyOn(AuditLogDtoMapper, 'ToCsv').mockReturnValue('');
         svc.exportFiltered.mockResolvedValue({ rows: [], responsibleUsers: {} });
@@ -321,7 +321,7 @@ describe('TASK-373 — AuditLogController.fetchByCursor (cursor pagination)', ()
         svc = createMockAuditLogService();
     });
 
-    it('rejects a non-super-admin with NO tenant context (ForbiddenException, service untouched)', async () => {
+    it('rejects a non-global-admin with NO tenant context (ForbiddenException, service untouched)', async () => {
         const cls = createMockCls({ id: 'u-1', tenantId: null, roles: ['DOCTOR'] }, null);
         const controller = new AuditLogController(svc as never, cls as never);
 
@@ -353,8 +353,8 @@ describe('TASK-373 — AuditLogController.fetchByCursor (cursor pagination)', ()
         expect(res).toEqual(expect.objectContaining({ nextCursor: 'next-token', hasMore: true, limit: 10, data: [] }));
     });
 
-    it('allows a SUPER_ADMIN with no tenant context (operator cross-tenant audit reads)', async () => {
-        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+    it('allows a GLOBAL_ADMIN with no tenant context (operator cross-tenant audit reads)', async () => {
+        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['GLOBAL_ADMIN'] }, null);
         const controller = new AuditLogController(svc as never, cls as never);
 
         await controller.fetchByCursor({} as never);
@@ -370,7 +370,7 @@ describe('TASK-373 — AuditLogController.fetchByCursor (cursor pagination)', ()
 describe('OB-10 — AuditLogController has no delete capability', () => {
     it('does not expose a delete handler', () => {
         const svc = createMockAuditLogService();
-        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
+        const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['GLOBAL_ADMIN'] }, null);
         const controller = new AuditLogController(svc as never, cls as never);
 
         expect((controller as unknown as Record<string, unknown>).delete).toBeUndefined();

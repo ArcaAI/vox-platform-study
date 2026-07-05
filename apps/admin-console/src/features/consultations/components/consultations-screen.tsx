@@ -121,7 +121,7 @@ function EndpointMeta() {
 /**
  * Frame 40 NoTenant panel — the row 33 EXCEPTION: an elevated session with no
  * working tenant is NOT gated; it gets the cross-tenant aggregate (the
- * gateway aggregates across tenants for an unpinned SUPER_ADMIN). Row data
+ * gateway aggregates across tenants for an unpinned GLOBAL_ADMIN). Row data
  * still requires a tenant scope, so no grid and no detail mount here.
  */
 function CrossTenantAggregateView() {

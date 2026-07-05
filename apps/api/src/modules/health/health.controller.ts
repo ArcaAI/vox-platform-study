@@ -176,7 +176,7 @@ export class ApiHealthController {
   @Get('services')
   // TASK-307 W5.1 / AC-15 — close audit C-8 (was unauthenticated). The probe
   // payload is sanitised below (version + checks stripped per audit E-3).
-  // TASK-336 OB-12 — tightened from any-authenticated to SUPER_ADMIN
+  // TASK-336 OB-12 — tightened from any-authenticated to GLOBAL_ADMIN
   // (`manage all`), matching the other ops/admin surfaces; this downstream
   // ops health is not for plain doctors.
   // TASK-386 (#21) — widened so a TENANT_ADMIN can read downstream service
@@ -222,7 +222,7 @@ export class ApiHealthController {
 
   @Get('services/:serviceKey')
   // TASK-307 W5.1 / AC-15 — close audit C-8.
-  // TASK-336 OB-12 — SUPER_ADMIN (`manage all`), as for /services above.
+  // TASK-336 OB-12 — GLOBAL_ADMIN (`manage all`), as for /services above.
   // TASK-386 (#21) — widened to `read:TenantTelemetry` (see /services above).
   @CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])
   @ApiOperation({ summary: 'Health check for a single downstream microservice (admin only)' })

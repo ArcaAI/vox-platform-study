@@ -2,8 +2,8 @@
  * Cross-tenant fixture scaffold — TASK-305 Phase E.1.
  *
  * Pure synthetic fixtures (NO database, NO Prisma) used by cross-tenant
- * tests across the monorepo. Returns two tenants, two non-super-admin
- * users (one per tenant), one SUPER_ADMIN, and a helper that shapes the
+ * tests across the monorepo. Returns two tenants, two non-elevated
+ * users (one per tenant), one GLOBAL_ADMIN, and a helper that shapes the
  * CLS payload exactly the way `apps/api/src/database/tenant-context.provider.ts`
  * reads it (`{ tenantId, user: { id, tenantId, roles, permissions } }`).
  *
@@ -16,9 +16,9 @@
  *
  * The fixture intentionally does NOT depend on `@arcaai/applications` so
  * callers in any package (including monorepo-root tests) can import it
- * without pulling in NestJS DI. The literal 'SUPER_ADMIN' string mirrors
- * `SUPER_ADMIN_ROLE` from `packages/applications/src/services/tenant/
- * constants.ts:23`.
+ * without pulling in NestJS DI. The literal 'GLOBAL_ADMIN' string mirrors
+ * `GLOBAL_ADMIN_ROLE` from `packages/applications/src/services/tenant/
+ * constants.ts` (TASK-417 — SUPER_ADMIN was consolidated into it).
  */
 
 export interface CrossTenant {
@@ -52,18 +52,18 @@ export interface CrossTenantFixture {
 }
 
 /**
- * Literal mirror of `SUPER_ADMIN_ROLE` from `packages/applications/src/
- * services/tenant/constants.ts:23`. Re-declared here (rather than imported)
+ * Literal mirror of `GLOBAL_ADMIN_ROLE` from `packages/applications/src/
+ * services/tenant/constants.ts`. Re-declared here (rather than imported)
  * so this fixture stays dependency-free for monorepo-root callers.
  */
-const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
+const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
 
 export const CROSS_TENANT_IDS = {
   TENANT_A: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
   TENANT_B: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
   USER_A: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
   USER_B: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
-  SUPER_ADMIN: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+  GLOBAL_ADMIN: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
 } as const;
 
 export function createCrossTenantFixture(): CrossTenantFixture {
@@ -86,9 +86,9 @@ export function createCrossTenantFixture(): CrossTenantFixture {
     roles: ['DOCTOR'],
   };
   const superAdmin: CrossTenantUser = {
-    id: CROSS_TENANT_IDS.SUPER_ADMIN,
+    id: CROSS_TENANT_IDS.GLOBAL_ADMIN,
     tenantId: tenantA.id,
-    roles: [SUPER_ADMIN_ROLE],
+    roles: [GLOBAL_ADMIN_ROLE],
   };
 
   return {

@@ -17,7 +17,7 @@ import { CreateUserRoleAssignmentRequest, UpdateUserRoleAssignmentRequest } from
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
-import { SUPER_ADMIN_ROLE } from '../../tenant/constants';
+import { GLOBAL_ADMIN_ROLE } from '../../tenant/constants';
 
 // TODO: Implement this
 
@@ -107,7 +107,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
     // user/tenant is in CLS (and for /me, /refresh, impersonation), so the
     // scoped client throws "tenant context required for model
     // UserRoleAssignment". Identity resolution is inherently cross-tenant: we
-    // need ALL of the user's roles to determine SUPER_ADMIN and build claims.
+    // need ALL of the user's roles to determine GLOBAL_ADMIN and build claims.
     const rows = await this.databaseService.baseClient.userRoleAssignment.findMany({
       where: {
         userId,
@@ -135,8 +135,8 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
     }
 
     // AC-02 r2605 (Critical, privilege escalation) — defense-in-depth role-tier
-    // + cross-tenant-target guard. Only an authenticated NON-super-admin caller
-    // is constrained; SUPER_ADMIN and system/bootstrap (no CLS user) paths keep
+    // + cross-tenant-target guard. Only an authenticated NON-global-admin caller
+    // is constrained; GLOBAL_ADMIN and system/bootstrap (no CLS user) paths keep
     // the existing cross-tenant behaviour. Runs BEFORE any factory/repository
     // call so a rejected attempt never touches the write path.
     if (this.requestUser && !this.isSuperAdmin()) {
@@ -146,7 +146,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
 
     // TASK-305 D.7 (audit C-6) — pin the working tenantId to the caller's CLS
     // context. The only legitimate cross-tenant create is when the caller
-    // explicitly passes `request.tenantId` AND holds the SUPER_ADMIN role
+    // explicitly passes `request.tenantId` AND holds the GLOBAL_ADMIN role
     // (used by onboarding/bootstrap flows). Otherwise an explicit mismatch
     // is a privilege-escalation attempt and must be rejected before any
     // repository or factory call runs.
@@ -220,38 +220,38 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
   }
 
   /**
-   * True when the active request user carries the `SUPER_ADMIN` role.
+   * True when the active request user carries the `GLOBAL_ADMIN` role.
    * Mirrors the pattern in `TenantService.isSuperAdmin()` — falls back to
    * `false` whenever the CLS context is missing or the role list is
    * undefined, so the strictest behaviour applies by default.
    */
   private isSuperAdmin(): boolean {
     const roles = this.requestUser?.roles;
-    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
+    return Array.isArray(roles) && roles.includes(GLOBAL_ADMIN_ROLE);
   }
 
   /**
-   * AC-02 r2605 — reject a non-SUPER_ADMIN caller's attempt to grant the
-   * platform-wide SUPER_ADMIN role. Per the `03-role` seed, SUPER_ADMIN is the
-   * only Global role (its assignments are cross-tenant); every other role is
-   * tenant-scoped and a TENANT_ADMIN may legitimately delegate it within their
-   * tenant. Resolves the target role's name through the unscoped `baseClient`
-   * (Role is a global, non-tenant-scoped model — same precedent as the
-   * cross-tenant identity reads above). A missing/unknown role is left for the
-   * downstream create/FK path to reject.
+   * AC-02 r2605 — reject a non-GLOBAL_ADMIN caller's attempt to grant the
+   * platform-wide GLOBAL_ADMIN role. Per the `03-role` seed, GLOBAL_ADMIN is
+   * the only Global role (its assignments are cross-tenant); every other role
+   * is tenant-scoped and a TENANT_ADMIN may legitimately delegate it within
+   * their tenant. Resolves the target role's name through the unscoped
+   * `baseClient` (Role is a global, non-tenant-scoped model — same precedent
+   * as the cross-tenant identity reads above). A missing/unknown role is left
+   * for the downstream create/FK path to reject.
    */
   private async assertAssignableRoleTier(roleId: string): Promise<void> {
     const role = (await this.databaseService.baseClient.role.findUnique({
       where: { id: roleId },
       select: { name: true },
     })) as { name: string } | null;
-    if (role?.name === SUPER_ADMIN_ROLE) {
-      throw new ForbiddenException('Only a SUPER_ADMIN may assign the SUPER_ADMIN role');
+    if (role?.name === GLOBAL_ADMIN_ROLE) {
+      throw new ForbiddenException('Only a GLOBAL_ADMIN may assign the GLOBAL_ADMIN role');
     }
   }
 
   /**
-   * AC-02 r2605 — reject a non-SUPER_ADMIN caller's attempt to assign a role to
+   * AC-02 r2605 — reject a non-GLOBAL_ADMIN caller's attempt to assign a role to
    * a user that belongs to a DIFFERENT tenant. A user with no ENABLED
    * membership yet (a fresh account being onboarded into the caller's tenant)
    * is allowed; a user whose memberships are all in other tenants is not.

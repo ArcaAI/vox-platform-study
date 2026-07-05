@@ -552,7 +552,7 @@ describe('AuthController', () => {
             expect(deptService.findActiveDepartmentForUserInTenant).not.toHaveBeenCalled();
         });
 
-        it('should allow SUPER_ADMIN to login without tenantKey (global access)', async () => {
+        it('should allow GLOBAL_ADMIN to login without tenantKey (global access)', async () => {
             const hashedPassword = await bcrypt.hash('pass123', 10);
             const user = createUser({ password: hashedPassword, tenantId: null });
             const users = new Map([[user.id, user]]);
@@ -561,7 +561,7 @@ describe('AuthController', () => {
                 userRepository: createMockUserRepository(users),
                 authService: createMockAuthService(),
                 tenantRepository: createMockTenantRepository(tenantMap),
-                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('SUPER_ADMIN', ['*']) }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('GLOBAL_ADMIN', ['*']) }]),
             });
 
             const result = await controller.login(
@@ -575,7 +575,7 @@ describe('AuthController', () => {
             expect(result.user.tenantKey).toBe('');
         });
 
-        it('should allow SUPER_ADMIN to login with tenantKey to scope to a specific tenant', async () => {
+        it('should NOT grant the retired SUPER_ADMIN role tenantKey-less login (TASK-417)', async () => {
             const hashedPassword = await bcrypt.hash('pass123', 10);
             const user = createUser({ password: hashedPassword, tenantId: null });
             const users = new Map([[user.id, user]]);
@@ -585,6 +585,23 @@ describe('AuthController', () => {
                 authService: createMockAuthService(),
                 tenantRepository: createMockTenantRepository(tenantMap),
                 userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('SUPER_ADMIN', ['*']) }]),
+            });
+
+            await expect(
+                controller.login({ username: 'dr_smith', password: 'pass123' }, createMockRequest()),
+            ).rejects.toThrow(BadRequestException);
+        });
+
+        it('should allow GLOBAL_ADMIN to login with tenantKey to scope to a specific tenant', async () => {
+            const hashedPassword = await bcrypt.hash('pass123', 10);
+            const user = createUser({ password: hashedPassword, tenantId: null });
+            const users = new Map([[user.id, user]]);
+
+            controller = buildController({
+                userRepository: createMockUserRepository(users),
+                authService: createMockAuthService(),
+                tenantRepository: createMockTenantRepository(tenantMap),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('GLOBAL_ADMIN', ['*']) }]),
             });
 
             const result = await controller.login(
@@ -597,7 +614,7 @@ describe('AuthController', () => {
             expect(result.user.tenantKey).toBe('acme-hospital');
         });
 
-        it('should reject SUPER_ADMIN with invalid tenantKey', async () => {
+        it('should reject GLOBAL_ADMIN with invalid tenantKey', async () => {
             const hashedPassword = await bcrypt.hash('pass123', 10);
             const user = createUser({ password: hashedPassword, tenantId: null });
             const users = new Map([[user.id, user]]);
@@ -605,7 +622,7 @@ describe('AuthController', () => {
             controller = buildController({
                 userRepository: createMockUserRepository(users),
                 tenantRepository: createMockTenantRepository(new Map()),
-                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('SUPER_ADMIN', ['*']) }]),
+                userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('GLOBAL_ADMIN', ['*']) }]),
             });
 
             await expect(

@@ -7,7 +7,7 @@ import { RateLimitPolicyResponse, SetRateLimitEnabledRequest, SetRateLimitRouteR
 /**
  * TASK-316 — system-admin surface for live, DB-backed rate-limit configuration.
  *
- * Reachable at `/api/v1/admin/rate-limit`. Gated to SUPER_ADMIN only: the
+ * Reachable at `/api/v1/admin/rate-limit`. Gated to GLOBAL_ADMIN only: the
  * `manage all` permission is granted exclusively by the `system-full-access`
  * policy (tenant admins hold `manage GlobalSetting` scoped to their own tenant,
  * which must NOT let them retune the platform-wide gateway limits).

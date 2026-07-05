@@ -19,8 +19,11 @@ export const GLOBAL_TENANT_KEY = '__GLOBAL__';
  * Role name granted to operators with full administrative access. Used as a
  * gate for sensitive tenant-config operations such as editing locked rows or
  * mutating the master `__GLOBAL__` tenant defaults.
+ *
+ * TASK-417 — the former `SUPER_ADMIN` role was consolidated into
+ * `GLOBAL_ADMIN`; this is the single elevated role literal.
  */
-export const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
+export const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
 
 /**
  * Generic UUID v1–v7 regex (case-insensitive). Tenant identifiers stored in

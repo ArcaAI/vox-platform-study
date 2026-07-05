@@ -29,7 +29,7 @@ import {
 const CORRELATION_PREFIX = 'corr-seed';
 
 export const DEFAULT_AUDIT_LOGS = [
-    // 1. Super admin login
+    // 1. Platform admin (`super_admin` user) login
     {
         id: SEED_AUDIT_LOG_IDS.LOGIN_SUPER_ADMIN,
         tenantId: SEED_TENANT_ID,

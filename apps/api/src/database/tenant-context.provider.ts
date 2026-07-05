@@ -15,10 +15,10 @@
  *                       extension behave as a pass-through, which is the
  *                       behaviour seed scripts and CLI tools depend on.
  *  - `isSuperAdmin()` — true when the current user's `roles` array contains
- *                       any `ELEVATED_ROLES` member (SUPER_ADMIN / GLOBAL_ADMIN),
+ *                       any `ELEVATED_ROLES` member (GLOBAL_ADMIN),
  *                       OR when no CLS context exists at
  *                       all (system/startup path). The latter "no context =
- *                       super-admin" stance keeps the extension permissive in
+ *                       elevated" stance keeps the extension permissive in
  *                       contexts that haven't been wrapped in `cls.run()` yet;
  *                       Phase D will tighten this for queue workers and event
  *                       listeners.
@@ -26,7 +26,7 @@
  * Intentionally tiny — no business logic lives here. All it does is read CLS.
  */
 
-import { SUPER_ADMIN_ROLE } from '@arcaai/applications';
+import { GLOBAL_ADMIN_ROLE } from '@arcaai/applications';
 import type { IActiveUserContext } from '@arcaai/applications';
 import { setTenantContextProvider, type TenantContextProvider } from '@arcaai/database';
 import { Injectable, Logger, Module, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
@@ -39,7 +39,8 @@ import { ClsModule, ClsService } from 'nestjs-cls';
  * hard dependency on the applications elevated-set export, matching the same
  * deliberate cross-layer duplication documented in `common/tenant-guards.ts`.
  */
-const ELEVATED_ROLES: readonly string[] = [SUPER_ADMIN_ROLE, 'GLOBAL_ADMIN'];
+// TASK-417 — SUPER_ADMIN consolidated into GLOBAL_ADMIN (single elevated role).
+const ELEVATED_ROLES: readonly string[] = [GLOBAL_ADMIN_ROLE];
 
 @Injectable()
 export class ClsTenantContextProvider implements TenantContextProvider, OnApplicationBootstrap, OnApplicationShutdown {
@@ -49,10 +50,10 @@ export class ClsTenantContextProvider implements TenantContextProvider, OnApplic
 
   getTenantId(): string | undefined {
     if (!this.cls.isActive()) return undefined;
-    // An empty-string tenantId — super-admins authenticate without a tenant
+    // An empty-string tenantId — global admins authenticate without a tenant
     // binding, so their JWT/CLS carries `tenantId: ''` — means "no tenant
     // context", identical to `undefined`. Using `??` would leak the empty
-    // string through, bypassing the extension's `tenantId == null` super-admin
+    // string through, bypassing the extension's `tenantId == null` elevated
     // pass-through and tripping `mergeTenantIntoWhere`'s mismatch guard on
     // legitimate admin cross-tenant reads (GET /admin/tenants/configs/:id).
     const resolved = this.cls.get('tenantId') ?? this.cls.get('user')?.tenantId;

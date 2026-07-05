@@ -1206,7 +1206,7 @@ export class ContextService extends BaseService implements IContextService {
    * cross-tenant by a buggy write pre-TASK-305-W3.1 (or if the extension
    * is bypassed), the chain array could include foreign-tenant ids.
    * Filter the chain to the caller's CLS tenant BEFORE the downstream
-   * repository calls. SUPER_ADMIN bypass is intentionally NOT applied
+   * repository calls. GLOBAL_ADMIN bypass is intentionally NOT applied
    * here — these methods compose tenant-scoped per-item data on a hot
    * PHI read path; any cross-tenant visibility for platform admins must
    * be exposed via an explicit method, not a side effect of this helper.

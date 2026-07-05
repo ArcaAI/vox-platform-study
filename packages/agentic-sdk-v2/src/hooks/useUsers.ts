@@ -177,7 +177,7 @@ export interface UseUsersReturn {
   /** TASK-400 — public self-service forgot-password (always resolves with the generic ack). */
   requestPasswordReset: (input: RequestPasswordResetInput) => Promise<RequestPasswordResetResult>;
   /**
-   * TASK-401 — super-admin-only time-boxed impersonation mint ("act as").
+   * TASK-401 — global-admin-only time-boxed impersonation mint ("act as").
    * Returns the target session payload (token + user + expiry). The CALLER owns
    * the token swap (e.g. the admin app's auth store) — unlike
    * `useAuth().impersonate()`, nothing is stashed inside the SDK client here.
@@ -344,7 +344,7 @@ export function useUsers(): UseUsersReturn {
     [execute],
   );
 
-  // TASK-401 — super-admin impersonation mint; thin wrapper (token swap is the
+  // TASK-401 — global-admin impersonation mint; thin wrapper (token swap is the
   // caller's job) so the admin app can retain its original session for restore.
   const impersonate = useCallback(
     (userId: string, options?: AdminImpersonateOptions) =>

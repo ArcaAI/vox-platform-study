@@ -228,7 +228,7 @@ describe('TranscriptionJobsScreen', () => {
 
         fireEvent.click(await screen.findByText('job-9f2ka7c3'));
 
-        // Detail (SSE fallback poll) renders the mono job facts.
+        // Detail read renders the mono job facts (one-shot; re-polls only if the stream errors).
         expect(await screen.findByText('p-1')).toBeDefined();
         expect(await screen.findByText('60%')).toBeDefined();
 

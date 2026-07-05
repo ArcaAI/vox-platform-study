@@ -18,12 +18,12 @@
  *      — @CanRead('AuditLog'); tenant-scoped, super-admin cross-tenant.
  *   3. GET /monitoring/sessions      monitoring.controller.ts 🔒
  *      — controller @CanAny(['manage','all'],['read','TenantTelemetry']):
- *        SUPER_ADMIN via manage:all, TENANT_ADMIN via the TASK-386 (#21)
+ *        GLOBAL_ADMIN via manage:all, TENANT_ADMIN via the TASK-386 (#21)
  *        read:TenantTelemetry grant; a plain DOCTOR (neither) → 403.
  *   4. GET /health/services          health.controller.ts 🔒
  *      — same @CanAny posture as /monitoring/sessions (TASK-386 #21).
  *   5. GET /admin/consultations      admin-consultation.controller.ts:52 (list)
- *      — @CanManage('Consultation') → TENANT_ADMIN / SUPER_ADMIN; DOCTOR → 403.
+ *      — @CanManage('Consultation') → TENANT_ADMIN / GLOBAL_ADMIN; DOCTOR → 403.
  *
  * Run against a live, seeded stack (`pnpm test:e2e`, or a dev stack via
  * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868`). Each flow is a real

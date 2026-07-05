@@ -67,8 +67,8 @@ export class AuditLogController {
     // TASK-326 X5 (audit X5): the unscoped list route is the cross-tenant
     // enumeration surface. The service `buildTenantWhere` already scopes
     // every query, but mirror the `fetchByUser` guard here so the rule is
-    // observable at the request entry point and a non-super-admin with no
-    // tenant context never reaches the service. SUPER_ADMIN keeps the
+    // observable at the request entry point and a non-global-admin with no
+    // tenant context never reaches the service. GLOBAL_ADMIN keeps the
     // cross-tenant read.
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
@@ -117,7 +117,7 @@ export class AuditLogController {
       throw new ForbiddenException('Tenant context required to export audit logs');
     }
 
-    // OB-07 (TASK-336): a global (cross-tenant) export is a super-admin reading
+    // OB-07 (TASK-336): a global (cross-tenant) export is a global-admin reading
     // without a tenant scope — those rows span tenants, so the export must carry
     // a tenantId column. A tenant-scoped export omits it (every row is the same
     // tenant, so the column would be noise).
@@ -174,7 +174,7 @@ export class AuditLogController {
   async fetchByCursor(@Query() queryParams: AuditLogCursorQuery): Promise<CursorPaginatedAuditLogResponse> {
     // Mirror the fetchAll/fetchByUser guard so the cross-tenant enumeration
     // rule is observable at the request entry point (service buildTenantWhere
-    // already enforces it). SUPER_ADMIN keeps the cross-tenant read.
+    // already enforces it). GLOBAL_ADMIN keeps the cross-tenant read.
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
     if (!isSuperAdmin(user) && !callerTenantId) {
@@ -267,9 +267,9 @@ export class AuditLogController {
   async fetchByUser(@Param('userId') userId: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedAuditLogResponse> {
     // TASK-307 W5.7 (AC-21, audit D-7): defence-in-depth tenant scope.
     // The service-side `buildTenantWhere` already throws when a
-    // non-super-admin has no CLS tenantId, but the audit asks for an
+    // non-global-admin has no CLS tenantId, but the audit asks for an
     // explicit controller-layer assertion so the rule is observable at
-    // the request entry point. SUPER_ADMIN keeps the cross-tenant
+    // the request entry point. GLOBAL_ADMIN keeps the cross-tenant
     // read (mirrors TASK-305 W1.4).
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');

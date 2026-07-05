@@ -149,8 +149,8 @@ export class UserController {
     // TASK-326 X2 (audit X2, Critical): pre-fix `fetchAll` applied NO tenant
     // scope, so any caller with `manage:User` (e.g. a TENANT_ADMIN) could
     // enumerate users platform-wide. Mirror the AuditLogController guard:
-    // non-super-admins are routed to the by-tenant service path scoped to
-    // their effective CLS tenant; SUPER_ADMIN keeps the cross-tenant read.
+    // non-global-admins are routed to the by-tenant service path scoped to
+    // their effective CLS tenant; GLOBAL_ADMIN keeps the cross-tenant read.
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
     // TASK-375 — apply the deterministic default sort once, before any scoping
@@ -167,7 +167,7 @@ export class UserController {
       return UserDtoMapper.ToPaginatedResponse(scoped);
     }
 
-    // AC-07 (TASK-336): when a super-admin selects a tenant in the console, the
+    // AC-07 (TASK-336): when a global-admin selects a tenant in the console, the
     // ContextInterceptor elevates `x-tenant-id` into CLS `tenantId`. Honour it
     // and scope the listing to that tenant; with no selection the platform-wide
     // cross-tenant listing is preserved.
@@ -224,8 +224,8 @@ export class UserController {
 
   /**
    * Materialise the tenant-scoped (capped) user set for an export, applying the
-   * exact scoping branches as {@link fetchAll}: a non-super-admin is pinned to
-   * their CLS tenant (403 with no context); a super-admin honours an elevated
+   * exact scoping branches as {@link fetchAll}: a non-global-admin is pinned to
+   * their CLS tenant (403 with no context); a global-admin honours an elevated
    * `X-Tenant-Id` selection, else reads cross-tenant.
    *
    * TASK-398 P1-7 — rows are enriched with email + department NAMES via ONE
@@ -300,8 +300,8 @@ export class UserController {
     // but left this sibling path-param route with only the class-level
     // `@CanManage('User')` action check — which does NOT constrain WHICH
     // tenant. Any `manage:User` holder (e.g. a TENANT_ADMIN) could enumerate
-    // any tenant's users by UUID. Mirror `fetchAll`: a non-super-admin may
-    // only read their own CLS tenant; SUPER_ADMIN keeps the cross-tenant read.
+    // any tenant's users by UUID. Mirror `fetchAll`: a non-global-admin may
+    // only read their own CLS tenant; GLOBAL_ADMIN keeps the cross-tenant read.
     this.assertCanReadTenant(tenantId);
 
     const result = await this.userService.fetchAllByTenantId({
@@ -313,7 +313,7 @@ export class UserController {
 
   /**
    * TASK-331 r2605 #2 — shared caller-tenant guard for the by-tenant read
-   * routes. SUPER_ADMIN reads any tenant; every other `manage:User` holder is
+   * routes. GLOBAL_ADMIN reads any tenant; every other `manage:User` holder is
    * confined to their own CLS tenant. Throws `ForbiddenException` otherwise.
    */
   private assertCanReadTenant(tenantId: string): void {
@@ -336,7 +336,7 @@ export class UserController {
    * asserted explicitly. Resolves the target's ENABLED tenant memberships via
    * `UserRoleAssignment` and throws `NotFoundException` (404, NOT 403, to avoid
    * disclosing the existence of a cross-tenant user) when the caller's active
-   * tenant is not among them. SUPER_ADMIN is platform-wide and exempt.
+   * tenant is not among them. GLOBAL_ADMIN is platform-wide and exempt.
    */
   private async assertUserInScope(id: string): Promise<void> {
     const user = this.cls.get('user');

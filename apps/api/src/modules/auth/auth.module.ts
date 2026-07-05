@@ -32,7 +32,7 @@ import { StreamTicketModule } from './stream-ticket.module';
     CoreDatabaseModule,
     StreamTicketModule,
   ],
-  // TASK-401 — AdminImpersonationController adds the super-admin-only
+  // TASK-401 — AdminImpersonationController adds the global-admin-only
   // `POST /admin/users/:id/impersonate` mint alongside the legacy
   // `/auth/impersonate` route (same module: it reuses the exact same
   // service/repository set the AuthController already wires).

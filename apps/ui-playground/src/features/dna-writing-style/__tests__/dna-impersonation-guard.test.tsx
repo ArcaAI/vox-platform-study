@@ -16,7 +16,7 @@ import DnaWritingStylePage from '../index';
  * Mirrors the pattern from /summarization/pre-summary and /summarization/summary.
  */
 
-const ADMIN_ROLES = ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'];
+const ADMIN_ROLES = ['GLOBAL_ADMIN', 'TENANT_ADMIN'];
 const DOCTOR_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
 
 function buildContext(overrides: Partial<DoctorContext> & { roles: string[] }): DoctorContext {
@@ -33,7 +33,7 @@ function buildContext(overrides: Partial<DoctorContext> & { roles: string[] }): 
 describe('DNA Writing Style ImpersonationGuard integration', () => {
   describe('guard rendering decision', () => {
     it('should show ImpersonationGuard when admin is not impersonating', () => {
-      const ctx = buildContext({ roles: ['SUPER_ADMIN'] });
+      const ctx = buildContext({ roles: ['GLOBAL_ADMIN'] });
       expect(ctx.requiresImpersonation).toBe(true);
     });
 
@@ -44,7 +44,7 @@ describe('DNA Writing Style ImpersonationGuard integration', () => {
 
     it('should NOT show ImpersonationGuard when admin is impersonating a doctor', () => {
       const ctx = buildContext({
-        roles: ['SUPER_ADMIN'],
+        roles: ['GLOBAL_ADMIN'],
         isImpersonated: true,
         effectiveUserId: 'impersonated-doctor-id',
       });
@@ -55,7 +55,7 @@ describe('DNA Writing Style ImpersonationGuard integration', () => {
   describe('data fetching with impersonation context', () => {
     it('should use effectiveUserId (impersonated doctor) for DNA style query', () => {
       const ctx = buildContext({
-        roles: ['SUPER_ADMIN'],
+        roles: ['GLOBAL_ADMIN'],
         isImpersonated: true,
         effectiveUserId: 'doctor-abc-123',
       });
@@ -86,7 +86,7 @@ describe('DNA Writing Style ImpersonationGuard integration', () => {
 
     it('should enable DNA style query when admin is impersonating', () => {
       const ctx = buildContext({
-        roles: ['SUPER_ADMIN'],
+        roles: ['GLOBAL_ADMIN'],
         isImpersonated: true,
         effectiveUserId: 'doctor-xyz',
       });
@@ -144,7 +144,7 @@ describe('DNA Writing Style ImpersonationGuard integration', () => {
 
     it('should accept featureName for contextual subtitle', () => {
       const guardProps = {
-        roles: ['SUPER_ADMIN'],
+        roles: ['GLOBAL_ADMIN'],
         featureName: 'DNA writing style',
       };
       expect(guardProps.featureName).toBe('DNA writing style');
@@ -152,7 +152,7 @@ describe('DNA Writing Style ImpersonationGuard integration', () => {
 
     it('should accept featureDescription for contextual body text', () => {
       const guardProps = {
-        roles: ['SUPER_ADMIN'],
+        roles: ['GLOBAL_ADMIN'],
         featureDescription:
           'DNA writing styles are personalized per doctor. As an admin, you need to impersonate a doctor to generate or view their writing style profile.',
       };
@@ -268,7 +268,7 @@ describe('DNA Writing Style — Generate action gating (TASK-331 doc-07 F1)', ()
 
   it('renders the "Generate Style" trigger + GenerateDialog once impersonation is satisfied', () => {
     mockUseDoctorContext.mockReturnValue(
-      buildContext({ roles: ['SUPER_ADMIN'], isImpersonated: true, requiresImpersonation: false, effectiveUserId: 'doctor-1' }),
+      buildContext({ roles: ['GLOBAL_ADMIN'], isImpersonated: true, requiresImpersonation: false, effectiveUserId: 'doctor-1' }),
     );
 
     render(<DnaWritingStylePage />);

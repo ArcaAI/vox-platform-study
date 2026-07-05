@@ -41,7 +41,7 @@ function buildController(user: ClsUserStub | null) {
     const authService = { trackAuthentication: vi.fn().mockResolvedValue(undefined) };
     const userRoleAssignmentService = {
         findActiveRolesForUser: vi.fn(async (userId: string) =>
-            (userId === 'admin-A' ? ['SUPER_ADMIN'] : ['DOCTOR']).map((name) => ({ id: `role-${name}`, name, permissions: [] })),
+            (userId === 'admin-A' ? ['GLOBAL_ADMIN'] : ['DOCTOR']).map((name) => ({ id: `role-${name}`, name, permissions: [] })),
         ),
         findActiveTenantIdsForUser: vi.fn(async () => ['tenant-B']),
         findActiveAssignmentForUserInTenant: vi.fn(async () => null),
@@ -96,7 +96,7 @@ describe('AuthController — TASK-401 legacy /auth/impersonate backports', () =>
         expect(deniedEvents(eventEmitter)).toEqual([expect.objectContaining({ reason: ImpersonationDeniedReason.SelfImpersonation })]);
     });
 
-    it('still allows a SUPER_ADMIN to impersonate a regular target (no regression)', async () => {
+    it('still allows a GLOBAL_ADMIN to impersonate a regular target (no regression)', async () => {
         const { controller } = buildController({ id: 'admin-A', tenantId: 'tenant-A' });
 
         const response = await controller.impersonate({ targetUserId: 'target-B' } as never, REQ);

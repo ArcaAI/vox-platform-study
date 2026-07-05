@@ -1,7 +1,12 @@
 import {
   EvalRunDetailResponse,
   EvalRunListResponse,
+  EvalService,
   GateQueueResponse,
+  GoldenCaseListResponse,
+  GoldenCaseMetaResponse,
+  GoldenSetListResponse,
+  GoldenSetResponse,
   HarnessAuditListResponse,
   HarnessObservabilityService,
   HarnessPolicyResponse,
@@ -20,7 +25,7 @@ import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse
 import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 import { HarnessOpsClient, HarnessWorkflowActionResult, HarnessWorkflowDetail, HarnessWorkflowListResult } from './harness-ops.client';
-import { SignalWorkflowRequest, WorkflowActionRequest } from './dto';
+import { CreateGoldenCaseRequest, CreateGoldenSetRequest, SignalWorkflowRequest, WorkflowActionRequest } from './dto';
 
 /**
  * HarnessAdminController (TASK-330 Phase 6) — the admin surface for the clinical
@@ -28,16 +33,19 @@ import { SignalWorkflowRequest, WorkflowActionRequest } from './dto';
  * `/api/v1/admin/harness/*`). Mirrors `PromptManagementController` (`@Authorize`,
  * `If-Match` OCC) and `MyTenantController` (CLS tenant resolution).
  *
- * Three concerns:
+ * Four concerns:
  *  - Policy: GET/PATCH the caller-tenant policy (`If-Match` OCC) + the platform
- *    GLOBAL-DEFAULT (`policy/global`, super-admin only).
+ *    GLOBAL-DEFAULT (`policy/global`, global-admin only).
  *  - Observe: read the WORM audit trail (+ integrity verdict), eval runs, and
  *    the clinician gate queue.
+ *  - Datasets (TASK-419 item 1): golden sets/cases — list/read + create over
+ *    `EvalService`. Case reads are PHI-SAFE metadata (the encrypted
+ *    transcript/reference-note payloads are never surfaced).
  *  - Operate: proxy Temporal workflow ops to the harness via `HarnessOpsClient`,
- *    enforcing tenant ownership on destructive ops (platform super-admins bypass).
+ *    enforcing tenant ownership on destructive ops (platform global-admins bypass).
  *
  * Tenant scoping mirrors `MyTenantController`/`TenantController`: tenant admins
- * are pinned to their CLS tenant; super-admins (`isSuperAdmin`) act cross-tenant
+ * are pinned to their CLS tenant; global-admins (`isSuperAdmin`) act cross-tenant
  * (and may target a tenant via `?tenantId=` on reads). The ETag interceptor sets
  * `ETag: "<version>"` on the policy responses (top-level `version`).
  */
@@ -52,6 +60,7 @@ export class HarnessAdminController {
     private readonly opsClient: HarnessOpsClient,
     private readonly cls: ClsService<IActiveUserContext>,
     private readonly liveDocumentationService: LiveDocumentationService,
+    private readonly evalService: EvalService,
   ) {}
 
   // ───────────────────────── Policy ─────────────────────────
@@ -93,9 +102,9 @@ export class HarnessAdminController {
 
   @Get('policy/global')
   @Authorize(['read', 'HarnessPolicy'])
-  @ApiOperation({ summary: 'Get the platform GLOBAL-DEFAULT harness policy (super-admin only)' })
+  @ApiOperation({ summary: 'Get the platform GLOBAL-DEFAULT harness policy (global-admin only)' })
   @ApiResponse({ status: 200, type: HarnessPolicyResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden — platform (super-admin) privileges required.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — platform (global-admin) privileges required.' })
   async getGlobalPolicy(): Promise<HarnessPolicyResponse> {
     this.assertPlatform();
     return this.policyService.getGlobalDefault();
@@ -105,8 +114,8 @@ export class HarnessAdminController {
   @Authorize(['manage', 'HarnessPolicy'])
   @RequiresIfMatch()
   @ApiOperation({
-    summary: 'Update the platform GLOBAL-DEFAULT harness policy (super-admin only)',
-    description: 'Same OCC + WORM semantics as `PATCH policy`, targeting the SYSTEM-tenant GLOBAL-DEFAULT row. Restricted to platform super-admins.',
+    summary: 'Update the platform GLOBAL-DEFAULT harness policy (global-admin only)',
+    description: 'Same OCC + WORM semantics as `PATCH policy`, targeting the SYSTEM-tenant GLOBAL-DEFAULT row. Restricted to platform global-admins.',
   })
   @ApiHeader({
     name: 'If-Match',
@@ -115,7 +124,7 @@ export class HarnessAdminController {
     example: '"1"',
   })
   @ApiResponse({ status: 200, type: HarnessPolicyResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden — platform (super-admin) privileges required.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — platform (global-admin) privileges required.' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   async updateGlobalPolicy(
@@ -180,6 +189,100 @@ export class HarnessAdminController {
   async getEvalRun(@Param('id') id: string, @Query() query: { tenantId?: string }): Promise<EvalRunDetailResponse> {
     const tenantId = this.resolveReadTenantId(query.tenantId);
     return this.observabilityService.getEvalRun(tenantId, id);
+  }
+
+  // ─────────────────── Golden datasets (TASK-419 item 1) ───────────────────
+
+  @Get('golden-sets')
+  @Authorize(['read', 'HarnessEval'])
+  @ApiOperation({ summary: 'List golden sets (newest-first)' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiResponse({ status: 200, type: GoldenSetListResponse })
+  async listGoldenSets(@Query() query: { tenantId?: string; page?: string; limit?: string }): Promise<GoldenSetListResponse> {
+    const tenantId = this.resolveReadTenantId(query.tenantId);
+    return this.evalService.listGoldenSets(tenantId, {
+      page: query.page !== undefined ? Number(query.page) : undefined,
+      limit: query.limit !== undefined ? Number(query.limit) : undefined,
+    });
+  }
+
+  @Get('golden-sets/:id')
+  @Authorize(['read', 'HarnessEval'])
+  @ApiOperation({ summary: 'Get one golden set' })
+  @ApiParam({ name: 'id', description: 'Golden set id' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
+  @ApiResponse({ status: 200, type: GoldenSetResponse })
+  @ApiResponse({ status: 404, description: 'Golden set not found for the tenant.' })
+  async getGoldenSet(@Param('id') id: string, @Query() query: { tenantId?: string }): Promise<GoldenSetResponse> {
+    const tenantId = this.resolveReadTenantId(query.tenantId);
+    return this.evalService.getGoldenSet(tenantId, id);
+  }
+
+  @Get('golden-sets/:id/cases')
+  @Authorize(['read', 'HarnessEval'])
+  @ApiOperation({
+    summary: "List a golden set's cases — PHI-safe metadata only",
+    description: 'The encrypted clinical payloads (`transcript`, `referenceNote`) are never surfaced through this plane.',
+  })
+  @ApiParam({ name: 'id', description: 'Golden set id' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiResponse({ status: 200, type: GoldenCaseListResponse })
+  @ApiResponse({ status: 404, description: 'Golden set not found for the tenant.' })
+  async listGoldenCases(
+    @Param('id') id: string,
+    @Query() query: { tenantId?: string; page?: string; limit?: string },
+  ): Promise<GoldenCaseListResponse> {
+    const tenantId = this.resolveReadTenantId(query.tenantId);
+    return this.evalService.listGoldenCases(tenantId, id, {
+      page: query.page !== undefined ? Number(query.page) : undefined,
+      limit: query.limit !== undefined ? Number(query.limit) : undefined,
+    });
+  }
+
+  @Post('golden-sets')
+  @Authorize(['manage', 'HarnessEval'])
+  @ApiOperation({ summary: 'Create a golden set for the caller tenant' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
+  @ApiResponse({ status: 201, type: GoldenSetResponse })
+  async createGoldenSet(@Body() body: CreateGoldenSetRequest, @Query() query: { tenantId?: string }): Promise<GoldenSetResponse> {
+    const tenantId = this.resolveReadTenantId(query.tenantId);
+    return this.evalService.addGoldenSet({
+      tenantId,
+      name: body.name,
+      description: body.description,
+      pinnedVersion: body.pinnedVersion,
+      createdBy: this.cls.get('user')?.id ?? null,
+    });
+  }
+
+  @Post('golden-sets/:id/cases')
+  @Authorize(['manage', 'HarnessEval'])
+  @ApiOperation({
+    summary: 'Add a case to a golden set (PHI encrypted at rest, write-only)',
+    description: 'Returns the PHI-safe metadata projection — the transcript/reference note are never echoed back.',
+  })
+  @ApiParam({ name: 'id', description: 'Golden set id' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
+  @ApiResponse({ status: 201, type: GoldenCaseMetaResponse })
+  @ApiResponse({ status: 404, description: 'Golden set not found for the tenant.' })
+  async createGoldenCase(
+    @Param('id') id: string,
+    @Body() body: CreateGoldenCaseRequest,
+    @Query() query: { tenantId?: string },
+  ): Promise<GoldenCaseMetaResponse> {
+    const tenantId = this.resolveReadTenantId(query.tenantId);
+    return this.evalService.addGoldenCase({
+      tenantId,
+      goldenSetId: id,
+      transcript: body.transcript,
+      referenceNote: body.referenceNote,
+      label: body.label,
+      createdBy: this.cls.get('user')?.id ?? null,
+    });
   }
 
   @Get('gate-queue')
@@ -285,9 +388,9 @@ export class HarnessAdminController {
 
   @Get('live/config')
   @Authorize(['read', 'HarnessPolicy'])
-  @ApiOperation({ summary: 'Read the live-documentation engine kill-switch (super-admin / global scope)' })
+  @ApiOperation({ summary: 'Read the live-documentation engine kill-switch (global-admin / global scope)' })
   @ApiResponse({ status: 200, type: LiveDocEngineConfigResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden — platform (super-admin) privileges required.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — platform (global-admin) privileges required.' })
   async getLiveConfig(): Promise<LiveDocEngineConfigResponse> {
     this.assertLiveConfigAdmin();
     return this.liveDocumentationService.getEngineConfig();
@@ -296,13 +399,13 @@ export class HarnessAdminController {
   @Patch('live/config')
   @Authorize(['manage', 'HarnessPolicy'])
   @ApiOperation({
-    summary: 'Toggle the live-documentation engine kill-switch (super-admin / global scope)',
+    summary: 'Toggle the live-documentation engine kill-switch (global-admin / global scope)',
     description:
       'Persists a Redis override that survives restart and fans out to all API instances (no redeploy). ' +
       '`enabled: false` engages the kill-switch — new `start()` calls are refused while in-flight sessions drain.',
   })
   @ApiResponse({ status: 200, type: LiveDocEngineConfigResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden — platform (super-admin) privileges required.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — platform (global-admin) privileges required.' })
   async updateLiveConfig(@Body() body: UpdateLiveDocEngineConfigRequest): Promise<LiveDocEngineConfigResponse> {
     this.assertLiveConfigAdmin();
     return this.liveDocumentationService.setEngineEnabled(body.enabled, { userId: this.cls.get('user')?.id, reason: body.reason });
@@ -310,7 +413,7 @@ export class HarnessAdminController {
 
   // ───────────────────────── Helpers ─────────────────────────
 
-  /** Resolve the effective read tenant: tenant admins → own tenant; super-admins → `?tenantId=` (or CLS tenant). */
+  /** Resolve the effective read tenant: tenant admins → own tenant; global-admins → `?tenantId=` (or CLS tenant). */
   private resolveReadTenantId(queryTenantId?: string): string {
     const user = this.cls.get('user');
     if (isSuperAdmin(user)) {
@@ -326,7 +429,7 @@ export class HarnessAdminController {
     return tenantId;
   }
 
-  /** Workflow-list tenant filter: tenant admins → own tenant; super-admins → optional `?tenantId=` (undefined = all tenants). */
+  /** Workflow-list tenant filter: tenant admins → own tenant; global-admins → optional `?tenantId=` (undefined = all tenants). */
   private resolveWorkflowListTenant(queryTenantId?: string): string | undefined {
     const user = this.cls.get('user');
     if (isSuperAdmin(user)) return queryTenantId;
@@ -338,22 +441,22 @@ export class HarnessAdminController {
     return tenantId;
   }
 
-  /** Platform (super-admin) gate for the GLOBAL-DEFAULT policy routes. */
+  /** Platform (global-admin) gate for the GLOBAL-DEFAULT policy routes. */
   private assertPlatform(): void {
     if (!isSuperAdmin(this.cls.get('user'))) {
-      throw new ForbiddenException('Editing the harness global-default policy requires platform (super-admin) privileges.');
+      throw new ForbiddenException('Editing the harness global-default policy requires platform (global-admin) privileges.');
     }
   }
 
-  /** Platform (super-admin) gate for the live-documentation engine kill-switch (global scope). */
+  /** Platform (global-admin) gate for the live-documentation engine kill-switch (global scope). */
   private assertLiveConfigAdmin(): void {
     if (!isSuperAdmin(this.cls.get('user'))) {
-      throw new ForbiddenException('Reading or toggling the live-documentation engine kill-switch requires platform (super-admin) privileges.');
+      throw new ForbiddenException('Reading or toggling the live-documentation engine kill-switch requires platform (global-admin) privileges.');
     }
   }
 
   /**
-   * Enforce tenant ownership of a workflow: super-admins bypass; tenant admins
+   * Enforce tenant ownership of a workflow: global-admins bypass; tenant admins
    * must own the workflow's tenant. Returns the owning tenantId (forwarded to
    * the harness so it can re-scope server-side).
    */

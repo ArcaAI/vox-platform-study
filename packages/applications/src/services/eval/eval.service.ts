@@ -13,9 +13,10 @@ import {
   GoldenSetFactory,
   GoldenSetRepository,
 } from '@arcaai/domains';
-import { InternalServerErrorException } from '@arcaai/exceptions';
+import { DataNotFoundException, InternalServerErrorException } from '@arcaai/exceptions';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { encryptPhiFields } from '../../common';
+import { GoldenCaseListResponse, GoldenCaseMetaResponse, GoldenSetListResponse, GoldenSetResponse } from './dto';
 
 /**
  * EvalService (TASK-330 Phase 0) — offline evaluation storage for the clinical
@@ -74,6 +75,12 @@ export interface RecordEvalScoreInput {
 
 /** A score recorded as part of a run — run id + tenant are taken from the run. */
 export type RecordEvalScoreForRunInput = Omit<RecordEvalScoreInput, 'tenantId' | 'evalRunId'>;
+
+/** Pagination for the golden-set/golden-case read projections (TASK-419 item 1). */
+export interface ListGoldenSetsOptions {
+  page?: number;
+  limit?: number;
+}
 
 @Injectable()
 export class EvalService {
@@ -214,4 +221,102 @@ export class EvalService {
 
     return { run: createdRun, scores: createdScores };
   }
+
+  // ===========================================================================
+  // TASK-419 item 1 — read projections for the /admin/harness golden-set
+  // surface. Mirrors HarnessObservabilityService.listEvalRuns: repository
+  // count + findAll pinned to the tenant, newest-first, {items,total}.
+  // ===========================================================================
+
+  /** A page of the tenant's golden sets (newest-first). */
+  async listGoldenSets(tenantId: string, options: ListGoldenSetsOptions = {}): Promise<GoldenSetListResponse> {
+    const filters: Record<string, unknown> = { tenantId };
+
+    const total = await this.goldenSetRepository.count({ filters });
+    const sets = await this.goldenSetRepository.findAll({
+      filters,
+      sort: [{ createdAt: 'desc' }],
+      page: options.page ?? 1,
+      limit: options.limit ?? 20,
+    });
+
+    return { items: sets.map(goldenSetToResponse), total };
+  }
+
+  /** One golden set. Throws (404) when not found for the tenant. */
+  async getGoldenSet(tenantId: string, goldenSetId: string): Promise<GoldenSetResponse> {
+    const sets = await this.goldenSetRepository.findAll({ filters: { tenantId, id: goldenSetId }, limit: 1 });
+    const set = sets[0];
+    if (!set) throw new DataNotFoundException('GoldenSet', goldenSetId);
+    return goldenSetToResponse(set);
+  }
+
+  /**
+   * A page of a golden set's cases — PHI-SAFE metadata only (the encrypted
+   * `transcript`/`referenceNote` clinical payloads are never projected).
+   * Throws (404) when the parent set is missing for the tenant, before any
+   * case query, so cross-tenant ids cannot be probed.
+   */
+  async listGoldenCases(tenantId: string, goldenSetId: string, options: ListGoldenSetsOptions = {}): Promise<GoldenCaseListResponse> {
+    await this.getGoldenSet(tenantId, goldenSetId);
+
+    const filters: Record<string, unknown> = { tenantId, goldenSetId };
+    const total = await this.goldenCaseRepository.count({ filters });
+    const cases = await this.goldenCaseRepository.findAll({
+      filters,
+      sort: [{ createdAt: 'desc' }],
+      page: options.page ?? 1,
+      limit: options.limit ?? 20,
+    });
+
+    return { items: cases.map(goldenCaseToMetaResponse), total };
+  }
+
+  /** Admin-plane create: persists the set and returns the response projection. */
+  async addGoldenSet(input: CreateGoldenSetInput): Promise<GoldenSetResponse> {
+    const created = await this.createGoldenSet(input);
+    return goldenSetToResponse(created);
+  }
+
+  /**
+   * Admin-plane create: verifies the parent set exists for the tenant (404
+   * otherwise — no orphan cases, no cross-tenant probing), persists the case
+   * (PHI encrypted on write), and returns the PHI-SAFE metadata projection —
+   * the transcript/reference note are never echoed back.
+   */
+  async addGoldenCase(input: CreateGoldenCaseInput): Promise<GoldenCaseMetaResponse> {
+    await this.getGoldenSet(input.tenantId, input.goldenSetId);
+    const created = await this.createGoldenCase(input);
+    return goldenCaseToMetaResponse(created);
+  }
+}
+
+function toDate(value: Date | string): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
+function goldenSetToResponse(e: GoldenSetEntity): GoldenSetResponse {
+  return {
+    id: e.id,
+    tenantId: e.tenantId,
+    name: e.name,
+    description: e.description ?? null,
+    pinnedVersion: e.pinnedVersion ?? null,
+    createdAt: toDate(e.createdAt).toISOString(),
+    updatedAt: toDate(e.updatedAt).toISOString(),
+    createdBy: e.createdBy ?? null,
+  };
+}
+
+/** PHI-safe projection: deliberately excludes `transcript`/`referenceNote`. */
+function goldenCaseToMetaResponse(e: GoldenCaseEntity): GoldenCaseMetaResponse {
+  return {
+    id: e.id,
+    tenantId: e.tenantId,
+    goldenSetId: e.goldenSetId,
+    label: e.label ?? null,
+    createdAt: toDate(e.createdAt).toISOString(),
+    updatedAt: toDate(e.updatedAt).toISOString(),
+    createdBy: e.createdBy ?? null,
+  };
 }

@@ -640,12 +640,12 @@ describe('GlobalSettingService', () => {
     // =========================================================================
     // TASK-332 — `locked` write-guard. A locked row (e.g. the platform
     // capability `enable-local-raw-capture`) may only be written by a
-    // SUPER_ADMIN. Mirrors the `updateTenantConfigs` posture already enforced
+    // GLOBAL_ADMIN. Mirrors the `updateTenantConfigs` posture already enforced
     // for the tenant-config PATCH path.
     // =========================================================================
     describe('TASK-332 locked write-guard', () => {
         const asSuperAdmin = () =>
-            mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'super-1', roles: ['SUPER_ADMIN'] } : key === 'tenantId' ? 'tenant-1' : null));
+            mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'super-1', roles: ['GLOBAL_ADMIN'] } : key === 'tenantId' ? 'tenant-1' : null));
 
         it('rejects a non-super-admin write to a locked row with ForbiddenException', async () => {
             const locked = createMockGlobalSettingEntity({ id: 'locked-1', key: 'enable-local-raw-capture', hasChanges: true, changes: { value: 'true' } });
@@ -659,7 +659,7 @@ describe('GlobalSettingService', () => {
             expect(mockGlobalSettingRepository.updateWithVersion).not.toHaveBeenCalled();
         });
 
-        it('allows a SUPER_ADMIN to write a locked row', async () => {
+        it('allows a GLOBAL_ADMIN to write a locked row', async () => {
             asSuperAdmin();
             const locked = createMockGlobalSettingEntity({ id: 'locked-1', key: 'enable-local-raw-capture', hasChanges: true, changes: { value: 'true' } });
             (locked as any).locked = true;
@@ -851,7 +851,7 @@ describe('GlobalSettingService', () => {
 
         const asSuperAdmin = () =>
             mockClsService.get.mockImplementation((key: string) =>
-                key === 'user' ? { id: 'super-1', roles: ['SUPER_ADMIN'] } : key === 'tenantId' ? 'tenant-1' : key === 'correlationId' ? 'corr-1' : null,
+                key === 'user' ? { id: 'super-1', roles: ['GLOBAL_ADMIN'] } : key === 'tenantId' ? 'tenant-1' : key === 'correlationId' ? 'corr-1' : null,
             );
 
         const wireDecrypt = (overrides?: Parameters<typeof createMockGlobalSettingEntity>[0]) => {
@@ -943,7 +943,7 @@ describe('GlobalSettingService', () => {
             // the revealed setting's own (persisted) tenantId — otherwise the row
             // is silently dropped.
             mockClsService.get.mockImplementation((key: string) =>
-                key === 'user' ? { id: 'super-1', roles: ['SUPER_ADMIN'] } : key === 'tenantId' ? null : key === 'correlationId' ? 'corr-1' : null,
+                key === 'user' ? { id: 'super-1', roles: ['GLOBAL_ADMIN'] } : key === 'tenantId' ? null : key === 'correlationId' ? 'corr-1' : null,
             );
             wireDecrypt({ tenantId: 'platform-tenant-000' });
             mockCryptoService.verify.mockResolvedValue(true);

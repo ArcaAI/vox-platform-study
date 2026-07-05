@@ -239,7 +239,7 @@ describe('MonitoringController', () => {
 // TASK-336 OB-12 / TASK-386 #21·E6 — admin-gate the monitoring surface
 //   Pre-OB-12 the controller carried a bare @Authorize() (any authenticated
 //   caller — a plain doctor could read ops uptime/sessions). OB-12 tightened
-//   the whole controller to the SUPER_ADMIN `manage all` gate.
+//   the whole controller to the GLOBAL_ADMIN `manage all` gate.
 //
 //   TASK-386 (#21/E6) WIDENS that gate to `@CanAny(['manage','all'],
 //   ['read','TenantTelemetry'])` so a tenant-admin holding the seeded
@@ -255,7 +255,7 @@ describe('TASK-336 OB-12 / TASK-386 #21 — monitoring admin-gating', () => {
     const REQUIRED_PERMISSIONS_KEY = 'required_permissions';
     const PERMISSION_MODE_KEY = 'permission_mode';
 
-    it('accepts EITHER `manage all` (super-admin) OR `read TenantTelemetry` (tenant-admin)', async () => {
+    it('accepts EITHER `manage all` (global-admin) OR `read TenantTelemetry` (tenant-admin)', async () => {
         const { MonitoringController } = await import('../monitoring.controller');
         const required = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, MonitoringController);
         const mode = Reflect.getMetadata(PERMISSION_MODE_KEY, MonitoringController);

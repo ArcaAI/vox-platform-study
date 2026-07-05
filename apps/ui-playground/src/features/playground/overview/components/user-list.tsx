@@ -38,10 +38,10 @@ export function UserList() {
   const persistedImpersonatedUser = useAuthStore((s) => s.impersonatedUser);
   const isImpersonating = sdkImpersonating || persistedImpersonating;
   const impersonatedUser = sdkImpersonatedUser ?? persistedImpersonatedUser ?? null;
-  // TASK-331 doc-05 F-4 — GLOBAL_ADMIN is a full SUPER_ADMIN synonym.
-  const canImpersonate = localUser?.roles?.some((r) => ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'].includes(r)) ?? false;
+  // TASK-417 — GLOBAL_ADMIN is the single elevated role.
+  const canImpersonate = localUser?.roles?.some((r) => ['GLOBAL_ADMIN', 'TENANT_ADMIN'].includes(r)) ?? false;
 
-  // TASK-327 T6 — a global-scope operator (SUPER_ADMIN) has no
+  // TASK-327 T6 — a global-scope operator (GLOBAL_ADMIN) has no
   // implicit tenant, so impersonation is ambiguous until they pick one. Tenant
   // admins are locked to their own tenant and are never blocked.
   // TASK-331 doc-06 F5 — point at the real control. Tenant selection moved to
@@ -296,7 +296,7 @@ export function UserList() {
           <div className="space-y-1">
             <CardTitle className="text-base">User Impersonation</CardTitle>
             <CardDescription>
-              {canImpersonate ? 'Select a user to impersonate for testing SDK interactions' : 'Requires SUPER_ADMIN or TENANT_ADMIN role'}
+              {canImpersonate ? 'Select a user to impersonate for testing SDK interactions' : 'Requires GLOBAL_ADMIN or TENANT_ADMIN role'}
             </CardDescription>
           </div>
           <div className="flex shrink-0 gap-2">

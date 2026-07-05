@@ -1,13 +1,22 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { ResourceType, SysEventType, EntityId, WebhookEntity, WebhookFactory, WebhookRepository } from '@arcaai/domains';
+import {
+  ResourceType,
+  SysEventType,
+  EntityId,
+  WebhookEntity,
+  WebhookFactory,
+  WebhookRepository,
+  WebhookRunHistoryEntity,
+  WebhookRunHistoryRepository,
+} from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException } from '@arcaai/exceptions';
 import { IWebhookService } from './IWebhookService';
 import { CreateWebhookRequest, UpdateWebhookRequest } from './dto';
 import { assertEqualTenants, BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
-import { SUPER_ADMIN_ROLE } from '../tenant/constants';
+import { GLOBAL_ADMIN_ROLE } from '../tenant/constants';
 
 /**
  * TASK-406 (P2-6c) — model-aware filter coercion (TASK-375 §8 scheme):
@@ -22,6 +31,8 @@ export class WebhookService extends BaseService implements IWebhookService {
 
   constructor(
     private readonly webhookRepository: WebhookRepository,
+    // TASK-419 item 2 — delivery-log reads for the admin surface.
+    private readonly webhookRunHistoryRepository: WebhookRunHistoryRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
   ) {
@@ -29,11 +40,11 @@ export class WebhookService extends BaseService implements IWebhookService {
   }
 
   /**
-   * TASK-306 P1.4 (audit M-2 / NEW-2 / AC-5 partial) — non-SUPER_ADMIN
+   * TASK-306 P1.4 (audit M-2 / NEW-2 / AC-5 partial) — non-GLOBAL_ADMIN
    * callers can no longer attribute a webhook to another tenant via the
    * DTO. Effective tenant is resolved through `resolveEffectiveTenantId`,
    * which silently pins to CLS for regular users and honors
-   * `request.tenantId` only for SUPER_ADMIN (cross-tenant impersonation
+   * `request.tenantId` only for GLOBAL_ADMIN (cross-tenant impersonation
    * flows, e.g. admin UI / migration tooling).
    */
   async create(request: CreateWebhookRequest): Promise<WebhookEntity> {
@@ -60,8 +71,8 @@ export class WebhookService extends BaseService implements IWebhookService {
 
   /**
    * TASK-306 P2.3 (audit M-2 / AC-5) — list endpoint scoped to the
-   * caller's tenant. Non-SUPER_ADMIN callers see only their own tenant's
-   * webhooks; SUPER_ADMIN bypasses the filter so cross-tenant
+   * caller's tenant. Non-GLOBAL_ADMIN callers see only their own tenant's
+   * webhooks; GLOBAL_ADMIN bypasses the filter so cross-tenant
    * administration tooling can list every webhook in the platform.
    * Mirrors the W3.2 NotificationService.fetchAll posture.
    */
@@ -98,7 +109,7 @@ export class WebhookService extends BaseService implements IWebhookService {
    * TASK-306 P2.3 (audit M-2 / AC-5 + AC-7) — refuse cross-tenant list
    * reads driven by the DTO `tenantId`. Pre-guard, any caller could
    * enumerate another tenant's webhooks by supplying a foreign
-   * `tenantId`. SUPER_ADMIN bypasses for admin-tooling cross-tenant
+   * `tenantId`. GLOBAL_ADMIN bypasses for admin-tooling cross-tenant
    * listing (mirrors the W5.1.5 Notification + ApiKey
    * `fetchAllByTenantId` posture).
    */
@@ -171,7 +182,7 @@ export class WebhookService extends BaseService implements IWebhookService {
    * TASK-306 P2.3 (audit M-2 / AC-5) — load-then-assert. Throw
    * `NotFoundException` (never `ForbiddenException`) on a cross-tenant
    * id so the API does not reveal that the row exists in another
-   * tenant. SUPER_ADMIN bypasses for admin tooling.
+   * tenant. GLOBAL_ADMIN bypasses for admin tooling.
    */
   async fetchById(id: EntityId): Promise<WebhookEntity> {
     const webhook = await this.webhookRepository.findById(id);
@@ -200,7 +211,7 @@ export class WebhookService extends BaseService implements IWebhookService {
     const webhook = await this.webhookRepository.findById(id);
     // TASK-306 P2.3 (audit M-2 / AC-5) — load-then-assert defense-in-depth.
     // Throws NotFoundException on cross-tenant id BEFORE the CAS write
-    // fires, so a foreign webhook is never mutated. SUPER_ADMIN bypasses
+    // fires, so a foreign webhook is never mutated. GLOBAL_ADMIN bypasses
     // for admin tooling.
     if (!this.isSuperAdmin()) {
       assertEqualTenants(webhook, { tenantId: this.tenantId });
@@ -234,7 +245,7 @@ export class WebhookService extends BaseService implements IWebhookService {
    * tenant check, so a Tenant-A user with knowledge of a foreign id
    * could delete another tenant's webhook. The new pre-load+assert
    * surfaces NotFoundException on cross-tenant ids so the foreign row
-   * is never marked deleted. SUPER_ADMIN bypasses the pre-load (saves
+   * is never marked deleted. GLOBAL_ADMIN bypasses the pre-load (saves
    * a round-trip for admin tooling that legitimately deletes across
    * tenants).
    */
@@ -254,8 +265,43 @@ export class WebhookService extends BaseService implements IWebhookService {
   }
 
   /**
-   * Resolve the tenantId to use for a write. Non-SUPER_ADMIN callers are
-   * silently pinned to CLS; SUPER_ADMIN may override via `request.tenantId`
+   * TASK-419 item 2 — the webhook's delivery log (`WebhookRunHistory`,
+   * newest-first). The run-history rows carry NO tenantId, so tenancy is
+   * enforced through the parent webhook: load-then-assert (404 on a
+   * cross-tenant id, never 403 — no existence leak), GLOBAL_ADMIN bypasses
+   * for admin tooling. Read-only: the append-only delivery writer is the
+   * dispatch pipeline's concern, not this surface's.
+   */
+  async fetchRunHistory(webhookId: EntityId, props: PaginatedQuery): Promise<FetchResponse<WebhookRunHistoryEntity>> {
+    const webhook = await this.webhookRepository.findById(webhookId);
+    if (!this.isSuperAdmin()) {
+      assertEqualTenants(webhook, { tenantId: this.tenantId });
+    }
+
+    const { limit, page } = props;
+    const runs = await this.webhookRunHistoryRepository.findAll({
+      where: { webhookId },
+      sort: [{ createdAt: 'desc' }],
+      page: page ?? 1,
+      limit: limit ?? 20,
+    });
+    const count = await this.webhookRunHistoryRepository.count({ where: { webhookId } });
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      resourceId: webhook.id,
+      data: { webhookId, items: runs.map((run: WebhookRunHistoryEntity) => run.id) },
+    });
+    return new FetchResponse<WebhookRunHistoryEntity>({
+      data: runs,
+      count,
+      limit,
+      page,
+    });
+  }
+
+  /**
+   * Resolve the tenantId to use for a write. Non-GLOBAL_ADMIN callers are
+   * silently pinned to CLS; GLOBAL_ADMIN may override via `request.tenantId`
    * for cross-tenant impersonation. Throws `BadRequestException` if no
    * tenant context resolves (caller has no CLS AND no DTO `tenantId`
    * after the super-admin branch).
@@ -267,11 +313,11 @@ export class WebhookService extends BaseService implements IWebhookService {
    * mandates "row created with tenant-A" on silent coercion.
    *
    * TASK-306 W5.7.6 (306-F2) — emit a `logger.warn` ONLY on the
-   * cross-tenant-coercion branch (non-SUPER_ADMIN passing a foreign
+   * cross-tenant-coercion branch (non-GLOBAL_ADMIN passing a foreign
    * tenantId). Persistence is correct either way, but the warn gives
    * SOC the only signal that distinguishes a properly-formed request
    * from a foreign-tenant DTO. Same-tenant and tenantId-omitted writes
-   * stay silent (benign / expected); SUPER_ADMIN cross-tenant writes
+   * stay silent (benign / expected); GLOBAL_ADMIN cross-tenant writes
    * are explicitly allowed and also stay silent.
    */
   private resolveEffectiveTenantId(requestTenantId?: string): string {
@@ -289,13 +335,13 @@ export class WebhookService extends BaseService implements IWebhookService {
   }
 
   /**
-   * True when the active request user carries the SUPER_ADMIN role.
+   * True when the active request user carries the GLOBAL_ADMIN role.
    * Mirrors the strict-default helper used by `TenantService` and
    * `AuthorizationAuditService` — falls back to `false` whenever the role
    * list is missing so the most restrictive policy applies.
    */
   private isSuperAdmin(): boolean {
     const roles = this.requestUser?.roles;
-    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
+    return Array.isArray(roles) && roles.includes(GLOBAL_ADMIN_ROLE);
   }
 }

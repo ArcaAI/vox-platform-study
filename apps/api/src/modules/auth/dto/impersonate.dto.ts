@@ -13,7 +13,7 @@ export class ImpersonateRequest {
   /**
    * TASK-295 H-3: optional tenant the admin wants to impersonate the target
    * "as". Must be one of the target user's enabled `UserRoleAssignment.tenantId`
-   * values. For non-SUPER_ADMIN callers it MUST equal the admin's own tenant.
+   * values. For non-GLOBAL_ADMIN callers it MUST equal the admin's own tenant.
    * If omitted, the controller picks the first enabled assignment for backward
    * compatibility.
    */
@@ -28,7 +28,7 @@ export class ImpersonateRequest {
 }
 
 /**
- * TASK-401 — request body for the super-admin-only
+ * TASK-401 — request body for the global-admin-only
  * `POST /admin/users/:id/impersonate` endpoint. The target user id travels in
  * the PATH (`:id`), unlike the legacy `/auth/impersonate` body shape.
  */

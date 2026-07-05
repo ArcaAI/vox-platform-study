@@ -178,7 +178,7 @@ function qs(params?: PromptListParams): string {
 }
 
 // ---------------------------------------------------------------------------
-// Query hooks — all accept tenantId for super-admin tenant switching
+// Query hooks — all accept tenantId for global-admin tenant switching
 // ---------------------------------------------------------------------------
 
 export function usePromptTemplates(

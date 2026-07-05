@@ -15,7 +15,7 @@ const mockUser = {
   id: 'u-1',
   email: 'admin@test.com',
   username: 'admin',
-  roles: ['SUPER_ADMIN'],
+  roles: ['GLOBAL_ADMIN'],
   permissions: ['read'],
 };
 

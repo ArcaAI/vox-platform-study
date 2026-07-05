@@ -82,12 +82,12 @@ export class ContextInterceptor implements NestInterceptor {
         throw new BadRequestException('x-tenant-id header does not match the authenticated tenant');
       }
 
-      // TASK-331 r2605 Finding #1: a super-admin authenticates with an EMPTY
+      // TASK-331 r2605 Finding #1: a global-admin authenticates with an EMPTY
       // tenant, so the divergence guard above never fires for them. The
       // console's "manage as tenant" selection arrives as `x-tenant-id`; for a
-      // super-admin with no tenant binding we elevate the CLS `tenantId` to it
+      // global-admin with no tenant binding we elevate the CLS `tenantId` to it
       // so downstream CLS-scoped services (Departments, Prompts, Storage, …)
-      // operate inside the chosen tenant. Gated to super-admins only and
+      // operate inside the chosen tenant. Gated to global-admins only and
       // audited — anyone else falls through with their tenant unchanged.
       const decision = resolveActiveTenant(clsUser, tenantIdHeader);
       if (decision.type === 'invalid') {
@@ -96,7 +96,7 @@ export class ContextInterceptor implements NestInterceptor {
       if (decision.type === 'elevate') {
         this.tryClsSet('tenantId', decision.tenantId);
         this.logger.log({
-          message: 'super-admin elevated active tenant from x-tenant-id header',
+          message: 'global-admin elevated active tenant from x-tenant-id header',
           superAdminId: clsUser?.id,
           elevatedTenantId: decision.tenantId,
           correlationId: request.requestId,

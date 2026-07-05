@@ -64,7 +64,7 @@ export class PolicyService extends BaseService implements IPolicyService {
    * policies that back super-admin / RBAC administration platform-wide.
    * Deleting, disabling, re-scoping, or stripping the load-bearing rule from
    * any of these would lock every super-admin out — so the service refuses
-   * those mutations regardless of caller (even SUPER_ADMIN). Everything else
+   * those mutations regardless of caller (even GLOBAL_ADMIN). Everything else
    * (all TENANT policies + any non-protected GLOBAL policy) stays fully
    * editable. Protected by NAME (stable, matches `01-policy.ts`); the required
    * rule tuples are the minimum grant each policy must retain.

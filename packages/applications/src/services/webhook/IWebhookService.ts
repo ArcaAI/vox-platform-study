@@ -1,4 +1,4 @@
-import { EntityId, WebhookEntity } from '@arcaai/domains';
+import { EntityId, WebhookEntity, WebhookRunHistoryEntity } from '@arcaai/domains';
 import { FetchResponse, PaginatedQuery } from '../../common';
 import { IBaseService } from '../../interfaces';
 import { CreateWebhookRequest, UpdateWebhookRequest } from './dto';
@@ -13,5 +13,7 @@ export interface IWebhookService extends IBaseService {
   fetchById(id: EntityId): Promise<WebhookEntity>;
   update(id: EntityId, request: UpdateWebhookRequest): Promise<WebhookEntity>;
   deleteById(id: EntityId): Promise<WebhookEntity>;
+  /** TASK-419 item 2 — webhook-scoped delivery log (tenancy via the parent webhook). */
+  fetchRunHistory(webhookId: EntityId, props: PaginatedQuery): Promise<FetchResponse<WebhookRunHistoryEntity>>;
 }
 export const IWebhookService = Symbol('IWebhookService');

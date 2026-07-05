@@ -1,6 +1,27 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AuditAction, ResourceType } from '@arcaai/domains';
+import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { PrismaStudioController } from '../pstudio.controller';
+
+// -----------------------------------------------------------------------------
+// TASK-419 item 4 — the studio surface is production-capable and gated by the
+// DEDICATED `manage:PrismaStudio` subject (seeded to the GLOBAL_ADMIN policy
+// set) instead of `manage:all`. `manage:all` still passes via the CASL
+// wildcard, but the dedicated subject makes studio access delegable.
+// -----------------------------------------------------------------------------
+describe('PrismaStudioController authorization metadata (TASK-419 item 4)', () => {
+    it('is class-gated by manage:PrismaStudio', () => {
+        const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, PrismaStudioController);
+        expect(meta).toEqual([{ action: 'manage', subject: 'PrismaStudio' }]);
+    });
+
+    it('serveStudio and handleStudioRequest are method-gated by manage:PrismaStudio', () => {
+        for (const handler of [PrismaStudioController.prototype.serveStudio, PrismaStudioController.prototype.handleStudioRequest]) {
+            const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, handler);
+            expect(meta).toEqual([{ action: 'manage', subject: 'PrismaStudio' }]);
+        }
+    });
+});
 
 // -----------------------------------------------------------------------------
 // TASK-326 X1 — every raw Prisma Studio query/sequence must be audited.

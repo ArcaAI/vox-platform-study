@@ -20,12 +20,13 @@ import { Observable } from 'rxjs';
 // TASK-326 X7 / D-2 — `@RequiresIfMatch()` + `@ExpectedVersion()` gate the
 // OCC-enforced PATCH route below (mirrors PromptManagementController).
 import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion } from '../../decorators';
+import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { getDnaJobStatus, streamDnaJobStatus } from './dna-writing-style-job-stream';
 
 @ApiBearerAuth()
 @ApiTags('admin-dna-writing-styles')
 @Controller('admin/dna-writing-styles')
-// TASK-326 X7 — narrowed from `manage:all` (super-admin-only) to
+// TASK-326 X7 — narrowed from `manage:all` (global-admin-only) to
 // `manage:DnaWritingStyleReport` so a TENANT_ADMIN can administer their own
 // tenant's writing-style reports (mirrors the TASK-298 AudioPipelineController
 // narrowing). Tenant isolation is still enforced in the service layer
@@ -96,7 +97,7 @@ export class DnaWritingStyleAdminController {
 
   // TASK-388 #13 — admin read of a specific doctor's latest DNA writing-style
   // report (cross-user). Delegates to the PHI-gated service method, which
-  // `assertUserBelongsToTenant` before any repository read — even SUPER_ADMIN
+  // `assertUserBelongsToTenant` before any repository read — even GLOBAL_ADMIN
   // cannot cross tenants on this PHI-derived artifact. Declared before the
   // `:reportId`-family routes; `doctor` is a literal segment so it never
   // collides with `jobs/:jobId`.
@@ -187,9 +188,20 @@ export class DnaWritingStyleAdminController {
     return getDnaJobStatus(this.dnaQueue, jobId);
   }
 
+  // TASK-419 item 6 — @StreamScope lets single-use tickets from
+  // POST /auth/stream-ticket (scope `dna_job:<jobId>`, the namespace the
+  // console and the Vox SDK already mint) authenticate this SSE route; without
+  // it the JwtAuthGuard rejects every ticket with 401 and the console had to
+  // ship a labeled polling fallback.
   @Get('jobs/:jobId/stream')
   @Sse()
-  @ApiOperation({ summary: 'Stream DNA generation job status via SSE' })
+  @StreamScope({ namespace: 'dna_job', param: 'jobId' })
+  @ApiOperation({
+    summary: 'Stream DNA generation job status via SSE',
+    description:
+      'Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by ' +
+      '`POST /auth/stream-ticket` with scope `dna_job:<jobId>`.',
+  })
   @ApiParam({ name: 'jobId', description: 'BullMQ job ID', type: String })
   @ApiResponse({ status: 200, description: 'SSE job status stream' })
   streamJobStatus(@Param('jobId') jobId: string): Observable<MessageEvent> {

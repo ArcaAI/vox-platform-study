@@ -113,7 +113,7 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
                         />
                     </div>
                     <div className="flex flex-col gap-2">
-                        <Label htmlFor="login-tenant-key">Tenant key (optional for super admins)</Label>
+                        <Label htmlFor="login-tenant-key">Tenant key (optional for global admins)</Label>
                         <Input
                             id="login-tenant-key"
                             autoComplete="organization"

@@ -1,12 +1,12 @@
 # GlobalSetting Service
 
 Application-layer service for the `__GLOBAL__`-tenant configuration rows
-(SUPER_ADMIN-edited platform-wide flags) and the per-tenant overlay rows
+(GLOBAL_ADMIN-edited platform-wide flags) and the per-tenant overlay rows
 (`tenantId != '__GLOBAL__'`). Reads are layered (per-tenant row → `__GLOBAL__`
 row → env default), and the in-process cache is invalidated by SysEvents when
 a row mutates.
 
-The HTTP surface for SUPER_ADMIN edits is the play-studio area
+The HTTP surface for GLOBAL_ADMIN edits is the play-studio area
 (`apps/api/src/modules/pstudio/`); per-tenant edits flow through
 `TenantService.updateTenantConfigs` (`PATCH /api/v1/tenant/me/config`).
 

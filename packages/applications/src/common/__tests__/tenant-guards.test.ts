@@ -13,7 +13,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DataNotFoundException } from '@arcaai/exceptions';
 import { ResourceStatusType } from '@arcaai/domains';
 
-import { assertEqualTenants, assertUserBelongsToTenant, assertParentInScope, isSuperAdmin } from '../tenant-guards';
+import { assertEqualTenants, assertUserBelongsToTenant, assertParentInScope, isSuperAdmin, ELEVATED_ROLES } from '../tenant-guards';
 
 describe('tenant-guards', () => {
   describe('assertEqualTenants', () => {
@@ -265,25 +265,31 @@ describe('tenant-guards', () => {
       expect(isSuperAdmin({ roles: [] })).toBe(false);
     });
 
-    it('returns false when user.roles contains other roles but not SUPER_ADMIN', () => {
+    it('returns false when user.roles contains other roles but not GLOBAL_ADMIN', () => {
       expect(isSuperAdmin({ roles: ['DOCTOR', 'NURSE', 'ADMIN'] })).toBe(false);
     });
 
-    it('returns true when user.roles includes the exact "SUPER_ADMIN" literal', () => {
-      expect(isSuperAdmin({ roles: ['SUPER_ADMIN'] })).toBe(true);
-      expect(isSuperAdmin({ roles: ['DOCTOR', 'SUPER_ADMIN'] })).toBe(true);
+    // TASK-417 — SUPER_ADMIN was consolidated into GLOBAL_ADMIN; the retired
+    // role string grants NOTHING anymore.
+    it('returns false for the retired "SUPER_ADMIN" literal (TASK-417)', () => {
+      expect(isSuperAdmin({ roles: ['SUPER_ADMIN'] })).toBe(false);
+      expect(isSuperAdmin({ roles: ['DOCTOR', 'SUPER_ADMIN'] })).toBe(false);
     });
 
-    // AC-06 (TASK-336) — GLOBAL_ADMIN is a platform-wide elevated role and
-    // MUST be treated as cross-tenant privileged, identical to SUPER_ADMIN.
+    // AC-06 (TASK-336) / TASK-417 — GLOBAL_ADMIN is THE platform-wide
+    // elevated role (cross-tenant privileged).
     it('returns true when user.roles includes "GLOBAL_ADMIN"', () => {
       expect(isSuperAdmin({ roles: ['GLOBAL_ADMIN'] })).toBe(true);
       expect(isSuperAdmin({ roles: ['DOCTOR', 'GLOBAL_ADMIN'] })).toBe(true);
     });
 
-    it('is case-sensitive — "super_admin" or "SuperAdmin" does NOT grant the bypass', () => {
-      expect(isSuperAdmin({ roles: ['super_admin'] })).toBe(false);
-      expect(isSuperAdmin({ roles: ['SuperAdmin'] })).toBe(false);
+    it('collapses the elevated set to exactly [GLOBAL_ADMIN] (TASK-417)', () => {
+      expect(ELEVATED_ROLES).toEqual(['GLOBAL_ADMIN']);
+    });
+
+    it('is case-sensitive — "global_admin" or "GlobalAdmin" does NOT grant the bypass', () => {
+      expect(isSuperAdmin({ roles: ['global_admin'] })).toBe(false);
+      expect(isSuperAdmin({ roles: ['GlobalAdmin'] })).toBe(false);
     });
   });
 });

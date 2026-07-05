@@ -2,7 +2,7 @@
  * @arcaai/vox — useEntitlements Hook (TASK-392 Phase 5)
  *
  * Front-end contract for the DB-backed plan-entitlements system:
- *   - super-admin: kill-switch, plan-matrix CRUD, per-tenant override + snapshot,
+ *   - global-admin: kill-switch, plan-matrix CRUD, per-tenant override + snapshot,
  *     explicit downgrade, manual trial-expiry sweep (`/admin/entitlements/*`);
  *   - tenant self-view: capability/usage snapshot (`/entitlements/me`).
  *
@@ -82,7 +82,7 @@ export interface PlanEntitlement {
   version: number;
 }
 
-/** Super-admin edit of a plan row; only supplied fields change. `expectedVersion` REQUIRED (412 on drift). */
+/** Global-admin edit of a plan row; only supplied fields change. `expectedVersion` REQUIRED (412 on drift). */
 export interface UpdatePlanEntitlementInput {
   maxUsers?: number | null;
   maxDepartments?: number | null;

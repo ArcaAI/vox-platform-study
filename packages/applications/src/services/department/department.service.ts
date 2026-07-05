@@ -121,7 +121,7 @@ export class DepartmentService extends BaseService implements IDepartmentService
    *
    * Tenant scope: the department is loaded first; a non-super-admin caller may
    * only read a department in their own tenant (else `NotFoundException`, to
-   * avoid leaking a foreign department's existence). SUPER_ADMIN reads
+   * avoid leaking a foreign department's existence). GLOBAL_ADMIN reads
    * cross-tenant. The user query filters through the `UserDepartment` join and
    * excludes soft-deleted memberships (mirrors `UserService.fetchAllByTenantId`).
    */
@@ -194,7 +194,7 @@ export class DepartmentService extends BaseService implements IDepartmentService
     // TASK-305 D.6 (audit C-7) — verify the parent both exists AND lives
     // in the caller's tenant. `assertParentInScope` throws
     // `NotFoundException` (not `ForbiddenException`) on tenant mismatch
-    // to avoid leaking the existence of a cross-tenant parent. SUPER_ADMIN
+    // to avoid leaking the existence of a cross-tenant parent. GLOBAL_ADMIN
     // is intentionally NOT bypassed: a cross-tenant parent would produce
     // a malformed tree regardless of caller role.
     if (dto.parentDepartmentId) {

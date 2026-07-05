@@ -28,9 +28,10 @@ function summarizeStudioRequest(payload: unknown): string {
 
 @ApiTags('admin-pstudio')
 @Controller('admin/pstudio')
-// Phase 0 Item 3 (TASK-302 Stream A): class-level baseline; method
-// @Authorize(['manage', 'all']) decorators override.
-@CanManage('all')
+// TASK-419 item 4: pinned to the DEDICATED `manage:PrismaStudio` subject
+// (production-capable enablement; `manage:all` still passes via the CASL
+// wildcard). Class-level baseline; method decorators re-state it.
+@CanManage('PrismaStudio')
 export class PrismaStudioController {
   private readonly logger = new Logger(PrismaStudioController.name);
 
@@ -48,7 +49,7 @@ export class PrismaStudioController {
   // response body carries no secret. We also mark it no-store so no proxy / CDN
   // caches the dev-only studio shell.
   @Get()
-  @Authorize(['manage', 'all'])
+  @Authorize(['manage', 'PrismaStudio'])
   @ApiBearerAuth()
   @ApiExcludeEndpoint()
   serveStudio(@Req() req: Request, @Res() res: Response) {
@@ -62,7 +63,7 @@ export class PrismaStudioController {
   }
 
   @Post()
-  @Authorize(['manage', 'all'])
+  @Authorize(['manage', 'PrismaStudio'])
   @ApiBearerAuth()
   @HttpCode(200)
   @ApiOperation({ summary: 'Execute Prisma Studio query (internal BFF endpoint)' })

@@ -31,7 +31,8 @@ import { Authorize } from '../../decorators';
 import { AdminImpersonateRequest, ImpersonateResponse, ImpersonateUserResponse } from './dto';
 import { ImpersonationEvents, ImpersonationDeniedReason, ImpersonationEventPayload } from './impersonation-events';
 
-const SUPER_ADMIN_TIER_ROLES = ['SUPER_ADMIN', 'GLOBAL_ADMIN'];
+// TASK-417 — the elevated tier is exactly GLOBAL_ADMIN (GLOBAL_ADMIN retired).
+const ELEVATED_TIER_ROLES = ['GLOBAL_ADMIN'];
 
 /** Forced-audit action codes for the impersonation lifecycle rows (TASK-401). */
 export const USER_IMPERSONATION_STARTED = 'USER_IMPERSONATION_STARTED';
@@ -42,7 +43,7 @@ const MIN_TTL_SECONDS = 10;
 const MAX_TTL_SECONDS = 1800;
 
 /**
- * TASK-401 — super-admin-only impersonation start endpoint.
+ * TASK-401 — global-admin-only impersonation start endpoint.
  *
  * `POST /admin/users/:id/impersonate` mints a time-boxed (default 30m),
  * NON-refreshable "act-as" token whose claims carry BOTH the subject identity
@@ -53,7 +54,7 @@ const MAX_TTL_SECONDS = 1800;
  *
  * Posture mirrors the TASK-396 secret reveal: the method-level
  * `@Authorize(['manage','all'])` limits the route to holders of the
- * `system-full-access` policy (SUPER_ADMIN); tenant admins keep the legacy
+ * `system-full-access` policy (GLOBAL_ADMIN); tenant admins keep the legacy
  * `/auth/impersonate` endpoint with its own-tenant restrictions. A DB-role
  * check inside the handler backs the CASL gate (defense-in-depth, and the
  * source of the audited denial reasons).
@@ -80,22 +81,22 @@ export class AdminImpersonationController {
   // Same envelope as the legacy /auth/impersonate route (TASK-308 AC-5).
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
-  // TASK-396 posture: only `system-full-access` (SUPER_ADMIN) holds manage:all.
+  // TASK-396 posture: only `system-full-access` (GLOBAL_ADMIN) holds manage:all.
   @Authorize(['manage', 'all'])
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Impersonate a user (super-admin only, time-boxed, audited)',
+    summary: 'Impersonate a user (global-admin only, time-boxed, audited)',
     description:
       'Mints a time-boxed (default 30 minutes), non-refreshable impersonation token that acts as the target ' +
-      'user while preserving the true actor in the `impersonatedBy` claim. SUPER_ADMIN only (CASL `manage:all`). ' +
-      'Safeguards: no self-impersonation, no super-admin-tier targets, target must be ENABLED, and an already ' +
+      'user while preserving the true actor in the `impersonatedBy` claim. GLOBAL_ADMIN only (CASL `manage:all`). ' +
+      'Safeguards: no self-impersonation, no global-admin targets, target must be ENABLED, and an already ' +
       'impersonated session can never start another (no nesting). Start and end are force-audited.',
   })
   @ApiParam({ name: 'id', description: 'Target user id', type: String })
   @ApiResponse({ status: 200, description: 'Impersonation token minted', type: ImpersonateResponse })
-  @ApiResponse({ status: 400, description: 'Invalid target (self, super-admin-tier, disabled, or missing tenant assignment)' })
+  @ApiResponse({ status: 400, description: 'Invalid target (self, global-admin, disabled, or missing tenant assignment)' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden — super-admin only, or nested impersonation attempt' })
+  @ApiResponse({ status: 403, description: 'Forbidden — global-admin only, or nested impersonation attempt' })
   @ApiResponse({ status: 404, description: 'Target user not found' })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async impersonate(@Param('id') targetUserId: string, @Body() request: AdminImpersonateRequest, @Request() req: any): Promise<ImpersonateResponse> {
@@ -113,10 +114,10 @@ export class AdminImpersonationController {
     // Defense-in-depth under the @Authorize(['manage','all']) CASL gate: the
     // DB roles are the fresh source of truth (a revoked role outlives its JWT).
     const actorRoles = await this.userRoleAssignmentService.findActiveRolesForUser(actor.id);
-    const actorIsSuperAdmin = actorRoles.some((r) => SUPER_ADMIN_TIER_ROLES.includes(r.name));
+    const actorIsSuperAdmin = actorRoles.some((r) => ELEVATED_TIER_ROLES.includes(r.name));
     if (!actorIsSuperAdmin) {
       this.recordDenied(req, actor.id, targetUserId, ImpersonationDeniedReason.CallerNotSuperAdmin);
-      throw new ForbiddenException('Impersonation requires a SUPER_ADMIN user');
+      throw new ForbiddenException('Impersonation requires a GLOBAL_ADMIN user');
     }
 
     if (targetUserId === actor.id) {
@@ -143,9 +144,9 @@ export class AdminImpersonationController {
 
     const targetRoles = await this.userRoleAssignmentService.findActiveRolesForUser(targetUser.id);
     const targetRoleNames = targetRoles.map((r) => r.name);
-    if (targetRoleNames.some((r) => SUPER_ADMIN_TIER_ROLES.includes(r))) {
+    if (targetRoleNames.some((r) => ELEVATED_TIER_ROLES.includes(r))) {
       this.recordDenied(req, actor.id, targetUser.id, ImpersonationDeniedReason.TargetIsSuperAdmin);
-      throw new BadRequestException('Cannot impersonate a super administrator');
+      throw new BadRequestException('Cannot impersonate a global administrator');
     }
 
     const targetPermissions = this.collectPermissions(targetRoles);
@@ -246,7 +247,7 @@ export class AdminImpersonationController {
     } satisfies ImpersonationEventPayload);
 
     // TASK-396 pattern — forced audit row for the sensitive action. Direct emit
-    // (not broadcastSysEvent): a super-admin's CLS tenant is usually null and
+    // (not broadcastSysEvent): a global-admin's CLS tenant is usually null and
     // the AuditLogProcessor fail-closes on null tenants, so the row is
     // attributed to the RESOLVED impersonation tenant (a persisted assignment,
     // never caller-supplied free text).

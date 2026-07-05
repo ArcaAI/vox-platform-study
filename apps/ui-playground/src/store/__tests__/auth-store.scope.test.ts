@@ -1,13 +1,12 @@
 /**
- * TASK-327 T1 / TASK-331 doc-05 F-4 — global-scope predicate.
+ * TASK-327 T1 / TASK-331 doc-05 F-4 / TASK-417 — global-scope predicate.
  *
- * Per the product decision, GLOBAL_ADMIN is a full SUPER_ADMIN synonym
- * ("global admin is super admin, with no limits in any tenant"). The earlier
- * doc-04 work treated GLOBAL_ADMIN as a dead/unseeded arm and pinned it FALSE;
- * that is reversed here. `isSuperAdmin()`, `isGlobalScope()` and `isAdmin()`
- * now all accept GLOBAL_ADMIN alongside SUPER_ADMIN. A global-scope user must
+ * TASK-417 consolidated the legacy SUPER_ADMIN into GLOBAL_ADMIN: it is the
+ * single elevated role, and the retired SUPER_ADMIN literal must no longer
+ * elevate. `isSuperAdmin()`, `isGlobalScope()` and `isAdmin()` accept
+ * GLOBAL_ADMIN (isAdmin also TENANT_ADMIN). A global-scope user must
  * still pick a tenant before tenant-scoped views. This test pins the
- * predicates so the synonym can't silently regress.
+ * predicates so the consolidation can't silently regress.
  */
 import { useAuthStore } from '../auth-store';
 
@@ -29,18 +28,18 @@ describe('auth-store scope predicates (TASK-327 T1)', () => {
   });
 
   describe('isGlobalScope', () => {
-    it('is true for SUPER_ADMIN', () => {
-      setRoles(['SUPER_ADMIN']);
-      expect(useAuthStore.getState().isGlobalScope()).toBe(true);
-    });
-
-    it('is true for GLOBAL_ADMIN (SUPER_ADMIN synonym — F-4)', () => {
+    it('is true for GLOBAL_ADMIN', () => {
       setRoles(['GLOBAL_ADMIN']);
       expect(useAuthStore.getState().isGlobalScope()).toBe(true);
     });
 
-    it('is true when SUPER_ADMIN is present alongside other roles', () => {
-      setRoles(['SUPER_ADMIN', 'DOCTOR']);
+    it('is false for the retired SUPER_ADMIN literal (TASK-417)', () => {
+      setRoles(['SUPER_ADMIN']);
+      expect(useAuthStore.getState().isGlobalScope()).toBe(false);
+    });
+
+    it('is true when GLOBAL_ADMIN is present alongside other roles', () => {
+      setRoles(['GLOBAL_ADMIN', 'DOCTOR']);
       expect(useAuthStore.getState().isGlobalScope()).toBe(true);
     });
 
@@ -64,15 +63,15 @@ describe('auth-store scope predicates (TASK-327 T1)', () => {
     });
   });
 
-  describe('isSuperAdmin (SUPER_ADMIN ∪ GLOBAL_ADMIN — F-4)', () => {
-    it('is true for SUPER_ADMIN', () => {
-      setRoles(['SUPER_ADMIN']);
+  describe('isSuperAdmin (GLOBAL_ADMIN — TASK-417)', () => {
+    it('is true for GLOBAL_ADMIN', () => {
+      setRoles(['GLOBAL_ADMIN']);
       expect(useAuthStore.getState().isSuperAdmin()).toBe(true);
     });
 
-    it('is true for GLOBAL_ADMIN (SUPER_ADMIN synonym — F-4)', () => {
-      setRoles(['GLOBAL_ADMIN']);
-      expect(useAuthStore.getState().isSuperAdmin()).toBe(true);
+    it('is false for the retired SUPER_ADMIN literal (TASK-417)', () => {
+      setRoles(['SUPER_ADMIN']);
+      expect(useAuthStore.getState().isSuperAdmin()).toBe(false);
     });
 
     it('is false for TENANT_ADMIN', () => {
@@ -85,13 +84,8 @@ describe('auth-store scope predicates (TASK-327 T1)', () => {
   // predicate the sidebar/nav use (TASK-327 "scope, not visibility"). It is
   // deliberately broader than `isGlobalScope`: a TENANT_ADMIN is an admin
   // (data is tenant-scoped server-side) but is NOT global scope.
-  describe('isAdmin (SUPER_ADMIN ∪ TENANT_ADMIN)', () => {
-    it('is true for SUPER_ADMIN', () => {
-      setRoles(['SUPER_ADMIN']);
-      expect(useAuthStore.getState().isAdmin()).toBe(true);
-    });
-
-    it('is true for GLOBAL_ADMIN (SUPER_ADMIN synonym — F-4)', () => {
+  describe('isAdmin (GLOBAL_ADMIN ∪ TENANT_ADMIN)', () => {
+    it('is true for GLOBAL_ADMIN', () => {
       setRoles(['GLOBAL_ADMIN']);
       expect(useAuthStore.getState().isAdmin()).toBe(true);
     });

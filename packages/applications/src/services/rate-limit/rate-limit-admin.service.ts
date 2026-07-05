@@ -33,10 +33,10 @@ import {
  *
  * Writes go through `IGlobalSettingService` (the same path the GlobalSetting
  * admin CRUD uses). Platform `rate-limit.*` rows live under
- * `RATE_LIMIT_TENANT_ID`; a SUPER_ADMIN request resolves to a tenant-scope
+ * `RATE_LIMIT_TENANT_ID`; a GLOBAL_ADMIN request resolves to a tenant-scope
  * pass-through (its CLS `tenantId` is undefined), so the cross-tenant
  * read/update behaves exactly like `TenantService.updateTenantConfigs`. The
- * HTTP layer additionally gates these endpoints to `manage all` (SUPER_ADMIN).
+ * HTTP layer additionally gates these endpoints to `manage all` (GLOBAL_ADMIN).
  *
  * After every write we force `AppSettingsService.refreshCache()` so the new
  * value is live for subsequent requests without a redeploy.

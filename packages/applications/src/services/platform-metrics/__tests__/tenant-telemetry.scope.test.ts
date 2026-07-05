@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { ForbiddenException } from '@nestjs/common';
 import { resolveAdminTenantScope } from '../../../common';
 
-const SUPER = { roles: ['SUPER_ADMIN'] };
+const SUPER = { roles: ['GLOBAL_ADMIN'] };
 const TENANT_ADMIN = { roles: ['TENANT_ADMIN'] };
 
 describe('resolveAdminTenantScope (#21)', () => {

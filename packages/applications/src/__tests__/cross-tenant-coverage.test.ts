@@ -177,7 +177,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     file: 'services/tenant/__tests__/tenant.service.test.ts',
     // TASK-306 P1.3 added 6 it() blocks (3 per method: fetchById +
     // fetchByCodeName, same-tenant / cross-tenant non-admin /
-    // cross-tenant SUPER_ADMIN).
+    // cross-tenant GLOBAL_ADMIN).
     // TASK-306 P2.2 / W5.3.1 added 6 more (same matrix for
     // fetchTenantConfigs by tenantId + by codeName). 6 → 12.
     minTests: 12,
@@ -188,13 +188,13 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     file: 'services/webhook/__tests__/webhook.service.test.ts',
     // TASK-306 P1.4 added 3 it() blocks under the
     // `resolveEffectiveTenantId` describe (non-admin cross-tenant pin,
-    // non-admin no-DTO pin, SUPER_ADMIN cross-tenant honor).
+    // non-admin no-DTO pin, GLOBAL_ADMIN cross-tenant honor).
     // TASK-306 P2.3 / W5.3.2-5.3.6 added 14 more:
-    //   - fetchAll (5.3.2): 2 (CLS-injected filter, SUPER_ADMIN bypass)
-    //   - fetchById (5.3.3): 3 (same / cross 404 / SUPER_ADMIN)
-    //   - update (5.3.4): 3 (same / cross 404 / SUPER_ADMIN)
-    //   - deleteById (5.3.5): 3 (same / cross 404 / SUPER_ADMIN)
-    //   - fetchAllByTenantId (5.3.6): 3 (same / cross 404 / SUPER_ADMIN)
+    //   - fetchAll (5.3.2): 2 (CLS-injected filter, GLOBAL_ADMIN bypass)
+    //   - fetchById (5.3.3): 3 (same / cross 404 / GLOBAL_ADMIN)
+    //   - update (5.3.4): 3 (same / cross 404 / GLOBAL_ADMIN)
+    //   - deleteById (5.3.5): 3 (same / cross 404 / GLOBAL_ADMIN)
+    //   - fetchAllByTenantId (5.3.6): 3 (same / cross 404 / GLOBAL_ADMIN)
     // 3 → 17.
     minTests: 17,
     marker: /TASK-306/,

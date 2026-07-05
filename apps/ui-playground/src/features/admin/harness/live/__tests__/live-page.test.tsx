@@ -193,7 +193,7 @@ describe('HarnessLivePage', () => {
 
     const sw = screen.getByTestId('live-engine-switch') as HTMLInputElement;
     expect(sw.disabled).toBe(true);
-    expect(screen.getByTestId('live-engine-controls')).toHaveTextContent(/super-admin|platform/i);
+    expect(screen.getByTestId('live-engine-controls')).toHaveTextContent(/global-admin|platform/i);
 
     fireEvent.click(sw);
     expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument();

@@ -9,7 +9,7 @@ import { adminClient } from '../../api/admin-client';
 //   - PATCH /admin/schedulers/:name/cron   → SchedulerInfo  (dynamic only)
 //   - PATCH /admin/schedulers/:name/toggle → SchedulerInfo  (dynamic only)
 //
-// OB-03: same SUPER_ADMIN-only posture as the queue-admin controller. Only
+// OB-03: same GLOBAL_ADMIN-only posture as the queue-admin controller. Only
 // `dynamic` schedulers (e.g. `dna-regeneration`) accept cron/toggle edits; the
 // server returns 400 for static ones. This client only consumes the API.
 // ---------------------------------------------------------------------------

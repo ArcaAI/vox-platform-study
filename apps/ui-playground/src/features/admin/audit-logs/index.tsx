@@ -104,7 +104,7 @@ export default function AuditLogManagementPage() {
   const { entries, count, isLoading, error, list, getById, exportCsv } = useAuditLog();
 
   // TASK-331 doc-03 F6 — the Tenant column is a cross-tenant concern, so it is
-  // shown to global-scope (super-admin) operators only; tenant-scoped admins
+  // shown to global-scope (global-admin) operators only; tenant-scoped admins
   // already work inside a single tenant. Mirrors the prompts/DNA pages: gate on
   // `isGlobalScope`, resolve ids → names, and never surface a raw tenant UUID.
   const isGlobalScope = useAuthStore((s) => s.isGlobalScope);

@@ -729,7 +729,7 @@ export default function DepartmentManagementPage() {
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string | null>(null);
   const [detailRefreshing, setDetailRefreshing] = useState(false);
 
-  // ---- Tenant context for super admins ------------------------------------
+  // ---- Tenant context for global admins ------------------------------------
 
   const tenantKey = useAuthStore((s) => s.tenantKey);
 

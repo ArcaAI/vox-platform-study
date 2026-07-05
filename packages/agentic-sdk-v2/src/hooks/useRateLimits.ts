@@ -1,7 +1,7 @@
 /**
  * @arcaai/vox - useRateLimits Hook (TASK-403)
  *
- * Super-admin rate-limit configuration surface over the TASK-316 substrate
+ * Global-admin rate-limit configuration surface over the TASK-316 substrate
  * (`/admin/rate-limit`, `manage all` only). Every mutation returns the fresh
  * full policy, so state is simply replaced — no local merging.
  */

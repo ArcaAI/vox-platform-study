@@ -1,33 +1,33 @@
 import { describe, it, expect } from 'vitest';
 import { resolveActiveTenant } from '../resolve-active-tenant';
 
-// TASK-331 r2605 Finding #1 — pure decision helper for super-admin
-// "manage as tenant" elevation. A super-admin authenticates with an EMPTY
+// TASK-331 r2605 Finding #1 — pure decision helper for global-admin
+// "manage as tenant" elevation. A global-admin authenticates with an EMPTY
 // CLS tenantId; selecting a tenant in the console sends `x-tenant-id`. The
 // helper decides whether that header may elevate the active tenant.
 describe('resolveActiveTenant', () => {
     const VALID_TENANT = '0190b6e2-7e7a-7c3a-8b1a-2c3d4e5f6a7b';
-    const superAdmin = { id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] };
+    const superAdmin = { id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] };
 
-    it('elevates to the header tenant for a super-admin with an empty JWT tenant and a valid UUID header', () => {
+    it('elevates to the header tenant for a global-admin with an empty JWT tenant and a valid UUID header', () => {
         expect(resolveActiveTenant(superAdmin, VALID_TENANT)).toEqual({
             type: 'elevate',
             tenantId: VALID_TENANT,
         });
     });
 
-    it('treats a null JWT tenant the same as empty for a super-admin', () => {
+    it('treats a null JWT tenant the same as empty for a global-admin', () => {
         expect(resolveActiveTenant({ ...superAdmin, tenantId: null }, VALID_TENANT)).toEqual({
             type: 'elevate',
             tenantId: VALID_TENANT,
         });
     });
 
-    it('does NOT elevate a super-admin when no header is present', () => {
+    it('does NOT elevate a global-admin when no header is present', () => {
         expect(resolveActiveTenant(superAdmin, undefined)).toEqual({ type: 'none' });
     });
 
-    it('does NOT elevate a non-super-admin even with a valid header', () => {
+    it('does NOT elevate a non-global-admin even with a valid header', () => {
         const tenantUser = { id: 'u-1', tenantId: '', roles: ['DEPARTMENT_ADMIN'] };
         expect(resolveActiveTenant(tenantUser, VALID_TENANT)).toEqual({ type: 'none' });
     });
@@ -38,11 +38,11 @@ describe('resolveActiveTenant', () => {
     });
 
     it('does NOT elevate a tenant-bound caller (truthy JWT tenant) — divergence is the interceptor’s job', () => {
-        const boundUser = { id: 'u-2', tenantId: 'tenant-A', roles: ['SUPER_ADMIN'] };
+        const boundUser = { id: 'u-2', tenantId: 'tenant-A', roles: ['GLOBAL_ADMIN'] };
         expect(resolveActiveTenant(boundUser, VALID_TENANT)).toEqual({ type: 'none' });
     });
 
-    it('signals invalid when a super-admin passes a malformed (non-UUID) header', () => {
+    it('signals invalid when a global-admin passes a malformed (non-UUID) header', () => {
         expect(resolveActiveTenant(superAdmin, 'not-a-uuid')).toEqual({ type: 'invalid' });
         expect(resolveActiveTenant(superAdmin, 'tenant-123')).toEqual({ type: 'invalid' });
     });

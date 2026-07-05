@@ -2,7 +2,7 @@
  * TASK-225 Stream A1: canImpersonate derived permission
  *
  * Tests that useAuth exposes `canImpersonate: boolean` derived from user roles.
- * Only SUPER_ADMIN and TENANT_ADMIN return true.
+ * Only GLOBAL_ADMIN and TENANT_ADMIN return true.
  *
  * @vitest-environment jsdom
  */
@@ -49,10 +49,10 @@ describe('TASK-225 A1: useAuth canImpersonate', () => {
 
     afterEach(() => { vi.clearAllMocks(); });
 
-    it('should return canImpersonate: true for user with SUPER_ADMIN role', () => {
+    it('should return canImpersonate: true for user with GLOBAL_ADMIN role', () => {
         mockStore = buildStore({
             id: 'u-1', username: 'super', email: 's@a.com',
-            roles: ['SUPER_ADMIN'], permissions: [],
+            roles: ['GLOBAL_ADMIN'], permissions: [],
         });
         (useAgenticStore as any).mockReturnValue(mockStore);
 
@@ -71,10 +71,10 @@ describe('TASK-225 A1: useAuth canImpersonate', () => {
         expect(result.current.canImpersonate).toBe(true);
     });
 
-    it('should return canImpersonate: true when user has SUPER_ADMIN among other roles', () => {
+    it('should return canImpersonate: true when user has GLOBAL_ADMIN among other roles', () => {
         mockStore = buildStore({
             id: 'u-3', username: 'multi_role', email: 'm@a.com',
-            roles: ['doctor', 'SUPER_ADMIN', 'reviewer'], permissions: [],
+            roles: ['doctor', 'GLOBAL_ADMIN', 'reviewer'], permissions: [],
         });
         (useAgenticStore as any).mockReturnValue(mockStore);
 

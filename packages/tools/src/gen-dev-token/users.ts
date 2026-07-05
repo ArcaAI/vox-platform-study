@@ -31,7 +31,8 @@ export const DEV_USERS: DevUser[] = [
         lastName: 'Admin',
         tenantId: null,
         isServiceAccount: false,
-        roles: ['SUPER_ADMIN'],
+        // TASK-417 — the seeded super_admin user now carries GLOBAL_ADMIN.
+        roles: ['GLOBAL_ADMIN'],
     },
     {
         id: '70000000-0000-0000-0000-000000000002',

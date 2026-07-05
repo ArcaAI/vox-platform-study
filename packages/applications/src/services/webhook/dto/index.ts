@@ -2,4 +2,5 @@
 export * from './createWebhook.request';
 export * from './paginatedWebhook.response';
 export * from './webhook.response';
+export * from './webhookRunHistory.response';
 export * from './updateWebhook.request';

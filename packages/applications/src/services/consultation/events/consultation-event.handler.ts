@@ -97,7 +97,7 @@ export class ConsultationEventHandler {
     // scope. Re-establish CLS from the payload so the Phase B tenantScope
     // Prisma extension sees the correct context for `consultationRepository.findById`
     // and any downstream reads. Empty roles array — workers never have
-    // SUPER_ADMIN bypass.
+    // GLOBAL_ADMIN bypass.
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ userId: payload.userId, tenantId, kind: 'transcription-created-event' }));

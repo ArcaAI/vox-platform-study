@@ -67,7 +67,7 @@ export interface IAuditLogService {
    * TASK-328 A8 — fetch a paginated, filtered page of audit logs and resolve
    * the acting user for each row. Filters (`from`/`to`/`action`/`resourceType`/
    * `userId`) are pushed to the repository `where` clause; tenant scoping is
-   * applied exactly like {@link fetchAll} (CLS tenant, SUPER_ADMIN bypass).
+   * applied exactly like {@link fetchAll} (CLS tenant, GLOBAL_ADMIN bypass).
    *
    * @param props - Pagination + audit filters.
    * @returns The page plus a `responsibleUserId` → label map.
@@ -78,7 +78,7 @@ export interface IAuditLogService {
    * TASK-373 — fetch a cursor (keyset) page of audit logs and resolve the
    * acting user for each row. The opt-in cursor counterpart of
    * {@link fetchAllFiltered}: same filters + tenant scoping (CLS tenant,
-   * SUPER_ADMIN bypass), but ordered by the stable `(createdAt, id)` DESC
+   * GLOBAL_ADMIN bypass), but ordered by the stable `(createdAt, id)` DESC
    * keyset and paginated by an opaque cursor instead of page/limit.
    *
    * @param props - Cursor (`cursor`/`limit`) + audit filters.

@@ -57,7 +57,7 @@ describe('AdminTranscriptionJobController', () => {
     describe('access gate', () => {
         // `TranscriptionJob` is not a CASL subject in the policy seed, so the
         // tenant-wide admin view is gated on `manage Tenant` (TENANT_ADMIN /
-        // SUPER_ADMIN). This also satisfies the F6 boot audit, which rejects an
+        // GLOBAL_ADMIN). This also satisfies the F6 boot audit, which rejects an
         // empty @Authorize() on /admin routes.
         it('is class-gated by @CanManage(Tenant) so plain doctors/users are excluded', () => {
             const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, AdminTranscriptionJobController) as

@@ -63,7 +63,7 @@ export {
   usePipelines,
   usePlatformMetrics,
   usePolicies,
-  // TASK-403 — super-admin ops-surface hooks
+  // TASK-403 — global-admin ops-surface hooks
   usePrismaStudio,
   usePrompts,
   useQueueAdmin,
@@ -175,7 +175,7 @@ export type {
   UsePipelinesReturn,
   UsePlatformMetricsReturn,
   UsePoliciesReturn,
-  // TASK-403 — super-admin ops-surface hook returns
+  // TASK-403 — global-admin ops-surface hook returns
   UsePrismaStudioReturn,
   UsePromptsReturn,
   // TASK-407 — raw prompt run rows (Agent Jobs surface)
@@ -466,7 +466,7 @@ export type {
 } from './types';
 
 // =============================================================================
-// Types - Super-admin ops surfaces (TASK-403)
+// Types - Global-admin ops surfaces (TASK-403)
 // =============================================================================
 
 export type {
@@ -520,7 +520,7 @@ export {
   PLATFORM_METRICS_ENDPOINTS,
   POLICY_ENDPOINTS,
   PROMPT_TEMPLATE_ENDPOINTS,
-  // TASK-403 — super-admin ops-surface endpoints
+  // TASK-403 — global-admin ops-surface endpoints
   PSTUDIO_ENDPOINTS,
   QUEUE_ADMIN_ENDPOINTS,
   RATE_LIMIT_ADMIN_ENDPOINTS,

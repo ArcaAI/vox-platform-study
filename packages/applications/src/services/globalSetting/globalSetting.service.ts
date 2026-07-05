@@ -19,7 +19,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { ICryptoService } from '../crypto/ICryptoService';
 import { SecretsService } from '../baseServices/_meta/secrets';
 
-const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
+const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
 
 /** TASK-396 — audit action tag written into the reveal SysEvent (never the plaintext). */
 export const GLOBAL_SETTING_SECRET_REVEALED = 'GLOBAL_SETTING_SECRET_REVEALED';
@@ -196,11 +196,11 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     const globalSetting = await this.globalSettingRepository.findById(id);
 
     // TASK-332 — `locked` rows are platform-owned defaults (e.g. the
-    // `enable-local-raw-capture` capability). Only a SUPER_ADMIN may write
+    // `enable-local-raw-capture` capability). Only a GLOBAL_ADMIN may write
     // them; everyone else is refused BEFORE any mutation. Mirrors the
     // `TenantService.updateTenantConfigs` locked posture.
     if (globalSetting.locked && !isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException(`Setting '${globalSetting.key}' is locked and can only be modified by ${SUPER_ADMIN_ROLE} users.`);
+      throw new ForbiddenException(`Setting '${globalSetting.key}' is locked and can only be modified by ${GLOBAL_ADMIN_ROLE} users.`);
     }
 
     const previousData = globalSetting.toObject();
@@ -259,7 +259,7 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
    */
   async revealSecret(id: EntityId, password: string): Promise<{ entity: GlobalSettingEntity; plaintext: string }> {
     if (!isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException(`Revealing a secret setting requires a ${SUPER_ADMIN_ROLE} user.`);
+      throw new ForbiddenException(`Revealing a secret setting requires a ${GLOBAL_ADMIN_ROLE} user.`);
     }
 
     const userId = this.requestUserId;

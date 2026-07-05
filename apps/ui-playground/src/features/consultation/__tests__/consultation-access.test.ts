@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-const ADMIN_ROLES = ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'];
+const ADMIN_ROLES = ['GLOBAL_ADMIN', 'TENANT_ADMIN'];
 const DOCTOR_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
 
 function isAdminRole(roles: string[]): boolean {
@@ -28,8 +28,8 @@ function canAccessConsultations(
 
 describe('Consultation Access Control', () => {
   describe('requiresImpersonation', () => {
-    it('should require impersonation for SUPER_ADMIN not impersonating', () => {
-      expect(requiresImpersonation(['SUPER_ADMIN'], false)).toBe(true);
+    it('should require impersonation for GLOBAL_ADMIN not impersonating', () => {
+      expect(requiresImpersonation(['GLOBAL_ADMIN'], false)).toBe(true);
     });
 
     it('should require impersonation for GLOBAL_ADMIN not impersonating', () => {
@@ -40,8 +40,8 @@ describe('Consultation Access Control', () => {
       expect(requiresImpersonation(['TENANT_ADMIN'], false)).toBe(true);
     });
 
-    it('should NOT require impersonation for SUPER_ADMIN who IS impersonating', () => {
-      expect(requiresImpersonation(['SUPER_ADMIN'], true)).toBe(false);
+    it('should NOT require impersonation for GLOBAL_ADMIN who IS impersonating', () => {
+      expect(requiresImpersonation(['GLOBAL_ADMIN'], true)).toBe(false);
     });
 
     it('should NOT require impersonation for DOCTOR', () => {
@@ -53,7 +53,7 @@ describe('Consultation Access Control', () => {
     });
 
     it('should NOT require impersonation for user with both admin and doctor roles', () => {
-      expect(requiresImpersonation(['SUPER_ADMIN', 'DOCTOR'], false)).toBe(false);
+      expect(requiresImpersonation(['GLOBAL_ADMIN', 'DOCTOR'], false)).toBe(false);
     });
 
     it('should NOT require impersonation for NURSE', () => {
@@ -78,12 +78,12 @@ describe('Consultation Access Control', () => {
       expect(canAccessConsultations(false, ['DOCTOR'], false)).toBe(false);
     });
 
-    it('should deny access for SUPER_ADMIN without impersonation', () => {
-      expect(canAccessConsultations(true, ['SUPER_ADMIN'], false)).toBe(false);
+    it('should deny access for GLOBAL_ADMIN without impersonation', () => {
+      expect(canAccessConsultations(true, ['GLOBAL_ADMIN'], false)).toBe(false);
     });
 
-    it('should allow access for SUPER_ADMIN who is impersonating', () => {
-      expect(canAccessConsultations(true, ['SUPER_ADMIN'], true)).toBe(true);
+    it('should allow access for GLOBAL_ADMIN who is impersonating', () => {
+      expect(canAccessConsultations(true, ['GLOBAL_ADMIN'], true)).toBe(true);
     });
 
     it('should allow access for TENANT_ADMIN who is impersonating', () => {
@@ -91,7 +91,7 @@ describe('Consultation Access Control', () => {
     });
 
     it('should deny access for admin without tenant even when impersonating', () => {
-      expect(canAccessConsultations(false, ['SUPER_ADMIN'], true)).toBe(false);
+      expect(canAccessConsultations(false, ['GLOBAL_ADMIN'], true)).toBe(false);
     });
   });
 });
