@@ -20,7 +20,7 @@ test.describe('Authorization Flow', () => {
 
   test.beforeAll(async ({ request }) => {
     // Login as different users to test various permission levels
-    // Note: Only current system roles are used (SUPER_ADMIN, TENANT_ADMIN, DOCTOR, NURSE, SERVICE_ACCOUNT)
+    // Note: Only current system roles are used (GLOBAL_ADMIN, TENANT_ADMIN, DOCTOR, NURSE, SERVICE_ACCOUNT)
 
     // Super Admin - has manage:all (GLOBAL scope)
     const superAdminLogin = await request.post('/api/v1/auth/login', {

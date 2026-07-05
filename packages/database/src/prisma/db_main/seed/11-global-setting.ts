@@ -604,7 +604,7 @@ export const ALL_SETTINGS: SettingDef[] = [
 // not a per-tenant flag: a single `locked` row owned by SYSTEM_TENANT_ID. The
 // `AppSettingsService` cache is keyed flat by `key`, so one platform-scoped row
 // resolves deterministically (the key is unique, so it never trips the
-// boot-time duplicate-key invariant). Only SUPER_ADMIN can flip it
+// boot-time duplicate-key invariant). Only GLOBAL_ADMIN can flip it
 // (enforced by the `GlobalSettingService` locked write-guard). Default OFF.
 // =============================================================================
 const PLATFORM_SETTINGS: SettingDef[] = [
@@ -622,7 +622,7 @@ const PLATFORM_SETTINGS: SettingDef[] = [
         defaultValue: 'false',
         dataType: ValueType.Boolean,
         description:
-            'Platform capability for local raw-stream dual-capture (TASK-332). The SDK-facing enablement is this AND the per-tenant TenantFrontendConfig.captureRawAudio toggle. Locked — only SUPER_ADMIN may change it.',
+            'Platform capability for local raw-stream dual-capture (TASK-332). The SDK-facing enablement is this AND the per-tenant TenantFrontendConfig.captureRawAudio toggle. Locked — only GLOBAL_ADMIN may change it.',
         locked: true,
     },
 ];
@@ -668,7 +668,7 @@ export const seedGlobalSetting = async (client: CorePrismaClient) => {
 
     // TASK-332 — platform-owned capability rows (SYSTEM_TENANT_ID). Idempotent:
     // refresh metadata but NEVER clobber an admin-tuned `value` on re-seed, so a
-    // SUPER_ADMIN who turned the capability ON keeps it after `db:seed`.
+    // GLOBAL_ADMIN who turned the capability ON keeps it after `db:seed`.
     console.log(`Seeding platform Global Settings (${PLATFORM_SETTINGS.length} SYSTEM rows)...`);
     for (const s of PLATFORM_SETTINGS) {
         await client.globalSetting.upsert({

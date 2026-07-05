@@ -10,6 +10,7 @@ import {
     TENANT_OWNED_RESOURCE_KEY,
     type TenantOwnedResourceOptions,
 } from '../../../common/tenant-owned-resource.decorator';
+import { STREAM_SCOPE_METADATA } from '../../auth/decorators/stream-scope.decorator';
 
 const createMockJobService = () => ({
     create: vi.fn(),
@@ -260,6 +261,15 @@ describe('TranscriptionJobController', () => {
         it('should throw for empty job ID', () => {
             expect(() => controller.streamJob('   ')).toThrow('valid transcription job ID is required');
             expect(mockRealtimeService.subscribeToJob).not.toHaveBeenCalled();
+        });
+
+        // TASK-419 item 6 — single-use tickets from POST /auth/stream-ticket must
+        // authenticate this route: the JwtAuthGuard rejects any ticket presented
+        // on a route without @StreamScope, so the console's `transcription_job:<id>`
+        // scoped tickets 401'd before this declaration existed.
+        it('declares @StreamScope({ namespace: "transcription_job", param: "id" }) for ticket auth (TASK-419)', () => {
+            const meta = Reflect.getMetadata(STREAM_SCOPE_METADATA, TranscriptionJobController.prototype.streamJob);
+            expect(meta).toEqual({ namespace: 'transcription_job', param: 'id' });
         });
     });
 

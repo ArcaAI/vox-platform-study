@@ -37,14 +37,14 @@ describe('playground-snippets', () => {
   });
 
   describe('overview', () => {
-    it('uses the vox auth/config hooks and only mentions super-admin tenant switching when applicable', () => {
+    it('uses the vox auth/config hooks and only mentions global-admin tenant switching when applicable', () => {
       const base = buildOverviewSnippet({ tenantId: 't1' });
       expect(base).toContain("from '@arcaai/vox'");
       expect(base).toContain('useAuth');
       expect(base).toContain('useArcaConfig');
-      expect(base).not.toContain('super-admin');
+      expect(base).not.toContain('global-admin');
 
-      expect(buildOverviewSnippet({ tenantId: 't1', isSuperAdmin: true })).toContain('super-admin');
+      expect(buildOverviewSnippet({ tenantId: 't1', isSuperAdmin: true })).toContain('global-admin');
     });
   });
 

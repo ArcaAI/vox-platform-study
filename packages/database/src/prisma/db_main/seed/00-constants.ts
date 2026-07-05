@@ -105,10 +105,12 @@ export const SEED_POLICY_IDS = {
 // =============================================================================
 
 export const SEED_ROLE_IDS = {
-    SUPER_ADMIN: '00000000-0000-0000-0000-000000000001',
+    // 00000000-0000-0000-0000-000000000001 is the RETIRED SUPER_ADMIN role id
+    // (TASK-417): consolidated into GLOBAL_ADMIN and soft-deleted by data
+    // migration. Reserved forever — never reuse it for a new role.
     TENANT_ADMIN: '00000000-0000-0000-0000-000000000002',
-    // TASK-336 AC-06 — elevated platform-wide "global admin". The code-side
-    // guard (tenant-guards.ELEVATED_ROLES) treats GLOBAL_ADMIN ≡ SUPER_ADMIN.
+    // TASK-336 AC-06 — elevated platform-wide "global admin"; the single
+    // elevated role recognized by tenant-guards.ELEVATED_ROLES (TASK-417).
     GLOBAL_ADMIN: '00000000-0000-0000-0000-000000000003',
     DOCTOR: '00000000-0000-0000-0000-000000000010',
     NURSE: '00000000-0000-0000-0000-000000000011',
@@ -123,11 +125,14 @@ export const SEED_ROLE_IDS = {
 
 export const SEED_USER_IDS = {
     SYSTEM: SYSTEM_USER_ID,
+    // Key kept as SUPER_ADMIN for data identity: it is the seeded `super_admin`
+    // USER (login identifier), which since TASK-417 carries the GLOBAL_ADMIN role.
     SUPER_ADMIN: '70000000-0000-0000-0000-000000000001',
     TENANT_ADMIN: '70000000-0000-0000-0000-000000000002',
     ARCAAI_ADMIN: '70000000-0000-0000-0000-000000000003',
     // TASK-336 AC-06 — platform-wide global admin. Lives on the SYSTEM tenant
-    // (like SUPER_ADMIN) so it is membership-exempt and elevated cross-tenant.
+    // (like the seeded super_admin user) so it is membership-exempt and
+    // elevated cross-tenant.
     GLOBAL_ADMIN: '70000000-0000-0000-0000-000000000006',
     DOCTOR: '70000000-0000-0000-0000-000000000010',
     DOCTOR2: '70000000-0000-0000-0000-000000000011',

@@ -26,7 +26,7 @@ vi.mock('@/store/playground-store', () => ({
   ),
 }));
 
-const ADMIN_ROLES = ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'];
+const ADMIN_ROLES = ['GLOBAL_ADMIN', 'TENANT_ADMIN'];
 const DOCTOR_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
 
 function isAdminRole(roles: string[]): boolean {
@@ -58,10 +58,10 @@ describe('Doctor Context Resolution', () => {
 
   describe('Role detection', () => {
     it('should identify admin roles correctly', () => {
-      expect(isAdminRole(['SUPER_ADMIN'])).toBe(true);
+      expect(isAdminRole(['GLOBAL_ADMIN'])).toBe(true);
       expect(isAdminRole(['GLOBAL_ADMIN'])).toBe(true);
       expect(isAdminRole(['TENANT_ADMIN'])).toBe(true);
-      expect(isAdminRole(['SUPER_ADMIN', 'DOCTOR'])).toBe(true);
+      expect(isAdminRole(['GLOBAL_ADMIN', 'DOCTOR'])).toBe(true);
     });
 
     it('should identify doctor roles correctly', () => {
@@ -72,7 +72,7 @@ describe('Doctor Context Resolution', () => {
 
     it('should reject non-admin, non-doctor roles', () => {
       expect(isAdminRole(['DOCTOR'])).toBe(false);
-      expect(isDoctorRole(['SUPER_ADMIN'])).toBe(false);
+      expect(isDoctorRole(['GLOBAL_ADMIN'])).toBe(false);
       expect(isAdminRole(['NURSE'])).toBe(false);
     });
   });
@@ -89,7 +89,7 @@ describe('Doctor Context Resolution', () => {
 
     it('should return impersonated user when impersonating', () => {
       const result = resolveEffectiveUser(
-        { id: 'admin-001', roles: ['SUPER_ADMIN'] },
+        { id: 'admin-001', roles: ['GLOBAL_ADMIN'] },
         { id: 'doctor-002', roles: ['DOCTOR'] },
         true,
       );
@@ -103,15 +103,15 @@ describe('Doctor Context Resolution', () => {
   });
 
   describe('Impersonation requirement for admin users', () => {
-    it('should require impersonation when user is SUPER_ADMIN and not impersonating', () => {
-      const roles = ['SUPER_ADMIN'];
+    it('should require impersonation when user is GLOBAL_ADMIN and not impersonating', () => {
+      const roles = ['GLOBAL_ADMIN'];
       const isImpersonating = false;
       const requiresImpersonation = isAdminRole(roles) && !isImpersonating;
       expect(requiresImpersonation).toBe(true);
     });
 
     it('should NOT require impersonation when admin IS impersonating a doctor', () => {
-      const roles = ['SUPER_ADMIN'];
+      const roles = ['GLOBAL_ADMIN'];
       const isImpersonating = true;
       const requiresImpersonation = isAdminRole(roles) && !isImpersonating;
       expect(requiresImpersonation).toBe(false);
@@ -125,7 +125,7 @@ describe('Doctor Context Resolution', () => {
     });
 
     it('should NOT require impersonation when user has both admin and doctor roles', () => {
-      const roles = ['SUPER_ADMIN', 'DOCTOR'];
+      const roles = ['GLOBAL_ADMIN', 'DOCTOR'];
       const isImpersonating = false;
       const requiresImpersonation = isAdminRole(roles) && !isDoctorRole(roles) && !isImpersonating;
       expect(requiresImpersonation).toBe(false);
@@ -162,7 +162,7 @@ describe('Doctor Context Resolution', () => {
   describe('DNA writing style per doctor user', () => {
     it('should use effective userId to fetch DNA style', () => {
       const effectiveUser = resolveEffectiveUser(
-        { id: 'admin-001', roles: ['SUPER_ADMIN'] },
+        { id: 'admin-001', roles: ['GLOBAL_ADMIN'] },
         { id: 'doctor-002', roles: ['DOCTOR'] },
         true,
       );
@@ -221,7 +221,7 @@ describe('Doctor Context Resolution', () => {
 
   describe('Both Summary and Pre-Summary share same context resolution', () => {
     it('should resolve same effective user for both pages', () => {
-      const authUser = { id: 'admin-001', roles: ['SUPER_ADMIN'] };
+      const authUser = { id: 'admin-001', roles: ['GLOBAL_ADMIN'] };
       const impersonatedUser = { id: 'doctor-002', roles: ['DOCTOR'] };
 
       const summaryCtx = resolveEffectiveUser(authUser, impersonatedUser, true);

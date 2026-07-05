@@ -23,10 +23,9 @@ describe('admin route guards', () => {
   });
 
   describe('RequireAdmin', () => {
-    // TASK-331 doc-05 F-4 — GLOBAL_ADMIN ≡ SUPER_ADMIN (product decision: "global
-    // admin is super admin, with no limits in any tenant"), reversing the doc-04
-    // "dead arm" pin, so it reaches every admin page like SUPER_ADMIN.
-    it.each(['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'])('renders children for %s', (role) => {
+    // TASK-417 — GLOBAL_ADMIN is the single elevated role; TENANT_ADMIN also
+    // reaches the admin pages (scope, not visibility).
+    it.each(['GLOBAL_ADMIN', 'TENANT_ADMIN'])('renders children for %s', (role) => {
       setRoles([role]);
       render(
         <RequireAdmin>
@@ -59,9 +58,8 @@ describe('admin route guards', () => {
   });
 
   describe('RequireGlobalScope (Prisma Studio surface)', () => {
-    // TASK-331 doc-05 F-4 — GLOBAL_ADMIN ≡ SUPER_ADMIN, so it now carries global
-    // scope (reversing the doc-04 pin that grouped it with the bound roles).
-    it.each(['SUPER_ADMIN', 'GLOBAL_ADMIN'])('renders children for the global-scope role %s', (role) => {
+    // TASK-417 — GLOBAL_ADMIN is the single global-scope role.
+    it.each(['GLOBAL_ADMIN'])('renders children for the global-scope role %s', (role) => {
       setRoles([role]);
       render(
         <RequireGlobalScope>

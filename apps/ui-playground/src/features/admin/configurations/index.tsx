@@ -88,7 +88,7 @@ function ConfigValueEditor({ config, value, onChange }: { config: TenantConfig; 
 }
 
 // IC-07 (TASK-336) — the platform/global defaults are stored on the master
-// `__GLOBAL__` tenant (server-side GLOBAL_TENANT_KEY); only a SUPER_ADMIN may
+// `__GLOBAL__` tenant (server-side GLOBAL_TENANT_KEY); only a GLOBAL_ADMIN may
 // edit them. It is not surfaced as a normal working tenant, so the scope toggle
 // below is the clearest way to reach platform-wide settings.
 const GLOBAL_TENANT_KEY = '__GLOBAL__';
@@ -97,9 +97,9 @@ type ConfigScope = 'tenant' | 'platform';
 export default function ConfigurationManagementPage() {
   const roles = useAuthStore((s: { user?: { roles?: string[] } | null }) => s.user?.roles ?? []);
   const tenantId = useAuthStore((s: { tenantId: string }) => s.tenantId);
-  const isSuperAdmin = roles.includes('SUPER_ADMIN');
+  const isSuperAdmin = roles.includes('GLOBAL_ADMIN');
 
-  // IC-07 — SUPER_ADMIN can flip between the header-selected tenant's settings
+  // IC-07 — GLOBAL_ADMIN can flip between the header-selected tenant's settings
   // and the platform/global (`__GLOBAL__`) defaults. Defaults to 'tenant' so
   // the existing per-tenant behaviour (and header scoping) is unchanged.
   const [scope, setScope] = useState<ConfigScope>('tenant');
@@ -117,7 +117,7 @@ export default function ConfigurationManagementPage() {
   // TASK-335 — the working tenant is chosen exclusively via the header
   // ScopeSwitcher (store `tenantId`) for every role; the in-page tenant
   // picker column was removed, so there is no local selection to reconcile.
-  // IC-07 — when a super-admin selects the platform scope, target the global
+  // IC-07 — when a global-admin selects the platform scope, target the global
   // defaults tenant instead, reusing the same GET/PATCH config endpoints.
   const effectiveTenantIdentifier = isSuperAdmin && scope === 'platform' ? GLOBAL_TENANT_KEY : tenantId;
 

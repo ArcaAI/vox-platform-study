@@ -11,15 +11,17 @@ import { RequestMethod } from '@nestjs/common';
 import { AiModelAdminController } from '../ai-model-admin.controller';
 
 // =============================================================================
-// Authorization — tenant admins self-serve (manage AiModel), never manage:all
+// Authorization — global-admin only (manage:all) per TASK-415 Decision 6
+// (capabilities-matrix row 11, review 2026-07-04); re-pinned in TASK-419 item 5
 // =============================================================================
-describe('AiModelAdminController authorization metadata (TASK-356 Phase 1)', () => {
-  it('is decorated @Authorize(["manage","AiModel"]) at class level', () => {
+describe('AiModelAdminController authorization metadata (TASK-419 item 5)', () => {
+  it('is decorated @Authorize(["manage","all"]) at class level (global-admin only)', () => {
     const meta = Reflect.getMetadata('required_permissions', AiModelAdminController);
     expect(meta).toBeDefined();
-    expect(meta).toEqual(expect.arrayContaining([{ action: 'manage', subject: 'AiModel' }]));
-    // Must NOT fall back to `manage:all` (that would lock out tenant admins).
-    expect(JSON.stringify(meta)).not.toContain('"all"');
+    expect(meta).toEqual(expect.arrayContaining([{ action: 'manage', subject: 'all' }]));
+    // The registry is a global-admin plane: the tenant-scoped `manage:AiModel`
+    // grant must no longer open this controller (console gates to manage:all).
+    expect(JSON.stringify(meta)).not.toContain('"AiModel"');
   });
 
   it('class-level @Controller path is admin/ai-models', () => {

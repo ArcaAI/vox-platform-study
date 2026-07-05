@@ -1,7 +1,7 @@
 /**
  * @arcaai/vox - useAdminConsultations Hook (TASK-323 Phase 0 / TASK-320 A1)
  *
- * Tenant-wide consultation supervision for TENANT_ADMIN / SUPER_ADMIN. The
+ * Tenant-wide consultation supervision for TENANT_ADMIN / GLOBAL_ADMIN. The
  * server gates `/admin/consultations` with `@CanManage('Consultation')`, so a
  * plain DOCTOR is denied (403) — the rejection surfaces here as a clean
  * `AgenticError('FORBIDDEN')`.

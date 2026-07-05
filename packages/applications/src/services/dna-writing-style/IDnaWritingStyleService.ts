@@ -63,7 +63,7 @@ export abstract class IDnaWritingStyleService {
    */
   abstract listReportsPaginated(filters?: ListDnaReportsFilters): Promise<PaginatedDnaReports>;
   /**
-   * TASK-328 A5 — Aggregate dashboard. A global admin (SUPER_ADMIN/GLOBAL_ADMIN)
+   * TASK-328 A5 — Aggregate dashboard. A global admin (GLOBAL_ADMIN)
    * may pass `tenantId` to scope to a tenant (or omit it for an all-tenants
    * view); a tenant admin is pinned to their CLS tenant and the argument is
    * ignored.

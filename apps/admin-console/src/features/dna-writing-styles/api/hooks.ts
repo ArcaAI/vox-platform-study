@@ -48,7 +48,7 @@ export function useGenerateDnaReport() {
     });
 }
 
-/** Poll cadence while a generation job is non-terminal. */
+/** Fallback poll cadence while the SSE stream is down and the job is non-terminal. */
 const JOB_POLL_MS = 2_000;
 
 const DNA_JOB_EVENTS = ['status', 'progress', 'result', 'error'] as const;
@@ -74,10 +74,11 @@ interface JobSnapshot {
 const EMPTY_SNAPSHOT: JobSnapshot = { job: null, at: 0 };
 
 /**
- * Latest-wins merge of the SSE and poll transports — EXCEPT a terminal
- * snapshot is never displaced by a non-terminal one (a stale in-flight poll
- * response landing after the SSE `result` event must not regress the UI back
- * to "processing").
+ * Latest-wins merge of the SSE and fallback-poll snapshots — EXCEPT a
+ * terminal snapshot is never displaced by a non-terminal one (a stale
+ * in-flight poll response landing after the SSE `result` event must not
+ * regress the UI back to "processing"). The poll only runs after the stream
+ * errors, but any SSE progress folded before the drop is still merged here.
  */
 function mergeSnapshots(sse: JobSnapshot, polled: JobSnapshot | null): DnaJobStatus | null {
     if (!sse.job) return polled?.job ?? null;
@@ -94,23 +95,19 @@ export interface UseDnaJobProgressOptions {
 }
 
 export interface UseDnaJobProgressResult {
-    /** Best-known job status merged from SSE + polling (latest wins). */
+    /** Best-known job status (SSE primary, fallback poll merged in on stream error). */
     job: DnaJobStatus | null;
     isTerminal: boolean;
-    /** SSE transport state — drives the Connecting/Live/Polling-fallback badge. */
+    /** SSE transport state — drives the Connecting/Live/Polling badge. */
     streamStatus: StreamStatus;
 }
 
 /**
- * Progress tracker for a DNA generation job: a ticket-authenticated SSE
- * stream folded into local state, merged with a 2s status poll (latest wins).
- *
- * KNOWN PLATFORM GAP (TASK-419): the gateway SSE route
- * `GET admin/dna-writing-styles/jobs/:jobId/stream` does not yet declare
- * `@StreamScope`, so ticket auth 401s and the stream lands on `error` after
- * its retry budget. The poll below is what makes progress work TODAY; the
- * stream wiring is the rule-13-compliant target already in place and lights
- * up unchanged once TASK-419 re-pins the scope.
+ * Progress tracker for a DNA generation job. The ticket-authenticated SSE
+ * stream (`@StreamScope dna_job` on the gateway route since TASK-419) is the
+ * PRIMARY transport; a 2s status poll is the documented error fallback, spun
+ * up only after the stream exhausts its retry budget (`streamStatus ===
+ * 'error'`) so progress keeps flowing on networks that break SSE.
  *
  * On completion the reports/dashboard queries are invalidated so the grid
  * and roll-up refresh; the caller's `onTerminal` handles user feedback.
@@ -192,7 +189,8 @@ export function useDnaJobProgress(jobId: string | null, { onTerminal }: UseDnaJo
     const poll = useQuery({
         queryKey: dnaKeys.job(jobId ?? 'idle'),
         queryFn: () => getDnaJobStatus(jobId as string),
-        enabled: !!jobId && !sseTerminal,
+        // Error fallback only: the SSE stream is the primary transport.
+        enabled: !!jobId && !sseTerminal && streamStatus === 'error',
         // Stop once EITHER transport reported a terminal state.
         refetchInterval: (query) => (sseTerminal || isTerminalDnaJobState(query.state.data?.status) ? false : JOB_POLL_MS),
     });

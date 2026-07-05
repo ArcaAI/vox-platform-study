@@ -17,7 +17,9 @@ import { ImpersonationEvents, ImpersonationDeniedReason } from '../impersonation
 
 const SWAGGER_API_OPERATION = 'swagger/apiOperation';
 
-const SUPER_ADMIN = 'SUPER_ADMIN';
+// TASK-417 — SUPER_ADMIN is RETIRED; kept here only for the negative test
+// proving the literal no longer grants elevated impersonation rights.
+const RETIRED_SUPER_ADMIN = 'SUPER_ADMIN';
 const GLOBAL_ADMIN = 'GLOBAL_ADMIN';
 const TENANT_ADMIN = 'TENANT_ADMIN';
 const DOCTOR = 'doctor';
@@ -246,22 +248,22 @@ describe('AuthController — TASK-295 impersonation security', () => {
             expect(authService.trackAuthentication).toHaveBeenCalled();
         });
 
-        it('allows SUPER_ADMIN to impersonate cross-tenant', async () => {
+        it('rejects the retired SUPER_ADMIN role as a caller — no longer elevated (TASK-417)', async () => {
             const { controller } = buildController({
                 user: { id: 'admin-A', tenantId: 'tenant-A' },
                 fixture: {
-                    adminRoles: [SUPER_ADMIN],
+                    adminRoles: [RETIRED_SUPER_ADMIN],
                     targetRoles: [DOCTOR],
                     targetAssignments: [{ tenantId: 'tenant-B' }],
                 },
             });
 
-            const response = await controller.impersonate(
-                { targetUserId: 'target-B' } as never,
-                { ip: '127.0.0.1', headers: {} } as never,
-            );
-
-            expect(response.user.tenantId).toBe('tenant-B');
+            await expect(
+                controller.impersonate(
+                    { targetUserId: 'target-B' } as never,
+                    { ip: '127.0.0.1', headers: {} } as never,
+                ),
+            ).rejects.toThrow(UnauthorizedException);
         });
     });
 
@@ -271,7 +273,7 @@ describe('AuthController — TASK-295 impersonation security', () => {
             const { controller } = buildController({
                 user: { id: 'admin-A', tenantId: 'tenant-A' },
                 fixture: {
-                    adminRoles: [SUPER_ADMIN],
+                    adminRoles: [GLOBAL_ADMIN],
                     targetRoles: [DOCTOR],
                     targetAssignments: [{ tenantId: 'tenant-A' }],
                 },
@@ -285,11 +287,11 @@ describe('AuthController — TASK-295 impersonation security', () => {
             ).rejects.toThrow(BadRequestException);
         });
 
-        it('honours the supplied targetTenantId when valid (SUPER_ADMIN, multi-tenant target)', async () => {
+        it('honours the supplied targetTenantId when valid (GLOBAL_ADMIN, multi-tenant target)', async () => {
             const { controller } = buildController({
                 user: { id: 'admin-A', tenantId: 'tenant-A' },
                 fixture: {
-                    adminRoles: [SUPER_ADMIN],
+                    adminRoles: [GLOBAL_ADMIN],
                     targetRoles: [DOCTOR],
                     targetAssignments: [{ tenantId: 'tenant-A' }, { tenantId: 'tenant-B' }],
                 },
@@ -307,7 +309,7 @@ describe('AuthController — TASK-295 impersonation security', () => {
             const { controller } = buildController({
                 user: { id: 'admin-A', tenantId: 'tenant-A' },
                 fixture: {
-                    adminRoles: [SUPER_ADMIN],
+                    adminRoles: [GLOBAL_ADMIN],
                     targetRoles: [DOCTOR],
                     targetAssignments: [],
                 },
@@ -374,9 +376,9 @@ describe('AuthController — TASK-295 impersonation security', () => {
         });
     });
 
-    // ─── F-4: GLOBAL_ADMIN is a SUPER_ADMIN synonym for impersonation ────────
-    describe('impersonate — F-4 GLOBAL_ADMIN parity with SUPER_ADMIN', () => {
-        it('allows GLOBAL_ADMIN to impersonate cross-tenant (like SUPER_ADMIN)', async () => {
+    // ─── F-4: GLOBAL_ADMIN is the elevated role for impersonation (TASK-417) ─
+    describe('impersonate — F-4 GLOBAL_ADMIN elevated impersonation', () => {
+        it('allows GLOBAL_ADMIN to impersonate cross-tenant', async () => {
             const { controller } = buildController({
                 user: { id: 'admin-A', tenantId: 'tenant-A' },
                 fixture: {
@@ -395,11 +397,11 @@ describe('AuthController — TASK-295 impersonation security', () => {
             expect(response.impersonatedBy).toBe('admin-A');
         });
 
-        it('blocks impersonating a GLOBAL_ADMIN target (treated like a SUPER_ADMIN target)', async () => {
+        it('blocks impersonating a GLOBAL_ADMIN target', async () => {
             const { controller } = buildController({
                 user: { id: 'admin-A', tenantId: 'tenant-A' },
                 fixture: {
-                    adminRoles: [SUPER_ADMIN],
+                    adminRoles: [GLOBAL_ADMIN],
                     targetRoles: [GLOBAL_ADMIN],
                     targetAssignments: [{ tenantId: 'tenant-B' }],
                 },
@@ -421,7 +423,7 @@ describe('AuthController — TASK-295 impersonation security', () => {
                 buildController({
                     user: { id: 'admin-A', tenantId: 'tenant-A' },
                     fixture: {
-                        adminRoles: [SUPER_ADMIN],
+                        adminRoles: [GLOBAL_ADMIN],
                         targetRoles: [DOCTOR],
                         targetAssignments: [{ tenantId: 'tenant-B' }],
                     },
@@ -454,7 +456,7 @@ describe('AuthController — TASK-295 impersonation security', () => {
             const { controller, userDepartmentService } = buildController({
                 user: { id: 'admin-A', tenantId: 'tenant-A' },
                 fixture: {
-                    adminRoles: [SUPER_ADMIN],
+                    adminRoles: [GLOBAL_ADMIN],
                     targetRoles: [DOCTOR],
                     targetAssignments: [{ tenantId: 'tenant-B' }],
                 },
@@ -476,7 +478,7 @@ describe('AuthController — TASK-295 impersonation security', () => {
             const { controller } = buildController({
                 user: { id: 'admin-A', tenantId: 'tenant-A' },
                 fixture: {
-                    adminRoles: [SUPER_ADMIN],
+                    adminRoles: [GLOBAL_ADMIN],
                     targetRoles: [DOCTOR],
                     targetAssignments: [{ tenantId: 'tenant-B' }],
                 },
@@ -500,7 +502,7 @@ describe('AuthController — TASK-295 impersonation security', () => {
             const { controller, eventEmitter } = buildController({
                 user: { id: 'admin-A', tenantId: 'tenant-A' },
                 fixture: {
-                    adminRoles: [SUPER_ADMIN],
+                    adminRoles: [GLOBAL_ADMIN],
                     targetRoles: [DOCTOR],
                     targetAssignments: [{ tenantId: 'tenant-B' }],
                 },
@@ -556,7 +558,7 @@ describe('AuthController — TASK-295 impersonation security', () => {
         it('emits ImpersonationEvents.Started (success) on a successful impersonate', async () => {
             const { controller, eventEmitter } = buildController({
                 user: { id: 'admin-A', tenantId: 'tenant-A' },
-                fixture: { adminRoles: [SUPER_ADMIN], targetRoles: [DOCTOR], targetAssignments: [{ tenantId: 'tenant-B' }] },
+                fixture: { adminRoles: [GLOBAL_ADMIN], targetRoles: [DOCTOR], targetAssignments: [{ tenantId: 'tenant-B' }] },
             });
 
             await controller.impersonate(
@@ -604,10 +606,10 @@ describe('AuthController — TASK-295 impersonation security', () => {
             );
         });
 
-        it('records a denial when the target is a super-admin (TARGET_IS_SUPER_ADMIN)', async () => {
+        it('records a denial when the target is a global admin (TARGET_IS_SUPER_ADMIN wire code)', async () => {
             const { controller, eventEmitter } = buildController({
                 user: { id: 'admin-A', tenantId: 'tenant-A' },
-                fixture: { adminRoles: [SUPER_ADMIN], targetRoles: [SUPER_ADMIN], targetAssignments: [{ tenantId: 'tenant-A' }] },
+                fixture: { adminRoles: [GLOBAL_ADMIN], targetRoles: [GLOBAL_ADMIN], targetAssignments: [{ tenantId: 'tenant-A' }] },
             });
 
             await expect(
@@ -644,12 +646,12 @@ describe('AuthController — TASK-295 impersonation security', () => {
 
     // ─── AC-08 (TASK-336): Swagger description matches actual behaviour ───────
     describe('AC-08 — impersonate Swagger description accuracy', () => {
-        it('documents that SUPER_ADMIN can impersonate a TENANT_ADMIN and only super-admin targets are blocked', () => {
+        it('documents that GLOBAL_ADMIN can impersonate a TENANT_ADMIN and only global-admin targets are blocked', () => {
             const op = Reflect.getMetadata(SWAGGER_API_OPERATION, AuthController.prototype.impersonate);
             expect(op).toBeDefined();
             expect(op.description).toBeDefined();
             expect(op.description).toMatch(/TENANT_ADMIN/);
-            expect(op.description).toMatch(/SUPER_ADMIN|GLOBAL_ADMIN/);
+            expect(op.description).toMatch(/GLOBAL_ADMIN/);
         });
     });
 });

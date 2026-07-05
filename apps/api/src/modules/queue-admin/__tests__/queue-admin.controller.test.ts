@@ -161,10 +161,10 @@ describe('QueueAdminController', () => {
 
   describe('access gate', () => {
     // Queues/jobs are PLATFORM-wide infrastructure (not tenant-scoped), so the
-    // surface is gated to SUPER_ADMIN via `@Authorize(['manage','all'])` — the
+    // surface is gated to GLOBAL_ADMIN via `@Authorize(['manage','all'])` — the
     // same posture as the rate-limit admin surface. Tenant admins must NOT be
     // able to pause/clean platform queues.
-    it('is class-gated by @Authorize(["manage","all"]) (SUPER_ADMIN only)', () => {
+    it('is class-gated by @Authorize(["manage","all"]) (GLOBAL_ADMIN only)', () => {
       const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, QueueAdminController) as
         | Array<{ action: string; subject: string }>
         | undefined;

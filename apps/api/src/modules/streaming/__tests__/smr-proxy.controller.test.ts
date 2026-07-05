@@ -500,13 +500,13 @@ describe('SmrProxyController', () => {
     });
 
     // TASK-307 W5.9 (AC-23, audit D-12) retuned this from an implicit
-    // SUPER_ADMIN → __GLOBAL__ fallback to an EXPLICIT
+    // GLOBAL_ADMIN → __GLOBAL__ fallback to an EXPLICIT
     // ?tenantKey=__GLOBAL__ query parameter. Behaviour beyond the
     // resolver remains identical.
-    it('should resolve global tenant config when SUPER_ADMIN passes ?tenantKey=__GLOBAL__ (W5.9)', async () => {
+    it('should resolve global tenant config when GLOBAL_ADMIN passes ?tenantKey=__GLOBAL__ (W5.9)', async () => {
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return undefined;
-        if (key === 'user') return { roles: ['SUPER_ADMIN'] };
+        if (key === 'user') return { roles: ['GLOBAL_ADMIN'] };
         return undefined;
       });
 
@@ -589,7 +589,7 @@ describe('SmrProxyController', () => {
 
   // TASK-307 W5.9 (AC-23, audit D-12) — the GLOBAL-tenant fallback must
   // be requested EXPLICITLY via `?tenantKey=__GLOBAL__`. The old
-  // implicit "SUPER_ADMIN without a CLS tenantId silently reads
+  // implicit "GLOBAL_ADMIN without a CLS tenantId silently reads
   // __GLOBAL__" path is removed because operators rarely intend it and
   // tenant admins debugging an issue can land on it by mistake when CLS
   // resolution misfires.
@@ -603,10 +603,10 @@ describe('SmrProxyController', () => {
       });
     });
 
-    it('SUPER_ADMIN with ?tenantKey=__GLOBAL__ resolves to the GLOBAL tenant', async () => {
+    it('GLOBAL_ADMIN with ?tenantKey=__GLOBAL__ resolves to the GLOBAL tenant', async () => {
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return undefined;
-        if (key === 'user') return { id: 'admin', roles: ['SUPER_ADMIN'] };
+        if (key === 'user') return { id: 'admin', roles: ['GLOBAL_ADMIN'] };
         return undefined;
       });
       mockTenantService.fetchByCodeName.mockResolvedValue({ id: 'global-tenant' });
@@ -619,7 +619,7 @@ describe('SmrProxyController', () => {
       );
     });
 
-    it('non-SUPER_ADMIN with ?tenantKey=__GLOBAL__ is FORBIDDEN', async () => {
+    it('non-GLOBAL_ADMIN with ?tenantKey=__GLOBAL__ is FORBIDDEN', async () => {
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return 'tenant-1';
         if (key === 'user') return { id: 'u-1', roles: ['DOCTOR'] };
@@ -633,7 +633,7 @@ describe('SmrProxyController', () => {
     it('any tenantKey OTHER than __GLOBAL__ is rejected as a BAD REQUEST', async () => {
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return 'tenant-1';
-        if (key === 'user') return { id: 'admin', roles: ['SUPER_ADMIN'] };
+        if (key === 'user') return { id: 'admin', roles: ['GLOBAL_ADMIN'] };
         return undefined;
       });
 
@@ -642,10 +642,10 @@ describe('SmrProxyController', () => {
       expect(mockTenantService.fetchByCodeName).not.toHaveBeenCalled();
     });
 
-    it('SUPER_ADMIN WITHOUT an explicit ?tenantKey AND no CLS tenantId is REJECTED (no implicit fallback)', async () => {
+    it('GLOBAL_ADMIN WITHOUT an explicit ?tenantKey AND no CLS tenantId is REJECTED (no implicit fallback)', async () => {
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return undefined;
-        if (key === 'user') return { id: 'admin', roles: ['SUPER_ADMIN'] };
+        if (key === 'user') return { id: 'admin', roles: ['GLOBAL_ADMIN'] };
         return undefined;
       });
 
@@ -851,10 +851,10 @@ describe('SmrProxyController', () => {
       expect(ollama.default_model).toBe('granite3-guardian:8b');
     });
 
-    it('should resolve global tenant config when SUPER_ADMIN passes ?tenantKey=__GLOBAL__', async () => {
+    it('should resolve global tenant config when GLOBAL_ADMIN passes ?tenantKey=__GLOBAL__', async () => {
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return undefined;
-        if (key === 'user') return { roles: ['SUPER_ADMIN'] };
+        if (key === 'user') return { roles: ['GLOBAL_ADMIN'] };
         return undefined;
       });
       mockTenantService.fetchByCodeName.mockResolvedValue({ id: 'global-tenant' });
@@ -880,7 +880,7 @@ describe('SmrProxyController', () => {
       expect(result.find((p: any) => p.name === 'lm-studio').is_default).toBe(true);
     });
 
-    it('non-SUPER_ADMIN with ?tenantKey=__GLOBAL__ is FORBIDDEN', async () => {
+    it('non-GLOBAL_ADMIN with ?tenantKey=__GLOBAL__ is FORBIDDEN', async () => {
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return 'tenant-1';
         if (key === 'user') return { roles: ['DOCTOR'] };

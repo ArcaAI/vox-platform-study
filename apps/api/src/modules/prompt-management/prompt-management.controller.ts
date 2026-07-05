@@ -120,7 +120,7 @@ export class PromptManagementController {
   // TASK-407 — tenant-scoped raw run rows for the tenant-detail "Agent Jobs"
   // surface (complements the aggregated analytics above). Static path, so it
   // is also declared BEFORE the `:id` param routes. Inherits the class-level
-  // `manage PromptTemplate` posture (tenant-admin own tenant; super-admin
+  // `manage PromptTemplate` posture (tenant-admin own tenant; global-admin
   // cross-tenant via X-Tenant-Id).
   @Get('usage-records')
   @ApiOperation({ summary: 'Paginated prompt run history (PromptUsageRecord rows), newest first (TASK-407)' })

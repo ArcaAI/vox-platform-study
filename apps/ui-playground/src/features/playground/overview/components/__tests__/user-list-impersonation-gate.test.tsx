@@ -1,7 +1,7 @@
 /**
  * TASK-327 T6 — impersonation tenant-gate.
  *
- * A global-scope operator (SUPER_ADMIN / GLOBAL_ADMIN) with no tenant
+ * A global-scope operator (GLOBAL_ADMIN / GLOBAL_ADMIN) with no tenant
  * selected must NOT be able to impersonate: the button is disabled with a
  * tooltip that points at the real control — the header tenant switcher
  * (TASK-331 doc-06 F5; the on-page tenant card was removed). Once a tenant is
@@ -13,7 +13,7 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react';
 
-const scope = vi.hoisted(() => ({ roles: ['SUPER_ADMIN'] as string[], isGlobal: true, tenantId: '' }));
+const scope = vi.hoisted(() => ({ roles: ['GLOBAL_ADMIN'] as string[], isGlobal: true, tenantId: '' }));
 const sdk = vi.hoisted(() => ({ impersonate: vi.fn(), endImpersonation: vi.fn() }));
 
 vi.mock('@/store/auth-store', () => {
@@ -96,7 +96,7 @@ function startButton() {
 describe('UserList impersonation tenant-gate (TASK-327 T6)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    scope.roles = ['SUPER_ADMIN'];
+    scope.roles = ['GLOBAL_ADMIN'];
     scope.isGlobal = true;
     scope.tenantId = '';
   });

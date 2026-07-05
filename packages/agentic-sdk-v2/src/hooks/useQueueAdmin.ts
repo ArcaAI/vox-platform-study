@@ -1,7 +1,7 @@
 /**
  * @arcaai/vox - useQueueAdmin Hook (TASK-403)
  *
- * Super-admin BullMQ introspection over the TASK-250/336 queue-admin surface
+ * Global-admin BullMQ introspection over the TASK-250/336 queue-admin surface
  * (`/admin/queues`, `manage all` only).
  *
  * Deliberately NON-destructive: only read operations plus retry (single/bulk)

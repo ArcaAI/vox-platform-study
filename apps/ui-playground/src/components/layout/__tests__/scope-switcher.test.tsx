@@ -1,7 +1,7 @@
 /**
  * TASK-327 T4 — ScopeSwitcher.
  *
- * D1: global scope (SUPER_ADMIN / GLOBAL_ADMIN) gets an interactive tenant
+ * D1: global scope (GLOBAL_ADMIN / GLOBAL_ADMIN) gets an interactive tenant
  * picker; TENANT_ADMIN gets a locked, non-interactive badge. The @arcaai/ui
  * primitives are globally stubbed, so each subpath is mocked with a
  * render-through shim; the popover/command shims render their children

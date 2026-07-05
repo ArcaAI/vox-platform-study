@@ -27,7 +27,7 @@ const payload: SessionPayload = {
         id: 'user-1',
         username: 'admin',
         email: 'admin@example.com',
-        roles: ['SUPER_ADMIN'],
+        roles: ['GLOBAL_ADMIN'],
         permissions: ['*'],
     },
 };
@@ -109,13 +109,13 @@ describe('cookie helpers', () => {
 });
 
 describe('isElevated', () => {
-    it('is true for SUPER_ADMIN and GLOBAL_ADMIN', () => {
-        expect(isElevated({ roles: ['SUPER_ADMIN'] })).toBe(true);
+    it('is true for GLOBAL_ADMIN (the single elevated role after TASK-417)', () => {
         expect(isElevated({ roles: ['GLOBAL_ADMIN'] })).toBe(true);
         expect(isElevated({ roles: ['TENANT_ADMIN', 'GLOBAL_ADMIN'] })).toBe(true);
     });
 
-    it('is false for tenant-bound roles and empty input', () => {
+    it('is false for the retired SUPER_ADMIN literal, tenant-bound roles, and empty input', () => {
+        expect(isElevated({ roles: ['SUPER_ADMIN'] })).toBe(false);
         expect(isElevated({ roles: ['TENANT_ADMIN'] })).toBe(false);
         expect(isElevated({ roles: [] })).toBe(false);
         expect(isElevated(null)).toBe(false);

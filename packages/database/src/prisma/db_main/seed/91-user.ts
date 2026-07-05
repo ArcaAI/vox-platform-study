@@ -21,7 +21,7 @@ import {
  * - password: Hashed password (default: password123)
  * - roleNames: Array of role names to assign
  * - tenantId: Tenant scope (use SYSTEM_TENANT_ID for platform-wide users
- *             such as the System service account or SUPER_ADMIN; per
+ *             such as the System service account or the global admins; per
  *             TASK-305 Phase A, NULL is no longer accepted)
  * - profile: User profile information
  */
@@ -68,7 +68,7 @@ export const PRIMARY_DEPARTMENT_CODE_BY_USERNAME: Record<string, string> = {
 // =========================================================================
 // This seed creates users for the current healthcare-focused RBAC system.
 // Available roles (7 total):
-// - SUPER_ADMIN: Full system access (GLOBAL scope)
+// - GLOBAL_ADMIN: Full system access (GLOBAL scope)
 // - TENANT_ADMIN: Full tenant management
 // - DOCTOR: Clinical role, owns consultations
 // - NURSE: Read-only clinical support
@@ -107,11 +107,14 @@ export const SEED_USERS = [
         // SYSTEM ADMINISTRATORS
         // =================================================================
         {
+            // TASK-417 — the `super_admin` USERNAME is a stable login identifier
+            // (dev logins + e2e helpers depend on it); its ROLE is GLOBAL_ADMIN
+            // since the SUPER_ADMIN role was consolidated away.
             id: SEED_USER_IDS.SUPER_ADMIN,
             username: 'super_admin',
             password: null,
             isServiceAccount: false,
-            roleNames: ['SUPER_ADMIN'],
+            roleNames: ['GLOBAL_ADMIN'],
             tenantId: SYSTEM_TENANT_ID, // Platform-wide access (system tenant per TASK-305 A.2)
             profile: {
                 firstName: 'Super',
@@ -124,8 +127,8 @@ export const SEED_USERS = [
             lastActiveAt: new Date(),
         },
         {
-            // TASK-336 AC-06 — elevated platform-wide "global admin". Treated as
-            // SUPER_ADMIN by the code guard (tenant-guards.ELEVATED_ROLES). Lives
+            // TASK-336 AC-06 — elevated platform-wide "global admin"; the
+            // canonical elevated role (tenant-guards.ELEVATED_ROLES). Lives
             // on the SYSTEM tenant so it is membership-exempt (no department
             // required) exactly like super_admin, and works cross-tenant.
             id: SEED_USER_IDS.GLOBAL_ADMIN,

@@ -1032,14 +1032,16 @@ describe('DnaWritingStyleService', () => {
             await expect(freshService.listReports()).rejects.toThrow('Tenant ID is required');
         });
 
-        it('should return all reports across tenants when user is SUPER_ADMIN without tenantId', async () => {
+        // TASK-417 — the retired SUPER_ADMIN role string grants NO elevation:
+        // such a caller is treated like any non-admin (tenant context required).
+        it('does NOT treat the retired SUPER_ADMIN role as elevated (TASK-417)', async () => {
             mockClsService.get.mockImplementation((key: string) => {
                 if (key === 'user') return { id: 'super-admin-1', roles: ['SUPER_ADMIN'] };
                 if (key === 'tenantId') return null;
                 return null;
             });
 
-            const superAdminService = new DnaWritingStyleService(
+            const retiredRoleService = new DnaWritingStyleService(
                 mockReportRepo as never,
                 mockVersionRepo as never,
                 mockUsageRepo as never,
@@ -1050,18 +1052,7 @@ describe('DnaWritingStyleService', () => {
                 mockDatabaseService as never,
             );
 
-            const mockQb = createMockQueryBuilder();
-            mockReportRepo.$.mockReturnValue(mockQb);
-            mockQb.ToList.mockResolvedValue([
-                createMockReportEntity({ id: 'r1', tenantId: 'tenant-A' }),
-                createMockReportEntity({ id: 'r2', tenantId: 'tenant-B' }),
-            ]);
-
-            const result = await superAdminService.listReports();
-
-            expect(mockQb.Where).not.toHaveBeenCalledWith(expect.objectContaining({ tenantId: expect.any(String) }));
-            expect(mockQb.Where).toHaveBeenCalledWith({ resourceStatus: 'ENABLED' });
-            expect(result).toHaveLength(2);
+            await expect(retiredRoleService.listReports()).rejects.toThrow('Tenant ID is required');
         });
 
         it('should return all reports across tenants when user is GLOBAL_ADMIN without tenantId', async () => {
@@ -1094,9 +1085,9 @@ describe('DnaWritingStyleService', () => {
             expect(result).toHaveLength(1);
         });
 
-        it('should still scope by tenantId when SUPER_ADMIN has a tenantId set', async () => {
+        it('should still scope by tenantId when GLOBAL_ADMIN has a tenantId set', async () => {
             mockClsService.get.mockImplementation((key: string) => {
-                if (key === 'user') return { id: 'super-admin-1', roles: ['SUPER_ADMIN'] };
+                if (key === 'user') return { id: 'global-admin-1', roles: ['GLOBAL_ADMIN'] };
                 if (key === 'tenantId') return 'tenant-scoped';
                 return null;
             });
@@ -1243,7 +1234,7 @@ describe('DnaWritingStyleService', () => {
 
         it('uses the requested tenantId for a global admin', async () => {
             const globalAdmin = buildWith((key: string) => {
-                if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
+                if (key === 'user') return { id: 'super-1', roles: ['GLOBAL_ADMIN'] };
                 if (key === 'tenantId') return null;
                 return null;
             });
@@ -1257,7 +1248,7 @@ describe('DnaWritingStyleService', () => {
 
         it('omits the tenantId filter for a global admin with no tenantId (all tenants)', async () => {
             const globalAdmin = buildWith((key: string) => {
-                if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
+                if (key === 'user') return { id: 'super-1', roles: ['GLOBAL_ADMIN'] };
                 if (key === 'tenantId') return null;
                 return null;
             });
@@ -1274,7 +1265,7 @@ describe('DnaWritingStyleService', () => {
         // must see ONLY that tenant's reports, not every tenant's.
         it('CC-02: scopes a global admin with an active tenant header and no explicit tenantId to the active tenant', async () => {
             const globalAdmin = buildWith((key: string) => {
-                if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
+                if (key === 'user') return { id: 'super-1', roles: ['GLOBAL_ADMIN'] };
                 if (key === 'tenantId') return 'tenant-ACTIVE';
                 return null;
             });
@@ -1288,7 +1279,7 @@ describe('DnaWritingStyleService', () => {
 
         it('CC-02: an explicit tenantId still overrides the active tenant header for a global admin', async () => {
             const globalAdmin = buildWith((key: string) => {
-                if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
+                if (key === 'user') return { id: 'super-1', roles: ['GLOBAL_ADMIN'] };
                 if (key === 'tenantId') return 'tenant-ACTIVE';
                 return null;
             });
@@ -1384,7 +1375,7 @@ describe('DnaWritingStyleService', () => {
      *   - read versions of a Tenant-B report,
      * leaks PHI-derived behavioural fingerprints across the tenant boundary.
      *
-     * No SUPER_ADMIN bypass on the writing-style guards — even support flows
+     * No GLOBAL_ADMIN bypass on the writing-style guards — even support flows
      * cannot read another tenant's PHI-derived artifact.
      */
     describe('Multi-tenant scoping (TASK-305 D.5.3)', () => {
@@ -1398,9 +1389,9 @@ describe('DnaWritingStyleService', () => {
                 expect(mockQueue.add).not.toHaveBeenCalled();
             });
 
-            it('does NOT bypass doctor-membership for SUPER_ADMIN (PHI guard)', async () => {
+            it('does NOT bypass doctor-membership for GLOBAL_ADMIN (PHI guard)', async () => {
                 mockClsService.get.mockImplementation((key: string) => {
-                    if (key === 'user') return { id: 'super-admin', roles: ['SUPER_ADMIN'] };
+                    if (key === 'user') return { id: 'super-admin', roles: ['GLOBAL_ADMIN'] };
                     if (key === 'tenantId') return 'tenant-1';
                     return null;
                 });
@@ -1465,9 +1456,9 @@ describe('DnaWritingStyleService', () => {
                 expect(mockReportRepo.updateWithVersion).not.toHaveBeenCalled();
             });
 
-            it('does NOT bypass tenant guard for SUPER_ADMIN (PHI guard)', async () => {
+            it('does NOT bypass tenant guard for GLOBAL_ADMIN (PHI guard)', async () => {
                 mockClsService.get.mockImplementation((key: string) => {
-                    if (key === 'user') return { id: 'super-admin', roles: ['SUPER_ADMIN'] };
+                    if (key === 'user') return { id: 'super-admin', roles: ['GLOBAL_ADMIN'] };
                     if (key === 'tenantId') return 'tenant-1';
                     return null;
                 });

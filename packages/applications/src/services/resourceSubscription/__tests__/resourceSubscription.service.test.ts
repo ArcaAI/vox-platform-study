@@ -332,7 +332,7 @@ describe('ResourceSubscriptionService', () => {
                     where: {
                         // TASK-306 P2.4 / 5.3.8 — fetchAllByResource now
                         // injects `tenantId` alongside the resource predicate
-                        // when the caller is not SUPER_ADMIN. The CLS default
+                        // when the caller is not GLOBAL_ADMIN. The CLS default
                         // for this suite is `tenant-1`.
                         tenantId: 'tenant-1',
                         resourceId: 'resource-123',
@@ -996,7 +996,7 @@ describe('ResourceSubscriptionService', () => {
             // — a tenant-blind read that leaked subscriptions across tenants.
             // The W5.3.9 `assertEqualTenants` guard now fails closed: when
             // there is no caller tenant in CLS and the caller is not
-            // SUPER_ADMIN, the read is rejected (mirrors the TASK-305 D.5.1
+            // GLOBAL_ADMIN, the read is rejected (mirrors the TASK-305 D.5.1
             // NotificationService policy for fail-closed CLS-less calls).
             mockClsService.get.mockImplementation((key: string) => {
                 if (key === 'user') return null;
@@ -1016,7 +1016,7 @@ describe('ResourceSubscriptionService', () => {
      * `create` already required CLS context but did not check anything
      * else). This block exercises the full sweep across 5 methods:
      *   - 5.3.7 fetchAll: inject `{ tenantId: this.tenantId }` filter
-     *     (SUPER_ADMIN bypass)
+     *     (GLOBAL_ADMIN bypass)
      *   - 5.3.8 fetchAllByResource: same shape — inject tenantId
      *     alongside resourceId / resourceTypeName
      *   - 5.3.9 fetchById: load-then-assert via assertEqualTenants
@@ -1058,7 +1058,7 @@ describe('ResourceSubscriptionService', () => {
         };
 
         describe('fetchAll (5.3.7)', () => {
-            it('injects the CLS tenantId into the findAll + count where clauses for non-SUPER_ADMIN callers', async () => {
+            it('injects the CLS tenantId into the findAll + count where clauses for non-GLOBAL_ADMIN callers', async () => {
                 mockResourceSubscriptionRepository.findAll.mockResolvedValue([]);
                 mockResourceSubscriptionRepository.count.mockResolvedValue(0);
 
@@ -1072,8 +1072,8 @@ describe('ResourceSubscriptionService', () => {
                 );
             });
 
-            it('omits the tenant filter when the caller is a SUPER_ADMIN (cross-tenant list)', async () => {
-                setRequestUserRoles(['SUPER_ADMIN']);
+            it('omits the tenant filter when the caller is a GLOBAL_ADMIN (cross-tenant list)', async () => {
+                setRequestUserRoles(['GLOBAL_ADMIN']);
                 mockResourceSubscriptionRepository.findAll.mockResolvedValue([]);
                 mockResourceSubscriptionRepository.count.mockResolvedValue(0);
 
@@ -1087,7 +1087,7 @@ describe('ResourceSubscriptionService', () => {
         });
 
         describe('fetchAllByResource (5.3.8)', () => {
-            it('injects the CLS tenantId alongside resourceId / resourceTypeName for non-SUPER_ADMIN callers', async () => {
+            it('injects the CLS tenantId alongside resourceId / resourceTypeName for non-GLOBAL_ADMIN callers', async () => {
                 mockResourceSubscriptionRepository.findAll.mockResolvedValue([]);
                 mockResourceSubscriptionRepository.count.mockResolvedValue(0);
 
@@ -1118,8 +1118,8 @@ describe('ResourceSubscriptionService', () => {
                 );
             });
 
-            it('omits the tenant filter for SUPER_ADMIN callers (cross-tenant resource lookup)', async () => {
-                setRequestUserRoles(['SUPER_ADMIN']);
+            it('omits the tenant filter for GLOBAL_ADMIN callers (cross-tenant resource lookup)', async () => {
+                setRequestUserRoles(['GLOBAL_ADMIN']);
                 mockResourceSubscriptionRepository.findAll.mockResolvedValue([]);
                 mockResourceSubscriptionRepository.count.mockResolvedValue(0);
 
@@ -1152,7 +1152,7 @@ describe('ResourceSubscriptionService', () => {
                 expect(result.id).toBe('sub-same');
             });
 
-            it('throws NotFoundException when a non-SUPER_ADMIN caller requests a subscription owned by another tenant', async () => {
+            it('throws NotFoundException when a non-GLOBAL_ADMIN caller requests a subscription owned by another tenant', async () => {
                 const crossTenantSub = createMockResourceSubscriptionEntity({
                     id: 'sub-foreign',
                     tenantId: 'tenant-2',
@@ -1174,8 +1174,8 @@ describe('ResourceSubscriptionService', () => {
                 );
             });
 
-            it('allows a SUPER_ADMIN to read a subscription owned by another tenant (admin bypass)', async () => {
-                setRequestUserRoles(['SUPER_ADMIN']);
+            it('allows a GLOBAL_ADMIN to read a subscription owned by another tenant (admin bypass)', async () => {
+                setRequestUserRoles(['GLOBAL_ADMIN']);
                 const crossTenantSub = createMockResourceSubscriptionEntity({
                     id: 'sub-foreign',
                     tenantId: 'tenant-2',
@@ -1206,7 +1206,7 @@ describe('ResourceSubscriptionService', () => {
                 expect(mockResourceSubscriptionRepository.update).toHaveBeenCalled();
             });
 
-            it('throws NotFoundException for a non-SUPER_ADMIN caller updating another tenant\'s subscription, with no mutation', async () => {
+            it('throws NotFoundException for a non-GLOBAL_ADMIN caller updating another tenant\'s subscription, with no mutation', async () => {
                 const crossTenantSub = createMockResourceSubscriptionEntity({
                     id: 'sub-foreign',
                     tenantId: 'tenant-2',
@@ -1219,8 +1219,8 @@ describe('ResourceSubscriptionService', () => {
                 expect(mockResourceSubscriptionRepository.update).not.toHaveBeenCalled();
             });
 
-            it('allows a SUPER_ADMIN to update a subscription owned by another tenant (admin bypass)', async () => {
-                setRequestUserRoles(['SUPER_ADMIN']);
+            it('allows a GLOBAL_ADMIN to update a subscription owned by another tenant (admin bypass)', async () => {
+                setRequestUserRoles(['GLOBAL_ADMIN']);
                 const crossTenantSub = createMockResourceSubscriptionEntity({
                     id: 'sub-foreign',
                     tenantId: 'tenant-2',
@@ -1252,7 +1252,7 @@ describe('ResourceSubscriptionService', () => {
                 expect(mockResourceSubscriptionRepository.softDelete).toHaveBeenCalledWith('sub-same');
             });
 
-            it('throws NotFoundException for a non-SUPER_ADMIN caller deleting another tenant\'s subscription, with no softDelete', async () => {
+            it('throws NotFoundException for a non-GLOBAL_ADMIN caller deleting another tenant\'s subscription, with no softDelete', async () => {
                 const crossTenantSub = createMockResourceSubscriptionEntity({
                     id: 'sub-foreign',
                     tenantId: 'tenant-2',
@@ -1263,8 +1263,8 @@ describe('ResourceSubscriptionService', () => {
                 expect(mockResourceSubscriptionRepository.softDelete).not.toHaveBeenCalled();
             });
 
-            it('allows a SUPER_ADMIN to delete a subscription owned by another tenant (admin bypass)', async () => {
-                setRequestUserRoles(['SUPER_ADMIN']);
+            it('allows a GLOBAL_ADMIN to delete a subscription owned by another tenant (admin bypass)', async () => {
+                setRequestUserRoles(['GLOBAL_ADMIN']);
                 const crossTenantSub = createMockResourceSubscriptionEntity({
                     id: 'sub-foreign',
                     tenantId: 'tenant-2',
@@ -1274,7 +1274,7 @@ describe('ResourceSubscriptionService', () => {
                 const result = await service.deleteById('sub-foreign');
                 expect(result.id).toBe('sub-foreign');
                 expect(mockResourceSubscriptionRepository.softDelete).toHaveBeenCalledWith('sub-foreign');
-                // SUPER_ADMIN bypass skips the pre-load `findById` (mirrors W5.3.5)
+                // GLOBAL_ADMIN bypass skips the pre-load `findById` (mirrors W5.3.5)
                 expect(mockResourceSubscriptionRepository.findById).not.toHaveBeenCalled();
             });
         });

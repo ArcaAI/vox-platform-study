@@ -244,7 +244,7 @@ export class PolicyEngine {
     //
     // Resolving a user's effective policies is an authorization-bootstrap step
     // that must span BOTH the SYSTEM tenant (platform-wide assignments such as
-    // SUPER_ADMIN) and the request tenant — see the `tenantId: { in: [...] }`
+    // GLOBAL_ADMIN) and the request tenant — see the `tenantId: { in: [...] }`
     // filter below. The tenant-scope `$extends` (TASK-305 B.1) is designed for
     // tenant *data* and rejects any non-scalar `where.tenantId` (it throws
     // "TenantScope: tenantId mismatch" on an `in` list), which would make every
@@ -258,7 +258,7 @@ export class PolicyEngine {
     //
     // Tenant scope (TASK-305 Phase A): `UserRoleAssignment.tenantId` is a
     // required, non-nullable column. Platform-wide assignments (e.g.
-    // SUPER_ADMIN) live under SYSTEM_TENANT_ID, not NULL. We always include
+    // GLOBAL_ADMIN) live under SYSTEM_TENANT_ID, not NULL. We always include
     // the system tenant and add the request tenant only when present. A bare
     // `undefined` must never reach the filter — Prisma 7 rejects
     // `{ tenantId: undefined }` ("Argument `tenantId` is missing"), so an

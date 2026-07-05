@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 describe('Consultation ImpersonationGuard integration', () => {
   describe('guard rendering decision', () => {
     it('should show ImpersonationGuard when admin is not impersonating', () => {
-      const roles = ['SUPER_ADMIN'];
+      const roles = ['GLOBAL_ADMIN'];
       const isImpersonating = false;
       const isAdmin = true;
       const isDoctor = false;
@@ -30,7 +30,7 @@ describe('Consultation ImpersonationGuard integration', () => {
     });
 
     it('should NOT show ImpersonationGuard when admin is impersonating', () => {
-      const roles = ['SUPER_ADMIN'];
+      const roles = ['GLOBAL_ADMIN'];
       const isImpersonating = true;
       const isAdmin = true;
       const isDoctor = false;
@@ -43,14 +43,14 @@ describe('Consultation ImpersonationGuard integration', () => {
   describe('ImpersonationGuard props contract', () => {
     it('should accept roles array', () => {
       const guardProps = {
-        roles: ['SUPER_ADMIN'],
+        roles: ['GLOBAL_ADMIN'],
       };
-      expect(guardProps.roles).toEqual(['SUPER_ADMIN']);
+      expect(guardProps.roles).toEqual(['GLOBAL_ADMIN']);
     });
 
     it('should accept optional featureDescription for contextual text', () => {
       const guardProps = {
-        roles: ['SUPER_ADMIN'],
+        roles: ['GLOBAL_ADMIN'],
         featureDescription: 'Consultations are doctor-scoped and require impersonation to view and manage.',
       };
       expect(guardProps.featureDescription).toBeDefined();
@@ -58,7 +58,7 @@ describe('Consultation ImpersonationGuard integration', () => {
 
     it('should accept optional featureName for the subtitle', () => {
       const guardProps = {
-        roles: ['SUPER_ADMIN'],
+        roles: ['GLOBAL_ADMIN'],
         featureName: 'consultation',
       };
       expect(guardProps.featureName).toBe('consultation');

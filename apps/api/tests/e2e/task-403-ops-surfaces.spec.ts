@@ -7,7 +7,7 @@
  *
  * Coverage:
  *   CASL  · every ops endpoint → 401 unauthenticated, 403 for tenant_admin and
- *           doctor (all three surfaces are `manage all` = SUPER_ADMIN only).
+ *           doctor (all three surfaces are `manage all` = GLOBAL_ADMIN only).
  *   14    · GET /admin/rate-limit policy shape; kill-switch round-trip
  *           (ON → verify → OFF → verify — ALWAYS ends OFF); strict-tier limit
  *           round-trip (bump → verify db source → restore original).
@@ -82,7 +82,7 @@ test.beforeAll(async ({ request }) => {
 });
 
 // =============================================================================
-// CASL denial matrix — all three surfaces are SUPER_ADMIN (`manage all`) only
+// CASL denial matrix — all three surfaces are GLOBAL_ADMIN (`manage all`) only
 // =============================================================================
 test.describe('TASK-403 CASL — ops surfaces deny non-super-admins', () => {
     const READ_ENDPOINTS = [
@@ -345,13 +345,16 @@ test.describe.serial('TASK-403 Queues & Jobs — listing, redis health, failed-j
 // Surface 16 — Prisma Studio
 // =============================================================================
 test.describe('TASK-403 Prisma Studio — status probe honest about availability', () => {
-    test('GET /admin/pstudio/status reports enabled:false under NODE_ENV=test', async ({ request }) => {
+    // TASK-419 item 4: the gate is the ENABLE_PRISMA_STUDIO flag alone
+    // (production-capable, fail-closed when unset). `.env.test` does not set
+    // the flag, so the probe must report disabled and the shell must be absent.
+    test('GET /admin/pstudio/status reports enabled:false when ENABLE_PRISMA_STUDIO is unset', async ({ request }) => {
         const res = await request.get('/api/v1/admin/pstudio/status', { headers: bearer(superAdminToken) });
         expect(res.status()).toBe(200);
         expect((await res.json()) as { enabled: boolean }).toEqual({ enabled: false });
     });
 
-    test('the dev-only Studio shell itself is genuinely absent (404) when disabled', async ({ request }) => {
+    test('the Studio shell itself is genuinely absent (404) when disabled', async ({ request }) => {
         const res = await request.get('/api/v1/admin/pstudio', { headers: bearer(superAdminToken) });
         expect(res.status(), 'conditional PrismaStudioModule not registered in test env').toBe(404);
     });

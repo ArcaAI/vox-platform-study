@@ -205,13 +205,13 @@ describe('AuthController.issueStreamTicket', () => {
       expect(issueTicket).not.toHaveBeenCalled();
     });
 
-    it("propagates a super-admin's selected X-Tenant-Id into the ticket and checks ownership against it", async () => {
+    it("propagates a global admin's selected X-Tenant-Id into the ticket and checks ownership against it", async () => {
       const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope: 'consultation_live_summary:c-2' }));
       const findById = vi.fn().mockResolvedValue({ id: 'c-2', tenantId: 'selected-tenant' });
       const { controller } = buildController({
         cls: {
           get: (key: string) => {
-            if (key === 'user') return { id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] };
+            if (key === 'user') return { id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] };
             if (key === 'tenantId') return 'selected-tenant';
             return null;
           },

@@ -27,7 +27,7 @@ import {
   decodeCursor,
 } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
-import { SUPER_ADMIN_ROLE } from '../tenant/constants';
+import { GLOBAL_ADMIN_ROLE } from '../tenant/constants';
 import { AuditLogEncryptionService } from './auditLog-encryption.service';
 
 /**
@@ -108,7 +108,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
    * Uses Promise.all to parallelize data fetch and count queries for better performance.
    *
    * TASK-305 D.8 (HIPAA §164.312(b)): scoped to the caller's CLS tenantId so
-   * a Tenant-A admin can never enumerate Tenant-B audit rows. SUPER_ADMIN
+   * a Tenant-A admin can never enumerate Tenant-B audit rows. GLOBAL_ADMIN
    * bypasses the filter (cross-tenant audit access).
    *
    * @param props - Pagination and search properties.
@@ -182,7 +182,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
    *
    * The opt-in counterpart of {@link fetchAllFiltered}: it reuses the SAME
    * `buildTenantWhere(buildAuditFilterWhere(...))` scope+filter builder (so
-   * tenant isolation, SUPER_ADMIN bypass, and the A8 filters behave
+   * tenant isolation, GLOBAL_ADMIN bypass, and the A8 filters behave
    * identically), then orders by the stable `(createdAt, id)` DESC keyset and
    * over-fetches `limit + 1` rows to derive `hasMore`/`nextCursor`. A single
    * batch resolves the page's acting users (no N+1) — mirroring the offset path.
@@ -325,7 +325,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
    * Uses Promise.all to parallelize data fetch and count queries for better performance.
    *
    * TASK-305 D.8: caller's tenantId is merged into the resource-scoped
-   * where clause; SUPER_ADMIN bypasses.
+   * where clause; GLOBAL_ADMIN bypasses.
    *
    * @param props - Pagination, resource type, and resource ID.
    * @returns A promise that resolves to a FetchResponse containing audit logs.
@@ -365,7 +365,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
    * Uses Promise.all to parallelize data fetch and count queries for better performance.
    *
    * TASK-305 D.8: caller's tenantId is merged into the user-scoped where
-   * clause; SUPER_ADMIN bypasses.
+   * clause; GLOBAL_ADMIN bypasses.
    *
    * @param props - Pagination and user ID.
    * @returns A promise that resolves to a FetchResponse containing audit logs.
@@ -429,18 +429,18 @@ export class AuditLogService extends BaseService implements IAuditLogService {
   // audited process — never an ad-hoc admin delete.
 
   /**
-   * True when the active request user carries the SUPER_ADMIN role.
+   * True when the active request user carries the GLOBAL_ADMIN role.
    * Falls back to `false` whenever CLS is missing or the role list is
    * undefined — strictest default, mirrors `TenantService.isSuperAdmin`.
    */
   private isSuperAdmin(): boolean {
     const roles = this.requestUser?.roles;
-    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
+    return Array.isArray(roles) && roles.includes(GLOBAL_ADMIN_ROLE);
   }
 
   /**
    * Build a Prisma `where` clause that always scopes to the caller's CLS
-   * tenantId, unless the caller is SUPER_ADMIN.
+   * tenantId, unless the caller is GLOBAL_ADMIN.
    *
    * Throws `NotFoundException` when a non-super-admin caller has no
    * tenantId in CLS, so the query never widens to all tenants by
@@ -459,7 +459,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
   }
 
   /**
-   * Assert the loaded entity belongs to the caller's tenant. SUPER_ADMIN
+   * Assert the loaded entity belongs to the caller's tenant. GLOBAL_ADMIN
    * bypasses. Throws `NotFoundException` (not `ForbiddenException`) so
    * the API never reveals that a record exists for another tenant.
    */

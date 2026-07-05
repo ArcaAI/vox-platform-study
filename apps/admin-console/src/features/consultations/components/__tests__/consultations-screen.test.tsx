@@ -43,7 +43,7 @@ afterEach(() => {
 });
 
 function session(overrides: Partial<{ isElevated: boolean; workingTenantId: string | null; roles: string[] }> = {}) {
-    const { roles = ['SUPER_ADMIN'], ...rest } = overrides;
+    const { roles = ['GLOBAL_ADMIN'], ...rest } = overrides;
     return {
         user: { id: 'u-1', username: 'root', email: 'root@hope.local', roles },
         isElevated: true,

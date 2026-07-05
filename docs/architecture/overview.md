@@ -22,7 +22,7 @@ HOPE is a multi-tenant healthcare AI platform for clinical consultations. It pro
 |---|---|---|
 | Clinician (doctor) | Records consultations, reviews/edits/attests AI-generated documentation | Host application embedding the `@arcaai/vox` SDK |
 | Tenant admin | Manages a tenant's users, departments, prompt templates ("agents"), pipelines, storage config | `/api/v1/admin/*` routes (tenant-scoped) |
-| Platform super-admin | Cross-tenant platform operations: tenants, entitlements, global settings, rate limits, harness policy, platform metrics | `/api/v1/admin/*` routes (super-admin tier) |
+| Platform global admin | Cross-tenant platform operations: tenants, entitlements, global settings, rate limits, harness policy, platform metrics | `/api/v1/admin/*` routes (global-admin tier) |
 | Host application / SDK integrator | Third-party EMR/clinic software embedding the consultation SDK; server-to-server via API keys | `@arcaai/vox` SDK + REST/WS/SSE |
 | Patient | External subject of a consultation. Referenced by `patientId` (external system identifier, no FK) — patient records are NOT stored in HOPE | — |
 
@@ -35,7 +35,7 @@ graph TB
     subgraph actors[Actors]
         DOC[Clinician]
         TADM[Tenant admin]
-        SADM[Platform super-admin]
+        SADM[Platform global admin]
     end
 
     subgraph client[Client side]

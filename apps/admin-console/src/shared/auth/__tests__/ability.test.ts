@@ -46,9 +46,10 @@ describe('canAny', () => {
 });
 
 describe('isElevated', () => {
-    it('recognizes the elevated cross-tenant role set (SUPER_ADMIN legacy-accepted until TASK-417)', () => {
-        expect(isElevated(['SUPER_ADMIN'])).toBe(true);
+    it('recognizes GLOBAL_ADMIN as the single elevated role (TASK-417 consolidation)', () => {
         expect(isElevated(['GLOBAL_ADMIN'])).toBe(true);
+        // Retired SUPER_ADMIN literal no longer elevates.
+        expect(isElevated(['SUPER_ADMIN'])).toBe(false);
         expect(isElevated(['TENANT_ADMIN'])).toBe(false);
         expect(isElevated([])).toBe(false);
         expect(isElevated(undefined)).toBe(false);

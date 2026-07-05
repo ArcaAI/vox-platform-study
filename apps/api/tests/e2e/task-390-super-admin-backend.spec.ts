@@ -221,7 +221,7 @@ test.describe.serial('TASK-390 #23 — api-key rotate', () => {
   // NOTE (auth posture — RESOLVED, see README §3.2): the shared by-id gate now
   // enforces OWNER-scope on top of tenant isolation (TASK-390 follow-up), so an
   // owner-only clinician can rotate/revoke/delete/fetch only their OWN keys;
-  // SUPER_ADMIN and tenant-admins keep their broader scope. The full
+  // GLOBAL_ADMIN and tenant-admins keep their broader scope. The full
   // owner/tenant-admin/super-admin/cross-tenant matrix lives in
   // `task-390b-api-key-owner-scope.spec.ts`. Here we only assert the tenant
   // boundary: an id never resolvable in scope → 404.

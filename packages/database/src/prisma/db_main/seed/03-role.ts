@@ -8,7 +8,7 @@ import { SEED_ROLE_IDS } from './00-constants';
  * Implements the RBAC best practices design for HOPE platform.
  *
  * Role Hierarchy:
- * - SUPER_ADMIN (Global) - System-wide access
+ * - GLOBAL_ADMIN (Global) - System-wide access (SUPER_ADMIN was consolidated into it — TASK-417)
  * - TENANT_ADMIN (Tenant) - Full tenant access
  * - DOCTOR (Tenant) - Clinical role, owns consultations
  *   └── DEPARTMENT_HEAD (extends DOCTOR) - + delegation + department view
@@ -29,15 +29,9 @@ import { SEED_ROLE_IDS } from './00-constants';
 // Exported for testing purposes
 // =============================================================================
 export const SYSTEM_ROLES = [
-    {
-        id: SEED_ROLE_IDS.SUPER_ADMIN,
-        name: 'SUPER_ADMIN',
-        description: 'System administrator with full access across all tenants',
-        externalName: 'Super Administrator',
-        isSystemRole: true,
-        parentRoleId: null,
-        policies: ['system-full-access', 'rbac-system-manage', 'global-settings-manage'],
-    },
+    // TASK-417 — the former SUPER_ADMIN role (id …0001) was consolidated into
+    // GLOBAL_ADMIN (see GLOBAL_ROLES below) and soft-retired by data migration;
+    // it must never be re-seeded.
     {
         id: SEED_ROLE_IDS.TENANT_ADMIN,
         name: 'TENANT_ADMIN',
@@ -81,21 +75,25 @@ export const SYSTEM_ROLES = [
 ];
 
 // =============================================================================
-// GLOBAL ROLES (TASK-336 AC-06)
+// GLOBAL ROLES (TASK-336 AC-06, canonical since TASK-417)
 // Elevated, platform-wide role kept separate from the count-pinned SYSTEM_ROLES
-// array. `GLOBAL_ADMIN` is treated identically to `SUPER_ADMIN` by the code-side
-// guard (`tenant-guards.ELEVATED_ROLES`), so it carries the same system-level
-// policy grants. It is a reserved system role (cannot be deleted) with no parent.
+// array. `GLOBAL_ADMIN` is THE elevated role recognized by the code-side guard
+// (`tenant-guards.ELEVATED_ROLES`) and carries the full system-level policy
+// grants. It is a reserved system role (cannot be deleted) with no parent.
 // =============================================================================
 export const GLOBAL_ROLES = [
     {
         id: SEED_ROLE_IDS.GLOBAL_ADMIN,
         name: 'GLOBAL_ADMIN',
-        description: 'Elevated platform-wide administrator (treated as SUPER_ADMIN) with full access across all tenants',
+        description: 'Elevated platform-wide administrator with full access across all tenants',
         externalName: 'Global Administrator',
         isSystemRole: true,
         parentRoleId: null,
-        policies: ['system-full-access', 'rbac-system-manage', 'global-settings-manage'],
+        // TASK-419 item 4 — `prisma-studio-manage` (manage:PrismaStudio) is the
+        // dedicated production-capable Prisma Studio grant; `manage:all` would
+        // also pass the guard, but the explicit policy keeps studio access
+        // delegable without full access.
+        policies: ['system-full-access', 'rbac-system-manage', 'global-settings-manage', 'prisma-studio-manage'],
     },
 ];
 

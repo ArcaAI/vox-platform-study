@@ -159,7 +159,7 @@ vi.mock('../guardrail-section', () => ({
 // ---------------------------------------------------------------------------
 
 const mockAuthState = {
-  user: { id: 'u-1', email: 'admin@test.com', username: 'admin', roles: ['SUPER_ADMIN'], permissions: [] },
+  user: { id: 'u-1', email: 'admin@test.com', username: 'admin', roles: ['GLOBAL_ADMIN'], permissions: [] },
   tenantId: TENANT_ID,
   tenantName: TENANT_NAME,
 };
@@ -202,7 +202,7 @@ function renderPage() {
 describe('ConfigurationManagementPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAuthState.user.roles = ['SUPER_ADMIN'];
+    mockAuthState.user.roles = ['GLOBAL_ADMIN'];
   });
 
   // -----------------------------------------------------------------------
@@ -230,7 +230,7 @@ describe('ConfigurationManagementPage', () => {
 
     // TASK-338 — Guardrail engine section is wired into the page.
     it('should render the Guardrail configuration section with page props', () => {
-      mockAuthState.user.roles = ['SUPER_ADMIN'];
+      mockAuthState.user.roles = ['GLOBAL_ADMIN'];
       renderPage();
       const section = screen.getByTestId('guardrail-section');
       expect(section).toBeInTheDocument();
@@ -366,9 +366,9 @@ describe('ConfigurationManagementPage', () => {
   });
 
   // -----------------------------------------------------------------------
-  // Save flow — SUPER_ADMIN
+  // Save flow — GLOBAL_ADMIN
   // -----------------------------------------------------------------------
-  describe('save as SUPER_ADMIN', () => {
+  describe('save as GLOBAL_ADMIN', () => {
     it('should enable Save button only when value is dirty', () => {
       renderPage();
       fireEvent.click(screen.getByTestId('config-item-cfg-01'));
@@ -530,10 +530,10 @@ describe('ConfigurationManagementPage', () => {
   describe('role-based behavior', () => {
     // TASK-335 — the in-page tenant picker (and its infinite tenant query)
     // was removed; the working tenant comes from the header ScopeSwitcher
-    // (store `tenantId`), so the SUPER_ADMIN config list must be scoped to
+    // (store `tenantId`), so the GLOBAL_ADMIN config list must be scoped to
     // that header tenant, not an in-page selection.
-    it('should scope useTenantConfigs to the header store tenantId for SUPER_ADMIN', () => {
-      mockAuthState.user.roles = ['SUPER_ADMIN'];
+    it('should scope useTenantConfigs to the header store tenantId for GLOBAL_ADMIN', () => {
+      mockAuthState.user.roles = ['GLOBAL_ADMIN'];
       renderPage();
       expect(useTenantConfigs).toHaveBeenCalledWith(
         TENANT_ID,

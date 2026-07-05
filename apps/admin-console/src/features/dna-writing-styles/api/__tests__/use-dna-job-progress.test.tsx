@@ -1,9 +1,10 @@
 /**
- * useDnaJobProgress — the SSE + 2s-poll merge for DNA generation jobs. The
- * stream side is exercised through a stubbed global EventSource (ticket mint
- * asserted with scope `dna_job:<id>`); the poll side through the stubbed
- * fetch. Polling is what carries progress TODAY: the gateway stream route has
- * no @StreamScope yet (TASK-419), so tickets 401 in real deployments.
+ * useDnaJobProgress — ticket-authenticated SSE is the PRIMARY transport
+ * (the gateway route declares @StreamScope dna_job since TASK-419); the 2s
+ * status poll is the documented error fallback, enabled only after the
+ * stream exhausts its retry budget. The stream side is exercised through a
+ * stubbed global EventSource (ticket mint asserted with scope
+ * `dna_job:<id>`); the fallback poll through the stubbed fetch.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -45,6 +46,10 @@ class FakeEventSource {
         for (const listener of this.listeners.get(type) ?? []) {
             listener({ data } as MessageEvent);
         }
+    }
+
+    fail(): void {
+        this.onerror?.();
     }
 }
 
@@ -96,7 +101,22 @@ beforeEach(() => {
 afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
 });
+
+/**
+ * Drives the stream through its full retry budget (3 reconnects, linear
+ * backoff, each minting a fresh ticket) so the hook lands on `error` and the
+ * fallback poll becomes eligible.
+ */
+async function exhaustStreamRetries(): Promise<void> {
+    for (let round = 0; round < 4; round += 1) {
+        act(() => FakeEventSource.instances.at(-1)?.fail());
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(4_000);
+        });
+    }
+}
 
 describe('useDnaJobProgress', () => {
     it('mints a dna_job-scoped ticket, folds SSE events and closes on the terminal result', async () => {
@@ -129,34 +149,52 @@ describe('useDnaJobProgress', () => {
         expect(source.closed).toBe(true);
         await waitFor(() => expect(onTerminal).toHaveBeenCalledTimes(1));
         expect(onTerminal.mock.calls[0][0]).toMatchObject({ status: 'completed' });
+
+        // SSE is the primary transport: the fallback poll never fired, so the
+        // only network traffic besides the stream itself is the ticket mint.
+        expect(calls.every((call) => call.url === '/api/auth/stream-ticket')).toBe(true);
     });
 
-    it('reaches terminal through the poll alone when the stream never delivers (TASK-419 gap)', async () => {
-        stubNetwork(() => Response.json({ jobId: 'j-1', status: 'completed', progress: 100, result: null }));
+    it('falls back to the 2s poll ONLY after the stream exhausts its retry budget', async () => {
+        vi.useFakeTimers();
+        const calls = stubNetwork(() => Response.json({ jobId: 'j-1', status: 'completed', progress: 100, result: null }));
         const { Wrapper } = createWrapper();
         const onTerminal = vi.fn();
         const { result } = renderHook(() => useDnaJobProgress('j-1', { onTerminal }), { wrapper: Wrapper });
 
-        // The stream connects but no event ever arrives — polling must win.
-        await waitFor(() => expect(result.current.isTerminal).toBe(true));
+        await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+        // While the stream is still trying, no status poll is issued.
+        expect(calls.filter((call) => call.url.includes('/jobs/'))).toHaveLength(0);
+
+        await exhaustStreamRetries();
+
+        // Stream landed on error -> the fallback poll takes over and delivers
+        // the terminal state end-to-end (invalidation + onTerminal + close).
+        await vi.waitFor(() => expect(result.current.isTerminal).toBe(true));
+        expect(calls.filter((call) => call.url.includes('/jobs/')).length).toBeGreaterThan(0);
         expect(result.current.job).toMatchObject({ jobId: 'j-1', status: 'completed', progress: 100 });
-        await waitFor(() => expect(onTerminal).toHaveBeenCalledTimes(1));
-        // The terminal effect also closes the stream on the poll-detected end.
-        await waitFor(() => expect(FakeEventSource.instances.at(0)?.closed).toBe(true));
+        await vi.waitFor(() => expect(onTerminal).toHaveBeenCalledTimes(1));
     });
 
-    it('merges both transports, newest snapshot winning', async () => {
-        stubNetwork(() => Response.json(processing(40)));
+    it('a fresher fallback-poll snapshot supersedes the last pre-error SSE snapshot', async () => {
+        vi.useFakeTimers();
+        stubNetwork(() => Response.json(processing(70)));
         const { Wrapper } = createWrapper();
         const { result } = renderHook(() => useDnaJobProgress('j-1'), { wrapper: Wrapper });
 
-        // Poll lands first (progress 40)...
-        await waitFor(() => expect(result.current.job?.progress).toBe(40));
-        await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+        // The stream delivers progress 40, then drops for good.
+        await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+        act(() => {
+            FakeEventSource.instances[0].open();
+            FakeEventSource.instances[0].emit('status', JSON.stringify(processing(40)));
+        });
+        expect(result.current.job?.progress).toBe(40);
 
-        // ...then a fresher SSE status supersedes it.
-        act(() => FakeEventSource.instances[0].emit('status', JSON.stringify(processing(70))));
-        expect(result.current.job?.progress).toBe(70);
+        await exhaustStreamRetries();
+
+        // The fallback poll's newer snapshot (70) wins the merge.
+        await vi.waitFor(() => expect(result.current.job?.progress).toBe(70));
+        expect(result.current.isTerminal).toBe(false);
     });
 
     it('is idle without a job id and resets folded state when the job changes', async () => {

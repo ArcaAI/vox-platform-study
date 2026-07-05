@@ -204,7 +204,7 @@ export const DNA_STYLE_ENDPOINTS = {
   BY_DOCTOR: (doctorId: string) => `/dna-writing-styles/doctor/${encodeURIComponent(doctorId)}`,
   // TASK-388 #13 — admin cross-user (PHI-gated) reads. These hit the `/admin`
   // controller, which requires `manage:DnaWritingStyleReport` and tenant-scopes
-  // the caller (even SUPER_ADMIN cannot cross tenants). Distinct from the
+  // the caller (even GLOBAL_ADMIN cannot cross tenants). Distinct from the
   // self-only `BY_DOCTOR`/`VERSIONS` end-user routes above.
   ADMIN_BY_DOCTOR: (doctorId: string) => `/admin/dna-writing-styles/doctor/${encodeURIComponent(doctorId)}`,
   ADMIN_VERSIONS: (reportId: string) => `/admin/dna-writing-styles/${encodeURIComponent(reportId)}/versions`,
@@ -297,7 +297,7 @@ export const MONITORING_ENDPOINTS = {
  * Platform runtime metrics endpoints (TASK-386 #16 / E1·E2·E3).
  *
  * Matches `PlatformMetricsController` at `@Controller('admin/platform')`.
- * SUPER_ADMIN-only (class-level `@CanManage('PlatformMetrics')`, satisfied by
+ * GLOBAL_ADMIN-only (class-level `@CanManage('PlatformMetrics')`, satisfied by
  * the global `manage:all` grant). Responses are Redis-cached (~12s TTL) and
  * emit no audit event.
  */
@@ -536,20 +536,20 @@ export const GLOBAL_SETTINGS_ENDPOINTS = {
   DELETE: (id: string) => `/admin/settings/${encodeURIComponent(id)}`,
   BY_TENANT: (tenantId: string) => `/admin/settings/tenant/${encodeURIComponent(tenantId)}`,
   TENANT_CONFIG: (tenantId: string) => `/admin/settings/tenant/${encodeURIComponent(tenantId)}/config`,
-  // TASK-396 — super-admin-only, step-up-authenticated, audited secret reveal.
+  // TASK-396 — global-admin-only, step-up-authenticated, audited secret reveal.
   REVEAL: (id: string) => `/admin/settings/${encodeURIComponent(id)}/reveal`,
 } as const;
 
 /**
  * Plan-entitlements endpoints (TASK-392 Phase 4/5).
  *
- * `ADMIN` paths are super-admin-only (`/admin/entitlements/*`, admin-plane per
+ * `ADMIN` paths are global-admin-only (`/admin/entitlements/*`, admin-plane per
  * `isAdminPlanePath`, so the admin JWT is used during impersonation); `ME` is
  * the tenant self-view on the user plane. `PLAN`/`TENANT_*` builders
  * `encodeURIComponent` their segments to match the other endpoint groups.
  */
 export const ENTITLEMENTS_ENDPOINTS = {
-  // Super-admin surface
+  // Global-admin surface
   ENABLED: '/admin/entitlements/enabled',
   PLANS: '/admin/entitlements/plans',
   PLAN: (plan: string) => `/admin/entitlements/plans/${encodeURIComponent(plan)}`,
@@ -618,7 +618,7 @@ export const USER_ENDPOINTS = {
   PASSWORD_RESET_COMPLETE: '/users/password-reset/complete',
   // TASK-400 — public self-service forgot-password (no auth; always 202).
   FORGOT_PASSWORD: '/auth/forgot-password',
-  // TASK-401 — super-admin-only time-boxed impersonation mint ("act as").
+  // TASK-401 — global-admin-only time-boxed impersonation mint ("act as").
   IMPERSONATE: (id: string) => `/admin/users/${encodeURIComponent(id)}/impersonate`,
   // TASK-388 #9 — server-side bulk user actions (enable/disable/delete/assign-departments).
   BULK_ACTIONS: '/admin/users/bulk-actions',
@@ -780,7 +780,7 @@ export const AUDIT_LOG_ENDPOINTS = {
  * Admin consultation endpoints (TASK-319 F1 / TASK-320 A1).
  *
  * Tenant-wide consultation supervision — class-level `@CanManage('Consultation')`
- * (TENANT_ADMIN / SUPER_ADMIN). A plain DOCTOR is denied (403).
+ * (TENANT_ADMIN / GLOBAL_ADMIN). A plain DOCTOR is denied (403).
  * Controller: `apps/api/src/modules/consultation/admin-consultation.controller.ts`
  * (`@Controller('admin/consultations')`).
  */
@@ -788,7 +788,7 @@ export const ADMIN_CONSULTATION_ENDPOINTS = {
   /**
    * List ALL consultations in scope (paginated; page/limit + patientId/doctorId/departmentId filters).
    *
-   * TASK-386 (TD3/DEF-1): a SUPER_ADMIN with NO working tenant now gets a
+   * TASK-386 (TD3/DEF-1): a GLOBAL_ADMIN with NO working tenant now gets a
    * cross-tenant list (previously HTTP 400). A tenant-admin is pinned to their tenant.
    */
   LIST: '/admin/consultations',
@@ -797,7 +797,7 @@ export const ADMIN_CONSULTATION_ENDPOINTS = {
   /**
    * TASK-386 (#20 / E4): zero-filled new/revisit aggregation over a date range.
    * Requires `?from=&to=`; optional `&granularity=day|month`. Scope mirrors LIST
-   * (super-admin cross-tenant when unscoped; tenant-admin pinned to their tenant).
+   * (global-admin cross-tenant when unscoped; tenant-admin pinned to their tenant).
    */
   AGGREGATE: (params: { from: string; to: string; granularity?: 'day' | 'month' }) => {
     const qs = new URLSearchParams({ from: params.from, to: params.to });
@@ -1010,7 +1010,7 @@ export const VOICE_EMBEDDING_ENDPOINTS = {
  * Rate-limit admin endpoints (TASK-403, backend substrate TASK-316).
  *
  * Matches `RateLimitAdminController` at `@Controller('admin/rate-limit')` —
- * super-admin only (`manage all`). Every mutation returns the fresh full
+ * global-admin only (`manage all`). Every mutation returns the fresh full
  * `RateLimitPolicy`.
  */
 export const RATE_LIMIT_ADMIN_ENDPOINTS = {
@@ -1023,7 +1023,7 @@ export const RATE_LIMIT_ADMIN_ENDPOINTS = {
 /**
  * Queue admin endpoints (TASK-403, backend substrate TASK-250/336).
  *
- * Matches `QueueAdminController` at `@Controller('admin/queues')` — super-admin
+ * Matches `QueueAdminController` at `@Controller('admin/queues')` — global-admin
  * only (`manage all`). Deliberately NON-destructive: the SDK exposes no
  * clean/remove/pause builders, so the admin console cannot invoke them.
  */

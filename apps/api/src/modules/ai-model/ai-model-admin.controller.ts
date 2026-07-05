@@ -7,16 +7,20 @@ import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch } from '../../
  * TASK-356 Phase 1 (Catalog plane) — admin AI model catalog controller.
  *
  * Mirrors `audio-pipeline.controller.ts` 1:1: a thin delegation surface over
- * the already-existing `AiModelService`. Authorization is narrowed to the
- * `AiModel` subject so tenant admins can self-serve their own tenant's clone
- * of the SYSTEM catalog (SUPER_ADMIN is covered by the `manage:all` grant).
- * Event broadcasting + exact-tenant scoping live in the service / Prisma
- * `tenant-scope` extension; OCC is enforced via the `If-Match` header.
+ * the already-existing `AiModelService`.
+ *
+ * Authorization (TASK-419 item 5, per TASK-415 Decision 6 / matrix row 11,
+ * review 2026-07-04): the registry is a GLOBAL-ADMIN plane — the guard is
+ * pinned to `manage:all`, and the tenant-scoped `manage:AiModel` grant no
+ * longer opens this controller. Global admins manage per-tenant clones of the
+ * SYSTEM catalog through the working-tenant context. Event broadcasting +
+ * exact-tenant scoping live in the service / Prisma `tenant-scope` extension;
+ * OCC is enforced via the `If-Match` header.
  */
 @ApiBearerAuth()
 @ApiTags('admin-ai-models')
 @Controller('admin/ai-models')
-@Authorize(['manage', 'AiModel'])
+@Authorize(['manage', 'all'])
 export class AiModelAdminController {
   constructor(private readonly aiModelService: AiModelService) {}
 

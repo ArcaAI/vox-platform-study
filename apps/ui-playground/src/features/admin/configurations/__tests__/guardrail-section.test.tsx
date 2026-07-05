@@ -152,15 +152,15 @@ describe('GuardrailConfigSection (TASK-338)', () => {
     expect(screen.getAllByTestId('skeleton').length).toBeGreaterThan(0);
   });
 
-  it('disables provider/model selects for non-super-admins (locked settings)', () => {
+  it('disables provider/model selects for non-global-admins (locked settings)', () => {
     renderSection({ isSuperAdmin: false });
     const selects = screen.getAllByTestId('select') as HTMLSelectElement[];
     expect(selects[0]).toBeDisabled();
     expect(selects[1]).toBeDisabled();
-    expect(screen.getByText(/only SUPER_ADMIN users may change them/i)).toBeInTheDocument();
+    expect(screen.getByText(/only GLOBAL_ADMIN users may change them/i)).toBeInTheDocument();
   });
 
-  it('keeps the azure-deployment field editable for non-super-admins', () => {
+  it('keeps the azure-deployment field editable for non-global-admins', () => {
     renderSection({ isSuperAdmin: false });
     const azure = screen.getByLabelText('Azure Deployment Name') as HTMLInputElement;
     expect(azure).not.toBeDisabled();
@@ -207,7 +207,7 @@ describe('GuardrailConfigSection (TASK-338)', () => {
     });
   });
 
-  it('uses the my-tenant PATCH for non-super-admins editing azure', async () => {
+  it('uses the my-tenant PATCH for non-global-admins editing azure', async () => {
     renderSection({ isSuperAdmin: false });
     const azure = screen.getByLabelText('Azure Deployment Name');
     fireEvent.change(azure, { target: { value: 'tenant-dep' } });

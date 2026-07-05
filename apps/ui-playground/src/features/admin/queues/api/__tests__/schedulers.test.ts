@@ -36,7 +36,7 @@ function createWrapper() {
 const NAME = 'dna-regeneration';
 
 // ---------------------------------------------------------------------------
-// OB-03 — surface the EXISTING SUPER_ADMIN scheduler-admin API (TASK-250).
+// OB-03 — surface the EXISTING GLOBAL_ADMIN scheduler-admin API (TASK-250).
 // Only `dynamic` schedulers accept cron/toggle edits; the hooks just hit the
 // routes — the server rejects edits to static schedulers.
 // ---------------------------------------------------------------------------

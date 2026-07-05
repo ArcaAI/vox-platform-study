@@ -47,7 +47,7 @@ function modelOptionsFor(provider: GuardrailProvider | undefined): NormalizedMod
  *
  * A dedicated, friendlier editor for the Guardrail provider/model + Azure
  * deployment-name GlobalSettings (separate from the generic key/value config
- * editor on the page). Provider/model are LOCKED settings (SUPER_ADMIN only);
+ * editor on the page). Provider/model are LOCKED settings (GLOBAL_ADMIN only);
  * the Azure deployment name is non-secret and editable by tenant admins. The
  * Azure API key is NEVER stored here — it remains in env/Vault (TASK-302 Phase
  * 4D will unblock admin-set keys).
@@ -242,7 +242,7 @@ export function GuardrailConfigSection({ configs, isSuperAdmin, effectiveTenantI
       )}
 
       {providerModelLocked && (
-        <p className="text-muted-foreground mt-2 text-xs">Provider and model are locked — only SUPER_ADMIN users may change them.</p>
+        <p className="text-muted-foreground mt-2 text-xs">Provider and model are locked — only GLOBAL_ADMIN users may change them.</p>
       )}
 
       <div className="mt-4 space-y-2">

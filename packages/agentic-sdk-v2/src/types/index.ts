@@ -345,7 +345,7 @@ export type {
   TranscriptionMode,
 } from './frontend-pipeline-config';
 
-// Super-admin ops-surface types (TASK-403 — Rate Limits / Queues & Jobs / Prisma Studio)
+// Global-admin ops-surface types (TASK-403 — Rate Limits / Queues & Jobs / Prisma Studio)
 export type {
   BulkJobActionResult,
   JobDetail,

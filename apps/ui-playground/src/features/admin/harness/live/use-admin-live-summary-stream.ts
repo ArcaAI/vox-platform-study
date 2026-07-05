@@ -31,7 +31,7 @@ export interface UseAdminLiveSummaryStreamOptions {
   consultationId: string | null;
   /** Connect only while a session is selected and observable. */
   enabled: boolean;
-  /** Selected tenant for a super-admin observer; propagated into the ticket mint. */
+  /** Selected tenant for a global-admin observer; propagated into the ticket mint. */
   tenantId?: string;
 }
 

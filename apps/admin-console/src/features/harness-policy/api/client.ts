@@ -32,7 +32,7 @@ export function updateHarnessPolicy(patch: UpdateHarnessPolicyRequest, etag: str
     return patchWithEtag(`${BASE}/policy`, occ.body, occ.etag);
 }
 
-/** Platform GLOBAL-DEFAULT row (gateway asserts super-admin in code). */
+/** Platform GLOBAL-DEFAULT row (gateway asserts global admin in code). */
 export function getGlobalHarnessPolicy(): Promise<WithEtag<HarnessPolicy>> {
     return getWithEtag(`${BASE}/policy/global`);
 }
@@ -42,7 +42,7 @@ export function updateGlobalHarnessPolicy(patch: UpdateHarnessPolicyRequest, eta
     return patchWithEtag(`${BASE}/policy/global`, occ.body, occ.etag);
 }
 
-/** Live-doc engine kill-switch (super-admin only; Redis-backed, NOT versioned). */
+/** Live-doc engine kill-switch (global admin only; Redis-backed, NOT versioned). */
 export function getLiveDocConfig(): Promise<LiveDocEngineConfig> {
     return getJson(`${BASE}/live/config`);
 }

@@ -20,7 +20,7 @@ import { addToHistory, loadHistory, historyStorageKey } from '../index';
 const TENANT_A = '50000000-0000-0000-0000-00000000000a';
 const TENANT_B = '50000000-0000-0000-0000-00000000000b';
 
-const ADMIN_USER = { id: 'admin-1', email: 'admin@test.com', username: 'admin', roles: ['SUPER_ADMIN'], permissions: [] };
+const ADMIN_USER = { id: 'admin-1', email: 'admin@test.com', username: 'admin', roles: ['GLOBAL_ADMIN'], permissions: [] };
 const DOCTOR_A = { id: 'doctor-a', email: 'a@test.com', username: 'doc_a', roles: ['DOCTOR'], permissions: [] };
 const DOCTOR_B = { id: 'doctor-b', email: 'b@test.com', username: 'doc_b', roles: ['DOCTOR'], permissions: [] };
 

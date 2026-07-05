@@ -15,8 +15,8 @@ import { useAgenticStore } from '../store';
 import { AUTH_ENDPOINTS } from '../core/constants';
 import type { AuthUser, LoginResponse, ImpersonateRequest, ImpersonateResponse, RefreshTokenResponse } from '../types/auth';
 
-// TASK-331 doc-05 F-4 — GLOBAL_ADMIN is a full SUPER_ADMIN synonym.
-const IMPERSONATION_ROLES = ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'] as const;
+// TASK-331 doc-05 F-4 / TASK-417 — GLOBAL_ADMIN is the single elevated role.
+const IMPERSONATION_ROLES = ['GLOBAL_ADMIN', 'TENANT_ADMIN'] as const;
 
 export interface UseAuthReturn {
   user: AuthUser | null;

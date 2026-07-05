@@ -1,5 +1,5 @@
 /**
- * useUsers Hook — TASK-401 additions: super-admin time-boxed impersonation
+ * useUsers Hook — TASK-401 additions: global-admin time-boxed impersonation
  * (`impersonate`) and early end (`endImpersonation`). Both are thin wrappers:
  * the ADMIN APP owns the token swap via its auth store, so the SDK never
  * stashes the impersonation token itself on this path.
@@ -76,11 +76,11 @@ describe('useUsers — TASK-401 impersonate / endImpersonation', () => {
     });
 
     it('surfaces backend rejections (e.g. 403 safeguard) to the caller', async () => {
-        mockPost.mockRejectedValue(new Error('Only super administrators can impersonate users'));
+        mockPost.mockRejectedValue(new Error('Only global administrators can impersonate users'));
         const { result } = renderHook(() => useUsers());
 
         await expect(act(async () => { await result.current.impersonate('admin-2'); })).rejects.toThrow(
-            'Only super administrators can impersonate users',
+            'Only global administrators can impersonate users',
         );
     });
 });

@@ -41,7 +41,7 @@ function errorMessage(error: unknown, fallback: string): string {
 
 /**
  * Engine kill-switch card (TASK-341 B3/B6). Reading + toggling the
- * live-documentation engine is platform-scoped (super-admin / global scope) —
+ * live-documentation engine is platform-scoped (global-admin / global scope) —
  * the endpoint 403s for tenant admins — so the toggle is disabled with a reason
  * for them and never fetches the config. A toggle requires confirmation, then
  * PATCHes the Redis override and toasts.
@@ -87,7 +87,7 @@ function EngineControlsCard({ isGlobalScope }: { isGlobalScope: boolean }) {
             <Switch checked={false} disabled data-testid="live-engine-switch" aria-label="Live documentation engine" />
             <p className="text-muted-foreground flex items-center gap-1.5 text-sm">
               <ShieldAlert className="size-4 shrink-0" aria-hidden />
-              Toggling the engine kill-switch requires platform (super-admin) scope.
+              Toggling the engine kill-switch requires platform (global-admin) scope.
             </p>
           </div>
         ) : config.isLoading ? (

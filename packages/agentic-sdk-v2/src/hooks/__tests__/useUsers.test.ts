@@ -439,7 +439,7 @@ describe('useUsers', () => {
                 limit: 200,
                 page: 1,
                 data: [
-                    { id: 'u-1', username: 'admin', roles: ['SUPER_ADMIN'] },
+                    { id: 'u-1', username: 'admin', roles: ['GLOBAL_ADMIN'] },
                     { id: 'u-2', username: 'doctor1' },
                     { id: 'u-3', username: 'doctor2' },
                 ],
@@ -451,7 +451,7 @@ describe('useUsers', () => {
 
             expect(typeof result.current.users.filter).toBe('function');
             const nonAdmin = result.current.users.filter(
-                (u: any) => !u.roles?.some((r: string) => r === 'SUPER_ADMIN'),
+                (u: any) => !u.roles?.some((r: string) => r === 'GLOBAL_ADMIN'),
             );
             expect(nonAdmin).toHaveLength(2);
         });

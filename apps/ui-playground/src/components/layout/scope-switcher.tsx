@@ -14,7 +14,7 @@ import { toast } from 'sonner';
  * ScopeSwitcher — TASK-327 T4.
  *
  * Header control that materialises the scope model (D1):
- *  - Global scope (SUPER_ADMIN): a searchable tenant picker.
+ *  - Global scope (GLOBAL_ADMIN): a searchable tenant picker.
  *    Picking a tenant sets the active tenant (store `setTenant`), which the
  *    SDK + ScopeSyncInit already react to. Tenant list is served from the
  *    cached `useAdminTenants` React Query hook so it isn't refetched on every

@@ -23,7 +23,7 @@ vi.mock('@arcaai/ui/card', () => ({
 vi.mock('@arcaai/ui/badge', () => ({ Badge: ({ children }: any) => <span>{children}</span> }));
 vi.mock('@/store/auth-store', () => ({
   useAuthStore: (selector?: any) => {
-    const state = { tenantId: 'tenant-1', user: { roles: ['SUPER_ADMIN'] } };
+    const state = { tenantId: 'tenant-1', user: { roles: ['GLOBAL_ADMIN'] } };
     return selector ? selector(state) : state;
   },
 }));

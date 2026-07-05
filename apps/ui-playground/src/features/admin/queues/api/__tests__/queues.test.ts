@@ -48,7 +48,7 @@ function createWrapper() {
 const QUEUE = 'SendEmail';
 
 // ---------------------------------------------------------------------------
-// OB-03 — surface the EXISTING SUPER_ADMIN queue-admin API (TASK-250). The
+// OB-03 — surface the EXISTING GLOBAL_ADMIN queue-admin API (TASK-250). The
 // hooks must hit the exact controller routes with the typed bodies. NOTE the
 // job list `page` is ZERO-BASED (distinct from the 1-based consultation list).
 // ---------------------------------------------------------------------------

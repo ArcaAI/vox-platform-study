@@ -18,7 +18,7 @@ import { assertEqualTenants, BaseService, FetchResponse, PaginatedQuery, withFor
 import { IActiveUserContext } from '../../interfaces';
 import { InternalServerErrorException, ArgumentInvalidException, ArgumentNotProvidedException, UnauthorizedException } from '@arcaai/exceptions';
 import { BadRequestException } from '@nestjs/common';
-import { SUPER_ADMIN_ROLE } from '../tenant/constants';
+import { GLOBAL_ADMIN_ROLE } from '../tenant/constants';
 
 @Injectable()
 export class ResourceSubscriptionService extends BaseService implements IResourceSubscriptionService {
@@ -60,8 +60,8 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
 
   /**
    * TASK-306 P2.4 (audit M-3 / AC-6) — list endpoint scoped to the
-   * caller's tenant. Non-SUPER_ADMIN callers see only their own tenant's
-   * subscriptions; SUPER_ADMIN bypasses the filter so cross-tenant
+   * caller's tenant. Non-GLOBAL_ADMIN callers see only their own tenant's
+   * subscriptions; GLOBAL_ADMIN bypasses the filter so cross-tenant
    * administration tooling can list every subscription in the platform.
    * Mirrors the W3.2 NotificationService.fetchAll posture.
    */
@@ -94,23 +94,23 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
   }
 
   /**
-   * True when the active request user carries the `SUPER_ADMIN` role.
+   * True when the active request user carries the `GLOBAL_ADMIN` role.
    * Falls back to `false` whenever the role list is missing so the most
    * restrictive policy applies. Mirrors the strict-default helper used
    * by `NotificationService`, `WebhookService`, and `TenantService`.
    */
   private isSuperAdmin(): boolean {
     const roles = this.requestUser?.roles;
-    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
+    return Array.isArray(roles) && roles.includes(GLOBAL_ADMIN_ROLE);
   }
 
   /**
    * TASK-306 P2.4 (audit M-3 / AC-6) — resource-scoped list endpoint
-   * with tenant injection. Non-SUPER_ADMIN callers see only their own
-   * tenant's subscriptions to the resource; SUPER_ADMIN bypasses the
+   * with tenant injection. Non-GLOBAL_ADMIN callers see only their own
+   * tenant's subscriptions to the resource; GLOBAL_ADMIN bypasses the
    * tenant filter so admin tooling can list every subscription on a
    * cross-tenant resource. The resource scoping itself is enforced for
-   * everyone (no SUPER_ADMIN bypass for the resource predicate).
+   * everyone (no GLOBAL_ADMIN bypass for the resource predicate).
    */
   async fetchAllByResource(
     props: PaginatedQuery & { resourceTypeName: string; resourceId: string },
@@ -171,10 +171,10 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
 
   /**
    * TASK-306 P2.4 (audit M-3 / AC-6) — single-entity read with the
-   * DEF-C3 "no existence leak" guard. Non-SUPER_ADMIN callers see a
+   * DEF-C3 "no existence leak" guard. Non-GLOBAL_ADMIN callers see a
    * `NotFoundException` (404) when the row exists but belongs to
    * another tenant — the same response shape the repository returns
-   * for a row that genuinely does not exist. SUPER_ADMIN bypasses
+   * for a row that genuinely does not exist. GLOBAL_ADMIN bypasses
    * the assertion so admin tooling can inspect any subscription.
    */
   async fetchById(id: EntityId): Promise<ResourceSubscriptionEntity> {
@@ -196,7 +196,7 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
    * ownership. We load the row first, then assert the tenant scope
    * BEFORE applying any change, so cross-tenant `update` calls cannot
    * mutate state and cannot be used as a probe (the response is a
-   * generic 404, identical to the missing-row case). SUPER_ADMIN
+   * generic 404, identical to the missing-row case). GLOBAL_ADMIN
    * bypasses the assertion for platform tooling.
    */
   async update(id: EntityId, request: UpdateResourceSubscriptionRequest): Promise<ResourceSubscriptionEntity> {
@@ -264,13 +264,13 @@ export class ResourceSubscriptionService extends BaseService implements IResourc
    * `deleteById` issued `softDelete(id)` directly with no tenant
    * load, so a Tenant-A admin could erase any subscription in the
    * platform. We now:
-   *   1. For non-SUPER_ADMIN: `findById` first, then assert tenant
+   *   1. For non-GLOBAL_ADMIN: `findById` first, then assert tenant
    *      scope. Cross-tenant access throws `NotFoundException`
    *      (404) BEFORE any softDelete is issued — no mutation side
    *      effect, no existence leak.
-   *   2. For SUPER_ADMIN: skip the pre-load and call `softDelete`
+   *   2. For GLOBAL_ADMIN: skip the pre-load and call `softDelete`
    *      directly (mirrors `WebhookService.deleteById` from
-   *      W5.3.5 — keeps the SUPER_ADMIN write path one round-trip).
+   *      W5.3.5 — keeps the GLOBAL_ADMIN write path one round-trip).
    */
   async deleteById(id: EntityId): Promise<ResourceSubscriptionEntity> {
     if (!this.isSuperAdmin()) {

@@ -155,8 +155,9 @@ describe('Runtime @Controller metadata (Reflect.getMetadata)', () => {
 //
 // Pre-W5.2 the GET handler carried @Public() and accepted the JWT via
 // ?token=. W5.2 removes the public exemption and the URL-token form
-// entirely — both verbs now require @Authorize(['manage','all']) and
-// the JWT must arrive via the Authorization: Bearer header.
+// entirely — both verbs require an @Authorize guard and the JWT must
+// arrive via the Authorization: Bearer header. TASK-419 item 4 re-pins
+// the guard from manage:all to the dedicated manage:PrismaStudio subject.
 
 describe('Pstudio auth decorators (post-TASK-307 W5.2)', () => {
     it('serveStudio NO LONGER carries @Public() metadata', async () => {
@@ -165,9 +166,9 @@ describe('Pstudio auth decorators (post-TASK-307 W5.2)', () => {
         expect(isPublic).toBeFalsy();
     });
 
-    it('handleStudioRequest should have @Authorize decorator', () => {
+    it('handleStudioRequest should have @Authorize decorator (manage:PrismaStudio since TASK-419)', () => {
         const source = readController('pstudio/pstudio.controller.ts');
-        expect(source).toMatch(/@Authorize\(\['manage',\s*'all'\]\)/);
+        expect(source).toMatch(/@Authorize\(\['manage',\s*'PrismaStudio'\]\)/);
     });
 });
 

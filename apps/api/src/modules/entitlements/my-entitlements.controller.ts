@@ -10,7 +10,7 @@ import { Authorize } from '../../decorators';
  * Reachable at `/api/v1/entitlements/me`. Gated with `read Tenant` (the
  * tenant-scoped policy grants it for `id = context.tenantId`), so a tenant
  * admin sees ONLY their own tenant's capabilities/usage — mirroring the
- * `/tenant/me` self-view. Super-admins manage other tenants via the
+ * `/tenant/me` self-view. Global-admins manage other tenants via the
  * `/admin/entitlements/*` surface, not here (no silent global fallback).
  */
 @ApiTags('entitlements')
@@ -31,7 +31,7 @@ export class MyEntitlementsController {
   me(): Promise<EntitlementCapabilitiesResponse> {
     const tenantId = this.clsService.get('tenantId');
     if (!tenantId) {
-      throw new BadRequestException('Tenant context is required. Super-admins must use /admin/entitlements endpoints.');
+      throw new BadRequestException('Tenant context is required. Global-admins must use /admin/entitlements endpoints.');
     }
     return this.entitlements.getCapabilities(tenantId);
   }

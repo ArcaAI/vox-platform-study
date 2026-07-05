@@ -70,7 +70,7 @@ export interface WorkerSessionInit {
  * worker writes.
  *
  * Worker sessions are deliberately:
- *   - **Roleless** — workers never get SUPER_ADMIN bypass
+ *   - **Roleless** — workers never get GLOBAL_ADMIN bypass
  *   - **Permissionless** — the policy engine grants based on `roles`
  *   - **Email-tagged** with a sentinel local-part keyed off the
  *     `kind` label, so logs / audit rows are grep-able by worker

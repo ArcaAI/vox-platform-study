@@ -84,7 +84,7 @@ export function CredentialsForm() {
       </div>
       <div className="space-y-2">
         <Label htmlFor="tenantKey-creds">
-          Tenant Key <span className="text-muted-foreground text-xs">(optional for super admin)</span>
+          Tenant Key <span className="text-muted-foreground text-xs">(optional for global admin)</span>
         </Label>
         <div className="relative">
           <Building2 className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />

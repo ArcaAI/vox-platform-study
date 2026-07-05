@@ -53,6 +53,8 @@ const PREFIXES_WITH_GENERAL = new Set(['ARCAAI', 'GLOBAL']);
 // TASK-316 — platform-wide (NOT per-tenant) settings: DB-backed gateway
 // rate-limit config. These live on the platform tenant only and therefore
 // fall outside the per-prefix model above, so they're counted separately.
+// TASK-392 — ENTITLEMENTS_ENABLED joins the same platform-tenant-only block:
+// the entitlements enforcement kill-switch (seeded OFF in 15-entitlements.ts).
 const PLATFORM_WIDE_KEYS = [
   'RATE_LIMIT_ENABLED',
   'RATE_LIMIT_TIER_DEFAULT_LIMIT',
@@ -63,6 +65,7 @@ const PLATFORM_WIDE_KEYS = [
   'RATE_LIMIT_TIER_HEAVY_TTL',
   'RATE_LIMIT_TIER_RELAXED_LIMIT',
   'RATE_LIMIT_TIER_RELAXED_TTL',
+  'ENTITLEMENTS_ENABLED',
 ] as const;
 
 // TASK-332 — system-tenant (SYSTEM_TENANT_ID) platform capability, not per-tenant
@@ -153,7 +156,7 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
     });
   });
 
-  describe('platform-wide settings (TASK-316 rate-limit)', () => {
+  describe('platform-wide settings (TASK-316 rate-limit, TASK-392 entitlements)', () => {
     for (const key of PLATFORM_WIDE_KEYS) {
       it(`should define ${key}`, () => {
         const id = SEED_GLOBAL_SETTING_IDS[key as keyof typeof SEED_GLOBAL_SETTING_IDS];

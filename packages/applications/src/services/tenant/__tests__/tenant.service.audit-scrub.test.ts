@@ -62,7 +62,7 @@ describe('TenantService — audit-log secret scrubbing (Phase 0 Item 4)', () => 
     vi.clearAllMocks();
     cls.get.mockImplementation((k: string) =>
       k === 'user'
-        ? { id: 'sa-id', roles: ['SUPER_ADMIN'] }
+        ? { id: 'sa-id', roles: ['GLOBAL_ADMIN'] }
         : k === 'tenantId'
           ? 'tenant-1'
           : k === 'tenantCode'

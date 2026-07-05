@@ -43,10 +43,11 @@ const JOB_STATE_LABELS: Record<DnaJobStatus['status'], string> = {
 };
 
 /**
- * Transport badge for the progress strip: Live while the SSE stream is open,
- * Polling fallback once it errors (the TASK-419 gap path — see
- * useDnaJobProgress), Done/Failed at terminal. Never color-only: the label
- * rides along and the percent is printed next to the bar.
+ * Transport badge for the progress strip: Live while the SSE stream (the
+ * primary transport) is open, Polling once it errors and the documented 2s
+ * fallback poll takes over (see useDnaJobProgress), Done/Failed at terminal.
+ * Never color-only: the label rides along and the percent is printed next to
+ * the bar.
  */
 function jobBadgeMeta(job: DnaJobStatus | null, streamStatus: StreamStatus, isTerminal: boolean): { label: string; role: StatusColorRole } {
     if (isTerminal) {
@@ -54,8 +55,8 @@ function jobBadgeMeta(job: DnaJobStatus | null, streamStatus: StreamStatus, isTe
     }
     if (streamStatus === 'open') return { label: 'Live', role: 'primary' };
     if (streamStatus === 'connecting') return { label: 'Connecting', role: 'info' };
-    if (streamStatus === 'error') return { label: 'Polling fallback', role: 'warning' };
-    return { label: 'Polling', role: 'neutral' };
+    if (streamStatus === 'error') return { label: 'Polling', role: 'warning' };
+    return { label: 'Waiting', role: 'neutral' };
 }
 
 /** Inline progress (SSE/poll driven) shown in the dashboard card while a job runs. */

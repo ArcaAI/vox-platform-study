@@ -25,18 +25,11 @@ import {
 } from '@arcaai/domains';
 
 /**
- * Role string for the operator with cross-tenant administrative rights.
- * Mirrors the same literal already in use in
- * `services/tenant/constants.SUPER_ADMIN_ROLE` and the seven services that
- * each duplicate the `roles.includes('SUPER_ADMIN')` check (kept local here
- * so `common/` does not import from `services/`).
- */
-const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
-
-/**
- * Platform-wide operator role, scoped above any single tenant (e.g. the
- * console "global admin"). Treated identically to `SUPER_ADMIN` for every
- * cross-tenant privilege check.
+ * Platform-wide operator role, scoped above any single tenant — the ONLY
+ * role with cross-tenant administrative rights. Mirrors
+ * `services/tenant/constants.GLOBAL_ADMIN_ROLE` (kept local here so
+ * `common/` does not import from `services/`). The former `SUPER_ADMIN`
+ * role was consolidated into `GLOBAL_ADMIN` and retired (TASK-417).
  */
 const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
 
@@ -44,16 +37,20 @@ const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
  * AC-06 (TASK-336) — single source of truth for the set of roles that are
  * cross-tenant privileged ("elevated"). Both the pure `isSuperAdmin` predicate
  * below and the DB-layer `ClsTenantContextProvider.isSuperAdmin()` consume this
- * set, so a new elevated role is added in exactly one place.
+ * set, so a new elevated role is added in exactly one place. Since TASK-417
+ * the set is exactly `[GLOBAL_ADMIN]`.
  */
-export const ELEVATED_ROLES: readonly string[] = [SUPER_ADMIN_ROLE, GLOBAL_ADMIN_ROLE];
+export const ELEVATED_ROLES: readonly string[] = [GLOBAL_ADMIN_ROLE];
 
 /**
  * TASK-307 W5.5 / W5.7 / W5.9 — pure predicate that names the
  * "is the caller cross-tenant privileged?" check used by inline
  * controller guards. Mirrors the existing service-side pattern
- * `Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE)` so we don't
+ * `Array.isArray(roles) && roles.includes(GLOBAL_ADMIN_ROLE)` so we don't
  * scatter the role literal across more controller files.
+ *
+ * The name `isSuperAdmin` predates TASK-417 and is kept as stable API
+ * surface — it answers "is the caller a GLOBAL_ADMIN?".
  *
  * @example
  *   const user = this.cls.get('user');
@@ -146,7 +143,7 @@ async function findFirstTolerant<T>(fn: () => Promise<T>): Promise<T | null> {
  *
  * **Exemption:** service accounts (`User.isServiceAccount === true`) are
  * exempt from the department half — a role assignment alone is sufficient.
- * `SUPER_ADMIN`s are global (their assignments live under the SYSTEM tenant),
+ * `GLOBAL_ADMIN`s are global (their assignments live under the SYSTEM tenant),
  * so the role-half check already excludes them from a specific tenant; that
  * is unchanged from the pre-Phase-F behaviour.
  *

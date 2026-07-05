@@ -41,7 +41,7 @@ const mockSuperAdmin = {
     id: '70000000-0000-0000-0000-000000000001',
     email: 'admin@test.com',
     username: 'super_admin',
-    roles: ['SUPER_ADMIN'],
+    roles: ['GLOBAL_ADMIN'],
     permissions: [],
 };
 

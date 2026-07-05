@@ -91,7 +91,8 @@ const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 // document can't blow the SMR context window. ~200k chars ≈ 50k tokens.
 const ATTACHMENT_TEXT_LIMIT = 200_000;
 const GLOBAL_TENANT_KEY = '__GLOBAL__';
-const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
+// TASK-417 — GLOBAL_ADMIN is the single elevated role (SUPER_ADMIN retired).
+const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
 const TENANT_PROVIDER_SETTINGS_LIMIT = 200;
 
 interface TenantSettingLike {
@@ -245,11 +246,11 @@ export class SmrProxyController {
 
   /**
    * TASK-307 W5.9 (AC-23, audit D-12) — the GLOBAL-tenant fallback used
-   * to fire implicitly whenever a SUPER_ADMIN happened to have no CLS
-   * tenantId. That made it easy for a SUPER_ADMIN debugging an issue
+   * to fire implicitly whenever a GLOBAL_ADMIN happened to have no CLS
+   * tenantId. That made it easy for a GLOBAL_ADMIN debugging an issue
    * to accidentally read or mutate __GLOBAL__ provider settings while
    * trying to inspect a tenant. The fallback is now EXPLICIT: callers
-   * pass `?tenantKey=__GLOBAL__`, and only SUPER_ADMINs may do so.
+   * pass `?tenantKey=__GLOBAL__`, and only GLOBAL_ADMINs may do so.
    * Any other tenantKey value is a BadRequest (we never want a caller
    * to spell another tenant's id into this controller).
    */
@@ -260,7 +261,7 @@ export class SmrProxyController {
       }
       const user = this.clsService.get('user');
       if (!isSuperAdmin(user)) {
-        throw new ForbiddenException(`Only ${SUPER_ADMIN_ROLE} may use ?tenantKey=${GLOBAL_TENANT_KEY}`);
+        throw new ForbiddenException(`Only ${GLOBAL_ADMIN_ROLE} may use ?tenantKey=${GLOBAL_TENANT_KEY}`);
       }
       const globalTenant = await this.tenantService.fetchByCodeName(GLOBAL_TENANT_KEY);
       return globalTenant.id;
@@ -624,10 +625,10 @@ export class SmrProxyController {
 
     const user = this.clsService.get('user') as { roles?: string[] } | undefined;
     const roles = user?.roles ?? [];
-    const hasAdminAccess = roles.some((r) => ['SUPER_ADMIN', 'GLOBAL_ADMIN', 'TENANT_ADMIN'].includes(r));
+    const hasAdminAccess = roles.some((r) => [GLOBAL_ADMIN_ROLE, 'TENANT_ADMIN'].includes(r));
 
     if (!hasAdminAccess) {
-      throw new ForbiddenException('Debug mode requires SUPER_ADMIN, GLOBAL_ADMIN, or TENANT_ADMIN role');
+      throw new ForbiddenException('Debug mode requires GLOBAL_ADMIN or TENANT_ADMIN role');
     }
   }
 
@@ -903,7 +904,7 @@ export class SmrProxyController {
   @ApiOperation({
     summary:
       'List configured LLM providers from tenant settings, with SMR service fallback. ' +
-      `SUPER_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=${GLOBAL_TENANT_KEY}.`,
+      `GLOBAL_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=${GLOBAL_TENANT_KEY}.`,
   })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getProviders(@Query('tenantKey') tenantKey?: string): Promise<any[]> {
@@ -962,7 +963,7 @@ export class SmrProxyController {
   @ApiOperation({
     summary:
       'List configured Guardrail LLM providers/models from tenant settings. ' +
-      `SUPER_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=${GLOBAL_TENANT_KEY}.`,
+      `GLOBAL_ADMINs may explicitly target the GLOBAL tenant with ?tenantKey=${GLOBAL_TENANT_KEY}.`,
   })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getGuardrailProviders(@Query('tenantKey') tenantKey?: string): Promise<any[]> {

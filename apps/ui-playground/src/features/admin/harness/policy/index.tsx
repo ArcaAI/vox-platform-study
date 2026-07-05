@@ -46,7 +46,7 @@ export default function HarnessPolicyPage() {
   const tenantPolicy = useHarnessPolicy(tenantId || undefined);
   const updateTenant = useUpdateHarnessPolicy();
 
-  // Only platform (super-admin) operators may read/edit the global default; gate
+  // Only platform (global-admin) operators may read/edit the global default; gate
   // the query so a tenant admin never triggers the 403 route.
   const globalPolicy = useGlobalHarnessPolicy({ enabled: isGlobalScope });
   const updateGlobal = useUpdateGlobalHarnessPolicy();
@@ -102,7 +102,7 @@ export default function HarnessPolicyPage() {
         />
       ) : null}
 
-      {/* Platform-only: GLOBAL-DEFAULT editor (super-admin / platform scope). */}
+      {/* Platform-only: GLOBAL-DEFAULT editor (global-admin / platform scope). */}
       {isGlobalScope && (
         <div className="mt-8" data-testid="global-policy-section">
           <Separator className="mb-6" />

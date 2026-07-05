@@ -3,7 +3,7 @@
  *
  * The CASL `@Authorize` tuples + `If-Match`/`@RequiresIfMatch` decorators are
  * exercised by the guard/interceptor (and e2e). These specs cover the
- * controller's OWN logic: super-admin vs. tenant read scoping, the platform
+ * controller's OWN logic: global-admin vs. tenant read scoping, the platform
  * gate on the GLOBAL-DEFAULT routes, workflow tenant-ownership enforcement, and
  * the If-Match-over-body version precedence forwarded to the policy service.
  */
@@ -13,7 +13,7 @@ import { HarnessAdminController } from '../harness-admin.controller';
 
 type Ctx = { user?: { roles?: string[] | null; tenantId?: string } | null; tenantId?: string };
 
-const SUPER: Ctx['user'] = { roles: ['SUPER_ADMIN'] };
+const SUPER: Ctx['user'] = { roles: ['GLOBAL_ADMIN'] };
 const TENANT_ADMIN = (tenantId: string): Ctx['user'] => ({ roles: ['TENANT_ADMIN'], tenantId });
 
 function makeController(ctx: Ctx) {
@@ -42,6 +42,13 @@ function makeController(ctx: Ctx) {
     getEngineConfig: vi.fn().mockResolvedValue({ enabled: true, envDefault: true, source: 'env-default' }),
     setEngineEnabled: vi.fn().mockResolvedValue({ enabled: false, envDefault: true, source: 'redis-override' }),
   };
+  const evalService = {
+    listGoldenSets: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    getGoldenSet: vi.fn().mockResolvedValue({ id: 'set-1' }),
+    listGoldenCases: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    addGoldenSet: vi.fn().mockResolvedValue({ id: 'set-1' }),
+    addGoldenCase: vi.fn().mockResolvedValue({ id: 'case-1' }),
+  };
   const cls = { get: vi.fn((key: string) => (ctx as Record<string, unknown>)[key]) };
   const controller = new HarnessAdminController(
     policyService as never,
@@ -49,8 +56,9 @@ function makeController(ctx: Ctx) {
     opsClient as never,
     cls as never,
     liveDocumentationService as never,
+    evalService as never,
   );
-  return { controller, policyService, observabilityService, opsClient, liveDocumentationService };
+  return { controller, policyService, observabilityService, opsClient, liveDocumentationService, evalService };
 }
 
 describe('HarnessAdminController — policy', () => {
@@ -81,13 +89,13 @@ describe('HarnessAdminController — policy', () => {
     expect(policyService.updatePolicy).toHaveBeenCalledWith(request, 2);
   });
 
-  it('getGlobalPolicy is forbidden for a tenant admin (super-admin only)', async () => {
+  it('getGlobalPolicy is forbidden for a tenant admin (global-admin only)', async () => {
     const { controller, policyService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
     await expect(controller.getGlobalPolicy()).rejects.toBeInstanceOf(ForbiddenException);
     expect(policyService.getGlobalDefault).not.toHaveBeenCalled();
   });
 
-  it('getGlobalPolicy is allowed for a super-admin', async () => {
+  it('getGlobalPolicy is allowed for a global-admin', async () => {
     const { controller, policyService } = makeController({ user: SUPER });
     const resp = { id: 'global', tenantId: '00000000-0000-0000-0000-000000000000', version: 1 };
     policyService.getGlobalDefault.mockResolvedValue(resp);
@@ -135,13 +143,13 @@ describe('HarnessAdminController — read tenant scoping', () => {
     await expect(controller.listAudit({ tenantId: 't2' })).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('lets a super-admin target any tenant via ?tenantId', async () => {
+  it('lets a global-admin target any tenant via ?tenantId', async () => {
     const { controller, observabilityService } = makeController({ user: SUPER });
     await controller.gateQueue({ tenantId: 't9' });
     expect(observabilityService.gateQueue).toHaveBeenCalledWith('t9');
   });
 
-  it('requires a super-admin to pass ?tenantId when there is no CLS tenant', async () => {
+  it('requires a global-admin to pass ?tenantId when there is no CLS tenant', async () => {
     const { controller } = makeController({ user: SUPER });
     await expect(controller.gateQueue({})).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -150,7 +158,7 @@ describe('HarnessAdminController — read tenant scoping', () => {
 describe('HarnessAdminController — workflow ops ownership', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('lists all tenants for a super-admin (undefined tenant filter)', async () => {
+  it('lists all tenants for a global-admin (undefined tenant filter)', async () => {
     const { controller, opsClient } = makeController({ user: SUPER });
     await controller.listWorkflows({});
     expect(opsClient.listWorkflows).toHaveBeenCalledWith(expect.objectContaining({ tenantId: undefined }));
@@ -168,7 +176,7 @@ describe('HarnessAdminController — workflow ops ownership', () => {
     await expect(controller.describeWorkflow('wf-1', {})).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('lets a super-admin describe any tenant workflow', async () => {
+  it('lets a global-admin describe any tenant workflow', async () => {
     const { controller, opsClient } = makeController({ user: SUPER });
     const detail = { workflowId: 'wf-1', tenantId: 't2' };
     opsClient.describeWorkflow.mockResolvedValue(detail);
@@ -190,7 +198,7 @@ describe('HarnessAdminController — workflow ops ownership', () => {
   });
 });
 
-// TASK-341 B2/B3 — admin live console: monitoring (tenant-scoped) + kill-switch (super-admin).
+// TASK-341 B2/B3 — admin live console: monitoring (tenant-scoped) + kill-switch (global-admin).
 describe('HarnessAdminController — live sessions (TENANT_ADMIN, tenant-scoped)', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -208,7 +216,7 @@ describe('HarnessAdminController — live sessions (TENANT_ADMIN, tenant-scoped)
     await expect(controller.listLiveSessions({ tenantId: 't2' })).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('lets a super-admin target a tenant via ?tenantId', async () => {
+  it('lets a global-admin target a tenant via ?tenantId', async () => {
     const { controller, liveDocumentationService } = makeController({ user: SUPER });
     await controller.listLiveSessions({ tenantId: 't9' });
     expect(liveDocumentationService.getActiveSessions).toHaveBeenCalledWith('t9');
@@ -230,7 +238,7 @@ describe('HarnessAdminController — live sessions (TENANT_ADMIN, tenant-scoped)
   });
 });
 
-describe('HarnessAdminController — live engine kill-switch (SUPER_ADMIN / global-scope)', () => {
+describe('HarnessAdminController — live engine kill-switch (GLOBAL_ADMIN / global-scope)', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('getLiveConfig is forbidden for a tenant admin', async () => {
@@ -239,7 +247,7 @@ describe('HarnessAdminController — live engine kill-switch (SUPER_ADMIN / glob
     expect(liveDocumentationService.getEngineConfig).not.toHaveBeenCalled();
   });
 
-  it('getLiveConfig is allowed for a super-admin', async () => {
+  it('getLiveConfig is allowed for a global-admin', async () => {
     const { controller, liveDocumentationService } = makeController({ user: SUPER });
     const resp = { enabled: true, envDefault: true, source: 'env-default' };
     liveDocumentationService.getEngineConfig.mockResolvedValue(resp);
@@ -252,9 +260,75 @@ describe('HarnessAdminController — live engine kill-switch (SUPER_ADMIN / glob
     expect(liveDocumentationService.setEngineEnabled).not.toHaveBeenCalled();
   });
 
-  it('updateLiveConfig toggles the kill-switch for a super-admin, carrying the actor + reason', async () => {
-    const { controller, liveDocumentationService } = makeController({ user: { roles: ['SUPER_ADMIN'], id: 'admin-7' } as never });
+  it('updateLiveConfig toggles the kill-switch for a global-admin, carrying the actor + reason', async () => {
+    const { controller, liveDocumentationService } = makeController({ user: { roles: ['GLOBAL_ADMIN'], id: 'admin-7' } as never });
     await controller.updateLiveConfig({ enabled: false, reason: 'incident' } as never);
     expect(liveDocumentationService.setEngineEnabled).toHaveBeenCalledWith(false, { userId: 'admin-7', reason: 'incident' });
+  });
+});
+
+// TASK-419 item 1 — golden-set dataset surface (reads: read:HarnessEval,
+// creates: manage:HarnessEval). Same tenant resolution as the other reads.
+describe('HarnessAdminController — golden sets (TASK-419)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('listGoldenSets pins a tenant admin to their own tenant and forwards numeric paging', async () => {
+    const { controller, evalService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    await controller.listGoldenSets({ page: '2', limit: '5' });
+    expect(evalService.listGoldenSets).toHaveBeenCalledWith('t1', { page: 2, limit: 5 });
+  });
+
+  it('listGoldenSets lets a global-admin target a tenant via ?tenantId', async () => {
+    const { controller, evalService } = makeController({ user: SUPER });
+    await controller.listGoldenSets({ tenantId: 't9' });
+    expect(evalService.listGoldenSets).toHaveBeenCalledWith('t9', { page: undefined, limit: undefined });
+  });
+
+  it('getGoldenSet resolves the tenant and forwards the id', async () => {
+    const { controller, evalService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    await controller.getGoldenSet('set-1', {});
+    expect(evalService.getGoldenSet).toHaveBeenCalledWith('t1', 'set-1');
+  });
+
+  it('listGoldenCases forwards the set id under the resolved tenant', async () => {
+    const { controller, evalService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    await controller.listGoldenCases('set-1', { page: '1', limit: '10' });
+    expect(evalService.listGoldenCases).toHaveBeenCalledWith('t1', 'set-1', { page: 1, limit: 10 });
+  });
+
+  it('createGoldenSet writes under the resolved tenant, stamping the CLS user as createdBy', async () => {
+    const { controller, evalService } = makeController({ user: { roles: ['TENANT_ADMIN'], tenantId: 't1', id: 'user-9' } as never, tenantId: 't1' });
+    await controller.createGoldenSet({ name: 'GI set', description: 'gold' } as never, {});
+    expect(evalService.addGoldenSet).toHaveBeenCalledWith({ tenantId: 't1', name: 'GI set', description: 'gold', pinnedVersion: undefined, createdBy: 'user-9' });
+  });
+
+  it('createGoldenSet rejects a tenant admin targeting another tenant', async () => {
+    const { controller, evalService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    await expect(controller.createGoldenSet({ name: 'x' } as never, { tenantId: 't2' })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(evalService.addGoldenSet).not.toHaveBeenCalled();
+  });
+
+  it('createGoldenCase forwards the parent set id + PHI payload under the resolved tenant', async () => {
+    const { controller, evalService } = makeController({ user: { roles: ['TENANT_ADMIN'], tenantId: 't1', id: 'user-9' } as never, tenantId: 't1' });
+    await controller.createGoldenCase('set-1', { transcript: 't', referenceNote: 'r', label: 'a' } as never, {});
+    expect(evalService.addGoldenCase).toHaveBeenCalledWith({
+      tenantId: 't1',
+      goldenSetId: 'set-1',
+      transcript: 't',
+      referenceNote: 'r',
+      label: 'a',
+      createdBy: 'user-9',
+    });
+  });
+});
+
+describe('HarnessAdminController — golden-set authorization metadata (TASK-419)', () => {
+  it('reads are pinned to read:HarnessEval, creates to manage:HarnessEval', () => {
+    const proto = HarnessAdminController.prototype;
+    expect(Reflect.getMetadata('required_permissions', proto.listGoldenSets)).toEqual([{ action: 'read', subject: 'HarnessEval' }]);
+    expect(Reflect.getMetadata('required_permissions', proto.getGoldenSet)).toEqual([{ action: 'read', subject: 'HarnessEval' }]);
+    expect(Reflect.getMetadata('required_permissions', proto.listGoldenCases)).toEqual([{ action: 'read', subject: 'HarnessEval' }]);
+    expect(Reflect.getMetadata('required_permissions', proto.createGoldenSet)).toEqual([{ action: 'manage', subject: 'HarnessEval' }]);
+    expect(Reflect.getMetadata('required_permissions', proto.createGoldenCase)).toEqual([{ action: 'manage', subject: 'HarnessEval' }]);
   });
 });

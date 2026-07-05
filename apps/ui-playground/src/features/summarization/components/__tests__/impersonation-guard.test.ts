@@ -26,21 +26,21 @@ function getBodyText(props: ImpersonationGuardProps): string {
 describe('ImpersonationGuard component contract', () => {
   describe('default behavior (backward compatible)', () => {
     it('should show "summarization" in subtitle when no featureName provided', () => {
-      const text = getSubtitleText({ roles: ['SUPER_ADMIN'] });
+      const text = getSubtitleText({ roles: ['GLOBAL_ADMIN'] });
       expect(text).toContain('summarization');
     });
 
     it('should show default body text when no featureDescription provided', () => {
-      const text = getBodyText({ roles: ['SUPER_ADMIN'] });
+      const text = getBodyText({ roles: ['GLOBAL_ADMIN'] });
       expect(text).toContain('Prompt templates and DNA writing styles');
-      expect(text).toContain('SUPER_ADMIN');
+      expect(text).toContain('GLOBAL_ADMIN');
     });
   });
 
   describe('custom featureName', () => {
     it('should use custom featureName in subtitle for consultation', () => {
       const text = getSubtitleText({
-        roles: ['SUPER_ADMIN'],
+        roles: ['GLOBAL_ADMIN'],
         featureName: 'consultation',
       });
       expect(text).toContain('consultation');
@@ -61,7 +61,7 @@ describe('ImpersonationGuard component contract', () => {
       const customDesc =
         'Consultations are doctor-scoped. You need to impersonate a doctor to view and manage consultations.';
       const text = getBodyText({
-        roles: ['SUPER_ADMIN'],
+        roles: ['GLOBAL_ADMIN'],
         featureDescription: customDesc,
       });
       expect(text).toBe(customDesc);
@@ -76,8 +76,8 @@ describe('ImpersonationGuard component contract', () => {
 
   describe('roles display', () => {
     it('should join multiple roles with comma separator', () => {
-      const text = getBodyText({ roles: ['SUPER_ADMIN', 'GLOBAL_ADMIN'] });
-      expect(text).toContain('SUPER_ADMIN, GLOBAL_ADMIN');
+      const text = getBodyText({ roles: ['GLOBAL_ADMIN', 'TENANT_ADMIN'] });
+      expect(text).toContain('GLOBAL_ADMIN, TENANT_ADMIN');
     });
 
     it('should display single role without comma in role list', () => {

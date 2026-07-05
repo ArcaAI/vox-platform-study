@@ -412,7 +412,7 @@ describe('ApiHealthController', () => {
     // TASK-336 OB-12 / TASK-386 #21·E6 — admin-gate /health/services{/:key}
     //   Pre-OB-12 these carried @Authorize() (any authenticated caller —
     //   a plain doctor could read downstream ops health). OB-12 tightened
-    //   them to the SUPER_ADMIN `manage all` gate.
+    //   them to the GLOBAL_ADMIN `manage all` gate.
     //
     //   TASK-386 (#21/E6) WIDENS them to `@CanAny(['manage','all'],
     //   ['read','TenantTelemetry'])` so a tenant-admin with the seeded

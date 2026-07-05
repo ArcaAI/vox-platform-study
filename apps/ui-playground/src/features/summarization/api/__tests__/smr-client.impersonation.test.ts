@@ -24,7 +24,7 @@ const doctorUser = {
 
 /**
  * D2 (TASK-323) — SMR requests must carry the *effective* (impersonated)
- * tenant + token, identically to `adminClient`. A TENANT_ADMIN/SUPER_ADMIN
+ * tenant + token, identically to `adminClient`. A TENANT_ADMIN/GLOBAL_ADMIN
  * impersonating a user in another tenant must generate summaries in the
  * impersonated tenant, never their own.
  */

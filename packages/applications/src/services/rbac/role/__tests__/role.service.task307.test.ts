@@ -206,11 +206,11 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
   describe('update', () => {
     it('refuses to modify a system role', async () => {
       const mocks = makeMocks();
-      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
+      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'GLOBAL_ADMIN' });
       const service = buildService(mocks);
 
       await expect(service.update('role-sys', { name: 'x' })).rejects.toThrow(
-        /Cannot modify system role 'SUPER_ADMIN'/,
+        /Cannot modify system role 'GLOBAL_ADMIN'/,
       );
       expect(mocks.roleRepo.update).not.toHaveBeenCalled();
     });
@@ -278,7 +278,7 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
   describe('softDelete', () => {
     it('refuses to delete a system role', async () => {
       const mocks = makeMocks();
-      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
+      mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'GLOBAL_ADMIN' });
       const service = buildService(mocks);
 
       await expect(service.softDelete('role-sys')).rejects.toThrow(/Cannot delete system role/);

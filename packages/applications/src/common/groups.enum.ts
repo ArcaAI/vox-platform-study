@@ -1,5 +1,5 @@
 export enum GroupsEnum {
-  SUPER_ADMIN = 'super_admin',
+  GLOBAL_ADMIN = 'global_admin',
   ADMIN = 'admin',
   USER = 'user',
 }

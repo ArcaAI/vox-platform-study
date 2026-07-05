@@ -271,10 +271,11 @@ test.describe.serial('TASK-401 E — safeguards', () => {
         expect(((await res.json()) as { message?: string }).message).toMatch(/yourself/i);
     });
 
-    test('E3 — super-admin-tier target (seeded GLOBAL_ADMIN) is rejected', async ({ request }) => {
+    test('E3 — elevated-tier target (seeded GLOBAL_ADMIN) is rejected', async ({ request }) => {
         const res = await impersonate(request, GLOBAL_ADMIN_USER_ID);
         expect(res.status(), 'GLOBAL_ADMIN target → 400').toBe(400);
-        expect(((await res.json()) as { message?: string }).message).toMatch(/super administrator/i);
+        // TASK-417 — the guard message now says "global administrator".
+        expect(((await res.json()) as { message?: string }).message).toMatch(/global administrator/i);
     });
 
     test('E4 — disabled target is rejected; unknown target is 404', async ({ request }) => {

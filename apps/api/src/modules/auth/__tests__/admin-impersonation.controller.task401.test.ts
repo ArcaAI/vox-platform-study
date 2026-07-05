@@ -1,5 +1,5 @@
 /**
- * AdminImpersonationController — TASK-401 super-admin-only impersonation.
+ * AdminImpersonationController — TASK-401 global-admin-only impersonation.
  *
  * Guard matrix, token-claim shape, TTL default/override, and audit emissions
  * for `POST /admin/users/:id/impersonate`. Pure unit tests (no Nest container),
@@ -11,7 +11,9 @@ import { EventTypes, SysEventType } from '@arcaai/domains';
 import { AdminImpersonationController, USER_IMPERSONATION_STARTED } from '../admin-impersonation.controller';
 import { ImpersonationEvents, ImpersonationDeniedReason } from '../impersonation-events';
 
-const SUPER_ADMIN = 'SUPER_ADMIN';
+const GLOBAL_ADMIN = 'GLOBAL_ADMIN';
+// TASK-417 — retired role literal, used only to prove it no longer elevates.
+const RETIRED_SUPER_ADMIN = 'SUPER_ADMIN';
 const TENANT_ADMIN = 'TENANT_ADMIN';
 const DOCTOR = 'DOCTOR';
 
@@ -38,7 +40,7 @@ interface Fixture {
 
 function buildController(opts: { user: ClsUserStub | null; fixture?: Partial<Fixture> }) {
     const fixture: Fixture = {
-        actorRoles: [SUPER_ADMIN],
+        actorRoles: [GLOBAL_ADMIN],
         targetRoles: [{ name: DOCTOR, permissions: ['read:Consultation'] }],
         targetTenants: ['tenant-B'],
         target: { id: 'target-B', username: 'doctor.bob', resourceStatus: 'ENABLED', UserProfile: { email: 'bob@x' } },
@@ -101,7 +103,7 @@ function deniedEvents(eventEmitter: { emit: ReturnType<typeof vi.fn> }) {
 describe('AdminImpersonationController — TASK-401 guard matrix', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it('allows a SUPER_ADMIN and mints a target-identity token with the actor preserved', async () => {
+    it('allows a GLOBAL_ADMIN and mints a target-identity token with the actor preserved', async () => {
         const { controller } = buildController({ user: { id: 'admin-A', tenantId: null } });
 
         const response = await controller.impersonate('target-B', {}, REQ);
@@ -147,7 +149,7 @@ describe('AdminImpersonationController — TASK-401 guard matrix', () => {
         expect(ceil.exp - ceil.iat).toBe(1800);
     });
 
-    it('rejects a non-super-admin caller (doctor) with 403 + CALLER_NOT_SUPER_ADMIN', async () => {
+    it('rejects a non-global-admin caller (doctor) with 403 + CALLER_NOT_SUPER_ADMIN', async () => {
         const { controller, eventEmitter } = buildController({
             user: { id: 'admin-A', tenantId: 'tenant-A' },
             fixture: { actorRoles: [DOCTOR] },
@@ -157,13 +159,23 @@ describe('AdminImpersonationController — TASK-401 guard matrix', () => {
         expect(deniedEvents(eventEmitter)).toEqual([expect.objectContaining({ reason: ImpersonationDeniedReason.CallerNotSuperAdmin })]);
     });
 
-    it('rejects a TENANT_ADMIN caller with 403 (super-admin only, stricter than the legacy route)', async () => {
+    it('rejects a TENANT_ADMIN caller with 403 (global-admin only, stricter than the legacy route)', async () => {
         const { controller } = buildController({
             user: { id: 'admin-A', tenantId: 'tenant-A' },
             fixture: { actorRoles: [TENANT_ADMIN] },
         });
 
         await expect(controller.impersonate('target-B', {}, REQ)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects the retired SUPER_ADMIN role literal — no longer elevated (TASK-417)', async () => {
+        const { controller, eventEmitter } = buildController({
+            user: { id: 'admin-A', tenantId: 'tenant-A' },
+            fixture: { actorRoles: [RETIRED_SUPER_ADMIN] },
+        });
+
+        await expect(controller.impersonate('target-B', {}, REQ)).rejects.toThrow(ForbiddenException);
+        expect(deniedEvents(eventEmitter)).toEqual([expect.objectContaining({ reason: ImpersonationDeniedReason.CallerNotSuperAdmin })]);
     });
 
     it('rejects self-impersonation with 400 + SELF_IMPERSONATION', async () => {
@@ -173,7 +185,7 @@ describe('AdminImpersonationController — TASK-401 guard matrix', () => {
         expect(deniedEvents(eventEmitter)).toEqual([expect.objectContaining({ reason: ImpersonationDeniedReason.SelfImpersonation })]);
     });
 
-    it('rejects a super-admin-tier target with 400 + TARGET_IS_SUPER_ADMIN', async () => {
+    it('rejects a global-admin target with 400 + TARGET_IS_SUPER_ADMIN', async () => {
         const { controller, eventEmitter } = buildController({
             user: { id: 'admin-A' },
             fixture: { targetRoles: [{ name: 'GLOBAL_ADMIN' }] },
@@ -260,7 +272,7 @@ describe('AdminImpersonationController — TASK-401 audit emissions', () => {
         );
 
         // TASK-396 pattern: forced audit row, attributed to the RESOLVED tenant
-        // because the super-admin's CLS tenant is null.
+        // because the global admin's CLS tenant is null.
         const forced = eventEmitter.emit.mock.calls.find(([name]) => name === SysEventType.ResourceViewed);
         expect(forced?.[1]).toEqual(
             expect.objectContaining({
@@ -279,7 +291,7 @@ describe('AdminImpersonationController — TASK-401 audit emissions', () => {
         );
     });
 
-    it('prefers the CLS tenant for the forced row when the super-admin is tenant-scoped', async () => {
+    it('prefers the CLS tenant for the forced row when the global admin is tenant-scoped', async () => {
         const { controller, eventEmitter } = buildController({ user: { id: 'admin-A', tenantId: 'tenant-CLS' } });
 
         await controller.impersonate('target-B', {}, REQ);

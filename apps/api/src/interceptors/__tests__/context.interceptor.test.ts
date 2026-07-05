@@ -291,7 +291,7 @@ describe('ContextInterceptor', () => {
             expect(() => interceptor.intercept(context, handler)).not.toThrow();
         });
 
-        it('does NOT throw when JWT has no tenantId (e.g., super-admin) even if x-tenant-id is present', async () => {
+        it('does NOT throw when JWT has no tenantId (e.g., global-admin) even if x-tenant-id is present', async () => {
             mockClsService.get = vi.fn((key: string) => {
                 if (key === 'user') return { tenantId: null };
                 return undefined;
@@ -308,7 +308,7 @@ describe('ContextInterceptor', () => {
         });
     });
 
-    describe('TASK-331 r2605 #1 — super-admin x-tenant-id → CLS elevation', () => {
+    describe('TASK-331 r2605 #1 — global-admin x-tenant-id → CLS elevation', () => {
         const VALID_TENANT = '0190b6e2-7e7a-7c3a-8b1a-2c3d4e5f6a7b';
 
         function buildCls(user: unknown) {
@@ -329,8 +329,8 @@ describe('ContextInterceptor', () => {
             vi.clearAllMocks();
         });
 
-        it('elevates: sets CLS tenantId to the header for a super-admin with an empty JWT tenant', async () => {
-            const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] });
+        it('elevates: sets CLS tenantId to the header for a global-admin with an empty JWT tenant', async () => {
+            const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] });
             interceptor = await buildInterceptor(cls);
 
             const context = createMockContext({ headers: { 'x-tenant-id': VALID_TENANT } });
@@ -340,7 +340,7 @@ describe('ContextInterceptor', () => {
         });
 
         it('emits a structured audit log line naming the elevated tenant', async () => {
-            const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] });
+            const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] });
             interceptor = await buildInterceptor(cls);
             const logSpy = vi.spyOn(interceptor['logger'], 'log');
 
@@ -356,9 +356,9 @@ describe('ContextInterceptor', () => {
             );
         });
 
-        it('throws BadRequest("Invalid x-tenant-id format") when a super-admin passes a malformed header', async () => {
+        it('throws BadRequest("Invalid x-tenant-id format") when a global-admin passes a malformed header', async () => {
             const { BadRequestException } = await import('@nestjs/common');
-            const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] });
+            const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] });
             interceptor = await buildInterceptor(cls);
 
             const context = createMockContext({ headers: { 'x-tenant-id': 'not-a-uuid' } });
@@ -374,8 +374,8 @@ describe('ContextInterceptor', () => {
             expect(cls.set).not.toHaveBeenCalledWith('tenantId', expect.anything());
         });
 
-        it('does NOT elevate a super-admin when no x-tenant-id header is present', async () => {
-            const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] });
+        it('does NOT elevate a global-admin when no x-tenant-id header is present', async () => {
+            const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] });
             interceptor = await buildInterceptor(cls);
 
             const context = createMockContext({ headers: {} });
@@ -384,7 +384,7 @@ describe('ContextInterceptor', () => {
             expect(cls.set).not.toHaveBeenCalledWith('tenantId', expect.anything());
         });
 
-        it('does NOT elevate a non-super-admin with an empty JWT tenant even with a valid header', async () => {
+        it('does NOT elevate a non-global-admin with an empty JWT tenant even with a valid header', async () => {
             const cls = buildCls({ id: 'u-1', tenantId: '', roles: ['DEPARTMENT_ADMIN'] });
             interceptor = await buildInterceptor(cls);
 

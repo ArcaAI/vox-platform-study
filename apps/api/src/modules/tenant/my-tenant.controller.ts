@@ -31,7 +31,7 @@ export class MyTenantController {
 
   /**
    * Returns the tenant entity associated with the caller's CLS tenant context.
-   * Responds with 400 when no tenant context is present — super-admins must use
+   * Responds with 400 when no tenant context is present — global-admins must use
    * the /admin/tenants endpoints to manage other tenants instead of relying on a
    * silent global fallback.
    */
@@ -48,7 +48,7 @@ export class MyTenantController {
   /**
    * Returns the configuration rows for the caller's CLS tenant context.
    * Responds with 400 when no tenant context is present (no silent global
-   * fallback for super-admins).
+   * fallback for global-admins).
    */
   @Get('me/config')
   @ApiOperation({ summary: 'Get current tenant configuration' })
@@ -78,7 +78,7 @@ export class MyTenantController {
   /**
    * Updates configuration rows for the caller's CLS tenant context.
    * Responds with 400 when no tenant context is present (no silent global
-   * fallback for super-admins).
+   * fallback for global-admins).
    */
   @Patch('me/config')
   @RequiresIfMatch()
@@ -138,7 +138,7 @@ export class MyTenantController {
     const tenantId = this.clsService.get('tenantId');
     if (tenantId) return tenantId;
 
-    throw new BadRequestException('Tenant context is required. Super-admins must use /admin/tenants endpoints to manage other tenants.');
+    throw new BadRequestException('Tenant context is required. Global-admins must use /admin/tenants endpoints to manage other tenants.');
   }
 
   /**

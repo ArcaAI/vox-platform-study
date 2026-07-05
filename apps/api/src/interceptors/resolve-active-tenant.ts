@@ -1,10 +1,10 @@
 import { isSuperAdmin } from '@arcaai/applications';
 
 /**
- * TASK-331 r2605 Finding #1 — pure decision helper for the super-admin
+ * TASK-331 r2605 Finding #1 — pure decision helper for the global-admin
  * "manage as tenant" elevation.
  *
- * A super-admin authenticates with an EMPTY CLS `tenantId` (their JWT carries
+ * A global-admin authenticates with an EMPTY CLS `tenantId` (their JWT carries
  * `tenantId: ''`). When they pick a tenant in the admin console it is sent as
  * an `x-tenant-id` header. `ContextInterceptor` uses this helper to decide
  * whether that header may elevate the active tenant; the elevation itself
@@ -13,10 +13,10 @@ import { isSuperAdmin } from '@arcaai/applications';
  *
  * Decision table (only reached when an `x-tenant-id` header is present and the
  * caller has NOT been rejected by the TASK-307 W5.3 divergence guard):
- *  - super-admin + empty JWT tenant + valid-UUID header → `elevate`
- *  - super-admin + empty JWT tenant + malformed header  → `invalid`
+ *  - global-admin + empty JWT tenant + valid-UUID header → `elevate`
+ *  - global-admin + empty JWT tenant + malformed header  → `invalid`
  *  - tenant-bound caller (truthy JWT tenant)            → `none`
- *  - non-super-admin                                    → `none`
+ *  - non-global-admin                                    → `none`
  *  - no header                                          → `none`
  */
 export type ActiveTenantDecision = { type: 'elevate'; tenantId: string } | { type: 'invalid' } | { type: 'none' };

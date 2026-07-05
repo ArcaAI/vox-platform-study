@@ -4,7 +4,7 @@ import { PlatformMetricsController } from '../platform-metrics.controller';
 /**
  * TASK-386 (#16 / E1·E2·E3) — controller delegation unit test.
  *
- * The auth matrix (super-admin → 200, tenant-admin / doctor → 403 via the
+ * The auth matrix (global-admin → 200, tenant-admin / doctor → 403 via the
  * `@CanManage('PlatformMetrics')` gate) is enforced by the global
  * `UnifiedAuthGuard` and is asserted end-to-end in
  * `apps/api/tests/e2e/task-386-platform-metrics.spec.ts` (PM1). Here we pin the

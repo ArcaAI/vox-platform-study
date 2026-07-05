@@ -4,7 +4,7 @@ import { SchedulersTab } from './schedulers-tab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/tabs';
 import { CalendarClock, Layers } from 'lucide-react';
 
-// TASK-250 / TASK-336 OB-03 — SUPER_ADMIN console over the queue-admin +
+// TASK-250 / TASK-336 OB-03 — GLOBAL_ADMIN console over the queue-admin +
 // scheduler-admin backend (BullMQ queues/jobs + @nestjs/schedule crons). The
 // route is gated to global scope; this is platform-wide infrastructure.
 export default function QueuesPage() {

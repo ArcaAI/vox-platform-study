@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox — Super-admin ops-surface types (TASK-403).
+ * @arcaai/vox — Global-admin ops-surface types (TASK-403).
  *
  * Wire shapes for the three OPERATIONS admin surfaces:
  * - Rate Limits  → `apps/api/src/modules/admin-rate-limit/` (TASK-316 substrate)

@@ -20,7 +20,7 @@ export default function Introduction() {
   const tenantKey = useAuthStore((s) => s.tenantKey);
   const user = useAuthStore((s) => s.user);
 
-  const isSuperAdmin = useMemo(() => user?.roles?.includes('SUPER_ADMIN') ?? false, [user?.roles]);
+  const isSuperAdmin = useMemo(() => user?.roles?.includes('GLOBAL_ADMIN') ?? false, [user?.roles]);
   const isTenantAdmin = useMemo(
     () => isSuperAdmin || (user?.roles?.some((r) => TENANT_ADMIN_ROLES.includes(r as (typeof TENANT_ADMIN_ROLES)[number])) ?? false),
     [user?.roles, isSuperAdmin],

@@ -69,7 +69,7 @@ export function LiveConfigTab() {
             <div className="flex flex-col gap-1">
                 <h2 className="text-base font-semibold">Live documentation engine</h2>
                 <p className="text-muted-foreground text-sm">
-                    Runtime kill-switch (super-admin, global scope). <span className="font-mono text-xs">PATCH /admin/harness/live/config</span> persists
+                    Runtime kill-switch (global admin, global scope). <span className="font-mono text-xs">PATCH /admin/harness/live/config</span> persists
                     a Redis override that fans out to all API instances &mdash; no redeploy. Disabling refuses new sessions while in-flight ones drain.
                 </p>
             </div>

@@ -46,7 +46,7 @@ export function buildOverviewSnippet(ctx: OverviewSnippetContext): string {
     `export function ConnectionStatus() {`,
     `  const { isImpersonating, impersonatedUser } = useAuth();`,
     `  const { configReady } = useArcaConfig();`,
-    ...(ctx.isSuperAdmin ? [`  // super-admin: switch tenants at runtime via AgenticProvider.updateTenantId()`] : []),
+    ...(ctx.isSuperAdmin ? [`  // global-admin: switch tenants at runtime via AgenticProvider.updateTenantId()`] : []),
     ``,
     `  if (!configReady) return 'loading…';`,
     `  return isImpersonating ? \`acting as \${impersonatedUser?.username}\` : 'ready';`,

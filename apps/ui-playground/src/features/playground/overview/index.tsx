@@ -11,7 +11,7 @@ import { UserList } from './components/user-list';
 
 export default function OverviewPage() {
   const { tenantId, user } = useAuthStore();
-  const isSuperAdmin = user?.roles?.includes('SUPER_ADMIN') ?? false;
+  const isSuperAdmin = user?.roles?.includes('GLOBAL_ADMIN') ?? false;
   const overviewCode = useMemo(() => buildOverviewSnippet({ tenantId, isSuperAdmin }), [tenantId, isSuperAdmin]);
 
   return (
@@ -36,7 +36,7 @@ export default function OverviewPage() {
               )}
               {isSuperAdmin && (
                 <Badge variant="secondary" className="text-xs">
-                  Super Admin
+                  Global Admin
                 </Badge>
               )}
             </div>

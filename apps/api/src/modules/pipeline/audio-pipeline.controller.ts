@@ -17,7 +17,7 @@ import { AssignTenantRequest, AssignTenantResponse, ValidateYamlRequest, Validat
  * TASK-298 D-10 — narrowed authorization scope.
  *
  * Previously this controller used `@Authorize(['manage', 'all'])` which only
- * tenant super-admins could satisfy. Tenant admins legitimately need to
+ * tenant global-admins could satisfy. Tenant admins legitimately need to
  * self-serve their ASR pipelines, so we narrow the subject to `AsrPipeline`.
  */
 @ApiBearerAuth()

@@ -1,7 +1,7 @@
 /**
  * useAdminTranscriptionJobs Hook Tests (TASK-323 Phase 0 / TASK-320 A1)
  *
- * Tenant-wide transcription-job supervision for TENANT_ADMIN / SUPER_ADMIN.
+ * Tenant-wide transcription-job supervision for TENANT_ADMIN / GLOBAL_ADMIN.
  *
  * @vitest-environment jsdom
  */

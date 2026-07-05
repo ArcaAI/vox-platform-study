@@ -5,28 +5,30 @@ import { shouldEnablePrismaStudio } from './pstudio.module';
 
 /** Response for `GET /admin/pstudio/status`. */
 export class PrismaStudioStatusResponse {
-  @ApiProperty({ description: 'Whether the dev-only Prisma Studio shell is enabled in this environment.' })
+  @ApiProperty({ description: 'Whether the Prisma Studio shell is enabled in this environment (ENABLE_PRISMA_STUDIO flag).' })
   enabled!: boolean;
 }
 
 /**
- * TASK-403 — always-registered availability probe for the dev-only Prisma
- * Studio module. `PrismaStudioModule` (the shell + BFF) is only registered
- * when `shouldEnablePrismaStudio()` is true, so from the admin console a 404
- * on `/admin/pstudio` is ambiguous (disabled? wrong URL? server down?). This
+ * TASK-403 — always-registered availability probe for the Prisma Studio
+ * module. `PrismaStudioModule` (the shell + BFF) is only registered when
+ * `shouldEnablePrismaStudio()` is true, so from the admin console a 404 on
+ * `/admin/pstudio` is ambiguous (disabled? wrong URL? server down?). This
  * controller is registered unconditionally and reports the same env decision,
  * letting the Prisma Studio surface render a truthful enabled/disabled card.
  *
- * Read-only, leaks no connection details, and — like the Studio surface
- * itself — is gated to SUPER_ADMIN (`manage all`).
+ * TASK-419 item 4 — the enablement is production-capable (`ENABLE_PRISMA_STUDIO`
+ * only, fail-closed when unset) and the probe is gated by the same DEDICATED
+ * `manage:PrismaStudio` subject as the studio itself. Read-only, leaks no
+ * connection details.
  */
 @ApiTags('admin-pstudio')
 @ApiBearerAuth()
-@Authorize(['manage', 'all'])
+@Authorize(['manage', 'PrismaStudio'])
 @Controller('admin/pstudio/status')
 export class PrismaStudioStatusController {
   @Get()
-  @ApiOperation({ summary: 'Report whether the dev-only Prisma Studio shell is enabled in this environment.' })
+  @ApiOperation({ summary: 'Report whether the Prisma Studio shell is enabled in this environment.' })
   @ApiOkResponse({ type: PrismaStudioStatusResponse })
   getStatus(): PrismaStudioStatusResponse {
     return { enabled: shouldEnablePrismaStudio(process.env) };

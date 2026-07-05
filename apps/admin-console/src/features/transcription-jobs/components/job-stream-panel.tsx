@@ -72,16 +72,13 @@ function JobDetail({ job }: { job: TranscriptionJob }) {
 
 /**
  * Frame 35 right panel — selected job detail plus the live SSE feed
- * (ticket-authenticated EventSource straight to the gateway).
- *
- * KNOWN PLATFORM GAP: `GET /audio/transcription-jobs/:id/stream` does not
- * declare `@StreamScope` yet, so the minted ticket 401s at the gateway until
- * TASK-419 lands — the stream lands on "Offline" after its retry budget.
- * `useTranscriptionJob` therefore polls the detail every 5 s while the job is
- * non-terminal, keeping this panel live today.
+ * (ticket-authenticated EventSource straight to the gateway; the route
+ * declares `@StreamScope transcription_job` since TASK-419). The stream is
+ * the primary live transport; if it exhausts its retry budget the detail
+ * query re-polls every 5 s as the documented error fallback until the job
+ * settles or the stream is reconnected.
  */
 export function JobStreamPanel({ jobId }: { jobId: string }) {
-    const jobQuery = useTranscriptionJob(jobId);
     const [events, setEvents] = useState<StreamEventLine[]>([]);
 
     const stream = useEventStream({
@@ -90,6 +87,8 @@ export function JobStreamPanel({ jobId }: { jobId: string }) {
         eventNames: ['status', 'progress', 'chunk', 'transcript', 'error'],
         onEvent: (type, data) => setEvents((current) => [...current.slice(-(MAX_EVENTS - 1)), { type, data }]),
     });
+
+    const jobQuery = useTranscriptionJob(jobId, stream.status === 'error');
 
     const streamMeta = STREAM_STATUS_META[stream.status];
 
@@ -134,10 +133,9 @@ export function JobStreamPanel({ jobId }: { jobId: string }) {
                         ))}
                     </ol>
                 )}
-                <p className="text-muted-foreground text-xs">
-                    Stream tickets 401 on this route until TASK-419 adds its {'@StreamScope'} — the panel polls GET
-                    /audio/transcription-jobs/:id every 5 s while the job runs.
-                </p>
+                {stream.status === 'error' ? (
+                    <p className="text-muted-foreground text-xs">Stream unavailable — the job detail re-polls every 5 s until it settles.</p>
+                ) : null}
             </section>
         </div>
     );

@@ -5,7 +5,7 @@
  * itself is conditionally registered (NODE_ENV=development +
  * ENABLE_PRISMA_STUDIO=true); this hook reads the always-on
  * `GET /admin/pstudio/status` endpoint so the admin console can render a
- * truthful enabled/disabled card. Super-admin only (`manage all`).
+ * truthful enabled/disabled card. Global-admin only (`manage all`).
  */
 
 import { useState, useCallback } from 'react';

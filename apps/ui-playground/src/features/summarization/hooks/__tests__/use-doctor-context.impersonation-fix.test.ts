@@ -56,7 +56,7 @@ const ADMIN_USER = {
   id: 'admin-001',
   email: 'admin@test.com',
   username: 'super_admin',
-  roles: ['SUPER_ADMIN'],
+  roles: ['GLOBAL_ADMIN'],
   permissions: [],
 };
 
@@ -169,7 +169,7 @@ describe('useDoctorContext — impersonation bug fix', () => {
   });
 
   describe('admin NOT impersonating (guard should block)', () => {
-    it('should require impersonation for SUPER_ADMIN not impersonating', () => {
+    it('should require impersonation for GLOBAL_ADMIN not impersonating', () => {
       useAuthStore.getState().setCredentialsAuth('admin-token', ADMIN_USER, TENANT_UUID);
 
       const { result } = renderHook(() => useDoctorContext());

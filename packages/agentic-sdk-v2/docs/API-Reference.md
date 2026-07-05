@@ -347,7 +347,7 @@ const auth = useAuth();
 | `error` | `Error \| null` | Auth error |
 | `impersonatedUser` | `AuthUser \| null` | Currently impersonated user (null if not impersonating) |
 | `isImpersonating` | `boolean` | Whether impersonation is active |
-| `canImpersonate` | `boolean` | Whether current user has SUPER_ADMIN or TENANT_ADMIN role |
+| `canImpersonate` | `boolean` | Whether current user has GLOBAL_ADMIN or TENANT_ADMIN role |
 | `login` | `(username: string, password: string, tenantKey?: string) => Promise<LoginResponse>` | Login with credentials |
 | `logout` | `() => Promise<void>` | Logout and clear tokens |
 | `getMe` | `() => Promise<AuthUser>` | Get current user profile |

@@ -281,10 +281,10 @@ describe('TASK-307 W2.3 — auth.controller uses SecretsService only', () => {
 
             // TASK-307 W6 — controller no longer touches Prisma directly. Instead,
             // it asks IUserRoleAssignmentService for roles + tenant ids. Wire the
-            // SUPER_ADMIN admin / doctor target shape via service methods.
+            // GLOBAL_ADMIN admin / doctor target shape via service methods.
             const uraService = {
                 findActiveRolesForUser: vi.fn(async (userId: string) => {
-                    if (userId === 'admin-001') return [createRole('SUPER_ADMIN', [])];
+                    if (userId === 'admin-001') return [createRole('GLOBAL_ADMIN', [])];
                     if (userId === 'doctor-001') return [createRole('doctor', [])];
                     return [];
                 }),
@@ -395,7 +395,7 @@ describe('auth.controller — sign-path survives SecretsService TTL expiry (getS
 
         const uraService = {
             findActiveRolesForUser: vi.fn(async (userId: string) => {
-                if (userId === 'admin-001') return [createRole('SUPER_ADMIN', [])];
+                if (userId === 'admin-001') return [createRole('GLOBAL_ADMIN', [])];
                 if (userId === 'doctor-001') return [createRole('doctor', [])];
                 return [];
             }),

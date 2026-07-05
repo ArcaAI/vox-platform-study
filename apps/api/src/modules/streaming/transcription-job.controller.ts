@@ -13,6 +13,7 @@ import {
   TranscriptionRealtimeService,
 } from '@arcaai/applications';
 import { TenantBucketPurpose } from '@arcaai/domains';
+import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 import type { MessageEvent } from '@nestjs/common';
 import {
@@ -471,10 +472,19 @@ export class TranscriptionJobController {
     return job;
   }
 
+  // TASK-419 item 6 — @StreamScope lets single-use tickets from
+  // POST /auth/stream-ticket (scope `transcription_job:<id>`) authenticate this
+  // SSE route; the @TenantOwnedResource pre-stream tenant assertion is unchanged.
   @Get(':id/stream')
   @Sse()
   @TenantOwnedResource({ modelName: 'TranscriptionJob', paramName: 'id' })
-  @ApiOperation({ summary: 'Stream transcription job events via SSE' })
+  @StreamScope({ namespace: 'transcription_job', param: 'id' })
+  @ApiOperation({
+    summary: 'Stream transcription job events via SSE',
+    description:
+      'Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by ' +
+      '`POST /auth/stream-ticket` with scope `transcription_job:<id>`.',
+  })
   @ApiParam({ name: 'id', description: 'Transcription job ID' })
   streamJob(@Param('id') id: string): Observable<MessageEvent> {
     if (!id?.trim()) {
