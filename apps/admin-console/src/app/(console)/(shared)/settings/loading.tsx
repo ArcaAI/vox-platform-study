@@ -1,6 +1,6 @@
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 
-/** Skeleton mirroring the settings list: header, scope tabs, filter bar, table, footer. */
+/** Skeleton mirroring the settings list: header, filter bar, table, footer. */
 export default function SettingsLoading() {
     return (
         <div className="flex flex-col gap-4">
@@ -11,7 +11,6 @@ export default function SettingsLoading() {
                 </div>
                 <Skeleton className="h-9 w-32" />
             </div>
-            <Skeleton className="h-9 w-56" />
             <Skeleton className="h-13 w-full" />
             <div className="flex flex-col gap-3 rounded-md border p-3">
                 {Array.from({ length: 8 }, (_, index) => (

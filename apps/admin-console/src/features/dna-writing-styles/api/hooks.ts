@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEventStream, type StreamStatus } from '@/shared/streams';
 import {
     dnaJobStreamPath,
@@ -17,7 +17,7 @@ import { dnaKeys } from './keys';
 import type { DnaJobStatus, GenerateDnaReportRequest, ListDnaReportsParams, UpdateDnaReportRequest } from './types';
 
 export function useDnaReports(params?: ListDnaReportsParams) {
-    return useQuery({ queryKey: dnaKeys.list(params), queryFn: () => listDnaReports(params) });
+    return useQuery({ queryKey: dnaKeys.list(params), queryFn: () => listDnaReports(params), placeholderData: keepPreviousData });
 }
 
 export function useDnaDashboard() {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ListParams } from '@/shared/api';
 import { createModel, deleteModel, getModel, getModelBySlug, listModels, listModelsPaginated, updateModel } from './client';
 import { aiModelKeys } from './keys';
@@ -11,7 +11,7 @@ export function useModels() {
 }
 
 export function useModelsPaginated(params?: ListParams) {
-    return useQuery({ queryKey: aiModelKeys.list(params), queryFn: () => listModelsPaginated(params) });
+    return useQuery({ queryKey: aiModelKeys.list(params), queryFn: () => listModelsPaginated(params), placeholderData: keepPreviousData });
 }
 
 export function useModel(id: string) {

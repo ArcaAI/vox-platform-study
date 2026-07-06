@@ -53,7 +53,7 @@ Most screens hand-roll their page layout (`<div className="flex … flex-col gap
     stats={…}            // optional pinned strip
     statusBanner={…}     // optional pinned page alert
     toolbar={<FilterBar>…</FilterBar>}  // optional; grid pages carry the toolbar INSIDE the grid
-    tabs={<TabsList>…</TabsList>}       // optional; wrap the whole template in <Tabs>, panels go in children
+    tabs={<TabsList variant="line">…</TabsList>}  // optional; underline (standard); wrap the whole template in <Tabs>, panels go in children
     contentMode="fill"   // 'fill' for a fill-height AdminDataGrid; 'scroll' (default) for content/detail/dashboards
     footer={<StatusFooter start={…} end={…} />}  // optional pinned bottom status bar
 >
@@ -63,7 +63,7 @@ Most screens hand-roll their page layout (`<div className="flex … flex-col gap
 
 - **Grid pages** → `contentMode="fill"`, child is the `AdminDataGrid` (its own toolbar/body/pagination). The grid pagination lands directly above the footer.
 - **Content / detail / dashboard pages** → `contentMode="scroll"` (default); the content region scrolls between the pinned top group and footer.
-- **Tabs** → wrap the template in `<Tabs>`; `<TabsList>` to `tabs`, `<TabsContent>` panels as `children` (shared context across regions).
+- **Tabs** → wrap the template in `<Tabs>`; `<TabsList variant="line">` (underline — the standard, not the bare `<TabsList>` pill default) to `tabs`, `<TabsContent>` panels as `children` (shared context across regions).
 - Never nest a second scroll area inside `fill` content (rule 11 "one scroll container per panel").
 
 ## Implementation Summary
@@ -140,3 +140,5 @@ Legend — Kind: `grid` (single data grid) · `tabbed` · `detail` · `dashboard
 - **2026-07-06** — Created ticket. Built `ScreenTemplate` + `StatusFooter` + tests; piloted on tenants-list and harness-observability. Standard + decisions recorded above. Rules/docs/Figma + full sweep pending.
 - **2026-07-06** — **Task 1 complete**: updated rules 11 & 12, `development-patterns-and-standards.md`, and `apps/admin-console/README.md`; added the "Screen frame — region & scroll contract (TASK-427)" card to Figma frame `09 - Screen Templates` (node `98:2978`; evidence in `figma-evidence/`).
 - **2026-07-06** — **Task 2 complete**: audited all 34 screens (4 parallel agents; inventory above) and migrated the remaining 32 to `ScreenTemplate` via 7 parallel agents (batches A1–A7). Normalized the four A3 `<Tabs>` wrappers to `flex min-h-0 flex-1 flex-col` (nested template was collapsing). Verified: `check-types` exit 0, `lint --max-warnings 0` exit 0, `test` 79 files / 555 tests passed. One minimal test edit (`user-detail-screen.test.tsx`). Status → Review pending product-owner sign-off + visual spot-check.
+- **2026-07-06** — **Fix: tab variant drift.** Visual spot-check found `settings` and `harness-policy` rendered the pill/segmented `<TabsList>` (component default) while the other four tabbed screens (tenant-storage, entitlements, user-detail, tenant-detail) use `variant="line"` (underline). Set both to `variant="line"` so all six tabbed screens are consistent, and pinned `<TabsList variant="line">` as the standard in rule 11, `development-patterns-and-standards.md` §3.7, and the tabs guidance above.
+- **2026-07-06** — **Fix: settings "Global/Tenant" tabs removed (redundant).** Investigated a report that the settings grid "doesn't change after switching tabs". Root cause is **not** the frontend (a stateful-adapter regression test confirmed the grid swaps correctly when the two endpoints return different data): the BFF stamps `X-Tenant-Id` for elevated users (`server/hope-proxy.ts`), and `GlobalSettingController.fetchAll` scopes `GET /admin/settings` to the CLS tenant, so the **Global** tab (`fetchAllByTenantId(cls)`) and the **Tenant** tab (`fetchAllByTenantId(workingTenantId)`) resolve to the **same tenant** → identical rows (the working tenant here is `__GLOBAL__`, which holds the 40 rows shown; verified via DB). Per product decision, removed the in-page scope tabs from `settings-screen.tsx` — scope is decided solely by the working-tenant switcher; the screen now renders a single `AdminDataGrid` (`GET /admin/settings`, `aria-label="Settings"`) inside `ScreenTemplate`. Dropped the `scope` nuqs param, `useSession`/`useTenantScopedSettings` usage, and the four tab/scope tests; updated `settings/loading.tsx` (removed the tabs skeleton). The `useTenantScopedSettings`/`listTenantScopedSettings`/`settingKeys.byTenant` API-layer symbols stay (still covered by `settings-api.test.ts`). Verified: `check-types` exit 0, `lint --max-warnings 0` exit 0, `test` 79 files / 552 tests passed.

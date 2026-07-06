@@ -1,17 +1,22 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ListParams } from '@/shared/api';
 import { createGlobalSetting, deleteGlobalSetting, getGlobalSetting, listGlobalSettings, listTenantScopedSettings, revealGlobalSetting, updateGlobalSetting } from './client';
 import { settingKeys } from './keys';
 import type { CreateGlobalSettingRequest, UpdateGlobalSettingRequest } from './types';
 
 export function useGlobalSettings(params?: ListParams) {
-    return useQuery({ queryKey: settingKeys.list(params), queryFn: () => listGlobalSettings(params) });
+    return useQuery({ queryKey: settingKeys.list(params), queryFn: () => listGlobalSettings(params), placeholderData: keepPreviousData });
 }
 
 export function useTenantScopedSettings(tenantId: string, params?: ListParams) {
-    return useQuery({ queryKey: settingKeys.byTenant(tenantId, params), queryFn: () => listTenantScopedSettings(tenantId, params), enabled: !!tenantId });
+    return useQuery({
+        queryKey: settingKeys.byTenant(tenantId, params),
+        queryFn: () => listTenantScopedSettings(tenantId, params),
+        enabled: !!tenantId,
+        placeholderData: keepPreviousData,
+    });
 }
 
 export function useGlobalSetting(id: string) {

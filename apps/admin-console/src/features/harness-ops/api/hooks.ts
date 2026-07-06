@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     cancelWorkflow,
     getEvalRun,
@@ -18,11 +18,11 @@ import { harnessOpsKeys } from './keys';
 import type { AuditListParams, EvalRunListParams, SignalWorkflowBody, WorkflowActionBody, WorkflowListParams } from './types';
 
 export function useHarnessAudit(params?: AuditListParams) {
-    return useQuery({ queryKey: harnessOpsKeys.audit(params), queryFn: () => getHarnessAudit(params) });
+    return useQuery({ queryKey: harnessOpsKeys.audit(params), queryFn: () => getHarnessAudit(params), placeholderData: keepPreviousData });
 }
 
 export function useEvalRuns(params?: EvalRunListParams) {
-    return useQuery({ queryKey: harnessOpsKeys.evalRuns(params), queryFn: () => listEvalRuns(params) });
+    return useQuery({ queryKey: harnessOpsKeys.evalRuns(params), queryFn: () => listEvalRuns(params), placeholderData: keepPreviousData });
 }
 
 export function useEvalRun(evalRunId: string | null) {
@@ -38,7 +38,7 @@ export function useGateQueue() {
 }
 
 export function useHarnessWorkflows(params?: WorkflowListParams) {
-    return useQuery({ queryKey: harnessOpsKeys.workflows(params), queryFn: () => listWorkflows(params) });
+    return useQuery({ queryKey: harnessOpsKeys.workflows(params), queryFn: () => listWorkflows(params), placeholderData: keepPreviousData });
 }
 
 /** Detail always asks for the loop phase (`?phase=true`) per frame 38's drawer. */

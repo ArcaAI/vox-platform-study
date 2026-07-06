@@ -2,7 +2,6 @@
 
 import { useId, useState, type FormEvent } from 'react';
 import { IconEye, IconEyeOff, IconFilterOff, IconLock, IconPencil, IconPlus, IconSettings, IconTrash } from '@tabler/icons-react';
-import { parseAsString, useQueryStates } from 'nuqs';
 import { toast } from 'sonner';
 import { type ColumnDef, type SortRule } from '@arcaai/ui';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -18,9 +17,7 @@ import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { RequirePermission } from '@/shared/auth/require-permission';
-import { useSession } from '@/shared/auth/hooks';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { CopyButton } from '@/shared/copy-button';
 import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid';
@@ -30,14 +27,13 @@ import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
-import { useDeleteGlobalSetting, useGlobalSettings, useRevealGlobalSetting, useTenantScopedSettings } from '../api/hooks';
+import { useDeleteGlobalSetting, useGlobalSettings, useRevealGlobalSetting } from '../api/hooks';
 import type { GlobalSetting } from '../api/types';
 import { CreateSettingDialog, EditSettingDialog } from './setting-dialogs';
 
 /** Omni search targets (→ gateway `searchFields`) and the implicit sort — stable refs for the hook. */
 const SETTING_SEARCH_FIELDS = ['name', 'key'];
 const SETTING_DEFAULT_SORT: SortRule[] = [{ id: 'key', desc: false }];
-const DEFAULT_LIMIT = 25;
 const MASK = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
 
 /**
@@ -106,25 +102,19 @@ function RevealSecretDialog({
 
 /**
  * Frame 24 — Settings & secrets (/settings, tier 20-29 shared). AdminDataGrid
- * (omni search + sort + pager) over global and working-tenant-scoped settings
- * with masked secrets, permission-gated step-up reveal, OCC If-Match value
- * editing and create/delete flows. The scope tab rides its own URL param
- * (orthogonal to the grid's query-state) and switches the active list hook.
+ * (omni search + sort + pager) over the settings visible to the caller, with
+ * masked secrets, permission-gated step-up reveal, OCC If-Match value editing
+ * and create/delete flows. Scope is decided by the working-tenant switcher, not
+ * an in-page toggle: the BFF stamps X-Tenant-Id, so the gateway scopes this list
+ * to the working tenant (or returns the __GLOBAL__ platform defaults for an
+ * unscoped super-admin). The former Global/Tenant tabs both resolved to that
+ * same tenant, so they were redundant and were removed.
  */
 export function SettingsScreen() {
-    const [{ scope }, setScopeParams] = useQueryStates({ scope: parseAsString.withDefault('global') });
     const query = useAdminGridParams({ searchFields: SETTING_SEARCH_FIELDS, defaultSort: SETTING_DEFAULT_SORT });
 
-    const session = useSession();
-    const workingTenantId = session.data?.workingTenantId ?? '';
-    const workingTenantName = session.data?.workingTenantName ?? workingTenantId;
-    // The tenant tab only exists with a working tenant (BFF injects X-Tenant-Id).
-    const effectiveScope = scope === 'tenant' && workingTenantId ? 'tenant' : 'global';
-
-    const globalQuery = useGlobalSettings(query.listParams);
-    const tenantQuery = useTenantScopedSettings(effectiveScope === 'tenant' ? workingTenantId : '', query.listParams);
-    const active = effectiveScope === 'tenant' ? tenantQuery : globalQuery;
-    const { rows, total } = normalizeList<GlobalSetting>(active.data);
+    const settingsQuery = useGlobalSettings(query.listParams);
+    const { rows, total } = normalizeList<GlobalSetting>(settingsQuery.data);
     const totalCount = total ?? 0;
 
     const [createOpen, setCreateOpen] = useState(false);
@@ -255,34 +245,22 @@ export function SettingsScreen() {
         },
     ];
 
-    const emptyState =
-        effectiveScope === 'tenant' ? (
-            <EmptyState icon={IconSettings} title="No tenant-scoped settings" description="Platform defaults apply until a setting is scoped to this tenant." />
-        ) : (
-            <EmptyState
-                icon={IconSettings}
-                title="No settings yet"
-                description="Create the first platform-wide setting. Secret values stay masked after creation."
-                action={
-                    <Button onClick={() => setCreateOpen(true)}>
-                        <IconPlus aria-hidden />
-                        New setting
-                    </Button>
-                }
-            />
-        );
+    const emptyState = (
+        <EmptyState
+            icon={IconSettings}
+            title="No settings yet"
+            description="Create the first setting. Secret values stay masked after creation."
+            action={
+                <Button onClick={() => setCreateOpen(true)}>
+                    <IconPlus aria-hidden />
+                    New setting
+                </Button>
+            }
+        />
+    );
 
     return (
-        <Tabs
-            className="flex min-h-0 flex-1 flex-col"
-            value={effectiveScope}
-            onValueChange={(next) => {
-                setScopeParams({ scope: next === 'global' ? null : next });
-                // Switching scope swaps the result set — return to the first page (legacy parity).
-                const limit = query.queryState.pagination.mode === 'offset' ? query.queryState.pagination.limit : DEFAULT_LIMIT;
-                query.setQueryState({ ...query.queryState, pagination: { mode: 'offset', page: 0, limit } });
-            }}
-        >
+        <>
             <ScreenTemplate
                 contentMode="fill"
                 header={
@@ -290,7 +268,7 @@ export function SettingsScreen() {
                         title="Settings & secrets"
                         meta={
                             <>
-                                {active.data ? <span>{formatNumber(totalCount)} settings</span> : <Skeleton className="h-4 w-20" />}
+                                {settingsQuery.data ? <span>{formatNumber(totalCount)} settings</span> : <Skeleton className="h-4 w-20" />}
                                 <span aria-hidden>&middot;</span>
                                 <span>secrets masked &mdash; reveal is audited</span>
                             </>
@@ -303,15 +281,9 @@ export function SettingsScreen() {
                         }
                     />
                 }
-                tabs={
-                    <TabsList>
-                        <TabsTrigger value="global">Global</TabsTrigger>
-                        {workingTenantId ? <TabsTrigger value="tenant">Tenant: {workingTenantName}</TabsTrigger> : null}
-                    </TabsList>
-                }
                 footer={
                     <StatusFooter
-                        start={<span>{active.isFetching && !active.isLoading ? 'Refreshing' : 'Up to date'}</span>}
+                        start={<span>{settingsQuery.isFetching && !settingsQuery.isLoading ? 'Refreshing' : 'Up to date'}</span>}
                         end={
                             <span aria-hidden className="font-mono">
                                 GET /admin/settings
@@ -320,38 +292,36 @@ export function SettingsScreen() {
                     />
                 }
             >
-                <TabsContent value={effectiveScope}>
-                    <AdminDataGrid<GlobalSetting>
-                        gridId="settings"
-                        aria-label={effectiveScope === 'tenant' ? 'Tenant settings' : 'Global settings'}
-                        columns={columns}
-                        rows={rows}
-                        total={totalCount}
-                        queryState={query.queryState}
-                        onQueryStateChange={query.setQueryState}
-                        isLoading={active.isLoading}
-                        isBusy={active.isFetching && !active.isLoading}
-                        error={active.error}
-                        onRetry={() => active.refetch()}
-                        emptyState={emptyState}
-                        emptyFilteredState={
-                            <EmptyState
-                                icon={IconFilterOff}
-                                title="No settings match your search"
-                                description="Try a different search term."
-                                action={
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })}
-                                    >
-                                        <IconFilterOff aria-hidden />
-                                        Clear search
-                                    </Button>
-                                }
-                            />
-                        }
-                    />
-                </TabsContent>
+                <AdminDataGrid<GlobalSetting>
+                    gridId="settings"
+                    aria-label="Settings"
+                    columns={columns}
+                    rows={rows}
+                    total={totalCount}
+                    queryState={query.queryState}
+                    onQueryStateChange={query.setQueryState}
+                    isLoading={settingsQuery.isLoading}
+                    isBusy={settingsQuery.isFetching && !settingsQuery.isLoading}
+                    error={settingsQuery.error}
+                    onRetry={() => settingsQuery.refetch()}
+                    emptyState={emptyState}
+                    emptyFilteredState={
+                        <EmptyState
+                            icon={IconFilterOff}
+                            title="No settings match your search"
+                            description="Try a different search term."
+                            action={
+                                <Button
+                                    variant="outline"
+                                    onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })}
+                                >
+                                    <IconFilterOff aria-hidden />
+                                    Clear search
+                                </Button>
+                            }
+                        />
+                    }
+                />
             </ScreenTemplate>
             {createOpen ? <CreateSettingDialog onOpenChange={setCreateOpen} /> : null}
             {editTarget ? (
@@ -388,6 +358,6 @@ export function SettingsScreen() {
                 isPending={deleteMutation.isPending}
                 onConfirm={confirmDelete}
             />
-        </Tabs>
+        </>
     );
 }

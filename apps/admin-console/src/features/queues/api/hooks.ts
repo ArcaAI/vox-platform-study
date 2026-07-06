@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     bulkJobAction,
     cleanQueue,
@@ -34,7 +34,12 @@ export function useQueue(queueName: string) {
 }
 
 export function useJobs(queueName: string, params?: ListJobsParams) {
-    return useQuery({ queryKey: queueKeys.jobs(queueName, params), queryFn: () => listJobs(queueName, params), enabled: !!queueName });
+    return useQuery({
+        queryKey: queueKeys.jobs(queueName, params),
+        queryFn: () => listJobs(queueName, params),
+        enabled: !!queueName,
+        placeholderData: keepPreviousData,
+    });
 }
 
 export function useJob(queueName: string, jobId: string) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     assignPolicyToRole,
     createPolicy,
@@ -20,7 +20,7 @@ import { rbacKeys } from './keys';
 import type { BreakGlass, CreatePolicyRequest, CreateRoleRequest, PolicyListParams, PolicyRule, RbacListParams, UpdatePolicyRequest, UpdateRoleRequest } from './types';
 
 export function useRoles(params?: RbacListParams) {
-    return useQuery({ queryKey: rbacKeys.roles(params), queryFn: () => listRoles(params) });
+    return useQuery({ queryKey: rbacKeys.roles(params), queryFn: () => listRoles(params), placeholderData: keepPreviousData });
 }
 
 export function useRole(id: string) {
@@ -28,7 +28,7 @@ export function useRole(id: string) {
 }
 
 export function usePolicies(params?: PolicyListParams) {
-    return useQuery({ queryKey: rbacKeys.policies(params), queryFn: () => listPolicies(params) });
+    return useQuery({ queryKey: rbacKeys.policies(params), queryFn: () => listPolicies(params), placeholderData: keepPreviousData });
 }
 
 export function usePolicy(id: string) {
