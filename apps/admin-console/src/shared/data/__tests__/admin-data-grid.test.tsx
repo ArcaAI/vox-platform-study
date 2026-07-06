@@ -155,7 +155,9 @@ describe('useAdminGridParams', () => {
             wrapper: wrapper('?page=2&limit=50'),
         });
 
-        expect(result.current.listParams).toMatchObject({ page: 2, limit: 50, sort: 'updatedAt:desc', searchFields: 'name,key' });
+        // URL `page=2` is the 0-based grid index (the THIRD page); the gateway list contract
+        // is 1-based (`skip=(page-1)*limit`), so `listParams.page` is 3. (TASK-423 fix.)
+        expect(result.current.listParams).toMatchObject({ page: 3, limit: 50, sort: 'updatedAt:desc', searchFields: 'name,key' });
     });
 
     it('resets to the first page and serializes bracket filters on a filter change', async () => {

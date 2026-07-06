@@ -88,12 +88,20 @@ describe('grid-url-state — parseSearchParams', () => {
 });
 
 describe('grid-url-state — toListParams (pagination / search / sort)', () => {
-    it('serializes offset pagination and trimmed global search', () => {
+    it('serializes offset pagination as a 1-based wire page (grid index is 0-based; gateway skip=(page-1)*limit)', () => {
+        // The grid's page index is 0-based (TanStack); the gateway list contract is
+        // 1-based (`skip = (page - 1) * limit`). So page index 1 (the SECOND page)
+        // must serialize to wire `page: 2` — otherwise the gateway computes skip 0
+        // and returns the first page again (TASK-423 pagination defect).
         expect(toListParams(offsetState({ pagination: { mode: 'offset', page: 1, limit: 50 }, globalSearch: '  sunrise  ' }))).toEqual({
-            page: 1,
+            page: 2,
             limit: 50,
             search: 'sunrise',
         });
+    });
+
+    it('serializes the FIRST page (index 0) to wire page 1 (skip 0)', () => {
+        expect(toListParams(offsetState({ pagination: { mode: 'offset', page: 0, limit: 25 } })).page).toBe(1);
     });
 
     it('emits comma-separated sort pairs and joins searchFields from options', () => {

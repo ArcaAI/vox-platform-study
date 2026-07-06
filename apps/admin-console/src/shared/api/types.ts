@@ -8,7 +8,7 @@ export type ResourceStatus = 'ENABLED' | 'DISABLED' | 'SUSPENDED' | 'ARCHIVED' |
 
 /** Standard offset-pagination list query (PaginatedQuery on the gateway). */
 export interface ListParams {
-    /** Zero-based page number. */
+    /** One-based page number (gateway contract: `skip = (page - 1) * limit`). */
     page?: number;
     limit?: number;
     search?: string;

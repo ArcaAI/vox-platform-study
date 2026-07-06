@@ -16,6 +16,8 @@ import type { FilterOption } from '@/shared/data/filter-bar';
 import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { CONSULTATION_STATUSES, VISIT_TYPES, consultationKeys, useConsultations, visitTypeOf } from '../api';
@@ -74,15 +76,22 @@ function RefreshAction() {
     );
 }
 
+/** Footer status mirroring the consultations fetch state (a read-only surface). */
+function RefreshStatus() {
+    const isFetching = useIsFetching({ queryKey: consultationKeys.root }) > 0;
+    return <span>{isFetching ? 'Refreshing' : 'Read-only'}</span>;
+}
+
+/** Endpoint hints for the footer `end` slot (secondary meta). */
 function EndpointMeta() {
     return (
         <>
-            <span aria-hidden>&middot;</span>
-            <span className="font-mono text-xs">{LIST_ENDPOINT_HINT}</span>
-            <span aria-hidden>&middot;</span>
-            <span className="font-mono text-xs">{AGGREGATE_ENDPOINT_HINT}</span>
-            <span aria-hidden>&middot;</span>
-            <span>read-only</span>
+            <span aria-hidden className="font-mono">
+                {LIST_ENDPOINT_HINT}
+            </span>
+            <span aria-hidden className="font-mono">
+                {AGGREGATE_ENDPOINT_HINT}
+            </span>
         </>
     );
 }
@@ -95,25 +104,26 @@ function EndpointMeta() {
  */
 function CrossTenantAggregateView() {
     return (
-        <div className="flex flex-col gap-4">
-            <PageHeader
-                title="Consultations"
-                meta={
-                    <>
-                        <span>cross-tenant aggregate</span>
-                        <EndpointMeta />
-                    </>
-                }
-                actions={<RefreshAction />}
-            />
-            <Card className="flex-row items-center gap-3 px-4 py-3">
-                <IconBuilding aria-hidden className="text-info size-5 shrink-0" />
-                <p className="text-sm">
-                    <span className="font-medium">Cross-tenant aggregate</span> {'\u2014'} select a working tenant to browse consultation rows.
-                </p>
-            </Card>
+        <ScreenTemplate
+            header={
+                <PageHeader
+                    title="Consultations"
+                    meta={<span>cross-tenant aggregate</span>}
+                    actions={<RefreshAction />}
+                />
+            }
+            statusBanner={
+                <Card className="flex-row items-center gap-3 px-4 py-3">
+                    <IconBuilding aria-hidden className="text-info size-5 shrink-0" />
+                    <p className="text-sm">
+                        <span className="font-medium">Cross-tenant aggregate</span> {'\u2014'} select a working tenant to browse consultation rows.
+                    </p>
+                </Card>
+            }
+            footer={<StatusFooter start={<RefreshStatus />} end={<EndpointMeta />} />}
+        >
             <AggregateChartCard className="max-w-3xl" />
-        </div>
+        </ScreenTemplate>
     );
 }
 
@@ -243,53 +253,54 @@ function ConsultationsScreenBody() {
     );
 
     return (
-        <div className="flex flex-col gap-4">
-            <PageHeader
-                title="Consultations"
-                meta={
-                    <>
-                        {list.data ? <span>{formatNumber(count)} consultations</span> : list.isError ? null : <Skeleton className="h-4 w-28" />}
-                        <EndpointMeta />
-                    </>
-                }
-                actions={<RefreshAction />}
-            />
-            <div className="grid items-start gap-4 xl:grid-cols-5">
-                <AggregateChartCard className="xl:col-span-2" />
-                <div className="flex flex-col gap-4 xl:col-span-3">
-                    <VirtualizedDataGrid<Consultation>
-                        aria-label="Consultations"
-                        columns={columns}
-                        data={rows}
-                        getRowId={(row) => row.id}
-                        height={CONSULTATIONS_GRID_HEIGHT}
-                        manual={{ filtering: true, pagination: true }}
-                        rowCount={count}
-                        queryState={query.queryState}
-                        onQueryStateChange={query.setQueryState}
-                        persistence={gridPersistence('consultations')}
-                        features={{
-                            columnReorder: true,
-                            columnResize: true,
-                            columnPinning: true,
-                            columnVisibility: true,
-                            rowSelection: false,
-                            globalSearch: false,
-                            facetedFilters: true,
-                            sorting: false,
-                        }}
-                        onRowClick={(row) => setSelectedId(row.id)}
-                        isLoading={list.isLoading}
-                        isBusy={list.isFetching && !list.isLoading}
-                        error={rows.length > 0 ? null : (list.error ?? null)}
-                        errorState={(error) => <ErrorState error={error} onRetry={() => void list.refetch()} />}
-                        onRetry={() => void list.refetch()}
-                        emptyState={empty}
+        <>
+            <ScreenTemplate
+                header={
+                    <PageHeader
+                        title="Consultations"
+                        meta={list.data ? <span>{formatNumber(count)} consultations</span> : list.isError ? null : <Skeleton className="h-4 w-28" />}
+                        actions={<RefreshAction />}
                     />
+                }
+                footer={<StatusFooter start={<RefreshStatus />} end={<EndpointMeta />} />}
+            >
+                <div className="grid items-start gap-4 xl:grid-cols-5">
+                    <AggregateChartCard className="xl:col-span-2" />
+                    <div className="flex flex-col gap-4 xl:col-span-3">
+                        <VirtualizedDataGrid<Consultation>
+                            aria-label="Consultations"
+                            columns={columns}
+                            data={rows}
+                            getRowId={(row) => row.id}
+                            height={CONSULTATIONS_GRID_HEIGHT}
+                            manual={{ filtering: true, pagination: true }}
+                            rowCount={count}
+                            queryState={query.queryState}
+                            onQueryStateChange={query.setQueryState}
+                            persistence={gridPersistence('consultations')}
+                            features={{
+                                columnReorder: true,
+                                columnResize: true,
+                                columnPinning: true,
+                                columnVisibility: true,
+                                rowSelection: false,
+                                globalSearch: false,
+                                facetedFilters: true,
+                                sorting: false,
+                            }}
+                            onRowClick={(row) => setSelectedId(row.id)}
+                            isLoading={list.isLoading}
+                            isBusy={list.isFetching && !list.isLoading}
+                            error={rows.length > 0 ? null : (list.error ?? null)}
+                            errorState={(error) => <ErrorState error={error} onRetry={() => void list.refetch()} />}
+                            onRetry={() => void list.refetch()}
+                            emptyState={empty}
+                        />
+                    </div>
                 </div>
-            </div>
+            </ScreenTemplate>
             <ConsultationDetailPanel consultationId={selectedId} onOpenChange={(open) => !open && setSelectedId(null)} />
-        </div>
+        </>
     );
 }
 

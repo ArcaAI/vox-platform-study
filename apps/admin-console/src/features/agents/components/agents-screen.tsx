@@ -24,6 +24,8 @@ import type { FilterOption } from '@/shared/data/filter-bar';
 import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
@@ -246,81 +248,89 @@ function AgentsScreenBody() {
     }
 
     return (
-        <div className="flex flex-col gap-4">
-            <PageHeader
-                title="Agents & Prompt Templates"
-                meta={
-                    <>
-                        {templatesQuery.data ? <span>{formatNumber(count)} templates</span> : <Skeleton className="h-4 w-24" />}
-                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-                            GET /admin/prompt-templates
-                        </span>
-                    </>
-                }
-                actions={
-                    <Button onClick={() => setCreateOpen(true)}>
-                        <IconPlus aria-hidden />
-                        New template
-                    </Button>
-                }
-            />
-            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)]">
-                {/* Keyed remounts reset panel-local state on selection change.
-                    The prefixes keep the two keyed siblings unique — duplicate
-                    keys make React orphan the old panel instead of unmounting
-                    it, stacking one extra Versions card per selection (BUG-002). */}
-                {selected ? (
-                    <VersionsPanel key={`versions-${selected.id}`} template={selected} />
-                ) : (
-                    <Card className="py-4">
-                        <CardContent className="text-muted-foreground px-4 text-sm">Select a template to inspect its versions.</CardContent>
-                    </Card>
-                )}
-                <div className="flex flex-col gap-3">
-                    <VirtualizedDataGrid<PromptTemplate>
-                        aria-label="Prompt templates"
-                        columns={columns}
-                        data={rows}
-                        getRowId={(row) => row.id}
-                        height={TEMPLATES_GRID_HEIGHT}
-                        manual={{ filtering: true, pagination: true }}
-                        rowCount={count}
-                        queryState={query.queryState}
-                        onQueryStateChange={query.setQueryState}
-                        persistence={gridPersistence('agents')}
-                        features={{
-                            columnReorder: true,
-                            columnResize: true,
-                            columnPinning: true,
-                            columnVisibility: true,
-                            rowSelection: false,
-                            globalSearch: true,
-                            facetedFilters: true,
-                            sorting: false,
-                        }}
-                        onRowClick={(row) => void setSelectedParam(row.id)}
-                        isLoading={templatesQuery.isLoading}
-                        isBusy={templatesQuery.isFetching && !templatesQuery.isLoading}
-                        error={rows.length > 0 ? null : (templatesQuery.error ?? null)}
-                        errorState={(error) => <ErrorState error={error} onRetry={() => void templatesQuery.refetch()} />}
-                        onRetry={() => void templatesQuery.refetch()}
-                        emptyState={empty}
+        <>
+            <ScreenTemplate
+                header={
+                    <PageHeader
+                        title="Agents & Prompt Templates"
+                        meta={
+                            <>
+                                {templatesQuery.data ? <span>{formatNumber(count)} templates</span> : <Skeleton className="h-4 w-24" />}
+                            </>
+                        }
+                        actions={
+                            <Button onClick={() => setCreateOpen(true)}>
+                                <IconPlus aria-hidden />
+                                New template
+                            </Button>
+                        }
                     />
-                    {count > 0 ? (
-                        <p className="text-muted-foreground text-sm">
-                            Templates {'\u00b7'} selected:{' '}
-                            {selected ? <span className="text-foreground font-medium">{selected.name}</span> : 'none'}
-                        </p>
-                    ) : null}
+                }
+                footer={
+                    <StatusFooter
+                        start={<span>{templatesQuery.isFetching && !templatesQuery.isLoading ? 'Refreshing' : 'Up to date'}</span>}
+                        end={<span aria-hidden className="font-mono">GET /admin/prompt-templates</span>}
+                    />
+                }
+            >
+                <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)]">
+                    {/* Keyed remounts reset panel-local state on selection change.
+                        The prefixes keep the two keyed siblings unique — duplicate
+                        keys make React orphan the old panel instead of unmounting
+                        it, stacking one extra Versions card per selection (BUG-002). */}
+                    {selected ? (
+                        <VersionsPanel key={`versions-${selected.id}`} template={selected} />
+                    ) : (
+                        <Card className="py-4">
+                            <CardContent className="text-muted-foreground px-4 text-sm">Select a template to inspect its versions.</CardContent>
+                        </Card>
+                    )}
+                    <div className="flex flex-col gap-3">
+                        <VirtualizedDataGrid<PromptTemplate>
+                            aria-label="Prompt templates"
+                            columns={columns}
+                            data={rows}
+                            getRowId={(row) => row.id}
+                            height={TEMPLATES_GRID_HEIGHT}
+                            manual={{ filtering: true, pagination: true }}
+                            rowCount={count}
+                            queryState={query.queryState}
+                            onQueryStateChange={query.setQueryState}
+                            persistence={gridPersistence('agents')}
+                            features={{
+                                columnReorder: true,
+                                columnResize: true,
+                                columnPinning: true,
+                                columnVisibility: true,
+                                rowSelection: false,
+                                globalSearch: true,
+                                facetedFilters: true,
+                                sorting: false,
+                            }}
+                            onRowClick={(row) => void setSelectedParam(row.id)}
+                            isLoading={templatesQuery.isLoading}
+                            isBusy={templatesQuery.isFetching && !templatesQuery.isLoading}
+                            error={rows.length > 0 ? null : (templatesQuery.error ?? null)}
+                            errorState={(error) => <ErrorState error={error} onRetry={() => void templatesQuery.refetch()} />}
+                            onRetry={() => void templatesQuery.refetch()}
+                            emptyState={empty}
+                        />
+                        {count > 0 ? (
+                            <p className="text-muted-foreground text-sm">
+                                Templates {'\u00b7'} selected:{' '}
+                                {selected ? <span className="text-foreground font-medium">{selected.name}</span> : 'none'}
+                            </p>
+                        ) : null}
+                    </div>
+                    {selected ? (
+                        <TestRunPanel key={`test-run-${selected.id}`} template={selected} />
+                    ) : (
+                        <Card className="py-4">
+                            <CardContent className="text-muted-foreground px-4 text-sm">Select a template to run a test.</CardContent>
+                        </Card>
+                    )}
                 </div>
-                {selected ? (
-                    <TestRunPanel key={`test-run-${selected.id}`} template={selected} />
-                ) : (
-                    <Card className="py-4">
-                        <CardContent className="text-muted-foreground px-4 text-sm">Select a template to run a test.</CardContent>
-                    </Card>
-                )}
-            </div>
+            </ScreenTemplate>
             <CreateTemplateDialog open={createOpen} onOpenChange={setCreateOpen} />
             {editingId ? <EditTemplateDialog templateId={editingId} onOpenChange={(open) => !open && setEditingId(null)} /> : null}
             <ConfirmDialog
@@ -338,7 +348,7 @@ function AgentsScreenBody() {
                 onConfirm={handleDeleteConfirmed}
                 isPending={deleteTemplate.isPending}
             />
-        </div>
+        </>
     );
 }
 

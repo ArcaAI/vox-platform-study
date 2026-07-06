@@ -10,6 +10,8 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
@@ -76,102 +78,115 @@ function DepartmentsBody() {
     const isEmpty = list.data !== undefined && departments.length === 0;
 
     return (
-        <div className="flex flex-col gap-4">
-            <PageHeader
-                title="Departments"
-                meta={
-                    <>
-                        {list.data ? (
-                            <span>
-                                {formatNumber(departments.length)} departments
-                                {selected ? ` \u00b7 selected: ${selectedName}` : ''}
-                            </span>
-                        ) : (
-                            <Skeleton className="h-4 w-40" />
-                        )}
-                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-                            {ENDPOINT_HINT}
+        <>
+            <ScreenTemplate
+                header={
+                    <PageHeader
+                        title="Departments"
+                        meta={
+                            <>
+                                {list.data ? (
+                                    <span>
+                                        {formatNumber(departments.length)} departments
+                                        {selected ? ` \u00b7 selected: ${selectedName}` : ''}
+                                    </span>
+                                ) : (
+                                    <Skeleton className="h-4 w-40" />
+                                )}
+                            </>
+                        }
+                        actions={
+                            <Button onClick={() => setCreateOpen(true)}>
+                                <IconPlus aria-hidden />
+                                New department
+                            </Button>
+                        }
+                    />
+                }
+                toolbar={
+                    /* Not a data grid (frame 30 is a hierarchy tree): a plain toolbar over
+                        the client-side search + include-disabled flag, no FilterBar. */
+                    <div className="bg-card flex flex-wrap items-center gap-3 rounded-md border p-2">
+                        <div className="relative w-64 max-w-full">
+                            <IconSearch aria-hidden className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+                            <Input
+                                aria-label="Search departments"
+                                placeholder={'Search departments\u2026'}
+                                value={searchDraft}
+                                onChange={(event) => setSearchDraft(event.target.value)}
+                                className="h-9 pl-8"
+                            />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <Label htmlFor="departments-include-disabled" className="text-muted-foreground text-sm font-normal">
+                                Include disabled:
+                            </Label>
+                            <Switch
+                                id="departments-include-disabled"
+                                checked={includeDisabled}
+                                onCheckedChange={(checked) => setIncludeDisabled(checked || null)}
+                            />
+                        </div>
+                        <span aria-live="polite" className="text-muted-foreground ml-auto pr-2 text-sm">
+                            Showing {formatNumber(searchResults.length)} of {formatNumber(departments.length)}
                         </span>
-                    </>
+                    </div>
                 }
-                actions={
-                    <Button onClick={() => setCreateOpen(true)}>
-                        <IconPlus aria-hidden />
-                        New department
-                    </Button>
+                footer={
+                    <StatusFooter
+                        end={
+                            <span aria-hidden className="font-mono">
+                                {ENDPOINT_HINT}
+                            </span>
+                        }
+                    />
                 }
-            />
-            {/* Not a data grid (frame 30 is a hierarchy tree): a plain toolbar over
-                the client-side search + include-disabled flag, no FilterBar. */}
-            <div className="bg-card flex flex-wrap items-center gap-3 rounded-md border p-2">
-                <div className="relative w-64 max-w-full">
-                    <IconSearch aria-hidden className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
-                    <Input
-                        aria-label="Search departments"
-                        placeholder={'Search departments\u2026'}
-                        value={searchDraft}
-                        onChange={(event) => setSearchDraft(event.target.value)}
-                        className="h-9 pl-8"
+            >
+                {list.isPending ? (
+                    <DepartmentsSkeleton />
+                ) : list.error ? (
+                    <ErrorState error={list.error} onRetry={() => void list.refetch()} />
+                ) : isEmpty ? (
+                    <EmptyState
+                        icon={IconHierarchy}
+                        title="No departments yet"
+                        description="Departments organize clinicians and scope prompts and templates. Create the first one to start the hierarchy."
+                        action={
+                            <Button onClick={() => setCreateOpen(true)}>
+                                <IconPlus aria-hidden />
+                                New department
+                            </Button>
+                        }
                     />
-                </div>
-                <div className="flex items-center gap-1.5">
-                    <Label htmlFor="departments-include-disabled" className="text-muted-foreground text-sm font-normal">
-                        Include disabled:
-                    </Label>
-                    <Switch
-                        id="departments-include-disabled"
-                        checked={includeDisabled}
-                        onCheckedChange={(checked) => setIncludeDisabled(checked || null)}
-                    />
-                </div>
-                <span aria-live="polite" className="text-muted-foreground ml-auto pr-2 text-sm">
-                    Showing {formatNumber(searchResults.length)} of {formatNumber(departments.length)}
-                </span>
-            </div>
-            {list.isPending ? (
-                <DepartmentsSkeleton />
-            ) : list.error ? (
-                <ErrorState error={list.error} onRetry={() => void list.refetch()} />
-            ) : isEmpty ? (
-                <EmptyState
-                    icon={IconHierarchy}
-                    title="No departments yet"
-                    description="Departments organize clinicians and scope prompts and templates. Create the first one to start the hierarchy."
-                    action={
-                        <Button onClick={() => setCreateOpen(true)}>
-                            <IconPlus aria-hidden />
-                            New department
-                        </Button>
-                    }
-                />
-            ) : (
-                <div className="grid items-start gap-4 xl:grid-cols-[minmax(240px,1fr)_minmax(0,1.6fr)_minmax(260px,1fr)]">
-                    <DepartmentHierarchyPanel
-                        roots={roots.data ?? []}
-                        rootsPending={roots.isPending}
-                        rootsError={roots.error}
-                        onRetryRoots={() => void roots.refetch()}
-                        searchResults={searchResults}
-                        searching={searching}
-                        selectedId={selectedId}
-                        onSelect={(id) => void setSelectedParam(id)}
-                    />
-                    {selectedId ? (
-                        <>
-                            {/* key remounts reset the members page when the selection moves. */}
-                            <DepartmentMembersPanel key={selectedId} departmentId={selectedId} departmentName={selectedName} />
-                            <DepartmentEditPanel departmentId={selectedId} departments={departments} onDeleted={() => void setSelectedParam(null)} />
-                        </>
-                    ) : null}
-                </div>
-            )}
+                ) : (
+                    <div className="grid items-start gap-4 xl:grid-cols-[minmax(240px,1fr)_minmax(0,1.6fr)_minmax(260px,1fr)]">
+                        <DepartmentHierarchyPanel
+                            roots={roots.data ?? []}
+                            rootsPending={roots.isPending}
+                            rootsError={roots.error}
+                            onRetryRoots={() => void roots.refetch()}
+                            searchResults={searchResults}
+                            searching={searching}
+                            selectedId={selectedId}
+                            onSelect={(id) => void setSelectedParam(id)}
+                        />
+                        {selectedId ? (
+                            <>
+                                {/* key remounts reset the members page when the selection moves. */}
+                                <DepartmentMembersPanel key={selectedId} departmentId={selectedId} departmentName={selectedName} />
+                                <DepartmentEditPanel departmentId={selectedId} departments={departments} onDeleted={() => void setSelectedParam(null)} />
+                            </>
+                        ) : null}
+                    </div>
+                )}
+            </ScreenTemplate>
             <CreateDepartmentDialog
                 open={createOpen}
                 onOpenChange={setCreateOpen}
                 departments={departments}
                 onCreated={(created) => void setSelectedParam(created.id)}
             />
-        </div>
+        </>
     );
 }
 

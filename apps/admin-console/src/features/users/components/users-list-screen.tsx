@@ -22,6 +22,8 @@ import { normalizeList } from '@/shared/data/envelopes';
 import type { FilterOption } from '@/shared/data/filter-bar';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useBulkDeleteUsers, useBulkUserAction, useExportUsers, useUsers } from '../api/hooks';
@@ -314,45 +316,14 @@ export function UsersListScreen() {
     );
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-            <PageHeader
-                title="Users"
-                meta={
-                    <>
-                        {data ? <span>{formatNumber(totalCount)} users</span> : <Skeleton className="h-4 w-16" />}
-                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-                            GET /admin/users
-                        </span>
-                    </>
-                }
-                actions={
-                    <Button onClick={() => setCreateOpen(true)}>
-                        <IconPlus aria-hidden />
-                        New user
-                    </Button>
-                }
-            />
-            <AdminDataGrid<User>
-                gridId="users"
-                aria-label="Users"
-                columns={columns}
-                rows={rows}
-                total={totalCount}
-                queryState={query.queryState}
-                onQueryStateChange={query.setQueryState}
-                isLoading={isLoading}
-                isBusy={isFetching && !isLoading}
-                error={error}
-                onRetry={() => refetch()}
-                onRowClick={(row) => router.push(`/users/${row.id}`)}
-                selection={{ value: selection, onChange: setSelection }}
-                actionBar={actionBar}
-                emptyState={
-                    <EmptyState
-                        icon={IconUsers}
-                        title="No users yet"
-                        description="Create the first user to grant console or SDK access."
-                        action={
+        <>
+            <ScreenTemplate
+                contentMode="fill"
+                header={
+                    <PageHeader
+                        title="Users"
+                        meta={data ? <span>{formatNumber(totalCount)} users</span> : <Skeleton className="h-4 w-16" />}
+                        actions={
                             <Button onClick={() => setCreateOpen(true)}>
                                 <IconPlus aria-hidden />
                                 New user
@@ -360,20 +331,60 @@ export function UsersListScreen() {
                         }
                     />
                 }
-                emptyFilteredState={
-                    <EmptyState
-                        icon={IconFilterOff}
-                        title="No users match your filters"
-                        description="Try a different search or clear the filters."
-                        action={
-                            <Button variant="outline" onClick={clearFilters}>
-                                <IconFilterOff aria-hidden />
-                                Clear filters
-                            </Button>
+                footer={
+                    <StatusFooter
+                        start={<span>{isFetching && !isLoading ? 'Refreshing' : 'Up to date'}</span>}
+                        end={
+                            <span aria-hidden className="font-mono">
+                                GET /admin/users
+                            </span>
                         }
                     />
                 }
-            />
+            >
+                <AdminDataGrid<User>
+                    gridId="users"
+                    aria-label="Users"
+                    columns={columns}
+                    rows={rows}
+                    total={totalCount}
+                    queryState={query.queryState}
+                    onQueryStateChange={query.setQueryState}
+                    isLoading={isLoading}
+                    isBusy={isFetching && !isLoading}
+                    error={error}
+                    onRetry={() => refetch()}
+                    onRowClick={(row) => router.push(`/users/${row.id}`)}
+                    selection={{ value: selection, onChange: setSelection }}
+                    actionBar={actionBar}
+                    emptyState={
+                        <EmptyState
+                            icon={IconUsers}
+                            title="No users yet"
+                            description="Create the first user to grant console or SDK access."
+                            action={
+                                <Button onClick={() => setCreateOpen(true)}>
+                                    <IconPlus aria-hidden />
+                                    New user
+                                </Button>
+                            }
+                        />
+                    }
+                    emptyFilteredState={
+                        <EmptyState
+                            icon={IconFilterOff}
+                            title="No users match your filters"
+                            description="Try a different search or clear the filters."
+                            action={
+                                <Button variant="outline" onClick={clearFilters}>
+                                    <IconFilterOff aria-hidden />
+                                    Clear filters
+                                </Button>
+                            }
+                        />
+                    }
+                />
+            </ScreenTemplate>
             <CreateUserDialog open={createOpen} onOpenChange={setCreateOpen} />
             <UserActionDialogs request={action} onOpenChange={(open) => !open && setAction(null)} />
             {bulk ? (
@@ -388,6 +399,6 @@ export function UsersListScreen() {
                     onConfirm={handleBulkConfirm}
                 />
             ) : null}
-        </div>
+        </>
     );
 }

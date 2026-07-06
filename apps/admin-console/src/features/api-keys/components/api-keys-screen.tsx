@@ -20,6 +20,8 @@ import { normalizeList } from '@/shared/data/envelopes';
 import type { FilterOption } from '@/shared/data/filter-bar';
 import { formatDateTime, formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { useApiKeyScopes, useApiKeys, useDeleteApiKey, useRevokeApiKey, useRotateApiKey } from '../api/hooks';
 import type { ApiKey } from '../api/types';
@@ -249,44 +251,20 @@ export function ApiKeysScreen() {
     ];
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-            <PageHeader
-                title="API keys"
-                meta={
-                    <>
-                        {data ? <span>{formatNumber(totalCount)} keys</span> : <Skeleton className="h-4 w-16" />}
-                        <span aria-hidden>&middot;</span>
-                        <span>secret shown once on create</span>
-                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-                            GET /admin/api-keys
-                        </span>
-                    </>
-                }
-                actions={
-                    <Button onClick={() => setCreateOpen(true)}>
-                        <IconPlus aria-hidden />
-                        Create key
-                    </Button>
-                }
-            />
-            <AdminDataGrid<ApiKey>
-                gridId="api-keys"
-                aria-label="API keys"
-                columns={columns}
-                rows={rows}
-                total={totalCount}
-                queryState={query.queryState}
-                onQueryStateChange={query.setQueryState}
-                isLoading={isLoading}
-                isBusy={isFetching && !isLoading}
-                error={error}
-                onRetry={() => refetch()}
-                emptyState={
-                    <EmptyState
-                        icon={IconKey}
-                        title="No API keys yet"
-                        description="Create the first key to let services call the platform. The secret is shown once on create."
-                        action={
+        <>
+            <ScreenTemplate
+                contentMode="fill"
+                header={
+                    <PageHeader
+                        title="API keys"
+                        meta={
+                            <>
+                                {data ? <span>{formatNumber(totalCount)} keys</span> : <Skeleton className="h-4 w-16" />}
+                                <span aria-hidden>&middot;</span>
+                                <span>secret shown once on create</span>
+                            </>
+                        }
+                        actions={
                             <Button onClick={() => setCreateOpen(true)}>
                                 <IconPlus aria-hidden />
                                 Create key
@@ -294,20 +272,57 @@ export function ApiKeysScreen() {
                         }
                     />
                 }
-                emptyFilteredState={
-                    <EmptyState
-                        icon={IconFilterOff}
-                        title="No keys match your filters"
-                        description="Try a different search or clear the filters."
-                        action={
-                            <Button variant="outline" onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })}>
-                                <IconFilterOff aria-hidden />
-                                Clear filters
-                            </Button>
+                footer={
+                    <StatusFooter
+                        start={<span>{isFetching && !isLoading ? 'Refreshing' : 'Up to date'}</span>}
+                        end={
+                            <span aria-hidden className="font-mono">
+                                GET /admin/api-keys
+                            </span>
                         }
                     />
                 }
-            />
+            >
+                <AdminDataGrid<ApiKey>
+                    gridId="api-keys"
+                    aria-label="API keys"
+                    columns={columns}
+                    rows={rows}
+                    total={totalCount}
+                    queryState={query.queryState}
+                    onQueryStateChange={query.setQueryState}
+                    isLoading={isLoading}
+                    isBusy={isFetching && !isLoading}
+                    error={error}
+                    onRetry={() => refetch()}
+                    emptyState={
+                        <EmptyState
+                            icon={IconKey}
+                            title="No API keys yet"
+                            description="Create the first key to let services call the platform. The secret is shown once on create."
+                            action={
+                                <Button onClick={() => setCreateOpen(true)}>
+                                    <IconPlus aria-hidden />
+                                    Create key
+                                </Button>
+                            }
+                        />
+                    }
+                    emptyFilteredState={
+                        <EmptyState
+                            icon={IconFilterOff}
+                            title="No keys match your filters"
+                            description="Try a different search or clear the filters."
+                            action={
+                                <Button variant="outline" onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })}>
+                                    <IconFilterOff aria-hidden />
+                                    Clear filters
+                                </Button>
+                            }
+                        />
+                    }
+                />
+            </ScreenTemplate>
             {createOpen ? (
                 <ApiKeyFormDialog
                     initial={null}
@@ -370,6 +385,6 @@ export function ApiKeysScreen() {
                 isPending={deleteMutation.isPending}
                 onConfirm={confirmDelete}
             />
-        </div>
+        </>
     );
 }

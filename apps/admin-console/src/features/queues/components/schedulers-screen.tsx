@@ -13,6 +13,8 @@ import type { FilterOption } from '@/shared/data/filter-bar';
 import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatDateTime, formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { useSchedulers, useToggleScheduler } from '../api/hooks';
 import type { SchedulerInfo } from '../api/types';
@@ -191,49 +193,59 @@ export function SchedulersScreen() {
     );
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-            <PageHeader
-                title="Schedulers"
-                meta={
-                    <>
-                        <span>{formatNumber(schedulers.length)} schedules</span>
-                        <span aria-hidden>&middot;</span>
-                        <span className="font-mono text-xs">GET /admin/schedulers</span>
-                    </>
+        <>
+            <ScreenTemplate
+                contentMode="fill"
+                header={
+                    <PageHeader
+                        title="Schedulers"
+                        meta={<span>{formatNumber(schedulers.length)} schedules</span>}
+                    />
                 }
-            />
-            <VirtualizedDataGrid<SchedulerInfo>
-                aria-label="Schedulers"
-                columns={columns}
-                data={schedulers}
-                getRowId={(row) => row.name}
-                features={{
-                    globalSearch: true,
-                    facetedFilters: true,
-                    sorting: true,
-                    rowSelection: false,
-                    columnReorder: true,
-                    columnResize: true,
-                    columnPinning: true,
-                    columnVisibility: true,
-                }}
-                persistence={gridPersistence('schedulers')}
-                isLoading={schedulersQuery.isLoading}
-                isBusy={schedulersQuery.isFetching && !schedulersQuery.isLoading}
-                error={schedulersQuery.error ?? undefined}
-                onRetry={() => void schedulersQuery.refetch()}
-                emptyState={
-                    schedulers.length === 0 ? (
-                        <EmptyState
-                            icon={IconCalendarTime}
-                            title="No schedules defined"
-                            description="System crons ship with deployment defaults — dynamic schedules appear once registered."
-                        />
-                    ) : (
-                        <EmptyState icon={IconFilterOff} title="No schedules match the filters" description="Adjust the search or filters." />
-                    )
+                footer={
+                    <StatusFooter
+                        start={<span>{schedulersQuery.isFetching && !schedulersQuery.isLoading ? 'Refreshing' : 'Up to date'}</span>}
+                        end={
+                            <span aria-hidden className="font-mono">
+                                GET /admin/schedulers
+                            </span>
+                        }
+                    />
                 }
-            />
+            >
+                <VirtualizedDataGrid<SchedulerInfo>
+                    aria-label="Schedulers"
+                    columns={columns}
+                    data={schedulers}
+                    getRowId={(row) => row.name}
+                    features={{
+                        globalSearch: true,
+                        facetedFilters: true,
+                        sorting: true,
+                        rowSelection: false,
+                        columnReorder: true,
+                        columnResize: true,
+                        columnPinning: true,
+                        columnVisibility: true,
+                    }}
+                    persistence={gridPersistence('schedulers')}
+                    isLoading={schedulersQuery.isLoading}
+                    isBusy={schedulersQuery.isFetching && !schedulersQuery.isLoading}
+                    error={schedulersQuery.error ?? undefined}
+                    onRetry={() => void schedulersQuery.refetch()}
+                    emptyState={
+                        schedulers.length === 0 ? (
+                            <EmptyState
+                                icon={IconCalendarTime}
+                                title="No schedules defined"
+                                description="System crons ship with deployment defaults — dynamic schedules appear once registered."
+                            />
+                        ) : (
+                            <EmptyState icon={IconFilterOff} title="No schedules match the filters" description="Adjust the search or filters." />
+                        )
+                    }
+                />
+            </ScreenTemplate>
             <EditCronDialog
                 scheduler={editTarget}
                 onOpenChange={(open) => {
@@ -251,6 +263,6 @@ export function SchedulersScreen() {
                 isPending={toggleScheduler.isPending}
                 onConfirm={confirmDisable}
             />
-        </div>
+        </>
     );
 }

@@ -24,6 +24,8 @@ import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid
 import { normalizeList } from '@/shared/data/envelopes';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useCreateRole, useDeleteRole, useRoles } from '../api/hooks';
@@ -161,9 +163,10 @@ function CreateRoleDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
  */
 export function RolesScreen() {
     const query = useAdminGridParams();
-    // The RBAC gateway pages one-based with `pageSize`; the grid is zero-based `limit`.
+    // The RBAC gateway uses `pageSize` (not `limit`); `listParams.page` is already
+    // 1-based from the grid seam (`toListParams`), so pass it through unchanged.
     const { data, isLoading, isFetching, error, refetch } = useRoles({
-        page: (query.listParams.page ?? 0) + 1,
+        page: query.listParams.page ?? 1,
         pageSize: query.listParams.limit ?? DEFAULT_LIMIT,
         ...(query.listParams.search ? { search: query.listParams.search } : {}),
     });
@@ -260,50 +263,23 @@ export function RolesScreen() {
     ];
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-            <PageHeader
-                title="Roles"
-                meta={
-                    <>
-                        {data ? (
-                            <span>
-                                {formatNumber(totalCount)} roles &middot; {formatNumber(systemCount)} system + {formatNumber(rows.length - systemCount)}{' '}
-                                custom
-                            </span>
-                        ) : (
-                            <Skeleton className="h-4 w-40" />
-                        )}
-                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-                            GET /admin/rbac/roles
-                        </span>
-                    </>
-                }
-                actions={
-                    <Button onClick={() => setCreateOpen(true)}>
-                        <IconPlus aria-hidden />
-                        New role
-                    </Button>
-                }
-            />
-            <AdminDataGrid<Role>
-                gridId="rbac-roles"
-                aria-label="Roles"
-                columns={columns}
-                rows={rows}
-                total={totalCount}
-                queryState={query.queryState}
-                onQueryStateChange={query.setQueryState}
-                isLoading={isLoading}
-                isBusy={isFetching && !isLoading}
-                error={error}
-                onRetry={() => refetch()}
-                onRowClick={(row) => setDetailId(row.id)}
-                emptyState={
-                    <EmptyState
-                        icon={IconUsersGroup}
-                        title="No custom roles yet"
-                        description="System roles are seed-managed and always present. Create a custom role to group policies."
-                        action={
+        <>
+            <ScreenTemplate
+                contentMode="fill"
+                header={
+                    <PageHeader
+                        title="Roles"
+                        meta={
+                            data ? (
+                                <span>
+                                    {formatNumber(totalCount)} roles &middot; {formatNumber(systemCount)} system +{' '}
+                                    {formatNumber(rows.length - systemCount)} custom
+                                </span>
+                            ) : (
+                                <Skeleton className="h-4 w-40" />
+                            )
+                        }
+                        actions={
                             <Button onClick={() => setCreateOpen(true)}>
                                 <IconPlus aria-hidden />
                                 New role
@@ -311,20 +287,58 @@ export function RolesScreen() {
                         }
                     />
                 }
-                emptyFilteredState={
-                    <EmptyState
-                        icon={IconFilterOff}
-                        title="No roles match your search"
-                        description="Try a different search term."
-                        action={
-                            <Button variant="outline" onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })}>
-                                <IconFilterOff aria-hidden />
-                                Clear search
-                            </Button>
+                footer={
+                    <StatusFooter
+                        start={<span>{isFetching && !isLoading ? 'Refreshing' : 'Up to date'}</span>}
+                        end={
+                            <span aria-hidden className="font-mono">
+                                GET /admin/rbac/roles
+                            </span>
                         }
                     />
                 }
-            />
+            >
+                <AdminDataGrid<Role>
+                    gridId="rbac-roles"
+                    aria-label="Roles"
+                    columns={columns}
+                    rows={rows}
+                    total={totalCount}
+                    queryState={query.queryState}
+                    onQueryStateChange={query.setQueryState}
+                    isLoading={isLoading}
+                    isBusy={isFetching && !isLoading}
+                    error={error}
+                    onRetry={() => refetch()}
+                    onRowClick={(row) => setDetailId(row.id)}
+                    emptyState={
+                        <EmptyState
+                            icon={IconUsersGroup}
+                            title="No custom roles yet"
+                            description="System roles are seed-managed and always present. Create a custom role to group policies."
+                            action={
+                                <Button onClick={() => setCreateOpen(true)}>
+                                    <IconPlus aria-hidden />
+                                    New role
+                                </Button>
+                            }
+                        />
+                    }
+                    emptyFilteredState={
+                        <EmptyState
+                            icon={IconFilterOff}
+                            title="No roles match your search"
+                            description="Try a different search term."
+                            action={
+                                <Button variant="outline" onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })}>
+                                    <IconFilterOff aria-hidden />
+                                    Clear search
+                                </Button>
+                            }
+                        />
+                    }
+                />
+            </ScreenTemplate>
             <CreateRoleDialog open={createOpen} onOpenChange={setCreateOpen} />
             <RoleDetailSheet roleId={detailId} onOpenChange={(open) => !open && setDetailId(null)} onDelete={(role) => setDeleteTarget(role)} />
             <BreakGlassDialog
@@ -344,6 +358,6 @@ export function RolesScreen() {
                 isPending={deleteRole.isPending}
                 error={deleteError}
             />
-        </div>
+        </>
     );
 }

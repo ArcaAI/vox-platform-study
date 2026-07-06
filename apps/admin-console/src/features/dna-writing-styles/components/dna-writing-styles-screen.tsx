@@ -20,6 +20,8 @@ import { gridPersistence } from '@/shared/data/grid-persistence';
 import { NameWithId } from '@/shared/data/name-with-id';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
@@ -274,75 +276,83 @@ function DnaWritingStylesBody() {
     );
 
     return (
-        <div className="flex flex-col gap-4">
-            <PageHeader
-                title="DNA Writing Styles"
-                meta={
-                    <>
-                        {reports.data ? (
-                            <span>
-                                {formatNumber(totalCount)} reports
-                                {dashboard.data ? ` \u00b7 ${formatNumber(dashboard.data.usersWithStyle)} doctors covered` : ''}
-                            </span>
-                        ) : (
-                            <Skeleton className="h-4 w-40" />
-                        )}
-                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-                            GET /admin/dna-writing-styles
-                        </span>
-                    </>
+        <>
+            <ScreenTemplate
+                header={
+                    <PageHeader
+                        title="DNA Writing Styles"
+                        meta={
+                            <>
+                                {reports.data ? (
+                                    <span>
+                                        {formatNumber(totalCount)} reports
+                                        {dashboard.data ? ` \u00b7 ${formatNumber(dashboard.data.usersWithStyle)} doctors covered` : ''}
+                                    </span>
+                                ) : (
+                                    <Skeleton className="h-4 w-40" />
+                                )}
+                            </>
+                        }
+                        actions={
+                            <>
+                                {!selected ? <span className="text-muted-foreground text-xs">Select a doctor row to enable</span> : null}
+                                <Button onClick={() => setGenerateOpen(true)} disabled={!selected}>
+                                    <IconDna aria-hidden />
+                                    Generate report
+                                </Button>
+                            </>
+                        }
+                    />
                 }
-                actions={
-                    <>
-                        {!selected ? <span className="text-muted-foreground text-xs">Select a doctor row to enable</span> : null}
-                        <Button onClick={() => setGenerateOpen(true)} disabled={!selected}>
-                            <IconDna aria-hidden />
-                            Generate report
-                        </Button>
-                    </>
+                footer={
+                    <StatusFooter
+                        start={<span>{reports.isFetching && !reports.isLoading ? 'Refreshing' : 'Up to date'}</span>}
+                        end={<span aria-hidden className="font-mono">GET /admin/dna-writing-styles</span>}
+                    />
                 }
-            />
-            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_minmax(0,22rem)]">
-                <DashboardCard dashboard={dashboard} reportsTotal={reports.data?.count} activeJobId={activeJobId} progress={progress} />
-                <VirtualizedDataGrid<DnaReport>
-                    aria-label="DNA reports"
-                    columns={columns}
-                    data={rows}
-                    getRowId={(row) => row.id}
-                    height={DNA_GRID_HEIGHT}
-                    manual={{ filtering: true, pagination: true }}
-                    rowCount={totalCount}
-                    queryState={query.queryState}
-                    onQueryStateChange={query.setQueryState}
-                    persistence={gridPersistence('dna-writing-styles')}
-                    features={{
-                        columnReorder: true,
-                        columnResize: true,
-                        columnPinning: true,
-                        columnVisibility: true,
-                        rowSelection: false,
-                        globalSearch: false,
-                        facetedFilters: true,
-                        sorting: false,
-                    }}
-                    onRowClick={(row) => void setSelected(row.doctorId)}
-                    isLoading={reports.isLoading}
-                    isBusy={reports.isFetching && !reports.isLoading}
-                    error={rows.length > 0 ? null : (reports.error ?? null)}
-                    errorState={(error) => <ErrorState error={error} onRetry={() => void reports.refetch()} />}
-                    onRetry={() => void reports.refetch()}
-                    emptyState={empty}
-                />
-                {/* Keyed by doctor so panel-local state (edit mode) resets on selection change. */}
-                <DoctorDetailPanel key={selected || 'none'} doctorId={selected} onGenerate={() => setGenerateOpen(true)} />
-            </div>
+            >
+                <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_minmax(0,22rem)]">
+                    <DashboardCard dashboard={dashboard} reportsTotal={reports.data?.count} activeJobId={activeJobId} progress={progress} />
+                    <VirtualizedDataGrid<DnaReport>
+                        aria-label="DNA reports"
+                        columns={columns}
+                        data={rows}
+                        getRowId={(row) => row.id}
+                        height={DNA_GRID_HEIGHT}
+                        manual={{ filtering: true, pagination: true }}
+                        rowCount={totalCount}
+                        queryState={query.queryState}
+                        onQueryStateChange={query.setQueryState}
+                        persistence={gridPersistence('dna-writing-styles')}
+                        features={{
+                            columnReorder: true,
+                            columnResize: true,
+                            columnPinning: true,
+                            columnVisibility: true,
+                            rowSelection: false,
+                            globalSearch: false,
+                            facetedFilters: true,
+                            sorting: false,
+                        }}
+                        onRowClick={(row) => void setSelected(row.doctorId)}
+                        isLoading={reports.isLoading}
+                        isBusy={reports.isFetching && !reports.isLoading}
+                        error={rows.length > 0 ? null : (reports.error ?? null)}
+                        errorState={(error) => <ErrorState error={error} onRetry={() => void reports.refetch()} />}
+                        onRetry={() => void reports.refetch()}
+                        emptyState={empty}
+                    />
+                    {/* Keyed by doctor so panel-local state (edit mode) resets on selection change. */}
+                    <DoctorDetailPanel key={selected || 'none'} doctorId={selected} onGenerate={() => setGenerateOpen(true)} />
+                </div>
+            </ScreenTemplate>
             <GenerateReportDialog
                 open={generateOpen}
                 onOpenChange={setGenerateOpen}
                 initialDoctorId={selected}
                 onQueued={(jobId) => setActiveJobId(jobId)}
             />
-        </div>
+        </>
     );
 }
 

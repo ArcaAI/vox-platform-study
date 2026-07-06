@@ -16,6 +16,8 @@ import type { FilterOption } from '@/shared/data/filter-bar';
 import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { useQueues } from '../api/hooks';
 import type { QueueStats } from '../api/types';
@@ -179,53 +181,61 @@ export function QueuesScreen() {
     );
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-            <PageHeader
-                title="Queues & Jobs"
-                meta={
-                    <>
-                        <span>{formatNumber(queues.length)} queues</span>
-                        <span aria-hidden>&middot;</span>
-                        <span className="font-mono text-xs">GET /admin/queues</span>
-                        <span aria-hidden>&middot;</span>
-                        <span>auto-refresh 15s</span>
-                    </>
+        <>
+            <ScreenTemplate
+                contentMode="fill"
+                header={
+                    <PageHeader
+                        title="Queues & Jobs"
+                        meta={<span>{formatNumber(queues.length)} queues</span>}
+                    />
                 }
-            />
-            <VirtualizedDataGrid<QueueStats>
-                aria-label="Queues"
-                columns={columns}
-                data={queues}
-                getRowId={(row) => row.name}
-                defaultQueryState={QUEUE_DEFAULT_QUERY_STATE}
-                features={{
-                    globalSearch: true,
-                    facetedFilters: true,
-                    sorting: true,
-                    rowSelection: false,
-                    columnReorder: true,
-                    columnResize: true,
-                    columnPinning: true,
-                    columnVisibility: true,
-                }}
-                persistence={gridPersistence('queues')}
-                isLoading={queuesQuery.isLoading}
-                isBusy={queuesQuery.isFetching && !queuesQuery.isLoading}
-                error={queuesQuery.error ?? undefined}
-                onRetry={() => void queuesQuery.refetch()}
-                onRowClick={(row) => router.push(`/queues/${encodeURIComponent(row.name)}`)}
-                emptyState={
-                    queues.length === 0 ? (
-                        <EmptyState
-                            icon={IconStack2}
-                            title="No queues registered"
-                            description="Queues appear once workers connect and register with Redis — empty is not an error."
-                        />
-                    ) : (
-                        <EmptyState icon={IconFilterOff} title="No queues match the filters" description="Adjust the search or status filter." />
-                    )
+                footer={
+                    <StatusFooter
+                        start={<span>auto-refresh 15s</span>}
+                        end={
+                            <span aria-hidden className="font-mono">
+                                GET /admin/queues
+                            </span>
+                        }
+                    />
                 }
-            />
+            >
+                <VirtualizedDataGrid<QueueStats>
+                    aria-label="Queues"
+                    columns={columns}
+                    data={queues}
+                    getRowId={(row) => row.name}
+                    defaultQueryState={QUEUE_DEFAULT_QUERY_STATE}
+                    features={{
+                        globalSearch: true,
+                        facetedFilters: true,
+                        sorting: true,
+                        rowSelection: false,
+                        columnReorder: true,
+                        columnResize: true,
+                        columnPinning: true,
+                        columnVisibility: true,
+                    }}
+                    persistence={gridPersistence('queues')}
+                    isLoading={queuesQuery.isLoading}
+                    isBusy={queuesQuery.isFetching && !queuesQuery.isLoading}
+                    error={queuesQuery.error ?? undefined}
+                    onRetry={() => void queuesQuery.refetch()}
+                    onRowClick={(row) => router.push(`/queues/${encodeURIComponent(row.name)}`)}
+                    emptyState={
+                        queues.length === 0 ? (
+                            <EmptyState
+                                icon={IconStack2}
+                                title="No queues registered"
+                                description="Queues appear once workers connect and register with Redis — empty is not an error."
+                            />
+                        ) : (
+                            <EmptyState icon={IconFilterOff} title="No queues match the filters" description="Adjust the search or status filter." />
+                        )
+                    }
+                />
+            </ScreenTemplate>
             <PauseResumeDialog
                 queueName={rowAction?.queueName ?? ''}
                 action={rowAction?.action === 'resume' ? 'resume' : 'pause'}
@@ -241,6 +251,6 @@ export function QueuesScreen() {
                     if (!open) setRowAction(null);
                 }}
             />
-        </div>
+        </>
     );
 }

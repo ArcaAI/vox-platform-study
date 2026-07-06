@@ -26,6 +26,8 @@ import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatBytes, formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
@@ -326,37 +328,48 @@ function StorageScreenBody() {
     const totalQuota = buckets.reduce((sum, bucket) => sum + (bucket.quotaBytes ?? 0), 0);
 
     return (
-        <div className="flex flex-col gap-4">
-            <PageHeader
-                title="Tenant Storage Administration"
-                meta={
-                    <>
-                        {bucketsQuery.data ? (
-                            <span>
-                                {formatNumber(buckets.length)} buckets {'\u00b7'} {formatBytes(totalQuota)} quota
+        <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => setTabParam(next === 'buckets' ? null : next)}>
+            <ScreenTemplate
+                header={
+                    <PageHeader
+                        title="Tenant Storage Administration"
+                        meta={
+                            <>
+                                {bucketsQuery.data ? (
+                                    <span>
+                                        {formatNumber(buckets.length)} buckets {'\u00b7'} {formatBytes(totalQuota)} quota
+                                    </span>
+                                ) : (
+                                    <Skeleton className="h-4 w-40" />
+                                )}
+                            </>
+                        }
+                        actions={
+                            <Button variant="outline" onClick={() => setProvisionOpen(true)}>
+                                <IconDatabase aria-hidden />
+                                Provision buckets
+                            </Button>
+                        }
+                    />
+                }
+                tabs={
+                    <TabsList variant="line">
+                        <TabsTrigger value="buckets">Buckets</TabsTrigger>
+                        <TabsTrigger value="defaults">Defaults</TabsTrigger>
+                        <TabsTrigger value="configs">Configs</TabsTrigger>
+                        <TabsTrigger value="keys">Access keys</TabsTrigger>
+                    </TabsList>
+                }
+                footer={
+                    <StatusFooter
+                        end={
+                            <span aria-hidden className="font-mono">
+                                GET /admin/tenants/storage/buckets
                             </span>
-                        ) : (
-                            <Skeleton className="h-4 w-40" />
-                        )}
-                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-                            GET /admin/tenants/storage/buckets
-                        </span>
-                    </>
+                        }
+                    />
                 }
-                actions={
-                    <Button variant="outline" onClick={() => setProvisionOpen(true)}>
-                        <IconDatabase aria-hidden />
-                        Provision buckets
-                    </Button>
-                }
-            />
-            <Tabs value={tab} onValueChange={(next) => setTabParam(next === 'buckets' ? null : next)} className="gap-4">
-                <TabsList variant="line">
-                    <TabsTrigger value="buckets">Buckets</TabsTrigger>
-                    <TabsTrigger value="defaults">Defaults</TabsTrigger>
-                    <TabsTrigger value="configs">Configs</TabsTrigger>
-                    <TabsTrigger value="keys">Access keys</TabsTrigger>
-                </TabsList>
+            >
                 <TabsContent value="buckets">
                     <BucketsTab onProvision={() => setProvisionOpen(true)} />
                 </TabsContent>
@@ -369,8 +382,8 @@ function StorageScreenBody() {
                 <TabsContent value="keys">
                     <AccessKeysTab />
                 </TabsContent>
-            </Tabs>
+            </ScreenTemplate>
             <ProvisionBucketsDialog open={provisionOpen} onOpenChange={setProvisionOpen} />
-        </div>
+        </Tabs>
     );
 }

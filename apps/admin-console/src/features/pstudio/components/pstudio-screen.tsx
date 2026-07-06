@@ -7,6 +7,8 @@ import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { usePstudioStatus } from '../api/hooks';
@@ -18,11 +20,11 @@ import { usePstudioStatus } from '../api/hooks';
  */
 const STUDIO_SRC = '/api/hope/admin/pstudio';
 
-const SURFACE_CLASS = 'min-h-[70vh] w-full rounded-md border';
+const SURFACE_CLASS = 'min-h-0 w-full flex-1 rounded-md border';
 
 function StudioSurface() {
     return (
-        <div className="flex flex-col gap-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                     <Badge>Enabled</Badge>
@@ -43,7 +45,7 @@ function StudioSurface() {
 
 function DisabledCard() {
     return (
-        <Card className="min-h-[70vh] w-full justify-center">
+        <Card className="min-h-0 w-full flex-1 justify-center">
             <EmptyState
                 icon={IconDatabaseOff}
                 title="Prisma Studio is disabled"
@@ -61,7 +63,7 @@ function DisabledCard() {
 
 function LoadingSurface() {
     return (
-        <div className="flex flex-col gap-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
             <div className="flex items-center justify-between">
                 <Skeleton className="h-6 w-40" />
                 <Skeleton className="h-8 w-36" />
@@ -80,35 +82,51 @@ export function PstudioScreen() {
     const statusQuery = usePstudioStatus();
 
     return (
-        <div className="flex flex-col gap-4">
-            <PageHeader
-                title="Prisma Studio"
-                meta={
-                    <>
-                        <span>Embedded database browser</span>
-                        <span aria-hidden>&middot;</span>
-                        <span>GlobalAdmin only</span>
-                        <span aria-hidden>&middot;</span>
-                        <span className="font-mono text-xs">session-guarded proxy {STUDIO_SRC}</span>
-                    </>
-                }
-            />
-            <Alert>
-                <IconAlertTriangle aria-hidden />
-                <AlertTitle>Production data</AlertTitle>
-                <AlertDescription>
-                    Every write here bypasses domain rules and is audit-logged. Prefer admin screens for routine edits.
-                </AlertDescription>
-            </Alert>
+        <ScreenTemplate
+            contentMode="fill"
+            header={
+                <PageHeader
+                    title="Prisma Studio"
+                    meta={
+                        <>
+                            <span>Embedded database browser</span>
+                            <span aria-hidden>&middot;</span>
+                            <span>GlobalAdmin only</span>
+                        </>
+                    }
+                />
+            }
+            statusBanner={
+                <Alert>
+                    <IconAlertTriangle aria-hidden />
+                    <AlertTitle>Production data</AlertTitle>
+                    <AlertDescription>
+                        Every write here bypasses domain rules and is audit-logged. Prefer admin screens for routine edits.
+                    </AlertDescription>
+                </Alert>
+            }
+            footer={
+                <StatusFooter
+                    start={<span>{statusQuery.data?.enabled ? 'Studio enabled' : 'Studio disabled'}</span>}
+                    end={
+                        <span aria-hidden className="font-mono">
+                            {STUDIO_SRC}
+                        </span>
+                    }
+                />
+            }
+        >
             {statusQuery.isLoading ? (
                 <LoadingSurface />
             ) : statusQuery.error ? (
-                <ErrorState error={statusQuery.error} onRetry={() => void statusQuery.refetch()} />
+                <div className="flex min-h-0 flex-1 flex-col justify-center">
+                    <ErrorState error={statusQuery.error} onRetry={() => void statusQuery.refetch()} />
+                </div>
             ) : statusQuery.data?.enabled ? (
                 <StudioSurface />
             ) : (
                 <DisabledCard />
             )}
-        </div>
+        </ScreenTemplate>
     );
 }

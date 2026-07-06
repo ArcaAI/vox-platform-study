@@ -13,6 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useSession } from '@/shared/auth';
 import { FilterBar, FilterSearch, FilterSelect } from '@/shared/data/filter-bar';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
@@ -130,8 +132,6 @@ export function PipelinePolicyScreen() {
         <>
             <span>Cascade: system {'\u2192'} tenant {'\u2192'} department {'\u2192'} user</span>
             <span aria-hidden>&middot;</span>
-            <span className="font-mono text-xs">GET /admin/harness/pipeline-policy</span>
-            <span aria-hidden>&middot;</span>
             <span>separate subject from HarnessPolicy (by design)</span>
         </>
     );
@@ -193,47 +193,58 @@ export function PipelinePolicyScreen() {
 
     return (
         <WorkingTenantGate title="Realtime Pipeline Policy" meta={meta}>
-            <div className="flex flex-col gap-4">
-                <PageHeader title="Realtime Pipeline Policy" meta={meta} />
-                <FilterBar>
-                    <FilterSelect id="pp-scope" label="Scope" value={scopeFilter} onChange={(next) => void setScopeFilter(next || null)} options={SCOPE_FILTER_OPTIONS} />
-                    <div className="flex items-center gap-1.5">
-                        <Label htmlFor="pp-key" className="text-muted-foreground text-sm font-normal">
-                            Key:
-                        </Label>
-                        <Select value={chosenColumn.param} onValueChange={(next) => void setKeyParam(next === 'auto-summary' ? null : next)}>
-                            <SelectTrigger id="pp-key" size="sm" className="min-w-32">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {TOGGLE_COLUMNS.map((column) => (
-                                    <SelectItem key={column.param} value={column.param}>
-                                        {column.param}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                        <Label htmlFor="pp-effective" className="text-muted-foreground text-sm font-normal">
-                            Show effective:
-                        </Label>
-                        <Switch id="pp-effective" checked={showEffective} onCheckedChange={(next) => void setShowEffective(next ? null : false)} />
-                    </div>
-                    <FilterSearch
-                        label="Department ID context"
-                        placeholder={'Department ID\u2026'}
-                        value={department}
-                        onChange={(value) => void setDepartment(value || null)}
+            <ScreenTemplate
+                header={<PageHeader title="Realtime Pipeline Policy" meta={meta} />}
+                toolbar={
+                    <FilterBar>
+                        <FilterSelect id="pp-scope" label="Scope" value={scopeFilter} onChange={(next) => void setScopeFilter(next || null)} options={SCOPE_FILTER_OPTIONS} />
+                        <div className="flex items-center gap-1.5">
+                            <Label htmlFor="pp-key" className="text-muted-foreground text-sm font-normal">
+                                Key:
+                            </Label>
+                            <Select value={chosenColumn.param} onValueChange={(next) => void setKeyParam(next === 'auto-summary' ? null : next)}>
+                                <SelectTrigger id="pp-key" size="sm" className="min-w-32">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {TOGGLE_COLUMNS.map((column) => (
+                                        <SelectItem key={column.param} value={column.param}>
+                                            {column.param}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <Label htmlFor="pp-effective" className="text-muted-foreground text-sm font-normal">
+                                Show effective:
+                            </Label>
+                            <Switch id="pp-effective" checked={showEffective} onCheckedChange={(next) => void setShowEffective(next ? null : false)} />
+                        </div>
+                        <FilterSearch
+                            label="Department ID context"
+                            placeholder={'Department ID\u2026'}
+                            value={department}
+                            onChange={(value) => void setDepartment(value || null)}
+                        />
+                        <FilterSearch
+                            label="Doctor ID context"
+                            placeholder={'Doctor user ID\u2026'}
+                            value={doctor}
+                            onChange={(value) => void setDoctor(value || null)}
+                        />
+                    </FilterBar>
+                }
+                footer={
+                    <StatusFooter
+                        end={
+                            <span aria-hidden className="font-mono">
+                                GET /admin/harness/pipeline-policy
+                            </span>
+                        }
                     />
-                    <FilterSearch
-                        label="Doctor ID context"
-                        placeholder={'Doctor user ID\u2026'}
-                        value={doctor}
-                        onChange={(value) => void setDoctor(value || null)}
-                    />
-                </FilterBar>
-
+                }
+            >
                 {pending ? (
                     <ScreenSkeleton />
                 ) : blockError ? (
@@ -341,7 +352,7 @@ export function PipelinePolicyScreen() {
                         )}
                     </div>
                 )}
-            </div>
+            </ScreenTemplate>
         </WorkingTenantGate>
     );
 }

@@ -13,6 +13,8 @@ import { CopyButton } from '@/shared/copy-button';
 import { formatDateTime, formatRelativeTime } from '@/shared/format';
 import { useTrailingBreadcrumb } from '@/shared/navigation/breadcrumb-store';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useTenant } from '../api/hooks';
@@ -124,56 +126,71 @@ export function TenantDetailScreen({ id }: { id: string }) {
     const status = tenant.resourceStatus;
 
     return (
-        <div className="flex flex-col gap-6">
-            <PageHeader
-                title={tenant.name}
-                meta={
-                    <>
-                        <span className="flex items-center gap-1">
-                            <span className="font-mono text-xs">{tenant.key}</span>
-                            <CopyButton value={tenant.key} label="Copy tenant key" />
-                        </span>
-                        <TenantPlanBadge plan={tenant.plan} />
-                        <ResourceStatusBadge status={status} />
-                        <span>created {formatDateTime(tenant.createdAt, 'date')}</span>
-                        <span>updated {formatRelativeTime(tenant.updatedAt)}</span>
-                    </>
+        <Tabs value={tab} onValueChange={(next) => setTabParam(next === 'overview' ? null : next)} className="flex min-h-0 flex-1 flex-col">
+            <ScreenTemplate
+                header={
+                    <PageHeader
+                        title={tenant.name}
+                        meta={
+                            <>
+                                <span className="flex items-center gap-1">
+                                    <span className="font-mono text-xs">{tenant.key}</span>
+                                    <CopyButton value={tenant.key} label="Copy tenant key" />
+                                </span>
+                                <TenantPlanBadge plan={tenant.plan} />
+                                <ResourceStatusBadge status={status} />
+                                <span>created {formatDateTime(tenant.createdAt, 'date')}</span>
+                                <span>updated {formatRelativeTime(tenant.updatedAt)}</span>
+                            </>
+                        }
+                        actions={
+                            <>
+                                {status === 'ENABLED' ? (
+                                    <Button variant="outline" onClick={() => setLifecycle({ action: 'suspend', tenant })}>
+                                        <IconPlayerPause aria-hidden />
+                                        Suspend
+                                    </Button>
+                                ) : null}
+                                {status === 'SUSPENDED' || status === 'ARCHIVED' ? (
+                                    <Button variant="outline" onClick={() => setLifecycle({ action: 'restore', tenant })}>
+                                        <IconRestore aria-hidden />
+                                        Restore
+                                    </Button>
+                                ) : null}
+                                {status !== 'ARCHIVED' ? (
+                                    <Button variant="outline" onClick={() => setLifecycle({ action: 'archive', tenant })}>
+                                        <IconArchive aria-hidden />
+                                        Archive
+                                    </Button>
+                                ) : null}
+                                <Button variant="destructive" onClick={() => setLifecycle({ action: 'delete', tenant })}>
+                                    <IconTrash aria-hidden />
+                                    Delete
+                                </Button>
+                            </>
+                        }
+                    />
                 }
-                actions={
-                    <>
-                        {status === 'ENABLED' ? (
-                            <Button variant="outline" onClick={() => setLifecycle({ action: 'suspend', tenant })}>
-                                <IconPlayerPause aria-hidden />
-                                Suspend
-                            </Button>
-                        ) : null}
-                        {status === 'SUSPENDED' || status === 'ARCHIVED' ? (
-                            <Button variant="outline" onClick={() => setLifecycle({ action: 'restore', tenant })}>
-                                <IconRestore aria-hidden />
-                                Restore
-                            </Button>
-                        ) : null}
-                        {status !== 'ARCHIVED' ? (
-                            <Button variant="outline" onClick={() => setLifecycle({ action: 'archive', tenant })}>
-                                <IconArchive aria-hidden />
-                                Archive
-                            </Button>
-                        ) : null}
-                        <Button variant="destructive" onClick={() => setLifecycle({ action: 'delete', tenant })}>
-                            <IconTrash aria-hidden />
-                            Delete
-                        </Button>
-                    </>
+                tabs={
+                    <TabsList variant="line">
+                        <TabsTrigger value="overview">Overview</TabsTrigger>
+                        <TabsTrigger value="usage">Usage</TabsTrigger>
+                        <TabsTrigger value="configs">Configs</TabsTrigger>
+                        <TabsTrigger value="tags">Tags</TabsTrigger>
+                        <TabsTrigger value="frontend-config">Frontend config</TabsTrigger>
+                    </TabsList>
                 }
-            />
-            <Tabs value={tab} onValueChange={(next) => setTabParam(next === 'overview' ? null : next)} className="gap-4">
-                <TabsList variant="line">
-                    <TabsTrigger value="overview">Overview</TabsTrigger>
-                    <TabsTrigger value="usage">Usage</TabsTrigger>
-                    <TabsTrigger value="configs">Configs</TabsTrigger>
-                    <TabsTrigger value="tags">Tags</TabsTrigger>
-                    <TabsTrigger value="frontend-config">Frontend config</TabsTrigger>
-                </TabsList>
+                footer={
+                    <StatusFooter
+                        start={<ResourceStatusBadge status={status} />}
+                        end={
+                            <span aria-hidden className="font-mono">
+                                GET /admin/tenants/{tenant.id}
+                            </span>
+                        }
+                    />
+                }
+            >
                 <TabsContent value="overview">
                     <OverviewTab tenant={tenant} />
                 </TabsContent>
@@ -189,12 +206,12 @@ export function TenantDetailScreen({ id }: { id: string }) {
                 <TabsContent value="frontend-config">
                     <TenantFrontendConfigTab tenantId={id} />
                 </TabsContent>
-            </Tabs>
+            </ScreenTemplate>
             <TenantLifecycleDialogs
                 request={lifecycle}
                 onOpenChange={(open) => !open && setLifecycle(null)}
                 onDeleted={() => router.push('/tenants')}
             />
-        </div>
+        </Tabs>
     );
 }

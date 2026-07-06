@@ -154,7 +154,9 @@ describe('TenantsListScreen', () => {
         expect(requested.searchParams.get('search')).toBe('north');
         expect(requested.searchParams.get('searchFields')).toBe('name,key');
         expect(requested.searchParams.get('filters')).toBe('resourceStatus[equals]:SUSPENDED;plan[equals]:PRO');
-        expect(requested.searchParams.get('page')).toBe('1');
+        // URL `page=1` is the 0-based grid index (the SECOND page); the gateway is 1-based
+        // (`skip=(page-1)*limit`), so the wire page is 2. (TASK-423 pagination fix.)
+        expect(requested.searchParams.get('page')).toBe('2');
         expect(requested.searchParams.get('limit')).toBe('50');
     });
 

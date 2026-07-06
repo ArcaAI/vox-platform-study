@@ -13,6 +13,8 @@ import type { FilterOption } from '@/shared/data/filter-bar';
 import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
@@ -183,37 +185,47 @@ function TranscriptionJobsBody() {
     );
 
     return (
-        <div className="flex flex-col gap-4">
-            <PageHeader
-                title="Transcription Jobs"
-                meta={
-                    <>
-                        {stats ? <span>{formatNumber(statsTotal(stats))} jobs</span> : <Skeleton className="h-4 w-16" />}
-                        {ENDPOINT_HINT}
-                        <span className="text-xs">read-only ops surface {'\u2014'} job creation = SDK plane (TASK-420)</span>
-                    </>
-                }
-                actions={
-                    <Button variant="outline" onClick={handleRefresh}>
-                        <IconRefresh aria-hidden />
-                        Refresh {'\u00b7'} 30 s
-                    </Button>
-                }
-            />
-            <section aria-label="Job status counts" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <StatCard label="Queued" value={stats ? formatNumber(stats.queued) : null} accent="default" isLoading={statsLoading} />
-                <StatCard label="Running" value={stats ? formatNumber(stats.processing) : null} accent="primary" isLoading={statsLoading} />
-                <StatCard label="Completed" value={stats ? formatNumber(stats.completed) : null} accent="success" isLoading={statsLoading} />
-                {/* Frame 35 "failed → filter shortcut": the whole card applies the FAILED filter. */}
-                <button
-                    type="button"
-                    onClick={applyFailedFilter}
-                    aria-label={`Failed${stats ? ` ${formatNumber(stats.failed)}` : ''} \u2014 filter the grid to failed jobs`}
-                    className="focus-visible:ring-ring cursor-pointer rounded-xl text-left outline-none focus-visible:ring-2"
-                >
-                    <StatCard label="Failed" value={stats ? formatNumber(stats.failed) : null} accent="destructive" isLoading={statsLoading} />
-                </button>
-            </section>
+        <ScreenTemplate
+            header={
+                <PageHeader
+                    title="Transcription Jobs"
+                    meta={
+                        <>
+                            {stats ? <span>{formatNumber(statsTotal(stats))} jobs</span> : <Skeleton className="h-4 w-16" />}
+                            <span className="text-xs">read-only ops surface {'\u2014'} job creation = SDK plane (TASK-420)</span>
+                        </>
+                    }
+                    actions={
+                        <Button variant="outline" onClick={handleRefresh}>
+                            <IconRefresh aria-hidden />
+                            Refresh {'\u00b7'} 30 s
+                        </Button>
+                    }
+                />
+            }
+            stats={
+                <section aria-label="Job status counts" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <StatCard label="Queued" value={stats ? formatNumber(stats.queued) : null} accent="default" isLoading={statsLoading} />
+                    <StatCard label="Running" value={stats ? formatNumber(stats.processing) : null} accent="primary" isLoading={statsLoading} />
+                    <StatCard label="Completed" value={stats ? formatNumber(stats.completed) : null} accent="success" isLoading={statsLoading} />
+                    {/* Frame 35 "failed → filter shortcut": the whole card applies the FAILED filter. */}
+                    <button
+                        type="button"
+                        onClick={applyFailedFilter}
+                        aria-label={`Failed${stats ? ` ${formatNumber(stats.failed)}` : ''} \u2014 filter the grid to failed jobs`}
+                        className="focus-visible:ring-ring cursor-pointer rounded-xl text-left outline-none focus-visible:ring-2"
+                    >
+                        <StatCard label="Failed" value={stats ? formatNumber(stats.failed) : null} accent="destructive" isLoading={statsLoading} />
+                    </button>
+                </section>
+            }
+            footer={
+                <StatusFooter
+                    start={<span>{activeQuery.isFetching && !activeQuery.isLoading ? 'Refreshing' : 'Auto-refresh \u00b7 30 s'}</span>}
+                    end={ENDPOINT_HINT}
+                />
+            }
+        >
             <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
                 <VirtualizedDataGrid<TranscriptionJob>
                     aria-label="Transcription jobs"
@@ -246,6 +258,6 @@ function TranscriptionJobsBody() {
                 />
                 <JobStreamCard jobId={selectedId} />
             </div>
-        </div>
+        </ScreenTemplate>
     );
 }
