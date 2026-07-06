@@ -529,7 +529,10 @@ describe('AuthController', () => {
             expect(deptService.findActiveDepartmentForUserInTenant).toHaveBeenCalledWith(user.id, 'tenant-001');
         });
 
-        it('should EXEMPT a service account from the department requirement (role-only)', async () => {
+        // TASK-430 superseded the Phase-F "exempt from department" carve-out:
+        // service accounts are API-only principals and interactive login is
+        // refused outright (401), regardless of role/department membership.
+        it('should REJECT a service account from interactive login (TASK-430)', async () => {
             const hashedPassword = await bcrypt.hash('pass123', 10);
             const user = createUser({ password: hashedPassword, isServiceAccount: true });
             const users = new Map([[user.id, user]]);
@@ -542,13 +545,13 @@ describe('AuthController', () => {
                 userDepartmentService: deptService,
             });
 
-            const result = await controller.login(
-                { username: 'dr_smith', password: 'pass123', tenantKey: 'acme-hospital' },
-                createMockRequest(),
-            );
-
-            expect(result.user).toBeDefined();
-            // Exempt: the department lookup must be skipped entirely.
+            await expect(
+                controller.login(
+                    { username: 'dr_smith', password: 'pass123', tenantKey: 'acme-hospital' },
+                    createMockRequest(),
+                ),
+            ).rejects.toThrow(UnauthorizedException);
+            // Refused before any membership lookup.
             expect(deptService.findActiveDepartmentForUserInTenant).not.toHaveBeenCalled();
         });
 

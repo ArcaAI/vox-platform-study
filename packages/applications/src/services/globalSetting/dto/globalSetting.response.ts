@@ -31,6 +31,15 @@ export class GlobalSettingResponse extends BaseResponse {
   namespace?: string;
 
   /**
+   * TASK-430 — owning tenant of the row. The cross-tenant `/settings` list
+   * (unscoped GLOBAL_ADMIN) renders a Tenant column and a tenant filter, so
+   * the response must carry the row's tenant attribution. `__GLOBAL__`-tenant
+   * rows are the platform defaults.
+   */
+  @ApiProperty({ description: 'Tenant ID that owns this setting', required: false })
+  tenantId?: string | null;
+
+  /**
    * TASK-332 / TASK-391 (D2) — platform-owned "locked" default. When true the
    * row is write-guarded server-side (only GLOBAL_ADMIN may modify it); the admin
    * console mirrors this by rendering a lock affordance and disabling edit/delete
@@ -90,6 +99,7 @@ export class GlobalSettingResponse extends BaseResponse {
     this.value = init.value;
     this.dataType = init.dataType;
     this.namespace = init.namespace;
+    this.tenantId = init.tenantId;
     this.locked = init.locked;
     this.version = init.version;
     this.isSecret = init.isSecret ?? false;

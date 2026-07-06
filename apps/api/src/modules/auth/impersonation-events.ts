@@ -39,6 +39,9 @@ export const ImpersonationDeniedReason = {
   NestedImpersonation: 'NESTED_IMPERSONATION',
   CallerNotSuperAdmin: 'CALLER_NOT_SUPER_ADMIN',
   TargetDisabled: 'TARGET_DISABLED',
+  // TASK-430 — service accounts are API-only principals; an impersonation
+  // token would hand out the interactive session they must never have.
+  TargetIsServiceAccount: 'TARGET_IS_SERVICE_ACCOUNT',
 } as const;
 
 export type ImpersonationDeniedReasonCode = (typeof ImpersonationDeniedReason)[keyof typeof ImpersonationDeniedReason];
