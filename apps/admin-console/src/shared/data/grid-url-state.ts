@@ -272,7 +272,11 @@ export function toListParams(state: DataQueryState, opts?: ToListParamsOptions):
     const out: ListParams = {};
 
     if (state.pagination.mode === 'offset') {
-        out.page = state.pagination.page;
+        // The grid's page index is 0-based (TanStack), but the gateway list
+        // contract is 1-based (`skip = (page - 1) * limit`). Convert at this single
+        // seam so the SECOND page (index 1) maps to `skip = limit` instead of skip 0
+        // — otherwise every page after the first re-fetches page 1 (TASK-423 defect).
+        out.page = state.pagination.page + 1;
         out.limit = state.pagination.limit;
     } else {
         out.limit = state.pagination.limit;

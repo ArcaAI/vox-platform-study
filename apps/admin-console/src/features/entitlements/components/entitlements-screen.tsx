@@ -19,6 +19,8 @@ import { FilterBar, FilterSearch } from '@/shared/data/filter-bar';
 import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { useEnforcementEnabled, usePlanEntitlements, useRunTrialExpiry, useSetEnforcementEnabled } from '../api/hooks';
@@ -235,37 +237,44 @@ export function EntitlementsScreen() {
     }
 
     return (
-        <div className="flex flex-col gap-4">
-            <PageHeader
-                title="Entitlements & Plans"
-                meta={
-                    <>
-                        {plansQuery.data ? <span>{formatNumber(plansQuery.data.length)} plans</span> : <Skeleton className="h-4 w-16" />}
-                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-                            GET /admin/entitlements/plans
-                        </span>
-                    </>
+        <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => setTabParam(next === 'plans' ? null : next)}>
+            <ScreenTemplate
+                header={
+                    <PageHeader
+                        title="Entitlements & Plans"
+                        meta={plansQuery.data ? <span>{formatNumber(plansQuery.data.length)} plans</span> : <Skeleton className="h-4 w-16" />}
+                        actions={
+                            <Button variant="outline" onClick={() => setTrialExpiryOpen(true)}>
+                                <IconClockExclamation aria-hidden />
+                                Run trial expiry
+                            </Button>
+                        }
+                    />
                 }
-                actions={
-                    <Button variant="outline" onClick={() => setTrialExpiryOpen(true)}>
-                        <IconClockExclamation aria-hidden />
-                        Run trial expiry
-                    </Button>
+                statusBanner={<EnforcementCard />}
+                tabs={
+                    <TabsList variant="line">
+                        <TabsTrigger value="plans">Plans</TabsTrigger>
+                        <TabsTrigger value="overrides">Tenant overrides</TabsTrigger>
+                    </TabsList>
                 }
-            />
-            <EnforcementCard />
-            <Tabs value={tab} onValueChange={(next) => setTabParam(next === 'plans' ? null : next)} className="gap-4">
-                <TabsList variant="line">
-                    <TabsTrigger value="plans">Plans</TabsTrigger>
-                    <TabsTrigger value="overrides">Tenant overrides</TabsTrigger>
-                </TabsList>
+                footer={
+                    <StatusFooter
+                        end={
+                            <span aria-hidden className="font-mono">
+                                GET /admin/entitlements/plans
+                            </span>
+                        }
+                    />
+                }
+            >
                 <TabsContent value="plans">
                     <PlansTab />
                 </TabsContent>
                 <TabsContent value="overrides">
                     <TenantOverridePanel />
                 </TabsContent>
-            </Tabs>
+            </ScreenTemplate>
             <ConfirmDialog
                 open={trialExpiryOpen}
                 onOpenChange={setTrialExpiryOpen}
@@ -275,6 +284,6 @@ export function EntitlementsScreen() {
                 onConfirm={handleTrialExpiryConfirmed}
                 isPending={runTrialExpiry.isPending}
             />
-        </div>
+        </Tabs>
     );
 }

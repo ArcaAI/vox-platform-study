@@ -16,6 +16,8 @@ import { GatewayError } from '@/shared/api';
 import { useSession } from '@/shared/auth/hooks';
 import { formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import type { UserSetting } from '@/features/users/api/types';
@@ -81,6 +83,7 @@ export function AccountScreen() {
     const session = sessionQuery.data;
     const settings = settingsQuery.data ?? [];
     const preferences = preferencesQuery.data;
+    const isBusy = sessionQuery.isFetching || settingsQuery.isFetching || preferencesQuery.isFetching;
 
     const workflowMode = prefDraft.workflowMode ?? preferences?.workflowMode;
     const language = prefDraft.language ?? preferences?.language ?? '';
@@ -124,27 +127,25 @@ export function AccountScreen() {
     }
 
     return (
-        <div className="flex flex-col gap-6">
-            <PageHeader
-                title="Account"
-                meta={
-                    <>
-                        {session ? (
-                            <>
-                                <span>{session.user.username}</span>
-                                <span aria-hidden>&middot;</span>
-                            </>
-                        ) : null}
-                        <span className="font-mono text-xs">GET /user/me/*</span>
-                    </>
-                }
-            />
+        <ScreenTemplate
+            header={<PageHeader title="Account" meta={session ? <span>{session.user.username}</span> : null} />}
+            footer={
+                <StatusFooter
+                    start={<span>{isBusy ? 'Refreshing' : 'Up to date'}</span>}
+                    end={
+                        <span aria-hidden className="font-mono">
+                            GET /user/me/*
+                        </span>
+                    }
+                />
+            }
+        >
             {sessionQuery.isPending ? (
                 <AccountSkeleton />
             ) : sessionQuery.error || !session ? (
                 <ErrorState error={sessionQuery.error} onRetry={() => void sessionQuery.refetch()} />
             ) : (
-                <>
+                <div className="flex flex-col gap-6">
                     <section aria-labelledby={`${uid}-identity`} className="flex flex-col gap-3">
                         <h2 id={`${uid}-identity`} className="text-base font-semibold">
                             Identity
@@ -333,8 +334,8 @@ export function AccountScreen() {
                             </Card>
                         )}
                     </section>
-                </>
+                </div>
             )}
-        </div>
+        </ScreenTemplate>
     );
 }

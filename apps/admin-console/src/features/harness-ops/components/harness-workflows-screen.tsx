@@ -11,6 +11,8 @@ import { FilterBar, FilterSearch, FilterSelect, type FilterOption } from '@/shar
 import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatDateTime, formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
@@ -123,51 +125,59 @@ function WorkflowsBody() {
     );
 
     return (
-        <div className="flex flex-col gap-4">
-            <PageHeader
-                title="Harness Workflows"
-                meta={
-                    <>
-                        {workflowsQuery.data ? (
-                            <span>{formatNumber(rows.length)} workflows shown</span>
-                        ) : (
-                            <Skeleton className="h-4 w-32" />
-                        )}
-                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-                            GET /admin/harness/workflows
-                        </span>
-                        <span>Temporal-backed via apps/harness through the gateway</span>
-                    </>
-                }
-                actions={
-                    <Button variant="outline" onClick={() => void queryClient.invalidateQueries({ queryKey: harnessOpsKeys.root })}>
-                        <IconRefresh aria-hidden />
-                        Refresh
-                    </Button>
-                }
-            />
-            <FilterBar shown={rows.length} total={items.length}>
-                <FilterSearch
-                    label="Search workflow id"
-                    placeholder={'Search workflow id\u2026'}
-                    value={search}
-                    onChange={(value) => updateFilters({ search: value || null })}
+        <ScreenTemplate
+            header={
+                <PageHeader
+                    title="Harness Workflows"
+                    meta={
+                        <>
+                            {workflowsQuery.data ? (
+                                <span>{formatNumber(rows.length)} workflows shown</span>
+                            ) : (
+                                <Skeleton className="h-4 w-32" />
+                            )}
+                            <span>Temporal-backed via apps/harness through the gateway</span>
+                        </>
+                    }
+                    actions={
+                        <Button variant="outline" onClick={() => void queryClient.invalidateQueries({ queryKey: harnessOpsKeys.root })}>
+                            <IconRefresh aria-hidden />
+                            Refresh
+                        </Button>
+                    }
                 />
-                <FilterSelect
-                    id="workflows-state-filter"
-                    label="State"
-                    value={state}
-                    onChange={(value) => updateFilters({ state: value || null })}
-                    options={STATE_OPTIONS}
+            }
+            toolbar={
+                <FilterBar shown={rows.length} total={items.length}>
+                    <FilterSearch
+                        label="Search workflow id"
+                        placeholder={'Search workflow id\u2026'}
+                        value={search}
+                        onChange={(value) => updateFilters({ search: value || null })}
+                    />
+                    <FilterSelect
+                        id="workflows-state-filter"
+                        label="State"
+                        value={state}
+                        onChange={(value) => updateFilters({ state: value || null })}
+                        options={STATE_OPTIONS}
+                    />
+                    <FilterSelect
+                        id="workflows-type-filter"
+                        label="Type"
+                        value={type}
+                        onChange={(value) => updateFilters({ type: value || null })}
+                        options={TYPE_OPTIONS}
+                    />
+                </FilterBar>
+            }
+            footer={
+                <StatusFooter
+                    start={<span>{workflowsQuery.isFetching && !workflowsQuery.isLoading ? 'Refreshing' : 'Up to date'}</span>}
+                    end={<span aria-hidden className="font-mono">GET /admin/harness/workflows</span>}
                 />
-                <FilterSelect
-                    id="workflows-type-filter"
-                    label="Type"
-                    value={type}
-                    onChange={(value) => updateFilters({ type: value || null })}
-                    options={TYPE_OPTIONS}
-                />
-            </FilterBar>
+            }
+        >
             <div className="grid gap-4 xl:grid-cols-4">
                 <WorkflowDetailDrawer workflowId={selectedId} />
                 <div className="flex min-w-0 flex-col gap-3 xl:col-span-2">
@@ -209,7 +219,7 @@ function WorkflowsBody() {
                 </div>
                 <SignalsLifecyclePanel workflowId={selectedId} />
             </div>
-        </div>
+        </ScreenTemplate>
     );
 }
 

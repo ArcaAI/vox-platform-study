@@ -20,6 +20,8 @@ import type { FilterOption } from '@/shared/data/filter-bar';
 import { NameWithId } from '@/shared/data/name-with-id';
 import { formatDateTime, formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { useAuditLogs, useAuditLogsCursor, useExportAuditLogs } from '../api/hooks';
 import type { AuditExportFormat, AuditLog } from '../api/types';
@@ -182,75 +184,89 @@ export function AuditLogsScreen() {
     );
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-            <PageHeader
-                title="Audit logs"
-                meta={
-                    <>
-                        {/* Keyset lists carry no total; if the count probe fails, omit it. */}
-                        {countQuery.data ? <span>{formatNumber(total)} events</span> : countQuery.isError ? null : <Skeleton className="h-4 w-24" />}
-                        <span aria-hidden>&middot;</span>
-                        <span>read-only</span>
-                        <span aria-hidden>&middot;</span>
-                        <span className="font-mono text-xs">GET /admin/audit-logs/cursor</span>
-                    </>
-                }
-                actions={
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button disabled={exportMutation.isPending}>
-                                {exportMutation.isPending ? <Spinner /> : <IconDownload aria-hidden />}
-                                Export
-                                <IconChevronDown aria-hidden />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            {EXPORT_FORMATS.map((format) => (
-                                <DropdownMenuItem key={format} onSelect={() => handleExport(format)}>
-                                    {format.toUpperCase()}
-                                </DropdownMenuItem>
-                            ))}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                }
-            />
-            <AdminDataGrid<AuditLog>
-                gridId="audit-logs"
-                aria-label="Audit events"
-                columns={columns}
-                rows={rows}
-                total={total ?? 0}
-                queryState={grid.queryState}
-                onQueryStateChange={grid.setQueryState}
-                pageMode="cursor"
-                cursor={{ hasMore: logsQuery.data?.hasMore, nextCursor: logsQuery.data?.nextCursor }}
-                isLoading={logsQuery.isLoading}
-                isBusy={logsQuery.isFetching && !logsQuery.isLoading}
-                error={logsQuery.error ?? undefined}
-                onRetry={() => void logsQuery.refetch()}
-                onRowClick={setSelected}
-                emptyState={
-                    <EmptyState
-                        icon={IconShieldSearch}
-                        title="No audit events yet"
-                        description="Events appear as soon as administrative activity is recorded — empty is not an error."
-                    />
-                }
-                emptyFilteredState={
-                    <EmptyState
-                        icon={IconFilterOff}
-                        title="No events match the filters"
-                        description="Widen the date range or relax the filters — audit rows are append-only, so nothing is created here."
-                        action={
-                            <Button variant="outline" onClick={clearFilters}>
-                                <IconFilterOff aria-hidden />
-                                Clear filters
-                            </Button>
+        <>
+            <ScreenTemplate
+                contentMode="fill"
+                header={
+                    <PageHeader
+                        title="Audit logs"
+                        meta={
+                            <>
+                                {/* Keyset lists carry no total; if the count probe fails, omit it. */}
+                                {countQuery.data ? <span>{formatNumber(total)} events</span> : countQuery.isError ? null : <Skeleton className="h-4 w-24" />}
+                                <span aria-hidden>&middot;</span>
+                                <span>read-only</span>
+                            </>
+                        }
+                        actions={
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button disabled={exportMutation.isPending}>
+                                        {exportMutation.isPending ? <Spinner /> : <IconDownload aria-hidden />}
+                                        Export
+                                        <IconChevronDown aria-hidden />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    {EXPORT_FORMATS.map((format) => (
+                                        <DropdownMenuItem key={format} onSelect={() => handleExport(format)}>
+                                            {format.toUpperCase()}
+                                        </DropdownMenuItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         }
                     />
                 }
-            />
+                footer={
+                    <StatusFooter
+                        start={<span>{logsQuery.isFetching && !logsQuery.isLoading ? 'Refreshing' : 'Up to date'}</span>}
+                        end={
+                            <span aria-hidden className="font-mono">
+                                GET /admin/audit-logs/cursor
+                            </span>
+                        }
+                    />
+                }
+            >
+                <AdminDataGrid<AuditLog>
+                    gridId="audit-logs"
+                    aria-label="Audit events"
+                    columns={columns}
+                    rows={rows}
+                    total={total ?? 0}
+                    queryState={grid.queryState}
+                    onQueryStateChange={grid.setQueryState}
+                    pageMode="cursor"
+                    cursor={{ hasMore: logsQuery.data?.hasMore, nextCursor: logsQuery.data?.nextCursor }}
+                    isLoading={logsQuery.isLoading}
+                    isBusy={logsQuery.isFetching && !logsQuery.isLoading}
+                    error={logsQuery.error ?? undefined}
+                    onRetry={() => void logsQuery.refetch()}
+                    onRowClick={setSelected}
+                    emptyState={
+                        <EmptyState
+                            icon={IconShieldSearch}
+                            title="No audit events yet"
+                            description="Events appear as soon as administrative activity is recorded — empty is not an error."
+                        />
+                    }
+                    emptyFilteredState={
+                        <EmptyState
+                            icon={IconFilterOff}
+                            title="No events match the filters"
+                            description="Widen the date range or relax the filters — audit rows are append-only, so nothing is created here."
+                            action={
+                                <Button variant="outline" onClick={clearFilters}>
+                                    <IconFilterOff aria-hidden />
+                                    Clear filters
+                                </Button>
+                            }
+                        />
+                    }
+                />
+            </ScreenTemplate>
             <AuditLogDetailSheet log={selected} onOpenChange={(open) => !open && setSelected(null)} />
-        </div>
+        </>
     );
 }

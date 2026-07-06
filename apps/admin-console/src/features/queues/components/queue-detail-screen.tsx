@@ -31,6 +31,8 @@ import type { FilterOption } from '@/shared/data/filter-bar';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { useTrailingBreadcrumb } from '@/shared/navigation/breadcrumb-store';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { useBulkJobAction, useJobs, usePromoteJob, useQueue, useRemoveJob, useRetryJob } from '../api/hooks';
@@ -315,85 +317,105 @@ export function QueueDetailScreen({ name }: { name: string }) {
     );
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-            <PageHeader
-                title={<span className="font-mono">{name}</span>}
-                meta={
-                    queue ? (
-                        <>
-                            <StatusDot colorRole={queue.isPaused ? 'warning' : 'success'} label={queue.isPaused ? 'Paused' : 'Running'} />
-                            <span aria-hidden>&middot;</span>
-                            <span>{formatNumber(queue.workerCount)} workers</span>
-                            <span aria-hidden>&middot;</span>
-                            <span className="font-mono text-xs">GET /admin/queues/{name}</span>
-                        </>
-                    ) : (
-                        <Skeleton className="h-4 w-64" />
-                    )
-                }
-                actions={
-                    queue ? (
-                        <>
-                            {queue.isPaused ? (
-                                <Button variant="outline" onClick={() => setQueueAction('resume')}>
-                                    <IconPlayerPlay aria-hidden />
-                                    Resume
-                                </Button>
+        <>
+            <ScreenTemplate
+                header={
+                    <PageHeader
+                        title={<span className="font-mono">{name}</span>}
+                        meta={
+                            queue ? (
+                                <>
+                                    <StatusDot colorRole={queue.isPaused ? 'warning' : 'success'} label={queue.isPaused ? 'Paused' : 'Running'} />
+                                    <span aria-hidden>&middot;</span>
+                                    <span>{formatNumber(queue.workerCount)} workers</span>
+                                </>
                             ) : (
-                                <Button variant="outline" onClick={() => setQueueAction('pause')}>
-                                    <IconPlayerPause aria-hidden />
-                                    Pause
-                                </Button>
-                            )}
-                            <Button variant="destructive" onClick={() => setQueueAction('clean')}>
-                                <IconClearAll aria-hidden />
-                                Clean jobs
-                            </Button>
-                        </>
-                    ) : undefined
-                }
-            />
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-                {counters.map((counter) => (
-                    <StatCard
-                        key={counter.label}
-                        label={counter.label}
-                        value={queue ? formatNumber(counter.value) : ''}
-                        accent={counter.accent}
-                        isLoading={queueQuery.isLoading}
-                    />
-                ))}
-            </div>
-            <AdminDataGrid<JobSummary>
-                gridId="queue-jobs"
-                aria-label="Jobs"
-                columns={columns}
-                rows={items}
-                total={totalCount}
-                queryState={query.queryState}
-                onQueryStateChange={onQueryStateChange}
-                isLoading={jobsQuery.isLoading}
-                isBusy={jobsQuery.isFetching && !jobsQuery.isLoading}
-                error={jobsQuery.error ?? undefined}
-                onRetry={() => void jobsQuery.refetch()}
-                onRowClick={(row) => setOpenJobId(row.id)}
-                selection={{ value: selected, onChange: setSelected }}
-                actionBar={actionBar}
-                emptyState={<EmptyState icon={IconInbox} title="No jobs" description="This queue has no jobs right now." />}
-                emptyFilteredState={
-                    <EmptyState
-                        icon={IconFilterOff}
-                        title="No jobs match the filters"
-                        description="No jobs match the current state or search — clear the filters to see the full queue."
-                        action={
-                            <Button variant="outline" onClick={clearFilters}>
-                                <IconFilterOff aria-hidden />
-                                Clear filters
-                            </Button>
+                                <Skeleton className="h-4 w-64" />
+                            )
+                        }
+                        actions={
+                            queue ? (
+                                <>
+                                    {queue.isPaused ? (
+                                        <Button variant="outline" onClick={() => setQueueAction('resume')}>
+                                            <IconPlayerPlay aria-hidden />
+                                            Resume
+                                        </Button>
+                                    ) : (
+                                        <Button variant="outline" onClick={() => setQueueAction('pause')}>
+                                            <IconPlayerPause aria-hidden />
+                                            Pause
+                                        </Button>
+                                    )}
+                                    <Button variant="destructive" onClick={() => setQueueAction('clean')}>
+                                        <IconClearAll aria-hidden />
+                                        Clean jobs
+                                    </Button>
+                                </>
+                            ) : undefined
                         }
                     />
                 }
-            />
+                stats={
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                        {counters.map((counter) => (
+                            <StatCard
+                                key={counter.label}
+                                label={counter.label}
+                                value={queue ? formatNumber(counter.value) : ''}
+                                accent={counter.accent}
+                                isLoading={queueQuery.isLoading}
+                            />
+                        ))}
+                    </div>
+                }
+                footer={
+                    <StatusFooter
+                        start={
+                            queue ? (
+                                <>
+                                    <StatusDot colorRole={queue.isPaused ? 'warning' : 'success'} label={queue.isPaused ? 'Paused' : 'Running'} />
+                                    <span>{formatNumber(queue.workerCount)} workers</span>
+                                </>
+                            ) : (
+                                <Skeleton className="h-3 w-32" />
+                            )
+                        }
+                        end={<span className="font-mono">GET /admin/queues/{name}</span>}
+                    />
+                }
+            >
+                <AdminDataGrid<JobSummary>
+                    gridId="queue-jobs"
+                    aria-label="Jobs"
+                    columns={columns}
+                    rows={items}
+                    total={totalCount}
+                    queryState={query.queryState}
+                    onQueryStateChange={onQueryStateChange}
+                    isLoading={jobsQuery.isLoading}
+                    isBusy={jobsQuery.isFetching && !jobsQuery.isLoading}
+                    error={jobsQuery.error ?? undefined}
+                    onRetry={() => void jobsQuery.refetch()}
+                    onRowClick={(row) => setOpenJobId(row.id)}
+                    selection={{ value: selected, onChange: setSelected }}
+                    actionBar={actionBar}
+                    emptyState={<EmptyState icon={IconInbox} title="No jobs" description="This queue has no jobs right now." />}
+                    emptyFilteredState={
+                        <EmptyState
+                            icon={IconFilterOff}
+                            title="No jobs match the filters"
+                            description="No jobs match the current state or search — clear the filters to see the full queue."
+                            action={
+                                <Button variant="outline" onClick={clearFilters}>
+                                    <IconFilterOff aria-hidden />
+                                    Clear filters
+                                </Button>
+                            }
+                        />
+                    }
+                />
+            </ScreenTemplate>
             <JobDetailSheet
                 queueName={name}
                 jobId={openJobId}
@@ -451,6 +473,6 @@ export function QueueDetailScreen({ name }: { name: string }) {
                 isPending={bulkJobAction.isPending}
                 onConfirm={() => runBulk('remove')}
             />
-        </div>
+        </>
     );
 }

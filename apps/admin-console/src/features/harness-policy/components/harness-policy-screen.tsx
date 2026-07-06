@@ -12,6 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useSession } from '@/shared/auth';
 import { formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
@@ -233,13 +235,6 @@ function GlobalDefaultTab() {
  * elevated sessions only.
  */
 export function HarnessPolicyScreen() {
-    const meta = (
-        <>
-            <span className="font-mono text-xs">GET /admin/harness/policy</span>
-            <span aria-hidden>&middot;</span>
-            <span>every edit appends a HarnessPolicyChange WORM row</span>
-        </>
-    );
     const session = useSession();
     const isElevated = session.data?.isElevated ?? false;
     const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('policy'));
@@ -248,30 +243,49 @@ export function HarnessPolicyScreen() {
     const tab = requestedTab !== 'policy' && !isElevated ? 'policy' : requestedTab;
 
     return (
-        <WorkingTenantGate title="Harness Policy & Live Config" meta={meta}>
-            <div className="flex flex-col gap-4">
-                <PageHeader title="Harness Policy & Live Config" meta={meta} />
-                <Tabs value={tab} onValueChange={(next) => void setTabParam(next === 'policy' ? null : next)}>
-                    <TabsList>
-                        <TabsTrigger value="policy">Tenant policy</TabsTrigger>
-                        {isElevated ? <TabsTrigger value="live">Live config</TabsTrigger> : null}
-                        {isElevated ? <TabsTrigger value="global">Global default</TabsTrigger> : null}
-                    </TabsList>
-                    <TabsContent value="policy" className="mt-2">
+        <WorkingTenantGate
+            title="Harness Policy & Live Config"
+            meta={
+                <span aria-hidden className="text-muted-foreground font-mono text-xs">
+                    GET /admin/harness/policy
+                </span>
+            }
+        >
+            <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => void setTabParam(next === 'policy' ? null : next)}>
+                <ScreenTemplate
+                    header={<PageHeader title="Harness Policy & Live Config" meta={<span>every edit appends a HarnessPolicyChange WORM row</span>} />}
+                    tabs={
+                        <TabsList>
+                            <TabsTrigger value="policy">Tenant policy</TabsTrigger>
+                            {isElevated ? <TabsTrigger value="live">Live config</TabsTrigger> : null}
+                            {isElevated ? <TabsTrigger value="global">Global default</TabsTrigger> : null}
+                        </TabsList>
+                    }
+                    footer={
+                        <StatusFooter
+                            end={
+                                <span aria-hidden className="font-mono">
+                                    GET /admin/harness/policy
+                                </span>
+                            }
+                        />
+                    }
+                >
+                    <TabsContent value="policy">
                         <TenantPolicyTab isElevated={isElevated} />
                     </TabsContent>
                     {isElevated ? (
-                        <TabsContent value="live" className="mt-2">
+                        <TabsContent value="live">
                             <LiveConfigTab />
                         </TabsContent>
                     ) : null}
                     {isElevated ? (
-                        <TabsContent value="global" className="mt-2">
+                        <TabsContent value="global">
                             <GlobalDefaultTab />
                         </TabsContent>
                     ) : null}
-                </Tabs>
-            </div>
+                </ScreenTemplate>
+            </Tabs>
         </WorkingTenantGate>
     );
 }

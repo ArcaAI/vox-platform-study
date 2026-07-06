@@ -13,6 +13,8 @@ import { CopyButton } from '@/shared/copy-button';
 import { formatDateTime, formatRelativeTime } from '@/shared/format';
 import { useTrailingBreadcrumb } from '@/shared/navigation/breadcrumb-store';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useUser } from '../api/hooks';
@@ -84,64 +86,79 @@ export function UserDetailScreen({ id }: { id: string }) {
     const enabled = user.resourceStatus === 'ENABLED';
 
     return (
-        <div className="flex flex-col gap-6">
-            <PageHeader
-                title={
-                    <span className="flex items-center gap-3">
-                        <UserAvatar username={user.username} size="lg" />
-                        {user.username}
-                    </span>
+        <Tabs value={tab} onValueChange={(next) => setTabParam(next === 'roles' ? null : next)} className="flex min-h-0 flex-1 flex-col">
+            <ScreenTemplate
+                header={
+                    <PageHeader
+                        title={
+                            <span className="flex items-center gap-3">
+                                <UserAvatar username={user.username} size="lg" />
+                                {user.username}
+                            </span>
+                        }
+                        meta={
+                            <>
+                                <span className="flex items-center gap-1">
+                                    <span className="font-mono text-xs">{user.id}</span>
+                                    <CopyButton value={user.id} label="Copy user ID" />
+                                </span>
+                                {user.externalId ? <span className="font-mono text-xs">ext:{user.externalId}</span> : null}
+                                <ResourceStatusBadge status={user.resourceStatus} />
+                                {user.isServiceAccount ? <Badge variant="outline">Service account</Badge> : null}
+                                <span>created {formatDateTime(user.createdAt, 'date')}</span>
+                                <span>last login {formatRelativeTime(user.lastLoginAt)}</span>
+                                <span>last active {formatRelativeTime(user.lastActiveAt)}</span>
+                            </>
+                        }
+                        actions={
+                            <>
+                                <Button variant="outline" onClick={() => setAction({ action: 'impersonate', user })}>
+                                    <IconSpy aria-hidden />
+                                    Impersonate
+                                </Button>
+                                <Button variant="outline" onClick={() => setAction({ action: 'reset-password', user })}>
+                                    <IconKey aria-hidden />
+                                    Reset password
+                                </Button>
+                                {enabled ? (
+                                    <Button variant="outline" onClick={() => setAction({ action: 'disable', user })}>
+                                        <IconUserOff aria-hidden />
+                                        Disable
+                                    </Button>
+                                ) : (
+                                    <Button variant="outline" onClick={() => setAction({ action: 'enable', user })}>
+                                        <IconUserCheck aria-hidden />
+                                        Enable
+                                    </Button>
+                                )}
+                                <Button variant="destructive" onClick={() => setAction({ action: 'delete', user })}>
+                                    <IconTrash aria-hidden />
+                                    Delete
+                                </Button>
+                            </>
+                        }
+                    />
                 }
-                meta={
-                    <>
-                        <span className="flex items-center gap-1">
-                            <span className="font-mono text-xs">{user.id}</span>
-                            <CopyButton value={user.id} label="Copy user ID" />
-                        </span>
-                        {user.externalId ? <span className="font-mono text-xs">ext:{user.externalId}</span> : null}
-                        <ResourceStatusBadge status={user.resourceStatus} />
-                        {user.isServiceAccount ? <Badge variant="outline">Service account</Badge> : null}
-                        <span>created {formatDateTime(user.createdAt, 'date')}</span>
-                        <span>last login {formatRelativeTime(user.lastLoginAt)}</span>
-                        <span>last active {formatRelativeTime(user.lastActiveAt)}</span>
-                    </>
+                tabs={
+                    <TabsList variant="line">
+                        <TabsTrigger value="roles">Roles</TabsTrigger>
+                        <TabsTrigger value="departments">Departments</TabsTrigger>
+                        <TabsTrigger value="settings">Settings</TabsTrigger>
+                        <TabsTrigger value="profile">Profile</TabsTrigger>
+                        <TabsTrigger value="security">Security</TabsTrigger>
+                    </TabsList>
                 }
-                actions={
-                    <>
-                        <Button variant="outline" onClick={() => setAction({ action: 'impersonate', user })}>
-                            <IconSpy aria-hidden />
-                            Impersonate
-                        </Button>
-                        <Button variant="outline" onClick={() => setAction({ action: 'reset-password', user })}>
-                            <IconKey aria-hidden />
-                            Reset password
-                        </Button>
-                        {enabled ? (
-                            <Button variant="outline" onClick={() => setAction({ action: 'disable', user })}>
-                                <IconUserOff aria-hidden />
-                                Disable
-                            </Button>
-                        ) : (
-                            <Button variant="outline" onClick={() => setAction({ action: 'enable', user })}>
-                                <IconUserCheck aria-hidden />
-                                Enable
-                            </Button>
-                        )}
-                        <Button variant="destructive" onClick={() => setAction({ action: 'delete', user })}>
-                            <IconTrash aria-hidden />
-                            Delete
-                        </Button>
-                    </>
+                footer={
+                    <StatusFooter
+                        start={<ResourceStatusBadge status={user.resourceStatus} />}
+                        end={
+                            <span aria-hidden className="font-mono">
+                                GET /admin/users/{user.id}
+                            </span>
+                        }
+                    />
                 }
-            />
-            <Tabs value={tab} onValueChange={(next) => setTabParam(next === 'roles' ? null : next)} className="gap-4">
-                <TabsList variant="line">
-                    <TabsTrigger value="roles">Roles</TabsTrigger>
-                    <TabsTrigger value="departments">Departments</TabsTrigger>
-                    <TabsTrigger value="settings">Settings</TabsTrigger>
-                    <TabsTrigger value="profile">Profile</TabsTrigger>
-                    <TabsTrigger value="security">Security</TabsTrigger>
-                </TabsList>
+            >
                 <TabsContent value="roles">
                     <UserRolesTab id={id} />
                 </TabsContent>
@@ -157,8 +174,8 @@ export function UserDetailScreen({ id }: { id: string }) {
                 <TabsContent value="security">
                     <UserSecurityTab id={id} onResetPassword={() => setAction({ action: 'reset-password', user })} />
                 </TabsContent>
-            </Tabs>
+            </ScreenTemplate>
             <UserActionDialogs request={action} onOpenChange={(open) => !open && setAction(null)} onDeleted={() => router.push('/users')} />
-        </div>
+        </Tabs>
     );
 }

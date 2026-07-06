@@ -14,6 +14,8 @@ import type { AuditLog } from '@/features/audit-logs/api';
 import { useServicesHealth } from '@/features/monitoring/api';
 import { formatNumber, formatPercent, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorBanner, ErrorState } from '@/shared/state/error-state';
 import { usePlatformMetrics } from '../api';
@@ -94,7 +96,6 @@ function ServicesStrip() {
                         </span>
                     ))
                 )}
-                <span className="text-muted-foreground ml-auto hidden font-mono text-xs lg:inline">GET /health/services · 30s</span>
             </Card>
         </div>
     );
@@ -206,28 +207,40 @@ export function PlatformDashboard() {
     const metrics = usePlatformMetrics();
 
     return (
-        <div className="flex flex-1 flex-col gap-4">
-            <PageHeader
-                title="Platform Dashboard"
-                actions={
-                    <span className="text-muted-foreground text-sm">
-                        Auto-refresh 30s
-                        {metrics.data ? ` · updated ${formatRelativeTime(metrics.data.refreshedAt)}` : ''}
-                    </span>
-                }
-            />
-            {metrics.isError && metrics.data ? <ErrorBanner error={metrics.error} onRetry={() => void metrics.refetch()} /> : null}
-            <section aria-label="Key metrics">
-                <StatStrip metrics={metrics} />
-            </section>
-            <section aria-label="Services">
-                <ServicesStrip />
-            </section>
-            <div className="grid items-start gap-4 lg:grid-cols-2">
-                <RequestsByServiceCard metrics={metrics} />
-                <RecentActivityCard />
+        <ScreenTemplate
+            header={<PageHeader title="Platform Dashboard" />}
+            stats={
+                <section aria-label="Key metrics">
+                    <StatStrip metrics={metrics} />
+                </section>
+            }
+            statusBanner={metrics.isError && metrics.data ? <ErrorBanner error={metrics.error} onRetry={() => void metrics.refetch()} /> : null}
+            footer={
+                <StatusFooter
+                    start={
+                        <span>
+                            Auto-refresh 30s
+                            {metrics.data ? ` · updated ${formatRelativeTime(metrics.data.refreshedAt)}` : ''}
+                        </span>
+                    }
+                    end={
+                        <span aria-hidden className="font-mono">
+                            GET /health/services · 30s
+                        </span>
+                    }
+                />
+            }
+        >
+            <div className="flex flex-col gap-4">
+                <section aria-label="Services">
+                    <ServicesStrip />
+                </section>
+                <div className="grid items-start gap-4 lg:grid-cols-2">
+                    <RequestsByServiceCard metrics={metrics} />
+                    <RecentActivityCard />
+                </div>
             </div>
-        </div>
+        </ScreenTemplate>
     );
 }
 

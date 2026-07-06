@@ -8,6 +8,8 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { FilterBar, FilterSearch, FilterSelect } from '@/shared/data/filter-bar';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { useBuckets, useObjects } from '../api/hooks';
 import type { StorageObject } from '../api/types';
@@ -62,52 +64,63 @@ function ScreenBody() {
     }
 
     return (
-        <div className="flex flex-col gap-4">
-            <PageHeader
-                title="Storage"
-                meta={
-                    <>
-                        {bucketsQuery.data && !objectsQuery.isPending ? (
-                            <span>
-                                {formatNumber(buckets.length)} {buckets.length === 1 ? 'bucket' : 'buckets'} {'\u00b7'}{' '}
-                                {formatNumber(objects.length)} {objects.length === 1 ? 'object' : 'objects'}
-                            </span>
-                        ) : (
-                            <Skeleton className="h-4 w-40" />
-                        )}
-                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
+        <ScreenTemplate
+            header={
+                <PageHeader
+                    title="Storage"
+                    meta={
+                        <>
+                            {bucketsQuery.data && !objectsQuery.isPending ? (
+                                <span>
+                                    {formatNumber(buckets.length)} {buckets.length === 1 ? 'bucket' : 'buckets'} {'\u00b7'}{' '}
+                                    {formatNumber(objects.length)} {objects.length === 1 ? 'object' : 'objects'}
+                                </span>
+                            ) : (
+                                <Skeleton className="h-4 w-40" />
+                            )}
+                            <span>tenant-scoped listing only</span>
+                        </>
+                    }
+                    actions={
+                        <Button onClick={focusUploadZone}>
+                            <IconUpload aria-hidden />
+                            Upload files
+                        </Button>
+                    }
+                />
+            }
+            toolbar={
+                <FilterBar shown={entries.length} total={allEntries.length}>
+                    <FilterSearch
+                        label="Search objects"
+                        placeholder={'Search objects (prefix)\u2026'}
+                        value={search}
+                        onChange={(value) => void setParams({ search: value || null })}
+                    />
+                    {/* value is always a real bucket name once the list loads, so the
+                        "All" sentinel row only shows while buckets are empty. */}
+                    <FilterSelect
+                        id="storage-browser-bucket-filter"
+                        label="Bucket"
+                        value={activeBucket}
+                        onChange={selectBucket}
+                        options={buckets.map((candidate) => ({ value: candidate.name, label: candidate.name }))}
+                    />
+                    <span aria-hidden className="text-muted-foreground ml-auto hidden font-mono text-xs lg:inline">
+                        GET buckets/:name/files
+                    </span>
+                </FilterBar>
+            }
+            footer={
+                <StatusFooter
+                    end={
+                        <span aria-hidden className="font-mono">
                             {ENDPOINT_HINT}
                         </span>
-                        <span>tenant-scoped listing only</span>
-                    </>
-                }
-                actions={
-                    <Button onClick={focusUploadZone}>
-                        <IconUpload aria-hidden />
-                        Upload files
-                    </Button>
-                }
-            />
-            <FilterBar shown={entries.length} total={allEntries.length}>
-                <FilterSearch
-                    label="Search objects"
-                    placeholder={'Search objects (prefix)\u2026'}
-                    value={search}
-                    onChange={(value) => void setParams({ search: value || null })}
+                    }
                 />
-                {/* value is always a real bucket name once the list loads, so the
-                    "All" sentinel row only shows while buckets are empty. */}
-                <FilterSelect
-                    id="storage-browser-bucket-filter"
-                    label="Bucket"
-                    value={activeBucket}
-                    onChange={selectBucket}
-                    options={buckets.map((candidate) => ({ value: candidate.name, label: candidate.name }))}
-                />
-                <span aria-hidden className="text-muted-foreground ml-auto hidden font-mono text-xs lg:inline">
-                    GET buckets/:name/files
-                </span>
-            </FilterBar>
+            }
+        >
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-[16rem_minmax(0,1fr)_18rem]">
                 <BucketListCard buckets={buckets} isLoading={bucketsQuery.isPending} activeBucket={activeBucket} onSelect={selectBucket} />
                 <ObjectBrowserPanel
@@ -129,7 +142,7 @@ function ScreenBody() {
                 />
                 <ObjectActionsPanel bucketName={activeBucket} object={selectedObject} onDeleted={() => setSelectedKey(null)} />
             </div>
-        </div>
+        </ScreenTemplate>
     );
 }
 

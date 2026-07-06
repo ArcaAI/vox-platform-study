@@ -20,6 +20,8 @@ import { normalizeList } from '@/shared/data/envelopes';
 import type { FilterOption } from '@/shared/data/filter-bar';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useDeletePolicy, usePolicies } from '../api/hooks';
@@ -77,9 +79,10 @@ export function PoliciesScreen() {
     const scopeFilter = query.queryState.filters.find((filter) => filter.id === 'scope');
     const scope = typeof scopeFilter?.value === 'string' ? (scopeFilter.value as PolicyScope) : undefined;
 
-    // The RBAC gateway pages one-based with `pageSize`; the grid is zero-based `limit`.
+    // The RBAC gateway uses `pageSize` (not `limit`); `listParams.page` is already
+    // 1-based from the grid seam (`toListParams`), so pass it through unchanged.
     const { data, isLoading, isFetching, error, refetch } = usePolicies({
-        page: (query.listParams.page ?? 0) + 1,
+        page: query.listParams.page ?? 1,
         pageSize: query.listParams.limit ?? DEFAULT_LIMIT,
         ...(query.listParams.search ? { search: query.listParams.search } : {}),
         ...(scope ? { scope } : {}),
@@ -188,44 +191,19 @@ export function PoliciesScreen() {
     ];
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-            <PageHeader
-                title="Policies"
-                meta={
-                    <>
-                        {data ? <span>{formatNumber(totalCount)} policies</span> : <Skeleton className="h-4 w-24" />}
-                        <span>resource.action grammar</span>
-                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-                            GET /admin/rbac/policies
-                        </span>
-                    </>
-                }
-                actions={
-                    <Button onClick={() => setSheet({ open: true, policyId: null })}>
-                        <IconPlus aria-hidden />
-                        New policy
-                    </Button>
-                }
-            />
-            <AdminDataGrid<Policy>
-                gridId="rbac-policies"
-                aria-label="Policies"
-                columns={columns}
-                rows={rows}
-                total={totalCount}
-                queryState={query.queryState}
-                onQueryStateChange={query.setQueryState}
-                isLoading={isLoading}
-                isBusy={isFetching && !isLoading}
-                error={error}
-                onRetry={() => refetch()}
-                onRowClick={(row) => setSheet({ open: true, policyId: row.id })}
-                emptyState={
-                    <EmptyState
-                        icon={IconShieldSearch}
-                        title="No policies match"
-                        description="Seeded platform defaults always exist — adjust the filters or create a new policy."
-                        action={
+        <>
+            <ScreenTemplate
+                contentMode="fill"
+                header={
+                    <PageHeader
+                        title="Policies"
+                        meta={
+                            <>
+                                {data ? <span>{formatNumber(totalCount)} policies</span> : <Skeleton className="h-4 w-24" />}
+                                <span>resource.action grammar</span>
+                            </>
+                        }
+                        actions={
                             <Button onClick={() => setSheet({ open: true, policyId: null })}>
                                 <IconPlus aria-hidden />
                                 New policy
@@ -233,22 +211,60 @@ export function PoliciesScreen() {
                         }
                     />
                 }
-                emptyFilteredState={
-                    <EmptyState
-                        icon={IconShieldSearch}
-                        title="No policies match"
-                        description="Seeded platform defaults always exist — adjust the filters or create a new policy."
-                        action={
-                            <Button
-                                variant="outline"
-                                onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })}
-                            >
-                                Clear filters
-                            </Button>
+                footer={
+                    <StatusFooter
+                        start={<span>{isFetching && !isLoading ? 'Refreshing' : 'Up to date'}</span>}
+                        end={
+                            <span aria-hidden className="font-mono">
+                                GET /admin/rbac/policies
+                            </span>
                         }
                     />
                 }
-            />
+            >
+                <AdminDataGrid<Policy>
+                    gridId="rbac-policies"
+                    aria-label="Policies"
+                    columns={columns}
+                    rows={rows}
+                    total={totalCount}
+                    queryState={query.queryState}
+                    onQueryStateChange={query.setQueryState}
+                    isLoading={isLoading}
+                    isBusy={isFetching && !isLoading}
+                    error={error}
+                    onRetry={() => refetch()}
+                    onRowClick={(row) => setSheet({ open: true, policyId: row.id })}
+                    emptyState={
+                        <EmptyState
+                            icon={IconShieldSearch}
+                            title="No policies match"
+                            description="Seeded platform defaults always exist — adjust the filters or create a new policy."
+                            action={
+                                <Button onClick={() => setSheet({ open: true, policyId: null })}>
+                                    <IconPlus aria-hidden />
+                                    New policy
+                                </Button>
+                            }
+                        />
+                    }
+                    emptyFilteredState={
+                        <EmptyState
+                            icon={IconShieldSearch}
+                            title="No policies match"
+                            description="Seeded platform defaults always exist — adjust the filters or create a new policy."
+                            action={
+                                <Button
+                                    variant="outline"
+                                    onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })}
+                                >
+                                    Clear filters
+                                </Button>
+                            }
+                        />
+                    }
+                />
+            </ScreenTemplate>
             <PolicyFormSheet
                 open={sheet.open}
                 onOpenChange={(open) => setSheet((current) => ({ open, policyId: open ? current.policyId : null }))}
@@ -271,6 +287,6 @@ export function PoliciesScreen() {
                 isPending={deletePolicy.isPending}
                 error={deleteError}
             />
-        </div>
+        </>
     );
 }

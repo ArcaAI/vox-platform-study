@@ -329,6 +329,15 @@ Every list/table surface in `apps/admin-console` uses `VirtualizedDataGrid` (`pa
 - **Personalization is mandatory for real lists**: column order/size/visibility/pinning + density persist per-user in `UserSettings` under namespace `ui.data-grid/<gridId>` via `GET`/`PATCH user/me/settings` (`grid-persistence.ts` — a single shared `sharedGridLayoutPersistence` adapter, 16 KB-guarded, best-effort; first paint gated on `isLayoutReady`). Only genuinely small fixed detail-tab/utility tables may leave the `column*` features off.
 - Do: give every grid a stable `gridId` and set column `meta` (`variant`, `options`) for typed filters. Don't: reintroduce `DataTable`, or read/write `UserSettings` grid keys outside the shared adapter.
 
+### 3.7 Admin screen template (standard, TASK-427)
+
+Every screen in `apps/admin-console` composes ONE standardized page frame — `ScreenTemplate` (`apps/admin-console/src/shared/page/screen-template.tsx`, Figma "09 - Screen Templates") — instead of hand-rolling a flex column. It fills the shell content region as a fixed-height flex column so only the content scrolls; pinned regions are `shrink-0` flex rows (no `position: sticky`, so they never obscure focus).
+
+- **Region contract** (top → bottom): pinned top in priority order `header` (title + actions; breadcrumbs stay in the shell topbar) → `stats` → `statusBanner` → `toolbar` → `tabs`; full-width content (main / charts / tab panels / data grid); pinned bottom `footer` — an IDE-style status bar (`StatusFooter`, `…/shared/page/status-footer.tsx`).
+- **Content modes**: `contentMode="fill"` hands the height to a fill-height `AdminDataGrid` (sticky header, scrolling body, pagination pinned directly above the footer); `contentMode="scroll"` (default) scrolls content/detail/dashboard pages between the pinned top group and footer. Never nest a second scroll area inside `fill`.
+- Grid pages carry their toolbar INSIDE the grid (not the `toolbar` slot). Tabs: wrap the template in `<Tabs>`, pass `<TabsList>` to `tabs` and the `<TabsContent>` panels as `children`.
+- Do: wrap every screen (list, detail, dashboard) in `ScreenTemplate`. Don't: reintroduce ad-hoc `<div className="flex … flex-col gap-4">` page frames or let the header/toolbar scroll away. See `11-ux-ui-principles.mdc` §Screen Template.
+
 ---
 
 ## 4. Testing standards

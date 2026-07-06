@@ -212,7 +212,8 @@ describe('UsersListScreen', () => {
         expect(q.get('search')).toBe('mia');
         expect(q.get('searchFields')).toBe('username,externalId');
         expect(q.get('filters')).toBe('resourceStatus[equals]:DISABLED;isServiceAccount[equals]:true');
-        expect(q.get('page')).toBe('2');
+        // URL `page=2` is the 0-based grid index (the THIRD page) → 1-based wire page 3.
+        expect(q.get('page')).toBe('3');
         expect(q.get('limit')).toBe('50');
     });
 

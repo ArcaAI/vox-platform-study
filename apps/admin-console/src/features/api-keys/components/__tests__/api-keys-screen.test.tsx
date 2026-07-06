@@ -183,7 +183,8 @@ describe('ApiKeysScreen', () => {
         expect(requested.searchParams.get('search')).toBe('svc');
         expect(requested.searchParams.get('searchFields')).toBe('keyName,keyPrefix');
         expect(requested.searchParams.get('filters')).toBe('keyStatus[equals]:ACTIVE;scopes[equals]:read:metrics');
-        expect(requested.searchParams.get('page')).toBe('1');
+        // URL `page=1` is the 0-based grid index (the SECOND page) → 1-based wire page 2.
+        expect(requested.searchParams.get('page')).toBe('2');
         expect(requested.searchParams.get('limit')).toBe('50');
         expect(requested.searchParams.get('sort')).toBe('updatedAt:desc');
     });

@@ -246,7 +246,8 @@ describe('UserDetailScreen', () => {
 
         expect(await screen.findByRole('heading', { level: 1, name: 'mia.okafor' })).toBeDefined();
         expect(screen.getByText('u-1')).toBeDefined();
-        expect(screen.getByText('Active')).toBeDefined();
+        // Status is shown in the header meta AND the ScreenTemplate footer (TASK-427).
+        expect(screen.getAllByText('Active').length).toBeGreaterThan(0);
         for (const tab of ['Roles', 'Departments', 'Settings', 'Profile', 'Security']) {
             expect(screen.getByRole('tab', { name: tab })).toBeDefined();
         }

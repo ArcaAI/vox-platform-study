@@ -15,6 +15,8 @@ import { CopyButton } from '@/shared/copy-button';
 import { formatBytes, formatDateTime, formatNumber, formatRelativeTime } from '@/shared/format';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
@@ -148,6 +150,7 @@ export function TenantProfileScreen() {
     const tenant = tenantQuery.data;
     const capabilities = entitlementsQuery.data;
     const configRows = configsQuery.data?.data.data ?? [];
+    const isBusy = tenantQuery.isFetching || entitlementsQuery.isFetching || configsQuery.isFetching;
 
     function saveConfig(config: TenantConfig) {
         const value = drafts[config.id];
@@ -171,23 +174,44 @@ export function TenantProfileScreen() {
     }
 
     return (
-        <div className="flex flex-col gap-6">
-            <PageHeader
-                title="Tenant profile"
-                meta={
-                    <>
-                        {tenant ? (
+        <ScreenTemplate
+            header={
+                <PageHeader
+                    title="Tenant profile"
+                    meta={
+                        tenant ? (
                             <>
                                 <span>{tenant.name}</span>
                                 <span aria-hidden>&middot;</span>
                                 <span className="font-mono text-xs">{tenant.key}</span>
-                                <span aria-hidden>&middot;</span>
                             </>
-                        ) : null}
-                        <span className="font-mono text-xs">GET /tenant/me</span>
-                    </>
-                }
-            />
+                        ) : null
+                    }
+                />
+            }
+            statusBanner={
+                <OccConflictAlert
+                    error={updateConfigs.error}
+                    onReload={() => {
+                        // Drafts stay in memory (frame 25 conflict variant:
+                        // "no silent loss") — re-saving applies them against
+                        // the freshly loaded row versions.
+                        updateConfigs.reset();
+                        void configsQuery.refetch();
+                    }}
+                />
+            }
+            footer={
+                <StatusFooter
+                    start={<span>{isBusy ? 'Refreshing' : 'Up to date'}</span>}
+                    end={
+                        <span aria-hidden className="font-mono">
+                            GET /tenant/me
+                        </span>
+                    }
+                />
+            }
+        >
             {tenantQuery.isPending ? (
                 <TenantProfileSkeleton />
             ) : isNoTenantError(tenantQuery.error) ? (
@@ -199,7 +223,7 @@ export function TenantProfileScreen() {
             ) : tenantQuery.error || !tenant ? (
                 <ErrorState error={tenantQuery.error} onRetry={() => void tenantQuery.refetch()} />
             ) : (
-                <>
+                <div className="flex flex-col gap-6">
                     <section aria-labelledby={`${uid}-identity`} className="flex flex-col gap-3">
                         <h2 id={`${uid}-identity`} className="text-base font-semibold">
                             Organization
@@ -332,71 +356,59 @@ export function TenantProfileScreen() {
                                 description="Platform defaults apply until a config row is created for this tenant."
                             />
                         ) : (
-                            <>
-                                <OccConflictAlert
-                                    error={updateConfigs.error}
-                                    onReload={() => {
-                                        // Drafts stay in memory (frame 25 conflict variant:
-                                        // "no silent loss") — re-saving applies them against
-                                        // the freshly loaded row versions.
-                                        updateConfigs.reset();
-                                        void configsQuery.refetch();
-                                    }}
-                                />
-                                <Card className="gap-0 divide-y p-0">
-                                    {configRows.map((config) => {
-                                        const readOnly = Boolean(config.locked) || !config.id;
-                                        const draft = drafts[config.id];
-                                        const dirty = draft !== undefined && draft !== config.value;
-                                        return (
-                                            <div key={config.id || config.key} className="flex flex-wrap items-center gap-3 p-4">
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        <span className="text-sm font-medium">{config.name}</span>
-                                                        {config.namespace ? <span className="text-muted-foreground text-xs">{config.namespace}</span> : null}
-                                                        {config.locked ? (
-                                                            <Badge variant="outline">
-                                                                <IconLock aria-hidden />
-                                                                Locked
-                                                            </Badge>
-                                                        ) : null}
-                                                        {!config.id ? <Badge variant="outline">Read-only</Badge> : null}
-                                                    </div>
-                                                    <div className="text-muted-foreground font-mono text-xs">{config.key}</div>
-                                                    {config.description ? <p className="text-muted-foreground mt-1 text-xs">{config.description}</p> : null}
-                                                    {config.id ? (
-                                                        <p className="text-muted-foreground mt-1 text-xs">
-                                                            v{config.version} &middot; updated {formatRelativeTime(config.updatedAt)}
-                                                        </p>
+                            <Card className="gap-0 divide-y p-0">
+                                {configRows.map((config) => {
+                                    const readOnly = Boolean(config.locked) || !config.id;
+                                    const draft = drafts[config.id];
+                                    const dirty = draft !== undefined && draft !== config.value;
+                                    return (
+                                        <div key={config.id || config.key} className="flex flex-wrap items-center gap-3 p-4">
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className="text-sm font-medium">{config.name}</span>
+                                                    {config.namespace ? <span className="text-muted-foreground text-xs">{config.namespace}</span> : null}
+                                                    {config.locked ? (
+                                                        <Badge variant="outline">
+                                                            <IconLock aria-hidden />
+                                                            Locked
+                                                        </Badge>
                                                     ) : null}
+                                                    {!config.id ? <Badge variant="outline">Read-only</Badge> : null}
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <Input
-                                                        aria-label={`Value for ${config.key}`}
-                                                        value={draft ?? config.value}
-                                                        onChange={(event) => setDrafts((current) => ({ ...current, [config.id]: event.target.value }))}
-                                                        disabled={readOnly}
-                                                        className="h-8 w-56 font-mono text-xs"
-                                                    />
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        aria-label={`Save ${config.key}`}
-                                                        disabled={readOnly || !dirty || updateConfigs.isPending}
-                                                        onClick={() => saveConfig(config)}
-                                                    >
-                                                        Save
-                                                    </Button>
-                                                </div>
+                                                <div className="text-muted-foreground font-mono text-xs">{config.key}</div>
+                                                {config.description ? <p className="text-muted-foreground mt-1 text-xs">{config.description}</p> : null}
+                                                {config.id ? (
+                                                    <p className="text-muted-foreground mt-1 text-xs">
+                                                        v{config.version} &middot; updated {formatRelativeTime(config.updatedAt)}
+                                                    </p>
+                                                ) : null}
                                             </div>
-                                        );
-                                    })}
-                                </Card>
-                            </>
+                                            <div className="flex items-center gap-2">
+                                                <Input
+                                                    aria-label={`Value for ${config.key}`}
+                                                    value={draft ?? config.value}
+                                                    onChange={(event) => setDrafts((current) => ({ ...current, [config.id]: event.target.value }))}
+                                                    disabled={readOnly}
+                                                    className="h-8 w-56 font-mono text-xs"
+                                                />
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    aria-label={`Save ${config.key}`}
+                                                    disabled={readOnly || !dirty || updateConfigs.isPending}
+                                                    onClick={() => saveConfig(config)}
+                                                >
+                                                    Save
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </Card>
                         )}
                     </section>
-                </>
+                </div>
             )}
-        </div>
+        </ScreenTemplate>
     );
 }

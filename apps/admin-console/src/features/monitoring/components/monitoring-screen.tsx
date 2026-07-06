@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader } from '@arcaai/ui/components/shadcn/card
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { formatNumber, formatPercent, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorBanner, ErrorState } from '@/shared/state/error-state';
 import { useRedisHealth, useServicesHealth, useSessions, useUptime } from '../api';
@@ -322,28 +324,35 @@ export function MonitoringScreen() {
     const redis = useRedisHealth();
 
     return (
-        <div className="flex flex-1 flex-col gap-4">
-            <PageHeader
-                title="Monitoring"
-                actions={
-                    <span className="text-muted-foreground text-sm">
-                        Auto-refresh 30s
-                        {uptime.data ? ` · updated ${formatRelativeTime(uptime.data.refreshedAt)}` : ''}
-                    </span>
-                }
-            />
-            <section aria-label="Key metrics">
-                <StatStrip health={health} uptime={uptime} sessions={sessions} redis={redis} />
-            </section>
-            <ServiceHealthGrid health={health} uptime={uptime} />
-            <div className="grid items-start gap-4 lg:grid-cols-2">
-                <ResponseTimeCard uptime={uptime} />
-                <div className="flex flex-col gap-4">
-                    <RedisHealthCard redis={redis} />
-                    <ActiveSessionsCard sessions={sessions} />
+        <ScreenTemplate
+            header={<PageHeader title="Monitoring" />}
+            stats={
+                <section aria-label="Key metrics">
+                    <StatStrip health={health} uptime={uptime} sessions={sessions} redis={redis} />
+                </section>
+            }
+            footer={
+                <StatusFooter
+                    start={
+                        <span>
+                            Auto-refresh 30s
+                            {uptime.data ? ` · updated ${formatRelativeTime(uptime.data.refreshedAt)}` : ''}
+                        </span>
+                    }
+                />
+            }
+        >
+            <div className="flex flex-col gap-4">
+                <ServiceHealthGrid health={health} uptime={uptime} />
+                <div className="grid items-start gap-4 lg:grid-cols-2">
+                    <ResponseTimeCard uptime={uptime} />
+                    <div className="flex flex-col gap-4">
+                        <RedisHealthCard redis={redis} />
+                        <ActiveSessionsCard sessions={sessions} />
+                    </div>
                 </div>
             </div>
-        </div>
+        </ScreenTemplate>
     );
 }
 

@@ -27,6 +27,8 @@ import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid
 import { normalizeList } from '@/shared/data/envelopes';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { useDeleteGlobalSetting, useGlobalSettings, useRevealGlobalSetting, useTenantScopedSettings } from '../api/hooks';
 import type { GlobalSetting } from '../api/types';
@@ -271,40 +273,54 @@ export function SettingsScreen() {
         );
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-            <PageHeader
-                title="Settings & secrets"
-                meta={
-                    <>
-                        {active.data ? <span>{formatNumber(totalCount)} settings</span> : <Skeleton className="h-4 w-20" />}
-                        <span aria-hidden>&middot;</span>
-                        <span>secrets masked &mdash; reveal is audited</span>
-                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-                            GET /admin/settings
-                        </span>
-                    </>
+        <Tabs
+            className="flex min-h-0 flex-1 flex-col"
+            value={effectiveScope}
+            onValueChange={(next) => {
+                setScopeParams({ scope: next === 'global' ? null : next });
+                // Switching scope swaps the result set — return to the first page (legacy parity).
+                const limit = query.queryState.pagination.mode === 'offset' ? query.queryState.pagination.limit : DEFAULT_LIMIT;
+                query.setQueryState({ ...query.queryState, pagination: { mode: 'offset', page: 0, limit } });
+            }}
+        >
+            <ScreenTemplate
+                contentMode="fill"
+                header={
+                    <PageHeader
+                        title="Settings & secrets"
+                        meta={
+                            <>
+                                {active.data ? <span>{formatNumber(totalCount)} settings</span> : <Skeleton className="h-4 w-20" />}
+                                <span aria-hidden>&middot;</span>
+                                <span>secrets masked &mdash; reveal is audited</span>
+                            </>
+                        }
+                        actions={
+                            <Button onClick={() => setCreateOpen(true)}>
+                                <IconPlus aria-hidden />
+                                New setting
+                            </Button>
+                        }
+                    />
                 }
-                actions={
-                    <Button onClick={() => setCreateOpen(true)}>
-                        <IconPlus aria-hidden />
-                        New setting
-                    </Button>
+                tabs={
+                    <TabsList>
+                        <TabsTrigger value="global">Global</TabsTrigger>
+                        {workingTenantId ? <TabsTrigger value="tenant">Tenant: {workingTenantName}</TabsTrigger> : null}
+                    </TabsList>
                 }
-            />
-            <Tabs
-                value={effectiveScope}
-                onValueChange={(next) => {
-                    setScopeParams({ scope: next === 'global' ? null : next });
-                    // Switching scope swaps the result set — return to the first page (legacy parity).
-                    const limit = query.queryState.pagination.mode === 'offset' ? query.queryState.pagination.limit : DEFAULT_LIMIT;
-                    query.setQueryState({ ...query.queryState, pagination: { mode: 'offset', page: 0, limit } });
-                }}
+                footer={
+                    <StatusFooter
+                        start={<span>{active.isFetching && !active.isLoading ? 'Refreshing' : 'Up to date'}</span>}
+                        end={
+                            <span aria-hidden className="font-mono">
+                                GET /admin/settings
+                            </span>
+                        }
+                    />
+                }
             >
-                <TabsList>
-                    <TabsTrigger value="global">Global</TabsTrigger>
-                    {workingTenantId ? <TabsTrigger value="tenant">Tenant: {workingTenantName}</TabsTrigger> : null}
-                </TabsList>
-                <TabsContent value={effectiveScope} className="mt-2">
+                <TabsContent value={effectiveScope}>
                     <AdminDataGrid<GlobalSetting>
                         gridId="settings"
                         aria-label={effectiveScope === 'tenant' ? 'Tenant settings' : 'Global settings'}
@@ -336,7 +352,7 @@ export function SettingsScreen() {
                         }
                     />
                 </TabsContent>
-            </Tabs>
+            </ScreenTemplate>
             {createOpen ? <CreateSettingDialog onOpenChange={setCreateOpen} /> : null}
             {editTarget ? (
                 <EditSettingDialog
@@ -372,6 +388,6 @@ export function SettingsScreen() {
                 isPending={deleteMutation.isPending}
                 onConfirm={confirmDelete}
             />
-        </div>
+        </Tabs>
     );
 }

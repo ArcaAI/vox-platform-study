@@ -13,6 +13,8 @@ import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { CopyButton } from '@/shared/copy-button';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
+import { ScreenTemplate } from '@/shared/page/screen-template';
+import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useDeleteModel, useModelsPaginated } from '../api/hooks';
@@ -169,41 +171,14 @@ export function AiModelsScreen() {
     );
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-            <PageHeader
-                title="AI Model Registry"
-                meta={
-                    <>
-                        {data ? <span>{formatNumber(totalCount)} models</span> : null}
-                        {data ? <span aria-hidden>&middot;</span> : null}
-                        <span className="font-mono text-xs">GET /admin/ai-models</span>
-                    </>
-                }
-                actions={
-                    <Button onClick={openCreate}>
-                        <IconPlus aria-hidden />
-                        Register model
-                    </Button>
-                }
-            />
-            <AdminDataGrid<AiModel>
-                gridId="ai-models"
-                aria-label="AI models"
-                columns={columns}
-                rows={rows}
-                total={totalCount}
-                queryState={query.queryState}
-                onQueryStateChange={query.setQueryState}
-                isLoading={isLoading}
-                isBusy={isFetching && !isLoading}
-                error={error}
-                onRetry={() => void refetch()}
-                emptyState={
-                    <EmptyState
-                        icon={IconCpu}
-                        title="No models registered yet"
-                        description="SMR and STT fall back to platform defaults until a model is registered."
-                        action={
+        <>
+            <ScreenTemplate
+                contentMode="fill"
+                header={
+                    <PageHeader
+                        title="AI Model Registry"
+                        meta={data ? <span>{formatNumber(totalCount)} models</span> : null}
+                        actions={
                             <Button onClick={openCreate}>
                                 <IconPlus aria-hidden />
                                 Register model
@@ -211,20 +186,57 @@ export function AiModelsScreen() {
                         }
                     />
                 }
-                emptyFilteredState={
-                    <EmptyState
-                        icon={IconFilterOff}
-                        title="No models match your filters"
-                        description="Try a different search or clear the filters."
-                        action={
-                            <Button variant="outline" onClick={clearFilters}>
-                                <IconFilterOff aria-hidden />
-                                Clear filters
-                            </Button>
+                footer={
+                    <StatusFooter
+                        start={<span>{isFetching && !isLoading ? 'Refreshing' : 'Up to date'}</span>}
+                        end={
+                            <span aria-hidden className="font-mono">
+                                GET /admin/ai-models
+                            </span>
                         }
                     />
                 }
-            />
+            >
+                <AdminDataGrid<AiModel>
+                    gridId="ai-models"
+                    aria-label="AI models"
+                    columns={columns}
+                    rows={rows}
+                    total={totalCount}
+                    queryState={query.queryState}
+                    onQueryStateChange={query.setQueryState}
+                    isLoading={isLoading}
+                    isBusy={isFetching && !isLoading}
+                    error={error}
+                    onRetry={() => void refetch()}
+                    emptyState={
+                        <EmptyState
+                            icon={IconCpu}
+                            title="No models registered yet"
+                            description="SMR and STT fall back to platform defaults until a model is registered."
+                            action={
+                                <Button onClick={openCreate}>
+                                    <IconPlus aria-hidden />
+                                    Register model
+                                </Button>
+                            }
+                        />
+                    }
+                    emptyFilteredState={
+                        <EmptyState
+                            icon={IconFilterOff}
+                            title="No models match your filters"
+                            description="Try a different search or clear the filters."
+                            action={
+                                <Button variant="outline" onClick={clearFilters}>
+                                    <IconFilterOff aria-hidden />
+                                    Clear filters
+                                </Button>
+                            }
+                        />
+                    }
+                />
+            </ScreenTemplate>
             <ModelFormSheet
                 open={sheetOpen}
                 onOpenChange={(open) => {
@@ -251,6 +263,6 @@ export function AiModelsScreen() {
                 isPending={deleteMutation.isPending}
                 onConfirm={handleDelete}
             />
-        </div>
+        </>
     );
 }
