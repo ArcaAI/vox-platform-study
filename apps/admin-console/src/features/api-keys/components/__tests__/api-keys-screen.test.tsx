@@ -88,6 +88,8 @@ function stubFetch(custom?: (call: RecordedCall) => Response | undefined, rows: 
             calls.push(call);
             const handled = custom?.(call);
             if (handled) return handled;
+            // The grid persists per-user layout via `user/me/settings` — no saved layout in tests.
+            if (call.url.includes('/user/me/settings')) return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
             if (call.url.includes('/admin/api-keys/scopes')) return Response.json(SCOPES);
             if (call.url.includes('/usage')) return Response.json(USAGE);
             if (call.method === 'GET' && call.url.startsWith('/api/hope/admin/api-keys')) return Response.json(envelope(rows));
@@ -121,7 +123,7 @@ describe('ApiKeysScreen', () => {
         expect(screen.getByText('Revoked')).toBeDefined();
         // No expiry -> "Never" per frame 23.
         expect(screen.getAllByText('Never').length).toBeGreaterThan(0);
-        expect(screen.getByRole('table', { name: 'API keys' })).toBeDefined();
+        expect(screen.getByRole('grid', { name: 'API keys' })).toBeDefined();
         expect(screen.getByText(/3 keys/)).toBeDefined();
     });
 
@@ -165,14 +167,22 @@ describe('ApiKeysScreen', () => {
 
     it('maps search/status/scope/page URL state onto the gateway list request', async () => {
         const calls = stubFetch();
-        renderWithProviders(<ApiKeysScreen />, { searchParams: '?q=svc&status=ACTIVE&scope=read:metrics&page=1&limit=50' });
+        // Typed filters live in the compact `f` URL param (positional JSON tuples); enum columns
+        // serialize to the gateway bracket grammar `field[equals]:v`, tokens joined by `;`.
+        const f = encodeURIComponent(
+            JSON.stringify([
+                ['keyStatus', 'eq', 'select', 'ACTIVE'],
+                ['scopes', 'eq', 'select', 'read:metrics'],
+            ]),
+        );
+        renderWithProviders(<ApiKeysScreen />, { searchParams: `?search=svc&f=${f}&page=1&limit=50` });
 
         await screen.findByText('svc_reporting');
         const list = calls.find((call) => call.url.startsWith('/api/hope/admin/api-keys?'));
         const requested = new URL(list?.url ?? '', 'http://test.local');
         expect(requested.searchParams.get('search')).toBe('svc');
         expect(requested.searchParams.get('searchFields')).toBe('keyName,keyPrefix');
-        expect(requested.searchParams.get('filters')).toBe('keyStatus:ACTIVE,scopes:read:metrics');
+        expect(requested.searchParams.get('filters')).toBe('keyStatus[equals]:ACTIVE;scopes[equals]:read:metrics');
         expect(requested.searchParams.get('page')).toBe('1');
         expect(requested.searchParams.get('limit')).toBe('50');
         expect(requested.searchParams.get('sort')).toBe('updatedAt:desc');

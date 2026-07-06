@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { IconDots, IconLock, IconPencil, IconPlus, IconShieldSearch, IconTrash } from '@tabler/icons-react';
-import { parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
 import { toast } from 'sonner';
+import { type ColumnDef } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import {
@@ -15,9 +15,9 @@ import {
 } from '@arcaai/ui/components/shadcn/dropdown-menu';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { BreakGlassDialog, type BreakGlassCredentials } from '@/shared/confirm/break-glass-dialog';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { FilterBar, FilterSearch, FilterSelect, type FilterOption } from '@/shared/data/filter-bar';
-import { TablePagination } from '@/shared/data/table-pagination';
+import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid';
+import { normalizeList } from '@/shared/data/envelopes';
+import type { FilterOption } from '@/shared/data/filter-bar';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
@@ -26,6 +26,7 @@ import { useDeletePolicy, usePolicies } from '../api/hooks';
 import type { Policy, PolicyScope } from '../api/types';
 import { PolicyFormSheet } from './policy-form-sheet';
 
+/** RBAC gateway page size default (the surface pages one-based with `pageSize`). */
 const DEFAULT_LIMIT = 25;
 
 const SCOPE_OPTIONS: FilterOption[] = [
@@ -61,28 +62,30 @@ function RowActions({ policy, onEdit, onDelete }: { policy: Policy; onEdit: () =
 }
 
 /**
- * Frame 22 — RBAC Policies (/rbac/policies, shared tier 20-29). Paginated
- * list (one-based page + pageSize envelope) with search/scope filters, the
- * create/edit sheet hosting the JSON rules editor, and break-glass delete
+ * Frame 22 — RBAC Policies (/rbac/policies, shared tier 20-29). AdminDataGrid
+ * over the RBAC surface's one-based `{ data, total, page, pageSize }` envelope.
+ * The scope facet is a typed `select` column filter; its value is lifted back
+ * out of the grid's filter state and sent as the gateway's raw `scope` param
+ * (the RBAC surface predates the bracket-grammar filter contract). The surface
+ * has no server sort, so every column opts out of sorting. Row click / edit ->
+ * the create/edit sheet hosting the JSON rules editor; break-glass delete
  * (DELETE body carries password + confirmationName = the POLICY's exact name).
  */
 export function PoliciesScreen() {
-    const [{ search, scope, page, limit }, setParams] = useQueryStates({
-        search: parseAsString.withDefault(''),
-        scope: parseAsString.withDefault(''),
-        page: parseAsInteger.withDefault(0),
-        limit: parseAsInteger.withDefault(DEFAULT_LIMIT),
-    });
+    const query = useAdminGridParams();
+    // The scope facet rides in the grid filter state; RBAC wants it as a raw `scope` param.
+    const scopeFilter = query.queryState.filters.find((filter) => filter.id === 'scope');
+    const scope = typeof scopeFilter?.value === 'string' ? (scopeFilter.value as PolicyScope) : undefined;
 
-    const query = usePolicies({
-        // TablePagination is zero-based; the RBAC gateway pages from 1.
-        page: page + 1,
-        pageSize: limit,
-        ...(search ? { search } : {}),
-        ...(scope ? { scope: scope as PolicyScope } : {}),
+    // The RBAC gateway pages one-based with `pageSize`; the grid is zero-based `limit`.
+    const { data, isLoading, isFetching, error, refetch } = usePolicies({
+        page: (query.listParams.page ?? 0) + 1,
+        pageSize: query.listParams.limit ?? DEFAULT_LIMIT,
+        ...(query.listParams.search ? { search: query.listParams.search } : {}),
+        ...(scope ? { scope } : {}),
     });
-    const rows = query.data?.data ?? [];
-    const total = query.data?.total ?? 0;
+    const { rows, total } = normalizeList<Policy>(data, { pageBase: 1 });
+    const totalCount = total ?? 0;
 
     const [sheet, setSheet] = useState<{ open: boolean; policyId: string | null }>({ open: false, policyId: null });
     const [deleteTarget, setDeleteTarget] = useState<Policy | null>(null);
@@ -111,14 +114,16 @@ export function PoliciesScreen() {
         );
     }
 
-    const columns: DataTableColumn<Policy>[] = [
+    const columns: ColumnDef<Policy>[] = [
         {
-            key: 'name',
+            accessorKey: 'name',
             header: 'Policy',
-            cell: (row) => (
+            enableSorting: false,
+            meta: { label: 'Policy' },
+            cell: ({ row }) => (
                 <span className="flex items-center gap-2">
-                    <span className="font-medium">{row.name}</span>
-                    {row.isProtected ? (
+                    <span className="font-medium">{row.original.name}</span>
+                    {row.original.isProtected ? (
                         <Badge variant="secondary">
                             <IconLock aria-hidden />
                             Protected
@@ -126,42 +131,69 @@ export function PoliciesScreen() {
                     ) : null}
                 </span>
             ),
+            size: 280,
+            minSize: 180,
         },
-        { key: 'scope', header: 'Scope', cell: (row) => <Badge variant="outline">{SCOPE_LABELS[row.scope] ?? row.scope}</Badge> },
         {
-            key: 'rules',
+            accessorKey: 'scope',
+            header: 'Scope',
+            enableSorting: false,
+            meta: { label: 'Scope', variant: 'select', options: SCOPE_OPTIONS },
+            cell: ({ row }) => <Badge variant="outline">{SCOPE_LABELS[row.original.scope] ?? row.original.scope}</Badge>,
+            size: 140,
+        },
+        {
+            id: 'rules',
             header: 'Rules',
-            cell: (row) => <span className="tabular-nums">{formatNumber(row.rules.length)}</span>,
+            enableSorting: false,
+            meta: { label: 'Rules' },
+            cell: ({ row }) => <span className="tabular-nums">{formatNumber(row.original.rules.length)}</span>,
+            size: 100,
         },
-        { key: 'status', header: 'Status', cell: (row) => <ResourceStatusBadge status={row.resourceStatus} /> },
         {
-            key: 'updated',
+            accessorKey: 'resourceStatus',
+            header: 'Status',
+            enableSorting: false,
+            meta: { label: 'Status' },
+            cell: ({ row }) => <ResourceStatusBadge status={row.original.resourceStatus} />,
+            size: 140,
+        },
+        {
+            accessorKey: 'updatedAt',
             header: 'Updated',
-            cell: (row) => <span className="text-muted-foreground">{formatRelativeTime(row.updatedAt)}</span>,
+            enableSorting: false,
+            meta: { label: 'Updated' },
+            cell: ({ row }) => <span className="text-muted-foreground">{formatRelativeTime(row.original.updatedAt)}</span>,
+            size: 160,
         },
         {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            className: 'w-12 text-right',
-            cell: (row) => (
-                <RowActions
-                    policy={row}
-                    onEdit={() => setSheet({ open: true, policyId: row.id })}
-                    onDelete={() => setDeleteTarget(row)}
-                />
+            id: 'actions',
+            header: () => <span className="sr-only">Actions</span>,
+            meta: { label: 'Actions' },
+            enableSorting: false,
+            enableHiding: false,
+            enableResizing: false,
+            size: 56,
+            minSize: 56,
+            cell: ({ row }) => (
+                <div className="flex w-full justify-end">
+                    <RowActions
+                        policy={row.original}
+                        onEdit={() => setSheet({ open: true, policyId: row.original.id })}
+                        onDelete={() => setDeleteTarget(row.original)}
+                    />
+                </div>
             ),
         },
     ];
 
-    const hasFilters = Boolean(search || scope);
-
     return (
-        <div className="flex flex-col gap-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
             <PageHeader
                 title="Policies"
                 meta={
                     <>
-                        {query.data ? <span>{formatNumber(total)} policies</span> : <Skeleton className="h-4 w-24" />}
+                        {data ? <span>{formatNumber(totalCount)} policies</span> : <Skeleton className="h-4 w-24" />}
                         <span>resource.action grammar</span>
                         <span aria-hidden className="text-muted-foreground font-mono text-xs">
                             GET /admin/rbac/policies
@@ -175,56 +207,47 @@ export function PoliciesScreen() {
                     </Button>
                 }
             />
-            <FilterBar shown={rows.length} total={total}>
-                <FilterSearch
-                    label="Search policies"
-                    placeholder={'Search policies\u2026'}
-                    value={search}
-                    onChange={(value) => setParams({ search: value || null, page: null })}
-                />
-                <FilterSelect
-                    id="policies-scope-filter"
-                    label="Scope"
-                    value={scope}
-                    onChange={(value) => setParams({ scope: value || null, page: null })}
-                    options={SCOPE_OPTIONS}
-                />
-            </FilterBar>
-            <DataTable
+            <AdminDataGrid<Policy>
+                gridId="rbac-policies"
                 aria-label="Policies"
                 columns={columns}
                 rows={rows}
-                rowKey={(row) => row.id}
-                isLoading={query.isPending}
-                error={query.error}
-                onRetry={() => void query.refetch()}
-                empty={
+                total={totalCount}
+                queryState={query.queryState}
+                onQueryStateChange={query.setQueryState}
+                isLoading={isLoading}
+                isBusy={isFetching && !isLoading}
+                error={error}
+                onRetry={() => refetch()}
+                onRowClick={(row) => setSheet({ open: true, policyId: row.id })}
+                emptyState={
                     <EmptyState
                         icon={IconShieldSearch}
                         title="No policies match"
                         description="Seeded platform defaults always exist — adjust the filters or create a new policy."
                         action={
-                            hasFilters ? (
-                                <Button variant="outline" onClick={() => setParams({ search: null, scope: null, page: null })}>
-                                    Clear filters
-                                </Button>
-                            ) : (
-                                <Button onClick={() => setSheet({ open: true, policyId: null })}>
-                                    <IconPlus aria-hidden />
-                                    New policy
-                                </Button>
-                            )
+                            <Button onClick={() => setSheet({ open: true, policyId: null })}>
+                                <IconPlus aria-hidden />
+                                New policy
+                            </Button>
                         }
                     />
                 }
-                onRowClick={(row) => setSheet({ open: true, policyId: row.id })}
-            />
-            <TablePagination
-                page={page}
-                limit={limit}
-                total={total}
-                onPageChange={(next) => setParams({ page: next || null })}
-                onLimitChange={(next) => setParams({ limit: next === DEFAULT_LIMIT ? null : next, page: null })}
+                emptyFilteredState={
+                    <EmptyState
+                        icon={IconShieldSearch}
+                        title="No policies match"
+                        description="Seeded platform defaults always exist — adjust the filters or create a new policy."
+                        action={
+                            <Button
+                                variant="outline"
+                                onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })}
+                            >
+                                Clear filters
+                            </Button>
+                        }
+                    />
+                }
             />
             <PolicyFormSheet
                 open={sheet.open}

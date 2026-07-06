@@ -152,8 +152,14 @@ function defaultHandler(call: RecordedCall): Response | undefined {
     return undefined;
 }
 
+/** Best-effort per-user grid-layout persistence (`user/me/settings`) — no saved layout in tests. */
+function settingsResponse(call: RecordedCall): Response | undefined {
+    if (!call.url.includes('/user/me/settings')) return undefined;
+    return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
+}
+
 function stubJobs(custom: FetchHandler = () => undefined): RecordedCall[] {
-    return stubFetch((call) => custom(call) ?? defaultHandler(call));
+    return stubFetch((call) => settingsResponse(call) ?? custom(call) ?? defaultHandler(call));
 }
 
 beforeEach(() => {
@@ -195,7 +201,7 @@ describe('TranscriptionJobsScreen', () => {
         expect(await screen.findByText(/213 jobs/)).toBeDefined();
     });
 
-    it('routes the failed stat card shortcut into the status url param', async () => {
+    it('routes the failed stat card shortcut into the typed-filter (`f`) url param', async () => {
         stubJobs();
         const onUrlUpdate = vi.fn();
         renderWithProviders(<TranscriptionJobsScreen />, { onUrlUpdate });
@@ -203,15 +209,20 @@ describe('TranscriptionJobsScreen', () => {
         expect(await screen.findByText('job-9f2ka7c3')).toBeDefined();
         fireEvent.click(screen.getByRole('button', { name: /filter the grid to failed jobs/i }));
 
+        // The Status filter now travels in the compact `f` param (JSON tuples), not a
+        // discrete `status` key — the shortcut writes the FAILED select rule.
         await waitFor(() => {
             const update = onUrlUpdate.mock.calls.at(-1)?.[0] as { searchParams: URLSearchParams } | undefined;
-            expect(update?.searchParams.get('status')).toBe('FAILED');
+            const f = update?.searchParams.get('f');
+            expect(f).toBeTruthy();
+            expect(JSON.parse(f as string)).toEqual([['status', 'eq', 'select', 'FAILED']]);
         });
     });
 
     it('drives the grid from GET status/:status while the FAILED filter is active', async () => {
+        const f = encodeURIComponent(JSON.stringify([['status', 'eq', 'select', 'FAILED']]));
         const calls = stubJobs();
-        renderWithProviders(<TranscriptionJobsScreen />, { searchParams: '?status=FAILED' });
+        renderWithProviders(<TranscriptionJobsScreen />, { searchParams: `?f=${f}` });
 
         expect(await screen.findByText('job-5k3vn8d4')).toBeDefined();
         expect(screen.queryByText('job-9f2ka7c3')).toBeNull();

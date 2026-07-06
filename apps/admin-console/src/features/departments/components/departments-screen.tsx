@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import { IconHierarchy, IconPlus } from '@tabler/icons-react';
+import { useEffect, useState } from 'react';
+import { IconHierarchy, IconPlus, IconSearch } from '@tabler/icons-react';
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs';
 import { Button } from '@arcaai/ui/components/shadcn/button';
+import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
-import { FilterBar, FilterSearch } from '@/shared/data/filter-bar';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
@@ -42,6 +42,20 @@ function DepartmentsBody() {
     const [includeDisabled, setIncludeDisabled] = useQueryState('disabled', parseAsBoolean.withDefault(false));
     const [selectedParam, setSelectedParam] = useQueryState('dept', parseAsString.withDefault(''));
     const [createOpen, setCreateOpen] = useState(false);
+
+    // Debounced (300ms) draft over the URL-synced `q`, re-synced on external
+    // changes (back/forward) via the render-time derived-state reset pattern.
+    const [searchDraft, setSearchDraft] = useState(search);
+    const [lastSearch, setLastSearch] = useState(search);
+    if (search !== lastSearch) {
+        setLastSearch(search);
+        setSearchDraft(search);
+    }
+    useEffect(() => {
+        if (searchDraft === search) return;
+        const timer = setTimeout(() => void setSearch(searchDraft || null), 300);
+        return () => clearTimeout(timer);
+    }, [searchDraft, search, setSearch]);
 
     // The flat list backs the header count, search, parent options and the
     // cycle guard; the tree renders from roots + lazy :id/children reads.
@@ -87,13 +101,19 @@ function DepartmentsBody() {
                     </Button>
                 }
             />
-            <FilterBar shown={searchResults.length} total={departments.length}>
-                <FilterSearch
-                    label="Search departments"
-                    placeholder={'Search departments\u2026'}
-                    value={search}
-                    onChange={(value) => setSearch(value || null)}
-                />
+            {/* Not a data grid (frame 30 is a hierarchy tree): a plain toolbar over
+                the client-side search + include-disabled flag, no FilterBar. */}
+            <div className="bg-card flex flex-wrap items-center gap-3 rounded-md border p-2">
+                <div className="relative w-64 max-w-full">
+                    <IconSearch aria-hidden className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+                    <Input
+                        aria-label="Search departments"
+                        placeholder={'Search departments\u2026'}
+                        value={searchDraft}
+                        onChange={(event) => setSearchDraft(event.target.value)}
+                        className="h-9 pl-8"
+                    />
+                </div>
                 <div className="flex items-center gap-1.5">
                     <Label htmlFor="departments-include-disabled" className="text-muted-foreground text-sm font-normal">
                         Include disabled:
@@ -104,7 +124,10 @@ function DepartmentsBody() {
                         onCheckedChange={(checked) => setIncludeDisabled(checked || null)}
                     />
                 </div>
-            </FilterBar>
+                <span aria-live="polite" className="text-muted-foreground ml-auto pr-2 text-sm">
+                    Showing {formatNumber(searchResults.length)} of {formatNumber(departments.length)}
+                </span>
+            </div>
             {list.isPending ? (
                 <DepartmentsSkeleton />
             ) : list.error ? (

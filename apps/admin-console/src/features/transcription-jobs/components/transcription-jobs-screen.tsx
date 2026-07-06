@@ -1,18 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { IconFilterOff, IconInbox, IconRefresh } from '@tabler/icons-react';
-import { parseAsInteger, parseAsString, parseAsStringLiteral, useQueryStates } from 'nuqs';
 import { useQueryClient } from '@tanstack/react-query';
+import { VirtualizedDataGrid, type ColumnDef, type DataQueryState } from '@arcaai/ui';
 import { StatCard } from '@arcaai/ui/components/metrics/stat-card';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { FilterBar, FilterSearch, FilterSelect, type FilterOption } from '@/shared/data/filter-bar';
-import { TablePagination } from '@/shared/data/table-pagination';
+import { useAdminGridParams } from '@/shared/data/admin-data-grid';
+import { normalizeList } from '@/shared/data/envelopes';
+import type { FilterOption } from '@/shared/data/filter-bar';
+import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
+import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { transcriptionJobKeys, useTranscriptionJobStats, useTranscriptionJobs, useTranscriptionJobsByStatus } from '../api';
 import type { TranscriptionJob, TranscriptionJobStats, TranscriptionJobStatus } from '../api';
@@ -22,6 +24,16 @@ import { JobStreamCard } from './job-stream-panel';
 const JOB_STATUSES = ['QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED', 'DEAD'] as const;
 
 const STATUS_OPTIONS: FilterOption[] = JOB_STATUSES.map((status) => ({ value: status, label: JOB_STATUS_META[status].label }));
+
+/** Embedded grid (design-spec D2): fixed viewport beside the live-stream panel. */
+const JOBS_GRID_HEIGHT = 480;
+
+/** Read a single-select faceted filter's scalar value out of the grid query-state. */
+function selectValue(state: DataQueryState, id: string): string {
+    const rule = state.filters.find((filter) => filter.id === id);
+    if (!rule) return '';
+    return Array.isArray(rule.value) ? String(rule.value[0] ?? '') : String(rule.value ?? '');
+}
 
 const ENDPOINT_HINT = (
     <span aria-hidden className="font-mono text-xs">
@@ -58,13 +70,17 @@ export function TranscriptionJobsScreen() {
 
 function TranscriptionJobsBody() {
     const queryClient = useQueryClient();
-    const [{ search, status, page, limit }, setParams] = useQueryStates({
-        search: parseAsString.withDefault(''),
-        status: parseAsStringLiteral(JOB_STATUSES),
-        page: parseAsInteger.withDefault(0),
-        limit: parseAsInteger.withDefault(25),
-    });
+    // Omni search (client id-substring) + the Status faceted filter live in the
+    // URL via the standard grid codec; the selected row (a stream panel, not a
+    // route) stays local state.
+    const query = useAdminGridParams();
     const [selectedId, setSelectedId] = useState<string | null>(null);
+
+    const search = query.queryState.globalSearch?.trim().toLowerCase() ?? '';
+    const statusValue = selectValue(query.queryState, 'status');
+    const status = (JOB_STATUSES as readonly string[]).includes(statusValue) ? (statusValue as TranscriptionJobStatus) : null;
+    const page = query.queryState.pagination.mode === 'offset' ? query.queryState.pagination.page : 0;
+    const limit = query.queryState.pagination.limit;
 
     const statsQuery = useTranscriptionJobStats();
     // The gateway list is 1-based; the URL keeps the 0-based house convention.
@@ -72,9 +88,14 @@ function TranscriptionJobsBody() {
     const statusQuery = useTranscriptionJobsByStatus(status);
 
     const activeQuery = status !== null ? statusQuery : listQuery;
-    const loaded: TranscriptionJob[] = status !== null ? (statusQuery.data ?? []) : (listQuery.data?.data ?? []);
-    const rows = search ? loaded.filter((job) => job.id.toLowerCase().includes(search.toLowerCase())) : loaded;
-    const total = status !== null ? loaded.length : (listQuery.data?.total ?? 0);
+    const { rows: listRows, total: listTotal } = normalizeList<TranscriptionJob>(listQuery.data);
+    const loaded: TranscriptionJob[] = status !== null ? (statusQuery.data ?? []) : listRows;
+    const filtered = search ? loaded.filter((job) => job.id.toLowerCase().includes(search)) : loaded;
+
+    // Status mode loads EVERY row for the status → client-paginate here; list mode
+    // is already server-paged, so its (search-narrowed) page is shown as-is.
+    const total = status !== null ? filtered.length : (listTotal ?? 0);
+    const rows = status !== null ? filtered.slice(page * limit, page * limit + limit) : filtered;
     const hasFilters = Boolean(search || status);
 
     const stats = statsQuery.data;
@@ -82,32 +103,64 @@ function TranscriptionJobsBody() {
 
     function applyFailedFilter() {
         setSelectedId(null);
-        void setParams({ status: 'FAILED', page: null });
+        query.setQueryState({ ...query.queryState, filters: [{ id: 'status', operator: 'eq', value: 'FAILED', variant: 'select' }] });
     }
 
     function handleRefresh() {
         void queryClient.invalidateQueries({ queryKey: transcriptionJobKeys.root });
     }
 
-    const columns: DataTableColumn<TranscriptionJob>[] = [
-        {
-            key: 'id',
-            header: 'Job',
-            mono: true,
-            cell: (row) => (
-                <span className={`block max-w-48 truncate ${row.id === selectedId ? 'text-primary font-semibold' : ''}`} title={row.id}>
-                    {row.id}
-                </span>
-            ),
-        },
-        { key: 'status', header: 'Status', cell: (row) => <TranscriptionJobStatusBadge status={row.status} /> },
-        { key: 'duration', header: 'Dur.', className: 'tabular-nums', cell: (row) => formatJobDuration(row) },
-        {
-            key: 'updated',
-            header: 'Updated',
-            cell: (row) => <span className="text-muted-foreground">{formatRelativeTime(row.updatedAt)}</span>,
-        },
-    ];
+    const clearFilters = () => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] });
+
+    const columns = useMemo<ColumnDef<TranscriptionJob>[]>(
+        () => [
+            {
+                accessorKey: 'id',
+                header: 'Job',
+                enableSorting: false,
+                enableHiding: false,
+                size: 200,
+                minSize: 140,
+                meta: { label: 'Job' },
+                cell: ({ row }) => (
+                    <span
+                        className={`block max-w-48 truncate font-mono text-xs ${row.original.id === selectedId ? 'text-primary font-semibold' : ''}`}
+                        title={row.original.id}
+                    >
+                        {row.original.id}
+                    </span>
+                ),
+            },
+            {
+                accessorKey: 'status',
+                header: 'Status',
+                enableSorting: false,
+                enableHiding: false,
+                size: 130,
+                meta: { label: 'Status', variant: 'select', options: STATUS_OPTIONS },
+                cell: ({ row }) => <TranscriptionJobStatusBadge status={row.original.status} />,
+            },
+            {
+                id: 'duration',
+                header: 'Dur.',
+                enableSorting: false,
+                enableHiding: false,
+                size: 90,
+                meta: { label: 'Dur.' },
+                cell: ({ row }) => <span className="tabular-nums">{formatJobDuration(row.original)}</span>,
+            },
+            {
+                accessorKey: 'updatedAt',
+                header: 'Updated',
+                enableSorting: false,
+                enableHiding: false,
+                size: 130,
+                meta: { label: 'Updated' },
+                cell: ({ row }) => <span className="text-muted-foreground">{formatRelativeTime(row.original.updatedAt)}</span>,
+            },
+        ],
+        [selectedId],
+    );
 
     const empty = hasFilters ? (
         <EmptyState
@@ -115,7 +168,7 @@ function TranscriptionJobsBody() {
             title="No jobs in range"
             description="Filter mismatch — try a different search or clear the filters."
             action={
-                <Button variant="outline" onClick={() => void setParams({ search: null, status: null, page: null })}>
+                <Button variant="outline" onClick={clearFilters}>
                     <IconFilterOff aria-hidden />
                     Clear filters
                 </Button>
@@ -161,50 +214,36 @@ function TranscriptionJobsBody() {
                     <StatCard label="Failed" value={stats ? formatNumber(stats.failed) : null} accent="destructive" isLoading={statsLoading} />
                 </button>
             </section>
-            <FilterBar shown={rows.length} total={total}>
-                <FilterSearch
-                    label="Search job id"
-                    placeholder={'Search job id\u2026'}
-                    value={search}
-                    onChange={(value) => void setParams({ search: value || null })}
-                />
-                <FilterSelect
-                    id="jobs-status-filter"
-                    label="Status"
-                    value={status ?? ''}
-                    onChange={(value) => {
-                        setSelectedId(null);
-                        void setParams({ status: (value || null) as TranscriptionJobStatus | null, page: null });
-                    }}
-                    options={STATUS_OPTIONS}
-                />
-                <span aria-hidden className="text-muted-foreground hidden font-mono text-xs lg:inline">
-                    GET status/:status
-                </span>
-            </FilterBar>
             <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-                <div className="flex flex-col gap-3">
-                    <DataTable
-                        aria-label="Transcription jobs"
-                        columns={columns}
-                        rows={rows}
-                        rowKey={(row) => row.id}
-                        isLoading={activeQuery.isLoading}
-                        error={activeQuery.error ?? undefined}
-                        onRetry={() => void activeQuery.refetch()}
-                        empty={empty}
-                        onRowClick={(row) => setSelectedId(row.id)}
-                    />
-                    {status === null ? (
-                        <TablePagination
-                            page={page}
-                            limit={limit}
-                            total={total}
-                            onPageChange={(next) => void setParams({ page: next || null })}
-                            onLimitChange={(next) => void setParams({ limit: next, page: null })}
-                        />
-                    ) : null}
-                </div>
+                <VirtualizedDataGrid<TranscriptionJob>
+                    aria-label="Transcription jobs"
+                    columns={columns}
+                    data={rows}
+                    getRowId={(row) => row.id}
+                    height={JOBS_GRID_HEIGHT}
+                    manual={{ filtering: true, pagination: true }}
+                    rowCount={total}
+                    queryState={query.queryState}
+                    onQueryStateChange={query.setQueryState}
+                    persistence={gridPersistence('transcription-jobs')}
+                    features={{
+                        columnReorder: true,
+                        columnResize: true,
+                        columnPinning: true,
+                        columnVisibility: true,
+                        rowSelection: false,
+                        globalSearch: true,
+                        facetedFilters: true,
+                        sorting: false,
+                    }}
+                    onRowClick={(row) => setSelectedId(row.id)}
+                    isLoading={activeQuery.isLoading}
+                    isBusy={activeQuery.isFetching && !activeQuery.isLoading}
+                    error={rows.length > 0 ? null : (activeQuery.error ?? null)}
+                    errorState={(error) => <ErrorState error={error} onRetry={() => void activeQuery.refetch()} />}
+                    onRetry={() => void activeQuery.refetch()}
+                    emptyState={empty}
+                />
                 <JobStreamCard jobId={selectedId} />
             </div>
         </div>

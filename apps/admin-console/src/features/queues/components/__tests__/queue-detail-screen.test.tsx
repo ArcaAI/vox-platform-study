@@ -58,7 +58,9 @@ const QUEUE_URL = '/api/hope/admin/queues/stt-transcription';
 const JOBS_URL = `${QUEUE_URL}/jobs`;
 
 function stubQueueRoutes() {
-    return installFetchStub(({ url }) => {
+    return installFetchStub(({ url, method }) => {
+        // AdminDataGrid persists per-user layout via user/me/settings — no saved layout in tests.
+        if (url.includes('/user/me/settings')) return method === 'GET' ? [] : { success: true };
         if (url === QUEUE_URL) return QUEUE;
         if (url.startsWith(`${JOBS_URL}?`)) {
             const envelope: PaginatedJobs = { items: JOBS, total: 2, page: 0, limit: 25 };
@@ -81,13 +83,17 @@ describe('QueueDetailScreen', () => {
         expect(screen.getByRole('heading', { level: 1, name: 'stt-transcription' })).toBeDefined();
         expect(await screen.findByText('job-101')).toBeDefined();
         expect(screen.getByText('transcribe-followup')).toBeDefined();
-        expect(screen.getByRole('table', { name: 'Jobs' })).toBeDefined();
+        expect(screen.getByRole('grid', { name: 'Jobs' })).toBeDefined();
         expect(screen.getByText('Waiting')).toBeDefined();
     });
 
     it('propagates the URL state filter into the jobs request', async () => {
         const calls = stubQueueRoutes();
-        renderWithProviders(<QueueDetailScreen name="stt-transcription" />, { searchParams: '?status=failed' });
+        // Typed filters live in the compact `f` URL param (JSON tuples); the screen maps
+        // the State facet onto the jobs endpoint's discrete `status` knob (the DTO rejects
+        // the generic filters/search/sort params).
+        const f = encodeURIComponent(JSON.stringify([['status', 'eq', 'select', 'failed']]));
+        renderWithProviders(<QueueDetailScreen name="stt-transcription" />, { searchParams: `?f=${f}` });
         await waitFor(() => expect(calls.some((call) => call.url.startsWith(`${JOBS_URL}?`))).toBe(true));
         const jobsCall = calls.find((call) => call.url.startsWith(`${JOBS_URL}?`));
         expect(jobsCall?.url).toContain('status=failed');
@@ -125,8 +131,10 @@ describe('QueueDetailScreen', () => {
         const calls = stubQueueRoutes();
         renderWithProviders(<QueueDetailScreen name="stt-transcription" />);
         await screen.findByText('job-101');
-        fireEvent.click(screen.getByRole('checkbox', { name: 'Select job job-101' }));
-        fireEvent.click(screen.getByRole('button', { name: /retry selected/i }));
+        // The grid owns selection now: per-row checkboxes carry the generic "Select row"
+        // name and row 0 is job-101. Selecting reveals the bulk action bar.
+        fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select row' })[0]);
+        fireEvent.click(await screen.findByRole('button', { name: /retry selected/i }));
         fireEvent.click(await screen.findByRole('button', { name: 'Retry jobs' }));
         await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === `${JOBS_URL}/bulk`)).toBe(true));
         const bulk = calls.find((call) => call.url === `${JOBS_URL}/bulk`);

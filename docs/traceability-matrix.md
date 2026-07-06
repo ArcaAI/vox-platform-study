@@ -1,6 +1,6 @@
 # HOPE Traceability Matrix
 
-Last updated: 2026-07-04
+Last updated: 2026-07-06
 
 Maps each business capability to the services, packages, data models, API routes, and tests that implement it. All route paths are verified against controllers/routers in code; gateway routes are relative to the global prefix `/api/v1`. Gaps are marked `—`.
 
@@ -48,6 +48,7 @@ Test location shorthand:
 | 34 | Embedded DB browser (dev only) | `apps/api` | `modules/pstudio` (fail-closed: dev + flag) | — | `/admin/pstudio`, `/admin/pstudio/status` | unit(api): `pstudio` gating tests; e2e `task-403` |
 | 35 | Browser SDK (capture → transcribe → document) | `packages/agentic-sdk-v2` (+ `room`, `vad`, `noise-filter`, `stt`, `med-ner`, `pipeline`) | `@arcaai/vox` core/store/hooks/providers | — (client-side) | consumes: session create, WS stream, consultation CRUD, SSE streams | pkg unit tests (`packages/*/src/**/__tests__`); e2e: `tests/e2e/sdk/sdk-api.e2e.spec.ts` |
 | 36 | Federated learning | — (no app) | — | `FedlClient`, `FedlRound`, `FedlUpdate`, `FedlModelVersion` | — | — |
+| 37 | Admin console data grids (personalized columns, typed filters, offset/cursor pagination) | `apps/admin-console` (+ `packages/ui`) | `packages/ui/src/components/data-grid` (`VirtualizedDataGrid`); `admin-console/src/shared/data` (`AdminDataGrid`, `grid-persistence`, `grid-url-state`, `envelopes`) | `UserSettings` (namespace `ui.data-grid/<gridId>`) | `GET/PATCH /user/me/settings` for layout; list reads via existing `/admin/*` offset/cursor endpoints; filter bracket grammar in `applications/common/paginatedQueryParamConverters.ts` | unit: `packages/ui` data-grid suite + `admin-console/src/**/__tests__`; e2e: `task-423-filter-grammar` |
 
 ## Known gaps / honest notes
 

@@ -150,7 +150,7 @@ describe('DepartmentsScreen', () => {
         expect(within(tree).getByText('Radiology')).toBeDefined();
 
         // Cardiology (first root) is selected by default -> members grid.
-        const grid = await screen.findByRole('table', { name: 'Members of Cardiology' });
+        const grid = await screen.findByRole('grid', { name: 'Members of Cardiology' });
         expect(await within(grid).findByText('elena.vasquez')).toBeDefined();
         expect(within(grid).getByText('marcus.chen')).toBeDefined();
         expect(within(grid).getByText('Cardiologist')).toBeDefined();

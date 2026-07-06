@@ -2,8 +2,8 @@
 
 import { useState, type FormEvent } from 'react';
 import { IconDots, IconEye, IconFilterOff, IconLock, IconPlus, IconTrash, IconUsersGroup } from '@tabler/icons-react';
-import { parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
 import { toast } from 'sonner';
+import { type ColumnDef } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
@@ -20,9 +20,8 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { BreakGlassDialog, type BreakGlassCredentials } from '@/shared/confirm/break-glass-dialog';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { FilterBar, FilterSearch } from '@/shared/data/filter-bar';
-import { TablePagination } from '@/shared/data/table-pagination';
+import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid';
+import { normalizeList } from '@/shared/data/envelopes';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
@@ -31,6 +30,7 @@ import { useCreateRole, useDeleteRole, useRoles } from '../api/hooks';
 import type { Role } from '../api/types';
 import { RoleDetailSheet } from './role-detail-sheet';
 
+/** RBAC gateway page size default (the surface pages one-based with `pageSize`). */
 const DEFAULT_LIMIT = 25;
 
 /** System roles are seed-managed and locked (frame 21: lock icon + label). */
@@ -151,26 +151,24 @@ function CreateRoleDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
 }
 
 /**
- * Frame 21 — RBAC Roles (/rbac/roles, shared tier 20-29). Paginated list
- * (the RBAC surface uses a one-based page + pageSize envelope), row click ->
- * role detail sheet, create dialog, and break-glass delete (DELETE body
- * carries password + confirmationName = the ROLE's exact name).
+ * Frame 21 — RBAC Roles (/rbac/roles, shared tier 20-29). AdminDataGrid over
+ * the RBAC surface's one-based `{ data, total, page, pageSize }` envelope: the
+ * grid's zero-based URL page/limit is bridged to the gateway's page/pageSize,
+ * and the omni search maps to the RBAC `search` param. The surface has no
+ * server sort, so every column opts out of sorting. Row click -> role detail
+ * sheet; create dialog; break-glass delete (DELETE body carries password +
+ * confirmationName = the ROLE's exact name).
  */
 export function RolesScreen() {
-    const [{ search, page, limit }, setParams] = useQueryStates({
-        search: parseAsString.withDefault(''),
-        page: parseAsInteger.withDefault(0),
-        limit: parseAsInteger.withDefault(DEFAULT_LIMIT),
+    const query = useAdminGridParams();
+    // The RBAC gateway pages one-based with `pageSize`; the grid is zero-based `limit`.
+    const { data, isLoading, isFetching, error, refetch } = useRoles({
+        page: (query.listParams.page ?? 0) + 1,
+        pageSize: query.listParams.limit ?? DEFAULT_LIMIT,
+        ...(query.listParams.search ? { search: query.listParams.search } : {}),
     });
-
-    const query = useRoles({
-        // TablePagination is zero-based; the RBAC gateway pages from 1.
-        page: page + 1,
-        pageSize: limit,
-        ...(search ? { search } : {}),
-    });
-    const rows = query.data?.data ?? [];
-    const total = query.data?.total ?? 0;
+    const { rows, total } = normalizeList<Role>(data, { pageBase: 1 });
+    const totalCount = total ?? 0;
     const systemCount = rows.filter((row) => row.isSystemRole).length;
 
     const [createOpen, setCreateOpen] = useState(false);
@@ -202,63 +200,74 @@ export function RolesScreen() {
         );
     }
 
-    const columns: DataTableColumn<Role>[] = [
-        { key: 'name', header: 'Role', cell: (row) => <span className="font-medium">{row.name}</span> },
-        { key: 'type', header: 'Type', cell: (row) => <RoleTypeBadge role={row} /> },
+    const columns: ColumnDef<Role>[] = [
         {
-            key: 'policies',
+            accessorKey: 'name',
+            header: 'Role',
+            enableSorting: false,
+            meta: { label: 'Role' },
+            cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+            size: 220,
+            minSize: 160,
+        },
+        {
+            id: 'type',
+            header: 'Type',
+            enableSorting: false,
+            meta: { label: 'Type' },
+            cell: ({ row }) => <RoleTypeBadge role={row.original} />,
+            size: 160,
+        },
+        {
+            id: 'policies',
             header: 'Policies',
-            cell: (row) => <span className="tabular-nums">{formatNumber(row.policies?.length ?? 0)}</span>,
+            enableSorting: false,
+            meta: { label: 'Policies' },
+            cell: ({ row }) => <span className="tabular-nums">{formatNumber(row.original.policies?.length ?? 0)}</span>,
+            size: 110,
         },
-        { key: 'status', header: 'Status', cell: (row) => <ResourceStatusBadge status={row.resourceStatus} /> },
         {
-            key: 'updated',
+            accessorKey: 'resourceStatus',
+            header: 'Status',
+            enableSorting: false,
+            meta: { label: 'Status' },
+            cell: ({ row }) => <ResourceStatusBadge status={row.original.resourceStatus} />,
+            size: 140,
+        },
+        {
+            accessorKey: 'updatedAt',
             header: 'Updated',
-            cell: (row) => <span className="text-muted-foreground">{formatRelativeTime(row.updatedAt)}</span>,
+            enableSorting: false,
+            meta: { label: 'Updated' },
+            cell: ({ row }) => <span className="text-muted-foreground">{formatRelativeTime(row.original.updatedAt)}</span>,
+            size: 160,
         },
         {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            className: 'w-12 text-right',
-            cell: (row) => <RowActions role={row} onView={() => setDetailId(row.id)} onDelete={() => setDeleteTarget(row)} />,
+            id: 'actions',
+            header: () => <span className="sr-only">Actions</span>,
+            meta: { label: 'Actions' },
+            enableSorting: false,
+            enableHiding: false,
+            enableResizing: false,
+            size: 56,
+            minSize: 56,
+            cell: ({ row }) => (
+                <div className="flex w-full justify-end">
+                    <RowActions role={row.original} onView={() => setDetailId(row.original.id)} onDelete={() => setDeleteTarget(row.original)} />
+                </div>
+            ),
         },
     ];
 
-    const empty = search ? (
-        <EmptyState
-            icon={IconFilterOff}
-            title="No roles match your search"
-            description="Try a different search term."
-            action={
-                <Button variant="outline" onClick={() => setParams({ search: null, page: null })}>
-                    <IconFilterOff aria-hidden />
-                    Clear search
-                </Button>
-            }
-        />
-    ) : (
-        <EmptyState
-            icon={IconUsersGroup}
-            title="No custom roles yet"
-            description="System roles are seed-managed and always present. Create a custom role to group policies."
-            action={
-                <Button onClick={() => setCreateOpen(true)}>
-                    <IconPlus aria-hidden />
-                    New role
-                </Button>
-            }
-        />
-    );
-
     return (
-        <div className="flex flex-col gap-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
             <PageHeader
                 title="Roles"
                 meta={
                     <>
-                        {query.data ? (
+                        {data ? (
                             <span>
-                                {formatNumber(total)} roles &middot; {formatNumber(systemCount)} system + {formatNumber(rows.length - systemCount)}{' '}
+                                {formatNumber(totalCount)} roles &middot; {formatNumber(systemCount)} system + {formatNumber(rows.length - systemCount)}{' '}
                                 custom
                             </span>
                         ) : (
@@ -276,31 +285,45 @@ export function RolesScreen() {
                     </Button>
                 }
             />
-            <FilterBar shown={rows.length} total={total}>
-                <FilterSearch
-                    label="Search roles"
-                    placeholder={'Search roles\u2026'}
-                    value={search}
-                    onChange={(value) => setParams({ search: value || null, page: null })}
-                />
-            </FilterBar>
-            <DataTable
+            <AdminDataGrid<Role>
+                gridId="rbac-roles"
                 aria-label="Roles"
                 columns={columns}
                 rows={rows}
-                rowKey={(row) => row.id}
-                isLoading={query.isPending}
-                error={query.error}
-                onRetry={() => void query.refetch()}
-                empty={empty}
+                total={totalCount}
+                queryState={query.queryState}
+                onQueryStateChange={query.setQueryState}
+                isLoading={isLoading}
+                isBusy={isFetching && !isLoading}
+                error={error}
+                onRetry={() => refetch()}
                 onRowClick={(row) => setDetailId(row.id)}
-            />
-            <TablePagination
-                page={page}
-                limit={limit}
-                total={total}
-                onPageChange={(next) => setParams({ page: next || null })}
-                onLimitChange={(next) => setParams({ limit: next === DEFAULT_LIMIT ? null : next, page: null })}
+                emptyState={
+                    <EmptyState
+                        icon={IconUsersGroup}
+                        title="No custom roles yet"
+                        description="System roles are seed-managed and always present. Create a custom role to group policies."
+                        action={
+                            <Button onClick={() => setCreateOpen(true)}>
+                                <IconPlus aria-hidden />
+                                New role
+                            </Button>
+                        }
+                    />
+                }
+                emptyFilteredState={
+                    <EmptyState
+                        icon={IconFilterOff}
+                        title="No roles match your search"
+                        description="Try a different search term."
+                        action={
+                            <Button variant="outline" onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })}>
+                                <IconFilterOff aria-hidden />
+                                Clear search
+                            </Button>
+                        }
+                    />
+                }
             />
             <CreateRoleDialog open={createOpen} onOpenChange={setCreateOpen} />
             <RoleDetailSheet roleId={detailId} onOpenChange={(open) => !open && setDetailId(null)} onDelete={(role) => setDeleteTarget(role)} />

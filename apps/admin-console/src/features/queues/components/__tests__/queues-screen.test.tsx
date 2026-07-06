@@ -3,13 +3,21 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import type { QueueStats } from '../../api/types';
 import { QueuesScreen } from '../queues-screen';
-import { installFetchStub } from './fetch-stub';
+import { installFetchStub, type FetchHandler, type RecordedCall } from './fetch-stub';
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
 
 vi.mock('next/navigation', () => ({
     useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
 }));
+
+/** Layout persistence reads GET user/me/settings on mount; tests have no saved layout. */
+function stubFetch(handle: FetchHandler): RecordedCall[] {
+    return installFetchStub((call) => {
+        if (call.url.includes('/user/me/settings')) return call.method === 'GET' ? [] : { success: true };
+        return handle(call);
+    });
+}
 
 const QUEUES: QueueStats[] = [
     {
@@ -36,25 +44,25 @@ afterEach(() => {
 
 describe('QueuesScreen', () => {
     it('renders the queue table with status and counts', async () => {
-        installFetchStub(({ url }) => (url === LIST_URL ? QUEUES : undefined));
+        stubFetch(({ url }) => (url === LIST_URL ? QUEUES : undefined));
         renderWithProviders(<QueuesScreen />);
         expect(screen.getByRole('heading', { level: 1, name: 'Queues & Jobs' })).toBeDefined();
         expect(await screen.findByText('stt-transcription')).toBeDefined();
         expect(screen.getByText('smr-summaries')).toBeDefined();
         expect(screen.getByText('Paused')).toBeDefined();
         expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
-        expect(screen.getByRole('table', { name: 'Queues' })).toBeDefined();
+        expect(screen.getByRole('grid', { name: 'Queues' })).toBeDefined();
     });
 
     it('shows a neutral empty state when no queues are registered', async () => {
-        installFetchStub(({ url }) => (url === LIST_URL ? [] : undefined));
+        stubFetch(({ url }) => (url === LIST_URL ? [] : undefined));
         renderWithProviders(<QueuesScreen />);
         expect(await screen.findByText('No queues registered')).toBeDefined();
     });
 
     it('shows a block error state and retries the request', async () => {
         let fail = true;
-        const calls = installFetchStub(({ url }) => {
+        const calls = stubFetch(({ url }) => {
             if (url !== LIST_URL) return undefined;
             if (fail) return Response.json({ message: 'Service unavailable' }, { status: 503 });
             return QUEUES;
@@ -68,7 +76,7 @@ describe('QueuesScreen', () => {
     });
 
     it('pauses a running queue after confirmation', async () => {
-        const calls = installFetchStub(({ url }) => (url === LIST_URL ? QUEUES : undefined));
+        const calls = stubFetch(({ url }) => (url === LIST_URL ? QUEUES : undefined));
         renderWithProviders(<QueuesScreen />);
         await screen.findByText('stt-transcription');
         fireEvent.keyDown(screen.getByRole('button', { name: 'Actions for stt-transcription' }), { key: 'Enter' });
@@ -80,7 +88,7 @@ describe('QueuesScreen', () => {
     });
 
     it('resumes a paused queue after confirmation', async () => {
-        const calls = installFetchStub(({ url }) => (url === LIST_URL ? QUEUES : undefined));
+        const calls = stubFetch(({ url }) => (url === LIST_URL ? QUEUES : undefined));
         renderWithProviders(<QueuesScreen />);
         await screen.findByText('smr-summaries');
         fireEvent.keyDown(screen.getByRole('button', { name: 'Actions for smr-summaries' }), { key: 'Enter' });
@@ -92,7 +100,7 @@ describe('QueuesScreen', () => {
     });
 
     it('cleans a queue through the destructive dialog with a state selector', async () => {
-        const calls = installFetchStub(({ url }) => {
+        const calls = stubFetch(({ url }) => {
             if (url === LIST_URL) return QUEUES;
             if (url.endsWith('/clean')) return { removedJobIds: [], count: 12 };
             return undefined;
@@ -110,7 +118,7 @@ describe('QueuesScreen', () => {
     });
 
     it('navigates to the queue detail on row click', async () => {
-        installFetchStub(({ url }) => (url === LIST_URL ? QUEUES : undefined));
+        stubFetch(({ url }) => (url === LIST_URL ? QUEUES : undefined));
         renderWithProviders(<QueuesScreen />);
         fireEvent.click(await screen.findByText('stt-transcription'));
         expect(push).toHaveBeenCalledWith('/queues/stt-transcription');

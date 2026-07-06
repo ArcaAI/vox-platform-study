@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useCallback, useMemo, useState, type FormEvent } from 'react';
 import { IconBuilding, IconPlus, IconStar, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
+import { type ColumnDef, VirtualizedDataGrid } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Checkbox } from '@arcaai/ui/components/shadcn/checkbox';
@@ -21,7 +22,6 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { GatewayError } from '@/shared/api';
 import { useDepartmentOptions } from '@/shared/catalog';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
 import { NameWithId } from '@/shared/data/name-with-id';
 import { formatDateTime } from '@/shared/format';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
@@ -29,6 +29,18 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useAssignDepartment, useRemoveDepartment, useUpdateDepartment, useUserDepartments } from '../api/hooks';
 import type { UserDepartment } from '../api/types';
+
+/** Embedded detail-tab grids: no personalization, client-side only (rule #2). */
+const EMBEDDED_GRID_FEATURES = {
+    columnReorder: false,
+    columnResize: false,
+    columnPinning: false,
+    columnVisibility: false,
+    rowSelection: false,
+    globalSearch: false,
+    facetedFilters: false,
+    sorting: true,
+} as const;
 
 /** Row label: "Name (CODE)" when the wire populated the department, else the raw id. */
 function departmentLabel(row: UserDepartment): string {
@@ -137,19 +149,22 @@ export function UserDepartmentsTab({ id }: { id: string }) {
     const [removal, setRemoval] = useState<UserDepartment | null>(null);
     const rows = data ?? [];
 
-    function handleMakePrimary(row: UserDepartment) {
-        update.mutate(
-            { id, assignmentId: row.id, patch: { isPrimary: true }, etag: `"${row.version}"` },
-            {
-                onSuccess: () => toast.success('Primary department updated'),
-                onError: (mutationError) => {
-                    // 412/428 render through the OCC alert below, not a toast.
-                    if (mutationError instanceof GatewayError && (mutationError.isVersionConflict || mutationError.isMissingPrecondition)) return;
-                    toast.error(mutationError instanceof GatewayError ? mutationError.message : 'Could not update the department.');
+    const handleMakePrimary = useCallback(
+        (row: UserDepartment) => {
+            update.mutate(
+                { id, assignmentId: row.id, patch: { isPrimary: true }, etag: `"${row.version}"` },
+                {
+                    onSuccess: () => toast.success('Primary department updated'),
+                    onError: (mutationError) => {
+                        // 412/428 render through the OCC alert below, not a toast.
+                        if (mutationError instanceof GatewayError && (mutationError.isVersionConflict || mutationError.isMissingPrecondition)) return;
+                        toast.error(mutationError instanceof GatewayError ? mutationError.message : 'Could not update the department.');
+                    },
                 },
-            },
-        );
-    }
+            );
+        },
+        [id, update],
+    );
 
     function handleRemove() {
         if (!removal) return;
@@ -166,53 +181,80 @@ export function UserDepartmentsTab({ id }: { id: string }) {
         );
     }
 
-    const columns: DataTableColumn<UserDepartment>[] = [
-        {
-            key: 'department',
-            header: 'Department',
-            cell: (row) => <NameWithId name={row.departmentName ? departmentLabel(row) : undefined} id={row.departmentId} />,
-        },
-        {
-            key: 'primary',
-            header: 'Primary',
-            cell: (row) =>
-                row.isPrimary ? (
-                    <Badge>
-                        <IconStar aria-hidden />
-                        Primary
-                    </Badge>
-                ) : (
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Make ${departmentLabel(row)} primary`}
-                        disabled={update.isPending}
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            handleMakePrimary(row);
-                        }}
-                    >
-                        Make primary
-                    </Button>
+    const columns = useMemo<ColumnDef<UserDepartment>[]>(
+        () => [
+            {
+                id: 'department',
+                header: 'Department',
+                enableSorting: false,
+                meta: { label: 'Department' },
+                size: 240,
+                minSize: 160,
+                cell: ({ row }) => <NameWithId name={row.original.departmentName ? departmentLabel(row.original) : undefined} id={row.original.departmentId} />,
+            },
+            {
+                id: 'primary',
+                header: 'Primary',
+                enableSorting: false,
+                meta: { label: 'Primary' },
+                size: 150,
+                cell: ({ row }) =>
+                    row.original.isPrimary ? (
+                        <Badge>
+                            <IconStar aria-hidden />
+                            Primary
+                        </Badge>
+                    ) : (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Make ${departmentLabel(row.original)} primary`}
+                            disabled={update.isPending}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                handleMakePrimary(row.original);
+                            }}
+                        >
+                            Make primary
+                        </Button>
+                    ),
+            },
+            {
+                id: 'status',
+                header: 'Status',
+                enableSorting: false,
+                meta: { label: 'Status' },
+                size: 130,
+                cell: ({ row }) =>
+                    row.original.resourceStatus ? <ResourceStatusBadge status={row.original.resourceStatus} /> : <span className="text-muted-foreground">{'\u2014'}</span>,
+            },
+            {
+                accessorKey: 'createdAt',
+                header: 'Assigned',
+                meta: { label: 'Assigned' },
+                size: 180,
+                cell: ({ row }) => <span className="text-muted-foreground">{formatDateTime(row.original.createdAt)}</span>,
+            },
+            {
+                id: 'actions',
+                header: () => <span className="sr-only">Actions</span>,
+                meta: { label: 'Actions' },
+                enableSorting: false,
+                enableHiding: false,
+                enableResizing: false,
+                size: 56,
+                minSize: 56,
+                cell: ({ row }) => (
+                    <div className="flex w-full justify-end">
+                        <Button variant="ghost" size="icon-sm" aria-label={`Remove department ${departmentLabel(row.original)}`} onClick={() => setRemoval(row.original)}>
+                            <IconTrash aria-hidden />
+                        </Button>
+                    </div>
                 ),
-        },
-        {
-            key: 'status',
-            header: 'Status',
-            cell: (row) => (row.resourceStatus ? <ResourceStatusBadge status={row.resourceStatus} /> : <span className="text-muted-foreground">{'\u2014'}</span>),
-        },
-        { key: 'assigned', header: 'Assigned', cell: (row) => <span className="text-muted-foreground">{formatDateTime(row.createdAt)}</span> },
-        {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            className: 'w-12 text-right',
-            cell: (row) => (
-                <Button variant="ghost" size="icon-sm" aria-label={`Remove department ${departmentLabel(row)}`} onClick={() => setRemoval(row)}>
-                    <IconTrash aria-hidden />
-                </Button>
-            ),
-        },
-    ];
+            },
+        ],
+        [handleMakePrimary, update.isPending],
+    );
 
     return (
         <div className="flex flex-col gap-3">
@@ -229,16 +271,17 @@ export function UserDepartmentsTab({ id }: { id: string }) {
                     Assign department
                 </Button>
             </div>
-            <DataTable
+            <VirtualizedDataGrid<UserDepartment>
                 aria-label="Department memberships"
                 columns={columns}
-                rows={rows}
-                rowKey={(row) => row.id}
+                data={rows}
+                getRowId={(row) => row.id}
+                features={EMBEDDED_GRID_FEATURES}
+                height={320}
                 isLoading={isLoading}
                 error={error}
                 onRetry={() => refetch()}
-                skeletonRows={3}
-                empty={<EmptyState icon={IconBuilding} title="No department memberships" description="Assign a department to scope this user's work." />}
+                emptyState={<EmptyState icon={IconBuilding} title="No department memberships" description="Assign a department to scope this user's work." />}
             />
             <AssignDepartmentDialog userId={id} open={assignOpen} onOpenChange={setAssignOpen} />
             {removal ? (

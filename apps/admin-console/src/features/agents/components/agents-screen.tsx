@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { IconDots, IconFilterOff, IconPencil, IconPlus, IconRobot, IconTrash } from '@tabler/icons-react';
-import { parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
+import { parseAsString, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
+import { VirtualizedDataGrid, type ColumnDef, type DataQueryState } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card, CardContent } from '@arcaai/ui/components/shadcn/card';
@@ -17,12 +18,14 @@ import {
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { GatewayError } from '@/shared/api';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { FilterBar, FilterSearch, FilterSelect, type FilterOption } from '@/shared/data/filter-bar';
-import { TablePagination } from '@/shared/data/table-pagination';
+import { useAdminGridParams } from '@/shared/data/admin-data-grid';
+import { normalizeList } from '@/shared/data/envelopes';
+import type { FilterOption } from '@/shared/data/filter-bar';
+import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
+import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { useDeleteTemplate, useDepartments, useTemplates, useUsageStats } from '../api/hooks';
 import type { ListTemplatesParams, PromptTemplate, PromptTemplateStatus } from '../api/types';
@@ -30,13 +33,20 @@ import { CreateTemplateDialog, EditTemplateDialog } from './template-form-dialog
 import { TestRunPanel } from './test-run-panel';
 import { VersionsPanel } from './version-diff-panel';
 
-/** Frame shows compact pages; also bounds the per-row usage-stat fan-out. */
-const PAGE_SIZE = 10;
+/** Embedded grid (design-spec D2): fixed viewport in the master-detail middle column. */
+const TEMPLATES_GRID_HEIGHT = 480;
 
 const STATUS_OPTIONS: FilterOption[] = [
     { value: 'DRAFT', label: 'Draft' },
     { value: 'PUBLISHED', label: 'Published' },
 ];
+
+/** Scalar value of a single-value faceted filter from the grid query-state. */
+function scalarFilterValue(state: DataQueryState, id: string): string {
+    const rule = state.filters.find((filter) => filter.id === id);
+    if (!rule) return '';
+    return Array.isArray(rule.value) ? String(rule.value[0] ?? '') : String(rule.value ?? '');
+}
 
 /** Per-row all-time run count from GET :id/usage (cached per template id). */
 function UsageCell({ templateId }: { templateId: string }) {
@@ -75,16 +85,20 @@ function TemplateRowActions({ template, onEdit, onDelete }: { template: PromptTe
 }
 
 function AgentsScreenBody() {
-    const [{ search, department, status, page, template: selectedParam }, setParams] = useQueryStates({
-        search: parseAsString.withDefault(''),
-        department: parseAsString.withDefault(''),
-        status: parseAsString.withDefault(''),
-        page: parseAsInteger.withDefault(0),
-        template: parseAsString.withDefault(''),
-    });
+    // Grid query-state (omni search, Department/Status faceted filters, page)
+    // lives in the URL via the standard codec; `template` (the selected row that
+    // drives the side panels) stays its own param.
+    const query = useAdminGridParams();
+    const [selectedParam, setSelectedParam] = useQueryState('template', parseAsString.withDefault(''));
     const [createOpen, setCreateOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [deleting, setDeleting] = useState<PromptTemplate | null>(null);
+
+    const search = query.queryState.globalSearch?.trim() ?? '';
+    const department = scalarFilterValue(query.queryState, 'departmentId');
+    const status = scalarFilterValue(query.queryState, 'status');
+    const page = query.queryState.pagination.mode === 'offset' ? query.queryState.pagination.page : 0;
+    const limit = query.queryState.pagination.limit;
 
     // NOTE: this endpoint's `page` is ONE-based (server does `page || 1`);
     // the URL/UI state stays zero-based like every other console list.
@@ -93,55 +107,102 @@ function AgentsScreenBody() {
         departmentId: department || undefined,
         status: status === 'DRAFT' || status === 'PUBLISHED' ? (status as PromptTemplateStatus) : undefined,
         page: page + 1,
-        limit: PAGE_SIZE,
+        limit,
     };
     const templatesQuery = useTemplates(listParams);
     const departmentsQuery = useDepartments();
     const deleteTemplate = useDeleteTemplate();
 
-    const rows = templatesQuery.data?.data ?? [];
-    const count = templatesQuery.data?.count ?? 0;
+    const { rows, total } = normalizeList<PromptTemplate>(templatesQuery.data);
+    const count = total ?? 0;
     const hasFilters = Boolean(search || department || status);
     const selected = rows.find((row) => row.id === selectedParam) ?? rows[0] ?? null;
 
-    const departmentLabels = new Map((departmentsQuery.data ?? []).map((row) => [row.id, row.code ?? row.name ?? row.id]));
-    const departmentOptions: FilterOption[] = (departmentsQuery.data ?? []).map((row) => ({
-        value: row.id,
-        label: departmentLabels.get(row.id) as string,
-    }));
+    const departmentLabels = useMemo(
+        () => new Map((departmentsQuery.data ?? []).map((row) => [row.id, row.code ?? row.name ?? row.id])),
+        [departmentsQuery.data],
+    );
+    const departmentOptions = useMemo<FilterOption[]>(
+        () => (departmentsQuery.data ?? []).map((row) => ({ value: row.id, label: (row.code ?? row.name ?? row.id) as string })),
+        [departmentsQuery.data],
+    );
 
-    const columns: DataTableColumn<PromptTemplate>[] = [
-        {
-            key: 'name',
-            header: 'Template',
-            cell: (row) => (
-                <span className="flex items-center gap-2">
-                    <span className="font-medium">{row.name}</span>
-                    {row.status === 'DRAFT' ? <Badge variant="outline">Draft</Badge> : null}
-                </span>
-            ),
-        },
-        {
-            key: 'department',
-            header: 'Dept',
-            cell: (row) =>
-                row.departmentId ? (
-                    <Badge variant="outline" className="font-mono text-[10px]">
-                        {departmentLabels.get(row.departmentId) ?? row.departmentId}
-                    </Badge>
-                ) : (
-                    <span className="text-muted-foreground">{'\u2014 all \u2014'}</span>
+    const clearFilters = () => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] });
+
+    const columns = useMemo<ColumnDef<PromptTemplate>[]>(
+        () => [
+            {
+                accessorKey: 'name',
+                header: 'Template',
+                enableSorting: false,
+                enableHiding: false,
+                size: 220,
+                minSize: 140,
+                meta: { label: 'Template' },
+                cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+            },
+            {
+                accessorKey: 'departmentId',
+                header: 'Dept',
+                enableSorting: false,
+                enableHiding: false,
+                size: 120,
+                meta: { label: 'Dept', variant: 'select', options: departmentOptions },
+                cell: ({ row }) =>
+                    row.original.departmentId ? (
+                        <Badge variant="outline" className="font-mono text-[10px]">
+                            {departmentLabels.get(row.original.departmentId) ?? row.original.departmentId}
+                        </Badge>
+                    ) : (
+                        <span className="text-muted-foreground">{'\u2014 all \u2014'}</span>
+                    ),
+            },
+            {
+                accessorKey: 'status',
+                header: 'Status',
+                enableSorting: false,
+                enableHiding: false,
+                size: 120,
+                meta: { label: 'Status', variant: 'select', options: STATUS_OPTIONS },
+                cell: ({ row }) =>
+                    row.original.status === 'DRAFT' ? <Badge variant="outline">Draft</Badge> : <Badge variant="secondary">Published</Badge>,
+            },
+            {
+                id: 'active',
+                header: 'Active',
+                enableSorting: false,
+                enableHiding: false,
+                size: 90,
+                meta: { label: 'Active' },
+                cell: ({ row }) => <span className="font-mono text-xs">v{row.original.currentVersionNumber}</span>,
+            },
+            {
+                id: 'usage',
+                header: 'Usage',
+                enableSorting: false,
+                enableHiding: false,
+                size: 120,
+                meta: { label: 'Usage' },
+                cell: ({ row }) => <UsageCell templateId={row.original.id} />,
+            },
+            {
+                id: 'actions',
+                header: () => <span className="sr-only">Actions</span>,
+                enableSorting: false,
+                enableHiding: false,
+                enableResizing: false,
+                size: 56,
+                minSize: 56,
+                meta: { label: 'Actions' },
+                cell: ({ row }) => (
+                    <div className="flex w-full justify-end">
+                        <TemplateRowActions template={row.original} onEdit={() => setEditingId(row.original.id)} onDelete={() => setDeleting(row.original)} />
+                    </div>
                 ),
-        },
-        { key: 'active', header: 'Active', mono: true, cell: (row) => `v${row.currentVersionNumber}` },
-        { key: 'usage', header: 'Usage', cell: (row) => <UsageCell templateId={row.id} /> },
-        {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            className: 'w-12 text-right',
-            cell: (row) => <TemplateRowActions template={row} onEdit={() => setEditingId(row.id)} onDelete={() => setDeleting(row)} />,
-        },
-    ];
+            },
+        ],
+        [departmentLabels, departmentOptions],
+    );
 
     const empty = hasFilters ? (
         <EmptyState
@@ -149,7 +210,7 @@ function AgentsScreenBody() {
             title="No templates match your filters"
             description="Try a different search or clear the filters."
             action={
-                <Button variant="outline" onClick={() => setParams({ search: null, department: null, status: null, page: null })}>
+                <Button variant="outline" onClick={clearFilters}>
                     <IconFilterOff aria-hidden />
                     Clear filters
                 </Button>
@@ -174,7 +235,7 @@ function AgentsScreenBody() {
         deleteTemplate.mutate(deleting.id, {
             onSuccess: () => {
                 toast.success('Template deleted');
-                if (deleting.id === selectedParam) void setParams({ template: null });
+                if (deleting.id === selectedParam) void setSelectedParam(null);
                 setDeleting(null);
             },
             onError: (error) => {
@@ -203,31 +264,6 @@ function AgentsScreenBody() {
                     </Button>
                 }
             />
-            <FilterBar>
-                <FilterSearch
-                    label="Search templates"
-                    placeholder={'Search templates\u2026'}
-                    value={search}
-                    onChange={(value) => setParams({ search: value || null, page: null })}
-                />
-                <FilterSelect
-                    id="agents-department-filter"
-                    label="Department"
-                    value={department}
-                    onChange={(value) => setParams({ department: value || null, page: null })}
-                    options={departmentOptions}
-                />
-                <FilterSelect
-                    id="agents-status-filter"
-                    label="Status"
-                    value={status}
-                    onChange={(value) => setParams({ status: value || null, page: null })}
-                    options={STATUS_OPTIONS}
-                />
-                <span aria-hidden className="text-muted-foreground ml-auto pr-2 font-mono text-xs">
-                    GET usage-records
-                </span>
-            </FilterBar>
             <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)]">
                 {/* Keyed remounts reset panel-local state on selection change.
                     The prefixes keep the two keyed siblings unique — duplicate
@@ -241,26 +277,40 @@ function AgentsScreenBody() {
                     </Card>
                 )}
                 <div className="flex flex-col gap-3">
-                    <DataTable
+                    <VirtualizedDataGrid<PromptTemplate>
                         aria-label="Prompt templates"
                         columns={columns}
-                        rows={rows}
-                        rowKey={(row) => row.id}
+                        data={rows}
+                        getRowId={(row) => row.id}
+                        height={TEMPLATES_GRID_HEIGHT}
+                        manual={{ filtering: true, pagination: true }}
+                        rowCount={count}
+                        queryState={query.queryState}
+                        onQueryStateChange={query.setQueryState}
+                        persistence={gridPersistence('agents')}
+                        features={{
+                            columnReorder: true,
+                            columnResize: true,
+                            columnPinning: true,
+                            columnVisibility: true,
+                            rowSelection: false,
+                            globalSearch: true,
+                            facetedFilters: true,
+                            sorting: false,
+                        }}
+                        onRowClick={(row) => void setSelectedParam(row.id)}
                         isLoading={templatesQuery.isLoading}
-                        error={templatesQuery.error}
+                        isBusy={templatesQuery.isFetching && !templatesQuery.isLoading}
+                        error={rows.length > 0 ? null : (templatesQuery.error ?? null)}
+                        errorState={(error) => <ErrorState error={error} onRetry={() => void templatesQuery.refetch()} />}
                         onRetry={() => void templatesQuery.refetch()}
-                        empty={empty}
-                        onRowClick={(row) => void setParams({ template: row.id })}
-                        skeletonRows={5}
+                        emptyState={empty}
                     />
                     {count > 0 ? (
-                        <>
-                            <p className="text-muted-foreground text-sm">
-                                Templates {'\u00b7'} selected:{' '}
-                                {selected ? <span className="text-foreground font-medium">{selected.name}</span> : 'none'}
-                            </p>
-                            <TablePagination page={page} limit={PAGE_SIZE} total={count} onPageChange={(next) => setParams({ page: next || null })} />
-                        </>
+                        <p className="text-muted-foreground text-sm">
+                            Templates {'\u00b7'} selected:{' '}
+                            {selected ? <span className="text-foreground font-medium">{selected.name}</span> : 'none'}
+                        </p>
                     ) : null}
                 </div>
                 {selected ? (

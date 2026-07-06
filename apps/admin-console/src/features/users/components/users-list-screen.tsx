@@ -1,13 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { IconDots, IconEye, IconFilterOff, IconKey, IconPlus, IconTrash, IconUserCheck, IconUserOff, IconUsers } from '@tabler/icons-react';
-import { parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
+import { IconDots, IconDownload, IconEye, IconFilterOff, IconKey, IconPlus, IconTrash, IconUserCheck, IconUserOff, IconUsers } from '@tabler/icons-react';
 import { toast } from 'sonner';
+import { type ColumnDef, type RowSelectionState, type SortRule } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
-import { Checkbox } from '@arcaai/ui/components/shadcn/checkbox';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -16,23 +15,24 @@ import {
     DropdownMenuTrigger,
 } from '@arcaai/ui/components/shadcn/dropdown-menu';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
-import { GatewayError, type ListParams } from '@/shared/api';
+import { GatewayError } from '@/shared/api';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { FilterBar, FilterSearch, FilterSelect, type FilterOption } from '@/shared/data/filter-bar';
-import { TablePagination } from '@/shared/data/table-pagination';
+import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid';
+import { normalizeList } from '@/shared/data/envelopes';
+import type { FilterOption } from '@/shared/data/filter-bar';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
-import { useBulkDeleteUsers, useBulkUserAction, useUsers } from '../api/hooks';
+import { useBulkDeleteUsers, useBulkUserAction, useExportUsers, useUsers } from '../api/hooks';
 import type { User, UserRoleAssignment } from '../api/types';
 import { CreateUserDialog } from './create-user-dialog';
 import { UserActionDialogs, type UserActionRequest } from './user-action-dialogs';
 import { UserAvatar } from './user-avatar';
 
-const DEFAULT_SORT = 'createdAt:desc';
-const DEFAULT_LIMIT = 25;
+/** Omni search targets (→ gateway `searchFields`) and the implicit sort — stable refs for the hook. */
+const USER_SEARCH_FIELDS = ['username', 'externalId'];
+const USER_DEFAULT_SORT: SortRule[] = [{ id: 'createdAt', desc: true }];
 const ROLE_CHIP_LIMIT = 2;
 
 const STATUS_OPTIONS: FilterOption[] = [
@@ -49,6 +49,12 @@ const TYPE_OPTIONS: FilterOption[] = [
 ];
 
 type BulkAction = 'enable' | 'disable' | 'delete';
+
+/** Extract the download filename the gateway suggests via Content-Disposition. */
+function filenameFromDisposition(disposition: string | null): string | undefined {
+    const match = disposition?.match(/filename="?([^";]+)"?/i);
+    return match?.[1];
+}
 
 /** Role chips truncate at +N per frame 20; absent on payloads without roles. */
 function RolesCell({ assignments }: { assignments?: UserRoleAssignment[] }) {
@@ -131,41 +137,28 @@ const BULK_COPY: Record<BulkAction, { title: (count: number) => string; descript
     },
 };
 
-/** Frame 20 — Users list: filters + sortable table + bulk actions + pagination. */
+/** Frame 20 — Users list: AdminDataGrid with grid selection + bulk action bar (enable/disable/delete + export). */
 export function UsersListScreen() {
     const router = useRouter();
     const [createOpen, setCreateOpen] = useState(false);
     const [action, setAction] = useState<UserActionRequest | null>(null);
-    const [selected, setSelected] = useState<string[]>([]);
+    const [selection, setSelection] = useState<RowSelectionState>({});
     const [bulk, setBulk] = useState<BulkAction | null>(null);
     const bulkAction = useBulkUserAction();
     const bulkDelete = useBulkDeleteUsers();
-    const [{ search, status, type, sort, page, limit }, setParams] = useQueryStates({
-        search: parseAsString.withDefault(''),
-        status: parseAsString.withDefault(''),
-        type: parseAsString.withDefault(''),
-        sort: parseAsString.withDefault(''),
-        page: parseAsInteger.withDefault(0),
-        limit: parseAsInteger.withDefault(DEFAULT_LIMIT),
-    });
+    const exportUsersMutation = useExportUsers();
 
-    const filters = [status && `resourceStatus:${status}`, type && `isServiceAccount:${type}`].filter(Boolean).join(',');
-    const listParams: ListParams = {
-        page,
-        limit,
-        sort: sort || DEFAULT_SORT,
-        ...(search ? { search, searchFields: 'username,externalId' } : {}),
-        ...(filters ? { filters } : {}),
-    };
-    const { data, isLoading, error, refetch } = useUsers(listParams);
-    const rows = data?.data ?? [];
-    const total = data?.count ?? 0;
-    const hasFilters = Boolean(search || status || type);
-    const allSelected = rows.length > 0 && rows.every((row) => selected.includes(row.id));
+    const query = useAdminGridParams({ searchFields: USER_SEARCH_FIELDS, defaultSort: USER_DEFAULT_SORT });
+    const { data, isLoading, isFetching, error, refetch } = useUsers(query.listParams);
+    const { rows, total } = normalizeList<User>(data);
+    const totalCount = total ?? 0;
 
-    function toggleRow(id: string, checked: boolean) {
-        setSelected((prev) => (checked ? [...prev, id] : prev.filter((existing) => existing !== id)));
-    }
+    const selectedIds = useMemo(() => Object.keys(selection).filter((id) => selection[id]), [selection]);
+
+    const clearFilters = useCallback(
+        () => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] }),
+        [query],
+    );
 
     function finishBulk(succeeded: number, failed: number) {
         const copy = BULK_COPY[bulk as BulkAction];
@@ -174,21 +167,21 @@ export function UsersListScreen() {
         } else {
             toast.success(`${succeeded} user${succeeded === 1 ? '' : 's'} ${copy.success}`);
         }
-        setSelected([]);
+        setSelection({});
         setBulk(null);
     }
 
     function handleBulkConfirm() {
         if (!bulk) return;
         if (bulk === 'delete') {
-            bulkDelete.mutate(selected, {
+            bulkDelete.mutate(selectedIds, {
                 onSuccess: (result) => finishBulk(result.succeeded.length, result.failed.length),
                 onError: (mutationError) => toast.error(mutationError instanceof GatewayError ? mutationError.message : 'Bulk delete failed.'),
             });
             return;
         }
         bulkAction.mutate(
-            { action: bulk, ids: selected },
+            { action: bulk, ids: selectedIds },
             {
                 onSuccess: (result) => finishBulk(result.succeeded, result.failed),
                 onError: (mutationError) => toast.error(mutationError instanceof GatewayError ? mutationError.message : 'Bulk action failed.'),
@@ -196,101 +189,137 @@ export function UsersListScreen() {
         );
     }
 
-    const columns: DataTableColumn<User>[] = [
-        {
-            key: 'select',
-            header: (
-                <Checkbox
-                    aria-label="Select all users on this page"
-                    checked={allSelected ? true : selected.length > 0 ? 'indeterminate' : false}
-                    onCheckedChange={(checked) => setSelected(checked === true ? rows.map((row) => row.id) : [])}
-                />
-            ),
-            headerClassName: 'w-10',
-            className: 'w-10',
-            cell: (row) => (
-                <Checkbox
-                    aria-label={`Select ${row.username}`}
-                    checked={selected.includes(row.id)}
-                    onCheckedChange={(checked) => toggleRow(row.id, checked === true)}
-                    onClick={(event) => event.stopPropagation()}
-                    onKeyDown={(event) => event.stopPropagation()}
-                />
-            ),
-        },
-        {
-            key: 'user',
-            header: 'User',
-            sortKey: 'username',
-            cell: (row) => (
-                <span className="flex items-center gap-2">
-                    <UserAvatar username={row.username} size="sm" />
-                    <span className="font-medium">{row.username}</span>
-                    {row.isServiceAccount ? <Badge variant="outline">Service account</Badge> : null}
-                </span>
-            ),
-        },
-        { key: 'roles', header: 'Roles', cell: (row) => <RolesCell assignments={row.UserRoleAssignments} /> },
-        { key: 'status', header: 'Status', cell: (row) => <ResourceStatusBadge status={row.resourceStatus} /> },
-        {
-            key: 'lastActive',
-            header: 'Last active',
-            sortKey: 'lastActiveAt',
-            cell: (row) => <span className="text-muted-foreground">{formatRelativeTime(row.lastActiveAt ?? row.lastLoginAt)}</span>,
-        },
-        {
-            key: 'created',
-            header: 'Created',
-            sortKey: 'createdAt',
-            cell: (row) => <span className="text-muted-foreground">{formatRelativeTime(row.createdAt)}</span>,
-        },
-        {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            className: 'w-12 text-right',
-            cell: (row) => (
-                <RowActions
-                    user={row}
-                    onView={() => router.push(`/users/${row.id}`)}
-                    onAction={(rowAction) => setAction({ action: rowAction, user: row })}
-                />
-            ),
-        },
-    ];
+    /** Export the current filtered view (not just the selection) — the gateway export takes ListParams. */
+    function handleExport() {
+        exportUsersMutation.mutate(
+            { ...query.listParams, format: 'csv' },
+            {
+                onSuccess: ({ blob, contentDisposition }) => {
+                    const filename = filenameFromDisposition(contentDisposition) ?? 'users.csv';
+                    const url = URL.createObjectURL(blob);
+                    const anchor = document.createElement('a');
+                    anchor.href = url;
+                    anchor.download = filename;
+                    anchor.click();
+                    URL.revokeObjectURL(url);
+                    toast.success(`Export ready \u2014 ${filename}`);
+                },
+                onError: (mutationError) => toast.error(mutationError instanceof Error ? mutationError.message : 'Export failed'),
+            },
+        );
+    }
 
-    const empty = hasFilters ? (
-        <EmptyState
-            icon={IconFilterOff}
-            title="No users match your filters"
-            description="Try a different search or clear the filters."
-            action={
-                <Button variant="outline" onClick={() => setParams({ search: null, status: null, type: null, page: null })}>
-                    <IconFilterOff aria-hidden />
-                    Clear filters
-                </Button>
-            }
-        />
-    ) : (
-        <EmptyState
-            icon={IconUsers}
-            title="No users yet"
-            description="Create the first user to grant console or SDK access."
-            action={
-                <Button onClick={() => setCreateOpen(true)}>
-                    <IconPlus aria-hidden />
-                    New user
-                </Button>
-            }
-        />
+    const columns = useMemo<ColumnDef<User>[]>(
+        () => [
+            {
+                accessorKey: 'username',
+                header: 'User',
+                meta: { label: 'User' },
+                cell: ({ row }) => (
+                    <span className="flex items-center gap-2">
+                        <UserAvatar username={row.original.username} size="sm" />
+                        <span className="font-medium">{row.original.username}</span>
+                    </span>
+                ),
+                size: 240,
+                minSize: 160,
+            },
+            {
+                id: 'roles',
+                header: 'Roles',
+                enableSorting: false,
+                meta: { label: 'Roles' },
+                cell: ({ row }) => <RolesCell assignments={row.original.UserRoleAssignments} />,
+                size: 200,
+            },
+            {
+                accessorKey: 'resourceStatus',
+                header: 'Status',
+                enableSorting: false,
+                meta: { label: 'Status', variant: 'select', options: STATUS_OPTIONS },
+                cell: ({ row }) => <ResourceStatusBadge status={row.original.resourceStatus} />,
+                size: 140,
+            },
+            {
+                accessorKey: 'isServiceAccount',
+                header: 'Type',
+                enableSorting: false,
+                meta: { label: 'Type', variant: 'select', options: TYPE_OPTIONS },
+                cell: ({ row }) =>
+                    row.original.isServiceAccount ? <Badge variant="outline">Service account</Badge> : <span className="text-muted-foreground">User</span>,
+                size: 150,
+            },
+            {
+                accessorKey: 'lastActiveAt',
+                header: 'Last active',
+                meta: { label: 'Last active' },
+                cell: ({ row }) => <span className="text-muted-foreground">{formatRelativeTime(row.original.lastActiveAt ?? row.original.lastLoginAt)}</span>,
+                size: 150,
+            },
+            {
+                accessorKey: 'createdAt',
+                header: 'Created',
+                meta: { label: 'Created' },
+                cell: ({ row }) => <span className="text-muted-foreground">{formatRelativeTime(row.original.createdAt)}</span>,
+                size: 140,
+            },
+            {
+                id: 'actions',
+                header: () => <span className="sr-only">Actions</span>,
+                meta: { label: 'Actions' },
+                enableSorting: false,
+                enableHiding: false,
+                enableResizing: false,
+                size: 56,
+                minSize: 56,
+                cell: ({ row }) => (
+                    <div className="flex w-full justify-end">
+                        <RowActions
+                            user={row.original}
+                            onView={() => router.push(`/users/${row.original.id}`)}
+                            onAction={(rowAction) => setAction({ action: rowAction, user: row.original })}
+                        />
+                    </div>
+                ),
+            },
+        ],
+        [router],
+    );
+
+    const actionBar = (
+        <div role="toolbar" aria-label="Bulk actions" className="bg-card flex flex-wrap items-center gap-2 rounded-md border p-2">
+            <span className="px-1 text-sm font-medium" aria-live="polite">
+                {selectedIds.length} selected
+            </span>
+            <Button variant="outline" size="sm" onClick={() => setBulk('enable')}>
+                <IconUserCheck aria-hidden />
+                Enable
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setBulk('disable')}>
+                <IconUserOff aria-hidden />
+                Disable
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => setBulk('delete')}>
+                <IconTrash aria-hidden />
+                Delete
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={exportUsersMutation.isPending}>
+                <IconDownload aria-hidden />
+                Export
+            </Button>
+            <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSelection({})}>
+                Clear selection
+            </Button>
+        </div>
     );
 
     return (
-        <div className="flex flex-col gap-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
             <PageHeader
                 title="Users"
                 meta={
                     <>
-                        {data ? <span>{formatNumber(total)} users</span> : <Skeleton className="h-4 w-16" />}
+                        {data ? <span>{formatNumber(totalCount)} users</span> : <Skeleton className="h-4 w-16" />}
                         <span aria-hidden className="text-muted-foreground font-mono text-xs">
                             GET /admin/users
                         </span>
@@ -303,69 +332,47 @@ export function UsersListScreen() {
                     </Button>
                 }
             />
-            <FilterBar shown={rows.length} total={total}>
-                <FilterSearch
-                    label="Search users"
-                    placeholder={'Search username or external ID\u2026'}
-                    value={search}
-                    onChange={(value) => setParams({ search: value || null, page: null })}
-                />
-                <FilterSelect
-                    id="users-status-filter"
-                    label="Status"
-                    value={status}
-                    onChange={(value) => setParams({ status: value || null, page: null })}
-                    options={STATUS_OPTIONS}
-                />
-                <FilterSelect
-                    id="users-type-filter"
-                    label="Type"
-                    value={type}
-                    onChange={(value) => setParams({ type: value || null, page: null })}
-                    options={TYPE_OPTIONS}
-                />
-            </FilterBar>
-            {selected.length > 0 ? (
-                <div role="toolbar" aria-label="Bulk actions" className="bg-card flex flex-wrap items-center gap-2 rounded-md border p-2">
-                    <span className="px-1 text-sm font-medium" aria-live="polite">
-                        {selected.length} selected
-                    </span>
-                    <Button variant="outline" size="sm" onClick={() => setBulk('enable')}>
-                        <IconUserCheck aria-hidden />
-                        Enable
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => setBulk('disable')}>
-                        <IconUserOff aria-hidden />
-                        Disable
-                    </Button>
-                    <Button variant="destructive" size="sm" onClick={() => setBulk('delete')}>
-                        <IconTrash aria-hidden />
-                        Delete
-                    </Button>
-                    <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSelected([])}>
-                        Clear selection
-                    </Button>
-                </div>
-            ) : null}
-            <DataTable
+            <AdminDataGrid<User>
+                gridId="users"
                 aria-label="Users"
                 columns={columns}
                 rows={rows}
-                rowKey={(row) => row.id}
+                total={totalCount}
+                queryState={query.queryState}
+                onQueryStateChange={query.setQueryState}
                 isLoading={isLoading}
+                isBusy={isFetching && !isLoading}
                 error={error}
                 onRetry={() => refetch()}
-                empty={empty}
                 onRowClick={(row) => router.push(`/users/${row.id}`)}
-                sort={sort || DEFAULT_SORT}
-                onSortChange={(next) => setParams({ sort: next === DEFAULT_SORT ? null : next, page: null })}
-            />
-            <TablePagination
-                page={page}
-                limit={limit}
-                total={total}
-                onPageChange={(next) => setParams({ page: next || null })}
-                onLimitChange={(next) => setParams({ limit: next === DEFAULT_LIMIT ? null : next, page: null })}
+                selection={{ value: selection, onChange: setSelection }}
+                actionBar={actionBar}
+                emptyState={
+                    <EmptyState
+                        icon={IconUsers}
+                        title="No users yet"
+                        description="Create the first user to grant console or SDK access."
+                        action={
+                            <Button onClick={() => setCreateOpen(true)}>
+                                <IconPlus aria-hidden />
+                                New user
+                            </Button>
+                        }
+                    />
+                }
+                emptyFilteredState={
+                    <EmptyState
+                        icon={IconFilterOff}
+                        title="No users match your filters"
+                        description="Try a different search or clear the filters."
+                        action={
+                            <Button variant="outline" onClick={clearFilters}>
+                                <IconFilterOff aria-hidden />
+                                Clear filters
+                            </Button>
+                        }
+                    />
+                }
             />
             <CreateUserDialog open={createOpen} onOpenChange={setCreateOpen} />
             <UserActionDialogs request={action} onOpenChange={(open) => !open && setAction(null)} />
@@ -373,7 +380,7 @@ export function UsersListScreen() {
                 <ConfirmDialog
                     open
                     onOpenChange={(open) => !open && setBulk(null)}
-                    title={BULK_COPY[bulk].title(selected.length)}
+                    title={BULK_COPY[bulk].title(selectedIds.length)}
                     description={BULK_COPY[bulk].description}
                     confirmLabel={BULK_COPY[bulk].confirmLabel}
                     destructive={BULK_COPY[bulk].destructive}

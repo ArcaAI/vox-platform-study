@@ -172,8 +172,14 @@ function defaultHandler(call: RecordedCall): Response | undefined {
     return undefined;
 }
 
+/** Best-effort per-user grid-layout persistence (`user/me/settings`) — no saved layout in tests. */
+function settingsResponse(call: RecordedCall): Response | undefined {
+    if (!call.url.includes('/user/me/settings')) return undefined;
+    return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
+}
+
 function stubAgents(custom: FetchHandler = () => undefined): RecordedCall[] {
-    return stubFetch((call) => custom(call) ?? defaultHandler(call));
+    return stubFetch((call) => settingsResponse(call) ?? custom(call) ?? defaultHandler(call));
 }
 
 const pathOf = (call: RecordedCall) => new URL(call.url, 'http://test.local').pathname;

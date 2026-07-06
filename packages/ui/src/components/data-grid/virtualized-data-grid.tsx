@@ -14,11 +14,12 @@ import { getColumnPinningStyle } from '@/lib/data-table';
 import { DENSITY_ROW_HEIGHT } from '@/lib/shared/surface';
 import { cn } from '@/lib/utils';
 
+import { applyResizeKeydown } from './column-resize';
 import { DataGridPagination } from './data-grid-pagination';
 import { DataGridSkeleton } from './data-grid-skeleton';
 import { DataGridColumnHeader } from './data-grid-column-header';
 import { DataGridToolbar } from './data-grid-toolbar';
-import { useDataGrid } from './use-data-grid';
+import { useDataGrid, type UseDataGridResult } from './use-data-grid';
 import type { VirtualizedDataGridProps } from './types';
 
 const SELECT_COLUMN_ID = 'select';
@@ -27,6 +28,7 @@ function makeSelectionColumn<TData>(): ColumnDef<TData> {
   return {
     id: SELECT_COLUMN_ID,
     size: 40,
+    minSize: 40,
     enableSorting: false,
     enableHiding: false,
     enableResizing: false,
@@ -51,13 +53,22 @@ function makeSelectionColumn<TData>(): ColumnDef<TData> {
 
 function HeaderCell<TData>({
   header,
+  grid,
+  colIndex,
   enableReorder,
+  enableResize,
   enablePinning,
+  pinBorder,
 }: {
   header: Header<TData, unknown>;
+  grid: UseDataGridResult<TData>;
+  colIndex: number;
   enableReorder: boolean;
+  enableResize: boolean;
   enablePinning: boolean;
+  pinBorder: boolean;
 }) {
+  const table = grid.table;
   const column = header.column;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: column.id,
@@ -67,23 +78,25 @@ function HeaderCell<TData>({
   const sorted = column.getIsSorted();
   const ariaSort = sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none';
 
+  const pinStyle = getColumnPinningStyle({ column, withBorder: pinBorder });
   const style: React.CSSProperties = {
-    ...getColumnPinningStyle({ column }),
+    ...pinStyle,
     width: header.getSize(),
     transform: CSS.Translate.toString(transform),
     transition,
     opacity: isDragging ? 0.7 : 1,
-    zIndex: isDragging ? 2 : getColumnPinningStyle({ column }).zIndex,
+    zIndex: isDragging ? 2 : pinStyle.zIndex,
   };
 
   const isSelect = column.id === SELECT_COLUMN_ID;
+  const label = column.columnDef.meta?.label ?? (typeof column.columnDef.header === 'string' ? column.columnDef.header : column.id);
 
   const dragHandle =
     enableReorder && !isSelect ? (
       <button
         type="button"
-        aria-label={`Reorder ${column.id} column`}
-        className="cursor-grab text-muted-foreground/60 hover:text-foreground focus:outline-none focus:ring-1 focus:ring-ring [&_svg]:size-3.5"
+        aria-label={`Reorder ${label} column`}
+        className="cursor-grab text-muted-foreground/60 hover:text-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring [&_svg]:size-3.5"
         {...attributes}
         {...listeners}
       >
@@ -91,23 +104,44 @@ function HeaderCell<TData>({
       </button>
     ) : null;
 
+  const canResize = enableResize && column.getCanResize() && !isSelect;
+
   return (
     <div
       ref={setNodeRef}
       role="columnheader"
+      aria-colindex={colIndex}
       aria-sort={column.getCanSort() ? ariaSort : undefined}
       data-slot="data-grid-header-cell"
-      className="flex shrink-0 items-center px-3 text-xs font-medium text-muted-foreground"
+      className="relative flex shrink-0 items-center bg-inherit px-3 text-xs font-medium text-muted-foreground"
       style={style}
     >
       {header.isPlaceholder ? null : isSelect ? (
         flexRender(column.columnDef.header, header.getContext())
       ) : (
-        <DataGridColumnHeader
-          column={column}
-          label={column.columnDef.meta?.label ?? (typeof column.columnDef.header === 'string' ? column.columnDef.header : column.id)}
-          enablePinning={enablePinning}
-          dragHandle={dragHandle}
+        <DataGridColumnHeader column={column} grid={grid} label={label} enablePinning={enablePinning} dragHandle={dragHandle} />
+      )}
+
+      {canResize && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={`Resize ${label} column`}
+          aria-valuenow={Math.round(header.getSize())}
+          aria-valuemin={column.columnDef.minSize ?? 40}
+          aria-valuemax={column.columnDef.maxSize ?? 1000}
+          tabIndex={0}
+          onMouseDown={header.getResizeHandler()}
+          onTouchStart={header.getResizeHandler()}
+          onDoubleClick={() => column.resetSize()}
+          onKeyDown={(e) => applyResizeKeydown(e, column, table)}
+          className={cn(
+            'absolute inset-y-0 right-0 z-10 w-1 translate-x-1/2 cursor-col-resize touch-none select-none',
+            // ≥24px keyboard/touch hit area straddling the edge (WCAG 2.5.8/2.5.7).
+            'after:absolute after:inset-y-0 after:left-1/2 after:w-3 after:-translate-x-1/2',
+            'hover:bg-border focus-visible:bg-primary focus-visible:outline-none',
+            column.getIsResizing() && 'bg-primary',
+          )}
         />
       )}
     </div>
@@ -120,6 +154,8 @@ function BodyRow<TData>({
   size,
   rowIndex,
   density,
+  headerHeight,
+  pinBorder,
   onRowClick,
 }: {
   row: Row<TData>;
@@ -127,6 +163,8 @@ function BodyRow<TData>({
   size: number;
   rowIndex: number;
   density: 'comfortable' | 'compact';
+  headerHeight: number;
+  pinBorder: boolean;
   onRowClick?: (row: TData) => void;
 }) {
   return (
@@ -137,19 +175,21 @@ function BodyRow<TData>({
       data-state={row.getIsSelected() ? 'selected' : undefined}
       data-slot="data-grid-row"
       className={cn(
-        'absolute left-0 flex w-full items-center border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-accent',
+        'absolute left-0 flex w-full items-center border-b bg-card transition-colors hover:bg-muted/50 data-[state=selected]:bg-accent',
         onRowClick && 'cursor-pointer',
       )}
-      style={{ height: size, transform: `translateY(${virtualStart}px)` }}
+      // scroll-mt keeps a focused row clear of the sticky header (WCAG 2.4.11).
+      style={{ height: size, transform: `translateY(${virtualStart}px)`, scrollMarginTop: headerHeight }}
       onClick={onRowClick ? () => onRowClick(row.original) : undefined}
     >
-      {row.getVisibleCells().map((cell) => (
+      {row.getVisibleCells().map((cell, i) => (
         <div
           key={cell.id}
           role="gridcell"
+          aria-colindex={i + 1}
           data-slot="data-grid-cell"
-          className={cn('flex shrink-0 items-center truncate px-3 text-sm', density === 'compact' ? 'py-1' : 'py-2')}
-          style={{ ...getColumnPinningStyle({ column: cell.column }), width: cell.column.getSize() }}
+          className={cn('flex shrink-0 items-center truncate bg-inherit px-3 text-sm', density === 'compact' ? 'py-1' : 'py-2')}
+          style={{ ...getColumnPinningStyle({ column: cell.column, withBorder: pinBorder }), width: cell.column.getSize() }}
         >
           {flexRender(cell.column.columnDef.cell, cell.getContext())}
         </div>
@@ -162,6 +202,7 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
   const {
     columns,
     isLoading,
+    isBusy,
     error,
     emptyState,
     errorState,
@@ -170,12 +211,13 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
     actionBar,
     onRowClick,
     onRetry,
-    height = 480,
+    height,
     rowCount,
     cursor,
-    pageSizeOptions,
     className,
   } = props;
+
+  const fill = height == null;
 
   const augmentedColumns = React.useMemo<ColumnDef<TData>[]>(() => {
     const wantSelection = (props.features?.rowSelection ?? true) && !columns.some((c) => (c as { id?: string }).id === SELECT_COLUMN_ID);
@@ -183,7 +225,7 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
   }, [columns, props.features?.rowSelection]);
 
   const grid = useDataGrid<TData>({ ...props, columns: augmentedColumns });
-  const { table, rowVirtualizer, scrollRef, density, features, moveColumn } = grid;
+  const { table, rowVirtualizer, scrollRef, density, features, moveColumn, isLayoutReady, announcement, pageSizeOptions } = grid;
 
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor));
 
@@ -191,10 +233,33 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
   const rows = table.getRowModel().rows;
   const virtualRows = rowVirtualizer.getVirtualItems();
   const totalSize = rowVirtualizer.getTotalSize();
+  const headerHeight = DENSITY_ROW_HEIGHT[density];
 
   const columnOrderIds = table.getState().columnOrder.length ? table.getState().columnOrder : table.getAllLeafColumns().map((c) => c.id);
 
   const totalRowCount = props.manual?.pagination ? (rowCount ?? rows.length) : table.getFilteredRowModel().rows.length;
+
+  // Scroll-driven affordances (Δ5 / §A): header elevation once scrolled, and the
+  // pinned-column divider only while horizontally overflowing.
+  const [scrolled, setScrolled] = React.useState(false);
+  const [overflowX, setOverflowX] = React.useState(false);
+
+  const onScroll = React.useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    setScrolled(el.scrollTop > 0);
+    setOverflowX(el.scrollWidth > el.clientWidth + 1);
+  }, []);
+
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => setOverflowX(el.scrollWidth > el.clientWidth + 1);
+    update();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [scrollRef, augmentedColumns.length, rows.length]);
 
   const onDragEnd = React.useCallback(
     (event: DragEndEvent) => {
@@ -219,13 +284,15 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
   const hasSelection = table.getFilteredSelectedRowModel().rows.length > 0;
 
   const renderBody = () => {
-    if (isLoading) {
+    // Gate the first paint on the resolved persisted layout (Δ8) so there is no
+    // default→persisted flash; also covers the initial data load.
+    if (isLoading || !isLayoutReady) {
       return loadingState ?? <DataGridSkeleton columns={augmentedColumns.length} />;
     }
     if (error) {
       return (
         errorState?.(error) ?? (
-          <div className="flex flex-col items-center justify-center gap-3 p-10 text-center" role="alert">
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center" role="alert">
             <TriangleAlert className="size-10 text-destructive" />
             <div>
               <p className="font-medium">Something went wrong</p>
@@ -244,7 +311,7 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
     if (rows.length === 0) {
       return (
         emptyState ?? (
-          <div className="flex flex-col items-center justify-center gap-2 p-10 text-center">
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-10 text-center">
             <Inbox className="size-10 text-muted-foreground/50" />
             <p className="font-medium">No results</p>
             <p className="text-sm text-muted-foreground">There is nothing to show here yet.</p>
@@ -254,13 +321,27 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
     }
 
     return (
-      <div ref={scrollRef} className="relative overflow-auto" style={{ height: typeof height === 'number' ? `${height}px` : height }}>
-        <div role="rowgroup" className="sticky top-0 z-10 bg-card">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className={cn('relative overflow-auto', fill && 'h-full')}
+        style={fill ? undefined : { height: typeof height === 'number' ? `${height}px` : height }}
+      >
+        <div role="rowgroup" className={cn('sticky top-0 z-20 border-b bg-card transition-shadow', scrolled && 'shadow-sm')}>
           {headerGroups.map((headerGroup) => (
-            <div role="row" aria-rowindex={1} key={headerGroup.id} className="flex border-b" style={{ minHeight: DENSITY_ROW_HEIGHT[density] }}>
+            <div role="row" aria-rowindex={1} key={headerGroup.id} className="flex bg-card" style={{ minHeight: headerHeight }}>
               <SortableContext items={columnOrderIds} strategy={horizontalListSortingStrategy}>
-                {headerGroup.headers.map((header) => (
-                  <HeaderCell key={header.id} header={header} enableReorder={features.columnReorder} enablePinning={features.columnPinning} />
+                {headerGroup.headers.map((header, i) => (
+                  <HeaderCell
+                    key={header.id}
+                    header={header}
+                    grid={grid}
+                    colIndex={i + 1}
+                    enableReorder={features.columnReorder}
+                    enableResize={features.columnResize}
+                    enablePinning={features.columnPinning}
+                    pinBorder={overflowX}
+                  />
                 ))}
               </SortableContext>
             </div>
@@ -279,6 +360,8 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
                 virtualStart={virtualRow.start}
                 size={virtualRow.size}
                 density={density}
+                headerHeight={headerHeight}
+                pinBorder={overflowX}
                 onRowClick={onRowClick}
               />
             );
@@ -289,7 +372,11 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
   };
 
   return (
-    <div className={cn('flex w-full flex-col gap-2.5', className)} data-density={density} data-slot="virtualized-data-grid">
+    <div
+      className={cn('@container/grid flex w-full flex-col gap-3', fill && 'min-h-0 flex-1', className)}
+      data-density={density}
+      data-slot="virtualized-data-grid"
+    >
       {toolbar ?? <DataGridToolbar grid={grid} />}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToHorizontalAxis]} onDragEnd={onDragEnd}>
@@ -298,15 +385,20 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
           aria-label={props['aria-label'] ?? 'Data grid'}
           aria-rowcount={totalRowCount + 1}
           aria-colcount={table.getVisibleLeafColumns().length}
-          className="overflow-hidden rounded-md border"
+          aria-busy={isBusy || undefined}
+          className={cn('relative overflow-hidden rounded-md border bg-card', fill && 'min-h-0 flex-1')}
           onKeyDown={onKeyDown}
         >
           {renderBody()}
         </div>
       </DndContext>
 
-      <DataGridPagination grid={grid} pageSizeOptions={pageSizeOptions} cursor={cursor} />
+      <DataGridPagination grid={grid} pageSizeOptions={pageSizeOptions} cursor={cursor} isBusy={isBusy || isLoading} />
       {actionBar && hasSelection && actionBar}
+
+      <div role="status" aria-live="polite" className="sr-only">
+        {announcement}
+      </div>
     </div>
   );
 }

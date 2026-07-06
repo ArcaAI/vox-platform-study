@@ -1,12 +1,13 @@
 'use client';
 
+import { useMemo } from 'react';
 import { IconChevronRight, IconCircleDot, IconFilterOff, IconFolder, IconFolderOpen, IconUpload } from '@tabler/icons-react';
+import { VirtualizedDataGrid, type ColumnDef } from '@arcaai/ui';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { cx } from '@/shared/cx';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { TablePagination } from '@/shared/data/table-pagination';
 import { formatBytes, formatNumber, formatRelativeTime } from '@/shared/format';
 import { EmptyState } from '@/shared/state/empty-state';
+import { ErrorState } from '@/shared/state/error-state';
 import type { StorageObject } from '../api/types';
 import { fileTypeIcon } from './file-meta';
 
@@ -109,16 +110,9 @@ export function ObjectBrowserPanel({
     prefix,
     onNavigate,
     rows,
-    total,
     isLoading,
     error,
     onRetry,
-    sort,
-    onSortChange,
-    page,
-    limit,
-    onPageChange,
-    onLimitChange,
     selectedKey,
     onSelectFile,
     hasSearch,
@@ -128,78 +122,84 @@ export function ObjectBrowserPanel({
     bucketName: string;
     prefix: string;
     onNavigate: (prefix: string) => void;
-    /** Current page of entries (folders first). */
+    /** Folders-first entries for the current prefix; the grid paginates client-side. */
     rows: BrowserEntry[];
-    /** Entry count after search filtering, before pagination. */
-    total: number;
     isLoading: boolean;
     error: unknown;
     onRetry: () => void;
-    sort: string;
-    onSortChange: (sort: string) => void;
-    page: number;
-    limit: number;
-    onPageChange: (page: number) => void;
-    onLimitChange: (limit: number) => void;
     selectedKey: string | null;
     onSelectFile: (key: string) => void;
     hasSearch: boolean;
     onClearSearch: () => void;
     onRequestUpload: () => void;
 }) {
-    const columns: DataTableColumn<BrowserEntry>[] = [
-        {
-            key: 'key',
-            header: 'Object key',
-            sortKey: 'key',
-            cell: (row) => {
-                if (row.kind === 'folder') {
+    const columns = useMemo<ColumnDef<BrowserEntry>[]>(
+        () => [
+            {
+                id: 'key',
+                header: 'Object key',
+                enableSorting: false,
+                meta: { label: 'Object key' },
+                cell: ({ row }) => {
+                    const entry = row.original;
+                    if (entry.kind === 'folder') {
+                        return (
+                            <span className="flex items-center gap-2">
+                                <IconFolder aria-hidden className="text-muted-foreground size-4 shrink-0" />
+                                <span className="min-w-0 truncate font-mono text-xs font-medium">{entry.name}/</span>
+                                <span className="text-muted-foreground shrink-0 text-xs">
+                                    {formatNumber(entry.count)} {entry.count === 1 ? 'object' : 'objects'}
+                                </span>
+                            </span>
+                        );
+                    }
+                    const Icon = fileTypeIcon(entry.name);
+                    const selected = entry.key === selectedKey;
                     return (
                         <span className="flex items-center gap-2">
-                            <IconFolder aria-hidden className="text-muted-foreground size-4 shrink-0" />
-                            <span className="min-w-0 truncate font-mono text-xs font-medium">{row.name}/</span>
-                            <span className="text-muted-foreground shrink-0 text-xs">
-                                {formatNumber(row.count)} {row.count === 1 ? 'object' : 'objects'}
-                            </span>
+                            <Icon aria-hidden className="text-muted-foreground size-4 shrink-0" />
+                            <span className={cx('min-w-0 truncate font-mono text-xs', selected && 'font-semibold')}>{entry.name}</span>
+                            {selected ? (
+                                <>
+                                    <IconCircleDot aria-hidden className="text-primary size-3.5 shrink-0" />
+                                    <span className="sr-only">(selected)</span>
+                                </>
+                            ) : null}
                         </span>
                     );
-                }
-                const Icon = fileTypeIcon(row.name);
-                const selected = row.key === selectedKey;
-                return (
-                    <span className="flex items-center gap-2">
-                        <Icon aria-hidden className="text-muted-foreground size-4 shrink-0" />
-                        <span className={cx('min-w-0 truncate font-mono text-xs', selected && 'font-semibold')}>{row.name}</span>
-                        {selected ? (
-                            <>
-                                <IconCircleDot aria-hidden className="text-primary size-3.5 shrink-0" />
-                                <span className="sr-only">(selected)</span>
-                            </>
-                        ) : null}
-                    </span>
-                );
+                },
+                size: 320,
+                minSize: 200,
             },
-        },
-        {
-            key: 'size',
-            header: 'Size',
-            sortKey: 'size',
-            className: 'w-24 tabular-nums',
-            cell: (row) => (row.kind === 'file' ? formatBytes(row.size) : <span className="text-muted-foreground">{'\u2014'}</span>),
-        },
-        {
-            key: 'modified',
-            header: 'Modified',
-            sortKey: 'modified',
-            className: 'w-32',
-            cell: (row) =>
-                row.kind === 'file' ? (
-                    <span className="text-muted-foreground">{formatRelativeTime(row.lastModified)}</span>
-                ) : (
-                    <span className="text-muted-foreground">{'\u2014'}</span>
-                ),
-        },
-    ];
+            {
+                id: 'size',
+                header: 'Size',
+                enableSorting: false,
+                meta: { label: 'Size' },
+                cell: ({ row }) =>
+                    row.original.kind === 'file' ? (
+                        <span className="tabular-nums">{formatBytes(row.original.size)}</span>
+                    ) : (
+                        <span className="text-muted-foreground">{'\u2014'}</span>
+                    ),
+                size: 96,
+            },
+            {
+                id: 'modified',
+                header: 'Modified',
+                enableSorting: false,
+                meta: { label: 'Modified' },
+                cell: ({ row }) =>
+                    row.original.kind === 'file' ? (
+                        <span className="text-muted-foreground">{formatRelativeTime(row.original.lastModified)}</span>
+                    ) : (
+                        <span className="text-muted-foreground">{'\u2014'}</span>
+                    ),
+                size: 128,
+            },
+        ],
+        [selectedKey],
+    );
 
     const empty = hasSearch ? (
         <EmptyState
@@ -230,27 +230,29 @@ export function ObjectBrowserPanel({
     return (
         <section aria-label="Object browser" className="flex min-w-0 flex-col gap-3">
             {bucketName ? <PrefixChips bucketName={bucketName} prefix={prefix} onNavigate={onNavigate} /> : null}
-            <DataTable
+            <VirtualizedDataGrid<BrowserEntry>
                 aria-label="Bucket objects"
                 columns={columns}
-                rows={rows}
-                rowKey={(row) => `${row.kind}-${row.kind === 'file' ? row.key : row.prefix}`}
+                data={rows}
+                getRowId={(row) => `${row.kind}-${row.kind === 'file' ? row.key : row.prefix}`}
+                height={480}
+                toolbar={false}
+                features={{
+                    globalSearch: false,
+                    facetedFilters: false,
+                    sorting: false,
+                    rowSelection: false,
+                    columnReorder: false,
+                    columnResize: false,
+                    columnPinning: false,
+                    columnVisibility: false,
+                }}
                 isLoading={isLoading}
-                error={error}
-                onRetry={onRetry}
-                empty={empty}
-                sort={sort}
-                onSortChange={onSortChange}
+                error={error instanceof Error ? error : null}
+                errorState={(err) => <ErrorState error={err} onRetry={onRetry} />}
+                emptyState={empty}
                 onRowClick={(row) => (row.kind === 'folder' ? onNavigate(row.prefix) : onSelectFile(row.key))}
             />
-            {total > 0 ? (
-                <>
-                    <p className="text-muted-foreground text-sm">
-                        Objects in <span className="font-mono text-xs">{prefix ? `${bucketName}/${prefix.replace(/\/$/, '')}` : bucketName}</span>
-                    </p>
-                    <TablePagination page={page} limit={limit} total={total} onPageChange={onPageChange} onLimitChange={onLimitChange} />
-                </>
-            ) : null}
         </section>
     );
 }

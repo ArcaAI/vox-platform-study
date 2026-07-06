@@ -51,6 +51,12 @@ interface RecordedCall {
     body: unknown;
 }
 
+/** Best-effort per-user grid-layout persistence (`user/me/settings`) — no saved layout in tests. */
+function settingsResponse(url: string, method: string): Response | undefined {
+    if (!url.includes('/user/me/settings')) return undefined;
+    return method === 'GET' ? Response.json([]) : Response.json({ ok: true });
+}
+
 function stubFetch(handler: (url: string, method: string) => Response | undefined): RecordedCall[] {
     const calls: RecordedCall[] = [];
     vi.stubGlobal(
@@ -59,12 +65,20 @@ function stubFetch(handler: (url: string, method: string) => Response | undefine
             const url = String(input);
             const method = init?.method ?? 'GET';
             calls.push({ url, method, body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined });
-            const response = handler(url, method);
+            // The grid persists per-user layout via `user/me/settings`; answer it before the handler.
+            const response = settingsResponse(url, method) ?? handler(url, method);
             if (!response) throw new Error(`Unhandled fetch: ${method} ${url}`);
             return response;
         }),
     );
     return calls;
+}
+
+/** The gateway list request (skips the interleaved `user/me/settings` layout GET). */
+function listRequest(calls: RecordedCall[]): URL {
+    const call = calls.find((entry) => entry.method === 'GET' && entry.url.includes('/admin/rbac/roles'));
+    if (!call) throw new Error('no /admin/rbac/roles GET recorded');
+    return new URL(call.url, 'http://test.local');
 }
 
 function openRowMenu(name: string) {
@@ -87,7 +101,7 @@ describe('RolesScreen', () => {
         expect(screen.getByText('Billing')).toBeDefined();
         expect(screen.getByText('System (locked)')).toBeDefined();
         expect(screen.getByText('Custom')).toBeDefined();
-        expect(screen.getByRole('table', { name: 'Roles' })).toBeDefined();
+        expect(screen.getByRole('grid', { name: 'Roles' })).toBeDefined();
     });
 
     it('maps the zero-based URL page onto the one-based gateway request', async () => {
@@ -95,7 +109,7 @@ describe('RolesScreen', () => {
         renderWithProviders(<RolesScreen />, { searchParams: '?search=admin&page=1&limit=50' });
 
         await screen.findByText('Billing');
-        const requested = new URL(calls[0].url, 'http://test.local');
+        const requested = listRequest(calls);
         expect(requested.pathname).toBe('/api/hope/admin/rbac/roles');
         expect(requested.searchParams.get('page')).toBe('2');
         expect(requested.searchParams.get('pageSize')).toBe('50');

@@ -115,8 +115,14 @@ function defaultHandler(call: RecordedCall): Response | undefined {
     return undefined;
 }
 
+/** Best-effort per-user grid-layout persistence (`user/me/settings`) — no saved layout in tests. */
+function settingsResponse(call: RecordedCall): Response | undefined {
+    if (!call.url.includes('/user/me/settings')) return undefined;
+    return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
+}
+
 function stubPipelines(custom: FetchHandler = () => undefined): RecordedCall[] {
-    return stubFetch((call) => custom(call) ?? defaultHandler(call));
+    return stubFetch((call) => settingsResponse(call) ?? custom(call) ?? defaultHandler(call));
 }
 
 afterEach(() => {
@@ -148,6 +154,17 @@ describe('AudioPipelinesScreen', () => {
         expect(screen.getByText('Off')).toBeDefined();
         expect(screen.getByText('Tenant default')).toBeDefined();
         expect(screen.getByText(/2 pipelines/)).toBeDefined();
+    });
+
+    it('narrows the grid client-side from the Status faceted filter carried in the `f` URL param', async () => {
+        // Status "Off" -> f tuple [id, operator, variant, value]; the body maps it
+        // to resourceStatus === DISABLED over the loaded list (no server param).
+        const f = encodeURIComponent(JSON.stringify([['resourceStatus', 'eq', 'select', 'DISABLED']]));
+        stubPipelines();
+        renderWithProviders(<AudioPipelinesScreen />, { searchParams: `?f=${f}` });
+
+        expect(await screen.findByText('Legacy Batch')).toBeDefined();
+        expect(screen.queryByText('Fast Clinical VI')).toBeNull();
     });
 
     it('runs the validate preflight over the selected config and shows the verdict inline', async () => {

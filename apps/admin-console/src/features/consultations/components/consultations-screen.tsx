@@ -1,30 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { IconBuilding, IconFilterOff, IconRefresh, IconStethoscope } from '@tabler/icons-react';
-import { parseAsInteger, parseAsString, parseAsStringLiteral, useQueryStates } from 'nuqs';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
+import { VirtualizedDataGrid, type ColumnDef, type DataQueryState } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
-import { Input } from '@arcaai/ui/components/shadcn/input';
-import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { useSession } from '@/shared/auth';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { FilterBar, FilterSelect, type FilterOption } from '@/shared/data/filter-bar';
-import { TablePagination } from '@/shared/data/table-pagination';
+import { useAdminGridParams } from '@/shared/data/admin-data-grid';
+import { normalizeList } from '@/shared/data/envelopes';
+import type { FilterOption } from '@/shared/data/filter-bar';
+import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
+import { ErrorState } from '@/shared/state/error-state';
 import { CONSULTATION_STATUSES, VISIT_TYPES, consultationKeys, useConsultations, visitTypeOf } from '../api';
-import type { Consultation, ListConsultationsParams } from '../api';
+import type { Consultation, ConsultationStatus, ConsultationVisitType, ListConsultationsParams } from '../api';
 import { AggregateChartCard } from './aggregate-chart-card';
 import { ConsultationDetailPanel } from './consultation-detail-panel';
 import { ConsultationStatusBadge } from './consultation-status-badge';
 
-const DEFAULT_LIMIT = 25;
 const LIST_ENDPOINT_HINT = 'GET /admin/consultations';
 const AGGREGATE_ENDPOINT_HINT = 'aggregate: GET aggregate?from&to[&granularity]';
 
@@ -45,6 +44,24 @@ const TYPE_OPTIONS: FilterOption[] = [
     { value: 'revisit', label: 'Revisit' },
 ];
 
+/** Embedded grid (design-spec D2): fixed viewport beside the aggregate card. */
+const CONSULTATIONS_GRID_HEIGHT = 480;
+
+/** Scalar value of a single-value faceted filter from the grid query-state. */
+function scalarFilterValue(state: DataQueryState, id: string): string {
+    const rule = state.filters.find((filter) => filter.id === id);
+    if (!rule) return '';
+    return Array.isArray(rule.value) ? String(rule.value[0] ?? '') : String(rule.value ?? '');
+}
+
+/**
+ * Frame 40 masks the patient identifier ("pt_44s1 (masked)") — show a short
+ * prefix, never the full id; this oversight surface has no clinical need for it.
+ */
+function maskPatientId(patientId: string): string {
+    return patientId.length <= 7 ? patientId : `${patientId.slice(0, 7)}\u2026`;
+}
+
 /** Refreshes every consultations query (list + aggregate + open detail). */
 function RefreshAction() {
     const queryClient = useQueryClient();
@@ -54,54 +71,6 @@ function RefreshAction() {
             {isFetching ? <Spinner /> : <IconRefresh aria-hidden />}
             Refresh
         </Button>
-    );
-}
-
-/**
- * Debounced mono id filter (patientId / doctorId / departmentId are opaque
- * ids per frame 40). Mirrors the shared FilterSearch's derived-state reset +
- * debounce so URL-driven changes (back/forward, clear filters) re-sync.
- */
-function IdFilter({
-    id,
-    label,
-    placeholder,
-    value,
-    onChange,
-}: {
-    id: string;
-    label: string;
-    placeholder: string;
-    value: string;
-    onChange: (value: string) => void;
-}) {
-    const [draft, setDraft] = useState(value);
-    const [lastValue, setLastValue] = useState(value);
-
-    if (value !== lastValue) {
-        setLastValue(value);
-        setDraft(value);
-    }
-
-    useEffect(() => {
-        if (draft === value) return;
-        const timer = setTimeout(() => onChange(draft), 300);
-        return () => clearTimeout(timer);
-    }, [draft, value, onChange]);
-
-    return (
-        <div className="flex items-center gap-1.5">
-            <Label htmlFor={id} className="text-muted-foreground text-sm font-normal">
-                {label}:
-            </Label>
-            <Input
-                id={id}
-                placeholder={placeholder}
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                className="h-9 w-36 font-mono text-xs"
-            />
-        </div>
     );
 }
 
@@ -149,16 +118,21 @@ function CrossTenantAggregateView() {
 }
 
 function ConsultationsScreenBody() {
-    const [{ patientId, doctorId, departmentId, status, type, page, limit }, setParams] = useQueryStates({
-        patientId: parseAsString.withDefault(''),
-        doctorId: parseAsString.withDefault(''),
-        departmentId: parseAsString.withDefault(''),
-        status: parseAsStringLiteral(CONSULTATION_STATUSES),
-        type: parseAsStringLiteral(VISIT_TYPES),
-        page: parseAsInteger.withDefault(0),
-        limit: parseAsInteger.withDefault(DEFAULT_LIMIT),
-    });
+    // Discrete filters (patient/doctor/department ids, status) + the client-only
+    // type filter live in the URL via the standard grid codec; the selected row
+    // (a detail sheet, not a route) stays local state.
+    const query = useAdminGridParams();
     const [selectedId, setSelectedId] = useState<string | null>(null);
+
+    const patientId = scalarFilterValue(query.queryState, 'patientId');
+    const doctorId = scalarFilterValue(query.queryState, 'doctorId');
+    const departmentId = scalarFilterValue(query.queryState, 'departmentId');
+    const statusValue = scalarFilterValue(query.queryState, 'status');
+    const typeValue = scalarFilterValue(query.queryState, 'type');
+    const status = (CONSULTATION_STATUSES as readonly string[]).includes(statusValue) ? (statusValue as ConsultationStatus) : undefined;
+    const type = (VISIT_TYPES as readonly string[]).includes(typeValue) ? (typeValue as ConsultationVisitType) : undefined;
+    const page = query.queryState.pagination.mode === 'offset' ? query.queryState.pagination.page : 0;
+    const limit = query.queryState.pagination.limit;
 
     // The endpoint is 1-based (0 coerces to 1 server-side); the URL/pagination
     // state stays 0-based like every other console list.
@@ -172,36 +146,81 @@ function ConsultationsScreenBody() {
     };
     const list = useConsultations(listParams);
 
-    const pageRows = list.data?.data ?? [];
+    const { rows: pageRows, total } = normalizeList<Consultation>(list.data);
+    const count = total ?? 0;
     // The API has no type param — new/revisit filters the LOADED PAGE only.
     const rows = type ? pageRows.filter((row) => visitTypeOf(row) === type) : pageRows;
-    const total = list.data?.count ?? 0;
     const hasFilters = Boolean(patientId || doctorId || departmentId || status || type);
 
-    /** Any filter change restarts from the first page. */
-    function updateFilters(patch: Parameters<typeof setParams>[0]) {
-        void setParams({ ...patch, page: null });
-    }
+    const clearFilters = () => query.setQueryState({ ...query.queryState, filters: [] });
 
-    const columns: DataTableColumn<Consultation>[] = [
-        {
-            key: 'id',
-            header: 'Consult',
-            mono: true,
-            cell: (row) => (
-                <span className="block max-w-32 truncate" title={row.id}>
-                    {row.id}
-                </span>
-            ),
-        },
-        { key: 'doctor', header: 'Doctor', cell: (row) => row.doctor?.username ?? <span className="font-mono text-xs">{row.doctorId}</span> },
-        {
-            key: 'type',
-            header: 'Type',
-            cell: (row) => <Badge variant="outline">{visitTypeOf(row) === 'new' ? 'New' : 'Revisit'}</Badge>,
-        },
-        { key: 'status', header: 'Status', cell: (row) => <ConsultationStatusBadge status={row.status} /> },
-    ];
+    const columns = useMemo<ColumnDef<Consultation>[]>(
+        () => [
+            {
+                accessorKey: 'id',
+                header: 'Consult',
+                enableSorting: false,
+                enableHiding: false,
+                size: 150,
+                minSize: 120,
+                meta: { label: 'Consult' },
+                cell: ({ row }) => (
+                    <span className="block max-w-32 truncate font-mono text-xs" title={row.original.id}>
+                        {row.original.id}
+                    </span>
+                ),
+            },
+            {
+                accessorKey: 'patientId',
+                header: 'Patient',
+                enableSorting: false,
+                enableHiding: false,
+                size: 120,
+                meta: { label: 'Patient', variant: 'text' },
+                cell: ({ row }) => <span className="font-mono text-xs">{maskPatientId(row.original.patientId)}</span>,
+            },
+            {
+                accessorKey: 'doctorId',
+                header: 'Doctor',
+                enableSorting: false,
+                enableHiding: false,
+                size: 150,
+                meta: { label: 'Doctor', variant: 'text' },
+                cell: ({ row }) => row.original.doctor?.username ?? <span className="font-mono text-xs">{row.original.doctorId}</span>,
+            },
+            {
+                accessorKey: 'departmentId',
+                header: 'Department',
+                enableSorting: false,
+                enableHiding: false,
+                size: 130,
+                meta: { label: 'Department', variant: 'text' },
+                cell: ({ row }) =>
+                    row.original.department?.code ?? row.original.department?.name ?? (
+                        <span className="font-mono text-xs">{row.original.departmentId ?? '\u2014'}</span>
+                    ),
+            },
+            {
+                id: 'type',
+                header: 'Type',
+                enableSorting: false,
+                enableHiding: false,
+                size: 110,
+                meta: { label: 'Type', variant: 'select', options: TYPE_OPTIONS },
+                cell: ({ row }) => <Badge variant="outline">{visitTypeOf(row.original) === 'new' ? 'New' : 'Revisit'}</Badge>,
+            },
+            {
+                accessorKey: 'status',
+                header: 'Status',
+                enableSorting: false,
+                enableHiding: false,
+                size: 140,
+                meta: { label: 'Status', variant: 'select', options: STATUS_OPTIONS },
+                cell: ({ row }) => <ConsultationStatusBadge status={row.original.status} />,
+            },
+        ],
+        [],
+    );
 
     const empty = hasFilters ? (
         <EmptyState
@@ -209,10 +228,7 @@ function ConsultationsScreenBody() {
             title="No consultations in range"
             description={'Filter mismatch \u2014 empty is not an error. Clear the filters to see every consultation in scope.'}
             action={
-                <Button
-                    variant="outline"
-                    onClick={() => updateFilters({ patientId: null, doctorId: null, departmentId: null, status: null, type: null })}
-                >
+                <Button variant="outline" onClick={clearFilters}>
                     <IconFilterOff aria-hidden />
                     Clear filters
                 </Button>
@@ -232,69 +248,43 @@ function ConsultationsScreenBody() {
                 title="Consultations"
                 meta={
                     <>
-                        {list.data ? <span>{formatNumber(total)} consultations</span> : list.isError ? null : <Skeleton className="h-4 w-28" />}
+                        {list.data ? <span>{formatNumber(count)} consultations</span> : list.isError ? null : <Skeleton className="h-4 w-28" />}
                         <EndpointMeta />
                     </>
                 }
                 actions={<RefreshAction />}
             />
-            <FilterBar shown={rows.length} total={total}>
-                <IdFilter
-                    id="consultations-patient-filter"
-                    label="Patient"
-                    placeholder={'patientId\u2026'}
-                    value={patientId}
-                    onChange={(value) => updateFilters({ patientId: value || null })}
-                />
-                <IdFilter
-                    id="consultations-doctor-filter"
-                    label="Doctor"
-                    placeholder={'doctorId\u2026'}
-                    value={doctorId}
-                    onChange={(value) => updateFilters({ doctorId: value || null })}
-                />
-                <IdFilter
-                    id="consultations-department-filter"
-                    label="Department"
-                    placeholder={'departmentId\u2026'}
-                    value={departmentId}
-                    onChange={(value) => updateFilters({ departmentId: value || null })}
-                />
-                <FilterSelect
-                    id="consultations-status-filter"
-                    label="Status"
-                    value={status ?? ''}
-                    onChange={(value) => updateFilters({ status: value ? (value as (typeof CONSULTATION_STATUSES)[number]) : null })}
-                    options={STATUS_OPTIONS}
-                />
-                <FilterSelect
-                    id="consultations-type-filter"
-                    label="Type"
-                    value={type ?? ''}
-                    onChange={(value) => updateFilters({ type: value ? (value as (typeof VISIT_TYPES)[number]) : null })}
-                    options={TYPE_OPTIONS}
-                />
-            </FilterBar>
             <div className="grid items-start gap-4 xl:grid-cols-5">
                 <AggregateChartCard className="xl:col-span-2" />
                 <div className="flex flex-col gap-4 xl:col-span-3">
-                    <DataTable
+                    <VirtualizedDataGrid<Consultation>
                         aria-label="Consultations"
                         columns={columns}
-                        rows={rows}
-                        rowKey={(row) => row.id}
-                        isLoading={list.isLoading}
-                        error={list.error ?? undefined}
-                        onRetry={() => void list.refetch()}
-                        empty={empty}
+                        data={rows}
+                        getRowId={(row) => row.id}
+                        height={CONSULTATIONS_GRID_HEIGHT}
+                        manual={{ filtering: true, pagination: true }}
+                        rowCount={count}
+                        queryState={query.queryState}
+                        onQueryStateChange={query.setQueryState}
+                        persistence={gridPersistence('consultations')}
+                        features={{
+                            columnReorder: true,
+                            columnResize: true,
+                            columnPinning: true,
+                            columnVisibility: true,
+                            rowSelection: false,
+                            globalSearch: false,
+                            facetedFilters: true,
+                            sorting: false,
+                        }}
                         onRowClick={(row) => setSelectedId(row.id)}
-                    />
-                    <TablePagination
-                        page={page}
-                        limit={limit}
-                        total={total}
-                        onPageChange={(next) => void setParams({ page: next || null })}
-                        onLimitChange={(next) => void setParams({ limit: next === DEFAULT_LIMIT ? null : next, page: null })}
+                        isLoading={list.isLoading}
+                        isBusy={list.isFetching && !list.isLoading}
+                        error={rows.length > 0 ? null : (list.error ?? null)}
+                        errorState={(error) => <ErrorState error={error} onRetry={() => void list.refetch()} />}
+                        onRetry={() => void list.refetch()}
+                        emptyState={empty}
                     />
                 </div>
             </div>

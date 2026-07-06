@@ -87,6 +87,8 @@ function stubFetch({ rows = SETTINGS, permissions = MANAGE_ALL, session = SESSIO
             calls.push(call);
             const handled = custom?.(call);
             if (handled) return handled;
+            // The grid persists per-user layout via `user/me/settings` — no saved layout in tests.
+            if (call.url.includes('/user/me/settings')) return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
             if (call.url === '/api/auth/session') return Response.json(session);
             if (call.url === '/api/hope/rbac/check/my-permissions') {
                 return Response.json({ userId: 'u-1', tenantId: null, permissions });
@@ -116,7 +118,7 @@ describe('SettingsScreen', () => {
         expect(screen.getByText('\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022')).toBeDefined();
         expect(screen.getAllByText('String').length).toBeGreaterThan(0);
         expect(screen.getAllByText('smtp').length).toBeGreaterThan(0);
-        expect(screen.getByRole('table', { name: 'Global settings' })).toBeDefined();
+        expect(screen.getByRole('grid', { name: 'Global settings' })).toBeDefined();
         expect(screen.getByText(/2 settings/)).toBeDefined();
     });
 
@@ -328,7 +330,7 @@ describe('SettingsScreen', () => {
 
         expect(await screen.findByText('tenant.branding')).toBeDefined();
         expect(calls.some((call) => call.url.startsWith('/api/hope/admin/settings/tenant/t-1'))).toBe(true);
-        expect(screen.getByRole('table', { name: 'Tenant settings' })).toBeDefined();
+        expect(screen.getByRole('grid', { name: 'Tenant settings' })).toBeDefined();
     });
 
     it('offers no tenant tab without a working tenant', async () => {

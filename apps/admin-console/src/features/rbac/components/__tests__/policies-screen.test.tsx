@@ -46,6 +46,12 @@ interface RecordedCall {
     body: unknown;
 }
 
+/** Best-effort per-user grid-layout persistence (`user/me/settings`) — no saved layout in tests. */
+function settingsResponse(url: string, method: string): Response | undefined {
+    if (!url.includes('/user/me/settings')) return undefined;
+    return method === 'GET' ? Response.json([]) : Response.json({ ok: true });
+}
+
 function stubFetch(handler: (url: string, method: string) => Response | undefined): RecordedCall[] {
     const calls: RecordedCall[] = [];
     vi.stubGlobal(
@@ -54,12 +60,20 @@ function stubFetch(handler: (url: string, method: string) => Response | undefine
             const url = String(input);
             const method = init?.method ?? 'GET';
             calls.push({ url, method, body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined });
-            const response = handler(url, method);
+            // The grid persists per-user layout via `user/me/settings`; answer it before the handler.
+            const response = settingsResponse(url, method) ?? handler(url, method);
             if (!response) throw new Error(`Unhandled fetch: ${method} ${url}`);
             return response;
         }),
     );
     return calls;
+}
+
+/** The gateway list request (skips the interleaved `user/me/settings` layout GET). */
+function listRequest(calls: RecordedCall[]): URL {
+    const call = calls.find((entry) => entry.method === 'GET' && entry.url.includes('/admin/rbac/policies') && !entry.url.includes('/validate'));
+    if (!call) throw new Error('no /admin/rbac/policies GET recorded');
+    return new URL(call.url, 'http://test.local');
 }
 
 function openRowMenu(name: string) {
@@ -89,15 +103,18 @@ describe('PoliciesScreen', () => {
         expect(screen.getByText('Tenant')).toBeDefined();
         expect(screen.getByText('Global')).toBeDefined();
         expect(screen.getByText('Protected')).toBeDefined();
-        expect(screen.getByRole('table', { name: 'Policies' })).toBeDefined();
+        expect(screen.getByRole('grid', { name: 'Policies' })).toBeDefined();
     });
 
     it('maps search/scope/page URL state onto the gateway list request', async () => {
         const calls = stubFetch(() => Response.json(envelope([TENANT_POLICY])));
-        renderWithProviders(<PoliciesScreen />, { searchParams: '?search=tenant&scope=TENANT&page=1' });
+        // The scope facet now rides in the compact `f` filter param (positional JSON tuples);
+        // the screen lifts it back out and sends the RBAC surface's raw `scope` param.
+        const f = encodeURIComponent(JSON.stringify([['scope', 'eq', 'select', 'TENANT']]));
+        renderWithProviders(<PoliciesScreen />, { searchParams: `?search=tenant&f=${f}&page=1` });
 
         await screen.findByText('tenant.manage');
-        const requested = new URL(calls[0].url, 'http://test.local');
+        const requested = listRequest(calls);
         expect(requested.pathname).toBe('/api/hope/admin/rbac/policies');
         expect(requested.searchParams.get('search')).toBe('tenant');
         expect(requested.searchParams.get('scope')).toBe('TENANT');

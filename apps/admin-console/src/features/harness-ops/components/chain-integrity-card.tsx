@@ -2,14 +2,18 @@
 
 import Link from 'next/link';
 import { IconAlertTriangle, IconShieldCheck, IconShieldQuestion, IconShieldX, IconTimeline } from '@tabler/icons-react';
+import { VirtualizedDataGrid, type ColumnDef } from '@arcaai/ui';
 import { Alert, AlertDescription, AlertTitle } from '@arcaai/ui/components/shadcn/alert';
 import { Card, CardContent, CardHeader } from '@arcaai/ui/components/shadcn/card';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { StatusBadge } from '@arcaai/ui/components/shared/status-badge';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
 import { formatDateTime, formatNumber } from '@/shared/format';
 import { EmptyState } from '@/shared/state/empty-state';
+import { ErrorState } from '@/shared/state/error-state';
 import type { HarnessAuditEvent, HarnessAuditList } from '../api';
+
+/** The audit endpoint returns one page (≤50); show it all in the scroll area. */
+const AUDIT_ROWS_PER_PAGE = 50;
 
 type VerdictState = 'loading' | 'intact' | 'broken' | 'unverified';
 
@@ -53,29 +57,37 @@ export function ChainIntegrityCard({
     const needle = search.trim().toLowerCase();
     const rows = needle ? items.filter((event) => auditMatches(event, needle)) : items;
     const lastAnchor = items[0]?.createdAt;
+    // The grid's error slot is typed `Error | null`; the query error arrives as `unknown`.
+    const errorObj = error ? (error instanceof Error ? error : new Error(String(error))) : null;
 
-    const columns: DataTableColumn<HarnessAuditEvent>[] = [
+    const columns: ColumnDef<HarnessAuditEvent>[] = [
         {
-            key: 'time',
+            accessorKey: 'createdAt',
             header: 'Time',
-            cell: (row) => (
-                <span className="whitespace-nowrap tabular-nums" title={`${row.createdAt} (UTC)`}>
-                    {formatDateTime(row.createdAt)}
+            meta: { label: 'Time' },
+            cell: ({ row }) => (
+                <span className="whitespace-nowrap tabular-nums" title={`${row.original.createdAt} (UTC)`}>
+                    {formatDateTime(row.original.createdAt)}
                 </span>
             ),
         },
-        { key: 'action', header: 'Action', mono: true, cell: (row) => row.action },
+        { accessorKey: 'action', header: 'Action', meta: { label: 'Action' }, cell: ({ row }) => <span className="font-mono text-xs">{row.original.action}</span> },
         {
-            key: 'consultation',
+            accessorKey: 'consultationId',
             header: 'Consultation',
-            mono: true,
-            cell: (row) => (
-                <span className="block max-w-28 truncate" title={row.consultationId}>
-                    {row.consultationId}
+            meta: { label: 'Consultation' },
+            cell: ({ row }) => (
+                <span className="block max-w-28 truncate font-mono text-xs" title={row.original.consultationId}>
+                    {row.original.consultationId}
                 </span>
             ),
         },
-        { key: 'decision', header: 'Decision', cell: (row) => row.gateDecision ?? <span className="text-muted-foreground">{'\u2014'}</span> },
+        {
+            accessorKey: 'gateDecision',
+            header: 'Decision',
+            meta: { label: 'Decision' },
+            cell: ({ row }) => row.original.gateDecision ?? <span className="text-muted-foreground">{'\u2014'}</span>,
+        },
     ];
 
     return (
@@ -107,16 +119,28 @@ export function ChainIntegrityCard({
                         </AlertDescription>
                     </Alert>
                 ) : null}
-                <DataTable
+                <VirtualizedDataGrid<HarnessAuditEvent>
                     aria-label="WORM audit trail"
                     columns={columns}
-                    rows={rows}
-                    rowKey={(row) => row.id}
+                    data={rows}
+                    getRowId={(row) => row.id}
+                    height={360}
+                    pageSizeOptions={[AUDIT_ROWS_PER_PAGE, 100]}
+                    features={{
+                        columnReorder: false,
+                        columnResize: false,
+                        columnPinning: false,
+                        columnVisibility: false,
+                        rowSelection: false,
+                        globalSearch: false,
+                        facetedFilters: false,
+                        sorting: false,
+                    }}
                     isLoading={isLoading}
-                    error={error}
+                    error={errorObj}
                     onRetry={onRetry}
-                    skeletonRows={5}
-                    empty={
+                    errorState={(err) => <ErrorState error={err} onRetry={onRetry} />}
+                    emptyState={
                         <EmptyState
                             icon={IconTimeline}
                             title={needle ? 'No audit rows match your search' : 'No WORM rows in range'}

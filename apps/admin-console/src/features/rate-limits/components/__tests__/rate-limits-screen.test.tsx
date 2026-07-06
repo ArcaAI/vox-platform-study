@@ -82,14 +82,14 @@ describe('RateLimitsScreen', () => {
         const toggle = await screen.findByRole('switch', { name: 'Rate limiting enabled' });
         expect(toggle.getAttribute('data-state')).toBe('checked');
         // Tier defaults region: all four fixed tiers with their limits.
-        const tierTable = screen.getByRole('table', { name: 'Tier defaults' });
+        const tierTable = screen.getByRole('grid', { name: 'Tier defaults' });
         expect(within(tierTable).getByText('default')).toBeDefined();
         expect(within(tierTable).getByText('strict')).toBeDefined();
         expect(within(tierTable).getByText('heavy')).toBeDefined();
         expect(within(tierTable).getByText('relaxed')).toBeDefined();
         expect(within(tierTable).getByText('600')).toBeDefined();
         // Route overrides region.
-        const routeTable = screen.getByRole('table', { name: 'Route overrides' });
+        const routeTable = screen.getByRole('grid', { name: 'Route overrides' });
         expect(within(routeTable).getByText('AuthController#login')).toBeDefined();
         expect(within(routeTable).getByText('POST /auth/login')).toBeDefined();
     });

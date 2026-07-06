@@ -320,6 +320,15 @@ Single internal vanilla store: `packages/agentic-sdk-v2/src/store/agenticStore.t
 - Types pinned via pnpm overrides: `@types/react ^19.2.14` (root `package.json`).
 - jsdom-based Vitest environment for browser packages (root `vitest.config.ts` `environmentMatchGlobs`).
 
+### 3.6 Admin data grids (standard, TASK-423)
+
+Every list/table surface in `apps/admin-console` uses `VirtualizedDataGrid` (`packages/ui/src/components/data-grid`; TanStack Table v8 + Virtual + dnd-kit). The legacy `DataTable`/`TablePagination` were removed; only non-list displays (hierarchy trees, comparison/cascade matrices) use the raw shadcn `Table`, and `FilterBar` remains only as a standalone control over non-grid sources.
+
+- **Full-page lists**: wrap with `AdminDataGrid` + `useAdminGridParams` (`apps/admin-console/src/shared/data`) — URL query-state via nuqs (`grid-url-state.ts`; typed filters serialized into a compact `f` param and emitted to the backend as the bracket grammar), envelope normalization (`envelopes.ts#normalizeList`, 6 shapes incl. cursor), and server-persisted layout.
+- **Embedded / master-detail lists**: use `VirtualizedDataGrid` directly at a fixed `height` and pass `persistence={gridPersistence('<gridId>')}`.
+- **Personalization is mandatory for real lists**: column order/size/visibility/pinning + density persist per-user in `UserSettings` under namespace `ui.data-grid/<gridId>` via `GET`/`PATCH user/me/settings` (`grid-persistence.ts` — a single shared `sharedGridLayoutPersistence` adapter, 16 KB-guarded, best-effort; first paint gated on `isLayoutReady`). Only genuinely small fixed detail-tab/utility tables may leave the `column*` features off.
+- Do: give every grid a stable `gridId` and set column `meta` (`variant`, `options`) for typed filters. Don't: reintroduce `DataTable`, or read/write `UserSettings` grid keys outside the shared adapter.
+
 ---
 
 ## 4. Testing standards
@@ -448,7 +457,7 @@ DB: `DateTime` columns with `@default(now())` / `@updatedAt`, UTC. Domain/servic
 
 Two sanctioned shapes:
 
-- Offset: `PaginatedQuery` (`packages/applications/src/common/dto/paginated.query.ts`) — `page` (0-based), `limit`, `search`, `searchFields`, `filters` (`name:John,...`), `sort` (`name:asc,...`), converted via `withFormattedPaginatedProps`/`withFormattedCountProps` (`packages/applications/src/common/paginatedQueryParamConverters.ts`), returned as `PaginatedResponse` built from `FetchResponse` via the DTO mapper's `ToPaginatedResponse`.
+- Offset: `PaginatedQuery` (`packages/applications/src/common/dto/paginated.query.ts`) — `page` (0-based), `limit`, `search`, `searchFields`, `filters` (bracket grammar: `field[op]:value` tokens joined by `;`; ops such as `eq`/`ne`/`gte`/`lte`/`contains`/`icontains`/`in`/`notIn`/`isNull`, with `|` separating `in`/`notIn` list members — a bare `field:value` without an operator is silently ignored; see TASK-423), `sort` (`name:asc,...`), converted via `withFormattedPaginatedProps`/`withFormattedCountProps` (`packages/applications/src/common/paginatedQueryParamConverters.ts`), returned as `PaginatedResponse` built from `FetchResponse` via the DTO mapper's `ToPaginatedResponse`.
 - Cursor/keyset (opt-in, for large tables): `packages/applications/src/common/cursorPagination.ts` — opaque base64url token of `(sortKey, uuidv7 id)`, hard page cap, `hasMore` detection.
 
 ### 6.8 Optimistic concurrency (house pattern)

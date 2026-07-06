@@ -38,7 +38,7 @@ describe('lib/shared/query-state', () => {
     expect(q.sort).toBe('name:asc,createdAt:desc');
   });
 
-  it('serializes filters to CSV field:value and drops empty values', () => {
+  it('serializes filters to the bracket grammar (field[op]:value; …) and drops empty values', () => {
     const q = toPaginatedQuery(
       makeState({
         filters: [
@@ -49,7 +49,7 @@ describe('lib/shared/query-state', () => {
         ],
       }),
     );
-    expect(q.filters).toBe('name:John,status:ACTIVE|ARCHIVED');
+    expect(q.filters).toBe('name[icontains]:John;status[in]:ACTIVE|ARCHIVED');
   });
 
   it('serializes globalSearch to search', () => {

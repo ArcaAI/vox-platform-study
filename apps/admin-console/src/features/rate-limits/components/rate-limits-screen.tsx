@@ -4,6 +4,7 @@ import { useId, useState, type FormEvent } from 'react';
 import { IconPencil, IconPlayerPause, IconPlayerPlay, IconRoute } from '@tabler/icons-react';
 import { useQueryState } from 'nuqs';
 import { toast } from 'sonner';
+import { VirtualizedDataGrid, type ColumnDef } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import {
@@ -22,7 +23,6 @@ import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
 import { StatusBadge } from '@arcaai/ui/components/shared/status-badge';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
 import { FilterBar, FilterSearch, FilterSelect } from '@/shared/data/filter-bar';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
@@ -219,34 +219,51 @@ export function RateLimitsScreen() {
         return true;
     });
 
-    const tierColumns: DataTableColumn<RateLimitTierPolicy>[] = [
+    const tierColumns: ColumnDef<RateLimitTierPolicy>[] = [
         {
-            key: 'tier',
+            accessorKey: 'tier',
             header: 'Tier',
-            cell: (tier) => <span className="font-medium">{tier.tier}</span>,
+            enableSorting: false,
+            meta: { label: 'Tier' },
+            cell: ({ row }) => <span className="font-medium">{row.original.tier}</span>,
+            size: 160,
         },
         {
-            key: 'limit',
+            accessorKey: 'limit',
             header: 'Limit',
-            cell: (tier) => <span className="tabular-nums">{formatNumber(tier.limit)}</span>,
+            enableSorting: false,
+            meta: { label: 'Limit' },
+            cell: ({ row }) => <span className="tabular-nums">{formatNumber(row.original.limit)}</span>,
+            size: 120,
         },
         {
-            key: 'ttl',
+            accessorKey: 'ttl',
             header: 'Window',
-            cell: (tier) => <span className="text-muted-foreground tabular-nums">{formatNumber(tier.ttl)} s</span>,
+            enableSorting: false,
+            meta: { label: 'Window' },
+            cell: ({ row }) => <span className="text-muted-foreground tabular-nums">{formatNumber(row.original.ttl)} s</span>,
+            size: 120,
         },
         {
-            key: 'sources',
+            id: 'sources',
             header: 'Sources',
-            cell: (tier) => <SourceBadges limitSource={tier.limitSource} ttlSource={tier.ttlSource} />,
+            enableSorting: false,
+            meta: { label: 'Sources' },
+            cell: ({ row }) => <SourceBadges limitSource={row.original.limitSource} ttlSource={row.original.ttlSource} />,
+            size: 220,
         },
         {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            headerClassName: 'w-12',
-            cell: (tier) => (
-                <span className="flex justify-end">
-                    <Button variant="ghost" size="icon-sm" aria-label={`Edit ${tier.tier} tier`} onClick={() => setTierEdit(tier)}>
+            id: 'actions',
+            header: () => <span className="sr-only">Actions</span>,
+            meta: { label: 'Actions' },
+            enableSorting: false,
+            enableHiding: false,
+            enableResizing: false,
+            size: 56,
+            minSize: 56,
+            cell: ({ row }) => (
+                <span className="flex w-full justify-end">
+                    <Button variant="ghost" size="icon-sm" aria-label={`Edit ${row.original.tier} tier`} onClick={() => setTierEdit(row.original)}>
                         <IconPencil aria-hidden />
                     </Button>
                 </span>
@@ -254,69 +271,92 @@ export function RateLimitsScreen() {
         },
     ];
 
-    const routeColumns: DataTableColumn<RateLimitRoutePolicy>[] = [
+    const routeColumns: ColumnDef<RateLimitRoutePolicy>[] = [
         {
-            key: 'route',
+            accessorKey: 'routeId',
             header: 'Route',
-            mono: true,
-            cell: (route) => route.routeId,
+            enableSorting: false,
+            meta: { label: 'Route' },
+            cell: ({ row }) => <span className="font-mono text-xs">{row.original.routeId}</span>,
+            size: 240,
+            minSize: 160,
         },
         {
-            key: 'description',
+            accessorKey: 'description',
             header: 'Description',
-            cell: (route) => <span className="text-muted-foreground">{route.description}</span>,
+            enableSorting: false,
+            meta: { label: 'Description' },
+            cell: ({ row }) => <span className="text-muted-foreground">{row.original.description}</span>,
+            size: 200,
         },
         {
-            key: 'tier',
+            accessorKey: 'tier',
             header: 'Tier',
-            cell: (route) => <Badge variant="secondary">{route.tier}</Badge>,
+            enableSorting: false,
+            meta: { label: 'Tier' },
+            cell: ({ row }) => <Badge variant="secondary">{row.original.tier}</Badge>,
+            size: 120,
         },
         {
-            key: 'limit',
+            id: 'limit',
             header: 'Limit',
-            cell: (route) => (
+            enableSorting: false,
+            meta: { label: 'Limit' },
+            cell: ({ row }) => (
                 <span className="tabular-nums">
-                    {formatNumber(route.limit)} <span className="text-muted-foreground">/ {formatNumber(route.ttl)} s</span>
+                    {formatNumber(row.original.limit)} <span className="text-muted-foreground">/ {formatNumber(row.original.ttl)} s</span>
                 </span>
             ),
+            size: 140,
         },
         {
-            key: 'sources',
+            id: 'sources',
             header: 'Sources',
-            cell: (route) => <SourceBadges limitSource={route.limitSource} ttlSource={route.ttlSource} />,
+            enableSorting: false,
+            meta: { label: 'Sources' },
+            cell: ({ row }) => <SourceBadges limitSource={row.original.limitSource} ttlSource={row.original.ttlSource} />,
+            size: 220,
         },
         {
-            key: 'status',
+            accessorKey: 'enabled',
             header: 'Status',
-            cell: (route) =>
-                route.enabled ? (
+            enableSorting: false,
+            meta: { label: 'Status' },
+            cell: ({ row }) =>
+                row.original.enabled ? (
                     <StatusBadge label="Active" colorRole="success" icon={<StatusDot colorRole="success" size="sm" />} />
                 ) : (
                     <StatusBadge label="Paused" colorRole="neutral" icon={<StatusDot colorRole="neutral" size="sm" />} />
                 ),
+            size: 120,
         },
         {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            headerClassName: 'w-20',
-            cell: (route) => (
-                <span className="flex items-center justify-end gap-1">
+            id: 'actions',
+            header: () => <span className="sr-only">Actions</span>,
+            meta: { label: 'Actions' },
+            enableSorting: false,
+            enableHiding: false,
+            enableResizing: false,
+            size: 88,
+            minSize: 88,
+            cell: ({ row }) => (
+                <span className="flex w-full items-center justify-end gap-1">
                     <Button
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={`Edit ${route.routeId}`}
+                        aria-label={`Edit ${row.original.routeId}`}
                         disabled={routeMutation.isPending}
-                        onClick={() => setRouteEdit(route)}
+                        onClick={() => setRouteEdit(row.original)}
                     >
                         <IconPencil aria-hidden />
                     </Button>
-                    {route.enabled ? (
+                    {row.original.enabled ? (
                         <Button
                             variant="ghost"
                             size="icon-sm"
-                            aria-label={`Pause ${route.routeId}`}
+                            aria-label={`Pause ${row.original.routeId}`}
                             disabled={routeMutation.isPending}
-                            onClick={() => setPauseTarget(route)}
+                            onClick={() => setPauseTarget(row.original)}
                         >
                             <IconPlayerPause aria-hidden />
                         </Button>
@@ -324,9 +364,9 @@ export function RateLimitsScreen() {
                         <Button
                             variant="ghost"
                             size="icon-sm"
-                            aria-label={`Resume ${route.routeId}`}
+                            aria-label={`Resume ${row.original.routeId}`}
                             disabled={routeMutation.isPending}
-                            onClick={() => setRouteEnabled(route, true)}
+                            onClick={() => setRouteEnabled(row.original, true)}
                         >
                             <IconPlayerPlay aria-hidden />
                         </Button>
@@ -395,13 +435,24 @@ export function RateLimitsScreen() {
                                 Requests allowed per window for each guard tier. Saved overrides persist to the DB (source: db).
                             </p>
                         </div>
-                        <DataTable
+                        <VirtualizedDataGrid<RateLimitTierPolicy>
                             aria-label="Tier defaults"
                             columns={tierColumns}
-                            rows={policy.tiers}
-                            rowKey={(tier) => tier.tier}
-                            skeletonRows={4}
-                            empty={<EmptyState icon={IconRoute} title="No tiers reported" description="The gateway did not report any guard tiers." />}
+                            data={policy.tiers}
+                            getRowId={(tier) => tier.tier}
+                            height={240}
+                            toolbar={false}
+                            features={{
+                                globalSearch: false,
+                                facetedFilters: false,
+                                sorting: false,
+                                rowSelection: false,
+                                columnReorder: false,
+                                columnResize: false,
+                                columnPinning: false,
+                                columnVisibility: false,
+                            }}
+                            emptyState={<EmptyState icon={IconRoute} title="No tiers reported" description="The gateway did not report any guard tiers." />}
                         />
                     </section>
                     <section aria-labelledby={`${headingId}-routes`} className="flex flex-col gap-3">
@@ -430,12 +481,24 @@ export function RateLimitsScreen() {
                                 options={STATUS_OPTIONS}
                             />
                         </FilterBar>
-                        <DataTable
+                        <VirtualizedDataGrid<RateLimitRoutePolicy>
                             aria-label="Route overrides"
                             columns={routeColumns}
-                            rows={filteredRoutes}
-                            rowKey={(route) => route.routeId}
-                            empty={
+                            data={filteredRoutes}
+                            getRowId={(route) => route.routeId}
+                            height={360}
+                            toolbar={false}
+                            features={{
+                                globalSearch: false,
+                                facetedFilters: false,
+                                sorting: false,
+                                rowSelection: false,
+                                columnReorder: false,
+                                columnResize: false,
+                                columnPinning: false,
+                                columnVisibility: false,
+                            }}
+                            emptyState={
                                 <EmptyState
                                     icon={IconRoute}
                                     title="No rate-limited routes"

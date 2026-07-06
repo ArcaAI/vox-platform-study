@@ -1,16 +1,46 @@
 'use client';
 
 import { IconKey, IconMicrophone } from '@tabler/icons-react';
+import { type ColumnDef, VirtualizedDataGrid } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/components/shadcn/card';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import type { ApiKey } from '@/features/api-keys/api/types';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
 import { formatDateTime, formatNumber, formatRelativeTime } from '@/shared/format';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { useUserApiKeys, useVoiceProfiles } from '../api/hooks';
+
+/** Embedded detail-tab grids: no personalization, client-side only (rule #2). */
+const EMBEDDED_GRID_FEATURES = {
+    columnReorder: false,
+    columnResize: false,
+    columnPinning: false,
+    columnVisibility: false,
+    rowSelection: false,
+    globalSearch: false,
+    facetedFilters: false,
+    sorting: true,
+} as const;
+
+const API_KEY_COLUMNS: ColumnDef<ApiKey>[] = [
+    { accessorKey: 'keyName', header: 'Name', meta: { label: 'Name' }, size: 180, minSize: 140, cell: ({ row }) => <span className="font-medium">{row.original.keyName}</span> },
+    { accessorKey: 'keyPrefix', header: 'Prefix', meta: { label: 'Prefix' }, size: 150, cell: ({ row }) => <span className="font-mono text-xs">{row.original.keyPrefix}</span> },
+    { id: 'type', header: 'Type', enableSorting: false, meta: { label: 'Type' }, size: 110, cell: ({ row }) => <Badge variant="outline">{row.original.keyType}</Badge> },
+    {
+        id: 'status',
+        header: 'Status',
+        enableSorting: false,
+        meta: { label: 'Status' },
+        size: 120,
+        cell: ({ row }) => (
+            <Badge variant={row.original.keyStatus === 'ACTIVE' ? 'default' : row.original.keyStatus === 'REVOKED' ? 'destructive' : 'outline'}>{row.original.keyStatus}</Badge>
+        ),
+    },
+    { accessorKey: 'lastUsedAt', header: 'Last used', meta: { label: 'Last used' }, size: 140, cell: ({ row }) => <span className="text-muted-foreground">{formatRelativeTime(row.original.lastUsedAt)}</span> },
+    { accessorKey: 'usageCount', header: 'Usage', meta: { label: 'Usage' }, size: 100, cell: ({ row }) => <span className="tabular-nums">{formatNumber(row.original.usageCount)}</span> },
+];
 
 function VoiceProfilesCard({ id }: { id: string }) {
     const { data, isLoading, error, refetch } = useVoiceProfiles(id);
@@ -53,19 +83,6 @@ function ApiKeysCard({ id }: { id: string }) {
     const { data, isLoading, error, refetch } = useUserApiKeys(id);
     const rows = data?.data ?? [];
 
-    const columns: DataTableColumn<ApiKey>[] = [
-        { key: 'name', header: 'Name', cell: (row) => <span className="font-medium">{row.keyName}</span> },
-        { key: 'prefix', header: 'Prefix', mono: true, cell: (row) => row.keyPrefix },
-        { key: 'type', header: 'Type', cell: (row) => <Badge variant="outline">{row.keyType}</Badge> },
-        {
-            key: 'status',
-            header: 'Status',
-            cell: (row) => <Badge variant={row.keyStatus === 'ACTIVE' ? 'default' : row.keyStatus === 'REVOKED' ? 'destructive' : 'outline'}>{row.keyStatus}</Badge>,
-        },
-        { key: 'lastUsed', header: 'Last used', cell: (row) => <span className="text-muted-foreground">{formatRelativeTime(row.lastUsedAt)}</span> },
-        { key: 'usage', header: 'Usage', cell: (row) => <span className="tabular-nums">{formatNumber(row.usageCount)}</span> },
-    ];
-
     return (
         <Card>
             <CardHeader>
@@ -73,16 +90,17 @@ function ApiKeysCard({ id }: { id: string }) {
                 <CardDescription>Keys owned by this user (read-only) — manage them on the API keys screen.</CardDescription>
             </CardHeader>
             <CardContent>
-                <DataTable
+                <VirtualizedDataGrid<ApiKey>
                     aria-label="User API keys"
-                    columns={columns}
-                    rows={rows}
-                    rowKey={(row) => row.id}
+                    columns={API_KEY_COLUMNS}
+                    data={rows}
+                    getRowId={(row) => row.id}
+                    features={EMBEDDED_GRID_FEATURES}
+                    height={300}
                     isLoading={isLoading}
                     error={error}
                     onRetry={() => refetch()}
-                    skeletonRows={2}
-                    empty={<EmptyState icon={IconKey} title="No API keys" description="This user owns no API keys." />}
+                    emptyState={<EmptyState icon={IconKey} title="No API keys" description="This user owns no API keys." />}
                 />
             </CardContent>
         </Card>

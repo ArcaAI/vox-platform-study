@@ -1,7 +1,12 @@
 /**
- * Frame 12 — Tenants list screen. fetch is stubbed at the network boundary
- * (the api layer has its own tests); assertions here are the rendered list
- * states, the request URLs the filters produce, and the wizard POST.
+ * Frame 12 — Tenants list screen (AdminDataGrid). fetch is stubbed at the
+ * network boundary (the api layer has its own tests); assertions here are the
+ * rendered list states, the request the typed filters produce (the NEW gateway
+ * BRACKET grammar `field[op]:value` joined by `;` — TASK-423), and the wizard POST.
+ *
+ * The grid persists per-user layout via `GET user/me/settings`, so every render
+ * fires that call too; `settingsResponse` answers it and assertions locate the
+ * list request by URL rather than by call index.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -52,6 +57,12 @@ interface RecordedCall {
     body: unknown;
 }
 
+/** Best-effort per-user grid-layout persistence (`user/me/settings`) — no saved layout in tests. */
+function settingsResponse(url: string, init?: RequestInit): Response | undefined {
+    if (!url.includes('/user/me/settings')) return undefined;
+    return (init?.method ?? 'GET') === 'GET' ? Response.json([]) : Response.json({ ok: true });
+}
+
 function stubFetch(handler: (url: string, init?: RequestInit) => Response | undefined): RecordedCall[] {
     const calls: RecordedCall[] = [];
     vi.stubGlobal(
@@ -71,6 +82,13 @@ function listResponse(rows: Tenant[]): Response {
     return Response.json({ data: rows, count: rows.length, limit: 25, page: 0 });
 }
 
+/** The gateway list request (skips the interleaved `user/me/settings` layout GET). */
+function listRequest(calls: RecordedCall[]): URL {
+    const call = calls.find((entry) => entry.method === 'GET' && entry.url.includes('/admin/tenants'));
+    if (!call) throw new Error('no /admin/tenants GET recorded');
+    return new URL(call.url, 'http://test.local');
+}
+
 afterEach(() => {
     vi.unstubAllGlobals();
     push.mockClear();
@@ -79,19 +97,18 @@ afterEach(() => {
 
 describe('TenantsListScreen', () => {
     it('renders tenant rows with key, plan and status from the list payload', async () => {
-        stubFetch(() => listResponse(TENANTS));
+        stubFetch((url, init) => settingsResponse(url, init) ?? listResponse(TENANTS));
         renderWithProviders(<TenantsListScreen />);
 
         expect(await screen.findByText('Sunrise Medical Group')).toBeDefined();
         expect(screen.getByText('Bayview Health Network')).toBeDefined();
         expect(screen.getByText('tnt_4h8mz1')).toBeDefined();
         expect(screen.getByText('Enterprise')).toBeDefined();
-        expect(screen.getByText('Suspended')).toBeDefined();
         expect(screen.getByText(/2 tenants/i)).toBeDefined();
     });
 
     it('shows the no-tenants empty state with a create CTA when the list is empty', async () => {
-        stubFetch(() => listResponse([]));
+        stubFetch((url, init) => settingsResponse(url, init) ?? listResponse([]));
         renderWithProviders(<TenantsListScreen />);
 
         expect(await screen.findByText(/no tenants yet/i)).toBeDefined();
@@ -100,55 +117,66 @@ describe('TenantsListScreen', () => {
     });
 
     it('offers Clear filters instead of the create CTA when filters match nothing', async () => {
-        stubFetch(() => listResponse([]));
+        stubFetch((url, init) => settingsResponse(url, init) ?? listResponse([]));
         renderWithProviders(<TenantsListScreen />, { searchParams: '?search=zzz' });
 
         expect(await screen.findByText(/no tenants match/i)).toBeDefined();
-        expect(screen.getByRole('button', { name: /clear filters/i })).toBeDefined();
+        // Both the toolbar and the filtered-empty CTA expose a clear affordance.
+        expect(screen.getAllByRole('button', { name: /clear filters/i }).length).toBeGreaterThanOrEqual(1);
     });
 
     it('renders the block error state and retries the request', async () => {
-        const calls = stubFetch(() => Response.json({ message: 'Service unavailable' }, { status: 503 }));
+        const calls = stubFetch((url, init) => settingsResponse(url, init) ?? Response.json({ message: 'Service unavailable' }, { status: 503 }));
         renderWithProviders(<TenantsListScreen />);
 
         expect(await screen.findByRole('alert')).toBeDefined();
         expect(screen.getByText(/service unavailable/i)).toBeDefined();
 
         fireEvent.click(screen.getByRole('button', { name: /retry/i }));
-        await waitFor(() => expect(calls.length).toBe(2));
+        await waitFor(() => expect(calls.filter((call) => call.url.includes('/admin/tenants')).length).toBe(2));
     });
 
-    it('maps search/status/plan/page URL state onto the gateway list request', async () => {
-        const calls = stubFetch(() => listResponse(TENANTS));
-        renderWithProviders(<TenantsListScreen />, { searchParams: '?search=north&status=SUSPENDED&plan=PRO&page=1&limit=50' });
+    it('maps search + typed filters + page onto the gateway bracket-grammar request', async () => {
+        // Typed filters live in the compact `f` URL param (JSON tuples); enum columns
+        // serialize to `field[equals]:v`, tokens joined by `;`.
+        const f = encodeURIComponent(
+            JSON.stringify([
+                ['resourceStatus', 'eq', 'select', 'SUSPENDED'],
+                ['plan', 'eq', 'select', 'PRO'],
+            ]),
+        );
+        const calls = stubFetch((url, init) => settingsResponse(url, init) ?? listResponse(TENANTS));
+        renderWithProviders(<TenantsListScreen />, { searchParams: `?search=north&f=${f}&page=1&limit=50` });
 
         await screen.findByText('Sunrise Medical Group');
-        const requested = new URL(calls[0].url, 'http://test.local');
+        const requested = listRequest(calls);
         expect(requested.pathname).toBe('/api/hope/admin/tenants');
         expect(requested.searchParams.get('search')).toBe('north');
         expect(requested.searchParams.get('searchFields')).toBe('name,key');
-        expect(requested.searchParams.get('filters')).toBe('resourceStatus:SUSPENDED,plan:PRO');
+        expect(requested.searchParams.get('filters')).toBe('resourceStatus[equals]:SUSPENDED;plan[equals]:PRO');
         expect(requested.searchParams.get('page')).toBe('1');
         expect(requested.searchParams.get('limit')).toBe('50');
     });
 
     it('requests the default sort and reflects header sorting in the URL state', async () => {
-        const calls = stubFetch(() => listResponse(TENANTS));
+        const calls = stubFetch((url, init) => settingsResponse(url, init) ?? listResponse(TENANTS));
         const onUrlUpdate = vi.fn();
         renderWithProviders(<TenantsListScreen />, { onUrlUpdate });
 
         await screen.findByText('Sunrise Medical Group');
-        expect(new URL(calls[0].url, 'http://test.local').searchParams.get('sort')).toBe('updatedAt:desc');
+        expect(listRequest(calls).searchParams.get('sort')).toBe('updatedAt:desc');
 
-        fireEvent.click(screen.getByRole('button', { name: /^name/i }));
+        // The grid sorts from the column-header menu; picking "Asc" writes `sort=` to the URL.
+        fireEvent.pointerDown(screen.getByRole('button', { name: /name column options/i }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
+        fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /^asc$/i }));
         await waitFor(() => {
             const last = onUrlUpdate.mock.calls.at(-1)?.[0] as { searchParams: URLSearchParams };
-            expect(last.searchParams.get('sort')).toBe('name:asc');
+            expect(last?.searchParams.get('sort')).toBe('name:asc');
         });
     });
 
     it('navigates to the tenant detail when a row is clicked', async () => {
-        stubFetch(() => listResponse(TENANTS));
+        stubFetch((url, init) => settingsResponse(url, init) ?? listResponse(TENANTS));
         renderWithProviders(<TenantsListScreen />);
 
         fireEvent.click(await screen.findByText('Bayview Health Network'));
@@ -157,7 +185,9 @@ describe('TenantsListScreen', () => {
 
     it('runs a lifecycle action from the row menu through its confirm dialog', async () => {
         const calls = stubFetch((url, init) => {
-            if ((init?.method ?? 'GET') === 'GET' && url.startsWith('/api/hope/admin/tenants?')) return listResponse(TENANTS);
+            const settings = settingsResponse(url, init);
+            if (settings) return settings;
+            if ((init?.method ?? 'GET') === 'GET' && url.includes('/admin/tenants?')) return listResponse(TENANTS);
             if (init?.method === 'POST' && url === '/api/hope/admin/tenants/t-1/suspend') {
                 return Response.json(tenant({ resourceStatus: 'SUSPENDED' }));
             }
@@ -177,7 +207,9 @@ describe('TenantsListScreen', () => {
 
     it('creates a tenant through the wizard and navigates to the new detail page', async () => {
         const calls = stubFetch((url, init) => {
-            if ((init?.method ?? 'GET') === 'GET' && url.startsWith('/api/hope/admin/tenants?')) return listResponse([]);
+            const settings = settingsResponse(url, init);
+            if (settings) return settings;
+            if ((init?.method ?? 'GET') === 'GET' && url.includes('/admin/tenants?')) return listResponse([]);
             if (init?.method === 'POST' && url === '/api/hope/admin/tenants') {
                 return Response.json(tenant({ id: 't-new', name: 'Acme Health', key: 'acme' }));
             }

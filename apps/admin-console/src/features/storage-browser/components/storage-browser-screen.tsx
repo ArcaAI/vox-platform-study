@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { IconUpload } from '@tabler/icons-react';
-import { parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
+import { parseAsString, useQueryStates } from 'nuqs';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { FilterBar, FilterSearch, FilterSelect } from '@/shared/data/filter-bar';
@@ -19,13 +19,10 @@ const ENDPOINT_HINT = 'GET /storage/buckets';
 
 function ScreenBody() {
     const bucketsQuery = useBuckets();
-    const [{ bucket: bucketParam, prefix, search, page, limit, sort }, setParams] = useQueryStates({
+    const [{ bucket: bucketParam, prefix, search }, setParams] = useQueryStates({
         bucket: parseAsString.withDefault(''),
         prefix: parseAsString.withDefault(''),
         search: parseAsString.withDefault(''),
-        page: parseAsInteger.withDefault(0),
-        limit: parseAsInteger.withDefault(25),
-        sort: parseAsString.withDefault('key:asc'),
     });
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
@@ -37,12 +34,13 @@ function ScreenBody() {
     const objects = objectsQuery.data ?? [];
 
     const needle = search.toLowerCase();
-    const entries = deriveEntries(objects, prefix).filter((entry) => {
+    const allEntries = deriveEntries(objects, prefix);
+    const entries = allEntries.filter((entry) => {
         if (!needle) return true;
         return entry.kind === 'file' ? entry.key.toLowerCase().includes(needle) : entry.name.toLowerCase().includes(needle);
     });
-    const sorted = sortEntries(entries, sort);
-    const pageRows = sorted.slice(page * limit, (page + 1) * limit);
+    // Folders-first, name-ascending; the embedded grid owns further sort + pagination client-side.
+    const sorted = sortEntries(entries, 'key:asc');
 
     const selectedEntry = sorted.find((entry): entry is FileEntry => entry.kind === 'file' && entry.key === selectedKey);
     const selectedObject: StorageObject | null = selectedEntry
@@ -51,12 +49,12 @@ function ScreenBody() {
 
     function selectBucket(name: string) {
         setSelectedKey(null);
-        void setParams({ bucket: name === buckets[0]?.name ? null : name, prefix: null, page: null });
+        void setParams({ bucket: name === buckets[0]?.name ? null : name, prefix: null });
     }
 
     function navigatePrefix(nextPrefix: string) {
         setSelectedKey(null);
-        void setParams({ prefix: nextPrefix || null, page: null });
+        void setParams({ prefix: nextPrefix || null });
     }
 
     function focusUploadZone() {
@@ -90,12 +88,12 @@ function ScreenBody() {
                     </Button>
                 }
             />
-            <FilterBar shown={pageRows.length} total={entries.length}>
+            <FilterBar shown={entries.length} total={allEntries.length}>
                 <FilterSearch
                     label="Search objects"
                     placeholder={'Search objects (prefix)\u2026'}
                     value={search}
-                    onChange={(value) => void setParams({ search: value || null, page: null })}
+                    onChange={(value) => void setParams({ search: value || null })}
                 />
                 {/* value is always a real bucket name once the list loads, so the
                     "All" sentinel row only shows while buckets are empty. */}
@@ -116,24 +114,17 @@ function ScreenBody() {
                     bucketName={activeBucket}
                     prefix={prefix}
                     onNavigate={navigatePrefix}
-                    rows={pageRows}
-                    total={entries.length}
+                    rows={sorted}
                     isLoading={bucketsQuery.isPending || (!!activeBucket && objectsQuery.isPending)}
                     error={bucketsQuery.error ?? objectsQuery.error}
                     onRetry={() => {
                         if (bucketsQuery.error) void bucketsQuery.refetch();
                         if (objectsQuery.error) void objectsQuery.refetch();
                     }}
-                    sort={sort}
-                    onSortChange={(next) => void setParams({ sort: next === 'key:asc' ? null : next })}
-                    page={page}
-                    limit={limit}
-                    onPageChange={(next) => void setParams({ page: next === 0 ? null : next })}
-                    onLimitChange={(next) => void setParams({ limit: next === 25 ? null : next, page: null })}
                     selectedKey={selectedKey}
                     onSelectFile={setSelectedKey}
                     hasSearch={!!search}
-                    onClearSearch={() => void setParams({ search: null, page: null })}
+                    onClearSearch={() => void setParams({ search: null })}
                     onRequestUpload={focusUploadZone}
                 />
                 <ObjectActionsPanel bucketName={activeBucket} object={selectedObject} onDeleted={() => setSelectedKey(null)} />

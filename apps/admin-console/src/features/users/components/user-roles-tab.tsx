@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { IconPlus, IconShieldCheck, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
+import { type ColumnDef, VirtualizedDataGrid } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import {
@@ -20,12 +21,23 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { GatewayError } from '@/shared/api';
 import { SYSTEM_TENANT_ID, useRoleOptions, useTenantCatalog, useTenantNames } from '@/shared/catalog';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
 import { NameWithId } from '@/shared/data/name-with-id';
 import { formatDateTime } from '@/shared/format';
 import { EmptyState } from '@/shared/state/empty-state';
 import { useAssignRole, useRemoveRole, useUserRoles } from '../api/hooks';
 import type { UserRoleAssignment } from '../api/types';
+
+/** Embedded detail-tab grids: no personalization, client-side only (rule #2). */
+const EMBEDDED_GRID_FEATURES = {
+    columnReorder: false,
+    columnResize: false,
+    columnPinning: false,
+    columnVisibility: false,
+    rowSelection: false,
+    globalSearch: false,
+    facetedFilters: false,
+    sorting: true,
+} as const;
 
 function roleLabel(assignment: UserRoleAssignment): string {
     return assignment.roleName ?? assignment.roleId;
@@ -182,30 +194,57 @@ export function UserRolesTab({ id }: { id: string }) {
         );
     }
 
-    const columns: DataTableColumn<UserRoleAssignment>[] = [
-        { key: 'role', header: 'Role', cell: (row) => <NameWithId name={row.roleName} id={row.roleId} /> },
-        {
-            key: 'scope',
-            header: 'Scope',
-            cell: (row) =>
-                !row.tenantId || row.tenantId === SYSTEM_TENANT_ID ? (
-                    <Badge variant="outline">Global</Badge>
-                ) : (
-                    <NameWithId name={tenantNames.get(row.tenantId)} id={row.tenantId} />
+    const columns = useMemo<ColumnDef<UserRoleAssignment>[]>(
+        () => [
+            {
+                id: 'role',
+                header: 'Role',
+                enableSorting: false,
+                meta: { label: 'Role' },
+                size: 240,
+                minSize: 160,
+                cell: ({ row }) => <NameWithId name={row.original.roleName} id={row.original.roleId} />,
+            },
+            {
+                id: 'scope',
+                header: 'Scope',
+                enableSorting: false,
+                meta: { label: 'Scope' },
+                size: 220,
+                cell: ({ row }) =>
+                    !row.original.tenantId || row.original.tenantId === SYSTEM_TENANT_ID ? (
+                        <Badge variant="outline">Global</Badge>
+                    ) : (
+                        <NameWithId name={tenantNames.get(row.original.tenantId)} id={row.original.tenantId} />
+                    ),
+            },
+            {
+                accessorKey: 'createdAt',
+                header: 'Assigned',
+                meta: { label: 'Assigned' },
+                size: 200,
+                cell: ({ row }) => <span className="text-muted-foreground">{formatDateTime(row.original.createdAt)}</span>,
+            },
+            {
+                id: 'actions',
+                header: () => <span className="sr-only">Actions</span>,
+                meta: { label: 'Actions' },
+                enableSorting: false,
+                enableHiding: false,
+                enableResizing: false,
+                size: 56,
+                minSize: 56,
+                cell: ({ row }) => (
+                    <div className="flex w-full justify-end">
+                        <Button variant="ghost" size="icon-sm" aria-label={`Remove role ${roleLabel(row.original)}`} onClick={() => setRemoval(row.original)}>
+                            <IconTrash aria-hidden />
+                        </Button>
+                    </div>
                 ),
-        },
-        { key: 'assigned', header: 'Assigned', cell: (row) => <span className="text-muted-foreground">{formatDateTime(row.createdAt)}</span> },
-        {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            className: 'w-12 text-right',
-            cell: (row) => (
-                <Button variant="ghost" size="icon-sm" aria-label={`Remove role ${roleLabel(row)}`} onClick={() => setRemoval(row)}>
-                    <IconTrash aria-hidden />
-                </Button>
-            ),
-        },
-    ];
+            },
+        ],
+        [tenantNames],
+    );
 
     return (
         <div className="flex flex-col gap-3">
@@ -215,16 +254,17 @@ export function UserRolesTab({ id }: { id: string }) {
                     Assign role
                 </Button>
             </div>
-            <DataTable
+            <VirtualizedDataGrid<UserRoleAssignment>
                 aria-label="Role assignments"
                 columns={columns}
-                rows={rows}
-                rowKey={(row) => row.id}
+                data={rows}
+                getRowId={(row) => row.id}
+                features={EMBEDDED_GRID_FEATURES}
+                height={320}
                 isLoading={isLoading}
                 error={error}
                 onRetry={() => refetch()}
-                skeletonRows={3}
-                empty={<EmptyState icon={IconShieldCheck} title="No roles assigned" description="Assign a role to grant this user permissions." />}
+                emptyState={<EmptyState icon={IconShieldCheck} title="No roles assigned" description="Assign a role to grant this user permissions." />}
             />
             <AssignRoleDialog userId={id} open={assignOpen} onOpenChange={setAssignOpen} />
             {removal ? (

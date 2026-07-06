@@ -129,9 +129,14 @@ function session(overrides: Partial<{ isElevated: boolean; workingTenantId: stri
 
 /** Read paths through the proxy that every test starts from. */
 function defaultHandler(call: RecordedCall): Response | undefined {
-    if (call.method !== 'GET') return undefined;
     const parsed = new URL(call.url, 'http://test.local');
     const path = parsed.pathname;
+    // Best-effort per-user grid-layout persistence (TASK-423): the buckets grid
+    // loads (GET) and debounce-saves (PATCH) its layout; tests carry no saved layout.
+    if (path.includes('/user/me/settings')) {
+        return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
+    }
+    if (call.method !== 'GET') return undefined;
     // The screen gates on scope: elevated session with a working tenant set.
     if (path === '/api/auth/session') return Response.json(session());
     if (path === '/api/hope/admin/tenants/storage/buckets') return Response.json(BUCKETS);
@@ -364,7 +369,8 @@ describe('TenantStorageScreen', () => {
         });
         renderWithProviders(<TenantStorageScreen />, { searchParams: '?tab=keys' });
 
-        fireEvent.click(await screen.findByRole('button', { name: /delete access key ingest-worker/i }));
+        await screen.findByText('ingest-worker');
+        fireEvent.click(screen.getByRole('button', { name: /delete access key ingest-worker/i }));
         const dialog = await screen.findByRole('alertdialog');
         fireEvent.click(within(dialog).getByRole('button', { name: /delete key/i }));
 

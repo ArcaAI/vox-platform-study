@@ -24,15 +24,20 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
         <Providers>
             <SidebarProvider>
                 <AppSidebar />
-                <SidebarInset>
-                    {/* BUG-004: topbar + session banners are shell chrome — pinned while
-                        only the page content scrolls (frame 07; rule 11 §App Shell). */}
-                    <div className="bg-background sticky top-0 z-40">
+                <SidebarInset className="h-svh overflow-hidden">
+                    {/* BUG-004 / TASK-423 §A: topbar + session banners are shell chrome,
+                        pinned ABOVE the scroll boundary (frame 07; rule 11 §App Shell).
+                        The inset owns the height (h-svh overflow-hidden) so the window
+                        never scrolls; only the region below does. */}
+                    <div className="bg-background relative z-40 shrink-0">
                         <SiteHeader session={safeSession} />
                         <ImpersonationBanner session={safeSession} />
                         <WorkingTenantBanner session={safeSession} />
                     </div>
-                    <div className="flex flex-1 flex-col p-4 md:p-6">{children}</div>
+                    {/* Content region = the scroll area. Non-list pages scroll here;
+                        list pages fill it with a fill-height AdminDataGrid whose body
+                        scrolls internally (so this wrapper has nothing to scroll). */}
+                    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 md:p-6">{children}</div>
                 </SidebarInset>
             </SidebarProvider>
         </Providers>
