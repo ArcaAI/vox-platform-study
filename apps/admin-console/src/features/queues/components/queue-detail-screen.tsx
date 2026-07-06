@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useCallback, useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import {
     IconClearAll,
     IconDots,
+    IconFilterOff,
     IconInbox,
     IconPlayerPause,
     IconPlayerPlay,
@@ -12,11 +13,10 @@ import {
     IconTrash,
 } from '@tabler/icons-react';
 import { toast } from 'sonner';
-import { parseAsInteger, parseAsStringLiteral, useQueryStates } from 'nuqs';
+import { type ColumnDef, type DataQueryState, type RowSelectionState } from '@arcaai/ui';
 import { StatCard, type StatCardAccent } from '@arcaai/ui/components/metrics/stat-card';
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
 import { Button } from '@arcaai/ui/components/shadcn/button';
-import { Checkbox } from '@arcaai/ui/components/shadcn/checkbox';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -25,16 +25,16 @@ import {
 } from '@arcaai/ui/components/shadcn/dropdown-menu';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { FilterBar, FilterSelect } from '@/shared/data/filter-bar';
-import { TablePagination } from '@/shared/data/table-pagination';
+import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid';
+import { normalizeList } from '@/shared/data/envelopes';
+import type { FilterOption } from '@/shared/data/filter-bar';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { useTrailingBreadcrumb } from '@/shared/navigation/breadcrumb-store';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { useBulkJobAction, useJobs, usePromoteJob, useQueue, useRemoveJob, useRetryJob } from '../api/hooks';
-import type { JobStatus, JobSummary } from '../api/types';
+import type { JobStatus, JobSummary, ListJobsParams } from '../api/types';
 import { CleanQueueDialog } from './clean-queue-dialog';
 import { JobDetailSheet } from './job-detail-sheet';
 import { JobStatusBadge } from './job-status-badge';
@@ -43,13 +43,20 @@ import { toastRequestError } from './toasts';
 
 const JOB_STATUSES = ['waiting', 'active', 'completed', 'failed', 'delayed'] as const;
 
-const JOB_STATUS_OPTIONS = JOB_STATUSES.map((status) => ({
+const JOB_STATUS_OPTIONS: FilterOption[] = JOB_STATUSES.map((status) => ({
     value: status,
     label: status.charAt(0).toUpperCase() + status.slice(1),
 }));
 
 const stopClick = (event: MouseEvent) => event.stopPropagation();
 const stopKey = (event: KeyboardEvent) => event.stopPropagation();
+
+/** Reads the single-value `status` facet off the grid state (the only server-supported job filter). */
+function jobStatusFromState(state: DataQueryState): JobStatus | undefined {
+    const rule = state.filters.find((entry) => entry.id === 'status');
+    const value = Array.isArray(rule?.value) ? rule?.value[0] : rule?.value;
+    return typeof value === 'string' && value ? (value as JobStatus) : undefined;
+}
 
 function JobRowActions({
     job,
@@ -64,7 +71,7 @@ function JobRowActions({
 }) {
     const status = job.status.toLowerCase();
     return (
-        <span className="flex justify-end" onClick={stopClick} onKeyDown={stopKey}>
+        <span className="flex w-full justify-end" onClick={stopClick} onKeyDown={stopKey}>
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon-sm" aria-label={`Actions for job ${job.id}`}>
@@ -94,73 +101,77 @@ function JobRowActions({
     );
 }
 
-/** Frame 17 — queue detail: header + counters + jobs board with bulk actions. */
+/** Frame 17 — queue detail: header + counters + jobs board (AdminDataGrid) with bulk actions. */
 export function QueueDetailScreen({ name }: { name: string }) {
     useTrailingBreadcrumb(name);
     const queueQuery = useQueue(name);
-    const [params, setParams] = useQueryStates({
-        status: parseAsStringLiteral(JOB_STATUSES),
-        page: parseAsInteger.withDefault(0),
-        limit: parseAsInteger.withDefault(25),
-    });
-    const jobsQuery = useJobs(name, { page: params.page, limit: params.limit, status: params.status ?? undefined });
 
-    const retryJob = useRetryJob();
-    const promoteJob = usePromoteJob();
-    const removeJob = useRemoveJob();
-    const bulkJobAction = useBulkJobAction();
-
-    const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+    // The jobs endpoint (ListJobsQuery) whitelists only page/limit/status/jobName —
+    // it rejects the generic search/filters/sort. So the grid owns the shareable
+    // URL state, and we map it onto those discrete knobs: the State facet → `status`,
+    // the omni search → `jobName`.
+    const query = useAdminGridParams();
+    const [selected, setSelected] = useState<RowSelectionState>({});
     const [queueAction, setQueueAction] = useState<'pause' | 'resume' | 'clean' | null>(null);
     const [removeJobId, setRemoveJobId] = useState<string | null>(null);
     const [bulkAction, setBulkAction] = useState<'retry' | 'remove' | null>(null);
     const [openJobId, setOpenJobId] = useState<string | null>(null);
 
+    const jobsParams = useMemo<ListJobsParams>(() => {
+        const state = query.queryState;
+        const page = state.pagination.mode === 'offset' ? state.pagination.page : 0;
+        const status = jobStatusFromState(state);
+        const jobName = state.globalSearch?.trim();
+        return { page, limit: state.pagination.limit, ...(status ? { status } : {}), ...(jobName ? { jobName } : {}) };
+    }, [query.queryState]);
+
+    // A result-set change (state facet / job-name search / page) drops the current
+    // page's selection — parity with the legacy screen.
+    const onQueryStateChange = useCallback(
+        (next: DataQueryState) => {
+            setSelected({});
+            query.setQueryState(next);
+        },
+        [query],
+    );
+
+    const clearFilters = useCallback(
+        () => onQueryStateChange({ ...query.queryState, globalSearch: undefined, filters: [] }),
+        [onQueryStateChange, query.queryState],
+    );
+
+    const jobsQuery = useJobs(name, jobsParams);
+    const { rows: items, total } = normalizeList<JobSummary>(jobsQuery.data);
+    const totalCount = total ?? 0;
+
+    const { mutate: mutateRetry } = useRetryJob();
+    const { mutate: mutatePromote } = usePromoteJob();
+    const removeJob = useRemoveJob();
+    const bulkJobAction = useBulkJobAction();
+
+    const selectedIds = useMemo(() => Object.keys(selected).filter((id) => selected[id]), [selected]);
+
     const queue = queueQuery.data;
-    const items = jobsQuery.data?.items ?? [];
-    const total = jobsQuery.data?.total ?? 0;
-    const allSelected = items.length > 0 && items.every((job) => selected.has(job.id));
-    const someSelected = items.some((job) => selected.has(job.id));
 
-    function toggleJob(jobId: string, checked: boolean) {
-        setSelected((current) => {
-            const next = new Set(current);
-            if (checked) next.add(jobId);
-            else next.delete(jobId);
-            return next;
-        });
-    }
+    const handleRetry = useCallback(
+        (jobId: string) => {
+            mutateRetry(
+                { queueName: name, jobId },
+                { onSuccess: () => toast.success(`Job ${jobId} queued for retry`), onError: toastRequestError },
+            );
+        },
+        [mutateRetry, name],
+    );
 
-    function toggleAll(checked: boolean) {
-        setSelected((current) => {
-            const next = new Set(current);
-            for (const job of items) {
-                if (checked) next.add(job.id);
-                else next.delete(job.id);
-            }
-            return next;
-        });
-    }
-
-    function handleRetry(jobId: string) {
-        retryJob.mutate(
-            { queueName: name, jobId },
-            {
-                onSuccess: () => toast.success(`Job ${jobId} queued for retry`),
-                onError: toastRequestError,
-            },
-        );
-    }
-
-    function handlePromote(jobId: string) {
-        promoteJob.mutate(
-            { queueName: name, jobId },
-            {
-                onSuccess: () => toast.success(`Job ${jobId} promoted`),
-                onError: toastRequestError,
-            },
-        );
-    }
+    const handlePromote = useCallback(
+        (jobId: string) => {
+            mutatePromote(
+                { queueName: name, jobId },
+                { onSuccess: () => toast.success(`Job ${jobId} promoted`), onError: toastRequestError },
+            );
+        },
+        [mutatePromote, name],
+    );
 
     function confirmRemove() {
         if (!removeJobId) return;
@@ -170,7 +181,11 @@ export function QueueDetailScreen({ name }: { name: string }) {
             {
                 onSuccess: () => {
                     toast.success(`Job ${jobId} removed`);
-                    toggleJob(jobId, false);
+                    setSelected((current) => {
+                        const next = { ...current };
+                        delete next[jobId];
+                        return next;
+                    });
                     setRemoveJobId(null);
                 },
                 onError: toastRequestError,
@@ -180,11 +195,11 @@ export function QueueDetailScreen({ name }: { name: string }) {
 
     function runBulk(action: 'retry' | 'remove') {
         bulkJobAction.mutate(
-            { queueName: name, body: { action, jobIds: [...selected] } },
+            { queueName: name, body: { action, jobIds: selectedIds } },
             {
                 onSuccess: (result) => {
                     toast.success(`Bulk ${action}: ${formatNumber(result.succeeded)} succeeded, ${formatNumber(result.failed)} failed`);
-                    setSelected(new Set());
+                    setSelected({});
                     setBulkAction(null);
                 },
                 onError: toastRequestError,
@@ -192,48 +207,75 @@ export function QueueDetailScreen({ name }: { name: string }) {
         );
     }
 
-    const columns: DataTableColumn<JobSummary>[] = [
-        {
-            key: 'select',
-            header: (
-                <Checkbox
-                    aria-label="Select all jobs on page"
-                    checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-                    onCheckedChange={(checked) => toggleAll(checked === true)}
-                />
-            ),
-            headerClassName: 'w-10',
-            cell: (row) => (
-                <span className="flex" onClick={stopClick} onKeyDown={stopKey}>
-                    <Checkbox
-                        aria-label={`Select job ${row.id}`}
-                        checked={selected.has(row.id)}
-                        onCheckedChange={(checked) => toggleJob(row.id, checked === true)}
-                    />
-                </span>
-            ),
-        },
-        { key: 'id', header: 'Job ID', mono: true, cell: (row) => row.id },
-        { key: 'name', header: 'Name', mono: true, cell: (row) => row.name },
-        { key: 'state', header: 'State', cell: (row) => <JobStatusBadge status={row.status} /> },
-        {
-            key: 'attempts',
-            header: 'Attempts',
-            className: 'tabular-nums',
-            cell: (row) => `${formatNumber(row.attempts)}/${formatNumber(row.maxAttempts)}`,
-        },
-        { key: 'created', header: 'Created', cell: (row) => formatRelativeTime(new Date(row.timestamp)) },
-        {
-            key: 'finished',
-            header: 'Finished',
-            cell: (row) => formatRelativeTime(row.finishedOn ? new Date(row.finishedOn) : null),
-        },
-        {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            cell: (row) => <JobRowActions job={row} onRetry={handleRetry} onPromote={handlePromote} onRemove={setRemoveJobId} />,
-        },
-    ];
+    const columns = useMemo<ColumnDef<JobSummary>[]>(
+        () => [
+            {
+                accessorKey: 'id',
+                header: 'Job ID',
+                enableSorting: false,
+                meta: { label: 'Job ID' },
+                cell: ({ row }) => <span className="font-mono text-xs">{row.original.id}</span>,
+                size: 160,
+                minSize: 120,
+            },
+            {
+                accessorKey: 'name',
+                header: 'Name',
+                enableSorting: false,
+                meta: { label: 'Name' },
+                cell: ({ row }) => <span className="font-mono text-xs">{row.original.name}</span>,
+                size: 200,
+            },
+            {
+                accessorKey: 'status',
+                header: 'State',
+                enableSorting: false,
+                meta: { label: 'State', variant: 'select', options: JOB_STATUS_OPTIONS },
+                cell: ({ row }) => <JobStatusBadge status={row.original.status} />,
+                size: 130,
+            },
+            {
+                id: 'attempts',
+                header: 'Attempts',
+                enableSorting: false,
+                meta: { label: 'Attempts' },
+                cell: ({ row }) => (
+                    <span className="tabular-nums">
+                        {formatNumber(row.original.attempts)}/{formatNumber(row.original.maxAttempts)}
+                    </span>
+                ),
+                size: 110,
+            },
+            {
+                id: 'created',
+                header: 'Created',
+                enableSorting: false,
+                meta: { label: 'Created' },
+                cell: ({ row }) => formatRelativeTime(new Date(row.original.timestamp)),
+                size: 140,
+            },
+            {
+                id: 'finished',
+                header: 'Finished',
+                enableSorting: false,
+                meta: { label: 'Finished' },
+                cell: ({ row }) => formatRelativeTime(row.original.finishedOn ? new Date(row.original.finishedOn) : null),
+                size: 140,
+            },
+            {
+                id: 'actions',
+                header: () => <span className="sr-only">Actions</span>,
+                meta: { label: 'Actions' },
+                enableSorting: false,
+                enableHiding: false,
+                enableResizing: false,
+                size: 56,
+                minSize: 56,
+                cell: ({ row }) => <JobRowActions job={row.original} onRetry={handleRetry} onPromote={handlePromote} onRemove={setRemoveJobId} />,
+            },
+        ],
+        [handleRetry, handlePromote],
+    );
 
     if (queueQuery.error && !queue) {
         return (
@@ -253,8 +295,27 @@ export function QueueDetailScreen({ name }: { name: string }) {
         { label: 'Workers', value: queue?.workerCount, accent: 'default' },
     ];
 
+    const actionBar = (
+        <div role="toolbar" aria-label="Bulk job actions" className="bg-card flex flex-wrap items-center gap-2 rounded-md border p-2">
+            <span className="px-1 text-sm font-medium" aria-live="polite">
+                {formatNumber(selectedIds.length)} selected
+            </span>
+            <Button variant="outline" size="sm" onClick={() => setBulkAction('retry')}>
+                <IconRefresh aria-hidden />
+                Retry selected ({formatNumber(selectedIds.length)})
+            </Button>
+            <Button variant="outline" size="sm" className="text-destructive" onClick={() => setBulkAction('remove')}>
+                <IconTrash aria-hidden />
+                Remove selected ({formatNumber(selectedIds.length)})
+            </Button>
+            <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSelected({})}>
+                Clear
+            </Button>
+        </div>
+    );
+
     return (
-        <div className="flex flex-col gap-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
             <PageHeader
                 title={<span className="font-mono">{name}</span>}
                 meta={
@@ -303,65 +364,35 @@ export function QueueDetailScreen({ name }: { name: string }) {
                     />
                 ))}
             </div>
-            <FilterBar shown={items.length} total={total}>
-                <FilterSelect
-                    id="jobs-state-filter"
-                    label="State"
-                    value={params.status ?? ''}
-                    onChange={(value) => {
-                        setSelected(new Set());
-                        void setParams({ status: (value || null) as JobStatus | null, page: null });
-                    }}
-                    options={JOB_STATUS_OPTIONS}
-                />
-                {selected.size > 0 ? (
-                    <span className="flex items-center gap-2">
-                        <span className="text-muted-foreground text-sm tabular-nums">{formatNumber(selected.size)} selected</span>
-                        <Button variant="outline" size="sm" onClick={() => setBulkAction('retry')}>
-                            <IconRefresh aria-hidden />
-                            Retry selected ({formatNumber(selected.size)})
-                        </Button>
-                        <Button variant="outline" size="sm" className="text-destructive" onClick={() => setBulkAction('remove')}>
-                            <IconTrash aria-hidden />
-                            Remove selected ({formatNumber(selected.size)})
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
-                            Clear
-                        </Button>
-                    </span>
-                ) : null}
-            </FilterBar>
-            <DataTable
+            <AdminDataGrid<JobSummary>
+                gridId="queue-jobs"
                 aria-label="Jobs"
                 columns={columns}
                 rows={items}
-                rowKey={(row) => row.id}
+                total={totalCount}
+                queryState={query.queryState}
+                onQueryStateChange={onQueryStateChange}
                 isLoading={jobsQuery.isLoading}
+                isBusy={jobsQuery.isFetching && !jobsQuery.isLoading}
                 error={jobsQuery.error ?? undefined}
                 onRetry={() => void jobsQuery.refetch()}
-                empty={
+                onRowClick={(row) => setOpenJobId(row.id)}
+                selection={{ value: selected, onChange: setSelected }}
+                actionBar={actionBar}
+                emptyState={<EmptyState icon={IconInbox} title="No jobs" description="This queue has no jobs right now." />}
+                emptyFilteredState={
                     <EmptyState
-                        icon={IconInbox}
-                        title="No jobs"
-                        description={
-                            params.status ? `No ${params.status} jobs in this queue right now.` : 'This queue has no jobs right now.'
+                        icon={IconFilterOff}
+                        title="No jobs match the filters"
+                        description="No jobs match the current state or search — clear the filters to see the full queue."
+                        action={
+                            <Button variant="outline" onClick={clearFilters}>
+                                <IconFilterOff aria-hidden />
+                                Clear filters
+                            </Button>
                         }
                     />
                 }
-                onRowClick={(row) => setOpenJobId(row.id)}
-            />
-            <TablePagination
-                page={params.page}
-                limit={params.limit}
-                total={total}
-                onPageChange={(page) => {
-                    setSelected(new Set());
-                    void setParams({ page });
-                }}
-                onLimitChange={(limit) => {
-                    setSelected(new Set());
-                    void setParams({ limit, page: null });
-                }}
             />
             <JobDetailSheet
                 queueName={name}
@@ -402,7 +433,7 @@ export function QueueDetailScreen({ name }: { name: string }) {
                 onOpenChange={(open) => {
                     if (!open) setBulkAction(null);
                 }}
-                title={`Retry ${formatNumber(selected.size)} selected job${selected.size === 1 ? '' : 's'}?`}
+                title={`Retry ${formatNumber(selectedIds.length)} selected job${selectedIds.length === 1 ? '' : 's'}?`}
                 description="The selected jobs are re-queued for processing."
                 confirmLabel="Retry jobs"
                 isPending={bulkJobAction.isPending}
@@ -413,7 +444,7 @@ export function QueueDetailScreen({ name }: { name: string }) {
                 onOpenChange={(open) => {
                     if (!open) setBulkAction(null);
                 }}
-                title={`Remove ${formatNumber(selected.size)} selected job${selected.size === 1 ? '' : 's'}?`}
+                title={`Remove ${formatNumber(selectedIds.length)} selected job${selectedIds.length === 1 ? '' : 's'}?`}
                 description="The selected jobs are permanently deleted from the queue. This cannot be undone."
                 confirmLabel="Remove jobs"
                 destructive

@@ -1,8 +1,11 @@
 /**
- * Frame 20 — Users list screen. fetch is stubbed at the network boundary
- * (the api layer has its own tests); assertions here are the rendered list
- * states, the request URLs the filters produce, row/bulk actions and the
- * create-user POST.
+ * Frame 20 — Users list screen (AdminDataGrid). fetch is stubbed at the network
+ * boundary; assertions here are the rendered list states, the request the typed
+ * filters produce (the NEW gateway BRACKET grammar `field[op]:value` joined by
+ * `;` — TASK-423), grid selection + bulk actions, CSV export, and the create POST.
+ *
+ * The grid persists per-user layout via `GET user/me/settings`, so `settingsResponse`
+ * answers it and assertions locate the list request by URL rather than call index.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -78,6 +81,12 @@ interface RecordedCall {
     body: unknown;
 }
 
+/** Best-effort per-user grid-layout persistence (`user/me/settings`) — no saved layout in tests. */
+function settingsResponse(url: string, init?: RequestInit): Response | undefined {
+    if (!url.includes('/user/me/settings')) return undefined;
+    return (init?.method ?? 'GET') === 'GET' ? Response.json([]) : Response.json({ ok: true });
+}
+
 function stubFetch(handler: (url: string, init?: RequestInit) => Response | undefined): RecordedCall[] {
     const calls: RecordedCall[] = [];
     vi.stubGlobal(
@@ -103,6 +112,8 @@ function stubListFetch(overrides?: (url: string, init?: RequestInit) => Response
         const method = init?.method ?? 'GET';
         const custom = overrides?.(url, init);
         if (custom) return custom;
+        const settings = settingsResponse(url, init);
+        if (settings) return settings;
         if (method === 'GET' && url.startsWith('/api/hope/admin/users?')) return listResponse(USERS);
         if (method === 'PATCH' && url === '/api/hope/admin/users/u-1/status') return Response.json(user({ resourceStatus: 'DISABLED' }));
         if (method === 'DELETE' && url === '/api/hope/admin/users/u-1') return Response.json(user());
@@ -115,6 +126,18 @@ function stubListFetch(overrides?: (url: string, init?: RequestInit) => Response
         if (method === 'POST' && url === '/api/hope/admin/users') return Response.json(user({ id: 'u-new', username: 'anna' }));
         return undefined;
     });
+}
+
+/** The gateway list request (skips the interleaved `user/me/settings` layout GET). */
+function listCall(calls: RecordedCall[]): RecordedCall {
+    const call = calls.find((entry) => entry.method === 'GET' && entry.url.includes('/admin/users?'));
+    if (!call) throw new Error('no /admin/users GET recorded');
+    return call;
+}
+
+/** Query params without relying on the global `URL` (the export test stubs it). */
+function queryOf(url: string): URLSearchParams {
+    return new URLSearchParams(url.split('?')[1] ?? '');
 }
 
 function openRowMenu(username: string) {
@@ -155,32 +178,42 @@ describe('UsersListScreen', () => {
         renderWithProviders(<UsersListScreen />, { searchParams: '?search=zzz' });
 
         expect(await screen.findByText(/no users match/i)).toBeDefined();
-        expect(screen.getByRole('button', { name: /clear filters/i })).toBeDefined();
+        // Both the toolbar and the filtered-empty CTA expose a clear affordance.
+        expect(screen.getAllByRole('button', { name: /clear filters/i }).length).toBeGreaterThanOrEqual(1);
     });
 
     it('renders the block error state and retries the request', async () => {
-        const calls = stubFetch(() => Response.json({ message: 'Service unavailable' }, { status: 503 }));
+        const calls = stubFetch((url, init) => settingsResponse(url, init) ?? Response.json({ message: 'Service unavailable' }, { status: 503 }));
         renderWithProviders(<UsersListScreen />);
 
         expect(await screen.findByRole('alert')).toBeDefined();
         expect(screen.getByText(/service unavailable/i)).toBeDefined();
 
         fireEvent.click(screen.getByRole('button', { name: /retry/i }));
-        await waitFor(() => expect(calls.length).toBe(2));
+        await waitFor(() => expect(calls.filter((call) => call.url.includes('/admin/users?')).length).toBe(2));
     });
 
-    it('maps search/status/type/page URL state onto the gateway list request', async () => {
+    it('maps search + typed filters + page onto the gateway bracket-grammar request', async () => {
+        // Typed filters live in the compact `f` URL param (JSON tuples); enum columns
+        // serialize to `field[equals]:v`, tokens joined by `;`.
+        const f = encodeURIComponent(
+            JSON.stringify([
+                ['resourceStatus', 'eq', 'select', 'DISABLED'],
+                ['isServiceAccount', 'eq', 'select', 'true'],
+            ]),
+        );
         const calls = stubListFetch();
-        renderWithProviders(<UsersListScreen />, { searchParams: '?search=mia&status=DISABLED&type=true&page=2&limit=50' });
+        renderWithProviders(<UsersListScreen />, { searchParams: `?search=mia&f=${f}&page=2&limit=50` });
 
         await screen.findByText('mia.okafor');
-        const requested = new URL(calls[0].url, 'http://test.local');
-        expect(requested.pathname).toBe('/api/hope/admin/users');
-        expect(requested.searchParams.get('search')).toBe('mia');
-        expect(requested.searchParams.get('searchFields')).toBe('username,externalId');
-        expect(requested.searchParams.get('filters')).toBe('resourceStatus:DISABLED,isServiceAccount:true');
-        expect(requested.searchParams.get('page')).toBe('2');
-        expect(requested.searchParams.get('limit')).toBe('50');
+        const call = listCall(calls);
+        expect(call.url.split('?')[0]).toBe('/api/hope/admin/users');
+        const q = queryOf(call.url);
+        expect(q.get('search')).toBe('mia');
+        expect(q.get('searchFields')).toBe('username,externalId');
+        expect(q.get('filters')).toBe('resourceStatus[equals]:DISABLED;isServiceAccount[equals]:true');
+        expect(q.get('page')).toBe('2');
+        expect(q.get('limit')).toBe('50');
     });
 
     it('requests the default sort and reflects header sorting in the URL state', async () => {
@@ -189,12 +222,14 @@ describe('UsersListScreen', () => {
         renderWithProviders(<UsersListScreen />, { onUrlUpdate });
 
         await screen.findByText('mia.okafor');
-        expect(new URL(calls[0].url, 'http://test.local').searchParams.get('sort')).toBe('createdAt:desc');
+        expect(queryOf(listCall(calls).url).get('sort')).toBe('createdAt:desc');
 
-        fireEvent.click(screen.getByRole('button', { name: /^user/i }));
+        // The grid sorts from the column-header menu; picking "Asc" writes `sort=` to the URL.
+        fireEvent.pointerDown(screen.getByRole('button', { name: /user column options/i }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
+        fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /^asc$/i }));
         await waitFor(() => {
             const last = onUrlUpdate.mock.calls.at(-1)?.[0] as { searchParams: URLSearchParams };
-            expect(last.searchParams.get('sort')).toBe('username:asc');
+            expect(last?.searchParams.get('sort')).toBe('username:asc');
         });
     });
 
@@ -242,14 +277,17 @@ describe('UsersListScreen', () => {
         await waitFor(() => expect(calls.some((call) => call.method === 'DELETE' && call.url === '/api/hope/admin/users/u-1')).toBe(true));
     });
 
-    it('runs a bulk disable over the selected rows through its confirm dialog', async () => {
+    it('runs a bulk disable over the grid-selected rows through its confirm dialog', async () => {
         const calls = stubListFetch();
         renderWithProviders(<UsersListScreen />);
 
         await screen.findByText('mia.okafor');
-        fireEvent.click(screen.getByRole('checkbox', { name: /select mia.okafor/i }));
-        fireEvent.click(screen.getByRole('checkbox', { name: /select jonas.weber/i }));
-        expect(screen.getByText(/2 selected/i)).toBeDefined();
+        // The grid owns selection now: its per-row checkboxes carry the generic "Select row"
+        // name. Re-query before each click — selecting a row re-renders the virtualized body,
+        // so a node captured earlier would be stale.
+        fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select row' })[0]);
+        fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select row' })[1]);
+        await screen.findByText(/2 selected/i);
 
         fireEvent.click(screen.getByRole('button', { name: /^disable$/i }));
         const dialog = await screen.findByRole('alertdialog');
@@ -259,6 +297,39 @@ describe('UsersListScreen', () => {
             const post = calls.find((call) => call.method === 'POST' && call.url === '/api/hope/admin/users/bulk-actions');
             expect(post?.body).toEqual({ action: 'disable', ids: ['u-1', 'u-2'] });
         });
+    });
+
+    it('exports the current view as CSV from the bulk action bar', async () => {
+        const createObjectURL = vi.fn(() => 'blob:users');
+        const revokeObjectURL = vi.fn();
+        // happy-dom would actually navigate the anchor; intercept the download click.
+        const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+        const calls = stubListFetch((url) => {
+            if (url.includes('/admin/users/export')) {
+                return new Response('username\nmia.okafor\n', {
+                    status: 200,
+                    headers: { 'content-type': 'text/csv', 'content-disposition': 'attachment; filename="users.csv"' },
+                });
+            }
+            return undefined;
+        });
+        vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
+        renderWithProviders(<UsersListScreen />);
+
+        await screen.findByText('mia.okafor');
+        // Export lives in the selection action bar — reveal it by selecting a row.
+        fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select row' })[0]);
+        fireEvent.click(await screen.findByRole('button', { name: /^export$/i }));
+
+        await waitFor(() => {
+            const exportCall = calls.find((call) => call.url.includes('/admin/users/export'));
+            expect(exportCall).toBeDefined();
+            expect(queryOf(exportCall!.url).get('format')).toBe('csv');
+        });
+        await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
+        expect(anchorClick).toHaveBeenCalledTimes(1);
+        expect(revokeObjectURL).toHaveBeenCalledWith('blob:users');
+        anchorClick.mockRestore();
     });
 
     it('creates a user through the dialog and navigates to the new detail page', async () => {

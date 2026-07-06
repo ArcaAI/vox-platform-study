@@ -1,17 +1,16 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { IconCalendarTime, IconPencil } from '@tabler/icons-react';
+import { useCallback, useMemo, useState } from 'react';
+import { IconCalendarTime, IconFilterOff, IconPencil } from '@tabler/icons-react';
 import { toast } from 'sonner';
-import { parseAsInteger, parseAsString, parseAsStringLiteral, useQueryStates } from 'nuqs';
+import { VirtualizedDataGrid, type ColumnDef } from '@arcaai/ui';
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { FilterBar, FilterSearch, FilterSelect } from '@/shared/data/filter-bar';
-import { TablePagination } from '@/shared/data/table-pagination';
+import type { FilterOption } from '@/shared/data/filter-bar';
+import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatDateTime, formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
@@ -20,15 +19,14 @@ import type { SchedulerInfo } from '../api/types';
 import { EditCronDialog } from './edit-cron-dialog';
 import { toastRequestError } from './toasts';
 
-const STATUS_FILTERS = ['running', 'paused'] as const;
 const TYPE_FILTERS = ['cron', 'interval', 'timeout'] as const;
 
-const STATUS_OPTIONS = [
+const STATUS_OPTIONS: FilterOption[] = [
     { value: 'running', label: 'Running' },
     { value: 'paused', label: 'Paused' },
 ];
 
-const TYPE_OPTIONS = TYPE_FILTERS.map((type) => ({ value: type, label: type.charAt(0).toUpperCase() + type.slice(1) }));
+const TYPE_OPTIONS: FilterOption[] = TYPE_FILTERS.map((type) => ({ value: type, label: type.charAt(0).toUpperCase() + type.slice(1) }));
 
 function formatIntervalMs(ms: number): string {
     if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
@@ -42,47 +40,40 @@ function scheduleExpression(row: SchedulerInfo): string {
     return '\u2014';
 }
 
-/** Frame 17.1 — Schedulers: cron table with enable toggle + cron editing. */
+/**
+ * Frame 17.1 — Schedulers: cron table with enable toggle + cron editing. The
+ * gateway returns every schedule in one payload (no server pagination), so this
+ * is a client-driven `VirtualizedDataGrid` (uncontrolled): omni search over the
+ * name, Status + Type facets, client pager.
+ */
 export function SchedulersScreen() {
     const schedulersQuery = useSchedulers();
     const toggleScheduler = useToggleScheduler();
-    const [filters, setFilters] = useQueryStates({
-        q: parseAsString.withDefault(''),
-        status: parseAsStringLiteral(STATUS_FILTERS),
-        type: parseAsStringLiteral(TYPE_FILTERS),
-        page: parseAsInteger.withDefault(0),
-        limit: parseAsInteger.withDefault(25),
-    });
+    // `mutate` is referentially stable (TanStack Query), so the memoized columns
+    // that close over it stay stable too.
+    const { mutate: mutateToggle } = toggleScheduler;
     const [editTarget, setEditTarget] = useState<SchedulerInfo | null>(null);
     const [disableTarget, setDisableTarget] = useState<SchedulerInfo | null>(null);
 
     const schedulers = useMemo(() => schedulersQuery.data ?? [], [schedulersQuery.data]);
 
-    const filtered = useMemo(() => {
-        const query = filters.q.trim().toLowerCase();
-        let rows = schedulers;
-        if (query) rows = rows.filter((row) => row.name.toLowerCase().includes(query));
-        if (filters.status) rows = rows.filter((row) => (filters.status === 'running') === row.running);
-        if (filters.type) rows = rows.filter((row) => row.type === filters.type);
-        return rows;
-    }, [schedulers, filters.q, filters.status, filters.type]);
-
-    const pageRows = filtered.slice(filters.page * filters.limit, (filters.page + 1) * filters.limit);
-
-    function enableScheduler(row: SchedulerInfo) {
-        toggleScheduler.mutate(
-            { name: row.name, enabled: true },
-            {
-                onSuccess: () => toast.success(`Scheduler ${row.name} enabled`),
-                onError: toastRequestError,
-            },
-        );
-    }
+    const enableScheduler = useCallback(
+        (row: SchedulerInfo) => {
+            mutateToggle(
+                { name: row.name, enabled: true },
+                {
+                    onSuccess: () => toast.success(`Scheduler ${row.name} enabled`),
+                    onError: toastRequestError,
+                },
+            );
+        },
+        [mutateToggle],
+    );
 
     function confirmDisable() {
         if (!disableTarget) return;
         const target = disableTarget;
-        toggleScheduler.mutate(
+        mutateToggle(
             { name: target.name, enabled: false },
             {
                 onSuccess: () => {
@@ -94,55 +85,113 @@ export function SchedulersScreen() {
         );
     }
 
-    const columns: DataTableColumn<SchedulerInfo>[] = [
-        { key: 'name', header: 'Schedule', mono: true, cell: (row) => row.name },
-        {
-            key: 'type',
-            header: 'Type',
-            cell: (row) => (
-                <Badge variant="outline" className="capitalize">
-                    {row.type}
-                </Badge>
-            ),
-        },
-        { key: 'schedule', header: 'Cron / interval', mono: true, cell: (row) => scheduleExpression(row) },
-        {
-            key: 'status',
-            header: 'Status',
-            cell: (row) => <StatusDot colorRole={row.running ? 'success' : 'warning'} label={row.running ? 'Running' : 'Paused'} />,
-        },
-        { key: 'lastRun', header: 'Last run', cell: (row) => formatRelativeTime(row.lastExecution) },
-        { key: 'nextRun', header: 'Next run', cell: (row) => formatDateTime(row.nextExecution) },
-        {
-            key: 'enabled',
-            header: 'Enabled',
-            cell: (row) => (
-                <Switch
-                    aria-label={`Toggle ${row.name}`}
-                    checked={row.running}
-                    onCheckedChange={(checked) => {
-                        if (checked) enableScheduler(row);
-                        else setDisableTarget(row);
-                    }}
-                />
-            ),
-        },
-        {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            cell: (row) =>
-                row.type === 'cron' ? (
-                    <span className="flex justify-end">
-                        <Button variant="ghost" size="icon-sm" aria-label={`Edit cron for ${row.name}`} onClick={() => setEditTarget(row)}>
-                            <IconPencil aria-hidden />
-                        </Button>
-                    </span>
-                ) : null,
-        },
-    ];
+    const columns = useMemo<ColumnDef<SchedulerInfo>[]>(
+        () => [
+            {
+                accessorKey: 'name',
+                header: 'Schedule',
+                meta: { label: 'Schedule' },
+                cell: ({ row }) => <span className="font-mono text-xs">{row.original.name}</span>,
+                size: 220,
+                minSize: 160,
+            },
+            {
+                id: 'type',
+                accessorFn: (row) => row.type,
+                header: 'Type',
+                enableSorting: false,
+                enableGlobalFilter: false,
+                filterFn: 'equalsString',
+                meta: { label: 'Type', variant: 'select', options: TYPE_OPTIONS },
+                cell: ({ row }) => (
+                    <Badge variant="outline" className="capitalize">
+                        {row.original.type}
+                    </Badge>
+                ),
+                size: 120,
+            },
+            {
+                id: 'schedule',
+                header: 'Cron / interval',
+                enableSorting: false,
+                enableGlobalFilter: false,
+                meta: { label: 'Cron / interval' },
+                cell: ({ row }) => <span className="font-mono text-xs">{scheduleExpression(row.original)}</span>,
+                size: 180,
+            },
+            {
+                id: 'status',
+                accessorFn: (row) => (row.running ? 'running' : 'paused'),
+                header: 'Status',
+                enableSorting: false,
+                enableGlobalFilter: false,
+                filterFn: 'equalsString',
+                meta: { label: 'Status', variant: 'select', options: STATUS_OPTIONS },
+                cell: ({ row }) => <StatusDot colorRole={row.original.running ? 'success' : 'warning'} label={row.original.running ? 'Running' : 'Paused'} />,
+                size: 120,
+            },
+            {
+                id: 'lastRun',
+                header: 'Last run',
+                enableSorting: false,
+                enableGlobalFilter: false,
+                meta: { label: 'Last run' },
+                cell: ({ row }) => formatRelativeTime(row.original.lastExecution),
+                size: 140,
+            },
+            {
+                id: 'nextRun',
+                header: 'Next run',
+                enableSorting: false,
+                enableGlobalFilter: false,
+                meta: { label: 'Next run' },
+                cell: ({ row }) => formatDateTime(row.original.nextExecution),
+                size: 180,
+            },
+            {
+                id: 'enabled',
+                header: 'Enabled',
+                enableSorting: false,
+                enableGlobalFilter: false,
+                enableResizing: false,
+                meta: { label: 'Enabled' },
+                cell: ({ row }) => (
+                    <Switch
+                        aria-label={`Toggle ${row.original.name}`}
+                        checked={row.original.running}
+                        onCheckedChange={(checked) => {
+                            if (checked) enableScheduler(row.original);
+                            else setDisableTarget(row.original);
+                        }}
+                    />
+                ),
+                size: 110,
+            },
+            {
+                id: 'actions',
+                header: () => <span className="sr-only">Actions</span>,
+                meta: { label: 'Actions' },
+                enableSorting: false,
+                enableHiding: false,
+                enableResizing: false,
+                enableGlobalFilter: false,
+                size: 56,
+                minSize: 56,
+                cell: ({ row }) =>
+                    row.original.type === 'cron' ? (
+                        <span className="flex w-full justify-end">
+                            <Button variant="ghost" size="icon-sm" aria-label={`Edit cron for ${row.original.name}`} onClick={() => setEditTarget(row.original)}>
+                                <IconPencil aria-hidden />
+                            </Button>
+                        </span>
+                    ) : null,
+            },
+        ],
+        [enableScheduler],
+    );
 
     return (
-        <div className="flex flex-col gap-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
             <PageHeader
                 title="Schedulers"
                 meta={
@@ -153,37 +202,27 @@ export function SchedulersScreen() {
                     </>
                 }
             />
-            <FilterBar shown={filtered.length} total={schedulers.length}>
-                <FilterSearch
-                    label="Search schedules"
-                    placeholder={'Search schedules\u2026'}
-                    value={filters.q}
-                    onChange={(value) => void setFilters({ q: value || null, page: null })}
-                />
-                <FilterSelect
-                    id="schedulers-status-filter"
-                    label="Status"
-                    value={filters.status ?? ''}
-                    onChange={(value) => void setFilters({ status: (value || null) as 'running' | 'paused' | null, page: null })}
-                    options={STATUS_OPTIONS}
-                />
-                <FilterSelect
-                    id="schedulers-type-filter"
-                    label="Type"
-                    value={filters.type ?? ''}
-                    onChange={(value) => void setFilters({ type: (value || null) as 'cron' | 'interval' | 'timeout' | null, page: null })}
-                    options={TYPE_OPTIONS}
-                />
-            </FilterBar>
-            <DataTable
+            <VirtualizedDataGrid<SchedulerInfo>
                 aria-label="Schedulers"
                 columns={columns}
-                rows={pageRows}
-                rowKey={(row) => row.name}
+                data={schedulers}
+                getRowId={(row) => row.name}
+                features={{
+                    globalSearch: true,
+                    facetedFilters: true,
+                    sorting: true,
+                    rowSelection: false,
+                    columnReorder: true,
+                    columnResize: true,
+                    columnPinning: true,
+                    columnVisibility: true,
+                }}
+                persistence={gridPersistence('schedulers')}
                 isLoading={schedulersQuery.isLoading}
+                isBusy={schedulersQuery.isFetching && !schedulersQuery.isLoading}
                 error={schedulersQuery.error ?? undefined}
                 onRetry={() => void schedulersQuery.refetch()}
-                empty={
+                emptyState={
                     schedulers.length === 0 ? (
                         <EmptyState
                             icon={IconCalendarTime}
@@ -191,16 +230,9 @@ export function SchedulersScreen() {
                             description="System crons ship with deployment defaults — dynamic schedules appear once registered."
                         />
                     ) : (
-                        <EmptyState icon={IconCalendarTime} title="No schedules match the filters" description="Adjust the search or filters." />
+                        <EmptyState icon={IconFilterOff} title="No schedules match the filters" description="Adjust the search or filters." />
                     )
                 }
-            />
-            <TablePagination
-                page={filters.page}
-                limit={filters.limit}
-                total={filtered.length}
-                onPageChange={(page) => void setFilters({ page })}
-                onLimitChange={(limit) => void setFilters({ limit, page: null })}
             />
             <EditCronDialog
                 scheduler={editTarget}

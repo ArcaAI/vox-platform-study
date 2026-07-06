@@ -137,6 +137,8 @@ function stubFetch(handler: FetchHandler): RecordedCall[] {
 function defaultHandler(call: RecordedCall): Response | undefined {
     const path = new URL(call.url, 'http://test.local').pathname;
     if (call.method !== 'GET') return undefined;
+    // Layout persistence reads GET user/me/settings on mount; tests have no saved layout.
+    if (path.endsWith('/user/me/settings')) return Response.json([]);
     if (path === '/api/hope/admin/entitlements/enabled') return Response.json({ enabled: true });
     if (path === '/api/hope/admin/entitlements/plans') return Response.json(PLANS);
     if (path === '/api/hope/admin/entitlements/plans/PRO') return Response.json(PLANS[1]);

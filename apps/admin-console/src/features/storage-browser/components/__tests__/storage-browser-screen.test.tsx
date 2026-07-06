@@ -105,7 +105,7 @@ describe('StorageBrowserScreen', () => {
         expect(await screen.findByText(/MinIO reachable/)).toBeDefined();
 
         // Middle panel: folder row for the nested prefix + root-level files.
-        const grid = screen.getByRole('table', { name: 'Bucket objects' });
+        const grid = screen.getByRole('grid', { name: 'Bucket objects' });
         expect(await within(grid).findByText('recordings/')).toBeDefined();
         expect(within(grid).getByText('c_8p6qy2_0703.wav')).toBeDefined();
         expect(within(grid).getByText('summary_june.pdf')).toBeDefined();

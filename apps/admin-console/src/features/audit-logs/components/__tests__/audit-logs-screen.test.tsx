@@ -81,9 +81,12 @@ function stubFetch(handler: (url: string) => Response | undefined): RecordedCall
         'fetch',
         vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
             const url = String(input);
-            calls.push({ url, method: init?.method ?? 'GET' });
+            const method = init?.method ?? 'GET';
+            calls.push({ url, method });
+            // Best-effort per-user grid-layout persistence (`user/me/settings`) — no saved layout in tests.
+            if (url.includes('/user/me/settings')) return method === 'GET' ? Response.json([]) : Response.json({ ok: true });
             const response = handler(url);
-            if (!response) throw new Error(`Unhandled fetch: ${init?.method ?? 'GET'} ${url}`);
+            if (!response) throw new Error(`Unhandled fetch: ${method} ${url}`);
             return response;
         }),
     );
@@ -147,7 +150,7 @@ describe('AuditLogsScreen', () => {
         expect(screen.getAllByText('tnt_9f2ka7').length).toBeGreaterThan(0);
         expect(screen.getByText('OK')).toBeDefined();
         expect(screen.getByText('Fail')).toBeDefined();
-        expect(screen.getByRole('table', { name: 'Audit events' })).toBeDefined();
+        expect(screen.getByRole('grid', { name: 'Audit events' })).toBeDefined();
         expect(await screen.findByText(/38,204 events/)).toBeDefined();
     });
 
@@ -161,11 +164,19 @@ describe('AuditLogsScreen', () => {
         expect(screen.queryByText('Acme Clinic')).toBeNull();
     });
 
-    it('maps URL filter state onto the cursor request and never sends a search param', async () => {
+    it('maps URL query-state onto the discrete cursor request and never sends search/filters', async () => {
+        // The grid's shareable state lives in the URL codec: omni search → actor id,
+        // typed filters in the compact `f` param (JSON tuples). The screen-local hook
+        // maps them onto the cursor DTO's whitelisted discrete knobs.
+        const f = encodeURIComponent(
+            JSON.stringify([
+                ['action', 'eq', 'select', 'UPDATE'],
+                ['resourceType', 'eq', 'select', 'Tenant'],
+                ['createdAt', 'isBetween', 'dateRange', ['2026-07-01', '2026-07-02']],
+            ]),
+        );
         const calls = stubAuditRoutes();
-        renderWithProviders(<AuditLogsScreen />, {
-            searchParams: '?action=UPDATE&resourceType=Tenant&userId=usr-ana&from=2026-07-01T00:00&to=2026-07-02T00:00&limit=50',
-        });
+        renderWithProviders(<AuditLogsScreen />, { searchParams: `?search=usr-ana&f=${f}&limit=50` });
 
         await screen.findByText('ana@arca.ai');
         const cursorCall = calls.find((call) => call.url.startsWith(`${BASE}/cursor`));
@@ -173,25 +184,29 @@ describe('AuditLogsScreen', () => {
         const params = queryOf(cursorCall!.url);
         expect(params.get('action')).toBe('UPDATE');
         expect(params.get('resourceType')).toBe('Tenant');
+        // Omni search targets the actor id (the frame's primary text filter).
         expect(params.get('userId')).toBe('usr-ana');
         expect(params.get('limit')).toBe('50');
-        // datetime-local values are sent as ISO-8601 instants (gateway @IsISO8601).
-        expect(params.get('from')).toBe(new Date('2026-07-01T00:00').toISOString());
-        expect(params.get('to')).toBe(new Date('2026-07-02T00:00').toISOString());
-        // The cursor DTO has no free-text search knob — it must never be sent.
+        // The dateRange filter maps to day-bounded ISO-8601 instants (gateway @IsISO8601).
+        expect(params.get('from')).toBe('2026-07-01T00:00:00.000Z');
+        expect(params.get('to')).toBe('2026-07-02T23:59:59.999Z');
+        // The cursor DTO whitelists only discrete knobs — generic search/filters/sort are never sent.
         expect(params.has('search')).toBe(false);
+        expect(params.has('filters')).toBe(false);
+        expect(params.has('sort')).toBe(false);
         // The meta/total count follows the same filters via the offset list.
         const countCall = calls.find((call) => call.url.startsWith(`${BASE}?`));
         expect(countCall).toBeDefined();
         expect(queryOf(countCall!.url).get('action')).toBe('UPDATE');
     });
 
-    it('issues a fresh cursor request when the actor filter changes', async () => {
+    it('issues a fresh cursor request when the actor omni-search changes', async () => {
         const calls = stubAuditRoutes();
         renderWithProviders(<AuditLogsScreen />);
 
         await screen.findByText('ana@arca.ai');
-        fireEvent.change(screen.getByLabelText('Filter by actor user id'), { target: { value: 'usr-7' } });
+        // Omni search debounces (300ms) then commits as the `userId` cursor knob.
+        fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'usr-7' } });
         await waitFor(() => {
             expect(calls.some((call) => call.url.startsWith(`${BASE}/cursor`) && queryOf(call.url).get('userId') === 'usr-7')).toBe(true);
         });
@@ -248,7 +263,8 @@ describe('AuditLogsScreen', () => {
             return undefined;
         });
         vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
-        renderWithProviders(<AuditLogsScreen />, { searchParams: '?action=UPDATE' });
+        const f = encodeURIComponent(JSON.stringify([['action', 'eq', 'select', 'UPDATE']]));
+        renderWithProviders(<AuditLogsScreen />, { searchParams: `?f=${f}` });
 
         await screen.findByText('ana@arca.ai');
         fireEvent.keyDown(screen.getByRole('button', { name: /export/i }), { key: 'Enter' });
@@ -274,10 +290,12 @@ describe('AuditLogsScreen', () => {
             if (url.startsWith(`${BASE}?`)) return countResponse(0);
             return undefined;
         });
-        renderWithProviders(<AuditLogsScreen />, { searchParams: '?action=DELETE' });
+        const f = encodeURIComponent(JSON.stringify([['action', 'eq', 'select', 'DELETE']]));
+        renderWithProviders(<AuditLogsScreen />, { searchParams: `?f=${f}` });
 
         expect(await screen.findByText('No events match the filters')).toBeDefined();
-        expect(screen.getByRole('button', { name: /clear filters/i })).toBeDefined();
+        // Both the toolbar and the filtered-empty CTA expose a clear affordance.
+        expect(screen.getAllByRole('button', { name: /clear filters/i }).length).toBeGreaterThanOrEqual(1);
     });
 
     it('shows a neutral empty state when there are no events at all', async () => {

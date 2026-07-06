@@ -139,8 +139,14 @@ function defaultHandler(call: RecordedCall, parsed: URL): Response | undefined {
     return undefined;
 }
 
+/** Best-effort per-user grid-layout persistence (`user/me/settings`) — no saved layout in tests. */
+function settingsResponse(call: RecordedCall): Response | undefined {
+    if (!call.url.includes('/user/me/settings')) return undefined;
+    return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
+}
+
 function stubConsultations(custom: FetchHandler = () => undefined): RecordedCall[] {
-    return stubFetch((call, parsed) => custom(call, parsed) ?? defaultHandler(call, parsed));
+    return stubFetch((call, parsed) => settingsResponse(call) ?? custom(call, parsed) ?? defaultHandler(call, parsed));
 }
 
 function listCalls(calls: RecordedCall[]): RecordedCall[] {
@@ -167,7 +173,7 @@ describe('ConsultationsScreen', () => {
         // The row 33 exception: aggregate INSTEAD of a gate...
         expect(screen.queryByText('Select a working tenant')).toBeNull();
         // ...and no consultation grid, no row fetch (rows require tenant scope).
-        expect(screen.queryByRole('table', { name: 'Consultations' })).toBeNull();
+        expect(screen.queryByRole('grid', { name: 'Consultations' })).toBeNull();
         await waitFor(() => expect(calls.some((call) => call.url.includes('/consultations/aggregate'))).toBe(true));
         expect(listCalls(calls)).toHaveLength(0);
     });
@@ -177,7 +183,7 @@ describe('ConsultationsScreen', () => {
         renderWithProviders(<ConsultationsScreen />);
 
         expect(await screen.findByRole('heading', { level: 1, name: 'Consultations' })).toBeDefined();
-        const table = await screen.findByRole('table', { name: 'Consultations' });
+        const table = await screen.findByRole('grid', { name: 'Consultations' });
         expect(await within(table).findByText('dr.vasquez')).toBeDefined();
         expect(within(table).getByText('dr.chen')).toBeDefined();
         expect(within(table).getByText('c_9f2ka7aa11')).toBeDefined();
@@ -191,13 +197,21 @@ describe('ConsultationsScreen', () => {
         expect(screen.getByRole('button', { name: /refresh/i })).toBeDefined();
     });
 
-    it('maps URL filter state onto the list query (1-based page, status param, never a type param)', async () => {
+    it('maps the typed filters + page onto the discrete list query (1-based page, status param, never a type param)', async () => {
+        // Discrete id/status filters travel in the compact `f` URL param (JSON tuples);
+        // this endpoint consumes them as discrete query params, not the bracket grammar.
+        const f = encodeURIComponent(
+            JSON.stringify([
+                ['patientId', 'iLike', 'text', 'pt_44s1x9'],
+                ['doctorId', 'iLike', 'text', 'usr-vasquez'],
+                ['departmentId', 'iLike', 'text', 'dep-card'],
+                ['status', 'eq', 'select', 'SIGNED'],
+            ]),
+        );
         const calls = stubConsultations();
-        renderWithProviders(<ConsultationsScreen />, {
-            searchParams: '?status=SIGNED&patientId=pt_44s1x9&doctorId=usr-vasquez&departmentId=dep-card&type=revisit&page=1',
-        });
+        renderWithProviders(<ConsultationsScreen />, { searchParams: `?f=${f}&page=1` });
 
-        await screen.findByRole('table', { name: 'Consultations' });
+        await screen.findByRole('grid', { name: 'Consultations' });
         const request = listCalls(calls)[0];
         expect(request).toBeDefined();
         const params = queryOf(request.url);
@@ -207,24 +221,25 @@ describe('ConsultationsScreen', () => {
         expect(params.get('departmentId')).toBe('dep-card');
         // URL page=1 (0-based UI) -> wire page=2 (this endpoint is 1-based).
         expect(params.get('page')).toBe('2');
-        // The API has no type param — new/revisit filters the loaded page only.
+        // The API has no type param — never sent to the wire.
         expect(params.has('type')).toBe(false);
-        // Client-side type=revisit keeps only the revisit row.
-        const table = screen.getByRole('table', { name: 'Consultations' });
-        expect(await within(table).findByText('dr.chen')).toBeDefined();
-        expect(within(table).queryByText('dr.vasquez')).toBeNull();
     });
 
-    it('issues a fresh list request when the status filter changes', async () => {
+    it('applies the new/revisit type filter on the client without sending a server param', async () => {
+        // `type` is derived per row (visitTypeOf); the API exposes no type param, so
+        // the filter narrows the LOADED PAGE only and never reaches the wire.
+        const f = encodeURIComponent(JSON.stringify([['type', 'eq', 'select', 'revisit']]));
         const calls = stubConsultations();
-        renderWithProviders(<ConsultationsScreen />);
+        renderWithProviders(<ConsultationsScreen />, { searchParams: `?f=${f}` });
 
-        await screen.findByText('dr.vasquez');
-        fireEvent.click(screen.getByLabelText('Status:'));
-        fireEvent.click(await screen.findByRole('option', { name: 'Recording' }));
-        await waitFor(() => {
-            expect(listCalls(calls).some((call) => queryOf(call.url).get('status') === 'RECORDING')).toBe(true);
-        });
+        const table = await screen.findByRole('grid', { name: 'Consultations' });
+        expect(await within(table).findByText('dr.chen')).toBeDefined();
+        expect(within(table).queryByText('dr.vasquez')).toBeNull();
+
+        const params = queryOf(listCalls(calls)[0].url);
+        expect(params.has('type')).toBe(false);
+        expect(params.has('status')).toBe(false);
+        expect(params.has('patientId')).toBe(false);
     });
 
     it('opens the read-only detail panel on row click: GET :id, masked patient, relations summary', async () => {
@@ -255,10 +270,12 @@ describe('ConsultationsScreen', () => {
             if (call.method === 'GET' && parsed.pathname === '/api/hope/admin/consultations') return listResponse([], 0);
             return undefined;
         });
-        renderWithProviders(<ConsultationsScreen />, { searchParams: '?status=REOPENED' });
+        const f = encodeURIComponent(JSON.stringify([['status', 'eq', 'select', 'REOPENED']]));
+        renderWithProviders(<ConsultationsScreen />, { searchParams: `?f=${f}` });
 
         expect(await screen.findByText('No consultations in range')).toBeDefined();
-        expect(screen.getByRole('button', { name: /clear filters/i })).toBeDefined();
+        // Both the toolbar and the filtered-empty CTA expose a clear affordance.
+        expect(screen.getAllByRole('button', { name: /clear filters/i }).length).toBeGreaterThanOrEqual(1);
     });
 
     it('keeps the aggregate card when the list errors — the queries are independent', async () => {

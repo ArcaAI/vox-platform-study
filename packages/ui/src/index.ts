@@ -394,6 +394,9 @@ export { StatusBadge, type StatusBadgeProps, type StatusColorRole } from './comp
 
 // VirtualizedDataGrid — canonical data grid (supersedes tool-ui DataTable, D6).
 export * from './components/data-grid';
+// TanStack column/selection types consumers need by name to type `columns`/
+// `selection` without depending on @tanstack/react-table directly (TASK-423 Phase 4).
+export type { ColumnDef, RowSelectionState } from '@tanstack/react-table';
 
 // HistoryTimelineList — content-type-aware, virtualized history.
 // `TimelineItem` is omitted (collides with the diceui `TimelineItem` export).

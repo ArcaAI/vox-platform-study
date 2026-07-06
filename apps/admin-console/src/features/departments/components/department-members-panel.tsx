@@ -2,34 +2,44 @@
 
 import { useState } from 'react';
 import { IconUsers } from '@tabler/icons-react';
+import { VirtualizedDataGrid, type ColumnDef, type DataQueryState } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Card } from '@arcaai/ui/components/shadcn/card';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { TablePagination } from '@/shared/data/table-pagination';
+import { normalizeList } from '@/shared/data/envelopes';
 import { formatDateTime } from '@/shared/format';
 import { EmptyState } from '@/shared/state/empty-state';
+import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useDepartmentUsers } from '../api/hooks';
 import type { DepartmentMember } from '../api/types';
 
 const EM_DASH = '\u2014';
 
-const COLUMNS: DataTableColumn<DepartmentMember>[] = [
+/** Embedded panel grid: fixed viewport, no toolbar/personalization (design-spec D2). */
+const MEMBERS_GRID_HEIGHT = 360;
+
+const COLUMNS: ColumnDef<DepartmentMember>[] = [
     {
-        key: 'member',
+        id: 'member',
         header: 'Member',
-        cell: (row) => (
+        enableSorting: false,
+        enableHiding: false,
+        size: 220,
+        cell: ({ row }) => (
             <span className="flex items-center gap-2">
-                <span className="font-medium">{row.username}</span>
-                {row.isServiceAccount ? <Badge variant="outline">Service</Badge> : null}
+                <span className="font-medium">{row.original.username}</span>
+                {row.original.isServiceAccount ? <Badge variant="outline">Service</Badge> : null}
             </span>
         ),
     },
     {
-        key: 'role',
+        id: 'role',
         header: 'Role',
-        cell: (row) => {
-            const roles = row.UserRoleAssignments ?? [];
+        enableSorting: false,
+        enableHiding: false,
+        size: 220,
+        cell: ({ row }) => {
+            const roles = row.original.UserRoleAssignments ?? [];
             if (roles.length === 0) return <span className="text-muted-foreground">{EM_DASH}</span>;
             return (
                 <span className="flex flex-wrap gap-1">
@@ -43,14 +53,20 @@ const COLUMNS: DataTableColumn<DepartmentMember>[] = [
         },
     },
     {
-        key: 'status',
+        accessorKey: 'resourceStatus',
         header: 'Status',
-        cell: (row) => <ResourceStatusBadge status={row.resourceStatus} />,
+        enableSorting: false,
+        enableHiding: false,
+        size: 120,
+        cell: ({ row }) => <ResourceStatusBadge status={row.original.resourceStatus} />,
     },
     {
-        key: 'since',
+        id: 'since',
         header: 'Since',
-        cell: (row) => <span className="text-muted-foreground">{formatDateTime(row.createdAt, 'date')}</span>,
+        enableSorting: false,
+        enableHiding: false,
+        size: 140,
+        cell: ({ row }) => <span className="text-muted-foreground">{formatDateTime(row.original.createdAt, 'date')}</span>,
     },
 ];
 
@@ -59,14 +75,22 @@ const COLUMNS: DataTableColumn<DepartmentMember>[] = [
  * paginated. The frame's "Prim" column has no counterpart on the wire
  * (UserResponse carries no UserDepartment join), so Status stands in.
  * The parent remounts this panel per department (key=id), resetting the page.
+ *
+ * TASK-423: an embedded grid (design-spec D2) — `VirtualizedDataGrid` at a fixed
+ * height with server pagination driven by local query-state; personalization,
+ * omni search and the toolbar are off since the endpoint takes only page/limit.
  */
 export function DepartmentMembersPanel({ departmentId, departmentName }: { departmentId: string; departmentName: string }) {
-    const [page, setPage] = useState(0);
-    const [limit, setLimit] = useState(25);
-    const members = useDepartmentUsers(departmentId, { page, limit });
+    const [queryState, setQueryState] = useState<DataQueryState>({
+        pagination: { mode: 'offset', page: 0, limit: 25 },
+        sorting: [],
+        filters: [],
+    });
+    const page = queryState.pagination.mode === 'offset' ? queryState.pagination.page : 0;
+    const limit = queryState.pagination.limit;
 
-    const rows = members.data ? [...members.data.data] : [];
-    const count = members.data?.count ?? 0;
+    const members = useDepartmentUsers(departmentId, { page, limit });
+    const { rows, total } = normalizeList<DepartmentMember>(members.data);
 
     return (
         <Card className="gap-3 p-4">
@@ -76,16 +100,33 @@ export function DepartmentMembersPanel({ departmentId, departmentName }: { depar
                     GET :id/users
                 </p>
             </div>
-            <DataTable
+            <VirtualizedDataGrid<DepartmentMember>
                 aria-label={`Members of ${departmentName}`}
                 columns={COLUMNS}
-                rows={rows}
-                rowKey={(row) => row.id}
+                data={rows}
+                getRowId={(row) => row.id}
+                height={MEMBERS_GRID_HEIGHT}
+                manual={{ pagination: true }}
+                rowCount={total ?? 0}
+                queryState={queryState}
+                onQueryStateChange={setQueryState}
+                toolbar={<></>}
+                features={{
+                    columnReorder: false,
+                    columnResize: false,
+                    columnPinning: false,
+                    columnVisibility: false,
+                    rowSelection: false,
+                    globalSearch: false,
+                    facetedFilters: false,
+                    sorting: false,
+                }}
                 isLoading={members.isPending}
-                error={members.error}
+                isBusy={members.isFetching && !members.isPending}
+                error={rows.length > 0 ? null : (members.error ?? null)}
+                errorState={(error) => <ErrorState error={error} onRetry={() => void members.refetch()} />}
                 onRetry={() => void members.refetch()}
-                skeletonRows={5}
-                empty={
+                emptyState={
                     <EmptyState
                         icon={IconUsers}
                         title="No members yet"
@@ -93,18 +134,6 @@ export function DepartmentMembersPanel({ departmentId, departmentName }: { depar
                     />
                 }
             />
-            {count > 0 ? (
-                <TablePagination
-                    page={page}
-                    limit={limit}
-                    total={count}
-                    onPageChange={setPage}
-                    onLimitChange={(nextLimit) => {
-                        setLimit(nextLimit);
-                        setPage(0);
-                    }}
-                />
-            ) : null}
         </Card>
     );
 }

@@ -11,11 +11,12 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
+import { VirtualizedDataGrid, type ColumnDef } from '@arcaai/ui';
 import { GatewayError } from '@/shared/api';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
 import { formatRelativeTime } from '@/shared/format';
 import { EmptyState } from '@/shared/state/empty-state';
+import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useBuckets, useDeleteStorageConfig, useStorageConfigs, useUpsertStorageConfig } from '../api/hooks';
 import type { StorageProviderType, StorageTopologyType, TenantBucket, TenantStorageConfig, UpsertStorageConfigRequest } from '../api/types';
@@ -300,32 +301,61 @@ export function StorageConfigsTab() {
         return bucket ? `${bucket.name} (${bucket.slug})` : config.bucketId;
     }
 
-    const columns: DataTableColumn<TenantStorageConfig>[] = [
-        { key: 'provider', header: 'Provider', cell: (row) => <span className="font-medium">{PROVIDER_LABELS[row.provider]}</span> },
-        { key: 'topology', header: 'Topology', cell: (row) => TOPOLOGY_LABELS[row.topology] },
-        { key: 'scope', header: 'Scope', cell: (row) => (row.bucketId ? scopeLabel(row) : <span className="text-muted-foreground">Tenant-wide</span>) },
+    const columns: ColumnDef<TenantStorageConfig>[] = [
         {
-            key: 'endpoint',
-            header: 'Endpoint',
-            mono: true,
-            cell: (row) => row.endpoint ?? row.accountName ?? <span className="text-muted-foreground">{'\u2014'}</span>,
+            accessorKey: 'provider',
+            header: 'Provider',
+            meta: { label: 'Provider' },
+            cell: ({ row }) => <span className="font-medium">{PROVIDER_LABELS[row.original.provider]}</span>,
         },
-        { key: 'credentials', header: 'Credentials ref', mono: true, cell: (row) => row.credentialsRef ?? <span className="text-muted-foreground">{'\u2014'}</span> },
-        { key: 'status', header: 'Status', cell: (row) => <ResourceStatusBadge status={row.resourceStatus} /> },
-        { key: 'updated', header: 'Updated', cell: (row) => <span className="text-muted-foreground">{formatRelativeTime(row.updatedAt)}</span> },
+        { accessorKey: 'topology', header: 'Topology', meta: { label: 'Topology' }, cell: ({ row }) => TOPOLOGY_LABELS[row.original.topology] },
         {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            className: 'w-20 text-right',
-            cell: (row) => (
-                <span className="flex justify-end gap-1">
+            id: 'scope',
+            accessorFn: (row) => (row.bucketId ? scopeLabel(row) : 'Tenant-wide'),
+            header: 'Scope',
+            meta: { label: 'Scope' },
+            cell: ({ row }) => (row.original.bucketId ? scopeLabel(row.original) : <span className="text-muted-foreground">Tenant-wide</span>),
+        },
+        {
+            id: 'endpoint',
+            accessorFn: (row) => row.endpoint ?? row.accountName ?? '',
+            header: 'Endpoint',
+            meta: { label: 'Endpoint' },
+            cell: ({ row }) => (
+                <span className="font-mono text-xs">{row.original.endpoint ?? row.original.accountName ?? <span className="text-muted-foreground">{'\u2014'}</span>}</span>
+            ),
+        },
+        {
+            accessorKey: 'credentialsRef',
+            header: 'Credentials ref',
+            meta: { label: 'Credentials ref' },
+            cell: ({ row }) => <span className="font-mono text-xs">{row.original.credentialsRef ?? <span className="text-muted-foreground">{'\u2014'}</span>}</span>,
+        },
+        { accessorKey: 'resourceStatus', header: 'Status', meta: { label: 'Status' }, cell: ({ row }) => <ResourceStatusBadge status={row.original.resourceStatus} /> },
+        {
+            accessorKey: 'updatedAt',
+            header: 'Updated',
+            meta: { label: 'Updated' },
+            cell: ({ row }) => <span className="text-muted-foreground">{formatRelativeTime(row.original.updatedAt)}</span>,
+        },
+        {
+            id: 'actions',
+            header: () => <span className="sr-only">Actions</span>,
+            meta: { label: 'Actions' },
+            enableSorting: false,
+            enableHiding: false,
+            enableResizing: false,
+            size: 88,
+            minSize: 88,
+            cell: ({ row }) => (
+                <span className="flex w-full justify-end gap-1">
                     <Button
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={`Edit config ${PROVIDER_LABELS[row.provider]}`}
+                        aria-label={`Edit config ${PROVIDER_LABELS[row.original.provider]}`}
                         onClick={(event) => {
                             event.stopPropagation();
-                            setEditing(row);
+                            setEditing(row.original);
                             setFormOpen(true);
                         }}
                     >
@@ -334,10 +364,10 @@ export function StorageConfigsTab() {
                     <Button
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={`Delete config ${PROVIDER_LABELS[row.provider]}`}
+                        aria-label={`Delete config ${PROVIDER_LABELS[row.original.provider]}`}
                         onClick={(event) => {
                             event.stopPropagation();
-                            setDeleting(row);
+                            setDeleting(row.original);
                         }}
                     >
                         <IconTrash aria-hidden />
@@ -384,22 +414,33 @@ export function StorageConfigsTab() {
                     Add config
                 </Button>
             </div>
-            <DataTable
+            <VirtualizedDataGrid<TenantStorageConfig>
                 aria-label="Storage configs"
                 columns={columns}
-                rows={rows}
-                rowKey={(row) => row.id}
+                data={rows}
+                getRowId={(row) => row.id}
+                height={360}
+                features={{
+                    columnReorder: false,
+                    columnResize: false,
+                    columnPinning: false,
+                    columnVisibility: false,
+                    rowSelection: false,
+                    globalSearch: false,
+                    facetedFilters: false,
+                    sorting: true,
+                }}
                 isLoading={isLoading}
                 error={error}
                 onRetry={() => refetch()}
-                empty={
+                errorState={(err) => <ErrorState error={err} onRetry={() => refetch()} />}
+                emptyState={
                     <EmptyState
                         icon={IconServer}
                         title="No storage configs yet"
                         description="The tenant uses the platform default provider until a config is added."
                     />
                 }
-                skeletonRows={3}
             />
             <ConfigFormDialog open={formOpen} initial={editing} buckets={buckets} onOpenChange={setFormOpen} />
             <ConfirmDialog

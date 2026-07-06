@@ -2,8 +2,9 @@
 
 import { useId, useState, type FormEvent } from 'react';
 import { IconEye, IconEyeOff, IconFilterOff, IconLock, IconPencil, IconPlus, IconSettings, IconTrash } from '@tabler/icons-react';
-import { parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
+import { parseAsString, useQueryStates } from 'nuqs';
 import { toast } from 'sonner';
+import { type ColumnDef, type SortRule } from '@arcaai/ui';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import {
     Dialog,
@@ -18,14 +19,12 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
-import type { ListParams } from '@/shared/api';
 import { RequirePermission } from '@/shared/auth/require-permission';
 import { useSession } from '@/shared/auth/hooks';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { CopyButton } from '@/shared/copy-button';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { FilterBar, FilterSearch } from '@/shared/data/filter-bar';
-import { TablePagination } from '@/shared/data/table-pagination';
+import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid';
+import { normalizeList } from '@/shared/data/envelopes';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
@@ -33,7 +32,9 @@ import { useDeleteGlobalSetting, useGlobalSettings, useRevealGlobalSetting, useT
 import type { GlobalSetting } from '../api/types';
 import { CreateSettingDialog, EditSettingDialog } from './setting-dialogs';
 
-const DEFAULT_SORT = 'key:asc';
+/** Omni search targets (→ gateway `searchFields`) and the implicit sort — stable refs for the hook. */
+const SETTING_SEARCH_FIELDS = ['name', 'key'];
+const SETTING_DEFAULT_SORT: SortRule[] = [{ id: 'key', desc: false }];
 const DEFAULT_LIMIT = 25;
 const MASK = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
 
@@ -102,35 +103,27 @@ function RevealSecretDialog({
 }
 
 /**
- * Frame 24 — Settings & secrets (/settings, tier 20-29 shared). Global and
- * working-tenant-scoped settings with masked secrets, permission-gated
- * step-up reveal, OCC If-Match value editing and create/delete flows.
+ * Frame 24 — Settings & secrets (/settings, tier 20-29 shared). AdminDataGrid
+ * (omni search + sort + pager) over global and working-tenant-scoped settings
+ * with masked secrets, permission-gated step-up reveal, OCC If-Match value
+ * editing and create/delete flows. The scope tab rides its own URL param
+ * (orthogonal to the grid's query-state) and switches the active list hook.
  */
 export function SettingsScreen() {
-    const [{ scope, q, page, limit, sort }, setParams] = useQueryStates({
-        scope: parseAsString.withDefault('global'),
-        q: parseAsString.withDefault(''),
-        page: parseAsInteger.withDefault(0),
-        limit: parseAsInteger.withDefault(DEFAULT_LIMIT),
-        sort: parseAsString.withDefault(''),
-    });
+    const [{ scope }, setScopeParams] = useQueryStates({ scope: parseAsString.withDefault('global') });
+    const query = useAdminGridParams({ searchFields: SETTING_SEARCH_FIELDS, defaultSort: SETTING_DEFAULT_SORT });
+
     const session = useSession();
     const workingTenantId = session.data?.workingTenantId ?? '';
     const workingTenantName = session.data?.workingTenantName ?? workingTenantId;
     // The tenant tab only exists with a working tenant (BFF injects X-Tenant-Id).
     const effectiveScope = scope === 'tenant' && workingTenantId ? 'tenant' : 'global';
 
-    const listParams: ListParams = {
-        page,
-        limit,
-        sort: sort || DEFAULT_SORT,
-        ...(q ? { search: q, searchFields: 'name,key' } : {}),
-    };
-    const globalQuery = useGlobalSettings(listParams);
-    const tenantQuery = useTenantScopedSettings(effectiveScope === 'tenant' ? workingTenantId : '', listParams);
+    const globalQuery = useGlobalSettings(query.listParams);
+    const tenantQuery = useTenantScopedSettings(effectiveScope === 'tenant' ? workingTenantId : '', query.listParams);
     const active = effectiveScope === 'tenant' ? tenantQuery : globalQuery;
-    const rows = active.data?.data ?? [];
-    const total = active.data?.count ?? 0;
+    const { rows, total } = normalizeList<GlobalSetting>(active.data);
+    const totalCount = total ?? 0;
 
     const [createOpen, setCreateOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<GlobalSetting | null>(null);
@@ -188,15 +181,17 @@ export function SettingsScreen() {
         );
     }
 
-    const columns: DataTableColumn<GlobalSetting>[] = [
+    const columns: ColumnDef<GlobalSetting>[] = [
         {
-            key: 'key',
+            accessorKey: 'key',
             header: 'Key',
-            sortKey: 'key',
-            cell: (row) => (
+            meta: { label: 'Key' },
+            size: 240,
+            minSize: 160,
+            cell: ({ row }) => (
                 <span className="flex items-center gap-1.5 font-mono text-xs">
-                    {row.key}
-                    {row.locked ? (
+                    {row.original.key}
+                    {row.original.locked ? (
                         <>
                             <IconLock aria-hidden className="text-muted-foreground size-3.5" />
                             <span className="sr-only">locked</span>
@@ -206,107 +201,82 @@ export function SettingsScreen() {
             ),
         },
         {
-            key: 'namespace',
+            id: 'namespace',
             header: 'Namespace',
-            cell: (row) => <span className="text-muted-foreground">{row.namespace || '\u2014'}</span>,
+            enableSorting: false,
+            meta: { label: 'Namespace' },
+            size: 140,
+            cell: ({ row }) => <span className="text-muted-foreground">{row.original.namespace || '\u2014'}</span>,
         },
-        { key: 'type', header: 'Type', cell: (row) => <span className="text-muted-foreground">{row.dataType}</span> },
-        { key: 'value', header: 'Value', cell: renderValue },
         {
-            key: 'updated',
+            id: 'type',
+            header: 'Type',
+            enableSorting: false,
+            meta: { label: 'Type' },
+            size: 100,
+            cell: ({ row }) => <span className="text-muted-foreground">{row.original.dataType}</span>,
+        },
+        {
+            id: 'value',
+            header: 'Value',
+            enableSorting: false,
+            meta: { label: 'Value' },
+            size: 260,
+            cell: ({ row }) => renderValue(row.original),
+        },
+        {
+            accessorKey: 'updatedAt',
             header: 'Updated',
-            sortKey: 'updatedAt',
-            cell: (row) => <span className="text-muted-foreground">{formatRelativeTime(row.updatedAt)}</span>,
+            meta: { label: 'Updated' },
+            size: 150,
+            cell: ({ row }) => <span className="text-muted-foreground">{formatRelativeTime(row.original.updatedAt)}</span>,
         },
         {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            className: 'w-20 text-right',
-            cell: (row) => (
-                <span className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="icon-sm" aria-label={`Edit ${row.key}`} onClick={() => setEditTarget(row)}>
+            id: 'actions',
+            header: () => <span className="sr-only">Actions</span>,
+            meta: { label: 'Actions' },
+            enableSorting: false,
+            enableHiding: false,
+            enableResizing: false,
+            size: 88,
+            minSize: 88,
+            cell: ({ row }) => (
+                <div className="flex items-center justify-end gap-1">
+                    <Button variant="ghost" size="icon-sm" aria-label={`Edit ${row.original.key}`} onClick={() => setEditTarget(row.original)}>
                         <IconPencil aria-hidden />
                     </Button>
-                    <Button variant="ghost" size="icon-sm" aria-label={`Delete ${row.key}`} onClick={() => setDeleteTarget(row)}>
+                    <Button variant="ghost" size="icon-sm" aria-label={`Delete ${row.original.key}`} onClick={() => setDeleteTarget(row.original)}>
                         <IconTrash aria-hidden />
                     </Button>
-                </span>
+                </div>
             ),
         },
     ];
 
-    const hasFilters = Boolean(q);
-    const empty = hasFilters ? (
-        <EmptyState
-            icon={IconFilterOff}
-            title="No settings match your search"
-            description="Try a different search term."
-            action={
-                <Button variant="outline" onClick={() => setParams({ q: null, page: null })}>
-                    <IconFilterOff aria-hidden />
-                    Clear search
-                </Button>
-            }
-        />
-    ) : effectiveScope === 'tenant' ? (
-        <EmptyState
-            icon={IconSettings}
-            title="No tenant-scoped settings"
-            description="Platform defaults apply until a setting is scoped to this tenant."
-        />
-    ) : (
-        <EmptyState
-            icon={IconSettings}
-            title="No settings yet"
-            description="Create the first platform-wide setting. Secret values stay masked after creation."
-            action={
-                <Button onClick={() => setCreateOpen(true)}>
-                    <IconPlus aria-hidden />
-                    New setting
-                </Button>
-            }
-        />
-    );
-
-    const region = (
-        <div className="flex flex-col gap-4">
-            <FilterBar shown={rows.length} total={total}>
-                <FilterSearch
-                    label="Search settings"
-                    placeholder={'Search settings\u2026'}
-                    value={q}
-                    onChange={(value) => setParams({ q: value || null, page: null })}
-                />
-            </FilterBar>
-            <DataTable
-                aria-label={effectiveScope === 'tenant' ? 'Tenant settings' : 'Global settings'}
-                columns={columns}
-                rows={rows}
-                rowKey={(row) => row.id}
-                isLoading={active.isLoading}
-                error={active.error}
-                onRetry={() => active.refetch()}
-                empty={empty}
-                sort={sort || DEFAULT_SORT}
-                onSortChange={(next) => setParams({ sort: next === DEFAULT_SORT ? null : next, page: null })}
+    const emptyState =
+        effectiveScope === 'tenant' ? (
+            <EmptyState icon={IconSettings} title="No tenant-scoped settings" description="Platform defaults apply until a setting is scoped to this tenant." />
+        ) : (
+            <EmptyState
+                icon={IconSettings}
+                title="No settings yet"
+                description="Create the first platform-wide setting. Secret values stay masked after creation."
+                action={
+                    <Button onClick={() => setCreateOpen(true)}>
+                        <IconPlus aria-hidden />
+                        New setting
+                    </Button>
+                }
             />
-            <TablePagination
-                page={page}
-                limit={limit}
-                total={total}
-                onPageChange={(next) => setParams({ page: next || null })}
-                onLimitChange={(next) => setParams({ limit: next === DEFAULT_LIMIT ? null : next, page: null })}
-            />
-        </div>
-    );
+        );
 
     return (
-        <div className="flex flex-col gap-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
             <PageHeader
                 title="Settings & secrets"
                 meta={
                     <>
-                        {active.data ? <span>{formatNumber(total)} settings</span> : <Skeleton className="h-4 w-20" />}
+                        {active.data ? <span>{formatNumber(totalCount)} settings</span> : <Skeleton className="h-4 w-20" />}
                         <span aria-hidden>&middot;</span>
                         <span>secrets masked &mdash; reveal is audited</span>
                         <span aria-hidden className="text-muted-foreground font-mono text-xs">
@@ -321,13 +291,50 @@ export function SettingsScreen() {
                     </Button>
                 }
             />
-            <Tabs value={effectiveScope} onValueChange={(next) => setParams({ scope: next === 'global' ? null : next, page: null })}>
+            <Tabs
+                value={effectiveScope}
+                onValueChange={(next) => {
+                    setScopeParams({ scope: next === 'global' ? null : next });
+                    // Switching scope swaps the result set — return to the first page (legacy parity).
+                    const limit = query.queryState.pagination.mode === 'offset' ? query.queryState.pagination.limit : DEFAULT_LIMIT;
+                    query.setQueryState({ ...query.queryState, pagination: { mode: 'offset', page: 0, limit } });
+                }}
+            >
                 <TabsList>
                     <TabsTrigger value="global">Global</TabsTrigger>
                     {workingTenantId ? <TabsTrigger value="tenant">Tenant: {workingTenantName}</TabsTrigger> : null}
                 </TabsList>
                 <TabsContent value={effectiveScope} className="mt-2">
-                    {region}
+                    <AdminDataGrid<GlobalSetting>
+                        gridId="settings"
+                        aria-label={effectiveScope === 'tenant' ? 'Tenant settings' : 'Global settings'}
+                        columns={columns}
+                        rows={rows}
+                        total={totalCount}
+                        queryState={query.queryState}
+                        onQueryStateChange={query.setQueryState}
+                        isLoading={active.isLoading}
+                        isBusy={active.isFetching && !active.isLoading}
+                        error={active.error}
+                        onRetry={() => active.refetch()}
+                        emptyState={emptyState}
+                        emptyFilteredState={
+                            <EmptyState
+                                icon={IconFilterOff}
+                                title="No settings match your search"
+                                description="Try a different search term."
+                                action={
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })}
+                                    >
+                                        <IconFilterOff aria-hidden />
+                                        Clear search
+                                    </Button>
+                                }
+                            />
+                        }
+                    />
                 </TabsContent>
             </Tabs>
             {createOpen ? <CreateSettingDialog onOpenChange={setCreateOpen} /> : null}

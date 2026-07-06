@@ -11,14 +11,16 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
+import { VirtualizedDataGrid, type ColumnDef } from '@arcaai/ui';
 import { GatewayError } from '@/shared/api';
 import type { TenantPlan } from '@/features/tenants/api/types';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
 import { FilterBar, FilterSearch } from '@/shared/data/filter-bar';
+import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
+import { ErrorState } from '@/shared/state/error-state';
 import { useEnforcementEnabled, usePlanEntitlements, useRunTrialExpiry, useSetEnforcementEnabled } from '../api/hooks';
 import type { PlanEntitlement } from '../api/types';
 import { PlanEditDialog } from './plan-edit-dialog';
@@ -89,18 +91,31 @@ function PlansTab() {
     const plans = data ?? [];
     const rows = search ? plans.filter((plan) => PLAN_LABELS[plan.plan].toLowerCase().includes(search.toLowerCase())) : plans;
 
-    const columns: DataTableColumn<PlanEntitlement>[] = [
-        { key: 'plan', header: 'Plan', cell: (row) => <span className="font-medium">{PLAN_LABELS[row.plan]}</span> },
+    const columns: ColumnDef<PlanEntitlement>[] = [
         {
-            key: 'entitlements',
-            header: 'Key entitlements',
-            cell: (row) => <span className="text-muted-foreground">{planSummary(row)}</span>,
+            accessorKey: 'plan',
+            header: 'Plan',
+            enableSorting: false,
+            meta: { label: 'Plan' },
+            cell: ({ row }) => <span className="font-medium">{PLAN_LABELS[row.original.plan]}</span>,
+            size: 140,
         },
         {
-            key: 'features',
+            id: 'entitlements',
+            header: 'Key entitlements',
+            enableSorting: false,
+            meta: { label: 'Key entitlements' },
+            cell: ({ row }) => <span className="text-muted-foreground">{planSummary(row.original)}</span>,
+            size: 320,
+            minSize: 220,
+        },
+        {
+            id: 'features',
             header: 'Features',
-            cell: (row) => {
-                const enabled = FEATURE_FIELDS.filter((field) => row[field.key]);
+            enableSorting: false,
+            meta: { label: 'Features' },
+            cell: ({ row }) => {
+                const enabled = FEATURE_FIELDS.filter((field) => row.original[field.key]);
                 if (enabled.length === 0) return <span className="text-muted-foreground">{'\u2014'}</span>;
                 return (
                     <span className="flex flex-wrap gap-1">
@@ -112,10 +127,32 @@ function PlansTab() {
                     </span>
                 );
             },
+            size: 220,
         },
-        { key: 'modelTier', header: 'Model tier', mono: true, cell: (row) => row.modelTier },
-        { key: 'rateLimitTier', header: 'Rate limit', mono: true, cell: (row) => row.rateLimitTier },
-        { key: 'version', header: 'Version', mono: true, cell: (row) => `v${row.version}` },
+        {
+            accessorKey: 'modelTier',
+            header: 'Model tier',
+            enableSorting: false,
+            meta: { label: 'Model tier' },
+            cell: ({ row }) => <span className="font-mono text-xs">{row.original.modelTier}</span>,
+            size: 140,
+        },
+        {
+            accessorKey: 'rateLimitTier',
+            header: 'Rate limit',
+            enableSorting: false,
+            meta: { label: 'Rate limit' },
+            cell: ({ row }) => <span className="font-mono text-xs">{row.original.rateLimitTier}</span>,
+            size: 140,
+        },
+        {
+            id: 'version',
+            header: 'Version',
+            enableSorting: false,
+            meta: { label: 'Version' },
+            cell: ({ row }) => <span className="font-mono text-xs">v{row.original.version}</span>,
+            size: 100,
+        },
     ];
 
     const empty = search ? (
@@ -148,17 +185,28 @@ function PlansTab() {
                     onChange={(value) => setSearch(value || null)}
                 />
             </FilterBar>
-            <DataTable
+            <VirtualizedDataGrid<PlanEntitlement>
                 aria-label="Plan entitlements"
                 columns={columns}
-                rows={rows}
-                rowKey={(row) => row.id}
+                data={rows}
+                getRowId={(row) => row.id}
+                height={360}
+                features={{
+                    globalSearch: false,
+                    facetedFilters: false,
+                    sorting: false,
+                    rowSelection: false,
+                    columnReorder: true,
+                    columnResize: true,
+                    columnPinning: true,
+                    columnVisibility: true,
+                }}
+                persistence={gridPersistence('entitlement-plans')}
                 isLoading={isLoading}
-                error={error}
-                onRetry={() => refetch()}
-                empty={empty}
+                error={error ?? undefined}
+                errorState={(err) => <ErrorState error={err} onRetry={() => refetch()} />}
+                emptyState={empty}
                 onRowClick={(row) => setEditing(row.plan)}
-                skeletonRows={4}
             />
             <PlanEditDialog plan={editing} onOpenChange={(open) => !open && setEditing(null)} />
         </div>

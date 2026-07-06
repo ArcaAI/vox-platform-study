@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, renderHook, act, fireEvent } from '@testing-library/react';
+import { render, screen, renderHook, act, fireEvent, within } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import * as axeMatchers from 'vitest-axe/matchers';
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table';
@@ -178,7 +178,8 @@ describe('VirtualizedDataGrid (shell)', () => {
 
   it('renders an empty state when data is empty and not loading', () => {
     renderGrid({ data: [] });
-    expect(screen.getByText('No results')).toBeInTheDocument();
+    // The pager status also reads "No results" for 0 rows (§F); scope to the grid body.
+    expect(within(screen.getByRole('grid')).getByText('No results')).toBeInTheDocument();
   });
 
   it('shows a skeleton while loading', () => {
@@ -243,6 +244,94 @@ describe('VirtualizedDataGrid (shell)', () => {
     const { container } = renderGrid({ data: makeData(3) });
     const results = await axe(container, { rules: { 'color-contrast': { enabled: false } } });
     expect(results).toHaveNoViolations();
+  });
+
+  it('adds aria-colindex to header and body cells (Δ9)', () => {
+    renderGrid({ data: makeData(3) });
+    const headers = screen.getAllByRole('columnheader');
+    // Augmented order: [select, name, status] → 1-based colindex.
+    expect(headers[0]).toHaveAttribute('aria-colindex', '1');
+    expect(headers[1]).toHaveAttribute('aria-colindex', '2');
+    expect(headers[2]).toHaveAttribute('aria-colindex', '3');
+    const firstCell = screen.getAllByRole('gridcell')[0];
+    expect(firstCell).toHaveAttribute('aria-colindex', '1');
+  });
+
+  it('exposes a polite live-region status node (Δ9)', () => {
+    const { container } = renderGrid({ data: makeData(3) });
+    const status = container.querySelector('[role="status"][aria-live="polite"].sr-only');
+    expect(status).not.toBeNull();
+  });
+
+  it('renders a keyboard-resizable separator and grows the column on ArrowRight (Δ3, WCAG 2.5.7)', () => {
+    renderGrid({ data: makeData(3) });
+    const sep = screen.getByRole('separator', { name: /resize name column/i });
+    expect(sep).toHaveAttribute('aria-orientation', 'vertical');
+    const before = Number(sep.getAttribute('aria-valuenow'));
+    fireEvent.keyDown(sep, { key: 'ArrowRight' });
+    const after = Number(screen.getByRole('separator', { name: /resize name column/i }).getAttribute('aria-valuenow'));
+    expect(after).toBe(before + 16);
+  });
+
+  it('shows an item-range status in the pagination region (Δ7)', () => {
+    renderGrid({ data: makeData(3) });
+    const nav = screen.getByRole('navigation', { name: /pagination/i });
+    // md container copy drops the "Showing" prefix but always keeps "…of {total}".
+    expect(nav.textContent).toMatch(/1[\u2013-]3 of 3/);
+  });
+
+  it('renders the toolbar "Clear filters" affordance when a filter/search is active (Δ6)', () => {
+    renderGrid({ data: makeData(3), defaultQueryState: { globalSearch: 'acme' } });
+    expect(screen.getByRole('button', { name: /clear filters/i })).toBeInTheDocument();
+  });
+
+  it('gates the first body paint on isLayoutReady — skeleton until persistence resolves (Δ8)', async () => {
+    let resolveLoad: (v: GridLayoutState | null) => void = () => {};
+    const loaded = new Promise<GridLayoutState | null>((res) => (resolveLoad = res));
+    const adapter: GridLayoutPersistenceAdapter = {
+      load: vi.fn().mockReturnValue(loaded),
+      save: vi.fn().mockResolvedValue(undefined),
+    };
+    renderGrid({ data: makeData(3), persistence: { key: 'tenants', adapter } });
+    expect(screen.getByLabelText('Loading data')).toBeInTheDocument();
+    expect(screen.queryByText('Person 0')).not.toBeInTheDocument();
+    await act(async () => {
+      resolveLoad(null);
+      await loaded.catch(() => {});
+    });
+    expect(await screen.findByText('Person 0')).toBeInTheDocument();
+  });
+});
+
+describe('useDataGrid — personalization, a11y announcements & page sizes (Δ4/Δ7/Δ8/Δ9)', () => {
+  it('defaults to page-size options [25, 50, 100] with limit 25', () => {
+    const { result } = renderHook(() => useDataGrid<Person>({ data: makeData(3), columns: COLUMNS, getRowId: (r) => r.id }));
+    expect(result.current.pageSizeOptions).toEqual([25, 50, 100]);
+    expect(result.current.queryState.pagination).toMatchObject({ mode: 'offset', limit: 25 });
+  });
+
+  it('moveColumnDirection swaps with the left neighbour (Δ4 keyboard reorder)', () => {
+    const { result } = renderHook(() => useDataGrid<Person>({ data: makeData(3), columns: COLUMNS, getRowId: (r) => r.id }));
+    act(() => result.current.moveColumnDirection('status', 'left'));
+    const order = result.current.table.getState().columnOrder;
+    expect(order.indexOf('status')).toBeLessThan(order.indexOf('name'));
+  });
+
+  it('announces sort changes in the live region (Δ9)', () => {
+    const { result } = renderHook(() => useDataGrid<Person>({ data: makeData(3), columns: COLUMNS, getRowId: (r) => r.id }));
+    act(() => result.current.table.getColumn('name')!.toggleSorting(false));
+    expect(result.current.announcement).toContain('Sorted by Name, ascending');
+  });
+
+  it('resetLayout restores defaults and announces the reset (Δ8)', () => {
+    const onColumnChange = vi.fn();
+    const { result } = renderHook(() => useDataGrid<Person>({ data: makeData(3), columns: COLUMNS, getRowId: (r) => r.id, onColumnChange }));
+    act(() => result.current.setDensity('compact'));
+    expect(result.current.density).toBe('compact');
+    act(() => result.current.resetLayout());
+    expect(result.current.density).toBe('comfortable');
+    expect(result.current.announcement).toMatch(/reset/i);
+    expect(onColumnChange).toHaveBeenLastCalledWith(expect.objectContaining({ density: 'comfortable', order: [], sizing: {}, visibility: {}, pinning: {} }));
   });
 });
 

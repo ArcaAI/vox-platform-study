@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getCoreRowModel,
   getFilteredRowModel,
@@ -23,8 +23,10 @@ import { DEFAULT_QUERY_STATE, type DataQueryState, type FilterRule, type PageReq
 import { getDefaultFilterOperator } from '@/lib/data-table';
 import type { FilterVariant } from '@/types/data-table';
 
+import { buildQueryAnnouncement } from './announce';
+import { useCoarsePointer } from './use-container-breakpoint';
 import { useGridLayout } from './use-grid-layout';
-import { DEFAULT_GRID_FEATURES, type GridLayoutState, type VirtualizedDataGridProps } from './types';
+import { DEFAULT_GRID_FEATURES, DEFAULT_PAGE_SIZE_OPTIONS, type GridLayoutState, type VirtualizedDataGridProps } from './types';
 
 function resolveUpdater<T>(updater: Updater<T>, prev: T): T {
   return typeof updater === 'function' ? (updater as (p: T) => T)(prev) : updater;
@@ -43,6 +45,14 @@ export interface UseDataGridResult<TData> {
   layout: GridLayoutState;
   isLayoutReady: boolean;
   moveColumn: (activeId: string, overId: string) => void;
+  /** Neighbour-swap reorder for the header-menu "Move left/right" (Δ4, WCAG 2.5.7). */
+  moveColumnDirection: (id: string, direction: 'left' | 'right') => void;
+  /** Reset order/size/visibility/pinning/density to coded defaults + clear the persisted record (Δ8). */
+  resetLayout: () => void;
+  /** Current visible-column page-size options (default `[25, 50, 100]`). */
+  pageSizeOptions: number[];
+  /** Debounced polite live-region text for the latest sort/filter/page/density/reset (Δ9). */
+  announcement: string;
   features: Required<typeof DEFAULT_GRID_FEATURES>;
 }
 
@@ -60,7 +70,7 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
     defaultQueryState,
     onQueryStateChange,
     selection,
-    pageSizeOptions = [10, 20, 50],
+    pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
     onPaginate,
     onColumnChange,
     persistence,
@@ -71,14 +81,13 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
   const features = { ...DEFAULT_GRID_FEATURES, ...props.features };
 
   // ----- Query state (controlled or uncontrolled) -----
+  const defaultLimit = pageSizeOptions[0] ?? 25;
   const [internalQueryState, setInternalQueryState] = useState<DataQueryState>(() => ({
     ...DEFAULT_QUERY_STATE,
     ...defaultQueryState,
     pagination:
       defaultQueryState?.pagination ??
-      (pageMode === 'cursor'
-        ? { mode: 'cursor', cursor: null, limit: pageSizeOptions[1] ?? 20 }
-        : { mode: 'offset', page: 0, limit: pageSizeOptions[1] ?? 20 }),
+      (pageMode === 'cursor' ? { mode: 'cursor', cursor: null, limit: defaultLimit } : { mode: 'offset', page: 0, limit: defaultLimit }),
   }));
   const isControlled = controlledQueryState !== undefined;
   const queryState = controlledQueryState ?? internalQueryState;
@@ -97,7 +106,12 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
     [densityProp],
   );
   const { layout, isLayoutReady, setLayout } = useGridLayout({ persistence, defaultLayout });
-  const density = densityProp ?? layout.density;
+  // Coarse pointers (touch) force comfortable density — compact 36px is below the
+  // 44px hit-area floor (Δ9). The persisted preference is preserved untouched.
+  const coarsePointer = useCoarsePointer();
+  const density: Density = coarsePointer ? 'comfortable' : (densityProp ?? layout.density);
+
+  const [announcement, setAnnouncement] = useState('');
 
   const emitLayout = useCallback(
     (next: GridLayoutState) => {
@@ -279,7 +293,13 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
     [queryState, commitQueryState],
   );
 
-  const setDensity = useCallback((next: Density) => emitLayout({ ...layout, density: next }), [layout, emitLayout]);
+  const setDensity = useCallback(
+    (next: Density) => {
+      emitLayout({ ...layout, density: next });
+      setAnnouncement(`${next === 'compact' ? 'Compact' : 'Comfortable'} density.`);
+    },
+    [layout, emitLayout],
+  );
 
   const moveColumn = useCallback(
     (activeId: string, overId: string) => {
@@ -292,6 +312,50 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
     },
     [layout, table, emitLayout],
   );
+
+  const moveColumnDirection = useCallback(
+    (id: string, direction: 'left' | 'right') => {
+      const current = layout.order.length ? layout.order : table.getAllLeafColumns().map((c) => c.id);
+      const from = current.indexOf(id);
+      const to = direction === 'left' ? from - 1 : from + 1;
+      if (from < 0 || to < 0 || to >= current.length) return;
+      emitLayout({ ...layout, order: arrayMove(current, from, to) });
+    },
+    [layout, table, emitLayout],
+  );
+
+  const resetLayout = useCallback(() => {
+    // Writes coded defaults AND overwrites the persisted record (clears personalization).
+    emitLayout(defaultLayout);
+    setAnnouncement('Layout reset to default.');
+  }, [defaultLayout, emitLayout]);
+
+  // ----- Live-region announcements (Δ9): sort / filter / page changes. -----
+  const announceSkip = useRef(true);
+  const labelFor = useCallback(
+    (id: string) => {
+      const col = columns.find((c) => ((c as { id?: string }).id ?? (c as { accessorKey?: string }).accessorKey) === id);
+      return col?.meta?.label ?? id;
+    },
+    [columns],
+  );
+  useEffect(() => {
+    if (announceSkip.current) {
+      announceSkip.current = false;
+      return;
+    }
+    setAnnouncement(
+      buildQueryAnnouncement({
+        sorting: queryState.sorting,
+        filters: queryState.filters,
+        globalSearch: queryState.globalSearch,
+        pagination: queryState.pagination,
+        total: table.getRowCount(),
+        pageCount: table.getPageCount(),
+        labelFor,
+      }),
+    );
+  }, [queryState.sorting, queryState.filters, queryState.globalSearch, queryState.pagination, labelFor]);
 
   return {
     table,
@@ -306,6 +370,10 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
     layout,
     isLayoutReady,
     moveColumn,
+    moveColumnDirection,
+    resetLayout,
+    pageSizeOptions,
+    announcement,
     features,
   };
 }

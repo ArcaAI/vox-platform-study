@@ -9,8 +9,8 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@arcaai/ui/components/shadcn/table';
 import { useSession } from '@/shared/auth';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
 import { FilterBar, FilterSearch, FilterSelect } from '@/shared/data/filter-bar';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
@@ -186,21 +186,6 @@ export function PipelinePolicyScreen() {
     );
     const showEmpty = !pending && !blockError && !overridesExist && selection === null;
 
-    const columns: DataTableColumn<MatrixRow>[] = [
-        { key: 'scope', header: 'Scope', mono: true, cell: (row) => row.label },
-        ...TOGGLE_COLUMNS.map((column) => ({
-            key: column.key,
-            header: column.heading,
-            mono: true,
-            cell: (row: MatrixRow) =>
-                row.pending ? (
-                    <Skeleton className="h-4 w-10" />
-                ) : (
-                    <PinCell tier={row.tier} row={row.row} keyName={column.key} rows={rows} showEffective={showEffective} />
-                ),
-        })),
-    ];
-
     const scopeIdFor = (tier: CascadeTier): string | null => (tier === 'DEPARTMENT' ? department : tier === 'DOCTOR' ? doctor : null);
     const selectedQuery = selection === 'TENANT' ? tenantRowQuery : selection === 'DEPARTMENT' ? departmentRowQuery : selection === 'DOCTOR' ? doctorRowQuery : null;
     const selectedLabel = matrixRows.find((row) => row.tier === selection)?.label ?? 'tenant';
@@ -272,13 +257,44 @@ export function PipelinePolicyScreen() {
                     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)_minmax(0,1.2fr)]">
                         <CascadeResolveCard column={chosenColumn} matrixRows={matrixRows} rows={rows} />
                         <div className="flex flex-col gap-2">
-                            <DataTable
-                                aria-label="Pipeline policy scope rows"
-                                columns={columns}
-                                rows={visibleRows}
-                                rowKey={(row) => row.tier}
-                                onRowClick={(row) => setSelectedTier(row.tier)}
-                            />
+                            {/* Fixed cascade matrix (tiers × toggle keys), not a paginated list —
+                                design-spec Rule 3 "non-list display" → the shadcn Table primitive. */}
+                            <div className="rounded-md border">
+                                <Table aria-label="Pipeline policy scope rows">
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="font-mono text-xs">Scope</TableHead>
+                                            {TOGGLE_COLUMNS.map((column) => (
+                                                <TableHead key={column.key} className="font-mono text-xs">
+                                                    {column.heading}
+                                                </TableHead>
+                                            ))}
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {visibleRows.map((matrixRow) => (
+                                            <TableRow key={matrixRow.tier} className="cursor-pointer" onClick={() => setSelectedTier(matrixRow.tier)}>
+                                                <TableCell className="font-mono text-xs">{matrixRow.label}</TableCell>
+                                                {TOGGLE_COLUMNS.map((column) => (
+                                                    <TableCell key={column.key} className="font-mono text-xs">
+                                                        {matrixRow.pending ? (
+                                                            <Skeleton className="h-4 w-10" />
+                                                        ) : (
+                                                            <PinCell
+                                                                tier={matrixRow.tier}
+                                                                row={matrixRow.row}
+                                                                keyName={column.key}
+                                                                rows={rows}
+                                                                showEffective={showEffective}
+                                                            />
+                                                        )}
+                                                    </TableCell>
+                                                ))}
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
                             <p className="text-muted-foreground text-xs">
                                 Cascade matrix &middot; row click {'\u2192'} scope editor &middot; {EM_DASH} = inherit from parent scope
                             </p>

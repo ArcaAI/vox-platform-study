@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { IconAlertTriangle, IconKey, IconPlus, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
+import { VirtualizedDataGrid, type ColumnDef } from '@arcaai/ui';
 import { Alert, AlertDescription, AlertTitle } from '@arcaai/ui/components/shadcn/alert';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
@@ -12,9 +13,9 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { GatewayError } from '@/shared/api';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { CopyButton } from '@/shared/copy-button';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
 import { formatDateTime, formatNumber, formatRelativeTime } from '@/shared/format';
 import { EmptyState } from '@/shared/state/empty-state';
+import { ErrorState } from '@/shared/state/error-state';
 import { useAccessKeys, useCreateAccessKey, useDeleteAccessKey } from '../api/hooks';
 import type { StorageAccessKey, StorageAccessKeyWithSecret } from '../api/types';
 
@@ -141,65 +142,86 @@ export function AccessKeysTab() {
 
     const rows = data ?? [];
 
-    const columns: DataTableColumn<StorageAccessKey>[] = [
+    const columns: ColumnDef<StorageAccessKey>[] = [
         {
-            key: 'name',
+            accessorKey: 'name',
             header: 'Name',
-            cell: (row) => (
+            meta: { label: 'Name' },
+            cell: ({ row }) => (
                 <span className="flex flex-col">
-                    <span className="font-medium">{row.name}</span>
-                    {row.description ? <span className="text-muted-foreground text-xs">{row.description}</span> : null}
+                    <span className="font-medium">{row.original.name}</span>
+                    {row.original.description ? <span className="text-muted-foreground text-xs">{row.original.description}</span> : null}
                 </span>
             ),
         },
         {
-            key: 'accessKeyId',
+            accessorKey: 'accessKeyId',
             header: 'Access key ID',
-            cell: (row) => (
+            meta: { label: 'Access key ID' },
+            cell: ({ row }) => (
                 <span className="flex items-center gap-1">
-                    <span className="font-mono text-xs">{row.accessKeyId}</span>
-                    <CopyButton value={row.accessKeyId} label={`Copy access key ID for ${row.name}`} />
+                    <span className="font-mono text-xs">{row.original.accessKeyId}</span>
+                    <CopyButton value={row.original.accessKeyId} label={`Copy access key ID for ${row.original.name}`} />
                 </span>
             ),
         },
         {
-            key: 'permissions',
+            id: 'permissions',
+            accessorFn: (row) => row.permissions.join(', '),
             header: 'Permissions',
-            cell: (row) => (row.permissions.length > 0 ? row.permissions.join(', ') : <span className="text-muted-foreground">{'\u2014'}</span>),
+            meta: { label: 'Permissions' },
+            cell: ({ row }) =>
+                row.original.permissions.length > 0 ? row.original.permissions.join(', ') : <span className="text-muted-foreground">{'\u2014'}</span>,
         },
         {
-            key: 'buckets',
+            id: 'buckets',
+            accessorFn: (row) => row.bucketIds.length,
             header: 'Buckets',
-            cell: (row) =>
-                row.bucketIds.length > 0 ? `${formatNumber(row.bucketIds.length)} scoped` : <span className="text-muted-foreground">All</span>,
+            meta: { label: 'Buckets' },
+            cell: ({ row }) =>
+                row.original.bucketIds.length > 0 ? `${formatNumber(row.original.bucketIds.length)} scoped` : <span className="text-muted-foreground">All</span>,
         },
         {
-            key: 'expires',
+            accessorKey: 'expiresAt',
             header: 'Expires',
-            cell: (row) => (row.expiresAt ? formatDateTime(row.expiresAt, 'date') : <span className="text-muted-foreground">Never</span>),
+            meta: { label: 'Expires' },
+            cell: ({ row }) => (row.original.expiresAt ? formatDateTime(row.original.expiresAt, 'date') : <span className="text-muted-foreground">Never</span>),
         },
         {
-            key: 'lastUsed',
+            accessorKey: 'lastUsedAt',
             header: 'Last used',
-            cell: (row) => <span className="text-muted-foreground">{row.lastUsedAt ? formatRelativeTime(row.lastUsedAt) : 'Never'}</span>,
+            meta: { label: 'Last used' },
+            cell: ({ row }) => <span className="text-muted-foreground">{row.original.lastUsedAt ? formatRelativeTime(row.original.lastUsedAt) : 'Never'}</span>,
         },
-        { key: 'created', header: 'Created', cell: (row) => <span className="text-muted-foreground">{formatDateTime(row.createdAt, 'date')}</span> },
         {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            className: 'w-12 text-right',
-            cell: (row) => (
-                <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`Delete access key ${row.name}`}
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        setDeleting(row);
-                    }}
-                >
-                    <IconTrash aria-hidden />
-                </Button>
+            accessorKey: 'createdAt',
+            header: 'Created',
+            meta: { label: 'Created' },
+            cell: ({ row }) => <span className="text-muted-foreground">{formatDateTime(row.original.createdAt, 'date')}</span>,
+        },
+        {
+            id: 'actions',
+            header: () => <span className="sr-only">Actions</span>,
+            meta: { label: 'Actions' },
+            enableSorting: false,
+            enableHiding: false,
+            enableResizing: false,
+            size: 56,
+            minSize: 56,
+            cell: ({ row }) => (
+                <div className="flex w-full justify-end">
+                    <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Delete access key ${row.original.name}`}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            setDeleting(row.original);
+                        }}
+                    >
+                        <IconTrash aria-hidden />
+                    </Button>
+                </div>
             ),
         },
     ];
@@ -226,15 +248,27 @@ export function AccessKeysTab() {
                     Create access key
                 </Button>
             </div>
-            <DataTable
+            <VirtualizedDataGrid<StorageAccessKey>
                 aria-label="Storage access keys"
                 columns={columns}
-                rows={rows}
-                rowKey={(row) => row.id}
+                data={rows}
+                getRowId={(row) => row.id}
+                height={360}
+                features={{
+                    columnReorder: false,
+                    columnResize: false,
+                    columnPinning: false,
+                    columnVisibility: false,
+                    rowSelection: false,
+                    globalSearch: false,
+                    facetedFilters: false,
+                    sorting: true,
+                }}
                 isLoading={isLoading}
                 error={error}
                 onRetry={() => refetch()}
-                empty={
+                errorState={(err) => <ErrorState error={err} onRetry={() => refetch()} />}
+                emptyState={
                     <EmptyState
                         icon={IconKey}
                         title="No access keys yet"
@@ -247,7 +281,6 @@ export function AccessKeysTab() {
                         }
                     />
                 }
-                skeletonRows={3}
             />
             <CreateAccessKeyDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={setCreated} />
             <SecretRevealDialog created={created} onClose={() => setCreated(null)} />

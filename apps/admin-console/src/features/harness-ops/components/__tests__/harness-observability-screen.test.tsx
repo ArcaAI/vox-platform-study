@@ -125,6 +125,9 @@ const GATE_QUEUE: GateQueue = {
 function stubRoutes(overrides: { audit?: Response | HarnessAuditList; workingTenantId?: string | null } = {}) {
     return installFetchStub(({ url }: RecordedCall) => {
         if (url === '/api/auth/session') return sessionPayload({ workingTenantId: overrides.workingTenantId });
+        // Best-effort per-user grid-layout persistence (TASK-423): the eval-runs grid
+        // loads its layout on mount; no saved layout in tests.
+        if (url.includes('/user/me/settings')) return [];
         if (url.startsWith('/api/hope/admin/harness/audit')) return overrides.audit ?? AUDIT;
         if (url.startsWith('/api/hope/admin/harness/eval-runs?')) return EVAL_RUNS;
         if (url === '/api/hope/admin/harness/eval-runs/run-1') return EVAL_RUN_DETAIL;
@@ -146,7 +149,7 @@ describe('HarnessObservabilityScreen', () => {
         expect(await screen.findByText('Chain intact')).toBeDefined();
         expect(await screen.findByText(/4,812 rows/)).toBeDefined();
         expect(await screen.findByText('GATE_DECISION')).toBeDefined();
-        expect(screen.getByRole('table', { name: 'WORM audit trail' })).toBeDefined();
+        expect(screen.getByRole('grid', { name: 'WORM audit trail' })).toBeDefined();
         expect(await screen.findByText(/waiting 38 min/)).toBeDefined();
         expect(screen.getByText('Breached SLA')).toBeDefined();
     });

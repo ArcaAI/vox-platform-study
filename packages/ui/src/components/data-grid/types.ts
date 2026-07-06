@@ -82,18 +82,31 @@ export interface VirtualizedDataGridProps<TData> extends BaseSurfaceProps, Async
 
   persistence?: GridPersistenceConfig;
 
+  /** Custom toolbar. Omit to render the default responsive `DataGridToolbar`. */
   toolbar?: React.ReactNode;
+  /** Selection action bar; shown only when ≥1 row is selected. */
   actionBar?: React.ReactNode;
   estimateRowHeight?: number;
 
-  /** Fixed viewport height for the virtualized scroll container. Default 480. */
+  /**
+   * Scroll-container height. When **unset (default)** the grid runs in
+   * fill-height mode (Δ1): the root is `flex min-h-0 flex-1 flex-col` and the
+   * scroll container is `h-full`, so it fills a flex parent under a sticky
+   * header. Pass a number/string for embedded/fixed grids (detail tabs, cards).
+   */
   height?: number | string;
+
+  /** Refetch is in flight — pager stays mounted, navigators disable + `aria-busy` (Δ7, zero CLS). */
+  isBusy?: boolean;
 
   /** Retry handler for the error state. */
   onRetry?: () => void;
 
   'aria-label'?: string;
 }
+
+/** Standardized admin page-size options (Δ7): `[25, 50, 100]`, default 25. */
+export const DEFAULT_PAGE_SIZE_OPTIONS: number[] = [25, 50, 100];
 
 export const DEFAULT_GRID_FEATURES: Required<GridFeatureFlags> = {
   globalSearch: true,

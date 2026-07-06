@@ -1,17 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { IconFilterOff, IconRefresh, IconTopologyStar3 } from '@tabler/icons-react';
 import { parseAsString, useQueryStates } from 'nuqs';
 import { useQueryClient } from '@tanstack/react-query';
+import { VirtualizedDataGrid, type ColumnDef, type DataQueryState } from '@arcaai/ui';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
 import { FilterBar, FilterSearch, FilterSelect, type FilterOption } from '@/shared/data/filter-bar';
-import { CursorPagination } from '@/shared/data/table-pagination';
+import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatDateTime, formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
+import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { harnessOpsKeys, useHarnessWorkflows } from '../api';
 import type { HarnessWorkflowSummary } from '../api';
@@ -43,14 +44,15 @@ function WorkflowsBody() {
         state: parseAsString.withDefault(''),
         type: parseAsString.withDefault(''),
     });
-    const [cursorStack, setCursorStack] = useState<string[]>([]);
+    // The Temporal cursor is ephemeral local state; the grid's cursor pager walks
+    // it via `queryState`, while search/type stay client-side over the loaded page.
+    const [cursor, setCursor] = useState<string | null>(null);
     const [selectedId, setSelectedId] = useState<string | null>(null);
 
-    const cursor = cursorStack.at(-1);
     const workflowsQuery = useHarnessWorkflows({
         status: state || undefined,
         limit: PAGE_SIZE,
-        pageToken: cursor,
+        pageToken: cursor ?? undefined,
     });
 
     const items = workflowsQuery.data?.items ?? [];
@@ -62,37 +64,45 @@ function WorkflowsBody() {
     });
     const hasFilters = Boolean(search || state || type);
 
+    const queryState = useMemo<DataQueryState>(
+        () => ({ pagination: { mode: 'cursor', cursor, limit: PAGE_SIZE }, sorting: [], filters: [], globalSearch: undefined }),
+        [cursor],
+    );
+    /** The grid's cursor pager drives prev/next by writing the visited token here. */
+    const setQueryState = (next: DataQueryState) => setCursor(next.pagination.mode === 'cursor' ? next.pagination.cursor : null);
+
     /** Any filter change restarts the Temporal cursor walk from the first page. */
     function updateFilters(patch: Parameters<typeof setParams>[0]) {
-        setCursorStack([]);
+        setCursor(null);
         void setParams(patch);
     }
 
-    const columns: DataTableColumn<HarnessWorkflowSummary>[] = [
+    const columns: ColumnDef<HarnessWorkflowSummary>[] = [
         {
-            key: 'workflow',
+            accessorKey: 'workflowId',
             header: 'Workflow',
-            mono: true,
-            cell: (row) => (
-                <span className="block max-w-56 truncate" title={row.workflowId}>
-                    {row.workflowId}
+            meta: { label: 'Workflow' },
+            cell: ({ row }) => (
+                <span className="block max-w-56 truncate font-mono text-xs" title={row.original.workflowId}>
+                    {row.original.workflowId}
                 </span>
             ),
         },
-        { key: 'type', header: 'Type', cell: (row) => workflowKind(row.workflowId) },
-        { key: 'state', header: 'State', cell: (row) => <WorkflowStatusBadge status={row.status} /> },
+        { id: 'type', accessorFn: (row) => workflowKind(row.workflowId), header: 'Type', meta: { label: 'Type' }, cell: ({ row }) => workflowKind(row.original.workflowId) },
+        { accessorKey: 'status', header: 'State', meta: { label: 'State' }, cell: ({ row }) => <WorkflowStatusBadge status={row.original.status} /> },
         {
-            key: 'started',
+            accessorKey: 'startedAt',
             header: 'Started',
-            cell: (row) => (
-                <span className="whitespace-nowrap" title={row.startedAt ? `${formatDateTime(row.startedAt)} (local)` : undefined}>
-                    {formatRelativeTime(row.startedAt)}
+            meta: { label: 'Started' },
+            cell: ({ row }) => (
+                <span className="whitespace-nowrap" title={row.original.startedAt ? `${formatDateTime(row.original.startedAt)} (local)` : undefined}>
+                    {formatRelativeTime(row.original.startedAt)}
                 </span>
             ),
         },
     ];
 
-    const empty = hasFilters ? (
+    const emptyState = hasFilters ? (
         <EmptyState
             icon={IconFilterOff}
             title="No workflows match the filter"
@@ -161,26 +171,40 @@ function WorkflowsBody() {
             <div className="grid gap-4 xl:grid-cols-4">
                 <WorkflowDetailDrawer workflowId={selectedId} />
                 <div className="flex min-w-0 flex-col gap-3 xl:col-span-2">
-                    <DataTable
+                    {/* The grid stays mounted across filter changes so its per-user
+                        persisted column layout loads once (no skeleton/layout flash).
+                        A filter change resets the Temporal cursor to page 1 in
+                        `updateFilters`; the forward-only cursor walk is preserved. */}
+                    <VirtualizedDataGrid<HarnessWorkflowSummary>
                         aria-label="Harness workflows"
                         columns={columns}
-                        rows={rows}
-                        rowKey={(row) => row.workflowId}
+                        data={rows}
+                        getRowId={(row) => row.workflowId}
+                        height={480}
+                        persistence={gridPersistence('harness-workflows')}
+                        manual={{ pagination: true }}
+                        rowCount={rows.length}
+                        pageMode="cursor"
+                        cursor={{ hasMore: Boolean(workflowsQuery.data?.nextPageToken), nextCursor: workflowsQuery.data?.nextPageToken }}
+                        queryState={queryState}
+                        onQueryStateChange={setQueryState}
+                        features={{
+                            columnReorder: true,
+                            columnResize: true,
+                            columnPinning: true,
+                            columnVisibility: true,
+                            rowSelection: false,
+                            globalSearch: false,
+                            facetedFilters: false,
+                            sorting: false,
+                        }}
                         isLoading={workflowsQuery.isLoading}
+                        isBusy={workflowsQuery.isFetching && !workflowsQuery.isLoading}
                         error={workflowsQuery.error}
                         onRetry={() => void workflowsQuery.refetch()}
-                        empty={empty}
+                        errorState={(err) => <ErrorState error={err} onRetry={() => void workflowsQuery.refetch()} />}
+                        emptyState={emptyState}
                         onRowClick={(row) => setSelectedId(row.workflowId)}
-                    />
-                    <CursorPagination
-                        hasPrev={cursorStack.length > 0}
-                        hasNext={Boolean(workflowsQuery.data?.nextPageToken)}
-                        onPrev={() => setCursorStack((stack) => stack.slice(0, -1))}
-                        onNext={() => {
-                            const next = workflowsQuery.data?.nextPageToken;
-                            if (next) setCursorStack((stack) => [...stack, next]);
-                        }}
-                        shownCount={rows.length}
                     />
                 </div>
                 <SignalsLifecyclePanel workflowId={selectedId} />

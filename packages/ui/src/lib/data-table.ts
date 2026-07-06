@@ -8,6 +8,8 @@ export function getColumnPinningStyle<TData>({ column, withBorder = false }: { c
   const isFirstRightPinnedColumn = isPinned === 'right' && column.getIsFirstColumn('right');
 
   return {
+    // Divider shadow only on the boundary cell, and only when the caller reports
+    // horizontal overflow (`withBorder`) — otherwise it is visual noise (Δ5).
     boxShadow: withBorder
       ? isLastLeftPinnedColumn
         ? '-4px 0 4px -4px var(--border) inset'
@@ -17,9 +19,12 @@ export function getColumnPinningStyle<TData>({ column, withBorder = false }: { c
       : undefined,
     left: isPinned === 'left' ? `${column.getStart('left')}px` : undefined,
     right: isPinned === 'right' ? `${column.getAfter('right')}px` : undefined,
-    opacity: isPinned ? 0.97 : 1,
     position: isPinned ? 'sticky' : 'relative',
-    background: isPinned ? 'var(--background)' : 'var(--background)',
+    // Pinned cells inherit the row background so a selected row's `bg-accent`
+    // (or hover) shows through the pinned column instead of a hardcoded surface
+    // colour (Δ5). The row itself paints an opaque background so the pinned
+    // cell stays opaque over horizontally-scrolling content.
+    background: isPinned ? 'inherit' : undefined,
     width: column.getSize(),
     zIndex: isPinned ? 1 : undefined,
   };

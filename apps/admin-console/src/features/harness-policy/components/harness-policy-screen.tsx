@@ -8,8 +8,8 @@ import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@arcaai/ui/components/shadcn/table';
 import { useSession } from '@/shared/auth';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
 import { formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
@@ -25,7 +25,7 @@ import {
 } from '../api';
 import { HarnessPolicyForm } from './harness-policy-form';
 import { LiveConfigTab } from './live-config-tab';
-import { fieldDisplayValue, POLICY_FIELDS, type PolicyField } from './policy-fields';
+import { fieldDisplayValue, POLICY_FIELDS } from './policy-fields';
 
 const TAB_VALUES = ['policy', 'live', 'global'] as const;
 
@@ -82,19 +82,32 @@ function SettingsComparisonGrid({
     globalPolicy: HarnessPolicy | null;
     isElevated: boolean;
 }) {
-    const columns: DataTableColumn<PolicyField>[] = [
-        { key: 'setting', header: 'Setting', mono: true, cell: (field) => field.key },
-        { key: 'tenant', header: 'Tenant', mono: true, cell: (field) => fieldDisplayValue(field, policy) },
-        {
-            key: 'global',
-            header: 'Global default',
-            mono: true,
-            cell: (field) => (globalPolicy ? fieldDisplayValue(field, globalPolicy) : <span className="text-muted-foreground">{'\u2014'}</span>),
-        },
-    ];
+    // Fixed 3-column comparison of one resolved record's fields (design-spec Rule 3
+    // "non-list display") — the shadcn Table primitive, not a data grid.
     return (
         <div className="flex flex-col gap-2">
-            <DataTable aria-label="Tenant vs global default settings" columns={columns} rows={POLICY_FIELDS} rowKey={(field) => field.key} />
+            <div className="rounded-md border">
+                <Table aria-label="Tenant vs global default settings">
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead className="font-mono text-xs">Setting</TableHead>
+                            <TableHead className="font-mono text-xs">Tenant</TableHead>
+                            <TableHead className="font-mono text-xs">Global default</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {POLICY_FIELDS.map((field) => (
+                            <TableRow key={field.key}>
+                                <TableCell className="font-mono text-xs">{field.key}</TableCell>
+                                <TableCell className="font-mono text-xs">{fieldDisplayValue(field, policy)}</TableCell>
+                                <TableCell className="font-mono text-xs">
+                                    {globalPolicy ? fieldDisplayValue(field, globalPolicy) : <span className="text-muted-foreground">{'\u2014'}</span>}
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
             {!isElevated ? (
                 <p className="text-muted-foreground text-xs">The global default column is visible to global admins only (platform-asserted read).</p>
             ) : null}

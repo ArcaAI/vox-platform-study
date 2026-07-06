@@ -2,8 +2,9 @@
 
 import { useState, type FormEvent } from 'react';
 import { IconBucket, IconBuilding, IconDatabase, IconDots, IconFilterOff, IconFolderOpen, IconTrash } from '@tabler/icons-react';
-import { parseAsString, useQueryState, useQueryStates } from 'nuqs';
+import { parseAsString, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
+import { VirtualizedDataGrid, type ColumnDef } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
@@ -22,11 +23,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/
 import { GatewayError } from '@/shared/api';
 import { useSession } from '@/shared/auth';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { FilterBar, FilterSearch, FilterSelect, type FilterOption } from '@/shared/data/filter-bar';
+import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatBytes, formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
+import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useBuckets, useDeleteBucket, useProvisionTenantBuckets } from '../api/hooks';
 import type { TenantBucket, TenantBucketPurpose } from '../api/types';
@@ -43,11 +44,6 @@ const PURPOSE_LABELS: Record<TenantBucketPurpose, string> = {
     MISC: 'Misc',
     CUSTOM: 'Custom',
 };
-
-const PURPOSE_OPTIONS: FilterOption[] = (Object.keys(PURPOSE_LABELS) as TenantBucketPurpose[]).map((purpose) => ({
-    value: purpose,
-    label: PURPOSE_LABELS[purpose],
-}));
 
 function BucketRowActions({ bucket, onBrowse, onDelete }: { bucket: TenantBucket; onBrowse: () => void; onDelete: () => void }) {
     return (
@@ -73,80 +69,85 @@ function BucketRowActions({ bucket, onBrowse, onDelete }: { bucket: TenantBucket
     );
 }
 
-/** Frame 14 buckets list: client-side filters over the working tenant's buckets. */
+/** Frame 14 buckets list: embedded grid over the working tenant's buckets (client search). */
 function BucketsTab({ onProvision }: { onProvision: () => void }) {
     const { data, isLoading, error, refetch } = useBuckets();
     const deleteBucket = useDeleteBucket();
-    const [{ search, purpose }, setParams] = useQueryStates({
-        search: parseAsString.withDefault(''),
-        purpose: parseAsString.withDefault(''),
-    });
     const [browsing, setBrowsing] = useState<TenantBucket | null>(null);
     const [deleting, setDeleting] = useState<TenantBucket | null>(null);
 
     const buckets = data ?? [];
-    const rows = buckets.filter((bucket) => {
-        if (purpose && bucket.purpose !== purpose) return false;
-        if (!search) return true;
-        const needle = search.toLowerCase();
-        return bucket.name.toLowerCase().includes(needle) || bucket.slug.toLowerCase().includes(needle);
-    });
-    const hasFilters = Boolean(search || purpose);
 
-    const columns: DataTableColumn<TenantBucket>[] = [
-        { key: 'name', header: 'Name', cell: (row) => <span className="font-medium">{row.name}</span> },
-        { key: 'slug', header: 'Slug', mono: true, cell: (row) => row.slug },
-        { key: 'purpose', header: 'Purpose', cell: (row) => <Badge variant="outline">{PURPOSE_LABELS[row.purpose]}</Badge> },
+    const columns: ColumnDef<TenantBucket>[] = [
+        { accessorKey: 'name', header: 'Name', meta: { label: 'Name' }, cell: ({ row }) => <span className="font-medium">{row.original.name}</span> },
+        { accessorKey: 'slug', header: 'Slug', meta: { label: 'Slug' }, cell: ({ row }) => <span className="font-mono text-xs">{row.original.slug}</span> },
         {
-            key: 'type',
+            accessorKey: 'purpose',
+            header: 'Purpose',
+            meta: { label: 'Purpose' },
+            cell: ({ row }) => <Badge variant="outline">{PURPOSE_LABELS[row.original.purpose]}</Badge>,
+        },
+        {
+            id: 'type',
+            accessorFn: (row) => row.bucketType,
             header: 'Type',
-            cell: (row) => <Badge variant={row.bucketType === 'SYSTEM' ? 'secondary' : 'outline'}>{row.bucketType === 'SYSTEM' ? 'System' : 'Custom'}</Badge>,
+            meta: { label: 'Type' },
+            cell: ({ row }) => (
+                <Badge variant={row.original.bucketType === 'SYSTEM' ? 'secondary' : 'outline'}>{row.original.bucketType === 'SYSTEM' ? 'System' : 'Custom'}</Badge>
+            ),
         },
         {
-            key: 'quota',
+            accessorKey: 'quotaBytes',
             header: 'Quota',
-            cell: (row) =>
-                row.quotaBytes != null ? <span className="tabular-nums">{formatBytes(row.quotaBytes)}</span> : <span className="text-muted-foreground">{'\u2014'}</span>,
+            meta: { label: 'Quota' },
+            cell: ({ row }) =>
+                row.original.quotaBytes != null ? (
+                    <span className="tabular-nums">{formatBytes(row.original.quotaBytes)}</span>
+                ) : (
+                    <span className="text-muted-foreground">{'\u2014'}</span>
+                ),
         },
-        { key: 'status', header: 'Status', cell: (row) => <ResourceStatusBadge status={row.resourceStatus} /> },
+        { accessorKey: 'resourceStatus', header: 'Status', meta: { label: 'Status' }, cell: ({ row }) => <ResourceStatusBadge status={row.original.resourceStatus} /> },
         {
-            key: 'updated',
+            accessorKey: 'updatedAt',
             header: 'Updated',
-            cell: (row) => <span className="text-muted-foreground">{formatRelativeTime(row.updatedAt)}</span>,
+            meta: { label: 'Updated' },
+            cell: ({ row }) => <span className="text-muted-foreground">{formatRelativeTime(row.original.updatedAt)}</span>,
         },
         {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            className: 'w-12 text-right',
-            cell: (row) => <BucketRowActions bucket={row} onBrowse={() => setBrowsing(row)} onDelete={() => setDeleting(row)} />,
+            id: 'actions',
+            header: () => <span className="sr-only">Actions</span>,
+            meta: { label: 'Actions' },
+            enableSorting: false,
+            enableHiding: false,
+            enableResizing: false,
+            size: 56,
+            minSize: 56,
+            cell: ({ row }) => (
+                <div className="flex w-full justify-end">
+                    <BucketRowActions bucket={row.original} onBrowse={() => setBrowsing(row.original)} onDelete={() => setDeleting(row.original)} />
+                </div>
+            ),
         },
     ];
 
-    const empty = hasFilters ? (
-        <EmptyState
-            icon={IconFilterOff}
-            title="No buckets match your filters"
-            description="Try a different search or clear the filters."
-            action={
-                <Button variant="outline" onClick={() => setParams({ search: null, purpose: null })}>
-                    <IconFilterOff aria-hidden />
-                    Clear filters
-                </Button>
-            }
-        />
-    ) : (
-        <EmptyState
-            icon={IconBucket}
-            title="No buckets provisioned yet"
-            description="Buckets are created automatically on first upload, or provision the standard set for a tenant."
-            action={
-                <Button onClick={onProvision}>
-                    <IconDatabase aria-hidden />
-                    Provision buckets
-                </Button>
-            }
-        />
-    );
+    // No buckets at all → provision CTA; buckets exist but the search hides them → filtered-empty.
+    const emptyState =
+        buckets.length === 0 ? (
+            <EmptyState
+                icon={IconBucket}
+                title="No buckets provisioned yet"
+                description="Buckets are created automatically on first upload, or provision the standard set for a tenant."
+                action={
+                    <Button onClick={onProvision}>
+                        <IconDatabase aria-hidden />
+                        Provision buckets
+                    </Button>
+                }
+            />
+        ) : (
+            <EmptyState icon={IconFilterOff} title="No buckets match your search" description="Try a different search term or clear the search box." />
+        );
 
     function handleDeleteConfirmed() {
         if (!deleting) return;
@@ -164,30 +165,28 @@ function BucketsTab({ onProvision }: { onProvision: () => void }) {
 
     return (
         <div className="flex flex-col gap-4">
-            <FilterBar shown={rows.length} total={buckets.length}>
-                <FilterSearch
-                    label="Search buckets"
-                    placeholder={'Search buckets\u2026'}
-                    value={search}
-                    onChange={(value) => setParams({ search: value || null })}
-                />
-                <FilterSelect
-                    id="buckets-purpose-filter"
-                    label="Purpose"
-                    value={purpose}
-                    onChange={(value) => setParams({ purpose: value || null })}
-                    options={PURPOSE_OPTIONS}
-                />
-            </FilterBar>
-            <DataTable
+            <VirtualizedDataGrid<TenantBucket>
                 aria-label="Tenant buckets"
                 columns={columns}
-                rows={rows}
-                rowKey={(row) => row.id}
+                data={buckets}
+                getRowId={(row) => row.id}
+                height={360}
+                persistence={gridPersistence('tenant-storage-buckets')}
+                features={{
+                    columnReorder: true,
+                    columnResize: true,
+                    columnPinning: true,
+                    columnVisibility: true,
+                    rowSelection: false,
+                    globalSearch: true,
+                    facetedFilters: false,
+                    sorting: true,
+                }}
                 isLoading={isLoading}
                 error={error}
                 onRetry={() => refetch()}
-                empty={empty}
+                errorState={(err) => <ErrorState error={err} onRetry={() => refetch()} />}
+                emptyState={emptyState}
                 onRowClick={(row) => setBrowsing(row)}
             />
             <BucketBrowserSheet bucket={browsing} onOpenChange={(open) => !open && setBrowsing(null)} />

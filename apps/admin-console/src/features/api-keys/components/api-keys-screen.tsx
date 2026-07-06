@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { IconChartBar, IconDots, IconFilterOff, IconKey, IconPencil, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react';
-import { parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
 import { toast } from 'sonner';
+import { type ColumnDef, type SortRule } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import {
@@ -14,11 +14,10 @@ import {
     DropdownMenuTrigger,
 } from '@arcaai/ui/components/shadcn/dropdown-menu';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
-import type { ListParams } from '@/shared/api';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { FilterBar, FilterSearch, FilterSelect, type FilterOption } from '@/shared/data/filter-bar';
-import { TablePagination } from '@/shared/data/table-pagination';
+import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid';
+import { normalizeList } from '@/shared/data/envelopes';
+import type { FilterOption } from '@/shared/data/filter-bar';
 import { formatDateTime, formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
@@ -29,8 +28,9 @@ import { ApiKeyUsageSheet } from './api-key-usage-sheet';
 import { KeyStatusBadge } from './key-status-badge';
 import { RawKeyDialog, type RawKeyResult } from './raw-key-dialog';
 
-const DEFAULT_SORT = 'updatedAt:desc';
-const DEFAULT_LIMIT = 25;
+/** Omni search targets (→ gateway `searchFields`) and the implicit sort — stable refs for the hook. */
+const API_KEY_SEARCH_FIELDS = ['keyName', 'keyPrefix'];
+const API_KEY_DEFAULT_SORT: SortRule[] = [{ id: 'updatedAt', desc: true }];
 
 const STATUS_OPTIONS: FilterOption[] = [
     { value: 'ACTIVE', label: 'Active' },
@@ -63,11 +63,11 @@ function RowActions({ apiKey, onAction }: { apiKey: ApiKey; onAction: (action: R
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label={`Open actions for ${apiKey.keyName}`}>
+                <Button variant="ghost" size="icon-sm" aria-label={`Open actions for ${apiKey.keyName}`} onClick={(event) => event.stopPropagation()}>
                     <IconDots aria-hidden />
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
                 <DropdownMenuItem onSelect={() => onAction('usage')}>
                     <IconChartBar aria-hidden />
                     View usage
@@ -99,38 +99,25 @@ function RowActions({ apiKey, onAction }: { apiKey: ApiKey; onAction: (action: R
 }
 
 /**
- * Frame 23 — API keys (/api-keys, tier 20-29 shared). Paginated list with
- * search/status/scope filters (URL-synced), create/edit dialogs, usage
- * drawer, rotate/revoke/delete confirm flows and the one-time raw-key
+ * Frame 23 — API keys (/api-keys, tier 20-29 shared). AdminDataGrid (omni
+ * search + typed status/scope filters + sort + pager), create/edit dialogs,
+ * usage drawer, rotate/revoke/delete confirm flows and the one-time raw-key
  * contract: the secret from create or rotate is displayed exactly once.
  */
 export function ApiKeysScreen() {
-    const [{ q, status, scope, page, limit, sort }, setParams] = useQueryStates({
-        q: parseAsString.withDefault(''),
-        status: parseAsString.withDefault(''),
-        scope: parseAsString.withDefault(''),
-        page: parseAsInteger.withDefault(0),
-        limit: parseAsInteger.withDefault(DEFAULT_LIMIT),
-        sort: parseAsString.withDefault(''),
-    });
-
-    const filters = [status && `keyStatus:${status}`, scope && `scopes:${scope}`].filter(Boolean).join(',');
-    const listParams: ListParams = {
-        page,
-        limit,
-        sort: sort || DEFAULT_SORT,
-        ...(q ? { search: q, searchFields: 'keyName,keyPrefix' } : {}),
-        ...(filters ? { filters } : {}),
-    };
-    const { data, isLoading, error, refetch } = useApiKeys(listParams);
+    const query = useAdminGridParams({ searchFields: API_KEY_SEARCH_FIELDS, defaultSort: API_KEY_DEFAULT_SORT });
+    const { data, isLoading, isFetching, error, refetch } = useApiKeys(query.listParams);
     const scopesQuery = useApiKeyScopes();
-    const rows = data?.data ?? [];
-    const total = data?.count ?? 0;
-    const hasFilters = Boolean(q || status || scope);
+    const { rows, total } = normalizeList<ApiKey>(data);
+    const totalCount = total ?? 0;
 
-    const scopeOptions: FilterOption[] = Object.values(scopesQuery.data ?? {})
-        .flat()
-        .map(({ scope: value }) => ({ value, label: value }));
+    const scopeOptions = useMemo<FilterOption[]>(
+        () =>
+            Object.values(scopesQuery.data ?? {})
+                .flat()
+                .map(({ scope: value }) => ({ value, label: value })),
+        [scopesQuery.data],
+    );
 
     const [createOpen, setCreateOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<ApiKey | null>(null);
@@ -188,68 +175,86 @@ export function ApiKeysScreen() {
         });
     }
 
-    const columns: DataTableColumn<ApiKey>[] = [
-        { key: 'name', header: 'Name', sortKey: 'keyName', cell: (row) => <span className="font-medium">{row.keyName}</span> },
-        { key: 'prefix', header: 'Prefix', mono: true, cell: (row) => `${row.keyPrefix}\u2026` },
-        { key: 'scopes', header: 'Scopes', cell: (row) => <ScopeBadges scopes={row.scopes} /> },
-        { key: 'status', header: 'Status', cell: (row) => <KeyStatusBadge apiKey={row} /> },
+    const columns: ColumnDef<ApiKey>[] = [
         {
-            key: 'lastUsed',
+            accessorKey: 'keyName',
+            header: 'Name',
+            meta: { label: 'Name' },
+            cell: ({ row }) => <span className="font-medium">{row.original.keyName}</span>,
+            size: 200,
+            minSize: 140,
+        },
+        {
+            id: 'prefix',
+            header: 'Prefix',
+            enableSorting: false,
+            meta: { label: 'Prefix' },
+            cell: ({ row }) => <span className="font-mono text-xs">{`${row.original.keyPrefix}\u2026`}</span>,
+            size: 120,
+        },
+        {
+            accessorKey: 'scopes',
+            header: 'Scopes',
+            enableSorting: false,
+            meta: { label: 'Scopes', variant: 'select', options: scopeOptions },
+            cell: ({ row }) => <ScopeBadges scopes={row.original.scopes} />,
+            size: 220,
+        },
+        {
+            accessorKey: 'keyStatus',
+            header: 'Status',
+            enableSorting: false,
+            meta: { label: 'Status', variant: 'select', options: STATUS_OPTIONS },
+            cell: ({ row }) => <KeyStatusBadge apiKey={row.original} />,
+            size: 130,
+        },
+        {
+            id: 'lastUsed',
             header: 'Last used',
-            cell: (row) => <span className="text-muted-foreground">{row.lastUsedAt ? formatRelativeTime(row.lastUsedAt) : 'Never'}</span>,
+            enableSorting: false,
+            meta: { label: 'Last used' },
+            cell: ({ row }) => <span className="text-muted-foreground">{row.original.lastUsedAt ? formatRelativeTime(row.original.lastUsedAt) : 'Never'}</span>,
+            size: 140,
         },
         {
-            key: 'expires',
+            id: 'expires',
             header: 'Expires',
-            cell: (row) => <span className="text-muted-foreground">{row.expiresAt ? formatDateTime(row.expiresAt, 'date') : 'Never'}</span>,
+            enableSorting: false,
+            meta: { label: 'Expires' },
+            cell: ({ row }) => <span className="text-muted-foreground">{row.original.expiresAt ? formatDateTime(row.original.expiresAt, 'date') : 'Never'}</span>,
+            size: 130,
         },
         {
-            key: 'created',
+            accessorKey: 'createdAt',
             header: 'Created',
-            sortKey: 'createdAt',
-            cell: (row) => <span className="text-muted-foreground">{formatDateTime(row.createdAt, 'date')}</span>,
+            meta: { label: 'Created' },
+            cell: ({ row }) => <span className="text-muted-foreground">{formatDateTime(row.original.createdAt, 'date')}</span>,
+            size: 130,
         },
         {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            className: 'w-12 text-right',
-            cell: (row) => <RowActions apiKey={row} onAction={(action) => handleRowAction(row, action)} />,
+            id: 'actions',
+            header: () => <span className="sr-only">Actions</span>,
+            meta: { label: 'Actions' },
+            enableSorting: false,
+            enableHiding: false,
+            enableResizing: false,
+            size: 56,
+            minSize: 56,
+            cell: ({ row }) => (
+                <div className="flex w-full justify-end">
+                    <RowActions apiKey={row.original} onAction={(action) => handleRowAction(row.original, action)} />
+                </div>
+            ),
         },
     ];
 
-    const empty = hasFilters ? (
-        <EmptyState
-            icon={IconFilterOff}
-            title="No keys match your filters"
-            description="Try a different search or clear the filters."
-            action={
-                <Button variant="outline" onClick={() => setParams({ q: null, status: null, scope: null, page: null })}>
-                    <IconFilterOff aria-hidden />
-                    Clear filters
-                </Button>
-            }
-        />
-    ) : (
-        <EmptyState
-            icon={IconKey}
-            title="No API keys yet"
-            description="Create the first key to let services call the platform. The secret is shown once on create."
-            action={
-                <Button onClick={() => setCreateOpen(true)}>
-                    <IconPlus aria-hidden />
-                    Create key
-                </Button>
-            }
-        />
-    );
-
     return (
-        <div className="flex flex-col gap-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
             <PageHeader
                 title="API keys"
                 meta={
                     <>
-                        {data ? <span>{formatNumber(total)} keys</span> : <Skeleton className="h-4 w-16" />}
+                        {data ? <span>{formatNumber(totalCount)} keys</span> : <Skeleton className="h-4 w-16" />}
                         <span aria-hidden>&middot;</span>
                         <span>secret shown once on create</span>
                         <span aria-hidden className="text-muted-foreground font-mono text-xs">
@@ -264,46 +269,44 @@ export function ApiKeysScreen() {
                     </Button>
                 }
             />
-            <FilterBar shown={rows.length} total={total}>
-                <FilterSearch
-                    label="Search keys"
-                    placeholder={'Search keys\u2026'}
-                    value={q}
-                    onChange={(value) => setParams({ q: value || null, page: null })}
-                />
-                <FilterSelect
-                    id="api-keys-status"
-                    label="Status"
-                    value={status}
-                    onChange={(value) => setParams({ status: value || null, page: null })}
-                    options={STATUS_OPTIONS}
-                />
-                <FilterSelect
-                    id="api-keys-scope"
-                    label="Scope"
-                    value={scope}
-                    onChange={(value) => setParams({ scope: value || null, page: null })}
-                    options={scopeOptions}
-                />
-            </FilterBar>
-            <DataTable
+            <AdminDataGrid<ApiKey>
+                gridId="api-keys"
                 aria-label="API keys"
                 columns={columns}
                 rows={rows}
-                rowKey={(row) => row.id}
+                total={totalCount}
+                queryState={query.queryState}
+                onQueryStateChange={query.setQueryState}
                 isLoading={isLoading}
+                isBusy={isFetching && !isLoading}
                 error={error}
                 onRetry={() => refetch()}
-                empty={empty}
-                sort={sort || DEFAULT_SORT}
-                onSortChange={(next) => setParams({ sort: next === DEFAULT_SORT ? null : next, page: null })}
-            />
-            <TablePagination
-                page={page}
-                limit={limit}
-                total={total}
-                onPageChange={(next) => setParams({ page: next || null })}
-                onLimitChange={(next) => setParams({ limit: next === DEFAULT_LIMIT ? null : next, page: null })}
+                emptyState={
+                    <EmptyState
+                        icon={IconKey}
+                        title="No API keys yet"
+                        description="Create the first key to let services call the platform. The secret is shown once on create."
+                        action={
+                            <Button onClick={() => setCreateOpen(true)}>
+                                <IconPlus aria-hidden />
+                                Create key
+                            </Button>
+                        }
+                    />
+                }
+                emptyFilteredState={
+                    <EmptyState
+                        icon={IconFilterOff}
+                        title="No keys match your filters"
+                        description="Try a different search or clear the filters."
+                        action={
+                            <Button variant="outline" onClick={() => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] })}>
+                                <IconFilterOff aria-hidden />
+                                Clear filters
+                            </Button>
+                        }
+                    />
+                }
             />
             {createOpen ? (
                 <ApiKeyFormDialog

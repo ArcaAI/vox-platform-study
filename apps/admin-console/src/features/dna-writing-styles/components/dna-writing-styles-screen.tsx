@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { IconDna, IconFilterOff } from '@tabler/icons-react';
-import { parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
+import { parseAsString, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
+import { VirtualizedDataGrid, type ColumnDef, type DataQueryState } from '@arcaai/ui';
 import { StatCard } from '@arcaai/ui/components/metrics/stat-card';
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
 import { StatusBadge, type StatusColorRole } from '@arcaai/ui/components/shared/status-badge';
@@ -12,10 +13,11 @@ import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card, CardAction, CardContent, CardHeader } from '@arcaai/ui/components/shadcn/card';
 import { Progress } from '@arcaai/ui/components/shadcn/progress';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { FilterBar, FilterSearch, FilterSelect, type FilterOption } from '@/shared/data/filter-bar';
+import { useAdminGridParams } from '@/shared/data/admin-data-grid';
+import { normalizeList } from '@/shared/data/envelopes';
+import type { FilterOption } from '@/shared/data/filter-bar';
+import { gridPersistence } from '@/shared/data/grid-persistence';
 import { NameWithId } from '@/shared/data/name-with-id';
-import { TablePagination } from '@/shared/data/table-pagination';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
@@ -28,13 +30,22 @@ import type { DnaJobStatus, DnaReport, ListDnaReportsParams, UseDnaJobProgressRe
 import { DoctorDetailPanel } from './doctor-detail-panel';
 import { GenerateReportDialog } from './generate-report-dialog';
 
-const DEFAULT_LIMIT = 25;
+/** Embedded grid (design-spec D2): fixed viewport in the master-detail middle column. */
+const DNA_GRID_HEIGHT = 480;
 
 /**
  * Frame 33 freshness note: the list endpoint has no freshness/staleness param
- * — the only real toggle is `includeDisabled`, surfaced here instead.
+ * — the only real toggle is `includeDisabled`. Modelled as the Status column's
+ * faceted filter since the endpoint has no status-equality param.
  */
-const DISABLED_OPTIONS: FilterOption[] = [{ value: 'true', label: 'Shown' }];
+const DISABLED_OPTIONS: FilterOption[] = [{ value: 'true', label: 'Include disabled' }];
+
+/** Scalar value of a single-value faceted filter from the grid query-state. */
+function scalarFilterValue(state: DataQueryState, id: string): string {
+    const rule = state.filters.find((filter) => filter.id === id);
+    if (!rule) return '';
+    return Array.isArray(rule.value) ? String(rule.value[0] ?? '') : String(rule.value ?? '');
+}
 
 const JOB_STATE_LABELS: Record<DnaJobStatus['status'], string> = {
     queued: 'Queued',
@@ -150,20 +161,23 @@ function DashboardCard({
 }
 
 function DnaWritingStylesBody() {
-    const [{ doctor, disabled, page, limit, selected }, setParams] = useQueryStates({
-        doctor: parseAsString.withDefault(''),
-        disabled: parseAsString.withDefault(''),
-        // ONE-based (this controller deviates from the zero-based convention).
-        page: parseAsInteger.withDefault(1),
-        limit: parseAsInteger.withDefault(DEFAULT_LIMIT),
-        selected: parseAsString.withDefault(''),
-    });
+    // Grid query-state (doctor/disabled filters, page, limit) lives in the URL
+    // via the standard codec; `selected` (the detail-panel doctor) stays its own
+    // param. Filters map to the endpoint's discrete doctorId/includeDisabled.
+    const query = useAdminGridParams();
+    const [selected, setSelected] = useQueryState('selected', parseAsString.withDefault(''));
+
+    const doctor = scalarFilterValue(query.queryState, 'doctorId');
+    const includeDisabled = scalarFilterValue(query.queryState, 'resourceStatus') === 'true';
+    const page = query.queryState.pagination.mode === 'offset' ? query.queryState.pagination.page : 0;
+    const limit = query.queryState.pagination.limit;
 
     const listParams: ListDnaReportsParams = {
-        page,
+        // URL page is 0-based; this controller is ONE-based.
+        page: page + 1,
         limit,
         ...(doctor ? { doctorId: doctor } : {}),
-        ...(disabled === 'true' ? { includeDisabled: true } : {}),
+        ...(includeDisabled ? { includeDisabled: true } : {}),
     };
     const reports = useDnaReports(listParams);
     const dashboard = useDnaDashboard();
@@ -180,29 +194,58 @@ function DnaWritingStylesBody() {
         },
     });
 
-    const rows = reports.data?.data ?? [];
-    const total = reports.data?.count ?? 0;
-    const hasFilters = Boolean(doctor || disabled === 'true');
+    const { rows, total } = normalizeList<DnaReport>(reports.data);
+    const totalCount = total ?? 0;
+    const hasFilters = Boolean(doctor || includeDisabled);
 
-    const columns: DataTableColumn<DnaReport>[] = [
-        { key: 'doctor', header: 'Doctor', cell: (row) => <NameWithId name={row.doctorUsername} id={row.doctorId} /> },
-        {
-            key: 'version',
-            header: 'Version',
-            cell: (row) => (
-                <span className="flex items-center gap-2">
-                    <span className="tabular-nums">v{row.currentVersionNumber}</span>
-                    {row.isLatest ? <Badge variant="secondary">Latest</Badge> : null}
-                </span>
-            ),
-        },
-        { key: 'status', header: 'Status', cell: (row) => <ResourceStatusBadge status={row.resourceStatus} /> },
-        {
-            key: 'updated',
-            header: 'Updated',
-            cell: (row) => <span className="text-muted-foreground">{formatRelativeTime(row.updatedAt)}</span>,
-        },
-    ];
+    const clearFilters = () => query.setQueryState({ ...query.queryState, filters: [] });
+
+    const columns = useMemo<ColumnDef<DnaReport>[]>(
+        () => [
+            {
+                accessorKey: 'doctorId',
+                header: 'Doctor',
+                enableSorting: false,
+                enableHiding: false,
+                size: 220,
+                meta: { label: 'Doctor', variant: 'text' },
+                cell: ({ row }) => <NameWithId name={row.original.doctorUsername} id={row.original.doctorId} />,
+            },
+            {
+                id: 'version',
+                header: 'Version',
+                enableSorting: false,
+                enableHiding: false,
+                size: 140,
+                meta: { label: 'Version' },
+                cell: ({ row }) => (
+                    <span className="flex items-center gap-2">
+                        <span className="tabular-nums">v{row.original.currentVersionNumber}</span>
+                        {row.original.isLatest ? <Badge variant="secondary">Latest</Badge> : null}
+                    </span>
+                ),
+            },
+            {
+                accessorKey: 'resourceStatus',
+                header: 'Status',
+                enableSorting: false,
+                enableHiding: false,
+                size: 150,
+                meta: { label: 'Status', variant: 'select', options: DISABLED_OPTIONS },
+                cell: ({ row }) => <ResourceStatusBadge status={row.original.resourceStatus} />,
+            },
+            {
+                accessorKey: 'updatedAt',
+                header: 'Updated',
+                enableSorting: false,
+                enableHiding: false,
+                size: 160,
+                meta: { label: 'Updated' },
+                cell: ({ row }) => <span className="text-muted-foreground">{formatRelativeTime(row.original.updatedAt)}</span>,
+            },
+        ],
+        [],
+    );
 
     const empty = hasFilters ? (
         <EmptyState
@@ -210,7 +253,7 @@ function DnaWritingStylesBody() {
             title="No reports match your filters"
             description="Try a different doctor ID or clear the filters."
             action={
-                <Button variant="outline" onClick={() => setParams({ doctor: null, disabled: null, page: null })}>
+                <Button variant="outline" onClick={clearFilters}>
                     <IconFilterOff aria-hidden />
                     Clear filters
                 </Button>
@@ -238,7 +281,7 @@ function DnaWritingStylesBody() {
                     <>
                         {reports.data ? (
                             <span>
-                                {formatNumber(total)} reports
+                                {formatNumber(totalCount)} reports
                                 {dashboard.data ? ` \u00b7 ${formatNumber(dashboard.data.usersWithStyle)} doctors covered` : ''}
                             </span>
                         ) : (
@@ -259,45 +302,37 @@ function DnaWritingStylesBody() {
                     </>
                 }
             />
-            <FilterBar shown={rows.length} total={total}>
-                <FilterSearch
-                    label="Filter by doctor ID"
-                    placeholder={'Filter by doctor ID\u2026'}
-                    value={doctor}
-                    onChange={(value) => setParams({ doctor: value || null, page: null })}
-                />
-                <FilterSelect
-                    id="dna-disabled-filter"
-                    label="Disabled reports"
-                    value={disabled}
-                    onChange={(value) => setParams({ disabled: value || null, page: null })}
-                    options={DISABLED_OPTIONS}
-                    allLabel="Hidden"
-                />
-            </FilterBar>
             <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_minmax(0,22rem)]">
                 <DashboardCard dashboard={dashboard} reportsTotal={reports.data?.count} activeJobId={activeJobId} progress={progress} />
-                <div className="flex flex-col gap-3">
-                    <DataTable
-                        aria-label="DNA reports"
-                        columns={columns}
-                        rows={rows}
-                        rowKey={(row) => row.id}
-                        isLoading={reports.isLoading}
-                        error={reports.error}
-                        onRetry={() => void reports.refetch()}
-                        empty={empty}
-                        onRowClick={(row) => setParams({ selected: row.doctorId })}
-                    />
-                    {/* TablePagination is zero-based; this controller is ONE-based. */}
-                    <TablePagination
-                        page={page - 1}
-                        limit={limit}
-                        total={total}
-                        onPageChange={(zeroBased) => setParams({ page: zeroBased + 1 === 1 ? null : zeroBased + 1 })}
-                        onLimitChange={(next) => setParams({ limit: next === DEFAULT_LIMIT ? null : next, page: null })}
-                    />
-                </div>
+                <VirtualizedDataGrid<DnaReport>
+                    aria-label="DNA reports"
+                    columns={columns}
+                    data={rows}
+                    getRowId={(row) => row.id}
+                    height={DNA_GRID_HEIGHT}
+                    manual={{ filtering: true, pagination: true }}
+                    rowCount={totalCount}
+                    queryState={query.queryState}
+                    onQueryStateChange={query.setQueryState}
+                    persistence={gridPersistence('dna-writing-styles')}
+                    features={{
+                        columnReorder: true,
+                        columnResize: true,
+                        columnPinning: true,
+                        columnVisibility: true,
+                        rowSelection: false,
+                        globalSearch: false,
+                        facetedFilters: true,
+                        sorting: false,
+                    }}
+                    onRowClick={(row) => void setSelected(row.doctorId)}
+                    isLoading={reports.isLoading}
+                    isBusy={reports.isFetching && !reports.isLoading}
+                    error={rows.length > 0 ? null : (reports.error ?? null)}
+                    errorState={(error) => <ErrorState error={error} onRetry={() => void reports.refetch()} />}
+                    onRetry={() => void reports.refetch()}
+                    emptyState={empty}
+                />
                 {/* Keyed by doctor so panel-local state (edit mode) resets on selection change. */}
                 <DoctorDetailPanel key={selected || 'none'} doctorId={selected} onGenerate={() => setGenerateOpen(true)} />
             </div>

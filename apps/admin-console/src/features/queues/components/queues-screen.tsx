@@ -2,8 +2,8 @@
 
 import { useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { IconClearAll, IconDots, IconPlayerPause, IconPlayerPlay, IconStack2 } from '@tabler/icons-react';
-import { parseAsInteger, parseAsString, parseAsStringLiteral, useQueryStates } from 'nuqs';
+import { IconClearAll, IconDots, IconFilterOff, IconPlayerPause, IconPlayerPlay, IconStack2 } from '@tabler/icons-react';
+import { VirtualizedDataGrid, type ColumnDef, type DataQueryState } from '@arcaai/ui';
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import {
@@ -12,9 +12,8 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@arcaai/ui/components/shadcn/dropdown-menu';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { FilterBar, FilterSearch, FilterSelect } from '@/shared/data/filter-bar';
-import { TablePagination } from '@/shared/data/table-pagination';
+import type { FilterOption } from '@/shared/data/filter-bar';
+import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { EmptyState } from '@/shared/state/empty-state';
@@ -23,12 +22,13 @@ import type { QueueStats } from '../api/types';
 import { CleanQueueDialog } from './clean-queue-dialog';
 import { PauseResumeDialog } from './pause-resume-dialog';
 
-const QUEUE_STATUS_FILTERS = ['running', 'paused'] as const;
-
-const QUEUE_STATUS_OPTIONS = [
+const QUEUE_STATUS_OPTIONS: FilterOption[] = [
     { value: 'running', label: 'Running' },
     { value: 'paused', label: 'Paused' },
 ];
+
+/** Client-side list (GET /admin/queues returns every queue): the grid runs uncontrolled. */
+const QUEUE_DEFAULT_QUERY_STATE: Partial<DataQueryState> = { sorting: [{ id: 'name', desc: false }] };
 
 type RowAction = { action: 'pause' | 'resume' | 'clean'; queueName: string };
 
@@ -66,65 +66,120 @@ function QueueRowActions({ queue, onAction }: { queue: QueueStats; onAction: (ac
     );
 }
 
-/** Frame 17 — Queues & Jobs list. Row click -> /queues/[name]. */
+/**
+ * Frame 17 — Queues & Jobs list. The gateway returns every queue in one payload
+ * (no server pagination), so this is a client-driven `VirtualizedDataGrid`
+ * (uncontrolled): omni search over the queue name, a Status facet, client sort +
+ * pager. Row click → /queues/[name].
+ */
 export function QueuesScreen() {
     const router = useRouter();
     const queuesQuery = useQueues();
-    const [filters, setFilters] = useQueryStates({
-        q: parseAsString.withDefault(''),
-        status: parseAsStringLiteral(QUEUE_STATUS_FILTERS),
-        page: parseAsInteger.withDefault(0),
-        limit: parseAsInteger.withDefault(25),
-    });
-    const [sort, setSort] = useState('name:asc');
     const [rowAction, setRowAction] = useState<RowAction | null>(null);
 
     const queues = useMemo(() => queuesQuery.data ?? [], [queuesQuery.data]);
 
-    const filtered = useMemo(() => {
-        const query = filters.q.trim().toLowerCase();
-        let rows = queues;
-        if (query) rows = rows.filter((row) => row.name.toLowerCase().includes(query));
-        if (filters.status) rows = rows.filter((row) => (filters.status === 'paused') === row.isPaused);
-        const direction = sort === 'name:desc' ? -1 : 1;
-        return [...rows].sort((a, b) => a.name.localeCompare(b.name) * direction);
-    }, [queues, filters.q, filters.status, sort]);
-
-    const pageRows = filtered.slice(filters.page * filters.limit, (filters.page + 1) * filters.limit);
-
-    const columns: DataTableColumn<QueueStats>[] = [
-        { key: 'name', header: 'Queue', sortKey: 'name', mono: true, cell: (row) => row.name },
-        {
-            key: 'status',
-            header: 'Status',
-            cell: (row) => (
-                <StatusDot colorRole={row.isPaused ? 'warning' : 'success'} label={row.isPaused ? 'Paused' : 'Running'} />
-            ),
-        },
-        { key: 'waiting', header: 'Waiting', className: 'tabular-nums', cell: (row) => formatNumber(row.counts.waiting) },
-        { key: 'active', header: 'Active', className: 'tabular-nums', cell: (row) => formatNumber(row.counts.active) },
-        {
-            key: 'failed',
-            header: 'Failed',
-            className: 'tabular-nums',
-            cell: (row) => (
-                <span className={row.counts.failed > 0 ? 'text-destructive font-medium' : undefined}>
-                    {formatNumber(row.counts.failed)}
-                </span>
-            ),
-        },
-        { key: 'delayed', header: 'Delayed', className: 'tabular-nums', cell: (row) => formatNumber(row.counts.delayed) },
-        { key: 'completed', header: 'Completed', className: 'tabular-nums', cell: (row) => formatNumber(row.counts.completed) },
-        { key: 'workers', header: 'Workers', className: 'tabular-nums', cell: (row) => formatNumber(row.workerCount) },
-        {
-            key: 'actions',
-            header: <span className="sr-only">Actions</span>,
-            cell: (row) => <QueueRowActions queue={row} onAction={(action) => setRowAction({ action, queueName: row.name })} />,
-        },
-    ];
+    const columns = useMemo<ColumnDef<QueueStats>[]>(
+        () => [
+            {
+                accessorKey: 'name',
+                header: 'Queue',
+                meta: { label: 'Queue' },
+                cell: ({ row }) => <span className="font-mono text-xs">{row.original.name}</span>,
+                size: 220,
+                minSize: 160,
+            },
+            {
+                id: 'status',
+                accessorFn: (row) => (row.isPaused ? 'paused' : 'running'),
+                header: 'Status',
+                enableSorting: false,
+                enableGlobalFilter: false,
+                filterFn: 'equalsString',
+                meta: { label: 'Status', variant: 'select', options: QUEUE_STATUS_OPTIONS },
+                cell: ({ row }) => (
+                    <StatusDot colorRole={row.original.isPaused ? 'warning' : 'success'} label={row.original.isPaused ? 'Paused' : 'Running'} />
+                ),
+                size: 130,
+            },
+            {
+                id: 'waiting',
+                accessorFn: (row) => row.counts.waiting,
+                header: 'Waiting',
+                enableGlobalFilter: false,
+                meta: { label: 'Waiting' },
+                cell: ({ row }) => <span className="tabular-nums">{formatNumber(row.original.counts.waiting)}</span>,
+                size: 100,
+            },
+            {
+                id: 'active',
+                accessorFn: (row) => row.counts.active,
+                header: 'Active',
+                enableGlobalFilter: false,
+                meta: { label: 'Active' },
+                cell: ({ row }) => <span className="tabular-nums">{formatNumber(row.original.counts.active)}</span>,
+                size: 100,
+            },
+            {
+                id: 'failed',
+                accessorFn: (row) => row.counts.failed,
+                header: 'Failed',
+                enableGlobalFilter: false,
+                meta: { label: 'Failed' },
+                cell: ({ row }) => (
+                    <span className={row.original.counts.failed > 0 ? 'text-destructive font-medium tabular-nums' : 'tabular-nums'}>
+                        {formatNumber(row.original.counts.failed)}
+                    </span>
+                ),
+                size: 100,
+            },
+            {
+                id: 'delayed',
+                accessorFn: (row) => row.counts.delayed,
+                header: 'Delayed',
+                enableGlobalFilter: false,
+                meta: { label: 'Delayed' },
+                cell: ({ row }) => <span className="tabular-nums">{formatNumber(row.original.counts.delayed)}</span>,
+                size: 100,
+            },
+            {
+                id: 'completed',
+                accessorFn: (row) => row.counts.completed,
+                header: 'Completed',
+                enableGlobalFilter: false,
+                meta: { label: 'Completed' },
+                cell: ({ row }) => <span className="tabular-nums">{formatNumber(row.original.counts.completed)}</span>,
+                size: 110,
+            },
+            {
+                id: 'workers',
+                accessorFn: (row) => row.workerCount,
+                header: 'Workers',
+                enableGlobalFilter: false,
+                meta: { label: 'Workers' },
+                cell: ({ row }) => <span className="tabular-nums">{formatNumber(row.original.workerCount)}</span>,
+                size: 100,
+            },
+            {
+                id: 'actions',
+                header: () => <span className="sr-only">Actions</span>,
+                meta: { label: 'Actions' },
+                enableSorting: false,
+                enableHiding: false,
+                enableResizing: false,
+                enableGlobalFilter: false,
+                size: 56,
+                minSize: 56,
+                cell: ({ row }) => (
+                    <QueueRowActions queue={row.original} onAction={(action) => setRowAction({ action, queueName: row.original.name })} />
+                ),
+            },
+        ],
+        [],
+    );
 
     return (
-        <div className="flex flex-col gap-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
             <PageHeader
                 title="Queues & Jobs"
                 meta={
@@ -137,30 +192,29 @@ export function QueuesScreen() {
                     </>
                 }
             />
-            <FilterBar shown={filtered.length} total={queues.length}>
-                <FilterSearch
-                    label="Search queues"
-                    placeholder={'Search queues\u2026'}
-                    value={filters.q}
-                    onChange={(value) => void setFilters({ q: value || null, page: null })}
-                />
-                <FilterSelect
-                    id="queues-status-filter"
-                    label="Status"
-                    value={filters.status ?? ''}
-                    onChange={(value) => void setFilters({ status: (value || null) as 'running' | 'paused' | null, page: null })}
-                    options={QUEUE_STATUS_OPTIONS}
-                />
-            </FilterBar>
-            <DataTable
+            <VirtualizedDataGrid<QueueStats>
                 aria-label="Queues"
                 columns={columns}
-                rows={pageRows}
-                rowKey={(row) => row.name}
+                data={queues}
+                getRowId={(row) => row.name}
+                defaultQueryState={QUEUE_DEFAULT_QUERY_STATE}
+                features={{
+                    globalSearch: true,
+                    facetedFilters: true,
+                    sorting: true,
+                    rowSelection: false,
+                    columnReorder: true,
+                    columnResize: true,
+                    columnPinning: true,
+                    columnVisibility: true,
+                }}
+                persistence={gridPersistence('queues')}
                 isLoading={queuesQuery.isLoading}
+                isBusy={queuesQuery.isFetching && !queuesQuery.isLoading}
                 error={queuesQuery.error ?? undefined}
                 onRetry={() => void queuesQuery.refetch()}
-                empty={
+                onRowClick={(row) => router.push(`/queues/${encodeURIComponent(row.name)}`)}
+                emptyState={
                     queues.length === 0 ? (
                         <EmptyState
                             icon={IconStack2}
@@ -168,19 +222,9 @@ export function QueuesScreen() {
                             description="Queues appear once workers connect and register with Redis — empty is not an error."
                         />
                     ) : (
-                        <EmptyState icon={IconStack2} title="No queues match the filters" description="Adjust the search or status filter." />
+                        <EmptyState icon={IconFilterOff} title="No queues match the filters" description="Adjust the search or status filter." />
                     )
                 }
-                onRowClick={(row) => router.push(`/queues/${encodeURIComponent(row.name)}`)}
-                sort={sort}
-                onSortChange={setSort}
-            />
-            <TablePagination
-                page={filters.page}
-                limit={filters.limit}
-                total={filtered.length}
-                onPageChange={(page) => void setFilters({ page })}
-                onLimitChange={(limit) => void setFilters({ limit, page: null })}
             />
             <PauseResumeDialog
                 queueName={rowAction?.queueName ?? ''}

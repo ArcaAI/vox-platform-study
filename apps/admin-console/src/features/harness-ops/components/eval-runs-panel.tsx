@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { IconFlask } from '@tabler/icons-react';
+import { VirtualizedDataGrid, type ColumnDef, type DataQueryState } from '@arcaai/ui';
 import { Card, CardContent, CardHeader } from '@arcaai/ui/components/shadcn/card';
-import { DataTable, type DataTableColumn } from '@/shared/data/data-table';
-import { TablePagination } from '@/shared/data/table-pagination';
+import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatDateTime, formatNumber } from '@/shared/format';
 import { EmptyState } from '@/shared/state/empty-state';
+import { ErrorState } from '@/shared/state/error-state';
 import { useEvalRuns } from '../api';
 import type { EvalRun } from '../api';
 import { EvalRunDetailSheet } from './eval-run-detail-sheet';
@@ -54,43 +55,63 @@ function numberCell(value: number | null) {
     return value === null ? <span className="text-muted-foreground">{EM_DASH}</span> : <span className="tabular-nums">{formatNumber(value)}</span>;
 }
 
+/** Right-aligned numeric column header (the grid header cell is left-aligned by default). */
+function NumericHeader({ label }: { label: string }) {
+    return <span className="w-full text-right">{label}</span>;
+}
+
 /** Frame 37 panel (b) — eval runs grid; row click opens the per-case scores. */
 export function EvalRunsPanel() {
-    const [page, setPage] = useState(1);
     const [openRunId, setOpenRunId] = useState<string | null>(null);
-    // NOTE: this endpoint's `page` is 1-based (unlike the platform's 0-based lists).
-    const runsQuery = useEvalRuns({ page, limit: PAGE_SIZE });
+    // Server offset pagination; this endpoint's `page` is 1-based (unlike the
+    // platform's 0-based lists), so the 0-based grid page maps with +1.
+    const [queryState, setQueryState] = useState<DataQueryState>(() => ({
+        pagination: { mode: 'offset', page: 0, limit: PAGE_SIZE },
+        sorting: [],
+        filters: [],
+        globalSearch: undefined,
+    }));
+    const page = queryState.pagination.mode === 'offset' ? queryState.pagination.page : 0;
+    const limit = queryState.pagination.limit;
+    const runsQuery = useEvalRuns({ page: page + 1, limit });
 
     const runs = runsQuery.data?.items ?? [];
     const total = runsQuery.data?.total ?? 0;
 
-    const columns: DataTableColumn<EvalRun>[] = [
-        {
-            key: 'run',
-            header: 'Eval run',
-            cell: (row) => (
-                <span className="whitespace-nowrap tabular-nums" title={row.id}>
-                    {formatDateTime(row.startedAt ?? row.createdAt)}
-                </span>
-            ),
-        },
-        { key: 'cases', header: 'Cases', className: 'text-right', headerClassName: 'text-right', cell: (row) => numberCell(evalCases(row)) },
-        { key: 'pass', header: 'Pass', className: 'text-right', headerClassName: 'text-right', cell: (row) => numberCell(evalPass(row)) },
-        {
-            key: 'score',
-            header: 'Score',
-            className: 'text-right',
-            headerClassName: 'text-right',
-            cell: (row) => {
-                const score = evalScore(row);
-                return score === null ? (
-                    <span className="text-muted-foreground">{EM_DASH}</span>
-                ) : (
-                    <span className="tabular-nums">{Math.round(score * 100) / 100}</span>
-                );
+    const columns = useMemo<ColumnDef<EvalRun>[]>(
+        () => [
+            {
+                accessorKey: 'startedAt',
+                header: 'Eval run',
+                meta: { label: 'Eval run' },
+                cell: ({ row }) => (
+                    <span className="whitespace-nowrap tabular-nums" title={row.original.id}>
+                        {formatDateTime(row.original.startedAt ?? row.original.createdAt)}
+                    </span>
+                ),
             },
-        },
-    ];
+            { id: 'cases', header: () => <NumericHeader label="Cases" />, meta: { label: 'Cases' }, cell: ({ row }) => <div className="w-full text-right">{numberCell(evalCases(row.original))}</div> },
+            { id: 'pass', header: () => <NumericHeader label="Pass" />, meta: { label: 'Pass' }, cell: ({ row }) => <div className="w-full text-right">{numberCell(evalPass(row.original))}</div> },
+            {
+                id: 'score',
+                header: () => <NumericHeader label="Score" />,
+                meta: { label: 'Score' },
+                cell: ({ row }) => {
+                    const score = evalScore(row.original);
+                    return (
+                        <div className="w-full text-right">
+                            {score === null ? (
+                                <span className="text-muted-foreground">{EM_DASH}</span>
+                            ) : (
+                                <span className="tabular-nums">{Math.round(score * 100) / 100}</span>
+                            )}
+                        </div>
+                    );
+                },
+            },
+        ],
+        [],
+    );
 
     return (
         <Card className="gap-3 py-4">
@@ -105,19 +126,36 @@ export function EvalRunsPanel() {
                 </span>
             </CardHeader>
             <CardContent className="flex flex-col gap-3 px-4">
-                <DataTable
+                <VirtualizedDataGrid<EvalRun>
                     aria-label="Eval runs"
                     columns={columns}
-                    rows={runs}
-                    rowKey={(row) => row.id}
+                    data={runs}
+                    getRowId={(row) => row.id}
+                    height={360}
+                    persistence={gridPersistence('harness-eval-runs')}
+                    manual={{ pagination: true }}
+                    rowCount={total}
+                    pageSizeOptions={[PAGE_SIZE, 25, 50]}
+                    queryState={queryState}
+                    onQueryStateChange={setQueryState}
+                    features={{
+                        columnReorder: true,
+                        columnResize: true,
+                        columnPinning: true,
+                        columnVisibility: true,
+                        rowSelection: false,
+                        globalSearch: false,
+                        facetedFilters: false,
+                        sorting: false,
+                    }}
                     isLoading={runsQuery.isLoading}
+                    isBusy={runsQuery.isFetching && !runsQuery.isLoading}
                     error={runsQuery.error}
                     onRetry={() => void runsQuery.refetch()}
-                    skeletonRows={5}
-                    empty={<EmptyState icon={IconFlask} title="No evals run yet" description="Golden-set evaluation runs appear here once they execute." />}
+                    errorState={(err) => <ErrorState error={err} onRetry={() => void runsQuery.refetch()} />}
+                    emptyState={<EmptyState icon={IconFlask} title="No evals run yet" description="Golden-set evaluation runs appear here once they execute." />}
                     onRowClick={(row) => setOpenRunId(row.id)}
                 />
-                <TablePagination page={page - 1} limit={PAGE_SIZE} total={total} onPageChange={(zeroBased) => setPage(zeroBased + 1)} />
                 <EvalRunDetailSheet evalRunId={openRunId} onOpenChange={(open) => !open && setOpenRunId(null)} />
             </CardContent>
         </Card>

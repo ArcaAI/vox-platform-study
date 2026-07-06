@@ -1,6 +1,6 @@
 # TASK-423 — Data Grid Standardization & Migration
 
-- **Status**: In Progress
+- **Status**: Review
 - **Type**: feature — standardize all admin-console list surfaces on an enhanced `VirtualizedDataGrid` with per-user server-persisted column personalization; retire the legacy `DataTable`/`FilterBar`/`TablePagination` trio
 - **Created**: 2026-07-05
 - **Origin**: user requirements for best-practices data grids across the Admin Console (TASK-415 successor work)
@@ -141,10 +141,46 @@ Order mirrors route tiers; each batch = migrate screens + update tests + verify 
 
 ## Implementation Summary
 
-Pending.
+Delivered end-to-end. Every admin-console list/table surface now runs on the standardized `VirtualizedDataGrid`, and the legacy `DataTable`/`TablePagination` are removed.
+
+### Backend (Phase 2 — `packages/applications`)
+
+- `common/paginatedQueryParamConverters.ts` gained list operators `field[in]:a|b` / `field[notIn]:a|b` (per-item enum validation, `|` reserved as the list separator) and case-insensitive string operators `icontains` / `istartsWith` / `iendsWith` / `iequals` → `{ contains|startsWith|endsWith|equals: v, mode: 'insensitive' }`. Range merge (`gte`+`lte` on one field) affirmed; a `__proto__` pollution guard added. No envelope or endpoint changes.
+- Tests: 20 unit tests in `paginatedQueryParamConverters.test.ts` + `apps/api/tests/e2e/task-423-filter-grammar.spec.ts` (7 e2e, run isolated in Phase 2). Backend untouched by Phases 6–7, so that e2e evidence remains valid.
+
+### Grid package (Phase 3 — `packages/ui/src/components/data-grid`)
+
+Evolved `VirtualizedDataGrid` in place per deltas Δ1–Δ9: fill-height mode (Δ1), `@container` responsive toolbar/pager (Δ2), rendered resize separator + keyboard resize (Δ3), header-menu Move left/right (Δ4), scroll-aware pinned divider (Δ5), typed filter controls incl. boolean + date calendar/range/relative and header-menu "Filter…" (Δ6), one-line item-range pager with first/last + ellipsis + current±2 and `[25,50,100]` sizes + cursor "of many" (Δ7), `isLayoutReady` first-paint gate + "Reset layout" (Δ8), a11y `aria-colindex`/live-region/44px/`scroll-mt` (Δ9). `toPaginatedQuery` fixed to emit the bracket grammar. Storybook + axe + vitest added.
+
+### Console adapter + migration (Phases 4–7 — `apps/admin-console`)
+
+- **Adapter layer** (`src/shared/data`): `grid-persistence.ts` (server layout adapter over `GET`/`PATCH user/me/settings` under `ui.data-grid`, 16 KB-guarded, best-effort) + a single app-wide `sharedGridLayoutPersistence` instance and a `gridPersistence(gridId)` helper; `grid-url-state.ts` (nuqs codec ↔ `DataQueryState`, typed filters in a compact `f` param, `toListParams` → bracket grammar); `envelopes.ts` (`normalizeList` for 6 envelope shapes incl. cursor); `admin-data-grid.tsx` (`AdminDataGrid` wrapper + `useAdminGridParams`). Console `(console)/layout.tsx` made the `SidebarInset` the scroll boundary (grid body is the only scroller).
+- **Personalization coverage (per the "all column customization = personalization" requirement).** 20 grids carry personalizable + server-persisted columns (order/size/visibility/pinning/density under `ui.data-grid/<gridId>`):
+  - 9 full-page lists via `AdminDataGrid` (URL query-state + persistence): `tenants`, `users`, `audit-logs` (cursor), `ai-models`, `queue-jobs`, `rbac-roles`, `rbac-policies`, `api-keys`, `settings`.
+  - 11 embedded/master-detail primary lists via `VirtualizedDataGrid` at fixed height + `gridPersistence(...)`: `queues`, `schedulers`, `entitlement-plans`, `agents`, `consultations`, `dna-writing-styles`, `transcription-jobs`, `audio-pipelines`, `tenant-storage-buckets`, `harness-workflows` (cursor), `harness-eval-runs`.
+- **Kept simple (features off, no personalization) — genuinely small/fixed detail-tab & utility tables:** the four user detail tabs, `department-members`, `access-keys`, `storage-configs`, `chain-integrity`, `rate-limits` (tier/route config), and the `storage-browser`/`object-browser` prefix browser.
+- **Non-list displays → shadcn `Table` primitive:** `departments` (hierarchy tree), `harness-policy` (comparison), `pipeline-policy` (cascade matrix).
+- **Legacy retirement:** `data-table.tsx` + `table-pagination.tsx` (+ their tests) deleted (grep-verified zero non-test usages). `filter-bar.tsx` **retained** — 6 screens (`rate-limits`, `storage-browser`, `entitlements`, `harness-workflows`, `harness-observability`, `pipeline-policy`) use `FilterBar` as a standalone control over non-grid/matrix sources; deleting it was descoped and `FilterOption` therefore stays there.
+
+### Known limitations / follow-ups
+
+- **Cursor "Previous" stale-token edge (→ TASK-373).** In cursor mode (`harness-workflows`, `audit-logs`) the pager's internal visited-token stack (`data-grid-pagination.tsx`) can't be reset without a remount; after paging forward then changing a filter, Previous may point at a stale token. Not exercised by current data (single page). A clean fix (clear `cursorStack` when controlled `pagination.cursor` → `null`, or a `paginationResetToken` prop) belongs with the TASK-373 server cursor contract, per the `types.ts` D7 note.
+- **URL deep-link shape changed** for filters (`status=`/`plan=` → compact `f=`); page/search/sort/limit keys unchanged.
+
+### Verification evidence
+
+| Gate | Command | Result |
+|---|---|---|
+| UI package | `pnpm --filter @arcaai/ui lint && … test` | eslint clean · **621** tests / 238 files ✓ |
+| Applications | `pnpm --filter @arcaai/applications build && … test` | build ✓ · **5838** passed / 4 skipped, 269 files ✓ |
+| Console build | `pnpm --filter @arcaai/admin-console build` | `next build` ✓ · all **41** routes |
+| Console types | `pnpm --filter @arcaai/admin-console exec tsc --noEmit` | exit 0 ✓ |
+| Console lint | `pnpm --filter @arcaai/admin-console lint` | eslint `--max-warnings 0` clean ✓ |
+| Console tests | `pnpm --filter @arcaai/admin-console exec vitest run` | **549** passed / 78 files ✓ |
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-05 | Ticket created; implementation plan approved (Figma-first hard gate before Phase 3+ UI code; pager decision: first/last + ellipsis + current±2, all buttons). Approved UX spec embedded as `design-spec.md`. Phase 0 completed — shorthand-filter silent-drop defect CONFIRMED live against the dev API (shorthand ≡ baseline `count=7`; bracket grammar filters correctly, `count=1` on the ARCHIVED positive control); `gte+lte` range merge verified working; `[in]` with `\|` lists verified unsupported (400, and single-member `[in]` 400s opaquely); comma-joined bracket tokens verified broken (`;` is the only separator). Evidence in "Phase 0 Evidence". |
+| 2026-07-06 | Phases 1–7 completed. Figma frames updated + approved (Phase 1). Backend filter-grammar ops + tests/e2e (Phase 2). `VirtualizedDataGrid` deltas Δ1–Δ9 (Phase 3). Console adapter layer + scroll-boundary (Phase 4). Pilot migration of tenants + users with live browser/axe pass (Phase 5). Batch migration of the remaining ~29 tables across B1/B2/B3 (Phase 6). Phase 7: personalization reconciled — enabled personalizable + server-persisted columns on 11 embedded primary lists (via new `gridPersistence` helper + shared adapter singleton) so 20 grids total honor the "all column customization = personalization" requirement, keeping only small fixed detail/utility tables simple; deleted `DataTable`/`TablePagination` (kept still-used `FilterBar`); fixed an `object-browser-panel` error-prop type and React-Compiler `preserve-manual-memoization` across screens. All gates green (evidence above). Status → Review. |

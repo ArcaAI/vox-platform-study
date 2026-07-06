@@ -61,6 +61,10 @@ export function useGridLayout(opts: { persistence?: GridPersistenceConfig; defau
       });
     return () => {
       cancelled = true;
+      // Re-arm on cleanup so a re-mount (incl. React Strict Mode's dev
+      // setup→cleanup→setup) starts a fresh load whose `.finally` isn't
+      // cancelled — otherwise `isLayoutReady` would latch `false` forever.
+      loadedRef.current = false;
     };
   }, [enabled, namespace]);
 

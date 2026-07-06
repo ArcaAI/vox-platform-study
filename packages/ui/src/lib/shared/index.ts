@@ -16,7 +16,15 @@ export {
   fromServerPaginated,
 } from './pagination';
 
-export { type SortRule, type FilterRule, type DataQueryState, DEFAULT_QUERY_STATE, toPaginatedQuery } from './query-state';
+export {
+  type SortRule,
+  type FilterRule,
+  type DataQueryState,
+  DEFAULT_QUERY_STATE,
+  toPaginatedQuery,
+  filterRuleToTokens,
+  FILTER_OPERATOR_TOKENS,
+} from './query-state';
 
 export { type AsyncCollection } from './async-collection';
 

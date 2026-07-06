@@ -3,7 +3,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import type { SchedulerInfo } from '../../api/types';
 import { SchedulersScreen } from '../schedulers-screen';
-import { installFetchStub } from './fetch-stub';
+import { installFetchStub, type FetchHandler, type RecordedCall } from './fetch-stub';
+
+/** Layout persistence reads GET user/me/settings on mount; tests have no saved layout. */
+function stubFetch(handle: FetchHandler): RecordedCall[] {
+    return installFetchStub((call) => {
+        if (call.url.includes('/user/me/settings')) return call.method === 'GET' ? [] : { success: true };
+        return handle(call);
+    });
+}
 
 const SCHEDULERS: SchedulerInfo[] = [
     {
@@ -41,24 +49,24 @@ afterEach(() => {
 
 describe('SchedulersScreen', () => {
     it('renders the schedulers table with cron expressions and status', async () => {
-        installFetchStub(({ url }) => (url === LIST_URL ? SCHEDULERS : undefined));
+        stubFetch(({ url }) => (url === LIST_URL ? SCHEDULERS : undefined));
         renderWithProviders(<SchedulersScreen />);
         expect(screen.getByRole('heading', { level: 1, name: 'Schedulers' })).toBeDefined();
         expect(await screen.findByText('audit-retention-prune')).toBeDefined();
         expect(screen.getByText('0 3 * * 0')).toBeDefined();
         expect(screen.getByText('Running')).toBeDefined();
         expect(screen.getByText('Paused')).toBeDefined();
-        expect(screen.getByRole('table', { name: 'Schedulers' })).toBeDefined();
+        expect(screen.getByRole('grid', { name: 'Schedulers' })).toBeDefined();
     });
 
     it('shows a neutral empty state when no schedules exist', async () => {
-        installFetchStub(({ url }) => (url === LIST_URL ? [] : undefined));
+        stubFetch(({ url }) => (url === LIST_URL ? [] : undefined));
         renderWithProviders(<SchedulersScreen />);
         expect(await screen.findByText('No schedules defined')).toBeDefined();
     });
 
     it('updates a cron expression through the edit dialog', async () => {
-        const calls = installFetchStub(({ url }) => (url === LIST_URL ? SCHEDULERS : undefined));
+        const calls = stubFetch(({ url }) => (url === LIST_URL ? SCHEDULERS : undefined));
         renderWithProviders(<SchedulersScreen />);
         await screen.findByText('audit-retention-prune');
         fireEvent.click(screen.getByRole('button', { name: 'Edit cron for audit-retention-prune' }));
@@ -75,7 +83,7 @@ describe('SchedulersScreen', () => {
     });
 
     it('disables a running scheduler via the switch after confirmation', async () => {
-        const calls = installFetchStub(({ url }) => (url === LIST_URL ? SCHEDULERS : undefined));
+        const calls = stubFetch(({ url }) => (url === LIST_URL ? SCHEDULERS : undefined));
         renderWithProviders(<SchedulersScreen />);
         await screen.findByText('audit-retention-prune');
         fireEvent.click(screen.getByRole('switch', { name: 'Toggle audit-retention-prune' }));
@@ -90,7 +98,7 @@ describe('SchedulersScreen', () => {
     });
 
     it('enables a paused scheduler without confirmation', async () => {
-        const calls = installFetchStub(({ url }) => (url === LIST_URL ? SCHEDULERS : undefined));
+        const calls = stubFetch(({ url }) => (url === LIST_URL ? SCHEDULERS : undefined));
         renderWithProviders(<SchedulersScreen />);
         await screen.findByText('usage-rollup-hourly');
         fireEvent.click(screen.getByRole('switch', { name: 'Toggle usage-rollup-hourly' }));
