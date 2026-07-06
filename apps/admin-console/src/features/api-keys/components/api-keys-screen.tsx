@@ -46,7 +46,7 @@ const MAX_SCOPE_BADGES = 3;
 function ScopeBadges({ scopes }: { scopes: string[] | null | undefined }) {
     if (!scopes?.length) return <span className="text-muted-foreground">&mdash;</span>;
     return (
-        <span className="flex flex-wrap items-center gap-1">
+        <span className="flex items-center gap-1">
             {scopes.slice(0, MAX_SCOPE_BADGES).map((scope) => (
                 <Badge key={scope} variant="outline" className="font-mono text-[10px]">
                     {scope}

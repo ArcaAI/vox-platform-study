@@ -147,10 +147,11 @@ export function AccessKeysTab() {
             accessorKey: 'name',
             header: 'Name',
             meta: { label: 'Name' },
+            // Single line — a stacked cell outgrows the fixed-height grid row (TASK-429).
             cell: ({ row }) => (
-                <span className="flex flex-col">
-                    <span className="font-medium">{row.original.name}</span>
-                    {row.original.description ? <span className="text-muted-foreground text-xs">{row.original.description}</span> : null}
+                <span className="flex min-w-0 items-baseline gap-2">
+                    <span className="truncate font-medium">{row.original.name}</span>
+                    {row.original.description ? <span className="text-muted-foreground min-w-0 truncate text-xs">{row.original.description}</span> : null}
                 </span>
             ),
         },

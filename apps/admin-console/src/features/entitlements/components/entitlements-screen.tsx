@@ -84,6 +84,9 @@ function EnforcementCard() {
     );
 }
 
+/** Feature chips shown before the +N overflow badge (single-line cell, TASK-429). */
+const FEATURE_BADGE_LIMIT = 2;
+
 /** Frame 13 plans table: client-side search over the fixed plan set. */
 function PlansTab() {
     const { data, isLoading, error, refetch } = usePlanEntitlements();
@@ -116,20 +119,24 @@ function PlansTab() {
             header: 'Features',
             enableSorting: false,
             meta: { label: 'Features' },
+            // Single line, capped at +N — wrapping badges outgrow the fixed-height grid row (TASK-429).
             cell: ({ row }) => {
                 const enabled = FEATURE_FIELDS.filter((field) => row.original[field.key]);
                 if (enabled.length === 0) return <span className="text-muted-foreground">{'\u2014'}</span>;
+                const shown = enabled.slice(0, FEATURE_BADGE_LIMIT);
+                const extra = enabled.length - shown.length;
                 return (
-                    <span className="flex flex-wrap gap-1">
-                        {enabled.map((field) => (
+                    <span className="flex items-center gap-1">
+                        {shown.map((field) => (
                             <Badge key={field.key} variant="secondary">
                                 {field.label}
                             </Badge>
                         ))}
+                        {extra > 0 ? <Badge variant="outline">+{extra}</Badge> : null}
                     </span>
                 );
             },
-            size: 220,
+            size: 260,
         },
         {
             accessorKey: 'modelTier',

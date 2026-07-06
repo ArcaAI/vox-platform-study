@@ -171,6 +171,20 @@ describe('EntitlementsScreen', () => {
         await waitFor(() => expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true'));
     });
 
+    it('caps the feature badges at two with a +N overflow on a single line (TASK-429)', async () => {
+        stubEntitlements();
+        renderWithProviders(<EntitlementsScreen />);
+
+        // Enterprise enables all 3 features → 2 badges + "+1"; an uncapped wrapping
+        // list grows past the fixed-height virtual row and paints over border-b.
+        const enterpriseRow = (await screen.findByText('Enterprise')).closest('[role="row"]') as HTMLElement;
+        const dnaBadge = within(enterpriseRow).getByText('DNA reports');
+        expect(within(enterpriseRow).getByText('Voice enrollment')).toBeDefined();
+        expect(within(enterpriseRow).getByText('+1')).toBeDefined();
+        expect(within(enterpriseRow).queryByText('Monitoring access')).toBeNull();
+        expect((dnaBadge.parentElement as HTMLElement).className).not.toContain('flex-wrap');
+    });
+
     it('keeps the layout skeleton while the queries are in flight', () => {
         vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})));
         const { container } = renderWithProviders(<EntitlementsScreen />);

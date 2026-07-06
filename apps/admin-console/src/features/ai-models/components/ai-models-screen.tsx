@@ -123,13 +123,14 @@ export function AiModelsScreen() {
                 header: 'Capability',
                 enableSorting: false,
                 meta: { label: 'Capability', variant: 'select', options: CAPABILITY_OPTIONS },
+                // Single line — wrapping badges outgrow the fixed-height grid row (TASK-429).
                 cell: ({ row }) => (
-                    <span className="flex flex-wrap items-center gap-1">
+                    <span className="flex items-center gap-1">
                         <Badge variant="secondary">{humanizeEnum(row.original.taskType)}</Badge>
                         <Badge variant="outline">{humanizeEnum(row.original.category)}</Badge>
                     </span>
                 ),
-                size: 220,
+                size: 280,
             },
             {
                 accessorKey: 'resourceStatus',
