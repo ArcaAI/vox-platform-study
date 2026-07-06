@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ListParams } from '@/shared/api';
 import type { UpdateTenantConfigItem } from '@/features/tenants/api/types';
 import type { UpdateUserSettingRequest } from '@/features/users/api/types';
@@ -22,7 +22,7 @@ export function useMyTenant() {
 }
 
 export function useMyTenantConfigs(params?: ListParams) {
-    return useQuery({ queryKey: accountKeys.tenantConfigs(params), queryFn: () => listMyTenantConfigs(params) });
+    return useQuery({ queryKey: accountKeys.tenantConfigs(params), queryFn: () => listMyTenantConfigs(params), placeholderData: keepPreviousData });
 }
 
 export function useMyEntitlements() {

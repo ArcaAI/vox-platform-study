@@ -6,7 +6,7 @@
  * cache cleverness (rule 13).
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ListParams } from '@/shared/api';
 import {
     archiveTenant,
@@ -29,7 +29,7 @@ import { tenantKeys } from './keys';
 import type { CreateTenantRequest, UpdateTenantConfigItem, UpdateTenantRequest, UpsertTenantFrontendConfigRequest } from './types';
 
 export function useTenants(params?: ListParams) {
-    return useQuery({ queryKey: tenantKeys.list(params), queryFn: () => listTenants(params) });
+    return useQuery({ queryKey: tenantKeys.list(params), queryFn: () => listTenants(params), placeholderData: keepPreviousData });
 }
 
 /** Detail read: `data.data` is the tenant, `data.etag` feeds the update. */
@@ -46,7 +46,12 @@ export function useTenantTags(id: string) {
 }
 
 export function useTenantConfigs(identifier: string, params?: ListParams) {
-    return useQuery({ queryKey: tenantKeys.configs(identifier, params), queryFn: () => listTenantConfigs(identifier, params), enabled: !!identifier });
+    return useQuery({
+        queryKey: tenantKeys.configs(identifier, params),
+        queryFn: () => listTenantConfigs(identifier, params),
+        enabled: !!identifier,
+        placeholderData: keepPreviousData,
+    });
 }
 
 export function useFrontendConfig(tenantId?: string) {

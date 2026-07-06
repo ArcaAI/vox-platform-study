@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { getTranscriptionJob, getTranscriptionJobStats, listTranscriptionJobs, listTranscriptionJobsByStatus } from './client';
 import { transcriptionJobKeys } from './keys';
 import { TERMINAL_JOB_STATUSES, type TranscriptionJobStatus } from './types';
@@ -18,6 +18,7 @@ export function useTranscriptionJobs(params?: { page?: number; limit?: number },
         queryFn: () => listTranscriptionJobs(params),
         enabled,
         refetchInterval: REFRESH_MS,
+        placeholderData: keepPreviousData,
     });
 }
 

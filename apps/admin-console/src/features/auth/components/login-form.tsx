@@ -8,6 +8,7 @@ import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/components/shadcn/card';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
+import { invalidateGridLayoutCache } from '@/shared/data/grid-persistence';
 
 interface LoginFormProps {
     /** Internal path to land on after a successful sign-in (?from=...). */
@@ -24,6 +25,9 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
     const [submitting, setSubmitting] = useState(false);
 
     function finishLogin() {
+        // Soft navigation keeps module state alive — a previous session's
+        // grid-layout cache must not leak into the new identity.
+        invalidateGridLayoutCache();
         router.replace(redirectTo);
         router.refresh();
     }

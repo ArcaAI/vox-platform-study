@@ -18,4 +18,5 @@ export {
     type RequestOptions,
     type WithEtag,
 } from './http';
+export { retryQuery } from './query-retry';
 export { type BaseResource, type ListParams, type ResourceStatus, type VersionedResource } from './types';

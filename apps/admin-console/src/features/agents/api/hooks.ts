@@ -8,7 +8,7 @@
  * the row's new OCC version directly.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     activateVersion,
     assignDepartment,
@@ -36,7 +36,7 @@ import type {
 } from './types';
 
 export function useTemplates(params?: ListTemplatesParams) {
-    return useQuery({ queryKey: agentKeys.list(params), queryFn: () => listTemplates(params) });
+    return useQuery({ queryKey: agentKeys.list(params), queryFn: () => listTemplates(params), placeholderData: keepPreviousData });
 }
 
 /** Detail read: `data.data` is the template, `data.etag` feeds PATCH/test. */
@@ -66,7 +66,7 @@ export function useUsageAnalytics(promptTemplateId?: string) {
 }
 
 export function useUsageRecords(params?: ListUsageRecordsParams) {
-    return useQuery({ queryKey: agentKeys.usageRecords(params), queryFn: () => listUsageRecords(params) });
+    return useQuery({ queryKey: agentKeys.usageRecords(params), queryFn: () => listUsageRecords(params), placeholderData: keepPreviousData });
 }
 
 export function useDepartments() {

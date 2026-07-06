@@ -1,7 +1,8 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ListParams } from '@/shared/api';
+import { invalidateGridLayoutCache } from '@/shared/data/grid-persistence';
 import {
     assignDepartment,
     assignRole,
@@ -48,11 +49,16 @@ import type {
 } from './types';
 
 export function useUsers(params?: ListParams) {
-    return useQuery({ queryKey: userKeys.list(params), queryFn: () => listUsers(params) });
+    return useQuery({ queryKey: userKeys.list(params), queryFn: () => listUsers(params), placeholderData: keepPreviousData });
 }
 
 export function useUsersByTenant(tenantId: string, params?: ListParams) {
-    return useQuery({ queryKey: userKeys.byTenant(tenantId, params), queryFn: () => listUsersByTenant(tenantId, params), enabled: !!tenantId });
+    return useQuery({
+        queryKey: userKeys.byTenant(tenantId, params),
+        queryFn: () => listUsersByTenant(tenantId, params),
+        enabled: !!tenantId,
+        placeholderData: keepPreviousData,
+    });
 }
 
 export function useUser(id: string) {
@@ -80,7 +86,7 @@ export function useVoiceProfiles(id: string) {
 }
 
 export function useUserApiKeys(id: string, params?: ListParams) {
-    return useQuery({ queryKey: userKeys.apiKeys(id, params), queryFn: () => listUserApiKeys(id, params), enabled: !!id });
+    return useQuery({ queryKey: userKeys.apiKeys(id, params), queryFn: () => listUserApiKeys(id, params), enabled: !!id, placeholderData: keepPreviousData });
 }
 
 function useInvalidateUsers() {
@@ -201,10 +207,22 @@ export function useUpdateUserProfile() {
 /** Impersonation flips the whole session — drop every cache on success. */
 export function useImpersonateUser() {
     const queryClient = useQueryClient();
-    return useMutation({ mutationFn: (body: ImpersonateRequest) => impersonateUser(body), onSuccess: () => queryClient.invalidateQueries() });
+    return useMutation({
+        mutationFn: (body: ImpersonateRequest) => impersonateUser(body),
+        onSuccess: () => {
+            invalidateGridLayoutCache();
+            return queryClient.invalidateQueries();
+        },
+    });
 }
 
 export function useRevokeImpersonation() {
     const queryClient = useQueryClient();
-    return useMutation({ mutationFn: () => revokeImpersonation(), onSuccess: () => queryClient.invalidateQueries() });
+    return useMutation({
+        mutationFn: () => revokeImpersonation(),
+        onSuccess: () => {
+            invalidateGridLayoutCache();
+            return queryClient.invalidateQueries();
+        },
+    });
 }

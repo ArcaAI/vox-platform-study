@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ListParams } from '@/shared/api';
 import { createApiKey, deleteApiKey, getApiKey, getApiKeyUsage, getScopes, listApiKeys, revokeApiKey, rotateApiKey, updateApiKey } from './client';
 import { apiKeyKeys } from './keys';
@@ -11,7 +11,7 @@ export function useApiKeyScopes() {
 }
 
 export function useApiKeys(params?: ListParams) {
-    return useQuery({ queryKey: apiKeyKeys.list(params), queryFn: () => listApiKeys(params) });
+    return useQuery({ queryKey: apiKeyKeys.list(params), queryFn: () => listApiKeys(params), placeholderData: keepPreviousData });
 }
 
 export function useApiKey(id: string) {

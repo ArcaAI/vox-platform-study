@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import type { SafeSession } from '@/shared/auth/hooks';
+import { invalidateGridLayoutCache } from '@/shared/data/grid-persistence';
 
 function useSessionAction(url: string, method: 'POST' | 'DELETE') {
     const router = useRouter();
@@ -16,6 +17,7 @@ function useSessionAction(url: string, method: 'POST' | 'DELETE') {
         setPending(true);
         try {
             await fetch(url, { method });
+            invalidateGridLayoutCache();
             await queryClient.invalidateQueries();
             router.refresh();
         } finally {

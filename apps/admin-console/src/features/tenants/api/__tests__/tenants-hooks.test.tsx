@@ -8,8 +8,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ListParams } from '@/shared/api';
 import { tenantKeys } from '../keys';
-import { useTenant, useUpdateTenant } from '../hooks';
+import { useTenant, useTenants, useUpdateTenant } from '../hooks';
 
 function createWrapper(queryClient: QueryClient) {
     return function Wrapper({ children }: { children: ReactNode }) {
@@ -22,6 +23,33 @@ afterEach(() => {
 });
 
 describe('tenant hooks', () => {
+    it('useTenants keeps the previous rows visible while a params change refetches (TASK-428)', async () => {
+        // First page resolves; the second request is held pending so the
+        // transition state is observable.
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async (input: string | URL | Request) => {
+                if (String(input).includes('search=next')) return new Promise<Response>(() => {});
+                return Response.json({ data: [{ id: 't-1', name: 'North' }], count: 1, limit: 25, page: 0 });
+            }),
+        );
+        const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+        const { result, rerender } = renderHook(({ params }: { params: ListParams }) => useTenants(params), {
+            wrapper: createWrapper(queryClient),
+            initialProps: { params: {} as ListParams },
+        });
+        await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+        rerender({ params: { search: 'next' } });
+
+        // The grid keeps the loaded rows (isBusy covers the refetch) instead of
+        // dropping to the skeleton.
+        expect(result.current.isFetching).toBe(true);
+        expect(result.current.isPlaceholderData).toBe(true);
+        expect(result.current.data?.data[0]?.name).toBe('North');
+    });
+
     it('useTenant surfaces the row AND its ETag for the edit form', async () => {
         vi.stubGlobal(
             'fetch',

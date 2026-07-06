@@ -1,8 +1,9 @@
 /**
  * TDD screen tests for frame 24 (Settings & secrets): list states, the
- * permission-gated step-up reveal flow, OCC If-Match editing (412 alert),
- * create/delete flows and the global/tenant scope tabs — against a
- * URL-branching fetch stub covering the BFF session + permission routes.
+ * permission-gated step-up reveal flow, OCC If-Match editing (412 alert) and
+ * create/delete flows — against a URL-branching fetch stub covering the BFF
+ * session + permission routes. Scope is set by the working-tenant switcher (no
+ * in-page scope tabs), so this list always reads `GET /admin/settings`.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -118,7 +119,7 @@ describe('SettingsScreen', () => {
         expect(screen.getByText('\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022')).toBeDefined();
         expect(screen.getAllByText('String').length).toBeGreaterThan(0);
         expect(screen.getAllByText('smtp').length).toBeGreaterThan(0);
-        expect(screen.getByRole('grid', { name: 'Global settings' })).toBeDefined();
+        expect(screen.getByRole('grid', { name: 'Settings' })).toBeDefined();
         expect(screen.getByText(/2 settings/)).toBeDefined();
     });
 
@@ -297,47 +298,5 @@ describe('SettingsScreen', () => {
 
         await waitFor(() => expect(calls.some((call) => call.method === 'DELETE')).toBe(true));
         expect(calls.find((call) => call.method === 'DELETE')?.url).toBe('/api/hope/admin/settings/s-1');
-    });
-
-    it('shows the tenant tab only with a working tenant and switching writes scope to the URL', async () => {
-        stubFetch({ session: { ...SESSION, workingTenantId: 't-1', workingTenantName: 'Sunrise Medical Group' } });
-        const onUrlUpdate = vi.fn();
-        renderWithProviders(<SettingsScreen />, { onUrlUpdate });
-        await screen.findByText('smtp.host');
-
-        const tenantTab = await screen.findByRole('tab', { name: /tenant/i });
-        // Radix tabs activate on mousedown.
-        fireEvent.mouseDown(tenantTab, { button: 0, ctrlKey: false });
-
-        // The nuqs testing adapter has no memory, so assert the URL write itself.
-        await waitFor(() => expect(onUrlUpdate).toHaveBeenCalled());
-        const event = onUrlUpdate.mock.calls.at(-1)?.[0] as { searchParams: URLSearchParams };
-        expect(event.searchParams.get('scope')).toBe('tenant');
-    });
-
-    it('queries the tenant route and renders tenant rows when scoped to the working tenant', async () => {
-        const tenantRow = setting({ id: 's-t1', key: 'tenant.branding', namespace: 'branding' });
-        const calls = stubFetch({
-            session: { ...SESSION, workingTenantId: 't-1', workingTenantName: 'Sunrise Medical Group' },
-            custom: (call) => {
-                if (call.method === 'GET' && call.url.startsWith('/api/hope/admin/settings/tenant/t-1')) {
-                    return Response.json(envelope([tenantRow]));
-                }
-                return undefined;
-            },
-        });
-        renderWithProviders(<SettingsScreen />, { searchParams: '?scope=tenant' });
-
-        expect(await screen.findByText('tenant.branding')).toBeDefined();
-        expect(calls.some((call) => call.url.startsWith('/api/hope/admin/settings/tenant/t-1'))).toBe(true);
-        expect(screen.getByRole('grid', { name: 'Tenant settings' })).toBeDefined();
-    });
-
-    it('offers no tenant tab without a working tenant', async () => {
-        stubFetch();
-        renderWithProviders(<SettingsScreen />);
-
-        await screen.findByText('smtp.host');
-        await waitFor(() => expect(screen.queryByRole('tab', { name: /tenant/i })).toBeNull());
     });
 });

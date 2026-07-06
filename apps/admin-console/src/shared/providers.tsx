@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from 'next-themes';
 import { NuqsAdapter } from 'nuqs/adapters/next/app';
 import { Toaster } from '@arcaai/ui/components/shadcn/sonner';
+import { retryQuery } from '@/shared/api';
 
 /**
  * BUG-001: next-themes renders its FOUC-prevention <script> inside the React
@@ -25,7 +26,9 @@ export function Providers({ children }: { children: ReactNode }) {
                 defaultOptions: {
                     queries: {
                         staleTime: 30_000,
-                        retry: 1,
+                        // One retry for transient failures only — a 4xx is
+                        // deterministic and must not be replayed (TASK-428).
+                        retry: retryQuery,
                         refetchOnWindowFocus: false,
                     },
                 },

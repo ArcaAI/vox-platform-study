@@ -11,6 +11,13 @@
  * break a screen, so load returns `null` on any miss/error and save swallows
  * failures. The gateway rejects `ui.data-grid` values over 16KB (409/400), so
  * an oversized layout is skipped client-side instead of round-tripping a reject.
+ *
+ * TASK-428 — the settings read is DEDUPED: every grid on a page (and Strict
+ * Mode's dev double-mount) shares one in-flight GET, and the row list is cached
+ * for a short TTL (matching the app-wide 30s query staleTime) since the GET
+ * gates each grid's first paint (`isLayoutReady`). A successful save
+ * invalidates the cache so another screen's grid sees the new layout; a failed
+ * load is never cached, so the next load retries.
  */
 
 import type { GridLayoutPersistenceAdapter, GridLayoutState } from '@arcaai/ui';
@@ -31,14 +38,49 @@ interface UserSettingRow {
 
 const encoder = new TextEncoder();
 
-export function createGridLayoutPersistenceAdapter(): GridLayoutPersistenceAdapter {
+/** Cache lifetime for the settings row list (mirrors the QueryClient staleTime). */
+export const SETTINGS_CACHE_TTL_MS = 30_000;
+
+export function createGridLayoutPersistenceAdapter(): GridLayoutPersistenceAdapter & { invalidate: () => void } {
     let warnedOversize = false;
+    /** One GET shared by all concurrent loads (N grids mounting on one page). */
+    let pending: Promise<UserSettingRow[]> | null = null;
+    let cached: { rows: UserSettingRow[]; at: number } | null = null;
+    /** Bumped by invalidate(): an in-flight GET from a previous identity must not populate the cache. */
+    let generation = 0;
+
+    async function fetchRows(): Promise<UserSettingRow[]> {
+        if (cached && Date.now() - cached.at <= SETTINGS_CACHE_TTL_MS) return cached.rows;
+        if (!pending) {
+            const startedGeneration = generation;
+            const request = getJson<UserSettingRow[]>('user/me/settings')
+                .then((rows) => {
+                    const list = Array.isArray(rows) ? rows : [];
+                    if (startedGeneration === generation) cached = { rows: list, at: Date.now() };
+                    return list;
+                })
+                .finally(() => {
+                    // Success is served from `cached`; failure must not stick, so
+                    // the in-flight slot clears either way and the next load
+                    // retries (unless invalidate() already replaced it).
+                    if (pending === request) pending = null;
+                });
+            pending = request;
+        }
+        return pending;
+    }
 
     return {
+        /** Drop cache + in-flight read — the session identity changed. */
+        invalidate(): void {
+            generation += 1;
+            cached = null;
+            pending = null;
+        },
+
         async load(namespace: string, key: string): Promise<GridLayoutState | null> {
             try {
-                const rows = await getJson<UserSettingRow[]>('user/me/settings');
-                if (!Array.isArray(rows)) return null;
+                const rows = await fetchRows();
                 const row = rows.find((entry) => entry?.namespace === namespace && entry?.key === key);
                 if (!row || typeof row.value !== 'string') return null;
                 return JSON.parse(row.value) as GridLayoutState;
@@ -60,6 +102,9 @@ export function createGridLayoutPersistenceAdapter(): GridLayoutPersistenceAdapt
             }
             try {
                 await patchJson(`user/me/settings/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`, { value: serialized });
+                // The server rows changed — drop the cache so the next screen's
+                // grid loads the layout just saved here.
+                cached = null;
             } catch {
                 // Best-effort: a failed persist must never surface to the grid.
             }
@@ -73,7 +118,19 @@ export function createGridLayoutPersistenceAdapter(): GridLayoutPersistenceAdapt
  * read is issued through a single code path. Both `AdminDataGrid` and screens
  * that render `VirtualizedDataGrid` directly (fixed-height embedded lists) use it.
  */
-export const sharedGridLayoutPersistence: GridLayoutPersistenceAdapter = createGridLayoutPersistenceAdapter();
+const sharedAdapter = createGridLayoutPersistenceAdapter();
+export const sharedGridLayoutPersistence: GridLayoutPersistenceAdapter = sharedAdapter;
+
+/**
+ * Drop the shared settings cache. Session flows call this next to
+ * `queryClient.invalidateQueries()` whenever the caller IDENTITY changes
+ * (impersonation start/revoke, login) — the cached rows belong to the previous
+ * user. A working-tenant switch keeps the same user, and `user/me/settings`
+ * is user-keyed, so it does not need this.
+ */
+export function invalidateGridLayoutCache(): void {
+    sharedAdapter.invalidate();
+}
 
 /**
  * Build the `persistence` config for a grid id under the `ui.data-grid`

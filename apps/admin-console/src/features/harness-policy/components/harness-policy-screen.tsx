@@ -255,7 +255,7 @@ export function HarnessPolicyScreen() {
                 <ScreenTemplate
                     header={<PageHeader title="Harness Policy & Live Config" meta={<span>every edit appends a HarnessPolicyChange WORM row</span>} />}
                     tabs={
-                        <TabsList>
+                        <TabsList variant="line">
                             <TabsTrigger value="policy">Tenant policy</TabsTrigger>
                             {isElevated ? <TabsTrigger value="live">Live config</TabsTrigger> : null}
                             {isElevated ? <TabsTrigger value="global">Global default</TabsTrigger> : null}

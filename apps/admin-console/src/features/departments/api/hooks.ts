@@ -6,7 +6,7 @@
  * (rule 13), and the tree/list/members all depend on the same rows.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ListParams } from '@/shared/api';
 import {
     createDepartment,
@@ -23,7 +23,7 @@ import { departmentKeys } from './keys';
 import type { CreateDepartmentRequest, ListDepartmentsParams, UpdateDepartmentPromptConfigRequest, UpdateDepartmentRequest } from './types';
 
 export function useDepartments(params?: ListDepartmentsParams) {
-    return useQuery({ queryKey: departmentKeys.list(params), queryFn: () => listDepartments(params) });
+    return useQuery({ queryKey: departmentKeys.list(params), queryFn: () => listDepartments(params), placeholderData: keepPreviousData });
 }
 
 export function useRootDepartments() {
@@ -41,7 +41,12 @@ export function useDepartment(id: string) {
 }
 
 export function useDepartmentUsers(id: string, params?: ListParams) {
-    return useQuery({ queryKey: departmentKeys.users(id, params), queryFn: () => listDepartmentUsers(id, params), enabled: !!id });
+    return useQuery({
+        queryKey: departmentKeys.users(id, params),
+        queryFn: () => listDepartmentUsers(id, params),
+        enabled: !!id,
+        placeholderData: keepPreviousData,
+    });
 }
 
 function useInvalidateDepartments() {
