@@ -333,6 +333,17 @@ describe('TenantStorageScreen', () => {
         });
     });
 
+    it('renders the access-key name and description on a single line so the fixed-height row keeps its border (TASK-429)', async () => {
+        stubStorage();
+        renderWithProviders(<TenantStorageScreen />, { searchParams: '?tab=keys' });
+
+        const name = await screen.findByText('ingest-worker');
+        const container = name.parentElement as HTMLElement;
+        expect(within(container).getByText('STT ingest pipeline')).toBeDefined();
+        // A stacked (flex-col) cell grows past the fixed-height virtual row and paints over border-b.
+        expect(container.className).not.toContain('flex-col');
+    });
+
     it('creates an access key and reveals the secret exactly once', async () => {
         const calls = stubStorage((call) => {
             if (call.method === 'POST' && call.url.endsWith('/admin/tenants/storage/keys')) {

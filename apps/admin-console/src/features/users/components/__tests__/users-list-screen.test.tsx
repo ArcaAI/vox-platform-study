@@ -165,6 +165,15 @@ describe('UsersListScreen', () => {
         expect(screen.getByText(/2 users/i)).toBeDefined();
     });
 
+    it('renders the role chips on a single line so the fixed-height row keeps its border (TASK-429)', async () => {
+        stubListFetch();
+        renderWithProviders(<UsersListScreen />);
+
+        const chip = await screen.findByText('Clinician');
+        // A wrapping container grows past the fixed-height virtual row and paints over border-b.
+        expect((chip.parentElement as HTMLElement).className).not.toContain('flex-wrap');
+    });
+
     it('shows the no-users empty state with a create CTA when the list is empty', async () => {
         stubListFetch(() => listResponse([]));
         renderWithProviders(<UsersListScreen />);

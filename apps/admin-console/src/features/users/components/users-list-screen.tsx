@@ -64,7 +64,7 @@ function RolesCell({ assignments }: { assignments?: UserRoleAssignment[] }) {
     const shown = assignments.slice(0, ROLE_CHIP_LIMIT);
     const extra = assignments.length - shown.length;
     return (
-        <span className="flex flex-wrap items-center gap-1">
+        <span className="flex items-center gap-1">
             {shown.map((assignment) => (
                 <Badge key={assignment.id} variant="secondary">
                     {assignment.roleName ?? assignment.roleId}

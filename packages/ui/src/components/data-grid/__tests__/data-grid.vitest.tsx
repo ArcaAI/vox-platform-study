@@ -246,6 +246,18 @@ describe('VirtualizedDataGrid (shell)', () => {
     expect(results).toHaveNoViolations();
   });
 
+  it('height-constrains body cells to the fixed virtual row so oversized content clips instead of covering row borders (TASK-429)', () => {
+    renderGrid({ data: makeData(3) });
+    const cells = screen.getAllByRole('gridcell');
+    expect(cells.length).toBeGreaterThan(0);
+    for (const cell of cells) {
+      // Rows have a hard virtualized height; without h-full a wrapping cell grows
+      // past the row box and its opaque bg-card paints over the row border-b.
+      expect(cell.className).toContain('h-full');
+      expect(cell.className).toContain('truncate');
+    }
+  });
+
   it('adds aria-colindex to header and body cells (Δ9)', () => {
     renderGrid({ data: makeData(3) });
     const headers = screen.getAllByRole('columnheader');

@@ -90,6 +90,17 @@ describe('AiModelsScreen', () => {
         expect(screen.getByRole('grid', { name: 'AI models' })).toBeDefined();
     });
 
+    it('renders the capability badges on a single line so the fixed-height row keeps its border (TASK-429)', async () => {
+        stubFetch(() => Response.json(envelope([MODEL])));
+        renderWithProviders(<AiModelsScreen />);
+
+        const taskBadge = await screen.findByText('automatic speech recognition');
+        const container = taskBadge.parentElement as HTMLElement;
+        expect(within(container).getByText('audio')).toBeDefined();
+        // A wrapping container grows past the 48px virtual row and paints over border-b.
+        expect(container.className).not.toContain('flex-wrap');
+    });
+
     it('mirrors the loaded layout with skeletons while the list is in flight', () => {
         stubFetch(() => new Promise<Response>(() => {}));
         const { container } = renderWithProviders(<AiModelsScreen />);

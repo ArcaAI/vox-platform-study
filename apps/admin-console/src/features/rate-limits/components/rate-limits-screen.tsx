@@ -40,7 +40,7 @@ const STATUS_OPTIONS = [
 
 function SourceBadges({ limitSource, ttlSource }: { limitSource: string; ttlSource: string }) {
     return (
-        <span className="flex flex-wrap items-center gap-1">
+        <span className="flex items-center gap-1">
             <Badge variant="outline" className="text-muted-foreground font-mono text-[10px]">
                 limit: {limitSource}
             </Badge>

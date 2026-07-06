@@ -94,6 +94,15 @@ describe('RateLimitsScreen', () => {
         expect(within(routeTable).getByText('POST /auth/login')).toBeDefined();
     });
 
+    it('renders the source badges on a single line so the fixed-height row keeps its border (TASK-429)', async () => {
+        stubFetch(() => Response.json(POLICY));
+        renderWithProviders(<RateLimitsScreen />);
+
+        const badge = (await screen.findAllByText('limit: db'))[0];
+        // A wrapping container grows past the fixed-height virtual row and paints over border-b.
+        expect((badge.parentElement as HTMLElement).className).not.toContain('flex-wrap');
+    });
+
     it('mirrors the loaded layout with skeletons while the policy is in flight', () => {
         stubFetch(() => new Promise<Response>(() => {}));
         const { container } = renderWithProviders(<RateLimitsScreen />);

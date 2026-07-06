@@ -188,7 +188,9 @@ function BodyRow<TData>({
           role="gridcell"
           aria-colindex={i + 1}
           data-slot="data-grid-cell"
-          className={cn('flex shrink-0 items-center truncate bg-inherit px-3 text-sm', density === 'compact' ? 'py-1' : 'py-2')}
+          // h-full caps the cell at the fixed virtual row height: without it a wrapping
+          // renderer grows past the row box and its opaque bg paints over border-b (TASK-429).
+          className={cn('flex h-full shrink-0 items-center truncate bg-inherit px-3 text-sm', density === 'compact' ? 'py-1' : 'py-2')}
           style={{ ...getColumnPinningStyle({ column: cell.column, withBorder: pinBorder }), width: cell.column.getSize() }}
         >
           {flexRender(cell.column.columnDef.cell, cell.getContext())}

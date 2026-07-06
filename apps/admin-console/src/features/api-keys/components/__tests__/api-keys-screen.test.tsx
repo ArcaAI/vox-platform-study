@@ -127,6 +127,15 @@ describe('ApiKeysScreen', () => {
         expect(screen.getByText(/3 keys/)).toBeDefined();
     });
 
+    it('renders the scope badges on a single line so the fixed-height row keeps its border (TASK-429)', async () => {
+        stubFetch();
+        renderWithProviders(<ApiKeysScreen />);
+
+        const scope = await screen.findByText('read:metrics');
+        // A wrapping container grows past the fixed-height virtual row and paints over border-b.
+        expect((scope.parentElement as HTMLElement).className).not.toContain('flex-wrap');
+    });
+
     it('mirrors the loaded layout with skeletons while the list is in flight', () => {
         vi.stubGlobal(
             'fetch',
