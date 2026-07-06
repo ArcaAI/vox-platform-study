@@ -15,7 +15,7 @@ import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { IUserDepartmentService } from './IUserDepartmentService';
 import { AssignUserDepartmentRequest, SetUserDepartmentsRequest, UpdateUserDepartmentRequest, UserDepartmentResponse } from './dto';
 import { UserDepartmentDtoMapper } from './user-department.dto.mapper';
-import { BaseService, assertParentInScope } from '../../../common';
+import { BaseService, assertParentInScope, isSuperAdmin } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 
 /**
@@ -68,10 +68,15 @@ export class UserDepartmentService extends BaseService implements IUserDepartmen
   }
 
   async getByUser(userId: string): Promise<UserDepartmentResponse[]> {
-    const tenantId = this.requireTenant();
+    // TASK-430 — an unscoped GLOBAL_ADMIN (no working tenant selected) reads
+    // the user's memberships CROSS-TENANT: the tenant-scope $extends bypasses
+    // injection for elevated callers, so omitting the tenant predicate spans
+    // all tenants. Every other caller keeps the strict tenant requirement.
+    const crossTenant = !this.tenantId && isSuperAdmin(this.clsService.get('user'));
+    const tenantId = crossTenant ? null : this.requireTenant();
 
     const assignments = await this.userDepartmentRepository.findAll({
-      where: { tenantId, userId },
+      where: tenantId ? { tenantId, userId } : { userId },
       page: 1,
       limit: 500,
     });

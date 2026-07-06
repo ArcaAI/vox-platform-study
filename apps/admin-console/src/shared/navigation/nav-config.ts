@@ -36,8 +36,8 @@ import { canAny, type PermissionRule } from '@/shared/auth/ability';
  * Full route map from the capabilities matrix (section 3, frames 10-40, as
  * reviewed 2026-07-04: AI models re-tiered to 10-19, tenant frontend config
  * folded into the tenant-detail tab). All design gates cleared (B0/B1/B2
- * approved 2026-07-05): every route is implemented. The sidebar only renders
- * implemented entries the caller's ability grants.
+ * approved 2026-07-05). The sidebar only renders implemented entries the
+ * caller's ability grants; AI models is hidden (implemented: false).
  */
 export type NavTier = '10-19' | '20-29' | '30-49';
 
@@ -75,7 +75,8 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     { route: '/entitlements', label: 'Entitlements & plans', tier: '10-19', icon: IconLicense, required: [['manage', 'all']], implemented: true },
     { route: '/tenants/storage', label: 'Tenant storage', tier: '10-19', icon: IconDatabase, required: [['manage', 'Tenant'], ['read', 'Storage']], implemented: true },
     // Global-admin only per the 2026-07-04 review (backend guard re-pin: TASK-419).
-    { route: '/ai-models', label: 'AI models', tier: '10-19', icon: IconBrain, required: [['manage', 'all']], implemented: true },
+    // Hidden from the sidebar/palette (route stays reachable by direct URL).
+    { route: '/ai-models', label: 'AI models', tier: '10-19', icon: IconBrain, required: [['manage', 'all']], implemented: false },
     { route: '/rate-limits', label: 'Rate limits', tier: '10-19', icon: IconGauge, required: [['manage', 'all']], implemented: true },
     { route: '/queues', label: 'Queues & jobs', tier: '10-19', icon: IconStack2, required: [['manage', 'all']], implemented: true },
     { route: '/schedulers', label: 'Schedulers', tier: '10-19', icon: IconCalendarTime, required: [['manage', 'all']], implemented: true },

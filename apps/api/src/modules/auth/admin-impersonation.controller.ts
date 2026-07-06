@@ -142,6 +142,13 @@ export class AdminImpersonationController {
       throw new BadRequestException('Target user is not enabled');
     }
 
+    // TASK-430 — a service account is an API-only principal; impersonating one
+    // would mint the interactive session it must never have.
+    if (targetUser.isServiceAccount) {
+      this.recordDenied(req, actor.id, targetUser.id, ImpersonationDeniedReason.TargetIsServiceAccount);
+      throw new BadRequestException('Cannot impersonate a service account');
+    }
+
     const targetRoles = await this.userRoleAssignmentService.findActiveRolesForUser(targetUser.id);
     const targetRoleNames = targetRoles.map((r) => r.name);
     if (targetRoleNames.some((r) => ELEVATED_TIER_ROLES.includes(r))) {

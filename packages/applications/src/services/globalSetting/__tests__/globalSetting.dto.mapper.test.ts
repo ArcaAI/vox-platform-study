@@ -33,6 +33,7 @@ vi.mock('@arcaai/domains', async () => {
             // Simulate AutoClassMapper behavior for GlobalSettingResponse
             return new GlobalSettingResponse({
                 id: source.id,
+                tenantId: source.tenantId,
                 name: source.name,
                 description: source.description,
                 key: source.key,
@@ -123,6 +124,16 @@ describe('GlobalSettingDtoMapper', () => {
             const result = GlobalSettingDtoMapper.ToResponse(entity as any);
 
             expect(result.namespace).toBe('custom.namespace');
+        });
+
+        // TASK-430 — the admin console renders a Tenant column on the cross-tenant
+        // /settings list, so the row's owning tenant must flow to the response.
+        it('should map the tenantId field', () => {
+            const entity = createMockGlobalSettingEntity({ tenantId: 'tenant-42' });
+
+            const result = GlobalSettingDtoMapper.ToResponse(entity as any);
+
+            expect(result.tenantId).toBe('tenant-42');
         });
 
         // TASK-391 (D2) — `locked` must flow through to the response so the admin

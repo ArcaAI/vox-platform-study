@@ -39,7 +39,7 @@ describe('AppSidebar', () => {
         await screen.findByRole('link', { name: 'Dashboard' });
         const nav = screen.getByRole('navigation', { name: 'Main' });
         const links = within(nav).getAllByRole('link');
-        expect(links).toHaveLength(NAV_ENTRIES.length);
+        expect(links).toHaveLength(NAV_ENTRIES.filter((entry) => entry.implemented).length);
 
         for (const link of links) {
             const icon = link.querySelector('svg');

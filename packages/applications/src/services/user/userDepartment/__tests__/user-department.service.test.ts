@@ -284,6 +284,34 @@ describe('UserDepartmentService', () => {
       expect(result).toHaveLength(0);
       expect(mockDepartmentRepo.findAll).not.toHaveBeenCalled();
     });
+
+    // TASK-430 — an unscoped GLOBAL_ADMIN (no working tenant) reads the user's
+    // memberships CROSS-TENANT instead of failing with "Tenant ID is required".
+    it('lists cross-tenant assignments for a GLOBAL_ADMIN with no tenant context', async () => {
+      mockClsService.get.mockImplementation((key: string) =>
+        key === 'user' ? { id: 'admin-id', roles: ['GLOBAL_ADMIN'] } : null,
+      );
+      mockRepo.findAll.mockResolvedValueOnce([
+        makeEntity({ id: 'ud-1', departmentId: 'dept-1', tenantId: 'tenant-1' }),
+        makeEntity({ id: 'ud-2', departmentId: 'dept-2', tenantId: 'tenant-2' }),
+      ]);
+
+      const result = await service.getByUser('user-1');
+
+      expect(result).toHaveLength(2);
+      expect(result.map((r) => r.tenantId)).toEqual(['tenant-1', 'tenant-2']);
+      // No tenant predicate — the read spans tenants.
+      expect(mockRepo.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'user-1' } }));
+    });
+
+    it('still requires a tenant context for non-elevated callers', async () => {
+      mockClsService.get.mockImplementation((key: string) =>
+        key === 'user' ? { id: 'tenant-admin-id', roles: ['TENANT_ADMIN'] } : null,
+      );
+
+      await expect(service.getByUser('user-1')).rejects.toThrow(BadRequestException);
+      expect(mockRepo.findAll).not.toHaveBeenCalled();
+    });
   });
 
   // TASK-381 V2 — bulk reconcile a user's memberships to EXACTLY the target set.

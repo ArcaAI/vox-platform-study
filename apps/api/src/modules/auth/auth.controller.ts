@@ -168,6 +168,14 @@ export class AuthController {
         throw new UnauthorizedException('Invalid credentials');
       }
 
+      // TASK-430 — service accounts are API-only principals (they authenticate
+      // with API keys). Interactive login is refused AFTER the password check
+      // so the response cannot be used as an account-type oracle for guessed
+      // credentials, and no lastLoginAt/lastActiveAt stamp is written.
+      if (user.isServiceAccount) {
+        throw new UnauthorizedException('Service accounts cannot sign in interactively');
+      }
+
       const userRoles = await this.getUserRoles(user.id);
       const roles = userRoles.map((role) => role.name);
       const isSuperAdmin = roles.includes(GLOBAL_ADMIN_ROLE);
@@ -201,10 +209,11 @@ export class AuthController {
         }
 
         // TASK-305 Phase F — full tenant membership = an enabled role AND an
-        // enabled department. Service accounts (which authenticate via API
-        // keys, not this flow) are exempt from the department half. The 401
-        // message is intentionally identical to the role miss above so the
-        // response never reveals which half of the membership is incomplete.
+        // enabled department. The 401 message is intentionally identical to
+        // the role miss above so the response never reveals which half of the
+        // membership is incomplete. (Service accounts never reach this point —
+        // TASK-430 rejects them right after the password check; the guard is
+        // kept as defence-in-depth.)
         if (!user.isServiceAccount) {
           const tenantDepartment = await this.userDepartmentService.findActiveDepartmentForUserInTenant(user.id, resolvedTenantId);
 
@@ -526,6 +535,13 @@ export class AuthController {
 
     if (!targetUser) {
       throw new BadRequestException('Target user not found');
+    }
+
+    // TASK-430 — a service account is an API-only principal; impersonating one
+    // would mint the interactive session it must never have.
+    if (targetUser.isServiceAccount) {
+      this.recordImpersonationDenied(req, adminUser.id, targetUser.id, ImpersonationDeniedReason.TargetIsServiceAccount);
+      throw new BadRequestException('Cannot impersonate a service account');
     }
 
     const targetRoles = await this.getUserRoles(targetUser.id);
