@@ -159,3 +159,16 @@ infrastructure/deploy/k8s/config/secrets.*.yaml
 !**/userlist.txt.example
 **/pgbouncer.ini
 !**/pgbouncer.ini.example
+
+# design-sync generated (in-package build entry)
+packages/ui/.ds-bundle-entry.tsx
+
+# design-sync transient (regenerated per run)
+.design-sync/sb-reference/
+.design-sync/learnings/
+.design-sync/.cache/
+.design-sync/node_modules
+.design-sync/*.log
+.design-sync/CLOSEOUT-TODO.md
+.ds-sync/
+ds-bundle/
