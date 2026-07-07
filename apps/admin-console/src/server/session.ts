@@ -13,6 +13,12 @@ export interface SessionUser {
     username: string;
     email: string;
     roles: string[];
+    /**
+     * Home tenant of a tenant-bound user (absent for unscoped global admins
+     * and for sessions sealed before TASK-431 — consumers must tolerate
+     * undefined). Needed client-side for the STT WS tenant claim.
+     */
+    tenantId?: string;
     permissions?: string[];
 }
 

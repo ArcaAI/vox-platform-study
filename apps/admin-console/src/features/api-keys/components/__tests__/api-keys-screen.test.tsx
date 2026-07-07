@@ -174,6 +174,34 @@ describe('ApiKeysScreen', () => {
         expect(await screen.findByText('svc_reporting')).toBeDefined();
     });
 
+    // TASK-430 — cross-tenant admin surface: Tenant column + tenant filter.
+    it('renders the Tenant column with the catalog name and dashes for platform keys', async () => {
+        stubFetch(
+            (call) => {
+                if (call.method === 'GET' && call.url.startsWith('/api/hope/admin/tenants')) {
+                    return Response.json({ data: [{ id: 't-1', name: 'Acme Hospital', key: 'acme' }], count: 1, limit: 500, page: 0 });
+                }
+                return undefined;
+            },
+            [apiKey({ tenantId: 't-1' }), apiKey({ id: 'k-2', keyName: 'platform_key', keyPrefix: 'hk_0000', tenantId: null })],
+        );
+        renderWithProviders(<ApiKeysScreen />);
+
+        await screen.findByText('svc_reporting');
+        expect(await screen.findByText('Acme Hospital')).toBeDefined();
+    });
+
+    it('maps the tenant filter onto the CSV grammar (tenantId[equals]:…)', async () => {
+        const calls = stubFetch();
+        const f = encodeURIComponent(JSON.stringify([['tenantId', 'eq', 'select', 't-1']]));
+        renderWithProviders(<ApiKeysScreen />, { searchParams: `?f=${f}` });
+
+        await screen.findByText('svc_reporting');
+        const list = calls.find((call) => call.url.startsWith('/api/hope/admin/api-keys?'));
+        const requested = new URL(list?.url ?? '', 'http://test.local');
+        expect(requested.searchParams.get('filters')).toBe('tenantId[equals]:t-1');
+    });
+
     it('maps search/status/scope/page URL state onto the gateway list request', async () => {
         const calls = stubFetch();
         // Typed filters live in the compact `f` URL param (positional JSON tuples); enum columns

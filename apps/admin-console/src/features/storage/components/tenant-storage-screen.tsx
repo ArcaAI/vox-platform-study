@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { IconBucket, IconBuilding, IconDatabase, IconDots, IconFilterOff, IconFolderOpen, IconTrash } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
@@ -22,8 +22,11 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { GatewayError } from '@/shared/api';
 import { useSession } from '@/shared/auth';
+import { useTenantCatalog, useTenantNames } from '@/shared/catalog';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
+import type { FilterOption } from '@/shared/data/filter-bar';
 import { gridPersistence } from '@/shared/data/grid-persistence';
+import { NameWithId } from '@/shared/data/name-with-id';
 import { formatBytes, formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
@@ -46,6 +49,13 @@ const PURPOSE_LABELS: Record<TenantBucketPurpose, string> = {
     MISC: 'Misc',
     CUSTOM: 'Custom',
 };
+
+const PURPOSE_OPTIONS: FilterOption[] = Object.entries(PURPOSE_LABELS).map(([value, label]) => ({ value, label }));
+
+const TYPE_OPTIONS: FilterOption[] = [
+    { value: 'SYSTEM', label: 'System' },
+    { value: 'CUSTOM', label: 'Custom' },
+];
 
 function BucketRowActions({ bucket, onBrowse, onDelete }: { bucket: TenantBucket; onBrowse: () => void; onDelete: () => void }) {
     return (
@@ -71,12 +81,23 @@ function BucketRowActions({ bucket, onBrowse, onDelete }: { bucket: TenantBucket
     );
 }
 
-/** Frame 14 buckets list: embedded grid over the working tenant's buckets (client search). */
+/**
+ * Frame 14 buckets list: embedded grid (client search + faceted filters).
+ * TASK-430 — spans all tenants for an unscoped elevated session, so the grid
+ * carries a Tenant column and tenant/purpose/type filters.
+ */
 function BucketsTab({ onProvision }: { onProvision: () => void }) {
     const { data, isLoading, error, refetch } = useBuckets();
     const deleteBucket = useDeleteBucket();
     const [browsing, setBrowsing] = useState<TenantBucket | null>(null);
     const [deleting, setDeleting] = useState<TenantBucket | null>(null);
+
+    const tenantNames = useTenantNames();
+    const tenantCatalog = useTenantCatalog();
+    const tenantOptions = useMemo<FilterOption[]>(
+        () => (tenantCatalog.data ?? []).map((tenant) => ({ value: tenant.id, label: tenant.name || tenant.key || tenant.id })),
+        [tenantCatalog.data],
+    );
 
     const buckets = data ?? [];
 
@@ -84,16 +105,27 @@ function BucketsTab({ onProvision }: { onProvision: () => void }) {
         { accessorKey: 'name', header: 'Name', meta: { label: 'Name' }, cell: ({ row }) => <span className="font-medium">{row.original.name}</span> },
         { accessorKey: 'slug', header: 'Slug', meta: { label: 'Slug' }, cell: ({ row }) => <span className="font-mono text-xs">{row.original.slug}</span> },
         {
+            accessorKey: 'tenantId',
+            header: 'Tenant',
+            enableSorting: false,
+            filterFn: 'equalsString',
+            meta: { label: 'Tenant', variant: 'select', options: tenantOptions },
+            size: 180,
+            cell: ({ row }) => <NameWithId name={tenantNames.get(row.original.tenantId)} id={row.original.tenantId} />,
+        },
+        {
             accessorKey: 'purpose',
             header: 'Purpose',
-            meta: { label: 'Purpose' },
+            filterFn: 'equalsString',
+            meta: { label: 'Purpose', variant: 'select', options: PURPOSE_OPTIONS },
             cell: ({ row }) => <Badge variant="outline">{PURPOSE_LABELS[row.original.purpose]}</Badge>,
         },
         {
             id: 'type',
             accessorFn: (row) => row.bucketType,
             header: 'Type',
-            meta: { label: 'Type' },
+            filterFn: 'equalsString',
+            meta: { label: 'Type', variant: 'select', options: TYPE_OPTIONS },
             cell: ({ row }) => (
                 <Badge variant={row.original.bucketType === 'SYSTEM' ? 'secondary' : 'outline'}>{row.original.bucketType === 'SYSTEM' ? 'System' : 'Custom'}</Badge>
             ),
@@ -148,7 +180,7 @@ function BucketsTab({ onProvision }: { onProvision: () => void }) {
                 }
             />
         ) : (
-            <EmptyState icon={IconFilterOff} title="No buckets match your search" description="Try a different search term or clear the search box." />
+            <EmptyState icon={IconFilterOff} title="No buckets match your filters" description="Try a different search term or clear the active filters." />
         );
 
     function handleDeleteConfirmed() {
@@ -181,7 +213,7 @@ function BucketsTab({ onProvision }: { onProvision: () => void }) {
                     columnVisibility: true,
                     rowSelection: false,
                     globalSearch: true,
-                    facetedFilters: false,
+                    facetedFilters: true,
                     sorting: true,
                 }}
                 isLoading={isLoading}
@@ -277,15 +309,16 @@ function ProvisionBucketsDialog({ open, onOpenChange }: { open: boolean; onOpenC
 
 /** Frame 14 — Tenant storage administration: buckets, defaults, configs, keys. */
 /**
- * Storage administration is tenant-scoped (matrix row 5): elevated sessions
- * must pick a working tenant first or every call 400s with "Tenant ID is
- * required". Gate before mounting any query.
+ * TASK-430 — the buckets list works CROSS-TENANT for an unscoped elevated
+ * session (GLOBAL_ADMIN with no working tenant): the backend returns every
+ * tenant's buckets and the grid shows a Tenant column + filter. Defaults,
+ * configs and access keys remain per-tenant wiring, so those tabs still ask
+ * for a working tenant when the session is unscoped.
  */
 export function TenantStorageScreen() {
     const session = useSession();
 
-    // Don't mount the data tabs until the scope is known — an elevated session
-    // without a working tenant would fire queries that can only 400.
+    // Don't mount the data tabs until the scope is known.
     if (!session.data) {
         return (
             <div className="flex flex-col gap-4">
@@ -295,30 +328,22 @@ export function TenantStorageScreen() {
         );
     }
 
-    if (session.data.isElevated && !session.data.workingTenantId) {
-        return (
-            <div className="flex flex-col gap-4">
-                <PageHeader
-                    title="Tenant Storage Administration"
-                    meta={
-                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-                            GET /admin/tenants/storage/buckets
-                        </span>
-                    }
-                />
-                <EmptyState
-                    icon={IconBuilding}
-                    title="Select a working tenant"
-                    description="Storage is administered per tenant. Pick a working tenant from the switcher in the top bar to load its buckets, configs and access keys."
-                />
-            </div>
-        );
-    }
-
-    return <StorageScreenBody />;
+    const scoped = !session.data.isElevated || Boolean(session.data.workingTenantId);
+    return <StorageScreenBody scoped={scoped} />;
 }
 
-function StorageScreenBody() {
+/** Per-tenant tabs (defaults / configs / keys) still need a working tenant. */
+function PickTenantState() {
+    return (
+        <EmptyState
+            icon={IconBuilding}
+            title="Select a working tenant"
+            description="This section is administered per tenant. Pick a working tenant from the switcher in the top bar to load it."
+        />
+    );
+}
+
+function StorageScreenBody({ scoped }: { scoped: boolean }) {
     const bucketsQuery = useBuckets();
     const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('buckets'));
     const [provisionOpen, setProvisionOpen] = useState(false);
@@ -373,15 +398,9 @@ function StorageScreenBody() {
                 <TabsContent value="buckets">
                     <BucketsTab onProvision={() => setProvisionOpen(true)} />
                 </TabsContent>
-                <TabsContent value="defaults">
-                    <BucketDefaultsTab />
-                </TabsContent>
-                <TabsContent value="configs">
-                    <StorageConfigsTab />
-                </TabsContent>
-                <TabsContent value="keys">
-                    <AccessKeysTab />
-                </TabsContent>
+                <TabsContent value="defaults">{scoped ? <BucketDefaultsTab /> : <PickTenantState />}</TabsContent>
+                <TabsContent value="configs">{scoped ? <StorageConfigsTab /> : <PickTenantState />}</TabsContent>
+                <TabsContent value="keys">{scoped ? <AccessKeysTab /> : <PickTenantState />}</TabsContent>
             </ScreenTemplate>
             <ProvisionBucketsDialog open={provisionOpen} onOpenChange={setProvisionOpen} />
         </Tabs>

@@ -8,6 +8,8 @@ export interface GlobalSetting extends BaseResource {
     value: string;
     dataType: string;
     namespace?: string;
+    /** TASK-430 — owning tenant of the row (the GLOBAL tenant holds platform defaults). */
+    tenantId?: string | null;
     /** Locked platform default — only GLOBAL_ADMIN may edit. */
     locked: boolean;
     version: number;

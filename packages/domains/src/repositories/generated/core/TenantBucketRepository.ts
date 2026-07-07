@@ -24,6 +24,22 @@ export class TenantBucketRepository extends Repository<TenantBucketEntity, Tenan
     });
   }
 
+  /**
+   * TASK-430 — platform-wide bucket listing for unscoped elevated sessions.
+   * No tenant predicate: the tenant-scope $extends bypasses injection for
+   * elevated callers, so this spans all tenants.
+   */
+  async findAllCrossTenant(options?: { includeDisabled?: boolean }): Promise<TenantBucketEntity[]> {
+    const filters: Record<string, unknown> = {};
+    if (!options?.includeDisabled) {
+      filters.resourceStatus = ResourceStatusType.ENABLED;
+    }
+    return this.findAll({
+      filters,
+      sort: [{ tenantId: 'asc' }, { slug: 'asc' }],
+    });
+  }
+
   async findBySlug(tenantId: string, slug: string): Promise<TenantBucketEntity | null> {
     try {
       return await this.findFirst({

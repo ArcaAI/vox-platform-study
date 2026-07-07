@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional } from 'class-validator';
+import { IsIn, IsOptional, IsString } from 'class-validator';
 import { PaginatedQuery } from '@arcaai/applications';
 import type { UserExportFormat } from '../user-export.service';
 
@@ -13,4 +13,16 @@ export class ExportUsersQuery extends PaginatedQuery {
   @IsOptional()
   @IsIn(['csv', 'xlsx', 'pdf'])
   format?: UserExportFormat;
+
+  /**
+   * TASK-430 — scope the export to ONE tenant. Backs the users list's in-page
+   * tenant filter (users have no `tenantId` column, so the CSV filter grammar
+   * cannot express the membership join). Guarded by the same
+   * `assertCanReadTenant` as the by-tenant list route: GLOBAL_ADMIN may pass
+   * any tenant, everyone else only their own CLS tenant.
+   */
+  @ApiPropertyOptional({ description: 'Scope the export to one tenant (membership-based; GLOBAL_ADMIN may pass any tenant)' })
+  @IsOptional()
+  @IsString()
+  tenantId?: string;
 }

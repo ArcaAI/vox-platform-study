@@ -1,0 +1,187 @@
+/**
+ * useTaskStream — the SMR task SSE consumed SAME-ORIGIN through the BFF proxy
+ * with cookie auth. Deliberate transport choice: the gateway route
+ * `GET text/tasks/:taskId/stream` declares NO @StreamScope, and JwtAuthGuard
+ * rejects `?ticket=` on scope-less routes, so the shared ticket-minting
+ * useEventStream can never authenticate here. These tests also lock the
+ * replay contract (every (re)connect replays from 0-0 -> state resets on
+ * open) and the `error` event disambiguation (upstream failure frames carry a
+ * data string; transport drops do not).
+ */
+
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useTaskStream } from '../use-task-stream';
+
+/** Instrumented EventSource double (mirrors the use-event-stream test). */
+class FakeEventSource {
+    static instances: FakeEventSource[] = [];
+    readonly url: string;
+    readonly listeners = new Map<string, Array<(event: MessageEvent) => void>>();
+    onopen: (() => void) | null = null;
+    onmessage: ((event: MessageEvent) => void) | null = null;
+    onerror: ((event: Event) => void) | null = null;
+    closed = false;
+
+    constructor(url: string) {
+        this.url = url;
+        FakeEventSource.instances.push(this);
+    }
+
+    addEventListener(name: string, listener: (event: MessageEvent) => void): void {
+        const existing = this.listeners.get(name) ?? [];
+        this.listeners.set(name, [...existing, listener]);
+    }
+
+    close(): void {
+        this.closed = true;
+    }
+
+    open(): void {
+        this.onopen?.();
+    }
+
+    /** Named SSE frame — carries a data string like the real transport. */
+    emit(type: string, data: string): void {
+        for (const listener of this.listeners.get(type) ?? []) {
+            listener({ data } as MessageEvent);
+        }
+    }
+
+    /** Transport-level error — an Event WITHOUT a data payload. */
+    fail(): void {
+        this.onerror?.(new Event('error'));
+        for (const listener of this.listeners.get('error') ?? []) {
+            listener(new Event('error') as unknown as MessageEvent);
+        }
+    }
+}
+
+function chunk(content: string): string {
+    return JSON.stringify({ type: 'chunk', content, data: null });
+}
+
+beforeEach(() => {
+    FakeEventSource.instances = [];
+    vi.stubGlobal('EventSource', FakeEventSource);
+    // The hook must not touch the network (no ticket mint, no polling).
+    vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => {
+            throw new Error('useTaskStream must not fetch');
+        }),
+    );
+});
+
+afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+});
+
+describe('useTaskStream', () => {
+    it('opens the BFF-proxied stream WITHOUT minting a ticket and folds chunk/usage/done frames', async () => {
+        const { result } = renderHook(() => useTaskStream('t-5531'));
+
+        await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+        const source = FakeEventSource.instances[0];
+        expect(source.url).toBe('/api/hope/text/tasks/t-5531/stream');
+        expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+        expect(result.current.status).toBe('connecting');
+
+        act(() => source.open());
+        expect(result.current.status).toBe('streaming');
+
+        act(() => {
+            source.emit('chunk', chunk('The patient presents'));
+            source.emit('chunk', chunk(' with dyspnea.'));
+        });
+        expect(result.current.content).toBe('The patient presents with dyspnea.');
+        expect(result.current.chunkCount).toBe(2);
+
+        act(() => source.emit('usage', JSON.stringify({ type: 'usage', data: { prompt_tokens: 20, completion_tokens: 214, total_tokens: 234 } })));
+        expect(result.current.usage).toEqual({ prompt_tokens: 20, completion_tokens: 214, total_tokens: 234 });
+
+        act(() => source.emit('done', JSON.stringify({ type: 'done', data: { finish_reason: 'stop' } })));
+        expect(result.current.status).toBe('done');
+        expect(result.current.finishReason).toBe('stop');
+        // Terminal frames stop the source (the SMR generator returned anyway).
+        expect(source.closed).toBe(true);
+    });
+
+    it('maps the upstream `error` FRAME (data string present) to failed with its message', async () => {
+        const { result } = renderHook(() => useTaskStream('t-1'));
+        await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+        const source = FakeEventSource.instances[0];
+
+        act(() => {
+            source.open();
+            source.emit('chunk', chunk('partial'));
+            source.emit('error', JSON.stringify({ type: 'error', data: { error: 'provider crashed' } }));
+        });
+
+        expect(result.current.status).toBe('failed');
+        expect(result.current.error).toBe('provider crashed');
+        expect(result.current.content).toBe('partial');
+        expect(source.closed).toBe(true);
+    });
+
+    it('maps a transport drop (no data) to error; reopen() reattaches and the 0-0 replay resets content', async () => {
+        const { result } = renderHook(() => useTaskStream('t-1'));
+        await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+        const first = FakeEventSource.instances[0];
+
+        act(() => {
+            first.open();
+            first.emit('chunk', chunk('partial before drop'));
+        });
+        act(() => first.fail());
+
+        expect(result.current.status).toBe('error');
+        expect(result.current.error).toBe('Stream connection lost');
+        expect(first.closed).toBe(true);
+
+        act(() => result.current.reopen());
+        await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+        const second = FakeEventSource.instances[1];
+        act(() => {
+            second.open();
+            second.emit('chunk', chunk('full replay'));
+        });
+        // No duplication: the reconnect replays from 0-0, so open() reset state.
+        expect(result.current.content).toBe('full replay');
+        expect(result.current.chunkCount).toBe(1);
+        expect(result.current.status).toBe('streaming');
+    });
+
+    it('close() stops the stream locally (the cancel affordance)', async () => {
+        const { result } = renderHook(() => useTaskStream('t-1'));
+        await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+        const source = FakeEventSource.instances[0];
+
+        act(() => {
+            source.open();
+            source.emit('chunk', chunk('to be cancelled'));
+        });
+        act(() => result.current.close());
+
+        expect(source.closed).toBe(true);
+        expect(result.current.status).toBe('closed');
+        expect(result.current.content).toBe('to be cancelled');
+    });
+
+    it('is idle without a task id and tears the source down when the id clears', async () => {
+        const { result, rerender } = renderHook(({ taskId }: { taskId: string | null }) => useTaskStream(taskId), {
+            initialProps: { taskId: null as string | null },
+        });
+
+        expect(result.current.status).toBe('idle');
+        expect(FakeEventSource.instances).toHaveLength(0);
+
+        rerender({ taskId: 't-9' });
+        await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+
+        rerender({ taskId: null });
+        expect(FakeEventSource.instances[0].closed).toBe(true);
+        expect(result.current.status).toBe('idle');
+    });
+});

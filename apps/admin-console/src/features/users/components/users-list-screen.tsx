@@ -16,17 +16,19 @@ import {
 } from '@arcaai/ui/components/shadcn/dropdown-menu';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { GatewayError } from '@/shared/api';
+import { useTenantCatalog, useTenantNames } from '@/shared/catalog';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid';
 import { normalizeList } from '@/shared/data/envelopes';
 import type { FilterOption } from '@/shared/data/filter-bar';
+import { toListParams } from '@/shared/data/grid-url-state';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
-import { useBulkDeleteUsers, useBulkUserAction, useExportUsers, useUsers } from '../api/hooks';
+import { useBulkDeleteUsers, useBulkUserAction, useExportUsers, useUsers, useUsersByTenant } from '../api/hooks';
 import type { User, UserRoleAssignment } from '../api/types';
 import { CreateUserDialog } from './create-user-dialog';
 import { UserActionDialogs, type UserActionRequest } from './user-action-dialogs';
@@ -36,6 +38,15 @@ import { UserAvatar } from './user-avatar';
 const USER_SEARCH_FIELDS = ['username', 'externalId'];
 const USER_DEFAULT_SORT: SortRule[] = [{ id: 'createdAt', desc: true }];
 const ROLE_CHIP_LIMIT = 2;
+const TENANT_CHIP_LIMIT = 2;
+
+/**
+ * TASK-430 — the User model has no `tenantId` column (tenancy = role
+ * assignments), so the in-page Tenant filter cannot ride the CSV filter
+ * grammar. The screen strips this rule from the list params and swaps to the
+ * membership-based by-tenant route instead.
+ */
+const TENANT_FILTER_ID = 'tenantId';
 
 const STATUS_OPTIONS: FilterOption[] = [
     { value: 'ENABLED', label: 'Active' },
@@ -68,6 +79,24 @@ function RolesCell({ assignments }: { assignments?: UserRoleAssignment[] }) {
             {shown.map((assignment) => (
                 <Badge key={assignment.id} variant="secondary">
                     {assignment.roleName ?? assignment.roleId}
+                </Badge>
+            ))}
+            {extra > 0 ? <Badge variant="outline">+{extra}</Badge> : null}
+        </span>
+    );
+}
+
+/** TASK-430 — distinct tenants from the user's role assignments; names degrade to raw ids while the catalog loads. */
+function TenantsCell({ assignments, tenantNames }: { assignments?: UserRoleAssignment[]; tenantNames: Map<string, string> }) {
+    const tenantIds = Array.from(new Set((assignments ?? []).map((assignment) => assignment.tenantId).filter((id): id is string => !!id)));
+    if (tenantIds.length === 0) return <span className="text-muted-foreground">{'\u2014'}</span>;
+    const shown = tenantIds.slice(0, TENANT_CHIP_LIMIT);
+    const extra = tenantIds.length - shown.length;
+    return (
+        <span className="flex items-center gap-1">
+            {shown.map((id) => (
+                <Badge key={id} variant="outline">
+                    {tenantNames.get(id) ?? id}
                 </Badge>
             ))}
             {extra > 0 ? <Badge variant="outline">+{extra}</Badge> : null}
@@ -151,7 +180,32 @@ export function UsersListScreen() {
     const exportUsersMutation = useExportUsers();
 
     const query = useAdminGridParams({ searchFields: USER_SEARCH_FIELDS, defaultSort: USER_DEFAULT_SORT });
-    const { data, isLoading, isFetching, error, refetch } = useUsers(query.listParams);
+    const tenantNames = useTenantNames();
+    const tenantCatalog = useTenantCatalog();
+    const tenantOptions = useMemo<FilterOption[]>(
+        () => (tenantCatalog.data ?? []).map((tenant) => ({ value: tenant.id, label: tenant.name || tenant.key || tenant.id })),
+        [tenantCatalog.data],
+    );
+
+    // TASK-430 — the Tenant filter cannot ride the CSV grammar (no tenantId
+    // column on User): strip it from the params and route the fetch through the
+    // membership-based `GET /admin/users/tenant/:id` instead.
+    const tenantFilter = query.queryState.filters.find((rule) => rule.id === TENANT_FILTER_ID && typeof rule.value === 'string' && rule.value.length > 0);
+    const filterTenantId = tenantFilter ? String(tenantFilter.value) : '';
+    const listParams = useMemo(
+        () =>
+            filterTenantId
+                ? toListParams(
+                      { ...query.queryState, filters: query.queryState.filters.filter((rule) => rule.id !== TENANT_FILTER_ID) },
+                      { searchFields: USER_SEARCH_FIELDS },
+                  )
+                : query.listParams,
+        [filterTenantId, query.queryState, query.listParams],
+    );
+
+    const allUsersQuery = useUsers(listParams, { enabled: !filterTenantId });
+    const byTenantQuery = useUsersByTenant(filterTenantId, listParams);
+    const { data, isLoading, isFetching, error, refetch } = filterTenantId ? byTenantQuery : allUsersQuery;
     const { rows, total } = normalizeList<User>(data);
     const totalCount = total ?? 0;
 
@@ -194,7 +248,8 @@ export function UsersListScreen() {
     /** Export the current filtered view (not just the selection) — the gateway export takes ListParams. */
     function handleExport() {
         exportUsersMutation.mutate(
-            { ...query.listParams, format: 'csv' },
+            // TASK-430 — the tenant filter travels as a dedicated query param (see listParams note above).
+            { ...listParams, format: 'csv', ...(filterTenantId ? { tenantId: filterTenantId } : {}) },
             {
                 onSuccess: ({ blob, contentDisposition }) => {
                     const filename = filenameFromDisposition(contentDisposition) ?? 'users.csv';
@@ -235,6 +290,20 @@ export function UsersListScreen() {
                 size: 200,
             },
             {
+                // TASK-430 — cross-tenant view: which tenant(s) the user belongs
+                // to (via role assignments) + a tenant filter (see listParams).
+                // The accessorFn makes this an ACCESSOR column so TanStack's
+                // getCanFilter() is true and the faceted filter renders; actual
+                // filtering is server-side (manual filtering).
+                id: TENANT_FILTER_ID,
+                accessorFn: (row: User) => row.UserRoleAssignments?.[0]?.tenantId ?? '',
+                header: 'Tenant',
+                enableSorting: false,
+                meta: { label: 'Tenant', variant: 'select', options: tenantOptions },
+                cell: ({ row }) => <TenantsCell assignments={row.original.UserRoleAssignments} tenantNames={tenantNames} />,
+                size: 180,
+            },
+            {
                 accessorKey: 'resourceStatus',
                 header: 'Status',
                 enableSorting: false,
@@ -252,10 +321,10 @@ export function UsersListScreen() {
                 size: 150,
             },
             {
-                accessorKey: 'lastActiveAt',
-                header: 'Last active',
-                meta: { label: 'Last active' },
-                cell: ({ row }) => <span className="text-muted-foreground">{formatRelativeTime(row.original.lastActiveAt ?? row.original.lastLoginAt)}</span>,
+                accessorKey: 'lastLoginAt',
+                header: 'Last login',
+                meta: { label: 'Last login' },
+                cell: ({ row }) => <span className="text-muted-foreground">{formatRelativeTime(row.original.lastLoginAt)}</span>,
                 size: 150,
             },
             {
@@ -285,7 +354,7 @@ export function UsersListScreen() {
                 ),
             },
         ],
-        [router],
+        [router, tenantNames, tenantOptions],
     );
 
     const actionBar = (

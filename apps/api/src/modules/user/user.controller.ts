@@ -239,7 +239,13 @@ export class UserController {
     const params = this.withDefaultSort({ ...query, page: 1, limit: UserController.EXPORT_LIMIT });
 
     let result;
-    if (!isSuperAdmin(user)) {
+    if (query.tenantId) {
+      // TASK-430 — explicit tenant scope from the in-page tenant filter. Same
+      // guard as the by-tenant list route: GLOBAL_ADMIN may export any tenant,
+      // every other caller only their own CLS tenant.
+      this.assertCanReadTenant(query.tenantId);
+      result = await this.userService.fetchAllByTenantId({ ...params, tenantId: query.tenantId });
+    } else if (!isSuperAdmin(user)) {
       if (!callerTenantId) {
         throw new ForbiddenException('Tenant context required to export users');
       }
@@ -251,7 +257,7 @@ export class UserController {
     }
 
     const ids = result.data.map((entity) => entity.id);
-    const enrichment = await this.userService.getExportEnrichment(ids, callerTenantId);
+    const enrichment = await this.userService.getExportEnrichment(ids, query.tenantId ?? callerTenantId);
 
     return result.data.map((entity) => this.toExportRow(UserDtoMapper.ToResponse(entity), enrichment[entity.id]));
   }

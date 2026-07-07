@@ -17,7 +17,7 @@ import { AccountScreen } from '../account-screen';
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const SESSION: SafeSession = {
-    user: { id: 'u-1', username: 'super_admin', email: 'root@hope.dev', roles: ['GLOBAL_ADMIN'] },
+    user: { id: 'u-1', username: 'super_admin', email: 'root@hope.dev', roles: ['GLOBAL_ADMIN'], tenantId: null },
     isElevated: true,
     workingTenantId: 'ten-1',
     workingTenantName: 'Sunrise Medical Group',

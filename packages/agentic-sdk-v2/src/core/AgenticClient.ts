@@ -48,6 +48,7 @@ const refreshTokens = new WeakMap<AgenticClient, string>();
  */
 export class AgenticClient {
   private baseUrl: string;
+  private wsUrl?: string;
   private accessToken?: string;
   private apiKey?: string;
   private tenantId?: string;
@@ -69,6 +70,7 @@ export class AgenticClient {
 
   constructor(config: ApiConfig, logger?: ISDKLogger) {
     this.baseUrl = config.baseUrl.replace(/\/$/, '');
+    this.wsUrl = config.wsUrl?.replace(/\/$/, '') || undefined;
     this.accessToken = config.accessToken;
     this.apiKey = config.apiKey;
     this.tenantId = config.tenantId;
@@ -987,6 +989,15 @@ export class AgenticClient {
    */
   getBaseUrl(): string {
     return this.baseUrl;
+  }
+
+  /**
+   * TASK-431 — the explicit WebSocket base from `ApiConfig.wsUrl`, when set.
+   * Lets a consumer route REST through a same-origin BFF proxy (`baseUrl`)
+   * while WebSocket upgrades go directly to the gateway.
+   */
+  getWsUrl(): string | undefined {
+    return this.wsUrl;
   }
 
   getAccessToken(): string | undefined {

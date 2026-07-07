@@ -1,6 +1,6 @@
 # TASK-420 — Admin Console Playground Tier (Figma frames 50–59)
 
-- **Status**: In Progress
+- **Status**: Review
 - **Type**: feature — playground screens inside `apps/admin-console`
 - **Created**: 2026-07-04
 - **Origin**: TASK-415 Decision 2 (Playground tier deferred) confirmed by the 2026-07-04 review
@@ -77,10 +77,19 @@ Frames 55–59 remain reserved (unused). Routes sit under a `(playground)` route
 ## Implementation Plan (high level — detail before starting)
 
 1. ~~Extend the TASK-415 capabilities matrix~~ → Tier 50–59 capability section authored INSIDE this README (above; the closed TASK-415 matrix is untouched), endpoints/guards verified against controllers. ✅ 2026-07-05
-2. ~~Figma frames 50–59~~ → authored 2026-07-05 (inventory below) — **AWAITING USER APPROVAL** (design gate, rule `12-design-workflow.mdc` §2).
-3. Screens per the TASK-415 phase pattern (failing test → implement → verify; `@arcaai/ui` fitness pass; `@arcaai/vox` integration for capture flows) — **blocked on the frame approval above**.
+2. ~~Figma frames 50–59~~ → authored 2026-07-05 (inventory below) — **APPROVED by the user 2026-07-06** (design gate cleared, rule `12-design-workflow.mdc` §2).
+3. Screens per the TASK-415 phase pattern — split into six parallel sub-tickets (2026-07-06):
 
-## Figma Frame Inventory — group `Playground` (awaiting approval)
+| Sub-ticket | Scope | Route |
+|---|---|---|
+| TASK-431 | Playground foundation: `(playground)` route group + guard, sidebar tier `50-59`, session `user.tenantId`, `@arcaai/vox` dep, SDK `wsUrl` fix | — |
+| TASK-432 | Frames 50 + 50.1 — SDK consultation demo + documentation review | `/playground/consultation` |
+| TASK-433 | Frame 51 — live transcription (WS + batch) | `/playground/live-transcription` |
+| TASK-434 | Frame 52 — voice profile enrollment | `/playground/voice-profiles` |
+| TASK-435 | Frame 53 — my DNA writing style | `/playground/dna-writing-style` |
+| TASK-436 | Frame 54 — LLM playground | `/playground/llm` |
+
+## Figma Frame Inventory — group `Playground` (approved 2026-07-06)
 
 Authored 2026-07-05 in `HOPE-Admin-Console` via the Figma bridge. New top-level group container `Playground` (slate-400 canvas, auto-layout, 3-per-row wrap) placed after `Tenant admins'`. All frames 1440 px light theme (dark variant noted), built by duplicating the approved B2 archetype chrome (07 shell + 09 templates lineage) — token hexes strictly from `packages/ui/src/styles/globals.css` incl. `*-strong` on-tint text. Every frame carries: sidebar with new `PLAYGROUND — tier 50–59` nav group (active item highlighted in canonical order), "Acting on:" banner with dual-render annotation, STATE VARIANTS strip (loading skeleton / empty / error / NoTenant), playground chrome (live/REC indicators, streaming panes, SSE/WS status chips, mic-permission chips), and a matrix-traceability footnote.
 
@@ -96,11 +105,33 @@ Authored 2026-07-05 in `HOPE-Admin-Console` via the Figma bridge. New top-level 
 
 Frames 55–59 remain reserved (unused), matching the proposed-frames table above.
 
-**Gate**: screen implementation (plan step 3) starts only after the user approves this 50–59 batch.
+**Gate**: cleared — the user approved the 50–59 batch on 2026-07-06.
 
 ## Implementation Summary
 
-*Pending — design gate open (frames 50–59 awaiting approval).*
+All six sub-tickets are implemented (each in `Review`; per-ticket detail and evidence live in their own READMEs). Consolidated integration verification on the merged tree, 2026-07-06 (re-run after the final TASK-432 test consolidation):
+
+- **Tests**: `pnpm --filter @arcaai/admin-console test` → **95 files, 729/729 passed** (includes all five `playground-*` feature suites plus the updated nav/sidebar suites).
+- **Lint**: `pnpm --filter @arcaai/admin-console lint` (`--max-warnings 0`) → clean, exit 0.
+- **Types**: `pnpm --filter @arcaai/admin-console check-types` → clean, exit 0.
+- **Build**: `pnpm --filter @arcaai/admin-console build` → production build succeeds; all five routes compiled as dynamic (`ƒ`): `/playground/consultation`, `/playground/live-transcription`, `/playground/voice-profiles`, `/playground/dna-writing-style`, `/playground/llm`.
+
+### What was delivered
+
+| Sub-ticket | Deliverable |
+|---|---|
+| TASK-431 | `(playground)` route group + 404-posture tier guard, sidebar `PLAYGROUND` section (admin-gated `visibleNavEntries`), session `user.tenantId`, `@arcaai/vox`/`@arcaai/stt`/`@arcaai/room` deps, SDK `ApiConfig.wsUrl` origin fix (BFF REST + direct-gateway WS) |
+| TASK-432 | `features/playground-consultation` — SDK capture pane, open→record→summary flow, 50.1 documentation review sub-view |
+| TASK-433 | `features/playground-live-transcription` — streaming tab (session create → WS w/ tenant claim, partial/final transcript, 429-quota + 4401 panels), batch tab (multipart upload, SSE job card, my-jobs) |
+| TASK-434 | `features/playground-voice-profiles` — record-or-upload enrollment wizard (≤3 samples), profile list w/ activate/deactivate/delete |
+| TASK-435 | `features/playground-dna-style` — impersonation GATE-403 panel, my-style card (ETag/If-Match editing), report list, generate pane (SSE primary, 2s poll fallback on stream error), DNA settings toggle |
+| TASK-436 | `features/playground-llm` — prompt editor (provider/model cascade incl. omit option), sync + streaming generate, assembled mode w/ admin-only debug, providers/guardrails catalog w/ elevated `__GLOBAL__` switch |
+
+### Known runtime caveats (for the E2E/design-QA pass)
+
+1. **Scope-less SSE routes**: `GET /text/tasks/:taskId/stream` (SMR) and `GET /dna-writing-styles/jobs/:jobId/stream` (DNA self) carry `@Authorize()` but no `@StreamScope`, and `JwtAuthGuard` rejects `?ticket=` on scope-less routes. TASK-436 therefore streams through the same-origin BFF proxy with cookie auth; TASK-435 attempts the ticketed stream and falls back to its designed 2s poll. Optional backend follow-up: add `@StreamScope` to those two routes to unify on the ticket pattern.
+2. **SMR 422 detail**: SMR's fail-closed `{ detail }` payload doesn't survive the shared `GatewayError` parser (expects `{ message }`) — the designed 422 panel renders with generic copy (documented in TASK-436).
+3. Playwright E2E + axe + design QA against the running app (rule `12-design-workflow.mdc` §6) remain to be executed as the final gate for this parent ticket.
 
 ## Change History
 
@@ -109,3 +140,5 @@ Frames 55–59 remain reserved (unused), matching the proposed-frames table abov
 | 2026-07-04 | Ticket created from the TASK-415 review (deferred Playground tier formalized). |
 | 2026-07-05 | Status → In Progress. Tier 50–59 capabilities matrix (rows 34–38 + realtime-surfaces table + verification notes) authored inside this README; every endpoint/guard verified against `apps/api/src/modules/**`. |
 | 2026-07-05 | Figma group `Playground` + frames 50, 50.1, 51, 52, 53, 54 and dark variant `50-dark` authored in `HOPE-Admin-Console`; 7 evidence PNGs saved to `figma-evidence/`. **Awaiting user approval** (design gate) before any screen implementation. |
+| 2026-07-06 | **Design gate cleared** — user approved the frames 50–59 batch. Implementation split into parallel sub-tickets: TASK-431 (foundation), TASK-432 (consultation demo), TASK-433 (live transcription), TASK-434 (voice profiles), TASK-435 (DNA writing style), TASK-436 (LLM playground). |
+| 2026-07-06 | All six sub-tickets implemented (parallel agents). Consolidated integration pass on the merged tree: 729/729 tests (re-verified after the last agent consolidated duplicated TASK-432 suites), lint + types clean, production build green with all five playground routes. Status → Review; remaining gate = runtime E2E + axe + design QA (caveats noted in Implementation Summary). |

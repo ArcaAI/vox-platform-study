@@ -48,8 +48,15 @@ import type {
     UpdateUserSettingRequest,
 } from './types';
 
-export function useUsers(params?: ListParams) {
-    return useQuery({ queryKey: userKeys.list(params), queryFn: () => listUsers(params), placeholderData: keepPreviousData });
+export function useUsers(params?: ListParams, options?: { enabled?: boolean }) {
+    return useQuery({
+        queryKey: userKeys.list(params),
+        queryFn: () => listUsers(params),
+        placeholderData: keepPreviousData,
+        // TASK-430 — the list screen swaps to the by-tenant route when the
+        // in-page tenant filter is active; the cross-tenant query pauses.
+        enabled: options?.enabled ?? true,
+    });
 }
 
 export function useUsersByTenant(tenantId: string, params?: ListParams) {

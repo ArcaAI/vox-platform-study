@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Status** | In Progress |
+| **Status** | Review |
 | **Type** | feature + bugfix |
-| **Packages** | `packages/applications`, `apps/api`, `apps/admin-console` |
+| **Packages** | `packages/domains`, `packages/applications`, `apps/api`, `apps/admin-console` |
 | **Related** | TASK-415 (admin console), TASK-417 (GLOBAL_ADMIN consolidation), TASK-423 (data grids), TASK-401 (impersonation) |
 
 ## Requirement Analysis
@@ -16,6 +16,10 @@ When a GLOBAL_ADMIN uses the Administration pages (`/users`, `/api-keys`, `/sett
 3. `/settings` must list all settings/secrets of all tenants with a **Tenant column** and a **filter by tenant**.
 
 `/tenant-profile` (renders a "No working tenant selected" empty state) and `/account` (self-service) already behave correctly with no tenant selected — no changes.
+
+**Scope addition (2026-07-06):**
+
+4. `/tenants/storage` must list **all buckets of all tenants** for an unscoped GLOBAL_ADMIN (no working tenant required), with a **Tenant column** and **filters** on the data table.
 
 ## Current State Evaluation
 
@@ -54,8 +58,45 @@ When a GLOBAL_ADMIN uses the Administration pages (`/users`, `/api-keys`, `/sett
 
 ## Implementation Summary
 
-_(completed below — see Change History)_
+### Backend (`packages/applications`, `apps/api`)
+
+| Change | File(s) |
+|---|---|
+| `getByUser` reads memberships cross-tenant for an unscoped GLOBAL_ADMIN (fixes `Tenant ID is required` on the user-detail Departments tab); all other callers keep the strict tenant requirement | `packages/applications/src/services/user/userDepartment/user-department.service.ts` + tests |
+| `GlobalSettingResponse.tenantId` exposed (list/get) so the console can render/filter a Tenant column | `packages/applications/src/services/globalSetting/dto/globalSetting.response.ts` + mapper test |
+| Service accounts refused interactive login (401 AFTER password check — no account-type oracle) | `apps/api/src/modules/auth/auth.controller.ts` |
+| Impersonating a service account refused on BOTH mint routes, audited with new `TARGET_IS_SERVICE_ACCOUNT` denial reason | `auth.controller.ts`, `admin-impersonation.controller.ts`, `impersonation-events.ts` + `__tests__/auth.service-account.task430.test.ts` |
+| `GET /admin/users/export` accepts optional `tenantId` (validated via `assertCanReadTenant`) so exports honour the console tenant filter | `apps/api/src/modules/user/dto/export-users.query.ts`, `user.controller.ts` |
+| `TenantBucketService.listBuckets` lists buckets CROSS-TENANT for an unscoped GLOBAL_ADMIN (was: unconditional `Tenant ID is required`); new `TenantBucketRepository.findAllCrossTenant` (sorted tenantId → slug, ENABLED unless `includeDisabled`) | `packages/applications/src/services/tenant-bucket/tenant-bucket.service.ts` + tests, `packages/domains/src/repositories/generated/core/TenantBucketRepository.ts` |
+
+### Frontend (`apps/admin-console`)
+
+| Screen | Change |
+|---|---|
+| `/users` | Tenant column (badges from `UserRoleAssignments`, catalog names, +N overflow) with select filter; the filter re-routes the list to `GET /admin/users/tenant/:id` and threads `tenantId` to the export; **Last active → Last login** (`lastLoginAt`); Impersonate hidden for service accounts on the detail header. The Tenant column uses an `accessorFn` so TanStack `getCanFilter()` is true and the faceted filter renders. |
+| `/users/:id` Departments tab | Works unscoped (backend fix) + new Tenant column attributing each membership. |
+| `/api-keys` | Tenant column (`tenantId`, catalog names, dash for platform keys) + select filter via CSV `tenantId[equals]:…` — no backend change. |
+| `/settings` | Tenant column (new DTO field) + select filter via the same CSV grammar. |
+| `/tenants/storage` | Buckets tab no longer gated on a working tenant: an unscoped elevated session lists every tenant's buckets with a new **Tenant** column (catalog names) and client-side faceted filters (**Tenant / Purpose / Type**, `facetedFilters: true`). The **Defaults / Configs / Access keys** tabs stay per-tenant and show the "Select a working tenant" empty state when unscoped. |
+
+### Verification evidence (2026-07-06)
+
+- `pnpm --filter @arcaai/applications build` ✅ · `test` ✅ 5841 passed | 4 skipped (269 files)
+- `pnpm build:api` ✅ (8 tasks) · API unit tests (auth/user/global-setting modules) ✅ 291 passed (16 files)
+- `pnpm --filter admin-console build` ✅ · `lint` ✅ (0 errors/0 warnings) · feature tests (users/api-keys/settings) ✅ 72 passed (7 files)
+- Runtime pass (unscoped GLOBAL_ADMIN, dev servers): `/users` cross-tenant list with all mandated columns + working tenant filter (48 → 1 on QA Tenant A); user detail Departments tab loads (no `Tenant ID is required`); `/api-keys` shows 11 keys with Tenant column; `/settings` shows 286 settings cross-tenant, tenant filter narrows to 22 (System).
+
+`/tenant-profile` and `/account` needed no changes (verified empty-state / self-service behaviour).
+
+### Verification evidence — `/tenants/storage` addition (2026-07-06)
+
+- `pnpm --filter @arcaai/domains build` ✅ · `test` ✅ 1299 passed | 2 skipped (107 files)
+- `pnpm --filter @arcaai/applications build` ✅ · `tenant-bucket.service.test.ts` ✅ 48 passed (incl. 2 new cross-tenant tests, TDD RED→GREEN)
+- `pnpm --filter admin-console` `tenant-storage-screen.test.tsx` ✅ 17 passed (3 new: cross-tenant list, tenant faceted filter, per-tenant tab gating) · eslint ✅ 0 errors
+- Runtime pass (unscoped GLOBAL_ADMIN): `/tenants/storage` lists 17 buckets across 7 tenants with Tenant column (names + ids); tenant filter narrows 17 → 3 (QA Tenant A); Defaults tab shows "Select a working tenant".
 
 ## Change History
 
 - 2026-07-06 — Ticket opened; exploration + plan recorded.
+- 2026-07-06 — Backend + frontend implemented and verified (see Implementation Summary). Fix during runtime pass: the `/users` Tenant column needed an `accessorFn` for the faceted filter to render (display-only columns fail TanStack's `getCanFilter()`).
+- 2026-07-06 — Scope addition: `/tenants/storage` cross-tenant buckets list (Tenant column + Tenant/Purpose/Type filters, no working tenant required); defaults/configs/keys tabs remain per-tenant behind the pick-tenant empty state.
