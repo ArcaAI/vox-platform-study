@@ -140,6 +140,13 @@ function isAdminTier(roles: readonly string[] | null | undefined): boolean {
  * Tier 50-59 additionally requires an admin role (`roles`), mirroring the
  * (playground) route-group guard — ability rules alone cannot express it.
  */
+/** Longest-prefix nav match — `/tenants/storage` beats `/tenants`. */
+export function matchNavEntry(pathname: string, entries: readonly NavEntry[] = NAV_ENTRIES): NavEntry | undefined {
+    return entries
+        .filter((e) => pathname === e.route || pathname.startsWith(`${e.route}/`))
+        .sort((a, b) => b.route.length - a.route.length)[0];
+}
+
 export function visibleNavEntries(rules: readonly PermissionRule[] | null | undefined, roles?: readonly string[] | null): NavEntry[] {
     return NAV_ENTRIES.filter((entry) => {
         if (!entry.implemented) return false;

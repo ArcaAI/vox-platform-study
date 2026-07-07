@@ -16,7 +16,7 @@ import {
     SidebarRail,
 } from '@arcaai/ui/components/shadcn/sidebar';
 import { usePermissions, useSession } from '@/shared/auth/hooks';
-import { NAV_SECTIONS, visibleNavEntries } from '@/shared/navigation/nav-config';
+import { matchNavEntry, NAV_SECTIONS, visibleNavEntries } from '@/shared/navigation/nav-config';
 
 /**
  * Ability-driven navigation: sections and entries render only when
@@ -32,6 +32,7 @@ export function AppSidebar() {
     const { data: rules } = usePermissions();
     const { data: session } = useSession();
     const entries = visibleNavEntries(rules, session?.user.roles);
+    const activeEntry = matchNavEntry(pathname, entries);
 
     return (
         <Sidebar collapsible="icon">
@@ -67,7 +68,7 @@ export function AppSidebar() {
                                                 <SidebarMenuButton
                                                     asChild
                                                     tooltip={entry.label}
-                                                    isActive={isCurrent || pathname.startsWith(`${entry.route}/`)}
+                                                    isActive={entry === activeEntry}
                                                 >
                                                     <Link href={entry.route} aria-current={isCurrent ? 'page' : undefined}>
                                                         <Icon aria-hidden />

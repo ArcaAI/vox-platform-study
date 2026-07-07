@@ -198,13 +198,12 @@ function BucketsTab({ onProvision }: { onProvision: () => void }) {
     }
 
     return (
-        <div className="flex flex-col gap-4">
+        <>
             <VirtualizedDataGrid<TenantBucket>
                 aria-label="Tenant buckets"
                 columns={columns}
                 data={buckets}
                 getRowId={(row) => row.id}
-                height={360}
                 persistence={gridPersistence('tenant-storage-buckets')}
                 features={{
                     columnReorder: true,
@@ -237,7 +236,7 @@ function BucketsTab({ onProvision }: { onProvision: () => void }) {
                 onConfirm={handleDeleteConfirmed}
                 isPending={deleteBucket.isPending}
             />
-        </div>
+        </>
     );
 }
 
@@ -355,6 +354,7 @@ function StorageScreenBody({ scoped }: { scoped: boolean }) {
     return (
         <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => setTabParam(next === 'buckets' ? null : next)}>
             <ScreenTemplate
+                contentMode="fill"
                 header={
                     <PageHeader
                         title="Tenant Storage Administration"
@@ -387,6 +387,7 @@ function StorageScreenBody({ scoped }: { scoped: boolean }) {
                 }
                 footer={
                     <StatusFooter
+                        start={<span>{bucketsQuery.isFetching && !bucketsQuery.isLoading ? 'Refreshing' : 'Up to date'}</span>}
                         end={
                             <span aria-hidden className="font-mono">
                                 GET /admin/tenants/storage/buckets
@@ -395,12 +396,12 @@ function StorageScreenBody({ scoped }: { scoped: boolean }) {
                     />
                 }
             >
-                <TabsContent value="buckets">
+                <TabsContent value="buckets" className="flex min-h-0 flex-col">
                     <BucketsTab onProvision={() => setProvisionOpen(true)} />
                 </TabsContent>
-                <TabsContent value="defaults">{scoped ? <BucketDefaultsTab /> : <PickTenantState />}</TabsContent>
-                <TabsContent value="configs">{scoped ? <StorageConfigsTab /> : <PickTenantState />}</TabsContent>
-                <TabsContent value="keys">{scoped ? <AccessKeysTab /> : <PickTenantState />}</TabsContent>
+                <TabsContent value="defaults" className="overflow-y-auto">{scoped ? <BucketDefaultsTab /> : <PickTenantState />}</TabsContent>
+                <TabsContent value="configs" className="overflow-y-auto">{scoped ? <StorageConfigsTab /> : <PickTenantState />}</TabsContent>
+                <TabsContent value="keys" className="overflow-y-auto">{scoped ? <AccessKeysTab /> : <PickTenantState />}</TabsContent>
             </ScreenTemplate>
             <ProvisionBucketsDialog open={provisionOpen} onOpenChange={setProvisionOpen} />
         </Tabs>
