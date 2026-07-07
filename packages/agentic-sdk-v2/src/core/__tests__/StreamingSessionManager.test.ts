@@ -262,6 +262,48 @@ describe('StreamingSessionManager', () => {
       expect(wsUrl).not.toContain('wss:');
     });
 
+    // -------------------------------------------------------------------
+    // TASK-431 — BFF split: REST rides a same-origin proxy (baseUrl) while
+    // the WebSocket must hit the gateway directly. When ApiConfig.wsUrl is
+    // set, its ORIGIN wins over baseUrl for the WS URL.
+    // -------------------------------------------------------------------
+
+    it('TASK-431: uses the ApiConfig.wsUrl origin when it differs from baseUrl (BFF REST + direct gateway WS)', async () => {
+      const bffClient = new AgenticClient(
+        { baseUrl: 'http://localhost:5176/api/hope', wsUrl: 'http://localhost:8868' },
+        mockLogger,
+      );
+      const bffManager = new StreamingSessionManager(bffClient, mockLogger);
+      mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
+      await bffManager.createSession({ pipelineId: 'default' });
+
+      const wsUrl = bffManager.getWebSocketUrl();
+
+      expect(wsUrl).toMatch(/^ws:\/\/localhost:8868\/ws\/stt-v2\/stream/);
+      expect(wsUrl).toContain('sessionId=session-ws-test');
+      expect(wsUrl).not.toContain('5176');
+    });
+
+    it('TASK-431: normalizes an https wsUrl to wss and keeps an explicit wss wsUrl as-is', async () => {
+      const httpsClient = new AgenticClient(
+        { baseUrl: 'http://localhost:5176/api/hope', wsUrl: 'https://gateway.example.com' },
+        mockLogger,
+      );
+      const httpsManager = new StreamingSessionManager(httpsClient, mockLogger);
+      mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
+      await httpsManager.createSession({ pipelineId: 'default' });
+      expect(httpsManager.getWebSocketUrl()).toMatch(/^wss:\/\/gateway\.example\.com\/ws\/stt-v2\/stream/);
+
+      const wssClient = new AgenticClient(
+        { baseUrl: 'http://localhost:5176/api/hope', wsUrl: 'wss://gateway.example.com' },
+        mockLogger,
+      );
+      const wssManager = new StreamingSessionManager(wssClient, mockLogger);
+      mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
+      await wssManager.createSession({ pipelineId: 'default' });
+      expect(wssManager.getWebSocketUrl()).toMatch(/^wss:\/\/gateway\.example\.com\/ws\/stt-v2\/stream/);
+    });
+
     it('should fall back to STT_V2_ENDPOINTS.WS_STREAM when server returns empty wsUrl', async () => {
       const emptyWsUrlResponse: StreamingSessionResponse = {
         ...mockSessionResponse,

@@ -150,9 +150,11 @@ export class StreamingSessionManager {
       return null;
     }
 
-    const baseUrl = this.apiClient.getBaseUrl();
-    const parsed = new URL(baseUrl);
-    const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+    // TASK-431 — `ApiConfig.wsUrl` (when set) wins over `baseUrl` for the WS
+    // origin, so REST can ride a same-origin BFF proxy while the WebSocket
+    // upgrade hits the gateway directly. `https/wss` → wss, `http/ws` → ws.
+    const parsed = new URL(this.apiClient.getWsUrl() ?? this.apiClient.getBaseUrl());
+    const wsProtocol = parsed.protocol === 'https:' || parsed.protocol === 'wss:' ? 'wss:' : 'ws:';
     const wsOrigin = `${wsProtocol}//${parsed.host}`;
 
     const wsPath = this.sessionResponse.wsUrl || STT_V2_ENDPOINTS.WS_STREAM;

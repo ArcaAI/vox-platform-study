@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useMemo, useState, type FormEvent } from 'react';
 import { IconEye, IconEyeOff, IconFilterOff, IconLock, IconPencil, IconPlus, IconSettings, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { type ColumnDef, type SortRule } from '@arcaai/ui';
@@ -18,10 +18,13 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { RequirePermission } from '@/shared/auth/require-permission';
+import { useTenantCatalog, useTenantNames } from '@/shared/catalog';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { CopyButton } from '@/shared/copy-button';
 import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid';
 import { normalizeList } from '@/shared/data/envelopes';
+import type { FilterOption } from '@/shared/data/filter-bar';
+import { NameWithId } from '@/shared/data/name-with-id';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
@@ -106,9 +109,10 @@ function RevealSecretDialog({
  * masked secrets, permission-gated step-up reveal, OCC If-Match value editing
  * and create/delete flows. Scope is decided by the working-tenant switcher, not
  * an in-page toggle: the BFF stamps X-Tenant-Id, so the gateway scopes this list
- * to the working tenant (or returns the __GLOBAL__ platform defaults for an
- * unscoped super-admin). The former Global/Tenant tabs both resolved to that
- * same tenant, so they were redundant and were removed.
+ * to the working tenant. An UNSCOPED super-admin gets the cross-tenant listing
+ * (TASK-430): every tenant's settings and secrets, with a Tenant column and an
+ * in-page tenant filter (the GlobalSetting row carries tenantId, so the filter
+ * rides the regular CSV grammar).
  */
 export function SettingsScreen() {
     const query = useAdminGridParams({ searchFields: SETTING_SEARCH_FIELDS, defaultSort: SETTING_DEFAULT_SORT });
@@ -116,6 +120,14 @@ export function SettingsScreen() {
     const settingsQuery = useGlobalSettings(query.listParams);
     const { rows, total } = normalizeList<GlobalSetting>(settingsQuery.data);
     const totalCount = total ?? 0;
+
+    // TASK-430 — Tenant column + filter on the cross-tenant listing.
+    const tenantNames = useTenantNames();
+    const tenantCatalog = useTenantCatalog();
+    const tenantOptions = useMemo<FilterOption[]>(
+        () => (tenantCatalog.data ?? []).map((tenant) => ({ value: tenant.id, label: tenant.name || tenant.key || tenant.id })),
+        [tenantCatalog.data],
+    );
 
     const [createOpen, setCreateOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<GlobalSetting | null>(null);
@@ -199,6 +211,19 @@ export function SettingsScreen() {
             meta: { label: 'Namespace' },
             size: 140,
             cell: ({ row }) => <span className="text-muted-foreground">{row.original.namespace || '\u2014'}</span>,
+        },
+        {
+            accessorKey: 'tenantId',
+            header: 'Tenant',
+            enableSorting: false,
+            meta: { label: 'Tenant', variant: 'select', options: tenantOptions },
+            size: 180,
+            cell: ({ row }) =>
+                row.original.tenantId ? (
+                    <NameWithId name={tenantNames.get(row.original.tenantId)} id={row.original.tenantId} />
+                ) : (
+                    <span className="text-muted-foreground">{'\u2014'}</span>
+                ),
         },
         {
             id: 'type',

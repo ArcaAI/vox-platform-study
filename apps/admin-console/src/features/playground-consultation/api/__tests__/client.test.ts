@@ -1,0 +1,211 @@
+/**
+ * Frames 50 + 50.1 — playground consultation REST plane (matrix row 34).
+ * fetch is stubbed at the network boundary; every call is asserted as an
+ * exact "METHOD /api/hope/<path>" string against ConsultationController /
+ * ConsultationJobController / AudioPipelinePublicController. This is the
+ * END-USER plane (no `admin/` prefix — the admin read grid is row 33).
+ */
+
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+    approveSummary,
+    cancelConsultationJob,
+    consultationJobStreamPath,
+    generateSummary,
+    generateSummaryAsync,
+    getConsultationJob,
+    getLatestSummary,
+    getNamedEntities,
+    harnessAssuranceStreamPath,
+    harnessProgressStreamPath,
+    listAudioPipelines,
+    liveSummaryStreamPath,
+    openConsultation,
+    startRecording,
+    stopRecording,
+} from '../client';
+import { playgroundConsultationKeys } from '../keys';
+
+interface RecordedCall {
+    url: string;
+    method: string;
+    body: unknown;
+}
+
+function installFetchMock(response: () => Response = () => Response.json({})): RecordedCall[] {
+    const calls: RecordedCall[] = [];
+    vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+            calls.push({
+                url: String(input),
+                method: init?.method ?? 'GET',
+                body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+            });
+            return response();
+        }),
+    );
+    return calls;
+}
+
+afterEach(() => {
+    vi.unstubAllGlobals();
+});
+
+describe('playgroundConsultationKeys', () => {
+    it('is stable for equal ids and distinct across scopes', () => {
+        expect(playgroundConsultationKeys.latestSummary('c-1')).toEqual(playgroundConsultationKeys.latestSummary('c-1'));
+        expect(playgroundConsultationKeys.latestSummary('c-1')).not.toEqual(playgroundConsultationKeys.latestSummary('c-2'));
+        expect(playgroundConsultationKeys.namedEntities('c-1')).not.toEqual(playgroundConsultationKeys.latestSummary('c-1'));
+        expect(playgroundConsultationKeys.namedEntities('c-1', 'single')).not.toEqual(playgroundConsultationKeys.namedEntities('c-1', 'chain'));
+        expect(playgroundConsultationKeys.job('j-1')).not.toEqual(playgroundConsultationKeys.job('j-2'));
+    });
+
+    it('roots every key under the feature namespace for coarse invalidation', () => {
+        for (const key of [
+            playgroundConsultationKeys.pipelines(),
+            playgroundConsultationKeys.latestSummary('x'),
+            playgroundConsultationKeys.namedEntities('x'),
+            playgroundConsultationKeys.job('x'),
+        ]) {
+            expect(key[0]).toBe('playground-consultation');
+        }
+    });
+});
+
+describe('playground consultation client', () => {
+    it('lists audio pipelines for the picker', async () => {
+        const calls = installFetchMock(() => Response.json([{ id: 'pipe-1', name: 'Default Clinical', slug: 'default-clinical' }]));
+        const pipelines = await listAudioPipelines();
+        expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/audio/pipelines']);
+        expect(pipelines[0].slug).toBe('default-clinical');
+    });
+
+    it('opens the demo consultation via the get-or-create route (same route the SDK session.open uses)', async () => {
+        const calls = installFetchMock(() => Response.json({ id: 'c-1', patientId: 'P-448', status: 'OPEN' }));
+        const opened = await openConsultation({ patientId: 'P-448' });
+        expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['POST /api/hope/consultations/open']);
+        expect(calls[0].body).toEqual({ patientId: 'P-448' });
+        expect(opened.id).toBe('c-1');
+    });
+
+    it('starts a recording, passing sessionId only when known', async () => {
+        const calls = installFetchMock(() =>
+            Response.json({
+                consultationId: 'c-1',
+                status: 'RECORDING',
+                recording: true,
+                sseUrl: '/consultations/c-1/live-summary/stream',
+                updatedAt: '2026-07-06T14:02:00.000Z',
+            }),
+        );
+        const state = await startRecording('c-1');
+        await startRecording('c-1', 's-7f31');
+        expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+            'POST /api/hope/consultations/c-1/recording/start',
+            'POST /api/hope/consultations/c-1/recording/start',
+        ]);
+        expect(calls[0].body).toEqual({});
+        expect(calls[1].body).toEqual({ sessionId: 's-7f31' });
+        expect(state.status).toBe('RECORDING');
+        expect(state.recording).toBe(true);
+    });
+
+    it('stops a recording persisting the live-summary snapshot by default', async () => {
+        const calls = installFetchMock(() =>
+            Response.json({
+                consultationId: 'c-1',
+                status: 'OPEN',
+                recording: false,
+                sseUrl: '/consultations/c-1/live-summary/stream',
+                updatedAt: '2026-07-06T14:05:00.000Z',
+            }),
+        );
+        const state = await stopRecording('c-1');
+        expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['POST /api/hope/consultations/c-1/recording/stop']);
+        expect(calls[0].body).toEqual({ persistSnapshot: true });
+        expect(state.recording).toBe(false);
+    });
+
+    it('generates a summary synchronously', async () => {
+        const calls = installFetchMock(() => Response.json({ id: 'ctx-9', consultationId: 'c-1', type: 'summary', content: 'S …' }));
+        const summary = await generateSummary('c-1');
+        expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['POST /api/hope/consultations/c-1/summary']);
+        expect(calls[0].body).toEqual({});
+        expect(summary.id).toBe('ctx-9');
+    });
+
+    it('queues an async summary job and manages its lifecycle', async () => {
+        const calls = installFetchMock(() => Response.json({ jobId: 'j-2210', status: 'pending', consultationId: 'c-1' }));
+        const job = await generateSummaryAsync('c-1');
+        await getConsultationJob('j-2210');
+        await cancelConsultationJob('j-2210');
+        expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+            'POST /api/hope/consultations/c-1/summary/async',
+            'GET /api/hope/consultations/jobs/j-2210',
+            'PATCH /api/hope/consultations/jobs/j-2210/cancel',
+        ]);
+        expect(job.jobId).toBe('j-2210');
+    });
+
+    it('reads the latest summary (null when the body is empty)', async () => {
+        const calls = installFetchMock(() => new Response('', { status: 200 }));
+        const latest = await getLatestSummary('c-1');
+        expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/consultations/c-1/summary/latest']);
+        expect(latest).toBeNull();
+    });
+
+    it('treats a 404 latest summary as "no draft yet" (null) but rethrows other failures', async () => {
+        installFetchMock(() => Response.json({ message: 'No summary found' }, { status: 404 }));
+        await expect(getLatestSummary('c-1')).resolves.toBeNull();
+
+        installFetchMock(() => Response.json({ message: 'boom' }, { status: 503 }));
+        await expect(getLatestSummary('c-1')).rejects.toMatchObject({ status: 503 });
+    });
+
+    it('reads aggregated named entities with the optional chain scope', async () => {
+        const calls = installFetchMock(() =>
+            Response.json({ consultationId: 'c-1', scope: 'single', entities: {}, totalCount: 0, countByClass: {}, sources: [] }),
+        );
+        const ner = await getNamedEntities('c-1');
+        await getNamedEntities('c-1', 'chain');
+        expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+            'GET /api/hope/consultations/c-1/named-entities',
+            'GET /api/hope/consultations/c-1/named-entities?scope=chain',
+        ]);
+        expect(ner.totalCount).toBe(0);
+    });
+
+    it('approves a summary, sending the safety-flag override only when requested', async () => {
+        const calls = installFetchMock(() =>
+            Response.json({ contextItemId: 'ctx-9', approvalStatus: 'APPROVED', approvedBy: 'u-1', approvedAt: '2026-07-06T15:00:00.000Z' }),
+        );
+        await approveSummary('c-1', 'ctx-9');
+        await approveSummary('c-1', 'ctx-9', { overrideSafetyFlag: true });
+        expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+            'POST /api/hope/consultations/c-1/summary/ctx-9/approve',
+            'POST /api/hope/consultations/c-1/summary/ctx-9/approve',
+        ]);
+        expect(calls[0].body).toEqual({});
+        expect(calls[1].body).toEqual({ overrideSafetyFlag: true });
+    });
+
+    it('escapes path params', async () => {
+        const calls = installFetchMock();
+        await startRecording('c/1');
+        await approveSummary('c 1', 'ctx#9');
+        await getConsultationJob('j/1');
+        expect(calls.map((call) => call.url)).toEqual([
+            '/api/hope/consultations/c%2F1/recording/start',
+            '/api/hope/consultations/c%201/summary/ctx%239/approve',
+            '/api/hope/consultations/jobs/j%2F1',
+        ]);
+    });
+
+    it('builds gateway-relative SSE paths (no leading slash — useEventStream prepends the origin)', () => {
+        expect(liveSummaryStreamPath('c-1')).toBe('consultations/c-1/live-summary/stream');
+        expect(harnessProgressStreamPath('c-1')).toBe('consultations/c-1/harness-progress/stream');
+        expect(harnessAssuranceStreamPath('c-1')).toBe('consultations/c-1/harness-assurance/stream');
+        expect(consultationJobStreamPath('j-1')).toBe('consultations/jobs/j-1/stream');
+    });
+});

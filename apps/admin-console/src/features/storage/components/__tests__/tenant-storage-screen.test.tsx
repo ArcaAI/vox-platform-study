@@ -139,6 +139,18 @@ function defaultHandler(call: RecordedCall): Response | undefined {
     if (call.method !== 'GET') return undefined;
     // The screen gates on scope: elevated session with a working tenant set.
     if (path === '/api/auth/session') return Response.json(session());
+    // TASK-430 — tenant catalog resolving the Tenant column names.
+    if (path === '/api/hope/admin/tenants') {
+        return Response.json({
+            data: [
+                { id: 't-1', name: 'Sunrise Medical Group', key: 'sunrise' },
+                { id: 't-2', name: 'Acme Hospital', key: 'acme' },
+            ],
+            count: 2,
+            limit: 500,
+            page: 0,
+        });
+    }
     if (path === '/api/hope/admin/tenants/storage/buckets') return Response.json(BUCKETS);
     if (path === '/api/hope/admin/tenants/storage/buckets/defaults') {
         return Response.json({ audio: BUCKETS[0], attachments: BUCKETS[1], misc: null });
@@ -166,16 +178,57 @@ afterEach(() => {
 });
 
 describe('TenantStorageScreen', () => {
-    it('asks an elevated session without a working tenant to pick one (no data queries fired)', async () => {
-        const calls = stubStorage((call) => {
+    // TASK-430 — an unscoped elevated session sees every tenant's buckets with
+    // a Tenant column resolved through the catalog.
+    it('lists buckets across all tenants for an elevated session without a working tenant', async () => {
+        stubStorage((call) => {
             const path = new URL(call.url, 'http://test.local').pathname;
             if (path === '/api/auth/session') return Response.json(session({ workingTenantId: null }));
+            if (path === '/api/hope/admin/tenants/storage/buckets') {
+                return Response.json([BUCKETS[0], bucket({ id: 'b-9', tenantId: 't-2', name: 'Acme audio', slug: 'acme-audio' })]);
+            }
             return undefined;
         });
         renderWithProviders(<TenantStorageScreen />);
 
+        expect(await screen.findByText('Consultation audio')).toBeDefined();
+        expect(screen.getByText('Acme audio')).toBeDefined();
+        expect(await screen.findByText('Sunrise Medical Group')).toBeDefined();
+        expect(screen.getByText('Acme Hospital')).toBeDefined();
+    });
+
+    it('narrows the bucket list with the tenant faceted filter', async () => {
+        stubStorage((call) => {
+            const path = new URL(call.url, 'http://test.local').pathname;
+            if (path === '/api/auth/session') return Response.json(session({ workingTenantId: null }));
+            if (path === '/api/hope/admin/tenants/storage/buckets') {
+                return Response.json([BUCKETS[0], bucket({ id: 'b-9', tenantId: 't-2', name: 'Acme audio', slug: 'acme-audio' })]);
+            }
+            return undefined;
+        });
+        renderWithProviders(<TenantStorageScreen />);
+        await screen.findByText('Acme audio');
+
+        // happy-dom containers measure 0 wide, so the toolbar collapses the
+        // faceted filters into the "Filters" sheet.
+        fireEvent.click(screen.getByRole('button', { name: /filters/i }));
+        const option = await screen.findByRole('option', { name: /acme hospital/i });
+        fireEvent.pointerUp(option, { button: 0, pointerType: 'mouse' });
+        fireEvent.click(option);
+
+        await waitFor(() => expect(screen.queryByText('Consultation audio')).toBeNull());
+        expect(screen.getByText('Acme audio')).toBeDefined();
+    });
+
+    it('asks for a working tenant on the per-tenant tabs when the session is unscoped', async () => {
+        stubStorage((call) => {
+            const path = new URL(call.url, 'http://test.local').pathname;
+            if (path === '/api/auth/session') return Response.json(session({ workingTenantId: null }));
+            return undefined;
+        });
+        renderWithProviders(<TenantStorageScreen />, { searchParams: '?tab=defaults' });
+
         expect(await screen.findByText('Select a working tenant')).toBeDefined();
-        expect(calls.every((call) => !call.url.includes('/storage/'))).toBe(true);
     });
 
     it('renders the data tabs for a tenant-scoped (non-elevated) session without a working tenant', async () => {

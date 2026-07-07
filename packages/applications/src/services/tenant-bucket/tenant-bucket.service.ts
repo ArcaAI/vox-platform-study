@@ -2,7 +2,7 @@ import { ResourceType, SysEventType, TenantBucketFactory, TenantBucketPurpose, T
 import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { BaseService } from '../../common';
+import { BaseService, isSuperAdmin } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { IBlobStorageService } from '../baseServices/storage/IBlobStorageService';
 import { IS3Service } from '../baseServices/storage/s3/IS3Service';
@@ -47,12 +47,18 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
   }
 
   async listBuckets(options?: { includeDisabled?: boolean }): Promise<TenantBucketResponse[]> {
+    // TASK-430 — an unscoped GLOBAL_ADMIN (no working tenant selected) lists
+    // buckets CROSS-TENANT; every other caller keeps the strict tenant
+    // requirement.
     const tenantId = this.tenantId;
-    if (!tenantId) {
+    const crossTenant = !tenantId && isSuperAdmin(this.clsService.get('user'));
+    if (!tenantId && !crossTenant) {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    const buckets = await this.tenantBucketRepository.findAllByTenant(tenantId, options);
+    const buckets = crossTenant
+      ? await this.tenantBucketRepository.findAllCrossTenant(options)
+      : await this.tenantBucketRepository.findAllByTenant(tenantId as string, options);
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: { count: buckets.length },

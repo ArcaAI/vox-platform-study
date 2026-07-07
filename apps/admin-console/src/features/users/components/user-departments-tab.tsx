@@ -20,7 +20,7 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { GatewayError } from '@/shared/api';
-import { useDepartmentOptions } from '@/shared/catalog';
+import { useDepartmentOptions, useTenantNames } from '@/shared/catalog';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { NameWithId } from '@/shared/data/name-with-id';
 import { formatDateTime } from '@/shared/format';
@@ -143,6 +143,9 @@ function AssignDepartmentDialog({ userId, open, onOpenChange }: { userId: string
  */
 export function UserDepartmentsTab({ id }: { id: string }) {
     const { data, isLoading, error, refetch } = useUserDepartments(id);
+    // TASK-430 — an unscoped GLOBAL_ADMIN sees CROSS-TENANT memberships, so
+    // each row is attributed to its tenant (names degrade to raw ids).
+    const tenantNames = useTenantNames();
     const update = useUpdateDepartment();
     const remove = useRemoveDepartment();
     const [assignOpen, setAssignOpen] = useState(false);
@@ -191,6 +194,14 @@ export function UserDepartmentsTab({ id }: { id: string }) {
                 size: 240,
                 minSize: 160,
                 cell: ({ row }) => <NameWithId name={row.original.departmentName ? departmentLabel(row.original) : undefined} id={row.original.departmentId} />,
+            },
+            {
+                id: 'tenant',
+                header: 'Tenant',
+                enableSorting: false,
+                meta: { label: 'Tenant' },
+                size: 180,
+                cell: ({ row }) => <NameWithId name={tenantNames.get(row.original.tenantId)} id={row.original.tenantId} />,
             },
             {
                 id: 'primary',
@@ -253,7 +264,7 @@ export function UserDepartmentsTab({ id }: { id: string }) {
                 ),
             },
         ],
-        [handleMakePrimary, update.isPending],
+        [handleMakePrimary, tenantNames, update.isPending],
     );
 
     return (

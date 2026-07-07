@@ -112,10 +112,14 @@ export function UserDetailScreen({ id }: { id: string }) {
                         }
                         actions={
                             <>
-                                <Button variant="outline" onClick={() => setAction({ action: 'impersonate', user })}>
-                                    <IconSpy aria-hidden />
-                                    Impersonate
-                                </Button>
+                                {/* TASK-430 — service accounts are API-only: the gateway refuses to
+                                    impersonate them, so the affordance is hidden outright. */}
+                                {!user.isServiceAccount ? (
+                                    <Button variant="outline" onClick={() => setAction({ action: 'impersonate', user })}>
+                                        <IconSpy aria-hidden />
+                                        Impersonate
+                                    </Button>
+                                ) : null}
                                 <Button variant="outline" onClick={() => setAction({ action: 'reset-password', user })}>
                                     <IconKey aria-hidden />
                                     Reset password

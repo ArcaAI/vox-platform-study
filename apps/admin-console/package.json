@@ -13,7 +13,10 @@
         "check-types": "tsc --noEmit"
     },
     "dependencies": {
+        "@arcaai/room": "workspace:*",
+        "@arcaai/stt": "workspace:*",
         "@arcaai/ui": "workspace:*",
+        "@arcaai/vox": "workspace:*",
         "@tabler/icons-react": "^3.44.0",
         "@tanstack/react-query": "^5.101.2",
         "dotenv": "^17.4.2",

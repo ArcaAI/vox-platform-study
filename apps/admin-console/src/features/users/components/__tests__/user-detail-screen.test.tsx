@@ -387,6 +387,16 @@ describe('UserDetailScreen', () => {
         expect(screen.getByText('d-cardio')).toBeDefined();
     });
 
+    // TASK-430 — cross-tenant memberships are attributed to their tenant.
+    it('renders a Tenant column on the departments tab with the catalog name', async () => {
+        stubDetailFetch();
+        renderWithProviders(<UserDetailScreen id="u-1" />, { searchParams: '?tab=departments' });
+
+        await screen.findByText('Cardiology (CARD)');
+        // Both fixture rows belong to t-1, resolved to the catalog name.
+        expect((await screen.findAllByText('Acme Clinic')).length).toBeGreaterThan(0);
+    });
+
     it('assigns a department by selecting from the catalog', async () => {
         const calls = stubDetailFetch();
         renderWithProviders(<UserDetailScreen id="u-1" />, { searchParams: '?tab=departments' });

@@ -162,6 +162,34 @@ describe('SettingsScreen', () => {
         expect(await screen.findByText('smtp.host')).toBeDefined();
     });
 
+    // TASK-430 — cross-tenant admin surface: Tenant column + tenant filter.
+    it('renders the Tenant column with the catalog name and a dash for rows without a tenant', async () => {
+        stubFetch({
+            rows: [setting({ tenantId: 't-1' }), setting({ id: 's-9', name: 'Retention days', key: 'retention.days', tenantId: null })],
+            custom: (call) => {
+                if (call.method === 'GET' && call.url.startsWith('/api/hope/admin/tenants')) {
+                    return Response.json({ data: [{ id: 't-1', name: 'Acme Hospital', key: 'acme' }], count: 1, limit: 500, page: 0 });
+                }
+                return undefined;
+            },
+        });
+        renderWithProviders(<SettingsScreen />);
+
+        await screen.findByText('smtp.host');
+        expect(await screen.findByText('Acme Hospital')).toBeDefined();
+    });
+
+    it('maps the tenant filter onto the CSV grammar (tenantId[equals]:…)', async () => {
+        const calls = stubFetch();
+        const f = encodeURIComponent(JSON.stringify([['tenantId', 'eq', 'select', 't-1']]));
+        renderWithProviders(<SettingsScreen />, { searchParams: `?f=${f}` });
+
+        await screen.findByText('smtp.host');
+        const list = calls.find((call) => call.url.startsWith('/api/hope/admin/settings?'));
+        const requested = new URL(list?.url ?? '', 'http://test.local');
+        expect(requested.searchParams.get('filters')).toBe('tenantId[equals]:t-1');
+    });
+
     it('hides the reveal action without the manage/all permission', async () => {
         stubFetch({ permissions: READ_ONLY });
         renderWithProviders(<SettingsScreen />);

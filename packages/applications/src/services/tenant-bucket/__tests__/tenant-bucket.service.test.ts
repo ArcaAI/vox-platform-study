@@ -16,6 +16,7 @@ const mockEventEmitter = {
 
 const mockTenantBucketRepository = {
     findAllByTenant: vi.fn(),
+    findAllCrossTenant: vi.fn(),
     findBySlug: vi.fn(),
     findByName: vi.fn(),
     findById: vi.fn(),
@@ -186,6 +187,38 @@ describe('TenantBucketService', () => {
             const result = await service.listBuckets();
 
             expect(result).toEqual([]);
+        });
+
+        // TASK-430 — an unscoped GLOBAL_ADMIN (no working tenant) lists buckets
+        // across ALL tenants instead of getting "Tenant ID is required".
+        it('lists buckets cross-tenant for an unscoped GLOBAL_ADMIN', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'tenantId') return null;
+                if (key === 'user') return { id: 'user-id-1', roles: ['GLOBAL_ADMIN'] };
+                return null;
+            });
+            mockTenantBucketRepository.findAllCrossTenant.mockResolvedValue([
+                createMockBucketEntity({ id: 'b1', tenantId: 'tenant-1', slug: 'audio' }),
+                createMockBucketEntity({ id: 'b2', tenantId: 'tenant-2', slug: 'attachments' }),
+            ]);
+
+            const result = await service.listBuckets();
+
+            expect(result).toHaveLength(2);
+            expect(result.map((b) => b.tenantId).sort()).toEqual(['tenant-1', 'tenant-2']);
+            expect(mockTenantBucketRepository.findAllCrossTenant).toHaveBeenCalledWith(undefined);
+            expect(mockTenantBucketRepository.findAllByTenant).not.toHaveBeenCalled();
+        });
+
+        it('still requires a tenant for an unscoped non-elevated user', async () => {
+            mockClsService.get.mockImplementation((key: string) => {
+                if (key === 'tenantId') return null;
+                if (key === 'user') return { id: 'user-id-1', roles: ['TENANT_ADMIN'] };
+                return null;
+            });
+
+            await expect(service.listBuckets()).rejects.toThrow(BadRequestException);
+            expect(mockTenantBucketRepository.findAllCrossTenant).not.toHaveBeenCalled();
         });
     });
 

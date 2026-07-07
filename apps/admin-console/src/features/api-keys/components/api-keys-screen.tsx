@@ -14,10 +14,12 @@ import {
     DropdownMenuTrigger,
 } from '@arcaai/ui/components/shadcn/dropdown-menu';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
+import { useTenantCatalog, useTenantNames } from '@/shared/catalog';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid';
 import { normalizeList } from '@/shared/data/envelopes';
 import type { FilterOption } from '@/shared/data/filter-bar';
+import { NameWithId } from '@/shared/data/name-with-id';
 import { formatDateTime, formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
@@ -121,6 +123,15 @@ export function ApiKeysScreen() {
         [scopesQuery.data],
     );
 
+    // TASK-430 — cross-tenant view: ApiKey rows carry tenantId, so the tenant
+    // filter rides the regular CSV grammar (`tenantId[equals]:…`).
+    const tenantNames = useTenantNames();
+    const tenantCatalog = useTenantCatalog();
+    const tenantOptions = useMemo<FilterOption[]>(
+        () => (tenantCatalog.data ?? []).map((tenant) => ({ value: tenant.id, label: tenant.name || tenant.key || tenant.id })),
+        [tenantCatalog.data],
+    );
+
     const [createOpen, setCreateOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<ApiKey | null>(null);
     const [usageTarget, setUsageTarget] = useState<ApiKey | null>(null);
@@ -193,6 +204,19 @@ export function ApiKeysScreen() {
             meta: { label: 'Prefix' },
             cell: ({ row }) => <span className="font-mono text-xs">{`${row.original.keyPrefix}\u2026`}</span>,
             size: 120,
+        },
+        {
+            accessorKey: 'tenantId',
+            header: 'Tenant',
+            enableSorting: false,
+            meta: { label: 'Tenant', variant: 'select', options: tenantOptions },
+            cell: ({ row }) =>
+                row.original.tenantId ? (
+                    <NameWithId name={tenantNames.get(row.original.tenantId)} id={row.original.tenantId} />
+                ) : (
+                    <span className="text-muted-foreground">&mdash;</span>
+                ),
+            size: 180,
         },
         {
             accessorKey: 'scopes',

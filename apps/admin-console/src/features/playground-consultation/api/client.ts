@@ -1,0 +1,115 @@
+/**
+ * Playground consultation client (frames 50 + 50.1, matrix row 34). This is
+ * the END-USER consultation plane — gateway-relative paths WITHOUT `admin/`
+ * (the admin read grid is row 33); the shared core prepends the BFF proxy
+ * mount which owns auth + X-Tenant-Id. The SDK (`@arcaai/vox`) drives session
+ * open + audio; these calls cover the recording lifecycle, summaries, jobs
+ * and the review plane the SDK demo composes around it.
+ */
+
+import { GatewayError, getJson, patchJson, postJson } from '@/shared/api';
+import type {
+    ApproveSummaryRequest,
+    AsyncSummaryJob,
+    AudioPipeline,
+    ConsultationJobStatus,
+    GenerateSummaryRequest,
+    NamedEntitiesAggregate,
+    OpenConsultationRequest,
+    PlaygroundConsultation,
+    RecordingState,
+    SummaryApproval,
+    SummaryResult,
+} from './types';
+
+const BASE = 'consultations';
+
+function consultationPath(consultationId: string, suffix: string): string {
+    return `${BASE}/${encodeURIComponent(consultationId)}/${suffix}`;
+}
+
+/** Pipeline picker data — AudioPipelinePublicController. */
+export function listAudioPipelines(): Promise<AudioPipeline[]> {
+    return getJson('audio/pipelines');
+}
+
+/** Get-or-create the demo consultation (the SDK's session.open hits the same route). */
+export function openConsultation(body: OpenConsultationRequest): Promise<PlaygroundConsultation> {
+    return postJson(`${BASE}/open`, body);
+}
+
+/**
+ * Flips the consultation to RECORDING and starts the live-documentation
+ * session. `sessionId` is the SDK's streaming session (read from the
+ * transcription pipeline transport) — optional; the service falls back to
+ * context-item ingestion when absent.
+ */
+export function startRecording(consultationId: string, sessionId?: string): Promise<RecordingState> {
+    return postJson(consultationPath(consultationId, 'recording/start'), sessionId ? { sessionId } : {});
+}
+
+/** Stops the live session; the demo persists the final snapshot as a PRE_SUMMARY. */
+export function stopRecording(consultationId: string, persistSnapshot = true): Promise<RecordingState> {
+    return postJson(consultationPath(consultationId, 'recording/stop'), { persistSnapshot });
+}
+
+export function generateSummary(consultationId: string, body: GenerateSummaryRequest = {}): Promise<SummaryResult> {
+    return postJson(consultationPath(consultationId, 'summary'), body);
+}
+
+/** Queues the async job (lowercase states); track via jobs/:jobId + its stream. */
+export function generateSummaryAsync(consultationId: string, body: GenerateSummaryRequest = {}): Promise<AsyncSummaryJob> {
+    return postJson(consultationPath(consultationId, 'summary/async'), body);
+}
+
+export function getConsultationJob(jobId: string): Promise<ConsultationJobStatus> {
+    return getJson(`${BASE}/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function cancelConsultationJob(jobId: string): Promise<ConsultationJobStatus> {
+    return patchJson(`${BASE}/jobs/${encodeURIComponent(jobId)}/cancel`);
+}
+
+/** Latest summary draft — null when none exists yet (empty body or 404). */
+export async function getLatestSummary(consultationId: string): Promise<SummaryResult | null> {
+    try {
+        const summary = await getJson<SummaryResult | undefined>(consultationPath(consultationId, 'summary/latest'));
+        return summary ?? null;
+    } catch (error) {
+        if (error instanceof GatewayError && error.isNotFound) return null;
+        throw error;
+    }
+}
+
+export function getNamedEntities(consultationId: string, scope?: 'single' | 'chain'): Promise<NamedEntitiesAggregate> {
+    return getJson(consultationPath(consultationId, 'named-entities'), { scope });
+}
+
+/** Approve & sign-off; `contextItemId` is the summary's `id`. */
+export function approveSummary(consultationId: string, contextItemId: string, body: ApproveSummaryRequest = {}): Promise<SummaryApproval> {
+    return postJson(consultationPath(consultationId, `summary/${encodeURIComponent(contextItemId)}/approve`), body);
+}
+
+// ─── Gateway SSE paths (relative to /api/v1 — useEventStream prepends the
+// gateway origin; streams NEVER traverse the BFF proxy). Pair each with the
+// matching @StreamScope namespace. ───
+
+/** Scope `consultation_live_summary:<id>`. */
+export function liveSummaryStreamPath(consultationId: string): string {
+    return consultationPath(consultationId, 'live-summary/stream');
+}
+
+/** Scope `consultation_harness_progress:<id>`. */
+export function harnessProgressStreamPath(consultationId: string): string {
+    return consultationPath(consultationId, 'harness-progress/stream');
+}
+
+/** Scope `consultation_harness_assurance:<id>` (terminal named event `assurance_complete`). */
+export function harnessAssuranceStreamPath(consultationId: string): string {
+    return consultationPath(consultationId, 'harness-assurance/stream');
+}
+
+/** Scope `consultation_job:<jobId>` (default `message` events, UPPERCASE states). */
+export function consultationJobStreamPath(jobId: string): string {
+    return `${BASE}/jobs/${encodeURIComponent(jobId)}/stream`;
+}

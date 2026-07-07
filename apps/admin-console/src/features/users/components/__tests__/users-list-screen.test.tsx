@@ -114,6 +114,11 @@ function stubListFetch(overrides?: (url: string, init?: RequestInit) => Response
         if (custom) return custom;
         const settings = settingsResponse(url, init);
         if (settings) return settings;
+        // TASK-430 — tenant catalog behind the Tenant column/filter.
+        if (method === 'GET' && url.startsWith('/api/hope/admin/tenants')) {
+            return Response.json({ data: [{ id: 't-1', name: 'Acme Hospital', key: 'acme' }], count: 1, limit: 500, page: 0 });
+        }
+        if (method === 'GET' && url.startsWith('/api/hope/admin/users/tenant/')) return listResponse([USERS[0]]);
         if (method === 'GET' && url.startsWith('/api/hope/admin/users?')) return listResponse(USERS);
         if (method === 'PATCH' && url === '/api/hope/admin/users/u-1/status') return Response.json(user({ resourceStatus: 'DISABLED' }));
         if (method === 'DELETE' && url === '/api/hope/admin/users/u-1') return Response.json(user());
@@ -241,6 +246,67 @@ describe('UsersListScreen', () => {
             const last = onUrlUpdate.mock.calls.at(-1)?.[0] as { searchParams: URLSearchParams };
             expect(last?.searchParams.get('sort')).toBe('username:asc');
         });
+    });
+
+    // TASK-430 — cross-tenant admin surface: Tenant column + tenant filter.
+    it('renders the Tenant column with catalog names resolved from role assignments', async () => {
+        stubListFetch();
+        renderWithProviders(<UsersListScreen />);
+
+        await screen.findByText('mia.okafor');
+        // u-1 has an assignment in t-1 → catalog name; u-2 has none → em dash.
+        expect(await screen.findByText('Acme Hospital')).toBeDefined();
+    });
+
+    it('routes an active tenant filter through the by-tenant endpoint without a tenantId CSV token', async () => {
+        const f = encodeURIComponent(
+            JSON.stringify([
+                ['tenantId', 'eq', 'select', 't-1'],
+                ['resourceStatus', 'eq', 'select', 'ENABLED'],
+            ]),
+        );
+        const calls = stubListFetch();
+        renderWithProviders(<UsersListScreen />, { searchParams: `?f=${f}` });
+
+        await screen.findByText('mia.okafor');
+        const call = calls.find((entry) => entry.method === 'GET' && entry.url.includes('/admin/users/tenant/t-1?'));
+        expect(call).toBeDefined();
+        // The remaining typed filters still ride the CSV grammar — minus the tenant rule.
+        expect(queryOf(call!.url).get('filters')).toBe('resourceStatus[equals]:ENABLED');
+        // The cross-tenant list is paused while the tenant filter is active.
+        expect(calls.some((entry) => entry.method === 'GET' && entry.url.includes('/admin/users?'))).toBe(false);
+    });
+
+    it('forwards the active tenant filter to the export as a dedicated tenantId param', async () => {
+        const createObjectURL = vi.fn(() => 'blob:users');
+        const revokeObjectURL = vi.fn();
+        const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+        const f = encodeURIComponent(JSON.stringify([['tenantId', 'eq', 'select', 't-1']]));
+        const calls = stubListFetch((url) => {
+            if (url.includes('/admin/users/export')) {
+                return new Response('username\nmia.okafor\n', {
+                    status: 200,
+                    headers: { 'content-type': 'text/csv', 'content-disposition': 'attachment; filename="users.csv"' },
+                });
+            }
+            return undefined;
+        });
+        vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
+        renderWithProviders(<UsersListScreen />, { searchParams: `?f=${f}` });
+
+        await screen.findByText('mia.okafor');
+        fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select row' })[0]);
+        fireEvent.click(await screen.findByRole('button', { name: /^export$/i }));
+
+        await waitFor(() => {
+            const exportCall = calls.find((call) => call.url.includes('/admin/users/export'));
+            expect(exportCall).toBeDefined();
+            const q = queryOf(exportCall!.url);
+            expect(q.get('tenantId')).toBe('t-1');
+            // The tenant rule must NOT leak into the CSV grammar.
+            expect(q.get('filters')).toBeNull();
+        });
+        anchorClick.mockRestore();
     });
 
     it('navigates to the user detail when a row is clicked', async () => {

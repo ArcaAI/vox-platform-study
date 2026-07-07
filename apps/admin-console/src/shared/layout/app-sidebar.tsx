@@ -15,7 +15,7 @@ import {
     SidebarMenuItem,
     SidebarRail,
 } from '@arcaai/ui/components/shadcn/sidebar';
-import { usePermissions } from '@/shared/auth/hooks';
+import { usePermissions, useSession } from '@/shared/auth/hooks';
 import { NAV_SECTIONS, visibleNavEntries } from '@/shared/navigation/nav-config';
 
 /**
@@ -30,7 +30,8 @@ import { NAV_SECTIONS, visibleNavEntries } from '@/shared/navigation/nav-config'
 export function AppSidebar() {
     const pathname = usePathname();
     const { data: rules } = usePermissions();
-    const entries = visibleNavEntries(rules);
+    const { data: session } = useSession();
+    const entries = visibleNavEntries(rules, session?.user.roles);
 
     return (
         <Sidebar collapsible="icon">

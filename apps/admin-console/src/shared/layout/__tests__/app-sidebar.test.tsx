@@ -9,11 +9,24 @@ vi.mock('next/navigation', () => ({
     usePathname: () => '/dashboard',
 }));
 
-/** Global-admin permissions so every implemented nav entry is visible. */
+/** Global-admin session + permissions so every implemented nav entry is visible. */
 function stubPermissionsFetch() {
     vi.stubGlobal(
         'fetch',
-        vi.fn(async () => Response.json({ userId: 'u-1', tenantId: null, permissions: [{ action: 'manage', subject: 'all' }] })),
+        vi.fn(async (input: RequestInfo | URL) => {
+            const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+            if (url.includes('/api/auth/session')) {
+                return Response.json({
+                    user: { id: 'u-1', username: 'root', email: 'root@example.com', roles: ['GLOBAL_ADMIN'] },
+                    isElevated: true,
+                    workingTenantId: null,
+                    workingTenantName: null,
+                    impersonatingUserId: null,
+                    impersonatingUsername: null,
+                });
+            }
+            return Response.json({ userId: 'u-1', tenantId: null, permissions: [{ action: 'manage', subject: 'all' }] });
+        }),
     );
 }
 

@@ -2,14 +2,17 @@ import {
     IconActivity,
     IconAdjustmentsAlt,
     IconBrain,
+    IconBroadcast,
     IconBuilding,
     IconBuildings,
     IconCalendarTime,
     IconDatabase,
     IconDatabaseSearch,
     IconDna,
+    IconDna2,
     IconFolders,
     IconGauge,
+    IconHeartbeat,
     IconHistory,
     IconKey,
     IconLayoutDashboard,
@@ -21,25 +24,28 @@ import {
     IconShieldCog,
     IconShieldLock,
     IconSitemap,
+    IconSparkles,
     IconStack2,
     IconStethoscope,
     IconTelescope,
     IconUserCircle,
     IconUsers,
+    IconUserScan,
     IconUserShield,
     IconWaveSine,
     type TablerIcon,
 } from '@tabler/icons-react';
-import { canAny, type PermissionRule } from '@/shared/auth/ability';
+import { canAny, isElevated, type PermissionRule } from '@/shared/auth/ability';
 
 /**
  * Full route map from the capabilities matrix (section 3, frames 10-40, as
  * reviewed 2026-07-04: AI models re-tiered to 10-19, tenant frontend config
  * folded into the tenant-detail tab). All design gates cleared (B0/B1/B2
- * approved 2026-07-05). The sidebar only renders implemented entries the
- * caller's ability grants; AI models is hidden (implemented: false).
+ * approved 2026-07-05; Playground 50-59 approved 2026-07-06, TASK-420). The
+ * sidebar only renders implemented entries the caller's ability grants;
+ * AI models is hidden (implemented: false).
  */
-export type NavTier = '10-19' | '20-29' | '30-49';
+export type NavTier = '10-19' | '20-29' | '30-49' | '50-59';
 
 export interface NavEntry {
     route: string;
@@ -64,6 +70,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     { tier: '10-19', label: 'Platform' },
     { tier: '20-29', label: 'Administration' },
     { tier: '30-49', label: 'Tenant' },
+    { tier: '50-59', label: 'Playground' },
 ];
 
 export const NAV_ENTRIES: readonly NavEntry[] = [
@@ -111,9 +118,32 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     { route: '/harness/workflows', label: 'Harness workflows', tier: '30-49', icon: IconRoute, required: [['read', 'HarnessWorkflow'], ['manage', 'HarnessWorkflow']], implemented: true },
     { route: '/harness/pipeline-policy', label: 'Pipeline policy', tier: '30-49', icon: IconAdjustmentsAlt, required: [['read', 'PipelinePolicy'], ['manage', 'PipelinePolicy']], implemented: true },
     { route: '/consultations', label: 'Consultations', tier: '30-49', icon: IconStethoscope, required: [['manage', 'Consultation']], implemented: true },
+
+    // Tier 50-59 — Playground (TASK-420, approved 2026-07-06). End-user demo
+    // planes run under the admin's OWN account, so the backend guards are
+    // plain @Authorize() — visibility is role-gated (GLOBAL_ADMIN or
+    // TENANT_ADMIN) via visibleNavEntries, mirroring the (playground) layout.
+    { route: '/playground/consultation', label: 'Consultation demo', tier: '50-59', icon: IconHeartbeat, required: [], implemented: true },
+    { route: '/playground/live-transcription', label: 'Live transcription', tier: '50-59', icon: IconBroadcast, required: [], implemented: true },
+    { route: '/playground/voice-profiles', label: 'Voice profiles', tier: '50-59', icon: IconUserScan, required: [], implemented: true },
+    { route: '/playground/dna-writing-style', label: 'My DNA style', tier: '50-59', icon: IconDna2, required: [], implemented: true },
+    { route: '/playground/llm', label: 'LLM playground', tier: '50-59', icon: IconSparkles, required: [], implemented: true },
 ];
 
-/** Implemented entries the caller's ability grants, in declaration order. */
-export function visibleNavEntries(rules: readonly PermissionRule[] | null | undefined): NavEntry[] {
-    return NAV_ENTRIES.filter((entry) => entry.implemented && (entry.required.length === 0 ? !!rules : canAny(rules, entry.required)));
+/** The playground audience — mirrors the (playground) route-group guard. */
+function isAdminTier(roles: readonly string[] | null | undefined): boolean {
+    return isElevated(roles) || !!roles?.includes('TENANT_ADMIN');
+}
+
+/**
+ * Implemented entries the caller's ability grants, in declaration order.
+ * Tier 50-59 additionally requires an admin role (`roles`), mirroring the
+ * (playground) route-group guard — ability rules alone cannot express it.
+ */
+export function visibleNavEntries(rules: readonly PermissionRule[] | null | undefined, roles?: readonly string[] | null): NavEntry[] {
+    return NAV_ENTRIES.filter((entry) => {
+        if (!entry.implemented) return false;
+        if (entry.tier === '50-59' && !isAdminTier(roles)) return false;
+        return entry.required.length === 0 ? !!rules : canAny(rules, entry.required);
+    });
 }

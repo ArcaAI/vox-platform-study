@@ -11,6 +11,8 @@ export interface SafeSession {
         username: string;
         email: string;
         roles: string[];
+        /** Home tenant of a tenant-bound user (null for unscoped global admins). Non-secret. */
+        tenantId: string | null;
     };
     isElevated: boolean;
     workingTenantId: string | null;
@@ -20,9 +22,9 @@ export interface SafeSession {
 }
 
 export function toSafeSession(session: SessionPayload): SafeSession {
-    const { id, username, email, roles } = session.user;
+    const { id, username, email, roles, tenantId } = session.user;
     return {
-        user: { id, username, email, roles },
+        user: { id, username, email, roles, tenantId: tenantId ?? null },
         isElevated: isElevated(session.user),
         workingTenantId: session.workingTenantId ?? null,
         workingTenantName: session.workingTenantName ?? null,
