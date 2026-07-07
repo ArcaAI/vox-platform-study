@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PermissionRule } from '@/shared/auth/ability';
-import { NAV_ENTRIES, NAV_SECTIONS, visibleNavEntries } from '../nav-config';
+import { matchNavEntry, NAV_ENTRIES, NAV_SECTIONS, visibleNavEntries } from '../nav-config';
 
 const GLOBAL_ADMIN_RULES: PermissionRule[] = [{ action: 'manage', subject: 'all' }];
 
@@ -62,6 +62,30 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
             expect(entry.icon, `${entry.route} is missing an icon`).toBeDefined();
         }
         expect(new Set(NAV_ENTRIES.map((entry) => entry.icon)).size).toBe(NAV_ENTRIES.length);
+    });
+});
+
+describe('matchNavEntry', () => {
+    it('returns an exact match', () => {
+        expect(matchNavEntry('/dashboard')?.route).toBe('/dashboard');
+    });
+
+    it('returns the parent for a detail route', () => {
+        expect(matchNavEntry('/tenants/t-123')?.route).toBe('/tenants');
+    });
+
+    it('prefers the longest prefix (/tenants/storage over /tenants)', () => {
+        expect(matchNavEntry('/tenants/storage')?.route).toBe('/tenants/storage');
+    });
+
+    it('returns undefined for an unknown route', () => {
+        expect(matchNavEntry('/does-not-exist')).toBeUndefined();
+    });
+
+    it('accepts a custom entries subset', () => {
+        const subset = NAV_ENTRIES.filter((e) => e.route === '/tenants/storage');
+        expect(matchNavEntry('/tenants/storage', subset)?.route).toBe('/tenants/storage');
+        expect(matchNavEntry('/dashboard', subset)).toBeUndefined();
     });
 });
 

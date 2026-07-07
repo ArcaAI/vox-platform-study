@@ -11,14 +11,7 @@ import {
     BreadcrumbSeparator,
 } from '@arcaai/ui/components/shadcn/breadcrumb';
 import { useBreadcrumbStore } from '@/shared/navigation/breadcrumb-store';
-import { NAV_ENTRIES, NAV_SECTIONS, type NavEntry } from '@/shared/navigation/nav-config';
-
-/** Longest-prefix nav match so `/tenants/storage` beats `/tenants`. */
-function matchEntry(pathname: string): NavEntry | undefined {
-    return NAV_ENTRIES.filter((entry) => pathname === entry.route || pathname.startsWith(`${entry.route}/`)).sort(
-        (a, b) => b.route.length - a.route.length,
-    )[0];
-}
+import { matchNavEntry, NAV_SECTIONS } from '@/shared/navigation/nav-config';
 
 /**
  * Topbar breadcrumb (frame 07): tier section label / screen label
@@ -27,7 +20,7 @@ function matchEntry(pathname: string): NavEntry | undefined {
 export function Breadcrumbs() {
     const pathname = usePathname();
     const trailing = useBreadcrumbStore((state) => state.trailing);
-    const entry = matchEntry(pathname);
+    const entry = matchNavEntry(pathname);
     if (!entry) return null;
 
     const section = NAV_SECTIONS.find((candidate) => candidate.tier === entry.tier);

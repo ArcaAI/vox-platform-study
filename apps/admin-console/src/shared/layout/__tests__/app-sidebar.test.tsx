@@ -5,8 +5,9 @@ import { NAV_ENTRIES } from '@/shared/navigation/nav-config';
 import { renderWithProviders } from '@/test/render';
 import { AppSidebar } from '../app-sidebar';
 
+const usePathnameMock = vi.fn<() => string>(() => '/dashboard');
 vi.mock('next/navigation', () => ({
-    usePathname: () => '/dashboard',
+    usePathname: () => usePathnameMock(),
 }));
 
 /** Global-admin session + permissions so every implemented nav entry is visible. */
@@ -89,5 +90,27 @@ describe('AppSidebar', () => {
     it('keeps the brand link accessible-name intact for the collapsed rail', async () => {
         renderSidebar();
         expect(await screen.findByRole('link', { name: 'HOPE Admin' })).toBeDefined();
+    });
+
+    it('activates only Tenant storage (not Tenants) on /tenants/storage', async () => {
+        usePathnameMock.mockReturnValue('/tenants/storage');
+        renderSidebar();
+
+        const storage = await screen.findByRole('link', { name: 'Tenant storage' });
+        expect(storage.getAttribute('data-active')).toBe('true');
+
+        const tenants = screen.getByRole('link', { name: 'Tenants' });
+        expect(tenants.getAttribute('data-active')).toBe('false');
+    });
+
+    it('still activates Tenants on a tenant detail route (/tenants/t-123)', async () => {
+        usePathnameMock.mockReturnValue('/tenants/t-123');
+        renderSidebar();
+
+        const tenants = await screen.findByRole('link', { name: 'Tenants' });
+        expect(tenants.getAttribute('data-active')).toBe('true');
+
+        const storage = screen.getByRole('link', { name: 'Tenant storage' });
+        expect(storage.getAttribute('data-active')).toBe('false');
     });
 });

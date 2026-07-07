@@ -4,7 +4,7 @@
 # ============================================================================
 # Starts the full local clinical-workspace stack in one command:
 #   api (8868), stt (8861), smr (8862), guardrail (8863), nlp (8864),
-#   harness (8866), worker (Temporal task queue), ui (5175)
+#   harness (8866), worker (Temporal task queue), ui (5176)
 # Guardrail is part of the default stack (the admin console monitors it);
 # start a subset to leave it out.
 #
@@ -49,7 +49,7 @@ NC='\033[0m'
 STATE_DIR="${HOPE_DEV_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/hope-dev}"
 LOG_DIR="${HOPE_DEV_LOG_DIR:-$STATE_DIR/logs}"
 PID_DIR="$STATE_DIR/pids"
-DEFAULT_SERVICES=(api stt smr guardrail nlp harness worker ui)
+DEFAULT_SERVICES=(api stt smr guardrail nlp harness worker admin)
 ALL_SERVICES=(api stt smr nlp harness worker ui guardrail)
 
 port_for() {
@@ -59,7 +59,7 @@ port_for() {
         smr) echo "${SMR_PORT:-8862}" ;;
         nlp) echo "${NLP_PORT:-8864}" ;;
         harness) echo "${HARNESS_PORT:-8866}" ;;
-        ui) echo "${UI_PORT:-5175}" ;;
+        admin) echo "${ADMIN_PORT:-5176}" ;;
         guardrail) echo "${GUARDRAIL_PORT:-8863}" ;;
         worker) echo "" ;;
     esac
@@ -70,7 +70,7 @@ CMD=()
 set_command_for() {
     case "$1" in
         api) CMD=(pnpm dev:api) ;;
-        ui) CMD=(pnpm dev:ui-playground) ;;
+        admin) CMD=(pnpm dev:admin) ;;
         *) CMD=("$SCRIPT_DIR/dev-service.sh" "$1") ;;
     esac
 }
