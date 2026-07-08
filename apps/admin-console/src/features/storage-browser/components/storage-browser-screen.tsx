@@ -1,32 +1,64 @@
 'use client';
 
-import { useState } from 'react';
 import { IconUpload } from '@tabler/icons-react';
 import { parseAsString, useQueryStates } from 'nuqs';
 import { Button } from '@arcaai/ui/components/shadcn/button';
+import { Label } from '@arcaai/ui/components/shadcn/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@arcaai/ui/components/shadcn/select';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
-import { FilterBar, FilterSearch, FilterSelect } from '@/shared/data/filter-bar';
+import { FilterSearch } from '@/shared/data/filter-bar';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
-import { useBuckets, useObjects } from '../api/hooks';
-import type { StorageObject } from '../api/types';
-import { BucketListCard } from './bucket-list-card';
-import { ObjectActionsPanel, UPLOAD_INPUT_ID } from './object-actions-panel';
-import { deriveEntries, ObjectBrowserPanel, sortEntries, type FileEntry } from './object-browser-panel';
+import { useBuckets, useObjects, useStorageHealth } from '../api/hooks';
+import type { StorageHealth, StorageObject } from '../api/types';
+import { UPLOAD_INPUT_ID, UploadZone } from './object-actions-panel';
+import { deriveEntries, ObjectBrowserPanel, PrefixChips, sortEntries } from './object-browser-panel';
+import { ObjectDetailDrawer } from './object-detail';
 
 const ENDPOINT_HINT = 'GET /storage/buckets';
 
+function healthLabel(health: StorageHealth): string {
+    if (health.status === 'not-configured') return 'Storage not configured';
+    if (health.status === 'healthy' && health.connected) return health.isMinIO ? 'MinIO reachable' : 'Storage reachable';
+    return health.isMinIO ? 'MinIO unreachable' : 'Storage unreachable';
+}
+
+function healthDotClass(health: StorageHealth): string {
+    if (health.status === 'healthy' && health.connected) return 'bg-success';
+    if (health.status === 'not-configured') return 'bg-warning';
+    return 'bg-destructive';
+}
+
+/** Footer health verdict (frame 31): dot + probe result, from GET /storage/health. */
+function HealthStatus() {
+    const { data, isPending, isError } = useStorageHealth();
+    if (isPending) return <Skeleton className="h-4 w-32" />;
+    const health: StorageHealth = isError ? { status: 'unhealthy', connected: false, isMinIO: false } : (data as StorageHealth);
+    return (
+        <span className="flex items-center gap-2">
+            <span aria-hidden className={`size-2 shrink-0 rounded-full ${healthDotClass(health)}`} />
+            <span className="truncate">{healthLabel(health)}</span>
+        </span>
+    );
+}
+
 function ScreenBody() {
     const bucketsQuery = useBuckets();
-    const [{ bucket: bucketParam, prefix, search }, setParams] = useQueryStates({
+    const [{ bucket: bucketParam, prefix, search, object: objectParam }, setParams] = useQueryStates({
         bucket: parseAsString.withDefault(''),
         prefix: parseAsString.withDefault(''),
         search: parseAsString.withDefault(''),
+        object: parseAsString.withDefault(''),
     });
-    const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
     const buckets = bucketsQuery.data ?? [];
     // The URL param wins when it names a real bucket; otherwise the first one.
@@ -44,19 +76,20 @@ function ScreenBody() {
     // Folders-first, name-ascending; the embedded grid owns further sort + pagination client-side.
     const sorted = sortEntries(entries, 'key:asc');
 
-    const selectedEntry = sorted.find((entry): entry is FileEntry => entry.kind === 'file' && entry.key === selectedKey);
-    const selectedObject: StorageObject | null = selectedEntry
-        ? { key: selectedEntry.key, size: selectedEntry.size, lastModified: selectedEntry.lastModified }
-        : null;
+    // The `?object=` deep-link (and file-row selection) resolves against the raw
+    // listing so a valid key opens the drawer even before the grid renders.
+    const selectedObject: StorageObject | null = objectParam ? (objects.find((candidate) => candidate.key === objectParam) ?? null) : null;
 
     function selectBucket(name: string) {
-        setSelectedKey(null);
-        void setParams({ bucket: name === buckets[0]?.name ? null : name, prefix: null });
+        void setParams({ bucket: name === buckets[0]?.name ? null : name, prefix: null, object: null });
     }
 
     function navigatePrefix(nextPrefix: string) {
-        setSelectedKey(null);
-        void setParams({ prefix: nextPrefix || null });
+        void setParams({ prefix: nextPrefix || null, object: null });
+    }
+
+    function selectFile(key: string) {
+        void setParams({ object: key || null });
     }
 
     function focusUploadZone() {
@@ -64,68 +97,84 @@ function ScreenBody() {
     }
 
     return (
-        <ScreenTemplate
-            header={
-                <PageHeader
-                    title="Storage"
-                    meta={
-                        <>
-                            {bucketsQuery.data && !objectsQuery.isPending ? (
-                                <span>
-                                    {formatNumber(buckets.length)} {buckets.length === 1 ? 'bucket' : 'buckets'} {'\u00b7'}{' '}
-                                    {formatNumber(objects.length)} {objects.length === 1 ? 'object' : 'objects'}
-                                </span>
-                            ) : (
-                                <Skeleton className="h-4 w-40" />
-                            )}
-                            <span>tenant-scoped listing only</span>
-                        </>
-                    }
-                    actions={
-                        <Button onClick={focusUploadZone}>
-                            <IconUpload aria-hidden />
-                            Upload files
-                        </Button>
-                    }
-                />
-            }
-            toolbar={
-                <FilterBar shown={entries.length} total={allEntries.length}>
-                    <FilterSearch
-                        label="Search objects"
-                        placeholder={'Search objects (prefix)\u2026'}
-                        value={search}
-                        onChange={(value) => void setParams({ search: value || null })}
+        <>
+            <ScreenTemplate
+                contentMode="fill"
+                header={
+                    <PageHeader
+                        title="Storage"
+                        meta={
+                            <>
+                                {bucketsQuery.data && !objectsQuery.isPending ? (
+                                    <span>
+                                        {formatNumber(buckets.length)} {buckets.length === 1 ? 'bucket' : 'buckets'} {'·'}{' '}
+                                        {formatNumber(objects.length)} {objects.length === 1 ? 'object' : 'objects'}
+                                    </span>
+                                ) : (
+                                    <Skeleton className="h-4 w-40" />
+                                )}
+                                <span>tenant-scoped listing only</span>
+                            </>
+                        }
+                        actions={
+                            <Button onClick={focusUploadZone}>
+                                <IconUpload aria-hidden />
+                                Upload files
+                            </Button>
+                        }
                     />
-                    {/* value is always a real bucket name once the list loads, so the
-                        "All" sentinel row only shows while buckets are empty. */}
-                    <FilterSelect
-                        id="storage-browser-bucket-filter"
-                        label="Bucket"
-                        value={activeBucket}
-                        onChange={selectBucket}
-                        options={buckets.map((candidate) => ({ value: candidate.name, label: candidate.name }))}
+                }
+                toolbar={
+                    <div className="flex flex-col gap-3">
+                        <div className="bg-card flex flex-wrap items-end gap-3 rounded-md border p-2">
+                            <div className="flex items-center gap-1.5">
+                                <Label htmlFor="storage-browser-bucket" className="text-muted-foreground text-sm font-normal">
+                                    Bucket:
+                                </Label>
+                                <Select value={activeBucket} onValueChange={selectBucket}>
+                                    <SelectTrigger id="storage-browser-bucket" size="sm" className="min-w-48">
+                                        <SelectValue placeholder="Select bucket" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {buckets.map((candidate) => (
+                                            <SelectItem key={candidate.name} value={candidate.name}>
+                                                {candidate.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <FilterSearch
+                                label="Search objects"
+                                placeholder={'Search objects (prefix)…'}
+                                value={search}
+                                onChange={(value) => void setParams({ search: value || null })}
+                            />
+                            {activeBucket ? <UploadZone key={activeBucket} bucketName={activeBucket} /> : null}
+                            <span aria-hidden className="text-muted-foreground ml-auto hidden font-mono text-xs lg:inline">
+                                GET buckets/:name/files
+                            </span>
+                        </div>
+                        {activeBucket ? <PrefixChips bucketName={activeBucket} prefix={prefix} onNavigate={navigatePrefix} /> : null}
+                    </div>
+                }
+                footer={
+                    <StatusFooter
+                        start={
+                            <>
+                                <HealthStatus />
+                                <span>{objectsQuery.isFetching && !objectsQuery.isLoading ? 'Refreshing' : 'Up to date'}</span>
+                            </>
+                        }
+                        end={
+                            <span aria-hidden className="font-mono">
+                                {ENDPOINT_HINT}
+                            </span>
+                        }
                     />
-                    <span aria-hidden className="text-muted-foreground ml-auto hidden font-mono text-xs lg:inline">
-                        GET buckets/:name/files
-                    </span>
-                </FilterBar>
-            }
-            footer={
-                <StatusFooter
-                    end={
-                        <span aria-hidden className="font-mono">
-                            {ENDPOINT_HINT}
-                        </span>
-                    }
-                />
-            }
-        >
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[16rem_minmax(0,1fr)_18rem]">
-                <BucketListCard buckets={buckets} isLoading={bucketsQuery.isPending} activeBucket={activeBucket} onSelect={selectBucket} />
+                }
+            >
                 <ObjectBrowserPanel
-                    bucketName={activeBucket}
-                    prefix={prefix}
                     onNavigate={navigatePrefix}
                     rows={sorted}
                     isLoading={bucketsQuery.isPending || (!!activeBucket && objectsQuery.isPending)}
@@ -134,15 +183,23 @@ function ScreenBody() {
                         if (bucketsQuery.error) void bucketsQuery.refetch();
                         if (objectsQuery.error) void objectsQuery.refetch();
                     }}
-                    selectedKey={selectedKey}
-                    onSelectFile={setSelectedKey}
+                    selectedKey={selectedObject?.key ?? null}
+                    onSelectFile={selectFile}
                     hasSearch={!!search}
                     onClearSearch={() => void setParams({ search: null })}
                     onRequestUpload={focusUploadZone}
                 />
-                <ObjectActionsPanel bucketName={activeBucket} object={selectedObject} onDeleted={() => setSelectedKey(null)} />
-            </div>
-        </ScreenTemplate>
+            </ScreenTemplate>
+
+            <ObjectDetailDrawer
+                bucketName={activeBucket}
+                object={selectedObject}
+                onOpenChange={(open) => {
+                    if (!open) void setParams({ object: null });
+                }}
+                onDeleted={() => void setParams({ object: null })}
+            />
+        </>
     );
 }
 
@@ -150,7 +207,9 @@ function ScreenBody() {
  * Frame 31 — tenant Storage browser (tier 30–49 DATA plane, /storage/*):
  * physical buckets by name, prefix object browsing, presigned downloads,
  * multipart uploads. Distinct from the tier-14 admin plane at
- * /tenants/storage (frame 14).
+ * /tenants/storage (frame 14). Redesign (build spec §3/§7): fill-height object
+ * grid + breadcrumb path bar, bucket select in the toolbar, object actions in
+ * the console-wide detail slide-over.
  */
 export function StorageBrowserScreen() {
     return (

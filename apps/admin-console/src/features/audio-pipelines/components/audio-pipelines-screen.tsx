@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { IconFilterOff, IconPlus, IconRoute, IconStarFilled } from '@tabler/icons-react';
+import { parseAsString, useQueryState } from 'nuqs';
 import { VirtualizedDataGrid, type ColumnDef, type DataQueryState } from '@arcaai/ui';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
@@ -14,18 +15,14 @@ import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
+import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
-import { usePipeline, usePipelines } from '../api';
+import { usePipelines } from '../api';
 import type { Pipeline } from '../api';
-import { ConfigEditorCard } from './config-editor-card';
-import { CreatePipelineDialog } from './create-pipeline-dialog';
+import { PipelineDetailDrawer } from './pipeline-detail';
 import { PipelineStatusBadge } from './pipeline-status-badge';
-import { VersionsLifecyclePanel } from './versions-lifecycle-panel';
 
-const EM_DASH = '\u2014';
-
-/** Embedded grid (design-spec D2): fixed viewport in the master-detail middle column. */
-const PIPELINES_GRID_HEIGHT = 480;
+const EM_DASH = '—';
 
 const STATUS_OPTIONS: FilterOption[] = [
     { value: 'ENABLED', label: 'On' },
@@ -56,7 +53,7 @@ const ENDPOINT_HINT = (
     </span>
 );
 
-/** Frame 34 — Audio Pipelines (tier 30–49): config editor, grid, versions & lifecycle. */
+/** Frame 34 — Audio Pipelines (tier 30–49): fill-height grid + console-wide detail slide-over. */
 export function AudioPipelinesScreen() {
     return (
         <WorkingTenantGate title="Audio Pipelines" meta={ENDPOINT_HINT}>
@@ -70,12 +67,11 @@ function AudioPipelinesBody() {
     const pipelinesQuery = usePipelines();
     // The list is fetched whole (no server pagination), so the grid runs in
     // manual mode over a client slice: the toolbar's omni search + Status/Engine
-    // faceted chips live in the URL (`f`), and this body owns the filtering.
+    // faceted chips live in the URL (`f`), and this body owns the filtering. The
+    // selected row that opens the detail slide-over is its own `pipeline` param.
     const query = useAdminGridParams();
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [createOpen, setCreateOpen] = useState(false);
-
-    const detailQuery = usePipeline(selectedId);
+    const [selectedParam, setSelectedParam] = useQueryState('pipeline', parseAsString.withDefault(''));
+    const [creating, setCreating] = useState(false);
 
     const pipelines = useMemo(() => pipelinesQuery.data ?? [], [pipelinesQuery.data]);
     const search = query.queryState.globalSearch?.trim().toLowerCase() ?? '';
@@ -121,7 +117,7 @@ function AudioPipelinesBody() {
                 minSize: 140,
                 meta: { label: 'Pipeline' },
                 cell: ({ row }) => (
-                    <span className={row.original.id === selectedId ? 'text-primary font-semibold' : 'font-medium'}>{row.original.name}</span>
+                    <span className={row.original.id === selectedParam ? 'text-primary font-semibold' : 'font-medium'}>{row.original.name}</span>
                 ),
             },
             {
@@ -181,12 +177,13 @@ function AudioPipelinesBody() {
                 cell: ({ row }) => <PipelineStatusBadge status={row.original.resourceStatus} />,
             },
         ],
-        [selectedId, engineOptions],
+        [selectedParam, engineOptions],
     );
 
     return (
         <>
             <ScreenTemplate
+                contentMode="fill"
                 header={
                     <PageHeader
                         title="Audio Pipelines"
@@ -197,7 +194,7 @@ function AudioPipelinesBody() {
                             </>
                         }
                         actions={
-                            <Button onClick={() => setCreateOpen(true)}>
+                            <Button onClick={() => setCreating(true)}>
                                 <IconPlus aria-hidden />
                                 New pipeline
                             </Button>
@@ -211,77 +208,77 @@ function AudioPipelinesBody() {
                     />
                 }
             >
-                <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,1fr)]">
-                    <ConfigEditorCard
-                        key={selectedId ?? 'none'}
-                        detail={detailQuery.data}
-                        isLoading={!!selectedId && detailQuery.isPending}
-                        onReload={() => void detailQuery.refetch()}
-                    />
-                    <VirtualizedDataGrid<Pipeline>
-                        aria-label="Audio pipelines"
-                        columns={columns}
-                        data={pageRows}
-                        getRowId={(row) => row.id}
-                        height={PIPELINES_GRID_HEIGHT}
-                        manual={{ filtering: true, pagination: true }}
-                        rowCount={filtered.length}
-                        queryState={query.queryState}
-                        onQueryStateChange={query.setQueryState}
-                        persistence={gridPersistence('audio-pipelines')}
-                        features={{
-                            columnReorder: true,
-                            columnResize: true,
-                            columnPinning: true,
-                            columnVisibility: true,
-                            rowSelection: false,
-                            globalSearch: true,
-                            facetedFilters: true,
-                            sorting: false,
-                        }}
-                        onRowClick={(row) => setSelectedId(row.id)}
-                        isLoading={pipelinesQuery.isLoading}
-                        isBusy={pipelinesQuery.isFetching && !pipelinesQuery.isLoading}
-                        error={pipelinesQuery.error ?? null}
-                        onRetry={() => void pipelinesQuery.refetch()}
-                        emptyState={
-                            hasFilters ? (
-                                <EmptyState
-                                    icon={IconFilterOff}
-                                    title="No pipelines match your filters"
-                                    description="Try a different search or clear the filters."
-                                    action={
-                                        <Button variant="outline" onClick={clearFilters}>
-                                            <IconFilterOff aria-hidden />
-                                            Clear filters
-                                        </Button>
-                                    }
-                                />
-                            ) : (
-                                <EmptyState
-                                    icon={IconRoute}
-                                    title="No pipelines for this tenant"
-                                    description="An ASR pipeline defines the models and preprocessing the SDK uses. Create the first one to feed the SDK pickers."
-                                    action={
-                                        <Button onClick={() => setCreateOpen(true)}>
-                                            <IconPlus aria-hidden />
-                                            New pipeline
-                                        </Button>
-                                    }
-                                />
-                            )
-                        }
-                    />
-                    <VersionsLifecyclePanel
-                        detail={detailQuery.data}
-                        isLoading={!!selectedId && detailQuery.isPending}
-                        isElevated={session.data?.isElevated ?? false}
-                        onReload={() => void detailQuery.refetch()}
-                        onDeleted={() => setSelectedId(null)}
-                    />
-                </div>
+                <VirtualizedDataGrid<Pipeline>
+                    aria-label="Audio pipelines"
+                    columns={columns}
+                    data={pageRows}
+                    getRowId={(row) => row.id}
+                    manual={{ filtering: true, pagination: true }}
+                    rowCount={filtered.length}
+                    queryState={query.queryState}
+                    onQueryStateChange={query.setQueryState}
+                    persistence={gridPersistence('audio-pipelines')}
+                    features={{
+                        columnReorder: true,
+                        columnResize: true,
+                        columnPinning: true,
+                        columnVisibility: true,
+                        rowSelection: false,
+                        globalSearch: true,
+                        facetedFilters: true,
+                        sorting: false,
+                    }}
+                    onRowClick={(row) => void setSelectedParam(row.id)}
+                    isLoading={pipelinesQuery.isLoading}
+                    isBusy={pipelinesQuery.isFetching && !pipelinesQuery.isLoading}
+                    error={pipelinesQuery.error ?? null}
+                    errorState={(error) => <ErrorState error={error} onRetry={() => void pipelinesQuery.refetch()} />}
+                    onRetry={() => void pipelinesQuery.refetch()}
+                    emptyState={
+                        hasFilters ? (
+                            <EmptyState
+                                icon={IconFilterOff}
+                                title="No pipelines match your filters"
+                                description="Try a different search or clear the filters."
+                                action={
+                                    <Button variant="outline" onClick={clearFilters}>
+                                        <IconFilterOff aria-hidden />
+                                        Clear filters
+                                    </Button>
+                                }
+                            />
+                        ) : (
+                            <EmptyState
+                                icon={IconRoute}
+                                title="No pipelines for this tenant"
+                                description="An ASR pipeline defines the models and preprocessing the SDK uses. Create the first one to feed the SDK pickers."
+                                action={
+                                    <Button onClick={() => setCreating(true)}>
+                                        <IconPlus aria-hidden />
+                                        New pipeline
+                                    </Button>
+                                }
+                            />
+                        )
+                    }
+                />
             </ScreenTemplate>
-            <CreatePipelineDialog open={createOpen} onOpenChange={setCreateOpen} />
+
+            <PipelineDetailDrawer
+                key={creating ? 'create' : (selectedParam || 'none')}
+                pipelineId={creating ? null : selectedParam || null}
+                creating={creating}
+                isElevated={session.data?.isElevated ?? false}
+                onOpenChange={(open) => {
+                    if (open) return;
+                    setCreating(false);
+                    void setSelectedParam(null);
+                }}
+                onCreated={(pipeline) => {
+                    setCreating(false);
+                    void setSelectedParam(pipeline.id);
+                }}
+            />
         </>
     );
 }

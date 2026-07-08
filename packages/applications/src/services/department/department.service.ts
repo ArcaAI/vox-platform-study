@@ -1,13 +1,21 @@
 import { Injectable, BadRequestException, NotFoundException, Inject, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { DepartmentRepository, DepartmentFactory, ResourceType, ResourceStatusType, SysEventType, UserRepository } from '@arcaai/domains';
+import {
+  DepartmentRepository,
+  DepartmentFactory,
+  ResourceType,
+  ResourceStatusType,
+  SysEventType,
+  UserRepository,
+  UserDepartmentRepository,
+} from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { IDepartmentService } from './IDepartmentService';
 import { DepartmentResponse, CreateDepartmentRequest, UpdateDepartmentRequest, UpdateDepartmentPromptConfigRequest } from './dto';
 import { DepartmentDtoMapper } from './department.dto.mapper';
-import { BaseService, assertParentInScope, isSuperAdmin, FetchResponse, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
+import { BaseService, assertParentInScope, isSuperAdmin, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { UserDtoMapper } from '../user/user/user.dto.mapper';
 import { PaginatedUserResponse } from '../user/user/dto';
@@ -26,6 +34,11 @@ export class DepartmentService extends BaseService implements IDepartmentService
     // unit tests keep working; when present, `create` enforces the plan
     // `maxDepartments` quota (kill-switch-gated, no-op when OFF).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    // TASK-441 — appended last (append-only DI). Used to surface a per-member
+    // `isLead` flag on the department-members listing, derived from the
+    // `UserDepartment.isPrimary` column. Optional so existing positional
+    // constructors in other unit tests keep working.
+    @Optional() private readonly userDepartmentRepository?: UserDepartmentRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.Department);
   }
@@ -155,12 +168,30 @@ export class DepartmentService extends BaseService implements IDepartmentService
       where: deptWhere as any,
     });
 
+    // TASK-441 — `isPrimary` models the user's primary department; here it is
+    // surfaced as `isLead` for the department-members view (closest available
+    // signal — no dedicated per-department lead field exists). Scope by the
+    // DEPARTMENT's tenant (matches the user query above) and drop soft-deleted
+    // memberships.
+    const primaryMemberships =
+      (await this.userDepartmentRepository?.findAll({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        where: { departmentId, tenantId: department.tenantId, isPrimary: true, resourceStatus: { not: ResourceStatusType.DELETED } } as any,
+      })) ?? [];
+    const primaryUserIds = new Set(primaryMemberships.map((m) => m.userId));
+
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       resourceId: departmentId,
       data: { departmentId, items: users.map((user) => user.id) },
     });
 
-    return UserDtoMapper.ToPaginatedResponse(new FetchResponse({ data: users, count, limit: limit ?? 0, page: page ?? 0 }));
+    const data = users.map((user) => {
+      const response = UserDtoMapper.ToResponse(user);
+      response.isLead = primaryUserIds.has(user.id);
+      return response;
+    });
+
+    return new PaginatedUserResponse({ page: page ?? 0, limit: limit ?? 0, count, data });
   }
 
   /**

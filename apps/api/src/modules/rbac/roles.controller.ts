@@ -1,8 +1,17 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Inject, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { IRbacRoleService } from '@arcaai/applications';
+import { IRbacRoleService, IUserRoleAssignmentService } from '@arcaai/applications';
 import { CanManage, CanAny } from '../../decorators';
-import { BreakGlassDto, CreateRoleDto, UpdateRoleDto, AssignPolicyToRoleDto, RoleResponse, PaginatedRoleResponse, AssignPolicyResponse } from './dto';
+import {
+  BreakGlassDto,
+  CreateRoleDto,
+  UpdateRoleDto,
+  AssignPolicyToRoleDto,
+  RoleResponse,
+  PaginatedRoleResponse,
+  PaginatedRoleMemberResponse,
+  AssignPolicyResponse,
+} from './dto';
 
 /**
  * RBAC Roles Controller
@@ -24,6 +33,10 @@ export class RolesController {
   constructor(
     @Inject(IRbacRoleService)
     private readonly roleService: IRbacRoleService,
+    // TASK-444 — members listing (users-by-role) lives on the sanctioned
+    // user-role-assignment service; the controller stays transport-only.
+    @Inject(IUserRoleAssignmentService)
+    private readonly userRoleAssignmentService: IUserRoleAssignmentService,
   ) {}
 
   /**
@@ -64,6 +77,31 @@ export class RolesController {
       throw new NotFoundException('Role not found');
     }
     return this.toResponse(role);
+  }
+
+  /**
+   * TASK-444 — list the users assigned this role (members). The role is a
+   * global resource (existence check → 404); the member rows are tenant-scoped
+   * by the service layer, so a tenant admin sees only their tenant's holders
+   * and cross-tenant members are simply absent (404-over-403 posture: nothing
+   * about other tenants is revealed).
+   */
+  @Get(':id/members')
+  @CanAny(['read', 'Role'], ['manage', 'Role'])
+  @ApiOperation({ summary: 'List users assigned this role (paginated, tenant-scoped)' })
+  @ApiResponse({ status: 200, description: 'Paginated role members', type: PaginatedRoleMemberResponse })
+  @ApiResponse({ status: 404, description: 'Role not found' })
+  async listMembers(
+    @Param('id') id: string,
+    @Query('page') page: number = 1,
+    @Query('pageSize') pageSize: number = 20,
+  ): Promise<PaginatedRoleMemberResponse> {
+    const role = await this.roleService.findOne(id);
+    if (!role) {
+      throw new NotFoundException('Role not found');
+    }
+    const { data, total } = await this.userRoleAssignmentService.fetchAllByRoleId({ page, pageSize, roleId: id });
+    return { data, total, page, pageSize };
   }
 
   /**
@@ -190,8 +228,12 @@ export class RolesController {
     createdAt: Date;
     updatedAt: Date;
     RolePolicies: { Policy: { id: string; name: string } | null; priority: number }[];
+    // TASK-444 — present on the read paths only (findAll/findOne merge the
+    // tenant-scoped `_count` include; mutations return no count).
+    _count?: { UserRoleAssignments: number };
   }): RoleResponse {
     return {
+      ...(role._count ? { memberCount: role._count.UserRoleAssignments } : {}),
       id: role.id,
       name: role.name,
       description: role.description || undefined,

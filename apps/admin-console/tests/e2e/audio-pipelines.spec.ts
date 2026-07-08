@@ -27,23 +27,24 @@ async function waitForSettled(page: Page) {
 }
 
 test.describe('audio pipelines (frame 34)', () => {
-    test('shows the header, filters and the three panels', async ({ page }) => {
+    test('shows the header, filters and the fill-height grid', async ({ page }) => {
+        // Redesign (TASK-441): the former Config / Versions-&-lifecycle side
+        // panels moved into the detail slide-over; the grid is now primary.
         await page.goto('/audio/pipelines');
         await waitForSettled(page);
         await expect(page.getByRole('button', { name: 'New pipeline' }).first()).toBeVisible();
         await expect(page.getByLabel('Search pipelines')).toBeVisible();
         await expect(page.getByLabel('Status')).toBeVisible();
-        await expect(page.getByText('Config editor')).toBeVisible();
-        await expect(page.getByText('Versions & lifecycle')).toBeVisible();
+        await expect(page.getByRole('table', { name: 'Audio pipelines' })).toBeVisible();
     });
 
-    test('the new-pipeline action opens the create dialog', async ({ page }) => {
+    test('the new-pipeline action opens the create slide-over', async ({ page }) => {
         await page.goto('/audio/pipelines');
         await waitForSettled(page);
         await page.getByRole('button', { name: 'New pipeline' }).first().click();
         const dialog = page.getByRole('dialog');
         await expect(dialog.getByText('New pipeline')).toBeVisible();
-        await expect(dialog.getByLabel('Name')).toBeVisible();
+        await expect(dialog.getByRole('textbox', { name: 'Name' })).toBeVisible();
         await dialog.getByRole('button', { name: 'Cancel' }).click();
         await expect(page.getByRole('dialog')).toBeHidden();
     });

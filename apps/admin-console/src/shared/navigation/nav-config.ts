@@ -123,11 +123,12 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     // planes run under the admin's OWN account, so the backend guards are
     // plain @Authorize() — visibility is role-gated (GLOBAL_ADMIN or
     // TENANT_ADMIN) via visibleNavEntries, mirroring the (playground) layout.
-    { route: '/playground/consultation', label: 'Consultation demo', tier: '50-59', icon: IconHeartbeat, required: [], implemented: true },
-    { route: '/playground/live-transcription', label: 'Live transcription', tier: '50-59', icon: IconBroadcast, required: [], implemented: true },
-    { route: '/playground/voice-profiles', label: 'Voice profiles', tier: '50-59', icon: IconUserScan, required: [], implemented: true },
-    { route: '/playground/dna-writing-style', label: 'My DNA style', tier: '50-59', icon: IconDna2, required: [], implemented: true },
-    { route: '/playground/llm', label: 'LLM playground', tier: '50-59', icon: IconSparkles, required: [], implemented: true },
+    // Labels reconciled to the page titles (TASK-442): nav = breadcrumb = title.
+    { route: '/playground/consultation', label: 'Consultation Demo', tier: '50-59', icon: IconHeartbeat, required: [], implemented: true },
+    { route: '/playground/live-transcription', label: 'Live Transcription', tier: '50-59', icon: IconBroadcast, required: [], implemented: true },
+    { route: '/playground/voice-profiles', label: 'My Voice Enrollment & Profiles', tier: '50-59', icon: IconUserScan, required: [], implemented: true },
+    { route: '/playground/dna-writing-style', label: 'My DNA Writing Style', tier: '50-59', icon: IconDna2, required: [], implemented: true },
+    { route: '/playground/llm', label: 'Agent Playground', tier: '50-59', icon: IconSparkles, required: [], implemented: true },
 ];
 
 /** The playground audience — mirrors the (playground) route-group guard. */

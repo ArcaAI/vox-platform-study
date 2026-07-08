@@ -134,3 +134,36 @@ export interface SmrStreamFrame {
     content?: string | null;
     data?: Record<string, unknown> | null;
 }
+
+// ─── TASK-446: Guardrails + NER tabs (verbatim upstream shapes) ───
+
+export const GUARDRAIL_TYPES = ['content_safety', 'pii_detection', 'prompt_injection', 'comprehensive'] as const;
+export type GuardrailType = (typeof GUARDRAIL_TYPES)[number];
+
+/** Guardrail service `POST /api/guardrail/analyze` verdict (proxied verbatim). */
+export interface GuardrailAnalysis {
+    safe: boolean;
+    issues: string[];
+    confidence: number;
+    processing_time_ms?: number;
+    request_id?: string;
+    timestamp?: string;
+    error?: string | null;
+}
+
+/** NLP token-classification entity (proxied verbatim). */
+export interface NerEntity {
+    id?: string;
+    text: string;
+    normalized_text?: string;
+    entity_type: string;
+    confidence: number;
+    position?: { start: number; end: number };
+    model_version?: string | null;
+}
+
+/** NLP `POST /api/v1/classify/tokens` result (proxied verbatim). */
+export interface NerResult {
+    entities: NerEntity[];
+    model_version: string;
+}

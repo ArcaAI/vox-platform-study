@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
-import { PolicyServiceModule, RbacRoleServiceModule } from '@arcaai/applications';
+import { PolicyServiceModule, RbacRoleServiceModule, UserRoleAssignmentServiceModule } from '@arcaai/applications';
 import { RolesController } from './roles.controller';
 import { PoliciesController } from './policies.controller';
 import { PermissionCheckController } from './permission-check.controller';
@@ -25,7 +25,9 @@ import { PermissionCheckController } from './permission-check.controller';
  * H-9).
  */
 @Module({
-  imports: [CoreDatabaseModule, PolicyServiceModule, RbacRoleServiceModule],
+  // TASK-444 — `UserRoleAssignmentServiceModule` backs the new
+  // `GET admin/rbac/roles/:id/members` listing on `RolesController`.
+  imports: [CoreDatabaseModule, PolicyServiceModule, RbacRoleServiceModule, UserRoleAssignmentServiceModule],
   controllers: [RolesController, PoliciesController, PermissionCheckController],
 })
 export class RbacModule {}

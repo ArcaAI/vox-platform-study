@@ -94,6 +94,19 @@ export const EmbeddedFixedHeight: Story = {
   args: { ...baseArgs, height: 360, data: makeTenants(50) },
 };
 
+/**
+ * TASK-443 — grouped rows: non-interactive group-header rows (label + count)
+ * between contiguous groups of the page. Data is pre-sorted by the group field
+ * (the server's job on manual grids) so groups are contiguous.
+ */
+export const GroupedRows: Story = {
+  args: {
+    ...baseArgs,
+    data: [...makeTenants(60)].sort((a, b) => a.plan.localeCompare(b.plan)),
+    groupBy: { accessor: (row: Tenant) => row.plan },
+  },
+};
+
 export const Loading: Story = { args: { ...baseArgs, data: [], isLoading: true } };
 
 export const EmptyNoData: Story = { args: { ...baseArgs, data: [] } };

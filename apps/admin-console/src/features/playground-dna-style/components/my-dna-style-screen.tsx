@@ -8,10 +8,7 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { GatewayError } from '@/shared/api';
 import { useSession } from '@/shared/auth';
-import { PageHeader } from '@/shared/page/page-header';
-import { PlaygroundBanner } from '@/shared/page/playground-banner';
-import { ScreenTemplate } from '@/shared/page/screen-template';
-import { StatusFooter } from '@/shared/page/status-footer';
+import { CanvasHeader, PlaygroundCanvas } from '@/features/playground-shared/components/playground-canvas';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { useDnaJobProgress, useDnaSettings, useGenerateMyStyle, useMyReports, useMyStyle } from '../api';
 import { DnaSettingsCard } from './dna-settings-card';
@@ -75,74 +72,47 @@ function MyDnaStyleBody() {
         });
     }
 
-    const refreshing = (myStyle.isFetching || mine.isFetching || settings.isFetching) && !myStyle.isPending && !mine.isPending;
-
     return (
-        <ScreenTemplate
-            header={
-                <PageHeader
-                    title="My DNA Writing Style"
-                    meta={
-                        <>
-                            <span>Your personal writing style {'\u00b7'} versioned {'\u00b7'} generation streams over SSE</span>
-                            {mine.data ? (
-                                <span>
-                                    {mine.data.length} {mine.data.length === 1 ? 'report' : 'reports'}
-                                </span>
-                            ) : mine.isPending ? (
-                                <Skeleton className="h-4 w-16" />
-                            ) : null}
-                        </>
-                    }
-                    actions={
-                        <>
-                            {gated ? <span className="text-muted-foreground text-xs">Requires acting as a doctor</span> : null}
-                            <Button onClick={handleGenerate} disabled={gated || generate.isPending}>
-                                {generate.isPending ? <Spinner /> : <IconBolt aria-hidden />}
-                                Generate my style
-                            </Button>
-                        </>
-                    }
-                />
-            }
-            statusBanner={<PlaygroundBanner />}
-            footer={
-                <StatusFooter
-                    start={<span>{refreshing ? 'Refreshing' : 'Up to date'}</span>}
-                    end={
-                        <span aria-hidden className="font-mono">
-                            GET /dna-writing-styles/my-style {'\u00b7'} POST /dna-writing-styles/generate (SSE)
+        <PlaygroundCanvas>
+            <CanvasHeader
+                title="My DNA Writing Style"
+                description={'Your personal writing style \u00b7 versioned \u00b7 generation streams over SSE'}
+                badges={
+                    mine.data ? (
+                        <span className="text-muted-foreground text-xs">
+                            {mine.data.length} {mine.data.length === 1 ? 'report' : 'reports'}
                         </span>
-                    }
-                />
-            }
-        >
-            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,22rem)]">
-                <div className="flex flex-col gap-4">
-                    <ImpersonationGatePanel session={safe} gated={gated} />
-                    <DnaSettingsCard settings={settings} gated={gated} onGate={() => setGateHit(true)} />
-                </div>
-                <div className="flex flex-col gap-4">
-                    <MyStyleCard
-                        myStyle={myStyle}
-                        settings={settings}
-                        gated={gated}
-                        onGenerate={handleGenerate}
-                        generatePending={generate.isPending}
-                    />
-                    <MyReportsCard reports={mine} myStyleReportId={myStyle.data?.data.id ?? null} />
-                </div>
-                <GeneratePane
-                    samplesText={samplesText}
-                    onSamplesTextChange={setSamplesText}
-                    onGenerate={handleGenerate}
-                    isPending={generate.isPending}
-                    gated={gated}
-                    activeJobId={activeJobId}
-                    progress={progress}
-                />
-            </div>
-        </ScreenTemplate>
+                    ) : mine.isPending ? (
+                        <Skeleton className="h-4 w-16" />
+                    ) : null
+                }
+                actions={
+                    <>
+                        {gated ? <span className="text-muted-foreground text-xs">Requires acting as a doctor</span> : null}
+                        <Button onClick={handleGenerate} disabled={gated || generate.isPending}>
+                            {generate.isPending ? <Spinner /> : <IconBolt aria-hidden />}
+                            Generate my style
+                        </Button>
+                    </>
+                }
+            />
+            {/* Centered flow (TASK-442 \u00a74): gate/status \u2192 settings \u2192 current style \u2192
+                generate \u2192 history. The gate remains the DESIGNED assertActingAsDoctor
+                state; switching persona now happens in the top-bar persona control. */}
+            <ImpersonationGatePanel session={safe} gated={gated} />
+            <DnaSettingsCard settings={settings} gated={gated} onGate={() => setGateHit(true)} />
+            <MyStyleCard myStyle={myStyle} settings={settings} gated={gated} onGenerate={handleGenerate} generatePending={generate.isPending} />
+            <GeneratePane
+                samplesText={samplesText}
+                onSamplesTextChange={setSamplesText}
+                onGenerate={handleGenerate}
+                isPending={generate.isPending}
+                gated={gated}
+                activeJobId={activeJobId}
+                progress={progress}
+            />
+            <MyReportsCard reports={mine} myStyleReportId={myStyle.data?.data.id ?? null} />
+        </PlaygroundCanvas>
     );
 }
 

@@ -11,6 +11,7 @@ import {
     getPolicy,
     getRole,
     listPolicies,
+    listRoleMembers,
     listRoles,
     updatePolicy,
     updateRole,
@@ -25,6 +26,16 @@ export function useRoles(params?: RbacListParams) {
 
 export function useRole(id: string) {
     return useQuery({ queryKey: rbacKeys.role(id), queryFn: () => getRole(id), enabled: !!id });
+}
+
+/** TASK-444 — paginated users-by-role for the role detail Members tab. */
+export function useRoleMembers(roleId: string, params?: RbacListParams) {
+    return useQuery({
+        queryKey: rbacKeys.roleMembers(roleId, params),
+        queryFn: () => listRoleMembers(roleId, params),
+        enabled: !!roleId,
+        placeholderData: keepPreviousData,
+    });
 }
 
 export function usePolicies(params?: PolicyListParams) {

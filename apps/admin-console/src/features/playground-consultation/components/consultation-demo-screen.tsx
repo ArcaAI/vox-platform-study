@@ -42,10 +42,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/
 import { StatusBadge, type StatusColorRole } from '@arcaai/ui/components/shared/status-badge';
 import { publicEnv } from '@/config/public-env';
 import { useSession } from '@/shared/auth';
+import { CanvasHeader, PlaygroundCanvas } from '@/features/playground-shared/components/playground-canvas';
 import { formatDateTime } from '@/shared/format';
-import { PageHeader } from '@/shared/page/page-header';
-import { ScreenTemplate } from '@/shared/page/screen-template';
-import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
@@ -146,27 +144,21 @@ async function resolveStreamingSessionId(storeApi: { getState: () => unknown }, 
 
 // ─── screen shell ───
 
-/** Route skeleton — mirrored by the route's loading.tsx. */
+/** Route skeleton — mirrored by the route's loading.tsx; the centered canvas flow. */
 export function ConsultationDemoSkeleton() {
     return (
-        <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-                <Skeleton className="h-8 w-64" />
-                <Skeleton className="h-4 w-96 max-w-full" />
+        <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6 px-4 py-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex flex-col gap-2">
+                    <Skeleton className="h-7 w-64" />
+                    <Skeleton className="h-4 w-96 max-w-full" />
+                </div>
+                <Skeleton className="h-9 w-40" />
             </div>
             <Skeleton className="h-9 w-72 max-w-full" />
-            <div className="grid items-start gap-4 lg:grid-cols-2">
-                <div className="flex flex-col gap-4">
-                    <Skeleton className="h-64 w-full" />
-                    <Skeleton className="h-48 w-full" />
-                </div>
-                <div className="flex flex-col gap-4">
-                    <Skeleton className="h-56 w-full" />
-                    <Skeleton className="h-56 w-full" />
-                </div>
-            </div>
-            <Skeleton className="h-28 w-full" />
-            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-48 w-full" />
+            <Skeleton className="h-56 w-full" />
         </div>
     );
 }
@@ -426,66 +418,49 @@ function DemoScreen() {
     const statusMeta = consultation ? consultationStatusMeta(consultation.status) : null;
 
     return (
-        <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
-            <ScreenTemplate
-                header={
-                    <PageHeader
-                        title="Consultation Demo"
-                        meta={<span>@arcaai/vox — capture, live transcription, live summary and documentation review</span>}
-                        actions={
-                            tab === 'demo' ? (
-                                <Button onClick={focusPatientInput}>
-                                    <IconPlus aria-hidden />
-                                    Open consultation
-                                </Button>
-                            ) : undefined
-                        }
-                    />
-                }
-                statusBanner={
-                    consultation && statusMeta ? (
-                        <div className="bg-card flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2 text-sm">
-                            <span className="text-muted-foreground">Consultation:</span>
-                            <code className="font-mono text-xs">{consultation.id}</code>
-                            <span className="text-muted-foreground text-xs">(demo)</span>
-                            <code className="text-muted-foreground font-mono text-xs">{consultation.patientId}</code>
-                            {isRecording ? (
-                                <span className="text-destructive flex items-center gap-1.5 text-xs font-semibold">
-                                    <span aria-hidden className="bg-destructive size-2 animate-pulse rounded-full" />
-                                    RECORDING
-                                </span>
-                            ) : (
-                                <StatusBadge label={statusMeta.label} colorRole={statusMeta.role} />
-                            )}
-                            <span className="text-muted-foreground text-xs">Opened {formatDateTime(consultation.createdAt)}</span>
-                            <span aria-hidden className="text-muted-foreground ms-auto font-mono text-xs">
-                                POST /consultations/open {'·'} recording/start|stop
-                            </span>
-                        </div>
+        <PlaygroundCanvas>
+            <CanvasHeader
+                title="Consultation Demo"
+                description="@arcaai/vox — capture, live transcription, live summary and documentation review"
+                actions={
+                    tab === 'demo' ? (
+                        <Button onClick={focusPatientInput}>
+                            <IconPlus aria-hidden />
+                            Open consultation
+                        </Button>
                     ) : undefined
                 }
-                tabs={
-                    <TabsList variant="line">
-                        <TabsTrigger value="demo">Consultation demo</TabsTrigger>
-                        <TabsTrigger value="review">Documentation review</TabsTrigger>
-                    </TabsList>
-                }
-                footer={
-                    <StatusFooter
-                        start={<span>Demo data lands in the working tenant — audio stays in the browser; STT frames stream to the gateway.</span>}
-                        end={
-                            <span aria-hidden className="font-mono">
-                                POST /consultations/open {'·'} POST /auth/stream-ticket {'·'} SSE live-summary
-                            </span>
-                        }
-                    />
-                }
-            >
+            />
+            {consultation && statusMeta ? (
+                <div className="bg-card flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2 text-sm">
+                    <span className="text-muted-foreground">Consultation:</span>
+                    <code className="font-mono text-xs">{consultation.id}</code>
+                    <span className="text-muted-foreground text-xs">(demo)</span>
+                    <code className="text-muted-foreground font-mono text-xs">{consultation.patientId}</code>
+                    {isRecording ? (
+                        <span className="text-destructive flex items-center gap-1.5 text-xs font-semibold">
+                            <span aria-hidden className="bg-destructive size-2 animate-pulse rounded-full" />
+                            RECORDING
+                        </span>
+                    ) : (
+                        <StatusBadge label={statusMeta.label} colorRole={statusMeta.role} />
+                    )}
+                    <span className="text-muted-foreground text-xs">Opened {formatDateTime(consultation.createdAt)}</span>
+                    <span aria-hidden className="text-muted-foreground ms-auto font-mono text-xs">
+                        POST /consultations/open {'·'} recording/start|stop
+                    </span>
+                </div>
+            ) : null}
+            <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-4">
+                <TabsList variant="line">
+                    <TabsTrigger value="demo">Consultation demo</TabsTrigger>
+                    <TabsTrigger value="review">Documentation review</TabsTrigger>
+                </TabsList>
+                {/* End-user preview (TASK-442 §4): one centered top-to-bottom flow —
+                    setup → capture → live transcript → live summary → document — instead
+                    of the old 3-column console grid. */}
                 <TabsContent value="demo" className="flex flex-col gap-4">
-                    {/* Frame 50 grid: 1 col → 2 cols at lg → Capture | Live transcript | Live summary at xl. */}
-                    <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,22rem)]">
-                        <div className="flex flex-col gap-4">
-                            <Card>
+                    <Card>
                                 <CardHeader>
                                     <CardTitle>Demo setup</CardTitle>
                                     <CardDescription>Open (or resume) today&apos;s consultation for a patient, then capture.</CardDescription>
@@ -578,15 +553,10 @@ function DemoScreen() {
                                 onStart={handleStartRecording}
                                 onStop={handleStopRecording}
                             />
-                        </div>
 
-                        {/* At xl this wrapper dissolves (`contents`) so the transcript takes the
-                            center column and the summary + document stack takes the right one. */}
-                        <div className="flex flex-col gap-4 xl:contents">
-                            <TranscriptPane audio={audio} />
+                    <TranscriptPane audio={audio} />
 
-                            <div className="flex flex-col gap-4">
-                                <LiveSummaryPane armed={liveSummaryArmed} stream={liveSummary} />
+                    <LiveSummaryPane armed={liveSummaryArmed} stream={liveSummary} />
 
                                 <Card>
                                     <CardHeader>
@@ -623,10 +593,7 @@ function DemoScreen() {
                                             />
                                         ) : null}
                                     </CardContent>
-                                </Card>
-                            </div>
-                        </div>
-                    </div>
+                    </Card>
                 </TabsContent>
 
                 <TabsContent value="review">
@@ -645,8 +612,8 @@ function DemoScreen() {
                         />
                     )}
                 </TabsContent>
-            </ScreenTemplate>
-        </Tabs>
+            </Tabs>
+        </PlaygroundCanvas>
     );
 }
 

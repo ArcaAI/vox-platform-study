@@ -1,14 +1,15 @@
 import { EntityId, GlobalSettingEntity } from '@arcaai/domains';
 import { FetchResponse, PaginatedQuery } from '../../common';
 import { IBaseService } from '../../interfaces';
-import { CreateGlobalSettingRequest, UpdateGlobalSettingRequest } from './dto';
+import { CreateGlobalSettingRequest, RotateGlobalSettingRequest, UpdateGlobalSettingRequest } from './dto';
 
 // TODO: Implement this
 
 export interface IGlobalSettingService extends IBaseService {
   create(request: CreateGlobalSettingRequest): Promise<GlobalSettingEntity>;
-  fetchAll(props: PaginatedQuery): Promise<FetchResponse<GlobalSettingEntity>>;
-  fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<GlobalSettingEntity>>;
+  /** TASK-443 — `secretsOnly` resolves the derived secret predicate server-side (no `isSecret` column). */
+  fetchAll(props: PaginatedQuery & { secretsOnly?: boolean }): Promise<FetchResponse<GlobalSettingEntity>>;
+  fetchAllByTenantId(props: PaginatedQuery & { tenantId: string; secretsOnly?: boolean }): Promise<FetchResponse<GlobalSettingEntity>>;
   fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<GlobalSettingEntity>>;
   fetchById(id: EntityId): Promise<GlobalSettingEntity>;
   update(id: EntityId, request: UpdateGlobalSettingRequest): Promise<GlobalSettingEntity>;
@@ -24,5 +25,17 @@ export interface IGlobalSettingService extends IBaseService {
    * `encryptedValue`.
    */
   revealSecret(id: EntityId, password: string): Promise<{ entity: GlobalSettingEntity; plaintext: string }>;
+  /**
+   * TASK-445 — rotate ONE secret setting: atomically replace the stored secret
+   * value under optimistic concurrency (`updateWithVersion`), invalidating the
+   * old value in the same versioned write. Super-admin only (re-checked here,
+   * primary gate is the HTTP layer's CASL `manage:all`) + step-up re-auth like
+   * `revealSecret`. Emits a force-audited `ResourceUpdated` SysEvent tagged
+   * `GLOBAL_SETTING_SECRET_ROTATED` that NEVER contains the old or new
+   * plaintext. Non-secret rows are rejected. Returns the persisted entity
+   * (masked by the DTO mapper at the HTTP layer — the plaintext is never
+   * returned).
+   */
+  rotateSecret(id: EntityId, request: RotateGlobalSettingRequest): Promise<GlobalSettingEntity>;
 }
 export const IGlobalSettingService = Symbol('IGlobalSettingService');

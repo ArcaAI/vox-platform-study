@@ -6,6 +6,8 @@ import {
   UpdateGlobalSettingRequest,
   RevealGlobalSettingRequest,
   RevealGlobalSettingResponse,
+  RotateGlobalSettingRequest,
+  ListGlobalSettingQuery,
   PaginatedQuery,
   IActiveUserContext,
   IGlobalSettingService,
@@ -67,8 +69,14 @@ export class GlobalSettingController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({
+    name: 'secretsOnly',
+    required: false,
+    type: Boolean,
+    description: 'TASK-443 — facet on the DERIVED secret predicate (not a column): true = secrets only, false = non-secrets only.',
+  })
   @CanRead('GlobalSetting')
-  async fetchAll(@Query() queryParams: PaginatedQuery): Promise<PaginatedGlobalSettingResponse> {
+  async fetchAll(@Query() queryParams: ListGlobalSettingQuery): Promise<PaginatedGlobalSettingResponse> {
     // Tenant-scope like api-key.fetchAll: a tenant-bound caller sees only its
     // own settings; an unscoped (platform) caller sees all. The Prisma
     // tenant-scope extension is the backstop.
@@ -204,5 +212,66 @@ export class GlobalSettingController {
       value: plaintext,
       revealedAt: new Date().toISOString(),
     });
+  }
+
+  /**
+   * TASK-445 — rotate ONE secret setting (atomic replace-with-new-value).
+   *
+   * Gating mirrors `reveal`: method-level `@Authorize(['manage','all'])`
+   * OVERRIDES the class `@CanManage('GlobalSetting')` so only GLOBAL_ADMIN
+   * passes (tenant admins 403), plus step-up re-auth (current password in the
+   * body, bcrypt-verified in the service — never logged, never persisted).
+   *
+   * OCC mirrors `update`: rotation is a versioned write, so `If-Match` is
+   * REQUIRED (`@RequiresIfMatch()` → 428 when missing) and the header version
+   * overrides the body `expectedVersion`; drift → 412. The old secret is
+   * invalidated by the same compare-and-set write — no dual-validity window.
+   *
+   * The response is the MASKED setting (new `version`/ETag via the global
+   * `ETagInterceptor`); the new plaintext is NEVER returned. Every rotation is
+   * force-audited with the distinct `GLOBAL_SETTING_SECRET_ROTATED` action tag
+   * (plaintext excluded). Never bulk — single `:id` only.
+   */
+  @Post(':id/rotate')
+  @HttpCode(200)
+  @Authorize(['manage', 'all'])
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Rotate a secret setting (global-admin, step-up re-auth, OCC, audited)',
+    description:
+      'Atomically replaces the stored secret value of ONE global setting under ' +
+      'optimistic concurrency. GLOBAL_ADMIN only (CASL `manage:all`). Requires ' +
+      "step-up re-authentication (the caller's current password in the body) AND " +
+      'the RFC 7232 `If-Match` header carrying the row version (missing → 428, ' +
+      'drift → 412). The old value is invalidated by the same versioned write. ' +
+      'Every rotation is distinctly audit-logged; neither the old nor the new ' +
+      'plaintext is ever logged or returned — the response is the masked setting.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the row version the client read (e.g. `"7"`).',
+    required: true,
+    example: '"7"',
+  })
+  @ApiParam({ name: 'id', description: 'Global setting ID', type: String })
+  @ApiResponse({ status: 200, description: 'Secret rotated — masked setting with the new version', type: GlobalSettingResponse })
+  @ApiResponse({ status: 400, description: 'Not a secret setting, or empty replacement value' })
+  @ApiResponse({ status: 401, description: 'Step-up re-authentication required or password incorrect' })
+  @ApiResponse({ status: 403, description: 'Forbidden — rotation is GLOBAL_ADMIN only' })
+  @ApiResponse({ status: 404, description: 'Global setting not found' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async rotate(
+    @Param('id') id: string,
+    @Body() request: RotateGlobalSettingRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<GlobalSettingResponse> {
+    // Header takes precedence over the body when both are present (same OCC
+    // contract as `update`; `@RequiresIfMatch()` already fired 428 if absent).
+    const effectiveRequest: RotateGlobalSettingRequest =
+      expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
+    const result = await this.globalSettingService.rotateSecret(id, effectiveRequest);
+    // Masked response — the DTO mapper blanks secret values; plaintext never leaves the reveal endpoint.
+    return GlobalSettingDtoMapper.ToResponse(result);
   }
 }

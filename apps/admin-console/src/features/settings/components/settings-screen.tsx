@@ -4,27 +4,65 @@ import { useMemo, useState } from 'react';
 import { IconFilterOff, IconLock, IconPlus, IconSettings, IconTrash } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
-import { type ColumnDef, type SortRule } from '@arcaai/ui';
+import { type ColumnDef, type GroupByConfig, type SortRule } from '@arcaai/ui';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
+import type { ListParams } from '@/shared/api';
 import { useTenantCatalog, useTenantNames } from '@/shared/catalog';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid';
 import { normalizeList } from '@/shared/data/envelopes';
 import type { FilterOption } from '@/shared/data/filter-bar';
+import { toListParams } from '@/shared/data/grid-url-state';
 import { NameWithId } from '@/shared/data/name-with-id';
 import { formatNumber, formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
-import { useDeleteGlobalSetting, useGlobalSettings } from '../api/hooks';
+import { useDeleteGlobalSetting, useGlobalSettings, useSettingNamespaces } from '../api/hooks';
 import type { GlobalSetting } from '../api/types';
 import { SettingCreateDrawer, SettingDetailDrawer } from './setting-drawer';
 
 /** Omni search targets (→ gateway `searchFields`) and the implicit sort — stable refs for the hook. */
 const SETTING_SEARCH_FIELDS = ['name', 'key'];
-const SETTING_DEFAULT_SORT: SortRule[] = [{ id: 'key', desc: false }];
+/**
+ * TASK-443 — namespace FIRST so the grouped list's groups are contiguous per
+ * server page (grouping is display-only; the sort is what forms the groups).
+ */
+const SETTING_DEFAULT_SORT: SortRule[] = [
+    { id: 'namespace', desc: false },
+    { id: 'key', desc: false },
+];
+/** TASK-443 — namespace group-header rows (label + count) in the grid. */
+const SETTING_GROUP_BY: GroupByConfig<GlobalSetting> = { accessor: (row) => row.namespace ?? null };
+/**
+ * TASK-443 — the Secrets-only chip's filter id. `isSecret` is DERIVED on the
+ * gateway (encrypted value OR `secrets` namespace OR convention-named key),
+ * not a column, so the rule is stripped from the bracket grammar and remapped
+ * to the bespoke `secretsOnly` query param before the request is built.
+ */
+const SECRETS_FILTER_ID = 'isSecret';
+/** `ValueType` members (packages/database enums.prisma) for the Type chip; the gateway 400s anything else. */
+const VALUE_TYPE_OPTIONS: FilterOption[] = [
+    'String',
+    'Integer',
+    'Float',
+    'Double',
+    'Decimal',
+    'Boolean',
+    'Json',
+    'Date',
+    'DateTime',
+    'Array',
+    'Uuid',
+    'Binary',
+    'Enum',
+    'Hstore',
+    'Inet',
+    'Citext',
+    'Interval',
+].map((value) => ({ value, label: value }));
 const MASK = '••••••••';
 /** Sentinel `?setting=` value that opens the create drawer instead of a detail. */
 const CREATE_SENTINEL = 'new';
@@ -43,7 +81,18 @@ const CREATE_SENTINEL = 'new';
 export function SettingsScreen() {
     const query = useAdminGridParams({ searchFields: SETTING_SEARCH_FIELDS, defaultSort: SETTING_DEFAULT_SORT });
 
-    const settingsQuery = useGlobalSettings(query.listParams);
+    // TASK-443 — remap the Secrets-only chip: strip the derived `isSecret` rule
+    // from the serialized bracket filters and carry it as the bespoke
+    // `secretsOnly` extra param instead (page-reset/URL behaviour untouched —
+    // the rule still lives in the grid's query state like any other filter).
+    const listParams = useMemo<ListParams>(() => {
+        const secretsRule = query.queryState.filters.find((rule) => rule.id === SECRETS_FILTER_ID);
+        if (!secretsRule) return query.listParams;
+        const withoutSecretsRule = { ...query.queryState, filters: query.queryState.filters.filter((rule) => rule.id !== SECRETS_FILTER_ID) };
+        return { ...toListParams(withoutSecretsRule, { searchFields: SETTING_SEARCH_FIELDS }), secretsOnly: String(secretsRule.value) === 'true' };
+    }, [query.queryState, query.listParams]);
+
+    const settingsQuery = useGlobalSettings(listParams);
     const { rows, total } = normalizeList<GlobalSetting>(settingsQuery.data);
     const totalCount = total ?? 0;
 
@@ -54,6 +103,20 @@ export function SettingsScreen() {
         () => (tenantCatalog.data ?? []).map((tenant) => ({ value: tenant.id, label: tenant.name || tenant.key || tenant.id })),
         [tenantCatalog.data],
     );
+
+    // TASK-443 — Namespace chip options: the cached distinct-namespace catalog,
+    // merged with any URL-selected values so a shared link always renders its chips.
+    const namespaceCatalog = useSettingNamespaces();
+    const namespaceOptions = useMemo<FilterOption[]>(() => {
+        const known = new Set(namespaceCatalog.data ?? []);
+        const active = query.queryState.filters.find((rule) => rule.id === 'namespace');
+        if (Array.isArray(active?.value)) {
+            for (const value of active.value) {
+                if (typeof value === 'string' && value) known.add(value);
+            }
+        }
+        return [...known].sort((a, b) => a.localeCompare(b)).map((value) => ({ value, label: value }));
+    }, [namespaceCatalog.data, query.queryState.filters]);
 
     // Drawer selection rides the URL so a row/detail is deep-linkable and back-navigable.
     const [selected, setSelected] = useQueryState('setting', parseAsString);
@@ -107,10 +170,11 @@ export function SettingsScreen() {
             ),
         },
         {
-            id: 'namespace',
+            accessorKey: 'namespace',
             header: 'Namespace',
             enableSorting: false,
-            meta: { label: 'Namespace' },
+            // TASK-443 — server-driven multiSelect facet (namespace[in]:…).
+            meta: { label: 'Namespace', variant: 'multiSelect', options: namespaceOptions },
             size: 140,
             cell: ({ row }) => <span className="text-muted-foreground">{row.original.namespace || '—'}</span>,
         },
@@ -128,12 +192,29 @@ export function SettingsScreen() {
                 ),
         },
         {
-            id: 'type',
+            // TASK-443 — the column id IS the gateway field (`dataType[in]:…`).
+            accessorKey: 'dataType',
             header: 'Type',
             enableSorting: false,
-            meta: { label: 'Type' },
+            meta: { label: 'Type', variant: 'multiSelect', options: VALUE_TYPE_OPTIONS },
             size: 100,
             cell: ({ row }) => <span className="text-muted-foreground">{row.original.dataType}</span>,
+        },
+        {
+            // TASK-443 — Secrets-only: a FILTER-ONLY virtual column (never
+            // rendered; `isSecret` is derived server-side). The screen remaps
+            // its rule onto the bespoke `secretsOnly` query param.
+            accessorKey: SECRETS_FILTER_ID,
+            enableSorting: false,
+            meta: {
+                label: 'Secrets',
+                variant: 'boolean',
+                filterOnly: true,
+                options: [
+                    { value: 'true', label: 'Secrets only' },
+                    { value: 'false', label: 'Non-secrets' },
+                ],
+            },
         },
         {
             id: 'value',
@@ -231,6 +312,7 @@ export function SettingsScreen() {
                     columns={columns}
                     rows={rows}
                     total={totalCount}
+                    groupBy={SETTING_GROUP_BY}
                     queryState={query.queryState}
                     onQueryStateChange={query.setQueryState}
                     isLoading={settingsQuery.isLoading}

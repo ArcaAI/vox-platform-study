@@ -174,7 +174,7 @@ describe('PlaygroundLlmScreen', () => {
         renderWithProviders(<PlaygroundLlmScreen />);
 
         expect(await screen.findByText('Select a working tenant')).toBeDefined();
-        expect(screen.getByRole('heading', { level: 1, name: 'LLM Playground' })).toBeDefined();
+        expect(screen.getByRole('heading', { level: 1, name: 'Agent Playground' })).toBeDefined();
         expect(calls.filter((call) => call.url.includes('/api/hope/text/'))).toHaveLength(0);
     });
 
@@ -183,7 +183,7 @@ describe('PlaygroundLlmScreen', () => {
         const { container } = renderWithProviders(<PlaygroundLlmScreen />);
 
         expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
-        expect(screen.getByRole('heading', { level: 1, name: 'LLM Playground' })).toBeDefined();
+        expect(screen.getByRole('heading', { level: 1, name: 'Agent Playground' })).toBeDefined();
     });
 
     it('renders the provider picker from text/providers: default preselected, unavailable options disabled', async () => {
@@ -407,8 +407,8 @@ describe('PlaygroundLlmScreen', () => {
         renderWithProviders(<PlaygroundLlmScreen />);
 
         await screen.findByLabelText('Provider');
-        // The playground banner stacks above the request-summary strip.
-        expect(screen.getByText(/demo sessions run under your own account/)).toBeDefined();
+        // The request-summary strip sits under the canvas header (TASK-442 §4: the
+        // playground banner moved to the top-bar persona control).
         expect(screen.getByText('Provider: azure-openai')).toBeDefined();
         expect(screen.getByText('model gpt-5')).toBeDefined();
         expect(screen.getByText('temp 0.2')).toBeDefined();

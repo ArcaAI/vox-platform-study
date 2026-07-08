@@ -1,7 +1,8 @@
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
-import type { HarnessWorkflowDetail, HarnessWorkflowList, LiveSessionsList } from '../../api/types';
+import { isNonTerminal, workflowRefetchInterval, workflowsRefetchInterval } from '../../api/polling';
+import type { HarnessWorkflowDetail, HarnessWorkflowList, HarnessWorkflowSummary, LiveSessionsList } from '../../api/types';
 import { HarnessWorkflowsScreen } from '../harness-workflows-screen';
 import { installFetchStub, sessionPayload, type RecordedCall } from './fetch-stub';
 
@@ -87,8 +88,12 @@ function stubRoutes(overrides: { workflows?: Response | HarnessWorkflowList; wor
 
 async function selectFirstWorkflow() {
     fireEvent.click(await screen.findByText('harness-doc-c1'));
+    // The detail lives in the console-wide slide-over (a Sheet -> role dialog).
+    await screen.findByRole('dialog');
     expect(await screen.findByText(/42 history events recorded/)).toBeDefined();
 }
+
+const summary = (overrides: Partial<HarnessWorkflowSummary> = {}): HarnessWorkflowSummary => ({ ...WORKFLOWS.items[0], ...overrides });
 
 afterEach(() => {
     cleanup();
@@ -176,5 +181,32 @@ describe('HarnessWorkflowsScreen', () => {
         expect(await screen.findByRole('heading', { level: 1, name: 'Harness Workflows' })).toBeDefined();
         expect(await screen.findByText('temporal unreachable')).toBeDefined();
         expect(screen.getAllByRole('button', { name: 'Retry' }).length).toBeGreaterThan(0);
+    });
+});
+
+// The live-refresh predicate that drives `refetchInterval` is a pure function so
+// the "poll while a run is live, stop once everything is terminal" rule can be
+// asserted deterministically (fake timers race TanStack Query's scheduler).
+describe('workflow polling predicate', () => {
+    it('treats only RUNNING as a live (non-terminal) Temporal state', () => {
+        expect(isNonTerminal('RUNNING')).toBe(true);
+        for (const terminal of ['COMPLETED', 'FAILED', 'CANCELED', 'TERMINATED', 'TIMED_OUT', 'CONTINUED_AS_NEW']) {
+            expect(isNonTerminal(terminal)).toBe(false);
+        }
+        expect(isNonTerminal(null)).toBe(false);
+        expect(isNonTerminal(undefined)).toBe(false);
+    });
+
+    it('polls the list on a 5s interval while any visible run is live, else stops', () => {
+        expect(workflowsRefetchInterval([summary({ status: 'RUNNING' }), summary({ status: 'FAILED' })])).toBe(5000);
+        expect(workflowsRefetchInterval([summary({ status: 'COMPLETED' }), summary({ status: 'FAILED' })])).toBe(false);
+        expect(workflowsRefetchInterval([])).toBe(false);
+        expect(workflowsRefetchInterval(undefined)).toBe(false);
+    });
+
+    it('polls the selected detail only while its run is live', () => {
+        expect(workflowRefetchInterval('RUNNING')).toBe(5000);
+        expect(workflowRefetchInterval('COMPLETED')).toBe(false);
+        expect(workflowRefetchInterval(undefined)).toBe(false);
     });
 });

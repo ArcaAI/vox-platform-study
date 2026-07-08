@@ -20,7 +20,7 @@ import { DataGridSkeleton } from './data-grid-skeleton';
 import { DataGridColumnHeader } from './data-grid-column-header';
 import { DataGridToolbar } from './data-grid-toolbar';
 import { useDataGrid, type UseDataGridResult } from './use-data-grid';
-import type { VirtualizedDataGridProps } from './types';
+import type { GroupByConfig, VirtualizedDataGridProps } from './types';
 
 const SELECT_COLUMN_ID = 'select';
 
@@ -96,7 +96,8 @@ function HeaderCell<TData>({
       <button
         type="button"
         aria-label={`Reorder ${label} column`}
-        className="cursor-grab text-muted-foreground/60 hover:text-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring [&_svg]:size-3.5"
+        // size-6 = the 24px WCAG 2.5.8 target floor (axe target-size); the icon stays 14px.
+        className="flex size-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/60 hover:text-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring [&_svg]:size-3.5"
         {...attributes}
         {...listeners}
       >
@@ -200,6 +201,55 @@ function BodyRow<TData>({
   );
 }
 
+/**
+ * TASK-443 — a non-interactive group-header row (label + contiguous count)
+ * injected by `groupBy`: a full-width `rowheader` cell spanning all columns,
+ * outside the row tab sequence, with an sr-only group summary for AT.
+ */
+function GroupHeaderRow<TData>({
+  entry,
+  colCount,
+  virtualStart,
+  size,
+  rowIndex,
+  renderHeader,
+}: {
+  entry: { label: string; count: number };
+  colCount: number;
+  virtualStart: number;
+  size: number;
+  rowIndex: number;
+  renderHeader?: GroupByConfig<TData>['renderHeader'];
+}) {
+  return (
+    <div
+      role="row"
+      aria-rowindex={rowIndex}
+      data-slot="data-grid-group-row"
+      className="absolute left-0 flex w-full items-center border-b bg-muted/50"
+      style={{ height: size, transform: `translateY(${virtualStart}px)` }}
+    >
+      <div
+        role="rowheader"
+        aria-colspan={colCount}
+        className="flex w-full min-w-0 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground"
+      >
+        {renderHeader ? (
+          renderHeader(entry.label, entry.count)
+        ) : (
+          <>
+            <span className="truncate">{entry.label}</span>
+            <span aria-hidden>({entry.count})</span>
+          </>
+        )}
+        <span className="sr-only">
+          group, {entry.count} {entry.count === 1 ? 'item' : 'items'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData>) {
   const {
     columns,
@@ -227,7 +277,7 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
   }, [columns, props.features?.rowSelection]);
 
   const grid = useDataGrid<TData>({ ...props, columns: augmentedColumns });
-  const { table, rowVirtualizer, scrollRef, density, features, moveColumn, isLayoutReady, announcement, pageSizeOptions } = grid;
+  const { table, rowVirtualizer, displayRows, scrollRef, density, features, moveColumn, isLayoutReady, announcement, pageSizeOptions } = grid;
 
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor));
 
@@ -240,6 +290,9 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
   const columnOrderIds = table.getState().columnOrder.length ? table.getState().columnOrder : table.getAllLeafColumns().map((c) => c.id);
 
   const totalRowCount = props.manual?.pagination ? (rowCount ?? rows.length) : table.getFilteredRowModel().rows.length;
+  // TASK-443 — injected group headers are real grid rows on this page; count
+  // them so aria-rowindex never exceeds aria-rowcount.
+  const groupHeaderCount = displayRows.length - rows.length;
 
   // Scroll-driven affordances (Δ5 / §A): header elevation once scrolled, and the
   // pinned-column divider only while horizontally overflowing.
@@ -352,12 +405,25 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
 
         <div role="rowgroup" style={{ height: totalSize, position: 'relative' }}>
           {virtualRows.map((virtualRow) => {
-            const row = rows[virtualRow.index];
-            if (!row) return null;
+            const entry = displayRows[virtualRow.index];
+            if (!entry) return null;
+            if (entry.kind === 'group') {
+              return (
+                <GroupHeaderRow<TData>
+                  key={`group-${virtualRow.index}-${entry.label}`}
+                  entry={entry}
+                  colCount={table.getVisibleLeafColumns().length}
+                  rowIndex={virtualRow.index + 2}
+                  virtualStart={virtualRow.start}
+                  size={virtualRow.size}
+                  renderHeader={props.groupBy?.renderHeader}
+                />
+              );
+            }
             return (
               <BodyRow
-                key={row.id}
-                row={row}
+                key={entry.row.id}
+                row={entry.row}
                 rowIndex={virtualRow.index + 2}
                 virtualStart={virtualRow.start}
                 size={virtualRow.size}
@@ -385,7 +451,7 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
         <div
           role="grid"
           aria-label={props['aria-label'] ?? 'Data grid'}
-          aria-rowcount={totalRowCount + 1}
+          aria-rowcount={totalRowCount + 1 + groupHeaderCount}
           aria-colcount={table.getVisibleLeafColumns().length}
           aria-busy={isBusy || undefined}
           className={cn('relative overflow-hidden rounded-md border bg-card', fill && 'min-h-0 flex-1')}

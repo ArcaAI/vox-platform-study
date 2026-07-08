@@ -9,6 +9,7 @@ import {
     getPolicy,
     getRole,
     listPolicies,
+    listRoleMembers,
     listRoles,
     updatePolicy,
     updateRole,
@@ -49,6 +50,13 @@ describe('rbacKeys', () => {
         expect(rbacKeys.role('r-1')).not.toEqual(rbacKeys.policy('r-1'));
         expect(rbacKeys.roles()[0]).toBe('rbac');
     });
+
+    it('scopes member keys per role and per params (TASK-444)', () => {
+        expect(rbacKeys.roleMembers('r-1', { page: 1 })).toEqual(rbacKeys.roleMembers('r-1', { page: 1 }));
+        expect(rbacKeys.roleMembers('r-1')).not.toEqual(rbacKeys.roleMembers('r-2'));
+        expect(rbacKeys.roleMembers('r-1')).not.toEqual(rbacKeys.role('r-1'));
+        expect(rbacKeys.roleMembers('r-1', { page: 1 })).not.toEqual(rbacKeys.roleMembers('r-1', { page: 2 }));
+    });
 });
 
 describe('rbac client — roles', () => {
@@ -85,6 +93,24 @@ describe('rbac client — roles', () => {
         expect(calls[3].body).toEqual({ priority: 5 });
         expect(calls[4].body).toEqual({ password: 'pw', confirmationName: 'AUDITOR' });
         expect(calls[5].body).toEqual({ password: 'pw', confirmationName: 'AUDITOR' });
+    });
+});
+
+describe('rbac client — role members (TASK-444)', () => {
+    it('lists members with the RBAC envelope and raw page/pageSize params', async () => {
+        const calls = installFetchMock(() =>
+            Response.json({
+                data: [{ assignmentId: 'a-1', userId: 'u-1', displayName: 'Jane Doe', department: 'Cardiology', resourceStatus: 'ENABLED' }],
+                total: 1,
+                page: 1,
+                pageSize: 50,
+            }),
+        );
+        const members = await listRoleMembers('r-1', { page: 1, pageSize: 50 });
+        expect(calls[0].url).toBe('/api/hope/admin/rbac/roles/r-1/members?page=1&pageSize=50');
+        expect(calls[0].method).toBe('GET');
+        expect(members.total).toBe(1);
+        expect(members.data[0].displayName).toBe('Jane Doe');
     });
 });
 

@@ -12,6 +12,7 @@ import type {
     Department,
     DepartmentMember,
     ListDepartmentsParams,
+    PromptTemplateOption,
     UpdateDepartmentPromptConfigRequest,
     UpdateDepartmentRequest,
 } from './types';
@@ -41,6 +42,18 @@ export function getDepartmentByCode(code: string): Promise<WithEtag<Department>>
 
 export function listDepartmentUsers(id: string, params?: ListParams): Promise<Paginated<DepartmentMember>> {
     return getJson(`${BASE}/${encodeURIComponent(id)}/users`, params);
+}
+
+/**
+ * Select catalog for the prompt-config pane: id + name of the working tenant's
+ * prompt templates. A read of the EXISTING admin/prompt-templates route (the
+ * paginated envelope, 1-based page) — no backend change, just consumed here so
+ * the department feature stays self-contained (features can't import each other).
+ */
+export function listPromptTemplateOptions(): Promise<PromptTemplateOption[]> {
+    return getJson<Paginated<PromptTemplateOption>>('admin/prompt-templates', { page: 1, limit: 100 }).then((res) =>
+        res.data.map((template) => ({ id: template.id, name: template.name })),
+    );
 }
 
 export function createDepartment(body: CreateDepartmentRequest): Promise<Department> {

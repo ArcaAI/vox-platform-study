@@ -99,6 +99,21 @@ function makeMocks() {
   return { cls, eventEmitter, roleRepo, rolePolicyRepo, policyRepo, userRepo, crypto, engine };
 }
 
+/**
+ * TASK-444 — the read paths now merge a tenant-filtered member `_count` into
+ * the canonical policies include (see role.service.task444.test.ts).
+ */
+const ROLE_READ_INCLUDE = {
+  ...ROLE_POLICIES_INCLUDE,
+  _count: {
+    select: {
+      UserRoleAssignments: {
+        where: { resourceStatus: { not: ResourceStatusType.DELETED }, tenantId: TENANT_ID },
+      },
+    },
+  },
+};
+
 function buildService(mocks: ReturnType<typeof makeMocks>) {
   return new RbacRoleService(
     mocks.roleRepo as never,
@@ -139,7 +154,7 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
         },
         skip: 5,
         take: 5,
-        include: ROLE_POLICIES_INCLUDE,
+        include: ROLE_READ_INCLUDE,
         orderBy: { name: 'asc' },
       });
       expect(result.total).toBe(1);
@@ -155,7 +170,7 @@ describe('TASK-307 W6.3 — RbacRoleService (closes C-10 / H-9 / AC-24)', () => 
 
       const result = await service.findOne('role-1');
 
-      expect(mocks.roleRepo.findByIdWithPolicies).toHaveBeenCalledWith('role-1');
+      expect(mocks.roleRepo.findByIdWithPolicies).toHaveBeenCalledWith('role-1', ROLE_READ_INCLUDE);
       expect(result).toBe(row);
     });
   });

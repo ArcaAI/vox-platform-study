@@ -8,4 +8,6 @@ export const departmentKeys = {
     detail: (id: string) => [...departmentKeys.root, 'detail', id] as const,
     children: (id: string) => [...departmentKeys.root, 'children', id] as const,
     users: (id: string, params?: ListParams) => [...departmentKeys.root, 'users', id, params ?? {}] as const,
+    /** Prompt-template catalog for the prompt-config Selects. */
+    promptTemplates: () => [...departmentKeys.root, 'prompt-templates'] as const,
 };

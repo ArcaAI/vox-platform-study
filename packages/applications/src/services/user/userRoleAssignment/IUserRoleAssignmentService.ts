@@ -31,12 +31,45 @@ export interface ActiveUserRoleAssignmentRow {
   resourceStatus: string;
 }
 
+/**
+ * TASK-444 — one member of a role: a `UserRoleAssignment` row joined to its
+ * (global) `User`, projected for the admin members listing. `department` is
+ * the user's department IN THE ASSIGNMENT'S TENANT (primary preferred);
+ * `resourceStatus` is the membership (assignment) status, `userResourceStatus`
+ * the account status.
+ */
+export interface RoleMemberRow {
+  assignmentId: string;
+  userId: string;
+  tenantId: string;
+  username: string;
+  displayName: string;
+  email: string | null;
+  department: string | null;
+  resourceStatus: string;
+  userResourceStatus: string;
+  assignedAt: Date;
+}
+
+/** TASK-444 — members listing result (RBAC-surface envelope: data + total). */
+export interface RoleMembersResult {
+  data: RoleMemberRow[];
+  total: number;
+}
+
 export interface IUserRoleAssignmentService extends IBaseService {
   create(request: CreateUserRoleAssignmentRequest): Promise<UserRoleAssignmentEntity>;
   fetchAll(props: PaginatedQuery): Promise<FetchResponse<UserRoleAssignmentEntity>>;
   fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<UserRoleAssignmentEntity>>;
   fetchAllCreatedByUser(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<UserRoleAssignmentEntity>>;
   fetchAllByUserId(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<UserRoleAssignmentEntity>>;
+
+  /**
+   * TASK-444 — the inverse of `fetchAllByUserId`: who holds this role.
+   * Tenant-scoped through the extended client (tenant admins see their
+   * tenant's members; an unscoped platform admin sees all assignments).
+   */
+  fetchAllByRoleId(props: { page: number; pageSize: number; roleId: string }): Promise<RoleMembersResult>;
   fetchById(id: EntityId): Promise<UserRoleAssignmentEntity>;
   update(id: EntityId, request: UpdateUserRoleAssignmentRequest): Promise<UserRoleAssignmentEntity>;
   deleteById(id: EntityId): Promise<UserRoleAssignmentEntity>;

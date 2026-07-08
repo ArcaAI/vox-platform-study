@@ -81,6 +81,43 @@ describe('GlobalSettingController', () => {
       expect(mockService.fetchAll).toHaveBeenCalledTimes(1);
       expect(mockService.fetchAllByTenantId).not.toHaveBeenCalled();
     });
+
+    // TASK-443 — the query DTO transforms 'true'/'false' to a real boolean and
+    // the controller forwards the flag to BOTH list branches.
+    it('forwards the secretsOnly facet to the unscoped fetchAll', async () => {
+      mockCls.get.mockReturnValue(undefined);
+      mockService.fetchAll.mockResolvedValue({ page: 1, limit: 20, count: 0, data: [] });
+
+      await controller.fetchAll({ page: 1, limit: 20, secretsOnly: true } as any);
+
+      expect(mockService.fetchAll).toHaveBeenCalledWith(expect.objectContaining({ secretsOnly: true }));
+    });
+
+    it('forwards the secretsOnly facet alongside the context tenant', async () => {
+      mockCls.get.mockReturnValue('tenant-1');
+      mockService.fetchAllByTenantId.mockResolvedValue({ page: 1, limit: 20, count: 0, data: [] });
+
+      await controller.fetchAll({ page: 1, limit: 20, secretsOnly: true } as any);
+
+      expect(mockService.fetchAllByTenantId).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1', secretsOnly: true }));
+    });
+
+    it('ListGlobalSettingQuery transforms the query-string secretsOnly to a boolean and rejects junk', async () => {
+      const { ListGlobalSettingQuery } = await import('@arcaai/applications');
+      const { plainToInstance } = await import('class-transformer');
+      const { validate } = await import('class-validator');
+
+      const truthy = plainToInstance(ListGlobalSettingQuery, { secretsOnly: 'true' });
+      expect(truthy.secretsOnly).toBe(true);
+      expect(await validate(truthy)).toHaveLength(0);
+
+      const falsy = plainToInstance(ListGlobalSettingQuery, { secretsOnly: 'false' });
+      expect(falsy.secretsOnly).toBe(false);
+      expect(await validate(falsy)).toHaveLength(0);
+
+      const junk = plainToInstance(ListGlobalSettingQuery, { secretsOnly: 'maybe' });
+      expect((await validate(junk)).length).toBeGreaterThan(0);
+    });
   });
 
   describe('GET /admin/settings/tenant/:tenantId (fetchByTenant)', () => {

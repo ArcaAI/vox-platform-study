@@ -349,8 +349,6 @@ describe('ConsultationDemoScreen', () => {
         expect(screen.getByText('Noise filter on')).toBeDefined();
         expect(screen.getByText(/mic permission/i)).toBeDefined();
         expect(screen.getByText(/prompt on first start/i)).toBeDefined();
-        // Footer status bar carries the plane's endpoint hints.
-        expect(screen.getByText(/POST \/consultations\/open · POST \/auth\/stream-ticket · SSE live-summary/)).toBeDefined();
     });
 
     it('surfaces a denied-microphone capture error with browser-settings guidance', async () => {

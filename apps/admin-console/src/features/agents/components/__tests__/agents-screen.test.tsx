@@ -1,8 +1,10 @@
 /**
- * Frame 32 — Agents & Prompt Templates screen. fetch is stubbed at the
+ * Frame 32 — Agents & Prompt Templates screen (build spec §7 redesign:
+ * fill-height grid + console-wide detail slide-over). fetch is stubbed at the
  * network boundary; assertions cover the template grid, the working-tenant
- * gate, the versions panel following the row selection, the confirm-gated
- * version activate POST, the OCC test run and the block error state.
+ * gate, the detail drawer following the row selection, the Versions-tab
+ * confirm-gated activate POST, the Test-run-tab OCC write, create-in-drawer and
+ * the block error state.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -184,6 +186,12 @@ function stubAgents(custom: FetchHandler = () => undefined): RecordedCall[] {
 
 const pathOf = (call: RecordedCall) => new URL(call.url, 'http://test.local').pathname;
 
+/** Open the detail drawer for a row and wait for its detail read to land. */
+async function openRow(name: string) {
+    fireEvent.click(await screen.findByText(name));
+    return screen.findByRole('dialog');
+}
+
 afterEach(() => {
     vi.unstubAllGlobals();
     cleanup();
@@ -201,28 +209,37 @@ describe('AgentsScreen', () => {
         expect(calls.every((call) => !call.url.includes('/admin/prompt-templates'))).toBe(true);
     });
 
-    it('renders the template grid with department, active version and usage columns', async () => {
+    it('renders the fill-height template grid with department, type, active version and usage columns', async () => {
         stubAgents();
         renderWithProviders(<AgentsScreen />);
 
-        // The name appears in its row AND the "selected:" footer (auto-select).
-        expect((await screen.findAllByText('Cardiology Notes')).length).toBeGreaterThanOrEqual(1);
+        expect(await screen.findByText('Cardiology Notes')).toBeDefined();
         expect(screen.getByText('Discharge Summary')).toBeDefined();
         expect(screen.getByText('Radiology Report')).toBeDefined();
         expect(screen.getByText(/3 templates/)).toBeDefined();
         expect(screen.getByText('CARD')).toBeDefined();
+        // Type (category) column renders the label.
+        expect(screen.getAllByText('Summary').length).toBeGreaterThanOrEqual(1);
         expect(screen.getByText('v12')).toBeDefined();
         expect(await screen.findAllByText('1,204')).toBeDefined();
-        // The first row is auto-selected and drives the side panels.
-        expect(await screen.findByLabelText('Versions of Cardiology Notes')).toBeDefined();
-        expect(screen.getByText(/selected:/)).toBeDefined();
+        // No detail slide-over until a row is selected.
+        expect(screen.queryByRole('dialog')).toBeNull();
     });
 
-    it('loads the clicked row into the versions panel', async () => {
-        const calls = stubAgents();
+    it('opens the detail slide-over on the clicked row (Overview tab seeds the edit form)', async () => {
+        stubAgents();
         renderWithProviders(<AgentsScreen />);
 
-        fireEvent.click(await screen.findByText('Discharge Summary'));
+        await openRow('Discharge Summary');
+        // Overview is the landing tab: the edit form seeds the name.
+        expect(((await screen.findByRole('textbox', { name: 'Name' })) as HTMLInputElement).value).toBe('Discharge Summary');
+    });
+
+    it('lists versions in the drawer Versions tab', async () => {
+        // Land on the Versions tab directly — Radix tab activation is unreliable
+        // under fireEvent.click in jsdom, so selection + tab come from the URL.
+        const calls = stubAgents();
+        renderWithProviders(<AgentsScreen />, { searchParams: '?template=pt-2&atab=versions' });
 
         const timeline = await screen.findByLabelText('Versions of Discharge Summary');
         expect(within(timeline).getByText('v12')).toBeDefined();
@@ -230,41 +247,33 @@ describe('AgentsScreen', () => {
         await waitFor(() => expect(calls.some((call) => pathOf(call) === '/api/hope/admin/prompt-templates/pt-2/versions')).toBe(true));
     });
 
-    it('replaces the side panels on selection change instead of stacking version cards (BUG-002)', async () => {
+    it('swaps the drawer content when a different row is selected (one detail surface)', async () => {
         stubAgents();
         renderWithProviders(<AgentsScreen />);
 
-        // Auto-select mounts the first row's panels.
-        expect(await screen.findByLabelText('Versions of Cardiology Notes')).toBeDefined();
-
-        fireEvent.click(screen.getByText('Discharge Summary'));
-        expect(await screen.findByLabelText('Versions of Discharge Summary')).toBeDefined();
+        await openRow('Discharge Summary');
+        expect(((await screen.findByRole('textbox', { name: 'Name' })) as HTMLInputElement).value).toBe('Discharge Summary');
 
         fireEvent.click(screen.getByText('Radiology Report'));
-        expect(await screen.findByLabelText('Versions of Radiology Report')).toBeDefined();
-
-        // The previous panels must be unmounted — exactly one versions panel
-        // and one test-run panel may exist at any time.
-        expect(screen.queryByLabelText('Versions of Cardiology Notes')).toBeNull();
-        expect(screen.queryByLabelText('Versions of Discharge Summary')).toBeNull();
-        expect(screen.getAllByLabelText(/^Versions of /)).toHaveLength(1);
-        expect(screen.getAllByLabelText('Sample input')).toHaveLength(1);
+        await waitFor(() => expect((screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement).value).toBe('Radiology Report'));
+        // Exactly one detail surface at a time.
+        expect(screen.getAllByRole('dialog')).toHaveLength(1);
     });
 
-    it('activates an older version behind a confirm dialog', async () => {
+    it('activates an older version from the Versions tab behind a confirm dialog', async () => {
         const calls = stubAgents((call) => {
             if (call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-1/versions/6/activate') {
                 return Response.json({ ...TEMPLATES[0], currentVersionNumber: 8, version: 8 });
             }
             return undefined;
         });
-        renderWithProviders(<AgentsScreen />);
+        renderWithProviders(<AgentsScreen />, { searchParams: '?template=pt-1&atab=versions' });
 
         // Default diff picks v6 (previous) as the "from" side of v6 <-> v7.
         fireEvent.click(await screen.findByRole('button', { name: 'Activate v6' }));
-        const dialog = await screen.findByRole('alertdialog');
-        expect(within(dialog).getByText(/activate version 6/i)).toBeDefined();
-        fireEvent.click(within(dialog).getByRole('button', { name: 'Activate v6' }));
+        const confirm = await screen.findByRole('alertdialog');
+        expect(within(confirm).getByText(/activate version 6/i)).toBeDefined();
+        fireEvent.click(within(confirm).getByRole('button', { name: 'Activate v6' }));
 
         await waitFor(() =>
             expect(calls.some((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-1/versions/6/activate')).toBe(
@@ -273,7 +282,7 @@ describe('AgentsScreen', () => {
         );
     });
 
-    it('runs a prompt test as an OCC write and renders the returned output', async () => {
+    it('runs a prompt test from the Test-run tab as an OCC write and renders the output', async () => {
         const calls = stubAgents((call) => {
             if (call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-1/test') {
                 return Response.json({
@@ -286,7 +295,7 @@ describe('AgentsScreen', () => {
             }
             return undefined;
         });
-        renderWithProviders(<AgentsScreen />);
+        renderWithProviders(<AgentsScreen />, { searchParams: '?template=pt-1&atab=test' });
 
         fireEvent.change(await screen.findByLabelText('Sample input'), { target: { value: 'Patient reports chest pain.' } });
         const runButton = screen.getByRole('button', { name: /run test/i }) as HTMLButtonElement;
@@ -298,6 +307,27 @@ describe('AgentsScreen', () => {
         const post = calls.find((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-1/test');
         expect(post?.headers['if-match']).toBe('"7"');
         expect(post?.body).toEqual({ sampleInput: 'Patient reports chest pain.', expectedVersion: 7 });
+    });
+
+    it('creates a template from the drawer create mode (no modal)', async () => {
+        const calls = stubAgents((call) => {
+            if (call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates') {
+                return Response.json(template({ id: 'pt-9', name: 'Nephrology Notes' }));
+            }
+            return undefined;
+        });
+        renderWithProviders(<AgentsScreen />);
+
+        fireEvent.click(await screen.findByRole('button', { name: 'New template' }));
+        const dialog = await screen.findByRole('dialog');
+        fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Name' }), { target: { value: 'Nephrology Notes' } });
+        fireEvent.change(within(dialog).getByRole('textbox', { name: /Prompt content/ }), { target: { value: 'You are a scribe.' } });
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Create template' }));
+
+        await waitFor(() => {
+            const post = calls.find((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates');
+            expect(post?.body).toMatchObject({ name: 'Nephrology Notes', content: 'You are a scribe.' });
+        });
     });
 
     it('renders the block error state and retries the templates request', async () => {

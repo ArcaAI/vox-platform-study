@@ -215,10 +215,11 @@ describe('DnaWritingStylesScreen', () => {
         expect(screen.getByText('Generate: POST /generate/:doctorId')).toBeDefined();
         expect(screen.getByText('SSE: GET /jobs/:jobId/stream')).toBeDefined();
 
-        // The primary action needs a selected doctor: disabled with a reason.
+        // Redesign: the header generate action is always available — it opens the
+        // dialog with the doctor id prefilled from the selected row (or typed for a
+        // brand-new doctor). No selection gate anymore.
         const generateButtons = screen.getAllByRole('button', { name: /generate report/i }) as HTMLButtonElement[];
-        expect(generateButtons[0].disabled).toBe(true);
-        expect(screen.getByText('Select a doctor row to enable')).toBeDefined();
+        expect(generateButtons[0].disabled).toBe(false);
     });
 
     it('keeps the layout skeleton while the session is in flight', () => {
@@ -266,18 +267,20 @@ describe('DnaWritingStylesScreen', () => {
         );
     });
 
-    it('selects a doctor on row click and shows the latest report with its version timeline', async () => {
+    it('opens the doctor detail slide-over on row click with the latest report and version timeline', async () => {
         stubDna();
         renderWithProviders(<DnaWritingStylesScreen />);
 
         fireEvent.click(await screen.findByText('doc-1'));
 
-        // GET doctor/:doctorId detail lands in panel (c).
-        expect(await screen.findByText('rep-1')).toBeDefined();
-        expect(screen.getByText('Formal, concise clinical prose.')).toBeDefined();
+        // The console-wide detail surface (a Sheet → dialog) opens on selection.
+        const dialog = await screen.findByRole('dialog');
+        // GET doctor/:doctorId detail lands in the slide-over.
+        expect(await within(dialog).findByText('rep-1')).toBeDefined();
+        expect(within(dialog).getByText('Formal, concise clinical prose.')).toBeDefined();
 
         // GET :reportId/versions timeline, newest first.
-        const timeline = await screen.findByRole('list', { name: 'Version timeline' });
+        const timeline = await within(dialog).findByRole('list', { name: 'Version timeline' });
         const items = within(timeline).getAllByRole('listitem');
         expect(items[0].textContent).toContain('v3');
         expect(items[0].textContent).toContain('manual edit');
@@ -285,7 +288,7 @@ describe('DnaWritingStylesScreen', () => {
         expect(items[1].textContent).toContain('auto-generate');
 
         // PHI posture caption (frame 33).
-        expect(screen.getByText(/doctor reads stay tenant-pinned even for global admins/i)).toBeDefined();
+        expect(within(dialog).getByText(/doctor reads stay tenant-pinned even for global admins/i)).toBeDefined();
     });
 
     it('edits the report through the If-Match OCC PATCH', async () => {
@@ -313,14 +316,17 @@ describe('DnaWritingStylesScreen', () => {
 
     it('generates a report: POST -> job progress strip -> completion toast + grid refresh', async () => {
         const calls = stubDna();
-        renderWithProviders(<DnaWritingStylesScreen />, { searchParams: '?selected=doc-1' });
+        // Drive generation from the header entry with no row selected, so the
+        // dashboard roll-up (and its progress strip) is not behind the modal
+        // detail slide-over. The doctor id is typed into the dialog.
+        renderWithProviders(<DnaWritingStylesScreen />);
 
         const generateButton = (await screen.findAllByRole('button', { name: /generate report/i }))[0] as HTMLButtonElement;
         await waitFor(() => expect(generateButton.disabled).toBe(false));
         fireEvent.click(generateButton);
 
         const dialog = await screen.findByRole('dialog');
-        expect((within(dialog).getByLabelText(/doctor id/i) as HTMLInputElement).value).toBe('doc-1');
+        fireEvent.change(within(dialog).getByLabelText(/doctor id/i), { target: { value: 'doc-1' } });
         fireEvent.click(within(dialog).getByRole('button', { name: /^generate$/i }));
 
         await waitFor(() =>

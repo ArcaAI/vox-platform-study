@@ -1,8 +1,9 @@
 /**
- * Frame 34 — Audio pipelines screen. fetch is stubbed at the network
- * boundary; assertions cover the grid, the NoTenant gate, the validate
- * preflight, the toggle + set-default lifecycle mutations and the block
- * error state.
+ * Frame 34 — Audio pipelines screen (redesign: fill-height grid + console-wide
+ * detail slide-over). fetch is stubbed at the network boundary; assertions
+ * cover the grid, the NoTenant gate, the drawer following the row selection,
+ * the Config-tab validate preflight, the Lifecycle-tab toggle + set-default
+ * mutations, the Versions tab, create-in-drawer and the block error state.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -125,6 +126,14 @@ function stubPipelines(custom: FetchHandler = () => undefined): RecordedCall[] {
     return stubFetch((call) => settingsResponse(call) ?? custom(call) ?? defaultHandler(call));
 }
 
+const pathOf = (call: RecordedCall) => new URL(call.url, 'http://test.local').pathname;
+
+/** Open the detail drawer for a grid row and wait for its detail read to land. */
+async function openRow(name: string) {
+    fireEvent.click(await screen.findByText(name));
+    return screen.findByRole('dialog');
+}
+
 afterEach(() => {
     vi.unstubAllGlobals();
     cleanup();
@@ -133,8 +142,7 @@ afterEach(() => {
 describe('AudioPipelinesScreen', () => {
     it('asks an elevated session without a working tenant to pick one (no data queries fired)', async () => {
         const calls = stubPipelines((call) => {
-            const path = new URL(call.url, 'http://test.local').pathname;
-            if (path === '/api/auth/session') return Response.json(session({ workingTenantId: null }));
+            if (pathOf(call) === '/api/auth/session') return Response.json(session({ workingTenantId: null }));
             return undefined;
         });
         renderWithProviders(<AudioPipelinesScreen />);
@@ -143,7 +151,7 @@ describe('AudioPipelinesScreen', () => {
         expect(calls.every((call) => !call.url.includes('/admin/audio/pipelines'))).toBe(true);
     });
 
-    it('renders the pipeline grid with slug, default star and paired status badges', async () => {
+    it('renders the fill-height pipeline grid with slug, default star and paired status badges', async () => {
         stubPipelines();
         renderWithProviders(<AudioPipelinesScreen />);
 
@@ -154,6 +162,8 @@ describe('AudioPipelinesScreen', () => {
         expect(screen.getByText('Off')).toBeDefined();
         expect(screen.getByText('Tenant default')).toBeDefined();
         expect(screen.getByText(/2 pipelines/)).toBeDefined();
+        // No detail slide-over until a row is selected.
+        expect(screen.queryByRole('dialog')).toBeNull();
     });
 
     it('narrows the grid client-side from the Status faceted filter carried in the `f` URL param', async () => {
@@ -167,6 +177,15 @@ describe('AudioPipelinesScreen', () => {
         expect(screen.queryByText('Fast Clinical VI')).toBeNull();
     });
 
+    it('opens the detail slide-over on the clicked row (Config tab seeds the YAML editor)', async () => {
+        stubPipelines();
+        renderWithProviders(<AudioPipelinesScreen />);
+
+        const dialog = await openRow('Fast Clinical VI');
+        const editor = (await within(dialog).findByRole('textbox')) as HTMLTextAreaElement;
+        expect(editor.value).toContain('whisper-large-v4');
+    });
+
     it('runs the validate preflight over the selected config and shows the verdict inline', async () => {
         const calls = stubPipelines((call) => {
             if (call.method === 'POST' && call.url.endsWith('/admin/audio/pipelines/validate')) return Response.json({ valid: true });
@@ -174,7 +193,7 @@ describe('AudioPipelinesScreen', () => {
         });
         renderWithProviders(<AudioPipelinesScreen />);
 
-        fireEvent.click(await screen.findByText('Fast Clinical VI'));
+        await openRow('Fast Clinical VI');
         const validateButton = await screen.findByRole('button', { name: /validate/i });
         fireEvent.click(validateButton);
 
@@ -185,16 +204,26 @@ describe('AudioPipelinesScreen', () => {
         expect(await screen.findByText('Config is valid')).toBeDefined();
     });
 
-    it('toggles the selected pipeline with If-Match and an { enabled } body', async () => {
+    it('lists config versions in the drawer Versions tab', async () => {
+        // Land on the Versions tab directly — Radix tab activation is unreliable
+        // under fireEvent.click in jsdom, so selection + tab come from the URL.
+        const calls = stubPipelines();
+        renderWithProviders(<AudioPipelinesScreen />, { searchParams: '?pipeline=p-1&ptab=versions' });
+
+        const list = await screen.findByLabelText('Config versions');
+        expect(within(list).getByText('v12')).toBeDefined();
+        await waitFor(() => expect(calls.some((call) => pathOf(call) === '/api/hope/admin/audio/pipelines/p-1/versions')).toBe(true));
+    });
+
+    it('toggles the selected pipeline from the Lifecycle tab with If-Match and an { enabled } body', async () => {
         const calls = stubPipelines((call) => {
             if (call.method === 'PATCH' && call.url.endsWith('/admin/audio/pipelines/p-1/toggle')) {
                 return Response.json({ ...PIPELINES[0], resourceStatus: 'DISABLED' }, { headers: { etag: '"4"' } });
             }
             return undefined;
         });
-        renderWithProviders(<AudioPipelinesScreen />);
+        renderWithProviders(<AudioPipelinesScreen />, { searchParams: '?pipeline=p-1&ptab=lifecycle' });
 
-        fireEvent.click(await screen.findByText('Fast Clinical VI'));
         const toggleButton = await screen.findByRole('button', { name: /disable/i });
         await waitFor(() => expect((toggleButton as HTMLButtonElement).disabled).toBe(false));
         fireEvent.click(toggleButton);
@@ -206,16 +235,15 @@ describe('AudioPipelinesScreen', () => {
         });
     });
 
-    it('sets a non-default pipeline as the tenant default behind a confirm', async () => {
+    it('sets a non-default pipeline as the tenant default from the Lifecycle tab behind a confirm', async () => {
         const calls = stubPipelines((call) => {
             if (call.method === 'POST' && call.url.endsWith('/admin/audio/pipelines/p-2/set-default')) {
                 return Response.json({ ...PIPELINES[1], isDefault: true });
             }
             return undefined;
         });
-        renderWithProviders(<AudioPipelinesScreen />);
+        renderWithProviders(<AudioPipelinesScreen />, { searchParams: '?pipeline=p-2&ptab=lifecycle' });
 
-        fireEvent.click(await screen.findByText('Legacy Batch'));
         const setDefaultButton = await screen.findByRole('button', { name: /set default/i });
         await waitFor(() => expect((setDefaultButton as HTMLButtonElement).disabled).toBe(false));
         fireEvent.click(setDefaultButton);
@@ -228,9 +256,31 @@ describe('AudioPipelinesScreen', () => {
         );
     });
 
+    it('creates a pipeline from the drawer create mode (no modal)', async () => {
+        const calls = stubPipelines((call) => {
+            if (call.method === 'POST' && pathOf(call) === '/api/hope/admin/audio/pipelines') {
+                return Response.json(pipeline({ id: 'p-9', name: 'Nephrology ASR', slug: 'nephro-asr' }));
+            }
+            return undefined;
+        });
+        renderWithProviders(<AudioPipelinesScreen />);
+
+        fireEvent.click(await screen.findByRole('button', { name: 'New pipeline' }));
+        const dialog = await screen.findByRole('dialog');
+        fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Name' }), { target: { value: 'Nephrology ASR' } });
+        fireEvent.change(within(dialog).getByRole('textbox', { name: 'Slug' }), { target: { value: 'nephro-asr' } });
+        fireEvent.change(within(dialog).getByRole('textbox', { name: /Config YAML/ }), { target: { value: 'models:\n  asr: whisper-base\n' } });
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Create pipeline' }));
+
+        await waitFor(() => {
+            const post = calls.find((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/audio/pipelines');
+            expect(post?.body).toMatchObject({ name: 'Nephrology ASR', slug: 'nephro-asr' });
+        });
+    });
+
     it('renders the block error state when the pipelines read fails', async () => {
         stubPipelines((call) => {
-            if (call.method === 'GET' && new URL(call.url, 'http://test.local').pathname === '/api/hope/admin/audio/pipelines') {
+            if (call.method === 'GET' && pathOf(call) === '/api/hope/admin/audio/pipelines') {
                 return Response.json({ message: 'Service unavailable' }, { status: 503 });
             }
             return undefined;

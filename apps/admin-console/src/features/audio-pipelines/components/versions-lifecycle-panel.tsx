@@ -4,7 +4,6 @@ import { useState, type FormEvent } from 'react';
 import { IconArrowsExchange, IconPower, IconStar, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
-import { Card, CardContent, CardHeader } from '@arcaai/ui/components/shadcn/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
@@ -22,43 +21,47 @@ function toastGatewayError(error: unknown, fallback: string) {
     toast.error(error instanceof GatewayError ? error.message : fallback);
 }
 
-function VersionsList({ pipelineId }: { pipelineId: string }) {
+/**
+ * Versions tab of the pipeline detail drawer — the config-snapshot history
+ * (GET :id/versions), newest first, one row per YAML change.
+ */
+export function PipelineVersionsTab({ pipelineId }: { pipelineId: string }) {
     const versions = usePipelineVersions(pipelineId);
 
-    if (versions.isPending) {
-        return (
-            <div className="flex flex-col gap-2">
-                {Array.from({ length: 3 }, (_, index) => (
-                    <Skeleton key={index} className="h-4 w-full" />
-                ))}
-            </div>
-        );
-    }
-    if (versions.isError) {
-        return (
-            <p role="alert" className="text-destructive text-sm">
-                {'Couldn\u2019t load the version history.'}
-            </p>
-        );
-    }
-    if (versions.data.length === 0) {
-        return <p className="text-muted-foreground text-sm">No config versions yet — snapshots appear after the first YAML change.</p>;
-    }
     return (
-        <ul aria-label="Config versions" className="flex flex-col">
-            {versions.data.map((version, index) => (
-                <li key={version.id} className="flex items-baseline gap-2 border-b py-1.5 text-sm last:border-0">
-                    <span className="font-mono text-xs">v{version.versionNumber}</span>
-                    <span className="text-muted-foreground text-xs">{formatDateTime(version.createdAt, 'date')}</span>
-                    {index === 0 ? <span className="text-primary text-xs font-medium">current</span> : null}
-                    {version.changeReason ? (
-                        <span className="text-muted-foreground min-w-0 truncate text-xs" title={version.changeReason}>
-                            {version.changeReason}
-                        </span>
-                    ) : null}
-                </li>
-            ))}
-        </ul>
+        <section aria-label="Versions" className="flex flex-col gap-2">
+            <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                Versions <span aria-hidden className="font-mono normal-case">{'·'} GET :id/versions</span>
+            </h3>
+            {versions.isPending ? (
+                <div className="flex flex-col gap-2">
+                    {Array.from({ length: 3 }, (_, index) => (
+                        <Skeleton key={index} className="h-4 w-full" />
+                    ))}
+                </div>
+            ) : versions.isError ? (
+                <p role="alert" className="text-destructive text-sm">
+                    {'Couldn’t load the version history.'}
+                </p>
+            ) : versions.data.length === 0 ? (
+                <p className="text-muted-foreground text-sm">No config versions yet — snapshots appear after the first YAML change.</p>
+            ) : (
+                <ul aria-label="Config versions" className="flex flex-col">
+                    {versions.data.map((version, index) => (
+                        <li key={version.id} className="flex items-baseline gap-2 border-b py-1.5 text-sm last:border-0">
+                            <span className="font-mono text-xs">v{version.versionNumber}</span>
+                            <span className="text-muted-foreground text-xs">{formatDateTime(version.createdAt, 'date')}</span>
+                            {index === 0 ? <span className="text-primary text-xs font-medium">current</span> : null}
+                            {version.changeReason ? (
+                                <span className="text-muted-foreground min-w-0 truncate text-xs" title={version.changeReason}>
+                                    {version.changeReason}
+                                </span>
+                            ) : null}
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </section>
     );
 }
 
@@ -140,24 +143,22 @@ function AssignTenantDialog({
 }
 
 /**
- * Frame 34 panel (c) — version history plus the lifecycle actions: set
- * default (POST + confirm), enable/disable toggle (If-Match PATCH), assign
- * tenant (elevated-only) and the type-to-confirm delete.
+ * Lifecycle tab of the pipeline detail drawer — set default (POST + confirm),
+ * enable/disable toggle (If-Match PATCH), assign tenant (elevated-only) and the
+ * type-to-confirm delete.
  */
-export function VersionsLifecyclePanel({
+export function PipelineLifecycleTab({
     detail,
-    isLoading,
     isElevated,
     onReload,
     onDeleted,
 }: {
-    detail: WithEtag<Pipeline> | undefined;
-    isLoading: boolean;
+    detail: WithEtag<Pipeline>;
     /** Gates the cross-tenant assign action (frame 34: global-admin-only). */
     isElevated: boolean;
     /** Refetches the detail after a toggle 412 (fresh ETag). */
     onReload: () => void;
-    /** Clears the grid selection after a successful delete. */
+    /** Clears the grid selection / closes the drawer after a successful delete. */
     onDeleted: () => void;
 }) {
     const setDefault = useSetDefaultPipeline();
@@ -166,10 +167,10 @@ export function VersionsLifecyclePanel({
     const [confirming, setConfirming] = useState<'default' | 'delete' | null>(null);
     const [assignOpen, setAssignOpen] = useState(false);
 
-    const pipeline = detail?.data;
+    const pipeline = detail.data;
+    const enabled = pipeline.resourceStatus === 'ENABLED';
 
     function handleSetDefault() {
-        if (!pipeline) return;
         setDefault.mutate(pipeline.id, {
             onSuccess: () => {
                 toast.success(`${pipeline.name} is now the tenant default`);
@@ -183,12 +184,12 @@ export function VersionsLifecyclePanel({
     }
 
     function handleToggle() {
-        if (!pipeline || !detail?.etag) return;
-        const enabled = pipeline.resourceStatus !== 'ENABLED';
+        if (!detail.etag) return;
+        const next = pipeline.resourceStatus !== 'ENABLED';
         toggle.mutate(
-            { id: pipeline.id, enabled, etag: detail.etag },
+            { id: pipeline.id, enabled: next, etag: detail.etag },
             {
-                onSuccess: () => toast.success(`${pipeline.name} ${enabled ? 'enabled' : 'disabled'}`),
+                onSuccess: () => toast.success(`${pipeline.name} ${next ? 'enabled' : 'disabled'}`),
                 onError: (error) => {
                     if (error instanceof GatewayError && (error.isVersionConflict || error.isMissingPrecondition)) return;
                     toastGatewayError(error, 'Could not toggle the pipeline.');
@@ -198,7 +199,6 @@ export function VersionsLifecyclePanel({
     }
 
     function handleDelete() {
-        if (!pipeline) return;
         remove.mutate(pipeline.id, {
             onSuccess: () => {
                 toast.success(`${pipeline.name} deleted`);
@@ -212,92 +212,60 @@ export function VersionsLifecyclePanel({
         });
     }
 
-    let body;
-    if (!pipeline && isLoading) {
-        body = (
-            <div className="flex flex-col gap-2">
-                {Array.from({ length: 4 }, (_, index) => (
-                    <Skeleton key={index} className="h-4 w-full" />
-                ))}
-            </div>
-        );
-    } else if (!pipeline) {
-        body = <p className="text-muted-foreground text-sm">Select a pipeline to see its versions and lifecycle actions.</p>;
-    } else {
-        const enabled = pipeline.resourceStatus === 'ENABLED';
-        body = (
-            <div className="flex flex-col gap-4">
-                <section aria-label="Versions" className="flex flex-col gap-1">
-                    <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-                        Versions <span aria-hidden className="font-mono normal-case">{'\u00b7'} GET :id/versions</span>
-                    </h3>
-                    <VersionsList pipelineId={pipeline.id} />
-                </section>
-                <OccConflictAlert
-                    error={toggle.error}
-                    onReload={() => {
-                        toggle.reset();
-                        onReload();
-                    }}
-                />
-                <section aria-label="Lifecycle" className="flex flex-col gap-2">
-                    <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Lifecycle</h3>
-                    <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" size="sm" disabled={pipeline.isDefault || setDefault.isPending} onClick={() => setConfirming('default')}>
-                            <IconStar aria-hidden />
-                            {pipeline.isDefault ? 'Tenant default' : 'Set default'}
-                        </Button>
-                        <Button variant="outline" size="sm" disabled={toggle.isPending || !detail?.etag} onClick={handleToggle}>
-                            {toggle.isPending ? <Spinner /> : <IconPower aria-hidden />}
-                            {enabled ? 'Disable' : 'Enable'}
-                        </Button>
-                        {isElevated ? (
-                            <Button variant="outline" size="sm" onClick={() => setAssignOpen(true)}>
-                                <IconArrowsExchange aria-hidden />
-                                Assign tenant
-                            </Button>
-                        ) : null}
-                        <Button variant="destructive" size="sm" onClick={() => setConfirming('delete')}>
-                            <IconTrash aria-hidden />
-                            Delete
-                        </Button>
-                    </div>
-                </section>
-            </div>
-        );
-    }
-
     return (
-        <Card className="gap-4">
-            <CardHeader>
-                <h2 className="text-sm leading-none font-semibold">{'Versions & lifecycle'}</h2>
-            </CardHeader>
-            <CardContent>{body}</CardContent>
-            {pipeline ? (
-                <>
-                    <ConfirmDialog
-                        open={confirming === 'default'}
-                        onOpenChange={(open) => !open && setConfirming(null)}
-                        title={`Set ${pipeline.name} as the tenant default?`}
-                        description="The previous default is unset atomically. New SDK sessions without an explicit pipeline pick the default."
-                        confirmLabel="Set default"
-                        isPending={setDefault.isPending}
-                        onConfirm={handleSetDefault}
-                    />
-                    <ConfirmDialog
-                        open={confirming === 'delete'}
-                        onOpenChange={(open) => !open && setConfirming(null)}
-                        title={`Delete ${pipeline.name}?`}
-                        description="The pipeline is removed from the tenant and SDK pickers. This cannot be undone from the console."
-                        confirmLabel="Delete pipeline"
-                        destructive
-                        typeToConfirm={pipeline.slug}
-                        isPending={remove.isPending}
-                        onConfirm={handleDelete}
-                    />
-                    <AssignTenantDialog pipeline={pipeline} open={assignOpen} onOpenChange={setAssignOpen} />
-                </>
-            ) : null}
-        </Card>
+        <div className="flex flex-col gap-4">
+            <OccConflictAlert
+                error={toggle.error}
+                onReload={() => {
+                    toggle.reset();
+                    onReload();
+                }}
+            />
+            <section aria-label="Lifecycle" className="flex flex-col gap-2">
+                <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Lifecycle</h3>
+                <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" disabled={pipeline.isDefault || setDefault.isPending} onClick={() => setConfirming('default')}>
+                        <IconStar aria-hidden />
+                        {pipeline.isDefault ? 'Tenant default' : 'Set default'}
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={toggle.isPending || !detail.etag} onClick={handleToggle}>
+                        {toggle.isPending ? <Spinner /> : <IconPower aria-hidden />}
+                        {enabled ? 'Disable' : 'Enable'}
+                    </Button>
+                    {isElevated ? (
+                        <Button variant="outline" size="sm" onClick={() => setAssignOpen(true)}>
+                            <IconArrowsExchange aria-hidden />
+                            Assign tenant
+                        </Button>
+                    ) : null}
+                    <Button variant="destructive" size="sm" onClick={() => setConfirming('delete')}>
+                        <IconTrash aria-hidden />
+                        Delete
+                    </Button>
+                </div>
+            </section>
+
+            <ConfirmDialog
+                open={confirming === 'default'}
+                onOpenChange={(open) => !open && setConfirming(null)}
+                title={`Set ${pipeline.name} as the tenant default?`}
+                description="The previous default is unset atomically. New SDK sessions without an explicit pipeline pick the default."
+                confirmLabel="Set default"
+                isPending={setDefault.isPending}
+                onConfirm={handleSetDefault}
+            />
+            <ConfirmDialog
+                open={confirming === 'delete'}
+                onOpenChange={(open) => !open && setConfirming(null)}
+                title={`Delete ${pipeline.name}?`}
+                description="The pipeline is removed from the tenant and SDK pickers. This cannot be undone from the console."
+                confirmLabel="Delete pipeline"
+                destructive
+                typeToConfirm={pipeline.slug}
+                isPending={remove.isPending}
+                onConfirm={handleDelete}
+            />
+            <AssignTenantDialog pipeline={pipeline} open={assignOpen} onOpenChange={setAssignOpen} />
+        </div>
     );
 }

@@ -4,7 +4,6 @@ import { useRef, useState, type ReactNode } from 'react';
 import { IconDownload, IconFile, IconTrash, IconUpload, IconX } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/components/shadcn/card';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
@@ -30,7 +29,12 @@ function MetaRow({ label, children }: { label: string; children: ReactNode }) {
     );
 }
 
-function SelectedObjectActions({ bucketName, object, onDeleted }: { bucketName: string; object: StorageObject; onDeleted: () => void }) {
+/**
+ * Presigned-URL actions for one object — key/size/content-type meta plus
+ * Download (presigned GET) and a type-to-confirm Delete. Hosted inside the
+ * console-wide `DetailDrawer` (frame 31 redesign) once a file row is selected.
+ */
+export function SelectedObjectActions({ bucketName, object, onDeleted }: { bucketName: string; object: StorageObject; onDeleted: () => void }) {
     const presign = usePresignedDownload();
     const deleteFile = useDeleteFile();
     const [confirming, setConfirming] = useState(false);
@@ -117,11 +121,12 @@ function SelectedObjectActions({ bucketName, object, onDeleted }: { bucketName: 
 export const UPLOAD_INPUT_ID = 'storage-browser-upload-input';
 
 /**
- * Frame 31 upload zone: visible label, native file input, chosen file
- * name/size with a remove control (rule 11 §9), multipart POST on submit.
- * Ref-based reset because file inputs are uncontrolled.
+ * Frame 31 upload zone (redesign): a compact, permanently-visible toolbar
+ * control — visible label, native file input, chosen file name/size with a
+ * remove control (rule 11 §9), multipart POST on submit. Ref-based reset
+ * because file inputs are uncontrolled.
  */
-function UploadZone({ bucketName }: { bucketName: string }) {
+export function UploadZone({ bucketName }: { bucketName: string }) {
     const upload = useUploadFile();
     const inputId = UPLOAD_INPUT_ID;
     const inputRef = useRef<HTMLInputElement>(null);
@@ -147,63 +152,37 @@ function UploadZone({ bucketName }: { bucketName: string }) {
     }
 
     return (
-        <div className="flex flex-col gap-2 border-t pt-4">
-            <Label htmlFor={inputId}>Upload to {bucketName}</Label>
-            <Input
-                ref={inputRef}
-                id={inputId}
-                type="file"
-                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-                aria-describedby={`${inputId}-hint`}
-            />
-            <p id={`${inputId}-hint`} className="text-muted-foreground text-xs">
-                Multipart POST {'\u00b7'} max 100 MB {'\u00b7'} the key defaults to the file name (bucket root)
-            </p>
+        <div className="flex flex-wrap items-end gap-2">
+            <div className="flex min-w-0 flex-col gap-1">
+                <Label htmlFor={inputId} className="text-muted-foreground text-xs font-normal">
+                    Upload to {bucketName}
+                </Label>
+                <Input
+                    ref={inputRef}
+                    id={inputId}
+                    type="file"
+                    className="h-9 w-56 max-w-full"
+                    onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                    aria-describedby={`${inputId}-hint`}
+                />
+                <span id={`${inputId}-hint`} className="sr-only">
+                    Multipart POST, max 100 MB. The key defaults to the file name at the bucket root.
+                </span>
+            </div>
             {file ? (
-                <div className="bg-muted/50 flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm">
+                <div className="bg-muted/50 flex h-9 items-center gap-2 rounded-md border px-2 text-sm">
                     <IconFile aria-hidden className="text-muted-foreground size-4 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate font-mono text-xs">{file.name}</span>
+                    <span className="min-w-0 max-w-40 flex-1 truncate font-mono text-xs">{file.name}</span>
                     <span className="text-muted-foreground shrink-0 text-xs tabular-nums">{formatBytes(file.size)}</span>
                     <Button variant="ghost" size="icon-sm" aria-label={`Remove selected file ${file.name}`} onClick={clearSelection}>
                         <IconX aria-hidden />
                     </Button>
                 </div>
             ) : null}
-            <Button size="sm" className="self-start" onClick={handleUpload} disabled={!file || upload.isPending}>
+            <Button size="sm" onClick={handleUpload} disabled={!file || upload.isPending}>
                 {upload.isPending ? <Spinner /> : <IconUpload aria-hidden />}
                 Upload
             </Button>
         </div>
-    );
-}
-
-/**
- * Frame 31 right panel: presigned-URL actions for the selected object plus
- * the upload zone. Renders a neutral hint until an object is selected.
- */
-export function ObjectActionsPanel({
-    bucketName,
-    object,
-    onDeleted,
-}: {
-    bucketName: string;
-    object: StorageObject | null;
-    onDeleted: () => void;
-}) {
-    return (
-        <Card className="gap-4 self-start py-4">
-            <CardHeader className="px-4">
-                <CardTitle>Object actions</CardTitle>
-                <CardDescription>Presigned URLs</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4 px-4">
-                {object ? (
-                    <SelectedObjectActions key={object.key} bucketName={bucketName} object={object} onDeleted={onDeleted} />
-                ) : (
-                    <p className="text-muted-foreground text-sm">Select an object in the browser to download or delete it.</p>
-                )}
-                {bucketName ? <UploadZone key={bucketName} bucketName={bucketName} /> : null}
-            </CardContent>
-        </Card>
     );
 }

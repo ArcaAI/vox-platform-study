@@ -39,14 +39,22 @@ export interface DepartmentMemberRole extends BaseResource {
     tenantId: string | null;
 }
 
-/** GET /admin/departments/:id/users rows (UserResponse; no isPrimary field). */
+/** GET /admin/departments/:id/users rows (UserResponse; `isLead` marks the department lead). */
 export interface DepartmentMember extends BaseResource {
     username: string;
     lastLoginAt?: string;
     lastActiveAt?: string;
     externalId?: string;
     isServiceAccount: boolean;
+    /** True for the department's lead member (server-side membership flag). */
+    isLead?: boolean;
     UserRoleAssignments?: DepartmentMemberRole[];
+}
+
+/** Minimal prompt-template shape for the prompt-config Select catalog (id + name). */
+export interface PromptTemplateOption {
+    id: string;
+    name: string;
 }
 
 export interface CreateDepartmentRequest {

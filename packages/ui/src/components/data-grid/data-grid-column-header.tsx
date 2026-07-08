@@ -66,7 +66,11 @@ export function DataGridColumnHeader<TData, TValue>({
             <DropdownMenuTrigger
               aria-label={`${label} column options`}
               className={cn(
-                '-ml-1.5 flex h-8 items-center gap-1.5 rounded-md px-2 py-1.5 hover:bg-accent focus:outline-none focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-accent [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground',
+                'flex h-8 items-center gap-1.5 rounded-md px-2 py-1.5 hover:bg-accent focus:outline-none focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-accent [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground',
+                // Pull the label back to the cell padding ONLY when no drag handle
+                // sits beside it — overlapping the handle fails axe target-offset
+                // (adjacent interactive targets need clear spacing, WCAG 2.5.8).
+                !dragHandle && '-ml-1.5',
                 className,
               )}
               {...props}

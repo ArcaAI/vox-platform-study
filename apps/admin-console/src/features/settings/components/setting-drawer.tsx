@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import { IconEye, IconEyeOff, IconRefreshDot, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
@@ -33,7 +33,7 @@ import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { formatRelativeTime } from '@/shared/format';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
-import { useCreateGlobalSetting, useGlobalSetting, useRevealGlobalSetting, useUpdateGlobalSetting } from '../api/hooks';
+import { useCreateGlobalSetting, useGlobalSetting, useRevealGlobalSetting, useRotateGlobalSetting, useUpdateGlobalSetting } from '../api/hooks';
 import type { GlobalSetting } from '../api/types';
 import { SettingHistoryTab } from './setting-history-tab';
 import { isJsonType, isValueValid, ValueEditorPane } from './value-editor-pane';
@@ -111,6 +111,100 @@ function RevealSecretDialog({
     );
 }
 
+/**
+ * Server-side rotation (TASK-445): POST :id/rotate — an atomic, audited,
+ * step-up-gated replace of the secret under OCC (If-Match from the drawer's
+ * read ETag). Collects the replacement value + the caller's password; errors
+ * surface in-dialog per the house break-glass style. The response is the
+ * masked setting — the plaintext never reaches the client.
+ */
+function RotateSecretDialog({
+    setting,
+    etag,
+    onOpenChange,
+}: {
+    setting: GlobalSetting;
+    etag: string;
+    onOpenChange: (open: boolean) => void;
+}) {
+    const uid = useId();
+    const [newValue, setNewValue] = useState('');
+    const [password, setPassword] = useState('');
+    const rotateMutation = useRotateGlobalSetting();
+
+    const errorMessage = rotateMutation.error
+        ? isOccError(rotateMutation.error)
+            ? 'This setting changed since you loaded it. Close the drawer to reload the latest version, then rotate again.'
+            : rotateMutation.error.message
+        : null;
+
+    function handleSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        rotateMutation.mutate(
+            { id: setting.id, body: { password, newValue }, etag },
+            {
+                onSuccess: () => {
+                    toast.success(`${setting.key} rotated`);
+                    onOpenChange(false);
+                },
+            },
+        );
+    }
+
+    return (
+        <Dialog open onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Rotate secret</DialogTitle>
+                    <DialogDescription>
+                        Atomically replaces <span className="font-mono">{setting.key}</span> with a new value; the old secret stops working
+                        immediately. Every rotation is audit-logged.
+                    </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-2">
+                        <Label htmlFor={`${uid}-new`}>New secret value</Label>
+                        <Input
+                            id={`${uid}-new`}
+                            type="text"
+                            autoComplete="off"
+                            className="font-mono"
+                            value={newValue}
+                            onChange={(event) => setNewValue(event.target.value)}
+                            required
+                        />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <Label htmlFor={`${uid}-password`}>Password</Label>
+                        <Input
+                            id={`${uid}-password`}
+                            type="password"
+                            autoComplete="current-password"
+                            value={password}
+                            onChange={(event) => setPassword(event.target.value)}
+                            required
+                        />
+                    </div>
+                    {errorMessage ? (
+                        <p role="alert" className="text-destructive text-sm">
+                            {errorMessage}
+                        </p>
+                    ) : null}
+                    <DialogFooter>
+                        <Button type="button" variant="outline" disabled={rotateMutation.isPending} onClick={() => onOpenChange(false)}>
+                            Cancel
+                        </Button>
+                        <Button type="submit" disabled={rotateMutation.isPending || !password || !newValue}>
+                            {rotateMutation.isPending ? <Spinner /> : null}
+                            Rotate secret
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 /** Header badges shared by the detail drawer: type + secret + locked. */
 function SettingBadges({ setting }: { setting: GlobalSetting }) {
     return (
@@ -137,20 +231,16 @@ function SettingMeta({ setting }: { setting: GlobalSetting }) {
     );
 }
 
-/** The secret Value pane: reveal current value (audited) + a write-only replace field. */
+/** The secret Value pane: reveal current value (audited) + a write-only replace field + server-side Rotate (TASK-445). */
 function SecretValuePane({
     setting,
     newValue,
     onNewValueChange,
-    inputRef,
-    rotating,
     onRotate,
 }: {
     setting: GlobalSetting;
     newValue: string;
     onNewValueChange: (value: string) => void;
-    inputRef: React.RefObject<HTMLInputElement | null>;
-    rotating: boolean;
     onRotate: () => void;
 }) {
     const uid = useId();
@@ -175,11 +265,12 @@ function SecretValuePane({
                             {MASK}
                         </span>
                         <span className="sr-only">Secret value hidden</span>
-                        {/* Reveal is global-admin only per the frame 24 matrix. */}
+                        {/* Reveal and rotate are global-admin only per the frame 24 matrix. */}
                         <RequirePermission action="manage" subject="all">
                             <Button variant="ghost" size="icon-sm" aria-label={`Reveal ${setting.key}`} onClick={() => setRevealTarget(setting)}>
                                 <IconEye aria-hidden />
                             </Button>
+                            {/* TASK-445 — opens the audited server-side rotation dialog (no longer a guided replace). */}
                             <Button variant="ghost" size="sm" onClick={onRotate}>
                                 <IconRefreshDot aria-hidden />
                                 Rotate
@@ -191,7 +282,6 @@ function SecretValuePane({
             <div className="flex flex-col gap-2">
                 <Label htmlFor={`${uid}-new`}>New value</Label>
                 <Input
-                    ref={inputRef}
                     id={`${uid}-new`}
                     type="text"
                     autoComplete="off"
@@ -200,11 +290,7 @@ function SecretValuePane({
                     className="font-mono"
                     placeholder="Enter a new value to replace the secret"
                 />
-                <p className="text-muted-foreground text-xs">
-                    {rotating
-                        ? 'Enter a new secret to rotate; the old value is replaced on save. Rotation is audited.'
-                        : 'The current secret is never shown here. Entering a value replaces it on save.'}
-                </p>
+                <p className="text-muted-foreground text-xs">The current secret is never shown here. Entering a value replaces it on save.</p>
             </div>
             {revealTarget ? (
                 <RevealSecretDialog
@@ -242,18 +328,12 @@ function SettingDetailBody({
     const [tab, setTab] = useState('value');
     const [value, setValue] = useState(setting.value);
     const [newValue, setNewValue] = useState('');
-    const [rotating, setRotating] = useState(false);
-    const secretInputRef = useRef<HTMLInputElement | null>(null);
+    const [rotateOpen, setRotateOpen] = useState(false);
     const updateMutation = useUpdateGlobalSetting();
 
     const jsonInvalid = !setting.isSecret && isJsonType(setting.dataType) && !isValueValid(setting.dataType, value);
     const dirty = setting.isSecret ? newValue.length > 0 : value !== setting.value;
     const saveDisabled = updateMutation.isPending || !dirty || jsonInvalid || (setting.isSecret && !newValue) || setting.locked;
-
-    function handleRotate() {
-        setRotating(true);
-        secretInputRef.current?.focus();
-    }
 
     function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -314,9 +394,7 @@ function SettingDetailBody({
                                 setting={setting}
                                 newValue={newValue}
                                 onNewValueChange={setNewValue}
-                                inputRef={secretInputRef}
-                                rotating={rotating}
-                                onRotate={handleRotate}
+                                onRotate={() => setRotateOpen(true)}
                             />
                         ) : (
                             <>
@@ -358,6 +436,17 @@ function SettingDetailBody({
                 <TabsContent value="history">
                     <SettingHistoryTab settingId={setting.id} active={tab === 'history'} />
                 </TabsContent>
+                {/* TASK-445 — server-side rotation; on success the settings caches
+                    invalidate so the drawer picks up the new version/ETag in place. */}
+                {rotateOpen ? (
+                    <RotateSecretDialog
+                        setting={setting}
+                        etag={etag}
+                        onOpenChange={(open) => {
+                            if (!open) setRotateOpen(false);
+                        }}
+                    />
+                ) : null}
             </DetailDrawer>
         </Tabs>
     );

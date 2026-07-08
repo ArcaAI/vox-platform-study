@@ -28,6 +28,7 @@ const COLUMNS: ColumnDef<DepartmentMember>[] = [
         cell: ({ row }) => (
             <span className="flex items-center gap-2">
                 <span className="font-medium">{row.original.username}</span>
+                {row.original.isLead ? <Badge variant="secondary">Lead</Badge> : null}
                 {row.original.isServiceAccount ? <Badge variant="outline">Service</Badge> : null}
             </span>
         ),

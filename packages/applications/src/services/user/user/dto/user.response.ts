@@ -21,6 +21,11 @@ export class UserResponse extends BaseResponse {
   @ApiPropertyOptional({ type: [UserRoleAssignmentResponse], description: 'Role assignments (included when includeRoles=true)' })
   UserRoleAssignments?: UserRoleAssignmentResponse[];
 
+  @ApiPropertyOptional({
+    description: 'Whether the user is the primary/lead member of this department (only set on the department-members listing)',
+  })
+  isLead?: boolean;
+
   // AC-05 (TASK-336) — secret1/secret2 (and their expiries) are sensitive user
   // credentials and are deliberately NOT exposed on this response. The auto
   // entity→DTO mapper copies a field only when the target instance declares it,
@@ -33,5 +38,6 @@ export class UserResponse extends BaseResponse {
     this.externalId = init.externalId;
     this.isServiceAccount = init.isServiceAccount;
     this.UserRoleAssignments = init.UserRoleAssignments;
+    this.isLead = init.isLead;
   }
 }

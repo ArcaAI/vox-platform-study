@@ -12,7 +12,13 @@ import {
   UserRoleAssignmentRepository,
 } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
-import { ActiveUserRoleAssignmentRow, AuthRoleSummary, IUserRoleAssignmentService } from './IUserRoleAssignmentService';
+import {
+  ActiveUserRoleAssignmentRow,
+  AuthRoleSummary,
+  IUserRoleAssignmentService,
+  RoleMemberRow,
+  RoleMembersResult,
+} from './IUserRoleAssignmentService';
 import { CreateUserRoleAssignmentRequest, UpdateUserRoleAssignmentRequest } from './dto';
 import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
@@ -20,6 +26,23 @@ import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { GLOBAL_ADMIN_ROLE } from '../../tenant/constants';
 
 // TODO: Implement this
+
+/** TASK-444 — raw joined shape of the members query (module-private). */
+interface RoleMemberJoinRow {
+  id: string;
+  userId: string;
+  roleId: string;
+  tenantId: string;
+  resourceStatus: string;
+  createdAt: Date;
+  User: {
+    id: string;
+    username: string;
+    resourceStatus: string;
+    UserProfile: { firstName: string | null; lastName: string | null; email: string | null } | null;
+    UserDepartments: { tenantId: string; isPrimary: boolean; Department: { name: string | null } | null }[];
+  } | null;
+}
 
 @Injectable()
 export class UserRoleAssignmentService extends BaseService implements IUserRoleAssignmentService {
@@ -376,6 +399,80 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
       limit,
       page,
     });
+  }
+
+  async fetchAllByRoleId(props: { page: number; pageSize: number; roleId: string }): Promise<RoleMembersResult> {
+    const { page, pageSize, roleId } = props;
+    const skip = (page - 1) * pageSize;
+
+    // TASK-444 — the members listing needs a `User` + profile + department
+    // join the generic `Repository<E,M>` base cannot express, so it uses the
+    // raw client at this service's sanctioned Prisma boundary (same precedent
+    // as the reads above). Unlike those pre-auth identity reads it goes
+    // through the SCOPED extended client (`client`, NOT `baseClient`): the
+    // tenant-scope `$extends` injects the caller's CLS tenant so a tenant
+    // admin sees only their tenant's members, an unscoped platform admin
+    // (no CLS tenant + GLOBAL_ADMIN) passes through and sees all assignments,
+    // and the soft-delete extension filters DELETED rows — the same posture
+    // as `fetchAll`. Nested reads (`User`, `UserDepartments`) are NOT
+    // intercepted by the extension; `User` is a global model, and the
+    // department is matched to the ASSIGNMENT's tenant at mapping time.
+    const [rows, total] = await Promise.all([
+      this.databaseService.client.userRoleAssignment.findMany({
+        where: { roleId },
+        include: {
+          User: {
+            select: {
+              id: true,
+              username: true,
+              resourceStatus: true,
+              UserProfile: { select: { firstName: true, lastName: true, email: true } },
+              UserDepartments: {
+                where: { resourceStatus: ResourceStatusType.ENABLED },
+                select: { tenantId: true, isPrimary: true, Department: { select: { name: true } } },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+        skip,
+        take: pageSize,
+      }),
+      this.databaseService.client.userRoleAssignment.count({ where: { roleId } }),
+    ]);
+
+    const data = (rows as unknown as RoleMemberJoinRow[]).map((row) => this.toRoleMemberRow(row));
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      data: {
+        roleId,
+        items: data.map((member) => member.assignmentId),
+      },
+    });
+    return { data, total };
+  }
+
+  /** TASK-444 — project a joined assignment row onto the public member shape. */
+  private toRoleMemberRow(row: RoleMemberJoinRow): RoleMemberRow {
+    const profile = row.User?.UserProfile ?? null;
+    const displayName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || row.User?.username || row.userId;
+    // The user is global; pick the department membership that belongs to the
+    // ASSIGNMENT's tenant (primary preferred) so cross-tenant departments of
+    // the same user never leak into another tenant's members view.
+    const departments = (row.User?.UserDepartments ?? []).filter((membership) => membership.tenantId === row.tenantId);
+    const department = departments.find((membership) => membership.isPrimary) ?? departments[0] ?? null;
+    return {
+      assignmentId: row.id,
+      userId: row.userId,
+      tenantId: row.tenantId,
+      username: row.User?.username ?? row.userId,
+      displayName,
+      email: profile?.email ?? null,
+      department: department?.Department?.name ?? null,
+      resourceStatus: row.resourceStatus,
+      userResourceStatus: row.User?.resourceStatus ?? row.resourceStatus,
+      assignedAt: row.createdAt,
+    };
   }
 
   async fetchById(id: EntityId): Promise<UserRoleAssignmentEntity> {
