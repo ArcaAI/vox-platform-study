@@ -1,5 +1,6 @@
 // Utilities
 export { cn } from './lib/utils';
+export { formatJson, validateJson, tokenizeJson, type JsonToken, type JsonTokenType, type JsonValidation } from './lib/json-editor';
 
 // Hooks
 export { useIsMobile } from './hooks/use-mobile';
@@ -83,6 +84,7 @@ export * from './components/shadcn/tooltip';
 // Domain-specific components
 export * from './components/custom/async-job-tracker';
 export * from './components/custom/audio-meter';
+export * from './components/custom/code-editor';
 export * from './components/custom/code-example';
 export * from './components/custom/dept-prompt-selector';
 export * from './components/custom/dna-style-selector';

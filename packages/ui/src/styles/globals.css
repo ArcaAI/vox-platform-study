@@ -152,6 +152,21 @@
   --color-3: oklch(69.6% 0.165 251);
   --color-4: oklch(80.2% 0.134 225);
   --color-5: oklch(90.7% 0.231 133);
+
+  /* --- Code editor surface (TASK-437) ----------------------------------- */
+  /* A FIXED dark editor surface shared by both themes (artboard 5c). Defined
+     only in :root so `.dark` does not remap it — the editor looks the same in
+     light and dark. Syntax colours clear AA (>=4.5:1) on --code-editor-bg. */
+  --code-editor-bg: #0e1a24;
+  --code-editor-fg: #e6edf0;
+  --code-editor-gutter: #7c8b95;
+  --code-editor-selection: #1597a54d;
+  --code-editor-key: #69cdd8;
+  --code-editor-string: #7fd6ab;
+  --code-editor-number: #f2b463;
+  --code-editor-boolean: #a3a9f3;
+  --code-editor-null: #a7b4bd;
+  --code-editor-punctuation: #cfd8de;
 }
 
 .dark {
@@ -215,6 +230,118 @@
   --color-3: oklch(69.6% 0.165 251);
   --color-4: oklch(80.2% 0.134 225);
   --color-5: oklch(90.7% 0.231 133);
+}
+
+/* ============================================================================
+ * Accent themes (TASK-437). Teal is the no-attribute default (above) — zero
+ * visual change without opt-in. Setting `data-accent` on <html> remaps only the
+ * accent-derived semantic tokens (primary/accent/ring/sidebar/chart-1) from the
+ * existing raw ramps; no component is restyled. The "amber" accent maps to the
+ * fuller saffron ramp (the amber ramp has only 400–600 steps).
+ *
+ * Cascade: the light blocks and the `.dark` blocks share specificity (0,2,0), so
+ * the `.dark` blocks are placed AFTER the light blocks — in dark mode they win by
+ * source order; in light mode the `.dark[...]` selectors simply don't match. Both
+ * groups sit after the base `.dark {}` block so they override its teal defaults.
+ * The dark blocks match BOTH the accented element itself (`.dark[data-accent]`,
+ * the production case: next-themes puts `.dark` and `data-accent` on the same
+ * <html>) AND any nested `.dark` region under an accented root
+ * (`[data-accent] .dark`) — otherwise a nested `.dark` wrapper (e.g. Storybook's
+ * theme decorator) re-declares the base teal tokens and clobbers the accent for
+ * its subtree. Contrast (primary-on-background, both themes) is spot-checked in
+ * the "Foundation/Accent Themes" Storybook story.
+ * ========================================================================== */
+:root[data-accent="indigo"] {
+  --primary: var(--indigo-600);
+  --primary-foreground: #ffffff;
+  --primary-strong: var(--indigo-700);
+  --accent: var(--indigo-50);
+  --accent-foreground: var(--indigo-700);
+  --ring: var(--indigo-600);
+  --chart-1: var(--indigo-500);
+  --sidebar-primary: var(--indigo-600);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--indigo-50);
+  --sidebar-accent-foreground: var(--indigo-700);
+  --sidebar-ring: var(--indigo-600);
+}
+
+:root[data-accent="green"] {
+  --primary: var(--green-600);
+  --primary-foreground: #ffffff;
+  --primary-strong: var(--green-700);
+  --accent: var(--green-50);
+  --accent-foreground: var(--green-700);
+  --ring: var(--green-600);
+  --chart-1: var(--green-500);
+  --sidebar-primary: var(--green-600);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--green-50);
+  --sidebar-accent-foreground: var(--green-700);
+  --sidebar-ring: var(--green-600);
+}
+
+:root[data-accent="amber"] {
+  --primary: var(--saffron-500);
+  --primary-foreground: var(--saffron-950);
+  --primary-strong: var(--saffron-800);
+  --accent: var(--saffron-50);
+  --accent-foreground: var(--saffron-800);
+  --ring: var(--saffron-500);
+  --chart-1: var(--saffron-500);
+  --sidebar-primary: var(--saffron-600);
+  --sidebar-primary-foreground: var(--saffron-950);
+  --sidebar-accent: var(--saffron-50);
+  --sidebar-accent-foreground: var(--saffron-800);
+  --sidebar-ring: var(--saffron-500);
+}
+
+.dark[data-accent="indigo"],
+[data-accent="indigo"] .dark {
+  --primary: var(--indigo-400);
+  --primary-foreground: var(--indigo-950);
+  --primary-strong: var(--indigo-400);
+  --accent: color-mix(in oklab, var(--indigo-400) 22%, var(--background));
+  --accent-foreground: var(--indigo-200);
+  --ring: var(--indigo-400);
+  --chart-1: var(--indigo-400);
+  --sidebar-primary: var(--indigo-400);
+  --sidebar-primary-foreground: var(--indigo-950);
+  --sidebar-accent: color-mix(in oklab, var(--indigo-400) 22%, var(--background));
+  --sidebar-accent-foreground: var(--indigo-200);
+  --sidebar-ring: var(--indigo-400);
+}
+
+.dark[data-accent="green"],
+[data-accent="green"] .dark {
+  --primary: var(--green-400);
+  --primary-foreground: #04231a;
+  --primary-strong: var(--green-400);
+  --accent: color-mix(in oklab, var(--green-400) 22%, var(--background));
+  --accent-foreground: var(--green-200);
+  --ring: var(--green-400);
+  --chart-1: var(--green-400);
+  --sidebar-primary: var(--green-400);
+  --sidebar-primary-foreground: #04231a;
+  --sidebar-accent: color-mix(in oklab, var(--green-400) 22%, var(--background));
+  --sidebar-accent-foreground: var(--green-200);
+  --sidebar-ring: var(--green-400);
+}
+
+.dark[data-accent="amber"],
+[data-accent="amber"] .dark {
+  --primary: var(--saffron-400);
+  --primary-foreground: var(--saffron-950);
+  --primary-strong: var(--saffron-400);
+  --accent: color-mix(in oklab, var(--saffron-400) 22%, var(--background));
+  --accent-foreground: var(--saffron-200);
+  --ring: var(--saffron-400);
+  --chart-1: var(--saffron-400);
+  --sidebar-primary: var(--saffron-400);
+  --sidebar-primary-foreground: var(--saffron-950);
+  --sidebar-accent: color-mix(in oklab, var(--saffron-400) 22%, var(--background));
+  --sidebar-accent-foreground: var(--saffron-200);
+  --sidebar-ring: var(--saffron-400);
 }
 
 @theme inline {

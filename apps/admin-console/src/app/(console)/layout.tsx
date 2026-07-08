@@ -5,6 +5,7 @@ import { toSafeSession } from '@/server/safe-user';
 import { getSession } from '@/server/session';
 import { AppSidebar } from '@/shared/layout/app-sidebar';
 import { ImpersonationBanner, WorkingTenantBanner } from '@/shared/layout/session-banners';
+import { SidebarTierSync } from '@/shared/layout/sidebar-tier-sync';
 import { SiteHeader } from '@/shared/layout/site-header';
 import { Providers } from '@/shared/providers';
 
@@ -23,6 +24,7 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
     return (
         <Providers>
             <SidebarProvider>
+                <SidebarTierSync />
                 <AppSidebar />
                 <SidebarInset className="h-svh overflow-hidden">
                     {/* BUG-004 / TASK-423 §A: topbar + session banners are shell chrome,
