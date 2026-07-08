@@ -140,7 +140,7 @@ export function AuditLogsScreen() {
                 accessorKey: 'action',
                 header: 'Action',
                 enableSorting: false,
-                meta: { label: 'Action', variant: 'select', options: ACTION_OPTIONS },
+                meta: { label: 'Action', variant: 'multiSelect', options: ACTION_OPTIONS },
                 cell: ({ row }) => (
                     <span className="inline-flex items-center gap-1.5 font-mono text-xs">
                         {row.original.action}
@@ -153,7 +153,7 @@ export function AuditLogsScreen() {
                 accessorKey: 'resourceType',
                 header: 'Resource type',
                 enableSorting: false,
-                meta: { label: 'Resource type', variant: 'select', options: RESOURCE_TYPE_OPTIONS },
+                meta: { label: 'Resource type', variant: 'multiSelect', options: RESOURCE_TYPE_OPTIONS },
                 cell: ({ row }) => (
                     <span className="inline-flex items-center gap-1.5">
                         <span>{row.original.resourceType}</span>

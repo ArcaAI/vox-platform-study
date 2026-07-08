@@ -20,6 +20,7 @@ export { buildQueryAnnouncement, type QueryAnnouncementInput } from './announce'
 export {
   booleanFilterRule,
   booleanStateFromRule,
+  includesSomeFilter,
   relativePresetToRange,
   RELATIVE_DATE_PRESETS,
   type BooleanFilterState,

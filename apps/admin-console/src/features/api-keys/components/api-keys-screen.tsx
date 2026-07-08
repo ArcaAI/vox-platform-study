@@ -209,7 +209,7 @@ export function ApiKeysScreen() {
             accessorKey: 'tenantId',
             header: 'Tenant',
             enableSorting: false,
-            meta: { label: 'Tenant', variant: 'select', options: tenantOptions },
+            meta: { label: 'Tenant', variant: 'multiSelect', options: tenantOptions },
             cell: ({ row }) =>
                 row.original.tenantId ? (
                     <NameWithId name={tenantNames.get(row.original.tenantId)} id={row.original.tenantId} />
@@ -230,7 +230,7 @@ export function ApiKeysScreen() {
             accessorKey: 'keyStatus',
             header: 'Status',
             enableSorting: false,
-            meta: { label: 'Status', variant: 'select', options: STATUS_OPTIONS },
+            meta: { label: 'Status', variant: 'multiSelect', options: STATUS_OPTIONS },
             cell: ({ row }) => <KeyStatusBadge apiKey={row.original} />,
             size: 130,
         },

@@ -3,7 +3,7 @@
 import { useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { IconClearAll, IconDots, IconFilterOff, IconPlayerPause, IconPlayerPlay, IconStack2 } from '@tabler/icons-react';
-import { VirtualizedDataGrid, type ColumnDef, type DataQueryState } from '@arcaai/ui';
+import { VirtualizedDataGrid, includesSomeFilter, type ColumnDef, type DataQueryState } from '@arcaai/ui';
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import {
@@ -97,8 +97,8 @@ export function QueuesScreen() {
                 header: 'Status',
                 enableSorting: false,
                 enableGlobalFilter: false,
-                filterFn: 'equalsString',
-                meta: { label: 'Status', variant: 'select', options: QUEUE_STATUS_OPTIONS },
+                filterFn: includesSomeFilter,
+                meta: { label: 'Status', variant: 'multiSelect', options: QUEUE_STATUS_OPTIONS },
                 cell: ({ row }) => (
                     <StatusDot colorRole={row.original.isPaused ? 'warning' : 'success'} label={row.original.isPaused ? 'Paused' : 'Running'} />
                 ),

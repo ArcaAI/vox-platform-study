@@ -42,11 +42,12 @@ function pipelineEngine(configYaml: string): string | null {
     return match ? match[1] : null;
 }
 
-/** Read a single-select faceted filter's scalar value out of the grid query-state. */
-function selectValue(state: DataQueryState, id: string): string {
+/** Read a multi-select faceted filter's selected values out of the grid query-state. */
+function selectValues(state: DataQueryState, id: string): string[] {
     const rule = state.filters.find((filter) => filter.id === id);
-    if (!rule) return '';
-    return Array.isArray(rule.value) ? String(rule.value[0] ?? '') : String(rule.value ?? '');
+    if (!rule) return [];
+    if (Array.isArray(rule.value)) return rule.value.map(String);
+    return rule.value != null && rule.value !== '' ? [String(rule.value)] : [];
 }
 
 const ENDPOINT_HINT = (
@@ -78,8 +79,8 @@ function AudioPipelinesBody() {
 
     const pipelines = useMemo(() => pipelinesQuery.data ?? [], [pipelinesQuery.data]);
     const search = query.queryState.globalSearch?.trim().toLowerCase() ?? '';
-    const status = selectValue(query.queryState, 'resourceStatus');
-    const engine = selectValue(query.queryState, 'engine');
+    const status = selectValues(query.queryState, 'resourceStatus');
+    const engine = selectValues(query.queryState, 'engine');
     const page = query.queryState.pagination.mode === 'offset' ? query.queryState.pagination.page : 0;
     const limit = query.queryState.pagination.limit;
 
@@ -94,15 +95,15 @@ function AudioPipelinesBody() {
     const filtered = useMemo(
         () =>
             pipelines.filter((pipeline) => {
-                if (status && pipeline.resourceStatus !== status) return false;
-                if (engine && pipelineEngine(pipeline.configYaml) !== engine) return false;
+                if (status.length && !status.includes(pipeline.resourceStatus)) return false;
+                if (engine.length && !engine.includes(pipelineEngine(pipeline.configYaml) ?? '')) return false;
                 if (!search) return true;
                 return pipeline.name.toLowerCase().includes(search) || pipeline.slug.toLowerCase().includes(search);
             }),
         [pipelines, status, engine, search],
     );
     const pageRows = filtered.slice(page * limit, (page + 1) * limit);
-    const hasFilters = Boolean(search || status || engine);
+    const hasFilters = Boolean(search) || status.length > 0 || engine.length > 0;
 
     const clearFilters = useCallback(
         () => query.setQueryState({ ...query.queryState, globalSearch: undefined, filters: [] }),
@@ -139,7 +140,7 @@ function AudioPipelinesBody() {
                 enableSorting: false,
                 enableHiding: false,
                 size: 160,
-                meta: { label: 'Engine', variant: 'select', options: engineOptions },
+                meta: { label: 'Engine', variant: 'multiSelect', options: engineOptions },
                 cell: ({ getValue }) => {
                     const value = getValue<string>();
                     return value ? (
@@ -176,7 +177,7 @@ function AudioPipelinesBody() {
                 enableSorting: false,
                 enableHiding: false,
                 size: 120,
-                meta: { label: 'Status', variant: 'select', options: STATUS_OPTIONS },
+                meta: { label: 'Status', variant: 'multiSelect', options: STATUS_OPTIONS },
                 cell: ({ row }) => <PipelineStatusBadge status={row.original.resourceStatus} />,
             },
         ],

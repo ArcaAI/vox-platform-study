@@ -216,7 +216,7 @@ export function SettingsScreen() {
             accessorKey: 'tenantId',
             header: 'Tenant',
             enableSorting: false,
-            meta: { label: 'Tenant', variant: 'select', options: tenantOptions },
+            meta: { label: 'Tenant', variant: 'multiSelect', options: tenantOptions },
             size: 180,
             cell: ({ row }) =>
                 row.original.tenantId ? (

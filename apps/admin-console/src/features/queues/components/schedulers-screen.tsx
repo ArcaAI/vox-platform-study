@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { IconCalendarTime, IconFilterOff, IconPencil } from '@tabler/icons-react';
 import { toast } from 'sonner';
-import { VirtualizedDataGrid, type ColumnDef } from '@arcaai/ui';
+import { VirtualizedDataGrid, includesSomeFilter, type ColumnDef } from '@arcaai/ui';
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -103,8 +103,8 @@ export function SchedulersScreen() {
                 header: 'Type',
                 enableSorting: false,
                 enableGlobalFilter: false,
-                filterFn: 'equalsString',
-                meta: { label: 'Type', variant: 'select', options: TYPE_OPTIONS },
+                filterFn: includesSomeFilter,
+                meta: { label: 'Type', variant: 'multiSelect', options: TYPE_OPTIONS },
                 cell: ({ row }) => (
                     <Badge variant="outline" className="capitalize">
                         {row.original.type}
@@ -127,8 +127,8 @@ export function SchedulersScreen() {
                 header: 'Status',
                 enableSorting: false,
                 enableGlobalFilter: false,
-                filterFn: 'equalsString',
-                meta: { label: 'Status', variant: 'select', options: STATUS_OPTIONS },
+                filterFn: includesSomeFilter,
+                meta: { label: 'Status', variant: 'multiSelect', options: STATUS_OPTIONS },
                 cell: ({ row }) => <StatusDot colorRole={row.original.running ? 'success' : 'warning'} label={row.original.running ? 'Running' : 'Paused'} />,
                 size: 120,
             },
