@@ -97,10 +97,40 @@ Existing flows reused: delete role (confirm ROLE name), detach policy (confirm P
 
 ## Implementation Summary
 
-_Pending._
+Status: **Review** (code complete; runtime/browser verification via `next-dev-loop` + screenshots remain a manual step — see Verification below).
+
+Delivered the two-pane Role Management redesign for `/rbac/roles`, TDD-first (pure lib → components → screen → e2e). All work stayed inside `features/rbac/**` plus the e2e spec and this README; the TASK-437 foundation (`DetailDrawer`, `useViewportTier`) and `@arcaai/ui` primitives were reused, not forked.
+
+### Files changed
+
+- **`features/rbac/lib/permission-matrix.ts`** (new) — pure derivation engine. Folds a role's attached policies (CASL `{ action, subject, conditions?, fields?, inverted? }` + attachment `priority`) into a `resource × action` grid. Semantics: fixed CRUD+manage columns; `manage`/`all`/`*` imply every column; policies evaluated in **ascending priority order (lower number = higher precedence, first-match)**; matching `inverted` → `none` (deny wins at its position), allow from a `GLOBAL`-scope policy → `inherited`, allow with `conditions`/`fields` → `conditional`, else `granted`. Row catalog = curated ordered subjects (Consultation, Patient record, Department, Prompt template, Audio pipeline, DNA writing style, Tenant settings) ∪ unknown subjects appended (first-seen, humanized labels); wildcard subjects apply to all rows without creating one.
+- **`features/rbac/lib/__tests__/permission-matrix.test.ts`** (new) — 11 tests: allow→granted, manage expansion, deny masks lower-priority allow, first-match allow outranks later deny, GLOBAL→inherited, conditional, alias `list`→read, wildcard `all` fills all rows, unknown-subject append + humanize, deterministic order, legend.
+- **`features/rbac/components/permission-matrix.tsx`** (new) — `PermissionMatrix` (semantic `<table>` with sticky first column + `<caption>`; mono glyphs `✓`/`◐`/`—` paired with `sr-only` text, teal = `text-primary` — never color-only) and a `layout="cards"` mobile fallback (per-resource cards with action chips, artboard 5g). Always-visible legend. `PermissionMatrixSkeleton` for loading.
+- **`features/rbac/components/__tests__/permission-matrix.test.tsx`** (new) — 6 tests incl. two axe scans (table + cards), sr-only pairing, card fallback.
+- **`features/rbac/components/role-detail.tsx`** (new) — the role detail, decomposed into shared tab panels reused by two shells: `RoleDetailPane` (desktop inline right pane) and `RoleDetailDrawer` (compact tiers, via the shared `DetailDrawer`). Tabs: **Permissions** (derived matrix — joins `role.policies[]` refs to full `usePolicies` details for the rules), **Members**, **Policies** (attach/detach + `EditRoleDialog`, moved verbatim from the retired sheet — detach = break-glass on the POLICY name, edit 412 → inline `OccConflictAlert` preserving inputs). Active tab is URL-driven (`?tab=`). System roles: Edit/Delete/attach/detach hidden (not disabled) + lock notice.
+- **`features/rbac/components/roles-screen.tsx`** (rewritten) — two-pane frame: grouped role list (search + **System · locked** / **Custom**) with selection in the URL (`?role=` via nuqs). `useViewportTier`: desktop renders the inline pane (list `w-72` + detail); tablet/mobile render the list full-width and open the detail in `DetailDrawer` (matrix → cards on mobile). `ScreenTemplate contentMode="fill"`, `StatusFooter` endpoint hint retained. Screen-level break-glass delete (DELETE body = password + ROLE name). `RoleTypeBadge` kept here and exported.
+- **`features/rbac/components/__tests__/roles-screen.test.tsx`** (rewritten) — 8 tests: grouped list + select-a-role prompt, select→matrix, system-role lockdown (no Edit/Delete, lock notice, no attach), screen-level break-glass delete, policy detach, 412 OCC alert preserving edits, create POST, mobile drawer + matrix-card fallback.
+- **`features/rbac/components/role-detail-sheet.tsx`** (deleted) — retired; its attach/detach/edit behaviour moved into the Policies tab of `role-detail.tsx`.
+- **`tests/e2e/rbac-roles.spec.ts`** (rewritten) — smoke for the two-pane UI: list→select→matrix, system-role lockdown, break-glass delete cancelled path (skips if no custom role seeded), + axe gates in light/dark.
+
+### Decisions
+
+- **Members tab endpoint — not available.** The gateway exposes no users-by-role listing or member-count field on `Role` (only the inverse `GET /admin/users/:id/roles`), and cross-feature imports are disallowed (rule 13). The Members tab therefore ships an honest empty state pointing to the Users screen, and **member-count chips are omitted** from the role list until an API gap is filled. *Shared-change / follow-up needed:* add a `GET /admin/rbac/roles/:id/members` (or `GET /admin/users?roleId=`) endpoint + member count, then wire the tab + count chips (pattern: TASK-419).
+- **Matrix v1 is derived, read-only.** Editing stays in the Policies tab (attach/detach). Inline cell toggles are out of scope (Phase 2).
+- **Tab activation is URL-driven (`?tab=`)** to match the console pattern (`tenant-detail`) — Radix automatic tab activation doesn't fire on `fireEvent.click` under happy-dom, and the URL param also makes the tab shareable.
+- **Responsive model (simplification vs plan step 4):** desktop = inline two-pane; tablet **and** mobile open the detail in the shared `DetailDrawer` (right slide-over on tablet, full-screen on mobile) rather than a list-as-drawer. This reuses the console-wide detail surface (per the reuse constraint) and keeps one coherent compact path. No shared files were modified.
+
+### Verification (evidence)
+
+- `pnpm --filter @arcaai/admin-console test` (rbac only): **42 passed** across 5 files — new/changed: `permission-matrix.test.ts` 11/11, `permission-matrix.test.tsx` 6/6, `roles-screen.test.tsx` 8/8; unchanged: `rbac-api.test.ts` 5, `policies-screen.test.tsx` 12. Full app run: **781 passed / 11 failed — all 11 failures are in `features/settings/**`** (a parallel agent's in-progress work, incl. a leftover `dbg.test.tsx`); zero rbac failures.
+- `pnpm --filter @arcaai/admin-console lint` — **clean** (0 warnings).
+- `pnpm --filter @arcaai/admin-console build` — **success** (`/rbac/roles` compiled).
+- `pnpm --filter @arcaai/admin-console check-types` — only pre-existing `vitest-axe` `toHaveNoViolations` matcher-type gaps remain (same as the untouched `shared/detail/__tests__/detail-drawer.test.tsx`); no new source-type errors. Not part of the `build lint test` DoD and does not affect `next build`.
+- **Remaining manual steps:** `next-dev-loop` runtime pass + light/dark screenshots (artboards 1d/5b/5g) and Playwright e2e against a running stack were not executed here — flagged for follow-up.
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-08 | Ticket created from build spec §4 + artboards 1d/5b/5g; current-state map of `features/rbac` captured. Status: Pending (awaiting plan approval). |
+| 2026-07-08 | Implemented the two-pane redesign end-to-end (TDD): permission-matrix derivation lib + tests, `PermissionMatrix` component (table + mobile cards, sr-only glyphs, axe-clean), `role-detail.tsx` (inline pane + `DetailDrawer`, Permissions/Members/Policies tabs), rewritten two-pane `roles-screen.tsx`, retired `role-detail-sheet.tsx`, rewritten screen + e2e tests. rbac tests 42 passed, lint clean, build green. Members tab shipped as an empty state (no users-by-role endpoint — follow-up API gap noted). Status: Review. |

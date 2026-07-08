@@ -42,3 +42,21 @@ export interface RevealedGlobalSetting {
     value: string;
     revealedAt: string;
 }
+
+/**
+ * A single history entry for a setting. There is no dedicated versions endpoint,
+ * so the History tab is backed by the audit log
+ * (`GET /admin/audit-logs/resource/GlobalSetting/:id`); this is the subset the
+ * tab reads (actor · action · when · version). Kept local so the settings
+ * feature does not import the audit-logs feature (rule 13: features never import
+ * each other).
+ */
+export interface SettingHistoryEntry {
+    id: string;
+    action: string;
+    createdAt: string;
+    responsibleUserId: string | null;
+    responsibleUser: { id: string; displayName: string | null; email: string | null } | null;
+    /** Post-change version, when the audit payload carries one. */
+    version: number | null;
+}

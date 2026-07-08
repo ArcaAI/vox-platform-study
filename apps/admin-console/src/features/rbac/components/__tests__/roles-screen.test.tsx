@@ -1,18 +1,25 @@
 /**
- * TDD screen tests for frame 21 (RBAC Roles): list states, the one-based
- * page/pageSize wire mapping, the role detail sheet with policy detach, and
- * the break-glass delete flow (DELETE body carries password +
- * confirmationName = the ROLE name; detach confirms the POLICY name).
+ * TDD screen tests for the TASK-438 two-pane RBAC Roles redesign (frame 21):
+ * grouped role list, selection → detail with the derived permission matrix,
+ * system-role lockdown, tab switching (Permissions/Members/Policies), the
+ * screen-level break-glass delete, policy detach, the 412 OCC alert, and the
+ * mobile drawer + matrix-card fallback.
  */
 
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
-import type { RbacPaginated, Role } from '../../api/types';
+import type { Policy, RbacPaginated, Role } from '../../api/types';
 import { RolesScreen } from '../roles-screen';
 
-vi.mock('sonner', () => ({
-    toast: { success: vi.fn(), error: vi.fn() },
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+// Viewport tier drives desktop two-pane vs the compact DetailDrawer; make it deterministic.
+let currentTier: 'desktop' | 'tablet' | 'mobile' = 'desktop';
+vi.mock('@/shared/layout/use-viewport-tier', () => ({
+    useViewportTier: () => currentTier,
+    TABLET_MIN_PX: 768,
+    DESKTOP_MIN_PX: 1280,
 }));
 
 function role(overrides: Partial<Role> = {}): Role {
@@ -24,10 +31,7 @@ function role(overrides: Partial<Role> = {}): Role {
         resourceStatus: 'ENABLED',
         createdAt: '2026-01-05T08:00:00.000Z',
         updatedAt: '2026-06-21T08:00:00.000Z',
-        policies: [
-            { id: 'p-1', name: 'tenant.manage', priority: 10 },
-            { id: 'p-2', name: 'tenant.read', priority: 20 },
-        ],
+        policies: [{ id: 'p-1', name: 'tenant.manage', priority: 10 }],
         ...overrides,
     };
 }
@@ -41,8 +45,21 @@ const CUSTOM_ROLE = role({
     policies: [{ id: 'p-1', name: 'tenant.manage', priority: 10 }],
 });
 
+const POLICY_CATALOG: Policy[] = [
+    {
+        id: 'p-1',
+        name: 'tenant.manage',
+        scope: 'TENANT',
+        rules: [{ action: 'manage', subject: 'Tenant' }],
+        resourceStatus: 'ENABLED',
+        isProtected: false,
+        createdAt: '2026-01-05T08:00:00.000Z',
+        updatedAt: '2026-01-05T08:00:00.000Z',
+    },
+];
+
 function envelope(rows: Role[]): RbacPaginated<Role> {
-    return { data: rows, total: rows.length, page: 1, pageSize: 25 };
+    return { data: rows, total: rows.length, page: 1, pageSize: 100 };
 }
 
 interface RecordedCall {
@@ -51,13 +68,17 @@ interface RecordedCall {
     body: unknown;
 }
 
-/** Best-effort per-user grid-layout persistence (`user/me/settings`) — no saved layout in tests. */
-function settingsResponse(url: string, method: string): Response | undefined {
-    if (!url.includes('/user/me/settings')) return undefined;
-    return method === 'GET' ? Response.json([]) : Response.json({ ok: true });
+/** Default handler covering the list, the two roles, the policy catalog and DELETEs. */
+function defaultHandler(url: string, method: string): Response | undefined {
+    if (method === 'DELETE') return new Response(null, { status: 204 });
+    if (url === '/api/hope/admin/rbac/roles/r-2') return Response.json(CUSTOM_ROLE);
+    if (url === '/api/hope/admin/rbac/roles/r-1') return Response.json(SYSTEM_ROLE);
+    if (url.startsWith('/api/hope/admin/rbac/policies')) return Response.json({ data: POLICY_CATALOG, total: 1, page: 1, pageSize: 100 });
+    if (url.includes('/admin/rbac/roles')) return Response.json(envelope([SYSTEM_ROLE, CUSTOM_ROLE]));
+    return undefined;
 }
 
-function stubFetch(handler: (url: string, method: string) => Response | undefined): RecordedCall[] {
+function stubFetch(handler: (url: string, method: string) => Response | undefined = defaultHandler): RecordedCall[] {
     const calls: RecordedCall[] = [];
     vi.stubGlobal(
         'fetch',
@@ -65,8 +86,7 @@ function stubFetch(handler: (url: string, method: string) => Response | undefine
             const url = String(input);
             const method = init?.method ?? 'GET';
             calls.push({ url, method, body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined });
-            // The grid persists per-user layout via `user/me/settings`; answer it before the handler.
-            const response = settingsResponse(url, method) ?? handler(url, method);
+            const response = handler(url, method);
             if (!response) throw new Error(`Unhandled fetch: ${method} ${url}`);
             return response;
         }),
@@ -74,90 +94,66 @@ function stubFetch(handler: (url: string, method: string) => Response | undefine
     return calls;
 }
 
-/** The gateway list request (skips the interleaved `user/me/settings` layout GET). */
-function listRequest(calls: RecordedCall[]): URL {
-    const call = calls.find((entry) => entry.method === 'GET' && entry.url.includes('/admin/rbac/roles'));
-    if (!call) throw new Error('no /admin/rbac/roles GET recorded');
-    return new URL(call.url, 'http://test.local');
-}
-
-function openRowMenu(name: string) {
-    const trigger = screen.getByRole('button', { name: `Open actions for ${name}` });
-    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
-}
+beforeEach(() => {
+    currentTier = 'desktop';
+});
 
 afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
 });
 
-describe('RolesScreen', () => {
-    it('renders the loaded roles with type, policies count, status and updated cells', async () => {
-        stubFetch(() => Response.json(envelope([SYSTEM_ROLE, CUSTOM_ROLE])));
+describe('RolesScreen (two-pane redesign)', () => {
+    it('renders the grouped role list (System · locked / Custom)', async () => {
+        stubFetch();
         renderWithProviders(<RolesScreen />);
 
         expect(screen.getByRole('heading', { level: 1, name: 'Roles' })).toBeDefined();
-        expect(await screen.findByText('GlobalAdmin')).toBeDefined();
-        expect(screen.getByText('Billing')).toBeDefined();
-        expect(screen.getByText('System (locked)')).toBeDefined();
-        expect(screen.getByText('Custom')).toBeDefined();
-        expect(screen.getByRole('grid', { name: 'Roles' })).toBeDefined();
+        expect(await screen.findByRole('button', { name: 'GlobalAdmin' })).toBeDefined();
+        expect(screen.getByRole('button', { name: 'Billing' })).toBeDefined();
+        expect(screen.getByText(/System · locked/i)).toBeDefined();
+        expect(screen.getByText(/^Custom/i)).toBeDefined();
+        // No role selected yet — the right pane invites a selection.
+        expect(screen.getByText('Select a role')).toBeDefined();
     });
 
-    it('maps the zero-based URL page onto the one-based gateway request', async () => {
-        const calls = stubFetch(() => Response.json(envelope([CUSTOM_ROLE])));
-        renderWithProviders(<RolesScreen />, { searchParams: '?search=admin&page=1&limit=50' });
-
-        await screen.findByText('Billing');
-        const requested = listRequest(calls);
-        expect(requested.pathname).toBe('/api/hope/admin/rbac/roles');
-        expect(requested.searchParams.get('page')).toBe('2');
-        expect(requested.searchParams.get('pageSize')).toBe('50');
-        expect(requested.searchParams.get('search')).toBe('admin');
-    });
-
-    it('shows the neutral empty state with a create CTA when no roles load', async () => {
-        stubFetch(() => Response.json(envelope([])));
+    it('selects a role and renders its derived permission matrix', async () => {
+        stubFetch();
         renderWithProviders(<RolesScreen />);
 
-        expect(await screen.findByText('No custom roles yet')).toBeDefined();
-        expect(screen.getAllByRole('button', { name: 'New role' }).length).toBeGreaterThanOrEqual(2);
+        fireEvent.click(await screen.findByRole('button', { name: 'Billing' }));
+
+        // Detail header + matrix table with the manage-expanded Tenant row.
+        expect(await screen.findByRole('heading', { level: 2, name: 'Billing' })).toBeDefined();
+        const table = await screen.findByRole('table');
+        expect(within(table).getByRole('rowheader', { name: 'Tenant settings' })).toBeDefined();
+        expect(within(table).getAllByText('Granted').length).toBeGreaterThanOrEqual(1);
     });
 
-    it('surfaces a block error with retry and refetches the list', async () => {
-        let attempts = 0;
-        stubFetch(() => {
-            attempts += 1;
-            return attempts === 1
-                ? Response.json({ message: 'RBAC API unreachable' }, { status: 503 })
-                : Response.json(envelope([CUSTOM_ROLE]));
-        });
-        renderWithProviders(<RolesScreen />);
+    it('locks system roles: no Edit/Delete, Policies tab shows the lock notice and no attach', async () => {
+        stubFetch();
+        // Land directly on the system role's Policies tab (Radix tab activation
+        // is URL-driven here — see role-detail useRoleTab).
+        renderWithProviders(<RolesScreen />, { searchParams: '?role=r-1&tab=policies' });
 
-        expect(await screen.findByRole('alert')).toBeDefined();
-        expect(screen.getByText('RBAC API unreachable')).toBeDefined();
-
-        fireEvent.click(screen.getByRole('button', { name: /retry/i }));
-        expect(await screen.findByText('Billing')).toBeDefined();
+        await screen.findByRole('heading', { level: 2, name: 'GlobalAdmin' });
+        expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+        // Lock notice appears in both the header and the Policies panel.
+        expect((await screen.findAllByText(/System role — seed-managed and read-only/i)).length).toBeGreaterThanOrEqual(1);
+        expect(screen.queryByRole('button', { name: 'Attach policy' })).toBeNull();
     });
 
-    it('deletes a role only after break-glass credentials and sends them in the DELETE body', async () => {
-        const calls = stubFetch((url, method) => {
-            if (method === 'DELETE') return new Response(null, { status: 204 });
-            return Response.json(envelope([CUSTOM_ROLE]));
-        });
+    it('deletes a role through the screen-level break-glass step-up', async () => {
+        const calls = stubFetch();
         renderWithProviders(<RolesScreen />);
 
-        await screen.findByText('Billing');
-        openRowMenu('Billing');
-        fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Billing' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
 
-        // The break-glass dialog collects the password + exact role name.
         const password = await screen.findByLabelText('Your password');
         const confirm = screen.getByRole('button', { name: 'Delete role' }) as HTMLButtonElement;
         expect(confirm.disabled).toBe(true);
-        expect(calls.filter((call) => call.method === 'DELETE')).toHaveLength(0);
-
         fireEvent.change(password, { target: { value: 'hunter2' } });
         fireEvent.change(screen.getByLabelText(/to confirm/i), { target: { value: 'Billing' } });
         await waitFor(() => expect(confirm.disabled).toBe(false));
@@ -169,31 +165,12 @@ describe('RolesScreen', () => {
         expect(del?.body).toEqual({ password: 'hunter2', confirmationName: 'Billing' });
     });
 
-    it('locks system roles: the delete action is disabled in the row menu', async () => {
-        stubFetch(() => Response.json(envelope([SYSTEM_ROLE])));
-        renderWithProviders(<RolesScreen />);
+    it('detaches a policy from the Policies tab with the POLICY name as confirmation', async () => {
+        const calls = stubFetch();
+        renderWithProviders(<RolesScreen />, { searchParams: '?role=r-2&tab=policies' });
 
-        await screen.findByText('GlobalAdmin');
-        openRowMenu('GlobalAdmin');
-        const item = await screen.findByRole('menuitem', { name: 'Delete' });
-        expect(item.getAttribute('aria-disabled')).toBe('true');
-    });
-
-    it('opens the role detail on row click and detaches a policy with the POLICY name as confirmation', async () => {
-        const calls = stubFetch((url, method) => {
-            if (method === 'DELETE') return new Response(null, { status: 204 });
-            if (url === '/api/hope/admin/rbac/roles/r-2') return Response.json(CUSTOM_ROLE);
-            if (url.startsWith('/api/hope/admin/rbac/policies')) return Response.json({ data: [], total: 0, page: 1, pageSize: 100 });
-            return Response.json(envelope([CUSTOM_ROLE]));
-        });
-        renderWithProviders(<RolesScreen />);
-
-        fireEvent.click(await screen.findByText('Billing'));
-        expect(await screen.findByText('tenant.manage')).toBeDefined();
-
-        fireEvent.click(screen.getByRole('button', { name: 'Detach tenant.manage' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Detach tenant.manage' }));
         fireEvent.change(await screen.findByLabelText('Your password'), { target: { value: 'hunter2' } });
-        // The gateway matches the POLICY name (the object being detached).
         fireEvent.change(screen.getByLabelText(/to confirm/i), { target: { value: 'tenant.manage' } });
         fireEvent.click(screen.getByRole('button', { name: 'Detach policy' }));
 
@@ -203,15 +180,34 @@ describe('RolesScreen', () => {
         expect(del?.body).toEqual({ password: 'hunter2', confirmationName: 'tenant.manage' });
     });
 
-    it('creates a role by POSTing the dialog payload', async () => {
-        const calls = stubFetch((url, method) => {
-            if (method === 'POST') return Response.json(role({ id: 'r-9', name: 'Auditor', isSystemRole: false }));
-            return Response.json(envelope([]));
+    it('shows the OCC alert and preserves edits on a 412', async () => {
+        stubFetch((url, method) => {
+            if (method === 'PATCH') return Response.json({ message: 'changed by another admin' }, { status: 412 });
+            return defaultHandler(url, method);
         });
         renderWithProviders(<RolesScreen />);
-        await screen.findByText('No custom roles yet');
 
-        fireEvent.click(screen.getAllByRole('button', { name: 'New role' })[0]);
+        fireEvent.click(await screen.findByRole('button', { name: 'Billing' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+
+        const nameInput = (await screen.findByLabelText(/^name/i)) as HTMLInputElement;
+        fireEvent.change(nameInput, { target: { value: 'Billing Ops' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+        expect(await screen.findByText(/412 Precondition Failed/i)).toBeDefined();
+        // The user's edit is preserved after the conflict.
+        expect(nameInput.value).toBe('Billing Ops');
+    });
+
+    it('creates a role by POSTing the dialog payload', async () => {
+        const calls = stubFetch((url, method) => {
+            if (method === 'POST') return Response.json(role({ id: 'r-9', name: 'Auditor', isSystemRole: false, policies: [] }));
+            return defaultHandler(url, method);
+        });
+        renderWithProviders(<RolesScreen />);
+        await screen.findByRole('button', { name: 'Billing' });
+
+        fireEvent.click(screen.getByRole('button', { name: 'New role' }));
         fireEvent.change(await screen.findByLabelText(/^name/i), { target: { value: 'Auditor' } });
         fireEvent.change(screen.getByLabelText(/description/i), { target: { value: 'Read-only reviewers' } });
         fireEvent.click(screen.getByRole('button', { name: 'Create role' }));
@@ -220,5 +216,17 @@ describe('RolesScreen', () => {
         const post = calls.find((call) => call.method === 'POST');
         expect(post?.url).toBe('/api/hope/admin/rbac/roles');
         expect(post?.body).toEqual({ name: 'Auditor', description: 'Read-only reviewers' });
+    });
+
+    it('mobile tier: opens the detail in a drawer with the matrix card fallback', async () => {
+        currentTier = 'mobile';
+        stubFetch();
+        renderWithProviders(<RolesScreen />);
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Billing' }));
+        // The drawer detail renders; matrix is cards (no <table>) on mobile.
+        await screen.findByText('Tenant settings');
+        expect(screen.queryByRole('table')).toBeNull();
+        expect(screen.getByRole('list', { name: 'Permissions by resource' })).toBeDefined();
     });
 });

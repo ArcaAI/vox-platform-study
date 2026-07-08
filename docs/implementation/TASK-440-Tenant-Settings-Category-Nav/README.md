@@ -1,6 +1,6 @@
 # TASK-440 — Tenant Settings Redesign: Profile Tabs + Category Sub-Nav
 
-- **Status**: Pending
+- **Status**: Review
 - **Type**: feature (UX/UI redesign — `/tenant-profile`)
 - **Owner**: admin-console
 - **Design source**: project "ARCAAI Hope Admin console" (`https://claude.ai/design/p/6a582386-939b-47d3-8c19-cd9338b34814`) — build spec §6; artboards `2b` (desktop), `5h` (mobile).
@@ -17,9 +17,9 @@ Route `/tenant-profile`, tier 20–29 (self-service). Reframe the flat profile i
 
 ### Acceptance criteria (spec §6)
 
-- [ ] Categories navigable; each field uses the control matching its dataType.
-- [ ] Locked + computed rows are non-editable and clearly marked.
-- [ ] Save sends per-row If-Match; 412 preserves drafts and reloads versions.
+- [x] Categories navigable; each field uses the control matching its dataType. *(rail nav + `controlFor`; test "navigates settings categories and renders the type-aware control")*
+- [x] Locked + computed rows are non-editable and clearly marked. *(lock icon + "Platform-managed"/"Read-only" badge + disabled control; test "locked and synthetic read-only rows cannot be edited")*
+- [x] Save sends per-row If-Match; 412 preserves drafts and reloads versions. *(sequential per-row PATCH; tests "per-category save…If-Match" + "surfaces the OCC alert on 412…keeping the draft")*
 
 ## Current State Evaluation
 
@@ -84,10 +84,59 @@ Rework `tenant-profile-screen.tsx`: wrap in `<Tabs>` with `TabsList variant="lin
 
 ## Implementation Summary
 
-_Pending._
+Status: **Review** (implemented 2026-07-08; runtime `next-dev-loop` + screenshot QA remain as manual steps — see below).
+
+### Files changed (all under `apps/admin-console`)
+
+| File | Change |
+|---|---|
+| `src/features/account/lib/config-categories.ts` | **New.** Pure category model: ordered `CONFIG_CATEGORIES`, `categorize()` (key/namespace → CategoryId, unknown → `general`), `groupByCategory()`, and `controlFor(dataType)` → control kind. |
+| `src/features/account/lib/__tests__/config-categories.test.ts` | **New.** 5 tests: keyword bucketing, unknown fallback, determinism/case-insensitivity, grouping order, dataType→control mapping. |
+| `src/features/account/components/tenant-settings-tab.tsx` | **New.** Settings tab: category rail (vertical desktop/tablet, horizontal chip scroll on mobile via `useViewportTier`), type-aware form pane (`ConfigControl`), per-category save bar, sequential per-row OCC save, `OccConflictAlert`, skeletons, empty states. |
+| `src/features/account/components/tenant-profile-screen.tsx` | **Reworked** into a 3-tab shell (`Organization` · `Plan & usage` · `Settings`) using `<Tabs>` + `TabsList variant="line"` in the `ScreenTemplate` `tabs` slot; `?tab=` via nuqs. Identity (read-only) and entitlements panels relocated into tabs; skeleton/no-tenant/error gates preserved. |
+| `src/features/account/components/__tests__/tenant-profile-screen.test.tsx` | **Rewritten** for the tabbed structure: tab render + `?tab=` deep-link, category nav, per-dataType control, per-row If-Match PATCH, 412→OCC (drafts kept + versions reloaded), read-only rows non-editable, mobile chip rail (mocked tier), skeleton, error-retry. 14 tests. |
+| `tests/e2e/account.spec.ts` | **Extended** with a defensive `tenant profile — tabs + settings sub-nav (TASK-440)` describe: tab presence, `?tab=plan` deep-link, Settings rail/empty, axe (light+dark). Tolerates the seeded admin's NoTenant state. |
+
+### Batch-save / If-Match decision (step 4 — resolved during build)
+
+**Decision: sequential per-row PATCH, one request per dirty row, each carrying its own `If-Match: "<row.version>"`. NOT a single batched request.**
+
+Root cause (verified in the gateway, `apps/api/src/modules/tenant/my-tenant.controller.ts`): `PATCH me/config` is decorated `@RequiresIfMatch()` (the `If-Match` header is **mandatory** — omitting it → 428) **and** when the header is present the controller overwrites *every* row's `expectedVersion` with the header value (`configs.map((c) => ({ ...c, expectedVersion: expectedFromHeader }))`). A heterogeneous multi-version batch therefore cannot be expressed in one request — a single header version would spuriously 412 any row whose real version differs. The plan's fallback path applies: fire the dirty rows sequentially, each as a single-item `updates` array with its own header version. This preserves per-row OCC (AC 3). Client transport confirms body-only versions are not viable here: `shared/api/http.ts` only sends `If-Match` when an `etag` is passed, and the route rejects its absence with 428.
+
+Semantics note: because each row is its own request, a mid-run 412 stops the loop with already-saved rows committed and the conflicting/unsaved rows' drafts retained ("no silent loss"); the user reloads versions and re-saves. This is per-row all-or-nothing rather than whole-category atomicity (the gateway offers no atomic heterogeneous-version bulk path).
+
+### Category key mapping
+
+`categorize()` scans `"<namespace> <key>"` (lower-cased), first match wins, unknown → `general`:
+
+| Category | Matches (namespace or key contains) |
+|---|---|
+| **Security** | security, auth, session, password, mfa, sso, login, lockout, token |
+| **Data & residency** | residency, region, retention, storage, backup, `data-`, archive, export |
+| **Notifications** | notif, email, webhook, alert, smtp, digest, reminder |
+| **Clinical defaults** | clinic, consult, transcription, stt, asr, diariz, capture, audio, summar, dna, harness, documentation, noise, vad |
+| **General** | everything else (feature flags, UI, misc) — the fallback |
+
+Control mapping (`controlFor`, case-insensitive; tolerates PascalCase `ValueType` and lowercase gateway aliases): `Boolean`→Switch · `Integer/Float/Double/Decimal/number`→numeric Input (`inputmode=decimal`) · `Date/DateTime`→date Input · `Json/Array`→mono Textarea · else→text Input. Per the plan, the heavy `CodeEditor` stays a settings-screen concern; Json rows use a mono textarea here (the seeded tenant config surfaces no Json key on this self-service screen — only the synthetic Boolean `enable-local-raw-capture` and string/number/locked rows).
+
+### Verification evidence
+
+- `pnpm exec vitest run src/features/account` → **Test Files 4 passed (4), Tests 26 passed (26)** (includes the 5 lib tests + 14 rewritten screen tests + pre-existing account-screen/api tests).
+- `pnpm exec eslint src/features/account tests/e2e/account.spec.ts` → **clean (exit 0)**.
+- `pnpm exec tsc --noEmit` → **0 errors in `features/account`** (Next `build` compiled successfully in 12.2s; the whole-project type-check is currently blocked by an unrelated in-progress file `features/rbac/components/role-detail.tsx` owned by a parallel task — outside this ticket's lane).
+
+### Remaining manual steps (not done here)
+
+- Runtime verification via `next-dev-loop` against a seeded tenant with config rows (dirty→save-bar→412 flow) and light/dark + mobile chip-rail screenshots (2b/5h) for the ticket.
+- Full-app `pnpm --filter @arcaai/admin-console build lint test` will go green once the parallel RBAC/settings work lands (the RBAC `role-detail.tsx` type error and an rbac `_dbg.test.tsx` lint error are not in this ticket's scope).
+
+### Shared-change needed (deferred)
+
+- The TASK-440 screen lives at route `/tenant-profile`; its natural e2e home is `tests/e2e/tenant-profile.spec.ts`, but that file is outside this task's edit lane (only `account.spec.ts` was permitted). The tab/category/no-tenant e2e coverage was appended to `account.spec.ts` instead. A follow-up may migrate/duplicate these into `tenant-profile.spec.ts` for locality. (`tenant-profile.spec.ts` still passes unchanged — the redesign preserves the `region "Organization"` it asserts.)
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-08 | Ticket created from build spec §6 + artboards 2b/5h; current-state map of `features/account`; endpoint discrepancy (`entitlements/me`) and batch-save/If-Match decision recorded. Status: Pending (awaiting plan approval). |
+| 2026-07-08 | Implemented redesign: category lib (`config-categories.ts`) + tab shell + Settings tab (rail/form pane/per-category save bar) + mobile chip rail. Resolved batch-save decision to **sequential per-row If-Match PATCH** (gateway route is `@RequiresIfMatch()` and folds the header version onto every row, so heterogeneous batches are impossible in one request). Account tests 26/26 pass; account lint clean; account files type-clean. Status → Review. Runtime `next-dev-loop`/screenshot QA flagged as remaining manual steps. |

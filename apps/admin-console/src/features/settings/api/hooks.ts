@@ -2,7 +2,7 @@
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ListParams } from '@/shared/api';
-import { createGlobalSetting, deleteGlobalSetting, getGlobalSetting, listGlobalSettings, listTenantScopedSettings, revealGlobalSetting, updateGlobalSetting } from './client';
+import { createGlobalSetting, deleteGlobalSetting, getGlobalSetting, listGlobalSettings, listSettingHistory, listTenantScopedSettings, revealGlobalSetting, updateGlobalSetting } from './client';
 import { settingKeys } from './keys';
 import type { CreateGlobalSettingRequest, UpdateGlobalSettingRequest } from './types';
 
@@ -21,6 +21,11 @@ export function useTenantScopedSettings(tenantId: string, params?: ListParams) {
 
 export function useGlobalSetting(id: string) {
     return useQuery({ queryKey: settingKeys.detail(id), queryFn: () => getGlobalSetting(id), enabled: !!id });
+}
+
+/** Audit-log-backed change history for the drawer's History tab (opt-in via `enabled`). */
+export function useSettingHistory(id: string, enabled = true) {
+    return useQuery({ queryKey: settingKeys.history(id), queryFn: () => listSettingHistory(id), enabled: enabled && !!id });
 }
 
 function useInvalidateSettings() {

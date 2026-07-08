@@ -1,9 +1,8 @@
 /**
  * TDD screen tests for frame 24 (Settings & secrets): list states, the
- * permission-gated step-up reveal flow, OCC If-Match editing (412 alert) and
- * create/delete flows — against a URL-branching fetch stub covering the BFF
- * session + permission routes. Scope is set by the working-tenant switcher (no
- * in-page scope tabs), so this list always reads `GET /admin/settings`.
+ * cross-tenant Tenant column/filter (TASK-430), and the row → DetailDrawer wiring
+ * (TASK-439) that replaced the per-row edit/create modals. Value editing, secret
+ * reveal/rotate, OCC and the create payload are covered in setting-drawer.test.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -40,7 +39,7 @@ function setting(overrides: Partial<GlobalSetting> = {}): GlobalSetting {
     };
 }
 
-// Secret rows serialize with an empty value — only the mask is rendered.
+// Secret rows serialize with an empty value — only the mask is rendered in the list.
 const SECRET = setting({ id: 's-2', name: 'SMTP password', key: 'smtp.password', value: '', version: 4, isSecret: true });
 const SETTINGS = [setting(), SECRET];
 
@@ -54,7 +53,6 @@ const SESSION = {
 };
 
 const MANAGE_ALL = [{ action: 'manage', subject: 'all' }];
-const READ_ONLY = [{ action: 'read', subject: 'GlobalSetting' }];
 
 function envelope(rows: GlobalSetting[]) {
     return { data: rows, count: rows.length, limit: 25, page: 0 };
@@ -94,6 +92,8 @@ function stubFetch({ rows = SETTINGS, permissions = MANAGE_ALL, session = SESSIO
             if (call.url === '/api/hope/rbac/check/my-permissions') {
                 return Response.json({ userId: 'u-1', tenantId: null, permissions });
             }
+            // Detail read for the drawer (fresh ETag).
+            if (call.method === 'GET' && call.url === '/api/hope/admin/settings/s-1') return Response.json(setting(), { headers: { etag: '"2"' } });
             if (call.method === 'GET' && call.url.startsWith('/api/hope/admin/settings?')) return Response.json(envelope(rows));
             throw new Error(`Unhandled fetch: ${call.method} ${call.url}`);
         }),
@@ -116,7 +116,7 @@ describe('SettingsScreen', () => {
         expect(screen.getByText('mail.local')).toBeDefined();
         // The secret row never renders a value — only the mask.
         expect(screen.getByText('smtp.password')).toBeDefined();
-        expect(screen.getByText('\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022')).toBeDefined();
+        expect(screen.getByText('••••••••')).toBeDefined();
         expect(screen.getAllByText('String').length).toBeGreaterThan(0);
         expect(screen.getAllByText('smtp').length).toBeGreaterThan(0);
         expect(screen.getByRole('grid', { name: 'Settings' })).toBeDefined();
@@ -190,122 +190,28 @@ describe('SettingsScreen', () => {
         expect(requested.searchParams.get('filters')).toBe('tenantId[equals]:t-1');
     });
 
-    it('hides the reveal action without the manage/all permission', async () => {
-        stubFetch({ permissions: READ_ONLY });
-        renderWithProviders(<SettingsScreen />);
+    it('opens the detail drawer on row click and writes the ?setting= URL state', async () => {
+        const updates: URLSearchParams[] = [];
+        stubFetch();
+        renderWithProviders(<SettingsScreen />, { onUrlUpdate: (event) => updates.push(event.searchParams) });
 
-        await screen.findByText('smtp.password');
-        await waitFor(() => expect(screen.queryByRole('button', { name: 'Reveal smtp.password' })).toBeNull());
-    });
+        fireEvent.click(await screen.findByText('smtp.host'));
 
-    it('reveals a secret after the step-up password confirm and hides it again', async () => {
-        const calls = stubFetch({
-            custom: (call) => {
-                if (call.method === 'POST' && call.url === '/api/hope/admin/settings/s-2/reveal') {
-                    return Response.json({ id: 's-2', key: 'smtp.password', value: 'hunter2-plaintext', revealedAt: '2026-07-05T00:00:00.000Z' });
-                }
-                return undefined;
-            },
-        });
-        renderWithProviders(<SettingsScreen />);
-        await screen.findByText('smtp.password');
-
-        fireEvent.click(await screen.findByRole('button', { name: 'Reveal smtp.password' }));
-        const dialog = await screen.findByRole('dialog');
-        fireEvent.change(within(dialog).getByLabelText(/password/i), { target: { value: 'p@ss' } });
-        fireEvent.click(within(dialog).getByRole('button', { name: 'Reveal secret' }));
-
-        // Step-up POST carries the re-entered password.
-        await waitFor(() => expect(calls.some((call) => call.url === '/api/hope/admin/settings/s-2/reveal')).toBe(true));
-        expect(calls.find((call) => call.url.endsWith('/reveal'))?.body).toEqual({ password: 'p@ss' });
-
-        // The revealed value swaps in with copy + hide controls.
-        expect(await screen.findByText('hunter2-plaintext')).toBeDefined();
-        expect(screen.getByRole('button', { name: 'Copy smtp.password' })).toBeDefined();
-
-        fireEvent.click(screen.getByRole('button', { name: 'Hide smtp.password' }));
-        expect(screen.queryByText('hunter2-plaintext')).toBeNull();
-        expect(screen.getAllByText('\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022').length).toBeGreaterThan(0);
-    });
-
-    it('saves a value edit with If-Match and expectedVersion from the read ETag', async () => {
-        const calls = stubFetch({
-            custom: (call) => {
-                if (call.method === 'PATCH' && call.url === '/api/hope/admin/settings/s-1') {
-                    return Response.json(setting({ value: 'mail2.local', version: 3 }), { headers: { etag: '"3"' } });
-                }
-                if (call.method === 'GET' && call.url === '/api/hope/admin/settings/s-1') {
-                    return Response.json(setting(), { headers: { etag: '"2"' } });
-                }
-                return undefined;
-            },
-        });
-        renderWithProviders(<SettingsScreen />);
-        await screen.findByText('smtp.host');
-
-        fireEvent.click(screen.getByRole('button', { name: 'Edit smtp.host' }));
-        const dialog = await screen.findByRole('dialog');
-        const valueInput = await within(dialog).findByLabelText(/^value/i);
-        fireEvent.change(valueInput, { target: { value: 'mail2.local' } });
-        fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
-
-        await waitFor(() => expect(calls.some((call) => call.method === 'PATCH')).toBe(true));
-        const patch = calls.find((call) => call.method === 'PATCH');
-        expect(patch?.url).toBe('/api/hope/admin/settings/s-1');
-        expect(patch?.headers.get('if-match')).toBe('"2"');
-        expect(patch?.body).toEqual({ value: 'mail2.local', expectedVersion: 2 });
-        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    });
-
-    it('shows the OCC conflict alert when the PATCH returns 412', async () => {
-        stubFetch({
-            custom: (call) => {
-                if (call.method === 'PATCH') return Response.json({ message: 'Precondition Failed' }, { status: 412 });
-                if (call.method === 'GET' && call.url === '/api/hope/admin/settings/s-1') {
-                    return Response.json(setting(), { headers: { etag: '"2"' } });
-                }
-                return undefined;
-            },
-        });
-        renderWithProviders(<SettingsScreen />);
-        await screen.findByText('smtp.host');
-
-        fireEvent.click(screen.getByRole('button', { name: 'Edit smtp.host' }));
-        const dialog = await screen.findByRole('dialog');
-        fireEvent.change(await within(dialog).findByLabelText(/^value/i), { target: { value: 'mail2.local' } });
-        fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
-
-        expect(await screen.findByText(/412 Precondition Failed/)).toBeDefined();
-        expect(screen.getByRole('button', { name: 'Reload latest' })).toBeDefined();
-        // The dialog stays open so local edits are not lost.
+        // The drawer opens (its own value editor renders once the fresh ETag loads).
+        expect(await screen.findByRole('textbox', { name: 'Value' })).toBeDefined();
         expect(screen.getByRole('dialog')).toBeDefined();
+        await waitFor(() => expect(updates.some((params) => params.get('setting') === 's-1')).toBe(true));
     });
 
-    it('creates a setting from the create dialog payload', async () => {
-        const calls = stubFetch({
-            rows: [],
-            custom: (call) => {
-                if (call.method === 'POST' && call.url === '/api/hope/admin/settings') {
-                    return Response.json(setting({ id: 's-new', key: 'features.harness' }));
-                }
-                return undefined;
-            },
-        });
+    it('opens the create drawer from the New setting action', async () => {
+        stubFetch({ rows: [] });
         renderWithProviders(<SettingsScreen />);
-        await screen.findByText('No settings yet');
 
-        fireEvent.click(screen.getAllByRole('button', { name: 'New setting' })[0]);
+        fireEvent.click((await screen.findAllByRole('button', { name: 'New setting' }))[0]);
+
         const dialog = await screen.findByRole('dialog');
-        // \b keeps "Name" from also matching the "Namespace" label.
-        fireEvent.change(within(dialog).getByLabelText(/^name\b/i), { target: { value: 'Harness rollout' } });
-        fireEvent.change(within(dialog).getByLabelText(/^key/i), { target: { value: 'features.harness' } });
-        fireEvent.change(within(dialog).getByLabelText(/^value/i), { target: { value: 'on' } });
-        fireEvent.click(within(dialog).getByRole('button', { name: 'Create setting' }));
-
-        await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/hope/admin/settings')).toBe(true));
-        const post = calls.find((call) => call.method === 'POST' && call.url === '/api/hope/admin/settings');
-        expect(post?.body).toEqual({ name: 'Harness rollout', key: 'features.harness', value: 'on', dataType: 'String' });
-        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        expect(within(dialog).getByText('New setting')).toBeDefined();
+        expect(within(dialog).getByRole('button', { name: 'Create setting' })).toBeDefined();
     });
 
     it('deletes a setting after the destructive confirm', async () => {

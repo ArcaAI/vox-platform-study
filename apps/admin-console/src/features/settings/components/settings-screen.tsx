@@ -1,26 +1,14 @@
 'use client';
 
-import { useId, useMemo, useState, type FormEvent } from 'react';
-import { IconEye, IconEyeOff, IconFilterOff, IconLock, IconPencil, IconPlus, IconSettings, IconTrash } from '@tabler/icons-react';
+import { useMemo, useState } from 'react';
+import { IconFilterOff, IconLock, IconPlus, IconSettings, IconTrash } from '@tabler/icons-react';
+import { parseAsString, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
 import { type ColumnDef, type SortRule } from '@arcaai/ui';
 import { Button } from '@arcaai/ui/components/shadcn/button';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@arcaai/ui/components/shadcn/dialog';
-import { Input } from '@arcaai/ui/components/shadcn/input';
-import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
-import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
-import { RequirePermission } from '@/shared/auth/require-permission';
 import { useTenantCatalog, useTenantNames } from '@/shared/catalog';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
-import { CopyButton } from '@/shared/copy-button';
 import { AdminDataGrid, useAdminGridParams } from '@/shared/data/admin-data-grid';
 import { normalizeList } from '@/shared/data/envelopes';
 import type { FilterOption } from '@/shared/data/filter-bar';
@@ -30,89 +18,27 @@ import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
-import { useDeleteGlobalSetting, useGlobalSettings, useRevealGlobalSetting } from '../api/hooks';
+import { useDeleteGlobalSetting, useGlobalSettings } from '../api/hooks';
 import type { GlobalSetting } from '../api/types';
-import { CreateSettingDialog, EditSettingDialog } from './setting-dialogs';
+import { SettingCreateDrawer, SettingDetailDrawer } from './setting-drawer';
 
 /** Omni search targets (→ gateway `searchFields`) and the implicit sort — stable refs for the hook. */
 const SETTING_SEARCH_FIELDS = ['name', 'key'];
 const SETTING_DEFAULT_SORT: SortRule[] = [{ id: 'key', desc: false }];
-const MASK = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
-
-/**
- * Step-up reveal (frame 24 matrix: "reveal gated by re-auth"): the caller
- * re-enters their password; every reveal is audit-logged server-side.
- */
-function RevealSecretDialog({
-    setting,
-    onOpenChange,
-    onRevealed,
-}: {
-    setting: GlobalSetting;
-    onOpenChange: (open: boolean) => void;
-    onRevealed: (value: string) => void;
-}) {
-    const inputId = useId();
-    const [password, setPassword] = useState('');
-    const revealMutation = useRevealGlobalSetting();
-
-    function handleSubmit(event: FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-        revealMutation.mutate(
-            { id: setting.id, password },
-            {
-                onSuccess: (result) => onRevealed(result.value),
-                onError: (error) => toast.error(error.message),
-            },
-        );
-    }
-
-    return (
-        <Dialog open onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                    <DialogTitle>Reveal secret</DialogTitle>
-                    <DialogDescription>
-                        Re-enter your password to reveal <span className="font-mono">{setting.key}</span>. Every reveal is audit-logged.
-                    </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                    <div className="flex flex-col gap-2">
-                        <Label htmlFor={inputId}>Password</Label>
-                        <Input
-                            id={inputId}
-                            type="password"
-                            autoComplete="current-password"
-                            value={password}
-                            onChange={(event) => setPassword(event.target.value)}
-                            required
-                        />
-                    </div>
-                    <DialogFooter>
-                        <Button type="button" variant="outline" disabled={revealMutation.isPending} onClick={() => onOpenChange(false)}>
-                            Cancel
-                        </Button>
-                        <Button type="submit" disabled={revealMutation.isPending || !password}>
-                            {revealMutation.isPending ? <Spinner /> : null}
-                            Reveal secret
-                        </Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
-    );
-}
+const MASK = '••••••••';
+/** Sentinel `?setting=` value that opens the create drawer instead of a detail. */
+const CREATE_SENTINEL = 'new';
 
 /**
  * Frame 24 — Settings & secrets (/settings, tier 20-29 shared). AdminDataGrid
- * (omni search + sort + pager) over the settings visible to the caller, with
- * masked secrets, permission-gated step-up reveal, OCC If-Match value editing
- * and create/delete flows. Scope is decided by the working-tenant switcher, not
- * an in-page toggle: the BFF stamps X-Tenant-Id, so the gateway scopes this list
- * to the working tenant. An UNSCOPED super-admin gets the cross-tenant listing
- * (TASK-430): every tenant's settings and secrets, with a Tenant column and an
- * in-page tenant filter (the GlobalSetting row carries tenantId, so the filter
- * rides the regular CSV grammar).
+ * (omni search + sort + pager) over the settings visible to the caller. Rows are
+ * read-only in the list — masked secrets, plaintext non-secrets — and clicking a
+ * row (or "New setting") opens the console-wide DetailDrawer (TASK-437/439) that
+ * carries the type-aware value editor (a real code editor for Json/Array),
+ * permission-gated step-up reveal, guided secret rotation, OCC If-Match editing
+ * and an audit-log-backed History tab. Scope is decided by the working-tenant
+ * switcher; an UNSCOPED super-admin gets the cross-tenant listing (TASK-430) with
+ * a Tenant column + filter.
  */
 export function SettingsScreen() {
     const query = useAdminGridParams({ searchFields: SETTING_SEARCH_FIELDS, defaultSort: SETTING_DEFAULT_SORT });
@@ -129,24 +55,18 @@ export function SettingsScreen() {
         [tenantCatalog.data],
     );
 
-    const [createOpen, setCreateOpen] = useState(false);
-    const [editTarget, setEditTarget] = useState<GlobalSetting | null>(null);
+    // Drawer selection rides the URL so a row/detail is deep-linkable and back-navigable.
+    const [selected, setSelected] = useQueryState('setting', parseAsString);
     const [deleteTarget, setDeleteTarget] = useState<GlobalSetting | null>(null);
-    const [revealTarget, setRevealTarget] = useState<GlobalSetting | null>(null);
-    // Plaintext secrets revealed this session, keyed by row id — dropped on hide.
-    const [revealed, setRevealed] = useState<Record<string, string>>({});
 
     const deleteMutation = useDeleteGlobalSetting();
-
-    function hideSecret(id: string) {
-        setRevealed(({ [id]: _hidden, ...rest }) => rest);
-    }
 
     function confirmDelete() {
         if (!deleteTarget) return;
         deleteMutation.mutate(deleteTarget.id, {
             onSuccess: () => {
                 toast.success(`${deleteTarget.key} deleted`);
+                if (selected === deleteTarget.id) void setSelected(null);
                 setDeleteTarget(null);
             },
             onError: (error) => toast.error(error.message),
@@ -155,32 +75,14 @@ export function SettingsScreen() {
 
     function renderValue(row: GlobalSetting) {
         if (!row.isSecret) {
-            return <span className="inline-block max-w-56 truncate align-middle font-mono text-xs">{row.value || '\u2014'}</span>;
-        }
-        const plaintext = revealed[row.id];
-        if (plaintext !== undefined) {
-            return (
-                <span className="flex items-center gap-1">
-                    <span className="max-w-56 truncate font-mono text-xs">{plaintext}</span>
-                    <CopyButton value={plaintext} label={`Copy ${row.key}`} />
-                    <Button variant="ghost" size="icon-sm" aria-label={`Hide ${row.key}`} onClick={() => hideSecret(row.id)}>
-                        <IconEyeOff aria-hidden />
-                    </Button>
-                </span>
-            );
+            return <span className="inline-block max-w-56 truncate align-middle font-mono text-xs">{row.value || '—'}</span>;
         }
         return (
             <span className="flex items-center gap-1">
                 <span aria-hidden className="tracking-wider">
                     {MASK}
                 </span>
-                <span className="sr-only">Secret value hidden</span>
-                {/* Reveal is global-admin only per the frame 24 matrix. */}
-                <RequirePermission action="manage" subject="all">
-                    <Button variant="ghost" size="icon-sm" aria-label={`Reveal ${row.key}`} onClick={() => setRevealTarget(row)}>
-                        <IconEye aria-hidden />
-                    </Button>
-                </RequirePermission>
+                <span className="sr-only">Secret value hidden — open the row to reveal</span>
             </span>
         );
     }
@@ -210,7 +112,7 @@ export function SettingsScreen() {
             enableSorting: false,
             meta: { label: 'Namespace' },
             size: 140,
-            cell: ({ row }) => <span className="text-muted-foreground">{row.original.namespace || '\u2014'}</span>,
+            cell: ({ row }) => <span className="text-muted-foreground">{row.original.namespace || '—'}</span>,
         },
         {
             accessorKey: 'tenantId',
@@ -222,7 +124,7 @@ export function SettingsScreen() {
                 row.original.tenantId ? (
                     <NameWithId name={tenantNames.get(row.original.tenantId)} id={row.original.tenantId} />
                 ) : (
-                    <span className="text-muted-foreground">{'\u2014'}</span>
+                    <span className="text-muted-foreground">{'—'}</span>
                 ),
         },
         {
@@ -255,14 +157,20 @@ export function SettingsScreen() {
             enableSorting: false,
             enableHiding: false,
             enableResizing: false,
-            size: 88,
-            minSize: 88,
+            size: 56,
+            minSize: 56,
             cell: ({ row }) => (
-                <div className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="icon-sm" aria-label={`Edit ${row.original.key}`} onClick={() => setEditTarget(row.original)}>
-                        <IconPencil aria-hidden />
-                    </Button>
-                    <Button variant="ghost" size="icon-sm" aria-label={`Delete ${row.original.key}`} onClick={() => setDeleteTarget(row.original)}>
+                <div className="flex items-center justify-end">
+                    <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Delete ${row.original.key}`}
+                        onClick={(event) => {
+                            // The row's own click opens the drawer — keep delete from doing both.
+                            event.stopPropagation();
+                            setDeleteTarget(row.original);
+                        }}
+                    >
                         <IconTrash aria-hidden />
                     </Button>
                 </div>
@@ -276,7 +184,7 @@ export function SettingsScreen() {
             title="No settings yet"
             description="Create the first setting. Secret values stay masked after creation."
             action={
-                <Button onClick={() => setCreateOpen(true)}>
+                <Button onClick={() => void setSelected(CREATE_SENTINEL)}>
                     <IconPlus aria-hidden />
                     New setting
                 </Button>
@@ -299,7 +207,7 @@ export function SettingsScreen() {
                             </>
                         }
                         actions={
-                            <Button onClick={() => setCreateOpen(true)}>
+                            <Button onClick={() => void setSelected(CREATE_SENTINEL)}>
                                 <IconPlus aria-hidden />
                                 New setting
                             </Button>
@@ -329,6 +237,7 @@ export function SettingsScreen() {
                     isBusy={settingsQuery.isFetching && !settingsQuery.isLoading}
                     error={settingsQuery.error}
                     onRetry={() => settingsQuery.refetch()}
+                    onRowClick={(row) => void setSelected(row.id)}
                     emptyState={emptyState}
                     emptyFilteredState={
                         <EmptyState
@@ -348,27 +257,13 @@ export function SettingsScreen() {
                     }
                 />
             </ScreenTemplate>
-            {createOpen ? <CreateSettingDialog onOpenChange={setCreateOpen} /> : null}
-            {editTarget ? (
-                <EditSettingDialog
-                    key={editTarget.id}
-                    setting={editTarget}
-                    onOpenChange={(open) => {
-                        if (!open) setEditTarget(null);
-                    }}
-                />
-            ) : null}
-            {revealTarget ? (
-                <RevealSecretDialog
-                    key={revealTarget.id}
-                    setting={revealTarget}
-                    onOpenChange={(open) => {
-                        if (!open) setRevealTarget(null);
-                    }}
-                    onRevealed={(value) => {
-                        setRevealed((current) => ({ ...current, [revealTarget.id]: value }));
-                        setRevealTarget(null);
-                    }}
+            {selected === CREATE_SENTINEL ? <SettingCreateDrawer onClose={() => void setSelected(null)} /> : null}
+            {selected && selected !== CREATE_SENTINEL ? (
+                <SettingDetailDrawer
+                    key={selected}
+                    settingId={selected}
+                    onClose={() => void setSelected(null)}
+                    onDelete={(setting) => setDeleteTarget(setting)}
                 />
             ) : null}
             <ConfirmDialog
