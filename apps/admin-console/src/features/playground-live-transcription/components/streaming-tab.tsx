@@ -104,7 +104,9 @@ function SessionControlsCard({
                     <dt className="text-muted-foreground text-xs">Pipeline</dt>
                     <dd className="truncate text-xs">{pipelineName ?? '\u2014'}</dd>
                     <dt className="text-muted-foreground text-xs">Capture</dt>
-                    <dd className="text-xs">16 kHz mono {'\u00b7'} echo cancel on {'\u00b7'} noise suppression on</dd>
+                    <dd className="text-xs">
+                        16 kHz mono {'\u00b7'} VAD auto-pause on {'\u00b7'} echo cancel on {'\u00b7'} noise suppression on
+                    </dd>
                     {live.session ? (
                         <>
                             <dt className="text-muted-foreground text-xs">Session</dt>

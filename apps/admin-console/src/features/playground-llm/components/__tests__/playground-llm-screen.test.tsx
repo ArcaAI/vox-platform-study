@@ -144,10 +144,10 @@ function stubLlm(custom: FetchHandler = () => undefined): RecordedCall[] {
     return stubFetch((call, parsed) => custom(call, parsed) ?? defaultHandler(call, parsed));
 }
 
-/** Fills the prompt and presses the header Generate action. */
+/** Fills the prompt and presses the header Run action. */
 async function generateWithPrompt(prompt: string): Promise<void> {
     fireEvent.change(await screen.findByLabelText(/^Prompt/), { target: { value: prompt } });
-    fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
 }
 
 function chunk(content: string): string {
@@ -407,6 +407,8 @@ describe('PlaygroundLlmScreen', () => {
         renderWithProviders(<PlaygroundLlmScreen />);
 
         await screen.findByLabelText('Provider');
+        // The playground banner stacks above the request-summary strip.
+        expect(screen.getByText(/demo sessions run under your own account/)).toBeDefined();
         expect(screen.getByText('Provider: azure-openai')).toBeDefined();
         expect(screen.getByText('model gpt-5')).toBeDefined();
         expect(screen.getByText('temp 0.2')).toBeDefined();
@@ -487,7 +489,7 @@ describe('PlaygroundLlmScreen', () => {
         fireEvent.change(screen.getByLabelText('Template ID'), { target: { value: 'tpl-1' } });
         fireEvent.click(screen.getByRole('switch', { name: /debug/i }));
         fireEvent.click(screen.getByRole('switch', { name: 'Streaming mode' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Run' }));
 
         expect(await screen.findByText('Debug')).toBeDefined();
         expect(assembledBody).toMatchObject({

@@ -36,7 +36,7 @@ function VersionTimeline({ reportId }: { reportId: string }) {
 
     const rows = [...versions.data].sort((a, b) => b.versionNumber - a.versionNumber);
     return (
-        <ol aria-label="Version timeline" className="flex flex-col">
+        <ol aria-label="Version history" className="flex flex-col">
             {rows.map((version) => (
                 <li key={version.id} className="flex items-baseline gap-2 border-b py-1.5 text-xs last:border-0">
                     <span className="font-medium tabular-nums">v{version.versionNumber}</span>
@@ -138,7 +138,7 @@ export function MyReportsCard({ reports, myStyleReportId }: { reports: ReturnTyp
             <CardContent className="flex flex-col gap-4">
                 {body}
                 <div className="flex flex-col gap-2">
-                    <h3 className="text-xs font-semibold">Version timeline</h3>
+                    <h3 className="text-xs font-semibold">Version history</h3>
                     {selectedId ? (
                         <VersionTimeline reportId={selectedId} />
                     ) : (

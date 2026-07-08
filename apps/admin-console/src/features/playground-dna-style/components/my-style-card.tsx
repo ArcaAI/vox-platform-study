@@ -73,7 +73,7 @@ function StyleEditor({ report, etag, onDone, onReload }: { report: DnaReport; et
                 />
             </div>
             <div className="flex flex-col gap-2">
-                <Label htmlFor="playground-dna-change-reason">Change reason</Label>
+                <Label htmlFor="playground-dna-change-reason">Edit reason</Label>
                 <Input
                     id="playground-dna-change-reason"
                     value={changeReason}
@@ -87,7 +87,7 @@ function StyleEditor({ report, etag, onDone, onReload }: { report: DnaReport; et
                 </Button>
                 <Button type="submit" size="sm" disabled={update.isPending}>
                     {update.isPending ? <Spinner /> : null}
-                    Save
+                    Save style
                 </Button>
             </div>
         </form>
@@ -216,7 +216,7 @@ export function MyStyleCard({
     return (
         <Card className="gap-4">
             <CardHeader>
-                <h2 className="text-sm leading-none font-semibold">My style</h2>
+                <h2 className="text-sm leading-none font-semibold">My writing style</h2>
                 <CardAction>
                     <span className="flex items-center gap-2">
                         {settings.data ? (

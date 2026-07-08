@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { IconMicrophone, IconPlus, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
+import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
+import { StatusBadge } from '@arcaai/ui/components/shared/status-badge';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card, CardAction, CardContent, CardHeader } from '@arcaai/ui/components/shadcn/card';
@@ -34,17 +36,21 @@ function ProfileRow({
         <li className="flex flex-col gap-2 rounded-md border p-3">
             <div className="flex flex-wrap items-center gap-2">
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
-                {/* Badge variants per rule 11 §7: default = active, outline = neutral. */}
-                {profile.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}
+                {/* Template active pill: dot-style success StatusBadge; outline = neutral (rule 11 §7). */}
+                {profile.isActive ? (
+                    <StatusBadge label="Active" colorRole="success" icon={<StatusDot colorRole="success" size="sm" />} />
+                ) : (
+                    <Badge variant="outline">Inactive</Badge>
+                )}
                 <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    aria-label={`${profile.isActive ? 'Deactivate' : 'Activate'} ${name}`}
+                    aria-label={`${profile.isActive ? 'Deactivate' : 'Set active'} ${name}`}
                     onClick={onToggle}
                     disabled={isBusy}
                 >
-                    {profile.isActive ? 'Deactivate' : 'Activate'}
+                    {profile.isActive ? 'Deactivate' : 'Set active'}
                 </Button>
                 <Button type="button" variant="ghost" size="icon-sm" aria-label={`Delete ${name}`} onClick={onDelete} disabled={isBusy}>
                     <IconTrash aria-hidden />
@@ -96,7 +102,7 @@ export function ProfileListCard({ query, onEnroll }: { query: ReturnType<typeof 
         <>
             <Card className="gap-4">
                 <CardHeader>
-                    <h2 className="text-sm leading-none font-semibold">My voice profiles</h2>
+                    <h2 className="text-sm leading-none font-semibold">My profiles</h2>
                     <CardAction>
                         <span aria-hidden className="text-muted-foreground font-mono text-xs">
                             GET /voice-profile

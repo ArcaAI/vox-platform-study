@@ -11,6 +11,7 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { useSession } from '@/shared/auth';
 import { PageHeader } from '@/shared/page/page-header';
+import { PlaygroundBanner } from '@/shared/page/playground-banner';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
@@ -77,12 +78,7 @@ function ScreenBody() {
                 header={
                     <PageHeader
                         title="Live Transcription"
-                        meta={
-                            <span>
-                                WS streaming via stt-v2 + batch upload {'\u00b7'} sessions bind to the working tenant {'\u00b7'} job lists show your
-                                jobs only
-                            </span>
-                        }
+                        meta={<span>Streaming session {'\u00b7'} runs under your own account</span>}
                         actions={
                             busy ? (
                                 <Button variant="outline" className="h-11" onClick={handleStop} disabled={live.status === 'stopping'}>
@@ -98,6 +94,7 @@ function ScreenBody() {
                         }
                     />
                 }
+                statusBanner={<PlaygroundBanner />}
                 toolbar={
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                         <Label htmlFor="pipeline-picker">Pipeline</Label>

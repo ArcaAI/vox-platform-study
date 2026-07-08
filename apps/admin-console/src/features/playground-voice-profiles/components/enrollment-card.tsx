@@ -1,16 +1,14 @@
 'use client';
 
 import { useId, useRef, useState, type Ref } from 'react';
-import { IconMicrophone, IconPlayerStopFilled, IconUpload, IconX } from '@tabler/icons-react';
+import { IconCheck, IconMicrophone, IconPlayerStopFilled, IconUpload, IconX } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
 import { StatusBadge } from '@arcaai/ui/components/shared/status-badge';
-import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card, CardAction, CardContent, CardHeader } from '@arcaai/ui/components/shadcn/card';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
-import { Progress } from '@arcaai/ui/components/shadcn/progress';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { formatBytes } from '@/shared/format';
 import { MAX_LABEL_LENGTH, MAX_SAMPLES, MAX_SAMPLE_BYTES, useEnrollVoiceProfile } from '../api';
@@ -43,30 +41,59 @@ function formatClock(totalSeconds: number): string {
     return `${minutes}:${seconds}`;
 }
 
-/** Size meter vs the 10 MB gateway cap (overweight samples pin at 100%). */
-function sizePercent(bytes: number): number {
-    return Math.min(100, Math.round((bytes / MAX_SAMPLE_BYTES) * 100));
-}
-
-function StagedSampleRow({ sample, onRemove, disabled }: { sample: StagedSample; onRemove: () => void; disabled: boolean }) {
+/**
+ * Template slot row ("Sample 1/2/3"): staged files fill the three fixed slots
+ * in index order — a filled slot shows a success check + the sample's
+ * name/size (and its remove button); an empty slot shows a muted numbered
+ * circle + "not recorded".
+ */
+function SampleSlotRow({
+    index,
+    sample,
+    onRemove,
+    disabled,
+}: {
+    index: number;
+    sample: StagedSample | undefined;
+    onRemove: () => void;
+    disabled: boolean;
+}) {
     return (
-        <li className="flex flex-col gap-2 rounded-md border p-3">
+        <li className="flex flex-col gap-1 rounded-md border p-3">
             <div className="flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">{sample.file.name}</span>
-                <Badge variant="outline">{sample.source === 'recorded' ? 'Recorded' : 'Uploaded'}</Badge>
-                <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${sample.file.name}`} onClick={onRemove} disabled={disabled}>
-                    <IconX aria-hidden />
-                </Button>
+                {sample ? (
+                    <span aria-hidden className="bg-success/10 text-success-strong flex size-5 shrink-0 items-center justify-center rounded-full">
+                        <IconCheck className="size-3.5" />
+                    </span>
+                ) : (
+                    <span
+                        aria-hidden
+                        className="bg-muted text-muted-foreground flex size-5 shrink-0 items-center justify-center rounded-full text-xs tabular-nums"
+                    >
+                        {index + 1}
+                    </span>
+                )}
+                <span className="shrink-0 text-sm font-medium">Sample {index + 1}</span>
+                {sample ? (
+                    <>
+                        <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">{sample.file.name}</span>
+                        <span className="text-muted-foreground shrink-0 text-xs tabular-nums">{formatBytes(sample.file.size)}</span>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Remove ${sample.file.name}`}
+                            onClick={onRemove}
+                            disabled={disabled}
+                        >
+                            <IconX aria-hidden />
+                        </Button>
+                    </>
+                ) : (
+                    <span className="text-muted-foreground flex-1 text-xs">not recorded</span>
+                )}
             </div>
-            <div className="flex items-center gap-2">
-                <Progress
-                    value={sizePercent(sample.file.size)}
-                    className="h-1.5 flex-1"
-                    aria-label={`${sample.file.name}: ${formatBytes(sample.file.size)} of the 10 MB limit`}
-                />
-                <span className="text-muted-foreground shrink-0 text-xs tabular-nums">{formatBytes(sample.file.size)} / 10 MB</span>
-            </div>
-            {sample.error ? <p className="text-destructive text-sm">{sample.error}</p> : null}
+            {sample?.error ? <p className="text-destructive text-sm">{sample.error}</p> : null}
         </li>
     );
 }
@@ -132,9 +159,10 @@ export function EnrollmentCard({ ref }: { ref?: Ref<HTMLDivElement> }) {
     return (
         <Card ref={ref} tabIndex={-1} className="gap-4">
             <CardHeader>
-                <h2 className="text-sm leading-none font-semibold">Enroll {'\u00b7'} record or upload</h2>
-                <CardAction>
-                    {recorder.phase === 'recording' ? (
+                <h2 className="text-sm leading-none font-semibold">Enroll a profile</h2>
+                {/* The POST /voice-profile/enroll hint lives in the screen footer. */}
+                {recorder.phase === 'recording' ? (
+                    <CardAction>
                         <span role="status">
                             <StatusBadge
                                 label={`REC SAMPLE ${formatClock(recorder.elapsedSeconds)}`}
@@ -142,12 +170,8 @@ export function EnrollmentCard({ ref }: { ref?: Ref<HTMLDivElement> }) {
                                 icon={<StatusDot colorRole="destructive" pulse size="sm" />}
                             />
                         </span>
-                    ) : (
-                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-                            POST /voice-profile/enroll
-                        </span>
-                    )}
-                </CardAction>
+                    </CardAction>
+                ) : null}
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-center gap-2">
@@ -164,7 +188,7 @@ export function EnrollmentCard({ ref }: { ref?: Ref<HTMLDivElement> }) {
                             disabled={atCapacity || recorder.phase === 'requesting' || enroll.isPending}
                         >
                             <IconMicrophone aria-hidden />
-                            Record sample
+                            {atCapacity ? 'Record sample' : `Record sample ${samples.length + 1}`}
                         </Button>
                     )}
                     <Button
@@ -212,25 +236,26 @@ export function EnrollmentCard({ ref }: { ref?: Ref<HTMLDivElement> }) {
                         addFiles(Array.from(event.dataTransfer?.files ?? []), 'uploaded');
                     }}
                 >
-                    {samples.length > 0 ? (
-                        <ul aria-label="Staged samples" className="flex flex-col gap-2">
-                            {samples.map((sample) => (
-                                <StagedSampleRow
-                                    key={sample.id}
+                    <ul aria-label="Samples" className="flex flex-col gap-2">
+                        {Array.from({ length: MAX_SAMPLES }, (_, index) => {
+                            const sample = samples[index];
+                            return (
+                                <SampleSlotRow
+                                    key={index}
+                                    index={index}
                                     sample={sample}
                                     disabled={enroll.isPending}
-                                    onRemove={() => setSamples((previous) => previous.filter((row) => row.id !== sample.id))}
+                                    onRemove={() => {
+                                        if (sample) setSamples((previous) => previous.filter((row) => row.id !== sample.id));
+                                    }}
                                 />
-                            ))}
-                        </ul>
-                    ) : (
-                        <p className="text-muted-foreground py-4 text-center text-sm">
-                            Drag and drop audio files here, or use Record / Upload.
-                        </p>
-                    )}
+                            );
+                        })}
+                    </ul>
+                    <p className="text-muted-foreground pt-2 text-center text-xs">Drag and drop audio files here, or use Record / Upload.</p>
                 </div>
                 <div className="flex flex-col gap-2">
-                    <Label htmlFor={labelId}>Label (optional)</Label>
+                    <Label htmlFor={labelId}>Profile name</Label>
                     <Input
                         id={labelId}
                         value={label}
@@ -240,7 +265,15 @@ export function EnrollmentCard({ ref }: { ref?: Ref<HTMLDivElement> }) {
                         disabled={enroll.isPending}
                         onChange={(event) => setLabel(event.target.value)}
                     />
-                    <p className="text-muted-foreground text-xs">Shown in the profile list {'\u2014'} up to {MAX_LABEL_LENGTH} characters.</p>
+                    <p className="text-muted-foreground text-xs">
+                        Optional {'\u2014'} shown in the profile list, up to {MAX_LABEL_LENGTH} characters.
+                    </p>
+                </div>
+                {/* Segmented enrollment progress: one h-1.5 segment per sample slot, filled = staged. */}
+                <div aria-hidden className="flex gap-1">
+                    {Array.from({ length: MAX_SAMPLES }, (_, index) => (
+                        <span key={index} className={index < samples.length ? 'bg-primary h-1.5 flex-1 rounded' : 'bg-muted h-1.5 flex-1 rounded'} />
+                    ))}
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-muted-foreground text-xs">
@@ -250,7 +283,7 @@ export function EnrollmentCard({ ref }: { ref?: Ref<HTMLDivElement> }) {
                     </p>
                     <Button type="button" onClick={submit} disabled={!canSubmit}>
                         {enroll.isPending ? <Spinner /> : null}
-                        Submit enrollment
+                        Enroll profile
                     </Button>
                 </div>
                 <p className="text-muted-foreground text-xs">

@@ -9,6 +9,7 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { GatewayError } from '@/shared/api';
 import { useSession } from '@/shared/auth';
 import { PageHeader } from '@/shared/page/page-header';
+import { PlaygroundBanner } from '@/shared/page/playground-banner';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
@@ -83,7 +84,7 @@ function MyDnaStyleBody() {
                     title="My DNA Writing Style"
                     meta={
                         <>
-                            <span>Per-doctor writing-style reports (PHI-derived) {'\u2014'} the self/doctor plane.</span>
+                            <span>Your personal writing style {'\u00b7'} versioned {'\u00b7'} generation streams over SSE</span>
                             {mine.data ? (
                                 <span>
                                     {mine.data.length} {mine.data.length === 1 ? 'report' : 'reports'}
@@ -104,12 +105,13 @@ function MyDnaStyleBody() {
                     }
                 />
             }
+            statusBanner={<PlaygroundBanner />}
             footer={
                 <StatusFooter
                     start={<span>{refreshing ? 'Refreshing' : 'Up to date'}</span>}
                     end={
                         <span aria-hidden className="font-mono">
-                            GET /dna-writing-styles {'\u00b7'} matrix row 37
+                            GET /dna-writing-styles/my-style {'\u00b7'} POST /dna-writing-styles/generate (SSE)
                         </span>
                     }
                 />

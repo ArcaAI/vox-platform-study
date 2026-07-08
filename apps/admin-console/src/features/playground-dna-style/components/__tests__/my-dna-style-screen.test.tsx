@@ -210,8 +210,8 @@ describe('MyDnaStyleScreen', () => {
         expect(screen.getByRole('button', { name: 'Set rep-0 as default' })).toBeDefined();
         expect(screen.queryByRole('button', { name: 'Set rep-1 as default' })).toBeNull();
 
-        // Version timeline auto-follows the my-style report, newest first.
-        const timeline = await screen.findByRole('list', { name: 'Version timeline' });
+        // Version history auto-follows the my-style report, newest first.
+        const timeline = await screen.findByRole('list', { name: 'Version history' });
         const items = within(timeline).getAllByRole('listitem');
         expect(items[0].textContent).toContain('v3');
         expect(items[0].textContent).toContain('manual edit');
@@ -299,8 +299,8 @@ describe('MyDnaStyleScreen', () => {
 
         fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
         fireEvent.change(screen.getByLabelText('Style text'), { target: { value: 'Adjusted clinical prose.' } });
-        fireEvent.change(screen.getByLabelText('Change reason'), { target: { value: 'tone fix' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        fireEvent.change(screen.getByLabelText('Edit reason'), { target: { value: 'tone fix' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save style' }));
 
         await waitFor(() => {
             const patch = calls.find((call) => call.method === 'PATCH');
@@ -322,7 +322,7 @@ describe('MyDnaStyleScreen', () => {
 
         fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
         fireEvent.change(screen.getByLabelText('Style text'), { target: { value: 'Draft to keep.' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Save style' }));
 
         expect(await screen.findByText(/412 precondition failed/i)).toBeDefined();
         // Non-destructive: the draft stays in the editor.
@@ -345,7 +345,7 @@ describe('MyDnaStyleScreen', () => {
 
         // Selecting a row re-targets the timeline (GET rep-0/versions).
         fireEvent.click(await screen.findByRole('button', { name: 'Show versions of rep-0' }));
-        const timeline = await screen.findByRole('list', { name: 'Version timeline' });
+        const timeline = await screen.findByRole('list', { name: 'Version history' });
         await waitFor(() => expect(within(timeline).getAllByRole('listitem')[0].textContent).toContain('first pass'));
 
         fireEvent.click(screen.getByRole('button', { name: 'Set rep-0 as default' }));
