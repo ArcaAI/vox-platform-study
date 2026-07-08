@@ -4,7 +4,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { IconBucket, IconBuilding, IconDatabase, IconDots, IconFilterOff, IconFolderOpen, IconTrash } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
-import { VirtualizedDataGrid, type ColumnDef } from '@arcaai/ui';
+import { VirtualizedDataGrid, includesSomeFilter, type ColumnDef } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
@@ -108,24 +108,24 @@ function BucketsTab({ onProvision }: { onProvision: () => void }) {
             accessorKey: 'tenantId',
             header: 'Tenant',
             enableSorting: false,
-            filterFn: 'equalsString',
-            meta: { label: 'Tenant', variant: 'select', options: tenantOptions },
+            filterFn: includesSomeFilter,
+            meta: { label: 'Tenant', variant: 'multiSelect', options: tenantOptions },
             size: 180,
             cell: ({ row }) => <NameWithId name={tenantNames.get(row.original.tenantId)} id={row.original.tenantId} />,
         },
         {
             accessorKey: 'purpose',
             header: 'Purpose',
-            filterFn: 'equalsString',
-            meta: { label: 'Purpose', variant: 'select', options: PURPOSE_OPTIONS },
+            filterFn: includesSomeFilter,
+            meta: { label: 'Purpose', variant: 'multiSelect', options: PURPOSE_OPTIONS },
             cell: ({ row }) => <Badge variant="outline">{PURPOSE_LABELS[row.original.purpose]}</Badge>,
         },
         {
             id: 'type',
             accessorFn: (row) => row.bucketType,
             header: 'Type',
-            filterFn: 'equalsString',
-            meta: { label: 'Type', variant: 'select', options: TYPE_OPTIONS },
+            filterFn: includesSomeFilter,
+            meta: { label: 'Type', variant: 'multiSelect', options: TYPE_OPTIONS },
             cell: ({ row }) => (
                 <Badge variant={row.original.bucketType === 'SYSTEM' ? 'secondary' : 'outline'}>{row.original.bucketType === 'SYSTEM' ? 'System' : 'Custom'}</Badge>
             ),

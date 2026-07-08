@@ -114,7 +114,7 @@ export function AiModelsScreen() {
                 accessorKey: 'source',
                 header: 'Provider',
                 enableSorting: false,
-                meta: { label: 'Provider', variant: 'select', options: PROVIDER_OPTIONS },
+                meta: { label: 'Provider', variant: 'multiSelect', options: PROVIDER_OPTIONS },
                 cell: ({ row }) => SOURCE_LABELS[row.original.source] ?? row.original.source,
                 size: 140,
             },
@@ -122,7 +122,7 @@ export function AiModelsScreen() {
                 accessorKey: 'category',
                 header: 'Capability',
                 enableSorting: false,
-                meta: { label: 'Capability', variant: 'select', options: CAPABILITY_OPTIONS },
+                meta: { label: 'Capability', variant: 'multiSelect', options: CAPABILITY_OPTIONS },
                 // Single line — wrapping badges outgrow the fixed-height grid row (TASK-429).
                 cell: ({ row }) => (
                     <span className="flex items-center gap-1">
@@ -136,7 +136,7 @@ export function AiModelsScreen() {
                 accessorKey: 'resourceStatus',
                 header: 'Status',
                 enableSorting: false,
-                meta: { label: 'Status', variant: 'select', options: STATUS_OPTIONS },
+                meta: { label: 'Status', variant: 'multiSelect', options: STATUS_OPTIONS },
                 cell: ({ row }) => <ResourceStatusBadge status={row.original.resourceStatus} />,
                 size: 130,
             },

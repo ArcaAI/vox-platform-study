@@ -3,9 +3,23 @@
  * relative-date presets are unit-testable; the interactive controls live in
  * `data-grid-faceted-filter.tsx`.
  */
+import type { Row } from '@tanstack/react-table';
 import type { FilterRule } from '@/lib/shared';
 
 export type BooleanFilterState = 'any' | 'yes' | 'no';
+
+/**
+ * Array-aware equality filter for faceted `multiSelect` columns on CLIENT-SIDE
+ * grids (server grids serialize `inArray` to the gateway and never run this).
+ * Keeps a row when its scalar cell value is one of the selected values; an
+ * empty/absent selection means "no filter". The built-in `equalsString`/
+ * `includesString` fns compare the cell against the whole array coerced to one
+ * string, so they never match a multi-value selection — use this instead.
+ */
+export function includesSomeFilter<TData>(row: Row<TData>, columnId: string, filterValue: unknown): boolean {
+  if (!Array.isArray(filterValue) || filterValue.length === 0) return true;
+  return filterValue.map(String).includes(String(row.getValue(columnId)));
+}
 
 /** 3-state boolean control → FilterRule (`Any` = filter off). */
 export function booleanFilterRule(state: BooleanFilterState, columnId: string): FilterRule | null {

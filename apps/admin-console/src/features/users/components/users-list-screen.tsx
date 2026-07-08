@@ -307,7 +307,7 @@ export function UsersListScreen() {
                 accessorKey: 'resourceStatus',
                 header: 'Status',
                 enableSorting: false,
-                meta: { label: 'Status', variant: 'select', options: STATUS_OPTIONS },
+                meta: { label: 'Status', variant: 'multiSelect', options: STATUS_OPTIONS },
                 cell: ({ row }) => <ResourceStatusBadge status={row.original.resourceStatus} />,
                 size: 140,
             },

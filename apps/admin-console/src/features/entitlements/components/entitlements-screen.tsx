@@ -15,7 +15,6 @@ import { VirtualizedDataGrid, type ColumnDef } from '@arcaai/ui';
 import { GatewayError } from '@/shared/api';
 import type { TenantPlan } from '@/features/tenants/api/types';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
-import { FilterBar, FilterSearch } from '@/shared/data/filter-bar';
 import { gridPersistence } from '@/shared/data/grid-persistence';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
@@ -87,14 +86,12 @@ function EnforcementCard() {
 /** Feature chips shown before the +N overflow badge (single-line cell, TASK-429). */
 const FEATURE_BADGE_LIMIT = 2;
 
-/** Frame 13 plans table: client-side search over the fixed plan set. */
+/** Frame 13 plans table: fill-height grid with in-toolbar search over the fixed plan set. */
 function PlansTab() {
     const { data, isLoading, error, refetch } = usePlanEntitlements();
-    const [search, setSearch] = useQueryState('search', parseAsString.withDefault(''));
     const [editing, setEditing] = useState<TenantPlan | null>(null);
 
     const plans = data ?? [];
-    const rows = search ? plans.filter((plan) => PLAN_LABELS[plan.plan].toLowerCase().includes(search.toLowerCase())) : plans;
 
     const columns: ColumnDef<PlanEntitlement>[] = [
         {
@@ -164,44 +161,28 @@ function PlansTab() {
         },
     ];
 
-    const empty = search ? (
-        <EmptyState
-            icon={IconFilterOff}
-            title="No plans match your search"
-            description="Try a different search or clear it."
-            action={
-                <Button variant="outline" onClick={() => setSearch(null)}>
-                    <IconFilterOff aria-hidden />
-                    Clear search
-                </Button>
-            }
-        />
-    ) : (
-        <EmptyState
-            icon={IconLicense}
-            title="No plan entitlements yet"
-            description="Tenants keep implicit defaults until the gateway seeds plan entitlements."
-        />
-    );
+    // Grid-internal global search filters `plans` down; when it hides every row we
+    // still hold plans, so branch the empty state on the unfiltered set.
+    const empty =
+        plans.length === 0 ? (
+            <EmptyState
+                icon={IconLicense}
+                title="No plan entitlements yet"
+                description="Tenants keep implicit defaults until the gateway seeds plan entitlements."
+            />
+        ) : (
+            <EmptyState icon={IconFilterOff} title="No plans match your search" description="Try a different search or clear it." />
+        );
 
     return (
-        <div className="flex flex-col gap-4">
-            <FilterBar shown={rows.length} total={plans.length}>
-                <FilterSearch
-                    label="Search plans"
-                    placeholder={'Search plans\u2026'}
-                    value={search}
-                    onChange={(value) => setSearch(value || null)}
-                />
-            </FilterBar>
+        <>
             <VirtualizedDataGrid<PlanEntitlement>
                 aria-label="Plan entitlements"
                 columns={columns}
-                data={rows}
+                data={plans}
                 getRowId={(row) => row.id}
-                height={360}
                 features={{
-                    globalSearch: false,
+                    globalSearch: true,
                     facetedFilters: false,
                     sorting: false,
                     rowSelection: false,
@@ -218,7 +199,7 @@ function PlansTab() {
                 onRowClick={(row) => setEditing(row.plan)}
             />
             <PlanEditDialog plan={editing} onOpenChange={(open) => !open && setEditing(null)} />
-        </div>
+        </>
     );
 }
 
@@ -246,6 +227,7 @@ export function EntitlementsScreen() {
     return (
         <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => setTabParam(next === 'plans' ? null : next)}>
             <ScreenTemplate
+                contentMode="fill"
                 header={
                     <PageHeader
                         title="Entitlements & Plans"
@@ -275,10 +257,10 @@ export function EntitlementsScreen() {
                     />
                 }
             >
-                <TabsContent value="plans">
+                <TabsContent value="plans" className="flex min-h-0 flex-col">
                     <PlansTab />
                 </TabsContent>
-                <TabsContent value="overrides">
+                <TabsContent value="overrides" className="overflow-y-auto">
                     <TenantOverridePanel />
                 </TabsContent>
             </ScreenTemplate>

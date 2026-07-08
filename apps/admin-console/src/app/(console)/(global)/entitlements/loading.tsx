@@ -1,6 +1,6 @@
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 
-/** Skeleton mirroring the entitlements screen: header, enforcement card, tabs, filter bar, plans table. */
+/** Skeleton mirroring the entitlements screen: header, enforcement card, tabs, plans table. */
 export default function EntitlementsLoading() {
     return (
         <div className="flex flex-col gap-4">
@@ -13,7 +13,6 @@ export default function EntitlementsLoading() {
             </div>
             <Skeleton className="h-20 w-full" />
             <Skeleton className="h-9 w-64" />
-            <Skeleton className="h-13 w-full" />
             <div className="flex flex-col gap-3 rounded-md border p-3">
                 {Array.from({ length: 4 }, (_, index) => (
                     <Skeleton key={index} className="h-8 w-full" />
