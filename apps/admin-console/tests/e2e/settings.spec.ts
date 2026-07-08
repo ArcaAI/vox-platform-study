@@ -1,10 +1,12 @@
 /**
- * Frame 24 — Settings & secrets screen spec: authenticated smoke of the list
- * regions (h1, new-setting action, scope tabs, table or empty state) and the
- * rule 11 §11 axe gate in both themes. Requires a running stack.
+ * Frame 24 — Settings & secrets screen spec (TASK-439 redesign): authenticated
+ * smoke of the list (h1, New-setting action, data grid or empty state), the row →
+ * DetailDrawer flow (Value/Details/History tabs, real value editor — no modal),
+ * the create drawer, and the rule 11 §11 axe gate in both themes. Requires a
+ * running stack.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { expectNoA11yViolations } from './helpers/a11y';
 import { loginAsAdmin } from './helpers/auth';
 import { API_DOWN_MESSAGE, APP_DOWN_MESSAGE, apiAvailable, appAvailable } from './helpers/stack';
@@ -15,20 +17,44 @@ test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
 });
 
-async function waitForListSettled(page: import('@playwright/test').Page) {
+async function waitForListSettled(page: Page) {
     await expect(page.getByRole('heading', { level: 1, name: 'Settings & secrets' })).toBeVisible();
-    const table = page.getByRole('table', { name: 'Global settings' });
+    const grid = page.getByRole('grid', { name: 'Settings' });
     const emptyState = page.getByText('No settings yet').or(page.getByText('No settings match your search'));
-    await expect(table.locator('tbody tr').first().or(emptyState.first())).toBeVisible();
+    await expect(grid.or(emptyState.first())).toBeVisible();
 }
 
 test.describe('settings & secrets screen (frame 24)', () => {
-    test('shows the header with the global tab and the table or an empty state', async ({ page }) => {
+    test('shows the header, the New setting action and the grid or an empty state', async ({ page }) => {
         await page.goto('/settings');
         await waitForListSettled(page);
         await expect(page.getByRole('button', { name: 'New setting' }).first()).toBeVisible();
-        await expect(page.getByRole('tab', { name: 'Global' })).toBeVisible();
-        await expect(page.getByLabel('Search settings')).toBeVisible();
+    });
+
+    test('opens the create drawer from the New setting action', async ({ page }) => {
+        await page.goto('/settings');
+        await waitForListSettled(page);
+        await page.getByRole('button', { name: 'New setting' }).first().click();
+
+        const dialog = page.getByRole('dialog');
+        await expect(dialog).toBeVisible();
+        await expect(dialog.getByText('New setting')).toBeVisible();
+        await expect(dialog.getByRole('button', { name: 'Create setting' })).toBeVisible();
+    });
+
+    test('opens the detail drawer with tabs on row click (no modal editor)', async ({ page }) => {
+        await page.goto('/settings');
+        await waitForListSettled(page);
+
+        const firstRow = page.getByRole('grid', { name: 'Settings' }).getByRole('row').nth(1);
+        test.skip((await firstRow.count()) === 0, 'no settings to open');
+        await firstRow.click();
+
+        const dialog = page.getByRole('dialog');
+        await expect(dialog).toBeVisible();
+        // The drawer carries the Value/Details/History tabs — the value editor, not a modal.
+        await expect(dialog.getByRole('tab', { name: 'Value' })).toBeVisible();
+        await expect(dialog.getByRole('tab', { name: 'History' })).toBeVisible();
     });
 
     test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {

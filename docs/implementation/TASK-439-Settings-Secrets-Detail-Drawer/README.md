@@ -1,6 +1,6 @@
 # TASK-439 — Settings & Secrets Redesign: List + Detail Drawer with Code Editor
 
-- **Status**: Pending
+- **Status**: Review
 - **Type**: feature (UX/UI redesign — `/settings`)
 - **Owner**: admin-console
 - **Design source**: project "ARCAAI Hope Admin console" (`https://claude.ai/design/p/6a582386-939b-47d3-8c19-cd9338b34814`) — build spec §5; artboards `1b` (desktop drawer), `5c` (dark), `5f` (mobile sheet).
@@ -101,10 +101,45 @@ Mobile: drawer → full-screen sheet (DetailDrawer built-in); list rows render a
 
 ## Implementation Summary
 
-_Pending._
+Replaced the per-row edit/create **modals** with the console-wide **DetailDrawer** (TASK-437) carrying a real value editor — the core AC. Scope was kept to `features/settings/**` (+ its e2e spec + this README); the TASK-437 foundation (`DetailDrawer`, `CodeEditor`/`CodeEditorToolbar`, `useViewportTier`) was imported, not forked.
+
+### Files changed (all under `apps/admin-console`)
+
+New:
+- `src/features/settings/components/setting-drawer.tsx` — `SettingDetailDrawer` (view/edit) + `SettingCreateDrawer` on `DetailDrawer size="lg"` with `Tabs variant="line"` **Value / Details / History**; footer Cancel · Save (disabled while pristine/invalid/locked) + destructive Delete; the moved-in `RevealSecretDialog` (step-up re-auth stays a Dialog per the UX rules) and the secret pane (masked current value · gated Reveal · guided Rotate · write-only replace field).
+- `src/features/settings/components/value-editor-pane.tsx` — type-aware `ValueEditorPane` (Boolean→Switch, Json/Array→`CodeEditor`, Binary→read-only notice, numbers→numeric-inputmode Input, else Input) + the `isValueValid` / `isJsonType` gates.
+- `src/features/settings/components/setting-history-tab.tsx` — audit-log-backed History tab (skeleton/empty/error + actor · action · when · version).
+- Tests: `components/__tests__/setting-drawer.test.tsx` (7), `components/__tests__/value-editor-pane.test.tsx` (6).
+
+Modified:
+- `src/features/settings/components/settings-screen.tsx` — rows are read-only (masked secrets, no inline reveal/pencil); row click and "New setting" open the drawer via a `?setting=` (nuqs) URL param (`new` sentinel = create); actions column reduced to Delete (with `stopPropagation` so it doesn't also open the drawer); Tenant column/filter (TASK-430) retained.
+- `src/features/settings/api/{types,keys,client,hooks}.ts` — added `SettingHistoryEntry`, `settingKeys.history`, `listSettingHistory` (maps the audit envelope), `useSettingHistory`.
+- Tests: `components/__tests__/settings-screen.test.tsx` (rewritten for the drawer flow — 9), `api/__tests__/settings-api.test.ts` (+history — 5), `tests/e2e/settings.spec.ts` (updated: create drawer + row→drawer tabs; removed the stale "Global" scope-tab / `Global settings` table assertions).
+
+Removed:
+- `src/features/settings/components/setting-dialogs.tsx` — the retired `EditSettingDialog` / `CreateSettingDialog` + `ValueEditor` (broken JSON-in-`Textarea`).
+
+### Open-item outcomes
+
+1. **Rotate = guided replace (shipped).** The Rotate button (global-admin gated) focuses the write-only "New value" field and swaps the helper copy to the rotate wording ("enter a new secret to rotate; the old value is replaced on save. Rotation is audited"). Entering a value replaces the stored secret on Save (write-only; Save stays disabled for a secret until a new value is typed). No server-side rotation endpoint exists — a hard `POST /admin/settings/:id/rotate` (regenerate/invalidate) remains an **API-gap follow-up**.
+2. **History = audit-log-backed (shipped).** Reads `GET /admin/audit-logs/resource/GlobalSetting/:id` (limit 20) through a **settings-local** client (`listSettingHistory`) rather than importing `features/audit-logs` (rule 13: features never import each other). Renders actor · action · when · version. `version` is projected from the audit `data.version`/`_version` when present.
+
+### Verification (actual output)
+
+- `pnpm --filter @arcaai/admin-console test` → **105 files, 790 tests passed** (settings-specific: 27 — screen 9, drawer 7, value-pane 6, api 5).
+- `pnpm --filter @arcaai/admin-console lint` → **exit 0** (0 warnings).
+- `pnpm --filter @arcaai/admin-console build` → **exit 0**, `/settings` route present.
+- `tsc --noEmit` on `features/settings/**` → **0 errors** (pre-existing `toHaveNoViolations` typing gaps + the parallel RBAC agent's in-progress files are outside this lane and do not block build/lint/test).
+
+### Deferred / not in this lane
+
+- **Namespace grouping (group-header rows) and the Namespace/Type/Secrets-only filter chips** were NOT shipped. `AdminDataGrid`/`VirtualizedDataGrid` has no grouped-row variant without forking the grid (a `packages/ui` / shared change — out of lane), and server-side faceted filtering on `namespace`/`dataType`/`isSecret` is unverified against the gateway (only `tenantId` is proven via TASK-430). **Shared-change needed:** a grouped-row (or sticky group-separator) variant on the grid + gateway confirmation of the extra filter fields.
+- **Mobile card-row list fallback** is a grid-level (shared) concern and was not changed; the drawer's mobile full-screen sheet is provided by `DetailDrawer` (TASK-437) out of the box.
+- **Runtime verification** (`next-dev-loop`, both-theme + mobile-sheet screenshots per artboards 1b/5c/5f) and per-screen **axe scans** remain **manual steps** (not performed here).
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-08 | Ticket created from build spec §5 + artboards 1b/5c/5f; current-state map of `features/settings`; Rotate + History scoping decisions recorded. Status: Pending (awaiting plan approval). |
+| 2026-07-08 | Implemented the drawer redesign: retired the edit/create/value modals for `DetailDrawer` + `CodeEditor` (`setting-drawer.tsx`, `value-editor-pane.tsx`, `setting-history-tab.tsx`); list rows now open the drawer via `?setting=` URL state; Rotate ships as guided-replace, History as audit-log-backed. All settings tests/lint/build green (790 tests pass). Deferred: namespace grouping + Namespace/Type/Secrets-only chips (grid/shared + gateway change needed) and mobile card rows (grid/shared). Status → Review. |

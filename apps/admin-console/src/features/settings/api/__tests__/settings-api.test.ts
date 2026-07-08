@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createGlobalSetting, deleteGlobalSetting, getGlobalSetting, listGlobalSettings, listTenantScopedSettings, revealGlobalSetting, updateGlobalSetting } from '../client';
+import { createGlobalSetting, deleteGlobalSetting, getGlobalSetting, listGlobalSettings, listSettingHistory, listTenantScopedSettings, revealGlobalSetting, updateGlobalSetting } from '../client';
 import { settingKeys } from '../keys';
 
 interface RecordedCall {
@@ -71,5 +71,38 @@ describe('settings client', () => {
         expect(calls[0].method).toBe('POST');
         expect(calls[0].body).toEqual({ password: 'admin-password' });
         expect(revealed.value).toBe('hunter2');
+    });
+
+    it('reads change history from the audit-log resource endpoint (newest first, mapped)', async () => {
+        const calls = installFetchMock(() =>
+            Response.json({
+                data: [
+                    {
+                        id: 'a-1',
+                        action: 'UPDATE',
+                        createdAt: '2026-07-01T00:00:00.000Z',
+                        responsibleUserId: 'u-9',
+                        responsibleUser: { id: 'u-9', displayName: 'Dana Admin', email: null },
+                        data: { version: 3 },
+                    },
+                ],
+                count: 1,
+                limit: 20,
+                page: 0,
+            }),
+        );
+        const history = await listSettingHistory('s-1');
+        expect(calls[0].method).toBe('GET');
+        expect(calls[0].url).toBe('/api/hope/admin/audit-logs/resource/GlobalSetting/s-1?limit=20');
+        expect(history).toEqual([
+            {
+                id: 'a-1',
+                action: 'UPDATE',
+                createdAt: '2026-07-01T00:00:00.000Z',
+                responsibleUserId: 'u-9',
+                responsibleUser: { id: 'u-9', displayName: 'Dana Admin', email: null },
+                version: 3,
+            },
+        ]);
     });
 });

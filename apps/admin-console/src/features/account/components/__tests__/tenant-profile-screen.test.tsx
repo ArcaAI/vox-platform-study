@@ -1,8 +1,10 @@
 /**
- * TDD screen tests for frame 25 (tenant half — Tenant profile): identity from
- * GET /tenant/me, entitlement usage from GET /entitlements/me, editable
- * tenant settings over PATCH /tenant/me/config (per-row If-Match, OCC alert
- * on 412), and the frame's NoTenant variant for tenant-less global admins.
+ * TDD screen tests for frame 25 (tenant half — Tenant profile), TASK-440
+ * redesign: three tabs (Organization identity from GET /tenant/me, Plan & usage
+ * from GET /entitlements/me, Settings with a category sub-nav over the editable
+ * tenant/me/config rows). Settings saves send per-row If-Match over PATCH
+ * /tenant/me/config (OCC alert on 412), and the frame's NoTenant variant covers
+ * tenant-less global admins.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -42,7 +44,7 @@ const EDITABLE_CONFIG: TenantConfig = {
     key: 'session-timeout-minutes',
     defaultValue: '30',
     value: '45',
-    dataType: 'number',
+    dataType: 'Integer',
     namespace: 'security',
     tenantId: 'ten-1',
     tenantCode: 'sunrise-medical',
@@ -57,7 +59,7 @@ const LOCKED_CONFIG: TenantConfig = {
     key: 'data-region',
     defaultValue: 'ap-southeast-1',
     value: 'ap-southeast-1',
-    dataType: 'string',
+    dataType: 'String',
     namespace: 'platform',
     locked: true,
     version: 7,
@@ -72,7 +74,7 @@ const SYNTHETIC_CONFIG: TenantConfig = {
     key: 'enable-local-raw-capture',
     defaultValue: 'false',
     value: 'true',
-    dataType: 'boolean',
+    dataType: 'Boolean',
     namespace: 'feature-flags',
     version: 0,
 };
@@ -90,9 +92,7 @@ const ENTITLEMENTS: EntitlementCapabilities = {
         { key: 'departments', limit: null, used: 4, remaining: null, unlimited: true, nearLimit: false, exceeded: false },
         { key: 'storageBytes', limit: 107_374_182_400, used: 32_212_254_720, remaining: 75_161_927_680, unlimited: false, nearLimit: false, exceeded: false },
     ],
-    meters: [
-        { key: 'monthlyConsultations', limit: 1000, used: 310, remaining: 690, unlimited: false, nearLimit: false, exceeded: false },
-    ],
+    meters: [{ key: 'monthlyConsultations', limit: 1000, used: 310, remaining: 690, unlimited: false, nearLimit: false, exceeded: false }],
     features: { dnaReports: true, voiceEnrollment: true, monitoringAccess: false },
     modelTier: 'full',
     rateLimitTier: 'relaxed',
@@ -122,16 +122,24 @@ function stubFetch(handler: Handler): RecordedCall[] {
         vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
             const url = String(input);
             const method = init?.method ?? 'GET';
-            calls.push({
-                url,
-                method,
-                headers: new Headers(init?.headers),
-                body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
-            });
+            calls.push({ url, method, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined });
             return handler(url, method);
         }),
     );
     return calls;
+}
+
+/** Force `useViewportTier` to a given tier by stubbing matchMedia (both queries miss → mobile). */
+function stubViewport(tier: 'desktop' | 'mobile') {
+    vi.stubGlobal(
+        'matchMedia',
+        vi.fn((query: string) => ({
+            matches: tier === 'desktop', // desktop min-width queries match on desktop, miss on mobile
+            media: query,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+        })),
+    );
 }
 
 /** URL-branching happy-path handler; /tenant/me/config must match before /tenant/me. */
@@ -157,34 +165,61 @@ afterEach(() => {
 });
 
 describe('TenantProfileScreen', () => {
-    it('renders the tenant identity, entitlement usage and tenant settings', async () => {
+    it('renders the tenant identity on the default Organization tab', async () => {
         stubFetch(happyHandler());
         renderWithProviders(<TenantProfileScreen />);
 
         expect(screen.getByRole('heading', { level: 1, name: 'Tenant profile' })).toBeDefined();
 
-        // Identity region: name, mono key, plan, status.
         const identity = await screen.findByRole('region', { name: 'Organization' });
         expect(within(identity).getByText('Sunrise Medical Group')).toBeDefined();
         expect(within(identity).getByText('sunrise-medical')).toBeDefined();
         expect(within(identity).getByText('Enterprise')).toBeDefined();
         expect(within(identity).getByText('Active')).toBeDefined();
         expect(within(identity).getByText('pilot')).toBeDefined();
+    });
 
-        // Entitlements region: usage rows, near-limit flag, unlimited, bytes.
-        const entitlements = await screen.findByRole('region', { name: 'Plan & entitlements' });
-        expect(within(entitlements).getByText('Users')).toBeDefined();
-        expect(within(entitlements).getByText('12 / 25')).toBeDefined();
-        expect(within(entitlements).getByText('Near limit')).toBeDefined();
-        expect(within(entitlements).getByText('4 / Unlimited')).toBeDefined();
-        expect(within(entitlements).getByText('30 GB / 100 GB')).toBeDefined();
-        expect(within(entitlements).getByText('310 / 1,000')).toBeDefined();
+    it('renders all three profile tabs', async () => {
+        stubFetch(happyHandler());
+        renderWithProviders(<TenantProfileScreen />);
+        await screen.findByRole('region', { name: 'Organization' });
 
-        // Config rows render with their current values.
-        const settings = await screen.findByRole('region', { name: 'Tenant settings' });
-        expect(within(settings).getByText('Session timeout')).toBeDefined();
-        const input = within(settings).getByLabelText('Value for session-timeout-minutes');
+        expect(screen.getByRole('tab', { name: 'Organization', selected: true })).toBeDefined();
+        expect(screen.getByRole('tab', { name: 'Plan & usage' })).toBeDefined();
+        expect(screen.getByRole('tab', { name: 'Settings' })).toBeDefined();
+    });
+
+    it('shows entitlement usage on the Plan & usage tab', async () => {
+        stubFetch(happyHandler());
+        renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=plan' });
+
+        const plan = await screen.findByRole('region', { name: 'Plan & usage' });
+        expect(within(plan).getByText('Users')).toBeDefined();
+        expect(within(plan).getByText('12 / 25')).toBeDefined();
+        expect(within(plan).getByText('Near limit')).toBeDefined();
+        expect(within(plan).getByText('4 / Unlimited')).toBeDefined();
+        expect(within(plan).getByText('30 GB / 100 GB')).toBeDefined();
+        expect(within(plan).getByText('310 / 1,000')).toBeDefined();
+    });
+
+    it('deep-links to the Settings tab via ?tab= and renders the category rail', async () => {
+        stubFetch(happyHandler());
+        renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=settings' });
+
+        expect(await screen.findByRole('navigation', { name: 'Settings categories' })).toBeDefined();
+        expect(screen.getByRole('tab', { name: 'Settings', selected: true })).toBeDefined();
+    });
+
+    it('navigates settings categories and renders the type-aware control for each row', async () => {
+        stubFetch(happyHandler());
+        renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=settings' });
+
+        await screen.findByRole('navigation', { name: 'Settings categories' });
+        // Security category holds the editable integer row → numeric input.
+        fireEvent.click(screen.getByRole('button', { name: /Security/ }));
+        const input = await screen.findByLabelText('Value for session-timeout-minutes');
         expect((input as HTMLInputElement).value).toBe('45');
+        expect((input as HTMLInputElement).inputMode).toBe('decimal');
     });
 
     it('shows the friendly no-tenant empty state instead of an error for tenant-less global admins', async () => {
@@ -193,16 +228,19 @@ describe('TenantProfileScreen', () => {
 
         expect(await screen.findByText('No working tenant selected')).toBeDefined();
         expect(screen.queryByRole('alert')).toBeNull();
-        expect(screen.queryByRole('region', { name: 'Tenant settings' })).toBeNull();
+        expect(screen.queryByRole('tab', { name: 'Settings' })).toBeNull();
     });
 
-    it('saving a config row PATCHes tenant/me/config with the row version as If-Match', async () => {
+    it('per-category save sends a per-row If-Match PATCH for each dirty row', async () => {
         const calls = stubFetch(happyHandler());
-        renderWithProviders(<TenantProfileScreen />);
+        renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=settings' });
+
+        await screen.findByRole('navigation', { name: 'Settings categories' });
+        fireEvent.click(screen.getByRole('button', { name: /Security/ }));
 
         const input = await screen.findByLabelText('Value for session-timeout-minutes');
         fireEvent.change(input, { target: { value: '60' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Save session-timeout-minutes' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Save' }));
 
         await waitFor(() => expect(calls.filter((call) => call.method === 'PATCH')).toHaveLength(1));
         const patch = calls.find((call) => call.method === 'PATCH');
@@ -211,19 +249,21 @@ describe('TenantProfileScreen', () => {
         expect(patch?.body).toEqual([{ id: 'cfg-1', value: '60', expectedVersion: 3 }]);
     });
 
-    it('surfaces the OCC alert on 412 and Reload latest refetches the configs', async () => {
+    it('surfaces the OCC alert on 412 and Reload latest refetches, keeping the draft', async () => {
         const calls = stubFetch(
-            happyHandler({
-                configPatch: () => Response.json({ statusCode: 412, message: 'Version drift', error: 'Precondition Failed' }, { status: 412 }),
-            }),
+            happyHandler({ configPatch: () => Response.json({ statusCode: 412, message: 'Version drift', error: 'Precondition Failed' }, { status: 412 }) }),
         );
-        renderWithProviders(<TenantProfileScreen />);
+        renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=settings' });
 
+        await screen.findByRole('navigation', { name: 'Settings categories' });
+        fireEvent.click(screen.getByRole('button', { name: /Security/ }));
         const input = await screen.findByLabelText('Value for session-timeout-minutes');
         fireEvent.change(input, { target: { value: '60' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Save session-timeout-minutes' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Save' }));
 
         expect(await screen.findByText(/412 Precondition Failed/)).toBeDefined();
+        // Draft is retained (no silent loss).
+        expect((screen.getByLabelText('Value for session-timeout-minutes') as HTMLInputElement).value).toBe('60');
 
         const before = configGetCalls(calls);
         fireEvent.click(screen.getByRole('button', { name: 'Reload latest' }));
@@ -233,12 +273,27 @@ describe('TenantProfileScreen', () => {
 
     it('locked and synthetic read-only rows cannot be edited', async () => {
         stubFetch(happyHandler());
-        renderWithProviders(<TenantProfileScreen />);
+        renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=settings' });
 
+        await screen.findByRole('navigation', { name: 'Settings categories' });
+        // Locked row lives under Data & residency.
+        fireEvent.click(screen.getByRole('button', { name: /Data & residency/ }));
         const locked = await screen.findByLabelText('Value for data-region');
         expect((locked as HTMLInputElement).disabled).toBe(true);
-        const synthetic = screen.getByLabelText('Value for enable-local-raw-capture');
-        expect((synthetic as HTMLInputElement).disabled).toBe(true);
+
+        // Synthetic boolean row lives under Clinical defaults (rendered as a Switch).
+        fireEvent.click(screen.getByRole('button', { name: /Clinical defaults/ }));
+        const synthetic = await screen.findByLabelText('Value for enable-local-raw-capture');
+        expect((synthetic as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('renders the settings category rail as a horizontal chip scroll on mobile', async () => {
+        stubViewport('mobile');
+        stubFetch(happyHandler());
+        renderWithProviders(<TenantProfileScreen />, { searchParams: '?tab=settings' });
+
+        const rail = await screen.findByRole('navigation', { name: 'Settings categories' });
+        expect(rail.className).toContain('overflow-x-auto');
     });
 
     it('mirrors the loaded layout with skeletons while the profile is in flight', () => {
@@ -265,7 +320,6 @@ describe('TenantProfileScreen', () => {
         expect(screen.getByText('upstream down')).toBeDefined();
 
         fireEvent.click(screen.getByRole('button', { name: /retry/i }));
-        // The name shows in both the header meta and the identity card.
         expect((await screen.findAllByText('Sunrise Medical Group')).length).toBeGreaterThan(0);
     });
 });
