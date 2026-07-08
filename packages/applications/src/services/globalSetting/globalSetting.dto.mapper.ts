@@ -13,7 +13,34 @@ import { FetchResponse } from '../../common';
  * matches NONE of the seeded keys, so existing rows are unaffected.
  */
 const SECRET_NAMESPACE = 'secrets';
-const SECRET_KEY_PATTERN = /(secret|password|token|credential|api[_-]?key|private[_-]?key)/i;
+
+/**
+ * TASK-443 — the key-naming markers behind the secret convention, expanded to
+ * literal substrings (the former `api[_-]?key` / `private[_-]?key` optional
+ * groups become three literals each) so the SAME list drives BOTH the runtime
+ * regex used by {@link GlobalSettingDtoMapper.isSecretEntity} and the Prisma
+ * `contains` clauses of {@link buildSecretSettingFilter} — the mask and the
+ * server-side "Secrets only" facet can never diverge.
+ */
+const SECRET_KEY_MARKERS = ['secret', 'password', 'token', 'credential', 'api_key', 'api-key', 'apikey', 'private_key', 'private-key', 'privatekey'] as const;
+const SECRET_KEY_PATTERN = new RegExp(SECRET_KEY_MARKERS.join('|'), 'i');
+
+/**
+ * TASK-443 — the derived secret predicate as a Prisma `where` fragment: a row
+ * is a secret when it carries an encrypted value OR sits in the `secrets`
+ * namespace OR its key matches the naming convention — the exact tri-condition
+ * of {@link GlobalSettingDtoMapper.isSecretEntity}, reproduced once here for
+ * the list path's `secretsOnly` facet (there is no `isSecret` column).
+ */
+export function buildSecretSettingFilter(): Record<string, unknown> {
+  return {
+    OR: [
+      { encryptedValue: { not: null } },
+      { namespace: { equals: SECRET_NAMESPACE, mode: 'insensitive' } },
+      ...SECRET_KEY_MARKERS.map((marker) => ({ key: { contains: marker, mode: 'insensitive' } })),
+    ],
+  };
+}
 
 /** Value returned in place of a secret's plaintext on any non-reveal read. */
 const MASKED_VALUE = '';

@@ -26,8 +26,10 @@ export {
   type BooleanFilterState,
   type RelativeDatePreset,
 } from './filter-controls';
+export { buildDisplayRows, DEFAULT_GROUP_FALLBACK_LABEL, type DisplayRow } from './group-rows';
 export {
   type VirtualizedDataGridProps,
+  type GroupByConfig,
   type GridLayoutState,
   type GridLayoutPersistenceAdapter,
   type GridPersistenceConfig,

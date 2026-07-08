@@ -1,6 +1,6 @@
 # TASK-442 — Playground Redesign: Minimalist Impersonation Canvas + Renames
 
-- **Status**: Pending
+- **Status**: Review (code complete; streaming regression + e2e pending on the local stack)
 - **Type**: feature (UX/UI redesign — `/playground/*`)
 - **Owner**: admin-console
 - **Design source**: project "ARCAAI Hope Admin console" (`https://claude.ai/design/p/6a582386-939b-47d3-8c19-cd9338b34814`) — build spec §8; artboards `4a` (canvas), `4b`–`4h` (per-page), `5i` (mobile).
@@ -17,10 +17,10 @@ Routes `/playground/*`, tier 50–59 (role-gated GLOBAL_ADMIN or TENANT_ADMIN). 
 
 ### Acceptance criteria (spec §8)
 
-- [ ] Persona/impersonation control present and functional on every playground page; "under {admin}" always shown.
-- [ ] Minimal chrome — no admin sidebar/filters; centered/split canvas; fluid on mobile (5i).
-- [ ] Both renames applied in nav + titles; routes unchanged.
-- [ ] Agent Playground exposes Text generation / Guardrails / NER tabs.
+- [x] Persona/impersonation control present and functional on every playground page (shared top bar); "under {admin}" always shown.
+- [x] Minimal chrome — no admin sidebar/filters; centered/split canvas; fluid on mobile (canvas is full-width below its cap).
+- [x] Both renames applied in nav + titles; routes unchanged.
+- [x] Agent Playground exposes Text generation / Guardrails / NER tabs (Guardrails/NER as documented API gaps — no user-plane gateway route yet).
 
 ## Current State Evaluation
 
@@ -97,10 +97,102 @@ Move the route group **out of** `(console)`: `src/app/(playground)/playground/�
 
 ## Implementation Summary
 
-_Pending._
+Delivered on branch `fix/2605-review` (per user direction). TDD throughout; all
+unit suites green.
+
+**1. Own minimal layout.** Moved the route group out of `(console)` →
+`src/app/(playground)/` (URLs unchanged). New `(playground)/layout.tsx` owns
+what `(console)` provided for the rest of the app — the login-redirect gate,
+the client `<Providers>` (they live in the console layout, NOT the root layout
+— the plan's note was corrected), and the tier guard (`isElevated ||
+TENANT_ADMIN` → else `notFound()`). Renders `PlaygroundTopBar` + a single
+inner-scroll canvas region (`h-svh overflow-hidden`); no `AppSidebar`/
+`SiteHeader`. Deleted `(console)/(playground)/layout.tsx`.
+
+**2. Persona control** — `features/playground-shared/components/persona-control.tsx`
+(+ `playground-top-bar.tsx`). Reads the session: "Acting as «{doctor}»" when
+impersonating else "Acting as yourself", always with "under {admin}". GLOBAL_ADMIN
+gets a user-search popover (self-contained `getJson('admin/users', …)` over the
+BFF — features never import each other, so it does NOT import `features/users`)
+→ `POST /api/auth/impersonate`; "Stop acting" → `POST /api/auth/revoke-impersonation`;
+both invalidate the whole query cache + `router.refresh()` (bearer swap).
+TENANT_ADMIN degrades to "yourself" with the "requires global admin" reason
+(impersonation is GLOBAL_ADMIN-only at BFF + gateway). Tests: 5.
+
+**3. Canvas primitives** — `playground-canvas.tsx` (`CanvasHeader` [one h1/page],
+`PlaygroundCanvas` [centered ≤760px], `SplitCanvas`) and `run-bar.tsx` (`RunBar`:
+Run/Stop + connection/progress chips, colour never the only signal). Tests: 6.
+
+**4. Page migrations** (logic/hooks untouched — layout-only swaps of
+`ScreenTemplate`/`PageHeader`/`StatusFooter`/`PlaygroundBanner` → the canvas):
+- Consultation → one centered end-user-preview flow (setup → capture → transcript
+  → live summary → document); `WorkingTenantGate` + `AgenticProvider` + WS/SSE kept.
+- Live transcription → wide centered canvas keeping the streaming/batch tabs and
+  pipeline picker. (`StreamingTab` isn't structured as separable capture/transcript
+  panes, so `SplitCanvas` was NOT forced — that would have refactored its streaming
+  logic; a centered canvas satisfies the "centered/split canvas" AC safely.)
+- Voice profiles → centered stack (enroll → profile list).
+- DNA writing style → centered flow (gate/status → settings → current style →
+  generate → history); `ImpersonationGatePanel` gate logic unchanged.
+- **Agent Playground** (was LLM) → `Tabs variant="line"`: **Text generation**
+  (existing prompt/output/providers), **Guardrails**, **NER**.
+
+**5. Renames** — nav-config labels reconciled to page titles (nav = breadcrumb =
+`metadata.title` = h1): "Voice profiles" → **"My Voice Enrollment & Profiles"**,
+"LLM playground" → **"Agent Playground"**, plus Title-Case on the other three.
+`metadata.title` + the top-bar label follow from these. Routes unchanged.
+
+### API gap (RESOLVED by TASK-446)
+
+> **Update (2026-07-08):** the gateway routes below shipped in **TASK-446** — the
+> Guardrails and NER tabs now proxy the Guardrail/NLP services through user-plane
+> `ai/*` routes and are no longer disabled. Original gap analysis retained below.
+
+
+
+The Agent Playground **Guardrails** and **NER** tabs ship **disabled with an
+in-tab API-gap note**: the gateway exposes **no browser/user-plane inference
+route** for either — Guardrail (`POST /api/guardrail/analyze`, :8863) and NLP
+token-classification (:8864) are unproxied; the only `apps/api` surface over them
+is the GLOBAL_ADMIN-only read-only `admin/ai-services/*` status/config plane. The
+SMR text pattern to mirror is `SmrProxyController` (`@Controller('text')`,
+`@Authorize()` user-plane). Enabling the tabs is an `apps/api` change (new
+`@Authorize()` proxy routes) — out of scope for this admin-console ticket, per
+the Current-State fallback. Follow-up ticket to be filed.
+
+### Known limitation
+
+The persona control shows "Acting as «{doctor}»" but not the doctor's department
+(artboard 4a shows "· {dept}") — `SafeSession`/`ImpersonationState` carry only the
+target username, not department. Adding it needs a BFF session-projection change;
+deferred (username conveys the impersonation clearly).
+
+### Verification evidence
+
+- Unit: **full admin-console suite 827 passing (108 files)**; playground + nav +
+  layout subset 191 passing (23 files). New/updated tests: persona-control (5),
+  canvas (6), and the 5 migrated screen suites updated for the dropped
+  banner/footer regions.
+- Lint: `pnpm lint` clean (`eslint src --max-warnings 0`).
+- Typecheck: migrated/new files clean under `tsc --noEmit`. Pre-existing,
+  UNRELATED failures remain in two untouched test files
+  (`rbac/…/permission-matrix.test.tsx`, `shared/detail/…/detail-drawer.test.tsx`:
+  `toHaveNoViolations` axe-matcher typing) — present on the branch before this
+  ticket; `next build`'s type gate will trip on them until fixed separately.
+- **Remaining (needs the running local stack — ticket step 6):** streaming
+  regression pass (live-transcription WS, consultation SSE summary, Agent
+  Playground task stream) and the Playwright `tests/e2e/playground.spec.ts`
+  (written; skips when app/gateway down) + axe both-theme e2e.
+
+### Orphaned by this change
+
+`src/shared/page/playground-banner.tsx` (+ its test) is now unused — the "runs
+under your own account" framing moved to the top-bar persona control. Left in
+place (shared/page module); remove in a follow-up if not repurposed.
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-08 | Ticket created from build spec §8 + artboards 4a/5i; current-state map of playground group; GLOBAL_ADMIN-only impersonation constraint + NER/Guardrails client gap recorded. Status: Pending (awaiting plan approval). |
+| 2026-07-08 | Implemented steps 1–5 (layout split, persona control, canvas primitives, 5 page migrations, renames) on `fix/2605-review`. Guardrails/NER tabs ship as documented API gaps (no user-plane gateway route). Unit 827 pass, lint clean, migrated files typecheck clean. e2e spec written (needs running stack). Corrected plan note: `<Providers>` lives in the console layout, not root. Status: In Progress → Review (streaming regression + e2e pending on the local stack). |

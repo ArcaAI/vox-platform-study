@@ -221,7 +221,8 @@ function CollapsedFilters<TData>({
 }
 
 function ColumnVisibilityList<TData>({ grid }: { grid: UseDataGridResult<TData> }) {
-  const columns = grid.table.getAllColumns().filter((c) => typeof c.accessorFn !== 'undefined' && c.getCanHide());
+  // TASK-443 — filter-only virtual columns are forced hidden; never offer them.
+  const columns = grid.table.getAllColumns().filter((c) => typeof c.accessorFn !== 'undefined' && c.getCanHide() && !c.columnDef.meta?.filterOnly);
   return (
     <Command>
       <CommandInput placeholder="Search columns…" />

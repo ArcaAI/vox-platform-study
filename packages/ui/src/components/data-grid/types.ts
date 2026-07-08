@@ -36,6 +36,21 @@ export interface GridPersistenceConfig {
   debounceMs?: number;
 }
 
+/**
+ * TASK-443 — grouped-row display config. Group headers are injected between
+ * CONTIGUOUS runs of the accessor value in page order (the grid never
+ * re-sorts); on server-driven grids, sort by the group field first so groups
+ * are contiguous per page.
+ */
+export interface GroupByConfig<TData> {
+  /** Row → group key. `null`/`undefined`/blank fall under `fallbackLabel`. */
+  accessor: (row: TData) => string | null | undefined;
+  /** Custom header content. Default: `label (count)` + sr-only group summary. */
+  renderHeader?: (label: string, count: number) => React.ReactNode;
+  /** Group label for rows without a value. Default `'—'`. */
+  fallbackLabel?: string;
+}
+
 export interface GridFeatureFlags {
   globalSearch?: boolean;
   columnSearch?: boolean;
@@ -71,6 +86,13 @@ export interface VirtualizedDataGridProps<TData> extends BaseSurfaceProps, Async
   onQueryStateChange?: (next: DataQueryState) => void;
 
   features?: GridFeatureFlags;
+
+  /**
+   * TASK-443 — render namespace-style group-header rows (label + count)
+   * between contiguous groups of the current page. Purely presentational:
+   * omitting it changes nothing.
+   */
+  groupBy?: GroupByConfig<TData>;
 
   selection?: { value?: RowSelectionState; onChange?: (s: RowSelectionState) => void };
 

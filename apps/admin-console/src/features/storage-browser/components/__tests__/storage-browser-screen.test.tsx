@@ -1,7 +1,8 @@
 /**
  * Frame 31 — tenant Storage browser. fetch is stubbed at the network
- * boundary; assertions cover the 3-panel render, the NoTenant gate, the
- * type-to-confirm object delete, the multipart upload, and the error state.
+ * boundary; assertions cover the fill-grid render (bucket select + breadcrumb
+ * + prefix-grouped grid), the NoTenant gate, the type-to-confirm object delete
+ * (in the detail slide-over), the multipart upload, and the error state.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -94,31 +95,35 @@ afterEach(() => {
 });
 
 describe('StorageBrowserScreen', () => {
-    it('renders buckets, health and the prefix-grouped object grid from the stub', async () => {
+    it('renders the bucket select, breadcrumb and prefix-grouped object grid from the stub', async () => {
         stubStorageBrowser();
         renderWithProviders(<StorageBrowserScreen />);
 
-        // Left panel: one radio per bucket + the health probe verdict.
-        expect(await screen.findByRole('radio', { name: /consult-audio/ })).toBeDefined();
-        expect(screen.getByRole('radio', { name: /doc-attachments/ })).toBeDefined();
-        expect(screen.getByRole('radio', { name: /dna-profiles/ })).toBeDefined();
-        expect(await screen.findByText(/MinIO reachable/)).toBeDefined();
+        // Toolbar: bucket select naming the active bucket + the upload zone label.
+        const bucketSelect = await screen.findByRole('combobox', { name: /bucket/i });
+        await waitFor(() => expect(bucketSelect.textContent).toContain('consult-audio'));
+        expect(screen.getByLabelText('Upload to consult-audio')).toBeDefined();
 
-        // Middle panel: folder row for the nested prefix + root-level files.
+        // Breadcrumb: root chip = bucket name.
+        const breadcrumb = screen.getByRole('navigation', { name: 'Object prefix' });
+        expect(within(breadcrumb).getByRole('button', { name: 'consult-audio' })).toBeDefined();
+
+        // Grid: folder row for the nested prefix + root-level files with sizes + type.
         const grid = screen.getByRole('grid', { name: 'Bucket objects' });
         expect(await within(grid).findByText('recordings/')).toBeDefined();
         expect(within(grid).getByText('c_8p6qy2_0703.wav')).toBeDefined();
         expect(within(grid).getByText('summary_june.pdf')).toBeDefined();
         expect(within(grid).getByText('52 MB')).toBeDefined();
         expect(within(grid).getByText('1.2 MB')).toBeDefined();
+        // Type column shows the inferred content type / Folder label.
+        expect(within(grid).getByText('Folder')).toBeDefined();
+        expect(within(grid).getByText('application/pdf')).toBeDefined();
 
-        // Header meta: counts + endpoint hint + scope note.
+        // Header meta: counts + scope note. Footer: health verdict.
         expect(screen.getByText(/3 buckets/)).toBeDefined();
         expect(screen.getByText(/3 objects/)).toBeDefined();
         expect(screen.getByText('tenant-scoped listing only')).toBeDefined();
-
-        // Right panel: upload zone with its visible label.
-        expect(screen.getByLabelText('Upload to consult-audio')).toBeDefined();
+        expect(await screen.findByText(/MinIO reachable/)).toBeDefined();
     });
 
     it('asks an elevated session without a working tenant to pick one (no data queries fired)', async () => {
@@ -134,7 +139,7 @@ describe('StorageBrowserScreen', () => {
         expect(calls.every((call) => !call.url.includes('/storage/'))).toBe(true);
     });
 
-    it('deletes the selected object only after typing its name to confirm', async () => {
+    it('opens the selected object in the detail slide-over and deletes it after typing its name', async () => {
         const calls = stubStorageBrowser((call) => {
             if (call.method === 'DELETE' && call.url.endsWith('/storage/buckets/consult-audio/files/summary_june.pdf')) {
                 return Response.json({ deleted: true, key: 'summary_june.pdf' });
@@ -143,25 +148,35 @@ describe('StorageBrowserScreen', () => {
         });
         renderWithProviders(<StorageBrowserScreen />);
 
+        // File row click opens the object-actions slide-over.
         fireEvent.click(await screen.findByText('summary_june.pdf'));
-        const actions = await screen.findByText('Object actions');
-        expect(actions).toBeDefined();
-        expect(screen.getByText('application/pdf')).toBeDefined();
+        const drawer = await screen.findByRole('dialog');
+        // Inferred content type is shown in the drawer meta.
+        expect(within(drawer).getByText('application/pdf')).toBeDefined();
 
-        fireEvent.click(screen.getByRole('button', { name: /^delete$/i }));
-        const dialog = await screen.findByRole('alertdialog');
-        const confirm = within(dialog).getByRole('button', { name: /delete object/i }) as HTMLButtonElement;
-        expect(confirm.disabled).toBe(true);
+        fireEvent.click(within(drawer).getByRole('button', { name: /^delete$/i }));
+        const confirm = await screen.findByRole('alertdialog');
+        const confirmButton = within(confirm).getByRole('button', { name: /delete object/i }) as HTMLButtonElement;
+        expect(confirmButton.disabled).toBe(true);
 
-        fireEvent.change(within(dialog).getByLabelText(/to confirm/i), { target: { value: 'summary_june.pdf' } });
-        expect(confirm.disabled).toBe(false);
-        fireEvent.click(confirm);
+        fireEvent.change(within(confirm).getByRole('textbox', { name: /to confirm/i }), { target: { value: 'summary_june.pdf' } });
+        expect(confirmButton.disabled).toBe(false);
+        fireEvent.click(confirmButton);
 
         await waitFor(() =>
             expect(
                 calls.some((call) => call.method === 'DELETE' && call.url === '/api/hope/storage/buckets/consult-audio/files/summary_june.pdf'),
             ).toBe(true),
         );
+    });
+
+    it('deep-links the detail slide-over from the ?object= param', async () => {
+        stubStorageBrowser();
+        renderWithProviders(<StorageBrowserScreen />, { searchParams: '?bucket=consult-audio&object=summary_june.pdf' });
+
+        const drawer = await screen.findByRole('dialog');
+        expect(within(drawer).getByText('application/pdf')).toBeDefined();
+        expect(within(drawer).getByRole('button', { name: /download/i })).toBeDefined();
     });
 
     it('uploads the chosen file as multipart FormData and resets the picker', async () => {

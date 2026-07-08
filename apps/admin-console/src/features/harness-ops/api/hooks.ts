@@ -15,6 +15,7 @@ import {
     terminateWorkflow,
 } from './client';
 import { harnessOpsKeys } from './keys';
+import { workflowRefetchInterval, workflowsRefetchInterval } from './polling';
 import type { AuditListParams, EvalRunListParams, SignalWorkflowBody, WorkflowActionBody, WorkflowListParams } from './types';
 
 export function useHarnessAudit(params?: AuditListParams) {
@@ -37,16 +38,32 @@ export function useGateQueue() {
     return useQuery({ queryKey: harnessOpsKeys.gateQueue(), queryFn: getGateQueue });
 }
 
+/**
+ * Live workflow list. Temporal visibility is a snapshot, so the query polls
+ * itself (5s) WHILE any loaded row is still RUNNING and the tab is foreground,
+ * and stops once everything is terminal — the manual Refresh button stays.
+ */
 export function useHarnessWorkflows(params?: WorkflowListParams) {
-    return useQuery({ queryKey: harnessOpsKeys.workflows(params), queryFn: () => listWorkflows(params), placeholderData: keepPreviousData });
+    return useQuery({
+        queryKey: harnessOpsKeys.workflows(params),
+        queryFn: () => listWorkflows(params),
+        placeholderData: keepPreviousData,
+        refetchInterval: (query) => workflowsRefetchInterval(query.state.data?.items),
+        refetchIntervalInBackground: false,
+    });
 }
 
-/** Detail always asks for the loop phase (`?phase=true`) per frame 38's drawer. */
+/**
+ * Selected-workflow detail — always asks for the loop phase (`?phase=true`) per
+ * frame 38's drawer, and polls itself (5s) while its run is live.
+ */
 export function useHarnessWorkflow(workflowId: string | null) {
     return useQuery({
         queryKey: harnessOpsKeys.workflow(workflowId ?? ''),
         queryFn: () => getWorkflow(workflowId ?? '', { phase: true }),
         enabled: !!workflowId,
+        refetchInterval: (query) => workflowRefetchInterval(query.state.data?.status),
+        refetchIntervalInBackground: false,
     });
 }
 

@@ -116,6 +116,12 @@ export class RoleResponse {
 
   @ApiPropertyOptional({ description: 'Associated policies' })
   policies?: PolicySummary[];
+
+  @ApiPropertyOptional({
+    description:
+      'Users holding this role (tenant-scoped for tenant-scoped callers; platform-wide for unscoped platform admins). Present on read paths only (TASK-444).',
+  })
+  memberCount?: number;
 }
 
 /**
@@ -130,6 +136,60 @@ export class PolicySummary {
 
   @ApiProperty({ description: 'Priority in this role' })
   priority: number;
+}
+
+/**
+ * TASK-444 — one member of a role: a UserRoleAssignment joined to its user.
+ * `department` is the user's department in the ASSIGNMENT's tenant;
+ * `resourceStatus` is the membership status, `userResourceStatus` the account.
+ */
+export class RoleMemberResponse {
+  @ApiProperty({ description: 'Role assignment ID' })
+  assignmentId: string;
+
+  @ApiProperty({ description: 'User ID' })
+  userId: string;
+
+  @ApiProperty({ description: 'Tenant the assignment belongs to' })
+  tenantId: string;
+
+  @ApiProperty({ description: 'Login username' })
+  username: string;
+
+  @ApiProperty({ description: 'Profile display name (falls back to username)' })
+  displayName: string;
+
+  @ApiPropertyOptional({ description: 'Profile email', nullable: true })
+  email: string | null;
+
+  @ApiPropertyOptional({ description: "User's department in the assignment tenant (primary preferred)", nullable: true })
+  department: string | null;
+
+  @ApiProperty({ description: 'Membership (assignment) status' })
+  resourceStatus: string;
+
+  @ApiProperty({ description: 'User account status' })
+  userResourceStatus: string;
+
+  @ApiProperty({ description: 'When the role was assigned' })
+  assignedAt: Date;
+}
+
+/**
+ * TASK-444 — paginated members envelope (same shape as the other RBAC lists).
+ */
+export class PaginatedRoleMemberResponse {
+  @ApiProperty({ type: [RoleMemberResponse], description: 'Members of the role' })
+  data: RoleMemberResponse[];
+
+  @ApiProperty({ description: 'Total count' })
+  total: number;
+
+  @ApiProperty({ description: 'Page number' })
+  page: number;
+
+  @ApiProperty({ description: 'Page size' })
+  pageSize: number;
 }
 
 /**

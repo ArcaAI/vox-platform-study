@@ -52,10 +52,15 @@ export class RbacRoleRepository {
     return this.delegate.count(args);
   }
 
-  async findByIdWithPolicies(id: string): Promise<unknown> {
+  /**
+   * TASK-444 — `include` may be overridden so the role read can carry extra
+   * projections (e.g. a tenant-filtered `_count.UserRoleAssignments` for
+   * member counts) without duplicating the canonical policies shape.
+   */
+  async findByIdWithPolicies(id: string, include: unknown = ROLE_POLICIES_INCLUDE): Promise<unknown> {
     return this.delegate.findUnique({
       where: { id },
-      include: ROLE_POLICIES_INCLUDE,
+      include,
     });
   }
 

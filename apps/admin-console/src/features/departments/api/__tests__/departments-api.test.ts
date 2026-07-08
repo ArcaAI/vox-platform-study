@@ -7,6 +7,7 @@ import {
     listDepartmentChildren,
     listDepartmentUsers,
     listDepartments,
+    listPromptTemplateOptions,
     listRootDepartments,
     updateDepartment,
     updateDepartmentPromptConfig,
@@ -120,6 +121,20 @@ describe('departments client', () => {
         expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['PATCH /api/hope/admin/departments/dep-1/prompt-config']);
         expect(calls[0].headers.get('if-match')).toBe('"3"');
         expect(calls[0].body).toEqual({ preSummaryPromptId: 'pt-1', dnaWritingStylePromptId: 'pt-9', expectedVersion: 3 });
+    });
+
+    it('reads the prompt-template Select catalog and projects id+name from the paginated envelope', async () => {
+        const calls = installFetchMock(() =>
+            Response.json({
+                data: [{ id: 'pt-1', name: 'Cardiology Notes', category: 'SUMMARY', status: 'PUBLISHED' }],
+                count: 1,
+                limit: 100,
+                page: 1,
+            }),
+        );
+        const options = await listPromptTemplateOptions();
+        expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/admin/prompt-templates?page=1&limit=100']);
+        expect(options).toEqual([{ id: 'pt-1', name: 'Cardiology Notes' }]);
     });
 
     it('soft-deletes a department with a DELETE on the id path', async () => {

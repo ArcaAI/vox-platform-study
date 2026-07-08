@@ -1,8 +1,9 @@
 /**
  * Frame 30 — Departments screen. fetch is stubbed at the network boundary
  * (session + gateway proxy); assertions cover the hierarchy/members render,
- * the lazy children expansion, the NoTenant gate, the If-Match edit save,
- * the type-to-confirm delete, and the empty/error states.
+ * the member lead chip, the lazy children expansion, the NoTenant gate, the
+ * If-Match edit save in the DetailDrawer, the prompt-config Select PATCH, the
+ * type-to-confirm delete, and the empty/error states.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -14,6 +15,15 @@ import { installFetchStub, type FetchHandler, type RecordedCall } from './fetch-
 
 vi.mock('sonner', () => ({
     toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+// Viewport tier drives the desktop three-pane grid vs the compact collapse;
+// pin it to desktop so these tests exercise the primary layout deterministically.
+let currentTier: 'desktop' | 'tablet' | 'mobile' = 'desktop';
+vi.mock('@/shared/layout/use-viewport-tier', () => ({
+    useViewportTier: () => currentTier,
+    TABLET_MIN_PX: 768,
+    DESKTOP_MIN_PX: 1280,
 }));
 
 function department(overrides: Partial<Department> = {}): Department {
@@ -44,6 +54,9 @@ const INTERVENTIONAL = department({
 
 const DEPARTMENTS: Department[] = [CARDIOLOGY, RADIOLOGY, INTERVENTIONAL];
 const ROOTS: Department[] = [CARDIOLOGY, RADIOLOGY];
+
+/** Select catalog for the prompt-config pane (GET /admin/prompt-templates). */
+const PROMPT_TEMPLATES = [{ id: 'pt-1', name: 'Cardiology Notes', category: 'SUMMARY', status: 'PUBLISHED' }];
 
 function member(overrides: Partial<DepartmentMember> = {}): DepartmentMember {
     return {
@@ -80,7 +93,7 @@ function member(overrides: Partial<DepartmentMember> = {}): DepartmentMember {
 }
 
 const MEMBERS: DepartmentMember[] = [
-    member(),
+    member({ isLead: true }),
     member({ id: 'u-2', username: 'marcus.chen', UserRoleAssignments: [] }),
 ];
 
@@ -110,6 +123,9 @@ function defaultHandler(call: RecordedCall): Response | undefined {
     if (path === '/api/hope/admin/departments/dep-cardio') {
         return Response.json(CARDIOLOGY, { headers: { etag: '"7"' } });
     }
+    if (path === '/api/hope/admin/prompt-templates') {
+        return Response.json({ data: PROMPT_TEMPLATES, count: 1, limit: 100, page: 1 });
+    }
     return undefined;
 }
 
@@ -121,9 +137,16 @@ function pathOf(call: RecordedCall): string {
     return new URL(call.url, 'http://test.local').pathname;
 }
 
+/** Opens the create/edit DetailDrawer for the selected department (the Edit affordance). */
+async function openEditDrawer() {
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    return screen.findByRole('dialog');
+}
+
 afterEach(() => {
     vi.unstubAllGlobals();
     cleanup();
+    currentTier = 'desktop';
 });
 
 describe('DepartmentsScreen', () => {
@@ -154,6 +177,8 @@ describe('DepartmentsScreen', () => {
         expect(await within(grid).findByText('elena.vasquez')).toBeDefined();
         expect(within(grid).getByText('marcus.chen')).toBeDefined();
         expect(within(grid).getByText('Cardiologist')).toBeDefined();
+        // The department lead is chipped next to the username.
+        expect(within(grid).getByText('Lead')).toBeDefined();
     });
 
     it('expands a root lazily through GET :id/children', async () => {
@@ -180,7 +205,8 @@ describe('DepartmentsScreen', () => {
         });
         renderWithProviders(<DepartmentsScreen />);
 
-        const nameInput = await screen.findByLabelText('Name');
+        await openEditDrawer();
+        const nameInput = await screen.findByRole('textbox', { name: 'Name' });
         const saveButton = screen.getByRole('button', { name: 'Save changes' }) as HTMLButtonElement;
         expect(saveButton.disabled).toBe(true);
 
@@ -196,7 +222,7 @@ describe('DepartmentsScreen', () => {
         });
     });
 
-    it('saves the prompt config through its own OCC PATCH route', async () => {
+    it('saves the prompt config through its own OCC PATCH route via the Select', async () => {
         const calls = stubDepartments((call) => {
             if (call.method === 'PATCH' && pathOf(call) === '/api/hope/admin/departments/dep-cardio/prompt-config') {
                 return Response.json({ ...CARDIOLOGY, preSummaryPromptId: 'pt-1', version: 8 }, { headers: { etag: '"8"' } });
@@ -205,7 +231,14 @@ describe('DepartmentsScreen', () => {
         });
         renderWithProviders(<DepartmentsScreen />);
 
-        fireEvent.change(await screen.findByLabelText('Pre-summary prompt ID'), { target: { value: 'pt-1' } });
+        // Radix Select renders a hidden native <select> (inside the form) carrying
+        // an <option> per item — drive it once the template catalog has loaded.
+        const preSummarySelect = await waitFor(() => {
+            const el = document.querySelector('select[name="preSummaryPromptId"]') as HTMLSelectElement | null;
+            if (!el || !el.querySelector('option[value="pt-1"]')) throw new Error('prompt-template options not loaded yet');
+            return el;
+        });
+        fireEvent.change(preSummarySelect, { target: { value: 'pt-1' } });
         fireEvent.click(screen.getByRole('button', { name: 'Save prompt config' }));
 
         await waitFor(() => {
@@ -225,7 +258,8 @@ describe('DepartmentsScreen', () => {
         });
         renderWithProviders(<DepartmentsScreen />);
 
-        fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Renamed' } });
+        await openEditDrawer();
+        fireEvent.change(await screen.findByRole('textbox', { name: 'Name' }), { target: { value: 'Renamed' } });
         fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
         expect(await screen.findByText(/412 Precondition Failed/)).toBeDefined();
@@ -239,7 +273,8 @@ describe('DepartmentsScreen', () => {
         });
         renderWithProviders(<DepartmentsScreen />);
 
-        fireEvent.click(await screen.findByRole('button', { name: 'Delete Cardiology' }));
+        const drawer = await openEditDrawer();
+        fireEvent.click(within(drawer).getByRole('button', { name: 'Delete' }));
 
         const dialog = await screen.findByRole('alertdialog');
         const confirm = within(dialog).getByRole('button', { name: 'Delete department' }) as HTMLButtonElement;
@@ -264,6 +299,21 @@ describe('DepartmentsScreen', () => {
 
         expect(await screen.findByText('No departments yet')).toBeDefined();
         expect(screen.getAllByRole('button', { name: 'New department' }).length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('collapses the tree into a toggleable drawer on compact tiers while members stay reachable', async () => {
+        currentTier = 'mobile';
+        stubDepartments();
+        renderWithProviders(<DepartmentsScreen />);
+
+        // Members for the auto-selected department stack in the body...
+        expect(await screen.findByRole('grid', { name: 'Members of Cardiology' })).toBeDefined();
+        // ...and the tree is behind the "Departments" toggle (not inline).
+        expect(screen.queryByRole('list', { name: 'Department hierarchy' })).toBeNull();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Departments' }));
+        const drawer = await screen.findByRole('dialog');
+        expect(within(drawer).getByRole('list', { name: 'Department hierarchy' })).toBeDefined();
     });
 
     it('renders the block error state and retries the departments list', async () => {

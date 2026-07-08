@@ -44,6 +44,17 @@ export interface RevealedGlobalSetting {
 }
 
 /**
+ * POST /admin/settings/:id/rotate body (TASK-445) — the step-up password plus
+ * the replacement secret; expectedVersion is added by the client from the
+ * read ETag (OCC, same contract as the update PATCH). The response is the
+ * MASKED GlobalSetting — the new plaintext is never returned.
+ */
+export interface RotateGlobalSettingRequest {
+    password: string;
+    newValue: string;
+}
+
+/**
  * A single history entry for a setting. There is no dedicated versions endpoint,
  * so the History tab is backed by the audit log
  * (`GET /admin/audit-logs/resource/GlobalSetting/:id`); this is the subset the

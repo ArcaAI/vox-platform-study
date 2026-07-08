@@ -21,22 +21,24 @@ test.beforeEach(async ({ page }) => {
 async function waitForSettled(page: Page) {
     await expect(page.getByRole('heading', { level: 1, name: 'Storage' })).toBeVisible();
     // Data rows are focusable (row click -> select/descend); a tenant with no
-    // physical buckets settles on the bucket-card empty state instead.
-    const dataRows = page.getByRole('table', { name: 'Bucket objects' }).locator('tbody tr[tabindex="0"]');
+    // objects (or no buckets, which disables the listing) settles on the grid
+    // empty state instead.
+    const dataRows = page.getByRole('grid', { name: 'Bucket objects' }).locator('[role="row"][tabindex="0"]');
     const emptyObjects = page.getByText('No objects here');
-    const emptyBuckets = page.getByText('No buckets', { exact: true });
-    await expect(dataRows.first().or(emptyObjects.first()).or(emptyBuckets.first())).toBeVisible();
+    await expect(dataRows.first().or(emptyObjects.first())).toBeVisible();
 }
 
 test.describe('storage browser (frame 31)', () => {
-    test('shows the header, filter strip and the three panels', async ({ page }) => {
+    test('shows the header, toolbar (bucket select + breadcrumb) and fill grid', async ({ page }) => {
         await page.goto('/storage');
         await waitForSettled(page);
         await expect(page.getByRole('button', { name: 'Upload files' }).first()).toBeVisible();
         await expect(page.getByLabel('Search objects')).toBeVisible();
-        await expect(page.getByText('Buckets', { exact: true })).toBeVisible();
-        await expect(page.getByText('Object actions')).toBeVisible();
-        await expect(page.getByText(/Health:/)).toBeVisible();
+        await expect(page.getByRole('combobox', { name: /bucket/i })).toBeVisible();
+        await expect(page.getByRole('navigation', { name: 'Object prefix' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'Bucket objects' })).toBeVisible();
+        // Footer status bar carries the storage-health verdict.
+        await expect(page.getByText(/reachable|unreachable|Storage not configured/i).first()).toBeVisible();
     });
 
     test('the object search syncs the URL and keeps the grid region', async ({ page }) => {
@@ -44,7 +46,7 @@ test.describe('storage browser (frame 31)', () => {
         await waitForSettled(page);
         await page.getByLabel('Search objects').fill('wav');
         await expect(page).toHaveURL(/search=wav/);
-        await expect(page.getByRole('table', { name: 'Bucket objects' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'Bucket objects' })).toBeVisible();
     });
 
     test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {

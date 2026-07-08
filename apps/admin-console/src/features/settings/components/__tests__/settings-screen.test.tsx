@@ -190,6 +190,75 @@ describe('SettingsScreen', () => {
         expect(requested.searchParams.get('filters')).toBe('tenantId[equals]:t-1');
     });
 
+    // TASK-443 — namespace grouping + Namespace/Type/Secrets-only filter chips.
+    it('renders namespace group-header rows with counts between contiguous groups', async () => {
+        stubFetch({ rows: [setting(), SECRET, setting({ id: 's-3', name: 'LLM model', key: 'llm.model', namespace: 'llm' })] });
+        renderWithProviders(<SettingsScreen />);
+        await screen.findByText('smtp.host');
+
+        const groups = document.querySelectorAll('[data-slot="data-grid-group-row"]');
+        expect(groups).toHaveLength(2);
+        expect(groups[0].textContent).toContain('smtp');
+        expect(groups[0].textContent).toContain('2');
+        expect(groups[1].textContent).toContain('llm');
+        expect(groups[1].textContent).toContain('1');
+    });
+
+    it('sorts by namespace first (implicit sort) so groups are contiguous per page', async () => {
+        const calls = stubFetch();
+        renderWithProviders(<SettingsScreen />);
+        await screen.findByText('smtp.host');
+
+        const list = calls.map((call) => new URL(call.url, 'http://test.local')).find((url) => url.pathname === '/api/hope/admin/settings' && url.searchParams.get('sort'));
+        expect(list?.searchParams.get('sort')).toBe('namespace:asc,key:asc');
+    });
+
+    it('offers Namespace, Type and Secrets-only filter controls on the grid toolbar', async () => {
+        stubFetch();
+        renderWithProviders(<SettingsScreen />);
+        await screen.findByText('smtp.host');
+
+        // At the test container width the toolbar collapses the chips into the
+        // Filters control; its panel lists one section per filterable column.
+        fireEvent.click(screen.getByRole('button', { name: /filters/i }));
+        const dialog = await screen.findByRole('dialog');
+        for (const label of ['Namespace', 'Type', 'Secrets', 'Tenant']) {
+            expect(within(dialog).getByText(label)).toBeDefined();
+        }
+    });
+
+    it('maps the Namespace chip onto namespace[in] (server-driven)', async () => {
+        const calls = stubFetch();
+        const f = encodeURIComponent(JSON.stringify([['namespace', 'inArray', 'multiSelect', ['smtp', 'llm']]]));
+        renderWithProviders(<SettingsScreen />, { searchParams: `?f=${f}` });
+        await screen.findByText('smtp.host');
+
+        const list = calls.map((call) => new URL(call.url, 'http://test.local')).find((url) => url.pathname === '/api/hope/admin/settings' && url.searchParams.get('filters'));
+        expect(list?.searchParams.get('filters')).toBe('namespace[in]:smtp|llm');
+    });
+
+    it('maps the Type chip onto dataType[in] (real column name, not the display id)', async () => {
+        const calls = stubFetch();
+        const f = encodeURIComponent(JSON.stringify([['dataType', 'inArray', 'multiSelect', ['Json']]]));
+        renderWithProviders(<SettingsScreen />, { searchParams: `?f=${f}` });
+        await screen.findByText('smtp.host');
+
+        const list = calls.map((call) => new URL(call.url, 'http://test.local')).find((url) => url.pathname === '/api/hope/admin/settings' && url.searchParams.get('filters'));
+        expect(list?.searchParams.get('filters')).toBe('dataType[in]:Json');
+    });
+
+    it('maps the Secrets-only chip onto the bespoke secretsOnly param — never a filters token', async () => {
+        const calls = stubFetch();
+        const f = encodeURIComponent(JSON.stringify([['isSecret', 'eq', 'boolean', 'true']]));
+        renderWithProviders(<SettingsScreen />, { searchParams: `?f=${f}` });
+        await screen.findByText('smtp.host');
+
+        const list = calls.map((call) => new URL(call.url, 'http://test.local')).find((url) => url.pathname === '/api/hope/admin/settings' && url.searchParams.get('secretsOnly'));
+        expect(list?.searchParams.get('secretsOnly')).toBe('true');
+        // isSecret is DERIVED (no column) — it must not leak into the bracket grammar.
+        expect(list?.searchParams.get('filters')).toBeNull();
+    });
+
     it('opens the detail drawer on row click and writes the ?setting= URL state', async () => {
         const updates: URLSearchParams[] = [];
         stubFetch();

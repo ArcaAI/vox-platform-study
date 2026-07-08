@@ -9,7 +9,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
-import type { Policy, RbacPaginated, Role } from '../../api/types';
+import type { Policy, RbacPaginated, Role, RoleMember } from '../../api/types';
 import { RolesScreen } from '../roles-screen';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -36,14 +36,43 @@ function role(overrides: Partial<Role> = {}): Role {
     };
 }
 
-const SYSTEM_ROLE = role();
+const SYSTEM_ROLE = role({ memberCount: 1 });
 const CUSTOM_ROLE = role({
     id: 'r-2',
     name: 'Billing',
     description: 'Billing operators',
     isSystemRole: false,
     policies: [{ id: 'p-1', name: 'tenant.manage', priority: 10 }],
+    memberCount: 2,
 });
+
+/** TASK-444 — members of the Billing role served by the members endpoint. */
+const BILLING_MEMBERS: RoleMember[] = [
+    {
+        assignmentId: 'a-1',
+        userId: 'u-1',
+        tenantId: 't-1',
+        username: 'jdoe',
+        displayName: 'Jane Doe',
+        email: 'jane@clinic.test',
+        department: 'Cardiology',
+        resourceStatus: 'ENABLED',
+        userResourceStatus: 'ENABLED',
+        assignedAt: '2026-03-01T10:00:00.000Z',
+    },
+    {
+        assignmentId: 'a-2',
+        userId: 'u-2',
+        tenantId: 't-1',
+        username: 'svc-billing',
+        displayName: 'svc-billing',
+        email: null,
+        department: null,
+        resourceStatus: 'DISABLED',
+        userResourceStatus: 'ENABLED',
+        assignedAt: '2026-04-01T10:00:00.000Z',
+    },
+];
 
 const POLICY_CATALOG: Policy[] = [
     {
@@ -71,6 +100,9 @@ interface RecordedCall {
 /** Default handler covering the list, the two roles, the policy catalog and DELETEs. */
 function defaultHandler(url: string, method: string): Response | undefined {
     if (method === 'DELETE') return new Response(null, { status: 204 });
+    if (url.startsWith('/api/hope/admin/rbac/roles/r-2/members'))
+        return Response.json({ data: BILLING_MEMBERS, total: BILLING_MEMBERS.length, page: 1, pageSize: 50 });
+    if (url.startsWith('/api/hope/admin/rbac/roles/r-1/members')) return Response.json({ data: [], total: 0, page: 1, pageSize: 50 });
     if (url === '/api/hope/admin/rbac/roles/r-2') return Response.json(CUSTOM_ROLE);
     if (url === '/api/hope/admin/rbac/roles/r-1') return Response.json(SYSTEM_ROLE);
     if (url.startsWith('/api/hope/admin/rbac/policies')) return Response.json({ data: POLICY_CATALOG, total: 1, page: 1, pageSize: 100 });
@@ -216,6 +248,56 @@ describe('RolesScreen (two-pane redesign)', () => {
         const post = calls.find((call) => call.method === 'POST');
         expect(post?.url).toBe('/api/hope/admin/rbac/roles');
         expect(post?.body).toEqual({ name: 'Auditor', description: 'Read-only reviewers' });
+    });
+
+    it('lists the role members with department and status on the Members tab (TASK-444)', async () => {
+        stubFetch();
+        renderWithProviders(<RolesScreen />, { searchParams: '?role=r-2&tab=members' });
+
+        await screen.findByRole('heading', { level: 2, name: 'Billing' });
+        const members = await screen.findByRole('list', { name: 'Role members' });
+        expect(within(members).getByText('Jane Doe')).toBeDefined();
+        expect(within(members).getByText('jane@clinic.test')).toBeDefined();
+        expect(within(members).getByText('Cardiology')).toBeDefined();
+        // The disabled membership renders its status; the username backfills a missing email.
+        expect(within(members).getByText('svc-billing')).toBeDefined();
+        expect(within(members).getByText('Disabled')).toBeDefined();
+        // The tab heading carries the total.
+        expect(screen.getByText(/Members \(2\)/)).toBeDefined();
+    });
+
+    it('shows an empty state when the role has no members in scope (TASK-444)', async () => {
+        stubFetch();
+        renderWithProviders(<RolesScreen />, { searchParams: '?role=r-1&tab=members' });
+
+        await screen.findByRole('heading', { level: 2, name: 'GlobalAdmin' });
+        expect(await screen.findByText('No members yet')).toBeDefined();
+        expect(screen.queryByRole('list', { name: 'Role members' })).toBeNull();
+    });
+
+    it('surfaces a retryable error state when the members listing fails (TASK-444)', async () => {
+        stubFetch((url, method) => {
+            if (url.startsWith('/api/hope/admin/rbac/roles/r-2/members')) return Response.json({ message: 'boom' }, { status: 500 });
+            return defaultHandler(url, method);
+        });
+        renderWithProviders(<RolesScreen />, { searchParams: '?role=r-2&tab=members' });
+
+        await screen.findByRole('heading', { level: 2, name: 'Billing' });
+        expect(await screen.findByRole('button', { name: /retry/i })).toBeDefined();
+    });
+
+    it('renders member-count chips in the role list and the detail header (TASK-444)', async () => {
+        stubFetch();
+        renderWithProviders(<RolesScreen />);
+
+        // List chips (aria-hidden, decorative duplicates of the detail badge).
+        const billingItem = await screen.findByRole('button', { name: 'Billing' });
+        expect(within(billingItem).getByText('2')).toBeDefined();
+
+        // Detail header badge is the accessible count.
+        fireEvent.click(billingItem);
+        await screen.findByRole('heading', { level: 2, name: 'Billing' });
+        expect(screen.getByText('2 members')).toBeDefined();
     });
 
     it('mobile tier: opens the detail in a drawer with the matrix card fallback', async () => {

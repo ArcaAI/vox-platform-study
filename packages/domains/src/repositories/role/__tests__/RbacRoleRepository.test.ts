@@ -96,6 +96,29 @@ describe('TASK-311 — RbacRoleRepository', () => {
       });
       expect(result).toBe(row);
     });
+
+    it('forwards a caller-supplied include override verbatim (TASK-444 member counts)', async () => {
+      const { repo, prisma } = makeRepo();
+      const include = {
+        ...ROLE_POLICIES_INCLUDE,
+        _count: {
+          select: {
+            UserRoleAssignments: {
+              where: { resourceStatus: { not: ResourceStatusType.DELETED }, tenantId: 'tenant-001' },
+            },
+          },
+        },
+      };
+      prisma.role.findUnique.mockResolvedValue({ id: 'role-1', _count: { UserRoleAssignments: 3 } });
+
+      const result = await repo.findByIdWithPolicies('role-1', include as never);
+
+      expect(prisma.role.findUnique).toHaveBeenCalledWith({
+        where: { id: 'role-1' },
+        include,
+      });
+      expect(result).toEqual({ id: 'role-1', _count: { UserRoleAssignments: 3 } });
+    });
   });
 
   describe('findByIdGuardSelect', () => {

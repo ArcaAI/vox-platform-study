@@ -24,6 +24,7 @@ import { getDefaultFilterOperator } from '@/lib/data-table';
 import type { FilterVariant } from '@/types/data-table';
 
 import { buildQueryAnnouncement } from './announce';
+import { buildDisplayRows, type DisplayRow } from './group-rows';
 import { useCoarsePointer } from './use-container-breakpoint';
 import { useGridLayout } from './use-grid-layout';
 import { DEFAULT_GRID_FEATURES, DEFAULT_PAGE_SIZE_OPTIONS, type GridLayoutState, type VirtualizedDataGridProps } from './types';
@@ -35,6 +36,12 @@ function resolveUpdater<T>(updater: Updater<T>, prev: T): T {
 export interface UseDataGridResult<TData> {
   table: Table<TData>;
   rowVirtualizer: Virtualizer<HTMLDivElement, Element>;
+  /**
+   * TASK-443 — the virtualized display entries: the table's data rows, with
+   * group-header entries interleaved when `groupBy` is set (index-aligned with
+   * the virtualizer). Without `groupBy` it is exactly the row model.
+   */
+  displayRows: DisplayRow<TData>[];
   scrollRef: React.RefObject<HTMLDivElement | null>;
   queryState: DataQueryState;
   setQueryState: (next: DataQueryState) => void;
@@ -194,13 +201,26 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
     [rowSelection, selection],
   );
 
+  // TASK-443 — filter-only virtual columns (`meta.filterOnly`) are FORCED
+  // hidden: they exist to drive a toolbar filter chip, never a rendered
+  // column. The overlay wins over any persisted visibility.
+  const filterOnlyVisibility = useMemo(() => {
+    const forced: GridLayoutState['visibility'] = {};
+    for (const column of columns) {
+      if (!column.meta?.filterOnly) continue;
+      const id = (column as { id?: string }).id ?? (column as { accessorKey?: string }).accessorKey;
+      if (id) forced[id] = false;
+    }
+    return forced;
+  }, [columns]);
+
   // Layout sub-state change handlers (visibility/order/pinning/sizing).
   const onColumnVisibilityChange: OnChangeFn<GridLayoutState['visibility']> = useCallback(
     (updater) => {
       const next = resolveUpdater(updater, layout.visibility);
       // Force ≥ 1 visible *hideable* column (cannot hide the last content column).
       const hideableIds = columns
-        .filter((c) => (c as { enableHiding?: boolean }).enableHiding !== false)
+        .filter((c) => (c as { enableHiding?: boolean }).enableHiding !== false && !c.meta?.filterOnly)
         .map((c) => (c as { id?: string }).id ?? (c as { accessorKey?: string }).accessorKey)
         .filter((id): id is string => Boolean(id));
       const visibleHideable = hideableIds.filter((id) => next[id] !== false);
@@ -232,7 +252,7 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
       globalFilter,
       pagination,
       rowSelection,
-      columnVisibility: layout.visibility,
+      columnVisibility: { ...layout.visibility, ...filterOnlyVisibility },
       columnOrder: layout.order,
       columnPinning: layout.pinning,
       columnSizing: layout.sizing,
@@ -265,8 +285,11 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
   // ----- Virtualization -----
   const scrollRef = useRef<HTMLDivElement>(null);
   const rows = table.getRowModel().rows;
+  // TASK-443 — group headers are extra virtual rows, so the virtualizer counts
+  // the DISPLAY entries (identical to `rows` when `groupBy` is off).
+  const displayRows = useMemo(() => buildDisplayRows(rows, props.groupBy), [rows, props.groupBy]);
   const rowVirtualizer = useVirtualizer({
-    count: rows.length,
+    count: displayRows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => estimateRowHeight ?? DENSITY_ROW_HEIGHT[density],
     overscan: 8,
@@ -360,6 +383,7 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
   return {
     table,
     rowVirtualizer,
+    displayRows,
     scrollRef,
     queryState,
     setQueryState: commitQueryState,

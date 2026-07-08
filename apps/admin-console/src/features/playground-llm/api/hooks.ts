@@ -2,8 +2,9 @@
 
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { cancelTask, generateAssembled, generateText, getTask, listGuardrailProviders, listProviders } from './client';
+import { analyzeGuardrail, extractEntities } from './inference-client';
 import { playgroundLlmKeys } from './keys';
-import type { AssembledGenerateRequest, GenerateTextRequest } from './types';
+import type { AssembledGenerateRequest, GenerateTextRequest, GuardrailType } from './types';
 
 export function useSmrProviders(tenantKey?: string) {
     return useQuery({ queryKey: playgroundLlmKeys.providers(tenantKey), queryFn: () => listProviders(tenantKey) });
@@ -44,4 +45,14 @@ export function useGenerateAssembled() {
 
 export function useCancelTask() {
     return useMutation({ mutationFn: (taskId: string) => cancelTask(taskId) });
+}
+
+/** TASK-446 — Guardrails tab: content-safety / PII / prompt-injection analysis. */
+export function useAnalyzeGuardrail() {
+    return useMutation({ mutationFn: (body: { text: string; guardrailType?: GuardrailType }) => analyzeGuardrail(body) });
+}
+
+/** TASK-446 — NER tab: medical entity extraction (token classification). */
+export function useExtractEntities() {
+    return useMutation({ mutationFn: (body: { text: string; aggregationStrategy?: string; language?: string }) => extractEntities(body) });
 }

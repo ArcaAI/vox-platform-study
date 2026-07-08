@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Inject, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Inject, UnauthorizedException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -13,7 +13,8 @@ import {
 } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
 import { IGlobalSettingService } from './IGlobalSettingService';
-import { CreateGlobalSettingRequest, UpdateGlobalSettingRequest } from './dto';
+import { CreateGlobalSettingRequest, RotateGlobalSettingRequest, UpdateGlobalSettingRequest } from './dto';
+import { GlobalSettingDtoMapper, buildSecretSettingFilter } from './globalSetting.dto.mapper';
 import { BaseService, FetchResponse, PaginatedQuery, isSuperAdmin, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { ICryptoService } from '../crypto/ICryptoService';
@@ -23,6 +24,9 @@ const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
 
 /** TASK-396 — audit action tag written into the reveal SysEvent (never the plaintext). */
 export const GLOBAL_SETTING_SECRET_REVEALED = 'GLOBAL_SETTING_SECRET_REVEALED';
+
+/** TASK-445 — audit action tag written into the rotation SysEvent (never the old or new plaintext). */
+export const GLOBAL_SETTING_SECRET_ROTATED = 'GLOBAL_SETTING_SECRET_ROTATED';
 
 @Injectable()
 export class GlobalSettingService extends BaseService implements IGlobalSettingService {
@@ -102,12 +106,37 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     return globalSetting;
   }
 
-  async fetchAll(props: PaginatedQuery): Promise<FetchResponse<GlobalSettingEntity>> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { limit, page, search } = props;
-    const globalSettings = await this.globalSettingRepository.findAll(withFormattedPaginatedProps(props));
+  /**
+   * TASK-443 — resolve the OPTIONAL `secretsOnly` list facet to the shared
+   * derived-secret fragment ({@link buildSecretSettingFilter}); there is no
+   * `isSecret` column, so this is the only server-side transport for the
+   * "Secrets only" chip. `true` narrows to secrets, `false` to non-secrets,
+   * `undefined` adds nothing. Extra clauses (the tenant scope) AND in front.
+   * The fragment is always wrapped in `AND: [...]` because the repository's
+   * `formatFindAllProps` merges a bare top-level `OR` lossily with filters.
+   */
+  private static resolveListWhere(secretsOnly: boolean | undefined, ...extraClauses: Record<string, unknown>[]): { AND: Record<string, unknown>[] } | undefined {
+    if (secretsOnly === undefined) return undefined;
+    const secretClause = secretsOnly ? buildSecretSettingFilter() : { NOT: buildSecretSettingFilter() };
+    return { AND: [...extraClauses, secretClause] };
+  }
 
-    const count = await this.globalSettingRepository.count(withFormattedCountProps(props));
+  async fetchAll(props: PaginatedQuery & { secretsOnly?: boolean }): Promise<FetchResponse<GlobalSettingEntity>> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { limit, page, search, secretsOnly } = props;
+    // TASK-443 — 'GlobalSetting' opts the list into model-aware filter
+    // coercion: `dataType` (enum ValueType) member-validates with a 400 on an
+    // unknown member instead of a Prisma server-side error.
+    const where = GlobalSettingService.resolveListWhere(secretsOnly);
+    const globalSettings = await this.globalSettingRepository.findAll({
+      ...withFormattedPaginatedProps(props, 'GlobalSetting'),
+      ...(where ? { where } : {}),
+    });
+
+    const count = await this.globalSettingRepository.count({
+      ...withFormattedCountProps(props, 'GlobalSetting'),
+      ...(where ? { where } : {}),
+    });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
       data: {
@@ -122,20 +151,20 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     });
   }
 
-  async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<GlobalSettingEntity>> {
+  async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string; secretsOnly?: boolean }): Promise<FetchResponse<GlobalSettingEntity>> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { tenantId, limit, page, search } = props;
+    const { tenantId, limit, page, search, secretsOnly } = props;
+    // TASK-443 — with the secretsOnly facet the tenant scope moves INSIDE the
+    // AND group (formatFindAllProps drops sibling keys next to `where.AND`);
+    // without it the bare `{ tenantId }` shape is kept byte-for-byte.
+    const where = GlobalSettingService.resolveListWhere(secretsOnly, { tenantId }) ?? { tenantId };
     const globalSettings = await this.globalSettingRepository.findAll({
-      ...withFormattedPaginatedProps(props),
-      where: {
-        tenantId,
-      },
+      ...withFormattedPaginatedProps(props, 'GlobalSetting'),
+      where,
     });
     const count = await this.globalSettingRepository.count({
-      ...withFormattedCountProps(props),
-      where: {
-        tenantId,
-      },
+      ...withFormattedCountProps(props, 'GlobalSetting'),
+      where,
     });
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
@@ -310,5 +339,100 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     });
 
     return { entity, plaintext };
+  }
+
+  /**
+   * TASK-445 — rotate ONE secret setting.
+   *
+   * v1 semantics (encryption-at-rest is scaffolded but UNWIRED — Phase 4C):
+   * an atomic, step-up-gated, distinctly-audited REPLACE-WITH-NEW-VALUE under
+   * optimistic concurrency. The secret is operator-supplied (no
+   * server-generatable material, unlike an api-key token), so the caller
+   * provides the replacement; the old value is invalidated by the SAME
+   * versioned write (`updateWithVersion` compare-and-set) — no window where
+   * both values are valid. When the Phase 4C encryption write path lands,
+   * this is also where `encryptValueIntoEntity` re-wraps `encryptedValue`
+   * under a fresh `keyVersion`.
+   *
+   * Order of guards (fail-closed, mirrors `revealSecret`):
+   *   1. Super-admin re-check (primary gate is the controller's CASL
+   *      `manage:all`). This also subsumes the `locked`-row guard from
+   *      `update` — every caller that reaches the write IS a GLOBAL_ADMIN.
+   *   2. Step-up re-auth — verify the caller's CURRENT password against the
+   *      stored bcrypt hash. Never logged, never persisted.
+   *   3. Secrets only — a non-secret row (per the shared
+   *      `GlobalSettingDtoMapper.isSecretEntity` convention) is rejected;
+   *      plain values go through the ordinary update PATCH.
+   *   4. OCC write — `updateWithVersion` compare-and-set; drift throws
+   *      `OptimisticConcurrencyException` → HTTP 412.
+   *   5. Audit — force-audited `ResourceUpdated` tagged
+   *      `GLOBAL_SETTING_SECRET_ROTATED`. Unlike `update`, the event carries
+   *      NEITHER `changes` NOR `previousData` — both would leak the new/old
+   *      plaintext. Tenant attribution falls back to the rotated resource's
+   *      own persisted tenant (same rationale as the reveal audit).
+   */
+  async rotateSecret(id: EntityId, request: RotateGlobalSettingRequest): Promise<GlobalSettingEntity> {
+    if (!isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException(`Rotating a secret setting requires a ${GLOBAL_ADMIN_ROLE} user.`);
+    }
+
+    const userId = this.requestUserId;
+    if (!userId) {
+      throw new UnauthorizedException('No authenticated user in context.');
+    }
+    if (!request.password) {
+      throw new UnauthorizedException('Step-up re-authentication requires your current password.');
+    }
+    const user = await this.userRepository.findById(userId);
+    const passwordOk = await this.cryptoService.verify(request.password, user.password);
+    if (!passwordOk) {
+      throw new UnauthorizedException('Step-up re-authentication failed: incorrect password.');
+    }
+
+    if (!request.newValue) {
+      // NestJS BadRequestException (not ArgumentInvalidException): the
+      // ExceptionInterceptor maps BaseException subclasses to a generic 500,
+      // and these rotate guards are client-input errors that must render 400.
+      throw new BadRequestException('Rotation requires a non-empty replacement value.');
+    }
+
+    const globalSetting = await this.globalSettingRepository.findById(id);
+
+    if (!GlobalSettingDtoMapper.isSecretEntity(globalSetting)) {
+      throw new BadRequestException(`Setting '${globalSetting.key}' is not a secret — use the standard update instead.`);
+    }
+
+    const previousVersion = globalSetting.version;
+    await this.updateEntity(globalSetting, { value: request.newValue });
+    if (!globalSetting.hasChanges) {
+      throw new BadRequestException('The replacement value matches the current secret — nothing to rotate.');
+    }
+
+    const rotated = await this.globalSettingRepository.updateWithVersion(id, globalSetting, request.expectedVersion);
+
+    // Audit — direct emit (not `broadcastSysEvent`) for the same two reasons
+    // documented on the reveal audit above: `forceAuditLog` must be honored,
+    // and the super-admin's CLS tenant is NULL so attribution falls back to
+    // the rotated row's own persisted tenant. The plaintext (old AND new) and
+    // the step-up password are NEVER included.
+    this.eventEmitter.emit(SysEventType.ResourceUpdated, {
+      responsibleEntityId: this.requestUser?.id,
+      responsibleIp: this.requestIp,
+      resourceType: this.resourceType,
+      correlationId: this.correlationId,
+      resourceId: rotated.id,
+      tenantId: this.tenantId ?? rotated.tenantId,
+      forceAuditLog: true,
+      data: {
+        action: GLOBAL_SETTING_SECRET_ROTATED,
+        key: rotated.key,
+        namespace: rotated.namespace,
+        previousVersion,
+        newVersion: rotated.version,
+        rotatedAt: new Date().toISOString(),
+      },
+    });
+
+    return rotated;
   }
 }

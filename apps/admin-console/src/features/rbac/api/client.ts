@@ -12,6 +12,7 @@ import type {
     RbacListParams,
     RbacPaginated,
     Role,
+    RoleMember,
     UpdatePolicyRequest,
     UpdateRoleRequest,
 } from './types';
@@ -25,6 +26,11 @@ export function listRoles(params?: RbacListParams): Promise<RbacPaginated<Role>>
 
 export function getRole(id: string): Promise<Role> {
     return getJson(`${ROLES}/${encodeURIComponent(id)}`);
+}
+
+/** TASK-444 — users holding a role (tenant-scoped on the gateway). */
+export function listRoleMembers(roleId: string, params?: RbacListParams): Promise<RbacPaginated<RoleMember>> {
+    return getJson(`${ROLES}/${encodeURIComponent(roleId)}/members`, params);
 }
 
 export function createRole(body: CreateRoleRequest): Promise<Role> {

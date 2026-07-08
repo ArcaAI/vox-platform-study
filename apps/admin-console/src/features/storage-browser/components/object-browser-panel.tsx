@@ -9,7 +9,7 @@ import { formatBytes, formatNumber, formatRelativeTime } from '@/shared/format';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import type { StorageObject } from '../api/types';
-import { fileTypeIcon } from './file-meta';
+import { fileTypeIcon, guessContentType } from './file-meta';
 
 export interface FolderEntry {
     kind: 'folder';
@@ -76,7 +76,18 @@ export function sortEntries(entries: BrowserEntry[], sort: string): BrowserEntry
     return [...folders, ...files];
 }
 
-function PrefixChips({ bucketName, prefix, onNavigate }: { bucketName: string; prefix: string; onNavigate: (prefix: string) => void }) {
+/** Best-effort type label for the grid `type` column. */
+function entryTypeLabel(entry: BrowserEntry): string {
+    if (entry.kind === 'folder') return 'Folder';
+    return guessContentType(entry.name) ?? 'File';
+}
+
+/**
+ * Breadcrumb path bar over the current prefix (frame 31): the root chip is the
+ * bucket name; each segment navigates into that prefix. Rendered in the screen
+ * toolbar, above the fill-height grid.
+ */
+export function PrefixChips({ bucketName, prefix, onNavigate }: { bucketName: string; prefix: string; onNavigate: (prefix: string) => void }) {
     const segments = prefix.split('/').filter(Boolean);
     return (
         <nav aria-label="Object prefix" className="flex flex-wrap items-center gap-1">
@@ -101,13 +112,12 @@ function PrefixChips({ bucketName, prefix, onNavigate }: { bucketName: string; p
 }
 
 /**
- * Frame 31 middle panel: prefix-grouped object grid over the flat
- * GET buckets/:name/files listing, with client-side sort + pagination
- * (the route exposes no paging params).
+ * Frame 31 object grid (redesign): the fill-height primary surface \u2014 a
+ * prefix-grouped object grid over the flat GET buckets/:name/files listing,
+ * with client-side sort + pagination (the route exposes no paging params).
+ * The breadcrumb path bar and toolbar live in the screen; folders sort first.
  */
 export function ObjectBrowserPanel({
-    bucketName,
-    prefix,
     onNavigate,
     rows,
     isLoading,
@@ -119,8 +129,6 @@ export function ObjectBrowserPanel({
     onClearSearch,
     onRequestUpload,
 }: {
-    bucketName: string;
-    prefix: string;
     onNavigate: (prefix: string) => void;
     /** Folders-first entries for the current prefix; the grid paginates client-side. */
     rows: BrowserEntry[];
@@ -136,10 +144,10 @@ export function ObjectBrowserPanel({
     const columns = useMemo<ColumnDef<BrowserEntry>[]>(
         () => [
             {
-                id: 'key',
-                header: 'Object key',
+                id: 'name',
+                header: 'Name',
                 enableSorting: false,
-                meta: { label: 'Object key' },
+                meta: { label: 'Name' },
                 cell: ({ row }) => {
                     const entry = row.original;
                     if (entry.kind === 'folder') {
@@ -170,6 +178,15 @@ export function ObjectBrowserPanel({
                 },
                 size: 320,
                 minSize: 200,
+            },
+            {
+                id: 'type',
+                header: 'Type',
+                enableSorting: false,
+                meta: { label: 'Type' },
+                cell: ({ row }) => <span className="text-muted-foreground font-mono text-xs">{entryTypeLabel(row.original)}</span>,
+                size: 160,
+                minSize: 96,
             },
             {
                 id: 'size',
@@ -228,31 +245,27 @@ export function ObjectBrowserPanel({
     );
 
     return (
-        <section aria-label="Object browser" className="flex min-w-0 flex-col gap-3">
-            {bucketName ? <PrefixChips bucketName={bucketName} prefix={prefix} onNavigate={onNavigate} /> : null}
-            <VirtualizedDataGrid<BrowserEntry>
-                aria-label="Bucket objects"
-                columns={columns}
-                data={rows}
-                getRowId={(row) => `${row.kind}-${row.kind === 'file' ? row.key : row.prefix}`}
-                height={480}
-                toolbar={false}
-                features={{
-                    globalSearch: false,
-                    facetedFilters: false,
-                    sorting: false,
-                    rowSelection: false,
-                    columnReorder: false,
-                    columnResize: false,
-                    columnPinning: false,
-                    columnVisibility: false,
-                }}
-                isLoading={isLoading}
-                error={error instanceof Error ? error : null}
-                errorState={(err) => <ErrorState error={err} onRetry={onRetry} />}
-                emptyState={empty}
-                onRowClick={(row) => (row.kind === 'folder' ? onNavigate(row.prefix) : onSelectFile(row.key))}
-            />
-        </section>
+        <VirtualizedDataGrid<BrowserEntry>
+            aria-label="Bucket objects"
+            columns={columns}
+            data={rows}
+            getRowId={(row) => `${row.kind}-${row.kind === 'file' ? row.key : row.prefix}`}
+            toolbar={false}
+            features={{
+                globalSearch: false,
+                facetedFilters: false,
+                sorting: false,
+                rowSelection: false,
+                columnReorder: false,
+                columnResize: false,
+                columnPinning: false,
+                columnVisibility: false,
+            }}
+            isLoading={isLoading}
+            error={error instanceof Error ? error : null}
+            errorState={(err) => <ErrorState error={err} onRetry={onRetry} />}
+            emptyState={empty}
+            onRowClick={(row) => (row.kind === 'folder' ? onNavigate(row.prefix) : onSelectFile(row.key))}
+        />
     );
 }

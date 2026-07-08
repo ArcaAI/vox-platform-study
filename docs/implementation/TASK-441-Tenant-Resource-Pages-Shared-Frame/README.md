@@ -1,6 +1,6 @@
 # TASK-441 — Tenant Resource Pages Redesign: One Shared Frame, Slide-Over Detail, 3-Pane Hierarchy
 
-- **Status**: Pending
+- **Status**: Review
 - **Type**: feature (UX/UI redesign — six tenant-scoped pages)
 - **Owner**: admin-console
 - **Design source**: project "ARCAAI Hope Admin console" (`https://claude.ai/design/p/6a582386-939b-47d3-8c19-cd9338b34814`) — build spec §7; artboards `3c` (Departments 3-pane), `3d`–`3i` (per-page), `5e` (mobile drill-down).
@@ -25,10 +25,10 @@ Six pages share one frame (§3 region contract): tenant banner · header · tool
 
 ### Acceptance criteria (spec §7)
 
-- [ ] All six render the identical frame (banner · header · toolbar · content · footer).
-- [ ] One shared detail surface (slide-over → mobile sheet); no bespoke record modals.
-- [ ] Empty / loading / error states present per page; live pages poll and reflect run-state.
-- [ ] 3-pane collapses correctly at tablet and mobile.
+- [x] All six render the shared frame (header · toolbar · content · footer). **Banner decision (2026-07-08): kept the GLOBAL "Acting on {tenant}" banner only — no per-page `TenantScopeBanner` added** (the TASK-437 suppression mechanism the plan assumed does not exist; a per-page banner would double-render). The banner requirement is satisfied globally by `(console)/layout.tsx` → `WorkingTenantBanner`.
+- [x] One shared detail surface — the console-wide `DetailDrawer` (right slide-over → mobile full-screen sheet). Bespoke record modals retired: `template-form-dialog` (Agents create/edit), `CreatePipelineDialog`, `CreateDepartmentDialog` + `DepartmentEditPanel` inline edit, `doctor-detail-panel`, `bucket-list-card`/`ObjectActionsPanel` rail, and the harness `signals-lifecycle-panel` Card all removed or folded into drawers.
+- [x] Empty / loading / error states present per page (unchanged from the prior screens); **Harness now polls** (`refetchInterval` 5s while any run is `RUNNING`, paused on hidden tab) to reflect run-state live.
+- [x] 3-pane (Departments) collapses at tablet/mobile via `useViewportTier` (compact stacks members + prompt-config, tree behind a toggle sheet). Grid-primary pages get their mobile full-screen sheet automatically from `DetailDrawer`.
 
 ## Current State Evaluation
 
@@ -100,10 +100,43 @@ Strategy: **one enabling pass + six page migrations** run as independent sub-tas
 
 ## Implementation Summary
 
-_Pending._
+All six tenant-scoped pages were migrated to the shared frame + `DetailDrawer` pattern (Agents was built first as the reference; the other four grid pages follow it; Departments is the bespoke 3-pane). One small backend change surfaces the member **lead** flag.
+
+### Deviations from the original plan (approved with the user, 2026-07-08)
+
+1. **Departments prompt-config** — the plan called for a "default agent Select + tone override", but `UpdateDepartmentPromptConfigRequest` has **no such fields** (only the 4 prompt-ID slots). Decision: **Select-ify the existing 4 prompt-ID inputs** from the tenant's prompt-template catalog (a read of the existing `GET /admin/prompt-templates`, added as `usePromptTemplateOptions` in the departments feature — no backend/endpoint change). No new DB/DTO fields.
+2. **Tenant banner** — kept global-only (see AC above).
+3. **Lead marker** — no lead/primary field was on the members DTO; **added `isLead`**, derived from the existing `UserDepartment.isPrimary` column (no migration). Semantic note in code: `isPrimary` = the user's primary department, surfaced as the closest available "lead" signal.
+4. **Audio Config editor** stays a `<Textarea>` — the `@arcaai/ui` `CodeEditor` is JSON-only (no YAML), which the plan already permitted.
+
+### Per-page changes
+
+| Page | What changed | New/removed files |
+|---|---|---|
+| **Agents** `/agents` | Fill-height grid (added a **Type/category** column) + `DetailDrawer` with Overview (edit, OCC) / Versions / Test-run tabs + **create mode**; delete keeps the type-to-confirm `ConfirmDialog`. | + `agent-detail.tsx`; `template-form-dialog.tsx` refactored to exported `CreateTemplateForm`/`EditTemplateForm` bodies (dialogs retired). |
+| **DNA writing styles** `/dna-writing-styles` | `DashboardCard` → `stats` slot (SSE/poll job-progress unchanged); fill grid; doctor detail + versions + edit → slide-over; `GenerateReportDialog` kept. | + `doctor-detail.tsx`; − `doctor-detail-panel.tsx`. |
+| **Audio pipelines** `/audio/pipelines` | Fill grid; slide-over tabs Config (YAML textarea) / Versions / Lifecycle (elevated-gated); create-in-drawer; `?pipeline=` selection. | + `pipeline-detail.tsx`; − `create-pipeline-dialog.tsx`; `config-editor-card.tsx`/`versions-lifecycle-panel.tsx` split into tab bodies. |
+| **Harness workflows** `/harness/workflows` | Fill grid (cursor paging preserved) + real slide-over (phases · signals · cancel/terminate); **added live polling** (`refetchInterval` while `RUNNING`, hidden-tab-paused) via pure predicates in `api/polling.ts`; footer shows `Live · refreshed {rel}`. | + `api/polling.ts`; `workflow-detail-drawer.tsx` → overlay; − `signals-lifecycle-panel.tsx` (folded in). |
+| **Storage browser** `/storage` | Fill grid; bucket `Select` + search + breadcrumb (`PrefixChips`) + compact `UploadZone` in the toolbar; `name · type · size · modified` columns (folders first); object actions → `?object=` slide-over; storage health verdict moved to footer. | + `object-detail.tsx`; − `bucket-list-card.tsx`. |
+| **Departments** `/departments` | 3-pane tree \| members \| **prompt-config pane** (4 Selects, OCC PATCH); department create/edit/delete → `DetailDrawer`; **Lead** chip on members; responsive collapse via `useViewportTier`. | + `department-detail.tsx`, `department-prompt-config-panel.tsx`; − `department-edit-panel.tsx`, `create-department-dialog.tsx`; api gains `usePromptTemplateOptions`. |
+| **Backend (members `isLead`)** | `GET /admin/departments/:id/users` now returns `isLead` per member, from `UserDepartment.isPrimary`. | `packages/applications`: `user.response.ts` (+`isLead`), `department.service.ts` (inject `UserDepartmentRepository`, stamp `isLead`). No schema/migration. |
+
+## Verification (evidence — 2026-07-08)
+
+- **`pnpm --filter @arcaai/admin-console test`** → **106 files, 810 tests passed** (all six screens' unit/interaction suites, TDD-updated: drawer interactions, tab-landing via `?…=` searchParams since Radix tab clicks are unreliable in jsdom, OCC headers/bodies, live-polling predicates, Lead chip, compact collapse).
+- **`pnpm --filter @arcaai/admin-console lint`** → clean (`eslint src --max-warnings 0`, 0 warnings).
+- **`pnpm --filter @arcaai/admin-console build`** → success; all routes compiled (incl. `/agents`, `/audio/pipelines`, `/departments`, `/dna-writing-styles`, `/harness/workflows`, `/storage`).
+- **`pnpm --filter @arcaai/applications test`** → **272 files, 5873 tests passed** (incl. the new `getDepartmentUsers` `isLead` case); `build` green.
+- **e2e**: `storage-browser`, `audio-pipelines`, `dna-writing-styles`, `harness-workflows` specs updated to the new drawer/fill-grid DOM (the retired side-panel assertions replaced with grid + slide-over). `agents`/`departments` specs unaffected (toolbar/tree selectors unchanged). **Not executed this session** — these are RUNNING-stack Playwright specs (require the live app + gateway) and self-skip when the stack is down.
+
+### Not yet done (open for the Review gate)
+- axe 0-violations per screen and both-theme visual QA run against a **live** stack (the a11y scans live in the e2e specs, gated on the running stack).
+- Runtime verification in a driven browser (`next-dev-loop`) against real BFF/gateway data.
+- New `departments` / `harness-workflows` happy-path e2e beyond the smoke+a11y specs, if desired.
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-08 | Ticket created from build spec §7 + artboards 3c–3i/5e; per-page current-state matrix captured; endpoints confirmed against feature clients (spec paths representative). Status: Pending (awaiting plan approval). |
+| 2026-07-08 | Implemented all six pages + members `isLead`. Three plan/reality gaps resolved with the user: prompt-config Select-ified (no new backend fields), global-tenant-banner-only, `isLead` derived from `UserDepartment.isPrimary`. Agents built as the reference slide-over pattern; DNA/Audio/Harness/Storage/Departments migrated to fill-grid + `DetailDrawer`; Harness gains live polling. admin-console `build lint test` green (810 tests); applications green (5873 tests, +`isLead` case). e2e specs updated to new DOM (not executed — need live stack). Status → Review. |

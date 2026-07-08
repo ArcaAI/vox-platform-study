@@ -2,12 +2,12 @@
 // `@arcaai/database` (it is already a declared dependency, and the ESLint guard
 // only restricts the unscoped client *symbol*, not type imports). These are the
 // generated Prisma model types and are the metadata source for filter coercion.
-import type { AuditLog, Media, Notification, Role, Tag, Tenant, User, Webhook } from '@arcaai/database';
+import type { AuditLog, GlobalSetting, Media, Notification, Role, Tag, Tenant, User, Webhook } from '@arcaai/database';
 // Runtime enum member lists come from the `@arcaai/domains` GENERATED enums —
 // code-generated from the same Prisma schema as the model types above, so the
 // members can never drift from the database enums (and the application layer
 // keeps its no-runtime-`@arcaai/database` convention).
-import { AuditAction, NotificationType, ResourceStatusType, ResourceType, TenantPlan } from '@arcaai/domains';
+import { AuditAction, NotificationType, ResourceStatusType, ResourceType, TenantPlan, ValueType } from '@arcaai/domains';
 
 /**
  * TASK-375 §8 — model-aware filter-value coercion.
@@ -240,6 +240,24 @@ export const NOTIFICATION_FILTER_FIELD_TYPES = {
 } satisfies ModelFilterFieldTypes<Notification>;
 
 /**
+ * GlobalSetting list filters (TASK-443) — admin settings grid faceting
+ * (Namespace rides through as a plain String column; `dataType` is the
+ * member-validated `ValueType` enum; `encryptedValue` is Bytes and stays
+ * unfilterable by the type guard).
+ */
+export const GLOBAL_SETTING_FILTER_FIELD_TYPES = {
+  version: 'number',
+  locked: 'boolean',
+  keyVersion: 'number',
+  dataType: enumFilterSpec(ValueType),
+  resourceStatus: enumFilterSpec(ResourceStatusType),
+  resourceStatusUpdatedAt: 'date',
+  createdAt: 'date',
+  updatedAt: 'date',
+  metaData: 'json',
+} satisfies ModelFilterFieldTypes<GlobalSetting>;
+
+/**
  * Registry of model NAME → its coercible-column map. Keys are the Prisma model
  * names (PascalCase). A resource opts in by passing its model name to
  * `withFormatted{Paginated,Count}Props`; an unknown name resolves to `undefined`
@@ -254,6 +272,7 @@ export const MODEL_FILTER_FIELD_TYPES: Readonly<Record<string, FilterFieldTypeMa
   Tag: TAG_FILTER_FIELD_TYPES,
   Webhook: WEBHOOK_FILTER_FIELD_TYPES,
   Notification: NOTIFICATION_FILTER_FIELD_TYPES,
+  GlobalSetting: GLOBAL_SETTING_FILTER_FIELD_TYPES,
 };
 
 /**

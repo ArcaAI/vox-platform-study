@@ -1,11 +1,13 @@
 'use client';
 
 /**
- * Frame 54 — LLM Playground (tier 50–59, matrix row 38). Prompt + generate
- * via the SMR `text/*` gateway proxy: sync or streaming, assembled mode with
- * the admin-only debug meta, provider/guardrail catalogs with the elevated
- * __GLOBAL__ view. Streaming rides a same-origin BFF-proxied EventSource
- * (see use-task-stream.ts for the transport decision).
+ * Frame 54 / artboard 4f — Agent Playground (tier 50–59, matrix row 38). The
+ * Text generation tab: prompt + generate via the SMR `text/*` gateway proxy
+ * (sync or streaming, assembled mode with the admin-only debug meta,
+ * provider/guardrail catalogs with the elevated __GLOBAL__ view; streaming
+ * rides a same-origin BFF-proxied EventSource — see use-task-stream.ts). The
+ * Guardrails and NER tabs (TASK-446) proxy the Guardrail / NLP services through
+ * the user-plane `ai/*` gateway routes.
  */
 
 import { IconPlayerPlay } from '@tabler/icons-react';
@@ -13,13 +15,13 @@ import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { GatewayError } from '@/shared/api';
 import { useSession } from '@/shared/auth';
-import { PageHeader } from '@/shared/page/page-header';
-import { PlaygroundBanner } from '@/shared/page/playground-banner';
-import { ScreenTemplate } from '@/shared/page/screen-template';
-import { StatusFooter } from '@/shared/page/status-footer';
+import { CanvasHeader, PlaygroundCanvas } from '@/features/playground-shared/components/playground-canvas';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
+import { GuardrailsTab } from './guardrails-tab';
+import { NerTab } from './ner-tab';
 import { useCancelTask, useGenerateAssembled, useGenerateText, useSmrGuardrailProviders, useSmrProviders, useSmrTask } from '../api/hooks';
 import type { AssembledGenerateRequest, AssembledGenerateResponse, GenerateTextRequest } from '../api/types';
 import { isStreamingAck } from '../api/types';
@@ -147,7 +149,7 @@ function footerStatus(run: RunState, stream: TaskStreamState, isPending: boolean
 export function PlaygroundLlmScreen() {
     return (
         <WorkingTenantGate
-            title="LLM Playground"
+            title="Agent Playground"
             meta={<span>POST /text/generate · SSE /text/tasks/:taskId/stream · providers from the tenant catalog</span>}
             description="Playground generations run inside a tenant’s provider catalog and HarnessPolicy. Pick a working tenant from the switcher in the top bar."
         >
@@ -276,22 +278,25 @@ function PlaygroundLlmBody() {
     };
 
     return (
-        <ScreenTemplate
-            header={
-                <PageHeader
-                    title="LLM Playground"
-                    meta={<span>Compose → run → stream · runs under your own account</span>}
-                    actions={
-                        <Button onClick={handleGenerate} disabled={isPending || !canGenerate}>
-                            <IconPlayerPlay aria-hidden />
-                            Run
-                        </Button>
-                    }
-                />
-            }
-            statusBanner={
-                <div className="flex flex-col gap-2">
-                    <PlaygroundBanner />
+        <PlaygroundCanvas className="max-w-[1200px]">
+            <CanvasHeader
+                title="Agent Playground"
+                description={'Compose → run → stream · runs under your own account'}
+                actions={
+                    <Button onClick={handleGenerate} disabled={isPending || !canGenerate}>
+                        <IconPlayerPlay aria-hidden />
+                        Run
+                    </Button>
+                }
+            />
+            <Tabs defaultValue="text" className="flex min-h-0 flex-1 flex-col gap-4">
+                <TabsList variant="line">
+                    <TabsTrigger value="text">Text generation</TabsTrigger>
+                    <TabsTrigger value="guardrails">Guardrails</TabsTrigger>
+                    <TabsTrigger value="ner">NER</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="text" className="flex flex-col gap-4">
                     <RequestSummaryStrip
                         providersLoading={providersQuery.isLoading}
                         hasCatalog={!!providers && providers.length > 0}
@@ -302,54 +307,57 @@ function PlaygroundLlmBody() {
                         streaming={form.streaming}
                         taskId={run.kind === 'stream' ? run.taskId : null}
                     />
-                </div>
-            }
-            footer={
-                <StatusFooter
-                    start={<span>{footerStatus(run, stream, isPending, recovered)}</span>}
-                    end={<span className="font-mono">POST /text/generate · SSE /text/tasks/:taskId/stream</span>}
-                />
-            }
-        >
-            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,4fr)_minmax(0,5fr)_minmax(0,3fr)]">
-                <PromptEditorCard
-                    form={form}
-                    onPatch={patch}
-                    providers={providers}
-                    providersLoading={providersQuery.isLoading}
-                    selectedProvider={selectedProvider}
-                    selectedModel={selectedModel}
-                    onProviderChange={(name) => {
-                        setProviderChoice(name);
-                        setModelChoice(null);
-                    }}
-                    onModelChange={setModelChoice}
-                    canDebug={canDebug}
-                    sourceHint={sourceHint}
-                />
-                <OutputPane
-                    run={run}
-                    stream={stream}
-                    isPending={isPending}
-                    postMortem={postMortemQuery.data}
-                    onCancel={handleCancel}
-                    cancelPending={cancelMutation.isPending}
-                    onRetry={handleRetry}
-                    onReattach={stream.reopen}
-                />
-                <ProvidersCard
-                    providers={providers}
-                    providersLoading={providersQuery.isLoading}
-                    providersError={providersQuery.error}
-                    guardrails={guardrailsQuery.data}
-                    guardrailsLoading={guardrailsQuery.isLoading}
-                    guardrailsError={guardrailsQuery.error}
-                    onRefresh={handleRefreshCatalogs}
-                    showGlobalSwitch={isElevated}
-                    globalCatalog={globalCatalog}
-                    onGlobalCatalogChange={setGlobalCatalog}
-                />
-            </div>
-        </ScreenTemplate>
+                    <span className="text-muted-foreground text-xs">{footerStatus(run, stream, isPending, recovered)}</span>
+                    <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,4fr)_minmax(0,5fr)_minmax(0,3fr)]">
+                        <PromptEditorCard
+                            form={form}
+                            onPatch={patch}
+                            providers={providers}
+                            providersLoading={providersQuery.isLoading}
+                            selectedProvider={selectedProvider}
+                            selectedModel={selectedModel}
+                            onProviderChange={(name) => {
+                                setProviderChoice(name);
+                                setModelChoice(null);
+                            }}
+                            onModelChange={setModelChoice}
+                            canDebug={canDebug}
+                            sourceHint={sourceHint}
+                        />
+                        <OutputPane
+                            run={run}
+                            stream={stream}
+                            isPending={isPending}
+                            postMortem={postMortemQuery.data}
+                            onCancel={handleCancel}
+                            cancelPending={cancelMutation.isPending}
+                            onRetry={handleRetry}
+                            onReattach={stream.reopen}
+                        />
+                        <ProvidersCard
+                            providers={providers}
+                            providersLoading={providersQuery.isLoading}
+                            providersError={providersQuery.error}
+                            guardrails={guardrailsQuery.data}
+                            guardrailsLoading={guardrailsQuery.isLoading}
+                            guardrailsError={guardrailsQuery.error}
+                            onRefresh={handleRefreshCatalogs}
+                            showGlobalSwitch={isElevated}
+                            globalCatalog={globalCatalog}
+                            onGlobalCatalogChange={setGlobalCatalog}
+                        />
+                    </div>
+                </TabsContent>
+
+                {/* Guardrails + NER (TASK-446): user-plane `ai/*` gateway proxies over
+                    the Guardrail (:8863) and NLP (:8864) services. */}
+                <TabsContent value="guardrails">
+                    <GuardrailsTab />
+                </TabsContent>
+                <TabsContent value="ner">
+                    <NerTab />
+                </TabsContent>
+            </Tabs>
+        </PlaygroundCanvas>
     );
 }

@@ -4,9 +4,7 @@ import { useId, useState } from 'react';
 import { IconChecklist, IconCircleCheck, IconDeviceFloppy } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
-import { Card, CardContent, CardHeader } from '@arcaai/ui/components/shadcn/card';
 import { Label } from '@arcaai/ui/components/shadcn/label';
-import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
@@ -16,19 +14,18 @@ import { useUpdatePipeline, useValidatePipelineConfig } from '../api';
 import type { Pipeline } from '../api';
 
 /**
- * Frame 34 panel (a) — the selected pipeline's YAML as an editable mono
- * buffer with a validate preflight (POST validate, result inline) and an
- * OCC-guarded save (PATCH If-Match; 412 keeps the local draft and offers
- * reload). Mount with key={pipelineId} so the draft resets per selection.
+ * Config tab of the pipeline detail drawer — the selected pipeline's YAML as an
+ * editable mono buffer with a validate preflight (POST validate, result inline)
+ * and an OCC-guarded save (PATCH If-Match; 412 keeps the local draft and offers
+ * reload). The drawer mounts with key={pipelineId} so the draft resets per
+ * selection.
  */
-export function ConfigEditorCard({
+export function PipelineConfigTab({
     detail,
-    isLoading,
     onReload,
 }: {
-    /** Detail read (ETag included) of the selected pipeline; undefined while loading. */
-    detail: WithEtag<Pipeline> | undefined;
-    isLoading: boolean;
+    /** Detail read (ETag included) of the selected pipeline. */
+    detail: WithEtag<Pipeline>;
     /** Refetches the detail after a 412 so a fresh ETag backs the next save. */
     onReload: () => void;
 }) {
@@ -37,12 +34,12 @@ export function ConfigEditorCard({
     const validate = useValidatePipelineConfig();
     const update = useUpdatePipeline();
 
-    const pipeline = detail?.data;
-    const value = draft ?? pipeline?.configYaml ?? '';
-    const dirty = draft !== null && draft !== pipeline?.configYaml;
+    const pipeline = detail.data;
+    const value = draft ?? pipeline.configYaml ?? '';
+    const dirty = draft !== null && draft !== pipeline.configYaml;
 
     function handleSave() {
-        if (!detail?.etag || !pipeline || draft === null) return;
+        if (!detail.etag || draft === null) return;
         update.mutate(
             { id: pipeline.id, patch: { configYaml: draft }, etag: detail.etag },
             {
@@ -59,63 +56,40 @@ export function ConfigEditorCard({
         );
     }
 
-    let body;
-    if (!pipeline && isLoading) {
-        body = (
-            <div className="flex flex-col gap-2">
-                <Skeleton className="h-40 w-full" />
-                <Skeleton className="h-9 w-full" />
-            </div>
-        );
-    } else if (!pipeline) {
-        body = <p className="text-muted-foreground text-sm">Select a pipeline in the grid to edit its config.</p>;
-    } else {
-        body = (
-            <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-2">
-                    <Label htmlFor={textareaId}>
-                        Config YAML {'\u00b7'} <span className="font-mono text-xs font-normal">{pipeline.slug}</span>
-                    </Label>
-                    <Textarea
-                        id={textareaId}
-                        value={value}
-                        onChange={(event) => setDraft(event.target.value)}
-                        spellCheck={false}
-                        className="min-h-56 font-mono text-xs"
-                    />
-                </div>
-                <ValidateResult result={validate.data} error={validate.error} />
-                <OccConflictAlert
-                    error={update.error}
-                    onReload={() => {
-                        update.reset();
-                        onReload();
-                    }}
-                />
-                <div className="flex flex-wrap items-center gap-2">
-                    <Button variant="outline" onClick={() => validate.mutate(value)} disabled={validate.isPending}>
-                        {validate.isPending ? <Spinner /> : <IconChecklist aria-hidden />}
-                        Validate
-                    </Button>
-                    <Button onClick={handleSave} disabled={!dirty || update.isPending}>
-                        {update.isPending ? <Spinner /> : <IconDeviceFloppy aria-hidden />}
-                        Save
-                    </Button>
-                    <span className="text-muted-foreground font-mono text-xs">PATCH :id (If-Match)</span>
-                </div>
-            </div>
-        );
-    }
-
     return (
-        <Card className="gap-4">
-            <CardHeader>
-                <h2 className="text-sm leading-none font-semibold">
-                    Config editor <span aria-hidden className="text-muted-foreground font-normal">{'\u00b7'} POST validate</span>
-                </h2>
-            </CardHeader>
-            <CardContent>{body}</CardContent>
-        </Card>
+        <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2">
+                <Label htmlFor={textareaId}>
+                    Config YAML {'·'} <span className="font-mono text-xs font-normal">{pipeline.slug}</span>
+                </Label>
+                <Textarea
+                    id={textareaId}
+                    value={value}
+                    onChange={(event) => setDraft(event.target.value)}
+                    spellCheck={false}
+                    className="min-h-72 font-mono text-xs"
+                />
+            </div>
+            <ValidateResult result={validate.data} error={validate.error} />
+            <OccConflictAlert
+                error={update.error}
+                onReload={() => {
+                    update.reset();
+                    onReload();
+                }}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" onClick={() => validate.mutate(value)} disabled={validate.isPending}>
+                    {validate.isPending ? <Spinner /> : <IconChecklist aria-hidden />}
+                    Validate
+                </Button>
+                <Button onClick={handleSave} disabled={!dirty || update.isPending}>
+                    {update.isPending ? <Spinner /> : <IconDeviceFloppy aria-hidden />}
+                    Save
+                </Button>
+                <span className="text-muted-foreground font-mono text-xs">POST validate {'·'} PATCH :id (If-Match)</span>
+            </div>
+        </div>
     );
 }
 

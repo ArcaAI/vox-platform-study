@@ -18,7 +18,7 @@
 import type { ReactNode } from 'react';
 import { useCallback, useMemo } from 'react';
 import { useQueryStates } from 'nuqs';
-import { VirtualizedDataGrid, type ColumnDef, type DataQueryState, type RowSelectionState, type SortRule } from '@arcaai/ui';
+import { VirtualizedDataGrid, type ColumnDef, type DataQueryState, type GroupByConfig, type RowSelectionState, type SortRule } from '@arcaai/ui';
 import type { ListParams } from '@/shared/api';
 import { ErrorBanner, ErrorState } from '@/shared/state/error-state';
 import { UI_DATA_GRID_NAMESPACE, sharedGridLayoutPersistence } from './grid-persistence';
@@ -125,6 +125,9 @@ export interface AdminDataGridProps<TData> {
     pageMode?: 'offset' | 'cursor';
     cursor?: { hasMore?: boolean; nextCursor?: string | null };
 
+    /** TASK-443 — grouped-row display (e.g. namespace sections). Pair with a group-field-first sort so groups are contiguous per page. */
+    groupBy?: GroupByConfig<TData>;
+
     selection?: { value?: RowSelectionState; onChange?: (selection: RowSelectionState) => void };
     /** Selection action bar; the grid shows it only when ≥1 row is selected. */
     actionBar?: ReactNode;
@@ -152,6 +155,7 @@ export function AdminDataGrid<TData>({
     emptyFilteredState,
     pageMode = 'offset',
     cursor,
+    groupBy,
     selection,
     actionBar,
     onRowClick,
@@ -183,6 +187,7 @@ export function AdminDataGrid<TData>({
                 rowCount={total}
                 pageMode={pageMode}
                 cursor={cursor}
+                groupBy={groupBy}
                 queryState={queryState}
                 onQueryStateChange={onQueryStateChange}
                 features={{ rowSelection: Boolean(selection) }}

@@ -85,6 +85,23 @@ test.describe('RBAC roles screen (two-pane)', () => {
         await expect(roleListItems(page).first()).toBeVisible();
     });
 
+    test('Members tab lists role holders (or an honest empty state) with a header count chip', async ({ page }) => {
+        await page.goto('/rbac/roles');
+        await waitForList(page);
+        await roleListItems(page).first().click();
+
+        // TASK-444 — the role reads now carry memberCount; the detail header
+        // renders it as an accessible badge ("N member(s)").
+        await expect(page.getByText(/\d+ members?/).first()).toBeVisible();
+
+        await page.getByRole('tab', { name: 'Members' }).click();
+        // Seeded system roles have at least one holder in a dev stack, but a
+        // scoped tenant may legitimately see none — accept either the list or
+        // the tenant-scoped empty state (never the old "isn't available yet").
+        await expect(page.getByRole('list', { name: 'Role members' }).or(page.getByText('No members yet')).first()).toBeVisible();
+        await expect(page.getByText('Member listing isn’t available yet')).toHaveCount(0);
+    });
+
     test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {
         await page.emulateMedia({ colorScheme: 'light' });
         await page.goto('/rbac/roles');

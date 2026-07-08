@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { IconFilterOff, IconRefresh, IconTopologyStar3 } from '@tabler/icons-react';
-import { parseAsString, useQueryStates } from 'nuqs';
+import { parseAsString, useQueryState, useQueryStates } from 'nuqs';
 import { useQueryClient } from '@tanstack/react-query';
 import { VirtualizedDataGrid, type ColumnDef, type DataQueryState } from '@arcaai/ui';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -16,9 +16,9 @@ import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
-import { harnessOpsKeys, useHarnessWorkflows } from '../api';
+import { harnessOpsKeys, isNonTerminal, useHarnessWorkflows } from '../api';
 import type { HarnessWorkflowSummary } from '../api';
-import { SignalsLifecyclePanel } from './signals-lifecycle-panel';
+import { LiveSessionsCard } from './live-sessions-card';
 import { WorkflowDetailDrawer } from './workflow-detail-drawer';
 import { WORKFLOW_KINDS, workflowKind } from './workflow-kind';
 import { WorkflowStatusBadge } from './workflow-status-badge';
@@ -49,7 +49,10 @@ function WorkflowsBody() {
     // The Temporal cursor is ephemeral local state; the grid's cursor pager walks
     // it via `queryState`, while search/type stay client-side over the loaded page.
     const [cursor, setCursor] = useState<string | null>(null);
-    const [selectedId, setSelectedId] = useState<string | null>(null);
+    // The selected row lives in the URL (`?workflow=`) so the detail slide-over is
+    // deep-linkable and survives refresh; empty string = nothing selected.
+    const [selectedParam, setSelectedParam] = useQueryState('workflow', parseAsString.withDefault(''));
+    const selectedId = selectedParam || null;
 
     const workflowsQuery = useHarnessWorkflows({
         status: state || undefined,
@@ -65,6 +68,9 @@ function WorkflowsBody() {
         return workflow.workflowId.toLowerCase().includes(needle) || (workflow.consultationId ?? '').toLowerCase().includes(needle);
     });
     const hasFilters = Boolean(search || state || type);
+    // The list self-polls (5s) while any loaded run is still RUNNING; the footer
+    // reflects that live posture and the last successful refresh.
+    const isLive = items.some((workflow) => isNonTerminal(workflow.status));
 
     const queryState = useMemo<DataQueryState>(
         () => ({ pagination: { mode: 'cursor', cursor, limit: PAGE_SIZE }, sorting: [], filters: [], globalSearch: undefined }),
@@ -124,8 +130,17 @@ function WorkflowsBody() {
         />
     );
 
+    const footerStart =
+        workflowsQuery.isFetching && !workflowsQuery.isLoading
+            ? 'Refreshing'
+            : isLive
+              ? `Live · refreshed ${formatRelativeTime(new Date(workflowsQuery.dataUpdatedAt))}`
+              : 'Up to date';
+
     return (
         <ScreenTemplate
+            contentMode="fill"
+            stats={<LiveSessionsCard />}
             header={
                 <PageHeader
                     title="Harness Workflows"
@@ -173,52 +188,49 @@ function WorkflowsBody() {
             }
             footer={
                 <StatusFooter
-                    start={<span>{workflowsQuery.isFetching && !workflowsQuery.isLoading ? 'Refreshing' : 'Up to date'}</span>}
+                    start={<span>{footerStart}</span>}
                     end={<span aria-hidden className="font-mono">GET /admin/harness/workflows</span>}
                 />
             }
         >
-            <div className="grid gap-4 xl:grid-cols-4">
-                <WorkflowDetailDrawer workflowId={selectedId} />
-                <div className="flex min-w-0 flex-col gap-3 xl:col-span-2">
-                    {/* The grid stays mounted across filter changes so its per-user
-                        persisted column layout loads once (no skeleton/layout flash).
-                        A filter change resets the Temporal cursor to page 1 in
-                        `updateFilters`; the forward-only cursor walk is preserved. */}
-                    <VirtualizedDataGrid<HarnessWorkflowSummary>
-                        aria-label="Harness workflows"
-                        columns={columns}
-                        data={rows}
-                        getRowId={(row) => row.workflowId}
-                        height={480}
-                        persistence={gridPersistence('harness-workflows')}
-                        manual={{ pagination: true }}
-                        rowCount={rows.length}
-                        pageMode="cursor"
-                        cursor={{ hasMore: Boolean(workflowsQuery.data?.nextPageToken), nextCursor: workflowsQuery.data?.nextPageToken }}
-                        queryState={queryState}
-                        onQueryStateChange={setQueryState}
-                        features={{
-                            columnReorder: true,
-                            columnResize: true,
-                            columnPinning: true,
-                            columnVisibility: true,
-                            rowSelection: false,
-                            globalSearch: false,
-                            facetedFilters: false,
-                            sorting: false,
-                        }}
-                        isLoading={workflowsQuery.isLoading}
-                        isBusy={workflowsQuery.isFetching && !workflowsQuery.isLoading}
-                        error={workflowsQuery.error}
-                        onRetry={() => void workflowsQuery.refetch()}
-                        errorState={(err) => <ErrorState error={err} onRetry={() => void workflowsQuery.refetch()} />}
-                        emptyState={emptyState}
-                        onRowClick={(row) => setSelectedId(row.workflowId)}
-                    />
-                </div>
-                <SignalsLifecyclePanel workflowId={selectedId} />
-            </div>
+            {/* The fill-height grid owns the remaining content height; the selected
+                row opens the console-wide detail slide-over. The grid stays mounted
+                across filter changes so its per-user persisted column layout loads
+                once (no skeleton/layout flash). A filter change resets the Temporal
+                cursor to page 1 in `updateFilters`; the forward-only cursor walk is
+                preserved. */}
+            <VirtualizedDataGrid<HarnessWorkflowSummary>
+                aria-label="Harness workflows"
+                columns={columns}
+                data={rows}
+                getRowId={(row) => row.workflowId}
+                persistence={gridPersistence('harness-workflows')}
+                manual={{ pagination: true }}
+                rowCount={rows.length}
+                pageMode="cursor"
+                cursor={{ hasMore: Boolean(workflowsQuery.data?.nextPageToken), nextCursor: workflowsQuery.data?.nextPageToken }}
+                queryState={queryState}
+                onQueryStateChange={setQueryState}
+                features={{
+                    columnReorder: true,
+                    columnResize: true,
+                    columnPinning: true,
+                    columnVisibility: true,
+                    rowSelection: false,
+                    globalSearch: false,
+                    facetedFilters: false,
+                    sorting: false,
+                }}
+                isLoading={workflowsQuery.isLoading}
+                isBusy={workflowsQuery.isFetching && !workflowsQuery.isLoading}
+                error={workflowsQuery.error}
+                onRetry={() => void workflowsQuery.refetch()}
+                errorState={(err) => <ErrorState error={err} onRetry={() => void workflowsQuery.refetch()} />}
+                emptyState={emptyState}
+                onRowClick={(row) => void setSelectedParam(row.workflowId)}
+            />
+
+            <WorkflowDetailDrawer workflowId={selectedId} onOpenChange={(open) => !open && void setSelectedParam(null)} />
         </ScreenTemplate>
     );
 }

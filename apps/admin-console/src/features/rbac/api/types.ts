@@ -38,6 +38,29 @@ export interface Role {
     createdAt: string;
     updatedAt: string;
     policies?: { id: string; name: string; priority: number }[];
+    /**
+     * TASK-444 — users holding this role, tenant-scoped for tenant-scoped
+     * callers. Present on read responses only (mutations return no count).
+     */
+    memberCount?: number;
+}
+
+/**
+ * TASK-444 — one member of a role (`GET admin/rbac/roles/:id/members`).
+ * `resourceStatus` is the membership (assignment) status; `userResourceStatus`
+ * the account status; `department` is scoped to the assignment's tenant.
+ */
+export interface RoleMember {
+    assignmentId: string;
+    userId: string;
+    tenantId: string;
+    username: string;
+    displayName: string;
+    email: string | null;
+    department: string | null;
+    resourceStatus: string;
+    userResourceStatus: string;
+    assignedAt: string;
 }
 
 export interface CreateRoleRequest {

@@ -79,6 +79,32 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     super(eventEmitter, clsService, ResourceType.Role);
   }
 
+  /**
+   * TASK-444 — role reads carry a member count so the admin console renders
+   * per-role chips without one members call per row. The nested `_count` is
+   * NOT intercepted by the tenant-scope `$extends` (query extensions only see
+   * the dispatched model's TOP-LEVEL args), so the filter is built explicitly
+   * from CLS: pinned to the caller's tenant when a tenant context exists,
+   * unfiltered for the unscoped platform-admin path. Non-DELETED matches what
+   * the members listing itself returns (soft-delete extension parity).
+   */
+  private roleReadInclude() {
+    const tenantId = this.tenantId;
+    return {
+      ...ROLE_POLICIES_INCLUDE,
+      _count: {
+        select: {
+          UserRoleAssignments: {
+            where: {
+              resourceStatus: { not: ResourceStatusType.DELETED },
+              ...(tenantId ? { tenantId } : {}),
+            },
+          },
+        },
+      },
+    };
+  }
+
   async findAll(query: RbacRoleListQuery): Promise<RbacRoleListResult> {
     const { page, pageSize, search } = query;
     const skip = (page - 1) * pageSize;
@@ -95,7 +121,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
         where,
         skip,
         take: pageSize,
-        include: ROLE_POLICIES_INCLUDE,
+        include: this.roleReadInclude(),
         orderBy: { name: 'asc' },
       }),
       this.roleRepository.count({ where }),
@@ -105,7 +131,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   async findOne(id: string): Promise<RbacRoleRecord | null> {
-    const role = await this.roleRepository.findByIdWithPolicies(id);
+    const role = await this.roleRepository.findByIdWithPolicies(id, this.roleReadInclude());
     return (role as RbacRoleRecord | null) ?? null;
   }
 
@@ -226,7 +252,12 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     }
 
     // TASK-409 — deleting a role is a dangerous-but-allowed mutation.
-    await this.requireBreakGlass('role-delete', { targetId: id, targetName: role.name, targetType: 'Role' }, breakGlass, `Deleting role '${role.name}'`);
+    await this.requireBreakGlass(
+      'role-delete',
+      { targetId: id, targetName: role.name, targetType: 'Role' },
+      breakGlass,
+      `Deleting role '${role.name}'`,
+    );
 
     const user = this.requestUser;
     await this.roleRepository.softDelete(id, user?.id);

@@ -1,8 +1,8 @@
 /**
  * TDD tests for the Settings detail/create drawer (TASK-439): the type-aware
  * value editor (real code editor for Json — no modal), OCC If-Match PATCH with
- * the 412 path, the permission-gated step-up reveal + guided rotate, the create
- * flow, and the audit-log-backed History tab.
+ * the 412 path, the permission-gated step-up reveal + the server-side rotate
+ * endpoint flow (TASK-445), the create flow, and the audit-log-backed History tab.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -161,7 +161,7 @@ describe('SettingDetailDrawer', () => {
         expect(screen.getByRole('dialog')).toBeDefined();
     });
 
-    it('reveals a secret via step-up and rotates by focusing the write-only field', async () => {
+    it('reveals a secret via step-up and replaces it on save through the write-only field', async () => {
         const calls = stubFetch({
             custom: (call) => {
                 if (call.method === 'GET' && call.url === '/api/hope/admin/settings/s-2') {
@@ -182,12 +182,8 @@ describe('SettingDetailDrawer', () => {
         // Save is disabled until a replacement value is entered (write-only rule).
         expect((screen.getByRole('button', { name: 'Save changes' }) as HTMLButtonElement).disabled).toBe(true);
 
-        // Rotate focuses the new-value field (permission-gated control).
-        fireEvent.click(await screen.findByRole('button', { name: /Rotate/ }));
-        expect(document.activeElement).toBe(newValue);
-
-        // Step-up reveal shows the plaintext.
-        fireEvent.click(screen.getByRole('button', { name: 'Reveal smtp.password' }));
+        // Step-up reveal shows the plaintext (permission-gated control resolves async).
+        fireEvent.click(await screen.findByRole('button', { name: 'Reveal smtp.password' }));
         const stepUp = await screen.findByRole('dialog', { name: /reveal secret/i });
         fireEvent.change(within(stepUp).getByLabelText(/password/i), { target: { value: 'p@ss' } });
         fireEvent.click(within(stepUp).getByRole('button', { name: 'Reveal secret' }));
@@ -200,7 +196,64 @@ describe('SettingDetailDrawer', () => {
         expect(calls.find((call) => call.method === 'PATCH')?.body).toEqual({ value: 'newpass', expectedVersion: 4 });
     });
 
-    it('hides the reveal control without the manage/all permission', async () => {
+    // TASK-445 — Rotate is a REAL server-side call (POST :id/rotate with step-up
+    // + If-Match), no longer the guided-replace that focused the write-only field.
+    it('rotates a secret through the rotate endpoint (step-up password + new value, If-Match)', async () => {
+        const { toast } = await import('sonner');
+        const calls = stubFetch({
+            custom: (call) => {
+                if (call.method === 'GET' && call.url === '/api/hope/admin/settings/s-2') {
+                    return Response.json(setting({ id: 's-2', key: 'smtp.password', value: '', isSecret: true, version: 4 }), { headers: { etag: '"4"' } });
+                }
+                if (call.method === 'POST' && call.url === '/api/hope/admin/settings/s-2/rotate') {
+                    return Response.json(setting({ id: 's-2', key: 'smtp.password', value: '', isSecret: true, version: 5 }), { headers: { etag: '"5"' } });
+                }
+                return undefined;
+            },
+        });
+        renderWithProviders(<SettingDetailDrawer settingId="s-2" onClose={vi.fn()} onDelete={vi.fn()} />);
+
+        fireEvent.click(await screen.findByRole('button', { name: /Rotate/ }));
+        const dialog = await screen.findByRole('dialog', { name: /rotate secret/i });
+        fireEvent.change(within(dialog).getByLabelText(/new secret value/i), { target: { value: 'rotated-pass' } });
+        fireEvent.change(within(dialog).getByLabelText(/password/i), { target: { value: 'p@ss' } });
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Rotate secret' }));
+
+        await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/rotate'))).toBe(true));
+        const rotate = calls.find((call) => call.method === 'POST' && call.url.endsWith('/rotate'));
+        expect(rotate?.headers.get('if-match')).toBe('"4"');
+        expect(rotate?.body).toEqual({ password: 'p@ss', newValue: 'rotated-pass', expectedVersion: 4 });
+        expect(toast.success).toHaveBeenCalled();
+        // Success closes the rotate dialog (the drawer itself stays open).
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: /rotate secret/i })).toBeNull());
+    });
+
+    it('shows a rotate failure in-dialog (break-glass style) and keeps the dialog open', async () => {
+        stubFetch({
+            custom: (call) => {
+                if (call.method === 'GET' && call.url === '/api/hope/admin/settings/s-2') {
+                    return Response.json(setting({ id: 's-2', key: 'smtp.password', value: '', isSecret: true, version: 4 }), { headers: { etag: '"4"' } });
+                }
+                if (call.method === 'POST' && call.url === '/api/hope/admin/settings/s-2/rotate') {
+                    return Response.json({ message: 'Step-up re-authentication failed: incorrect password.' }, { status: 401 });
+                }
+                return undefined;
+            },
+        });
+        renderWithProviders(<SettingDetailDrawer settingId="s-2" onClose={vi.fn()} onDelete={vi.fn()} />);
+
+        fireEvent.click(await screen.findByRole('button', { name: /Rotate/ }));
+        const dialog = await screen.findByRole('dialog', { name: /rotate secret/i });
+        fireEvent.change(within(dialog).getByLabelText(/new secret value/i), { target: { value: 'rotated-pass' } });
+        fireEvent.change(within(dialog).getByLabelText(/password/i), { target: { value: 'wrong' } });
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Rotate secret' }));
+
+        const alert = await within(dialog).findByRole('alert');
+        expect(alert.textContent).toContain('incorrect password');
+        expect(screen.getByRole('dialog', { name: /rotate secret/i })).toBeDefined();
+    });
+
+    it('hides the reveal and rotate controls without the manage/all permission', async () => {
         stubFetch({
             permissions: READ_ONLY,
             custom: (call) => {
@@ -214,6 +267,7 @@ describe('SettingDetailDrawer', () => {
 
         await screen.findByLabelText(/new value/i);
         await waitFor(() => expect(screen.queryByRole('button', { name: 'Reveal smtp.password' })).toBeNull());
+        expect(screen.queryByRole('button', { name: /Rotate/ })).toBeNull();
     });
 
     it('lists audit-log-backed history on the History tab', async () => {

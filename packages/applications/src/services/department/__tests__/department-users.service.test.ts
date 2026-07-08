@@ -14,13 +14,10 @@ import { ResourceStatusType } from '@arcaai/domains';
 
 vi.mock('../../user/user/user.dto.mapper', () => ({
   UserDtoMapper: {
-    // Echo the FetchResponse shape so we can assert count/page/limit/data.
-    ToPaginatedResponse: vi.fn((fr: { data: unknown[]; count: number; page: number; limit: number }) => ({
-      data: fr.data,
-      count: fr.count,
-      page: fr.page,
-      limit: fr.limit,
-    })),
+    // TASK-441 — `getDepartmentUsers` now maps members MANUALLY (per-row, so it
+    // can stamp `isLead`), so it calls `ToResponse` not `ToPaginatedResponse`.
+    // Echo the user id so the service can key `isLead` off the mocked membership.
+    ToResponse: vi.fn((u: { id: string }) => ({ id: u.id })),
   },
 }));
 
@@ -28,6 +25,7 @@ import { DepartmentService } from '../department.service';
 
 const mockDepartmentRepository = { findById: vi.fn() };
 const mockUserRepository = { findAll: vi.fn(), count: vi.fn() };
+const mockUserDepartmentRepository = { findAll: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 
 let clsUser: { id: string; roles: string[] } | null;
@@ -43,6 +41,8 @@ function buildService(): DepartmentService {
     mockEventEmitter as never,
     mockClsService as never,
     mockUserRepository as never,
+    undefined,
+    mockUserDepartmentRepository as never,
   );
 }
 
@@ -60,6 +60,8 @@ describe('DepartmentService.getDepartmentUsers (TASK-387 #6)', () => {
     mockDepartmentRepository.findById.mockResolvedValue({ id: 'dept-1', tenantId: 'tenant-1' });
     mockUserRepository.findAll.mockResolvedValue([{ id: 'ua' }, { id: 'ub' }]);
     mockUserRepository.count.mockResolvedValue(2);
+    // TASK-441 — `ua` is the primary/lead member; `ub` is not.
+    mockUserDepartmentRepository.findAll.mockResolvedValue([{ userId: 'ua', isPrimary: true }]);
 
     const result = await service.getDepartmentUsers('dept-1', { page: 1, limit: 10 });
 
@@ -68,12 +70,27 @@ describe('DepartmentService.getDepartmentUsers (TASK-387 #6)', () => {
     expect(result.page).toBe(1);
     expect(result.limit).toBe(10);
 
+    // TASK-441 — `isLead` derived from the `isPrimary` membership set.
+    const byId = Object.fromEntries(result.data.map((r) => [r.id, r]));
+    expect(byId['ua'].isLead).toBe(true);
+    expect(byId['ub'].isLead).toBe(false);
+
     const findAllArg = mockUserRepository.findAll.mock.calls[0][0] as {
       where: { UserDepartments: { some: Record<string, unknown> } };
     };
     expect(findAllArg.where.UserDepartments.some).toMatchObject({
       departmentId: 'dept-1',
       tenantId: 'tenant-1',
+      resourceStatus: { not: ResourceStatusType.DELETED },
+    });
+
+    // TASK-441 — the membership lookup is scoped to this department + tenant,
+    // primary-only, and excludes soft-deleted rows.
+    const udArg = mockUserDepartmentRepository.findAll.mock.calls[0][0] as { where: Record<string, unknown> };
+    expect(udArg.where).toMatchObject({
+      departmentId: 'dept-1',
+      tenantId: 'tenant-1',
+      isPrimary: true,
       resourceStatus: { not: ResourceStatusType.DELETED },
     });
   });
@@ -91,6 +108,7 @@ describe('DepartmentService.getDepartmentUsers (TASK-387 #6)', () => {
     mockDepartmentRepository.findById.mockResolvedValue({ id: 'dept-3', tenantId: 'tenant-x' });
     mockUserRepository.findAll.mockResolvedValue([{ id: 'z' }]);
     mockUserRepository.count.mockResolvedValue(1);
+    mockUserDepartmentRepository.findAll.mockResolvedValue([]);
 
     const result = await service.getDepartmentUsers('dept-3', { page: 1, limit: 25 });
 

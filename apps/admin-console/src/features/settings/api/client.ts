@@ -1,8 +1,8 @@
 /** Global settings admin (capabilities-matrix row 15). Secrets stay masked. */
 
-import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, versionFromEtag } from '@/shared/api';
+import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, request, versionFromEtag } from '@/shared/api';
 import type { ListParams, Paginated, WithEtag } from '@/shared/api';
-import type { CreateGlobalSettingRequest, GlobalSetting, RevealedGlobalSetting, SettingHistoryEntry, UpdateGlobalSettingRequest } from './types';
+import type { CreateGlobalSettingRequest, GlobalSetting, RevealedGlobalSetting, RotateGlobalSettingRequest, SettingHistoryEntry, UpdateGlobalSettingRequest } from './types';
 
 const BASE = 'admin/settings';
 
@@ -37,6 +37,19 @@ export function deleteGlobalSetting(id: string): Promise<GlobalSetting> {
 /** Step-up reveal of a secret value (re-enter password; audited). */
 export function revealGlobalSetting(id: string, password: string): Promise<RevealedGlobalSetting> {
     return postJson(`${BASE}/${encodeURIComponent(id)}/reveal`, { password });
+}
+
+/**
+ * TASK-445 — rotate a secret: atomic server-side replace under OCC (If-Match
+ * required, 428/412 semantics like the update PATCH) with step-up re-auth.
+ * Returns the masked setting + fresh ETag; the plaintext never comes back.
+ */
+export function rotateGlobalSetting(id: string, body: RotateGlobalSettingRequest, etag: string): Promise<WithEtag<GlobalSetting>> {
+    return request(`${BASE}/${encodeURIComponent(id)}/rotate`, {
+        method: 'POST',
+        body: { ...body, expectedVersion: versionFromEtag(etag) },
+        etag,
+    });
 }
 
 /** Shape the audit-log envelope exposes for a setting's change history. */

@@ -4,6 +4,8 @@ export const settingKeys = {
     root: ['settings'] as const,
     list: (params?: ListParams) => [...settingKeys.root, 'list', params ?? {}] as const,
     byTenant: (tenantId: string, params?: ListParams) => [...settingKeys.root, 'by-tenant', tenantId, params ?? {}] as const,
+    /** TASK-443 — distinct-namespace catalog backing the Namespace filter chip. */
+    namespaces: () => [...settingKeys.root, 'namespaces'] as const,
     detail: (id: string) => [...settingKeys.root, 'detail', id] as const,
     history: (id: string) => [...settingKeys.root, 'history', id] as const,
 };

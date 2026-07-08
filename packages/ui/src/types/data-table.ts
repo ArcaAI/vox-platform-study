@@ -19,6 +19,13 @@ declare module '@tanstack/react-table' {
     range?: [number, number];
     unit?: string;
     icon?: React.FC<React.SVGProps<SVGSVGElement>>;
+    /**
+     * TASK-443 — a FILTER-ONLY virtual column: it feeds a toolbar faceted
+     * filter chip (via `variant`/`options`) but is never rendered as a table
+     * column and is excluded from the column-visibility list. For predicates
+     * with no presentable column (e.g. a derived server-side facet).
+     */
+    filterOnly?: boolean;
   }
 }
 

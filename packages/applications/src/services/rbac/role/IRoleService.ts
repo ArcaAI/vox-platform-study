@@ -69,6 +69,11 @@ export interface RbacRoleRecord {
   createdAt: Date;
   updatedAt: Date;
   RolePolicies: RbacRolePolicyRow[];
+  /**
+   * TASK-444 — tenant-scoped member count, present only on the read paths
+   * (`findAll`/`findOne` merge the `_count` include; mutations do not).
+   */
+  _count?: { UserRoleAssignments: number };
 }
 
 export interface RbacRoleListResult {

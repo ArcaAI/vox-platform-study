@@ -131,14 +131,15 @@ function submitButton(): HTMLButtonElement {
 }
 
 describe('VoiceProfilesScreen', () => {
-    it('renders the header, the playground banner, the biometric chip and the profile list with active badge + fallbacks', async () => {
+    it('renders the canvas header, the biometric chip and the profile list with active badge + fallbacks', async () => {
         stubFetch();
         renderWithProviders(<VoiceProfilesScreen />);
 
-        expect(await screen.findByRole('heading', { level: 1, name: 'Voice Profiles' })).toBeDefined();
-        // Template subtitle + shared playground strip (this screen has no tenant gate).
+        expect(await screen.findByRole('heading', { level: 1, name: 'My Voice Enrollment & Profiles' })).toBeDefined();
+        // Canvas-header description + the user-owned biometric chip (TASK-442 §4:
+        // the "runs under your own account" framing moved to the top-bar persona
+        // control, so there is no page-level playground banner or status footer).
         expect(screen.getByText(/enroll & manage speaker profiles/i)).toBeDefined();
-        expect(screen.getByText(/demo sessions run under your own account/i)).toBeDefined();
         expect(screen.getByText(/user-owned only/i)).toBeDefined();
 
         expect(await screen.findByText('Default profile')).toBeDefined();
@@ -147,9 +148,6 @@ describe('VoiceProfilesScreen', () => {
         expect(screen.getByText('Untitled profile')).toBeDefined();
         expect(screen.getByText('Inactive')).toBeDefined();
         expect(screen.getByText('mdl_7f3a92')).toBeDefined();
-        // Footer: status + count on the left, endpoint hints on the right.
-        expect(await screen.findByText(/up to date · 2 profiles/i)).toBeDefined();
-        expect(screen.getByText('GET /voice-profile · POST /voice-profile/enroll')).toBeDefined();
         // Relative enrollment timestamps (rule 11 §8).
         expect(screen.getAllByText(/enrolled/i).length).toBeGreaterThanOrEqual(1);
     });
@@ -158,7 +156,7 @@ describe('VoiceProfilesScreen', () => {
         vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})));
         const { container } = renderWithProviders(<VoiceProfilesScreen />);
 
-        expect(screen.getByRole('heading', { level: 1, name: 'Voice Profiles' })).toBeDefined();
+        expect(screen.getByRole('heading', { level: 1, name: 'My Voice Enrollment & Profiles' })).toBeDefined();
         expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
     });
 

@@ -10,10 +10,7 @@ import { NativeSelect, NativeSelectOption } from '@arcaai/ui/components/shadcn/n
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { useSession } from '@/shared/auth';
-import { PageHeader } from '@/shared/page/page-header';
-import { PlaygroundBanner } from '@/shared/page/playground-banner';
-import { ScreenTemplate } from '@/shared/page/screen-template';
-import { StatusFooter } from '@/shared/page/status-footer';
+import { CanvasHeader, PlaygroundCanvas } from '@/features/playground-shared/components/playground-canvas';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { useLiveSttSession, usePlaygroundPipelines } from '../api';
 import type { LiveSttStatus } from '../api';
@@ -73,86 +70,65 @@ function ScreenBody() {
     }
 
     return (
-        <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => void setTabParam(next === 'streaming' ? null : next)}>
-            <ScreenTemplate
-                header={
-                    <PageHeader
-                        title="Live Transcription"
-                        meta={<span>Streaming session {'\u00b7'} runs under your own account</span>}
-                        actions={
-                            busy ? (
-                                <Button variant="outline" className="h-11" onClick={handleStop} disabled={live.status === 'stopping'}>
-                                    <IconPlayerStopFilled aria-hidden />
-                                    Stop session
-                                </Button>
-                            ) : (
-                                <Button className="h-11" onClick={handleStart} disabled={!canStart}>
-                                    <IconPlayerPlayFilled aria-hidden />
-                                    Start session
-                                </Button>
-                            )
-                        }
-                    />
+        <PlaygroundCanvas className="max-w-[1100px]">
+            <CanvasHeader
+                title="Live Transcription"
+                description={'Streaming session \u00b7 runs under your own account'}
+                actions={
+                    busy ? (
+                        <Button variant="outline" onClick={handleStop} disabled={live.status === 'stopping'}>
+                            <IconPlayerStopFilled aria-hidden />
+                            Stop session
+                        </Button>
+                    ) : (
+                        <Button onClick={handleStart} disabled={!canStart}>
+                            <IconPlayerPlayFilled aria-hidden />
+                            Start session
+                        </Button>
+                    )
                 }
-                statusBanner={<PlaygroundBanner />}
-                toolbar={
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                        <Label htmlFor="pipeline-picker">Pipeline</Label>
-                        {pipelinesQuery.isPending ? (
-                            <Skeleton className="h-9 w-64" />
-                        ) : (
-                            <NativeSelect
-                                id="pipeline-picker"
-                                className="w-64"
-                                value={pipelineId ?? ''}
-                                onChange={(event) => setPipelineChoice(event.target.value || null)}
-                                disabled={busy || pipelines.length === 0}
-                            >
-                                {pipelines.length === 0 ? <NativeSelectOption value="">No pipelines available</NativeSelectOption> : null}
-                                {pipelines.map((pipeline) => (
-                                    <NativeSelectOption key={pipeline.id} value={pipeline.id}>
-                                        {pipeline.name}
-                                        {pipeline.isDefault ? ' \u00b7 default' : ''}
-                                    </NativeSelectOption>
-                                ))}
-                            </NativeSelect>
-                        )}
-                        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-                            GET /audio/pipelines
+            />
+            <Tabs className="flex min-h-0 flex-1 flex-col gap-4" value={tab} onValueChange={(next) => void setTabParam(next === 'streaming' ? null : next)}>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <Label htmlFor="pipeline-picker">Pipeline</Label>
+                    {pipelinesQuery.isPending ? (
+                        <Skeleton className="h-9 w-64" />
+                    ) : (
+                        <NativeSelect
+                            id="pipeline-picker"
+                            className="w-64"
+                            value={pipelineId ?? ''}
+                            onChange={(event) => setPipelineChoice(event.target.value || null)}
+                            disabled={busy || pipelines.length === 0}
+                        >
+                            {pipelines.length === 0 ? <NativeSelectOption value="">No pipelines available</NativeSelectOption> : null}
+                            {pipelines.map((pipeline) => (
+                                <NativeSelectOption key={pipeline.id} value={pipeline.id}>
+                                    {pipeline.name}
+                                    {pipeline.isDefault ? ' \u00b7 default' : ''}
+                                </NativeSelectOption>
+                            ))}
+                        </NativeSelect>
+                    )}
+                    <span className="text-muted-foreground text-xs">{FOOTER_STATUS[live.status]}</span>
+                    {live.session ? (
+                        <span className="text-muted-foreground ml-auto font-mono text-xs" title={live.session.sessionId}>
+                            session {live.session.sessionId}
                         </span>
-                        {live.session ? (
-                            <span className="text-muted-foreground font-mono text-xs" title={live.session.sessionId}>
-                                session {live.session.sessionId}
-                            </span>
-                        ) : null}
-                    </div>
-                }
-                tabs={
-                    <TabsList variant="line">
-                        <TabsTrigger value="streaming">Streaming session</TabsTrigger>
-                        <TabsTrigger value="batch">Batch upload</TabsTrigger>
-                    </TabsList>
-                }
-                footer={
-                    <StatusFooter
-                        start={<span>{FOOTER_STATUS[live.status]}</span>}
-                        end={
-                            <span aria-hidden className="font-mono">
-                                POST /audio/transcription-jobs/stream/session {'\u00b7'} WS /ws/stt-v2/stream {'\u00b7'} POST
-                                /audio/transcription-jobs/transcribe
-                            </span>
-                        }
-                    />
-                }
-            >
+                    ) : null}
+                </div>
+                <TabsList variant="line">
+                    <TabsTrigger value="streaming">Streaming session</TabsTrigger>
+                    <TabsTrigger value="batch">Batch upload</TabsTrigger>
+                </TabsList>
                 <TabsContent value="streaming">
                     <StreamingTab live={live} pipelineName={selectedPipeline?.name ?? null} canStart={canStart} onStart={handleStart} />
                 </TabsContent>
                 <TabsContent value="batch">
                     <BatchTab pipelineId={pipelineId} activeJobId={activeJobId} onActiveJobChange={setActiveJobId} />
                 </TabsContent>
-            </ScreenTemplate>
-        </Tabs>
+            </Tabs>
+        </PlaygroundCanvas>
     );
 }
 

@@ -29,11 +29,8 @@ import type { StreamStatus } from '@/shared/streams';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { useDnaDashboard, useDnaJobProgress, useDnaReports } from '../api';
 import type { DnaJobStatus, DnaReport, ListDnaReportsParams, UseDnaJobProgressResult } from '../api';
-import { DoctorDetailPanel } from './doctor-detail-panel';
+import { DoctorDetailDrawer } from './doctor-detail';
 import { GenerateReportDialog } from './generate-report-dialog';
-
-/** Embedded grid (design-spec D2): fixed viewport in the master-detail middle column. */
-const DNA_GRID_HEIGHT = 480;
 
 /**
  * Frame 33 freshness note: the list endpoint has no freshness/staleness param
@@ -129,7 +126,7 @@ function DashboardCard({
                 {dashboard.isError && !data ? (
                     <ErrorState title={'Couldn\u2019t load the DNA dashboard'} error={dashboard.error} onRetry={() => void dashboard.refetch()} />
                 ) : (
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                         <StatCard
                             density="compact"
                             label="Reports"
@@ -278,6 +275,7 @@ function DnaWritingStylesBody() {
     return (
         <>
             <ScreenTemplate
+                contentMode="fill"
                 header={
                     <PageHeader
                         title="DNA Writing Styles"
@@ -294,16 +292,14 @@ function DnaWritingStylesBody() {
                             </>
                         }
                         actions={
-                            <>
-                                {!selected ? <span className="text-muted-foreground text-xs">Select a doctor row to enable</span> : null}
-                                <Button onClick={() => setGenerateOpen(true)} disabled={!selected}>
-                                    <IconDna aria-hidden />
-                                    Generate report
-                                </Button>
-                            </>
+                            <Button onClick={() => setGenerateOpen(true)}>
+                                <IconDna aria-hidden />
+                                Generate report
+                            </Button>
                         }
                     />
                 }
+                stats={<DashboardCard dashboard={dashboard} reportsTotal={reports.data?.count} activeJobId={activeJobId} progress={progress} />}
                 footer={
                     <StatusFooter
                         start={<span>{reports.isFetching && !reports.isLoading ? 'Refreshing' : 'Up to date'}</span>}
@@ -311,46 +307,56 @@ function DnaWritingStylesBody() {
                     />
                 }
             >
-                <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_minmax(0,22rem)]">
-                    <DashboardCard dashboard={dashboard} reportsTotal={reports.data?.count} activeJobId={activeJobId} progress={progress} />
-                    <VirtualizedDataGrid<DnaReport>
-                        aria-label="DNA reports"
-                        columns={columns}
-                        data={rows}
-                        getRowId={(row) => row.id}
-                        height={DNA_GRID_HEIGHT}
-                        manual={{ filtering: true, pagination: true }}
-                        rowCount={totalCount}
-                        queryState={query.queryState}
-                        onQueryStateChange={query.setQueryState}
-                        persistence={gridPersistence('dna-writing-styles')}
-                        features={{
-                            columnReorder: true,
-                            columnResize: true,
-                            columnPinning: true,
-                            columnVisibility: true,
-                            rowSelection: false,
-                            globalSearch: false,
-                            facetedFilters: true,
-                            sorting: false,
-                        }}
-                        onRowClick={(row) => void setSelected(row.doctorId)}
-                        isLoading={reports.isLoading}
-                        isBusy={reports.isFetching && !reports.isLoading}
-                        error={rows.length > 0 ? null : (reports.error ?? null)}
-                        errorState={(error) => <ErrorState error={error} onRetry={() => void reports.refetch()} />}
-                        onRetry={() => void reports.refetch()}
-                        emptyState={empty}
-                    />
-                    {/* Keyed by doctor so panel-local state (edit mode) resets on selection change. */}
-                    <DoctorDetailPanel key={selected || 'none'} doctorId={selected} onGenerate={() => setGenerateOpen(true)} />
-                </div>
+                <VirtualizedDataGrid<DnaReport>
+                    aria-label="DNA reports"
+                    columns={columns}
+                    data={rows}
+                    getRowId={(row) => row.id}
+                    manual={{ filtering: true, pagination: true }}
+                    rowCount={totalCount}
+                    queryState={query.queryState}
+                    onQueryStateChange={query.setQueryState}
+                    persistence={gridPersistence('dna-writing-styles')}
+                    features={{
+                        columnReorder: true,
+                        columnResize: true,
+                        columnPinning: true,
+                        columnVisibility: true,
+                        rowSelection: false,
+                        globalSearch: false,
+                        facetedFilters: true,
+                        sorting: false,
+                    }}
+                    onRowClick={(row) => void setSelected(row.doctorId)}
+                    isLoading={reports.isLoading}
+                    isBusy={reports.isFetching && !reports.isLoading}
+                    error={rows.length > 0 ? null : (reports.error ?? null)}
+                    errorState={(error) => <ErrorState error={error} onRetry={() => void reports.refetch()} />}
+                    onRetry={() => void reports.refetch()}
+                    emptyState={empty}
+                />
             </ScreenTemplate>
+
+            {/* Keyed by doctor so drawer-local state (edit mode) resets on selection change. */}
+            <DoctorDetailDrawer
+                key={selected || 'no-doctor'}
+                doctorId={selected || null}
+                onOpenChange={(open) => {
+                    if (!open) void setSelected(null);
+                }}
+                onGenerate={() => setGenerateOpen(true)}
+            />
+
             <GenerateReportDialog
                 open={generateOpen}
                 onOpenChange={setGenerateOpen}
                 initialDoctorId={selected}
-                onQueued={(jobId) => setActiveJobId(jobId)}
+                onQueued={(jobId) => {
+                    setActiveJobId(jobId);
+                    // Close the detail slide-over so the dashboard progress strip
+                    // (in the pinned stats region) is visible while the job runs.
+                    void setSelected(null);
+                }}
             />
         </>
     );

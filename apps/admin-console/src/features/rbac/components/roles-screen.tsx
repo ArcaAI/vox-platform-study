@@ -28,6 +28,21 @@ import { RoleDetailDrawer, RoleDetailPane } from './role-detail';
 /** RBAC gateway page size — 100 covers the seeded role catalog (list is grouped, not paged). */
 const LIST_LIMIT = 100;
 
+/**
+ * TASK-444 — accessible member-count chip for the role detail header (the
+ * aria-hidden list-row count is a decorative duplicate of this badge).
+ * Renders nothing when the read carried no count (mutation responses).
+ */
+export function MemberCountBadge({ role }: { role: Pick<Role, 'memberCount'> }) {
+    if (typeof role.memberCount !== 'number') return null;
+    return (
+        <Badge variant="outline" className="tabular-nums">
+            <IconUsersGroup aria-hidden />
+            {formatNumber(role.memberCount)} {role.memberCount === 1 ? 'member' : 'members'}
+        </Badge>
+    );
+}
+
 /** System roles are seed-managed and locked (frame 21: lock icon + label). */
 export function RoleTypeBadge({ role }: { role: Pick<Role, 'isSystemRole'> }) {
     return role.isSystemRole ? (
@@ -134,6 +149,14 @@ function RoleListItem({ role, selected, onSelect }: { role: Role; selected: bool
             >
                 {role.isSystemRole ? <IconLock aria-hidden className="text-muted-foreground size-3.5 shrink-0" /> : null}
                 <span className="min-w-0 flex-1 truncate font-medium">{role.name}</span>
+                {typeof role.memberCount === 'number' ? (
+                    // Decorative duplicate of the detail-header MemberCountBadge
+                    // (aria-hidden keeps the row's accessible name = the role name).
+                    <span aria-hidden className="text-muted-foreground flex shrink-0 items-center gap-1 text-xs tabular-nums">
+                        <IconUsersGroup className="size-3.5" />
+                        {formatNumber(role.memberCount)}
+                    </span>
+                ) : null}
             </button>
         </li>
     );

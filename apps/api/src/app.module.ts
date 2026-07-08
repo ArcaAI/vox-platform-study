@@ -37,6 +37,7 @@ import { ThrottleConfigModule, TieredThrottlerGuard } from './modules/throttle';
 // Feature modules
 import { RateLimitAdminModule } from './modules/admin-rate-limit/rate-limit-admin.module';
 // TASK-419 item 3 — /admin/ai-services read-only Guardrail/NLP proxy plane.
+import { AiInferenceModule } from './modules/ai-inference/ai-inference.module';
 import { AiServiceAdminModule } from './modules/ai-service-admin/ai-service-admin.module';
 import { ApiKeyModule } from './modules/api-key/api-key.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
@@ -247,6 +248,7 @@ const common = [
 const featureModules: any[] = [
   RateLimitAdminModule,
   AiServiceAdminModule,
+  AiInferenceModule,
   ApiKeyModule,
   AuthModule,
   AuditLogModule,

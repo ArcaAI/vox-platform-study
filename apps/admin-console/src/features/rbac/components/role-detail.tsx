@@ -20,16 +20,16 @@ import { BreakGlassDialog, type BreakGlassCredentials } from '@/shared/confirm/b
 import { CopyButton } from '@/shared/copy-button';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import type { ViewportTier } from '@/shared/layout/use-viewport-tier';
-import { formatDateTime } from '@/shared/format';
+import { formatDateTime, formatNumber } from '@/shared/format';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
-import { useAssignPolicyToRole, useDetachPolicyFromRole, usePolicies, useRole, useUpdateRole } from '../api/hooks';
+import { useAssignPolicyToRole, useDetachPolicyFromRole, usePolicies, useRole, useRoleMembers, useUpdateRole } from '../api/hooks';
 import type { Role } from '../api/types';
 import { derivePermissionMatrix, type MatrixPolicyInput } from '../lib/permission-matrix';
 import { PermissionMatrix, PermissionMatrixSkeleton } from './permission-matrix';
-import { RoleTypeBadge } from './roles-screen';
+import { MemberCountBadge, RoleTypeBadge } from './roles-screen';
 
 type RoleTab = 'permissions' | 'members' | 'policies';
 
@@ -167,19 +167,92 @@ function PermissionsTabPanel({ role, tier }: { role: Role; tier: ViewportTier })
     );
 }
 
-/**
- * Members tab. The gateway exposes no users-by-role listing or member count
- * today (only the inverse `GET /admin/users/:id/roles`); cross-feature imports
- * are also disallowed. Until an API gap is filled, the tab documents the gap
- * rather than shipping a misleading client-side scan.
- */
-function MembersTabPanel() {
+const MEMBERS_PAGE_SIZE = 50;
+
+function MembersSkeleton() {
     return (
-        <EmptyState
-            icon={IconUsersGroup}
-            title="Member listing isn’t available yet"
-            description="A users-by-role endpoint is needed to list who holds this role. Assign or review a user’s roles from the Users screen in the meantime."
-        />
+        <div className="flex flex-col gap-2">
+            {Array.from({ length: 4 }, (_, index) => (
+                <Skeleton key={index} className="h-12 w-full" />
+            ))}
+        </div>
+    );
+}
+
+/**
+ * Members tab — the users holding this role (TASK-444,
+ * `GET admin/rbac/roles/:id/members`). The gateway tenant-scopes the rows, so
+ * a tenant admin sees only their tenant's members; role changes stay on the
+ * Users screen (assign/remove is a per-user operation there).
+ */
+function MembersTabPanel({ role }: { role: Role }) {
+    const [page, setPage] = useState(1);
+    const membersQuery = useRoleMembers(role.id, { page, pageSize: MEMBERS_PAGE_SIZE });
+
+    if (membersQuery.isPending) return <MembersSkeleton />;
+    if (membersQuery.error) {
+        return <ErrorState title="Couldn’t load members" error={membersQuery.error} onRetry={() => void membersQuery.refetch()} />;
+    }
+
+    const members = membersQuery.data?.data ?? [];
+    const total = membersQuery.data?.total ?? 0;
+    if (total === 0) {
+        return (
+            <EmptyState
+                icon={IconUsersGroup}
+                title="No members yet"
+                description="No users hold this role in your scope. Assign it to a user from the Users screen."
+            />
+        );
+    }
+
+    const pageCount = Math.max(1, Math.ceil(total / MEMBERS_PAGE_SIZE));
+    return (
+        <section aria-label="Members" className="flex flex-col gap-3">
+            <h3 className="text-sm font-medium tabular-nums">Members ({formatNumber(total)})</h3>
+            <ul aria-label="Role members" className="flex flex-col gap-1">
+                {members.map((member) => {
+                    // Skip the secondary line when it would just repeat the name
+                    // (service accounts without a profile).
+                    const secondary = member.email ?? (member.username !== member.displayName ? member.username : null);
+                    return (
+                        <li key={member.assignmentId} className="flex items-center gap-2 rounded-md border px-3 py-2">
+                            <div className="flex min-w-0 flex-1 flex-col">
+                                <span className="truncate text-sm font-medium">{member.displayName}</span>
+                                {secondary ? <span className="text-muted-foreground truncate text-xs">{secondary}</span> : null}
+                            </div>
+                            {member.department ? <Badge variant="outline">{member.department}</Badge> : null}
+                            <ResourceStatusBadge status={member.resourceStatus} />
+                        </li>
+                    );
+                })}
+            </ul>
+            {pageCount > 1 ? (
+                <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground text-xs tabular-nums">
+                        Page {page} of {pageCount}
+                    </span>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={page <= 1 || membersQuery.isFetching}
+                            onClick={() => setPage((current) => current - 1)}
+                        >
+                            Previous
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={page >= pageCount || membersQuery.isFetching}
+                            onClick={() => setPage((current) => current + 1)}
+                        >
+                            Next
+                        </Button>
+                    </div>
+                </div>
+            ) : null}
+        </section>
     );
 }
 
@@ -339,7 +412,7 @@ function TabPanels({ role, tier }: { role: Role; tier: ViewportTier }) {
                 <PermissionsTabPanel role={role} tier={tier} />
             </TabsContent>
             <TabsContent value="members" className="mt-0">
-                <MembersTabPanel />
+                <MembersTabPanel role={role} />
             </TabsContent>
             <TabsContent value="policies" className="mt-0">
                 {role.isSystemRole ? <LockNotice /> : null}
@@ -417,6 +490,7 @@ export function RoleDetailPane({ roleId, tier, onRequestDelete }: { roleId: stri
                         <h2 className="text-lg font-semibold">{role.name}</h2>
                         <RoleTypeBadge role={role} />
                         <ResourceStatusBadge status={role.resourceStatus} />
+                        <MemberCountBadge role={role} />
                     </div>
                     <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
                         <RoleMeta role={role} />
@@ -472,6 +546,7 @@ export function RoleDetailDrawer({
                         <>
                             <RoleTypeBadge role={role} />
                             <ResourceStatusBadge status={role.resourceStatus} />
+                            <MemberCountBadge role={role} />
                         </>
                     ) : null
                 }

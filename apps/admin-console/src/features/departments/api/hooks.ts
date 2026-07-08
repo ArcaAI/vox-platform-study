@@ -15,6 +15,7 @@ import {
     listDepartmentChildren,
     listDepartmentUsers,
     listDepartments,
+    listPromptTemplateOptions,
     listRootDepartments,
     updateDepartment,
     updateDepartmentPromptConfig,
@@ -47,6 +48,11 @@ export function useDepartmentUsers(id: string, params?: ListParams) {
         enabled: !!id,
         placeholderData: keepPreviousData,
     });
+}
+
+/** Prompt-template catalog powering the prompt-config Selects (read of an existing route). */
+export function usePromptTemplateOptions() {
+    return useQuery({ queryKey: departmentKeys.promptTemplates(), queryFn: listPromptTemplateOptions });
 }
 
 function useInvalidateDepartments() {
