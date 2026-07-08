@@ -85,6 +85,18 @@ Tailwind v4 is configured CSS-first; there is no `tailwind.config.js` in this pa
 - `@theme inline` maps the variables to Tailwind utilities (`bg-primary`, `text-ai-foreground`, `rounded-lg` via `--radius-*`, fonts, chart and sidebar colors, animation keyframes).
 - Dark mode uses the class strategy: `@custom-variant dark (&:is(.dark *))`.
 
+### Accent themes (TASK-437)
+
+Teal is the default accent with **no attribute** — zero visual change without opt-in. Setting `data-accent` on `<html>` remaps only the accent-derived semantic tokens (`--primary`, `--accent`, `--ring`, `--sidebar-*`, `--chart-1`) from the existing raw ramps; no component is restyled.
+
+```html
+<html data-accent="indigo">   <!-- also: "green", "amber" (maps to the saffron ramp) -->
+```
+
+Both light (`:root[data-accent=…]`) and dark (`.dark[data-accent=…]`) blocks are defined; primary-on-background clears WCAG AA in both themes for every accent. See the `Foundation/Accent Themes` Storybook story. There is intentionally no console wiring by default — the mechanism is for tenant/brand theming (a follow-up consumer).
+
+The **code editor surface** (`CodeEditor`) is a *fixed* dark surface in both themes (artboard 5c) via the `--code-editor-*` tokens, defined only in `:root` so `.dark` never remaps them.
+
 Consumers wire styles in one of two ways (both verified in-repo):
 
 1. Prebuilt CSS — import the compiled sheet, which already contains the tokens and all utilities used by this package:

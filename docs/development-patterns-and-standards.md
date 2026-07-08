@@ -338,6 +338,16 @@ Every screen in `apps/admin-console` composes ONE standardized page frame — `S
 - Grid pages carry their toolbar INSIDE the grid (not the `toolbar` slot). Tabs: wrap the template in `<Tabs>`, pass `<TabsList variant="line">` (underline — the standard, not the bare `<TabsList>` pill default) to `tabs` and the `<TabsContent>` panels as `children`.
 - Do: wrap every screen (list, detail, dashboard) in `ScreenTemplate`. Don't: reintroduce ad-hoc `<div className="flex … flex-col gap-4">` page frames or let the header/toolbar scroll away. See `11-ux-ui-principles.mdc` §Screen Template.
 
+### 3.8 Admin redesign foundation (TASK-437)
+
+Shared layout/interaction infrastructure consumed by the redesigned screens (TASK-438…442). Data contracts, permission gates and OCC behaviour are unchanged.
+
+- **Detail surface** — `DetailDrawer` (`apps/admin-console/src/shared/detail/detail-drawer.tsx`, on `@arcaai/ui` `Sheet`) is the ONE console-wide record detail/edit surface: right slide-over on desktop, full-screen sheet below `md` (~768px). Header (title · badges · close) → meta line → optional tabs → scrollable body → pinned footer. Retires per-feature hand-rolled Sheets; dialogs stay for short confirmations + break-glass only. Tabs: wrap in `<Tabs>` and pass `<TabsList variant="line">` as `tabs`, `<TabsContent>` as `children`.
+- **Code editor** — `CodeEditor` + helpers `formatJson`/`validateJson`/`tokenizeJson` (`@arcaai/ui`, `src/lib/json-editor.ts`). Transparent `<textarea>` over a synchronously-highlighted `<pre>` (no async highlighter) on a FIXED dark surface (`--code-editor-*` tokens) in both themes; line numbers, Format, live line/column validation, Copy. Use it wherever JSON/array values are edited instead of a bare `Textarea`.
+- **Tenant-scope banner** — `TenantScopeBanner` (`apps/admin-console/src/shared/tenant-scope/tenant-scope-banner.tsx`): info-tinted "Acting on «tenant»" strip for the `ScreenTemplate` `statusBanner` slot on tenant-scoped (tier 30–49) pages; renders null with no working tenant. Passive (no action) — distinct from the global warning-tinted `WorkingTenantBanner` (frame 07) that owns the clear-tenant control.
+- **Accent themes** — `data-accent="indigo" | "green" | "amber"` on `<html>` remaps accent-derived tokens from the raw ramps (teal = attribute-less default); `packages/ui/src/styles/globals.css`. No console wiring by default (tenant/brand theming is a follow-up). See `packages/ui/README.md` §Accent themes.
+- **Responsive tiers** — `useViewportTier()` (`apps/admin-console/src/shared/layout/use-viewport-tier.ts`) → `'desktop' | 'tablet' | 'mobile'` at 1280/768 (`matchMedia`, SSR-safe defaulting to desktop). `SidebarTierSync` defaults the sidebar to the icon rail on the tablet tier (user toggle wins for the session).
+
 ---
 
 ## 4. Testing standards
