@@ -216,9 +216,16 @@ function stubDemo(custom: FetchHandler = () => undefined): RecordedCall[] {
     return stubFetch((call, parsed) => custom(call, parsed) ?? defaultHandler(call, parsed));
 }
 
+/** The setup form's submit — the page header carries a second "Open consultation" CTA. */
+function openSubmitButton(): HTMLElement {
+    const submit = screen.getAllByRole('button', { name: /open consultation/i }).find((button) => button.getAttribute('type') === 'submit');
+    if (!submit) throw new Error('Setup form submit button not found');
+    return submit;
+}
+
 async function openConsultationFlow(): Promise<void> {
     fireEvent.change(await screen.findByLabelText(/patient id/i), { target: { value: 'P-448' } });
-    fireEvent.click(screen.getByRole('button', { name: /open consultation/i }));
+    fireEvent.click(openSubmitButton());
     await screen.findByText('c-1');
 }
 
@@ -272,15 +279,38 @@ describe('ConsultationDemoScreen', () => {
         await waitFor(() => expect(picker.value).toBe('pl-1'));
 
         // Required marker on the patient field; empty submit never reaches the SDK.
-        fireEvent.click(screen.getByRole('button', { name: /open consultation/i }));
+        fireEvent.click(openSubmitButton());
         expect(await screen.findByText(/patient id is required/i)).toBeDefined();
         expect(sdk.arca.session.open).not.toHaveBeenCalled();
 
         await openConsultationFlow();
         expect(sdk.arca.session.open).toHaveBeenCalledWith({ patientId: 'P-448' });
-        // Status bar shows the demo consultation and its lifecycle status.
+        // The consultation status strip shows id, (demo) marker, patient ref, status and endpoint hint.
+        expect(screen.getByText('(demo)')).toBeDefined();
+        expect(screen.getByText('P-448')).toBeDefined();
         expect(screen.getByText('Open')).toBeDefined();
+        expect(screen.getByText(/Opened /)).toBeDefined();
+        expect(screen.getByText(/POST \/consultations\/open · recording\/start\|stop/)).toBeDefined();
         expect(screen.getByRole('button', { name: /close consultation/i })).toBeDefined();
+    });
+
+    it('focuses the setup patient input from the header "Open consultation" action (demo tab only)', async () => {
+        stubDemo();
+        renderWithProviders(<ConsultationDemoScreen />);
+
+        const input = await screen.findByLabelText(/patient id/i);
+        const buttons = screen.getAllByRole('button', { name: /open consultation/i });
+        const headerAction = buttons.find((button) => button.getAttribute('type') !== 'submit');
+        expect(headerAction).toBeDefined();
+
+        fireEvent.click(headerAction!);
+        expect(document.activeElement).toBe(input);
+
+        // The header action is demo-tab-only (review-tab approve action is a recorded follow-up).
+        const reviewTab = screen.getByRole('tab', { name: /documentation review/i });
+        fireEvent.mouseDown(reviewTab);
+        fireEvent.click(reviewTab);
+        expect(screen.queryByRole('button', { name: /open consultation/i })).toBeNull();
     });
 
     it('starts recording: SDK audio.start with the picked pipeline, then recording/start with the streaming sessionId', async () => {
@@ -300,10 +330,11 @@ describe('ConsultationDemoScreen', () => {
             expect(startCall?.body).toEqual({ sessionId: 's-7f31' });
         });
 
-        // REC indicator + stop control while capturing; level meter present.
-        expect(await screen.findByText(/REC/)).toBeDefined();
+        // REC indicator + stop control while capturing; level meter present;
+        // the status strip switches to the pulsing RECORDING indicator.
+        expect(await screen.findByText(/REC \d{2}:\d{2}/)).toBeDefined();
         expect(screen.getByRole('meter', { name: /audio level/i })).toBeDefined();
-        expect(screen.getByText('Recording')).toBeDefined();
+        expect(screen.getByText('RECORDING')).toBeDefined();
 
         fireEvent.click(screen.getByRole('button', { name: /stop recording/i }));
         await waitFor(() => expect(sdk.arca.audio.stop).toHaveBeenCalled());
@@ -318,6 +349,8 @@ describe('ConsultationDemoScreen', () => {
         expect(screen.getByText('Noise filter on')).toBeDefined();
         expect(screen.getByText(/mic permission/i)).toBeDefined();
         expect(screen.getByText(/prompt on first start/i)).toBeDefined();
+        // Footer status bar carries the plane's endpoint hints.
+        expect(screen.getByText(/POST \/consultations\/open · POST \/auth\/stream-ticket · SSE live-summary/)).toBeDefined();
     });
 
     it('surfaces a denied-microphone capture error with browser-settings guidance', async () => {

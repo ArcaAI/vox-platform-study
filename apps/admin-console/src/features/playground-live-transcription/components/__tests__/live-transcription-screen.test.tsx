@@ -313,6 +313,11 @@ describe('LiveTranscriptionScreen', () => {
         expect(await screen.findByRole('tab', { name: /streaming/i })).toBeDefined();
         expect(screen.getByRole('tab', { name: /batch upload/i })).toBeDefined();
 
+        // Template alignment: header subtitle + the playground statusBanner strip.
+        expect(screen.getByText(/Streaming session .* runs under your own account/)).toBeDefined();
+        expect(screen.getByRole('note')).toBeDefined();
+        expect(screen.getByText(/demo sessions run under your own account/)).toBeDefined();
+
         const picker = (await screen.findByLabelText('Pipeline')) as HTMLSelectElement;
         await waitFor(() => expect(picker.value).toBe('p-default'));
 

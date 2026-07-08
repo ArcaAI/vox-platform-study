@@ -160,7 +160,7 @@ export function OutputPane({ run, stream, isPending, postMortem, onCancel, cance
     return (
         <Card className="gap-4">
             <CardHeader>
-                <CardTitle>Output</CardTitle>
+                <CardTitle>Response</CardTitle>
                 <CardDescription>SSE /text/tasks/:taskId/stream — same-origin via the BFF proxy, cookie auth</CardDescription>
                 <CardAction>
                     <div className="flex items-center gap-2">
@@ -260,7 +260,7 @@ function EmptyOutput() {
             <IconSparkles aria-hidden className="text-muted-foreground size-6" />
             <p className="text-sm font-medium">No output yet</p>
             <p className="text-muted-foreground text-sm">
-                Write a prompt and press Generate — streaming is the default; flip the switch for a single sync response.
+                Write a prompt and press Run — streaming is the default; flip the switch for a single sync response.
             </p>
         </div>
     );

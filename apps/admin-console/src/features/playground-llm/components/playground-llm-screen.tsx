@@ -16,6 +16,7 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { GatewayError } from '@/shared/api';
 import { useSession } from '@/shared/auth';
 import { PageHeader } from '@/shared/page/page-header';
+import { PlaygroundBanner } from '@/shared/page/playground-banner';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
@@ -279,31 +280,29 @@ function PlaygroundLlmBody() {
             header={
                 <PageHeader
                     title="LLM Playground"
-                    meta={
-                        <span>
-                            Prompt + generate via SMR — sync or streaming · assembled mode composes the prompt server-side · providers from the{' '}
-                            {globalCatalog ? '__GLOBAL__' : 'tenant'} catalog
-                        </span>
-                    }
+                    meta={<span>Compose → run → stream · runs under your own account</span>}
                     actions={
                         <Button onClick={handleGenerate} disabled={isPending || !canGenerate}>
                             <IconPlayerPlay aria-hidden />
-                            Generate
+                            Run
                         </Button>
                     }
                 />
             }
             statusBanner={
-                <RequestSummaryStrip
-                    providersLoading={providersQuery.isLoading}
-                    hasCatalog={!!providers && providers.length > 0}
-                    selectedProvider={selectedProvider}
-                    selectedModel={selectedModel}
-                    temperature={form.temperature}
-                    maxTokens={parseMaxTokens(form.maxTokens)}
-                    streaming={form.streaming}
-                    taskId={run.kind === 'stream' ? run.taskId : null}
-                />
+                <div className="flex flex-col gap-2">
+                    <PlaygroundBanner />
+                    <RequestSummaryStrip
+                        providersLoading={providersQuery.isLoading}
+                        hasCatalog={!!providers && providers.length > 0}
+                        selectedProvider={selectedProvider}
+                        selectedModel={selectedModel}
+                        temperature={form.temperature}
+                        maxTokens={parseMaxTokens(form.maxTokens)}
+                        streaming={form.streaming}
+                        taskId={run.kind === 'stream' ? run.taskId : null}
+                    />
+                </div>
             }
             footer={
                 <StatusFooter

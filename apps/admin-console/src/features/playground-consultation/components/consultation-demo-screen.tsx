@@ -23,6 +23,7 @@ import {
     IconMicrophone,
     IconPlayerPlay,
     IconPlayerStop,
+    IconPlus,
     IconX,
 } from '@tabler/icons-react';
 import { AgenticProvider, useArca, useArcaSession, useStoreApi } from '@arcaai/vox';
@@ -268,6 +269,13 @@ function DemoScreen() {
     const [captureBusy, setCaptureBusy] = useState(false);
     const [sessionBusy, setSessionBusy] = useState(false);
     const [openPending, setOpenPending] = useState(false);
+    const patientInputRef = useRef<HTMLInputElement | null>(null);
+
+    /** Header CTA (frame 50): the open form is inline, so "open" = move focus to it. */
+    function focusPatientInput() {
+        patientInputRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+        patientInputRef.current?.focus();
+    }
 
     const pipelines = useAudioPipelines();
     // Derived selection: the tenant default applies until the user picks one.
@@ -306,7 +314,12 @@ function DemoScreen() {
         setOpenPending(true);
         try {
             const opened = await sdkSession.open({ patientId: trimmed });
-            setConsultation({ id: opened.id, patientId: opened.patientId, status: String(opened.status ?? 'OPEN') });
+            setConsultation({
+                id: opened.id,
+                patientId: opened.patientId,
+                status: String(opened.status ?? 'OPEN'),
+                createdAt: typeof opened.createdAt === 'string' ? opened.createdAt : new Date().toISOString(),
+            });
             setJobId(null);
             setLiveSummaryArmed(false);
             toast.success('Consultation opened');
@@ -407,6 +420,7 @@ function DemoScreen() {
     }
 
     const isClosed = consultation?.status.toUpperCase() === 'CLOSED';
+    const isRecording = consultation?.status.toUpperCase() === 'RECORDING';
     const canRecord = !!consultation && !isClosed;
     const canDocument = !!consultation;
     const statusMeta = consultation ? consultationStatusMeta(consultation.status) : null;
@@ -418,7 +432,37 @@ function DemoScreen() {
                     <PageHeader
                         title="Consultation Demo"
                         meta={<span>@arcaai/vox — capture, live transcription, live summary and documentation review</span>}
+                        actions={
+                            tab === 'demo' ? (
+                                <Button onClick={focusPatientInput}>
+                                    <IconPlus aria-hidden />
+                                    Open consultation
+                                </Button>
+                            ) : undefined
+                        }
                     />
+                }
+                statusBanner={
+                    consultation && statusMeta ? (
+                        <div className="bg-card flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2 text-sm">
+                            <span className="text-muted-foreground">Consultation:</span>
+                            <code className="font-mono text-xs">{consultation.id}</code>
+                            <span className="text-muted-foreground text-xs">(demo)</span>
+                            <code className="text-muted-foreground font-mono text-xs">{consultation.patientId}</code>
+                            {isRecording ? (
+                                <span className="text-destructive flex items-center gap-1.5 text-xs font-semibold">
+                                    <span aria-hidden className="bg-destructive size-2 animate-pulse rounded-full" />
+                                    RECORDING
+                                </span>
+                            ) : (
+                                <StatusBadge label={statusMeta.label} colorRole={statusMeta.role} />
+                            )}
+                            <span className="text-muted-foreground text-xs">Opened {formatDateTime(consultation.createdAt)}</span>
+                            <span aria-hidden className="text-muted-foreground ms-auto font-mono text-xs">
+                                POST /consultations/open {'·'} recording/start|stop
+                            </span>
+                        </div>
+                    ) : undefined
                 }
                 tabs={
                     <TabsList variant="line">
@@ -429,12 +473,17 @@ function DemoScreen() {
                 footer={
                     <StatusFooter
                         start={<span>Demo data lands in the working tenant — audio stays in the browser; STT frames stream to the gateway.</span>}
-                        end={pipelines.data ? <span>{pipelines.data.length} pipelines</span> : null}
+                        end={
+                            <span aria-hidden className="font-mono">
+                                POST /consultations/open {'·'} POST /auth/stream-ticket {'·'} SSE live-summary
+                            </span>
+                        }
                     />
                 }
             >
                 <TabsContent value="demo" className="flex flex-col gap-4">
-                    <div className="grid items-start gap-4 lg:grid-cols-2">
+                    {/* Frame 50 grid: 1 col → 2 cols at lg → Capture | Live transcript | Live summary at xl. */}
+                    <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,22rem)]">
                         <div className="flex flex-col gap-4">
                             <Card>
                                 <CardHeader>
@@ -452,6 +501,7 @@ function DemoScreen() {
                                             </Label>
                                             <Input
                                                 id="pc-patient-id"
+                                                ref={patientInputRef}
                                                 value={patientId}
                                                 onChange={(event) => setPatientId(event.target.value)}
                                                 placeholder="e.g. P-448"
@@ -498,12 +548,11 @@ function DemoScreen() {
                                             </Button>
                                         </div>
                                     </form>
-                                    {consultation && statusMeta ? (
+                                    {consultation ? (
                                         <div className="flex flex-wrap items-center gap-2 border-t pt-4 text-sm">
-                                            <span className="text-muted-foreground">Consultation</span>
-                                            <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">{consultation.id}</code>
-                                            <StatusBadge label={statusMeta.label} colorRole={statusMeta.role} />
-                                            <span className="text-muted-foreground truncate">Patient {consultation.patientId}</span>
+                                            <span className="text-muted-foreground">
+                                                {isClosed ? 'Consultation closed.' : 'Consultation in progress — status in the strip above.'}
+                                            </span>
                                             <div className="ms-auto">
                                                 {isClosed ? (
                                                     <Button variant="outline" size="sm" onClick={handleReopenConsultation} disabled={sessionBusy}>
@@ -531,41 +580,53 @@ function DemoScreen() {
                             />
                         </div>
 
-                        <div className="flex flex-col gap-4">
+                        {/* At xl this wrapper dissolves (`contents`) so the transcript takes the
+                            center column and the summary + document stack takes the right one. */}
+                        <div className="flex flex-col gap-4 xl:contents">
                             <TranscriptPane audio={audio} />
-                            <LiveSummaryPane armed={liveSummaryArmed} stream={liveSummary} />
+
+                            <div className="flex flex-col gap-4">
+                                <LiveSummaryPane armed={liveSummaryArmed} stream={liveSummary} />
+
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Document</CardTitle>
+                                        <CardDescription>
+                                            Generate the clinical note from the captured context, then review and sign off.
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="flex flex-col gap-4">
+                                        <div className="flex flex-wrap gap-2">
+                                            <Button variant="outline" disabled={!canDocument || summarySync.isPending} onClick={handleGenerateSync}>
+                                                {summarySync.isPending ? <Spinner /> : <IconFileText aria-hidden />}
+                                                Generate summary
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                disabled={!canDocument || summaryAsync.isPending || (!!jobId && !jobProgress.isTerminal)}
+                                                onClick={handleGenerateAsync}
+                                            >
+                                                {summaryAsync.isPending ? <Spinner /> : <IconBolt aria-hidden />}
+                                                Generate async job
+                                            </Button>
+                                            <Button variant="secondary" disabled={!canDocument} onClick={() => setTab('review')}>
+                                                <IconClipboardCheck aria-hidden />
+                                                Review &amp; sign-off
+                                            </Button>
+                                        </div>
+                                        {jobId ? (
+                                            <JobStrip
+                                                jobId={jobId}
+                                                progress={jobProgress}
+                                                cancelPending={cancelJob.isPending}
+                                                onCancel={handleCancelJob}
+                                            />
+                                        ) : null}
+                                    </CardContent>
+                                </Card>
+                            </div>
                         </div>
                     </div>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Document</CardTitle>
-                            <CardDescription>Generate the clinical note from the captured context, then review and sign off.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="flex flex-col gap-4">
-                            <div className="flex flex-wrap gap-2">
-                                <Button variant="outline" disabled={!canDocument || summarySync.isPending} onClick={handleGenerateSync}>
-                                    {summarySync.isPending ? <Spinner /> : <IconFileText aria-hidden />}
-                                    Generate summary
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    disabled={!canDocument || summaryAsync.isPending || (!!jobId && !jobProgress.isTerminal)}
-                                    onClick={handleGenerateAsync}
-                                >
-                                    {summaryAsync.isPending ? <Spinner /> : <IconBolt aria-hidden />}
-                                    Generate async job
-                                </Button>
-                                <Button variant="secondary" disabled={!canDocument} onClick={() => setTab('review')}>
-                                    <IconClipboardCheck aria-hidden />
-                                    Review &amp; sign-off
-                                </Button>
-                            </div>
-                            {jobId ? (
-                                <JobStrip jobId={jobId} progress={jobProgress} cancelPending={cancelJob.isPending} onCancel={handleCancelJob} />
-                            ) : null}
-                        </CardContent>
-                    </Card>
                 </TabsContent>
 
                 <TabsContent value="review">

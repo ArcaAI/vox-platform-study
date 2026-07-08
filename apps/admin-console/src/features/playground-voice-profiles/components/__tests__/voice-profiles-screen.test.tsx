@@ -63,7 +63,11 @@ function stubFetch(handler: FetchHandler = () => undefined): RecordedCall[] {
             const parsed = new URL(call.url, 'http://test.local');
             const response =
                 handler(call, parsed) ??
-                (call.method === 'GET' && parsed.pathname === '/api/hope/voice-profile' ? Response.json(PROFILES) : undefined);
+                (call.method === 'GET' && parsed.pathname === '/api/auth/session'
+                    ? Response.json({ user: { username: 'admin' } })
+                    : call.method === 'GET' && parsed.pathname === '/api/hope/voice-profile'
+                      ? Response.json(PROFILES)
+                      : undefined);
             if (!response) throw new Error(`Unhandled fetch: ${call.method} ${call.url}`);
             return response;
         }),
@@ -123,17 +127,18 @@ function uploadInput(): HTMLInputElement {
 }
 
 function submitButton(): HTMLButtonElement {
-    return screen.getByRole('button', { name: /submit enrollment/i }) as HTMLButtonElement;
+    return screen.getByRole('button', { name: /enroll profile/i }) as HTMLButtonElement;
 }
 
 describe('VoiceProfilesScreen', () => {
-    it('renders the header, the own-account annotation, the biometric chip and the profile list with active badge + fallbacks', async () => {
+    it('renders the header, the playground banner, the biometric chip and the profile list with active badge + fallbacks', async () => {
         stubFetch();
         renderWithProviders(<VoiceProfilesScreen />);
 
         expect(await screen.findByRole('heading', { level: 1, name: 'Voice Profiles' })).toBeDefined();
-        // Own-account plane annotation (NoTenant repurposed — this screen has no tenant gate).
-        expect(screen.getByText(/live in your home tenant/i)).toBeDefined();
+        // Template subtitle + shared playground strip (this screen has no tenant gate).
+        expect(screen.getByText(/enroll & manage speaker profiles/i)).toBeDefined();
+        expect(screen.getByText(/demo sessions run under your own account/i)).toBeDefined();
         expect(screen.getByText(/user-owned only/i)).toBeDefined();
 
         expect(await screen.findByText('Default profile')).toBeDefined();
@@ -142,9 +147,9 @@ describe('VoiceProfilesScreen', () => {
         expect(screen.getByText('Untitled profile')).toBeDefined();
         expect(screen.getByText('Inactive')).toBeDefined();
         expect(screen.getByText('mdl_7f3a92')).toBeDefined();
-        // Header meta: list count + active count.
-        expect(await screen.findByText(/2 profiles/)).toBeDefined();
-        expect(screen.getByText(/1 active/)).toBeDefined();
+        // Footer: status + count on the left, endpoint hints on the right.
+        expect(await screen.findByText(/up to date · 2 profiles/i)).toBeDefined();
+        expect(screen.getByText('GET /voice-profile · POST /voice-profile/enroll')).toBeDefined();
         // Relative enrollment timestamps (rule 11 §8).
         expect(screen.getAllByText(/enrolled/i).length).toBeGreaterThanOrEqual(1);
     });
@@ -191,11 +196,16 @@ describe('VoiceProfilesScreen', () => {
 
         expect(submitButton().disabled).toBe(true);
         expect(screen.getByText(/0 of 3 samples staged/i)).toBeDefined();
+        // Template slot rows: all three fixed slots start empty.
+        expect(screen.getAllByText('not recorded')).toHaveLength(3);
+        expect(screen.getByRole('button', { name: 'Record sample 1' })).toBeDefined();
 
         fireEvent.change(uploadInput(), { target: { files: [audioFile()] } });
 
         expect(await screen.findByText('greeting.wav')).toBeDefined();
         expect(screen.getByText(/1 of 3 samples staged/i)).toBeDefined();
+        expect(screen.getAllByText('not recorded')).toHaveLength(2);
+        expect(screen.getByRole('button', { name: 'Record sample 2' })).toBeDefined();
         await waitFor(() => expect(submitButton().disabled).toBe(false));
     });
 
@@ -264,7 +274,7 @@ describe('VoiceProfilesScreen', () => {
 
         fireEvent.change(uploadInput(), { target: { files: [audioFile()] } });
         await screen.findByText('greeting.wav');
-        const labelInput = screen.getByLabelText(/label \(optional\)/i) as HTMLInputElement;
+        const labelInput = screen.getByLabelText(/profile name/i) as HTMLInputElement;
         expect(labelInput.maxLength).toBe(100);
         fireEvent.change(labelInput, { target: { value: 'Front desk mic' } });
         fireEvent.click(submitButton());
@@ -361,7 +371,7 @@ describe('VoiceProfilesScreen', () => {
         renderWithProviders(<VoiceProfilesScreen />);
         await screen.findByText('Default profile');
 
-        fireEvent.click(screen.getByRole('button', { name: 'Activate Untitled profile' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Set active Untitled profile' }));
 
         await waitFor(() => expect(calls.some((call) => call.method === 'PATCH' && call.url.includes('/voice-profile/vp-2/activate'))).toBe(true));
     });
