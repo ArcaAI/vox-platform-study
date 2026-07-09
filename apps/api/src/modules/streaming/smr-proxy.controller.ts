@@ -86,6 +86,12 @@ interface UpstreamErrorPayload {
 }
 
 const RETRIABLE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EPIPE']);
+// TASK-460 C4-04 — codes that can ONLY occur while establishing the
+// connection, i.e. before any request bytes reached SMR. Everything else
+// (ECONNRESET/EPIPE/ETIMEDOUT, or ANY upstream response) may mean SMR already
+// started a billable generation, so the non-idempotent `/generate` POSTs must
+// never retry on them (duplicate billing + divergent drafts).
+const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 // Cap extracted attachment text injected into a summarization prompt so a large
 // document can't blow the SMR context window. ~200k chars ≈ 50k tokens.
@@ -201,6 +207,19 @@ export class SmrProxyController {
     return status === 502 || status === 503 || status === 504;
   }
 
+  /**
+   * TASK-460 C4-04 — retry predicate for the NON-IDEMPOTENT `/generate` POSTs:
+   * only connect-phase failures qualify, because they prove the request never
+   * left the gateway. An upstream response (any status) or a post-send socket
+   * failure means SMR may already be generating — retrying would re-invoke it.
+   */
+  private isConnectPhaseFailure(err: unknown): boolean {
+    const axiosError = err as AxiosError;
+    if (axiosError?.response) return false; // upstream responded → request was delivered
+    const code = axiosError?.code;
+    return typeof code === 'string' && CONNECT_PHASE_CODES.has(code);
+  }
+
   private buildUpstreamException(err: unknown, fallbackMessage: string): HttpException {
     const axiosError = err as AxiosError<UpstreamErrorPayload | string>;
     const status = axiosError.response?.status;
@@ -219,14 +238,20 @@ export class SmrProxyController {
     return new HttpException({ detail: fallbackMessage }, HttpStatus.BAD_GATEWAY);
   }
 
-  private async withRetry<T>(fn: () => Promise<T>, context: string, maxRetries = 2): Promise<T> {
+  private async withRetry<T>(
+    fn: () => Promise<T>,
+    context: string,
+    maxRetries = 2,
+    // TASK-460 C4-04 — non-idempotent calls narrow this to connect-phase-only.
+    isRetriable: (err: unknown) => boolean = (err) => this.isRetriable(err),
+  ): Promise<T> {
     let lastErr: unknown;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         return await fn();
       } catch (err) {
         lastErr = err;
-        if (attempt < maxRetries && this.isRetriable(err)) {
+        if (attempt < maxRetries && isRetriable(err)) {
           const delayMs = Math.min(1000 * Math.pow(2, attempt), 4000);
           this.logger.warn({
             message: `Retrying ${context}`,
@@ -392,6 +417,10 @@ export class SmrProxyController {
             timeout: body.stream ? 30_000 : 120_000,
           }),
         'SMR generate',
+        // TASK-460 C4-04 — /generate is non-idempotent (billable generation):
+        // retry ONLY when the request provably never reached SMR.
+        2,
+        (err) => this.isConnectPhaseFailure(err),
       );
 
       return response.data;
@@ -574,6 +603,9 @@ export class SmrProxyController {
             timeout: smrPayload.stream ? 30_000 : 120_000,
           }),
         'SMR assembled generate',
+        // TASK-460 C4-04 — same single-delivery contract as `generate()`.
+        2,
+        (err) => this.isConnectPhaseFailure(err),
       );
 
       return {
