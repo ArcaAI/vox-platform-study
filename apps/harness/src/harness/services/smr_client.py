@@ -12,16 +12,23 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
-from harness.core.llm_concurrency import governed_request
+from harness.core.llm_concurrency import LlmCallTimeout, governed_request
 
 
 class SmrServiceError(RuntimeError):
     """The SMR service was unreachable or returned a non-2xx response.
 
-    ``after_send`` is True when the request was fully DELIVERED but the response was
-    lost (a read-side transport failure), so the model MAY have generated — retrying
-    would re-invoke it (C1-04). The ``generate`` activity uses this to make the
-    Temporal retry non-retryable too, so no layer re-runs a post-dispatch generation.
+    ``after_send`` is True when the request reached SMR and the model MAY have generated —
+    so retrying would re-invoke it (C1-04 / I-1). It is set for the two dispatch-then-lost
+    paths this client closes: a read-side transport failure (``_POST_SEND_ERRORS``) and the
+    governor's per-call ``LlmCallTimeout`` firing mid-request. ``generate`` also makes the
+    Temporal retry non-retryable for these, so neither the governor nor ``_GENERATE_RETRY``
+    re-issues them.
+
+    NOT covered by ``after_send`` (still retried, pre-existing / lower risk): an SMR 5xx or
+    the LM-Studio ``terminated`` 400 that arrives AFTER the model ran — the governor retries
+    those. Fully closing every post-response re-POST needs an idempotency key SMR honours
+    (apps/smr; TASK-466). A pre-send failure sets ``after_send=False`` (safe to retry).
     """
 
     def __init__(self, message: str, *, after_send: bool = False) -> None:
@@ -121,17 +128,26 @@ class SmrClient:
                 resp.raise_for_status()
                 return resp
 
-            # Per-endpoint governor (the SMR/Ollama box): bounded rate-limit-aware
-            # retry on a transient generation failure before the loop's own retry. A
-            # post-send loss is surfaced as ``_SmrResponseLost`` (marker-free) so the
-            # governor gives up after ONE attempt instead of re-invoking the model.
+            # Per-endpoint governor (the SMR/Ollama box): bounded rate-limit-aware retry
+            # on a transient generation failure before the loop's own retry. generate is
+            # NON-idempotent, so ``retry_on_timeout=False`` makes a per-call governor
+            # timeout terminal, and a post-send read loss is surfaced as
+            # ``_SmrResponseLost`` (marker-free) — the governor NEVER re-invokes the model
+            # after the prompt is dispatched (I-1 / C1-04). Pre-send failures still retry.
             try:
-                resp = await governed_request(self._base_url, _send)
+                resp = await governed_request(self._base_url, _send, retry_on_timeout=False)
             except _SmrResponseLost as exc:
                 raise SmrServiceError(
                     f"smr generate failed (response lost after dispatch): {exc.cause}",
                     after_send=True,
                 ) from exc.cause
+            except LlmCallTimeout as exc:
+                # The per-call governor timeout fired mid-request — the model may already
+                # be running, so treat it as a post-send failure (never re-issued).
+                raise SmrServiceError(
+                    f"smr generate failed (per-call timeout; not re-issued): {exc}",
+                    after_send=True,
+                ) from exc
             except httpx.HTTPError as exc:
                 raise SmrServiceError(f"smr generate failed: {exc}") from exc
             data = resp.json()

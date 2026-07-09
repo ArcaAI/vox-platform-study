@@ -312,11 +312,19 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
             response_format=payload.response_format,
         )
     except SmrServiceError as exc:
-        # C1-04: a post-send loss means the model MAY have generated. Re-running the
-        # activity (Temporal ``_GENERATE_RETRY``) would re-invoke it (double spend +
-        # divergent draft), so mark it non-retryable — the SMR-failure invariant still
-        # fails the workflow without a draft. A pre-send failure propagates unchanged
-        # (retryable: the model never ran, so a retry is safe).
+        # C1-04 / I-1: ``after_send`` means the request reached SMR and the model MAY have
+        # generated — a dropped-read transport loss OR the governor's per-call timeout
+        # firing mid-request (both closed in ``smr_client``). Re-running the activity
+        # (Temporal ``_GENERATE_RETRY``) would re-invoke the model (double spend + divergent
+        # draft), so mark it non-retryable — the SMR-failure invariant still fails the
+        # workflow without a draft. A PRE-send failure propagates unchanged (retryable: the
+        # model never ran).
+        #
+        # NOT closed here (still a re-invoke path on Temporal retry): a genuine worker CRASH
+        # mid-activity (no exception to catch), and an SMR 5xx / LM-Studio ``terminated`` 400
+        # that arrives AFTER the model ran (the governor still retries those). The durable
+        # fix for both is a downstream idempotency key SMR honours — apps/smr, tracked as
+        # TASK-466 coordination.
         if exc.after_send:
             raise ApplicationError(str(exc), type="SmrResponseLost", non_retryable=True) from exc
         raise
