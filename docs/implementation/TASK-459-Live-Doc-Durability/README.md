@@ -1,6 +1,6 @@
 # TASK-459 — Live-Documentation Durability: Truncation + Owner Lock (C5-04 · C5-06)
 
-- **Status**: Pending (Wave 2 scaffold — no implementation)
+- **Status**: Review — implemented, adversarially reviewed (+ I-1/I-2 fixes), merged to `fix/2605-review` (Wave 2 Batch 1)
 - **Type**: bugfix (data durability + cost)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 2 (P1)
 - **Findings**: C5-04 (Med, CONFIRMED) · C5-06 (Med, CONFIRMED) — see [TASK-448 register](../TASK-448-Harness-Loop-Quality-Review/README.md)
@@ -64,7 +64,15 @@ Adversarial review focus: (a) C5-04 — can any truncation sequence still perman
 
 ## Implementation Summary
 
-_Pending — not yet implemented (Wave 2)._
+**Branch**: `fix/task-459-live-doc-durability` (2 commits) — merged to `fix/2605-review` (Wave 2 Batch 1).
+
+**What shipped**: C5-04 head-first carry-forward — the delta accumulates HEAD-first up to `MAX_DELTA_CHARS`, the cursor advances only over sent segments, the overflow tail carries to the next flush, and `stop()` drains in a bounded loop until the cursor reaches the end (no head OR tail loss). C5-06 atomic NX owner lock via the existing `cacheService.eval` (Lua CAS), owner-fenced release/renew, `start()` bails when a live foreign instance holds the lock, renewal stands down on foreign takeover, and durable-snapshot dedup via a subType-aware `findPreSummaries` filter.
+
+**Adversarial review**: no Critical — the NX lock atomicity/fencing and C5-04 head-retention verified correct. Two Important found: **I-1** the dedup used `findLatestPreSummary` (subType-blind) → a newer non-live `PRE_SUMMARY` caused a duplicate `LIVE_SOAP_SNAPSHOT` in normal single-instance operation → switched to the subType-aware `findPreSummaries` filter (+ corrected the masking test mock); **I-2** `stop()` dropped the tail on a >12k backlog → bounded drain loop. Both fixed.
+
+**Gates**: `pnpm --filter @arcaai/applications build test lint` — build clean, **5900 tests passed**, zero new lint.
+
+**Recorded limitation**: the Lua CAS/fence scripts are exercised only against the JS cache mock in unit tests — true atomicity needs a real-Redis integration test (out of unit scope). A simultaneous cross-instance dedup TOCTOU (both find-null then both create) would need a DB unique constraint (schema change, out of scope).
 
 ## Change History
 

@@ -156,6 +156,12 @@ All five tickets written with code-verified evidence (5 read-only scouts against
 
 **Suggested sequencing**: TASK-455 (eval harness) → TASK-456 → TASK-457 (gated on 455); TASK-458/459/460 parallelize independently. Wave 3 (P2: C5-03, C4-05, C2-04, C6-02/03/04, C5-05, C1-05-notify, C3-06, C1-06) + the SOTA enhancement track follow.
 
+### Wave 2 Batch 1 — executed & landed (2026-07-10)
+
+TASK-456/458/459/460 implemented (TDD, isolated worktrees, current-HEAD base), adversarially reviewed, and merged into `fix/2605-review` (merge `a786aa23`, 31 files). Every stream had ≥1 real review finding fixed before merge; **TASK-456 required a Critical rework** (loud-retain → capacity-DoS) into a durable at-least-once transcript outbox, plus two Important follow-ups (429-burst drop, at-most-once crash window). Combined build 8/8; per-package gates: stt-v2 2100 · harness 662 (replay 7) · applications 5900 · api 2021. Two new receiver-half follow-ups discovered: [TASK-465](../TASK-465-NLP-Guardrail-Service-Token-Enforcement/README.md) (from 460) + [TASK-466](../TASK-466-Harness-Callback-Consumption/README.md) (from 458).
+
+**Wave 2 Batch 2 (live-stack) — pending**: TASK-455 (eval harness) then TASK-457 (consumer-groups, gated on 455's baseline + after 456). Both need a running test stack; not started.
+
 ## Change History
 
 | Date | Change |
@@ -164,3 +170,4 @@ All five tickets written with code-verified evidence (5 read-only scouts against
 | 2026-07-09 | Wave 1 executed: TASK-450/451/452/454 implemented (TDD, isolated worktrees), adversarially reviewed (4 reviewers; every stream had ≥1 real finding, all fixed), and merged into `fix/task-449-wave1` (26 files, 0 conflicts, integration build 16/16). C2-06 reproduced. TASK-453 held (C1-01 decision); TASK-455 held (live stack). Discovered TASK-463 (durable NamedEntity corruption) + TASK-464 (SDK drop surfacing) via review. TASK-450 e2e written, deferred to landing. |
 | 2026-07-09 | Owner decisions: TASK-463 → Wave 1.5 (executed: shared NLP→NamedEntity mapper, review Approve, both paths confirmed LIVE); C1-01 → Option C (closed Won't-fix); land → `fix/2605-review`. TASK-463 merged to integration; Wave 1 + 1.5 merged to `fix/2605-review` (`39515a17` + docs `d35ff948`). Wave 2 (TASK-456…460) scaffolding started. |
 | 2026-07-09 | Wave 2 fully scaffolded (TASK-456/457/458/459/460) from 5 code-verified scouts; no implementation. Six register refinements recorded (dead configs, PHI-scope, false comment, asymmetric resume). Sequencing + replay-safety + cross-stream ordering documented. |
+| 2026-07-10 | Wave 2 Batch 1 executed + landed: TASK-456/458/459/460 (TDD, adversarial review — TASK-456 through a Critical rework + 2 re-reviews). Merged to `fix/2605-review` (`a786aa23`, 31 files; combined build 8/8). Discovered TASK-465 + TASK-466 (receiver halves). Batch 2 (TASK-455 → 457, live stack) pending a go/infra decision. |

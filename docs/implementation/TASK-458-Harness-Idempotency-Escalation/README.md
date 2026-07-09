@@ -1,6 +1,6 @@
 # TASK-458 — Harness Idempotency, Escalation & Policy-Degrade (C1-02…C1-06)
 
-- **Status**: Pending (Wave 2 scaffold — no implementation)
+- **Status**: Review — implemented, adversarially reviewed (+ I-1 fix), merged to `fix/2605-review` (Wave 2 Batch 1)
 - **Type**: bugfix (reliability, cost, observability)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 2 (P1)
 - **Findings**: C1-02 (High) · C1-03 (Med) · C1-04 (Med) · C1-05 (Med) · C1-06 (Med) — all CONFIRMED — see [TASK-448 register](../TASK-448-Harness-Loop-Quality-Review/README.md)
@@ -91,7 +91,15 @@ Adversarial review focus: (a) C1-02 — does the abandon timer have a real termi
 
 ## Implementation Summary
 
-_Pending — not yet implemented (Wave 2)._
+**Branch**: `fix/task-458-harness-idempotency` (2 commits) — merged to `fix/2605-review` (Wave 2 Batch 1).
+
+**What shipped**: C1-02 gate terminal-abandon (after `gate_max_escalations`=3) + edit-rerun cap (`max_edit_reruns`=5), both behind NEW `workflow.patched()` markers with 2 new captured replay fixtures. C1-03 `Idempotency-Key = {workflow_run_id}:{activity_id}` on the 5 WORM callbacks. C1-04 SMR post-send non-retryable (read-loss AND the governor per-call timeout — via a `retry_on_timeout=False` flag in `llm_concurrency.py`). C1-05 real `record_escalation` (harness→api POST). C1-06 policy-fetch failure sets `reduced_assurance`.
+
+**Adversarial review**: no Critical — replay safety verified (both markers gate correctly; pre-458 histories replay; the frozen fixture untouched; fixtures base64-decoded to confirm command shapes) and the abandon terminal state confirmed. Important **I-1** found: the governor's `asyncio.timeout` still re-invoked the model post-send → fixed (generate timeout is now terminal; idempotent callers unchanged). Docstrings corrected.
+
+**Gates**: `pnpm py:harness:test` **662 passed** (incl. `test_replay_compat` 7 passed); ruff + mypy clean.
+
+**Discovered → [TASK-466](../TASK-466-Harness-Callback-Consumption/README.md)**: the harness now SENDS the escalation record, the idempotency keys, and the SMR key — but apps/api must add the escalation endpoint + consume the keys (dedup), and apps/smr must honor its idempotency key (the worker-crash re-invoke residual). Sender half done here; receiver half tracked separately.
 
 ## Change History
 
