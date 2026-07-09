@@ -9,15 +9,15 @@ import { cn } from '@arcaai/ui';
  * so async updates are announced); `end` carries secondary meta (counts,
  * last-updated, endpoint hints).
  *
- * Nested inside the shell's `<main>` (SidebarInset), so `<footer>` is a
- * sectioning footer — not a duplicate `contentinfo` landmark.
+ * Nested inside the shell's `<main>` (SidebarInset), so `<footer>` here has a
+ * generic role — NOT a `contentinfo` landmark — which means it must not carry
+ * an `aria-label` (axe `aria-prohibited-attr`). The status text is exposed
+ * through the inner `aria-live` region and the visible `start`/`end` content
+ * instead, so no element-level name is needed.
  */
 export function StatusFooter({ start, end, className }: { start?: ReactNode; end?: ReactNode; className?: string }) {
   return (
-    <footer
-      aria-label="Page status"
-      className={cn('bg-card text-muted-foreground flex h-8 items-center gap-3 rounded-md border px-3 text-xs', className)}
-    >
+    <footer className={cn('bg-card text-muted-foreground flex h-8 items-center gap-3 rounded-md border px-3 text-xs', className)}>
       <div aria-live="polite" className="flex min-w-0 flex-1 items-center gap-3 truncate">
         {start}
       </div>

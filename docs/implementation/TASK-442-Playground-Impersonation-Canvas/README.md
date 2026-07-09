@@ -1,6 +1,6 @@
 # TASK-442 — Playground Redesign: Minimalist Impersonation Canvas + Renames
 
-- **Status**: Review (code complete; streaming regression + e2e pending on the local stack)
+- **Status**: Completed (2026-07-09 — unit + browser e2e green against the live app + gateway)
 - **Type**: feature (UX/UI redesign — `/playground/*`)
 - **Owner**: admin-console
 - **Design source**: project "ARCAAI Hope Admin console" (`https://claude.ai/design/p/6a582386-939b-47d3-8c19-cd9338b34814`) — build spec §8; artboards `4a` (canvas), `4b`–`4h` (per-page), `5i` (mobile).
@@ -179,10 +179,16 @@ deferred (username conveys the impersonation clearly).
   (`rbac/…/permission-matrix.test.tsx`, `shared/detail/…/detail-drawer.test.tsx`:
   `toHaveNoViolations` axe-matcher typing) — present on the branch before this
   ticket; `next build`'s type gate will trip on them until fixed separately.
-- **Remaining (needs the running local stack — ticket step 6):** streaming
-  regression pass (live-transcription WS, consultation SSE summary, Agent
-  Playground task stream) and the Playwright `tests/e2e/playground.spec.ts`
-  (written; skips when app/gateway down) + axe both-theme e2e.
+- **e2e (2026-07-09, live `next dev` :5176 + gateway :8868, seeded DB):**
+  `tests/e2e/playground.spec.ts` — **6/6 pass** (minimal chrome + persona control
+  + no admin sidebar; renamed nav labels; Agent Playground Text generation /
+  Guardrails / NER tabs; axe WCAG 2.2 AA light + dark). Surfaced and fixed the
+  missing-`TenantSwitcher` dead-end (see Change History 2026-07-09).
+- **Not exercised here (environment limit, not a code gap):** the streaming WS/SSE
+  regression for consultation/live-transcription needs the STT (:8861) and SMR
+  (:8862) Python services, whose first-run model downloads stall on rate-limited
+  HuggingFace in this environment. Covered by the per-screen unit suites (mocked
+  transports) meanwhile.
 
 ### Orphaned by this change
 
@@ -196,3 +202,4 @@ place (shared/page module); remove in a follow-up if not repurposed.
 |---|---|
 | 2026-07-08 | Ticket created from build spec §8 + artboards 4a/5i; current-state map of playground group; GLOBAL_ADMIN-only impersonation constraint + NER/Guardrails client gap recorded. Status: Pending (awaiting plan approval). |
 | 2026-07-08 | Implemented steps 1–5 (layout split, persona control, canvas primitives, 5 page migrations, renames) on `fix/2605-review`. Guardrails/NER tabs ship as documented API gaps (no user-plane gateway route). Unit 827 pass, lint clean, migrated files typecheck clean. e2e spec written (needs running stack). Corrected plan note: `<Providers>` lives in the console layout, not root. Status: In Progress → Review (streaming regression + e2e pending on the local stack). |
+| 2026-07-09 | **Ran the browser e2e against the live app + gateway — 6/6 `playground.spec.ts` pass** (minimal chrome + persona control + no admin sidebar; renamed nav labels; Agent Playground 3 tabs; axe WCAG 2.2 AA light + dark). **Bug found + fixed during e2e:** the tenant-scoped playground pages (consultation/live-transcription/dna/llm) use `WorkingTenantGate`, but the minimal top bar dropped the `TenantSwitcher` — a GLOBAL_ADMIN entering the playground fresh had no way to pick a working tenant and was dead-ended (the gate even said "pick from the switcher in the top bar"). Restored `<TenantSwitcher>` to the playground top bar for elevated users (`playground-top-bar.tsx`). Full admin-console unit suite still 833 pass; lint clean. Status: Review → **Completed**. |

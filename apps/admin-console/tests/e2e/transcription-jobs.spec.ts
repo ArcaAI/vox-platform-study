@@ -22,7 +22,7 @@ async function waitForSettled(page: Page) {
     await expect(page.getByRole('heading', { level: 1, name: 'Transcription Jobs' })).toBeVisible();
     const emptyState = page.getByText('No transcription jobs yet');
     // Data rows are focusable (row click -> stream panel); skeletons are not.
-    const dataRows = page.getByRole('table', { name: 'Transcription jobs' }).locator('tbody tr[tabindex="0"]');
+    const dataRows = page.getByRole('grid', { name: 'Transcription jobs' }).locator('[data-slot="data-grid-row"]');
     await expect(dataRows.first().or(emptyState.first())).toBeVisible();
 }
 
@@ -34,7 +34,7 @@ test.describe('transcription jobs (frame 35)', () => {
         for (const label of ['Queued', 'Running', 'Completed', 'Failed']) {
             await expect(stats.getByText(label)).toBeVisible();
         }
-        await expect(page.getByLabel('Search job id')).toBeVisible();
+        await expect(page.getByLabel('Search')).toBeVisible();
         await expect(page.getByText('Job stream')).toBeVisible();
         await expect(page.getByRole('button', { name: /refresh/i })).toBeVisible();
     });
@@ -43,7 +43,9 @@ test.describe('transcription jobs (frame 35)', () => {
         await page.goto('/audio/transcription-jobs');
         await waitForSettled(page);
         await page.getByRole('button', { name: /filter the grid to failed jobs/i }).click();
-        await expect(page).toHaveURL(/status=FAILED/);
+        // The grid's faceted filter serializes to the `f` query param (not a
+        // bespoke `status=` param): f=[["status","eq","select","FAILED"]].
+        await expect(page).toHaveURL(/f=.+FAILED/);
     });
 
     test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {

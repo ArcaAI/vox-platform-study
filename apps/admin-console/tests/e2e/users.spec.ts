@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }) => {
 
 /** Data rows are focusable (row click); skeleton rows are not. */
 function dataRows(page: import('@playwright/test').Page) {
-    return page.getByRole('table', { name: 'Users' }).locator('tbody tr[tabindex="0"]');
+    return page.getByRole('grid', { name: 'Users' }).locator('[data-slot="data-grid-row"]');
 }
 
 async function waitForListSettled(page: import('@playwright/test').Page) {
@@ -39,7 +39,7 @@ test.describe('users list (frame 20)', () => {
         await page.goto('/users');
         await waitForListSettled(page);
         await expect(page.getByRole('button', { name: 'New user' }).first()).toBeVisible();
-        await expect(page.getByLabel('Search users')).toBeVisible();
+        await expect(page.getByLabel('Search')).toBeVisible();
     });
 
     test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {
@@ -62,7 +62,8 @@ test.describe('user detail (frame 20.1)', () => {
         await openFirstUser(page);
 
         await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Impersonate' })).toBeVisible();
+        // Impersonate is hidden for service accounts (TASK-430) and the seeded
+        // first user may be one, so assert the always-present Reset password action.
         await expect(page.getByRole('button', { name: 'Reset password' })).toBeVisible();
         await expect(page.getByRole('tablist')).toBeVisible();
         for (const name of ['Roles', 'Departments', 'Settings', 'Profile', 'Security']) {

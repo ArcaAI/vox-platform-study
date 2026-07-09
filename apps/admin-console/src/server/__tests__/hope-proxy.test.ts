@@ -233,6 +233,29 @@ describe('handleProxy', () => {
         expect(session?.refreshToken).toBe('refresh-2');
     });
 
+    it('keeps the session and passes the gateway 401 through when a refreshed token still 401s (step-up re-auth failure)', async () => {
+        await seedSession(baseSession);
+        installFetchMock((call) => {
+            if (call.url === `${API}/api/v1/auth/refresh`) {
+                return Response.json({ token: 'access-2', refreshToken: 'refresh-2' });
+            }
+            // Even with the freshly-refreshed token the gateway rejects — a
+            // step-up (wrong re-auth password) failure, NOT an expired session.
+            return Response.json({ message: 'Step-up re-authentication failed: incorrect password.' }, { status: 401 });
+        });
+
+        const response = await handleProxy(
+            new Request('http://console.local/api/hope/admin/settings/s-1/rotate', { method: 'POST', body: '{}' }),
+            ['admin', 'settings', 's-1', 'rotate'],
+        );
+
+        // The gateway's real message reaches the client (not "Session expired")…
+        expect(response.status).toBe(401);
+        expect(await response.json()).toEqual({ message: 'Step-up re-authentication failed: incorrect password.' });
+        // …and a mistyped step-up password must NOT log the user out.
+        expect(await getSession()).not.toBeNull();
+    });
+
     it('clears the session and returns 401 when the refresh is rejected', async () => {
         await seedSession(baseSession);
         installFetchMock((call) => {

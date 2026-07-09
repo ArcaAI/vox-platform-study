@@ -1,6 +1,6 @@
 # TASK-443 — Settings List: Namespace Grouping + Filter Chips
 
-- **Status**: Review
+- **Status**: Completed
 - **Type**: feature (shared data-grid capability + gateway faceting + admin-console wiring)
 - **Owner**: admin-console + `@arcaai/ui` (data-grid) + apps/api (gateway)
 - **Related**: **follow-up from TASK-439** (Settings & Secrets redesign — deferred these two list affordances); TASK-437 (redesign foundation); TASK-423 (data-grid standardization / URL query-state + bracket filter grammar); TASK-430 (cross-tenant settings listing + the proven `tenantId` faceted filter).
@@ -131,5 +131,4 @@ The screen-level axe gate surfaced a PRE-EXISTING `VirtualizedDataGrid` violatio
 |---|---|
 | 2026-07-08 | **Implemented (TDD, all layers) — status → Review.** (1) Gateway: `GlobalSetting` filter-field registry (`dataType` enum member-validated → 400), `secretsOnly` facet (`ListGlobalSettingQuery` DTO + `buildSecretSettingFilter()` shared with `isSecretEntity` via one marker list) on `fetchAll`/`fetchAllByTenantId`; api e2e contract spec added. (2) `@arcaai/ui` data-grid: generic `groupBy` (virtualized, non-interactive group-header rows, a11y semantics) + `meta.filterOnly` (filter-only virtual columns); story + tests. (3) Console: namespace-first implicit sort, namespace grouping, Namespace/Type multiSelect chips (`dataType` column id fixed to the real field), Secrets chip remapped to `secretsOnly`, `useSettingNamespaces()` catalog; screen tests + e2e extended. Incidental in-scope a11y fix: grid header drag-handle 24px target + options-trigger overlap removed (axe target-size/offset, pre-existing on every grid screen). Evidence in Implementation Summary. |
 | 2026-07-08 | Ticket created as follow-up from TASK-439; the deferred namespace group-header rows + Namespace/Type/Secrets-only filter chips are scoped here. Current-state map captured: the grid has no grouped-row variant (`virtualized-data-grid.tsx` — no `groupBy`), the faceted-filter transport already exists and is proven for `tenantId` (TASK-430), `namespace`/`dataType` are real filterable columns, but **`isSecret` is a derived predicate (`isSecretEntity`, not a column)** so Secrets-only faceting needs a dedicated gateway predicate. Status: Pending (awaiting plan approval). |
-</content>
-</invoke>
+| 2026-07-09 | **e2e + runtime closure.** Gateway spec `task-443-settings-list-faceting.spec.ts` 4/4 (namespace[in], dataType enum + 400 on invalid, secretsOnly derived predicate, junk-value 400) and console `settings.spec.ts` grouping+chips green; live browser shows namespace group headers (light+dark) and the three faceting chips. Incidental in-scope a11y fix (grid drag-handle target-size) verified via the settings axe gate. Status: **Completed**. |

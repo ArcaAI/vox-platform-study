@@ -9,7 +9,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const vaultPrismaCreate = vi.fn();
 
 vi.mock('@arcaai/database', () => ({
-  applySoftDeleteExtension: vi.fn((client) => ({ __ext: client })),
+  applySoftDeleteExtension: vi.fn((client) => ({ __soft: client })),
+  applyTenantScopeExtension: vi.fn((client, options) => ({ __tenant: client, __options: options })),
+  resolveTenantContext: vi.fn(() => ({ tenantId: 'tenant-from-cls', isSuperAdmin: false })),
   VaultPrismaClient: {
     create: vaultPrismaCreate,
   },
@@ -79,11 +81,51 @@ describe('buildVaultPrismaFactory env-toggle gating', () => {
     expect(vaultPrismaCreate).toHaveBeenCalledTimes(1);
     expect(vaultPrismaCreate).toHaveBeenCalledWith(fakeSecrets, 'hope-app-role');
     expect(result.client).toBe(fakeClient);
-    expect(result.extendedClient).toEqual({ __ext: fakeClient });
+    // extendedClient composes soft-delete THEN tenant-scope (tenant-scope
+    // applied last so its handlers run first) — mirrors env-mode
+    // createExtendedPrismaClient. See the tenant-scope regression test below.
+    expect(result.extendedClient).toEqual({
+      __tenant: { __soft: fakeClient },
+      __options: expect.objectContaining({
+        getTenantId: expect.any(Function),
+        isSuperAdmin: expect.any(Function),
+      }),
+    });
     expect(typeof result.disconnect).toBe('function');
 
     await result.disconnect();
     expect(disconnectMock).toHaveBeenCalledTimes(1);
+  });
+
+  // TASK-444 — regression for the cross-tenant leak: the Vault-mode
+  // extendedClient MUST compose tenant-scope on top of soft-delete, exactly
+  // like env-mode createExtendedPrismaClient. Without it, tenant-scoped reads
+  // that rely on the $extends (e.g. UserRoleAssignmentService.fetchAllByRoleId)
+  // run UNSCOPED and leak other tenants' rows.
+  it('composes the tenant-scope extension over soft-delete, wired to resolveTenantContext', async () => {
+    process.env.SECRETS_PROVIDER = 'vault';
+    process.env.PG_DYNAMIC_CREDS = 'true';
+
+    const fakeClient = { $queryRaw: vi.fn() };
+    vaultPrismaCreate.mockResolvedValueOnce({
+      client: fakeClient,
+      disconnect: vi.fn(async () => undefined),
+    });
+
+    const db = await import('@arcaai/database');
+    const { buildVaultPrismaFactory } = await import('../vault-prisma.module');
+    const factory = buildVaultPrismaFactory({} as never)!;
+    await factory();
+
+    // soft-delete wraps the raw client, tenant-scope wraps the soft-deleted one
+    expect(db.applySoftDeleteExtension).toHaveBeenCalledWith(fakeClient);
+    expect(db.applyTenantScopeExtension).toHaveBeenCalledTimes(1);
+    const [scopedInput, options] = (db.applyTenantScopeExtension as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(scopedInput).toEqual({ __soft: fakeClient });
+
+    // the options must read tenant context from resolveTenantContext (CLS)
+    expect(options.getTenantId()).toBe('tenant-from-cls');
+    expect(options.isSuperAdmin()).toBe(false);
   });
 
   it('honors PG_VAULT_ROLE env override for the role argument', async () => {

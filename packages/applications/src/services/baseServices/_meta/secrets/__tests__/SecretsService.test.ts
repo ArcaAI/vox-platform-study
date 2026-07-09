@@ -160,6 +160,22 @@ describe('SecretsService.encrypt/decrypt (Phase 4 Task 4.5)', () => {
     await expect(service.encrypt(Buffer.from('x'))).rejects.toThrow(/requires vault/i);
   });
 
+  it('supportsTransit() is false when the provider has no encrypt() (env / non-vault)', () => {
+    const service = new SecretsService(new InMemorySecretsProvider({}), {});
+    expect(service.supportsTransit()).toBe(false);
+  });
+
+  it('supportsTransit() is true when the provider exposes encrypt() (vault)', () => {
+    const fakeVault = {
+      encrypt: vi.fn(),
+      getSecret: vi.fn(),
+      getSecrets: vi.fn(),
+      health: vi.fn(),
+    } as unknown as InMemorySecretsProvider;
+    const service = new SecretsService(fakeVault, {});
+    expect(service.supportsTransit()).toBe(true);
+  });
+
   it('throws a guard error when the underlying provider has no decrypt()', async () => {
     const provider = new InMemorySecretsProvider({});
     const service = new SecretsService(provider, {});

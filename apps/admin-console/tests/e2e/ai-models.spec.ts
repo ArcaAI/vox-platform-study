@@ -19,16 +19,16 @@ test.describe('AI model registry screen', () => {
     test('renders the registry heading, filter bar and list region', async ({ page }) => {
         await page.goto('/ai-models');
         await expect(page.getByRole('heading', { level: 1, name: 'AI Model Registry' })).toBeVisible();
-        await expect(page.getByLabel('Search models')).toBeVisible();
+        await expect(page.getByLabel('Search')).toBeVisible();
         await expect(page.getByRole('button', { name: 'Register model' }).first()).toBeVisible();
-        await expect(page.getByRole('table', { name: 'AI models' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'AI models' })).toBeVisible();
     });
 
     test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {
         await page.emulateMedia({ colorScheme: 'light' });
         await page.goto('/ai-models');
         await expect(page.getByRole('heading', { level: 1, name: 'AI Model Registry' })).toBeVisible();
-        await expect(page.getByRole('table', { name: 'AI models' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'AI models' })).toBeVisible();
         await expectNoA11yViolations(page);
     });
 
@@ -36,7 +36,7 @@ test.describe('AI model registry screen', () => {
         await page.emulateMedia({ colorScheme: 'dark' });
         await page.goto('/ai-models');
         await expect(page.getByRole('heading', { level: 1, name: 'AI Model Registry' })).toBeVisible();
-        await expect(page.getByRole('table', { name: 'AI models' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'AI models' })).toBeVisible();
         await expectNoA11yViolations(page);
     });
 });

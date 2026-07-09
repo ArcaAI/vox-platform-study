@@ -10,6 +10,10 @@ import { APP_DOWN_MESSAGE, appAvailable } from './helpers/stack';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
+// Scans the login page — do NOT restore the shared session from auth.setup.ts
+// (an authenticated visit to /login would redirect away).
+test.use({ storageState: { cookies: [], origins: [] } });
+
 test.beforeEach(async () => {
     test.skip(!(await appAvailable()), APP_DOWN_MESSAGE);
 });

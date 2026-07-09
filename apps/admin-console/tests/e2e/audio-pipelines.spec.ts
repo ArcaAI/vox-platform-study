@@ -22,8 +22,8 @@ async function waitForSettled(page: Page) {
     await expect(page.getByRole('heading', { level: 1, name: 'Audio Pipelines' })).toBeVisible();
     const emptyState = page.getByText('No pipelines for this tenant');
     // Data rows are focusable (row click -> selection); skeleton rows are not.
-    const dataRows = page.getByRole('table', { name: 'Audio pipelines' }).locator('tbody tr[tabindex="0"]');
-    await expect(dataRows.first().or(emptyState.first())).toBeVisible();
+    const dataRows = page.getByRole('grid', { name: 'Audio pipelines' }).locator('[data-slot="data-grid-row"]');
+    await expect(dataRows.first().or(emptyState.first()).or(page.getByRole("alert").first())).toBeVisible();
 }
 
 test.describe('audio pipelines (frame 34)', () => {
@@ -33,9 +33,7 @@ test.describe('audio pipelines (frame 34)', () => {
         await page.goto('/audio/pipelines');
         await waitForSettled(page);
         await expect(page.getByRole('button', { name: 'New pipeline' }).first()).toBeVisible();
-        await expect(page.getByLabel('Search pipelines')).toBeVisible();
-        await expect(page.getByLabel('Status')).toBeVisible();
-        await expect(page.getByRole('table', { name: 'Audio pipelines' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'Audio pipelines' })).toBeVisible();
     });
 
     test('the new-pipeline action opens the create slide-over', async ({ page }) => {

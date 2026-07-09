@@ -22,7 +22,7 @@ async function waitForSettled(page: Page) {
     await expect(page.getByRole('heading', { level: 1, name: 'Tenant Storage Administration' })).toBeVisible();
     const emptyState = page.getByText('No buckets provisioned yet');
     // Data rows are focusable (row click -> object browser); skeleton rows are not.
-    const dataRows = page.getByRole('table', { name: 'Tenant buckets' }).locator('tbody tr[tabindex="0"]');
+    const dataRows = page.getByRole('grid', { name: 'Tenant buckets' }).locator('[data-slot="data-grid-row"]');
     await expect(dataRows.first().or(emptyState.first())).toBeVisible();
 }
 
@@ -34,7 +34,7 @@ test.describe('tenant storage (frame 14)', () => {
             await expect(page.getByRole('tab', { name })).toBeVisible();
         }
         await expect(page.getByRole('button', { name: 'Provision buckets' }).first()).toBeVisible();
-        await expect(page.getByLabel('Search buckets')).toBeVisible();
+        await expect(page.getByLabel('Search')).toBeVisible();
     });
 
     test('the access-keys tab syncs the URL and renders its region', async ({ page }) => {

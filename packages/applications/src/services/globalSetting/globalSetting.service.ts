@@ -41,6 +41,33 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     super(eventEmitter, clsService, ResourceType.GlobalSetting);
   }
 
+  /**
+   * TASK-447 (Phase 4C) — envelope-encrypt a SECRET setting's plaintext `value`
+   * into `encryptedValue` under the CURRENT Vault Transit key version, so the
+   * ciphertext the reveal path prefers always reflects the latest value (and,
+   * after a Transit key rotation, the freshest key version — this is the
+   * "re-wrap"). Called from every secret value-write (create / update / rotate)
+   * so `encryptedValue` is present ⟺ it decrypts to the current value.
+   *
+   * Gated: secrets only (non-secret config stays plaintext), and only when the
+   * provider exposes Transit (env / aws / azure / in-memory have none). The
+   * plaintext `value` column is deliberately RETAINED as the dual-read fallback
+   * — its removal is Phase 4D (user-gated). When the value just changed but no
+   * Transit is available, any prior ciphertext is now stale, so it is cleared
+   * so the read path falls back to the fresh plaintext instead of decrypting
+   * the previous secret. Mutates the entity via the tracked setters, so the
+   * caller's `create` / `updateWithVersion` persists it.
+   */
+  private async applySecretEncryption(entity: GlobalSettingEntity): Promise<void> {
+    if (!GlobalSettingDtoMapper.isSecretEntity(entity)) return;
+    if (this.secretsService.supportsTransit() && entity.value) {
+      await this.globalSettingRepository.encryptValueIntoEntity(entity, this.secretsService);
+    } else if (entity.encryptedValue) {
+      entity.encryptedValue = null;
+      entity.keyVersion = null;
+    }
+  }
+
   async create(request: CreateGlobalSettingRequest): Promise<GlobalSettingEntity> {
     // TASK-402 (Defect 2) — revive-on-create. The DB unique index
     // `(tenantId, name, key)` counts soft-DELETED rows, so a plain create
@@ -72,6 +99,8 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
           namespace: request.namespace,
           description: request.description,
         });
+        // TASK-447 (Phase 4C) — encrypt the revived secret's value at rest.
+        await this.applySecretEncryption(restored);
         const revived = restored.hasChanges ? await this.globalSettingRepository.update(restored.id, restored) : restored;
 
         this.broadcastSysEvent(SysEventType.ResourceCreated, {
@@ -91,6 +120,10 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
       tenantId: request.tenantId,
       createdBy: this.requestUser?.id,
     });
+
+    // TASK-447 (Phase 4C) — encrypt a new secret at rest from birth (no-op for
+    // non-secrets / no Transit).
+    await this.applySecretEncryption(newGlobalSetting);
 
     const globalSetting = await this.globalSettingRepository.create(newGlobalSetting);
 
@@ -243,6 +276,15 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
       throw new ArgumentInvalidException(`No changes to write to.`);
     }
 
+    // TASK-447 (Phase 4C) — when a SECRET's value changes on the ordinary
+    // update path, re-wrap its ciphertext (or drop a now-stale ciphertext when
+    // Transit is unavailable) so a later reveal never decrypts a previous
+    // value. No-op for non-secrets and for value-unchanged edits (e.g. a
+    // description-only PATCH keeps the existing ciphertext valid).
+    if ('value' in globalSetting.changes) {
+      await this.applySecretEncryption(globalSetting);
+    }
+
     // TASK-302 Stream D Phase C (C.7) — Compare-And-Set against `_version`.
     // The `OptimisticConcurrencyException` propagates out so the HTTP layer
     // (Phase D ExceptionFilter) renders `412 Precondition Failed` with
@@ -344,15 +386,14 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
   /**
    * TASK-445 — rotate ONE secret setting.
    *
-   * v1 semantics (encryption-at-rest is scaffolded but UNWIRED — Phase 4C):
-   * an atomic, step-up-gated, distinctly-audited REPLACE-WITH-NEW-VALUE under
-   * optimistic concurrency. The secret is operator-supplied (no
+   * Semantics: an atomic, step-up-gated, distinctly-audited REPLACE-WITH-NEW-
+   * VALUE under optimistic concurrency. The secret is operator-supplied (no
    * server-generatable material, unlike an api-key token), so the caller
    * provides the replacement; the old value is invalidated by the SAME
    * versioned write (`updateWithVersion` compare-and-set) — no window where
-   * both values are valid. When the Phase 4C encryption write path lands,
-   * this is also where `encryptValueIntoEntity` re-wraps `encryptedValue`
-   * under a fresh `keyVersion`.
+   * both values are valid. TASK-447 (Phase 4C) wired the envelope re-wrap:
+   * `applySecretEncryption` encrypts the new value into `encryptedValue` under
+   * the current Transit key version in the same write (no-op without Transit).
    *
    * Order of guards (fail-closed, mirrors `revealSecret`):
    *   1. Super-admin re-check (primary gate is the controller's CASL
@@ -407,6 +448,13 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
     if (!globalSetting.hasChanges) {
       throw new BadRequestException('The replacement value matches the current secret — nothing to rotate.');
     }
+
+    // TASK-447 (Phase 4C) — envelope re-wrap: encrypt the new value into
+    // `encryptedValue` under the current Transit key version BEFORE the CAS
+    // write, so the ciphertext is refreshed atomically with the value in the
+    // single versioned write. No-op when Transit is unavailable (plaintext
+    // replace, unchanged v1 behavior).
+    await this.applySecretEncryption(globalSetting);
 
     const rotated = await this.globalSettingRepository.updateWithVersion(id, globalSetting, request.expectedVersion);
 

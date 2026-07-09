@@ -21,7 +21,7 @@ async function waitForSettled(page: Page) {
     await expect(page.getByRole('switch')).toBeVisible();
     const emptyState = page.getByText('No plan entitlements yet');
     await expect(
-        page.getByRole('table', { name: 'Plan entitlements' }).locator('tbody tr').first().or(emptyState.first()),
+        page.getByRole('grid', { name: 'Plan entitlements' }).locator('[data-slot="data-grid-row"]').first().or(emptyState.first()),
     ).toBeVisible();
 }
 

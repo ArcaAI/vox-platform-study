@@ -4,7 +4,9 @@ import { cn } from '@/lib/utils';
 
 function Table({ className, ...props }: React.ComponentProps<'table'>) {
   return (
-    <div data-slot="table-container" className="relative w-full overflow-x-auto">
+    // tabIndex keeps the horizontally-scrollable container reachable by keyboard
+    // when the table overflows (axe scrollable-region-focusable / WCAG 2.1.1).
+    <div data-slot="table-container" tabIndex={0} className="relative w-full overflow-x-auto">
       <table data-slot="table" className={cn('w-full caption-bottom text-sm', className)} {...props} />
     </div>
   );

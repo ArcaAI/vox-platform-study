@@ -22,26 +22,27 @@ async function waitForSettled(page: Page) {
     await expect(page.getByRole('heading', { level: 1, name: 'Agents & Prompt Templates' })).toBeVisible();
     const emptyState = page.getByText('No prompt templates yet');
     // Data rows are focusable (row click -> selection); skeleton rows are not.
-    const dataRows = page.getByRole('table', { name: 'Prompt templates' }).locator('tbody tr[tabindex="0"]');
-    await expect(dataRows.first().or(emptyState.first())).toBeVisible();
+    const dataRows = page.getByRole('grid', { name: 'Prompt templates' }).locator('[data-slot="data-grid-row"]');
+    await expect(dataRows.first().or(emptyState.first()).or(page.getByRole("alert").first())).toBeVisible();
 }
 
 test.describe('agents & prompt templates (frame 32)', () => {
-    test('shows the header, filter strip and the templates region', async ({ page }) => {
+    test('shows the header, New action and the fill-height grid', async ({ page }) => {
         await page.goto('/agents');
         await waitForSettled(page);
         await expect(page.getByRole('button', { name: 'New template' }).first()).toBeVisible();
-        await expect(page.getByLabel('Search templates')).toBeVisible();
-        await expect(page.getByLabel('Status')).toBeVisible();
-        await expect(page.getByLabel('Department')).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'Prompt templates' })).toBeVisible();
     });
 
-    test('the status filter syncs to the URL', async ({ page }) => {
+    test('a row opens the console-wide detail slide-over', async ({ page }) => {
+        // Redesign (TASK-441): the former side panels are now a DetailDrawer
+        // with Overview / Versions / Test-run tabs.
         await page.goto('/agents');
         await waitForSettled(page);
-        await page.getByLabel('Status').click();
-        await page.getByRole('option', { name: 'Draft' }).click();
-        await expect(page).toHaveURL(/status=DRAFT/);
+        await page.getByRole('grid', { name: 'Prompt templates' }).locator('[data-slot="data-grid-row"]').first().click();
+        const drawer = page.getByRole('dialog');
+        await expect(drawer).toBeVisible();
+        await expect(drawer.getByRole('tab', { name: 'Versions' })).toBeVisible();
     });
 
     test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {

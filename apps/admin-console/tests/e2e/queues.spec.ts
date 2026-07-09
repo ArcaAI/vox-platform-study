@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
 async function openQueues(page: Page) {
     await page.goto('/queues');
     await expect(page.getByRole('heading', { level: 1, name: 'Queues & Jobs' })).toBeVisible();
-    await expect(page.getByLabel('Search queues')).toBeVisible();
+    await expect(page.getByLabel('Search')).toBeVisible();
     // Settle the list (skeletons mirror the layout, then give way to data).
     await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0);
 }
@@ -39,14 +39,14 @@ test.describe('queues screen', () => {
     test('drills into the first queue detail when a queue exists', async ({ page }) => {
         await page.emulateMedia({ colorScheme: 'light' });
         await openQueues(page);
-        const rows = page.getByRole('table', { name: 'Queues' }).locator('tbody tr');
+        const rows = page.getByRole('grid', { name: 'Queues' }).locator('[data-slot="data-grid-row"]');
         const rowCount = await rows.count();
         test.skip(rowCount === 0, 'no queues registered in this environment');
-        const queueName = (await rows.first().locator('td').first().innerText()).trim();
+        const queueName = (await rows.first().locator('[role="gridcell"]').first().innerText()).trim();
         await rows.first().click();
         await page.waitForURL('**/queues/**');
         await expect(page.getByRole('heading', { level: 1, name: queueName })).toBeVisible();
-        await expect(page.getByRole('table', { name: 'Jobs' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'Jobs' })).toBeVisible();
         await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0);
         await expectNoA11yViolations(page);
     });

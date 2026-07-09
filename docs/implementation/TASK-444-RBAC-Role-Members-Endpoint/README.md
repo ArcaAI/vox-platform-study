@@ -1,6 +1,6 @@
 # TASK-444 — RBAC Role Members: Gateway Endpoint + Members Tab Data
 
-- **Status**: Review
+- **Status**: Completed
 - **Type**: feature (full-stack — domain → application → api → admin-console)
 - **Owner**: apps/api (gateway) + `@arcaai/applications` + `@arcaai/domains` + admin-console (`features/rbac`)
 - **Related**: **follow-up from TASK-438** (Role Management redesign — the Members tab shipped as an empty state because no users-by-role listing exists); TASK-437 (redesign foundation); TASK-419 (admin RBAC API surface); TASK-430 (cross-tenant admin surfaces).
@@ -138,4 +138,4 @@ Implemented 2026-07-08, TDD (failing test first at every layer), layer order Dom
 |---|---|
 | 2026-07-08 | **Implemented full-stack (TDD)**: `RbacRoleRepository.findByIdWithPolicies` include override (domains) → `fetchAllByRoleId` on the sanctioned user-role-assignment service via the SCOPED client + tenant-filtered `_count` member counts on the role reads (applications) → `GET admin/rbac/roles/:id/members` + `memberCount` on `RoleResponse` (api) → Members tab listing, count chips (list rows + detail header), client/keys/hooks + e2e members smoke (admin-console). Tenant-scoping decision recorded in the Implementation Summary (scoped client for the list; explicit CLS filter for the nested `_count`; 404-over-403 preserved — cross-tenant members are simply absent). All layer gates green (evidence pasted). Status → Review. |
 | 2026-07-08 | Ticket created as follow-up from TASK-438; the deferred users-by-role listing + member counts are scoped here full-stack. Current-state map captured: no role→members route exists (only the inverse `GET /admin/users/:id/roles`), the by-role query is already index-backed (`UserRoleAssignment` indexes on `roleId`/`tenantId`), `fetchAllByRoleId` would clone `fetchAllByUserId`, and `RoleResponse` needs a new `memberCount` (`_count` on the role read). Tenant-scoping of members (global `Role` vs tenant-scoped assignments) is the key design call. Status: Pending (awaiting plan approval). |
-</content>
+| 2026-07-09 | **e2e closure — and the cross-tenant spec caught a real security bug (fixed in TASK-446).** New gateway spec `task-444-role-members-cross-tenant.spec.ts` initially failed M3/M4: Vault-mode `CoreDatabaseService.client` was unscoped (the vault Prisma factory never composed the tenant-scope extension), leaking other tenants member rows over 200. Root-caused + fixed under **[[TASK-446]]** (`docs/implementation/TASK-446-Vault-Prisma-Tenant-Scope-Leak`); re-run **6/6 green**, and a live curl confirms a tenant admin sees only their tenant (14 rows, one tenantId). Console `rbac-roles.spec.ts` Members tab + count chip green. Status: **Completed**. |

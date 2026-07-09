@@ -32,7 +32,19 @@ export default defineConfig({
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',
     },
-    projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+    projects: [
+        // Logs in ONCE and persists the session — the gateway login route is
+        // throttled (5/60s), so per-test UI logins trip the rate limiter.
+        { name: 'setup', testMatch: '**/auth.setup.ts' },
+        {
+            name: 'chromium',
+            use: {
+                ...devices['Desktop Chrome'],
+                storageState: 'test-results/.auth/admin.json',
+            },
+            dependencies: ['setup'],
+        },
+    ],
     outputDir: 'test-results/artifacts',
     preserveOutput: 'failures-only',
 });

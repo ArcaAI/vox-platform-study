@@ -27,7 +27,8 @@ test.describe('playground canvas (artboard 4a)', () => {
         // Slim top bar names the page and carries the persona/impersonation control.
         await expect(page.getByText('Playground', { exact: true })).toBeVisible();
         await expect(page.getByRole('button', { name: /acting as/i })).toBeVisible();
-        await expect(page.getByText(/under /i)).toBeVisible();
+        // The under-admin line (not the page description, which also contains "under").
+        await expect(page.getByText(/^under \S/i)).toBeVisible();
 
         // No admin sidebar in the playground (the console sidebar trigger is gone).
         await expect(page.getByRole('button', { name: /toggle sidebar/i })).toHaveCount(0);
@@ -42,15 +43,21 @@ test.describe('playground canvas (artboard 4a)', () => {
     });
 
     test('Agent Playground exposes Text generation / Guardrails / NER tabs', async ({ page }) => {
-        await page.goto('/playground/llm');
+        // The Agent Playground is tenant-scoped (WorkingTenantGate): select a working
+        // tenant BEFORE navigating so the gate opens on first render. A working admin
+        // uses the TenantSwitcher now present in the playground top bar.
         await selectWorkingTenant(page);
+        await page.goto('/playground/llm');
         await expect(page.getByRole('tab', { name: 'Text generation' })).toBeVisible();
         await expect(page.getByRole('tab', { name: 'Guardrails' })).toBeVisible();
-        await expect(page.getByRole('tab', { name: 'NER' })).toBeVisible();
+        // exact: "NER" is a substring of "Text geNERation".
+        await expect(page.getByRole('tab', { name: 'NER', exact: true })).toBeVisible();
 
-        // Guardrails/NER are documented API gaps until a gateway route ships.
+        // Guardrails/NER are wired to the ai/* gateway proxy (TASK-446).
         await page.getByRole('tab', { name: 'Guardrails' }).click();
-        await expect(page.getByText(/aren’t available here yet/i)).toBeVisible();
+        await expect(page.getByRole('button', { name: /analyze/i })).toBeVisible();
+        await page.getByRole('tab', { name: 'NER', exact: true }).click();
+        await expect(page.getByRole('button', { name: /extract/i })).toBeVisible();
     });
 
     test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {

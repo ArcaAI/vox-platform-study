@@ -33,6 +33,7 @@ const mockGlobalSettingRepository = {
     updateWithVersion: vi.fn(),
     softDelete: vi.fn(),
     findByIdWithDecryptedValue: vi.fn(),
+    encryptValueIntoEntity: vi.fn(),
     findFirst: vi.fn(),
     restore: vi.fn(),
 };
@@ -49,6 +50,9 @@ const mockCryptoService = {
 const mockSecretsService = {
     encrypt: vi.fn(),
     decrypt: vi.fn(),
+    // Default: no Transit (env/test posture) — existing rotate tests exercise
+    // the plaintext-replace path unchanged. The re-wrap tests flip this to true.
+    supportsTransit: vi.fn(() => false),
 };
 
 const OLD_SECRET = 'old-secret-value';
@@ -107,6 +111,9 @@ describe('GlobalSettingService.rotateSecret (TASK-445)', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        // clearAllMocks keeps implementations, so re-pin the Transit default to
+        // false each test (a re-wrap test that flips it to true must not leak).
+        mockSecretsService.supportsTransit.mockReturnValue(false);
         // Default CLS user: NOT a super-admin.
         mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'user-1' } : key === 'tenantId' ? 'tenant-1' : null));
         service = new GlobalSettingService(
@@ -204,6 +211,37 @@ describe('GlobalSettingService.rotateSecret (TASK-445)', () => {
         expect(result).toBe(persisted);
         // The old value is gone from the entity the write persisted.
         expect(result.value).toBe(NEW_SECRET);
+    });
+
+    // TASK-447 — Phase 4C envelope re-wrap: when the provider has Vault Transit,
+    // rotation envelope-encrypts the NEW value into `encryptedValue` under the
+    // current key version BEFORE the versioned write, so the ciphertext (which
+    // the reveal path prefers) is refreshed atomically with the value.
+    it('envelope re-wraps the new value via the repository when Transit is available (before the CAS write)', async () => {
+        asSuperAdmin();
+        mockSecretsService.supportsTransit.mockReturnValue(true);
+        const { entity } = wireHappyPath();
+
+        await service.rotateSecret('secret-1', { password: 'pw', newValue: NEW_SECRET, expectedVersion: 4 });
+
+        // The new plaintext is encrypted into the SAME entity the CAS write persists…
+        expect(mockGlobalSettingRepository.encryptValueIntoEntity).toHaveBeenCalledWith(entity, mockSecretsService);
+        // …and the encrypt happens before the versioned write (re-wrap is part of the atomic rotation).
+        const encryptOrder = mockGlobalSettingRepository.encryptValueIntoEntity.mock.invocationCallOrder[0];
+        const writeOrder = mockGlobalSettingRepository.updateWithVersion.mock.invocationCallOrder[0];
+        expect(encryptOrder).toBeLessThan(writeOrder);
+    });
+
+    it('skips the envelope re-wrap when the provider has no Transit (env/test) — plaintext replace still succeeds', async () => {
+        asSuperAdmin();
+        // supportsTransit stays false (beforeEach default).
+        const { persisted } = wireHappyPath();
+
+        const result = await service.rotateSecret('secret-1', { password: 'pw', newValue: NEW_SECRET, expectedVersion: 4 });
+
+        expect(mockGlobalSettingRepository.encryptValueIntoEntity).not.toHaveBeenCalled();
+        expect(mockGlobalSettingRepository.updateWithVersion).toHaveBeenCalled();
+        expect(result).toBe(persisted);
     });
 
     it('propagates OptimisticConcurrencyException on version drift (HTTP 412)', async () => {

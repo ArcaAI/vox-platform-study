@@ -1,6 +1,6 @@
 # TASK-440 — Tenant Settings Redesign: Profile Tabs + Category Sub-Nav
 
-- **Status**: Review
+- **Status**: Completed
 - **Type**: feature (UX/UI redesign — `/tenant-profile`)
 - **Owner**: admin-console
 - **Design source**: project "ARCAAI Hope Admin console" (`https://claude.ai/design/p/6a582386-939b-47d3-8c19-cd9338b34814`) — build spec §6; artboards `2b` (desktop), `5h` (mobile).
@@ -141,3 +141,4 @@ Control mapping (`controlFor`, case-insensitive; tolerates PascalCase `ValueType
 | 2026-07-08 | Ticket created from build spec §6 + artboards 2b/5h; current-state map of `features/account`; endpoint discrepancy (`entitlements/me`) and batch-save/If-Match decision recorded. Status: Pending (awaiting plan approval). |
 | 2026-07-08 | Implemented redesign: category lib (`config-categories.ts`) + tab shell + Settings tab (rail/form pane/per-category save bar) + mobile chip rail. Resolved batch-save decision to **sequential per-row If-Match PATCH** (gateway route is `@RequiresIfMatch()` and folds the header version onto every row, so heterogeneous batches are impossible in one request). Account tests 26/26 pass; account lint clean; account files type-clean. Status → Review. Runtime `next-dev-loop`/screenshot QA flagged as remaining manual steps. |
 | 2026-07-08 | **Runtime verification pass** (authenticated browser against the live dev stack, `global_admin`): NoTenant empty state verified unscoped; with a working tenant selected — 3-tab shell (Organization / Plan & usage / Settings), "Acting on: «System»" banner, `?tab=settings` deep-link, category rail with real counts (General 6 · Clinical defaults 16 · Notifications 0 · Security 0 · Data & residency 1) and populated config rows (S3_ENDPOINT, S3_ACCESS_KEY, …). **axe-core 4.11 WCAG 2.2 AA: 0 violations in light AND dark**; zero console/SSR errors. Outstanding: dirty→save-bar→412 flow against the stack; mobile chip-rail (375px) visual pass; Playwright e2e. |
+| 2026-07-09 | **Runtime + Playwright e2e closure.** Manual browser pass (dark + mobile): 3-tab shell, mobile horizontal chip rail, dirty→save-bar→Cancel discard, axe 0 light+dark. `account.spec.ts` green — three tabs / no-tenant empty state, `?tab=` deep-link, Settings category rail, axe on the Settings tab. Status: **Completed**. |

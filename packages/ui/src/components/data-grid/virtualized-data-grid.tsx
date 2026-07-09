@@ -338,14 +338,25 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
 
   const hasSelection = table.getFilteredSelectedRowModel().rows.length > 0;
 
+  // A `role="grid"` must contain a `role="row"` child (aria-required-children).
+  // The loading / error / empty states render non-row content, so wrap them in a
+  // single full-span grid row/cell to keep the grid's required structure valid.
+  const stateRow = (node: React.ReactNode) => (
+    <div role="row" aria-rowindex={1} className="h-full">
+      <div role="gridcell" aria-colindex={1} className="h-full w-full">
+        {node}
+      </div>
+    </div>
+  );
+
   const renderBody = () => {
     // Gate the first paint on the resolved persisted layout (Δ8) so there is no
     // default→persisted flash; also covers the initial data load.
     if (isLoading || !isLayoutReady) {
-      return loadingState ?? <DataGridSkeleton columns={augmentedColumns.length} />;
+      return stateRow(loadingState ?? <DataGridSkeleton columns={augmentedColumns.length} />);
     }
     if (error) {
-      return (
+      return stateRow(
         errorState?.(error) ?? (
           <div className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center" role="alert">
             <TriangleAlert className="size-10 text-destructive" />
@@ -360,28 +371,23 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
               </Button>
             )}
           </div>
-        )
+        ),
       );
     }
     if (rows.length === 0) {
-      return (
+      return stateRow(
         emptyState ?? (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-10 text-center">
             <Inbox className="size-10 text-muted-foreground/50" />
             <p className="font-medium">No results</p>
             <p className="text-sm text-muted-foreground">There is nothing to show here yet.</p>
           </div>
-        )
+        ),
       );
     }
 
     return (
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        className={cn('relative overflow-auto', fill && 'h-full')}
-        style={fill ? undefined : { height: typeof height === 'number' ? `${height}px` : height }}
-      >
+      <>
         <div role="rowgroup" className={cn('sticky top-0 z-20 border-b bg-card transition-shadow', scrolled && 'shadow-sm')}>
           {headerGroups.map((headerGroup) => (
             <div role="row" aria-rowindex={1} key={headerGroup.id} className="flex bg-card" style={{ minHeight: headerHeight }}>
@@ -435,7 +441,7 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
             );
           })}
         </div>
-      </div>
+      </>
     );
   };
 
@@ -449,12 +455,20 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToHorizontalAxis]} onDragEnd={onDragEnd}>
         <div
+          ref={scrollRef}
+          onScroll={onScroll}
+          // The grid IS the scrollable region (no intermediate generic wrapper),
+          // and it is focusable so keyboard users can scroll it — satisfying
+          // both scrollable-region-focusable and aria-required-children (WCAG
+          // 2.1.1 / grid must own its rows directly).
+          tabIndex={0}
           role="grid"
           aria-label={props['aria-label'] ?? 'Data grid'}
           aria-rowcount={totalRowCount + 1 + groupHeaderCount}
           aria-colcount={table.getVisibleLeafColumns().length}
           aria-busy={isBusy || undefined}
-          className={cn('relative overflow-hidden rounded-md border bg-card', fill && 'min-h-0 flex-1')}
+          className={cn('relative overflow-auto rounded-md border bg-card', fill && 'min-h-0 flex-1')}
+          style={fill ? undefined : { height: typeof height === 'number' ? `${height}px` : height }}
           onKeyDown={onKeyDown}
         >
           {renderBody()}
