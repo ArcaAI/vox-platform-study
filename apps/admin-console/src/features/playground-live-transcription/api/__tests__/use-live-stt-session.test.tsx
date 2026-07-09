@@ -352,12 +352,12 @@ describe('useLiveSttSession', () => {
         hook.unmount();
     });
 
-    it('surfaces silent outbound-audio drops: degraded flag + dropped-frame count, reset on reconnect (C6-01)', async () => {
+    it('latches a session-sticky audio-loss signal that survives reconnect; per-connection count resets (C6-01)', async () => {
         const { hook } = await startedHook();
         const ws = FakeSttWsClient.instances[0];
 
-        // Below the watermark: connection is healthy, no data loss signalled.
-        expect(hook.result.current.connectionDegraded).toBe(false);
+        // Below the watermark: healthy, nothing latched.
+        expect(hook.result.current.audioLostThisSession).toBe(false);
         expect(hook.result.current.droppedFrameCount).toBe(0);
 
         // Client crosses the 1 MiB bufferedAmount watermark and starts dropping
@@ -366,17 +366,23 @@ describe('useLiveSttSession', () => {
         act(() => capture.onFrame?.(new Float32Array(1280)));
         act(() => capture.onFrame?.(new Float32Array(1280)));
 
-        expect(hook.result.current.connectionDegraded).toBe(true);
+        expect(hook.result.current.audioLostThisSession).toBe(true);
         expect(hook.result.current.droppedFrameCount).toBe(2);
         // The dropped frames never rode the socket.
         expect(ws.sentFrames).toHaveLength(0);
 
-        // A reconnect re-establishes a fresh (empty) send buffer, so the degraded
-        // state and per-connection drop count reset.
+        // A reconnect gives a fresh (empty) send buffer, so the per-connection
+        // count resets — but a climbing bufferedAmount usually PRECEDES the
+        // disconnect, and the transcript is permanently missing those frames, so
+        // the sticky loss signal MUST survive the reconnect (patient safety).
         act(() => ws.handlers.reconnect?.(1));
-        expect(hook.result.current.connectionDegraded).toBe(false);
         expect(hook.result.current.droppedFrameCount).toBe(0);
+        expect(hook.result.current.audioLostThisSession).toBe(true);
 
-        hook.unmount();
+        // Ending the session is the only thing that clears the sticky signal.
+        await act(async () => {
+            await hook.result.current.stop();
+        });
+        expect(hook.result.current.audioLostThisSession).toBe(false);
     });
 });
