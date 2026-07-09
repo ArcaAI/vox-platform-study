@@ -1,6 +1,7 @@
 import { AuthServiceModule, UserDepartmentServiceModule, UserRoleAssignmentServiceModule, UserServiceModule } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
+import { TenantOwnedResourceModule } from '../../common';
 import { AdminImpersonationController } from './admin-impersonation.controller';
 import { AuthController } from './auth.controller';
 import { StreamTicketModule } from './stream-ticket.module';
@@ -31,6 +32,12 @@ import { StreamTicketModule } from './stream-ticket.module';
     UserDepartmentServiceModule,
     CoreDatabaseModule,
     StreamTicketModule,
+    // TASK-450 C4-01 — exposes `StreamSessionTenantBindingService` so the
+    // stream-ticket mint can 404 `stt_session:*` scopes whose session is not
+    // bound to the caller's tenant (same instance the WS gateway and the
+    // DELETE-route interceptor consult). NestJS dedupes the module instance
+    // with the AppModule/StreamingModule imports.
+    TenantOwnedResourceModule,
   ],
   // TASK-401 — AdminImpersonationController adds the global-admin-only
   // `POST /admin/users/:id/impersonate` mint alongside the legacy

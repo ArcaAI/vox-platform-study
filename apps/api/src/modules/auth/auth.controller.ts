@@ -44,6 +44,7 @@ import { Throttle } from '@nestjs/throttler';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { ClsService } from 'nestjs-cls';
+import { StreamSessionTenantBindingService } from '../../common';
 import { Authorize, Public } from '../../decorators';
 import {
   LoginRequest,
@@ -102,6 +103,11 @@ export class AuthController {
     // TASK-341 B4 — mint-time tenant-ownership check for live-summary stream
     // tickets (defense-in-depth alongside the SSE route's @TenantOwnedResource).
     private readonly consultationRepository: ConsultationRepository,
+    // TASK-450 C4-01 — mint-time tenant-ownership check for `stt_session:*`
+    // tickets, resolved via the gateway-side sessionId → tenantId binding
+    // written at session create (same instance the WS gateway and the
+    // DELETE-route interceptor consult).
+    private readonly streamSessionTenantBinding: StreamSessionTenantBindingService,
   ) {}
 
   /**
@@ -797,6 +803,11 @@ export class AuthController {
     // before issuing.
     await this.assertConsultationScopeOwnership(body.scope, tenantId);
 
+    // TASK-450 C4-01 — same posture for `stt_session:<sessionId>` (live
+    // transcript WS): the session must be bound to the caller's (active)
+    // tenant. Fail-closed: a missing binding 404s too.
+    await this.assertSttSessionScopeOwnership(body.scope, tenantId);
+
     const issued = await this.streamTicketService.issueTicket({
       userId: user.id,
       tenantId,
@@ -853,6 +864,36 @@ export class AuthController {
     }
     if (consultationTenantId === undefined || consultationTenantId === null || (activeTenantId !== null && consultationTenantId !== activeTenantId)) {
       throw new NotFoundException('Consultation not found');
+    }
+  }
+
+  /** Scope prefix for live-transcript WS tickets consumed by `SttWsGateway`. */
+  private static readonly STT_SESSION_SCOPE_PREFIX = 'stt_session:';
+
+  /**
+   * TASK-450 C4-01 — `stt_session:<sessionId>` tickets silently bypassed the
+   * consultation-only check above, so any authenticated user who learned a
+   * foreign sessionId could mint a live-transcript WS ticket for it. Resolve
+   * the session's owning tenant via the gateway-side binding written at
+   * session create and require it to match the caller's active tenant. A
+   * missing binding, a mismatch, and a lookup failure all yield 404 (no
+   * existence leak) — mirroring the DELETE route's
+   * `assertStreamSessionOwnership`. Non-`stt_session` scopes pass through
+   * untouched.
+   */
+  private async assertSttSessionScopeOwnership(scope: string, activeTenantId: string | null): Promise<void> {
+    if (!scope?.startsWith(AuthController.STT_SESSION_SCOPE_PREFIX)) {
+      return;
+    }
+    const sessionId = scope.slice(AuthController.STT_SESSION_SCOPE_PREFIX.length);
+    let boundTenantId: string | null;
+    try {
+      boundTenantId = await this.streamSessionTenantBinding.lookup(sessionId);
+    } catch {
+      boundTenantId = null;
+    }
+    if (boundTenantId === null || boundTenantId !== activeTenantId) {
+      throw new NotFoundException('Session not found');
     }
   }
 
