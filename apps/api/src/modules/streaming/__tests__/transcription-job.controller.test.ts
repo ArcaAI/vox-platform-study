@@ -645,9 +645,11 @@ describe('TranscriptionJobController', () => {
             expect(meta('streamJob')).toEqual(expected);
         });
 
-        it('list / create / createBatch / createStreaming / transcribeFile / getStats / getByStatus / getByConsultation / createStreamSession / refreshStreamTicket are NOT annotated (no :id route param)', () => {
-            // Bulk negative — they either have no :id, or have a non-job id (sessionId / consultationId).
-            // Service-layer tenant filtering covers them via the W5.1 Prisma extension.
+        it('list / create / createBatch / createStreaming / transcribeFile / getStats / getByStatus / getByConsultation / createStreamSession are NOT annotated (no ownable route param)', () => {
+            // Bulk negative — they either have no route param at all, or a
+            // consultationId whose ownership is enforced by the owner-scoped
+            // service method. Service-layer tenant filtering covers them via
+            // the W5.1 Prisma extension.
             expect(meta('list')).toBeUndefined();
             expect(meta('create')).toBeUndefined();
             expect(meta('createBatch')).toBeUndefined();
@@ -657,13 +659,27 @@ describe('TranscriptionJobController', () => {
             expect(meta('getByStatus')).toBeUndefined();
             expect(meta('getByConsultation')).toBeUndefined();
             expect(meta('createStreamSession')).toBeUndefined();
-            expect(meta('refreshStreamTicket')).toBeUndefined();
         });
 
         // TASK-310 W7.A.9 (AC-3) — closeStreamSession IS now annotated with
         // the new `StreamSession` resolver branch.
         it('closeStreamSession IS annotated with {modelName: StreamSession, paramName: sessionId, lookup: "session"} (TASK-310 W7.A.9)', () => {
             expect(meta('closeStreamSession')).toEqual({
+                modelName: 'StreamSession',
+                paramName: 'sessionId',
+                lookup: 'session',
+            });
+        });
+
+        // TASK-450 I-1 — refreshStreamTicket mints an `stt_session:<sessionId>`
+        // ticket, so it must carry the SAME StreamSession ownership guard as
+        // the sibling DELETE route (it HAS a :sessionId route param — the old
+        // "no :id route param" rationale was wrong). Pre-fix it was un-gated:
+        // any authenticated tenant could mint a 200 ticket for a foreign
+        // sessionId, leaving the WS handshake gate as a single point of
+        // failure instead of one of two independent gates.
+        it('refreshStreamTicket IS annotated with {modelName: StreamSession, paramName: sessionId, lookup: "session"} (TASK-450 I-1)', () => {
+            expect(meta('refreshStreamTicket')).toEqual({
                 modelName: 'StreamSession',
                 paramName: 'sessionId',
                 lookup: 'session',
