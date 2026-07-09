@@ -72,11 +72,15 @@ function SessionErrorPanel({ message, onRestart }: { message: string; onRestart:
 /**
  * C6-01 — the STT WS client silently drops outbound audio above its 1 MiB
  * bufferedAmount watermark. This announced banner makes that clinical data loss
- * visible: icon + text (never color alone), a stable message announced once via
- * the polite live region, and a running frame count kept out of the announcement
- * so per-frame churn does not spam assistive tech.
+ * visible. It is driven by the session-sticky `audioLostThisSession` latch, so
+ * the copy is past/stative (the loss is permanent even after the connection
+ * recovers). Meaning is carried by icon + text (never color alone); the stable
+ * message is announced once via the polite live region, and the per-connection
+ * frame count is kept out of the announcement (aria-hidden) so its churn does
+ * not spam assistive tech — and it is shown only while the current connection
+ * is actively dropping.
  */
-function DegradedBanner({ droppedFrameCount }: { droppedFrameCount: number }) {
+export function DegradedBanner({ droppedFrameCount }: { droppedFrameCount: number }) {
     return (
         <div
             role="status"
@@ -86,12 +90,14 @@ function DegradedBanner({ droppedFrameCount }: { droppedFrameCount: number }) {
             <IconAlertTriangle aria-hidden className="text-warning-strong mt-0.5 size-4 shrink-0" />
             <div className="flex flex-col gap-0.5">
                 <p>
-                    <span className="font-medium">Connection degraded</span>
-                    {' — '}outbound audio is being dropped, so this session{'’'}s transcript will be incomplete.
+                    <span className="font-medium">Audio was dropped</span>
+                    {' — '}this session{'’'}s transcript is incomplete.
                 </p>
-                <p className="text-foreground/90 text-xs tabular-nums" aria-hidden>
-                    {droppedFrameCount} frame{droppedFrameCount === 1 ? '' : 's'} dropped since the connection degraded.
-                </p>
+                {droppedFrameCount > 0 ? (
+                    <p className="text-foreground/90 text-xs tabular-nums" aria-hidden>
+                        {droppedFrameCount} audio frame{droppedFrameCount === 1 ? '' : 's'} dropped on the current connection.
+                    </p>
+                ) : null}
             </div>
         </div>
     );
@@ -153,7 +159,7 @@ function SessionControlsCard({
                         <StatusBadge label="Voice profile seeded" colorRole="success" icon={<StatusDot colorRole="success" size="sm" />} />
                     ) : null}
                     {live.reconnectAttempt > 0 ? <StatusBadge label={`Reconnect attempt ${live.reconnectAttempt}`} colorRole="warning" /> : null}
-                    {live.connectionDegraded ? <StatusBadge label={`Audio dropped ${live.droppedFrameCount}`} colorRole="warning" /> : null}
+                    {live.droppedFrameCount > 0 ? <StatusBadge label={`Audio dropped ${live.droppedFrameCount}`} colorRole="warning" /> : null}
                 </div>
 
                 {/* ≥44px touch target on the record control (rule 11 §7). */}
@@ -314,7 +320,7 @@ export function StreamingTab({
 
     return (
         <div className="flex flex-col gap-4">
-            {live.connectionDegraded ? <DegradedBanner droppedFrameCount={live.droppedFrameCount} /> : null}
+            {live.audioLostThisSession ? <DegradedBanner droppedFrameCount={live.droppedFrameCount} /> : null}
             <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
                 <SessionControlsCard live={live} pipelineName={pipelineName} now={now} onStop={() => void live.stop()} />
                 <TranscriptPane live={live} />
