@@ -416,6 +416,45 @@ class Settings(BaseSettings):
         default=300,
         description="Interval (seconds) between background reaper scans for expired sessions.",
     )
+    streaming_transcript_persist_max_attempts: int = Field(
+        default=3,
+        description=(
+            "Max attempts to persist the durable streaming transcript to the "
+            "gateway during finalize (TASK-456 C2-03). The transcript is the "
+            "clinical system of record AND the harness auto-draft trigger, so a "
+            "transient gateway blip is retried rather than silently swallowed. "
+            "The persist endpoint is idempotent, so retries never double-create "
+            "the transcript or re-trigger the harness. Must be >= 1."
+        ),
+    )
+    streaming_transcript_persist_backoff_s: float = Field(
+        default=0.5,
+        description=(
+            "Base backoff (seconds) between durable-transcript persist retries "
+            "(TASK-456 C2-03); the delay scales with the attempt number. 0 "
+            "disables the wait (used in tests)."
+        ),
+    )
+    streaming_transcript_outbox_max_attempts: int = Field(
+        default=10,
+        description=(
+            "Max re-drive attempts for a transcript in the durable Redis outbox "
+            "(TASK-456 C2-03) before it is dropped with a loud alert. When the "
+            "inline persist exhausts its retries on a TRANSIENT error the "
+            "transcript is enqueued to a shared Redis outbox and re-driven by "
+            "the reaper loop (any worker) with an idempotency key; a PERMANENT "
+            "(4xx) error is dropped immediately rather than retried."
+        ),
+    )
+    streaming_inference_drain_timeout_s: float = Field(
+        default=60.0,
+        description=(
+            "Max seconds finalize waits for the inference queue to drain before "
+            "building the transcript (TASK-456 C2-05). On timeout (e.g. GPU "
+            "backlog) the still-queued tail utterances are transcribed inline "
+            "rather than dropped, so the last utterance is never lost."
+        ),
+    )
     streaming_worker_heartbeat_s: int = Field(
         default=10,
         description="Interval (seconds) between worker heartbeat extensions in Redis.",

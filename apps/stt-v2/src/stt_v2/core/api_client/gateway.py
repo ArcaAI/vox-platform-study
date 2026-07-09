@@ -54,6 +54,7 @@ class APIGatewayClient:
         path: str,
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Make an HTTP request to the API Gateway."""
         client = await self._get_client()
@@ -65,6 +66,7 @@ class APIGatewayClient:
                 url=normalized_path,
                 json=json,
                 params=params,
+                headers=headers,
             )
 
             response.raise_for_status()
@@ -261,6 +263,7 @@ class APIGatewayClient:
         consultation_id: str | None = None,
         tenant_id: str | None = None,
         transcription_source: str | None = None,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         """Create a transcript context item.
 
@@ -280,6 +283,12 @@ class APIGatewayClient:
                 Required when ``job_id`` is omitted.
             tenant_id: Owning tenant ID. Required when ``job_id`` is omitted.
             transcription_source: ``"streaming"`` or ``"batch"`` (event label).
+            idempotency_key: Optional client-supplied dedup key sent as the
+                ``Idempotency-Key`` header (TASK-456 C2-03 outbox/retry seam).
+                NOTE: the gateway does not yet consume this header — today the
+                streaming path is already deduped server-side by
+                ``consultationId``; the header is forward-compatible and becomes
+                authoritative once apps/api honors it (see ticket report).
         """
         payload: dict[str, Any] = {
             "transcriptText": transcript_text,
@@ -295,6 +304,15 @@ class APIGatewayClient:
         if transcription_source:
             payload["transcriptionSource"] = transcription_source
 
+        # Only attach the header when a key is supplied so the request shape is
+        # unchanged for existing callers (the gateway ignores it for now).
+        if idempotency_key:
+            return await self._request(
+                "POST",
+                "/internal/stt/transcripts",
+                json=payload,
+                headers={"Idempotency-Key": idempotency_key},
+            )
         return await self._request(
             "POST",
             "/internal/stt/transcripts",
