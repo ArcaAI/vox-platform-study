@@ -1025,18 +1025,48 @@ class TestFinalizeTranscriptDurability:
         mgr.remove_session.assert_awaited_once()
         assert session.status == SessionStatus.CLOSED
 
+    @pytest.mark.asyncio
+    async def test_rate_limit_429_is_transient_enqueues_outbox(self):
+        """I-1 — a 429 (throttled by the internal route under an end-of-clinic
+        burst) is TRANSIENT, not permanent: it is retried inline and then
+        enqueued to the outbox, NOT dropped, so the transcript is not lost."""
+        from stt_v2.core.exceptions import APIGatewayError
+
+        mgr = _make_manager()
+        mgr._transcript_persist_backoff_s = 0
+        session = self._session_with_text(mgr)
+        mgr.remove_session = AsyncMock()
+
+        mock_gateway = MagicMock()
+        mock_gateway.create_transcript = AsyncMock(
+            side_effect=APIGatewayError("Too Many Requests", details={"status_code": 429})
+        )
+        mgr._get_api_client = MagicMock(return_value=mock_gateway)
+
+        await mgr._finalize_session(session)
+
+        # Retried (not dropped at attempt 1) then handed to the durable outbox.
+        assert mock_gateway.create_transcript.await_count == 3
+        enqueue = [
+            c for c in mgr._redis.hset.await_args_list if c.args[0] == self.OUTBOX_KEY
+        ]
+        assert len(enqueue) == 1
+        # Capacity still released.
+        mgr.remove_session.assert_awaited_once()
+
 
 class TestTranscriptOutbox:
     """C2-03 (TASK-456) — the reaper re-drives the durable Redis transcript
-    outbox: success removes the entry, a transient error re-enqueues (until a
-    bounded cap), a permanent (4xx) error drops it with a loud alert. Entries
-    are claimed atomically with HDEL so a scaled worker fleet never double-POSTs
-    the same transcript."""
+    outbox at-LEAST-once (I-2): an entry is deleted ONLY after a confirmed 2xx,
+    so a worker crash mid-POST leaves it re-drivable. A transient error keeps
+    the entry (lease released, attempts bumped); a permanent (4xx) error or
+    exhausted attempts drop it with a loud alert. A soft lease lets concurrent
+    workers skip an in-flight entry."""
 
     OUTBOX_KEY = "stt:transcript_outbox"
 
     @staticmethod
-    def _entry(attempts: int = 0):
+    def _entry(attempts: int = 0, lease_expiry: float = 0):
         return {
             "transcript_text": "Hello world",
             "consultation_id": "c1",
@@ -1044,39 +1074,75 @@ class TestTranscriptOutbox:
             "transcription_source": "streaming",
             "idempotency_key": "c1:sess_rec",
             "attempts": attempts,
+            "lease_expiry": lease_expiry,
         }
 
     @pytest.mark.asyncio
-    async def test_reaper_drains_outbox_with_idempotency_key(self):
+    async def test_redrive_deletes_only_after_success(self):
+        """The POST is committed BEFORE the entry is removed (delete-after-ack):
+        create_transcript is awaited, THEN hdel — never the reverse."""
         mgr = _make_manager()
+        order: list[str] = []
         mgr._redis.hgetall = AsyncMock(
             return_value={"c1:sess_rec": json.dumps(self._entry())}
         )
-        mgr._redis.hdel = AsyncMock(return_value=1)  # claim wins
-        mgr._redis.hset = AsyncMock()
+        mgr._redis.hset = AsyncMock(side_effect=lambda *a, **k: order.append("hset"))
+        mgr._redis.hdel = AsyncMock(side_effect=lambda *a, **k: order.append("hdel"))
 
         gw = MagicMock()
-        gw.create_transcript = AsyncMock(return_value={"contextItemId": "ctx-1"})
+        gw.create_transcript = AsyncMock(side_effect=lambda **k: order.append("post"))
         mgr._get_api_client = MagicMock(return_value=gw)
 
         await mgr._drain_transcript_outbox()
 
-        gw.create_transcript.assert_awaited_once()
         kwargs = gw.create_transcript.await_args.kwargs
         assert kwargs["idempotency_key"] == "c1:sess_rec"
         assert kwargs["consultation_id"] == "c1"
-        # Claimed via HDEL, and NOT re-enqueued (success).
-        mgr._redis.hdel.assert_awaited_once_with(self.OUTBOX_KEY, "c1:sess_rec")
-        mgr._redis.hset.assert_not_awaited()
+        # Claim (lease) → POST → delete. The delete never precedes the POST.
+        assert order == ["hset", "post", "hdel"]
 
     @pytest.mark.asyncio
-    async def test_outbox_skips_entry_claimed_by_another_worker(self):
-        """HDEL returning 0 means another worker already claimed it → skip."""
+    async def test_redrive_failure_keeps_entry_at_least_once(self):
+        """I-2 — a redrive whose POST fails/does-not-complete must NEVER delete
+        the entry, so a worker crash mid-POST cannot lose the transcript."""
         mgr = _make_manager()
+        mgr._transcript_outbox_max_attempts = 5
         mgr._redis.hgetall = AsyncMock(
             return_value={"c1:sess_rec": json.dumps(self._entry())}
         )
-        mgr._redis.hdel = AsyncMock(return_value=0)  # lost the claim race
+        mgr._redis.hset = AsyncMock()
+        mgr._redis.hdel = AsyncMock()
+
+        gw = MagicMock()
+        gw.create_transcript = AsyncMock(side_effect=RuntimeError("POST did not commit"))
+        mgr._get_api_client = MagicMock(return_value=gw)
+
+        await mgr._drain_transcript_outbox()
+
+        # The entry is NEVER deleted on failure — it survives, re-drivable.
+        mgr._redis.hdel.assert_not_awaited()
+        # And it was written back (lease released) so the next scan re-drives it.
+        deferred = [
+            json.loads(c.args[2])
+            for c in mgr._redis.hset.await_args_list
+            if c.args[0] == self.OUTBOX_KEY
+        ]
+        assert deferred and deferred[-1]["lease_expiry"] == 0
+
+    @pytest.mark.asyncio
+    async def test_outbox_skips_entry_with_fresh_lease(self):
+        """An entry whose lease is still fresh is being redriven by another
+        worker → skip it (no duplicate POST)."""
+        import time
+
+        mgr = _make_manager()
+        mgr._redis.hgetall = AsyncMock(
+            return_value={
+                "c1:sess_rec": json.dumps(self._entry(lease_expiry=time.time() + 1000))
+            }
+        )
+        mgr._redis.hset = AsyncMock()
+        mgr._redis.hdel = AsyncMock()
 
         gw = MagicMock()
         gw.create_transcript = AsyncMock(return_value={"contextItemId": "ctx-1"})
@@ -1085,6 +1151,8 @@ class TestTranscriptOutbox:
         await mgr._drain_transcript_outbox()
 
         gw.create_transcript.assert_not_awaited()
+        mgr._redis.hset.assert_not_awaited()
+        mgr._redis.hdel.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_outbox_transient_failure_reenqueues(self):
@@ -1093,8 +1161,8 @@ class TestTranscriptOutbox:
         mgr._redis.hgetall = AsyncMock(
             return_value={"c1:sess_rec": json.dumps(self._entry(attempts=1))}
         )
-        mgr._redis.hdel = AsyncMock(return_value=1)
         mgr._redis.hset = AsyncMock()
+        mgr._redis.hdel = AsyncMock()
 
         gw = MagicMock()
         gw.create_transcript = AsyncMock(side_effect=RuntimeError("503"))
@@ -1102,12 +1170,38 @@ class TestTranscriptOutbox:
 
         await mgr._drain_transcript_outbox()
 
-        # Re-enqueued with an incremented attempt count.
-        reenqueue = [
-            c for c in mgr._redis.hset.await_args_list if c.args[0] == self.OUTBOX_KEY
+        # Kept (never deleted) and re-enqueued with an incremented attempt count.
+        mgr._redis.hdel.assert_not_awaited()
+        deferred = [
+            json.loads(c.args[2])
+            for c in mgr._redis.hset.await_args_list
+            if c.args[0] == self.OUTBOX_KEY and json.loads(c.args[2])["lease_expiry"] == 0
         ]
-        assert len(reenqueue) == 1
-        assert json.loads(reenqueue[0].args[2])["attempts"] == 2
+        assert deferred and deferred[-1]["attempts"] == 2
+
+    @pytest.mark.asyncio
+    async def test_outbox_429_redrive_is_transient(self):
+        """I-1 — a 429 during redrive is TRANSIENT: keep + re-enqueue, not drop."""
+        from stt_v2.core.exceptions import APIGatewayError
+
+        mgr = _make_manager()
+        mgr._transcript_outbox_max_attempts = 5
+        mgr._redis.hgetall = AsyncMock(
+            return_value={"c1:sess_rec": json.dumps(self._entry(attempts=1))}
+        )
+        mgr._redis.hset = AsyncMock()
+        mgr._redis.hdel = AsyncMock()
+
+        gw = MagicMock()
+        gw.create_transcript = AsyncMock(
+            side_effect=APIGatewayError("throttled", details={"status_code": 429})
+        )
+        mgr._get_api_client = MagicMock(return_value=gw)
+
+        await mgr._drain_transcript_outbox()
+
+        # 429 is not permanent → the entry is retained, not dropped.
+        mgr._redis.hdel.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_outbox_permanent_failure_drops_and_alerts(self):
@@ -1119,8 +1213,8 @@ class TestTranscriptOutbox:
         mgr._redis.hgetall = AsyncMock(
             return_value={"c1:sess_rec": json.dumps(self._entry())}
         )
-        mgr._redis.hdel = AsyncMock(return_value=1)
         mgr._redis.hset = AsyncMock()
+        mgr._redis.hdel = AsyncMock()
 
         gw = MagicMock()
         gw.create_transcript = AsyncMock(
@@ -1131,9 +1225,8 @@ class TestTranscriptOutbox:
         with capture_logs() as logs:
             await mgr._drain_transcript_outbox()
 
-        # Dropped (claimed via HDEL, NOT re-enqueued).
-        mgr._redis.hset.assert_not_awaited()
-        # Loud alert emitted.
+        # A genuine 4xx is dropped (deleted) with a loud alert.
+        mgr._redis.hdel.assert_awaited_once_with(self.OUTBOX_KEY, "c1:sess_rec")
         assert any(
             "outbox_permanent_drop" in (entry.get("event") or "") for entry in logs
         )
@@ -1147,8 +1240,8 @@ class TestTranscriptOutbox:
         mgr._redis.hgetall = AsyncMock(
             return_value={"c1:sess_rec": json.dumps(self._entry(attempts=1))}
         )
-        mgr._redis.hdel = AsyncMock(return_value=1)
         mgr._redis.hset = AsyncMock()
+        mgr._redis.hdel = AsyncMock()
 
         gw = MagicMock()
         gw.create_transcript = AsyncMock(side_effect=RuntimeError("503"))
@@ -1157,8 +1250,8 @@ class TestTranscriptOutbox:
         with capture_logs() as logs:
             await mgr._drain_transcript_outbox()
 
-        # attempts 1 -> 2 == max → dropped, not re-enqueued.
-        mgr._redis.hset.assert_not_awaited()
+        # attempts 1 -> 2 == max → dropped (deleted) with an alert.
+        mgr._redis.hdel.assert_awaited_once_with(self.OUTBOX_KEY, "c1:sess_rec")
         assert any(
             "outbox_exhausted_drop" in (entry.get("event") or "") for entry in logs
         )

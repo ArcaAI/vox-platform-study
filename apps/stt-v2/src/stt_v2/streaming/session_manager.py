@@ -64,6 +64,15 @@ StreamingAsrCallable = Callable[[np.ndarray, int], Awaitable[dict[str, Any]]]
 # Redis, a worker restart does not lose the transcript.
 TRANSCRIPT_OUTBOX_KEY = "stt:transcript_outbox"
 
+# Retryable 4xx back-off signals — treated as TRANSIENT, not permanent (I-1).
+_RETRYABLE_4XX = frozenset({408, 425, 429})
+
+# Soft lease (seconds) a worker stamps on an outbox entry while it re-drives it,
+# so concurrent workers skip a fresh entry (fewer duplicate POSTs) yet a crashed
+# worker's entry becomes re-claimable once the lease expires. Longer than the
+# gateway POST timeout, shorter than the reaper scan interval.
+OUTBOX_LEASE_TTL_S = 90.0
+
 
 class SessionManager:
     """Manages the full lifecycle of streaming sessions.
@@ -2091,12 +2100,20 @@ class SessionManager:
     def _is_permanent_persist_error(exc: Exception) -> bool:
         """True for a non-retryable 4xx client error.
 
-        5xx, timeouts, and connection errors carry no 4xx status and are treated
-        as transient (worth retrying / enqueueing).
+        The retryable 4xx back-off signals — 408 (Request Timeout), 425 (Too
+        Early) and 429 (Too Many Requests) — are TRANSIENT (I-1): the internal
+        transcript route is throttled, so an end-of-clinic burst / pod drain that
+        finalizes many sessions at once can legitimately return 429, and dropping
+        it there would silently lose the clinical system-of-record. 5xx, timeouts
+        and connection errors carry no 4xx status and are transient too.
         """
         details = getattr(exc, "details", None)
         status = details.get("status_code") if isinstance(details, dict) else None
-        return isinstance(status, int) and 400 <= status < 500
+        return (
+            isinstance(status, int)
+            and 400 <= status < 500
+            and status not in _RETRYABLE_4XX
+        )
 
     async def _enqueue_transcript_outbox(
         self,
@@ -2141,44 +2158,73 @@ class SessionManager:
     async def _drain_transcript_outbox(self) -> None:
         """Re-drive durable-outbox transcripts (TASK-456 C2-03).
 
-        Called from the reaper loop. Each entry is claimed atomically with
-        ``HDEL`` (so only one worker re-POSTs it even across a scaled worker
-        fleet), then re-driven with its idempotency key. Because the outbox
-        lives on shared Redis, any worker drains it, so a worker restart no
-        longer loses the transcript. Fully self-guarded.
+        Called from the reaper loop. The outbox is at-LEAST-once (I-2): an entry
+        is NEVER deleted before a confirmed 2xx, so a worker crash mid-POST
+        leaves it re-drivable by any worker's later scan. A short soft lease
+        (``OUTBOX_LEASE_TTL_S``) is stamped while a worker re-drives an entry so
+        concurrent workers skip it (fewer duplicate POSTs); a crashed worker's
+        lease simply expires and the entry is re-claimed. Duplicate deliveries
+        are harmless — the idempotency key + server-side ``consultationId`` dedup
+        never double-write or re-fire the harness. Fully self-guarded.
         """
         try:
             entries = await self._redis.hgetall(TRANSCRIPT_OUTBOX_KEY)
             if not isinstance(entries, dict) or not entries:
                 return
+            now = time.time()
             for field, raw in list(entries.items()):
                 field_key = field.decode() if isinstance(field, bytes) else field
                 raw_value = raw.decode() if isinstance(raw, bytes) else raw
-                # Atomic single-worker claim — HDEL returns 1 for the winner.
-                claimed = await self._redis.hdel(TRANSCRIPT_OUTBOX_KEY, field_key)
-                if not claimed:
+                try:
+                    payload = json.loads(raw_value)
+                except (ValueError, TypeError):
+                    await self._redis.hdel(TRANSCRIPT_OUTBOX_KEY, field_key)
+                    logger.error(
+                        "stt.transcript.outbox_corrupt_drop — dropping unparseable "
+                        "outbox entry",
+                        idempotency_key=field_key,
+                    )
                     continue
-                await self._redrive_outbox_entry(field_key, raw_value)
+                lease_expiry = payload.get("lease_expiry", 0)
+                if isinstance(lease_expiry, int | float) and lease_expiry > now:
+                    continue  # another worker holds a fresh lease → skip
+                await self._redrive_outbox_entry(field_key, payload, now)
         except Exception as exc:
             logger.warning(
                 "stt.transcript.outbox_drain_error — outbox drain scan failed",
                 error=str(exc),
             )
 
-    async def _redrive_outbox_entry(self, field_key: str, raw_value: str) -> None:
-        """Re-attempt one claimed outbox transcript; re-enqueue on transient."""
+    async def _redrive_outbox_entry(
+        self, field_key: str, payload: dict[str, Any], now: float
+    ) -> None:
+        """Re-drive one outbox transcript, at-least-once (I-2).
+
+        Stamps a soft lease and persists it BEFORE the POST (so the entry
+        survives a crash and concurrent workers skip it), then removes the entry
+        ONLY after a confirmed 2xx. A transient failure keeps the entry (lease
+        released, ``attempts`` bumped) for the next scan; a permanent (4xx) error
+        or exhausted attempts drop it with a loud alert.
+        """
+        idempotency_key = payload.get("idempotency_key") or field_key
+        consultation_id = payload.get("consultation_id")
+
+        # Claim: stamp + persist a lease BEFORE the POST. Never a delete here.
+        payload["processing_by"] = self._worker_id
+        payload["lease_expiry"] = now + OUTBOX_LEASE_TTL_S
         try:
-            payload = json.loads(raw_value)
-        except (ValueError, TypeError):
-            logger.error(
-                "stt.transcript.outbox_corrupt_drop — dropping unparseable outbox entry",
-                idempotency_key=field_key,
+            await self._redis.hset(
+                TRANSCRIPT_OUTBOX_KEY, field_key, json.dumps(payload)
+            )
+        except Exception as exc:
+            logger.warning(
+                "stt.transcript.outbox_claim_failed — could not stamp outbox lease; "
+                "leaving entry for the next scan",
+                idempotency_key=idempotency_key,
+                error=str(exc),
             )
             return
 
-        idempotency_key = payload.get("idempotency_key") or field_key
-        consultation_id = payload.get("consultation_id")
-        attempts = int(payload.get("attempts", 0)) + 1
         try:
             gateway = self._get_api_client()
             await gateway.create_transcript(
@@ -2188,55 +2234,97 @@ class SessionManager:
                 transcription_source=payload.get("transcription_source", "streaming"),
                 idempotency_key=idempotency_key,
             )
-            logger.info(
-                "stt.transcript.outbox_drained — durable transcript persisted from outbox",
+        except Exception as exc:
+            await self._defer_or_drop_outbox_entry(
+                field_key, payload, idempotency_key, consultation_id, exc
+            )
+            return
+
+        # Confirmed 2xx → NOW it is safe to remove the entry (delete-after-ack).
+        try:
+            await self._redis.hdel(TRANSCRIPT_OUTBOX_KEY, field_key)
+        except Exception as exc:
+            logger.warning(
+                "stt.transcript.outbox_ack_delete_failed — transcript persisted but "
+                "outbox entry not removed; a later redrive will dedup server-side",
+                idempotency_key=idempotency_key,
+                error=str(exc),
+            )
+        logger.info(
+            "stt.transcript.outbox_drained — durable transcript persisted from outbox",
+            consultation_id=consultation_id,
+            idempotency_key=idempotency_key,
+            attempts=int(payload.get("attempts", 0)),
+        )
+
+    async def _defer_or_drop_outbox_entry(
+        self,
+        field_key: str,
+        payload: dict[str, Any],
+        idempotency_key: str,
+        consultation_id: Any,
+        exc: Exception,
+    ) -> None:
+        """Handle a failed outbox redrive: drop (permanent / exhausted) or keep.
+
+        Keeps the invariant "delete only after a confirmed 2xx": a transient
+        failure retains the entry (never deletes it), so a crash cannot lose it.
+        """
+        if self._is_permanent_persist_error(exc):
+            try:
+                await self._redis.hdel(TRANSCRIPT_OUTBOX_KEY, field_key)
+            except Exception:
+                pass
+            logger.error(
+                "stt.transcript.outbox_permanent_drop — permanent (4xx) error; "
+                "dropping transcript from the outbox",
+                consultation_id=consultation_id,
+                idempotency_key=idempotency_key,
+                error=str(exc),
+            )
+            return
+
+        attempts = int(payload.get("attempts", 0)) + 1
+        if attempts >= self._transcript_outbox_max_attempts:
+            try:
+                await self._redis.hdel(TRANSCRIPT_OUTBOX_KEY, field_key)
+            except Exception:
+                pass
+            logger.error(
+                "stt.transcript.outbox_exhausted_drop — transcript dropped after max "
+                "outbox attempts (ALERT: durable transcript lost)",
                 consultation_id=consultation_id,
                 idempotency_key=idempotency_key,
                 attempts=attempts,
+                error=str(exc),
             )
-            return  # success; the HDEL claim already removed it
-        except Exception as exc:
-            if self._is_permanent_persist_error(exc):
-                logger.error(
-                    "stt.transcript.outbox_permanent_drop — permanent (4xx) error; "
-                    "dropping transcript from the outbox",
-                    consultation_id=consultation_id,
-                    idempotency_key=idempotency_key,
-                    error=str(exc),
-                )
-                return
-            if attempts >= self._transcript_outbox_max_attempts:
-                logger.error(
-                    "stt.transcript.outbox_exhausted_drop — transcript dropped after "
-                    "max outbox attempts (ALERT: durable transcript lost)",
-                    consultation_id=consultation_id,
-                    idempotency_key=idempotency_key,
-                    attempts=attempts,
-                    error=str(exc),
-                )
-                return
-            # Transient — re-enqueue with an incremented attempt count.
-            payload["attempts"] = attempts
-            try:
-                await self._redis.hset(
-                    TRANSCRIPT_OUTBOX_KEY, field_key, json.dumps(payload)
-                )
-                logger.warning(
-                    "stt.transcript.outbox_retry_deferred — transient error; will "
-                    "re-drive on the next reaper scan",
-                    consultation_id=consultation_id,
-                    idempotency_key=idempotency_key,
-                    attempts=attempts,
-                    error=str(exc),
-                )
-            except Exception as re_exc:
-                logger.error(
-                    "stt.transcript.outbox_reenqueue_failed — could not re-enqueue "
-                    "outbox transcript (DURABLE LOSS RISK)",
-                    consultation_id=consultation_id,
-                    idempotency_key=idempotency_key,
-                    error=str(re_exc),
-                )
+            return
+
+        # Transient → keep the entry (delete only after 2xx). Release the lease
+        # and bump attempts so the next scan re-drives it.
+        payload["attempts"] = attempts
+        payload["lease_expiry"] = 0
+        payload["processing_by"] = None
+        try:
+            await self._redis.hset(
+                TRANSCRIPT_OUTBOX_KEY, field_key, json.dumps(payload)
+            )
+            logger.warning(
+                "stt.transcript.outbox_retry_deferred — transient error; entry "
+                "retained for re-drive on the next reaper scan",
+                consultation_id=consultation_id,
+                idempotency_key=idempotency_key,
+                attempts=attempts,
+                error=str(exc),
+            )
+        except Exception as re_exc:
+            logger.error(
+                "stt.transcript.outbox_reenqueue_failed — could not update outbox "
+                "entry; it remains re-drivable at its prior attempt count",
+                consultation_id=consultation_id,
+                idempotency_key=idempotency_key,
+                error=str(re_exc),
+            )
 
     async def _finalize_session(self, session: StreamSession) -> None:
         """Finalize a session under a per-session lock (TASK-456 C2-07).
