@@ -3,9 +3,11 @@
 TASK-351 P1-1 — stabilizes the partial transcript stream. Consecutive
 partial ASR hypotheses for the same utterance are compared at token level
 (whitespace-normalized); the longest common prefix between the latest two
-hypotheses is *committed*. Committed text is monotonic: the committed
-token count never shrinks, even when a later hypothesis revises earlier
-words.
+hypotheses is *committed*. A committed token position is frozen at the
+agreed token: the committed prefix grows only while the latest hypothesis
+keeps agreeing with it, and rolls back to the last still-agreeing token
+when a later hypothesis revises an already committed word — the settled
+surface is never silently replaced with different text (TASK-451 C2-01).
 
 The policy is pure (no I/O, no session knowledge). The session manager
 owns one instance per session, calls :meth:`update` per partial, resets
@@ -13,9 +15,10 @@ on each final, and publishes ``stable_chars = len(committed)`` alongside
 the full partial text.
 
 Comparison normalizes case and strips leading/trailing punctuation from
-each token so ``"Hello,"`` agrees with ``"hello"``. The committed/tentative
-*surface* text is always taken from the latest hypothesis, which keeps
-``stable_chars`` a valid index into the published text.
+each token so ``"Hello,"`` agrees with ``"hello"``. The committed *surface*
+is re-rendered from the latest hypothesis for the *agreed* tokens only, so
+``stable_chars`` stays a valid prefix index into the published text without
+ever changing an already-settled word's meaning.
 """
 
 from __future__ import annotations
@@ -39,7 +42,9 @@ class LocalAgreementPolicy:
 
     def __init__(self) -> None:
         self._prev_norm_tokens: list[str] | None = None
-        self._committed_count = 0
+        # Frozen identity of the committed prefix (normalized tokens). The
+        # committed count is ``len(self._committed_norm_tokens)``.
+        self._committed_norm_tokens: list[str] = []
         self._committed_text = ""
         self._tentative_text = ""
 
@@ -57,33 +62,57 @@ class LocalAgreementPolicy:
         """Fold a new partial hypothesis into the policy.
 
         Returns ``(committed, tentative)`` where ``committed`` is a prefix
-        of the (whitespace-normalized) hypothesis and ``tentative`` is the
-        remainder. The committed token count never shrinks across updates.
+        of the current hypothesis and ``tentative`` is the remainder. A
+        committed token position is frozen: the committed prefix only grows
+        while the latest hypothesis keeps agreeing with it, and rolls back
+        to the last still-agreeing token when a later hypothesis revises an
+        already committed word (TASK-451 C2-01) — it is never silently
+        replaced with different text.
         """
         tokens = (hypothesis or "").split()
         norm_tokens = [_normalize_token(t) for t in tokens]
 
+        # LocalAgreement-2: length of the prefix agreed by the last two
+        # hypotheses.
+        agreement = 0
         if self._prev_norm_tokens is not None:
-            agreement = 0
             for prev_tok, cur_tok in zip(
                 self._prev_norm_tokens, norm_tokens, strict=False
             ):
                 if prev_tok != cur_tok:
                     break
                 agreement += 1
-            if agreement > self._committed_count:
-                self._committed_count = agreement
-
         self._prev_norm_tokens = norm_tokens
 
-        visible = min(self._committed_count, len(tokens))
-        self._committed_text = " ".join(tokens[:visible])
-        self._tentative_text = " ".join(tokens[visible:])
+        # How much of the already-committed prefix the latest hypothesis
+        # still agrees with. A shorter value means a committed word was
+        # revised (or dropped) — the committed surface must roll back to that
+        # point rather than re-slice the stale count, which would silently
+        # change the settled region's meaning.
+        consistent = 0
+        for committed_tok, cur_tok in zip(
+            self._committed_norm_tokens, norm_tokens, strict=False
+        ):
+            if committed_tok != cur_tok:
+                break
+            consistent += 1
+
+        if consistent < len(self._committed_norm_tokens):
+            # Contradiction inside the committed region: roll back only, never
+            # extend past the divergence this round.
+            committed_count = consistent
+        else:
+            # Committed prefix intact: safe to extend by freshly-agreed tokens.
+            committed_count = max(len(self._committed_norm_tokens), agreement)
+
+        self._committed_norm_tokens = norm_tokens[:committed_count]
+        self._committed_text = " ".join(tokens[:committed_count])
+        self._tentative_text = " ".join(tokens[committed_count:])
         return self._committed_text, self._tentative_text
 
     def reset(self) -> None:
         """Clear all state (call when an utterance is finalized)."""
         self._prev_norm_tokens = None
-        self._committed_count = 0
+        self._committed_norm_tokens = []
         self._committed_text = ""
         self._tentative_text = ""
