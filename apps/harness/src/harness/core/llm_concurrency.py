@@ -154,14 +154,28 @@ async def limit_endpoint(base_url: str, max_concurrency: int | None = None) -> A
         yield
 
 
+class LlmCallTimeout(TimeoutError):
+    """A per-call wall-clock timeout raised by :func:`call_with_timeout`.
+
+    Subclasses ``TimeoutError`` so :func:`is_retryable` still classifies it transient
+    (idempotent governed calls keep retrying a hung call as before). The distinct type
+    lets :func:`governed_request` recognise the per-call timeout specifically and, for a
+    NON-idempotent caller (``retry_on_timeout=False`` — e.g. SMR generate), treat it as
+    terminal: the request may have already reached the model, so re-issuing it would
+    re-invoke a non-idempotent operation (I-1 / C1-04).
+    """
+
+
 async def call_with_timeout(operation: Callable[[], Awaitable[T]], timeout_s: float) -> T:
     """Run a single LLM call under a per-call wall-clock timeout (TASK-354 Defect A).
 
     ``timeout_s <= 0`` disables the bound (legacy behaviour). On expiry ``asyncio.timeout``
-    cancels the in-flight call and we re-raise a descriptive :class:`TimeoutError` — which
-    :func:`is_retryable` classifies transient, so the per-endpoint retry loops treat a hung
-    call exactly like any other transient backend failure (retry within budget, then the
-    caller's existing fail-safe degrade owns the outcome — never a silent auto-PASS).
+    cancels the in-flight call and we re-raise a descriptive :class:`LlmCallTimeout` (a
+    ``TimeoutError`` subclass) — which :func:`is_retryable` classifies transient, so the
+    per-endpoint retry loops treat a hung call like any other transient backend failure
+    (retry within budget, then the caller's existing fail-safe degrade owns the outcome —
+    never a silent auto-PASS). A NON-idempotent caller passes ``retry_on_timeout=False`` to
+    :func:`governed_request` so this timeout is NOT re-issued (see that function).
     """
     if not timeout_s or timeout_s <= 0:
         return await operation()
@@ -169,7 +183,7 @@ async def call_with_timeout(operation: Callable[[], Awaitable[T]], timeout_s: fl
         async with asyncio.timeout(timeout_s):
             return await operation()
     except TimeoutError as exc:
-        raise TimeoutError(f"llm request exceeded {timeout_s:g}s per-call timeout") from exc
+        raise LlmCallTimeout(f"llm request exceeded {timeout_s:g}s per-call timeout") from exc
 
 
 # --- retry classification ---------------------------------------------------
@@ -278,6 +292,7 @@ async def governed_request(
     operation: Callable[[], Awaitable[T]],
     *,
     config: LlmGovernorConfig | None = None,
+    retry_on_timeout: bool = True,
 ) -> T:
     """Run ``operation`` under the shared per-endpoint cap with rate-limit-aware retry.
 
@@ -286,6 +301,15 @@ async def governed_request(
     Retries 429 (honoring ``Retry-After``), 5xx, connection errors and the LM Studio
     ``terminated`` 400; gives up after ``max_attempts`` and re-raises the last error,
     so the caller's existing degrade path owns the final (fail-safe) outcome.
+
+    ``retry_on_timeout`` (I-1 / C1-04): a NON-idempotent ``operation`` (e.g. SMR generate)
+    passes ``False`` so a per-call :class:`LlmCallTimeout` is TERMINAL — the request may
+    have already reached and run the model, and the per-call ``asyncio.timeout`` cannot
+    tell pre-send from post-send, so re-issuing it risks a second (divergent) generation.
+    Idempotent callers keep the default ``True`` and retry a hung call as before. NOTE:
+    this only covers the per-call *timeout*; a 5xx or the LM-Studio ``terminated`` 400 that
+    arrives AFTER the model ran is still retried (pre-existing, lower risk — a downstream
+    idempotency key is the durable fix, tracked as apps/smr coordination).
     """
     cfg = config or get_llm_governor_config()
     last_exc: Exception | None = None
@@ -294,11 +318,16 @@ async def governed_request(
         async with limit_endpoint(base_url, cfg.max_concurrency):
             try:
                 # Per-call timeout (TASK-354): a hung call surfaces as a transient
-                # ``TimeoutError``, retried within ``max_attempts`` like any 5xx.
+                # ``LlmCallTimeout``, retried within ``max_attempts`` like any 5xx —
+                # UNLESS the caller is non-idempotent (``retry_on_timeout=False``).
                 return await call_with_timeout(operation, cfg.request_timeout_s)
             except Exception as exc:  # noqa: BLE001 — classified + re-raised below
                 last_exc = exc
                 if attempt + 1 >= cfg.max_attempts or not is_retryable(exc):
+                    raise
+                # I-1 / C1-04: a per-call timeout of a non-idempotent op is terminal
+                # (re-issuing may re-invoke the model). Raise instead of retrying.
+                if isinstance(exc, LlmCallTimeout) and not retry_on_timeout:
                     raise
                 retry_after = _retry_after_seconds(exc)
         delay = retry_after if retry_after is not None else _backoff_delay(attempt, cfg)

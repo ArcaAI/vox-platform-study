@@ -47,6 +47,17 @@ class HarnessGateConfig(BaseModel):
     # separate replay key. BOTH must be set for the optimistic path to run. Default
     # False ⇒ the legacy single-phase path, byte-identical to pre-Phase-D history.
     optimistic_delivery_enabled: bool = False
+    # C1-02 (TASK-458) — TERMINAL gate bound. After this many SLA-breach escalations the
+    # gate ABANDONS (stops escalating + completes, approved=False) instead of escalating
+    # forever. Loop-safety bound, not a policy knob (carried from the input over a policy
+    # merge, like ``optimistic_delivery_enabled``). Behaviour is patch-gated by
+    # ``workflow.patched("task-458-gate-terminal-abandon")`` ⇒ replay-safe.
+    gate_max_escalations: int = 3
+    # C1-02 (TASK-458) — cap on clinician-edit-driven optimistic assurance re-runs. After
+    # this many edit re-runs the loop binds to the latest edit but STOPS re-running the
+    # costly inferential pass, so N rapid edits can't drive N passes. Patch-gated by
+    # ``workflow.patched("task-458-edit-rerun-cap")`` ⇒ replay-safe.
+    max_edit_reruns: int = 5
 
 
 class HarnessDocWorkflowInput(BaseModel):

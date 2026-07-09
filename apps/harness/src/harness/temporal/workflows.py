@@ -256,12 +256,17 @@ class HarnessDocWorkflow:
     async def _run(self, inp: HarnessDocWorkflowInput) -> HarnessDocWorkflowResult:
         # 0) Live policy injection (Phase 6). Read ONCE at the start in an activity
         # (I/O stays out of the deterministic body) and thread the result through.
-        # A failed fetch degrades to the code defaults — never crash the loop, and
-        # this is NOT a clinical degradation (it does not set reduced_assurance).
+        # A failed fetch degrades to the code defaults — never crash the loop. C1-06
+        # (TASK-458): an UNREACHABLE policy endpoint can silently RELAX a stricter tenant
+        # policy, so a fetch FAILURE now flags reduced assurance (folded into
+        # ``reduced_assurance`` at its init below). A successful "no custom policy" read
+        # is NOT a degrade — only the ``except`` path is. Pure local state (no workflow
+        # command) ⇒ replay-safe, no ``workflow.patched()`` marker.
         self._phase = "POLICY"
         # Progress stage 1 covers the policy fetch + transcript NER that follow.
         await self._report_progress(inp, "extracting_information")
         policy: HarnessPolicy | None = None
+        policy_degraded = False
         try:
             policy = await workflow.execute_activity(
                 fetch_policy,
@@ -271,6 +276,7 @@ class HarnessDocWorkflow:
             )
         except ActivityError:
             policy = None
+            policy_degraded = True
 
         # Effective loop knobs: the policy overrides the snapshotted gate budget and
         # supplies sensor thresholds, guard toggles, and model defaults; the input
@@ -286,6 +292,11 @@ class HarnessDocWorkflow:
                 # Read from the deterministic workflow input (never env) ⇒ replay-safe, and
                 # it adds no new command, so no ``workflow.patched()`` marker is required.
                 optimistic_delivery_enabled=inp.gate.optimistic_delivery_enabled,
+                # C1-02 (TASK-458): the gate/edit safety bounds are loop-safety knobs, not
+                # policy knobs — carry them from the input over the policy merge (same
+                # rationale as the optimistic flag; data-only ⇒ replay-safe).
+                gate_max_escalations=inp.gate.gate_max_escalations,
+                max_edit_reruns=inp.gate.max_edit_reruns,
             )
             sensor_thresholds = policy.to_sensor_thresholds()
             groundedness_threshold = policy.groundedness_threshold
@@ -345,7 +356,9 @@ class HarnessDocWorkflow:
         self._phase = "RETRIEVE"
         # Progress stage 2 covers institutional retrieval + prompt assembly.
         await self._report_progress(inp, "assembling_context")
-        reduced_assurance = False
+        # C1-06: seed reduced assurance from the policy-fetch degrade (a relaxed stricter
+        # policy is an assurance degrade); retrieval/inferential degrades OR it in below.
+        reduced_assurance = policy_degraded
         try:
             retrieved = await workflow.execute_activity(
                 retrieve_context,
@@ -678,6 +691,9 @@ class HarnessDocWorkflow:
             signals_enabled = workflow.patched("task-355-assurance-signals")
             assurance_content = generated.content
             assurance_version_id: str | None = None
+            # C1-02 (TASK-458): count edit-driven re-runs so a burst of clinician edits
+            # cannot drive an unbounded number of costly inferential passes (patch-gated).
+            edit_reruns = 0
             while True:
                 # Consume a pending edit (arrived before/between passes): re-bind the
                 # assurance target to the edited version, then clear the per-pass latch.
@@ -719,10 +735,20 @@ class HarnessDocWorkflow:
                 except ActivityError:
                     reduced_assurance = True
 
-                # Q3: an edit landed DURING this pass — the verdict is stale. Loop to
-                # re-bind (top) and re-run assurance on the edited version.
+                # Q3: an edit landed DURING this pass — the verdict is stale. Re-run
+                # assurance on the edited version, but CAP the re-runs (C1-02) so N rapid
+                # edits can't drive N costly passes. Patch-gated: pre-458 histories (no
+                # marker) keep the uncapped command sequence on replay. Beyond the cap,
+                # bind to the latest edit for the record but STOP re-running (the verdict
+                # binds to the last assured content — bounded staleness under a burst).
                 if signals_enabled and self._edited:
-                    continue
+                    edit_cap_enabled = workflow.patched("task-458-edit-rerun-cap")
+                    if not edit_cap_enabled or edit_reruns < gate.max_edit_reruns:
+                        edit_reruns += 1
+                        continue
+                    assurance_content = self._edited_content or assurance_content
+                    assurance_version_id = self._edited_version_id
+                    self._edited = False
 
                 inferential_results = []
                 if inferential is not None:
@@ -846,6 +872,13 @@ class HarnessDocWorkflow:
         self._phase = "GATE"
         escalations = 0
         deadline = gate.gate_sla_seconds
+        # C1-02 (TASK-458): bound the escalation loop with a TERMINAL abandon so an
+        # un-signed gate cannot escalate forever (was: re-fire ``escalate_gate`` every
+        # ``gate_escalation_seconds`` with no max). Patch-gated — a pre-458 history has no
+        # marker, so ``workflow.patched`` returns False on replay and the legacy
+        # infinite-wait command sequence is preserved. The ``gate_max_escalations`` value
+        # comes from the deterministic input, so the bound is replay-stable.
+        gate_terminal = workflow.patched("task-458-gate-terminal-abandon")
         while self._approval is None:
             try:
                 await workflow.wait_condition(
@@ -853,12 +886,15 @@ class HarnessDocWorkflow:
                     timeout=timedelta(seconds=deadline),
                 )
             except TimeoutError:
+                # The final escalation before the bound carries a terminal reason so
+                # apps/api can mark the gate abandoned (via the C1-05 escalation record).
+                terminal = gate_terminal and escalations + 1 >= gate.gate_max_escalations
                 await workflow.execute_activity(
                     escalate_gate,
                     EscalateInput(
                         consultation_id=inp.consultation_id,
                         tenant_id=inp.tenant_id,
-                        reason="gate_sla_breached",
+                        reason="gate_sla_abandoned" if terminal else "gate_sla_breached",
                         job_id=inp.job_id,
                     ),
                     start_to_close_timeout=_ESCALATE_TIMEOUT,
@@ -866,8 +902,27 @@ class HarnessDocWorkflow:
                 )
                 escalations += 1
                 deadline = gate.gate_escalation_seconds
+                if gate_terminal and escalations >= gate.gate_max_escalations:
+                    break  # C1-02: terminal bound hit → abandon (handled just below)
 
         approval = self._approval
+        # C1-02: the loop can now exit WITHOUT approval — only via the terminal-bound
+        # ``break`` above (``self._approval`` is None). A late approval racing the final
+        # escalation still wins (``approval`` is non-None ⇒ we fall through and record it).
+        # Abandon: the draft stays PENDING_REVIEW for manual handling and the escalations
+        # already recorded the breaches, so complete terminally WITHOUT a clinician
+        # GATE_DECISION (there is none). ``escalations`` is still surfaced.
+        if approval is None:
+            self._phase = "ABANDONED"
+            return HarnessDocWorkflowResult(
+                consultation_id=inp.consultation_id,
+                decision=decision,
+                context_item_id=draft.context_item_id,
+                regens_used=regens_used,
+                escalations=escalations,
+                approved=False,
+                clinician_id=None,
+            )
 
         # 5) Record the GATE_DECISION (WORM audit) and finish.
         self._phase = "RECORD"
