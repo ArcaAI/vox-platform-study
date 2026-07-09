@@ -184,6 +184,45 @@ describe('StreamingBackendSTTProvider — TASK-298 D-4', () => {
     });
   });
 
+  // C6-01 — the client's bufferedAmount watermark silently drops outbound audio;
+  // `sendAudioFrame` returns false on drop. The provider must honor that return so
+  // the loss is observable instead of vanishing from the durable transcript.
+  describe('backpressure drop visibility (C6-01)', () => {
+    beforeEach(async () => {
+      await provider.init({
+        sessionId: 'x',
+        language: 'en-US',
+        sampleRate: 48000,
+        channels: 1,
+        chunkLengthS: 30,
+        overlapLengthS: 5,
+        returnTimestamps: 'word',
+        codeSwitching: false,
+        diarization: false,
+        numSpeakers: 1,
+        pipelineId: 'p-1',
+      });
+      await provider.start();
+    });
+
+    it('counts a frame the ws client drops for backpressure (sendAudioFrame returns false)', async () => {
+      wsClient.sendAudioFrame.mockReturnValue(false);
+      await provider.processAudio(new Float32Array([0.1, 0.2]), 16000);
+
+      expect(wsClient.sendAudioFrame).toHaveBeenCalledTimes(1);
+      // The dropped PCM never reached the durable transcript — it is observable.
+      expect(provider.getDroppedFrameCount()).toBe(1);
+    });
+
+    it('does not count frames while the client accepts them (returns true)', async () => {
+      wsClient.sendAudioFrame.mockReturnValue(true);
+      await provider.processAudio(new Float32Array([0.1, 0.2]), 16000);
+      await provider.processAudio(new Float32Array([0.3, 0.4]), 16000);
+
+      expect(provider.getDroppedFrameCount()).toBe(0);
+    });
+  });
+
   describe('transcript forwarding', () => {
     beforeEach(async () => {
       await provider.init({

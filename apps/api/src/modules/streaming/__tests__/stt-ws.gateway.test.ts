@@ -327,6 +327,24 @@ describe('SttWsGateway', () => {
                 }
             });
 
+            // TASK-450 C4-01 — the binding-mismatch rejection joins the same
+            // generic-close truth table (no fifth distinguishable signal).
+            it('session tenant-binding mismatch -> 4401 with the generic reason (no tenant id on the wire)', async () => {
+                const client = createMockSocket();
+                setValidTicketFor('sess-x');
+                mockSessionBinding.lookup.mockResolvedValueOnce('tenant-OTHER');
+
+                await gateway.handleConnection(
+                    client as any,
+                    { url: '/ws/stt-v2/stream?sessionId=sess-x&ticket=t' } as any,
+                );
+
+                const [code, reason] = (client.close as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
+                expect(code).toBe(GENERIC_CODE);
+                expect(String(reason)).toMatch(GENERIC_REASON_RE);
+                expect(String(reason)).not.toMatch(/tenant/i);
+            });
+
             it('server-side warn log STILL records the REAL reason for ops (observability preserved)', async () => {
                 const warnSpy = vi.spyOn(Logger.prototype, 'warn');
                 warnSpy.mockClear();
@@ -349,6 +367,85 @@ describe('SttWsGateway', () => {
                     .filter(Boolean);
                 expect(messages.length).toBeGreaterThanOrEqual(2);
                 expect(new Set(messages).size).toBeGreaterThanOrEqual(2);
+            });
+        });
+
+        // TASK-450 C4-01 — a ticket whose SCOPE matches the sessionId but whose
+        // tenant is NOT the session's owning tenant used to pass the handshake
+        // (the gateway trusted `stored.tenantId` and never consulted the
+        // gateway-side sessionId → tenantId binding). The handshake now mirrors
+        // the DELETE route's `assertStreamSessionOwnership`: missing binding OR
+        // binding ≠ ticket tenant both close with the same generic 4401.
+        describe('TASK-450 C4-01 — session tenant binding enforced at the WS handshake', () => {
+            it('consults the tenant binding for the sessionId and accepts when it matches the ticket tenant', async () => {
+                const client = createMockSocket();
+                setValidTicketFor('sess-450'); // ticket tenant: tenant-abc
+                mockSessionBinding.lookup.mockResolvedValueOnce('tenant-abc');
+
+                await gateway.handleConnection(client as any, buildReq('sess-450') as any);
+
+                expect(mockSessionBinding.lookup).toHaveBeenCalledWith('sess-450');
+                expect(client.close).not.toHaveBeenCalled();
+                expect(gateway.getActiveSessionCount()).toBe(1);
+            });
+
+            it('rejects a matching-scope ticket carrying a FOREIGN tenant with the generic 4401 close', async () => {
+                const client = createMockSocket();
+                setValidTicketFor('sess-450'); // ticket tenant: tenant-abc
+                mockSessionBinding.lookup.mockResolvedValueOnce('tenant-OTHER');
+
+                await gateway.handleConnection(client as any, buildReq('sess-450') as any);
+
+                expect(client.close).toHaveBeenCalledWith(
+                    WS_CLOSE_CODES.AUTH_FAILED,
+                    'Authentication failed',
+                );
+                expect(mockBridgeService.subscribeToResults).not.toHaveBeenCalled();
+                expect(gateway.getActiveSessionCount()).toBe(0);
+            });
+
+            it('fail-closed: rejects when NO binding exists for the session (not just on mismatch)', async () => {
+                const client = createMockSocket();
+                setValidTicketFor('sess-450');
+                mockSessionBinding.lookup.mockResolvedValueOnce(null);
+
+                await gateway.handleConnection(client as any, buildReq('sess-450') as any);
+
+                expect(client.close).toHaveBeenCalledWith(
+                    WS_CLOSE_CODES.AUTH_FAILED,
+                    'Authentication failed',
+                );
+                expect(mockBridgeService.subscribeToResults).not.toHaveBeenCalled();
+                expect(gateway.getActiveSessionCount()).toBe(0);
+            });
+
+            it('fail-closed: rejects when the binding lookup throws (Redis blip is not an auth bypass)', async () => {
+                const client = createMockSocket();
+                setValidTicketFor('sess-450');
+                mockSessionBinding.lookup.mockRejectedValueOnce(new Error('redis down'));
+
+                await gateway.handleConnection(client as any, buildReq('sess-450') as any);
+
+                expect(client.close).toHaveBeenCalledWith(
+                    WS_CLOSE_CODES.AUTH_FAILED,
+                    'Authentication failed',
+                );
+                expect(mockBridgeService.subscribeToResults).not.toHaveBeenCalled();
+                expect(gateway.getActiveSessionCount()).toBe(0);
+            });
+
+            it('does not leak tenant values in the rejection warn log', async () => {
+                const warnSpy = vi.spyOn(Logger.prototype, 'warn');
+                warnSpy.mockClear();
+                const client = createMockSocket();
+                setValidTicketFor('sess-450');
+                mockSessionBinding.lookup.mockResolvedValueOnce('tenant-OTHER');
+
+                await gateway.handleConnection(client as any, buildReq('sess-450') as any);
+
+                const serialized = JSON.stringify(warnSpy.mock.calls);
+                expect(serialized).not.toContain('tenant-OTHER');
+                expect(serialized).not.toContain('tenant-abc');
             });
         });
     });

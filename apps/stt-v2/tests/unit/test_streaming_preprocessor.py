@@ -1205,3 +1205,146 @@ class TestForceEmitSmartSplit:
         # Emitted + carry should account for all buffered audio
         # (minus pre-speech ring which isn't counted)
         assert emitted_samples + carry_samples > 0
+
+
+# =========================================================================
+# Tests: Short / jittery utterance recovery (TASK-451 C2-06)
+# =========================================================================
+
+
+class TestShortUtteranceRecovery:
+    """Brief crisp utterances must not be silently dropped by the onset gate.
+
+    Pre-fix the onset required ``min_speech_duration_ms`` (350 ms → 10 frames)
+    of *consecutive* above-threshold frames, so short bursts — and any burst
+    interrupted by a single sub-threshold dip — never set ``in_speech`` and were
+    discarded, even at end-of-session flush().
+    """
+
+    @pytest.mark.asyncio
+    async def test_short_clinical_burst_confirms_with_default_min_speech(self):
+        # 8 speech frames ~= 256 ms — a brief crisp confirmation like "no".
+        # Uses the SHIPPED default min_speech_duration_ms (clinical); pre-fix
+        # the 350 ms default needed 10 consecutive frames and dropped this.
+        vad = _make_alternating_vad(speech_prob=0.9, silence_prob=0.1, speech_frames=8)
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            threshold=0.5,
+            min_silence_duration_ms=700,
+        )
+
+        utts = await pp.feed(_make_speech_pcm(duration_ms=int(8 * 512 / 16000 * 1000)))
+        final = await pp.flush()
+
+        finals = [u for u in utts if u.is_final] + ([final] if final else [])
+        assert len(finals) >= 1
+        assert pp.utterance_count >= 1
+        assert sum(len(f.samples) for f in finals) > 0
+
+    @pytest.mark.asyncio
+    async def test_onset_survives_single_dip(self):
+        # Explicit 350 ms (10-frame) onset. Pattern: 6 speech, 1 dip, 6 speech —
+        # max-consecutive is 6 (< 10), but a single-dip hangover bridges the gap
+        # so the jittery but real burst still confirms.
+        call_count = [0]
+
+        def _vad(chunk, session_state, threshold=None):
+            call_count[0] += 1
+            i = call_count[0]
+            if i <= 6:
+                return 0.9  # 6 speech
+            if i == 7:
+                return 0.1  # single sub-threshold dip
+            if i <= 13:
+                return 0.9  # 6 more speech
+            return 0.1  # trailing silence
+
+        vad = MagicMock()
+        vad.is_loaded = True
+        vad.process_chunk = MagicMock(side_effect=_vad)
+
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            threshold=0.5,
+            min_speech_duration_ms=350,
+            min_silence_duration_ms=700,
+        )
+
+        utts = await pp.feed(_make_speech_pcm(duration_ms=int(13 * 512 / 16000 * 1000)))
+        final = await pp.flush()
+
+        finals = [u for u in utts if u.is_final] + ([final] if final else [])
+        assert len(finals) >= 1
+        assert pp.utterance_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_single_frame_transient_still_dropped(self):
+        # Steady-state guard: a lone 1-frame blip (noise transient) must NOT
+        # become an utterance, even with the clinical default + single-dip
+        # hangover — the hangover tolerates one dip, not an ongoing gap.
+        call_count = [0]
+
+        def _vad(chunk, session_state, threshold=None):
+            call_count[0] += 1
+            return 0.9 if call_count[0] == 1 else 0.1  # exactly one speech frame
+
+        vad = MagicMock()
+        vad.is_loaded = True
+        vad.process_chunk = MagicMock(side_effect=_vad)
+
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            threshold=0.5,
+            min_silence_duration_ms=700,
+        )
+
+        utts = await pp.feed(_make_speech_pcm(duration_ms=int(20 * 512 / 16000 * 1000)))
+        final = await pp.flush()
+
+        assert utts == []
+        assert final is None
+        assert pp.utterance_count == 0
+        assert pp.in_speech is False
+
+    @pytest.mark.asyncio
+    async def test_alternating_near_threshold_pattern_is_rejected(self):
+        # TASK-451 I-1: periodic near-threshold noise (monitor beep, tapping,
+        # HVAC) that cleanly alternates above/below threshold must NOT accrete
+        # a false onset. 7 above / 6 below at the default 7-frame onset — the
+        # dip budget is cumulative per onset attempt, so this is rejected even
+        # though every individual dip is isolated.
+        probs = [0.9, 0.1, 0.9, 0.1, 0.9, 0.1, 0.9, 0.1, 0.9, 0.1, 0.9, 0.1, 0.9]
+        call_count = [0]
+
+        def _vad(chunk, session_state, threshold=None):
+            i = call_count[0]
+            call_count[0] += 1
+            return probs[i] if i < len(probs) else 0.1  # silence after the pattern
+
+        vad = MagicMock()
+        vad.is_loaded = True
+        vad.process_chunk = MagicMock(side_effect=_vad)
+
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            threshold=0.5,
+            min_silence_duration_ms=700,
+        )
+
+        # Feed the 13-frame pattern plus trailing silence.
+        utts = await pp.feed(_make_speech_pcm(duration_ms=int(25 * 512 / 16000 * 1000)))
+        final = await pp.flush()
+
+        finals = [u for u in utts if u.is_final]
+        assert finals == []
+        assert final is None
+        assert pp.utterance_count == 0
+        assert pp.in_speech is False

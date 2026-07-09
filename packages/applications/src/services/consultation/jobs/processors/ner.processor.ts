@@ -12,6 +12,7 @@ import { ExtractNerJobPayload, NerJobResult } from '../dto';
 import { ConsultationPipelineEvent, NerExtractedPayload } from '../../events';
 import { IActiveUserContext } from '../../../../interfaces';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../../common';
+import { namedEntityPropsFromNlp, type NlpNamedEntity } from '../../shared/namedEntityFromNlp';
 
 @Processor(JobQueue.ExtractNamedEntities)
 export class NerProcessor extends WorkerHost {
@@ -97,15 +98,7 @@ export class NerProcessor extends WorkerHost {
 
         // Save each entity
         for (const entity of nlpResponse.entities) {
-          const namedEntity = NamedEntityFactory.CreateNamedEntity({
-            tenantId,
-            contextItemId,
-            text: entity.value,
-            className: entity.type,
-            confidence: entity.confidence,
-            startOffset: entity.start,
-            endOffset: entity.end,
-          });
+          const namedEntity = NamedEntityFactory.CreateNamedEntity(namedEntityPropsFromNlp(entity, { tenantId, contextItemId }));
 
           await this.encryptBestEffort('NamedEntity', () =>
             this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!),
@@ -170,13 +163,7 @@ export class NerProcessor extends WorkerHost {
   }
 
   private async callNlpService(content: string): Promise<{
-    entities: Array<{
-      type: string;
-      value: string;
-      confidence?: number;
-      start?: number;
-      end?: number;
-    }>;
+    entities: NlpNamedEntity[];
   }> {
     try {
       const response = await this.httpService.axiosRef.post(

@@ -443,9 +443,17 @@ export class TranscriptionJobController {
    * session. The SDK calls this from `SttV2WebSocketClient.attemptReconnect`
    * before reopening the WebSocket, since each ticket is one-shot and gets
    * consumed by the previous connection.
+   *
+   * TASK-450 I-1 — this is the second `stt_session:<sessionId>` mint (the
+   * first is `POST /auth/stream-ticket`), so it carries the same
+   * `StreamSession` ownership guard as the sibling DELETE route: the
+   * interceptor 404s any caller whose tenant doesn't match the session's
+   * binding (no existence leak), keeping mint + WS handshake two
+   * independent gates on this path too.
    */
   @Post('stream/session/:sessionId/refresh-ticket')
   @HttpCode(200)
+  @TenantOwnedResource({ modelName: 'StreamSession', paramName: 'sessionId', lookup: 'session' })
   @ApiOperation({ summary: 'Refresh the stream ticket for a live streaming session (TASK-298 D-18)' })
   @ApiParam({ name: 'sessionId', description: 'Streaming session ID' })
   async refreshStreamTicket(@Param('sessionId') sessionId: string): Promise<{ ticket: string; ticketExpiresAt: number }> {
