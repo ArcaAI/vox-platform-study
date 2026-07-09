@@ -1235,6 +1235,27 @@ class TestSessionManager:
         assert count == 1
         assert mgr.active_session_count == 0
 
+    async def test_reaper_loop_uses_audio_idle_timeout(self):
+        """C2-02 (TASK-456) — the background reaper must reap on the audio-idle
+        timeout (streaming_audio_idle_timeout_s=300), NOT the 60s session
+        timeout, so a live consultation with a normal speech pause is not
+        finalized. Wires the previously-dead streaming_audio_idle_timeout_s knob.
+        """
+        mgr = self._make_manager()
+        mgr._reaper_interval_s = 0  # don't wait between scans
+        captured: list[int] = []
+
+        async def _capture(timeout_s: int) -> int:
+            captured.append(timeout_s)
+            mgr._running = False  # stop after the first scan
+            return 0
+
+        mgr._reap_expired_sessions = _capture  # type: ignore[assignment]
+        mgr._running = True
+        await mgr._reaper_loop()
+
+        assert captured == [300]
+
 
 # ---------------------------------------------------------------------------
 # Settings Tests (streaming fields)
@@ -1258,6 +1279,13 @@ class TestStreamingSettings:
         assert s.streaming_session_persist_interval_s == 5.0
         assert s.streaming_session_timeout_s == 60
         assert s.streaming_reaper_interval_s == 300
+        # TASK-456 — durable-transcript persist retries + outbox re-drive cap
+        # (C2-03) + finalize drain timeout (C2-05, previously a getattr fallback,
+        # now a real setting).
+        assert s.streaming_transcript_persist_max_attempts == 3
+        assert s.streaming_transcript_persist_backoff_s == 0.5
+        assert s.streaming_transcript_outbox_max_attempts == 10
+        assert s.streaming_inference_drain_timeout_s == 60.0
         assert s.streaming_worker_heartbeat_s == 10
         assert s.streaming_worker_heartbeat_ttl_s == 30
         assert s.streaming_audio_stream_maxlen == 2000
