@@ -29,6 +29,14 @@ Two scenarios:
   -> ``finalize_assurance``. The recorded history carries BOTH the
   ``task-355-optimistic-delivery`` AND ``task-355-assurance-signals`` markers + the
   regen reorder — the post-TASK-355 (Slice 4b) forward-guard fixture.
+* ``--gate-abandon`` (TASK-458 C1-02) — a never-signed gate with a low escalation bound
+  so it escalates to the terminal bound and ABANDONS (approved=False): two
+  ``escalate_gate`` calls (the second terminal) then a terminal completion WITHOUT
+  ``record_gate_decision``. Records the ``task-458-gate-terminal-abandon`` marker — the
+  gate-terminal forward-guard fixture.
+* ``--edit-cap`` (TASK-458 C1-02) — an optimistic run with edits on TWO assurance passes
+  and ``max_edit_reruns=1`` so the loop CAPS the edit-driven re-runs (ONE re-run, not
+  two). Records the ``task-458-edit-rerun-cap`` marker — the edit-cap forward-guard fixture.
 
 Usage (from the repo root):
 
@@ -45,6 +53,10 @@ Fixture provenance notes:
 - ``doc_workflow_post_task348_history.json`` — ``--failure`` scenario, post-TASK-348
   era (TASK-354). Recapture whenever a ``workflow.patched()`` gate is added so future
   definition changes stay replay-compatible with every era still in flight.
+- ``doc_workflow_post_task458_gate_abandon_history.json`` — ``--gate-abandon`` scenario,
+  post-TASK-458 era (C1-02 gate terminal abandon).
+- ``doc_workflow_post_task458_edit_cap_history.json`` — ``--edit-cap`` scenario,
+  post-TASK-458 era (C1-02 edit-rerun cap).
 """
 
 from __future__ import annotations
@@ -59,13 +71,20 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from harness.temporal.models import ApprovalSignal, HarnessDocWorkflowInput, HarnessGateConfig
+from harness.temporal.models import (
+    ApprovalSignal,
+    EditSignal,
+    HarnessDocWorkflowInput,
+    HarnessGateConfig,
+)
 from harness.temporal.workflows import HarnessDocWorkflow
 from harness.tests.unit.temporal._harness_stubs import (
     StubConfig,
     StubRecorder,
     make_stub_activities,
 )
+
+_EDITED_NOTE = '{"subjective": "s-edited", "objective": "o", "assessment": "a", "plan": "p-edit"}'
 
 
 async def capture(out_path: Path, *, scenario: str = "happy") -> None:
@@ -75,27 +94,49 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
     # run_inferential_sensors; the happy path runs straight through to approval; the
     # optimistic scenario takes the TASK-355 Slice-4a reorder; the regen scenario takes
     # the Slice-4b regen-if-untouched path (inferential REGEN -> regenerate -> SAFE).
+    # C1-02 (TASK-458): ``gate-abandon`` never signs so the gate escalates to its terminal
+    # bound and ABANDONS (records ``task-458-gate-terminal-abandon``); ``edit-cap`` fires
+    # edits on TWO assurance passes with ``max_edit_reruns=1`` so the loop CAPS the re-runs
+    # (records ``task-458-edit-rerun-cap``).
     if scenario == "failure":
         config = StubConfig(
             verdicts=["PASS"], inferential_verdicts=["SAFE"], persist_draft_fails=True
         )
     elif scenario == "regen":
         config = StubConfig(verdicts=["PASS", "PASS"], inferential_verdicts=["REGEN", "SAFE"])
+    elif scenario == "edit-cap":
+        config = StubConfig(
+            verdicts=["PASS", "PASS", "PASS"], inferential_verdicts=["SAFE", "SAFE", "SAFE"]
+        )
     else:
         config = StubConfig(verdicts=["PASS"], inferential_verdicts=["SAFE"])
 
     # TASK-355 Phase D — the optimistic + regen scenarios enable the flag in the
     # snapshotted gate config so the patch-gated reorder path is exercised and recorded.
-    gate = (
-        HarnessGateConfig(optimistic_delivery_enabled=True)
-        if scenario in ("optimistic", "regen")
-        else None
-    )
+    if scenario in ("optimistic", "regen"):
+        gate = HarnessGateConfig(optimistic_delivery_enabled=True)
+    elif scenario == "edit-cap":
+        gate = HarnessGateConfig(optimistic_delivery_enabled=True, max_regen=2, max_edit_reruns=1)
+    elif scenario == "gate-abandon":
+        gate = HarnessGateConfig(
+            gate_sla_seconds=30.0, gate_escalation_seconds=30.0, gate_max_escalations=2
+        )
+    else:
+        gate = None
 
     async with await WorkflowEnvironment.start_time_skipping(
         data_converter=pydantic_data_converter
     ) as env:
         tq = f"harness-capture-{uuid.uuid4()}"
+        wf_id = f"harness-doc-fixture-{uuid.uuid4()}"
+        # edit-cap: wire the edit-injection hook (needs the handle BEFORE start) so an
+        # ``edit`` fires from inside inferential passes 0 and 1 — the second is capped.
+        if scenario == "edit-cap":
+            recorder.edit_signal_handle = env.client.get_workflow_handle(wf_id)
+            recorder.edit_on_inferential_indices = {0, 1}
+            recorder.edit_payload = EditSignal(
+                content=_EDITED_NOTE, context_item_version_id="ver-edit-cap"
+            )
         async with Worker(
             env.client,
             task_queue=tq,
@@ -115,12 +156,12 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
             handle = await env.client.start_workflow(
                 HarnessDocWorkflow.run,
                 HarnessDocWorkflowInput(**input_kwargs),
-                id=f"harness-doc-fixture-{uuid.uuid4()}",
+                id=wf_id,
                 task_queue=tq,
             )
-            # The failure path never reaches the clinician gate, so only the happy
-            # path signals approval (a late signal on a failed run would error).
-            if scenario != "failure":
+            # The failure path never reaches the gate; gate-abandon deliberately never
+            # signs (it abandons on the terminal bound). Everything else signs to close it.
+            if scenario not in ("failure", "gate-abandon"):
                 await handle.signal(
                     HarnessDocWorkflow.approval,
                     ApprovalSignal(
@@ -132,7 +173,10 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
                 )
             try:
                 result = await handle.result()
-                print(f"decision={result.decision}")
+                print(
+                    f"decision={result.decision} approved={result.approved} "
+                    f"escalations={result.escalations}"
+                )
             except WorkflowFailureError as exc:
                 # Expected for --failure: the workflow re-raises after the terminal
                 # emission. We still capture its (now complete) history below.
@@ -147,11 +191,11 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
 if __name__ == "__main__":
     args = sys.argv[1:]
     scenario = "happy"
-    if args and args[0] in ("--failure", "--optimistic", "--regen"):
+    if args and args[0] in ("--failure", "--optimistic", "--regen", "--gate-abandon", "--edit-cap"):
         scenario, args = args[0].lstrip("-"), args[1:]
     if len(args) != 1:
         raise SystemExit(
             "usage: python -m ..._capture_replay_fixture "
-            "[--failure|--optimistic|--regen] <output.json>"
+            "[--failure|--optimistic|--regen|--gate-abandon|--edit-cap] <output.json>"
         )
     asyncio.run(capture(Path(args[0]), scenario=scenario))
