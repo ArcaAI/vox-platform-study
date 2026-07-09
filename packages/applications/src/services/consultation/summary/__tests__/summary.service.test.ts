@@ -398,6 +398,37 @@ describe('SummaryService', () => {
             );
         });
 
+        // TASK-463 — the REAL NLP contract ({ text, entity_type, confidence,
+        // position: { start, end } }; canonical apps/nlp/src/nlp/schemas/common.py).
+        // Current code reads className via `type ?? className` and offsets via
+        // `start ?? startOffset`, so both resolve undefined for the real shape and
+        // persist blank/null — durable corruption. text survives via `?? entity.text`.
+        it('should map the REAL NLP contract (entity_type + position) to className/offsets', async () => {
+            mockContextItemRepository.findById.mockResolvedValue(
+                createMockContextItem({ content: 'Take aspirin now' }),
+            );
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: {
+                    entities: [
+                        { text: 'aspirin', entity_type: 'MEDICATION', confidence: 0.9, position: { start: 8, end: 15 } },
+                    ],
+                },
+            });
+            mockNamedEntityRepository.create.mockResolvedValue({ id: 'entity-1' });
+
+            await service.extractEntities('ctx-item-123');
+
+            expect(mockNamedEntityRepository.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    text: 'aspirin',
+                    className: 'MEDICATION',
+                    confidence: 0.9,
+                    startOffset: 8,
+                    endOffset: 15,
+                }),
+            );
+        });
+
         // ----- Empty / no entities -----
 
         it('should not call repository.create when NLP returns empty entities', async () => {

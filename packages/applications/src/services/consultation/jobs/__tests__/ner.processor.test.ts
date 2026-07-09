@@ -1374,4 +1374,53 @@ Chinese: 發燒 (fever)
             expect(mockJobService.notifyFailed).toHaveBeenCalled();
         });
     });
+
+    // ===========================================================================
+    // TASK-463 — durable NamedEntity persistence from the REAL NLP contract.
+    // The NLP /classify/tokens service emits { text, entity_type, confidence,
+    // position: { start, end } } (canonical: apps/nlp/src/nlp/schemas/common.py).
+    // This path previously read the phantom { value, type, start, end } shape and
+    // persisted blank/null text/className/offsets.
+    // ===========================================================================
+
+    describe('TASK-463 — real NLP contract persistence', () => {
+        it('persists text/className/offsets from the real NLP entity contract', async () => {
+            mockContextItemRepository.findById.mockResolvedValue(
+                createMockContextItem({ content: 'Take aspirin now' }),
+            );
+            // Realistic NLP response — the REAL snake_case contract, not the phantom shape.
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: {
+                    entities: [
+                        { text: 'aspirin', entity_type: 'MEDICATION', confidence: 0.9, position: { start: 8, end: 15 } },
+                    ],
+                },
+            });
+
+            let created: any;
+            mockNamedEntityRepository.create.mockImplementation((entity: any) => {
+                created = entity;
+                return { ...entity, id: 'ne-463' };
+            });
+
+            const payload: ExtractNerJobPayload = {
+                jobId: 'job-463',
+                contextItemId: 'ctx-item-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+            };
+
+            await processor.process(createMockJob(payload));
+
+            expect(mockNamedEntityRepository.create).toHaveBeenCalledTimes(1);
+            expect(created).toMatchObject({
+                text: 'aspirin',
+                className: 'MEDICATION',
+                confidence: 0.9,
+                startOffset: 8,
+                endOffset: 15,
+            });
+        });
+    });
 });
