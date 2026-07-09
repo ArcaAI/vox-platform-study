@@ -43,17 +43,25 @@ class TestLocalAgreementPolicy:
         assert committed == "hello world how"
         assert tentative == "are"
 
-    def test_disagreement_keeps_previous_commit_count(self):
+    def test_contradiction_rolls_back_commit_never_substitutes(self):
+        # TASK-451 C2-01: once a token position is committed, its surface
+        # text must be frozen or explicitly rolled back — never silently
+        # substituted from a later, contradicting hypothesis.
         policy = LocalAgreementPolicy()
         policy.update("hello world foo")
         committed, _ = policy.update("hello world foo bar")
         assert committed == "hello world foo"
 
-        # Full revision: agreement with previous is only 1 token ("hello"),
-        # which is below the committed count of 3 — count must not shrink.
-        committed, tentative = policy.update("hello there everyone now")
-        assert committed == "hello there everyone"
-        assert tentative == "now"
+        # A later hypothesis revises token 1 ("world" -> "there"). The
+        # committed prefix must roll back to the last still-agreeing token
+        # ("hello"), NOT re-slice the stale count into "hello there everyone".
+        latest = "hello there everyone now"
+        committed, tentative = policy.update(latest)
+        assert committed == "hello"
+        assert tentative == "there everyone now"
+        # stable_chars stays a valid prefix index into the published text.
+        assert latest.startswith(committed)
+        assert 0 <= len(committed) <= len(latest)
 
     def test_whitespace_normalization(self):
         policy = LocalAgreementPolicy()
@@ -68,28 +76,59 @@ class TestLocalAgreementPolicy:
         committed, _ = policy.update("hello world again")
         assert committed == "hello world"
 
-    def test_committed_surface_comes_from_latest_hypothesis(self):
+    def test_committed_surface_rerenders_agreed_tokens_from_latest(self):
+        # When the later hypothesis AGREES on the tokens (only case/punctuation
+        # differ), re-rendering the committed surface from the latest text is
+        # safe: the settled meaning is unchanged. This is the benign twin of
+        # the C2-01 contradiction case above.
         policy = LocalAgreementPolicy()
         policy.update("hello world")
-        committed, _ = policy.update("Hello, world again")
-        # Same tokens after normalization; surface form is the latest text
+        latest = "Hello, world again"
+        committed, _ = policy.update(latest)
         assert committed == "Hello, world"
+        # Committed region is a real prefix of the published text (valid index)
+        # and preserves the earlier commit's meaning after normalization.
+        assert latest.startswith(committed)
+        assert committed.lower().replace(",", "") == "hello world"
 
-    def test_monotonicity_committed_never_shrinks(self):
+    def test_commit_holds_while_consistent_then_rolls_back_on_change(self):
         policy = LocalAgreementPolicy()
         policy.update("a b c d")
         committed, _ = policy.update("a b c d")
         assert committed == "a b c d"
 
-        # Shorter hypothesis cannot shrink the committed count; the visible
-        # committed text is clamped to the available tokens.
+        # Shorter hypothesis drops the committed tail: the committed prefix
+        # clamps to the tokens the latest hypothesis still provides.
         committed, tentative = policy.update("a b")
         assert committed == "a b"
         assert tentative == ""
 
-        # Once the hypothesis grows again, the original commit count holds.
+        # Grow back with a DIFFERENT tail: the earlier "c d" commit must not
+        # resurrect as "x y" (TASK-451 C2-01 — that is a silent substitution).
+        # "x y" has been seen in only one hypothesis, so LocalAgreement-2 keeps
+        # them tentative; the settled region stays "a b".
         committed, _ = policy.update("a b x y z")
-        assert committed == "a b x y"
+        assert committed == "a b"
+
+    def test_negation_revision_never_commits_inverted_meaning(self):
+        # TASK-451 C2-01 (clinical): a settled "no known" prefix must never
+        # flip to "known" in the committed region when a later partial drops
+        # the negation. The settled region carries clinical meaning.
+        policy = LocalAgreementPolicy()
+        policy.update("patient has no known")
+        committed, _ = policy.update("patient has no known allergies")
+        assert committed == "patient has no known"
+
+        # Later partial drops "no" — the settled prefix must NOT present
+        # "known allergies" as stable; it rolls back to the last agreed token.
+        latest = "patient has known allergies now"
+        committed, tentative = policy.update(latest)
+        assert "known allergies" not in committed
+        assert committed == "patient has"
+        assert tentative == "known allergies now"
+        # stable_chars = len(committed) stays a valid prefix index into text.
+        assert latest.startswith(committed)
+        assert 0 <= len(committed) <= len(latest)
 
     def test_reset_clears_state(self):
         policy = LocalAgreementPolicy()

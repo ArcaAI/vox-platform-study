@@ -822,13 +822,19 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       { text },
       { timeout: 30000, signal },
     );
-    const raw = (response.data?.entities ?? []) as Array<{ type?: string; value?: string; confidence?: number; start?: number; end?: number }>;
+    // Canonical NLP wire shape (apps/nlp schemas/common.py Entity): text / entity_type / position.{start,end}.
+    const raw = (response.data?.entities ?? []) as Array<{
+      entity_type?: string;
+      text?: string;
+      confidence?: number;
+      position?: { start?: number; end?: number };
+    }>;
     return raw.map((e) => ({
-      text: e.value ?? '',
-      type: e.type ?? 'UNKNOWN',
+      text: e.text ?? '',
+      type: e.entity_type ?? 'UNKNOWN',
       confidence: e.confidence,
-      start: e.start,
-      end: e.end,
+      start: e.position?.start,
+      end: e.position?.end,
     }));
   }
 

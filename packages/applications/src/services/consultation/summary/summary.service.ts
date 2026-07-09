@@ -37,6 +37,7 @@ import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
+import { namedEntityPropsFromNlp, type NlpNamedEntity } from '../shared/namedEntityFromNlp';
 
 @Injectable()
 export class SummaryService extends BaseService implements ISummaryService {
@@ -731,15 +732,7 @@ export class SummaryService extends BaseService implements ISummaryService {
 
     for (const entity of entities) {
       try {
-        const namedEntity = NamedEntityFactory.CreateNamedEntity({
-          tenantId,
-          contextItemId,
-          text: (entity.value as string) ?? (entity.text as string),
-          className: (entity.type as string) ?? (entity.className as string),
-          confidence: entity.confidence as number | undefined,
-          startOffset: (entity.start as number) ?? (entity.startOffset as number),
-          endOffset: (entity.end as number) ?? (entity.endOffset as number),
-        });
+        const namedEntity = NamedEntityFactory.CreateNamedEntity(namedEntityPropsFromNlp(entity as NlpNamedEntity, { tenantId, contextItemId }));
 
         await this.encryptBestEffort('NamedEntity', () =>
           this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!),
