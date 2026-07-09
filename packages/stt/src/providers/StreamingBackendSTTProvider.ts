@@ -81,8 +81,12 @@ export interface StreamingWsClientLike {
   connect(url: string): Promise<void>;
   /** Reports the most recent connection state. */
   isConnected(): boolean;
-  /** Send a binary PCM frame (Int16 LE, mono). Accepts a typed-array view. */
-  sendAudioFrame(data: ArrayBuffer | ArrayBufferView): boolean | void;
+  /**
+   * Send a binary PCM frame (Int16 LE, mono). Accepts a typed-array view.
+   * Returns `false` when the client dropped the frame at its bufferedAmount
+   * watermark (TASK-298 D-15 backpressure), `true` when it was sent.
+   */
+  sendAudioFrame(data: ArrayBuffer | ArrayBufferView): boolean;
   /** Tell the server we have finished streaming audio for this turn. */
   sendStop(): void;
   /** Close the WebSocket gracefully. */
@@ -133,6 +137,12 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
   private session: StreamingSessionLike;
   private wsClient: StreamingWsClientLike;
   private pipelineId: string | null = null;
+  /**
+   * C6-01 — frames the ws client dropped at its bufferedAmount watermark since
+   * the last session start. That PCM never reached the durable transcript, so
+   * surfacing the count makes the otherwise-silent loss observable to callers.
+   */
+  private droppedFrameCount = 0;
 
   constructor(deps: { sessionManager: StreamingSessionLike; wsClient: StreamingWsClientLike }) {
     super();
@@ -165,6 +175,7 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
 
     this.config = streamingConfig;
     this.pipelineId = streamingConfig.pipelineId;
+    this.droppedFrameCount = 0;
 
     await this.session.createSession({
       pipelineId: streamingConfig.pipelineId,
@@ -213,7 +224,12 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     this.totalAudioProcessed += resampled.length / 16000;
     // TASK-351 P0-5 — forward the view directly; `WebSocket.send` accepts
     // typed arrays natively, so the previous ArrayBuffer.slice copy is gone.
-    this.wsClient.sendAudioFrame(int16);
+    // C6-01 — honor the backpressure return: a dropped frame is real audio lost
+    // from the durable transcript, so count it instead of silently discarding it.
+    const sent = this.wsClient.sendAudioFrame(int16);
+    if (sent === false) {
+      this.droppedFrameCount++;
+    }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -247,6 +263,15 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
   /** Visible for diagnostics — which pipeline id we're streaming against. */
   getPipelineId(): string | null {
     return this.pipelineId;
+  }
+
+  /**
+   * C6-01 — count of frames dropped at the client's bufferedAmount watermark
+   * since the last session start. Non-zero means outbound audio was lost from
+   * the durable transcript; callers should surface it as a degraded signal.
+   */
+  getDroppedFrameCount(): number {
+    return this.droppedFrameCount;
   }
 
   private normalizeTranscript(payload: StreamingTranscriptPayload): TranscriptionResult {

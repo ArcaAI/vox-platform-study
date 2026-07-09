@@ -21,6 +21,8 @@ const { FakeSttWsClient, capture } = vi.hoisted(() => {
         connectImpl: () => Promise<void> = async () => {};
         disconnected = false;
         stopSent = false;
+        /** When true, sendAudioFrame drops the frame like the real client's watermark. */
+        dropFrames = false;
         sentFrames: Array<ArrayBuffer | ArrayBufferView> = [];
         handlers: Record<string, Handler> = {};
         reconnect: { enabled?: boolean; refreshTicket?: () => Promise<string> } | undefined;
@@ -48,6 +50,12 @@ const { FakeSttWsClient, capture } = vi.hoisted(() => {
         }
 
         sendAudioFrame(data: ArrayBuffer | ArrayBufferView): boolean {
+            // Mirrors SttV2WebSocketClient: above the bufferedAmount watermark the
+            // frame is dropped and a backpressure event fires (TASK-298 D-15).
+            if (this.dropFrames) {
+                this.handlers.backpressureDrop?.('buffered_amount_high');
+                return false;
+            }
             this.sentFrames.push(data);
             return true;
         }
@@ -73,6 +81,9 @@ const { FakeSttWsClient, capture } = vi.hoisted(() => {
         }
         onReconnectFailed(cb: Handler): void {
             this.handlers.reconnectFailed = cb;
+        }
+        onBackpressureDrop(cb: Handler): void {
+            this.handlers.backpressureDrop = cb;
         }
     }
 
@@ -339,5 +350,39 @@ describe('useLiveSttSession', () => {
         expect(hook.result.current.error).toMatch(/expired or unauthorized/i);
 
         hook.unmount();
+    });
+
+    it('latches a session-sticky audio-loss signal that survives reconnect; per-connection count resets (C6-01)', async () => {
+        const { hook } = await startedHook();
+        const ws = FakeSttWsClient.instances[0];
+
+        // Below the watermark: healthy, nothing latched.
+        expect(hook.result.current.audioLostThisSession).toBe(false);
+        expect(hook.result.current.droppedFrameCount).toBe(0);
+
+        // Client crosses the 1 MiB bufferedAmount watermark and starts dropping
+        // outbound audio — that PCM never reaches the durable transcript.
+        ws.dropFrames = true;
+        act(() => capture.onFrame?.(new Float32Array(1280)));
+        act(() => capture.onFrame?.(new Float32Array(1280)));
+
+        expect(hook.result.current.audioLostThisSession).toBe(true);
+        expect(hook.result.current.droppedFrameCount).toBe(2);
+        // The dropped frames never rode the socket.
+        expect(ws.sentFrames).toHaveLength(0);
+
+        // A reconnect gives a fresh (empty) send buffer, so the per-connection
+        // count resets — but a climbing bufferedAmount usually PRECEDES the
+        // disconnect, and the transcript is permanently missing those frames, so
+        // the sticky loss signal MUST survive the reconnect (patient safety).
+        act(() => ws.handlers.reconnect?.(1));
+        expect(hook.result.current.droppedFrameCount).toBe(0);
+        expect(hook.result.current.audioLostThisSession).toBe(true);
+
+        // Ending the session is the only thing that clears the sticky signal.
+        await act(async () => {
+            await hook.result.current.stop();
+        });
+        expect(hook.result.current.audioLostThisSession).toBe(false);
     });
 });

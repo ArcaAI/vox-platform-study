@@ -73,6 +73,8 @@ interface SttStreamClient {
     onDisconnect(cb: () => void): void;
     onReconnect(cb: (attempt: number) => void): void;
     onReconnectFailed(cb: () => void): void;
+    /** Optional in this structural view so partial test fakes need not stub it; the real client always implements it. */
+    onBackpressureDrop?(cb: (reason: 'queue_full' | 'buffered_amount_high') => void): void;
 }
 
 export interface StartLiveSttOptions {
@@ -98,6 +100,15 @@ export interface UseLiveSttSessionResult {
     /** 0-100 input level for the meter. */
     level: number;
     reconnectAttempt: number;
+    /** Frames the client dropped at its backpressure watermark on the CURRENT connection (resets on reconnect, mirroring the client). */
+    droppedFrameCount: number;
+    /**
+     * Session-sticky latch: true once ANY outbound audio has been dropped this
+     * session. A climbing bufferedAmount usually precedes the disconnect that
+     * triggers a reconnect, so this MUST survive reconnects — the durable
+     * transcript stays permanently incomplete. Cleared only on start/stop (C6-01).
+     */
+    audioLostThisSession: boolean;
     start: (options: StartLiveSttOptions) => Promise<void>;
     stop: () => Promise<void>;
 }
@@ -115,6 +126,8 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
     const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
     const [level, setLevel] = useState(0);
     const [reconnectAttempt, setReconnectAttempt] = useState(0);
+    const [droppedFrameCount, setDroppedFrameCount] = useState(0);
+    const [audioLostThisSession, setAudioLostThisSession] = useState(false);
 
     const statusRef = useRef<LiveSttStatus>('idle');
     useEffect(() => {
@@ -198,6 +211,8 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
             setLastSeq(null);
             setLastLatencyMs(null);
             setReconnectAttempt(0);
+            setDroppedFrameCount(0);
+            setAudioLostThisSession(false);
             rowIdRef.current = 0;
 
             // 1. Microphone first — a denied prompt must not burn a session
@@ -288,11 +303,23 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
             });
             client.onReconnect((attempt) => {
                 setReconnectAttempt(attempt);
+                // Fresh (empty) send buffer → the per-connection count resets, but
+                // audioLostThisSession deliberately does NOT: the frames dropped
+                // before the disconnect are gone from the transcript for good.
+                setDroppedFrameCount(0);
                 setStatus('reconnecting');
             });
             client.onReconnectFailed(() => {
                 setError(GENERIC_AUTH_COPY);
                 setStatus('error');
+            });
+            // C6-01 — the client silently drops outbound audio above its 1 MiB
+            // bufferedAmount watermark. Latch a session-sticky signal so the
+            // clinician sees the transcript is permanently incomplete, and count
+            // per-connection drops for the live indicator.
+            client.onBackpressureDrop?.(() => {
+                setDroppedFrameCount((count) => count + 1);
+                setAudioLostThisSession(true);
             });
 
             const wsUrl = buildStreamWsUrl(publicEnv.apiHost, created.wsUrl || '/ws/stt-v2/stream', {
@@ -373,6 +400,8 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
 
         setSession(null);
         setReconnectAttempt(0);
+        setDroppedFrameCount(0);
+        setAudioLostThisSession(false);
         // Transcript history stays on screen for review after the session ends.
         setStatus('idle');
     }, [releaseAudio]);
@@ -390,6 +419,8 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
         lastLatencyMs,
         level,
         reconnectAttempt,
+        droppedFrameCount,
+        audioLostThisSession,
         start,
         stop,
     };
