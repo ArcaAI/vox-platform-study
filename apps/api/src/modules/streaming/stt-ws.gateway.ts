@@ -251,6 +251,32 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       return;
     }
 
+    // TASK-450 C4-01 — the scope string above only proves the ticket was
+    // minted FOR this sessionId, not that the minting tenant OWNS the
+    // session. Verify the ticket's tenant against the session's owning
+    // tenant (the gateway-side binding written at session create), mirroring
+    // the DELETE route's `assertStreamSessionOwnership`. Missing binding,
+    // mismatch, and lookup failure all reject fail-closed with the same
+    // generic close — no enumeration signal, and no tenant ids in the log.
+    let boundTenant: string | null = null;
+    try {
+      boundTenant = await this.sessionBinding.lookup(sessionId);
+    } catch (err) {
+      this.logger.warn({
+        message: 'WS handshake — session tenant binding lookup failed (fail-closed)',
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    if (boundTenant === null || boundTenant !== stored.tenantId) {
+      this.logger.warn({
+        message: 'WS handshake rejected — session tenant binding missing or mismatched',
+        sessionId,
+      });
+      client.close(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
+      return;
+    }
+
     // TASK-351 P0-2 (C5) — read the negotiated sampleRate bound at session
     // creation. Best-effort: a missing/corrupt record or a Redis blip falls
     // back to the historical 16000 and never rejects the handshake.
