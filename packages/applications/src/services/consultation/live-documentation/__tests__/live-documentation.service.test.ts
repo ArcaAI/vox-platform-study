@@ -51,19 +51,25 @@ interface BuildDepsOpts {
   redisSubscriber?: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   contextItemRepository?: any;
+  // Shared cache mock — pass the SAME instance to two services to exercise the
+  // cross-instance owner lock (C5-06).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  cacheService?: any;
   // TASK-356 D-7 — HarnessPolicy resolver override (defaults to a passing stub).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   harnessPolicyService?: any;
 }
 
 function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
-  const cacheService = {
+  const cacheService = opts.cacheService ?? {
     get: vi.fn().mockResolvedValue(null),
     set: vi.fn().mockResolvedValue(undefined),
     setex: vi.fn().mockResolvedValue(undefined),
     publish: vi.fn().mockResolvedValue(undefined),
     del: vi.fn().mockResolvedValue(undefined),
-    eval: vi.fn().mockResolvedValue('OK'),
+    // Default: acquire succeeds. Anything other than an explicit `0` reads as
+    // "acquired" so existing single-instance tests keep starting their watchers.
+    eval: vi.fn().mockResolvedValue(1),
     sadd: vi.fn().mockResolvedValue(1),
     srem: vi.fn().mockResolvedValue(1),
     smembers: vi.fn().mockResolvedValue([]),
@@ -81,6 +87,9 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
     create: vi.fn().mockResolvedValue({ id: 'ctx-pre-1' }),
     update: vi.fn().mockResolvedValue({ id: 'ctx-pre-1' }),
     findTranscripts: vi.fn().mockResolvedValue([]),
+    // Deterministic durable-snapshot dedup hooks (C5-06 / I-1) — default: no rows.
+    findLatestPreSummary: vi.fn().mockResolvedValue(null),
+    findPreSummaries: vi.fn().mockResolvedValue([]),
   };
   const config = opts.config ?? {};
   const configService = { get: vi.fn().mockImplementation((key: string) => config[key]) };
@@ -468,6 +477,81 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
+  // C5-04: long-transcript truncation must not permanently drop the head.
+  // When the un-flushed delta exceeds MAX_DELTA_CHARS the OLD code kept the
+  // TAIL (`slice(-MAX)`) and then advanced the cursor to the full length, so
+  // the early clinical content (chief complaint / allergies stated first) was
+  // dropped from the prompt AND never re-sent. The fix keeps the HEAD and
+  // carries the overflow forward (cursor advances only over what was sent).
+  // ------------------------------------------------------------------
+  describe('long-transcript truncation carry-forward (C5-04)', () => {
+    const HEAD_MARKER = 'CHIEFCOMPLAINT allergy penicillin anaphylaxis';
+
+    /** An httpMock that records every SMR `/generate` prompt. */
+    function recordingHttpMock(prompts: string[]) {
+      return {
+        axiosRef: {
+          post: vi.fn().mockImplementation((url: string, body: { prompt?: string }) => {
+            if (url.includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
+            if (url.includes('/generate')) {
+              prompts.push(String(body?.prompt ?? ''));
+              return Promise.resolve({ data: { summary: 'Running SOAP note.' } });
+            }
+            return Promise.resolve({ data: {} });
+          }),
+        },
+      };
+    }
+
+    /** Push the head marker + enough filler to drive the joined delta past MAX_DELTA_CHARS (12000). */
+    function ingestOversizedBacklog(service: LiveDocumentationService) {
+      service.ingestSegment(CID, { text: HEAD_MARKER, isFinal: true, segmentId: 'head' });
+      for (let i = 0; i < 320; i++) {
+        service.ingestSegment(CID, { text: `filler segment number ${i} describing ongoing symptoms in detail`, isFinal: true, segmentId: `f${i}` });
+      }
+    }
+
+    it('keeps early clinical content across flushes when the delta exceeds MAX_DELTA_CHARS (no permanent head loss)', async () => {
+      const prompts: string[] = [];
+      // High segment threshold so ingest never auto-flushes — the test controls flush timing.
+      const { service } = buildDeps(recordingHttpMock(prompts), {
+        config: { LIVE_DOC_MIN_INTERVAL_MS: '0', LIVE_DOC_SEGMENT_THRESHOLD: '100000' },
+      });
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      ingestOversizedBacklog(service);
+      await service.flush(CID); // first flush — backlog > 12k, must truncate
+
+      // Realistic continuous stream: new content keeps arriving, so a later flush
+      // has a non-empty delta and never falls back to re-sending the whole transcript.
+      service.ingestSegment(CID, { text: 'TAILMARKER new symptom just now', isFinal: true, segmentId: 'tail' });
+      await service.flush(CID); // second flush — incremental
+
+      // The early clinical content must have reached SMR in SOME flush (kept as the
+      // head + carried forward), not silently dropped forever.
+      expect(prompts.some((p) => p.includes(HEAD_MARKER))).toBe(true);
+    });
+
+    it('logs a PHI-safe truncation counter (sizes/counts only, no transcript text)', async () => {
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn');
+      const prompts: string[] = [];
+      const { service } = buildDeps(recordingHttpMock(prompts), {
+        config: { LIVE_DOC_MIN_INTERVAL_MS: '0', LIVE_DOC_SEGMENT_THRESHOLD: '100000' },
+      });
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      ingestOversizedBacklog(service);
+      await service.flush(CID);
+
+      const truncWarn = warnSpy.mock.calls.find((c) => String((c[0] as { message?: string })?.message ?? '').toLowerCase().includes('truncat'));
+      expect(truncWarn).toBeDefined();
+      // PHI-safe: the truncation log carries counts/sizes only, never transcript text.
+      expect(JSON.stringify(truncWarn![0])).not.toContain(HEAD_MARKER);
+      expect(JSON.stringify(truncWarn![0])).not.toContain('filler segment');
+    });
+  });
+
+  // ------------------------------------------------------------------
   // P0-C: deterministic json_schema SOAP parse in the flush path
   // ------------------------------------------------------------------
   describe('deterministic SOAP parse (P0-C)', () => {
@@ -500,7 +584,7 @@ describe('LiveDocumentationService', () => {
   // P1-A: resilient subset — cross-instance stop + control teardown
   // ------------------------------------------------------------------
   describe('cross-instance resilience (P1-A)', () => {
-    it('publishes a terminal closed event, frees the lock, and signals teardown even with no local session', async () => {
+    it('publishes a terminal closed event, attempts a FENCED lock release, and signals teardown even with no local session', async () => {
       const { service, cacheService } = buildDeps();
       const result = await service.stop('other-cid');
 
@@ -510,8 +594,15 @@ describe('LiveDocumentationService', () => {
       expect(publishes.some(([ch, p]: [string, { closed?: boolean }]) => ch === 'consultation:live-summary:other-cid' && p.closed === true)).toBe(true);
       // stop signal on the control channel (so an owner on another instance tears down)
       expect(publishes.some(([ch, p]: [string, { type?: string }]) => ch === 'consultation:live-summary:other-cid:control' && p.type === 'stop')).toBe(true);
-      // owner lock released
-      expect(cacheService.del).toHaveBeenCalledWith('consultation:live-summary:other-cid:lock');
+      // Owner lock release is FENCED (C5-06): a non-owner never blindly `del`s the
+      // lock — it runs the compare-and-delete Lua so only the real owner's lock is freed.
+      expect(cacheService.eval).toHaveBeenCalledWith(
+        expect.stringContaining('live-doc:lock:release'),
+        1,
+        'consultation:live-summary:other-cid:lock',
+        expect.any(String),
+      );
+      expect(cacheService.del).not.toHaveBeenCalledWith('consultation:live-summary:other-cid:lock');
     });
 
     it('tears down the local session when a cross-instance stop signal arrives on the control channel', async () => {
@@ -534,6 +625,233 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
+  // C5-06: single-owner lock must be a real atomic acquire (SET NX), fenced on
+  // release/renew, and the durable snapshot must dedup deterministically — so a
+  // second instance can neither run a duplicate watcher (duplicate SMR spend)
+  // nor write a second PRE_SUMMARY row.
+  // ------------------------------------------------------------------
+  describe('single-owner lock: mutual exclusion + fencing + dedup (C5-06)', () => {
+    /** An in-memory cache whose `eval` implements the atomic CAS lock scripts. Share one across instances. */
+    function makeSharedCacheMock() {
+      const store = new Map<string, string>();
+      return {
+        store,
+        get: vi.fn().mockImplementation((k: string) => Promise.resolve(store.get(k) ?? null)),
+        set: vi.fn().mockImplementation((k: string, v: string) => {
+          store.set(k, v);
+          return Promise.resolve(undefined);
+        }),
+        setex: vi.fn().mockImplementation((k: string, _ttl: number, v: string) => {
+          store.set(k, v);
+          return Promise.resolve(undefined);
+        }),
+        publish: vi.fn().mockResolvedValue(undefined),
+        del: vi.fn().mockImplementation((k: string) => {
+          store.delete(k);
+          return Promise.resolve(undefined);
+        }),
+        sadd: vi.fn().mockResolvedValue(1),
+        srem: vi.fn().mockResolvedValue(1),
+        smembers: vi.fn().mockResolvedValue([]),
+        expire: vi.fn().mockResolvedValue(true),
+        // Atomic lock primitives — dispatched by the script's tag comment. The
+        // store mutation happens synchronously at call time, so two racing
+        // acquires resolve deterministically (exactly one wins), exactly as
+        // Redis serialises the Lua body.
+        eval: vi.fn().mockImplementation((script: string, _numKeys: number, ...args: (string | number)[]) => {
+          const key = String(args[0]);
+          const val = String(args[1]);
+          if (script.includes('live-doc:lock:acquire')) {
+            const cur = store.get(key);
+            if (cur === undefined || cur === val) {
+              store.set(key, val);
+              return Promise.resolve(1);
+            }
+            return Promise.resolve(0);
+          }
+          if (script.includes('live-doc:lock:release')) {
+            if (store.get(key) === val) {
+              store.delete(key);
+              return Promise.resolve(1);
+            }
+            return Promise.resolve(0);
+          }
+          if (script.includes('live-doc:lock:renew')) {
+            return Promise.resolve(store.get(key) === val ? 1 : 0);
+          }
+          return Promise.resolve(null);
+        }),
+      };
+    }
+
+    /**
+     * A repo backed by an in-memory row list. `findLatestPreSummary` faithfully
+     * models the REAL (generated) ContextItemRepository contract — the newest
+     * PRE_SUMMARY of ANY subType, NOT subType-aware (this is the I-1 bug lever) —
+     * while `findPreSummaries` returns every row for the fixed subType-filtering
+     * dedup. Share one across instances.
+     */
+    function makeSharedRepo() {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows: any[] = [];
+      return {
+        rows,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        create: vi.fn().mockImplementation((entity: any) => {
+          rows.push(entity);
+          return Promise.resolve(entity);
+        }),
+        update: vi.fn().mockImplementation((_id: string, entity: unknown) => Promise.resolve(entity)),
+        findTranscripts: vi.fn().mockResolvedValue([]),
+        // Real contract: newest PRE_SUMMARY regardless of subType (insertion order
+        // models createdAt order). Subtype-blind — the lever the I-1 fix must survive.
+        findLatestPreSummary: vi.fn().mockImplementation(() => Promise.resolve(rows.length ? rows[rows.length - 1] : null)),
+        // All pre-summaries — the fixed dedup filters these by subType itself.
+        findPreSummaries: vi.fn().mockImplementation(() => Promise.resolve([...rows])),
+      };
+    }
+
+    it('acquires the owner lock with SET NX so a second instance bails out of start() (no duplicate SMR call)', async () => {
+      const sharedCache = makeSharedCacheMock();
+      const sharedRepo = makeSharedRepo();
+      const sharedHttp = buildHttpMock();
+      const config = { LIVE_DOC_MIN_INTERVAL_MS: '0' };
+      const a = buildDeps(sharedHttp, { cacheService: sharedCache, contextItemRepository: sharedRepo, config });
+      const b = buildDeps(sharedHttp, { cacheService: sharedCache, contextItemRepository: sharedRepo, config });
+
+      a.service.start({ consultationId: CID, tenantId: TENANT });
+      b.service.start({ consultationId: CID, tenantId: TENANT });
+      // Let both fire-and-forget claimOwnership() coroutines settle.
+      await new Promise((r) => setTimeout(r, 20));
+
+      // Exactly one instance owns the session; the loser bailed out of start().
+      expect(a.service.isActive(CID)).toBe(true);
+      expect(b.service.isActive(CID)).toBe(false);
+
+      const generateCalls = () => sharedHttp.axiosRef.post.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/generate')).length;
+      a.service.ingestSegment(CID, { text: 'chest pain', isFinal: true, segmentId: 's1' });
+      b.service.ingestSegment(CID, { text: 'chest pain', isFinal: true, segmentId: 's1' }); // no-op — no session
+      await a.service.flush(CID);
+      await b.service.flush(CID); // null — no session, no SMR
+
+      // One consultation → exactly ONE SMR /generate call, not two.
+      expect(generateCalls()).toBe(1);
+    });
+
+    it('dedups by subType so a newer NON-live PRE_SUMMARY cannot spawn a duplicate LIVE_SOAP_SNAPSHOT (I-1)', async () => {
+      const sharedRepo = makeSharedRepo();
+      const config = { LIVE_DOC_MIN_INTERVAL_MS: '0' };
+      // SEPARATE caches → both instances run (lock defeated / a restart re-opens the
+      // consultation). The durable dedup must be the backstop.
+      const a = buildDeps(buildHttpMock(), { contextItemRepository: sharedRepo, config });
+      const b = buildDeps(buildHttpMock(), { contextItemRepository: sharedRepo, config });
+
+      // 1) Instance A persists the live snapshot row (T1).
+      a.service.start({ consultationId: CID, tenantId: TENANT, userId: 'doc-a' });
+      a.service.ingestSegment(CID, { text: 'chest pain', isFinal: true, segmentId: 's1' });
+      await a.service.stop(CID, { persistSnapshot: true });
+
+      // 2) A NON-live PRE_SUMMARY is minted afterwards (e.g. the pre-summary
+      //    processor / case-note summary) — newer than the live row, different subType.
+      sharedRepo.rows.push({ id: 'ctx-nonlive-presummary', metaData: { subType: 'CASE_NOTE_SUMMARY' } });
+
+      // 3) Instance B re-opens the consultation (fresh session, snapshotEntity === null)
+      //    and persists. A subType-BLIND finder returns the T2 non-live row and creates
+      //    a SECOND live snapshot; the subType-aware dedup must reuse A's row instead.
+      b.service.start({ consultationId: CID, tenantId: TENANT, userId: 'doc-b' });
+      b.service.ingestSegment(CID, { text: 'more findings', isFinal: true, segmentId: 's2' });
+      await b.service.stop(CID, { persistSnapshot: true });
+
+      // Exactly ONE LIVE_SOAP_SNAPSHOT row exists across the whole consultation.
+      const liveSnapshots = sharedRepo.rows.filter((r) => (r.metaData as { subType?: string })?.subType === 'LIVE_SOAP_SNAPSHOT');
+      expect(liveSnapshots).toHaveLength(1);
+      // Dedup went through the subType-aware finder, not the subType-blind one.
+      expect(sharedRepo.findPreSummaries).toHaveBeenCalled();
+    });
+
+    it('periodically renews the owner lock with a fenced compare-and-expire while the session is live', async () => {
+      vi.useFakeTimers();
+      const sharedCache = makeSharedCacheMock();
+      const { service } = buildDeps(buildHttpMock(), { cacheService: sharedCache, config: { LIVE_DOC_MIN_INTERVAL_MS: '0' } });
+      service.start({ consultationId: CID, tenantId: TENANT });
+      // Let claimOwnership acquire + schedule the renewal interval.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(service.isActive(CID)).toBe(true);
+
+      sharedCache.eval.mockClear();
+      // Advance one renewal interval (LOCK_TTL / 2 = 1800s).
+      await vi.advanceTimersByTimeAsync(1_800_000);
+
+      const renewCall = sharedCache.eval.mock.calls.find((c: unknown[]) => String(c[0]).includes('live-doc:lock:renew'));
+      expect(renewCall).toBeDefined();
+      expect(renewCall![2]).toBe('consultation:live-summary:consultation-001:lock');
+
+      await service.stop(CID);
+    });
+
+    it('stands down the watcher when a renewal finds the owner lock was lost (M-2)', async () => {
+      vi.useFakeTimers();
+      const sharedCache = makeSharedCacheMock();
+      const { service } = buildDeps(buildHttpMock(), { cacheService: sharedCache, config: { LIVE_DOC_MIN_INTERVAL_MS: '0' } });
+      service.start({ consultationId: CID, tenantId: TENANT });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(service.isActive(CID)).toBe(true);
+
+      // Simulate a foreign takeover: overwrite the lock value so our fenced renew returns 0.
+      sharedCache.store.set('consultation:live-summary:consultation-001:lock', 'some-other-instance-id');
+
+      // One renewal interval → renew returns 0 (lost) → the watcher must stand down.
+      await vi.advanceTimersByTimeAsync(1_800_000);
+      expect(service.isActive(CID)).toBe(false);
+      // Fenced: we did NOT delete the new owner's lock.
+      expect(sharedCache.store.get('consultation:live-summary:consultation-001:lock')).toBe('some-other-instance-id');
+
+      vi.useRealTimers();
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // I-2: stop() must drain a > MAX_DELTA_CHARS backlog, not single-flush it —
+  // otherwise the final durable snapshot keeps only the head 12k and drops the
+  // most-recent transcript (assessment / plan / closing).
+  // ------------------------------------------------------------------
+  describe('stop() drains the full backlog (I-2)', () => {
+    it('keeps the most-recent transcript in the final snapshot when the backlog exceeds MAX_DELTA_CHARS', async () => {
+      const prompts: string[] = [];
+      const httpMock = {
+        axiosRef: {
+          post: vi.fn().mockImplementation((url: string, body: { prompt?: string }) => {
+            if (url.includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
+            if (url.includes('/generate')) {
+              prompts.push(String(body?.prompt ?? ''));
+              return Promise.resolve({ data: { summary: 'Running SOAP note.' } });
+            }
+            return Promise.resolve({ data: {} });
+          }),
+        },
+      };
+      // High segment threshold so ingest never auto-flushes — the whole backlog is
+      // un-flushed at stop().
+      const { service } = buildDeps(httpMock, { config: { LIVE_DOC_MIN_INTERVAL_MS: '0', LIVE_DOC_SEGMENT_THRESHOLD: '100000' } });
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      service.ingestSegment(CID, { text: 'HEADMARKER chief complaint', isFinal: true, segmentId: 'h' });
+      for (let i = 0; i < 320; i++) {
+        service.ingestSegment(CID, { text: `filler segment number ${i} describing ongoing symptoms in detail`, isFinal: true, segmentId: `f${i}` });
+      }
+      service.ingestSegment(CID, { text: 'TAILMARKER assessment and plan', isFinal: true, segmentId: 't' });
+
+      // No manual flush — stop() alone must drain the > 12k backlog.
+      await service.stop(CID, { persistSnapshot: true });
+
+      // The most-recent content (the tail) reached SMR — not dropped by a single
+      // head-only flush. (The head is retained by C5-04; the tail is the I-2 case.)
+      expect(prompts.some((p) => p.includes('TAILMARKER assessment and plan'))).toBe(true);
+      expect(prompts.some((p) => p.includes('HEADMARKER chief complaint'))).toBe(true);
+    });
+  });
+
+  // ------------------------------------------------------------------
   // P1-C: throttled durable snapshot (single upserted ContextItem)
   // ------------------------------------------------------------------
   describe('durable snapshot (P1-C)', () => {
@@ -547,6 +865,8 @@ describe('LiveDocumentationService', () => {
         }),
         update: vi.fn().mockImplementation((_id: string, entity: unknown) => Promise.resolve(entity)),
         findTranscripts: vi.fn().mockResolvedValue([]),
+        findLatestPreSummary: vi.fn().mockResolvedValue(null),
+        findPreSummaries: vi.fn().mockResolvedValue([]),
       };
       const { service } = buildDeps(buildHttpMock(), {
         config: { LIVE_DOC_MIN_INTERVAL_MS: '0', LIVE_DOC_DURABLE_SNAPSHOT_MS: '1000' },
