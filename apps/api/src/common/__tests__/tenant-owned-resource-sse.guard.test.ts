@@ -1,13 +1,19 @@
 /**
  * `TenantOwnedResourceSseGuard` unit tests — TASK-309 pre-stream check +
- * TASK-460 C4-03 mid-stream ownership re-check.
+ * TASK-460 C4-03 mid-stream RESOURCE-OWNERSHIP re-check.
  *
- * C4-03: a `CanActivate` guard admits an `@Sse()` stream exactly ONCE, so a
- * revocation / tenant switch after the `text/event-stream` opened used to go
- * unnoticed for the stream's whole lifetime (PHI on `live-summary`). The guard
- * must re-assert the SAME ownership check periodically and terminate the
- * response when it fails — the client's EventSource reconnect then faces the
- * pre-stream check again and gets its 404.
+ * C4-03: a `CanActivate` guard admits an `@Sse()` stream exactly ONCE, so the
+ * ownership assertion never ran again for the stream's whole lifetime (PHI on
+ * `live-summary`). The guard must re-run the SAME resource-ownership check
+ * periodically and terminate the response when it reports 404 — i.e. when the
+ * resource was soft-DELETED or re-tenanted mid-stream. (Identity-side
+ * revocation — JWT/session invalidation, user disable, role downgrade — is NOT
+ * detectable here: the CLS caller context is frozen for the stream's async
+ * lifetime, and a session-revocation signal is an explicit ticket non-goal.)
+ * Only the interceptor's own `NotFoundException` terminates: a TRANSIENT
+ * re-check failure (DB timeout, pool exhaustion) must never cut a valid PHI
+ * stream. A terminated client's EventSource reconnect faces the pre-stream
+ * check again and gets its 404.
  */
 import { NotFoundException } from '@nestjs/common';
 import { SSE_METADATA } from '@nestjs/common/constants';
@@ -117,14 +123,15 @@ describe('TenantOwnedResourceSseGuard — mid-stream ownership re-check (TASK-46
     expect(res.end).not.toHaveBeenCalled(); // valid stream is never killed
   });
 
-  it('STOPS the stream when a re-check fails after a revocation / tenant switch', async () => {
+  it('STOPS the stream when the resource is soft-deleted / re-tenanted mid-stream (ownership 404)', async () => {
     const interceptor = createInterceptor();
     const guard = new TenantOwnedResourceSseGuard(createReflector({ sse: true, owned: true }) as never, interceptor as never);
     const res = createResponse();
 
     await guard.canActivate(createContext(res)); // admitted while access was valid
 
-    // Simulate revocation / tenant switch: the SAME assertion now 404s.
+    // Simulate the resource being soft-deleted / re-tenanted: the SAME
+    // assertion now reports its ownership-failure 404.
     interceptor.assertAccess.mockRejectedValue(new NotFoundException('Resource not found'));
 
     await vi.advanceTimersByTimeAsync(SSE_OWNERSHIP_RECHECK_INTERVAL_MS);
@@ -134,6 +141,35 @@ describe('TenantOwnedResourceSseGuard — mid-stream ownership re-check (TASK-46
     const callsAfterTermination = interceptor.assertAccess.mock.calls.length;
     await vi.advanceTimersByTimeAsync(SSE_OWNERSHIP_RECHECK_INTERVAL_MS * 3);
     expect(interceptor.assertAccess.mock.calls.length).toBe(callsAfterTermination);
+  });
+
+  // TASK-460 review I-2 — a bare catch used to treat TRANSIENT infrastructure
+  // failures (Prisma pool exhaustion, DB timeout, deadlock, Redis blip) exactly
+  // like an ownership 404 and cut valid multi-hour PHI streams. Only the
+  // interceptor's own NotFoundException may terminate; anything else logs and
+  // lets the next interval re-check.
+  it('does NOT end the stream on a transient re-check error — keeps re-checking', async () => {
+    const interceptor = createInterceptor();
+    const guard = new TenantOwnedResourceSseGuard(createReflector({ sse: true, owned: true }) as never, interceptor as never);
+    const res = createResponse();
+
+    await guard.canActivate(createContext(res));
+
+    // Transient infrastructure failure — NOT an ownership 404.
+    interceptor.assertAccess.mockRejectedValueOnce(new Error('Timed out fetching a new connection from the connection pool'));
+
+    await vi.advanceTimersByTimeAsync(SSE_OWNERSHIP_RECHECK_INTERVAL_MS);
+    expect(res.end).not.toHaveBeenCalled(); // stream survives the blip
+
+    // Loop still alive: the next tick re-checks (healthy again) …
+    await vi.advanceTimersByTimeAsync(SSE_OWNERSHIP_RECHECK_INTERVAL_MS);
+    expect(interceptor.assertAccess).toHaveBeenCalledTimes(3); // admission + 2 re-checks
+    expect(res.end).not.toHaveBeenCalled();
+
+    // … and a REAL ownership 404 afterwards still terminates.
+    interceptor.assertAccess.mockRejectedValue(new NotFoundException('Resource not found'));
+    await vi.advanceTimersByTimeAsync(SSE_OWNERSHIP_RECHECK_INTERVAL_MS);
+    expect(res.end).toHaveBeenCalledTimes(1);
   });
 
   it('clears the re-check loop when the client closes the stream', async () => {
