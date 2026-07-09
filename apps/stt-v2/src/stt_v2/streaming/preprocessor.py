@@ -34,6 +34,10 @@ _ENERGY_FLOOR = 1e-4
 _ENERGY_MULTIPLIER = 2.5
 _FALLBACK_NOISE_FLOOR_MAX = 0.015
 _NOISE_FLOOR_COOLDOWN_FRAMES = 15
+# TASK-451 C2-06: consecutive sub-threshold "dip" frames tolerated mid-onset
+# before the onset accumulator resets. A single dip (VAD jitter) must not
+# discard a real utterance; an ongoing gap still resets (rejects transients).
+_ONSET_HANGOVER_FRAMES = 1
 _DEFAULT_MAX_UTTERANCE_DURATION_MS = 25000
 _FORCE_EMIT_LOOKBACK_MS = 1500
 _FORCE_EMIT_OVERLAP_MS = 500
@@ -69,6 +73,7 @@ class _PreprocessorState:
     pcm_remainder: bytearray = field(default_factory=bytearray)
     in_speech: bool = False
     speech_onset_frames: int = 0
+    onset_gap: int = 0  # consecutive dip frames tolerated mid-onset (C2-06)
     silence_frames: int = 0
     noise_floor_cooldown: int = 0
     utterance_buffer: list[np.ndarray] = field(default_factory=list)
@@ -104,7 +109,7 @@ class StreamingPreprocessor:
         sample_rate: int = 16000,
         vad_service: Any = None,  # SileroVADService
         threshold: float = 0.6,
-        min_speech_duration_ms: int = 350,
+        min_speech_duration_ms: int = 250,  # C2-06: clinical default (Silero ref)
         min_silence_duration_ms: int = 700,
         target_sample_rate: int | None = None,
         normalize: bool = False,
@@ -296,6 +301,7 @@ class StreamingPreprocessor:
                 # Not in speech — track onset
                 if is_speech:
                     state.speech_onset_frames += 1
+                    state.onset_gap = 0  # fresh speech clears the dip budget
                     if state.speech_onset_frames >= self._min_speech_frames:
                         # Speech confirmed — start collecting
                         state.in_speech = True
@@ -328,7 +334,18 @@ class StreamingPreprocessor:
                         if len(state.pre_speech_ring) > self._pre_speech_frames:
                             state.pre_speech_ring.pop(0)
                 else:
-                    state.speech_onset_frames = 0
+                    # Sub-threshold frame. Tolerate a bounded run of dips
+                    # mid-onset so a jittery but real utterance still confirms
+                    # (C2-06); reset only once the gap exceeds the hangover
+                    # budget, which still rejects lone noise transients.
+                    if (
+                        state.speech_onset_frames > 0
+                        and state.onset_gap < _ONSET_HANGOVER_FRAMES
+                    ):
+                        state.onset_gap += 1
+                    else:
+                        state.speech_onset_frames = 0
+                        state.onset_gap = 0
 
                     # Maintain pre-speech ring buffer (only during non-speech)
                     state.pre_speech_ring.append(frame_f32.copy())
@@ -621,6 +638,7 @@ class StreamingPreprocessor:
         else:
             state.in_speech = False
             state.speech_onset_frames = 0
+            state.onset_gap = 0
         state.silence_frames = 0
         state.noise_floor_cooldown = _NOISE_FLOOR_COOLDOWN_FRAMES
         state.last_partial_emitted_at = 0.0
