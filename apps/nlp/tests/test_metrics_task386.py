@@ -42,7 +42,9 @@ def test_track_model_inference_bumps_then_restores_and_observes():
 async def test_token_classifier_process_observes_medical_ner_latency():
     classifier = TransformerTokenClassifier()
     # Stub out the HF pipeline so no model download/inference is needed.
-    classifier.pipeline = lambda text: []
+    # Accept **kwargs so process()'s aggregation_strategy= call hits the SUCCESS
+    # path (not the except branch) — TASK-452.
+    classifier.pipeline = lambda text, **kwargs: []
     classifier.is_initialized = True
 
     labels = {"service": "nlp", "model": "Medical-NER"}

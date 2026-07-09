@@ -36,13 +36,15 @@ async def test_process_forwards_aggregation_strategy_to_pipeline():
     classifier.pipeline = fake_pipeline
     classifier.is_initialized = True
 
+    # "max" != the configured default ("simple"), so this pins request-over-config
+    # precedence — not merely that *some* strategy reached the pipeline.
     await classifier.process(
-        TokenClassificationRequest(text="patient takes amlodipine", aggregation_strategy="simple")
+        TokenClassificationRequest(text="patient takes amlodipine", aggregation_strategy="max")
     )
 
     # Without a non-"none" strategy the pipeline emits ``##`` subword fragments
     # with raw BIO labels — the request's strategy MUST reach the pipeline call.
-    assert seen["kwargs"].get("aggregation_strategy") == "simple"
+    assert seen["kwargs"].get("aggregation_strategy") == "max"
 
 
 @pytest.mark.asyncio
