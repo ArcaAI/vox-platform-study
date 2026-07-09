@@ -102,6 +102,8 @@
         "SMR_SERVICE_URL_HTTP",
         "SMR_URL",
         "GUARDRAIL_URL",
+        "GUARDRAIL_SERVICE_TOKEN",
+        "NLP_SERVICE_TOKEN",
         "HARNESS_URL",
         "TEMPORAL_ADDRESS",
         "TEMPORAL_NAMESPACE",
