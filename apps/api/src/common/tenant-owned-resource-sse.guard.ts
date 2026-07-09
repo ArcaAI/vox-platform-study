@@ -16,14 +16,41 @@
  * its existing single enforcement point (the interceptor). It MUST run after
  * `UnifiedAuthGuard` (which populates the CLS `tenantId` the assertion reads);
  * registration order in `AppModule.guards` guarantees that.
+ *
+ * TASK-460 C4-03 — the pre-stream check alone admits the stream exactly ONCE:
+ * a `CanActivate` guard has no per-event re-evaluation, so once the
+ * `text/event-stream` opened, a later revocation / tenant switch went unnoticed
+ * for the stream's whole lifetime (PHI relays on `:id/live-summary/stream`).
+ * The guard therefore ALSO re-asserts the same ownership check periodically
+ * while the stream is open and ends the response when it fails — the client's
+ * EventSource reconnect then faces the pre-stream check again and gets a 404.
  */
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common';
 import { SSE_METADATA } from '@nestjs/common/constants';
 import { Reflector } from '@nestjs/core';
+import { TENANT_OWNED_RESOURCE_KEY, type TenantOwnedResourceOptions } from './tenant-owned-resource.decorator';
 import { TenantOwnedResourceInterceptor } from './tenant-owned-resource.interceptor';
+
+/**
+ * Re-check cadence for open SSE streams (TASK-460 C4-03). 30s bounds the
+ * stale-authorization window on long-lived PHI streams at one cheap indexed
+ * read per open stream per interval; the CLS request context propagates into
+ * the timer callback via AsyncLocalStorage, so the re-check sees the SAME
+ * caller tenant the stream was admitted with.
+ */
+export const SSE_OWNERSHIP_RECHECK_INTERVAL_MS = 30_000;
+
+/** Minimal response surface the re-check needs (express `Response` satisfies it). */
+interface SseResponseLike {
+  writableEnded?: boolean;
+  end?: () => void;
+  on?: (event: 'close', listener: () => void) => void;
+}
 
 @Injectable()
 export class TenantOwnedResourceSseGuard implements CanActivate {
+  private readonly logger = new Logger(TenantOwnedResourceSseGuard.name);
+
   constructor(
     private readonly reflector: Reflector,
     private readonly interceptor: TenantOwnedResourceInterceptor,
@@ -44,6 +71,54 @@ export class TenantOwnedResourceSseGuard implements CanActivate {
     // Throws NotFoundException (404) on a tenant mismatch; no-op when the
     // handler doesn't carry @TenantOwnedResource.
     await this.interceptor.assertAccess(context);
+
+    // TASK-460 C4-03 — keep re-asserting while the stream is open.
+    this.scheduleOwnershipRecheck(context);
     return true;
+  }
+
+  /**
+   * Periodically re-run the SAME `assertAccess` the stream was admitted with,
+   * ending the response the moment it fails (revocation / tenant switch /
+   * resource deletion). Only routes that actually carry `@TenantOwnedResource`
+   * schedule the loop — for anything else `assertAccess` is a no-op that could
+   * never fail, so there is nothing to re-check.
+   */
+  private scheduleOwnershipRecheck(context: ExecutionContext): void {
+    const opts = this.reflector.getAllAndOverride<TenantOwnedResourceOptions | undefined>(TENANT_OWNED_RESOURCE_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (!opts) {
+      return;
+    }
+
+    const response = context.switchToHttp().getResponse<SseResponseLike>();
+    const timer = setInterval(() => {
+      void this.recheckOwnership(context, response, timer);
+    }, SSE_OWNERSHIP_RECHECK_INTERVAL_MS);
+
+    // The stream's own teardown (client disconnect, server end) clears the loop.
+    response.on?.('close', () => clearInterval(timer));
+  }
+
+  private async recheckOwnership(context: ExecutionContext, response: SseResponseLike, timer: ReturnType<typeof setInterval>): Promise<void> {
+    if (response.writableEnded) {
+      clearInterval(timer);
+      return;
+    }
+    try {
+      await this.interceptor.assertAccess(context);
+    } catch {
+      clearInterval(timer);
+      const request = context.switchToHttp().getRequest<{ url?: string }>();
+      this.logger.warn({
+        message: 'SSE ownership re-check failed — terminating open stream',
+        path: request?.url,
+      });
+      if (!response.writableEnded) {
+        response.end?.();
+      }
+    }
   }
 }
