@@ -73,6 +73,8 @@ interface SttStreamClient {
     onDisconnect(cb: () => void): void;
     onReconnect(cb: (attempt: number) => void): void;
     onReconnectFailed(cb: () => void): void;
+    /** Optional in this structural view so partial test fakes need not stub it; the real client always implements it. */
+    onBackpressureDrop?(cb: (reason: 'queue_full' | 'buffered_amount_high') => void): void;
 }
 
 export interface StartLiveSttOptions {
@@ -98,6 +100,10 @@ export interface UseLiveSttSessionResult {
     /** 0-100 input level for the meter. */
     level: number;
     reconnectAttempt: number;
+    /** Frames the client dropped at its backpressure watermark since the session (or last reconnect) started. */
+    droppedFrameCount: number;
+    /** True once outbound audio has been dropped — the durable transcript is missing data (C6-01). */
+    connectionDegraded: boolean;
     start: (options: StartLiveSttOptions) => Promise<void>;
     stop: () => Promise<void>;
 }
@@ -115,6 +121,8 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
     const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
     const [level, setLevel] = useState(0);
     const [reconnectAttempt, setReconnectAttempt] = useState(0);
+    const [droppedFrameCount, setDroppedFrameCount] = useState(0);
+    const [connectionDegraded, setConnectionDegraded] = useState(false);
 
     const statusRef = useRef<LiveSttStatus>('idle');
     useEffect(() => {
@@ -198,6 +206,8 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
             setLastSeq(null);
             setLastLatencyMs(null);
             setReconnectAttempt(0);
+            setDroppedFrameCount(0);
+            setConnectionDegraded(false);
             rowIdRef.current = 0;
 
             // 1. Microphone first — a denied prompt must not burn a session
@@ -288,11 +298,21 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
             });
             client.onReconnect((attempt) => {
                 setReconnectAttempt(attempt);
+                // A fresh (empty) send buffer clears the backpressure degradation.
+                setDroppedFrameCount(0);
+                setConnectionDegraded(false);
                 setStatus('reconnecting');
             });
             client.onReconnectFailed(() => {
                 setError(GENERIC_AUTH_COPY);
                 setStatus('error');
+            });
+            // C6-01 — the client silently drops outbound audio above its 1 MiB
+            // bufferedAmount watermark. Surface it so the clinician sees the
+            // durable transcript is losing data, not just a cosmetic hiccup.
+            client.onBackpressureDrop?.(() => {
+                setDroppedFrameCount((count) => count + 1);
+                setConnectionDegraded(true);
             });
 
             const wsUrl = buildStreamWsUrl(publicEnv.apiHost, created.wsUrl || '/ws/stt-v2/stream', {
@@ -373,6 +393,8 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
 
         setSession(null);
         setReconnectAttempt(0);
+        setDroppedFrameCount(0);
+        setConnectionDegraded(false);
         // Transcript history stays on screen for review after the session ends.
         setStatus('idle');
     }, [releaseAudio]);
@@ -390,6 +412,8 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
         lastLatencyMs,
         level,
         reconnectAttempt,
+        droppedFrameCount,
+        connectionDegraded,
         start,
         stop,
     };
