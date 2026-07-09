@@ -21,6 +21,8 @@ const { FakeSttWsClient, capture } = vi.hoisted(() => {
         connectImpl: () => Promise<void> = async () => {};
         disconnected = false;
         stopSent = false;
+        /** When true, sendAudioFrame drops the frame like the real client's watermark. */
+        dropFrames = false;
         sentFrames: Array<ArrayBuffer | ArrayBufferView> = [];
         handlers: Record<string, Handler> = {};
         reconnect: { enabled?: boolean; refreshTicket?: () => Promise<string> } | undefined;
@@ -48,6 +50,12 @@ const { FakeSttWsClient, capture } = vi.hoisted(() => {
         }
 
         sendAudioFrame(data: ArrayBuffer | ArrayBufferView): boolean {
+            // Mirrors SttV2WebSocketClient: above the bufferedAmount watermark the
+            // frame is dropped and a backpressure event fires (TASK-298 D-15).
+            if (this.dropFrames) {
+                this.handlers.backpressureDrop?.('buffered_amount_high');
+                return false;
+            }
             this.sentFrames.push(data);
             return true;
         }
@@ -73,6 +81,9 @@ const { FakeSttWsClient, capture } = vi.hoisted(() => {
         }
         onReconnectFailed(cb: Handler): void {
             this.handlers.reconnectFailed = cb;
+        }
+        onBackpressureDrop(cb: Handler): void {
+            this.handlers.backpressureDrop = cb;
         }
     }
 
@@ -337,6 +348,34 @@ describe('useLiveSttSession', () => {
         act(() => ws.handlers.reconnectFailed?.());
         expect(hook.result.current.status).toBe('error');
         expect(hook.result.current.error).toMatch(/expired or unauthorized/i);
+
+        hook.unmount();
+    });
+
+    it('surfaces silent outbound-audio drops: degraded flag + dropped-frame count, reset on reconnect (C6-01)', async () => {
+        const { hook } = await startedHook();
+        const ws = FakeSttWsClient.instances[0];
+
+        // Below the watermark: connection is healthy, no data loss signalled.
+        expect(hook.result.current.connectionDegraded).toBe(false);
+        expect(hook.result.current.droppedFrameCount).toBe(0);
+
+        // Client crosses the 1 MiB bufferedAmount watermark and starts dropping
+        // outbound audio — that PCM never reaches the durable transcript.
+        ws.dropFrames = true;
+        act(() => capture.onFrame?.(new Float32Array(1280)));
+        act(() => capture.onFrame?.(new Float32Array(1280)));
+
+        expect(hook.result.current.connectionDegraded).toBe(true);
+        expect(hook.result.current.droppedFrameCount).toBe(2);
+        // The dropped frames never rode the socket.
+        expect(ws.sentFrames).toHaveLength(0);
+
+        // A reconnect re-establishes a fresh (empty) send buffer, so the degraded
+        // state and per-connection drop count reset.
+        act(() => ws.handlers.reconnect?.(1));
+        expect(hook.result.current.connectionDegraded).toBe(false);
+        expect(hook.result.current.droppedFrameCount).toBe(0);
 
         hook.unmount();
     });
