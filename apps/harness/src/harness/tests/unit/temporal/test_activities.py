@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
 from harness.sensors.base import NEREntity
@@ -19,15 +20,18 @@ from harness.sensors.inferential.granite_client import GraniteServiceError
 from harness.services.api_client import (
     AssembleResponse,
     DraftResponse,
+    EscalationRecordResponse,
+    FinalizeAssuranceResponse,
     PersistEntitiesResponse,
     RecordGateResponse,
 )
-from harness.services.smr_client import SmrGenerationResult
+from harness.services.smr_client import SmrGenerationResult, SmrServiceError
 from harness.temporal import activities
 from harness.temporal.models import (
     AssembleInput,
     EscalateInput,
     ExtractEntitiesInput,
+    FinalizeAssuranceInput,
     GenerateInput,
     PersistDraftInput,
     PersistEntitiesInput,
@@ -76,6 +80,18 @@ class _FakeApi:
     async def record_gate_decision(self, consultation_id: str, **kw: Any) -> RecordGateResponse:
         self.calls["record_gate_decision"] = {"consultation_id": consultation_id, **kw}
         return RecordGateResponse(recorded=True)
+
+    async def finalize_assurance(
+        self, consultation_id: str, **kw: Any
+    ) -> FinalizeAssuranceResponse:
+        self.calls["finalize_assurance"] = {"consultation_id": consultation_id, **kw}
+        return FinalizeAssuranceResponse(recorded=True, context_item_id="ctx-1")
+
+    async def record_escalation(
+        self, consultation_id: str, **kw: Any
+    ) -> EscalationRecordResponse:
+        self.calls["record_escalation"] = {"consultation_id": consultation_id, **kw}
+        return EscalationRecordResponse(recorded=True)
 
 
 class _StubJudge:
@@ -157,6 +173,35 @@ class TestGenerate:
         assert fake.kwargs["model"] == "gpt-4o"
 
 
+class TestGeneratePostSendFailure:
+    """C1-04 (TASK-458): a post-send SMR failure (the model may have generated) must be
+    NON-retryable at the Temporal layer too, so ``_GENERATE_RETRY`` never re-runs the
+    activity (a re-run re-invokes the model). A pre-send failure stays retryable — the
+    model never ran, so a retry is safe (and the SMR-down invariant still fails the loop)."""
+
+    @pytest.mark.asyncio
+    async def test_post_send_failure_raises_non_retryable(self, env, monkeypatch):
+        class _LostSmr:
+            async def generate(self, **kw: Any) -> SmrGenerationResult:
+                raise SmrServiceError("response lost after dispatch", after_send=True)
+
+        monkeypatch.setattr(activities, "_smr_client", lambda s: _LostSmr())
+        with pytest.raises(ApplicationError) as ei:
+            await env.run(activities.generate, GenerateInput(prompt="P"))
+        assert ei.value.non_retryable is True
+
+    @pytest.mark.asyncio
+    async def test_pre_send_failure_propagates_as_retryable(self, env, monkeypatch):
+        class _DownSmr:
+            async def generate(self, **kw: Any) -> SmrGenerationResult:
+                raise SmrServiceError("connection refused", after_send=False)
+
+        monkeypatch.setattr(activities, "_smr_client", lambda s: _DownSmr())
+        # Propagates unchanged (NOT wrapped non-retryable) → Temporal retries per policy.
+        with pytest.raises(SmrServiceError):
+            await env.run(activities.generate, GenerateInput(prompt="P"))
+
+
 class TestApiActivities:
     @pytest.mark.asyncio
     async def test_persist_entities_forwards_payload(self, env, monkeypatch):
@@ -177,6 +222,9 @@ class TestApiActivities:
         assert call["consultation_id"] == "c-1"
         assert call["tenant_id"] == "t-1"
         assert call["context_item_id"] == "ctx-t1"
+        # C1-03 (TASK-458): the write carries a deterministic idempotency key derived
+        # from the workflow run + this activity invocation (ActivityEnvironment defaults).
+        assert call["idempotency_key"] == "test-run:test"
 
     @pytest.mark.asyncio
     async def test_assemble_prompt_forwards_consultation(self, env, monkeypatch):
@@ -210,6 +258,7 @@ class TestApiActivities:
         assert call["content"] == "DRAFT"
         assert call["gate_decision"] == "PASS"
         assert call["sensor_scores"] == {"entity_faithfulness": 1.0}
+        assert call["idempotency_key"] == "test-run:test"  # C1-03
 
     @pytest.mark.asyncio
     async def test_persist_draft_forwards_guardrail_decisions_and_reduced_assurance(
@@ -257,6 +306,25 @@ class TestApiActivities:
         call = fake.calls["record_gate_decision"]
         assert call["decision"] == "SIGNED"
         assert call["clinician_id"] == "doc-1"
+        assert call["idempotency_key"] == "test-run:test"  # C1-03
+
+    @pytest.mark.asyncio
+    async def test_finalize_assurance_forwards_idempotency_key(self, env, monkeypatch):
+        fake = _FakeApi()
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+        result = await env.run(
+            activities.finalize_assurance,
+            FinalizeAssuranceInput(
+                consultation_id="c-1",
+                tenant_id="t-1",
+                context_item_id="ctx-1",
+                gate_decision="PASS",
+            ),
+        )
+        assert result.recorded is True
+        call = fake.calls["finalize_assurance"]
+        assert call["context_item_id"] == "ctx-1"
+        assert call["idempotency_key"] == "test-run:test"  # C1-03
 
 
 _SOAP_SCHEMA = {
@@ -376,8 +444,39 @@ class TestRetrieveContext:
 
 
 class TestEscalateGate:
+    """C1-05 (TASK-458): the SLA-breach escalation RECORDS to apps/api (was a no-op).
+    Still fail-safe: a down escalation endpoint is swallowed so the gate keeps waiting."""
+
     @pytest.mark.asyncio
-    async def test_escalate_is_failsafe_no_op(self, env):
+    async def test_escalate_records_breach_to_api(self, env, monkeypatch):
+        fake = _FakeApi()
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+        result = await env.run(
+            activities.escalate_gate,
+            EscalateInput(
+                consultation_id="c-1", tenant_id="t-1", reason="gate_sla_breached", job_id="job-1"
+            ),
+        )
+        assert result.escalated is True
+        call = fake.calls["record_escalation"]
+        assert call["consultation_id"] == "c-1"
+        assert call["tenant_id"] == "t-1"
+        assert call["reason"] == "gate_sla_breached"
+        assert call["job_id"] == "job-1"
+        # C1-03: the escalation record is retried by _API_RETRY, so it too dedups.
+        assert call["idempotency_key"] == "test-run:test"
+
+    @pytest.mark.asyncio
+    async def test_escalate_swallows_record_failure_stays_failsafe(self, env, monkeypatch):
+        from harness.services.api_client import ApiServiceError
+
+        class _DownApi:
+            async def record_escalation(self, *a: Any, **kw: Any) -> EscalationRecordResponse:
+                raise ApiServiceError("escalation endpoint unavailable")
+
+        monkeypatch.setattr(activities, "_api_client", lambda s: _DownApi())
+        # A down endpoint (e.g. before the coordinated apps/api route lands) must NEVER
+        # fail the escalation — the gate keeps waiting (fail-safe, like report_progress).
         result = await env.run(
             activities.escalate_gate,
             EscalateInput(consultation_id="c-1", tenant_id="t-1", reason="gate_sla_breached"),
@@ -429,6 +528,7 @@ class TestReportProgress:
         assert call["label"] == "Running safety sensors"
         assert call["ordinal"] == 4
         assert call["total"] == 5
+        assert call["idempotency_key"] == "test-run:test"  # C1-03
 
     @pytest.mark.asyncio
     async def test_api_failure_is_swallowed_and_reported_false(self, env, monkeypatch):
@@ -646,6 +746,10 @@ class TestRunInferentialSensorsLiveAssurance:
         # Each event carries a running counter + the claim total for an N/M UI.
         assert by_claim["c-htn"]["total"] == 2
         assert sorted(c["ordinal"] for c in fake.calls) == [1, 2]
+        # C1-03: per-claim idempotency key (activity run/id + claim) so a re-run of the
+        # inferential activity dedups each claim event distinctly (no cross-claim collide).
+        assert by_claim["c-htn"]["idempotency_key"] == "test-run:test:c-htn"
+        assert by_claim["c-pen"]["idempotency_key"] == "test-run:test:c-pen"
 
     @pytest.mark.asyncio
     async def test_no_publish_when_live_assurance_disabled(self, env, monkeypatch):

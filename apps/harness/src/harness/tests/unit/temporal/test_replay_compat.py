@@ -139,3 +139,46 @@ class TestReplayCompatibility:
             data_converter=pydantic_data_converter,
         )
         await replayer.replay_workflow(_history("doc_workflow_post_task355_regen_history"))
+
+    @pytest.mark.asyncio
+    async def test_post_task458_gate_abandon_history_replays_on_current_definition(self):
+        """Forward guard for the TASK-458 C1-02 gate TERMINAL-ABANDON era.
+
+        The fixture is a never-signed gate that escalates to its terminal bound and
+        ABANDONS (approved=False), so it carries the ``task-458-gate-terminal-abandon``
+        patch marker plus the new gate command sequence: two ``escalate_gate`` calls (the
+        second flagged terminal) then a terminal completion WITHOUT
+        ``record_gate_decision``.
+
+        Replaying it through the current definition proves an in-flight abandoning gate
+        survives a redeploy, and forward-guards the terminal path: any FUTURE ungated
+        change to the gate command sequence fails this replay with a non-determinism error
+        unless gated behind its own ``workflow.patched()``. Recapture alongside every new
+        patch gate (see ``_capture_replay_fixture.py --gate-abandon``).
+        """
+        replayer = Replayer(
+            workflows=[HarnessDocWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("doc_workflow_post_task458_gate_abandon_history"))
+
+    @pytest.mark.asyncio
+    async def test_post_task458_edit_cap_history_replays_on_current_definition(self):
+        """Forward guard for the TASK-458 C1-02 edit-rerun-CAP era.
+
+        The fixture is an optimistic run with clinician edits on TWO assurance passes and
+        ``max_edit_reruns=1``, so the loop CAPS the re-runs (one edit re-run, not two). It
+        carries the ``task-458-edit-rerun-cap`` marker (alongside the TASK-355 optimistic +
+        assurance-signals markers and the gate-terminal marker) plus the capped command
+        sequence: only ONE edit-driven ``run_inferential_sensors`` re-run before finalize.
+
+        Replaying it through the current definition proves an in-flight capped-edit
+        execution survives a redeploy, and forward-guards the cap dynamics: any FUTURE
+        ungated change to the edit-cap command sequence fails this replay unless gated
+        behind its own ``workflow.patched()`` (see ``_capture_replay_fixture.py --edit-cap``).
+        """
+        replayer = Replayer(
+            workflows=[HarnessDocWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("doc_workflow_post_task458_edit_cap_history"))

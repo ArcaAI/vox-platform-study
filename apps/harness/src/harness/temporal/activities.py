@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 
 from harness.core.config import Settings, get_runtime_judge_config, get_settings
 from harness.eval.judge.base import JudgeClient
@@ -60,7 +61,7 @@ from harness.services.embeddings_client import EmbeddingsClient
 from harness.services.nlp_client import NlpClient
 from harness.services.reranker_client import RerankerClient
 from harness.services.sensor_runner import SensorRunOutput, run_computational_sensors
-from harness.services.smr_client import SmrClient, SmrGenerationResult
+from harness.services.smr_client import SmrClient, SmrGenerationResult, SmrServiceError
 from harness.temporal.models import (
     AssembleInput,
     EntitiesResult,
@@ -131,6 +132,21 @@ def _api_client(settings: Settings) -> ApiClient:
         service_token=settings.service_token.get_secret_value(),
         timeout=settings.api_timeout_s,
     )
+
+
+def _idempotency_key(*parts: str) -> str:
+    """Deterministic Idempotency-Key for a harness→apps/api WORM/draft write (C1-03).
+
+    Derived from the workflow RUN + THIS activity invocation: ``activity_id`` is stable
+    across the activity's retry attempts (and worker-crash re-delivery) yet unique per
+    logical write, so a retried/redelivered POST dedups on apps/api WITHOUT suppressing
+    distinct writes (a later regen's persist is a different activity ⇒ a different key).
+    Optional ``parts`` disambiguate multiple writes issued inside ONE activity (e.g. the
+    per-claim live assurance events). Called only inside an activity (info() is available).
+    """
+    info = activity.info()
+    base = f"{info.workflow_run_id}:{info.activity_id}"
+    return ":".join((base, *parts)) if parts else base
 
 
 # Progress reporting is fire-and-forget (TASK-345): a dedicated short HTTP
@@ -227,6 +243,7 @@ async def persist_entities(payload: PersistEntitiesInput) -> PersistEntitiesResp
         context_item_id=payload.context_item_id,
         entities=payload.entities,
         user_id=payload.user_id,
+        idempotency_key=_idempotency_key(),
     )
 
 
@@ -283,16 +300,34 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
         )
         raise
 
-    return await _smr_client(settings).generate(
-        prompt=prompt,
-        system_prompt=system_prompt,
-        provider=payload.provider,
-        model=payload.model,
-        temperature=hp.get("temperature"),
-        max_tokens=hp.get("max_tokens"),
-        top_p=hp.get("top_p"),
-        response_format=payload.response_format,
-    )
+    try:
+        return await _smr_client(settings).generate(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            provider=payload.provider,
+            model=payload.model,
+            temperature=hp.get("temperature"),
+            max_tokens=hp.get("max_tokens"),
+            top_p=hp.get("top_p"),
+            response_format=payload.response_format,
+        )
+    except SmrServiceError as exc:
+        # C1-04 / I-1: ``after_send`` means the request reached SMR and the model MAY have
+        # generated — a dropped-read transport loss OR the governor's per-call timeout
+        # firing mid-request (both closed in ``smr_client``). Re-running the activity
+        # (Temporal ``_GENERATE_RETRY``) would re-invoke the model (double spend + divergent
+        # draft), so mark it non-retryable — the SMR-failure invariant still fails the
+        # workflow without a draft. A PRE-send failure propagates unchanged (retryable: the
+        # model never ran).
+        #
+        # NOT closed here (still a re-invoke path on Temporal retry): a genuine worker CRASH
+        # mid-activity (no exception to catch), and an SMR 5xx / LM-Studio ``terminated`` 400
+        # that arrives AFTER the model ran (the governor still retries those). The durable
+        # fix for both is a downstream idempotency key SMR honours — apps/smr, tracked as
+        # TASK-466 coordination.
+        if exc.after_send:
+            raise ApplicationError(str(exc), type="SmrResponseLost", non_retryable=True) from exc
+        raise
 
 
 @activity.defn
@@ -487,6 +522,9 @@ def _build_assurance_publisher(
                 ordinal=next(ordinals),
                 total=total,
                 job_id=job_id,
+                # C1-03: per-claim key (activity run/id + claim) so a re-run of this
+                # inferential activity dedups each claim event rather than double-posting.
+                idempotency_key=_idempotency_key(claim_ref),
             )
         except Exception as exc:  # noqa: BLE001 — live feed is fire-and-forget
             activity.logger.warning(
@@ -647,6 +685,7 @@ async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
         gate_decision=payload.gate_decision,
         is_auto_generated=payload.is_auto_generated,
         phase=payload.phase,
+        idempotency_key=_idempotency_key(),
     )
 
 
@@ -678,6 +717,7 @@ async def finalize_assurance(payload: FinalizeAssuranceInput) -> FinalizeAssuran
         model_version=payload.model_version,
         prompt_template_id=payload.prompt_template_id,
         prompt_version=payload.prompt_version,
+        idempotency_key=_idempotency_key(),
     )
 
 
@@ -694,6 +734,7 @@ async def record_gate_decision(payload: RecordGateInput) -> RecordGateResponse:
         context_item_version_id=payload.context_item_version_id,
         attestation_hash=payload.attestation_hash,
         clinician_id=payload.clinician_id,
+        idempotency_key=_idempotency_key(),
     )
 
 
@@ -714,6 +755,7 @@ async def report_progress(payload: ReportProgressInput) -> ReportProgressResult:
             ordinal=payload.ordinal,
             total=payload.total,
             job_id=payload.job_id,
+            idempotency_key=_idempotency_key(),
         )
         return ReportProgressResult(reported=bool(resp.ok))
     except Exception as exc:  # noqa: BLE001 — best-effort by design, never raise
@@ -730,7 +772,14 @@ async def report_progress(payload: ReportProgressInput) -> ReportProgressResult:
 
 @activity.defn
 async def escalate_gate(payload: EscalateInput) -> EscalateResult:
-    """Escalate an un-signed gate past its SLA (fail-safe: log + flag, keep waiting)."""
+    """Escalate an un-signed gate past its SLA: RECORD the breach to apps/api + log.
+
+    C1-05 (TASK-458): the breach is now durably recorded / notifiable via apps/api
+    instead of a local log-only no-op. Fail-safe by contract — a failed record is
+    swallowed (logged) and the gate keeps waiting, so a down escalation endpoint (e.g.
+    before the coordinated apps/api route lands) never fails the clinical loop. The
+    idempotency key dedups the retried record (``_API_RETRY`` at the workflow call site).
+    """
     activity.logger.warning(
         "harness.gate.sla_breached",
         extra={
@@ -740,6 +789,24 @@ async def escalate_gate(payload: EscalateInput) -> EscalateResult:
             "job_id": payload.job_id,
         },
     )
+    settings = get_settings()
+    try:
+        await _api_client(settings).record_escalation(
+            payload.consultation_id,
+            tenant_id=payload.tenant_id,
+            reason=payload.reason,
+            job_id=payload.job_id,
+            idempotency_key=_idempotency_key(),
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort: an escalation record must never fail the gate
+        activity.logger.warning(
+            "harness.gate.escalation_record_failed",
+            extra={
+                "consultation_id": payload.consultation_id,
+                "reason": payload.reason,
+                "error": str(exc),
+            },
+        )
     return EscalateResult(escalated=True)
 
 
