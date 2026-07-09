@@ -136,7 +136,25 @@ Five of six Wave-1 streams implemented, adversarially reviewed, and assembled; T
 
 TASK-463 (durable `NamedEntity` contract fix) runs as one TDD stream (worktree, adversarial review), then merges into `fix/task-449-wave1`. On completion the whole integration branch merges into `fix/2605-review`.
 
-_Wave 2 / Wave 3: Phase-2 tickets to be scaffolded after the Wave 1 + 1.5 landing._
+### Landing (2026-07-09)
+
+Wave 1 + 1.5 merged into `fix/2605-review`: merge commit `39515a17` (32 files, 1475 insertions) + docs commit `d35ff948`. Integration build 16/16; combined `@arcaai/applications` 5893 tests pass. User's local config (`.env.dev`, `.claude/`, `.mcp.json`, `CLAUDE.md`) left untouched. gitleaks clean.
+
+### Wave 2 (P1) — scaffolded (2026-07-09, no implementation)
+
+All five tickets written with code-verified evidence (5 read-only scouts against the post-Wave-1 tree), exclusive file-ownership manifests, red-first TDD plans, acceptance criteria, and adversarial-review focus:
+
+| Ticket | Findings | Size | Notes |
+|---|---|---|---|
+| [TASK-456](../TASK-456-STT-Finalize-Reaper-Durability/README.md) | C2-02/03/05/07 | M | STT finalize/reaper durability. Merges before TASK-457's Python half (shared `session_manager.py`) |
+| [TASK-457](../TASK-457-Redis-Consumer-Groups/README.md) | C3-01/02/03/05/06 | L | Consumer-groups migration — **critical path**, **gated on TASK-455**. Test-breaking by design |
+| [TASK-458](../TASK-458-Harness-Idempotency-Escalation/README.md) | C1-02…06 | L | Harness idempotency/escalation. Only C1-02 needs a replay patch-marker+fixture |
+| [TASK-459](../TASK-459-Live-Doc-Durability/README.md) | C5-04/06 | M | Live-doc truncation carry-forward + NX owner lock (via existing `eval`) |
+| [TASK-460](../TASK-460-Gateway-Auth-Retry-Hygiene/README.md) | C4-02/03/04 | M | Gateway auth uniformity + SSE re-auth + SMR retry idempotency |
+
+**Register refinements found during scouting** (recorded in the tickets): `streaming_audio_idle_timeout_s`=300 is dead config (C2-02); C2-07's duplicate risk is `Media` rows only (transcript is idempotent); harness-progress/assurance SSE are "no PHI" per the code — only live-summary carries PHI (C4-03); STT-v2's audio consumer already resumes via `last_stream_id`, so C3-02's gap is gateway-scoped; the "resume buffer holds it" comment (C3-03) is provably false; the 2000 audio-stream bound (C3-06) is dead config. Zero consumer-group primitives exist anywhere.
+
+**Suggested sequencing**: TASK-455 (eval harness) → TASK-456 → TASK-457 (gated on 455); TASK-458/459/460 parallelize independently. Wave 3 (P2: C5-03, C4-05, C2-04, C6-02/03/04, C5-05, C1-05-notify, C3-06, C1-06) + the SOTA enhancement track follow.
 
 ## Change History
 
@@ -144,3 +162,5 @@ _Wave 2 / Wave 3: Phase-2 tickets to be scaffolded after the Wave 1 + 1.5 landin
 |---|---|
 | 2026-07-09 | Program opened. Wave plan approved in session; Wave 1 tickets TASK-450…455 scaffolded with code-verified evidence (6 read-only scout agents). No implementation started. |
 | 2026-07-09 | Wave 1 executed: TASK-450/451/452/454 implemented (TDD, isolated worktrees), adversarially reviewed (4 reviewers; every stream had ≥1 real finding, all fixed), and merged into `fix/task-449-wave1` (26 files, 0 conflicts, integration build 16/16). C2-06 reproduced. TASK-453 held (C1-01 decision); TASK-455 held (live stack). Discovered TASK-463 (durable NamedEntity corruption) + TASK-464 (SDK drop surfacing) via review. TASK-450 e2e written, deferred to landing. |
+| 2026-07-09 | Owner decisions: TASK-463 → Wave 1.5 (executed: shared NLP→NamedEntity mapper, review Approve, both paths confirmed LIVE); C1-01 → Option C (closed Won't-fix); land → `fix/2605-review`. TASK-463 merged to integration; Wave 1 + 1.5 merged to `fix/2605-review` (`39515a17` + docs `d35ff948`). Wave 2 (TASK-456…460) scaffolding started. |
+| 2026-07-09 | Wave 2 fully scaffolded (TASK-456/457/458/459/460) from 5 code-verified scouts; no implementation. Six register refinements recorded (dead configs, PHI-scope, false comment, asymmetric resume). Sequencing + replay-safety + cross-stream ordering documented. |
