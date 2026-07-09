@@ -1,8 +1,9 @@
 /**
  * AiInferenceClient unit tests (TASK-446). URL resolution from IConfigService
  * (code defaults when absent), the two POST inference proxies, and the error
- * contract (upstream status passthrough, 503 on transport failure). No
- * service-token header is sent (parity with AiServiceProxyClient).
+ * contract (upstream status passthrough, 503 on transport failure).
+ * TASK-460 C4-02: every PHI-bearing hop attaches a fail-closed
+ * `X-Service-Token` (mirrors the harness outbound `buildHeaders` pattern).
  */
 import { HttpException, ServiceUnavailableException } from '@nestjs/common';
 import { AxiosError, AxiosHeaders } from 'axios';
@@ -54,13 +55,41 @@ describe('AiInferenceClient — URL resolution', () => {
     expect(axiosPost).toHaveBeenCalledWith('http://localhost:8864/api/v1/classify/tokens', { text: 'x' }, expect.anything());
   });
 
-  it('never sends an X-Service-Token header (plain internal HTTP)', async () => {
-    const client = new AiInferenceClient(httpService as never, undefined);
+  // TASK-460 C4-02 — INVERTED from "never sends an X-Service-Token header":
+  // both hops carry caller clinical text (PHI), so the outbound request must
+  // authenticate fail-closed exactly like the harness/STT internal hops.
+  it('always sends an X-Service-Token header, empty when unresolved (fail-closed)', async () => {
+    const client = new AiInferenceClient(httpService as never, undefined, undefined);
     axiosPost.mockResolvedValue({ data: {} });
 
     await client.analyzeGuardrail({ text: 'x' });
-    const [, , options] = axiosPost.mock.calls[0];
-    expect(options?.headers?.['X-Service-Token']).toBeUndefined();
+    await client.classifyTokens({ text: 'x' });
+
+    for (const call of axiosPost.mock.calls) {
+      const [, , options] = call;
+      // Header PRESENT even without a SecretsService: an empty token is still
+      // sent so a token-requiring receiver rejects, instead of the header being
+      // silently omitted (the old fail-open posture).
+      expect(options?.headers?.['X-Service-Token']).toBe('');
+    }
+  });
+
+  it('resolves GUARDRAIL_SERVICE_TOKEN / NLP_SERVICE_TOKEN per hop via SecretsService', async () => {
+    const secretsService = {
+      getSecretOptional: vi.fn(async (key: string) =>
+        key === 'GUARDRAIL_SERVICE_TOKEN' ? 'guardrail-secret' : key === 'NLP_SERVICE_TOKEN' ? 'nlp-secret' : undefined,
+      ),
+    };
+    const client = new AiInferenceClient(httpService as never, undefined, secretsService as never);
+    axiosPost.mockResolvedValue({ data: {} });
+
+    await client.analyzeGuardrail({ text: 'x' });
+    const [, , guardrailOptions] = axiosPost.mock.calls[0];
+    expect(guardrailOptions?.headers?.['X-Service-Token']).toBe('guardrail-secret');
+
+    await client.classifyTokens({ text: 'x' });
+    const [, , nlpOptions] = axiosPost.mock.calls[1];
+    expect(nlpOptions?.headers?.['X-Service-Token']).toBe('nlp-secret');
   });
 });
 
