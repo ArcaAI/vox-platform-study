@@ -742,33 +742,6 @@ class TestFinalizeSessionDualCapture:
         mock_gateway.create_audio_recording.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_dual_capture_registration_is_idempotent(self):
-        """C2-07 — re-driving finalize (e.g. after a C2-03 persist-retain)
-        must not re-create Media rows; registration runs at most once."""
-        from stt_v2.pipeline.dto import DualCaptureConfig
-
-        mgr = _make_manager()
-        session = _make_session(consultation_id="c1")
-        session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
-
-        mgr._sessions[session.session_id] = session
-        mgr._dual_capture[session.session_id] = DualCaptureConfig(
-            enabled=True, capture_raw=True, capture_processed=False
-        )
-
-        mock_gateway = MagicMock()
-        mock_gateway.create_media = AsyncMock(return_value={"id": "raw-1"})
-        mock_gateway.create_audio_recording = AsyncMock(return_value={"id": "ar-1"})
-        mgr._get_api_client = MagicMock(return_value=mock_gateway)
-
-        # Two registration passes (first finalize + a re-drive).
-        await mgr._register_dual_capture(session, "s3://b/raw.wav", None)
-        await mgr._register_dual_capture(session, "s3://b/raw.wav", None)
-
-        assert mock_gateway.create_media.await_count == 1
-        mock_gateway.create_audio_recording.assert_awaited_once()
-
-    @pytest.mark.asyncio
     async def test_finalize_skips_dual_capture_when_disabled(self):
         """Disabled config: no Media and no AudioRecording are created."""
         from stt_v2.pipeline.dto import DualCaptureConfig
@@ -921,9 +894,13 @@ class TestFinalizeTranscriptPersistence:
 
 class TestFinalizeTranscriptDurability:
     """C2-03 (TASK-456) — the streaming transcript is the durable system of
-    record AND the harness trigger, so a transient gateway blip must NOT lose
-    it. Persist retries on failure; on exhaustion finalize fails loudly and
-    retains the session (no silent loss, no ``closed`` published)."""
+    record AND the harness trigger. A transient gateway blip must NOT lose it,
+    but finalize must ALSO always release the session's capacity (no leak): the
+    persist is retried inline, then a transient failure is handed to a durable
+    Redis outbox while finalize closes normally. A permanent (4xx) failure is
+    dropped with a loud alert."""
+
+    OUTBOX_KEY = "stt:transcript_outbox"
 
     @staticmethod
     def _blob_mock():
@@ -941,21 +918,25 @@ class TestFinalizeTranscriptDurability:
         )
         return mock_blob
 
-    @pytest.mark.asyncio
-    async def test_transient_persist_failure_is_retried_then_persisted(self):
-        """A transient gateway blip on create_transcript is retried, not lost."""
+    def _session_with_text(self, mgr):
         from stt_v2.streaming.schemas import SegmentResult
 
-        mgr = _make_manager()
-        mgr._transcript_persist_backoff_s = 0  # no real sleep in tests
         session = _make_session(consultation_id="c1")
         session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
         session.add_result(
             SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True)
         )
-
         mgr._sessions[session.session_id] = session
         mgr._blob_service = self._blob_mock()
+        return session
+
+    @pytest.mark.asyncio
+    async def test_transient_persist_failure_is_retried_then_persisted(self):
+        """A transient gateway blip on create_transcript is retried, not lost,
+        and the retry carries the idempotency key."""
+        mgr = _make_manager()
+        mgr._transcript_persist_backoff_s = 0  # no real sleep in tests
+        session = self._session_with_text(mgr)
         mgr.remove_session = AsyncMock()
 
         mock_gateway = MagicMock()
@@ -968,46 +949,219 @@ class TestFinalizeTranscriptDurability:
 
         # Retried after the transient failure → durable transcript survives.
         assert mock_gateway.create_transcript.await_count == 2
-        # Persist eventually succeeded → the session is closed + removed.
+        assert (
+            mock_gateway.create_transcript.await_args.kwargs["idempotency_key"]
+            == f"c1:{session.session_id}"
+        )
+        # Persist eventually succeeded → session closed + capacity released.
         mgr.remove_session.assert_awaited_once()
+        # Nothing left in the outbox.
+        mgr._redis.hset.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_persistent_persist_failure_retains_session_no_silent_loss(self):
-        """When retries are exhausted, finalize fails LOUDLY: the session is
-        retained (not closed/removed) and ``closed`` is never published, so the
-        durable transcript + harness trigger are not silently lost."""
-        from stt_v2.streaming.schemas import SegmentResult, SessionStatus
+    async def test_transient_exhaustion_enqueues_outbox_and_releases_capacity(self):
+        """When inline retries are exhausted on a TRANSIENT error, the transcript
+        is durably enqueued to the shared Redis outbox AND the session is closed
+        so its capacity slot is released (C-1: no FINALIZING leak)."""
+        from stt_v2.streaming.schemas import SessionStatus
 
         mgr = _make_manager()
         mgr._transcript_persist_backoff_s = 0
-        session = _make_session(consultation_id="c1")
-        session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
-        session.add_result(
-            SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True)
-        )
-
-        mgr._sessions[session.session_id] = session
-        mgr._blob_service = self._blob_mock()
+        session = self._session_with_text(mgr)
         mgr.remove_session = AsyncMock()
-        publisher = AsyncMock()
-        mgr._publishers[session.session_id] = publisher
 
         mock_gateway = MagicMock()
         mock_gateway.create_transcript = AsyncMock(
-            side_effect=RuntimeError("gateway down")
+            side_effect=RuntimeError("gateway down")  # no 4xx → transient
         )
         mgr._get_api_client = MagicMock(return_value=mock_gateway)
 
         await mgr._finalize_session(session)
 
-        # Retried up to the configured cap (default 3), then gave up loudly.
+        # Retried up to the configured cap (default 3), then handed to the outbox.
         assert mock_gateway.create_transcript.await_count == 3
-        # No silent loss: session retained, not closed/removed.
-        mgr.remove_session.assert_not_awaited()
-        assert session.status != SessionStatus.CLOSED
-        published = [c.args[0] for c in publisher.publish_status.await_args_list]
-        assert "closed" not in published
-        assert "error" in published
+        # Capacity released — the session is NOT retained/leaked.
+        mgr.remove_session.assert_awaited_once()
+        assert session.status == SessionStatus.CLOSED
+        # Durably enqueued to the shared Redis outbox with the payload.
+        enqueue = [
+            c for c in mgr._redis.hset.await_args_list if c.args[0] == self.OUTBOX_KEY
+        ]
+        assert len(enqueue) == 1
+        field, raw = enqueue[0].args[1], enqueue[0].args[2]
+        assert field == f"c1:{session.session_id}"
+        payload = json.loads(raw)
+        assert payload["transcript_text"] == "Hello"
+        assert payload["consultation_id"] == "c1"
+        assert payload["idempotency_key"] == f"c1:{session.session_id}"
+
+    @pytest.mark.asyncio
+    async def test_permanent_persist_failure_drops_without_outbox(self):
+        """A PERMANENT (4xx) persist error is dropped immediately — not retried,
+        not enqueued — and the session still closes + releases capacity."""
+        from stt_v2.core.exceptions import APIGatewayError
+        from stt_v2.streaming.schemas import SessionStatus
+
+        mgr = _make_manager()
+        mgr._transcript_persist_backoff_s = 0
+        session = self._session_with_text(mgr)
+        mgr.remove_session = AsyncMock()
+
+        mock_gateway = MagicMock()
+        mock_gateway.create_transcript = AsyncMock(
+            side_effect=APIGatewayError("bad request", details={"status_code": 400})
+        )
+        mgr._get_api_client = MagicMock(return_value=mock_gateway)
+
+        await mgr._finalize_session(session)
+
+        # 4xx → not retried.
+        assert mock_gateway.create_transcript.await_count == 1
+        # Not enqueued (retrying a client error is futile).
+        assert not [
+            c for c in mgr._redis.hset.await_args_list if c.args[0] == self.OUTBOX_KEY
+        ]
+        # Capacity still released.
+        mgr.remove_session.assert_awaited_once()
+        assert session.status == SessionStatus.CLOSED
+
+
+class TestTranscriptOutbox:
+    """C2-03 (TASK-456) — the reaper re-drives the durable Redis transcript
+    outbox: success removes the entry, a transient error re-enqueues (until a
+    bounded cap), a permanent (4xx) error drops it with a loud alert. Entries
+    are claimed atomically with HDEL so a scaled worker fleet never double-POSTs
+    the same transcript."""
+
+    OUTBOX_KEY = "stt:transcript_outbox"
+
+    @staticmethod
+    def _entry(attempts: int = 0):
+        return {
+            "transcript_text": "Hello world",
+            "consultation_id": "c1",
+            "tenant_id": "t1",
+            "transcription_source": "streaming",
+            "idempotency_key": "c1:sess_rec",
+            "attempts": attempts,
+        }
+
+    @pytest.mark.asyncio
+    async def test_reaper_drains_outbox_with_idempotency_key(self):
+        mgr = _make_manager()
+        mgr._redis.hgetall = AsyncMock(
+            return_value={"c1:sess_rec": json.dumps(self._entry())}
+        )
+        mgr._redis.hdel = AsyncMock(return_value=1)  # claim wins
+        mgr._redis.hset = AsyncMock()
+
+        gw = MagicMock()
+        gw.create_transcript = AsyncMock(return_value={"contextItemId": "ctx-1"})
+        mgr._get_api_client = MagicMock(return_value=gw)
+
+        await mgr._drain_transcript_outbox()
+
+        gw.create_transcript.assert_awaited_once()
+        kwargs = gw.create_transcript.await_args.kwargs
+        assert kwargs["idempotency_key"] == "c1:sess_rec"
+        assert kwargs["consultation_id"] == "c1"
+        # Claimed via HDEL, and NOT re-enqueued (success).
+        mgr._redis.hdel.assert_awaited_once_with(self.OUTBOX_KEY, "c1:sess_rec")
+        mgr._redis.hset.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_outbox_skips_entry_claimed_by_another_worker(self):
+        """HDEL returning 0 means another worker already claimed it → skip."""
+        mgr = _make_manager()
+        mgr._redis.hgetall = AsyncMock(
+            return_value={"c1:sess_rec": json.dumps(self._entry())}
+        )
+        mgr._redis.hdel = AsyncMock(return_value=0)  # lost the claim race
+
+        gw = MagicMock()
+        gw.create_transcript = AsyncMock(return_value={"contextItemId": "ctx-1"})
+        mgr._get_api_client = MagicMock(return_value=gw)
+
+        await mgr._drain_transcript_outbox()
+
+        gw.create_transcript.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_outbox_transient_failure_reenqueues(self):
+        mgr = _make_manager()
+        mgr._transcript_outbox_max_attempts = 5
+        mgr._redis.hgetall = AsyncMock(
+            return_value={"c1:sess_rec": json.dumps(self._entry(attempts=1))}
+        )
+        mgr._redis.hdel = AsyncMock(return_value=1)
+        mgr._redis.hset = AsyncMock()
+
+        gw = MagicMock()
+        gw.create_transcript = AsyncMock(side_effect=RuntimeError("503"))
+        mgr._get_api_client = MagicMock(return_value=gw)
+
+        await mgr._drain_transcript_outbox()
+
+        # Re-enqueued with an incremented attempt count.
+        reenqueue = [
+            c for c in mgr._redis.hset.await_args_list if c.args[0] == self.OUTBOX_KEY
+        ]
+        assert len(reenqueue) == 1
+        assert json.loads(reenqueue[0].args[2])["attempts"] == 2
+
+    @pytest.mark.asyncio
+    async def test_outbox_permanent_failure_drops_and_alerts(self):
+        from structlog.testing import capture_logs
+
+        from stt_v2.core.exceptions import APIGatewayError
+
+        mgr = _make_manager()
+        mgr._redis.hgetall = AsyncMock(
+            return_value={"c1:sess_rec": json.dumps(self._entry())}
+        )
+        mgr._redis.hdel = AsyncMock(return_value=1)
+        mgr._redis.hset = AsyncMock()
+
+        gw = MagicMock()
+        gw.create_transcript = AsyncMock(
+            side_effect=APIGatewayError("bad", details={"status_code": 422})
+        )
+        mgr._get_api_client = MagicMock(return_value=gw)
+
+        with capture_logs() as logs:
+            await mgr._drain_transcript_outbox()
+
+        # Dropped (claimed via HDEL, NOT re-enqueued).
+        mgr._redis.hset.assert_not_awaited()
+        # Loud alert emitted.
+        assert any(
+            "outbox_permanent_drop" in (entry.get("event") or "") for entry in logs
+        )
+
+    @pytest.mark.asyncio
+    async def test_outbox_exhausted_drops_and_alerts(self):
+        from structlog.testing import capture_logs
+
+        mgr = _make_manager()
+        mgr._transcript_outbox_max_attempts = 2
+        mgr._redis.hgetall = AsyncMock(
+            return_value={"c1:sess_rec": json.dumps(self._entry(attempts=1))}
+        )
+        mgr._redis.hdel = AsyncMock(return_value=1)
+        mgr._redis.hset = AsyncMock()
+
+        gw = MagicMock()
+        gw.create_transcript = AsyncMock(side_effect=RuntimeError("503"))
+        mgr._get_api_client = MagicMock(return_value=gw)
+
+        with capture_logs() as logs:
+            await mgr._drain_transcript_outbox()
+
+        # attempts 1 -> 2 == max → dropped, not re-enqueued.
+        mgr._redis.hset.assert_not_awaited()
+        assert any(
+            "outbox_exhausted_drop" in (entry.get("event") or "") for entry in logs
+        )
 
 
 # ---------------------------------------------------------------------------
