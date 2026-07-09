@@ -1279,10 +1279,12 @@ class TestStreamingSettings:
         assert s.streaming_session_persist_interval_s == 5.0
         assert s.streaming_session_timeout_s == 60
         assert s.streaming_reaper_interval_s == 300
-        # TASK-456 — durable-transcript persist retries (C2-03) + finalize drain
-        # timeout (C2-05, previously a getattr fallback, now a real setting).
+        # TASK-456 — durable-transcript persist retries + outbox re-drive cap
+        # (C2-03) + finalize drain timeout (C2-05, previously a getattr fallback,
+        # now a real setting).
         assert s.streaming_transcript_persist_max_attempts == 3
         assert s.streaming_transcript_persist_backoff_s == 0.5
+        assert s.streaming_transcript_outbox_max_attempts == 10
         assert s.streaming_inference_drain_timeout_s == 60.0
         assert s.streaming_worker_heartbeat_s == 10
         assert s.streaming_worker_heartbeat_ttl_s == 30

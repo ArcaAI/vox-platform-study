@@ -435,6 +435,17 @@ class Settings(BaseSettings):
             "disables the wait (used in tests)."
         ),
     )
+    streaming_transcript_outbox_max_attempts: int = Field(
+        default=10,
+        description=(
+            "Max re-drive attempts for a transcript in the durable Redis outbox "
+            "(TASK-456 C2-03) before it is dropped with a loud alert. When the "
+            "inline persist exhausts its retries on a TRANSIENT error the "
+            "transcript is enqueued to a shared Redis outbox and re-driven by "
+            "the reaper loop (any worker) with an idempotency key; a PERMANENT "
+            "(4xx) error is dropped immediately rather than retried."
+        ),
+    )
     streaming_inference_drain_timeout_s: float = Field(
         default=60.0,
         description=(

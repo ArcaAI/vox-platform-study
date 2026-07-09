@@ -1764,38 +1764,85 @@ class TestFinalizeSessionPendingSegments:
         publisher.publish_status.assert_any_await("closed")
 
     @pytest.mark.asyncio
-    async def test_drain_timeout_transcribes_remaining_utterances_inline(self):
-        """C2-05 (TASK-456) — on a drain timeout (e.g. GPU backlog) the still-
-        queued tail utterance is transcribed inline before the transcript is
-        built, rather than silently dropped."""
+    async def test_drain_timeout_settles_loop_and_transcribes_tail_into_results(self):
+        """C2-05 + I-2 (TASK-456) — on a drain timeout the racing background
+        inference loop is settled FIRST, then the still-queued tail utterance is
+        transcribed inline INTO the session transcript (not merely "inline drain
+        was called"). The tail (last item enqueued) survives; the backlog item
+        the loop was blocked on is forfeited on cancel."""
         from stt_v2.streaming.preprocessor import AudioUtterance
+        from stt_v2.streaming.schemas import (
+            SegmentResult,
+            SessionMetadata,
+            SessionStatus,
+        )
+        from stt_v2.streaming.session import StreamSession
 
         mgr = _make_manager()
-        session = MagicMock()
-        session.session_id = "s-drain"
+        meta = SessionMetadata(
+            session_id="s-drain",
+            tenant_id="t1",
+            pipeline_id="p1",
+            consultation_id="c1",
+            status=SessionStatus.ACTIVE,
+            sample_rate=16000,
+        )
+        session = StreamSession(metadata=meta, redis=AsyncMock(), persist_interval_s=5.0)
         mgr._sessions["s-drain"] = session
 
-        # Queue a tail utterance with no consumer draining it, so queue.join()
-        # never completes and the bounded drain wait times out.
-        queue = asyncio.Queue(maxsize=4)
+        backlog = AudioUtterance(
+            samples=np.zeros(1600, dtype=np.float32),
+            sample_rate=16000,
+            start_time=0.0,
+            end_time=0.5,
+            utterance_index=0,
+            is_final=True,
+        )
         tail = AudioUtterance(
             samples=np.zeros(1600, dtype=np.float32),
             sample_rate=16000,
             start_time=1.0,
-            end_time=1.1,
-            utterance_index=0,
+            end_time=1.5,
+            utterance_index=1,
             is_final=True,
         )
-        queue.put_nowait(tail)
-        mgr._inference_queues["s-drain"] = queue
-        mgr._inference_drain_timeout_s = 0.01  # force the timeout branch fast
 
-        mgr._run_inline_inference = AsyncMock()
+        started = asyncio.Event()
+        release = asyncio.Event()
 
-        await mgr._drain_inference_queue("s-drain")
+        async def _process(session_id, utt):
+            if utt is backlog:
+                started.set()
+                await release.wait()  # block the loop → queue.join() times out
+            return SegmentResult(
+                text="tail text" if utt is tail else "backlog",
+                start_time=utt.start_time,
+                end_time=utt.end_time,
+                is_final=True,
+            )
 
-        mgr._run_inline_inference.assert_awaited_once()
-        assert mgr._run_inline_inference.await_args.args[1] is tail
+        worker = MagicMock()
+        worker.process_utterance = AsyncMock(side_effect=_process)
+        mgr._inference_workers["s-drain"] = worker
+
+        # Live background inference loop consuming the same queue.
+        mgr._register_inference_runtime(session, worker)
+        queue = mgr._inference_queues["s-drain"]
+        await queue.put(backlog)  # loop grabs this and blocks in _process
+        await asyncio.wait_for(started.wait(), timeout=1.0)
+        await queue.put(tail)  # tail waits behind the backlog item
+        mgr._inference_drain_timeout_s = 0.05  # force the join() timeout
+
+        try:
+            await mgr._drain_inference_queue("s-drain")
+        finally:
+            release.set()
+
+        # I-2 — the background loop was settled (cancelled + de-registered)
+        # before the inline drain, so it was not a concurrent second consumer.
+        assert mgr._inference_tasks.get("s-drain") is None
+        # C2-05 — the tail utterance was transcribed inline into the transcript.
+        assert "tail text" in session.build_transcript_text()
 
     @pytest.mark.asyncio
     async def test_finalize_calls_sequence_in_correct_order(self):
