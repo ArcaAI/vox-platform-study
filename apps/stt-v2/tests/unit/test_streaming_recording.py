@@ -702,6 +702,73 @@ class TestFinalizeSessionDualCapture:
         assert kwargs["consultation_id"] == "c1"
 
     @pytest.mark.asyncio
+    async def test_concurrent_finalize_registers_media_once(self):
+        """C2-07 (TASK-456) — two racing finalize entrypoints must serialize on
+        a per-session lock and the second must be a no-op, so Media rows are not
+        duplicated and the blob is not uploaded twice."""
+        import asyncio
+
+        from stt_v2.pipeline.dto import DualCaptureConfig
+        from stt_v2.streaming.schemas import SegmentResult
+
+        mgr = _make_manager()
+        session = _make_session(consultation_id="c1")
+        session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
+        session.add_result(
+            SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True)
+        )
+
+        mgr._sessions[session.session_id] = session
+        mgr._dual_capture[session.session_id] = DualCaptureConfig(
+            enabled=True, capture_raw=True, capture_processed=False
+        )
+        mgr._blob_service = self._blob_with_both_complete()
+        mgr.remove_session = AsyncMock()
+
+        mock_gateway = MagicMock()
+        mock_gateway.create_media = AsyncMock(return_value={"id": "raw-media-1"})
+        mock_gateway.create_audio_recording = AsyncMock(return_value={"id": "ar-1"})
+        mock_gateway.create_transcript = AsyncMock(return_value={"contextItemId": "ctx-1"})
+        mgr._get_api_client = MagicMock(return_value=mock_gateway)
+
+        # Two entrypoints (e.g. final-frame + control-FINALIZE) race.
+        await asyncio.gather(
+            mgr._finalize_session(session),
+            mgr._finalize_session(session),
+        )
+
+        # Media created exactly once (no duplicate rows / double upload).
+        assert mock_gateway.create_media.await_count == 1
+        mock_gateway.create_audio_recording.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_dual_capture_registration_is_idempotent(self):
+        """C2-07 — re-driving finalize (e.g. after a C2-03 persist-retain)
+        must not re-create Media rows; registration runs at most once."""
+        from stt_v2.pipeline.dto import DualCaptureConfig
+
+        mgr = _make_manager()
+        session = _make_session(consultation_id="c1")
+        session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
+
+        mgr._sessions[session.session_id] = session
+        mgr._dual_capture[session.session_id] = DualCaptureConfig(
+            enabled=True, capture_raw=True, capture_processed=False
+        )
+
+        mock_gateway = MagicMock()
+        mock_gateway.create_media = AsyncMock(return_value={"id": "raw-1"})
+        mock_gateway.create_audio_recording = AsyncMock(return_value={"id": "ar-1"})
+        mgr._get_api_client = MagicMock(return_value=mock_gateway)
+
+        # Two registration passes (first finalize + a re-drive).
+        await mgr._register_dual_capture(session, "s3://b/raw.wav", None)
+        await mgr._register_dual_capture(session, "s3://b/raw.wav", None)
+
+        assert mock_gateway.create_media.await_count == 1
+        mock_gateway.create_audio_recording.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_finalize_skips_dual_capture_when_disabled(self):
         """Disabled config: no Media and no AudioRecording are created."""
         from stt_v2.pipeline.dto import DualCaptureConfig
@@ -850,6 +917,97 @@ class TestFinalizeTranscriptPersistence:
         await mgr._finalize_session(session)
 
         mock_gateway.create_transcript.assert_not_awaited()
+
+
+class TestFinalizeTranscriptDurability:
+    """C2-03 (TASK-456) — the streaming transcript is the durable system of
+    record AND the harness trigger, so a transient gateway blip must NOT lose
+    it. Persist retries on failure; on exhaustion finalize fails loudly and
+    retains the session (no silent loss, no ``closed`` published)."""
+
+    @staticmethod
+    def _blob_mock():
+        mock_blob = MagicMock()
+        mock_blob.upload_streaming_raw_chunk = AsyncMock(return_value="s3://b/chunk")
+        mock_blob.upload_streaming_raw_complete = AsyncMock(return_value="s3://b/raw.wav")
+        mock_blob.upload_streaming_processed_complete = AsyncMock(
+            return_value="s3://b/proc.wav"
+        )
+        mock_blob.upload_streaming_transcript = AsyncMock(
+            return_value="s3://b/transcript.json"
+        )
+        mock_blob.upload_streaming_metadata = AsyncMock(
+            return_value="s3://b/metadata.json"
+        )
+        return mock_blob
+
+    @pytest.mark.asyncio
+    async def test_transient_persist_failure_is_retried_then_persisted(self):
+        """A transient gateway blip on create_transcript is retried, not lost."""
+        from stt_v2.streaming.schemas import SegmentResult
+
+        mgr = _make_manager()
+        mgr._transcript_persist_backoff_s = 0  # no real sleep in tests
+        session = _make_session(consultation_id="c1")
+        session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
+        session.add_result(
+            SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True)
+        )
+
+        mgr._sessions[session.session_id] = session
+        mgr._blob_service = self._blob_mock()
+        mgr.remove_session = AsyncMock()
+
+        mock_gateway = MagicMock()
+        mock_gateway.create_transcript = AsyncMock(
+            side_effect=[RuntimeError("502 Bad Gateway"), {"contextItemId": "ctx-1"}]
+        )
+        mgr._get_api_client = MagicMock(return_value=mock_gateway)
+
+        await mgr._finalize_session(session)
+
+        # Retried after the transient failure → durable transcript survives.
+        assert mock_gateway.create_transcript.await_count == 2
+        # Persist eventually succeeded → the session is closed + removed.
+        mgr.remove_session.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_persistent_persist_failure_retains_session_no_silent_loss(self):
+        """When retries are exhausted, finalize fails LOUDLY: the session is
+        retained (not closed/removed) and ``closed`` is never published, so the
+        durable transcript + harness trigger are not silently lost."""
+        from stt_v2.streaming.schemas import SegmentResult, SessionStatus
+
+        mgr = _make_manager()
+        mgr._transcript_persist_backoff_s = 0
+        session = _make_session(consultation_id="c1")
+        session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
+        session.add_result(
+            SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True)
+        )
+
+        mgr._sessions[session.session_id] = session
+        mgr._blob_service = self._blob_mock()
+        mgr.remove_session = AsyncMock()
+        publisher = AsyncMock()
+        mgr._publishers[session.session_id] = publisher
+
+        mock_gateway = MagicMock()
+        mock_gateway.create_transcript = AsyncMock(
+            side_effect=RuntimeError("gateway down")
+        )
+        mgr._get_api_client = MagicMock(return_value=mock_gateway)
+
+        await mgr._finalize_session(session)
+
+        # Retried up to the configured cap (default 3), then gave up loudly.
+        assert mock_gateway.create_transcript.await_count == 3
+        # No silent loss: session retained, not closed/removed.
+        mgr.remove_session.assert_not_awaited()
+        assert session.status != SessionStatus.CLOSED
+        published = [c.args[0] for c in publisher.publish_status.await_args_list]
+        assert "closed" not in published
+        assert "error" in published
 
 
 # ---------------------------------------------------------------------------
