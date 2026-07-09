@@ -1487,6 +1487,40 @@ class TestReaper:
         mgr._drain_inference_queue.assert_awaited_once_with("s-old")
         mgr._finalize_session.assert_awaited_once_with(session)
 
+    @pytest.mark.asyncio
+    async def test_reaper_loop_spares_active_session_paused_below_audio_idle(self):
+        """C2-02 (TASK-456) task-0 fix — driving the real reaper loop once, a
+        live ACTIVE session idle 120s (a normal clinical speech pause, well
+        under the 300s audio-idle timeout) must NOT be finalized. Before the
+        fix the loop reaps at the 60s session timeout and finalizes it."""
+        from datetime import datetime, timedelta
+
+        from stt_v2.streaming.schemas import SessionStatus
+
+        mgr = _make_manager()
+
+        session = MagicMock()
+        session.session_id = "s-paused"
+        session.status = SessionStatus.ACTIVE
+        session.last_activity = (datetime.utcnow() - timedelta(seconds=120)).isoformat()
+        mgr._sessions["s-paused"] = session
+        mgr._finalize_session = AsyncMock()
+
+        # Drive the real reaper loop (real threshold) for a single scan.
+        mgr._reaper_interval_s = 0
+        real_reap = mgr._reap_expired_sessions
+
+        async def _one_scan(timeout_s: int) -> int:
+            result = await real_reap(timeout_s)
+            mgr._running = False
+            return result
+
+        mgr._reap_expired_sessions = _one_scan  # type: ignore[assignment]
+        mgr._running = True
+        await mgr._reaper_loop()
+
+        mgr._finalize_session.assert_not_awaited()
+
 
 # ---------------------------------------------------------------------------
 # Frame Handler: Final Frame
@@ -1728,6 +1762,40 @@ class TestFinalizeSessionPendingSegments:
         session.close.assert_awaited_once()
         publisher.publish_status.assert_any_await("finalizing")
         publisher.publish_status.assert_any_await("closed")
+
+    @pytest.mark.asyncio
+    async def test_drain_timeout_transcribes_remaining_utterances_inline(self):
+        """C2-05 (TASK-456) — on a drain timeout (e.g. GPU backlog) the still-
+        queued tail utterance is transcribed inline before the transcript is
+        built, rather than silently dropped."""
+        from stt_v2.streaming.preprocessor import AudioUtterance
+
+        mgr = _make_manager()
+        session = MagicMock()
+        session.session_id = "s-drain"
+        mgr._sessions["s-drain"] = session
+
+        # Queue a tail utterance with no consumer draining it, so queue.join()
+        # never completes and the bounded drain wait times out.
+        queue = asyncio.Queue(maxsize=4)
+        tail = AudioUtterance(
+            samples=np.zeros(1600, dtype=np.float32),
+            sample_rate=16000,
+            start_time=1.0,
+            end_time=1.1,
+            utterance_index=0,
+            is_final=True,
+        )
+        queue.put_nowait(tail)
+        mgr._inference_queues["s-drain"] = queue
+        mgr._inference_drain_timeout_s = 0.01  # force the timeout branch fast
+
+        mgr._run_inline_inference = AsyncMock()
+
+        await mgr._drain_inference_queue("s-drain")
+
+        mgr._run_inline_inference.assert_awaited_once()
+        assert mgr._run_inline_inference.await_args.args[1] is tail
 
     @pytest.mark.asyncio
     async def test_finalize_calls_sequence_in_correct_order(self):

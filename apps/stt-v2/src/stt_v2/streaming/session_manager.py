@@ -106,8 +106,15 @@ class SessionManager:
         self._processed_chunk_offsets: dict[str, int] = {}
         # Per-session resolved dual-capture flags (raw/processed registration).
         self._dual_capture: dict[str, DualCaptureConfig] = {}
+        # TASK-456 C2-07 — sessions whose dual-capture Media is already
+        # registered, so a re-driven finalize (C2-03 persist-retain) never
+        # duplicates the Media rows.
+        self._dual_capture_registered: set[str] = set()
         # TASK-351 P1-3 — monotonic timestamp of the last XTRIM per session.
         self._last_audio_trim_at: dict[str, float] = {}
+        # TASK-456 C2-07 — per-session lock serializing the four finalize
+        # entrypoints so a second entrant is a no-op (no duplicate Media rows).
+        self._finalize_locks: dict[str, asyncio.Lock] = {}
         self._running = False
 
         # Cache settings values at init time to avoid calling get_settings()
@@ -116,16 +123,26 @@ class SessionManager:
             _settings = get_settings()
             self._reaper_interval_s = _settings.streaming_reaper_interval_s
             self._session_timeout_s = _settings.streaming_session_timeout_s
+            # C2-02 — the reaper reaps on audio-idle (default 300s), not the 60s
+            # session timeout, so a normal clinical speech pause never finalizes
+            # a live session. Wires the previously-dead knob.
+            self._audio_idle_timeout_s = _settings.streaming_audio_idle_timeout_s
             self._heartbeat_interval_s = _settings.streaming_worker_heartbeat_s
             self._heartbeat_ttl_s = _settings.streaming_worker_heartbeat_ttl_s
             self._inference_queue_maxsize = int(
                 getattr(_settings, "streaming_inference_queue_maxsize", 64)
             )
             self._inference_drain_timeout_s = float(
-                getattr(_settings, "streaming_inference_drain_timeout_s", 60.0)
+                _settings.streaming_inference_drain_timeout_s
             )
             self._inference_stop_timeout_s = float(
                 getattr(_settings, "streaming_inference_stop_timeout_s", 30.0)
+            )
+            self._transcript_persist_max_attempts = max(
+                1, int(_settings.streaming_transcript_persist_max_attempts)
+            )
+            self._transcript_persist_backoff_s = float(
+                _settings.streaming_transcript_persist_backoff_s
             )
             self._snapshot_interval_s = _settings.streaming_snapshot_interval_s
             self._partial_window_s = float(
@@ -137,11 +154,14 @@ class SessionManager:
         except Exception:
             self._reaper_interval_s = 300
             self._session_timeout_s = 60
+            self._audio_idle_timeout_s = 300
             self._heartbeat_interval_s = 10
             self._heartbeat_ttl_s = 30
             self._inference_queue_maxsize = 64
             self._inference_drain_timeout_s = 60.0
             self._inference_stop_timeout_s = 30.0
+            self._transcript_persist_max_attempts = 3
+            self._transcript_persist_backoff_s = 0.5
             self._snapshot_interval_s = 30.0
             self._partial_window_s = 8.0
             self._audio_trim_interval_s = 30.0
@@ -694,6 +714,9 @@ class SessionManager:
         self._partial_tasks.pop(session_id, None)
         self._final_published_gates.pop(session_id, None)
         self._commit_policies.pop(session_id, None)
+        # TASK-456 C2-07 — drop the per-session finalize lock (a queued waiter
+        # already holds its own reference and will no-op on the CLOSED guard).
+        self._finalize_locks.pop(session_id, None)
         self._sessions.pop(session_id, None)
         # TASK-386 — keep the active-streaming-sessions gauge in sync on removal.
         streaming_session_ended(self.active_session_count)
@@ -704,6 +727,7 @@ class SessionManager:
         self._chunk_offsets.pop(session_id, None)
         self._processed_chunk_offsets.pop(session_id, None)
         self._dual_capture.pop(session_id, None)
+        self._dual_capture_registered.discard(session_id)
 
         # Release capacity (must happen even if other cleanup fails)
         try:
@@ -1390,7 +1414,12 @@ class SessionManager:
         )
 
     async def _drain_inference_queue(self, session_id: str) -> None:
-        """Wait for all pending utterances in the inference queue to finish."""
+        """Wait for all pending utterances in the inference queue to finish.
+
+        C2-05 — on a drain timeout (e.g. GPU backlog) the utterances still
+        queued are transcribed inline before returning, rather than dropped, so
+        the closing tail utterance always makes it into the final transcript.
+        """
         queue = self._inference_queues.get(session_id)
         if queue is None:
             return
@@ -1398,11 +1427,37 @@ class SessionManager:
             await asyncio.wait_for(queue.join(), timeout=self._inference_drain_timeout_s)
         except TimeoutError:
             logger.warning(
-                "Inference queue drain timed out",
+                "Inference queue drain timed out; transcribing remaining utterances inline",
                 session_id=session_id,
                 remaining=queue.qsize(),
                 timeout_s=self._inference_drain_timeout_s,
             )
+            await self._drain_remaining_inline(session_id, queue)
+
+    async def _drain_remaining_inline(
+        self,
+        session_id: str,
+        queue: asyncio.Queue[AudioUtterance | None],
+    ) -> None:
+        """Transcribe utterances still queued at drain-timeout inline (C2-05).
+
+        Only the finite snapshot currently in the queue is processed — finalize
+        enqueues nothing further and the background loop only removes items — so
+        this is bounded by the queue depth and never blocks unboundedly.
+        """
+        session = self._sessions.get(session_id)
+        if session is None:
+            return
+        while True:
+            try:
+                utt = queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            try:
+                if utt is not None:
+                    await self._run_inline_inference(session, utt)
+            finally:
+                queue.task_done()
 
     async def _stop_inference_loop(self, session_id: str, force_cancel: bool = False) -> None:
         """Send sentinel and cancel the background inference task."""
@@ -1833,6 +1888,10 @@ class SessionManager:
             )
             return
 
+        # C2-07 — idempotent across re-driven finalizes: register Media once.
+        if session.session_id in self._dual_capture_registered:
+            return
+
         try:
             gateway = self._get_api_client()
             created_by = getattr(session.metadata, "user_id", None)
@@ -1881,6 +1940,9 @@ class SessionManager:
                 duration_ms=int(round(session.total_duration_seconds * 1000)),
             )
 
+            # Mark registered only after the full success, so a partial failure
+            # (swallowed below) still re-attempts on a later finalize.
+            self._dual_capture_registered.add(session.session_id)
             logger.info(
                 "Dual-capture media registered",
                 session_id=session.session_id,
@@ -1895,18 +1957,25 @@ class SessionManager:
                 error=str(exc),
             )
 
-    async def _persist_streaming_transcript(self, session: StreamSession) -> None:
+    async def _persist_streaming_transcript(self, session: StreamSession) -> bool:
         """Persist a streaming-session transcript as a TRANSCRIPT context item.
 
         TASK-342 GAP #1 — streaming sessions have no TranscriptionJob, so the
         transcript is keyed directly to the consultation (+ tenant). Persisting
         it fires ``TranscriptionCreated`` on the API side, which triggers the
-        harness auto-draft pipeline. The API enforces idempotency (a finalize
-        retry will not double-create the transcript or re-trigger the harness).
+        harness auto-draft pipeline. The API enforces idempotency (a persist
+        retry will not double-create the transcript or re-trigger the harness),
+        so retrying a failed POST is safe.
 
-        No-op unless the session has a ``consultation_id`` and a non-empty final
-        transcript. All failures are logged and swallowed so finalization is
-        never blocked.
+        TASK-456 C2-03 — unlike the best-effort audio/metadata uploads, this
+        transcript is the durable clinical system of record AND the sole harness
+        trigger, so a transient gateway blip must NOT lose it. The create call is
+        retried up to ``_transcript_persist_max_attempts`` with a scaling
+        backoff. Returns ``True`` when the transcript was persisted or was
+        intentionally skipped (no consultation / no final text); returns
+        ``False`` only when every attempt failed — the caller then keeps the
+        session alive instead of publishing ``closed`` so nothing is silently
+        lost.
         """
         consultation_id = session.consultation_id
         if not consultation_id:
@@ -1914,7 +1983,7 @@ class SessionManager:
                 "streaming finalize has no consultation_id; skipping transcript persistence",
                 session_id=session.session_id,
             )
-            return
+            return True
 
         transcript_text = session.build_transcript_text()
         if not transcript_text:
@@ -1923,43 +1992,85 @@ class SessionManager:
                 session_id=session.session_id,
                 consultation_id=consultation_id,
             )
-            return
+            return True
 
-        try:
-            gateway = self._get_api_client()
-            result = await gateway.create_transcript(
-                transcript_text=transcript_text,
-                consultation_id=consultation_id,
-                tenant_id=session.tenant_id,
-                transcription_source="streaming",
-            )
-            logger.info(
-                "Streaming transcript persisted",
-                session_id=session.session_id,
-                consultation_id=consultation_id,
-                context_item_id=(result or {}).get("contextItemId"),
-            )
-        except Exception as exc:
-            logger.error(
-                "Failed to persist streaming transcript (non-fatal)",
-                session_id=session.session_id,
-                consultation_id=consultation_id,
-                error=str(exc),
-            )
+        attempts = self._transcript_persist_max_attempts
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                gateway = self._get_api_client()
+                result = await gateway.create_transcript(
+                    transcript_text=transcript_text,
+                    consultation_id=consultation_id,
+                    tenant_id=session.tenant_id,
+                    transcription_source="streaming",
+                )
+                logger.info(
+                    "Streaming transcript persisted",
+                    session_id=session.session_id,
+                    consultation_id=consultation_id,
+                    context_item_id=(result or {}).get("contextItemId"),
+                    attempt=attempt,
+                )
+                return True
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Failed to persist streaming transcript; will retry",
+                    session_id=session.session_id,
+                    consultation_id=consultation_id,
+                    attempt=attempt,
+                    max_attempts=attempts,
+                    error=str(exc),
+                )
+                if attempt < attempts and self._transcript_persist_backoff_s > 0:
+                    await asyncio.sleep(self._transcript_persist_backoff_s * attempt)
+
+        logger.error(
+            "Failed to persist streaming transcript after all retries "
+            "(durable transcript + harness trigger at risk)",
+            session_id=session.session_id,
+            consultation_id=consultation_id,
+            attempts=attempts,
+            error=str(last_error),
+        )
+        return False
 
     async def _finalize_session(self, session: StreamSession) -> None:
+        """Finalize a session under a per-session lock (TASK-456 C2-07).
+
+        The four finalize entrypoints (``end_session``, the final audio frame,
+        the control-FINALIZE command, and the reaper) can race; without
+        serialization two of them both reach the upload + ``create_media`` block
+        and duplicate the ``Media`` rows / re-upload the blob. The lock makes
+        them run one at a time, and the ``CLOSED`` short-circuit inside makes the
+        second entrant an idempotent no-op.
+        """
+        lock = self._finalize_locks.setdefault(session.session_id, asyncio.Lock())
+        async with lock:
+            await self._finalize_session_locked(session)
+
+    async def _finalize_session_locked(self, session: StreamSession) -> None:
         """Finalize a session — mark finalizing, upload recordings, close, and clean up.
 
         Callers must drain the inference queue *before* calling this
-        method so that all utterances have been transcribed.
+        method so that all utterances have been transcribed. Always invoked
+        under the per-session finalize lock (see ``_finalize_session``).
         """
-        if session.status == SessionStatus.CLOSED and session.session_id not in self._sessions:
+        # C2-07 — once a session is closed, re-finalizing is a no-op. A retained
+        # (persist-failed, C2-03) session is still FINALIZING, so it is left
+        # re-drivable here.
+        if session.status == SessionStatus.CLOSED:
             return
 
         publisher = self._publishers.get(session.session_id)
         raw_audio_uri: str | None = None
         processed_audio_uri: str | None = None
         transcript_uri: str | None = None
+        # C2-03 — set when the durable transcript persist exhausted its retries.
+        # A durable-loss must fail finalize loudly (retain the session, no
+        # ``closed``) rather than silently close.
+        persist_failed = False
 
         try:
             if session.status == SessionStatus.ACTIVE:
@@ -2077,10 +2188,11 @@ class SessionManager:
                     session, raw_audio_uri, processed_audio_uri
                 )
 
-                # TASK-342 GAP #1 — persist the streaming transcript (no jobId)
-                # so the harness auto-drafts the SOAP. Self-guarded (needs a
-                # consultation_id + non-empty final text); never blocks close.
-                await self._persist_streaming_transcript(session)
+                # TASK-342 GAP #1 / TASK-456 C2-03 — persist the streaming
+                # transcript (no jobId) so the harness auto-drafts the SOAP.
+                # Unlike the uploads above this is the durable system of record,
+                # so a persist that exhausts its retries must NOT be swallowed.
+                persist_failed = not await self._persist_streaming_transcript(session)
         except Exception as exc:
             logger.error(
                 "Session finalization failed; will still attempt close",
@@ -2089,23 +2201,38 @@ class SessionManager:
                 error=str(exc),
             )
         finally:
-            # session.close() must always execute, regardless of errors above.
-            try:
-                await session.close(
-                    raw_audio_uri=raw_audio_uri,
-                    processed_audio_uri=processed_audio_uri,
-                    transcript_uri=transcript_uri,
+            if persist_failed:
+                # C2-03 — the durable transcript (and the harness trigger) could
+                # not be persisted. Fail LOUDLY: do NOT publish ``closed`` and do
+                # NOT remove the session, so the transcript survives in memory
+                # and the client can re-drive finalize once the gateway recovers.
+                logger.error(
+                    "Durable transcript persistence failed; retaining session "
+                    "for re-drive instead of publishing closed",
+                    session_id=session.session_id,
+                    consultation_id=session.consultation_id,
                 )
                 if publisher:
-                    await publisher.publish_status("closed")
-            except Exception as close_exc:
-                logger.error(
-                    "session.close() itself failed",
-                    session_id=session.session_id,
-                    error=str(close_exc),
-                )
-            # Always clean up in-memory and capacity state, even if graceful close failed.
-            await self.remove_session(session.session_id)
+                    await publisher.publish_status("error")
+            else:
+                # session.close() must always execute, regardless of errors above.
+                try:
+                    await session.close(
+                        raw_audio_uri=raw_audio_uri,
+                        processed_audio_uri=processed_audio_uri,
+                        transcript_uri=transcript_uri,
+                    )
+                    if publisher:
+                        await publisher.publish_status("closed")
+                except Exception as close_exc:
+                    logger.error(
+                        "session.close() itself failed",
+                        session_id=session.session_id,
+                        error=str(close_exc),
+                    )
+                # Always clean up in-memory and capacity state, even if graceful
+                # close failed.
+                await self.remove_session(session.session_id)
 
     async def _cancel_session(self, session: StreamSession) -> None:
         """Cancel a session — immediate cleanup, no finalization."""
@@ -2365,11 +2492,18 @@ class SessionManager:
     # ------------------------------------------------------------------
 
     async def _reaper_loop(self) -> None:
-        """Periodically finalize sessions that have been idle too long."""
+        """Periodically finalize sessions that have been idle too long.
+
+        C2-02 — reaps on ``_audio_idle_timeout_s`` (streaming_audio_idle_timeout_s,
+        default 300s), not the 60s ``_session_timeout_s``, so a live consultation
+        with a normal speech pause is never finalized out from under the
+        clinician. A genuinely dead session (client gone) still crosses the
+        audio-idle threshold and is reclaimed on a later scan.
+        """
         try:
             while self._running:
                 await asyncio.sleep(self._reaper_interval_s)
-                await self._reap_expired_sessions(self._session_timeout_s)
+                await self._reap_expired_sessions(self._audio_idle_timeout_s)
         except asyncio.CancelledError:
             pass
 
