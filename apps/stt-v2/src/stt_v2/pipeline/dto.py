@@ -445,7 +445,10 @@ class VadConfig:
 
     enabled: bool = True
     threshold: float = 0.6
-    min_speech_duration_ms: int = 350
+    # TASK-451 C2-06: aligned with Silero VAD's reference default (250 ms). The
+    # prior 350 ms required ~10 consecutive above-threshold frames for onset and
+    # dropped short clinical confirmations ("no", "yes") that never reached it.
+    min_speech_duration_ms: int = 250
     min_silence_duration_ms: int = 100
     padding_ms: int = 30
     pre_speech_context_ms: int = 500
