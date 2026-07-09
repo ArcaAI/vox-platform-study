@@ -1,6 +1,6 @@
 # TASK-460 — Gateway Auth Posture + Retry Hygiene (C4-02 · C4-03 · C4-04)
 
-- **Status**: Pending (Wave 2 scaffold — no implementation)
+- **Status**: Review — implemented, adversarially reviewed (+ I-2/I-3 fixes), merged to `fix/2605-review` (Wave 2 Batch 1)
 - **Type**: bugfix (security posture + billing/correctness)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 2 (P1)
 - **Findings**: C4-02 (Med) · C4-03 (Med) · C4-04 (Med) — all CONFIRMED — see [TASK-448 register](../TASK-448-Harness-Loop-Quality-Review/README.md)
@@ -71,7 +71,15 @@ Adversarial review focus: (a) C4-02 — is the token attached on EVERY PHI hop, 
 
 ## Implementation Summary
 
-_Pending — not yet implemented (Wave 2)._
+**Branch**: `fix/task-460-gateway-auth-retry` (2 commits) — merged to `fix/2605-review` (Wave 2 Batch 1).
+
+**What shipped**: C4-02 `AiInferenceClient` always attaches `X-Service-Token` (empty-when-unresolved fail-closed) on the NLP + Guardrail hops, mirroring `HarnessOpsClient` (keys `GUARDRAIL_SERVICE_TOKEN`/`NLP_SERVICE_TOKEN`, declared in `turbo.json#globalEnv` + `.env.example`). C4-03 a 30s SSE ownership re-check (`assertAccess`) that ends a stream on a real ownership loss, cleared on close. C4-04 connect-phase-only retry for `/generate` (only `ECONNREFUSED`/`ENOTFOUND` with no upstream response) — a sent/billable generation is never re-invoked.
+
+**Adversarial review**: no Critical — the C4-04 single-delivery and the C4-03 timer teardown + CLS-into-timer propagation were both empirically verified. Important **I-2** (the re-check's bare `catch` ended valid PHI streams on transient DB blips → narrowed to `NotFoundException`, transient errors log-and-continue) and **I-3** (docstring/test overstated coverage → corrected to state it revalidates RESOURCE OWNERSHIP only) fixed.
+
+**Gates**: `pnpm build:api` 8/8; the three suites 89 passed; full apps/api 2021 passed; `pnpm lint` clean.
+
+**Discovered → [TASK-465](../TASK-465-NLP-Guardrail-Service-Token-Enforcement/README.md)**: C4-02 is the gateway (sender) half — NLP/Guardrail must ENFORCE the token (middleware mirroring `apps/smr`) + the two secrets need Vault provisioning, for a truly fail-closed hop. **Residual (C4-03)**: identity-side revocation (JWT/session invalidation, tenant switch mid-stream) is NOT detected — the tenant context is frozen for the stream; catching that needs a session-revocation store (an explicit ticket non-goal). Documented in the guard.
 
 ## Change History
 

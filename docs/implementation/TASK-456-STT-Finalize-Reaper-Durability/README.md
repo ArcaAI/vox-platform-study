@@ -1,6 +1,6 @@
 # TASK-456 — STT Finalize / Reaper Durability (C2-03 · C2-02 · C2-05 · C2-07)
 
-- **Status**: Pending (Wave 2 scaffold — no implementation)
+- **Status**: Review — implemented, adversarially reviewed (through a Critical rework + 2 re-reviews), merged to `fix/2605-review` (Wave 2 Batch 1)
 - **Type**: bugfix (data durability — realtime transcript loss)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 2 (P1)
 - **Findings**: C2-03 (High, CONFIRMED ✓C) · C2-02 (High, PLAUSIBLE — re-verify) · C2-05 (Med) · C2-07 (Med) — see [TASK-448 register](../TASK-448-Harness-Loop-Quality-Review/README.md)
@@ -81,7 +81,19 @@ Adversarial review focus: (a) C2-03 — is there ANY remaining path where a tran
 
 ## Implementation Summary
 
-_Pending — not yet implemented (Wave 2)._
+**Branch**: `fix/task-456-stt-finalize-durability` (3 commits) — merged to `fix/2605-review` via the Wave 2 Batch 1 merge.
+
+**What shipped**:
+- **C2-07** — per-session `asyncio.Lock` + `CLOSED` idempotency guard + idempotent dual-capture so the four finalize entrypoints serialize (no duplicate `Media` rows / double upload).
+- **C2-02** — reaper repointed to the (now-wired) `streaming_audio_idle_timeout_s`=300 audio-idle timeout; the dead config is resolved. Reproduced first.
+- **C2-05** — `_settle_inference_loop` cancels+awaits the background loop before a single-consumer inline drain, so the tail utterance lands in the transcript.
+- **C2-03 (durable transcript outbox)** — replaced the original "loud-retain" with: always finalize + release the capacity slot; on transient persist failure enqueue to a shared-Redis outbox (`stt:transcript_outbox`, idempotency-keyed); the reaper drains it **at-least-once** (soft lease → POST → HDEL only after a confirmed 2xx); permanent 4xx (excluding 429/408/425) + exhausted attempts drop loudly. `create_transcript` carries an `Idempotency-Key` (sanctioned gateway seam).
+
+**Adversarial review (3 rounds — the hardest ticket)**: round 1 found a **Critical** — the original loud-retain leaked the capacity slot forever (escalating a gateway outage into an STT-v2 capacity DoS) and lost the transcript on the reaper path anyway. Reworked to the durable outbox (round 2 confirmed C-1 closed + the lock/reaper sound). Round 2 found two Important gaps — 429-under-burst dropped as "permanent", and an at-most-once crash window — both fixed (429/408/425 transient; delete-after-ack lease). Orchestrator spot-verified the final lease state machine.
+
+**Gates**: `pnpm py:stt-v2:test:unit` **2100 passed**; ruff + mypy clean. RED→GREEN for capacity-release, 429-transient, crash-window-survives, redrive-order, drain-tail, reaper-config.
+
+**Discovered → follow-ups**: server-side transcript dedup is check-then-act (a DB unique constraint on (consultation, transcript) would make no-double-fire non-racy — TASK-466 territory); outbox `HGETALL` + serial redrive is a throughput note under large backlogs (not correctness). Prometheus counters were left as loud structlog events (metrics.py out of manifest).
 
 ## Change History
 
