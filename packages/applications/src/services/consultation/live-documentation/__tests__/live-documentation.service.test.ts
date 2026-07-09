@@ -32,7 +32,8 @@ function buildHttpMock() {
     axiosRef: {
       post: vi.fn().mockImplementation((url: string) => {
         if (url.includes('/classify/tokens')) {
-          return Promise.resolve({ data: { entities: [{ type: 'MEDICATION', value: 'amlodipine', confidence: 0.92, start: 3, end: 13 }] } });
+          // Canonical NLP wire shape (apps/nlp schemas/common.py Entity): text / entity_type / position.{start,end}.
+          return Promise.resolve({ data: { entities: [{ entity_type: 'MEDICATION', text: 'amlodipine', confidence: 0.92, position: { start: 3, end: 13 } }] } });
         }
         if (url.includes('/generate')) {
           return Promise.resolve({ data: { summary: 'Pt on amlodipine for HTN.' } });
@@ -197,6 +198,43 @@ describe('LiveDocumentationService', () => {
     });
   });
 
+  // ------------------------------------------------------------------
+  // C5-01 (TASK-452): the NLP `/classify/tokens` wire contract. The service
+  // must read the canonical NLP fields (text / entity_type / position.{start,end})
+  // — NOT the never-emitted value/type/start/end — and re-key them onto the
+  // highlight DTO (entity_type → type). Genuinely-missing fields fall back.
+  // ------------------------------------------------------------------
+  describe('NLP contract mapping (C5-01)', () => {
+    it('maps the canonical NLP wire shape onto the highlight DTO and falls back for missing fields', async () => {
+      const httpMock = {
+        axiosRef: {
+          post: vi.fn().mockImplementation((url: string) => {
+            if (url.includes('/classify/tokens')) {
+              return Promise.resolve({
+                data: {
+                  entities: [
+                    { entity_type: 'CONDITION', text: 'hypertension', confidence: 0.81, position: { start: 5, end: 17 } },
+                    { confidence: 0.4 }, // no entity_type/text/position → safe fallbacks
+                  ],
+                },
+              });
+            }
+            if (url.includes('/generate')) return Promise.resolve({ data: { summary: 'note' } });
+            return Promise.resolve({ data: {} });
+          }),
+        },
+      };
+      const { service } = buildDeps(httpMock);
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'has hypertension', isFinal: true, segmentId: 's1' });
+
+      const payload = await service.flush(CID);
+
+      expect(payload!.entities[0]).toEqual({ text: 'hypertension', type: 'CONDITION', confidence: 0.81, start: 5, end: 17 });
+      expect(payload!.entities[1]).toEqual({ text: '', type: 'UNKNOWN', confidence: 0.4, start: undefined, end: undefined });
+    });
+  });
+
   describe('structured S/O/A/P sections (follow-up 1)', () => {
     const SOAP = [
       'Subjective: Patient reports chest pain since this morning.',
@@ -213,7 +251,7 @@ describe('LiveDocumentationService', () => {
               const text = body?.text ?? '';
               const start = text.indexOf('amlodipine');
               return Promise.resolve({
-                data: { entities: [{ type: 'MEDICATION', value: 'amlodipine', confidence: 0.9, start, end: start + 'amlodipine'.length }] },
+                data: { entities: [{ entity_type: 'MEDICATION', text: 'amlodipine', confidence: 0.9, position: { start, end: start + 'amlodipine'.length } }] },
               });
             }
             if (url.includes('/generate')) return Promise.resolve({ data: { summary: SOAP } });
