@@ -68,11 +68,12 @@ describe('ScreenTemplate', () => {
 });
 
 describe('StatusFooter', () => {
-  it('renders a labelled footer with a polite live region for the status message', () => {
+  it('renders a footer with a polite live region for the status message', () => {
     render(<StatusFooter start={<span>Ready</span>} end={<span>24 items</span>} />);
 
     const footer = document.querySelector('footer')!;
-    expect(footer.getAttribute('aria-label')).toBe('Page status');
+    // Generic footer nested in <main>: no aria-label (axe aria-prohibited-attr).
+    expect(footer.getAttribute('aria-label')).toBeNull();
     expect(screen.getByText('Ready').closest('[aria-live="polite"]')).not.toBeNull();
     expect(screen.getByText('24 items')).toBeDefined();
   });

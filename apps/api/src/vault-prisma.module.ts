@@ -24,7 +24,13 @@
 import { SecretsService } from '@arcaai/applications';
 import { VAULT_PRISMA_FACTORY, type VaultPrismaFactory, type VaultPrismaFactoryResult } from '@arcaai/domains';
 import { Global, Logger, Module } from '@nestjs/common';
-import { applySoftDeleteExtension, VaultPrismaClient, type VaultDbSecretsLike } from '@arcaai/database';
+import {
+  applySoftDeleteExtension,
+  applyTenantScopeExtension,
+  resolveTenantContext,
+  VaultPrismaClient,
+  type VaultDbSecretsLike,
+} from '@arcaai/database';
 
 const logger = new Logger('VaultPrismaFactoryModule');
 
@@ -56,7 +62,19 @@ export function buildVaultPrismaFactory(secrets: VaultDbSecretsLike): VaultPrism
   return async (): Promise<VaultPrismaFactoryResult> => {
     const wrapper = await VaultPrismaClient.create(secrets, role);
     const baseClient = wrapper.client;
-    const extendedClient = applySoftDeleteExtension(baseClient);
+    // Compose soft-delete THEN tenant-scope, mirroring env-mode
+    // createExtendedPrismaClient (packages/database/src/client.ts). Order
+    // matters: tenant-scope is applied LAST so its handlers run FIRST,
+    // merging `tenantId` into `args.where` before soft-delete adds its
+    // `resourceStatus` filter. TASK-444 regression: applying only
+    // soft-delete here left the Vault-mode client UNSCOPED, so reads that
+    // rely on the $extends (e.g. UserRoleAssignmentService.fetchAllByRoleId)
+    // leaked other tenants' rows.
+    const softDeleted = applySoftDeleteExtension(baseClient);
+    const extendedClient = applyTenantScopeExtension(softDeleted as unknown as Parameters<typeof applyTenantScopeExtension>[0], {
+      getTenantId: () => resolveTenantContext().tenantId,
+      isSuperAdmin: () => resolveTenantContext().isSuperAdmin,
+    });
     return {
       // The PrismaClient surface from @arcaai/database is the one
       // CoreDatabaseService consumes; the structural cast keeps the

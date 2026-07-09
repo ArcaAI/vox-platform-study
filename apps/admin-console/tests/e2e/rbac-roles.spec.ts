@@ -42,7 +42,9 @@ test.describe('RBAC roles screen (two-pane)', () => {
         await waitForList(page);
         await roleListItems(page).first().click();
 
-        await expect(page.getByRole('heading', { level: 2 })).toBeVisible();
+        // The detail header h2 (role name) — scoped away from the ⌘K command
+        // palette's own level-2 dialog title, which is also mounted in the DOM.
+        await expect(page.getByRole('heading', { level: 2 }).and(page.locator(':not([data-slot="dialog-title"])'))).toBeVisible();
         // Desktop tier (1280 viewport) renders the matrix as a table with a legend.
         await expect(page.getByRole('table')).toBeVisible();
         await expect(page.getByRole('list', { name: 'Legend' })).toBeVisible();

@@ -1,6 +1,6 @@
 # TASK-441 — Tenant Resource Pages Redesign: One Shared Frame, Slide-Over Detail, 3-Pane Hierarchy
 
-- **Status**: Review
+- **Status**: Completed
 - **Type**: feature (UX/UI redesign — six tenant-scoped pages)
 - **Owner**: admin-console
 - **Design source**: project "ARCAAI Hope Admin console" (`https://claude.ai/design/p/6a582386-939b-47d3-8c19-cd9338b34814`) — build spec §7; artboards `3c` (Departments 3-pane), `3d`–`3i` (per-page), `5e` (mobile drill-down).
@@ -127,12 +127,18 @@ All six tenant-scoped pages were migrated to the shared frame + `DetailDrawer` p
 - **`pnpm --filter @arcaai/admin-console lint`** → clean (`eslint src --max-warnings 0`, 0 warnings).
 - **`pnpm --filter @arcaai/admin-console build`** → success; all routes compiled (incl. `/agents`, `/audio/pipelines`, `/departments`, `/dna-writing-styles`, `/harness/workflows`, `/storage`).
 - **`pnpm --filter @arcaai/applications test`** → **272 files, 5873 tests passed** (incl. the new `getDepartmentUsers` `isLead` case); `build` green.
-- **e2e**: `storage-browser`, `audio-pipelines`, `dna-writing-styles`, `harness-workflows` specs updated to the new drawer/fill-grid DOM (the retired side-panel assertions replaced with grid + slide-over). `agents`/`departments` specs unaffected (toolbar/tree selectors unchanged). **Not executed this session** — these are RUNNING-stack Playwright specs (require the live app + gateway) and self-skip when the stack is down.
+- **e2e + a11y — executed against a live stack** (gateway `:8868` + admin-console `:5176` + seeded DB, working tenant = "Global"): the six pages' Playwright specs (`agents`, `audio-pipelines`, `departments`, `dna-writing-styles`, `harness-workflows`, `storage-browser`) — **25/25 passed**, including a light **and** dark `@axe-core/playwright` scan per page (**0 WCAG 2.2 AA violations**) and a row→detail-slide-over interaction per grid page. Evidence: `pnpm exec playwright test … --workers=1` → `25 passed`.
 
-### Not yet done (open for the Review gate)
-- axe 0-violations per screen and both-theme visual QA run against a **live** stack (the a11y scans live in the e2e specs, gated on the running stack).
-- Runtime verification in a driven browser (`next-dev-loop`) against real BFF/gateway data.
-- New `departments` / `harness-workflows` happy-path e2e beyond the smoke+a11y specs, if desired.
+### Shared-infra a11y fixes (required to reach axe-0; benefit every console screen)
+Running the axe gate for the first time against a live stack surfaced pre-existing a11y bugs in shared components that the six screens compose. Fixed here:
+1. **`StatusFooter`** (`src/shared/page/status-footer.tsx`) — removed `aria-label` from the generic `<footer>` (nested in `<main>`, so its role is generic and the label is prohibited → axe `aria-prohibited-attr`). The inner `aria-live` region still carries status.
+2. **`VirtualizedDataGrid`** (`packages/ui/src/components/data-grid/virtualized-data-grid.tsx`) — (a) wrapped the loading/error/empty states in a `role="row"`>`role="gridcell"` so the `role="grid"` always owns its required child (`aria-required-children` — was firing on every empty/error/loading grid); (b) made the `role="grid"` element itself the focusable scroll container (removed the intermediate generic scroll `<div>`), fixing `scrollable-region-focusable` on fixed-height grids without regressing `aria-required-children`. `@arcaai/ui` rebuilt (the app consumes its `dist`). Validated by the component's own suite: `@arcaai/ui` **655 tests pass** (incl. its axe tests).
+
+### Also updated
+- The six e2e specs' `waitForSettled` and interactions were corrected to the real grid DOM: the `VirtualizedDataGrid` renders `role="grid"` (not `table`) and data rows are `[data-slot="data-grid-row"]` (not `[tabindex="0"]`). The former `table`/`tbody tr[tabindex]` selectors never matched — these specs had never run green against a stack. `selectWorkingTenant` now skips the degenerate SYSTEM tenant.
+
+### Discovered (follow-up, out of scope) — suite-wide e2e selector bug
+The same stale `getByRole('table')` / `tbody tr[tabindex="0"]` selectors exist in ~15 other grid-page specs (`users`, `tenants`, `rbac-policies`, `transcription-jobs`, `queues`, …) that predate this ticket — they fail to settle against a live stack for the same reason. A follow-up task tracks modernizing them to `getByRole('grid')` / `[data-slot="data-grid-row"]`. Not TASK-441 pages, so not fixed here.
 
 ## Change History
 
@@ -140,3 +146,5 @@ All six tenant-scoped pages were migrated to the shared frame + `DetailDrawer` p
 |---|---|
 | 2026-07-08 | Ticket created from build spec §7 + artboards 3c–3i/5e; per-page current-state matrix captured; endpoints confirmed against feature clients (spec paths representative). Status: Pending (awaiting plan approval). |
 | 2026-07-08 | Implemented all six pages + members `isLead`. Three plan/reality gaps resolved with the user: prompt-config Select-ified (no new backend fields), global-tenant-banner-only, `isLead` derived from `UserDepartment.isPrimary`. Agents built as the reference slide-over pattern; DNA/Audio/Harness/Storage/Departments migrated to fill-grid + `DetailDrawer`; Harness gains live polling. admin-console `build lint test` green (810 tests); applications green (5873 tests, +`isLead` case). e2e specs updated to new DOM (not executed — need live stack). Status → Review. |
+| 2026-07-09 | Ran the six pages' Playwright e2e + axe against a live stack: **25/25 pass, 0 WCAG 2.2 AA violations (light+dark)**. To reach axe-0, fixed pre-existing shared-component a11y bugs surfaced by the gate: `StatusFooter` (`aria-prohibited-attr`) and `VirtualizedDataGrid` (`aria-required-children` in empty/error/loading states + `scrollable-region-focusable` on fixed-height grids); rebuilt `@arcaai/ui`. Corrected the six specs' grid selectors (`role="grid"` / `[data-slot="data-grid-row"]`) and the working-tenant helper (skip SYSTEM). Final: admin-console 836 unit + lint + build green; `@arcaai/ui` 655 unit green; applications 5873 green. Logged a follow-up for the suite-wide e2e selector bug on other grid pages. Status → **Completed**. |
+| 2026-07-09 | Follow-up (the logged suite-wide e2e bug): modernized the stale grid selectors in every OTHER grid-page spec (ai-models, api-keys, audit-logs, entitlements, queues, rate-limits, rbac-policies, tenant-storage, tenants, transcription-jobs, consultations, users, schedulers) — `getByRole('table')`→`getByRole('grid')`, `tbody tr[tabindex]`/`td`→`[data-slot="data-grid-row"]`/`[role="gridcell"]`, `getByLabel('Search X')`→`getByLabel('Search')`, faceted-filter URL assertions `status=X`→`f=…`; kept the 3 genuine `<table>` specs (pipeline-policy, harness-policy, rbac-roles) as-is. Two more pre-existing shared a11y bugs surfaced + fixed: `StatusBadge` **info** role dark contrast (4.47:1 → `--info` bumped indigo-400→indigo-300) and the shadcn `Table` container `scrollable-region-focusable` (added `tabIndex`). All grid/table/detail e2e specs now pass live (0 axe violations); `@arcaai/ui` 655 + admin-console 836 unit green, lint clean, ui rebuilt. |

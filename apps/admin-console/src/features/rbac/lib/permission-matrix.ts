@@ -110,6 +110,12 @@ const ACTION_ALIASES: Record<string, MatrixAction> = {
     manage: 'manage',
 };
 
+/** CASL `action`/`subject` are `string | string[]` — coerce to a trimmed list. */
+function toList(value: string | string[] | undefined | null): string[] {
+    const raw = Array.isArray(value) ? value : value == null ? [] : [value];
+    return raw.filter((entry): entry is string => typeof entry === 'string');
+}
+
 function normalizeAction(action: string): MatrixAction | 'manage' | null {
     const key = action.trim().toLowerCase();
     if (WILDCARDS.has(key)) return 'manage';
@@ -136,12 +142,15 @@ function isWildcardSubject(subject: string): boolean {
  * normalized action equals the column OR the rule grants `manage` (implies all).
  */
 function ruleMatches(rule: PolicyRule, subject: string, action: MatrixAction): boolean {
-    const ruleSubject = rule.subject?.trim() ?? '';
-    const subjectMatches = isWildcardSubject(ruleSubject) || ruleSubject === subject;
+    const subjectMatches = toList(rule.subject).some((ruleSubject) => {
+        const trimmed = ruleSubject.trim();
+        return isWildcardSubject(trimmed) || trimmed === subject;
+    });
     if (!subjectMatches) return false;
-    const normalized = normalizeAction(rule.action ?? '');
-    if (normalized === null) return false;
-    return normalized === action || normalized === 'manage';
+    return toList(rule.action).some((ruleAction) => {
+        const normalized = normalizeAction(ruleAction);
+        return normalized !== null && (normalized === action || normalized === 'manage');
+    });
 }
 
 function allowState(policy: MatrixPolicyInput, rule: PolicyRule): CellState {
@@ -168,10 +177,12 @@ function buildRowCatalog(policies: MatrixPolicyInput[]): { subject: string; labe
     const seen = new Set(CURATED_SUBJECTS.map((entry) => entry.subject));
     for (const policy of policies) {
         for (const rule of policy.rules ?? []) {
-            const subject = rule.subject?.trim() ?? '';
-            if (!subject || isWildcardSubject(subject) || seen.has(subject)) continue;
-            seen.add(subject);
-            rows.push({ subject, label: humanizeSubject(subject) });
+            for (const rawSubject of toList(rule.subject)) {
+                const subject = rawSubject.trim();
+                if (!subject || isWildcardSubject(subject) || seen.has(subject)) continue;
+                seen.add(subject);
+                rows.push({ subject, label: humanizeSubject(subject) });
+            }
         }
     }
     return rows;

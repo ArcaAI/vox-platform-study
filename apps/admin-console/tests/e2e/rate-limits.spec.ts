@@ -20,15 +20,15 @@ test.describe('rate limits screen', () => {
         await page.goto('/rate-limits');
         await expect(page.getByRole('heading', { level: 1, name: 'Rate Limits' })).toBeVisible();
         await expect(page.getByRole('switch', { name: 'Rate limiting enabled' })).toBeVisible();
-        await expect(page.getByRole('table', { name: 'Tier defaults' })).toBeVisible();
-        await expect(page.getByRole('table', { name: 'Route overrides' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'Tier defaults' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'Route overrides' })).toBeVisible();
     });
 
     test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {
         await page.emulateMedia({ colorScheme: 'light' });
         await page.goto('/rate-limits');
         await expect(page.getByRole('heading', { level: 1, name: 'Rate Limits' })).toBeVisible();
-        await expect(page.getByRole('table', { name: 'Tier defaults' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'Tier defaults' })).toBeVisible();
         await expectNoA11yViolations(page);
     });
 
@@ -36,7 +36,7 @@ test.describe('rate limits screen', () => {
         await page.emulateMedia({ colorScheme: 'dark' });
         await page.goto('/rate-limits');
         await expect(page.getByRole('heading', { level: 1, name: 'Rate Limits' })).toBeVisible();
-        await expect(page.getByRole('table', { name: 'Tier defaults' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'Tier defaults' })).toBeVisible();
         await expectNoA11yViolations(page);
     });
 });

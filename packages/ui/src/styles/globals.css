@@ -198,7 +198,9 @@
   --success-foreground: #04231a;
   --warning: var(--amber-400);
   --warning-foreground: #2a1b05;
-  --info: var(--indigo-400);
+  /* indigo-300 (not -400): -400 (#7c82ea) on the dark card is 4.47:1 — just
+     under WCAG AA 4.5:1 for the small status-badge text; -300 clears it. */
+  --info: var(--indigo-300);
   --info-foreground: #11122e;
   --link: var(--indigo-300);
 

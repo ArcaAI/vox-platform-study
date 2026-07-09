@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Separator } from '@arcaai/ui/components/shadcn/separator';
 import type { SafeSession } from '@/shared/auth/hooks';
+import { TenantSwitcher } from '@/shared/layout/tenant-switcher';
 import { ThemeToggle } from '@/shared/layout/theme-toggle';
 import { UserMenu } from '@/shared/layout/user-menu';
 import { matchNavEntry } from '@/shared/navigation/nav-config';
@@ -33,7 +34,12 @@ export function PlaygroundTopBar({ session }: { session: SafeSession }) {
             </div>
             <Separator orientation="vertical" className="data-[orientation=vertical]:h-5" />
             <PersonaControl session={session} />
-            <div className="ml-auto flex shrink-0 items-center gap-1">
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+                {/* Tenant-scoped playground pages (consultation / live-transcription /
+                    dna / llm) use WorkingTenantGate — an elevated admin needs the
+                    switcher HERE to pick a working tenant, since the playground has no
+                    console sidebar/header (TASK-442). */}
+                {session.isElevated ? <TenantSwitcher session={session} /> : null}
                 <Button asChild variant="ghost" size="sm">
                     <Link href="/dashboard">
                         <IconLogout2 className="size-4" />

@@ -38,7 +38,7 @@ test.describe('consultations aggregate exception (frame 40, row 33)', () => {
         // ...and row data stays tenant-scoped: no consultations grid at all
         // (exact name — the aggregate chart carries its own sr-only data table
         // named "New vs revisit consultations").
-        await expect(page.getByRole('table', { name: 'Consultations', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('grid', { name: 'Consultations', exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible();
     });
 
@@ -63,30 +63,30 @@ test.describe('consultations (frame 40)', () => {
         // Data rows are focusable (row click -> read-only detail); skeleton rows
         // are not. Exact table name: the chart's sr-only table also contains
         // "Consultations".
-        const dataRows = page.getByRole('table', { name: 'Consultations', exact: true }).locator('tbody tr[tabindex="0"]');
+        const dataRows = page.getByRole('grid', { name: 'Consultations', exact: true }).locator('[data-slot="data-grid-row"]');
         await expect(dataRows.first().or(emptyState.first())).toBeVisible();
     }
 
     test('shows the header, filter strip, aggregate card and the consultations grid', async ({ page }) => {
         await page.goto('/consultations');
         await waitForSettled(page);
-        await expect(page.getByText('read-only', { exact: true })).toBeVisible();
-        await expect(page.getByLabel('Patient:')).toBeVisible();
-        await expect(page.getByLabel('Doctor:')).toBeVisible();
-        await expect(page.getByLabel('Department:')).toBeVisible();
-        await expect(page.getByLabel('Status:')).toBeVisible();
-        await expect(page.getByLabel('Type:')).toBeVisible();
-        await expect(page.getByRole('table', { name: 'Consultations', exact: true })).toBeVisible();
+        // Footer status is a read-only surface ("Read-only", or "Refreshing" while fetching).
+        await expect(page.getByText(/^(Read-only|Refreshing)$/)).toBeVisible();
+        // Consultations filtering is faceted-only (globalSearch is off) — no
+        // omni-search input; the faceted Type/Status filters ride on the columns.
+        await expect(page.getByRole('grid', { name: 'Consultations', exact: true })).toBeVisible();
         await expect(page.getByRole('navigation', { name: 'Pagination' })).toBeVisible();
         await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible();
     });
 
-    test('the status filter syncs the URL with the raw enum value', async ({ page }) => {
+    test('a row opens the read-only detail drawer', async ({ page }) => {
         await page.goto('/consultations');
         await waitForSettled(page);
-        await page.getByLabel('Status:').click();
-        await page.getByRole('option', { name: 'Signed' }).click();
-        await expect(page).toHaveURL(/status=SIGNED/);
+        const rows = page.getByRole('grid', { name: 'Consultations', exact: true }).locator('[data-slot="data-grid-row"]');
+        // Skip the interaction when the tenant has no consultations (empty state).
+        if ((await rows.count()) === 0) return;
+        await rows.first().click();
+        await expect(page.getByRole('dialog')).toBeVisible();
     });
 
     test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {

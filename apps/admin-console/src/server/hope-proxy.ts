@@ -94,6 +94,14 @@ export async function handleProxy(request: Request, path: string[]): Promise<Res
         if (retried.status !== 401) {
             return toClientResponse(retried);
         }
+        // The access token was just refreshed, so a lingering 401 is NOT session
+        // expiry — it is an authorization / step-up re-auth failure (e.g. a wrong
+        // password on reveal/rotate). Surface the gateway's real error and keep
+        // the session intact; a mistyped step-up password must not log the user
+        // out. (Impersonation keeps the stricter clear-on-401 recovery below.)
+        if (!session.impersonation) {
+            return toClientResponse(retried);
+        }
     }
 
     await clearSession();

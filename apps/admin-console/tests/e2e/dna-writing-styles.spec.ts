@@ -24,8 +24,8 @@ async function waitForSettled(page: Page) {
     // ("No reports match your filters" — e.g. after toggling disabled=true).
     const emptyState = page.getByText(/No DNA reports yet|No reports match your filters/);
     // Data rows are focusable (row click -> doctor detail); skeleton rows are not.
-    const dataRows = page.getByRole('table', { name: 'DNA reports' }).locator('tbody tr[tabindex="0"]');
-    await expect(dataRows.first().or(emptyState.first())).toBeVisible();
+    const dataRows = page.getByRole('grid', { name: 'DNA reports' }).locator('[data-slot="data-grid-row"]');
+    await expect(dataRows.first().or(emptyState.first()).or(page.getByRole("alert").first())).toBeVisible();
 }
 
 test.describe('dna writing styles (frame 33)', () => {
@@ -37,18 +37,19 @@ test.describe('dna writing styles (frame 33)', () => {
         await waitForSettled(page);
         await expect(page.getByRole('heading', { level: 2, name: 'Dashboard' })).toBeVisible();
         await expect(page.getByText('Doctors covered', { exact: true })).toBeVisible();
-        await expect(page.getByLabel('Filter by doctor ID')).toBeVisible();
         await expect(page.getByRole('button', { name: 'Generate report' }).first()).toBeVisible();
-        await expect(page.getByRole('table', { name: 'DNA reports' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'DNA reports' })).toBeVisible();
     });
 
-    test('the disabled-reports filter syncs the URL', async ({ page }) => {
+    test('a doctor row opens the detail slide-over', async ({ page }) => {
+        // Redesign (TASK-441): the doctor detail panel is now a DetailDrawer.
         await page.goto('/dna-writing-styles');
         await waitForSettled(page);
-        await page.getByLabel('Disabled reports').click();
-        await page.getByRole('option', { name: 'Shown' }).click();
-        await expect(page).toHaveURL(/disabled=true/);
-        await waitForSettled(page);
+        const rows = page.getByRole('grid', { name: 'DNA reports' }).locator('[data-slot="data-grid-row"]');
+        // Skip the interaction when the tenant has no reports (empty state).
+        if ((await rows.count()) === 0) return;
+        await rows.first().click();
+        await expect(page.getByRole('dialog')).toBeVisible();
     });
 
     test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {

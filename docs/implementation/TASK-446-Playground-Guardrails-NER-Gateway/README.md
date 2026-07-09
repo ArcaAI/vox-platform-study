@@ -1,6 +1,6 @@
 # TASK-446 — Agent Playground: Guardrails + NER gateway routes
 
-- **Status**: Review (code complete; e2e pending on the running stack)
+- **Status**: Completed (2026-07-09 — unit + API e2e green against the live gateway)
 - **Type**: feature (API gateway + admin-console)
 - **Owner**: apps/api + admin-console
 - **Related**: follow-up to **TASK-442** (shipped the two tabs disabled as a documented API gap). Mirrors `SmrProxyController` (`text/*`) and `AiServiceProxyClient` (`/admin/ai-services`).
@@ -49,8 +49,11 @@ TASK-442 shipped the Agent Playground with **Guardrails** and **NER** tabs rende
 
 - **apps/api**: `pnpm build:api` clean; `pnpm lint` clean; **full unit suite 2030 passing / 4 skipped / 0 failing** (incl. `ai-inference` module 23 = client 7 + controller 4 + DTO-validation 12). The DTO tests drive the REAL global `ValidationPipe` config (transform + whitelist + forbidNonWhitelisted + forbidUnknownValues) — the class-validator contract the controller unit tests bypass and that otherwise only the (stack-dependent) e2e covered.
 - **admin-console**: `pnpm lint` clean; **full suite 833 passing** (110 files, incl. new guardrails-tab 3 + ner-tab 3).
-- **e2e (written; needs the running stack)**: `apps/api/tests/e2e/task-446-ai-inference.spec.ts` — deny-by-default 401, DTO validation 400, whitelist rejection, and "user-plane caller reaches the proxy (never 401/403)". The upstream Guardrail/NLP services aren't in the API e2e infra, so a valid request resolves 2xx (up) or 5xx (down) — asserted as not-an-auth-rejection.
-- **Remaining manual (running stack + Guardrail :8863 / NLP :8864 up)**: exercise both tabs end-to-end in the Agent Playground.
+- **API e2e (2026-07-09, live gateway :8868, seeded DB, run serially to respect the 5/60s login throttle)**: `apps/api/tests/e2e/task-446-ai-inference.spec.ts` — **4/4 pass**: deny-by-default 401, DTO validation 400 (missing text), unknown-`guardrailType` 400 (whitelist), and "authenticated user-plane caller reaches the proxy (never 401/403)".
+- **Live curl (2026-07-09, gateway :8868, super_admin/GLOBAL_ADMIN token)** — direct proof of the full path on the running gateway:
+  - `POST /api/v1/ai/guardrail/analyze` unauth → **401**; missing `text` → **400**; unknown `guardrailType` → **400**; smuggled snake_case `guardrail_type` → **400** (forbidNonWhitelisted); valid body → **503** with the exact `AiInferenceClient` message `AI inference request failed (POST /api/guardrail/analyze)` (auth+validation passed, controller→client executed, upstream refused since services down).
+  - `POST /api/v1/ai/nlp/entities` — same shape (400 on missing text; 503-reach-through on valid body).
+- **Not exercised (environment limit, not a code gap)**: a real guardrail verdict / NER entity list. The Guardrail (:8863) and NLP (:8864) services START under `arcaenv` but their first-run ONNX model downloads (`gliner-guard-*`) stall on rate-limited HuggingFace (no `HF_TOKEN`) in this environment, so they never reach `healthy`. The gateway proxy is proven to reach them (503 = connection-refused mapped by our client); with the services up it would forward their response verbatim. Upstream inference is pre-existing `apps/guardrail` / `apps/nlp`, out of this ticket's scope.
 
 ## Change History
 
@@ -58,3 +61,4 @@ TASK-442 shipped the Agent Playground with **Guardrails** and **NER** tabs rende
 |---|---|
 | 2026-07-08 | Implemented the user-plane `ai/*` gateway proxy (new `ai-inference` module: controller + client + DTOs, registered in AppModule) and wired the Agent Playground Guardrails + NER tabs to it. Corrected the spec (no service token; tabs colocated in `playground-llm`; new module leaves the read-only `AiServiceProxyClient` untouched). apps/api unit 2018 pass + build clean; admin-console 833 pass; lint clean both. e2e spec written (needs stack). Status: Review. |
 | 2026-07-08 | Closed the DTO-validation coverage gap: added `ai-inference.dto.test.ts` (12 tests) driving the real global `ValidationPipe` config — required/empty/maxLength/enum-whitelist/forbidNonWhitelisted for both request DTOs. apps/api unit now 2030 pass; lint clean. |
+| 2026-07-09 | Ran the API e2e against the live gateway — **4/4 `task-446-ai-inference.spec.ts` pass** (run serially, `--workers=1`, to respect the 5/60s login throttle); plus direct curl proof of 401 / 400×3 / 503-with-our-error on both routes. Guardrail/NLP services boot under `arcaenv` but their HF model downloads stall (rate-limited, no token), so real inference output isn't exercised here — the gateway reach-through is proven. Status: Review → **Completed**. |

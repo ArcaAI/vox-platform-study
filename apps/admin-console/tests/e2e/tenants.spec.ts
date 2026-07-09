@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }) => {
 
 /** Data rows are focusable (row click); skeleton rows are not. */
 function dataRows(page: import('@playwright/test').Page) {
-    return page.getByRole('table', { name: 'Tenants' }).locator('tbody tr[tabindex="0"]');
+    return page.getByRole('grid', { name: 'Tenants' }).locator('[data-slot="data-grid-row"]');
 }
 
 async function waitForListSettled(page: import('@playwright/test').Page) {
@@ -31,7 +31,7 @@ test.describe('tenants list (frame 12)', () => {
         await page.goto('/tenants');
         await waitForListSettled(page);
         await expect(page.getByRole('button', { name: 'New tenant' }).first()).toBeVisible();
-        await expect(page.getByLabel('Search tenants')).toBeVisible();
+        await expect(page.getByLabel('Search')).toBeVisible();
     });
 
     test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {

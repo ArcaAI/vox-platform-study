@@ -76,7 +76,9 @@ test.describe('secret rotation (TASK-445)', () => {
             await expect(drawer.getByText('v1')).toBeVisible();
             await expect(drawer.getByText('Secret value hidden')).toBeVisible();
 
-            await drawer.getByRole('button', { name: 'Rotate' }).click();
+            // exact: the fixture key contains "rotate", so a loose name match
+            // also hits the "Reveal <key>" button — pin to the Rotate trigger.
+            await drawer.getByRole('button', { name: 'Rotate', exact: true }).click();
             const rotateDialog = page.getByRole('dialog', { name: 'Rotate secret' });
             await expect(rotateDialog).toBeVisible();
             // Armed only with both inputs.
@@ -103,7 +105,7 @@ test.describe('secret rotation (TASK-445)', () => {
 
         try {
             await openSecretDrawer(page, key);
-            await page.getByRole('dialog').first().getByRole('button', { name: 'Rotate' }).click();
+            await page.getByRole('dialog').first().getByRole('button', { name: 'Rotate', exact: true }).click();
             const rotateDialog = page.getByRole('dialog', { name: 'Rotate secret' });
             await rotateDialog.getByLabel('New secret value').fill('rotated-secret-value');
             await rotateDialog.getByLabel('Password').fill('definitely-not-the-password');

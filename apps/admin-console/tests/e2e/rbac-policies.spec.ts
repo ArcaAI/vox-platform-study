@@ -19,16 +19,16 @@ test.describe('RBAC policies screen', () => {
     test('renders the policies heading, filter bar and list region', async ({ page }) => {
         await page.goto('/rbac/policies');
         await expect(page.getByRole('heading', { level: 1, name: 'Policies' })).toBeVisible();
-        await expect(page.getByLabel('Search policies')).toBeVisible();
+        await expect(page.getByLabel('Search')).toBeVisible();
         await expect(page.getByRole('button', { name: 'New policy' }).first()).toBeVisible();
-        await expect(page.getByRole('table', { name: 'Policies' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'Policies' })).toBeVisible();
     });
 
     test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {
         await page.emulateMedia({ colorScheme: 'light' });
         await page.goto('/rbac/policies');
         await expect(page.getByRole('heading', { level: 1, name: 'Policies' })).toBeVisible();
-        await expect(page.getByRole('table', { name: 'Policies' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'Policies' })).toBeVisible();
         await expectNoA11yViolations(page);
     });
 
@@ -36,7 +36,7 @@ test.describe('RBAC policies screen', () => {
         await page.emulateMedia({ colorScheme: 'dark' });
         await page.goto('/rbac/policies');
         await expect(page.getByRole('heading', { level: 1, name: 'Policies' })).toBeVisible();
-        await expect(page.getByRole('table', { name: 'Policies' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'Policies' })).toBeVisible();
         await expectNoA11yViolations(page);
     });
 });

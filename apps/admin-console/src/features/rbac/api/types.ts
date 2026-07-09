@@ -82,8 +82,10 @@ export interface UpdateRoleRequest {
 
 /** One CASL rule inside a policy. */
 export interface PolicyRule {
-    action: string;
-    subject: string;
+    // CASL serializes both as a single value OR a list — the gateway ships
+    // array actions (e.g. `["read","update","delete","list"]`).
+    action: string | string[];
+    subject: string | string[];
     conditions?: Record<string, unknown>;
     fields?: string[];
     inverted?: boolean;

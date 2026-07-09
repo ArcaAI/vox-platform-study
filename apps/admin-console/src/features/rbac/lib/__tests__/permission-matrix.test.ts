@@ -45,6 +45,29 @@ describe('derivePermissionMatrix', () => {
         }
     });
 
+    // CASL serializes `action`/`subject` as string OR string[] — the gateway
+    // ships array actions (e.g. DOCTOR's `["read","update","delete","list"]`).
+    // The derivation must grant every listed action, not throw on `.trim`.
+    it('grants every action in an array-valued `action` rule (CASL string[] form)', () => {
+        const matrix = derivePermissionMatrix([
+            policy({ rules: [{ action: ['read', 'update', 'delete', 'list'], subject: 'Consultation' }] }),
+        ]);
+        const row = rowFor(matrix, 'Consultation');
+        expect(row.cells.read).toBe('granted');
+        expect(row.cells.update).toBe('granted');
+        expect(row.cells.delete).toBe('granted');
+        expect(row.cells.create).toBe('none');
+        expect(row.cells.manage).toBe('none');
+    });
+
+    it('applies an array-valued `subject` rule to each listed subject', () => {
+        const matrix = derivePermissionMatrix([
+            policy({ rules: [{ action: 'read', subject: ['Consultation', 'Department'] }] }),
+        ]);
+        expect(rowFor(matrix, 'Consultation').cells.read).toBe('granted');
+        expect(rowFor(matrix, 'Department').cells.read).toBe('granted');
+    });
+
     it('lets a higher-precedence deny (inverted, lower priority number) mask a lower-precedence allow', () => {
         const matrix = derivePermissionMatrix([
             policy({ id: 'deny', priority: 10, rules: [{ action: 'read', subject: 'Consultation', inverted: true }] }),

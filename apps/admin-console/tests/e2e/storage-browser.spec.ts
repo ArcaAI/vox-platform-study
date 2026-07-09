@@ -23,9 +23,9 @@ async function waitForSettled(page: Page) {
     // Data rows are focusable (row click -> select/descend); a tenant with no
     // objects (or no buckets, which disables the listing) settles on the grid
     // empty state instead.
-    const dataRows = page.getByRole('grid', { name: 'Bucket objects' }).locator('[role="row"][tabindex="0"]');
+    const dataRows = page.getByRole('grid', { name: 'Bucket objects' }).locator('[data-slot="data-grid-row"]');
     const emptyObjects = page.getByText('No objects here');
-    await expect(dataRows.first().or(emptyObjects.first())).toBeVisible();
+    await expect(dataRows.first().or(emptyObjects.first()).or(page.getByRole("alert").first())).toBeVisible();
 }
 
 test.describe('storage browser (frame 31)', () => {

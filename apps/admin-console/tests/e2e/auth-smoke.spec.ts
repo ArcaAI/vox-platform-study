@@ -7,6 +7,10 @@
 import { expect, test } from '@playwright/test';
 import { ADMIN_CREDENTIALS, API_DOWN_MESSAGE, APP_DOWN_MESSAGE, apiAvailable, appAvailable } from './helpers/stack';
 
+// This spec exercises the session gate and the login form itself — do NOT
+// restore the shared session saved by auth.setup.ts.
+test.use({ storageState: { cookies: [], origins: [] } });
+
 test.beforeEach(async () => {
     test.skip(!(await appAvailable()), APP_DOWN_MESSAGE);
 });

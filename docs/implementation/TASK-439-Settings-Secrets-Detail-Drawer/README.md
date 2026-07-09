@@ -1,6 +1,6 @@
 # TASK-439 — Settings & Secrets Redesign: List + Detail Drawer with Code Editor
 
-- **Status**: Review
+- **Status**: Completed
 - **Type**: feature (UX/UI redesign — `/settings`)
 - **Owner**: admin-console
 - **Design source**: project "ARCAAI Hope Admin console" (`https://claude.ai/design/p/6a582386-939b-47d3-8c19-cd9338b34814`) — build spec §5; artboards `1b` (desktop drawer), `5c` (dark), `5f` (mobile sheet).
@@ -144,3 +144,4 @@ Removed:
 | 2026-07-08 | Ticket created from build spec §5 + artboards 1b/5c/5f; current-state map of `features/settings`; Rotate + History scoping decisions recorded. Status: Pending (awaiting plan approval). |
 | 2026-07-08 | Implemented the drawer redesign: retired the edit/create/value modals for `DetailDrawer` + `CodeEditor` (`setting-drawer.tsx`, `value-editor-pane.tsx`, `setting-history-tab.tsx`); list rows now open the drawer via `?setting=` URL state; Rotate ships as guided-replace, History as audit-log-backed. All settings tests/lint/build green (790 tests pass). Deferred: namespace grouping + Namespace/Type/Secrets-only chips (grid/shared + gateway change needed) and mobile card rows (grid/shared). Status → Review. |
 | 2026-07-08 | **Runtime verification pass** (authenticated browser against the live dev stack, `global_admin`): list rendered 86 live settings with pagination; drawer opened via `?setting=` on the real Json setting `local-asr-models` — Value/Details/History tabs, `CodeEditor` with line numbers + live "Valid JSON" badge, Save correctly disabled (locked setting). **axe-core 4.11 WCAG 2.2 AA: 0 violations (list + open drawer, light theme)**; zero console/SSR errors. Deferred grouping/chips gap filed as TASK-443; server-side rotation filed as TASK-445. Outstanding: dark-theme + mobile-sheet visual pass on the drawer; reveal/412 flows against the stack; Playwright e2e. |
+| 2026-07-09 | **Runtime + Playwright e2e closure.** Manual browser pass (dark + mobile): drawer full-screen sheet at 375px (axe 0), CodeEditor for Json, audited reveal step-up, and the full OCC cycle (412 alert keeps edits → reload → re-save). `settings.spec.ts` green — row→drawer (no modal editor), create drawer, JSON validity gating, namespace grouping, faceting chips, axe light+dark. Status: **Completed**. |

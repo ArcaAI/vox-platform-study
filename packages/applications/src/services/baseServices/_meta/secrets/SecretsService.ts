@@ -247,6 +247,19 @@ export class SecretsService {
    * the ciphertext, so a misconfigured prod node that hits this guard
    * cannot accidentally surface either material in a log line.
    */
+  /**
+   * Capability predicate for the runtime Transit surface (encrypt/decrypt).
+   * True iff the underlying provider implements `encrypt` — i.e.
+   * `SECRETS_PROVIDER=vault`. Lets callers (e.g. secret encryption-at-rest
+   * wiring) skip encryption gracefully on env/aws/azure/in-memory providers
+   * instead of catching the fail-fast guard error. `decrypt`/`decryptBatch`
+   * ship together with `encrypt` on the Vault provider, so one check covers
+   * the whole Transit surface.
+   */
+  supportsTransit(): boolean {
+    return typeof (this.provider as unknown as { encrypt?: unknown }).encrypt === 'function';
+  }
+
   async encrypt(plaintext: Buffer, keyName?: string): Promise<string> {
     const maybe = this.provider as unknown as {
       encrypt?: (b: Buffer, k?: string) => Promise<string>;

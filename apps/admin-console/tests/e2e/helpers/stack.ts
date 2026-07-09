@@ -18,7 +18,9 @@ export const API_DOWN_MESSAGE = `API gateway is not healthy at ${API_URL} — st
 
 async function probe(url: string, requireOk: boolean): Promise<boolean> {
     try {
-        const response = await fetch(url, { signal: AbortSignal.timeout(3_000) });
+        // 10s: a cold `next dev` compile of /login can exceed 3s, which made
+        // every spec in the run skip spuriously.
+        const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
         // Any HTTP answer proves the server is up; health additionally
         // requires 2xx so a degraded gateway skips instead of failing logins.
         return requireOk ? response.ok : true;

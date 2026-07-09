@@ -24,7 +24,7 @@ async function waitForSettled(page: Page) {
     await expect(page.getByRole('heading', { level: 1, name: 'Harness Workflows' })).toBeVisible();
     // Data rows are focusable (row click -> detail); skeletons are not. When
     // Temporal is unreachable the grid renders the alert error card instead.
-    const dataRows = page.getByRole('table', { name: 'Harness workflows' }).locator('tbody tr[tabindex="0"]');
+    const dataRows = page.getByRole('grid', { name: 'Harness workflows' }).locator('[data-slot="data-grid-row"]');
     const emptyState = page.getByText('No harness workflows');
     const errorCard = page.getByRole('alert');
     await expect(dataRows.first().or(emptyState.first()).or(errorCard.first())).toBeVisible();
@@ -39,7 +39,7 @@ test.describe('harness workflows (frame 38)', () => {
         await waitForSettled(page);
         await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible();
         await expect(page.getByLabel('Search workflow id')).toBeVisible();
-        await expect(page.getByRole('table', { name: 'Harness workflows' })).toBeVisible();
+        await expect(page.getByRole('grid', { name: 'Harness workflows' })).toBeVisible();
     });
 
     test('the state filter syncs to the URL', async ({ page }) => {

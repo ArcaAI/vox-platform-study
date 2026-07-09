@@ -17,9 +17,9 @@ test.beforeEach(async ({ page }) => {
 
 async function waitForListSettled(page: import('@playwright/test').Page) {
     await expect(page.getByRole('heading', { level: 1, name: 'API keys' })).toBeVisible();
-    const table = page.getByRole('table', { name: 'API keys' });
+    const table = page.getByRole('grid', { name: 'API keys' });
     const emptyState = page.getByText('No API keys yet').or(page.getByText('No keys match your filters'));
-    await expect(table.locator('tbody tr').first().or(emptyState.first())).toBeVisible();
+    await expect(table.locator('[data-slot="data-grid-row"]').first().or(emptyState.first())).toBeVisible();
 }
 
 test.describe('api keys screen (frame 23)', () => {
@@ -27,7 +27,7 @@ test.describe('api keys screen (frame 23)', () => {
         await page.goto('/api-keys');
         await waitForListSettled(page);
         await expect(page.getByRole('button', { name: 'Create key' }).first()).toBeVisible();
-        await expect(page.getByLabel('Search keys')).toBeVisible();
+        await expect(page.getByLabel('Search')).toBeVisible();
     });
 
     test('has no WCAG 2.2 AA violations (light)', async ({ page }) => {

@@ -52,6 +52,8 @@ const mockGlobalSettingRepository = {
     // the probe defaults to "not found" in beforeEach.
     findFirst: vi.fn(),
     restore: vi.fn(),
+    // TASK-447 — Phase 4C envelope encryption of secret values on write.
+    encryptValueIntoEntity: vi.fn(),
 };
 
 // TASK-396 — reveal collaborators: UserRepository (password hash for step-up),
@@ -68,6 +70,9 @@ const mockCryptoService = {
 const mockSecretsService = {
     encrypt: vi.fn(),
     decrypt: vi.fn(),
+    // TASK-447 — Transit capability gate; default off (env/test), re-pinned in
+    // beforeEach and flipped on in the encryption-at-rest tests.
+    supportsTransit: vi.fn(() => false),
 };
 
 /**
@@ -154,6 +159,11 @@ describe('GlobalSettingService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+
+        // TASK-447 — re-pin the Transit gate to off each test (clearAllMocks
+        // keeps implementations, so an encryption test flipping it on must not
+        // leak into the next).
+        mockSecretsService.supportsTransit.mockReturnValue(false);
 
         // TASK-402 — default the revive probe to "no DELETED row" so every
         // pre-existing create test keeps exercising the plain-create branch.
@@ -634,6 +644,66 @@ describe('GlobalSettingService', () => {
             } as any);
 
             expect(mockGlobalSettingRepository.updateWithVersion).toHaveBeenCalled();
+        });
+    });
+
+    // =========================================================================
+    // TASK-447 (Phase 4C) — secret values are envelope-encrypted at rest on
+    // every value-write when Vault Transit is available. `encryptedValue` is
+    // present ⟺ it decrypts to the current value, so the reveal read path never
+    // returns a stale secret. Non-secrets and no-Transit posture are unaffected.
+    // =========================================================================
+    describe('TASK-447 secret encryption-at-rest', () => {
+        it('create encrypts a new SECRET value at rest when Transit is available', async () => {
+            mockSecretsService.supportsTransit.mockReturnValue(true);
+            mockGlobalSettingRepository.create.mockResolvedValue(createMockGlobalSettingEntity({ id: 'sec-1', namespace: 'secrets' }));
+
+            await service.create({ name: 'API token', key: 'secrets.api-token', value: 'brand-new', dataType: ValueType.String, namespace: 'secrets' } as any);
+
+            expect(mockGlobalSettingRepository.encryptValueIntoEntity).toHaveBeenCalledTimes(1);
+            expect(mockGlobalSettingRepository.encryptValueIntoEntity).toHaveBeenCalledWith(expect.anything(), mockSecretsService);
+        });
+
+        it('create does NOT encrypt a non-secret value', async () => {
+            mockSecretsService.supportsTransit.mockReturnValue(true);
+            mockGlobalSettingRepository.create.mockResolvedValue(createMockGlobalSettingEntity({ id: 'plain-1', namespace: 'features' }));
+
+            await service.create({ name: 'Flag', key: 'feature.enable', value: 'true', dataType: ValueType.Boolean, namespace: 'features' } as any);
+
+            expect(mockGlobalSettingRepository.encryptValueIntoEntity).not.toHaveBeenCalled();
+        });
+
+        it('update re-wraps a SECRET when its value changes (Transit available)', async () => {
+            mockSecretsService.supportsTransit.mockReturnValue(true);
+            const secret = createMockGlobalSettingEntity({ id: 'sec-2', namespace: 'secrets', hasChanges: true, changes: { value: 'rotated-inline' } });
+            (secret as any).version = 2;
+            mockGlobalSettingRepository.findById.mockResolvedValue(secret);
+            mockGlobalSettingRepository.updateWithVersion.mockResolvedValue(secret);
+
+            await service.update('sec-2', { value: 'rotated-inline', expectedVersion: 2 } as any);
+
+            expect(mockGlobalSettingRepository.encryptValueIntoEntity).toHaveBeenCalledWith(secret, mockSecretsService);
+        });
+
+        it('update does NOT re-wrap a SECRET when only non-value fields change (ciphertext stays valid)', async () => {
+            mockSecretsService.supportsTransit.mockReturnValue(true);
+            const secret = createMockGlobalSettingEntity({ id: 'sec-3', namespace: 'secrets', hasChanges: true, changes: { description: 'new note' } });
+            (secret as any).version = 2;
+            mockGlobalSettingRepository.findById.mockResolvedValue(secret);
+            mockGlobalSettingRepository.updateWithVersion.mockResolvedValue(secret);
+
+            await service.update('sec-3', { description: 'new note', expectedVersion: 2 } as any);
+
+            expect(mockGlobalSettingRepository.encryptValueIntoEntity).not.toHaveBeenCalled();
+        });
+
+        it('create leaves a SECRET plaintext when Transit is unavailable (env/test) — no throw', async () => {
+            // supportsTransit stays false (beforeEach default).
+            mockGlobalSettingRepository.create.mockResolvedValue(createMockGlobalSettingEntity({ id: 'sec-4', namespace: 'secrets' }));
+
+            await service.create({ name: 'API token', key: 'secrets.api-token', value: 'plain', dataType: ValueType.String, namespace: 'secrets' } as any);
+
+            expect(mockGlobalSettingRepository.encryptValueIntoEntity).not.toHaveBeenCalled();
         });
     });
 
