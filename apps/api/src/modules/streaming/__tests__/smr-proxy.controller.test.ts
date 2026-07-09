@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, HttpException, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SmrProxyController } from '../smr-proxy.controller';
 
 const createMockHttpService = () => ({
@@ -290,6 +290,92 @@ describe('SmrProxyController', () => {
       const body = mockHttpService.axiosRef.post.mock.calls[0][1];
       expect(body.provider).toBe('lm-studio');
       expect(body.model).toBe('qwen3.5-4b');
+    });
+  });
+
+  // TASK-460 C4-04 — `withRetry` used to re-POST `/generate` on post-send
+  // socket failures (ECONNRESET/EPIPE/ETIMEDOUT) and upstream 5xx responses.
+  // Those occur AFTER request bytes reached SMR, so a generation may already
+  // be running/billed — the retry re-invoked it (duplicate billing, divergent
+  // drafts). `/generate` may only retry CONNECT-PHASE failures (the request
+  // provably never left the gateway); idempotent GETs keep the broad retry.
+  describe('TASK-460 C4-04 — /generate retry hygiene (single delivery)', () => {
+    const codeError = (code: string) => Object.assign(new Error(code), { code });
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('does NOT re-POST /generate after a post-send ECONNRESET (single delivery)', async () => {
+      mockHttpService.axiosRef.post.mockRejectedValue(codeError('ECONNRESET'));
+
+      const outcome = controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+      await vi.runAllTimersAsync();
+      expect(await outcome).toBeInstanceOf(HttpException);
+
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT re-POST /generate after a post-send ETIMEDOUT or EPIPE', async () => {
+      for (const code of ['ETIMEDOUT', 'EPIPE']) {
+        mockHttpService.axiosRef.post.mockReset();
+        mockHttpService.axiosRef.post.mockRejectedValue(codeError(code));
+
+        const outcome = controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+        await vi.runAllTimersAsync();
+        await outcome;
+
+        expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
+      }
+    });
+
+    it('does NOT re-POST /generate when SMR itself responded 5xx (request was delivered)', async () => {
+      mockHttpService.axiosRef.post.mockRejectedValue({ response: { status: 503, data: { detail: 'busy' } } });
+
+      const outcome = controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+      await vi.runAllTimersAsync();
+      const err = await outcome;
+
+      expect((err as HttpException).getStatus()).toBe(503);
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
+    });
+
+    it('still retries a connect-phase ECONNREFUSED (request never reached SMR)', async () => {
+      mockHttpService.axiosRef.post.mockRejectedValueOnce(codeError('ECONNREFUSED')).mockResolvedValueOnce({ data: { task_id: 't-retry' } });
+
+      const outcome = controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false });
+      await vi.runAllTimersAsync();
+      const result = await outcome;
+
+      expect(result.task_id).toBe('t-retry');
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(2);
+    });
+
+    it('does NOT re-POST /generate/assembled after a post-send ECONNRESET', async () => {
+      mockHttpService.axiosRef.post.mockRejectedValue(codeError('ECONNRESET'));
+
+      const outcome = controller
+        .generateAssembled({ type: 'summary', message: 'Patient transcript', provider: 'ollama', model: 'm' })
+        .catch((e: unknown) => e);
+      await vi.runAllTimersAsync();
+      expect(await outcome).toBeInstanceOf(HttpException);
+
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the broad retry for the idempotent GET task-status (ECONNRESET retries)', async () => {
+      mockHttpService.axiosRef.get.mockRejectedValueOnce(codeError('ECONNRESET')).mockResolvedValueOnce({ data: { task_id: 't-1', status: 'completed' } });
+
+      const outcome = controller.getTaskStatus('t-1');
+      await vi.runAllTimersAsync();
+      const result = await outcome;
+
+      expect(result.status).toBe('completed');
+      expect(mockHttpService.axiosRef.get).toHaveBeenCalledTimes(2);
     });
   });
 

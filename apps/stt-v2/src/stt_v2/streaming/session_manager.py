@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import os
 import time
 import uuid
@@ -56,6 +57,21 @@ from stt_v2.streaming.session import StreamSession
 logger = structlog.get_logger(__name__)
 
 StreamingAsrCallable = Callable[[np.ndarray, int], Awaitable[dict[str, Any]]]
+
+# TASK-456 C2-03 — shared Redis Hash holding transcripts whose durable persist
+# exhausted its inline retries on a transient error. The reaper loop (any
+# worker) re-drives entries with an idempotency key; because it lives on shared
+# Redis, a worker restart does not lose the transcript.
+TRANSCRIPT_OUTBOX_KEY = "stt:transcript_outbox"
+
+# Retryable 4xx back-off signals — treated as TRANSIENT, not permanent (I-1).
+_RETRYABLE_4XX = frozenset({408, 425, 429})
+
+# Soft lease (seconds) a worker stamps on an outbox entry while it re-drives it,
+# so concurrent workers skip a fresh entry (fewer duplicate POSTs) yet a crashed
+# worker's entry becomes re-claimable once the lease expires. Longer than the
+# gateway POST timeout, shorter than the reaper scan interval.
+OUTBOX_LEASE_TTL_S = 90.0
 
 
 class SessionManager:
@@ -108,6 +124,9 @@ class SessionManager:
         self._dual_capture: dict[str, DualCaptureConfig] = {}
         # TASK-351 P1-3 — monotonic timestamp of the last XTRIM per session.
         self._last_audio_trim_at: dict[str, float] = {}
+        # TASK-456 C2-07 — per-session lock serializing the four finalize
+        # entrypoints so a second entrant is a no-op (no duplicate Media rows).
+        self._finalize_locks: dict[str, asyncio.Lock] = {}
         self._running = False
 
         # Cache settings values at init time to avoid calling get_settings()
@@ -116,16 +135,29 @@ class SessionManager:
             _settings = get_settings()
             self._reaper_interval_s = _settings.streaming_reaper_interval_s
             self._session_timeout_s = _settings.streaming_session_timeout_s
+            # C2-02 — the reaper reaps on audio-idle (default 300s), not the 60s
+            # session timeout, so a normal clinical speech pause never finalizes
+            # a live session. Wires the previously-dead knob.
+            self._audio_idle_timeout_s = _settings.streaming_audio_idle_timeout_s
             self._heartbeat_interval_s = _settings.streaming_worker_heartbeat_s
             self._heartbeat_ttl_s = _settings.streaming_worker_heartbeat_ttl_s
             self._inference_queue_maxsize = int(
                 getattr(_settings, "streaming_inference_queue_maxsize", 64)
             )
             self._inference_drain_timeout_s = float(
-                getattr(_settings, "streaming_inference_drain_timeout_s", 60.0)
+                _settings.streaming_inference_drain_timeout_s
             )
             self._inference_stop_timeout_s = float(
                 getattr(_settings, "streaming_inference_stop_timeout_s", 30.0)
+            )
+            self._transcript_persist_max_attempts = max(
+                1, int(_settings.streaming_transcript_persist_max_attempts)
+            )
+            self._transcript_persist_backoff_s = float(
+                _settings.streaming_transcript_persist_backoff_s
+            )
+            self._transcript_outbox_max_attempts = max(
+                1, int(_settings.streaming_transcript_outbox_max_attempts)
             )
             self._snapshot_interval_s = _settings.streaming_snapshot_interval_s
             self._partial_window_s = float(
@@ -137,11 +169,15 @@ class SessionManager:
         except Exception:
             self._reaper_interval_s = 300
             self._session_timeout_s = 60
+            self._audio_idle_timeout_s = 300
             self._heartbeat_interval_s = 10
             self._heartbeat_ttl_s = 30
             self._inference_queue_maxsize = 64
             self._inference_drain_timeout_s = 60.0
             self._inference_stop_timeout_s = 30.0
+            self._transcript_persist_max_attempts = 3
+            self._transcript_persist_backoff_s = 0.5
+            self._transcript_outbox_max_attempts = 10
             self._snapshot_interval_s = 30.0
             self._partial_window_s = 8.0
             self._audio_trim_interval_s = 30.0
@@ -694,6 +730,9 @@ class SessionManager:
         self._partial_tasks.pop(session_id, None)
         self._final_published_gates.pop(session_id, None)
         self._commit_policies.pop(session_id, None)
+        # TASK-456 C2-07 — drop the per-session finalize lock (a queued waiter
+        # already holds its own reference and will no-op on the CLOSED guard).
+        self._finalize_locks.pop(session_id, None)
         self._sessions.pop(session_id, None)
         # TASK-386 — keep the active-streaming-sessions gauge in sync on removal.
         streaming_session_ended(self.active_session_count)
@@ -1390,7 +1429,16 @@ class SessionManager:
         )
 
     async def _drain_inference_queue(self, session_id: str) -> None:
-        """Wait for all pending utterances in the inference queue to finish."""
+        """Wait for all pending utterances in the inference queue to finish.
+
+        C2-05 — on a drain timeout (e.g. GPU backlog) the utterances still
+        queued are transcribed inline before returning, rather than dropped, so
+        the closing tail utterance always makes it into the final transcript.
+
+        I-2 — the background inference loop is a concurrent consumer of the same
+        queue, so it is settled (cancelled + awaited) FIRST; the inline drain is
+        then the sole consumer and cannot race the loop over the same item.
+        """
         queue = self._inference_queues.get(session_id)
         if queue is None:
             return
@@ -1398,11 +1446,63 @@ class SessionManager:
             await asyncio.wait_for(queue.join(), timeout=self._inference_drain_timeout_s)
         except TimeoutError:
             logger.warning(
-                "Inference queue drain timed out",
+                "Inference queue drain timed out; transcribing remaining utterances inline",
                 session_id=session_id,
                 remaining=queue.qsize(),
                 timeout_s=self._inference_drain_timeout_s,
             )
+            await self._settle_inference_loop(session_id)
+            await self._drain_remaining_inline(session_id, queue)
+
+    async def _settle_inference_loop(self, session_id: str) -> None:
+        """Cancel + await the background inference consumer (I-2).
+
+        Stops the loop racing the inline drain over the queue. The tail
+        utterance is the LAST item enqueued, so at a drain timeout it is still in
+        the queue (the loop is busy on an earlier backlog item); cancelling the
+        loop therefore preserves the tail for the inline drain and only forfeits
+        the single mid-backlog item the loop was blocked on — an acceptable,
+        bounded loss under sustained backlog.
+        """
+        task = self._inference_tasks.pop(session_id, None)
+        if task is None or task.done():
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.warning(
+                "Background inference loop raised while settling for inline drain",
+                session_id=session_id,
+                error=str(exc),
+            )
+
+    async def _drain_remaining_inline(
+        self,
+        session_id: str,
+        queue: asyncio.Queue[AudioUtterance | None],
+    ) -> None:
+        """Transcribe utterances still queued at drain-timeout inline (C2-05).
+
+        Only the finite snapshot currently in the queue is processed — finalize
+        enqueues nothing further and the background loop only removes items — so
+        this is bounded by the queue depth and never blocks unboundedly.
+        """
+        session = self._sessions.get(session_id)
+        if session is None:
+            return
+        while True:
+            try:
+                utt = queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            try:
+                if utt is not None:
+                    await self._run_inline_inference(session, utt)
+            finally:
+                queue.task_done()
 
     async def _stop_inference_loop(self, session_id: str, force_cancel: bool = False) -> None:
         """Send sentinel and cancel the background inference task."""
@@ -1901,12 +2001,25 @@ class SessionManager:
         TASK-342 GAP #1 — streaming sessions have no TranscriptionJob, so the
         transcript is keyed directly to the consultation (+ tenant). Persisting
         it fires ``TranscriptionCreated`` on the API side, which triggers the
-        harness auto-draft pipeline. The API enforces idempotency (a finalize
-        retry will not double-create the transcript or re-trigger the harness).
+        harness auto-draft pipeline. The streaming path is deduped server-side by
+        ``consultationId`` (an existing transcript is returned without
+        re-creating the row or re-emitting the event), so retrying a failed POST
+        is safe; a forward-compatible ``Idempotency-Key`` is also sent.
 
-        No-op unless the session has a ``consultation_id`` and a non-empty final
-        transcript. All failures are logged and swallowed so finalization is
-        never blocked.
+        TASK-456 C2-03 — unlike the best-effort audio/metadata uploads, this
+        transcript is the durable clinical system of record AND the sole harness
+        trigger, so a transient gateway blip must NOT lose it:
+
+        * retried up to ``_transcript_persist_max_attempts`` inline with a
+          scaling backoff;
+        * a PERMANENT (4xx) failure is dropped immediately with a loud alert —
+          retrying a client error is futile;
+        * a TRANSIENT failure that exhausts the inline retries is enqueued to the
+          shared Redis outbox for the reaper (any worker) to re-drive.
+
+        Finalize always proceeds to close + release capacity regardless — the
+        durable outbox, not a retained session, carries the durability, so a
+        worker never leaks its capacity slot on a gateway outage.
         """
         consultation_id = session.consultation_id
         if not consultation_id:
@@ -1925,35 +2038,322 @@ class SessionManager:
             )
             return
 
+        idempotency_key = self._transcript_idempotency_key(session)
+        attempts = self._transcript_persist_max_attempts
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                gateway = self._get_api_client()
+                result = await gateway.create_transcript(
+                    transcript_text=transcript_text,
+                    consultation_id=consultation_id,
+                    tenant_id=session.tenant_id,
+                    transcription_source="streaming",
+                    idempotency_key=idempotency_key,
+                )
+                logger.info(
+                    "Streaming transcript persisted",
+                    session_id=session.session_id,
+                    consultation_id=consultation_id,
+                    context_item_id=(result or {}).get("contextItemId"),
+                    attempt=attempt,
+                )
+                return
+            except Exception as exc:
+                last_error = exc
+                if self._is_permanent_persist_error(exc):
+                    logger.error(
+                        "stt.transcript.persist_permanent_drop — permanent (4xx) "
+                        "error persisting streaming transcript; dropping "
+                        "(retry is futile)",
+                        session_id=session.session_id,
+                        consultation_id=consultation_id,
+                        error=str(exc),
+                    )
+                    return
+                logger.warning(
+                    "Failed to persist streaming transcript; will retry",
+                    session_id=session.session_id,
+                    consultation_id=consultation_id,
+                    attempt=attempt,
+                    max_attempts=attempts,
+                    error=str(exc),
+                )
+                if attempt < attempts and self._transcript_persist_backoff_s > 0:
+                    await asyncio.sleep(self._transcript_persist_backoff_s * attempt)
+
+        # Transient failure exhausted the inline retries → durable Redis outbox.
+        await self._enqueue_transcript_outbox(
+            session, transcript_text, idempotency_key, last_error
+        )
+
+    @staticmethod
+    def _transcript_idempotency_key(session: StreamSession) -> str:
+        """Stable per-session-transcript idempotency key (consultation + session).
+
+        Shared by the inline persist and the outbox re-drive so the gateway can
+        dedup them once it honors the ``Idempotency-Key`` header.
+        """
+        return f"{session.consultation_id}:{session.session_id}"
+
+    @staticmethod
+    def _is_permanent_persist_error(exc: Exception) -> bool:
+        """True for a non-retryable 4xx client error.
+
+        The retryable 4xx back-off signals — 408 (Request Timeout), 425 (Too
+        Early) and 429 (Too Many Requests) — are TRANSIENT (I-1): the internal
+        transcript route is throttled, so an end-of-clinic burst / pod drain that
+        finalizes many sessions at once can legitimately return 429, and dropping
+        it there would silently lose the clinical system-of-record. 5xx, timeouts
+        and connection errors carry no 4xx status and are transient too.
+        """
+        details = getattr(exc, "details", None)
+        status = details.get("status_code") if isinstance(details, dict) else None
+        return (
+            isinstance(status, int)
+            and 400 <= status < 500
+            and status not in _RETRYABLE_4XX
+        )
+
+    async def _enqueue_transcript_outbox(
+        self,
+        session: StreamSession,
+        transcript_text: str,
+        idempotency_key: str,
+        last_error: Exception | None,
+    ) -> None:
+        """Durably enqueue a transient-failed transcript to the shared outbox."""
+        payload = {
+            "transcript_text": transcript_text,
+            "consultation_id": session.consultation_id,
+            "tenant_id": session.tenant_id,
+            "transcription_source": "streaming",
+            "idempotency_key": idempotency_key,
+            "attempts": 0,
+        }
         try:
-            gateway = self._get_api_client()
-            result = await gateway.create_transcript(
-                transcript_text=transcript_text,
-                consultation_id=consultation_id,
-                tenant_id=session.tenant_id,
-                transcription_source="streaming",
+            await self._redis.hset(
+                TRANSCRIPT_OUTBOX_KEY, idempotency_key, json.dumps(payload)
             )
-            logger.info(
-                "Streaming transcript persisted",
+            logger.error(
+                "stt.transcript.outbox_enqueued — transcript persistence failed "
+                "after inline retries; enqueued to the durable outbox for reaper "
+                "re-drive",
                 session_id=session.session_id,
-                consultation_id=consultation_id,
-                context_item_id=(result or {}).get("contextItemId"),
+                consultation_id=session.consultation_id,
+                idempotency_key=idempotency_key,
+                error=str(last_error),
             )
         except Exception as exc:
             logger.error(
-                "Failed to persist streaming transcript (non-fatal)",
+                "stt.transcript.outbox_enqueue_failed — could not enqueue "
+                "transcript to the durable outbox (DURABLE LOSS RISK)",
                 session_id=session.session_id,
-                consultation_id=consultation_id,
+                consultation_id=session.consultation_id,
+                idempotency_key=idempotency_key,
+                enqueue_error=str(exc),
+                persist_error=str(last_error),
+            )
+
+    async def _drain_transcript_outbox(self) -> None:
+        """Re-drive durable-outbox transcripts (TASK-456 C2-03).
+
+        Called from the reaper loop. The outbox is at-LEAST-once (I-2): an entry
+        is NEVER deleted before a confirmed 2xx, so a worker crash mid-POST
+        leaves it re-drivable by any worker's later scan. A short soft lease
+        (``OUTBOX_LEASE_TTL_S``) is stamped while a worker re-drives an entry so
+        concurrent workers skip it (fewer duplicate POSTs); a crashed worker's
+        lease simply expires and the entry is re-claimed. Duplicate deliveries
+        are harmless — the idempotency key + server-side ``consultationId`` dedup
+        never double-write or re-fire the harness. Fully self-guarded.
+        """
+        try:
+            entries = await self._redis.hgetall(TRANSCRIPT_OUTBOX_KEY)
+            if not isinstance(entries, dict) or not entries:
+                return
+            now = time.time()
+            for field, raw in list(entries.items()):
+                field_key = field.decode() if isinstance(field, bytes) else field
+                raw_value = raw.decode() if isinstance(raw, bytes) else raw
+                try:
+                    payload = json.loads(raw_value)
+                except (ValueError, TypeError):
+                    await self._redis.hdel(TRANSCRIPT_OUTBOX_KEY, field_key)
+                    logger.error(
+                        "stt.transcript.outbox_corrupt_drop — dropping unparseable "
+                        "outbox entry",
+                        idempotency_key=field_key,
+                    )
+                    continue
+                lease_expiry = payload.get("lease_expiry", 0)
+                if isinstance(lease_expiry, int | float) and lease_expiry > now:
+                    continue  # another worker holds a fresh lease → skip
+                await self._redrive_outbox_entry(field_key, payload, now)
+        except Exception as exc:
+            logger.warning(
+                "stt.transcript.outbox_drain_error — outbox drain scan failed",
                 error=str(exc),
             )
 
+    async def _redrive_outbox_entry(
+        self, field_key: str, payload: dict[str, Any], now: float
+    ) -> None:
+        """Re-drive one outbox transcript, at-least-once (I-2).
+
+        Stamps a soft lease and persists it BEFORE the POST (so the entry
+        survives a crash and concurrent workers skip it), then removes the entry
+        ONLY after a confirmed 2xx. A transient failure keeps the entry (lease
+        released, ``attempts`` bumped) for the next scan; a permanent (4xx) error
+        or exhausted attempts drop it with a loud alert.
+        """
+        idempotency_key = payload.get("idempotency_key") or field_key
+        consultation_id = payload.get("consultation_id")
+
+        # Claim: stamp + persist a lease BEFORE the POST. Never a delete here.
+        payload["processing_by"] = self._worker_id
+        payload["lease_expiry"] = now + OUTBOX_LEASE_TTL_S
+        try:
+            await self._redis.hset(
+                TRANSCRIPT_OUTBOX_KEY, field_key, json.dumps(payload)
+            )
+        except Exception as exc:
+            logger.warning(
+                "stt.transcript.outbox_claim_failed — could not stamp outbox lease; "
+                "leaving entry for the next scan",
+                idempotency_key=idempotency_key,
+                error=str(exc),
+            )
+            return
+
+        try:
+            gateway = self._get_api_client()
+            await gateway.create_transcript(
+                transcript_text=payload.get("transcript_text", ""),
+                consultation_id=consultation_id,
+                tenant_id=payload.get("tenant_id"),
+                transcription_source=payload.get("transcription_source", "streaming"),
+                idempotency_key=idempotency_key,
+            )
+        except Exception as exc:
+            await self._defer_or_drop_outbox_entry(
+                field_key, payload, idempotency_key, consultation_id, exc
+            )
+            return
+
+        # Confirmed 2xx → NOW it is safe to remove the entry (delete-after-ack).
+        try:
+            await self._redis.hdel(TRANSCRIPT_OUTBOX_KEY, field_key)
+        except Exception as exc:
+            logger.warning(
+                "stt.transcript.outbox_ack_delete_failed — transcript persisted but "
+                "outbox entry not removed; a later redrive will dedup server-side",
+                idempotency_key=idempotency_key,
+                error=str(exc),
+            )
+        logger.info(
+            "stt.transcript.outbox_drained — durable transcript persisted from outbox",
+            consultation_id=consultation_id,
+            idempotency_key=idempotency_key,
+            attempts=int(payload.get("attempts", 0)),
+        )
+
+    async def _defer_or_drop_outbox_entry(
+        self,
+        field_key: str,
+        payload: dict[str, Any],
+        idempotency_key: str,
+        consultation_id: Any,
+        exc: Exception,
+    ) -> None:
+        """Handle a failed outbox redrive: drop (permanent / exhausted) or keep.
+
+        Keeps the invariant "delete only after a confirmed 2xx": a transient
+        failure retains the entry (never deletes it), so a crash cannot lose it.
+        """
+        if self._is_permanent_persist_error(exc):
+            try:
+                await self._redis.hdel(TRANSCRIPT_OUTBOX_KEY, field_key)
+            except Exception:
+                pass
+            logger.error(
+                "stt.transcript.outbox_permanent_drop — permanent (4xx) error; "
+                "dropping transcript from the outbox",
+                consultation_id=consultation_id,
+                idempotency_key=idempotency_key,
+                error=str(exc),
+            )
+            return
+
+        attempts = int(payload.get("attempts", 0)) + 1
+        if attempts >= self._transcript_outbox_max_attempts:
+            try:
+                await self._redis.hdel(TRANSCRIPT_OUTBOX_KEY, field_key)
+            except Exception:
+                pass
+            logger.error(
+                "stt.transcript.outbox_exhausted_drop — transcript dropped after max "
+                "outbox attempts (ALERT: durable transcript lost)",
+                consultation_id=consultation_id,
+                idempotency_key=idempotency_key,
+                attempts=attempts,
+                error=str(exc),
+            )
+            return
+
+        # Transient → keep the entry (delete only after 2xx). Release the lease
+        # and bump attempts so the next scan re-drives it.
+        payload["attempts"] = attempts
+        payload["lease_expiry"] = 0
+        payload["processing_by"] = None
+        try:
+            await self._redis.hset(
+                TRANSCRIPT_OUTBOX_KEY, field_key, json.dumps(payload)
+            )
+            logger.warning(
+                "stt.transcript.outbox_retry_deferred — transient error; entry "
+                "retained for re-drive on the next reaper scan",
+                consultation_id=consultation_id,
+                idempotency_key=idempotency_key,
+                attempts=attempts,
+                error=str(exc),
+            )
+        except Exception as re_exc:
+            logger.error(
+                "stt.transcript.outbox_reenqueue_failed — could not update outbox "
+                "entry; it remains re-drivable at its prior attempt count",
+                consultation_id=consultation_id,
+                idempotency_key=idempotency_key,
+                error=str(re_exc),
+            )
+
     async def _finalize_session(self, session: StreamSession) -> None:
+        """Finalize a session under a per-session lock (TASK-456 C2-07).
+
+        The four finalize entrypoints (``end_session``, the final audio frame,
+        the control-FINALIZE command, and the reaper) can race; without
+        serialization two of them both reach the upload + ``create_media`` block
+        and duplicate the ``Media`` rows / re-upload the blob. The lock makes
+        them run one at a time, and the ``CLOSED`` short-circuit inside makes the
+        second entrant an idempotent no-op.
+        """
+        # Get-or-create without allocating a throwaway Lock on every call (the
+        # get/create is atomic — no await between the get and the assignment).
+        lock = self._finalize_locks.get(session.session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._finalize_locks[session.session_id] = lock
+        async with lock:
+            await self._finalize_session_locked(session)
+
+    async def _finalize_session_locked(self, session: StreamSession) -> None:
         """Finalize a session — mark finalizing, upload recordings, close, and clean up.
 
         Callers must drain the inference queue *before* calling this
-        method so that all utterances have been transcribed.
+        method so that all utterances have been transcribed. Always invoked
+        under the per-session finalize lock (see ``_finalize_session``).
         """
-        if session.status == SessionStatus.CLOSED and session.session_id not in self._sessions:
+        # C2-07 — once a session is closed, re-finalizing is a no-op.
+        if session.status == SessionStatus.CLOSED:
             return
 
         publisher = self._publishers.get(session.session_id)
@@ -2077,9 +2477,12 @@ class SessionManager:
                     session, raw_audio_uri, processed_audio_uri
                 )
 
-                # TASK-342 GAP #1 — persist the streaming transcript (no jobId)
-                # so the harness auto-drafts the SOAP. Self-guarded (needs a
-                # consultation_id + non-empty final text); never blocks close.
+                # TASK-342 GAP #1 / TASK-456 C2-03 — persist the streaming
+                # transcript (no jobId) so the harness auto-drafts the SOAP.
+                # Unlike the uploads above this is the durable system of record:
+                # it is retried inline and, on a transient failure, handed to the
+                # durable Redis outbox — but finalize still closes normally so the
+                # session's capacity slot is always released.
                 await self._persist_streaming_transcript(session)
         except Exception as exc:
             logger.error(
@@ -2104,7 +2507,8 @@ class SessionManager:
                     session_id=session.session_id,
                     error=str(close_exc),
                 )
-            # Always clean up in-memory and capacity state, even if graceful close failed.
+            # Always clean up in-memory and capacity state, even if graceful
+            # close failed.
             await self.remove_session(session.session_id)
 
     async def _cancel_session(self, session: StreamSession) -> None:
@@ -2365,11 +2769,23 @@ class SessionManager:
     # ------------------------------------------------------------------
 
     async def _reaper_loop(self) -> None:
-        """Periodically finalize sessions that have been idle too long."""
+        """Periodically finalize sessions that have been idle too long.
+
+        C2-02 — reaps on ``_audio_idle_timeout_s`` (streaming_audio_idle_timeout_s,
+        default 300s), not the 60s ``_session_timeout_s``, so a live consultation
+        with a normal speech pause is never finalized out from under the
+        clinician. A genuinely dead session (client gone) still crosses the
+        audio-idle threshold and is reclaimed on a later scan.
+
+        C2-03 — the same periodic loop re-drives the durable transcript outbox
+        (no separate process), so transient-failed transcripts are eventually
+        persisted even across worker restarts.
+        """
         try:
             while self._running:
                 await asyncio.sleep(self._reaper_interval_s)
-                await self._reap_expired_sessions(self._session_timeout_s)
+                await self._reap_expired_sessions(self._audio_idle_timeout_s)
+                await self._drain_transcript_outbox()
         except asyncio.CancelledError:
             pass
 

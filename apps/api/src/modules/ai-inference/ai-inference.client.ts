@@ -1,6 +1,6 @@
 import { HttpService } from '@nestjs/axios';
 import { HttpException, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
-import { IConfigService } from '@arcaai/applications';
+import { IConfigService, SecretsService } from '@arcaai/applications';
 import { isAxiosError } from 'axios';
 
 const DEFAULT_GUARDRAIL_URL = 'http://localhost:8863';
@@ -23,10 +23,15 @@ const NLP_TIMEOUT_MS = 15_000;
  *  - NLP       `POST /api/v1/classify/tokens`    — medical token classification (NER)
  *
  * Base URLs resolve from `IConfigService` (`GUARDRAIL_URL` / `NLP_URL`), falling
- * back to the local-dev ports. Neither service uses service-token auth (plain
- * internal-network HTTP — no `*_SERVICE_TOKEN` secret exists, matching
- * `AiServiceProxyClient`). Error contract: upstream HTTP errors pass through
- * with their own status, transport failures become 503.
+ * back to the local-dev ports.
+ *
+ * TASK-460 C4-02 — both hops carry caller clinical text (PHI), so each POST
+ * attaches a FAIL-CLOSED `X-Service-Token` (`GUARDRAIL_SERVICE_TOKEN` /
+ * `NLP_SERVICE_TOKEN` via SecretsService), mirroring the harness outbound
+ * `HarnessOpsClient.buildHeaders` pattern: an unresolved secret still sends an
+ * empty header value for the receiver to reject, rather than silently omitting
+ * auth. Error contract: upstream HTTP errors pass through with their own
+ * status, transport failures become 503.
  */
 @Injectable()
 export class AiInferenceClient {
@@ -36,16 +41,20 @@ export class AiInferenceClient {
     private readonly httpService: HttpService,
     // Optional so unit fixtures compile without the global ConfigModule.
     @Optional() @Inject(IConfigService) private readonly configService?: IConfigService,
+    // Optional so unit fixtures compile without a mock; an unset token yields an
+    // empty `X-Service-Token`, which a token-requiring receiver rejects
+    // (fail-closed — TASK-460 C4-02, same posture as `HarnessOpsClient`).
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
 
   /** Content-safety / PII / prompt-injection analysis. Body is the upstream snake_case shape. */
   async analyzeGuardrail(body: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.post(this.guardrailUrl(), '/api/guardrail/analyze', body, GUARDRAIL_TIMEOUT_MS);
+    return this.post(this.guardrailUrl(), '/api/guardrail/analyze', body, GUARDRAIL_TIMEOUT_MS, 'GUARDRAIL_SERVICE_TOKEN');
   }
 
   /** Medical NER (token classification). Body is the upstream snake_case shape. */
   async classifyTokens(body: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.post(this.nlpUrl(), '/api/v1/classify/tokens', body, NLP_TIMEOUT_MS);
+    return this.post(this.nlpUrl(), '/api/v1/classify/tokens', body, NLP_TIMEOUT_MS, 'NLP_SERVICE_TOKEN');
   }
 
   private guardrailUrl(): string {
@@ -56,9 +65,32 @@ export class AiInferenceClient {
     return this.configService?.getConfigValue('NLP_URL') ?? DEFAULT_NLP_URL;
   }
 
-  private async post(baseUrl: string, path: string, body: Record<string, unknown>, timeout: number): Promise<Record<string, unknown>> {
+  /**
+   * TASK-460 C4-02 — mirror the harness outbound `buildHeaders` pattern: the
+   * `X-Service-Token` header is ALWAYS attached. When the secret is unset the
+   * empty value is still sent so the receiver rejects it (fail-closed), never
+   * silently downgrading a PHI-bearing hop to unauthenticated HTTP.
+   */
+  private async buildHeaders(secretKey: 'GUARDRAIL_SERVICE_TOKEN' | 'NLP_SERVICE_TOKEN'): Promise<Record<string, string>> {
+    const token = (await this.secretsService?.getSecretOptional(secretKey)) ?? '';
+    return {
+      'Content-Type': 'application/json',
+      'X-Service-Token': token,
+    };
+  }
+
+  private async post(
+    baseUrl: string,
+    path: string,
+    body: Record<string, unknown>,
+    timeout: number,
+    secretKey: 'GUARDRAIL_SERVICE_TOKEN' | 'NLP_SERVICE_TOKEN',
+  ): Promise<Record<string, unknown>> {
     try {
-      const response = await this.httpService.axiosRef.post<Record<string, unknown>>(`${baseUrl}${path}`, body, { timeout });
+      const response = await this.httpService.axiosRef.post<Record<string, unknown>>(`${baseUrl}${path}`, body, {
+        timeout,
+        headers: await this.buildHeaders(secretKey),
+      });
       return response.data;
     } catch (error) {
       throw this.toHttpError(error, `POST ${path}`);

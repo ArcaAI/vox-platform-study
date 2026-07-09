@@ -274,6 +274,46 @@ class TestGate:
         assert recorder.escalate_inputs[0].reason == "gate_sla_breached"
         assert recorder.calls["record_gate_decision"] == 1
 
+    @pytest.mark.asyncio
+    async def test_gate_abandons_after_terminal_escalation_bound(self):
+        """C1-02 (TASK-458): the gate escalates a BOUNDED number of times, then ABANDONS
+        (completes, approved=False) — no infinite escalation loop. Never signalled."""
+        recorder = StubRecorder()
+        config = StubConfig(verdicts=["PASS"])
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(
+                        gate=HarnessGateConfig(
+                            max_regen=2,
+                            gate_sla_seconds=30.0,
+                            gate_escalation_seconds=30.0,
+                            gate_max_escalations=2,
+                        )
+                    ),
+                    id=f"harness-doc-{uuid.uuid4()}",
+                    task_queue=tq,
+                )
+                # Never approve. Time-skipping fast-forwards the SLA + escalation timers
+                # until the gate hits its terminal bound and abandons on its own.
+                result = await handle.result()
+
+        assert result.approved is False
+        assert result.escalations == 2  # BOUNDED — not infinite
+        assert recorder.calls["escalate_gate"] == 2
+        # No clinician signed → no GATE_DECISION recorded.
+        assert recorder.calls["record_gate_decision"] == 0
+        # The final escalation is marked terminal (drives the apps/api abandon signal).
+        assert recorder.escalate_inputs[-1].reason == "gate_sla_abandoned"
+        assert recorder.escalate_inputs[0].reason == "gate_sla_breached"
+
 
 class TestInferentialPass:
     """Phase 2: the inferential pass runs after the computational loop settles —
@@ -282,7 +322,11 @@ class TestInferentialPass:
     @pytest.mark.asyncio
     async def test_safe_pass_persists_guardrail_decisions_and_rag_triad(self):
         recorder = StubRecorder()
-        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["SAFE"])
+        # Explicit default policy so the fetch SUCCEEDS (no policy-degrade) — this test
+        # verifies a SAFE pass does NOT flag reduced assurance (C1-06 degrade would mask it).
+        config = StubConfig(
+            verdicts=["PASS"], inferential_verdicts=["SAFE"], policy=HarnessPolicy()
+        )
         async with await _env() as env:
             tq = f"harness-test-{uuid.uuid4()}"
             async with Worker(
@@ -316,8 +360,11 @@ class TestInferentialPass:
     async def test_unsafe_safety_forces_flag_without_regen(self):
         recorder = StubRecorder()
         # Computational PASSes, but the safety screen flags unsafe content -> FLAG,
-        # never auto-regenerated (regen budget is untouched).
-        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["UNSAFE"])
+        # never auto-regenerated (regen budget is untouched). Explicit policy so the
+        # fetch succeeds (no C1-06 policy-degrade to mask the not-reduced assertion).
+        config = StubConfig(
+            verdicts=["PASS"], inferential_verdicts=["UNSAFE"], policy=HarnessPolicy()
+        )
         async with await _env() as env:
             tq = f"harness-test-{uuid.uuid4()}"
             async with Worker(
@@ -441,6 +488,9 @@ class TestInstitutionalRetrieval:
         config = StubConfig(
             verdicts=["PASS"],
             retrieved_chunks=[("kc-1", "First-line HTN therapy is a thiazide.")],
+            # Explicit policy so the fetch succeeds — this test asserts NON-degraded
+            # retrieval keeps reduced_assurance False (C1-06 policy-degrade would mask it).
+            policy=HarnessPolicy(),
         )
         async with await _env() as env:
             tq = f"harness-test-{uuid.uuid4()}"
@@ -610,7 +660,9 @@ class TestPolicyInjection:
         recorder = StubRecorder()
         # policy=None -> the fetch_policy stub raises -> the workflow falls back to
         # the code defaults: default thresholds (None passed through), safety ON,
-        # and the input gate budget governs the loop. Never crashes.
+        # and the input gate budget governs the loop. Never crashes. C1-06 (TASK-458):
+        # the fetch FAILURE is a policy-degrade — it could relax a stricter tenant policy
+        # — so it now flags reduced assurance (was silently False).
         config = StubConfig(verdicts=["PASS"], policy=None)
         async with await _env() as env:
             tq = f"harness-test-{uuid.uuid4()}"
@@ -631,11 +683,12 @@ class TestPolicyInjection:
 
         assert result.decision == "PASS"
         assert recorder.calls["fetch_policy"] == 1
-        # Fallback: no policy thresholds, safety guard stays ON, draft is not flagged
-        # reduced-assurance just because the policy fetch failed.
+        # Fallback: no policy thresholds, safety guard stays ON. But the policy-fetch
+        # FAILURE is itself a degrade (a stricter tenant policy may have been relaxed),
+        # so the draft IS flagged reduced-assurance (C1-06).
         assert recorder.run_sensors_inputs[0].thresholds is None
         assert recorder.inferential_inputs[0].safety_enabled is True
-        assert recorder.persist_draft_inputs[0].reduced_assurance is False
+        assert recorder.persist_draft_inputs[0].reduced_assurance is True
 
 
 class TestOptimisticDelivery:
@@ -657,7 +710,11 @@ class TestOptimisticDelivery:
     @pytest.mark.asyncio
     async def test_flag_on_delivers_early_then_finalizes_assurance(self):
         recorder = StubRecorder()
-        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["SAFE"])
+        # Explicit policy so the fetch succeeds — this test asserts finalize is NOT
+        # reduced-assurance (a C1-06 policy-degrade would otherwise flag it).
+        config = StubConfig(
+            verdicts=["PASS"], inferential_verdicts=["SAFE"], policy=HarnessPolicy()
+        )
         async with await _env() as env:
             tq = f"harness-test-{uuid.uuid4()}"
             async with Worker(
@@ -1083,6 +1140,47 @@ class TestAssuranceSignals:
         assert fin.gate_decision == "PASS"
         assert fin.context_item_version_id == "ver-edit-1"
 
+    @pytest.mark.asyncio
+    async def test_edit_reruns_are_capped(self):
+        """C1-02 (TASK-458): N rapid edits do NOT drive N inferential passes. With
+        ``max_edit_reruns=1``, edits on TWO passes yield ONE edit re-run (2 passes),
+        not two (3 passes) — the loop binds the latest edit but stops re-running."""
+        recorder = StubRecorder()
+        # SAFE every pass; an edit fires on inferential invocations 0 AND 1.
+        config = StubConfig(
+            verdicts=["PASS", "PASS", "PASS"],
+            inferential_verdicts=["SAFE", "SAFE", "SAFE"],
+        )
+        async with await _env() as env:
+            tq = f"harness-test-{uuid.uuid4()}"
+            wf_id = f"harness-doc-{uuid.uuid4()}"
+            recorder.edit_signal_handle = env.client.get_workflow_handle(wf_id)
+            recorder.edit_on_inferential_indices = {0, 1}
+            recorder.edit_payload = EditSignal(
+                content=_EDITED_NOTE, context_item_version_id="ver-edit-2"
+            )
+            async with Worker(
+                env.client,
+                task_queue=tq,
+                workflows=[HarnessDocWorkflow],
+                activities=make_stub_activities(config, recorder),
+            ):
+                handle = await env.client.start_workflow(
+                    HarnessDocWorkflow.run,
+                    _input(gate=_opt_gate(max_edit_reruns=1)),
+                    id=wf_id,
+                    task_queue=tq,
+                )
+                await handle.signal(HarnessDocWorkflow.approval, _approval())
+                result = await handle.result()
+
+        assert result.decision == "PASS"
+        # CAPPED: initial pass + 1 edit re-run = 2 (an UNCAPPED loop would run 3).
+        assert recorder.calls["run_inferential_sensors"] == 2
+        assert recorder.calls["generate"] == 1  # assurance-only: edits never re-generate
+        # The final verdict still binds to the latest edited version (record integrity).
+        assert recorder.finalize_inputs[0].context_item_version_id == "ver-edit-2"
+
 
 class TestDegradation:
     @pytest.mark.asyncio
@@ -1225,7 +1323,9 @@ class TestProgressFeed:
     @pytest.mark.asyncio
     async def test_progress_pipeline_failure_never_fails_the_workflow(self):
         recorder = StubRecorder()
-        config = StubConfig(verdicts=["PASS"], progress_fails=True)
+        # Explicit policy so the fetch succeeds — isolates the progress-resilience subject
+        # from the C1-06 policy-degrade reduced_assurance flag.
+        config = StubConfig(verdicts=["PASS"], progress_fails=True, policy=HarnessPolicy())
         async with await _env() as env:
             tq = f"harness-test-{uuid.uuid4()}"
             async with Worker(

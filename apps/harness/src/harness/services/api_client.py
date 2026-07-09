@@ -66,6 +66,14 @@ class FinalizeAssuranceResponse(BaseModel):
     context_item_id: str = ""
 
 
+class EscalationRecordResponse(BaseModel):
+    """apps/api ack for the C1-05 SLA-breach escalation record (TASK-458)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    recorded: bool = False
+
+
 class ReportProgressResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -130,13 +138,23 @@ class ApiClient:
     def _url(self, path: str) -> str:
         return f"{self._base_url}{self._prefix}{path}"
 
-    def _headers(self) -> dict[str, str]:
-        return {"Content-Type": "application/json", "X-Service-Token": self._service_token}
+    def _headers(self, idempotency_key: str | None = None) -> dict[str, str]:
+        headers = {"Content-Type": "application/json", "X-Service-Token": self._service_token}
+        # C1-03 (TASK-458): a deterministic idempotency key lets apps/api dedup a
+        # retried POST (Temporal ``_API_RETRY`` re-POSTs a lost ack) instead of
+        # double-writing the WORM audit / draft. Omitted (None) => header absent.
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+        return headers
 
-    async def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+    async def _post(
+        self, path: str, body: dict[str, Any], *, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
             try:
-                resp = await client.post(self._url(path), json=body, headers=self._headers())
+                resp = await client.post(
+                    self._url(path), json=body, headers=self._headers(idempotency_key)
+                )
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
                 raise ApiServiceError(f"apps/api {path} failed: {exc}") from exc
@@ -169,6 +187,7 @@ class ApiClient:
         context_item_id: str | None,
         entities: Sequence[NEREntity],
         user_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> PersistEntitiesResponse:
         body = _prune(
             {
@@ -178,7 +197,9 @@ class ApiClient:
                 "entities": [_entity_payload(e, context_item_id) for e in entities],
             }
         )
-        data = await self._post(f"/consultations/{consultation_id}/entities", body)
+        data = await self._post(
+            f"/consultations/{consultation_id}/entities", body, idempotency_key=idempotency_key
+        )
         return PersistEntitiesResponse(
             saved_count=int(data.get("savedCount", 0)),
             entity_ids=list(data.get("entityIds", [])),
@@ -237,6 +258,7 @@ class ApiClient:
         gate_decision: str | None = None,
         is_auto_generated: bool | None = None,
         phase: str | None = None,
+        idempotency_key: str | None = None,
     ) -> DraftResponse:
         body = _prune(
             {
@@ -262,7 +284,9 @@ class ApiClient:
                 "phase": phase,
             }
         )
-        data = await self._post(f"/consultations/{consultation_id}/draft", body)
+        data = await self._post(
+            f"/consultations/{consultation_id}/draft", body, idempotency_key=idempotency_key
+        )
         return DraftResponse(context_item_id=data.get("contextItemId", ""))
 
     async def finalize_assurance(
@@ -284,6 +308,7 @@ class ApiClient:
         model_version: str | None = None,
         prompt_template_id: str | None = None,
         prompt_version: str | None = None,
+        idempotency_key: str | None = None,
     ) -> FinalizeAssuranceResponse:
         """Backfill the early-persisted draft with the inferential verdict (TASK-355 Phase D).
 
@@ -313,7 +338,9 @@ class ApiClient:
                 "promptVersion": prompt_version,
             }
         )
-        data = await self._post(f"/consultations/{consultation_id}/assurance", body)
+        data = await self._post(
+            f"/consultations/{consultation_id}/assurance", body, idempotency_key=idempotency_key
+        )
         return FinalizeAssuranceResponse(
             recorded=bool(data.get("recorded", False)),
             context_item_id=data.get("contextItemId", ""),
@@ -330,6 +357,7 @@ class ApiClient:
         context_item_version_id: str | None = None,
         attestation_hash: str | None = None,
         clinician_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> RecordGateResponse:
         body = _prune(
             {
@@ -342,8 +370,47 @@ class ApiClient:
                 "clinicianId": clinician_id,
             }
         )
-        data = await self._post(f"/consultations/{consultation_id}/gate-decision", body)
+        data = await self._post(
+            f"/consultations/{consultation_id}/gate-decision", body, idempotency_key=idempotency_key
+        )
         return RecordGateResponse(recorded=bool(data.get("recorded", False)))
+
+    async def record_escalation(
+        self,
+        consultation_id: str,
+        *,
+        tenant_id: str,
+        reason: str,
+        escalation_count: int | None = None,
+        terminal: bool | None = None,
+        job_id: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> EscalationRecordResponse:
+        """Record a gate SLA-breach escalation to apps/api (C1-05, TASK-458).
+
+        The ``escalate_gate`` activity calls this so an SLA breach is durably recorded
+        / notifiable instead of being a local log line. ``terminal=True`` marks the
+        final escalation before the gate abandons (C1-02). Raises
+        :class:`ApiServiceError` on transport/HTTP error; the *activity* is the layer
+        that swallows it (an escalation record must never fail the clinical loop).
+
+        NOTE: the apps/api endpoint that consumes this is a coordinated follow-up (out
+        of the harness manifest) — until it lands, the POST 404s and the activity's
+        best-effort guard keeps the gate waiting.
+        """
+        body = _prune(
+            {
+                "tenantId": tenant_id,
+                "jobId": job_id,
+                "reason": reason,
+                "escalationCount": escalation_count,
+                "terminal": terminal,
+            }
+        )
+        data = await self._post(
+            f"/consultations/{consultation_id}/escalation", body, idempotency_key=idempotency_key
+        )
+        return EscalationRecordResponse(recorded=bool(data.get("recorded", False)))
 
     async def report_progress(
         self,
@@ -355,6 +422,7 @@ class ApiClient:
         ordinal: int | None = None,
         total: int | None = None,
         job_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> ReportProgressResponse:
         """Publish one workflow stage event to the live progress feed (TASK-345).
 
@@ -372,7 +440,9 @@ class ApiClient:
                 "total": total,
             }
         )
-        data = await self._post(f"/consultations/{consultation_id}/progress", body)
+        data = await self._post(
+            f"/consultations/{consultation_id}/progress", body, idempotency_key=idempotency_key
+        )
         return ReportProgressResponse(ok=bool(data.get("ok", False)))
 
     async def report_assurance_event(
@@ -387,6 +457,7 @@ class ApiClient:
         ordinal: int | None = None,
         total: int | None = None,
         job_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> AssuranceEventResponse:
         """Publish ONE resolved claim verdict to the live assurance feed (TASK-355 Slice 5d).
 
@@ -407,5 +478,9 @@ class ApiClient:
                 "total": total,
             }
         )
-        data = await self._post(f"/consultations/{consultation_id}/assurance-event", body)
+        data = await self._post(
+            f"/consultations/{consultation_id}/assurance-event",
+            body,
+            idempotency_key=idempotency_key,
+        )
         return AssuranceEventResponse(ok=bool(data.get("ok", False)))

@@ -123,6 +123,9 @@ class StubRecorder:
     # 0-based invocation index to inject on + the payload.
     edit_signal_handle: object | None = None
     edit_on_inferential_index: int | None = None
+    # C1-02 (TASK-458): inject an edit on EACH of these inferential invocations (a set of
+    # 0-based indices) so the edit-rerun CAP can be exercised — N edits across N passes.
+    edit_on_inferential_indices: set[int] | None = None
     edit_payload: EditSignal | None = None
 
 
@@ -340,10 +343,14 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         # assurance pass (the signal is recorded mid-activity, so it is buffered and
         # delivered when the workflow resumes after this activity completes —
         # deterministic on replay). Drives the Q3 re-bind/re-run path.
+        _inject_edit = recorder.edit_on_inferential_index == i or (
+            recorder.edit_on_inferential_indices is not None
+            and i in recorder.edit_on_inferential_indices
+        )
         if (
             recorder.edit_signal_handle is not None
-            and recorder.edit_on_inferential_index == i
             and recorder.edit_payload is not None
+            and _inject_edit
         ):
             await recorder.edit_signal_handle.signal("edit", recorder.edit_payload)
         if config.inferential_fails:

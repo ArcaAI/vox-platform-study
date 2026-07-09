@@ -36,6 +36,35 @@ const SOAP_OUTPUT_INSTRUCTION =
  */
 const MAX_DELTA_CHARS = 12000;
 
+/**
+ * Atomic single-owner lock scripts (TASK-459 C5-06). Redis serialises each Lua
+ * body, so `acquire` is a true compare-and-set — two instances racing to own one
+ * consultation can never both win (unlike the old unconditional `SET`). `release`
+ * and `renew` are fenced: they touch the key only while its value is still THIS
+ * instance's id, so a non-owner can neither free nor refresh the real owner's
+ * lock. The `-- live-doc:lock:*` tag lets the unit test's cache mock dispatch
+ * without parsing Lua. KEYS[1]=lockKey, ARGV[1]=instanceId, ARGV[2]=ttlSeconds.
+ */
+const LOCK_ACQUIRE_SCRIPT = `-- live-doc:lock:acquire
+local cur = redis.call('GET', KEYS[1])
+if cur == false or cur == ARGV[1] then
+  redis.call('SET', KEYS[1], ARGV[1], 'EX', tonumber(ARGV[2]))
+  return 1
+end
+return 0`;
+
+const LOCK_RELEASE_SCRIPT = `-- live-doc:lock:release
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0`;
+
+const LOCK_RENEW_SCRIPT = `-- live-doc:lock:renew
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
+end
+return 0`;
+
 /** A live transcript segment fed into the watcher. */
 export interface LiveTranscriptSegment {
   text: string;
@@ -73,6 +102,8 @@ interface LiveSession {
   sttSubscription?: Subscription;
   /** Cross-instance "stop" control-channel reader (TASK-340 P1-A). */
   controlSubscription?: Subscription;
+  /** Periodic fenced owner-lock renewal handle (TASK-459 C5-06). */
+  lockRenewalTimer?: ReturnType<typeof setInterval>;
   /** Monotonic flush id; only the latest generation may publish (TASK-340 P0-A). */
   generation: number;
   /** Aborts the in-flight SMR/NLP HTTP calls when a newer flush supersedes them. */
@@ -91,6 +122,8 @@ interface LiveSession {
   /** Observability counters (P2). */
   flushCount: number;
   staleDropCount: number;
+  /** How many flushes truncated an oversized delta and carried the overflow forward (C5-04). */
+  truncatedDeltaCount: number;
   /** Epoch ms when the watcher session started — surfaced in the admin stats snapshot (TASK-341 B1). */
   startedAt: number;
 }
@@ -115,8 +148,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly CHANNEL_PREFIX = 'consultation:live-summary:';
   private readonly SNAPSHOT_TTL = 3600; // 1h — transient last-snapshot for SSE late-join
   private readonly LOCK_TTL = 3600; // 1h — single-owner lock auto-expires if an instance dies (P1-A)
-  /** Marks which process owns a session's lock so a foreign-instance stop can release it (P1-A). */
-  private readonly instanceId = `${process.pid}-${Date.now()}`;
+  /**
+   * Fencing token identifying this owner. A random suffix keeps it distinct even
+   * for two instances constructed in the same process/millisecond (same pid +
+   * `Date.now()`), so the compare-and-set acquire and fenced release/renew can
+   * never confuse two owners (TASK-459 C5-06).
+   */
+  private readonly instanceId = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  /** Renew the owner lock at half its TTL so a live session never lets it lapse (C5-06). */
+  private readonly lockRenewalMs = Math.floor((this.LOCK_TTL * 1000) / 2);
 
   // TASK-341 B1 — admin live console: cross-instance per-session stats in Redis.
   private readonly STATS_PREFIX = 'live-doc:stats:'; // + consultationId → JSON LiveDocSessionStatsResponse
@@ -255,6 +295,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       lastDurableAt: Date.now(),
       flushCount: 0,
       staleDropCount: 0,
+      truncatedDeltaCount: 0,
       startedAt: Date.now(),
     };
     this.sessions.set(params.consultationId, session);
@@ -288,10 +329,24 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     let finalPayload: LiveSummaryEventDto | null = null;
 
     if (session) {
-      finalPayload = await this.flush(consultationId, { force: true }).catch((error) => {
-        this.logger.warn({ message: 'Final flush failed on stop', consultationId, error: error instanceof Error ? error.message : String(error) });
-        return session.lastPayload ?? null;
-      });
+      // Drain the WHOLE backlog before the final snapshot (I-2): one flush is capped
+      // at MAX_DELTA_CHARS, so a > 12k un-flushed backlog at stop would keep only the
+      // head and drop the most-recent transcript (assessment/plan/closing). Flush
+      // repeatedly until the cursor catches up to the full transcript. Bounded twice
+      // over — break as soon as a flush makes no forward progress (cursor stuck, e.g.
+      // SMR down / nothing new), and a hard iteration cap as a final safety net so a
+      // non-advancing cursor can never loop forever.
+      const maxDrainIterations = session.transcriptParts.length + 1;
+      for (let i = 0; i < maxDrainIterations; i++) {
+        const cursorBefore = session.flushedTranscriptCount;
+        finalPayload = await this.flush(consultationId, { force: true }).catch((error) => {
+          this.logger.warn({ message: 'Final flush failed on stop', consultationId, error: error instanceof Error ? error.message : String(error) });
+          return session.lastPayload ?? null;
+        });
+        if (session.flushedTranscriptCount >= session.transcriptParts.length || session.flushedTranscriptCount === cursorBefore) {
+          break; // caught up, or no forward progress → stop draining
+        }
+      }
 
       // Finalize the durable snapshot: opt-in via `persistSnapshot`, or simply close
       // out the live row if periodic snapshots already created one this session.
@@ -309,13 +364,16 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // `getActiveSessions` read and via the set's TTL.
     await this.clearStats(consultationId, session?.tenantId);
 
-    // Tell the (possibly remote) owner to tear down, then release the lock, BEFORE the
-    // terminal marker so SSE clients see `closed` last.
+    // Tell the (possibly remote) owner to tear down, BEFORE the terminal marker so SSE
+    // clients see `closed` last. Lock release is FENCED (C5-06): a stop routed to a
+    // non-owner never nukes the real owner's lock. When we owned the session,
+    // `teardownLocal` above already released it — so only the no-local-session path
+    // needs a release here, to self-heal an orphaned lock we happen to own (the real
+    // owner, if remote, frees its own via the control `stop`). Avoids the double
+    // release (M-5).
     await this.safeChannelPublish(this.controlChannel(consultationId), JSON.stringify({ type: 'stop', ts: new Date().toISOString() }));
-    try {
-      await this.cacheService.del(this.lockKey(consultationId));
-    } catch (error) {
-      this.logger.warn({ message: 'Failed to release live-doc owner lock', consultationId, error: error instanceof Error ? error.message : String(error) });
+    if (!session) {
+      await this.releaseOwnership(consultationId);
     }
 
     const closed: LiveSummaryEventDto = {
@@ -441,9 +499,46 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     // Incremental prompt (P0-B): refine the prior SOAP note with only the new
     // transcript delta since the last successful flush, keeping prompt size bounded.
+    //
+    // C5-04 — carry-forward truncation: when the un-flushed backlog exceeds
+    // MAX_DELTA_CHARS, take whole segments from the HEAD (oldest-first, the early
+    // clinical content) up to the cap and remember how far we got (`deltaEnd`).
+    // The cursor advances only over what was actually sent, so the overflow tail
+    // is carried into the NEXT flush instead of being dropped and skipped past —
+    // the old `slice(-MAX)` kept the tail and then jumped the cursor to the full
+    // length, permanently losing the head. `deltaEnd === flushUpTo` in the common
+    // (unbounded) case, so bounded deltas behave exactly as before.
     const flushUpTo = session.transcriptParts.length;
-    let delta = session.transcriptParts.slice(session.flushedTranscriptCount, flushUpTo).join(' ').trim();
-    if (delta.length > MAX_DELTA_CHARS) delta = delta.slice(-MAX_DELTA_CHARS);
+    const deltaSegments: string[] = [];
+    let deltaEnd = session.flushedTranscriptCount;
+    let deltaLen = 0;
+    let deltaTruncated = false;
+    for (let i = session.flushedTranscriptCount; i < flushUpTo; i++) {
+      const part = session.transcriptParts[i];
+      const separator = deltaSegments.length > 0 ? 1 : 0; // the joining space
+      // The `deltaSegments.length > 0` guard always admits the FIRST segment so the
+      // cursor can always advance (no stall). Consequence (M-4): MAX_DELTA_CHARS is a
+      // SOFT per-flush bound — a single segment larger than the cap is still sent whole.
+      if (deltaSegments.length > 0 && deltaLen + separator + part.length > MAX_DELTA_CHARS) {
+        deltaTruncated = true;
+        break; // stop at the head boundary — the rest carries forward
+      }
+      deltaSegments.push(part);
+      deltaLen += separator + part.length;
+      deltaEnd = i + 1;
+    }
+    const delta = deltaSegments.join(' ').trim();
+    if (deltaTruncated) {
+      session.truncatedDeltaCount += 1;
+      // PHI-safe: sizes/counts only — never transcript text.
+      this.logger.warn({
+        message: 'Live summary transcript delta truncated — carrying overflow forward (C5-04)',
+        consultationId,
+        truncatedDeltaCount: session.truncatedDeltaCount,
+        deltaChars: delta.length,
+        carriedForwardParts: flushUpTo - deltaEnd,
+      });
+    }
     const priorNote = session.lastPayload?.runningSummary ?? '';
     const promptText = this.buildSmrUserPrompt(priorNote, delta || transcript, notes);
 
@@ -464,7 +559,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       if (parsed.length > 0) {
         sections = parsed;
         runningSummary = buildRunningSummary(parsed);
-        session.flushedTranscriptCount = flushUpTo; // advance cursor only on success
+        // Advance only over the segments actually sent (C5-04): on a truncated
+        // flush `deltaEnd < flushUpTo`, so the carried-forward tail is re-sent next.
+        session.flushedTranscriptCount = deltaEnd;
       }
     } catch (error) {
       if (isStale()) return this.dropStale(session);
@@ -515,6 +612,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       sectionCount: sections.length,
       summaryChars: runningSummary.length,
       staleDropCount: session.staleDropCount,
+      truncatedDeltaCount: session.truncatedDeltaCount,
     });
 
     // TASK-341 B1 — mirror the same PHI-safe metrics into Redis so the admin
@@ -663,21 +761,35 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Claim the single-owner lock and subscribe to the cross-instance control channel
-   * (TASK-340 P1-A). Best-effort: the lock marks ownership and auto-expires, and a
-   * `stop` from any instance publishes a `stop` control message this owner reacts to.
+   * Acquire the single-owner lock and subscribe to the cross-instance control
+   * channel (TASK-340 P1-A, hardened in TASK-459 C5-06).
    *
-   * Resilient-subset scope: we do NOT yet refuse to start when the lock is held by a
-   * live foreign instance (that full single-owner enforcement + Redis-resident session
-   * state is the documented remaining gap), but lock release + control-driven teardown
-   * make a cross-instance `stop` correct for the current single-instance deployment.
+   * The acquire is now an atomic compare-and-set (`LOCK_ACQUIRE_SCRIPT`): when a
+   * live foreign instance already owns the consultation we BAIL OUT of the watcher
+   * instead of overwriting its lock — that stops the duplicate SMR spend and the
+   * duplicate PRE_SUMMARY row. On success we keep the lock fresh with a fenced
+   * periodic renewal for the life of the session. Fail-open on a Redis error /
+   * outage so a cache blip never kills live documentation in the common
+   * single-instance deployment; the durable-snapshot repo dedup is the backstop
+   * if two instances ever do run at once.
    */
   private async claimOwnership(session: LiveSession): Promise<void> {
-    try {
-      await this.cacheService.set(this.lockKey(session.consultationId), this.instanceId, this.LOCK_TTL);
-    } catch (error) {
-      this.logger.warn({ message: 'Failed to claim live-doc owner lock', consultationId: session.consultationId, error: error instanceof Error ? error.message : String(error) });
+    // `IRedisCacheService.eval` returns `null` (it never throws) when Redis is
+    // unavailable, so a cache outage yields `denied === false` — fail open, live
+    // docs keep working. Only an explicit `0` (a live foreign owner) stands us down.
+    const result = await this.cacheService.eval(LOCK_ACQUIRE_SCRIPT, 1, this.lockKey(session.consultationId), this.instanceId, String(this.LOCK_TTL));
+    const denied = result === 0 || result === '0';
+
+    if (denied) {
+      this.logger.warn({
+        message: 'Live-doc owner lock held by another instance — skipping duplicate watcher',
+        consultationId: session.consultationId,
+      });
+      this.teardownLocal(session); // fenced release is a no-op here (foreign lock left intact)
+      return;
     }
+
+    this.startLockRenewal(session);
 
     try {
       const control$ = await this.redisSubscriber.subscribeToChannel(this.controlChannel(session.consultationId));
@@ -690,6 +802,50 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       });
     } catch (error) {
       this.logger.warn({ message: 'Failed to subscribe to live-doc control channel', consultationId: session.consultationId, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  /** Start the periodic fenced lock-renewal loop for a session (C5-06). */
+  private startLockRenewal(session: LiveSession): void {
+    if (session.lockRenewalTimer) return;
+    const timer = setInterval(() => {
+      void this.renewOwnership(session.consultationId);
+    }, this.lockRenewalMs);
+    // Never let the renewal loop hold the process open — teardownLocal clears it.
+    (timer as unknown as { unref?: () => void }).unref?.();
+    session.lockRenewalTimer = timer;
+  }
+
+  /** Refresh the owner lock's TTL, but ONLY while this instance still owns it (fenced, C5-06). */
+  private async renewOwnership(consultationId: string): Promise<void> {
+    try {
+      const result = await this.cacheService.eval(LOCK_RENEW_SCRIPT, 1, this.lockKey(consultationId), this.instanceId, String(this.LOCK_TTL));
+      if (result === 0 || result === '0') {
+        // We no longer own the lock (foreign takeover / eviction). Stand down this
+        // instance's watcher so we stop running a duplicate against the new owner —
+        // restoring the single-owner invariant mid-session instead of only logging (M-2).
+        this.logger.warn({ message: 'Live-doc owner lock lost — standing down watcher to preserve single-owner invariant', consultationId });
+        this.teardownLocal(this.sessions.get(consultationId));
+      }
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to renew live-doc owner lock',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** Release the owner lock, but ONLY when this instance still owns it (fenced compare-and-delete, C5-06). */
+  private async releaseOwnership(consultationId: string): Promise<void> {
+    try {
+      await this.cacheService.eval(LOCK_RELEASE_SCRIPT, 1, this.lockKey(consultationId), this.instanceId);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to release live-doc owner lock',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -719,9 +875,16 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       clearTimeout(session.throttleTimer);
       session.throttleTimer = undefined;
     }
+    if (session.lockRenewalTimer) {
+      clearInterval(session.lockRenewalTimer);
+      session.lockRenewalTimer = undefined;
+    }
     session.abortController?.abort();
     session.sttSubscription?.unsubscribe();
     session.controlSubscription?.unsubscribe();
+    // Give up ownership on the way out (fenced — frees only OUR lock; a foreign
+    // lock, e.g. on the acquire-denied bail-out path, is left untouched). C5-06.
+    void this.releaseOwnership(session.consultationId);
     this.sessions.delete(session.consultationId);
   }
 
@@ -743,12 +906,39 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     try {
       if (!session.snapshotEntity) {
-        const entity = ContextItemFactory.CreatePreSummary(session.tenantId, session.consultationId, content, undefined, session.userId ?? 'system');
-        entity.metaData = metaData;
-        await this.contextItemRepository.create(entity);
-        session.snapshotEntity = entity;
-        session.snapshotId = entity.id;
-        this.logger.log({ message: 'Created live SOAP durable snapshot', consultationId: session.consultationId, contextItemId: entity.id });
+        // Deterministic dedup (TASK-459 C5-06 / review I-1): a prior tick — on THIS
+        // instance after a restart, or a racing second instance that slipped past the
+        // lock — may already have persisted the live snapshot row. Reuse it instead of
+        // minting a SECOND PRE_SUMMARY for the same consultation. Must match on the
+        // subType (see findLiveSnapshotRow): `findLatestPreSummary` is NOT subType-aware,
+        // so a legacy/case-note PRE_SUMMARY minted AFTER our snapshot would otherwise
+        // defeat a naive newest-row guard and create a duplicate LIVE_SOAP_SNAPSHOT.
+        const existing = await this.findLiveSnapshotRow(session.consultationId);
+        if (existing) {
+          existing.content = content;
+          existing.metaData = metaData;
+          await this.contextItemRepository.update(existing.id, existing);
+          session.snapshotEntity = existing;
+          session.snapshotId = existing.id;
+          this.logger.log({
+            message: 'Reused existing live SOAP durable snapshot',
+            consultationId: session.consultationId,
+            contextItemId: existing.id,
+          });
+        } else {
+          const entity = ContextItemFactory.CreatePreSummary(
+            session.tenantId,
+            session.consultationId,
+            content,
+            undefined,
+            session.userId ?? 'system',
+          );
+          entity.metaData = metaData;
+          await this.contextItemRepository.create(entity);
+          session.snapshotEntity = entity;
+          session.snapshotId = entity.id;
+          this.logger.log({ message: 'Created live SOAP durable snapshot', consultationId: session.consultationId, contextItemId: entity.id });
+        }
       } else {
         session.snapshotEntity.content = content;
         session.snapshotEntity.metaData = metaData;
@@ -757,6 +947,22 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.warn({ message: 'Failed to persist live SOAP durable snapshot', consultationId: session.consultationId, error: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  /**
+   * The newest LIVE_SOAP_SNAPSHOT row for a consultation, or null (review I-1).
+   * `findLatestPreSummary` returns the newest PRE_SUMMARY of ANY subType, so it can
+   * hand back a legacy/case-note pre-summary minted after our snapshot — which would
+   * make the durable dedup mint a duplicate live row. Filter on the subType and take
+   * the newest, mirroring the harness warm-start reader (`findPreSummaries` is
+   * createdAt-ASC, so reduce to the max defensively).
+   */
+  private async findLiveSnapshotRow(consultationId: string): Promise<ContextItemEntity | null> {
+    if (!this.contextItemRepository) return null;
+    const preSummaries = await this.contextItemRepository.findPreSummaries(consultationId);
+    const snapshots = preSummaries.filter((p) => (p.metaData as Record<string, unknown> | undefined)?.subType === 'LIVE_SOAP_SNAPSHOT');
+    if (snapshots.length === 0) return null;
+    return snapshots.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b));
   }
 
   /**
