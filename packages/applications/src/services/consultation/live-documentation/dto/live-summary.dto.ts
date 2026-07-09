@@ -4,12 +4,13 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * A single medical entity detected by the NLP service for the running summary.
  *
  * Mirrors the `/api/v1/classify/tokens` NLP response shape, re-keyed for the
- * frontend highlight overlay (`value` → `text`). NER is run over `runningSummary`
+ * frontend highlight overlay (`text` → `text`, `entity_type` → `type`, `position.{start,end}` → `start`/`end`).
+ * NER is run over `runningSummary`
  * so `start`/`end` are character offsets into that flat text (the same text the
  * panel renders), letting the UI map each entity into the section it belongs to.
  */
 export class LiveSummaryEntityDto {
-  @ApiProperty({ description: 'The recognized text span (NLP `value`)' })
+  @ApiProperty({ description: 'The recognized text span (NLP `text`)' })
   text: string;
 
   @ApiProperty({ description: 'Entity class (e.g., MEDICATION, CONDITION, PROCEDURE, ANATOMY)' })

@@ -82,9 +82,13 @@ class TransformerTokenClassifier(TokenClassifier):
             await self.initialize()
 
         try:
+            # TASK-452 — honor the request's aggregation strategy (config fallback).
+            # Without a non-"none" strategy the HF pipeline emits `##` subword
+            # fragments with raw BIO labels instead of merged whole-word entities.
+            strategy = request.aggregation_strategy or self.configs.aggregation_strategy
             # TASK-386 — per-model running gauge + inference latency (Medical-NER).
             with track_model_inference(MODEL_MEDICAL_NER):
-                pipeline_results = self.pipeline(request.text)
+                pipeline_results = self.pipeline(request.text, aggregation_strategy=strategy)
 
             # tokenized = self.tokenizer(text, return_tensors="pt", add_special_tokens=True)
             # tokens = self.tokenizer.convert_ids_to_tokens(tokenized["input_ids"][0])
@@ -118,7 +122,7 @@ class TransformerTokenClassifier(TokenClassifier):
             # tokens = text.split()
             # labels = ["O"] * len(tokens)
             # confidences = [0.0] * len(tokens)
-            # entities = []
+            entities = []
 
             return TokenClassificationResponse(
                 # tokens=tokens,
@@ -131,10 +135,17 @@ class TransformerTokenClassifier(TokenClassifier):
     def _to_entities(self, pipeline_results: list[dict[str, Any]]) -> list[Entity]:
         """Convert pipeline results to MedicalEntity objects"""
         entities = []
+        ignore_labels = set(self.configs.ignore_labels)
 
         for result in pipeline_results:
+            # With aggregation != "none" the HF pipeline merges subwords and keys
+            # the label under `entity_group` (BIO prefix stripped); fall back to the
+            # raw `entity` key for the "none" strategy.
+            entity_type = result.get("entity_group") or result.get("entity", "O")
+            if entity_type in ignore_labels:
+                continue
+
             entity_text = result.get("word", "")
-            entity_type = result.get("entity", "O")
             confidence = result.get("score", 0.0)
             start_pos = result.get("start", 0)
             end_pos = result.get("end", len(entity_text))
