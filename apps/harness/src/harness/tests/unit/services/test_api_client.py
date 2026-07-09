@@ -403,6 +403,160 @@ class TestReportAssuranceEvent:
             )
 
 
+class TestRecordEscalation:
+    """C1-05 (TASK-458): an SLA breach is recorded to apps/api (was a local no-op).
+    The apps/api endpoint that consumes this is a coordinated follow-up (out of the
+    harness manifest); the harness-side POST is fail-safe at the activity layer."""
+
+    @pytest.mark.asyncio
+    async def test_record_escalation_posts_reason_with_token(self):
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json={"recorded": True})
+
+        client = _client(handler)
+        result = await client.record_escalation(
+            "c-1",
+            tenant_id="t-1",
+            reason="gate_sla_breached",
+            escalation_count=2,
+            job_id="job-1",
+        )
+
+        req = seen["request"]
+        assert req.method == "POST"
+        assert str(req.url) == "http://api:8868/internal/harness/consultations/c-1/escalation"
+        assert req.headers["X-Service-Token"] == "svc-token"
+        body = json.loads(req.content)
+        assert body["tenantId"] == "t-1"
+        assert body["reason"] == "gate_sla_breached"
+        assert body["escalationCount"] == 2
+        assert body["jobId"] == "job-1"
+        assert result.recorded is True
+
+    @pytest.mark.asyncio
+    async def test_record_escalation_prunes_optional_fields(self):
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json={"recorded": True})
+
+        client = _client(handler)
+        await client.record_escalation("c-1", tenant_id="t-1", reason="gate_sla_breached")
+        body = json.loads(seen["request"].content)
+        assert body == {"tenantId": "t-1", "reason": "gate_sla_breached"}
+
+    @pytest.mark.asyncio
+    async def test_record_escalation_raises_on_upstream_error(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, json={"error": "down"})
+
+        client = _client(handler)
+        with pytest.raises(ApiServiceError):
+            await client.record_escalation("c-1", tenant_id="t-1", reason="gate_sla_breached")
+
+    @pytest.mark.asyncio
+    async def test_record_escalation_attaches_idempotency_key_header(self):
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json={"recorded": True})
+
+        client = _client(handler)
+        await client.record_escalation(
+            "c-1", tenant_id="t-1", reason="gate_sla_breached", idempotency_key="run-9:act-4"
+        )
+        assert seen["request"].headers["Idempotency-Key"] == "run-9:act-4"
+
+
+class TestIdempotencyKey:
+    """C1-03 (TASK-458): every WORM/draft callback carries a deterministic
+    ``Idempotency-Key`` header so a retried POST (Temporal ``_API_RETRY``) dedups
+    on apps/api instead of double-writing the WORM audit / draft."""
+
+    @staticmethod
+    def _seen_handler(seen: dict[str, httpx.Request], json_body: dict):
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json=json_body)
+
+        return handler
+
+    @pytest.mark.asyncio
+    async def test_persist_draft_attaches_idempotency_key_header(self):
+        seen: dict[str, httpx.Request] = {}
+        client = _client(self._seen_handler(seen, {"contextItemId": "ctx-1"}))
+        await client.persist_draft(
+            "c-1", tenant_id="t-1", content="{}", idempotency_key="run-9:act-3"
+        )
+        assert seen["request"].headers["Idempotency-Key"] == "run-9:act-3"
+
+    @pytest.mark.asyncio
+    async def test_persist_draft_omits_header_when_no_key(self):
+        seen: dict[str, httpx.Request] = {}
+        client = _client(self._seen_handler(seen, {"contextItemId": "ctx-1"}))
+        await client.persist_draft("c-1", tenant_id="t-1", content="{}")
+        assert "Idempotency-Key" not in seen["request"].headers
+
+    @pytest.mark.asyncio
+    async def test_record_gate_decision_attaches_idempotency_key_header(self):
+        seen: dict[str, httpx.Request] = {}
+        client = _client(self._seen_handler(seen, {"recorded": True}))
+        await client.record_gate_decision(
+            "c-1", tenant_id="t-1", decision="SIGNED", idempotency_key="run-9:act-7"
+        )
+        assert seen["request"].headers["Idempotency-Key"] == "run-9:act-7"
+
+    @pytest.mark.asyncio
+    async def test_finalize_assurance_attaches_idempotency_key_header(self):
+        seen: dict[str, httpx.Request] = {}
+        client = _client(self._seen_handler(seen, {"recorded": True, "contextItemId": "ctx-1"}))
+        await client.finalize_assurance(
+            "c-1", tenant_id="t-1", context_item_id="ctx-1", idempotency_key="run-9:act-8"
+        )
+        assert seen["request"].headers["Idempotency-Key"] == "run-9:act-8"
+
+    @pytest.mark.asyncio
+    async def test_persist_entities_attaches_idempotency_key_header(self):
+        seen: dict[str, httpx.Request] = {}
+        client = _client(self._seen_handler(seen, {"savedCount": 0, "entityIds": []}))
+        await client.persist_entities(
+            "c-1",
+            tenant_id="t-1",
+            context_item_id="ctx-1",
+            entities=[],
+            idempotency_key="run-9:act-1",
+        )
+        assert seen["request"].headers["Idempotency-Key"] == "run-9:act-1"
+
+    @pytest.mark.asyncio
+    async def test_report_progress_attaches_idempotency_key_header(self):
+        seen: dict[str, httpx.Request] = {}
+        client = _client(self._seen_handler(seen, {"ok": True}))
+        await client.report_progress(
+            "c-1", tenant_id="t-1", stage="drafting_note", idempotency_key="run-9:act-2"
+        )
+        assert seen["request"].headers["Idempotency-Key"] == "run-9:act-2"
+
+    @pytest.mark.asyncio
+    async def test_report_assurance_event_attaches_idempotency_key_header(self):
+        seen: dict[str, httpx.Request] = {}
+        client = _client(self._seen_handler(seen, {"ok": True}))
+        await client.report_assurance_event(
+            "c-1",
+            tenant_id="t-1",
+            claim_id="claim-1",
+            sensor="groundedness",
+            verdict="grounded",
+            idempotency_key="run-9:act-5:claim-1",
+        )
+        assert seen["request"].headers["Idempotency-Key"] == "run-9:act-5:claim-1"
+
+
 class TestConfigurablePrefix:
     @pytest.mark.asyncio
     async def test_prefix_is_configurable_for_lane_g_actual_mount(self):

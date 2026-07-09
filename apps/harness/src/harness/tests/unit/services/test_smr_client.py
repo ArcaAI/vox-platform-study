@@ -13,7 +13,7 @@ import json
 import httpx
 import pytest
 
-from harness.services.smr_client import SmrClient
+from harness.services.smr_client import SmrClient, SmrServiceError
 
 
 def _capture(content: str = '{"subjective": "ok"}'):
@@ -96,3 +96,54 @@ class TestSmrClient:
         assert body["provider"] == "azure-openai"
         assert body["model"] == "gpt-4o"
         assert body["top_p"] == 0.9
+
+
+class TestGenerateLostResponseNoReinvoke:
+    """C1-04 (TASK-458): a lost response AFTER the request was delivered (the model
+    may have run) must NOT be re-POSTed by the endpoint governor — a re-send is a
+    second, divergent generation (double LLM spend). Only PRE-send failures retry."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "exc_factory",
+        [
+            lambda req: httpx.ReadTimeout("read timed out", request=req),
+            lambda req: httpx.ReadError("connection lost", request=req),
+            lambda req: httpx.RemoteProtocolError("server disconnected", request=req),
+        ],
+    )
+    async def test_post_send_failure_is_not_retried(self, exc_factory, monkeypatch):
+        # Budget several attempts so — WITHOUT the fix — the transient-classified read
+        # failure would be re-sent up to max_attempts. The fix must cap it at ONE call.
+        monkeypatch.setenv("HARNESS_LLM_MAX_ATTEMPTS", "4")
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            raise exc_factory(request)
+
+        client = SmrClient("http://smr-c104:8862", transport=httpx.MockTransport(handler))
+        with pytest.raises(SmrServiceError) as ei:
+            await client.generate(prompt="Summarize the consult.")
+        # The prompt reached the model EXACTLY once — never re-invoked.
+        assert calls["n"] == 1
+        # The error is tagged as a post-send failure so the activity can mark the
+        # Temporal retry non-retryable too (belt-and-braces against a re-run).
+        assert ei.value.after_send is True
+
+    @pytest.mark.asyncio
+    async def test_pre_send_connect_failure_still_retries(self, monkeypatch):
+        # A pre-send failure (never reached the model) is safe to retry — the model
+        # did not run, so a re-send cannot double-generate. Retries stay intact.
+        monkeypatch.setenv("HARNESS_LLM_MAX_ATTEMPTS", "3")
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            raise httpx.ConnectError("connection refused", request=request)
+
+        client = SmrClient("http://smr-c104b:8862", transport=httpx.MockTransport(handler))
+        with pytest.raises(SmrServiceError) as ei:
+            await client.generate(prompt="hi")
+        assert calls["n"] == 3  # retried to the budget (pre-send is safe)
+        assert ei.value.after_send is False
