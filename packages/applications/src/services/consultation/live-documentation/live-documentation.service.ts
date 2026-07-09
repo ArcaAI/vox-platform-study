@@ -329,10 +329,24 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     let finalPayload: LiveSummaryEventDto | null = null;
 
     if (session) {
-      finalPayload = await this.flush(consultationId, { force: true }).catch((error) => {
-        this.logger.warn({ message: 'Final flush failed on stop', consultationId, error: error instanceof Error ? error.message : String(error) });
-        return session.lastPayload ?? null;
-      });
+      // Drain the WHOLE backlog before the final snapshot (I-2): one flush is capped
+      // at MAX_DELTA_CHARS, so a > 12k un-flushed backlog at stop would keep only the
+      // head and drop the most-recent transcript (assessment/plan/closing). Flush
+      // repeatedly until the cursor catches up to the full transcript. Bounded twice
+      // over — break as soon as a flush makes no forward progress (cursor stuck, e.g.
+      // SMR down / nothing new), and a hard iteration cap as a final safety net so a
+      // non-advancing cursor can never loop forever.
+      const maxDrainIterations = session.transcriptParts.length + 1;
+      for (let i = 0; i < maxDrainIterations; i++) {
+        const cursorBefore = session.flushedTranscriptCount;
+        finalPayload = await this.flush(consultationId, { force: true }).catch((error) => {
+          this.logger.warn({ message: 'Final flush failed on stop', consultationId, error: error instanceof Error ? error.message : String(error) });
+          return session.lastPayload ?? null;
+        });
+        if (session.flushedTranscriptCount >= session.transcriptParts.length || session.flushedTranscriptCount === cursorBefore) {
+          break; // caught up, or no forward progress → stop draining
+        }
+      }
 
       // Finalize the durable snapshot: opt-in via `persistSnapshot`, or simply close
       // out the live row if periodic snapshots already created one this session.
@@ -350,12 +364,17 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // `getActiveSessions` read and via the set's TTL.
     await this.clearStats(consultationId, session?.tenantId);
 
-    // Tell the (possibly remote) owner to tear down, then release the lock, BEFORE the
-    // terminal marker so SSE clients see `closed` last. The release is FENCED (C5-06):
-    // a stop routed to a non-owner never nukes the real owner's lock — the owner frees
-    // its own lock (locally via teardownLocal above, or remotely on the control `stop`).
+    // Tell the (possibly remote) owner to tear down, BEFORE the terminal marker so SSE
+    // clients see `closed` last. Lock release is FENCED (C5-06): a stop routed to a
+    // non-owner never nukes the real owner's lock. When we owned the session,
+    // `teardownLocal` above already released it — so only the no-local-session path
+    // needs a release here, to self-heal an orphaned lock we happen to own (the real
+    // owner, if remote, frees its own via the control `stop`). Avoids the double
+    // release (M-5).
     await this.safeChannelPublish(this.controlChannel(consultationId), JSON.stringify({ type: 'stop', ts: new Date().toISOString() }));
-    await this.releaseOwnership(consultationId);
+    if (!session) {
+      await this.releaseOwnership(consultationId);
+    }
 
     const closed: LiveSummaryEventDto = {
       ...(finalPayload ?? this.emptyPayload(consultationId)),
@@ -497,6 +516,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     for (let i = session.flushedTranscriptCount; i < flushUpTo; i++) {
       const part = session.transcriptParts[i];
       const separator = deltaSegments.length > 0 ? 1 : 0; // the joining space
+      // The `deltaSegments.length > 0` guard always admits the FIRST segment so the
+      // cursor can always advance (no stall). Consequence (M-4): MAX_DELTA_CHARS is a
+      // SOFT per-flush bound — a single segment larger than the cap is still sent whole.
       if (deltaSegments.length > 0 && deltaLen + separator + part.length > MAX_DELTA_CHARS) {
         deltaTruncated = true;
         break; // stop at the head boundary — the rest carries forward
@@ -752,20 +774,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * if two instances ever do run at once.
    */
   private async claimOwnership(session: LiveSession): Promise<void> {
-    let denied = false;
-    try {
-      const result = await this.cacheService.eval(
-        LOCK_ACQUIRE_SCRIPT,
-        1,
-        this.lockKey(session.consultationId),
-        this.instanceId,
-        String(this.LOCK_TTL),
-      );
-      denied = result === 0 || result === '0';
-    } catch (error) {
-      // Fail open: an unreadable lock must not block live docs (single-instance default).
-      this.logger.warn({ message: 'Failed to claim live-doc owner lock', consultationId: session.consultationId, error: error instanceof Error ? error.message : String(error) });
-    }
+    // `IRedisCacheService.eval` returns `null` (it never throws) when Redis is
+    // unavailable, so a cache outage yields `denied === false` — fail open, live
+    // docs keep working. Only an explicit `0` (a live foreign owner) stands us down.
+    const result = await this.cacheService.eval(LOCK_ACQUIRE_SCRIPT, 1, this.lockKey(session.consultationId), this.instanceId, String(this.LOCK_TTL));
+    const denied = result === 0 || result === '0';
 
     if (denied) {
       this.logger.warn({
@@ -808,7 +821,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     try {
       const result = await this.cacheService.eval(LOCK_RENEW_SCRIPT, 1, this.lockKey(consultationId), this.instanceId, String(this.LOCK_TTL));
       if (result === 0 || result === '0') {
-        this.logger.warn({ message: 'Live-doc owner lock lost before renewal (foreign takeover or eviction)', consultationId });
+        // We no longer own the lock (foreign takeover / eviction). Stand down this
+        // instance's watcher so we stop running a duplicate against the new owner —
+        // restoring the single-owner invariant mid-session instead of only logging (M-2).
+        this.logger.warn({ message: 'Live-doc owner lock lost — standing down watcher to preserve single-owner invariant', consultationId });
+        this.teardownLocal(this.sessions.get(consultationId));
       }
     } catch (error) {
       this.logger.warn({
@@ -889,13 +906,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     try {
       if (!session.snapshotEntity) {
-        // Deterministic dedup (TASK-459 C5-06): a prior tick — on THIS instance
-        // after a restart, or a racing second instance that slipped past the lock
-        // — may already have persisted the live snapshot row. Reuse it instead of
-        // minting a SECOND PRE_SUMMARY for the same consultation. Guard on the
-        // subType so we never hijack an unrelated pre-summary row.
-        const existing = await this.contextItemRepository.findLatestPreSummary(session.consultationId);
-        if (existing && (existing.metaData as { subType?: string } | undefined)?.subType === 'LIVE_SOAP_SNAPSHOT') {
+        // Deterministic dedup (TASK-459 C5-06 / review I-1): a prior tick — on THIS
+        // instance after a restart, or a racing second instance that slipped past the
+        // lock — may already have persisted the live snapshot row. Reuse it instead of
+        // minting a SECOND PRE_SUMMARY for the same consultation. Must match on the
+        // subType (see findLiveSnapshotRow): `findLatestPreSummary` is NOT subType-aware,
+        // so a legacy/case-note PRE_SUMMARY minted AFTER our snapshot would otherwise
+        // defeat a naive newest-row guard and create a duplicate LIVE_SOAP_SNAPSHOT.
+        const existing = await this.findLiveSnapshotRow(session.consultationId);
+        if (existing) {
           existing.content = content;
           existing.metaData = metaData;
           await this.contextItemRepository.update(existing.id, existing);
@@ -928,6 +947,22 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.warn({ message: 'Failed to persist live SOAP durable snapshot', consultationId: session.consultationId, error: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  /**
+   * The newest LIVE_SOAP_SNAPSHOT row for a consultation, or null (review I-1).
+   * `findLatestPreSummary` returns the newest PRE_SUMMARY of ANY subType, so it can
+   * hand back a legacy/case-note pre-summary minted after our snapshot — which would
+   * make the durable dedup mint a duplicate live row. Filter on the subType and take
+   * the newest, mirroring the harness warm-start reader (`findPreSummaries` is
+   * createdAt-ASC, so reduce to the max defensively).
+   */
+  private async findLiveSnapshotRow(consultationId: string): Promise<ContextItemEntity | null> {
+    if (!this.contextItemRepository) return null;
+    const preSummaries = await this.contextItemRepository.findPreSummaries(consultationId);
+    const snapshots = preSummaries.filter((p) => (p.metaData as Record<string, unknown> | undefined)?.subType === 'LIVE_SOAP_SNAPSHOT');
+    if (snapshots.length === 0) return null;
+    return snapshots.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b));
   }
 
   /**

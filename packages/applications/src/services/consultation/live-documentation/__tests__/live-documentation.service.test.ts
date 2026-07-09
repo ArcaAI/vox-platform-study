@@ -87,8 +87,9 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
     create: vi.fn().mockResolvedValue({ id: 'ctx-pre-1' }),
     update: vi.fn().mockResolvedValue({ id: 'ctx-pre-1' }),
     findTranscripts: vi.fn().mockResolvedValue([]),
-    // Deterministic durable-snapshot dedup hook (C5-06) — default: no existing row.
+    // Deterministic durable-snapshot dedup hooks (C5-06 / I-1) — default: no rows.
     findLatestPreSummary: vi.fn().mockResolvedValue(null),
+    findPreSummaries: vi.fn().mockResolvedValue([]),
   };
   const config = opts.config ?? {};
   const configService = { get: vi.fn().mockImplementation((key: string) => config[key]) };
@@ -683,7 +684,13 @@ describe('LiveDocumentationService', () => {
       };
     }
 
-    /** A repo backed by an in-memory row list so `findLatestPreSummary` dedups across instances. Share one. */
+    /**
+     * A repo backed by an in-memory row list. `findLatestPreSummary` faithfully
+     * models the REAL (generated) ContextItemRepository contract — the newest
+     * PRE_SUMMARY of ANY subType, NOT subType-aware (this is the I-1 bug lever) —
+     * while `findPreSummaries` returns every row for the fixed subType-filtering
+     * dedup. Share one across instances.
+     */
     function makeSharedRepo() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rows: any[] = [];
@@ -696,10 +703,11 @@ describe('LiveDocumentationService', () => {
         }),
         update: vi.fn().mockImplementation((_id: string, entity: unknown) => Promise.resolve(entity)),
         findTranscripts: vi.fn().mockResolvedValue([]),
-        findLatestPreSummary: vi.fn().mockImplementation(() => {
-          const snap = [...rows].reverse().find((r) => (r.metaData as { subType?: string })?.subType === 'LIVE_SOAP_SNAPSHOT') ?? null;
-          return Promise.resolve(snap);
-        }),
+        // Real contract: newest PRE_SUMMARY regardless of subType (insertion order
+        // models createdAt order). Subtype-blind — the lever the I-1 fix must survive.
+        findLatestPreSummary: vi.fn().mockImplementation(() => Promise.resolve(rows.length ? rows[rows.length - 1] : null)),
+        // All pre-summaries — the fixed dedup filters these by subType itself.
+        findPreSummaries: vi.fn().mockImplementation(() => Promise.resolve([...rows])),
       };
     }
 
@@ -730,27 +738,35 @@ describe('LiveDocumentationService', () => {
       expect(generateCalls()).toBe(1);
     });
 
-    it('dedups the durable PRE_SUMMARY row across instances by querying the repo (no duplicate snapshot)', async () => {
+    it('dedups by subType so a newer NON-live PRE_SUMMARY cannot spawn a duplicate LIVE_SOAP_SNAPSHOT (I-1)', async () => {
       const sharedRepo = makeSharedRepo();
       const config = { LIVE_DOC_MIN_INTERVAL_MS: '0' };
-      // SEPARATE caches → both instances acquire their own lock and BOTH run
-      // (the lock is defeated / partitioned). The durable dedup must STILL prevent
-      // a second PRE_SUMMARY row — defense-in-depth beyond the lock.
+      // SEPARATE caches → both instances run (lock defeated / a restart re-opens the
+      // consultation). The durable dedup must be the backstop.
       const a = buildDeps(buildHttpMock(), { contextItemRepository: sharedRepo, config });
       const b = buildDeps(buildHttpMock(), { contextItemRepository: sharedRepo, config });
 
+      // 1) Instance A persists the live snapshot row (T1).
       a.service.start({ consultationId: CID, tenantId: TENANT, userId: 'doc-a' });
-      b.service.start({ consultationId: CID, tenantId: TENANT, userId: 'doc-b' });
       a.service.ingestSegment(CID, { text: 'chest pain', isFinal: true, segmentId: 's1' });
-      b.service.ingestSegment(CID, { text: 'chest pain', isFinal: true, segmentId: 's1' });
-
-      // Sequential so the second instance sees the first instance's persisted row.
       await a.service.stop(CID, { persistSnapshot: true });
+
+      // 2) A NON-live PRE_SUMMARY is minted afterwards (e.g. the pre-summary
+      //    processor / case-note summary) — newer than the live row, different subType.
+      sharedRepo.rows.push({ id: 'ctx-nonlive-presummary', metaData: { subType: 'CASE_NOTE_SUMMARY' } });
+
+      // 3) Instance B re-opens the consultation (fresh session, snapshotEntity === null)
+      //    and persists. A subType-BLIND finder returns the T2 non-live row and creates
+      //    a SECOND live snapshot; the subType-aware dedup must reuse A's row instead.
+      b.service.start({ consultationId: CID, tenantId: TENANT, userId: 'doc-b' });
+      b.service.ingestSegment(CID, { text: 'more findings', isFinal: true, segmentId: 's2' });
       await b.service.stop(CID, { persistSnapshot: true });
 
-      // Exactly ONE PRE_SUMMARY created; the second reused it via the repo query.
-      expect(sharedRepo.create).toHaveBeenCalledTimes(1);
-      expect(sharedRepo.findLatestPreSummary).toHaveBeenCalled();
+      // Exactly ONE LIVE_SOAP_SNAPSHOT row exists across the whole consultation.
+      const liveSnapshots = sharedRepo.rows.filter((r) => (r.metaData as { subType?: string })?.subType === 'LIVE_SOAP_SNAPSHOT');
+      expect(liveSnapshots).toHaveLength(1);
+      // Dedup went through the subType-aware finder, not the subType-blind one.
+      expect(sharedRepo.findPreSummaries).toHaveBeenCalled();
     });
 
     it('periodically renews the owner lock with a fenced compare-and-expire while the session is live', async () => {
@@ -772,6 +788,67 @@ describe('LiveDocumentationService', () => {
 
       await service.stop(CID);
     });
+
+    it('stands down the watcher when a renewal finds the owner lock was lost (M-2)', async () => {
+      vi.useFakeTimers();
+      const sharedCache = makeSharedCacheMock();
+      const { service } = buildDeps(buildHttpMock(), { cacheService: sharedCache, config: { LIVE_DOC_MIN_INTERVAL_MS: '0' } });
+      service.start({ consultationId: CID, tenantId: TENANT });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(service.isActive(CID)).toBe(true);
+
+      // Simulate a foreign takeover: overwrite the lock value so our fenced renew returns 0.
+      sharedCache.store.set('consultation:live-summary:consultation-001:lock', 'some-other-instance-id');
+
+      // One renewal interval → renew returns 0 (lost) → the watcher must stand down.
+      await vi.advanceTimersByTimeAsync(1_800_000);
+      expect(service.isActive(CID)).toBe(false);
+      // Fenced: we did NOT delete the new owner's lock.
+      expect(sharedCache.store.get('consultation:live-summary:consultation-001:lock')).toBe('some-other-instance-id');
+
+      vi.useRealTimers();
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // I-2: stop() must drain a > MAX_DELTA_CHARS backlog, not single-flush it —
+  // otherwise the final durable snapshot keeps only the head 12k and drops the
+  // most-recent transcript (assessment / plan / closing).
+  // ------------------------------------------------------------------
+  describe('stop() drains the full backlog (I-2)', () => {
+    it('keeps the most-recent transcript in the final snapshot when the backlog exceeds MAX_DELTA_CHARS', async () => {
+      const prompts: string[] = [];
+      const httpMock = {
+        axiosRef: {
+          post: vi.fn().mockImplementation((url: string, body: { prompt?: string }) => {
+            if (url.includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
+            if (url.includes('/generate')) {
+              prompts.push(String(body?.prompt ?? ''));
+              return Promise.resolve({ data: { summary: 'Running SOAP note.' } });
+            }
+            return Promise.resolve({ data: {} });
+          }),
+        },
+      };
+      // High segment threshold so ingest never auto-flushes — the whole backlog is
+      // un-flushed at stop().
+      const { service } = buildDeps(httpMock, { config: { LIVE_DOC_MIN_INTERVAL_MS: '0', LIVE_DOC_SEGMENT_THRESHOLD: '100000' } });
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      service.ingestSegment(CID, { text: 'HEADMARKER chief complaint', isFinal: true, segmentId: 'h' });
+      for (let i = 0; i < 320; i++) {
+        service.ingestSegment(CID, { text: `filler segment number ${i} describing ongoing symptoms in detail`, isFinal: true, segmentId: `f${i}` });
+      }
+      service.ingestSegment(CID, { text: 'TAILMARKER assessment and plan', isFinal: true, segmentId: 't' });
+
+      // No manual flush — stop() alone must drain the > 12k backlog.
+      await service.stop(CID, { persistSnapshot: true });
+
+      // The most-recent content (the tail) reached SMR — not dropped by a single
+      // head-only flush. (The head is retained by C5-04; the tail is the I-2 case.)
+      expect(prompts.some((p) => p.includes('TAILMARKER assessment and plan'))).toBe(true);
+      expect(prompts.some((p) => p.includes('HEADMARKER chief complaint'))).toBe(true);
+    });
   });
 
   // ------------------------------------------------------------------
@@ -789,6 +866,7 @@ describe('LiveDocumentationService', () => {
         update: vi.fn().mockImplementation((_id: string, entity: unknown) => Promise.resolve(entity)),
         findTranscripts: vi.fn().mockResolvedValue([]),
         findLatestPreSummary: vi.fn().mockResolvedValue(null),
+        findPreSummaries: vi.fn().mockResolvedValue([]),
       };
       const { service } = buildDeps(buildHttpMock(), {
         config: { LIVE_DOC_MIN_INTERVAL_MS: '0', LIVE_DOC_DURABLE_SNAPSHOT_MS: '1000' },
