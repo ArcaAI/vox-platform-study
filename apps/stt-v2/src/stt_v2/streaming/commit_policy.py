@@ -106,6 +106,11 @@ class LocalAgreementPolicy:
             committed_count = max(len(self._committed_norm_tokens), agreement)
 
         self._committed_norm_tokens = norm_tokens[:committed_count]
+        # NB: ``stable_chars = len(committed)`` is a valid CHARACTER index into
+        # the published text only because upstream ``inference.py::_sanitize_text``
+        # whitespace-normalizes it (single spaces, stripped) before publish, so
+        # this single-space join aligns with it. A caller feeding un-sanitized
+        # text into the policy would misalign the settled/tentative boundary.
         self._committed_text = " ".join(tokens[:committed_count])
         self._tentative_text = " ".join(tokens[committed_count:])
         return self._committed_text, self._tentative_text

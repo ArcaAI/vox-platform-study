@@ -34,9 +34,12 @@ _ENERGY_FLOOR = 1e-4
 _ENERGY_MULTIPLIER = 2.5
 _FALLBACK_NOISE_FLOOR_MAX = 0.015
 _NOISE_FLOOR_COOLDOWN_FRAMES = 15
-# TASK-451 C2-06: consecutive sub-threshold "dip" frames tolerated mid-onset
-# before the onset accumulator resets. A single dip (VAD jitter) must not
-# discard a real utterance; an ongoing gap still resets (rejects transients).
+# TASK-451 C2-06/I-1: TOTAL sub-threshold "dip" frames tolerated across a
+# single onset attempt (cumulative — NOT reset by intervening speech frames).
+# One mild VAD-jitter dip must not discard a real utterance, but once the
+# budget is spent the onset attempt resets — so consecutive dips AND periodic
+# near-threshold noise (cleanly alternating above/below threshold) are rejected
+# rather than accreting a false onset.
 _ONSET_HANGOVER_FRAMES = 1
 _DEFAULT_MAX_UTTERANCE_DURATION_MS = 25000
 _FORCE_EMIT_LOOKBACK_MS = 1500
@@ -73,7 +76,7 @@ class _PreprocessorState:
     pcm_remainder: bytearray = field(default_factory=bytearray)
     in_speech: bool = False
     speech_onset_frames: int = 0
-    onset_gap: int = 0  # consecutive dip frames tolerated mid-onset (C2-06)
+    onset_gap: int = 0  # cumulative dip frames spent this onset attempt (C2-06/I-1)
     silence_frames: int = 0
     noise_floor_cooldown: int = 0
     utterance_buffer: list[np.ndarray] = field(default_factory=list)
@@ -301,7 +304,6 @@ class StreamingPreprocessor:
                 # Not in speech — track onset
                 if is_speech:
                     state.speech_onset_frames += 1
-                    state.onset_gap = 0  # fresh speech clears the dip budget
                     if state.speech_onset_frames >= self._min_speech_frames:
                         # Speech confirmed — start collecting
                         state.in_speech = True
@@ -334,10 +336,12 @@ class StreamingPreprocessor:
                         if len(state.pre_speech_ring) > self._pre_speech_frames:
                             state.pre_speech_ring.pop(0)
                 else:
-                    # Sub-threshold frame. Tolerate a bounded run of dips
-                    # mid-onset so a jittery but real utterance still confirms
-                    # (C2-06); reset only once the gap exceeds the hangover
-                    # budget, which still rejects lone noise transients.
+                    # Sub-threshold frame. Tolerate up to _ONSET_HANGOVER_FRAMES
+                    # dips TOTAL across this onset attempt so a jittery but real
+                    # utterance still confirms (C2-06); once the cumulative dip
+                    # budget is spent, reset the onset attempt — this rejects
+                    # both consecutive dips and periodic near-threshold noise
+                    # (I-1), not just lone transients.
                     if (
                         state.speech_onset_frames > 0
                         and state.onset_gap < _ONSET_HANGOVER_FRAMES
