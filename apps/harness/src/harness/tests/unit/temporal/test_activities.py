@@ -172,6 +172,25 @@ class TestGenerate:
         assert fake.kwargs["provider"] == "azure-openai"
         assert fake.kwargs["model"] == "gpt-4o"
 
+    @pytest.mark.asyncio
+    async def test_passes_stable_idempotency_key_across_reruns(self, env, monkeypatch):
+        """C1-04 (TASK-469): the generate activity supplies a deterministic Idempotency-Key
+        (``workflow_run:activity_id`` via ``_idempotency_key``) so a worker-crash re-delivery
+        reuses it and SMR dedups the replay instead of re-billing the model. The key is stable
+        across re-runs of the SAME logical activity (ActivityEnvironment fixes the ids)."""
+        fake = _FakeSmr()
+        monkeypatch.setattr(activities, "_smr_client", lambda s: fake)
+
+        await env.run(activities.generate, GenerateInput(prompt="P"))
+        first_key = fake.kwargs["idempotency_key"]
+        await env.run(activities.generate, GenerateInput(prompt="P"))
+        second_key = fake.kwargs["idempotency_key"]
+
+        # _idempotency_key() → workflow_run_id:activity_id (ActivityEnvironment defaults).
+        assert first_key == "test-run:test"
+        # A re-delivery of the same logical generate reuses the SAME key (replay dedups).
+        assert second_key == first_key
+
 
 class TestGeneratePostSendFailure:
     """C1-04 (TASK-458): a post-send SMR failure (the model may have generated) must be
