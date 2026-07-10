@@ -1,0 +1,18 @@
+{
+  "clip": "cardiology_consult_01",
+  "description": "Synthetic cardiology consult read (chest pain / dyspnea workup). De-identified, no PHI.",
+  "keyterms": [
+    "chest pain",
+    "electrocardiogram",
+    "troponin",
+    "stable angina",
+    "aspirin",
+    "81 mg",
+    "heart rate"
+  ],
+  "keyphrases": [
+    "shortness of breath on exertion",
+    "no acute distress",
+    "clear to auscultation"
+  ]
+}
