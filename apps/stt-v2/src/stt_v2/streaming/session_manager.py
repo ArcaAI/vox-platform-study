@@ -163,6 +163,10 @@ class SessionManager:
             self._partial_window_s = float(
                 getattr(_settings, "streaming_partial_window_s", 8.0)
             )
+            # TASK-471 A1 — lowered, configurable partial-emit cadence.
+            self._partial_interval_s = float(
+                getattr(_settings, "streaming_partial_interval_s", 0.4)
+            )
             self._audio_trim_interval_s = float(
                 getattr(_settings, "streaming_audio_trim_interval_s", 30.0)
             )
@@ -180,6 +184,7 @@ class SessionManager:
             self._transcript_outbox_max_attempts = 10
             self._snapshot_interval_s = 30.0
             self._partial_window_s = 8.0
+            self._partial_interval_s = 0.4
             self._audio_trim_interval_s = 30.0
 
     # ------------------------------------------------------------------
@@ -218,9 +223,13 @@ class SessionManager:
           preprocessor's legacy hardcoded 700 ms (H4 — shaves ~200 ms off
           every final's latency floor).
         - The partial decode window is settings-driven and always wired (C2).
+        - The partial-emit cadence is settings-driven and always wired
+          (TASK-471 A1 — lowered default so partials render in near-real-time).
         """
         kwargs: dict[str, Any] = {
             "partial_window_s": self._partial_window_s,
+            # TASK-471 A1 — lowered, settings-driven partial-emit cadence.
+            "partial_interval_s": self._partial_interval_s,
         }
         if pipeline_config and pipeline_config.preprocessing.vad.enabled:
             vad_cfg = pipeline_config.preprocessing.vad

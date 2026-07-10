@@ -1246,6 +1246,11 @@ postprocessing:
     enabled: true
   remove_disfluencies: false
   lowercase: false
+
+streaming:
+  # TASK-471 A1 — activate LocalAgreement-2 so partials carry stable_chars and
+  # the (already-built) tentative-tail render lights up. Commit logic unchanged.
+  commit_policy: local_agreement_2
 `,
 
     // Lightweight CPU pipeline (v1.1 — slug-based model ref)
@@ -1421,6 +1426,11 @@ postprocessing:
     enabled: true
   remove_disfluencies: false
   lowercase: false
+
+streaming:
+  # TASK-471 A1 — activate LocalAgreement-2 so partials carry stable_chars and
+  # the (already-built) tentative-tail render lights up. Commit logic unchanged.
+  commit_policy: local_agreement_2
 
 resources:
   max_memory_mb: 4096
