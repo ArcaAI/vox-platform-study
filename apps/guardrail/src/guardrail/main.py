@@ -198,8 +198,14 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
         )
 
-    # Store settings in app state
+    # Store settings in app state (read by ServiceAuthMiddleware at dispatch).
     app.state.settings = settings
+
+    # Inter-service auth (TASK-465): enforce X-Service-Token on non-exempt paths.
+    # An empty service_token is a dev / hermetic-CI bypass.
+    from guardrail.api.middleware.auth import ServiceAuthMiddleware
+
+    app.add_middleware(ServiceAuthMiddleware)
 
     # Include routers
     from guardrail.api.endpoints.guardrails import router as guardrails_router

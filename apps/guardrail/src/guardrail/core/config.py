@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -226,8 +226,14 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(default_factory=list)
     cors_enabled: bool = False
 
-    # Inter-service authentication
-    service_token: SecretStr = SecretStr("")
+    # Inter-service authentication. The gateway provisions this under the
+    # canonical GUARDRAIL_SERVICE_TOKEN key (turbo.json / .env.example), so read
+    # it verbatim via validation_alias — NOT the GUARDRAIL_V2_ env_prefix, which
+    # never matched the gateway and left prod enforcement silently disabled.
+    service_token: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("GUARDRAIL_SERVICE_TOKEN"),
+    )
 
     # Connection pooling
     httpx_max_connections: int = 100
