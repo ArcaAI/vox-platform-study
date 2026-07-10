@@ -5,6 +5,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { Observable, type Subscription, finalize, interval, map, merge, takeWhile } from 'rxjs';
 import { ContextItemEntity, ContextItemFactory, ContextItemRepository } from '@arcaai/domains';
 import { IRedisCacheService } from '../../baseServices/redis';
+import { SecretsService } from '../../baseServices/_meta/secrets';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
 import { mapSmrGenerateResponse } from '../summary/smr-v2-generate';
@@ -16,6 +17,8 @@ import {
   LiveDocSessionsListResponse,
   LiveSummaryEntityDto,
   LiveSummaryEventDto,
+  LiveSummaryGroundednessDto,
+  LiveSummaryGroundednessSegmentDto,
 } from './dto';
 import { LIVE_SOAP_RESPONSE_FORMAT, buildRunningSummary, parseSoapJson, parseSoapSections } from './soap-parser';
 
@@ -178,6 +181,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
   private readonly nlpServiceUrl: string;
   private readonly smrServiceUrl: string;
+  private readonly guardrailServiceUrl: string;
   private readonly segmentThreshold: number;
   private readonly debounceMs: number;
   private readonly heartbeatMs: number;
@@ -189,6 +193,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly smrProvider?: string;
   private readonly smrModel?: string;
   private readonly statsTtl: number;
+  private readonly groundednessEnabled: boolean;
+  private readonly groundednessTimeoutMs: number;
+  private readonly groundednessMaxRetries: number;
+  private readonly groundednessRetryBackoffMs: number;
 
   constructor(
     private readonly httpService: HttpService,
@@ -199,6 +207,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject(ContextItemRepository) private readonly contextItemRepository?: ContextItemRepository,
     // TASK-356 D-7 — resolver for the tenant's effective SMR {provider, model}.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
+    // TASK-479 (SOTA D2) — X-Service-Token for the guardrail groundedness hop
+    // (SecretsService is provided by the @Global SecretsModule). Optional so unit
+    // fixtures and non-DI construction paths compile; when unset an empty token is
+    // sent (the guardrail's empty-token dev bypass, TASK-465).
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -220,6 +233,16 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // crashed/quiet session falls out of the admin "live" list after this window;
     // refreshed on every flush so an actively-flushing session stays visible.
     this.statsTtl = Number(this.configService.get('LIVE_DOC_STATS_TTL_SEC') ?? 300);
+    // TASK-479 (SOTA D2) — output groundedness gate. Off by default (dev/CI bypass,
+    // mirroring TASK-478's `enabled` posture); enabling is the clinical/ops rollout
+    // step and requires the guardrail's self-hosted NLI model staged. Degrade-safe →
+    // fail-CLOSED: a blip is absorbed by a bounded retry, a sustained outage marks
+    // segments `unverified` — an error path can NEVER mark `grounded`.
+    this.guardrailServiceUrl = this.configService.get<string>('GUARDRAIL_URL') ?? 'http://localhost:8863';
+    this.groundednessEnabled = String(this.configService.get('LIVE_DOC_GROUNDEDNESS_ENABLED') ?? 'false') === 'true';
+    this.groundednessTimeoutMs = Number(this.configService.get('LIVE_DOC_GROUNDEDNESS_TIMEOUT_MS') ?? 5000);
+    this.groundednessMaxRetries = Number(this.configService.get('LIVE_DOC_GROUNDEDNESS_MAX_RETRIES') ?? 1);
+    this.groundednessRetryBackoffMs = Number(this.configService.get('LIVE_DOC_GROUNDEDNESS_RETRY_BACKOFF_MS') ?? 200);
   }
 
   /**
@@ -584,12 +607,28 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     if (isStale()) return this.dropStale(session);
 
+    // TASK-479 (SOTA D2) — live OUTPUT groundedness gate: verify the generated note
+    // against the source transcript (∪ clinician notes, mirroring the durable sensor's
+    // transcript ∪ evidence) BETWEEN building it and publishing it, so ungrounded
+    // segments carry their mark before the clinician reads them. Degrade-safe →
+    // fail-CLOSED: an unavailable gate yields `unverified` (never `grounded`) and the
+    // feed still publishes — the live feed is never frozen or dropped by the gate.
+    let groundedness: LiveSummaryGroundednessDto | undefined;
+    let groundednessLatencyMs = 0;
+    if (this.groundednessEnabled && runningSummary) {
+      const groundednessStartedAt = Date.now();
+      groundedness = await this.checkGroundedness(runningSummary, notes ? `${transcript}\n${notes}` : transcript, signal);
+      groundednessLatencyMs = Date.now() - groundednessStartedAt;
+      if (isStale()) return this.dropStale(session);
+    }
+
     const payload: LiveSummaryEventDto = {
       consultationId,
       runningSummary,
       sections,
       entities,
       lastSegmentId: session.lastSegmentId,
+      ...(groundedness ? { groundedness } : {}),
       updatedAt: new Date().toISOString(),
     };
 
@@ -613,6 +652,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       summaryChars: runningSummary.length,
       staleDropCount: session.staleDropCount,
       truncatedDeltaCount: session.truncatedDeltaCount,
+      // TASK-479 — verdict + latency only (PHI-safe; never the flagged text).
+      groundednessVerdict: groundedness?.verdict,
+      groundednessLatencyMs,
     });
 
     // TASK-341 B1 — mirror the same PHI-safe metrics into Redis so the admin
@@ -1042,6 +1084,107 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       start: e.position?.start,
       end: e.position?.end,
     }));
+  }
+
+  /**
+   * TASK-479 (SOTA D2) — output-side groundedness gate call.
+   *
+   * POSTs `{ summary, transcript }` to the guardrail's self-hosted NLI endpoint
+   * (`/api/guardrail/ground`, behind `X-Service-Token`) and maps the per-segment
+   * verdicts for the SSE payload. Degrade-safe → fail-CLOSED:
+   * - a transient blip is absorbed by a bounded retry (verdict comes from the clean re-check);
+   * - a sustained outage / timeout / malformed response returns `unverified`;
+   * - NO error path can ever return `grounded` (the mapper only accepts the literal
+   *   `grounded` verdict from an honest `checked: true` response).
+   * PHI-safe logging: attempt counts + error names only — never clinical text.
+   */
+  private async checkGroundedness(summary: string, transcript: string, signal?: AbortSignal): Promise<LiveSummaryGroundednessDto> {
+    const attempts = Math.max(1, this.groundednessMaxRetries + 1);
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        const token = (await this.secretsService?.getSecretOptional('GUARDRAIL_SERVICE_TOKEN')) ?? '';
+        const response = await this.httpService.axiosRef.post(
+          `${this.guardrailServiceUrl}/api/guardrail/ground`,
+          { summary, transcript },
+          {
+            timeout: this.groundednessTimeoutMs,
+            headers: { 'Content-Type': 'application/json', 'X-Service-Token': token },
+            signal,
+          },
+        );
+        const verdict = this.mapGroundednessResponse(response.data);
+        if (verdict) return verdict;
+        this.logger.warn({ message: 'Groundedness gate returned a malformed verdict — treating as unverified (fail-closed)', attempt });
+      } catch (error) {
+        this.logger.warn({
+          message: 'Groundedness gate call failed',
+          attempt,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      if (signal?.aborted) break; // superseded — the flush drops this generation as stale
+      if (attempt < attempts && this.groundednessRetryBackoffMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, this.groundednessRetryBackoffMs));
+      }
+    }
+    // Fail-CLOSED: an unavailable/erroring gate marks the note `unverified` — the
+    // clinician sees the text but knows it is unchecked; it is NEVER presented as verified.
+    return { verdict: 'unverified', checkedAt: new Date().toISOString() };
+  }
+
+  /**
+   * Strict wire→DTO mapping for the guardrail `/guardrail/ground` response. Returns
+   * `null` for a malformed body (→ fail-closed `unverified` upstream). Only the
+   * literal `grounded` verdict string can mark a segment grounded, and only when the
+   * service honestly reports `checked: true` — an errored/disabled gate response can
+   * never roll up to `grounded`.
+   */
+  private mapGroundednessResponse(data: unknown): LiveSummaryGroundednessDto | null {
+    const body = data as { segments?: unknown; flagged_spans?: unknown; checked?: unknown } | null | undefined;
+    if (!body || !Array.isArray(body.segments)) return null;
+
+    // TASK-479 review IMPORTANT-1 — a response we distrust (`checked !== true`: any
+    // degrade / error / disabled path) must not drive ANY per-segment verdict, not just
+    // the rollup. An honest degrade already sets every segment 'unverified'; this defends
+    // against a compromised/buggy guardrail returning 'grounded' segments alongside
+    // checked:false — a panel rendering per-segment marks would otherwise show segments as
+    // verified from a response the mapper explicitly refused to trust. Only a `checked:true`
+    // response may carry a non-'unverified' segment verdict.
+    const trusted = body.checked === true;
+    const segments: LiveSummaryGroundednessSegmentDto[] = body.segments.map((raw) => {
+      const segment = raw as { text?: unknown; verdict?: unknown; score?: unknown; start?: unknown; end?: unknown };
+      const verdict = !trusted
+        ? 'unverified'
+        : segment.verdict === 'grounded'
+          ? 'grounded'
+          : segment.verdict === 'ungrounded'
+            ? 'ungrounded'
+            : 'unverified';
+      return {
+        text: typeof segment.text === 'string' ? segment.text : '',
+        verdict,
+        score: typeof segment.score === 'number' ? segment.score : undefined,
+        start: typeof segment.start === 'number' ? segment.start : undefined,
+        end: typeof segment.end === 'number' ? segment.end : undefined,
+      };
+    });
+
+    const flaggedSpans = Array.isArray(body.flagged_spans)
+      ? body.flagged_spans
+          .map((raw) => raw as { start?: unknown; end?: unknown })
+          .filter((span) => typeof span.start === 'number' && typeof span.end === 'number')
+          .map((span) => ({ start: span.start as number, end: span.end as number }))
+      : [];
+
+    const anyUngrounded = segments.some((segment) => segment.verdict === 'ungrounded');
+    const anyUnverified = segments.some((segment) => segment.verdict === 'unverified');
+    const verdict: LiveSummaryGroundednessDto['verdict'] = anyUngrounded
+      ? 'ungrounded'
+      : anyUnverified || segments.length === 0 || body.checked !== true
+        ? 'unverified'
+        : 'grounded';
+
+    return { verdict, segments, flaggedSpans, checkedAt: new Date().toISOString() };
   }
 
   private channel(consultationId: string): string {
