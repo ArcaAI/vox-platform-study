@@ -1,6 +1,6 @@
 # TASK-470 — Streaming Quality Eval Harness (Theme F · SOTA S1-EVAL · **the measurement gate**)
 
-- **Status**: Pending (detail-scaffolded from SOTA-Track — not yet scheduled; open per CLAUDE.md ticket workflow before implementing)
+- **Status**: Review (pure scoring metrics + regression gate + de-identified clinical fixtures delivered as NEW test code only, zero product diff; hermetic unit gate GREEN. The live-stack scorecard capture — a real WER/recall run through STT-v2 — is the orchestrator's step, exactly like TASK-455's live baseline.)
 - **Type**: infrastructure (test coverage + measurement) — **gating dependency for every ASR/NER quality ticket in the SOTA track**
 - **Track**: [SOTA Enhancement Track](../SOTA-Track/README.md) · Theme **F** (the gate — lands FIRST)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · strategic SOTA track (post-Wave-3)
@@ -99,10 +99,103 @@ pnpm py:stt-v2:lint && pnpm py:stt-v2:typecheck
 
 Adversarial review focus (reviewer agent): (a) does the scorecard truly **reuse** the TASK-455 harness (imports `_run_one_session`/`compute_metrics`) rather than forking a second client + second metric implementation? (b) is `medical_wer` deterministic and correct on the hand-checked self-check (no hidden randomness, stable normalization)? (c) are the thresholds justified (ε defensible) and does `assert_no_regression` actually FAIL on a synthetic regressed scorecard — proven by a test, not asserted? (d) do the fixtures contain zero real PHI? (e) clean self-skip when STT-v2 is down (no false failures)? (f) new files only — zero diff to TASK-455's files and to product code.
 
+## Implementation Summary
+
+Delivered as **NEW test code + fixtures only — zero product diff, zero edit to TASK-455's files** (the loss-harness underscore helpers are convention-private but importable, so no export change was needed — no manifest-growth STOP triggered). Built strict TDD (RED → GREEN). The pure scoring/gate math is unit-tested **hermetically** (nothing up); the live through-the-gateway scorecard capture is the orchestrator's full-stack step (self-skips off-stack — never a false failure), exactly as TASK-455 scoped its own live baseline.
+
+### Files added (manifest honored)
+
+| Path | Purpose |
+|---|---|
+| `apps/stt-v2/tests/integration/streaming_quality.py` | **Pure, stdlib-only** metric functions (no numpy, no services): `normalize_text`, `medical_wer`, `keyterm_recall`, `keyphrase_recall`, `build_scorecard`, `regression_report`, `assert_no_regression`, `MEDICAL_SYNONYMS`. WER algorithm (word-level Levenshtein + backtrace, same normalization + tie-break order) mirrored from the TS gate `apps/ui-playground/e2e/helpers/wer.ts` so Python and TS agree. |
+| `apps/stt-v2/tests/integration/test_streaming_quality_scorecard.py` | The scorecard test module. `test_quality_metric_functions_are_correct` (pure self-check — the unit gate this ticket owns), `test_clinical_fixtures_are_wellformed` (pure fixture-integrity + PHI-red-flag scan), `test_streaming_quality_scorecard` (LIVE run: **reuses** TASK-455's `_run_one_session`/`load_replay_audio`/`compute_metrics` — imported, not forked — builds the scorecard, writes `./stt-quality-scorecard.json`, asserts the thresholds). Overrides the integration conftest's docker gate (like the loss harness) so the pure checks run with nothing up. |
+| `apps/stt-v2/tests/integration/streaming_thresholds.json` | Committed regression thresholds (the A1/A2/A3/B/C gate). Transport rows = TASK-455's captured baseline; quality rows = documented bootstrap ceiling/floor (baseline `null` until the live capture). |
+| `apps/stt-v2/tests/e2e/fixtures/clinical/{medication_review_01,cardiology_consult_01,discharge_summary_01}.{gt.txt,keyterms.json}` | Small **synthetic, de-identified** clinical reference + curated keyterm/keyphrase set. **No real PHI** (see provenance below). |
+
+### Metric semantics (the scorecard contract)
+
+- **`medical_wer(ref, hyp, synonyms=…)`** — `(S+D+I)/N` over medical-term-aware normalized words. Normalization folds case/punctuation and collapses whitespace (verbatim mirror of `wer.ts`: `B.P.`→`bp`, `120/80`→`12080`); the optional `MEDICAL_SYNONYMS` map folds benign clinical variation (`5 milligrams` == `5 mg`). Surface-form only — **not** UMLS/MEDCON concept-linking (that is TASK-482/E3).
+- **`keyterm_recall`** — fraction of curated keyterms present as a **contiguous span** (strict, verbatim) — the "did we drop the drug/dose/finding" catcher.
+- **`keyphrase_recall`** — fraction present as an **ordered subsequence** (gaps allowed) — looser recall for longer descriptive phrases so an inserted filler word doesn't zero the phrase. (The self-check proves `keyterm` fails but `keyphrase` passes on `"shortness of breath on exertion"` when `"mild"` splits `on … exertion`.)
+- **`build_scorecard`** composes the three quality fields + the six reused transport fields (`first_partial_ms`, `ttfw_ms`, `commit_latency_ms` P50/P99, `partial_revision_rate`, `seq_gap_count`, `audio_coverage_ratio`) into one dict.
+- **`assert_no_regression`** raises `AssertionError` on ANY breach (`regression_report` is the pure never-raises verdict for the artifact) — the concrete pass/fail gate TASK-455 deferred.
+
+### RED → GREEN evidence (strict TDD)
+
+```
+# RED — scorer absent, test written first:
+$ pytest …/test_streaming_quality_scorecard.py -k functions_are_correct
+E   ModuleNotFoundError: No module named 'tests.integration.streaming_quality'
+=============================== 1 error in 0.11s ===============================
+
+# GREEN — after implementing streaming_quality.py + streaming_thresholds.json:
+$ pytest …/test_streaming_quality_scorecard.py -k functions_are_correct -v
+tests/integration/test_streaming_quality_scorecard.py::test_quality_metric_functions_are_correct PASSED
+======================= 1 passed, 2 deselected in 0.01s ========================
+```
+
+The self-check hand-verifies: identical→WER 0; a del+sub pair→WER 0.4; two insertions→WER 2/3; empty-ref edges; the synonym map folding `milligrams`→`mg`; keyterm 0.75 with `["insulin"]` missing; keyphrase 2/3; a clean scorecard PASSING the committed thresholds; and **four synthetic regressions each FAILING** (`assert_no_regression` raises) — WER over ceiling, a `seq_gap_count` of 2, a blown commit-latency P99, and a keyterm-recall below floor. `build_scorecard`/`regression_report`/`assert_no_regression` are all exercised.
+
+### Verification gate output (AC-8)
+
+Sandbox note: the `conda` wrapper is blocked here, so gates were run via the `arcaenv` env binaries directly (`/…/envs/arcaenv/bin/{pytest,ruff,mypy}`) — functionally identical to each `pnpm py:stt-v2:*` alias's `conda run -n arcaenv <tool>`.
+
+```
+# pnpm py:stt-v2:lint    (ruff check apps/stt-v2/src/ apps/stt-v2/tests/)
+All checks passed!
+
+# pnpm py:stt-v2:typecheck  (mypy --config-file apps/stt-v2/pyproject.toml apps/stt-v2/src/)
+Success: no issues found in 103 source files
+
+# pnpm py:stt-v2:test  (full suite: pytest apps/stt-v2/tests/) — collects clean (2387 tests, 0 errors):
+2345 passed, 37 skipped, 3 xfailed, 2 failed in 33.99s
+#   this ticket's tests within the suite:
+tests/integration/test_streaming_quality_scorecard.py::test_quality_metric_functions_are_correct PASSED
+tests/integration/test_streaming_quality_scorecard.py::test_clinical_fixtures_are_wellformed     PASSED
+tests/integration/test_streaming_quality_scorecard.py::test_streaming_quality_scorecard           SKIPPED (API unreachable — off-stack)
+tests/integration/test_streaming_loss_harness.py::test_metric_functions_are_correct              PASSED (unaffected)
+# integration dir off-stack: 39 passed, 3 skipped (the 3 live-stack streaming harnesses skip cleanly)
+```
+
+**The 2 failures are PRE-EXISTING and unrelated to TASK-470** — `test_streaming_recording.py::TestTranscriptOutbox::{test_outbox_permanent_failure_drops_and_alerts, test_outbox_exhausted_drops_and_alerts}`, a flaky structlog/`caplog` cross-test logging-capture pollution (a `caplog` assertion for the `outbox_exhausted_drop` event returns `False` when another test reconfigured structlog earlier in the run). Proven independent of this ticket: both PASS in isolation and when `tests/unit/` runs alone (**2106 passed, 0 failed**); and re-running the full suite with THIS ticket's test file `--ignore`d reproduces the **identical** 2 failures (`2 failed, 2343 passed`). This ticket adds only new files, not imported by that unit test. The 37 skips are the live-stack/ML e2e tests + streaming harnesses (API :8868 / STT-v2 :8861 / cached whisper model — the orchestrator's environment). `pnpm py:stt-v2:test:integration` is the standard invocation (no new alias — same as TASK-455).
+
+### Baseline + thresholds (AC-4/AC-6)
+
+`streaming_thresholds.json` is the committed source of truth:
+
+- **Transport guardrails** carry TASK-455's captured LocalAgreement-2 baseline (from its `stt-loss-report.json`): commit-latency **P50 6023.2 / P99 7624.2 ms** (gated on a **15 % ratio** delta, since latency is inference-dominated on the offline whisper-turbo host — transport must not add > 15 %), `partial_revision.rate` **0.0** (+0.02 ε), `seq.gap_count` **0** (zero-tolerance), `audio_coverage_ratio` **0.996** (−0.005 ε).
+- **Quality guardrails** have `baseline: null` (not yet measured) plus an **absolute bootstrap** ceiling/floor that gates today: `medical_wer ≤ 0.35`, `keyterm_recall ≥ 0.70`, `keyphrase_recall ≥ 0.70`. Every ε is documented inline in the JSON. **AC-6 action for the orchestrator:** run `test_streaming_quality_scorecard` on the live stack with a self-hosted clinical read, record `./stt-quality-scorecard.json` in this folder, then tighten each quality `baseline` from `null` to the captured value (keeping the ε). Until then the bootstrap ceilings/floors are the interim gate.
+
+### Gate contract handed to A1/A2/A3/B/C (AC-5)
+
+Every downstream ASR/NER ticket re-runs THIS scorecard on the **same clinical fixtures + pipeline (`…402`) + `frame_ms`**, and must show its **target** improve while **none** of the guardrails regress past `streaming_thresholds.json`:
+
+| Ticket | Target (must improve) | Guardrails (must NOT regress) |
+|---|---|---|
+| **A1** (TASK-471, tentative tail) | `first_partial_ms` / `ttfw_ms` (tentative-visible latency ↓) | `partial_revision_rate` (no more churn), `commit_latency_ms` P50/P99 (commit stays conservative), `medical_wer`, `keyterm_recall` |
+| **A2** (TASK-472, commit latency) | `commit_latency_ms` P50/P99 ↓ | `medical_wer`, `keyterm_recall`, `seq_gap_count`=0, `audio_coverage_ratio` |
+| **A3** (TASK-473) | its named latency/quality metric | all others held at baseline±ε |
+| **B2** (TASK-475) / **C** (TASK-476/477) | `medical_wer` ↓ and/or `keyterm_recall`/`keyphrase_recall` ↑ | `commit_latency_ms`, `partial_revision_rate`, `seq_gap_count`, `audio_coverage_ratio` |
+
+The crux F makes gateable: the scorecard **separates tentative-visible latency (should drop under A1) from commit/stable latency and partial-revision rate (must NOT rise)** — A1 "wins" iff tentative latency improves while those two guardrails hold.
+
+### Clinical fixture provenance (AC-3 — no PHI)
+
+The three clips under `apps/stt-v2/tests/e2e/fixtures/clinical/` are **100 % synthetic, self-hosted, de-identified** scripted clinical reads (medication reconciliation, a cardiology consult, a discharge summary). They contain **no real patient identifiers** — no names, MRNs, SSNs, dates of birth, or addresses; only generic role references ("the patient") and generic clinical content. `test_clinical_fixtures_are_wellformed` enforces this hermetically (scans for SSN/MRN red-flag markers and asserts every curated keyterm actually appears in its reference). Each `*.keyterms.json` carries an inline `description` documenting its synthetic provenance.
+
+**Adding the matching audio (orchestrator's live step):** a `*.wav` per clip is intentionally **not committed** (a real spoken recording is what produces a meaningful WER, and only a self-hosted read keeps the PHI-free posture auditable in-repo as plain text). To capture the live scorecard, drop a 16 kHz mono 16-bit PCM `<clip>.wav` — a self-hosted scripted read of the matching `<clip>.gt.txt` (e.g. macOS `say -o clip.aiff -f clip.gt.txt` then `afconvert -f WAVE -d LEI16@16000 -c 1 clip.aiff clip.wav`) — beside its `.gt.txt`. The scorecard test pairs `<stem>.gt.txt` ↔ `<stem>.wav` ↔ `<stem>.keyterms.json` and **skips any clip whose `.wav` is absent** (so the harness is green off-stack and scores whatever reads are provided).
+
+### Deviations / notes
+
+- **No separate fixtures `README.md`** — per the repo's "one document per ticket / no proactive README files" rule, fixture provenance + WAV-generation instructions live here (above) and inline in each `*.keyterms.json`.
+- **No product-code counters** added (same posture as TASK-455 — metrics are computed in-test).
+- The medical-synonym map is a small documented v1 stub; a fuller UMLS/RxNorm mapping and number-format normalization (word-vs-digit doses) are live-tuning items for the orchestrator's capture, not required for the hermetic gate.
+
 ## Change History
 
 | Date | Change |
 |---|---|
+| 2026-07-10 | **Implemented (TDD).** Added the pure `streaming_quality.py` (medical WER mirrored from `wer.ts`, keyterm contiguous-span recall, keyphrase subsequence recall, `build_scorecard`, `regression_report`, `assert_no_regression`), `test_streaming_quality_scorecard.py` (hermetic self-check + fixture-integrity + PHI scan + a live through-the-gateway scorecard that **reuses** TASK-455's `_run_one_session`/`compute_metrics` and self-skips off-stack), `streaming_thresholds.json` (TASK-455 transport baseline + documented quality bootstrap ceilings/floors), and a synthetic de-identified 3-clip clinical fixture set (`*.gt.txt` + `*.keyterms.json`, **no PHI**). RED (scorer absent → `ModuleNotFoundError`) → GREEN (self-check PASSED). Gates: ruff **clean**, mypy **clean** (103 files), full suite **collects clean** (2387 tests, 0 errors) with this ticket's scoring tests GREEN and the loss-harness self-check unaffected. Zero product diff, zero edit to TASK-455's files. Documented the A1/A2/A3/B/C target-vs-guardrail gate contract and the orchestrator's live-stack scorecard/baseline-capture step. Status → Review. |
 | 2026-07-10 | Ticket scaffolded from the [SOTA-Track](../SOTA-Track/README.md) plan (Theme F — the measurement gate). Current state code-verified against `fix/2605-review` @ 87b33f57: TASK-455's loss harness already provides partial-revision-rate, commit-latency P50/P99, tentative-visible latency, and seq/coverage loss (all importable, module-level) — this ticket EXTENDS it with medical-WER + clinical keyterm/keyphrase recall + a committed pass/fail threshold gate (the assertion TASK-455 deferred) + a self-hosted de-identified clinical fixture set, reusing the harness's through-the-gateway bootstrap rather than forking it. Confirmed no WER/keyterm scoring and no clinical keyterm fixtures exist today. Output = a repeatable quality scorecard + regression thresholds that A1/A2/A3/B/C are gated on. No implementation. |
 </content>
 </invoke>
