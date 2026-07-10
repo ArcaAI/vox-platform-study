@@ -25,6 +25,7 @@ import type {
   WsResumedMessage,
   WsStatusMessage,
   WsTranscriptResult,
+  WsTranscriptWirePayload,
 } from '../types/stt-v2';
 import type { ISDKLogger } from './logger';
 
@@ -151,6 +152,8 @@ export class SttV2WebSocketClient {
   private onDisconnectCb?: () => void;
   private onReconnectCb?: (attempt: number) => void;
   private onReconnectFailedCb?: () => void;
+  /** Emitted when a reconnect attempt genuinely re-opens the socket (TASK-461 C6-02). */
+  private onReconnectedCb?: () => void;
   /** Emitted whenever a frame is dropped due to backpressure (TASK-298 D-15). */
   private onBackpressureDropCb?: (reason: 'queue_full' | 'buffered_amount_high') => void;
 
@@ -288,6 +291,13 @@ export class SttV2WebSocketClient {
           });
           if (wasReconnecting && this.currentSessionId) {
             this.sendResumeHandshake(ws, this.currentSessionId, this.lastReceivedSeq);
+          }
+          if (wasReconnecting) {
+            // TASK-461 C6-02 — the transport genuinely re-opened after a drop.
+            // Signal reconnect SUCCESS so consumers leave their 'reconnecting'
+            // UX and read as live again. Distinct from `onReconnect`, which
+            // fires at attempt-start during backoff (socket not yet back).
+            this.onReconnectedCb?.();
           }
           resolve();
         }
@@ -462,6 +472,16 @@ export class SttV2WebSocketClient {
     this.onReconnectFailedCb = cb;
   }
 
+  /**
+   * Called when a reconnection attempt has genuinely re-opened the socket
+   * (TASK-461 C6-02). Fires on the reconnect open only — never on the initial
+   * connect — so consumers can transition a 'reconnecting' surface back to
+   * live. Contrast `onReconnect`, which fires at attempt-start during backoff.
+   */
+  onReconnected(cb: () => void): void {
+    this.onReconnectedCb = cb;
+  }
+
   // =========================================================================
   // Reconnection
   // =========================================================================
@@ -611,24 +631,34 @@ export class SttV2WebSocketClient {
     }
   }
 
-  private static normalizeTranscript(msg: Record<string, unknown>): WsTranscriptResult | null {
-    const startTime = typeof msg.startTime === 'number' ? msg.startTime : typeof msg.start_time === 'number' ? msg.start_time : null;
-    const endTime = typeof msg.endTime === 'number' ? msg.endTime : typeof msg.end_time === 'number' ? msg.end_time : null;
+  /**
+   * TASK-461 C6-04 — tolerant `isFinal` coercion. Accepts a boolean, the
+   * numbers 1/0, or the strings '1'/'0'; returns null when unparseable so the
+   * caller can fall through to the other casing (and ultimately default false).
+   */
+  private static coerceIsFinal(value: unknown): boolean | null {
+    if (typeof value === 'boolean') return value;
+    if (value === 1 || value === '1') return true;
+    if (value === 0 || value === '0') return false;
+    return null;
+  }
 
-    let isFinal: boolean | null = null;
-    if (typeof msg.isFinal === 'boolean') {
-      isFinal = msg.isFinal;
-    } else if (typeof msg.is_final === 'boolean') {
-      isFinal = msg.is_final;
-    } else if (msg.is_final === '1') {
-      isFinal = true;
-    } else if (msg.is_final === '0') {
-      isFinal = false;
-    }
-
-    if (typeof msg.text !== 'string' || startTime == null || endTime == null || isFinal == null) {
+  private static normalizeTranscript(msg: WsTranscriptWirePayload): WsTranscriptResult | null {
+    // TASK-461 C6-04 — `text` is the only field a caption cannot survive
+    // without, so a payload with no string `text` is genuinely unusable and is
+    // dropped. Everything else DEGRADES (sensible defaults) rather than
+    // discarding the whole transcript: an omitted `start_time` or a numeric
+    // `is_final` must never cost the clinician a caption.
+    if (typeof msg.text !== 'string') {
       return null;
     }
+
+    const startTime = typeof msg.startTime === 'number' ? msg.startTime : typeof msg.start_time === 'number' ? msg.start_time : 0;
+    const endTime = typeof msg.endTime === 'number' ? msg.endTime : typeof msg.end_time === 'number' ? msg.end_time : 0;
+
+    // Absent/unparseable isFinal degrades to a partial (false) — never a
+    // premature final that would prematurely commit a live row.
+    const isFinal = SttV2WebSocketClient.coerceIsFinal(msg.isFinal) ?? SttV2WebSocketClient.coerceIsFinal(msg.is_final) ?? false;
 
     const normalized: WsTranscriptResult = {
       type: 'transcript',

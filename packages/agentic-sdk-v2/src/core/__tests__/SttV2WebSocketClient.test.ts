@@ -761,6 +761,40 @@ describe('SttV2WebSocketClient', () => {
       vi.useRealTimers();
     });
 
+    // TASK-461 C6-02 — `onReconnect` fires at attempt-START (during backoff,
+    // before the socket is back). Consumers that must reflect "live again" need
+    // a distinct SUCCESS signal fired only when the transport actually
+    // re-opens. `onReconnected` fires on the reconnect open, never on the first
+    // connect.
+    it('should fire onReconnected only when a reconnect attempt re-opens the socket (C6-02)', async () => {
+      vi.useFakeTimers();
+      const mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+
+      const onReconnected = vi.fn();
+      reconnectClient.onReconnected(onReconnected);
+
+      const p = reconnectClient.connect('wss://example.com/ws?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      // Initial connect is NOT a reconnect — no success signal.
+      expect(onReconnected).not.toHaveBeenCalled();
+
+      // Server drops → attemptReconnect schedules (onReconnect at attempt-start).
+      lastMockWs!.close(1006, 'Lost');
+      await vi.advanceTimersByTimeAsync(101);
+      // The socket is still not back — a fresh WS exists but has not opened yet.
+      expect(onReconnected).not.toHaveBeenCalled();
+
+      // The reconnect attempt's socket opens — the transport is genuinely back.
+      lastMockWs!.simulateOpen();
+      expect(onReconnected).toHaveBeenCalledTimes(1);
+      expect(reconnectClient.isConnected()).toBe(true);
+
+      mathRandomSpy.mockRestore();
+      vi.useRealTimers();
+    });
+
     it('should log error and fire onReconnectFailed when maxAttempts is 0', async () => {
       // With maxAttempts=0, the first disconnect immediately exhausts attempts
       const onReconnectFailed = vi.fn();
@@ -1485,6 +1519,50 @@ describe('SttV2WebSocketClient', () => {
       });
       expect(envelope).not.toBeNull();
       expect('resultType' in envelope!).toBe(false);
+    });
+
+    // TASK-461 C6-04 — the parser used to hard-drop the ENTIRE transcript the
+    // moment ONE of text/startTime/endTime/isFinal was absent or mistyped
+    // (e.g. a numeric is_final, or a server that omits timing on a partial).
+    // Now it degrades gracefully: only a genuinely unusable payload (no text)
+    // is dropped; missing OPTIONAL metadata defaults instead of discarding the
+    // caption.
+    it('tolerates missing/mistyped optional fields instead of dropping the caption (C6-04)', () => {
+      const normalize = (
+        SttV2WebSocketClient as unknown as {
+          normalizeTranscript(msg: Record<string, unknown>): WsTranscriptResult | null;
+        }
+      ).normalizeTranscript;
+
+      // Timing + isFinal omitted entirely — the caption text still surfaces and
+      // an absent isFinal degrades to a partial (not a premature final).
+      const missingTiming = normalize({ type: 'transcript', text: 'worse after lunch' });
+      expect(missingTiming).not.toBeNull();
+      expect(missingTiming!.text).toBe('worse after lunch');
+      expect(missingTiming!.isFinal).toBe(false);
+      expect(missingTiming!.startTime).toBe(0);
+      expect(missingTiming!.endTime).toBe(0);
+
+      // A NUMERIC is_final (1/0) — the old branch only knew booleans and the
+      // strings '1'/'0', so it dropped this. Now it coerces.
+      const numericFinal = normalize({ type: 'transcript', text: 'done', start_time: 1, end_time: 2, is_final: 1 });
+      expect(numericFinal).not.toBeNull();
+      expect(numericFinal!.text).toBe('done');
+      expect(numericFinal!.isFinal).toBe(true);
+
+      const numericPartial = normalize({ type: 'transcript', text: 'typing', is_final: 0 });
+      expect(numericPartial).not.toBeNull();
+      expect(numericPartial!.isFinal).toBe(false);
+
+      // Additive resume/segment metadata still rides through on a partial payload.
+      const withMeta = normalize({ type: 'transcript', text: 'partial', seq: 12, stable_chars: 4 });
+      expect(withMeta).not.toBeNull();
+      expect(withMeta!.seq).toBe(12);
+      expect(withMeta!.stableChars).toBe(4);
+
+      // A genuinely unusable payload (no text at all) is STILL rejected.
+      expect(normalize({ type: 'transcript', start_time: 0, end_time: 1, is_final: true })).toBeNull();
+      expect(normalize({ type: 'transcript', text: 42 })).toBeNull();
     });
 
     it('should omit utteranceIndex and resultType when neither casing is present (older servers)', async () => {

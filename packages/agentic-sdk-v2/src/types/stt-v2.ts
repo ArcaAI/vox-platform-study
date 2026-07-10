@@ -245,6 +245,59 @@ export interface WsTranscriptResult {
 }
 
 /**
+ * Shared transcript WIRE CONTRACT (TASK-461 C6-04).
+ *
+ * The raw server→client transcript payload exactly as it arrives on the WS,
+ * BEFORE normalization into the strict {@link WsTranscriptResult} consumers
+ * hold. Every field is optional and each carries BOTH casings
+ * (`camelCase` | `snake_case`) because the emitters — the gateway relay and
+ * stt-v2 — have historically shipped either. Values are typed `unknown`: the
+ * parser (`SttV2WebSocketClient.normalizeTranscript`) is the single tolerant
+ * choke point that coerces/defaults them (a numeric `is_final`, an omitted
+ * `start_time`, …) instead of dropping the whole caption.
+ *
+ * Keep this ADDITIVE and back-compatible: never promote a field to required,
+ * and add new server fields here in both casings. The index signature keeps a
+ * plain `JSON.parse` result assignable so `handleMessage` can hand its parsed
+ * object straight in.
+ */
+export interface WsTranscriptWirePayload {
+  /** WS envelope kind ('transcript') OR the wire result-kind ('segment' | 'gloss'). */
+  type?: unknown;
+  text?: unknown;
+  startTime?: unknown;
+  start_time?: unknown;
+  endTime?: unknown;
+  end_time?: unknown;
+  isFinal?: unknown;
+  is_final?: unknown;
+  stableChars?: unknown;
+  stable_chars?: unknown;
+  utteranceIndex?: unknown;
+  utterance_index?: unknown;
+  resultType?: unknown;
+  seq?: unknown;
+  englishText?: unknown;
+  english_text?: unknown;
+  speakerId?: unknown;
+  speaker_id?: unknown;
+  speakerLabel?: unknown;
+  speaker_label?: unknown;
+  speakerConfidence?: unknown;
+  speaker_confidence?: unknown;
+  speakerEmbedding?: unknown;
+  speaker_embedding?: unknown;
+  speakerFeatures?: unknown;
+  speaker_features?: unknown;
+  wordTimestamps?: unknown;
+  word_timestamps?: unknown;
+  inference?: unknown;
+  inference_time?: unknown;
+  /** Absorbs any not-yet-modelled server field so `Record<string, unknown>` stays assignable. */
+  [key: string]: unknown;
+}
+
+/**
  * Word-level timestamp from server transcript.
  */
 export interface WsWordTimestamp {
