@@ -1,0 +1,19 @@
+{
+  "clip": "medication_review_01",
+  "description": "Synthetic outpatient medication-reconciliation read. De-identified, no PHI.",
+  "keyterms": [
+    "metformin",
+    "lisinopril",
+    "atorvastatin",
+    "type 2 diabetes",
+    "hypertension",
+    "500 mg",
+    "10 mg",
+    "20 mg"
+  ],
+  "keyphrases": [
+    "medication review",
+    "no known drug allergies",
+    "hemoglobin a1c"
+  ]
+}

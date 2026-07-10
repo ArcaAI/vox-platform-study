@@ -1,0 +1,41 @@
+{
+  "_comment": "TASK-470 (Theme F) committed regression thresholds — the single source of truth A1/A2/A3/B/C are judged against. TRANSPORT baselines are TASK-455's captured LocalAgreement-2 numbers (stt-loss-report.json: commit-latency P50 6023.2 / P99 7624.2 ms, partial_revision.rate 0.0, seq.gap_count 0, audio_coverage_ratio 0.996). QUALITY baselines are null until the orchestrator's LIVE-STACK scorecard run captures them on the clinical fixtures; an ABSOLUTE bootstrap ceiling/floor gates them in the meantime. Tighten quality 'baseline' to the captured value (keeping the documented epsilon) once the live scorecard lands.",
+  "medical_wer": {
+    "baseline": null,
+    "ceiling": 0.35,
+    "epsilon": 0.05,
+    "_note": "Lower is better; GUARDRAIL. ceiling 0.35 is a conservative bootstrap for clean scripted clinical reads on whisper-large-v3-turbo (SOTA short-form English medical WER is ~0.10-0.20; 0.35 leaves headroom yet still catches a badly-regressed model). epsilon 0.05 = the allowed drift once baseline is captured."
+  },
+  "keyterm_recall": {
+    "baseline": null,
+    "floor": 0.70,
+    "epsilon": 0.05,
+    "_note": "Higher is better; GUARDRAIL — the 'did we drop the drug/dose/finding' catcher. floor 0.70 bootstrap; epsilon 0.05 drift once baseline captured."
+  },
+  "keyphrase_recall": {
+    "baseline": null,
+    "floor": 0.70,
+    "epsilon": 0.05,
+    "_note": "Higher is better; GUARDRAIL. Subsequence (looser) recall for longer descriptive phrases. floor 0.70 bootstrap."
+  },
+  "partial_revision_rate": {
+    "baseline": 0.0,
+    "epsilon": 0.02,
+    "_note": "Lower is better; the A1 guardrail (a tentative tail must NOT increase caption churn). TASK-455 baseline 0.0 on the …402 pipeline; epsilon 0.02 tolerates float/sampling noise while still catching real flicker."
+  },
+  "commit_latency_ms": {
+    "p50_baseline": 6023.2,
+    "p99_baseline": 7624.2,
+    "epsilon_ratio": 0.15,
+    "_note": "Lower is better; GUARDRAIL for A1 (conservative commit must not regress), TARGET for A2. Inference-dominated on the offline whisper-turbo host, so the gate is on the RATIO delta (15%), not the absolute — transport must not add >15% over TASK-455's baseline."
+  },
+  "seq_gap_count": {
+    "max": 0,
+    "_note": "Dropped captions; GUARDRAIL — zero tolerance. TASK-455 baseline gap_count 0 on the connected path."
+  },
+  "audio_coverage_ratio": {
+    "baseline": 0.996,
+    "epsilon": 0.005,
+    "_note": "Higher is better; GUARDRAIL. TASK-455 baseline 0.996 (max final endTime / audio seconds). epsilon 0.005 absorbs VAD-tail jitter."
+  }
+}
