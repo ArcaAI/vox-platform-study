@@ -1,0 +1,97 @@
+# TASK-478 — SMR Input Guardrail: Fail-Open → Fail-Closed / Degrade-Safe (Theme D1 · SOTA S3)
+
+- **Status**: Pending (detail-scaffolded from SOTA-Track — not yet scheduled; open per CLAUDE.md ticket workflow before implementing)
+- **Type**: bugfix (clinical-safety posture — PHI moderation)
+- **Track**: [SOTA Enhancement Track](../SOTA-Track/README.md) · Theme **D1** (Live-surface guardrails — independent safety win)
+- **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · strategic SOTA track
+- **Source finding**: [TASK-448](../TASK-448-Harness-Loop-Quality-Review/README.md) §SOTA S3 (guardrail fail-posture) — "an outage ships unmoderated PHI prompts"
+- **Pairs with**: [TASK-465](../TASK-465-NLP-Guardrail-Service-Token-Enforcement/README.md) (the fail-closed **service-token** posture — same fail-closed family, receiver-side) and completes the sender-side of the guardrail-failure story before [TASK-479](../SOTA-Track/README.md) (D2 live output/groundedness gate) builds on it.
+- **Theme**: D1 · **Size**: S–M · **Value**: High (PHI safety) · **Risk**: Med (changes outage behavior — must degrade safely, not brick generation)
+- **Depends on**: none (independent of the ASR/NER measurement gate — this is a guardrail posture change, not a quality claim).
+- **Suggested agent**: security-auditor (mirrors TASK-460 / TASK-465)
+
+## File-ownership manifest (best-effort exclusive — binding)
+
+| File | Change |
+|---|---|
+| `apps/smr/src/smr_v2/services/external_guardrail.py` | Eliminate the fail-**open** branch (:74-80); make the on-error path **degrade-safe → fail-closed** (bounded retry, then a deterministic not-allowed verdict — never `allowed: True` on an error). Remove the `require_medical=False` allow-all foot-gun from the clinical path (:66) or gate it explicitly. |
+| `apps/smr/src/smr_v2/core/config.py` | `ExternalGuardrailConfig` (:77-86): retire/repurpose `fail_open` (default `False` today, but its mere existence is the foot-gun); add bounded-retry knobs (`max_retries`, `retry_backoff_ms`); document `enabled` as the empty-bypass switch (dev/CI) vs the clinical enforce posture. |
+| `apps/smr/src/smr_v2/api/endpoints/generate.py` | The gate (:132-145): close the two silent bypasses — `verdict.get("allowed", True)` (:141) must default to **False** (fail-closed) on a missing/malformed verdict; when moderation is required but `guardrail_client is None`, **fail-closed** rather than skip. |
+| `apps/smr/src/smr_v2/tests/test_external_guardrail*.py` (extend/new) | RED→GREEN: transient blip (1 error then success) → generation PROCEEDS (degrade-safe, bounded retry absorbs it); sustained outage → **reject, never generate** (fail-closed); disabled/empty → dev bypass preserved; malformed verdict → fail-closed. |
+| `apps/smr/src/smr_v2/tests/` (endpoint test) | The `/generate` gate: `guardrail_client is None` + enforce → 4xx/5xx reject (not a silent pass); `allowed` missing → reject. |
+| `turbo.json` · `.env.example` | Register any new `SMR_V2_EXTERNAL_GUARDRAIL_*` retry knobs (per `.claude/rules/00`/`06`). |
+
+**Read-only reference (do NOT modify)**: `apps/smr/src/smr_v2/api/middleware/auth.py` (the SMR `X-Service-Token` middleware — the reference fail-closed pattern), `apps/smr/src/smr_v2/core/dependencies.py` (:83-85 `get_guardrail_client`), `apps/smr/src/smr_v2/main.py` (:55-68 wiring, :203 the explicit `None`), `apps/smr/src/smr_v2/models/requests.py` (:21-23 the `prompt` field).
+
+**Manifest-growth guard (STOP-and-report)**: this ticket is **input-side** only. The **output-side / groundedness** moderation gate is D2 ([TASK-479](../SOTA-Track/README.md)) — do NOT add output moderation here. The guardrail **receiver** enforcement is done ([TASK-465](../TASK-465-NLP-Guardrail-Service-Token-Enforcement/README.md)) — do NOT touch `apps/guardrail`. If flipping `enabled`'s default to on for production surfaces a wiring/provisioning need (guardrail reachable in prod), that is an **ops rollout** step (mirror TASK-465 §Ops rollout ordering) — record it, don't hard-wire a prod URL.
+
+## Requirement Analysis
+
+SMR's `/generate` input moderation must never let a guardrail failure **ship an unmoderated PHI prompt** to the LLM — but it also must not **brick generation on a transient guardrail blip**. The target is **fail-closed / degrade-safe**: a momentary error is absorbed by a bounded retry (generation proceeds after a clean re-check), and only a *sustained* outage results in a fail-closed rejection (a clear, retryable error) — never a silent pass-through of unmoderated clinical text. This is the sender-side counterpart to TASK-465's receiver-side fail-closed `X-Service-Token` posture.
+
+### Current-state framing correction (verified — the ticket premise is refined by the code)
+
+The SOTA one-liner is "input validation defaults fail-open (an outage ships unmoderated PHI prompts)." The code is more nuanced, and the ticket must target the real gaps:
+
+1. **The literal fail-open branch exists but is flag-gated `False` by default.** `external_guardrail.py:74-80` returns `allowed: True` on any exception **only when `settings.fail_open` is `True`**; `fail_open` defaults to `False` (`config.py:83`), so an *enabled* guardrail today actually fails **closed** (422). The foot-gun is that `fail_open=True` is a single config flip away from silently shipping unmoderated PHI on every outage — it should not exist as a clinical option.
+2. **The de-facto default-open is that moderation is DISABLED by default.** `enabled` defaults to `False` (`config.py:80`), so `validate()` short-circuits to `allowed: True` **without ever calling the safety service** (`external_guardrail.py:34-40`). In a default deployment, prompts are **unmoderated** — this is the real "ships unmoderated" today.
+3. **Three more silent allow-all bypasses**: `require_medical=False` forces `allowed: True` even with a reachable guardrail (`external_guardrail.py:66`); a `None` client (`get_guardrail_client` → `None`, `dependencies.py:85`; explicit at `main.py:203`) skips the whole gate (`generate.py:135`); and `verdict.get("allowed", True)` **defaults to allow** if the verdict lacks the key (`generate.py:141`).
+
+So D1's work is: **remove the fail-open branch**, make the error path **bounded-retry-then-fail-closed**, and **close the default-allow bypasses** — while preserving the empty/disabled **dev-and-CI bypass** exactly as TASK-465 preserved the empty-token bypass (local dev + hermetic CI must stay green without a guardrail up).
+
+### Acceptance criteria
+
+- [ ] **AC-1 (no fail-open — RED first)** — a test sets `fail_open=True` (today's foot-gun) + a guardrail error and asserts the request currently PROCEEDS (fail-open). Then the fail-open branch is removed so the same scenario **rejects** (or degrade-retries then rejects) — an errored guardrail can NEVER return `allowed: True`. Assert no code path yields `allowed: True` from the `except` block.
+- [ ] **AC-2 (degrade-safe on transient blip)** — a test where the guardrail errors **once then succeeds** asserts generation PROCEEDS after the bounded retry (the blip is absorbed — NOT a hard-fail). Bounded retry count + backoff are config-driven (`max_retries`, `retry_backoff_ms`) with small safe defaults.
+- [ ] **AC-3 (fail-closed on sustained outage)** — a test where the guardrail errors on **every** attempt asserts the request is **rejected with a clear, retryable error** (e.g. 503 "guardrail unavailable, retry") and generation is **never invoked** (assert the provider `generate` is not called). No silent pass.
+- [ ] **AC-4 (close the default-allow bypasses)** — `generate.py:141` defaults to **fail-closed** on a missing/malformed `allowed` key; when moderation is required and the client is `None`, the gate **fails closed** (not skipped). Tests for both.
+- [ ] **AC-5 (dev/CI bypass preserved)** — with `enabled=False` (or empty config), `validate()` still short-circuits `allowed: True` (the documented dev/hermetic-CI bypass, mirroring TASK-465's empty-token bypass) — the full existing SMR suite stays green with no guardrail service up. The clinical **enforce** posture (enabled) is documented as the ops/production configuration.
+- [ ] **AC-6 (pairs with TASK-465)** — §Implementation Summary states the combined posture: TASK-465 = receiver enforces `X-Service-Token` (fail-closed); TASK-478 = sender treats a guardrail failure as degrade-safe→fail-closed; together an unmoderated PHI prompt cannot reach the LLM on either an auth failure or a guardrail outage.
+- [ ] **AC-gate** — `pnpm py:smr-v2:test` (+ `:unit`), `pnpm py:smr-v2:lint`, `pnpm py:smr-v2:typecheck` green; new `SMR_V2_EXTERNAL_GUARDRAIL_*` retry knobs in `turbo.json#globalEnv` + `.env.example`; output pasted.
+
+### Non-goals
+
+- **Output-side / groundedness moderation** (post-generation NLI gate) — that is D2 ([TASK-479](../SOTA-Track/README.md)); this ticket is input-side only.
+- Guardrail **receiver** enforcement — done in [TASK-465](../TASK-465-NLP-Guardrail-Service-Token-Enforcement/README.md); `apps/guardrail` is untouched here.
+- Changing the guardrail's medical-validation semantics or the `/api/medical/validate` contract.
+- Rotating/short-lived tokens; re-architecting the guardrail client transport.
+- Forcing `enabled=True` in local dev / hermetic CI (the empty/disabled bypass stays — production enablement is an ops rollout step, not a code default that breaks dev).
+
+## Current State Evaluation (code-verified 2026-07-10 against `fix/2605-review` @ 87b33f57)
+
+**The single moderation path** — `apps/smr/src/smr_v2/services/external_guardrail.py`, `ExternalGuardrailClient.validate(prompt, system_prompt, tenant_id)`:
+- **Disabled short-circuit (the default-open)** — :34-40: `if not self.settings.enabled: return {"allowed": True, …, "reason": "external_guardrail_disabled"}`. `enabled` defaults `False` (`config.py:80`) → no check runs by default.
+- **HTTP call** — :52-62: `POST {base_url}/api/medical/validate` with `X-Service-Token` (:44-46, present-only — the receiver enforces it per TASK-465) and `X-Tenant-Id`. On success (:64-71): `allowed = is_medical if require_medical else True` — so **`require_medical=False` is an allow-all** (:66).
+- **THE FAIL-OPEN SITE** — :72-87: `except Exception as exc:` → **if `self.settings.fail_open:` return `{"allowed": True, …, "reason": "external_guardrail_failed_open"}`** (:74-80) — the branch to remove; else return `{"allowed": False, …, "reason": "external_guardrail_unavailable"}` (:81-87, the current default since `fail_open=False`). No retry today — a single blip immediately decides.
+
+**Config** — `apps/smr/src/smr_v2/core/config.py:77-86`, `ExternalGuardrailConfig` (`env_prefix="SMR_V2_EXTERNAL_GUARDRAIL_"`): `enabled=False` (:80), `base_url` (:81), `timeout_s=10` (:82), `fail_open=False` (:83), `require_medical=True` (:84), `include_reasoning=False` (:85), `service_token: SecretStr("")` (:86). Registered on root settings (`config.py:159`).
+
+**The gate** — `apps/smr/src/smr_v2/api/endpoints/generate.py:132-145`, inline in the `POST /generate` handler, BEFORE any generation: `if guardrail_client is not None:` (:135) → `validate(...)` → `if not verdict.get("allowed", True): raise HTTPException(422, …)` (:141-145). Two silent bypasses: **`guardrail_client is None` skips the entire gate** (client injected at :126 via `get_guardrail_client`, which returns `None` when unwired — `dependencies.py:83-85`, explicit `None` at `main.py:203`); and **`verdict.get("allowed", True)` defaults to allow** on a missing key (:141). Streaming (:216) and non-streaming (:280-283) generation are both after this single gate.
+
+**PHI context** — the input is consultation/clinical text by domain (`external_guardrail.py:16` "medical-content validation"; tenant forwarded for per-tenant provider resolution :47-48; `require_medical=True` default; endpoint `/api/medical/validate`), but the `prompt` field is a **generic `str`** with no PHI/clinical type annotation (`models/requests.py:21-23`) — a typing gap worth a note, not fixed here.
+
+## Implementation Plan (TDD — strict order)
+
+> Context pack for the implementing agent: this README · TASK-465 README (the receiver-side fail-closed pattern + the empty-bypass posture to mirror) · TASK-460 §C4-04 (the fail-open/fail-closed asymmetry write-up) · SOTA-Track §Theme D · `.claude/rules/06-python-services.md` (pydantic-settings `env_prefix`, `SecretStr`, ruff/mypy, hermetic-CI posture) · `.claude/rules/04`/`05` (404-over-403, clinical-safety posture).
+
+1. **RED (fail-open + bypasses)** — tests that today (a) `fail_open=True` + error → proceeds; (b) `enabled=True` + sustained error → 422 but with no retry; (c) missing `allowed` key → proceeds; (d) `None` client → gate skipped. Watch them capture the current behavior.
+2. **GREEN (client)** — in `external_guardrail.py`: wrap the call in a bounded retry (`max_retries`/`retry_backoff_ms`); on exhausted retries return a deterministic not-allowed verdict (`reason: external_guardrail_unavailable`); **delete the `fail_open` branch** so no error path yields `allowed: True`. Decide `require_medical=False`'s fate (keep as an explicit non-clinical mode, documented; the clinical path enforces).
+3. **GREEN (gate)** — in `generate.py`: `verdict.get("allowed", False)` (fail-closed default); when moderation is required and the client is `None`, reject (or refuse to serve) rather than skip. Map a sustained-outage verdict to a **retryable** status (503) distinct from a content rejection (422).
+4. **Config + bypass** — retire/repurpose `fail_open`; add retry knobs; keep `enabled=False` empty/dev bypass; document the production enforce posture (ops rollout, mirroring TASK-465 §Ops rollout ordering).
+5. **Env + gates** — register knobs in `turbo.json#globalEnv` + `.env.example`; run the SMR gates.
+
+### Verification gate (paste output into §Implementation Summary)
+
+```bash
+pnpm py:smr-v2:test          # external_guardrail + generate gate suites
+pnpm py:smr-v2:lint && pnpm py:smr-v2:typecheck
+```
+
+Adversarial review focus: (a) can ANY error path still yield `allowed: True` (grep the `except`/verdict handling)? (b) does a single transient blip get absorbed (degrade-safe) while a sustained outage fails closed — proven by asserting the provider `generate` is NOT called on sustained failure, not just "raises"? (c) is the dev/CI empty/disabled bypass intact (full suite green with no guardrail up)? (d) is the sustained-outage error retryable (503) vs a content rejection (422)? (e) zero diff outside the manifest (no `apps/guardrail`, no output-side moderation).
+
+## Change History
+
+| Date | Change |
+|---|---|
+| 2026-07-10 | Ticket scaffolded from the [SOTA-Track](../SOTA-Track/README.md) plan (Theme D1 — SMR input fail-open → fail-closed). Fail-open site cited and code-verified against `fix/2605-review` @ 87b33f57: `external_guardrail.py:74-80` (the `if fail_open: return allowed:True` branch). **Framing refined by the code**: the fail-open branch is flag-gated (`fail_open` default `False` → on-error today fails *closed*/422), so the real default-open gap is `enabled=False` (`config.py:80` → moderation off by default, `validate()` short-circuits `allowed:True` at :34-40) plus three silent allow-all bypasses (`require_medical=False` :66; `None` client skip `generate.py:135`; `verdict.get("allowed", True)` :141). Target: remove the fail-open branch, make the error path bounded-retry-then-fail-closed (degrade-safe, not hard-fail), close the default-allow bypasses, preserve the empty/disabled dev-and-CI bypass — pairing with TASK-465's receiver-side fail-closed posture. No implementation. |
+</content>
