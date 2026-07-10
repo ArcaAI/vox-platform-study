@@ -112,9 +112,12 @@ class TestIngestionConsumerOnBatch:
         from stt_v2.streaming.redis_streams import IngestionConsumer
 
         redis_mock = AsyncMock()
+        redis_mock.xautoclaim.return_value = (b"0-0", [], [])
+        redis_mock.xgroup_create.return_value = True
+        redis_mock.xack.return_value = 1
         call_count = 0
 
-        async def fake_xread(*args, **kwargs):
+        async def fake_xreadgroup(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -125,7 +128,7 @@ class TestIngestionConsumerOnBatch:
             await asyncio.sleep(0.05)
             return []
 
-        redis_mock.xread.side_effect = fake_xread
+        redis_mock.xreadgroup.side_effect = fake_xreadgroup
 
         batch_ids: list[str] = []
 
@@ -150,9 +153,12 @@ class TestIngestionConsumerOnBatch:
         from stt_v2.streaming.redis_streams import IngestionConsumer
 
         redis_mock = AsyncMock()
+        redis_mock.xautoclaim.return_value = (b"0-0", [], [])
+        redis_mock.xgroup_create.return_value = True
+        redis_mock.xack.return_value = 1
         call_count = 0
 
-        async def fake_xread(*args, **kwargs):
+        async def fake_xreadgroup(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count <= 2:
@@ -160,7 +166,7 @@ class TestIngestionConsumerOnBatch:
             await asyncio.sleep(0.05)
             return []
 
-        redis_mock.xread.side_effect = fake_xread
+        redis_mock.xreadgroup.side_effect = fake_xreadgroup
 
         on_batch = AsyncMock(side_effect=RuntimeError("boom"))
         frames = []
@@ -188,9 +194,12 @@ class TestIngestionConsumerOnBatch:
         from stt_v2.streaming.redis_streams import IngestionConsumer
 
         redis_mock = AsyncMock()
+        redis_mock.xautoclaim.return_value = (b"0-0", [], [])
+        redis_mock.xgroup_create.return_value = True
+        redis_mock.xack.return_value = 1
         call_count = 0
 
-        async def fake_xread(*args, **kwargs):
+        async def fake_xreadgroup(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -198,7 +207,7 @@ class TestIngestionConsumerOnBatch:
             await asyncio.sleep(0.05)
             return []
 
-        redis_mock.xread.side_effect = fake_xread
+        redis_mock.xreadgroup.side_effect = fake_xreadgroup
 
         frames = []
 

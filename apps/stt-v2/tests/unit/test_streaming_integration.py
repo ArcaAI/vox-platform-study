@@ -34,9 +34,10 @@ from stt_v2.streaming.session_manager import SessionManager
 def _make_mock_redis():
     """Create a mock async Redis client.
 
-    IMPORTANT: xread must yield control via asyncio.sleep to prevent
-    the IngestionConsumer/ControlListener background tasks from
-    spin-looping and hanging the event loop.
+    IMPORTANT: the read loops must yield control via asyncio.sleep to
+    prevent the IngestionConsumer/ControlListener background tasks from
+    spin-looping and hanging the event loop. TASK-457 — the audio consumer
+    now uses XREADGROUP (+ XAUTOCLAIM/XACK/XGROUP CREATE); control still XREAD.
     """
     redis = AsyncMock()
     redis.hset = AsyncMock(return_value=True)
@@ -46,11 +47,15 @@ def _make_mock_redis():
     redis.delete = AsyncMock(return_value=1)
     redis.xadd = AsyncMock(return_value=b"1-0")
 
-    async def _slow_xread(*args, **kwargs):
+    async def _slow_read(*args, **kwargs):
         await asyncio.sleep(0.05)
         return []
 
-    redis.xread = AsyncMock(side_effect=_slow_xread)
+    redis.xread = AsyncMock(side_effect=_slow_read)
+    redis.xreadgroup = AsyncMock(side_effect=_slow_read)
+    redis.xautoclaim = AsyncMock(return_value=(b"0-0", [], []))
+    redis.xgroup_create = AsyncMock(return_value=True)
+    redis.xack = AsyncMock(return_value=1)
     return redis
 
 
