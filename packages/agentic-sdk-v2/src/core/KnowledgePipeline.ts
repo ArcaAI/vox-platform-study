@@ -20,6 +20,26 @@ import type { AgenticClient } from './AgenticClient';
 import { SUMMARY_ENDPOINTS } from './constants';
 
 /**
+ * TASK-461 C5-05 — derive a STABLE, deterministic entity id from the entity's
+ * content + span. Browser auto-NER re-extracts over overlapping/rolling text,
+ * so a random id per run never dedups and identical clinical entities pile up
+ * as duplicate rows. Hashing `entityType|text|startOffset|endOffset` keeps the
+ * same entity's identity across re-extractions (so the store's id-keyed dedup
+ * collapses it) while genuinely distinct entities keep distinct ids. FNV-1a
+ * 32-bit is used over the raw composite so the id carries no PHI (entity text
+ * can surface in logs/telemetry) — only an opaque, reproducible digest.
+ */
+function stableEntityId(entityType: string, text: string, startOffset: number, endOffset: number): string {
+  const key = `${entityType}|${text}|${startOffset}|${endOffset}`;
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `ner-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+/**
  * Trigger mode for pipeline stages.
  */
 export type TriggerMode = 'auto' | 'manual';
@@ -450,7 +470,9 @@ export class KnowledgePipeline {
 
         const result = await this.nerProcessor!.extract(text);
         entities = result.entities.map((e) => ({
-          id: crypto.randomUUID(),
+          // TASK-461 C5-05 — stable, content/offset-derived id so re-extractions
+          // of the same entity dedup instead of accumulating (was randomUUID()).
+          id: stableEntityId(e.type, e.text, e.start, e.end),
           text: e.text,
           entityType: e.type as MedicalEntity['entityType'],
           confidence: e.score,
