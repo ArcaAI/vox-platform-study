@@ -544,10 +544,16 @@ describe('SttWsGateway', () => {
 
                 // Advance well past the ORIGINAL window — finalize must have been cancelled.
                 await vi.advanceTimersByTimeAsync(WS_RESUME_GRACE_MS + 5);
+                // The upstream STT-v2 session was NEVER torn down (no removeSession,
+                // and never the session-wide unsubscribeFromResults that would kill
+                // LiveDoc). C1: the transient disconnect only dropped the gateway's
+                // OWN captions reader, which the reconnect re-establishes — so
+                // subscribeToResults is called twice (fresh + re-establish), always
+                // with the stable 'captions' group (cursor resume, no 0-0 flood).
                 expect(mockSessionService.removeSession).not.toHaveBeenCalled();
                 expect(mockBridgeService.unsubscribeFromResults).not.toHaveBeenCalled();
-                // The reconnect reused the SAME upstream subscription (no duplicate).
-                expect(mockBridgeService.subscribeToResults).toHaveBeenCalledTimes(1);
+                expect(mockBridgeService.subscribeToResults).toHaveBeenCalledTimes(2);
+                expect(mockBridgeService.subscribeToResults.mock.calls.every((c: any[]) => c[1]?.consumerGroup === 'captions')).toBe(true);
                 expect(gateway.getActiveSessionCount()).toBe(1);
             } finally {
                 vi.useRealTimers();
@@ -786,6 +792,8 @@ describe('SttWsGateway', () => {
             const client = createMockSocket();
             setValidTicketFor('sess-fwd');
             await gateway.handleConnection(client as any, buildReq('sess-fwd') as any);
+            // TASK-457 I1 — drop the readiness ack so we assert the transcript.
+            (client.send as any).mockClear();
 
             resultSubject.next({
                 type: 'transcript',
@@ -820,6 +828,8 @@ describe('SttWsGateway', () => {
             const client = createMockSocket();
             setValidTicketFor('sess-stable');
             await gateway.handleConnection(client as any, buildReq('sess-stable') as any);
+            // TASK-457 I1 — drop the readiness ack so we assert the transcript.
+            (client.send as any).mockClear();
 
             resultSubject.next({
                 type: 'transcript',
@@ -844,6 +854,8 @@ describe('SttWsGateway', () => {
             const client = createMockSocket();
             setValidTicketFor('sess-gloss');
             await gateway.handleConnection(client as any, buildReq('sess-gloss') as any);
+            // TASK-457 I1 — drop the readiness ack so we assert the transcript.
+            (client.send as any).mockClear();
 
             resultSubject.next({
                 type: 'transcript',
@@ -871,6 +883,8 @@ describe('SttWsGateway', () => {
             const client = createMockSocket();
             setValidTicketFor('sess-no-utt');
             await gateway.handleConnection(client as any, buildReq('sess-no-utt') as any);
+            // TASK-457 I1 — drop the readiness ack so we assert the transcript.
+            (client.send as any).mockClear();
 
             resultSubject.next({
                 type: 'transcript',
@@ -892,6 +906,8 @@ describe('SttWsGateway', () => {
             const client = createMockSocket();
             setValidTicketFor('sess-no-stable');
             await gateway.handleConnection(client as any, buildReq('sess-no-stable') as any);
+            // TASK-457 I1 — drop the readiness ack so we assert the transcript.
+            (client.send as any).mockClear();
 
             resultSubject.next({
                 type: 'transcript',
@@ -1068,19 +1084,24 @@ describe('SttWsGateway', () => {
                 resultSubject.next({ type: 'transcript', text: `t${i}`, startTime: i, endTime: i + 1, isFinal: true });
             }
 
-            // Transient drop (no close frame) — the session must survive.
+            // Transient drop (no close frame) — the session must survive. C1: the
+            // gateway's captions reader is dropped so it can't split the shared
+            // group cross-instance; a reconnect re-establishes it from the cursor.
+            // (Grace-window results accumulate in Redis and are re-read on
+            // reconnect — a real-Redis behavior the live e2e covers; a bare
+            // Subject mock can't buffer while unsubscribed, so we don't assert it
+            // here.)
             gateway.handleDisconnect(client1 as any);
             expect(mockSessionService.removeSession).not.toHaveBeenCalled();
-
-            // A 4th transcript arrives DURING the drop → buffered for replay.
-            resultSubject.next({ type: 'transcript', text: 't4', startTime: 4, endTime: 5, isFinal: true });
 
             // Reconnect on a NEW socket, SAME sessionId, fresh ticket.
             const client2 = createMockSocket();
             setValidTicketFor('sess-rad');
             await gateway.handleConnection(client2 as any, buildReq('sess-rad') as any);
-            // Reconnect must NOT re-subscribe (that was the duplicate-flood bug).
-            expect(mockBridgeService.subscribeToResults).toHaveBeenCalledTimes(1);
+            // Re-establishes the reader (fresh + re-subscribe), always on the
+            // stable 'captions' group → resumes from the cursor, no 0-0 flood.
+            expect(mockBridgeService.subscribeToResults).toHaveBeenCalledTimes(2);
+            expect(mockBridgeService.subscribeToResults.mock.calls.every((c: any[]) => c[1]?.consumerGroup === 'captions')).toBe(true);
 
             // The client drives the D-17 resume from the last seq it saw (3).
             await gateway.handleMessage(
@@ -1096,14 +1117,83 @@ describe('SttWsGateway', () => {
             expect(resumed.fromSeq).toBe(4);
             // (2) no duplicate flood: nothing with seq <= 3 re-delivered.
             expect(sent.filter((m: any) => typeof m.seq === 'number' && m.seq <= 3)).toHaveLength(0);
-            // The banked-during-drop t4 IS replayed (seq 4).
-            expect(sent.some((m: any) => m.text === 't4' && m.seq === 4)).toBe(true);
 
-            // (3) no silent freeze: new transcripts flow to the NEW socket.
+            // (3) no silent freeze: new transcripts flow to the NEW socket, with
+            // seq CONTINUING from the preserved counter (4, not reset to 1).
             (client2.send as any).mockClear();
-            resultSubject.next({ type: 'transcript', text: 't5', startTime: 5, endTime: 6, isFinal: true });
+            resultSubject.next({ type: 'transcript', text: 't4', startTime: 4, endTime: 5, isFinal: true });
             const after = (client2.send as any).mock.calls.map((c: any[]) => JSON.parse(c[0]));
-            expect(after.some((m: any) => m.text === 't5')).toBe(true);
+            const t4 = after.find((m: any) => m.text === 't4');
+            expect(t4).toBeDefined();
+            expect(t4.seq).toBe(4);
+        });
+    });
+
+    // =========================================================================
+    // TASK-457 I1 — readiness ack. handleConnection registers the session
+    // AFTER async auth/lookup awaits; a client that resumes/sends the instant
+    // its socket opens would race registration → NO_SESSION → silent freeze.
+    // The gateway now emits {type:'ready'} after registration so the client
+    // gates its first send on it (deterministic, no timing guess).
+    // =========================================================================
+    describe('TASK-457 I1 — readiness ack', () => {
+        it('sends a {type:"ready"} ack after a fresh connection is registered', async () => {
+            const client = createMockSocket();
+            setValidTicketFor('sess-ready');
+            await gateway.handleConnection(client as any, buildReq('sess-ready') as any);
+
+            const sent = (client.send as any).mock.calls.map((c: any[]) => JSON.parse(c[0]));
+            const ready = sent.find((m: any) => m.type === 'ready');
+            expect(ready).toBeDefined();
+            expect(ready.sessionId).toBe('sess-ready');
+            // fromSeq advertises the next seq the client should expect.
+            expect(ready.fromSeq).toBe(1);
+        });
+
+        it('sends a {type:"ready"} ack again on a grace-window reconnect (before the client resumes)', async () => {
+            const client1 = createMockSocket();
+            setValidTicketFor('sess-ready2');
+            await gateway.handleConnection(client1 as any, buildReq('sess-ready2') as any);
+            gateway.handleDisconnect(client1 as any);
+
+            const client2 = createMockSocket();
+            setValidTicketFor('sess-ready2');
+            await gateway.handleConnection(client2 as any, buildReq('sess-ready2') as any);
+
+            const sent = (client2.send as any).mock.calls.map((c: any[]) => JSON.parse(c[0]));
+            expect(sent.some((m: any) => m.type === 'ready')).toBe(true);
+        });
+    });
+
+    // =========================================================================
+    // TASK-457 I3 — graceful shutdown. onModuleDestroy must FINALIZE live +
+    // in-grace sessions so a SIGTERM / rolling deploy does not orphan STT-v2
+    // sessions (and their capacity slots) until the STT-v2 reaper.
+    // =========================================================================
+    describe('TASK-457 I3 — onModuleDestroy finalizes sessions', () => {
+        it('removes the upstream session for a LIVE connection on shutdown', async () => {
+            const client = createMockSocket();
+            setValidTicketFor('sess-shutdown');
+            await gateway.handleConnection(client as any, buildReq('sess-shutdown') as any);
+
+            await gateway.onModuleDestroy();
+
+            expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-shutdown');
+            expect(gateway.getActiveSessionCount()).toBe(0);
+        });
+
+        it('removes the upstream session for an IN-GRACE (disconnected) session on shutdown', async () => {
+            const client = createMockSocket();
+            setValidTicketFor('sess-grace-shutdown');
+            await gateway.handleConnection(client as any, buildReq('sess-grace-shutdown') as any);
+            // Transient disconnect → session parked in the grace window (not yet finalized).
+            gateway.handleDisconnect(client as any);
+            expect(mockSessionService.removeSession).not.toHaveBeenCalled();
+
+            await gateway.onModuleDestroy();
+
+            // The deploy tidies it up instead of orphaning the upstream session.
+            expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-grace-shutdown');
         });
     });
 

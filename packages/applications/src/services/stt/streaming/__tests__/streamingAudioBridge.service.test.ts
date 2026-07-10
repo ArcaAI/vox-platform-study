@@ -45,6 +45,10 @@ interface MockRedisInstance {
     xgroup: ReturnType<typeof vi.fn>;
     xautoclaim: ReturnType<typeof vi.fn>;
     quit: ReturnType<typeof vi.fn>;
+    // TASK-457 C1 — disconnect() forcibly drops the reader connection on
+    // unsubscribe; M3 — on() registers writer health listeners.
+    disconnect: ReturnType<typeof vi.fn>;
+    on: ReturnType<typeof vi.fn>;
 }
 
 const mockRedisInstances: MockRedisInstance[] = [];
@@ -62,6 +66,8 @@ function MockRedis() {
         xgroup: vi.fn((...args: unknown[]) => mockXgroup(...args)),
         xautoclaim: vi.fn((...args: unknown[]) => mockXautoclaim(...args)),
         quit: vi.fn((...args: unknown[]) => mockQuit(...args)),
+        disconnect: vi.fn(),
+        on: vi.fn(),
     };
     mockRedisInstances.push(instance);
     return instance;
@@ -947,6 +953,23 @@ describe('StreamingAudioBridgeService', () => {
                 expect(reader.quit).toHaveBeenCalled();
             });
             sub.unsubscribe();
+        });
+
+        it('TASK-457 C1 — disconnects the reader IMMEDIATELY on unsubscribe (dead reader stops consuming the shared group at once)', async () => {
+            // A read that never resolves — only a forced disconnect interrupts it.
+            mockXreadgroup.mockImplementation(() => new Promise<null>(() => {}));
+
+            const sub = service.subscribeToResults('s-c1', { consumerGroup: 'captions' }).subscribe({ next: () => {} });
+            await vi.waitFor(() => {
+                expect(mockRedisInstances.some((i) => i.xreadgroup.mock.calls.length > 0)).toBe(true);
+            });
+            const reader = mockRedisInstances.find((i) => i.xreadgroup.mock.calls.length > 0)!;
+
+            expect(reader.disconnect).not.toHaveBeenCalled();
+            sub.unsubscribe();
+            // Not after a BLOCK window — right now, so it can't drain-and-ACK the
+            // shared captions group for a dead client.
+            expect(reader.disconnect).toHaveBeenCalled();
         });
 
         it('honors unsubscribe within one BLOCK window (abort ≤ 500ms)', async () => {

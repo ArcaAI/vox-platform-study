@@ -53,6 +53,18 @@ const RESULT_CLAIM_MIN_IDLE_MS = 30_000;
 type XAutoClaimReply = [string, Array<[string, string[]]>, string[]?] | null;
 
 /**
+ * Per-subscriber controller. `reader` is the subscriber's dedicated ioredis
+ * connection — on unsubscribe we abort the loop AND immediately `disconnect()`
+ * that reader (TASK-457 C1) so a dead client's reader stops consuming/ACKing
+ * the shared consumer group at once, instead of draining it for the whole
+ * grace window (which cross-instance would split the live captions).
+ */
+interface ResultSubscriberCtrl {
+  abort: boolean;
+  reader?: Redis;
+}
+
+/**
  * StreamingAudioBridgeService
  *
  * Bridges WebSocket audio from the API Gateway to STT-V2 via Redis Streams:
@@ -92,6 +104,11 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
   private connected = false;
 
+  /** TASK-457 M3 — timestamp the writer first went unhealthy (null when healthy). */
+  private writerDegradedSince: number | null = null;
+  /** TASK-457 M3 — throttle writer-health logs to at most one per this window. */
+  private lastWriterHealthLogAt = 0;
+
   /**
    * Active result subscriptions, keyed by `sessionId` → a **set** of per-reader
    * abort flags. The captions WS gateway and `LiveDocumentationService` both
@@ -100,7 +117,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    * tear down independently (TASK-340 P1-B). A `Set` (not a single value) is
    * what prevents the 2nd subscriber from clobbering the 1st.
    */
-  private readonly activeSubscriptions = new Map<string, Set<{ abort: boolean }>>();
+  private readonly activeSubscriptions = new Map<string, Set<ResultSubscriberCtrl>>();
 
   constructor(@Optional() @Inject(IConfigService) private readonly configService?: IConfigService) {}
 
@@ -139,6 +156,23 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       lazyConnect: false,
     });
 
+    // TASK-457 M3 — with `maxRetriesPerRequest: null` a Redis outage queues
+    // audio writes silently (offline queue grows). Surface it: log reconnect
+    // attempts + errors (throttled) so an outage is visible instead of a
+    // droppedAudioFrames-stays-0 blind spot. Never throws (a listener error
+    // must not affect the data path).
+    this.writerRedis.on('error', (err: Error) => this.logWriterHealth('error', err.message));
+    this.writerRedis.on('reconnecting', () => this.logWriterHealth('reconnecting'));
+    this.writerRedis.on('ready', () => {
+      if (this.writerDegradedSince != null) {
+        this.logger.warn({
+          message: 'Audio bridge writer recovered — offline-queued audio flushing in order',
+          degradedForMs: Date.now() - this.writerDegradedSince,
+        });
+        this.writerDegradedSince = null;
+      }
+    });
+
     this.readerRedis = new Redis({
       host: config.host,
       port: config.port,
@@ -153,10 +187,10 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   }
 
   async disconnect(): Promise<void> {
-    // Abort every active reader across all sessions.
+    // Abort every active reader across all sessions (and drop their sockets).
     for (const controllers of this.activeSubscriptions.values()) {
       for (const ctrl of controllers) {
-        ctrl.abort = true;
+        this.abortSubscriber(ctrl);
       }
     }
     this.activeSubscriptions.clear();
@@ -273,7 +307,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    */
   subscribeToResults(sessionId: string, options?: SubscribeResultOptions): Observable<StreamingTranscriptMessage> {
     const subject = new Subject<StreamingTranscriptMessage>();
-    const ctrl = { abort: false };
+    const ctrl: ResultSubscriberCtrl = { abort: false };
 
     let controllers = this.activeSubscriptions.get(sessionId);
     if (!controllers) {
@@ -298,6 +332,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     // emits — same posture as before).
     const reader = this.createSubscriberReader();
     if (reader) {
+      ctrl.reader = reader;
       // Start reading in background
       this.readResultStream(streamKey, subject, ctrl, reader, group, consumer).catch((error) => {
         this.logger.error({
@@ -313,7 +348,9 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       finalize(() => {
         // Tear down ONLY this subscriber's reader; siblings on the same
         // sessionId keep running until their own unsubscribe / teardown.
-        ctrl.abort = true;
+        // TASK-457 C1 — disconnect the reader NOW so it stops consuming/ACKing
+        // the shared group immediately (not after the ≤500ms BLOCK window).
+        this.abortSubscriber(ctrl);
         const set = this.activeSubscriptions.get(sessionId);
         set?.delete(ctrl);
         if (set && set.size === 0) {
@@ -324,16 +361,33 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   }
 
   /**
+   * TASK-457 C1 — abort a subscriber's read loop AND immediately drop its
+   * dedicated connection, interrupting any in-flight blocking XREADGROUP so a
+   * dead client's reader stops consuming/ACKing the shared consumer group at
+   * once. Best-effort; the read loop's own `finally` still quits the reader.
+   */
+  private abortSubscriber(ctrl: ResultSubscriberCtrl): void {
+    ctrl.abort = true;
+    try {
+      ctrl.reader?.disconnect();
+    } catch {
+      // best-effort — the read loop's finally quits it too
+    }
+  }
+
+  /**
    * Unsubscribe from results for a session — aborts EVERY reader bound to it.
-   * Used by the captions WS gateway on disconnect/close to fully end the STT
+   * Used by the captions WS gateway on FINALIZE/close to fully end the STT
    * session. (LiveDocumentationService no longer calls this; it relies on its
-   * own Observable unsubscribe so it never cross-aborts the captions reader.)
+   * own Observable unsubscribe so it never cross-aborts the captions reader.
+   * The gateway's grace-window path likewise unsubscribes only its OWN
+   * subscription on a transient disconnect, never this session-wide teardown.)
    */
   unsubscribeFromResults(sessionId: string): void {
     const controllers = this.activeSubscriptions.get(sessionId);
     if (controllers) {
       for (const ctrl of controllers) {
-        ctrl.abort = true;
+        this.abortSubscriber(ctrl);
       }
       this.activeSubscriptions.delete(sessionId);
     }
@@ -372,7 +426,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   private async readResultStream(
     streamKey: string,
     subject: Subject<StreamingTranscriptMessage>,
-    ctrl: { abort: boolean },
+    ctrl: ResultSubscriberCtrl,
     reader: Redis,
     group: string,
     consumer: string,
@@ -487,9 +541,11 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   }
 
   /**
-   * TASK-457 — reclaim + emit another (dead) reader's idle pending results via
-   * XAUTOCLAIM, then ack them. Idle 0 also recovers this consumer's own pending
-   * on start. Non-fatal.
+   * TASK-457 — reclaim + emit a DEAD reader's idle pending results via
+   * XAUTOCLAIM (min-idle {@link RESULT_CLAIM_MIN_IDLE_MS}), then ack them. This
+   * consumer's OWN pending is recovered separately by the initial `0` (PEL)
+   * read in {@link readResultStream}, so this one-shot claim targets only
+   * another consumer's abandoned in-flight. Non-fatal.
    */
   private async reclaimResultPending(
     reader: Redis,
@@ -529,6 +585,25 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   /** Yield a macrotask so an idle (empty-read) loop never starves the event loop. */
   private yieldEventLoop(): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  /**
+   * TASK-457 M3 — surface writer-connection health (throttled) so a Redis
+   * outage, which silently grows the offline write queue under
+   * `maxRetriesPerRequest: null`, is observable rather than a
+   * droppedAudioFrames-stays-0 blind spot.
+   */
+  private logWriterHealth(kind: 'error' | 'reconnecting', detail?: string): void {
+    const now = Date.now();
+    if (this.writerDegradedSince == null) this.writerDegradedSince = now;
+    if (now - this.lastWriterHealthLogAt < 5_000) return; // throttle
+    this.lastWriterHealthLogAt = now;
+    this.logger.warn({
+      message: 'Audio bridge writer Redis degraded — audio writes are being offline-queued (TASK-457 M3)',
+      kind,
+      degradedForMs: now - this.writerDegradedSince,
+      ...(detail ? { detail } : {}),
+    });
   }
 
   /**
