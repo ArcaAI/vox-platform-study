@@ -322,8 +322,15 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       activeSessions: this.sessions.size,
     });
 
-    client.on('message', (data: Buffer | string) => {
-      this.handleMessage(client, data).catch((err) => {
+    // TASK-467 — ws@8 (breaking change from v7) delivers TEXT frames as a
+    // Buffer too and signals the frame kind via the SECOND `isBinary` arg of
+    // the `message` event; v7's "string ⇒ text, Buffer ⇒ binary" no longer
+    // holds. We MUST forward `isBinary` so `handleMessage` can tell a binary
+    // audio frame from a `{type:…}` JSON control frame — classifying by
+    // `Buffer.isBuffer` alone misroutes every text control frame (stop/resume/
+    // close) into the audio path, leaving the JSON control channel dead.
+    client.on('message', (data: Buffer, isBinary: boolean) => {
+      this.handleMessage(client, data, isBinary).catch((err) => {
         this.logger.error({
           message: 'Unhandled error in message handler',
           sessionId,
@@ -527,22 +534,31 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     }
   }
 
-  async handleMessage(client: WebSocket, rawData: string | Buffer): Promise<void> {
+  /**
+   * @param isBinary — the `message`-event flag from ws@8. `true` ⇒ a binary
+   *   audio frame; `false` ⇒ a UTF-8 TEXT frame carrying a `{type:…}` JSON
+   *   control message. ws@8 hands BOTH kinds over as a Buffer (breaking change
+   *   from v7), so this flag — NOT `Buffer.isBuffer` — is the reliable
+   *   classifier (TASK-467). Defaults to `false` (treat as a control/text
+   *   frame) so a caller that omits it fails loud on bad JSON rather than
+   *   silently forwarding a control frame as audio.
+   */
+  async handleMessage(client: WebSocket, rawData: string | Buffer, isBinary = false): Promise<void> {
     const session = this.sessions.get(client);
     if (!session) {
       this.sendError(client, 'NO_SESSION', 'No active session for this connection');
       return;
     }
 
-    if (Buffer.isBuffer(rawData)) {
+    if (isBinary) {
       session.binarySeq++;
-      this.forwardAudioFrame(client, session, session.binarySeq, rawData);
+      this.forwardAudioFrame(client, session, session.binarySeq, Buffer.isBuffer(rawData) ? rawData : Buffer.from(rawData));
       return;
     }
 
     let msg: { type: string; [key: string]: unknown };
     try {
-      const str = rawData as string;
+      const str = typeof rawData === 'string' ? rawData : rawData.toString();
       msg = JSON.parse(str);
     } catch {
       this.sendError(client, 'INVALID_JSON', 'Message must be valid JSON');
