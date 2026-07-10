@@ -9,6 +9,8 @@ import pytest
 
 from stt_v2.streaming.preprocessor import (
     _FRAME_SIZE_16K,
+    _PARTIAL_INTERVAL_S,
+    _PARTIAL_MIN_AUDIO_S,
     _PRE_SPEECH_CONTEXT_MS,
     AudioUtterance,
     StreamingPreprocessor,
@@ -1348,3 +1350,91 @@ class TestShortUtteranceRecovery:
         assert final is None
         assert pp.utterance_count == 0
         assert pp.in_speech is False
+
+
+class TestPartialCadenceConfigurable:
+    """TASK-471 A1 — the partial-emit cadence is a constructor arg with a
+    lowered default so newly-spoken words surface in near-real-time as a
+    tentative tail; the 0.5 s min-audio floor still gates the first partial.
+    """
+
+    def test_default_interval_is_configurable_and_lowered(self):
+        """The legacy hardcoded 1.0 s cadence is now a lowered, tunable default
+        stored on the instance."""
+        pp = StreamingPreprocessor(session_id="s1")
+
+        # The preprocessor exposes the cadence it will enforce…
+        assert pp._partial_interval_s == _PARTIAL_INTERVAL_S
+        # …and the shipped default is materially below the legacy 1.0 s.
+        assert _PARTIAL_INTERVAL_S < 1.0
+        assert _PARTIAL_INTERVAL_S == pytest.approx(0.4)
+        # The min-audio floor is UNCHANGED — a partial still needs >= 0.5 s of
+        # buffered speech (only the cadence dropped, not the floor).
+        assert _PARTIAL_MIN_AUDIO_S == 0.5
+
+    def test_explicit_interval_overrides_default(self):
+        """A caller (SessionManager, fed by settings) can override the cadence."""
+        pp = StreamingPreprocessor(session_id="s1", partial_interval_s=0.25)
+        assert pp._partial_interval_s == 0.25
+
+    @pytest.mark.asyncio
+    async def test_lower_interval_yields_more_partials(self):
+        """Same synthetic utterance + identical simulated timeline: a 0.2 s
+        cadence emits strictly more partials than a 1.0 s cadence."""
+        counts: dict[float, int] = {}
+        for interval in (1.0, 0.2):
+            vad = _make_vad_service(probability=1.0)
+            pp = StreamingPreprocessor(
+                session_id="s1",
+                sample_rate=16000,
+                vad_service=vad,
+                min_speech_duration_ms=32,
+                min_silence_duration_ms=700,
+                partial_interval_s=interval,
+            )
+
+            all_utts: list[AudioUtterance] = []
+            clock = [0.0]
+            with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+                # monotonic() is CONSTANT within a feed and advances 100 ms
+                # between feeds, so both runs share an identical timeline and
+                # only the interval differs. (Default arg binds this run's clock
+                # list so the closure never captures the loop variable — B023.)
+                mock_time.monotonic = lambda c=clock: c[0]
+                for i in range(30):
+                    clock[0] = i * 0.1
+                    utts = await pp.feed(_make_speech_pcm(100))
+                    all_utts.extend(utts)
+
+            counts[interval] = len([u for u in all_utts if not u.is_final])
+
+        assert counts[1.0] >= 1
+        assert counts[0.2] > counts[1.0]
+
+    @pytest.mark.asyncio
+    async def test_min_audio_floor_still_gates_first_partial(self):
+        """Even with a tiny interval and a clock far past it, < 0.5 s of buffered
+        speech emits no partial (the min-audio floor is preserved)."""
+        vad = _make_vad_service(probability=1.0)
+        pp = StreamingPreprocessor(
+            session_id="s1",
+            sample_rate=16000,
+            vad_service=vad,
+            min_speech_duration_ms=32,
+            min_silence_duration_ms=700,
+            partial_interval_s=0.01,
+        )
+
+        with patch("stt_v2.streaming.preprocessor.time") as mock_time:
+            call_count = [0]
+
+            def fast_clock():
+                call_count[0] += 1
+                return call_count[0] * 1.0  # far past the 0.01 s interval
+
+            mock_time.monotonic = fast_clock
+
+            # Only 200 ms of audio — below _PARTIAL_MIN_AUDIO_S (0.5 s).
+            utts = await pp.feed(_make_speech_pcm(200))
+
+        assert [u for u in utts if not u.is_final] == []
