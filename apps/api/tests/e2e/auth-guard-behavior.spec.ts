@@ -27,11 +27,7 @@ test.describe('UnifiedAuthGuard Behavior', () => {
   let apiKeyWorks: boolean;
 
   test.beforeAll(async ({ request }) => {
-    const result = await loginUser(
-      request,
-      SEEDED_USERS.superAdmin.username,
-      SEEDED_USERS.superAdmin.password,
-    );
+    const result = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
     superAdminToken = result?.token ?? '';
 
     // Probe whether the seeded API key is accepted so tests can skip gracefully
@@ -51,7 +47,10 @@ test.describe('UnifiedAuthGuard Behavior', () => {
 
   test.describe('API Key vs JWT Priority', () => {
     test('should prioritize API key when both API key and JWT are present', async ({ request }) => {
-      if (!apiKeyWorks) { test.skip(); return; }
+      if (!apiKeyWorks) {
+        test.skip();
+        return;
+      }
 
       const response = await request.get(PROTECTED_ROUTE, {
         headers: {
@@ -66,7 +65,10 @@ test.describe('UnifiedAuthGuard Behavior', () => {
     });
 
     test('should fall through to JWT when no API key is present', async ({ request }) => {
-      if (!superAdminToken) { test.skip(); return; }
+      if (!superAdminToken) {
+        test.skip();
+        return;
+      }
 
       const response = await request.get(PROTECTED_ROUTE, {
         headers: {
@@ -93,7 +95,10 @@ test.describe('UnifiedAuthGuard Behavior', () => {
 
   test.describe('API Key Header Variants', () => {
     test('should accept API key via x-api-key header', async ({ request }) => {
-      if (!apiKeyWorks) { test.skip(); return; }
+      if (!apiKeyWorks) {
+        test.skip();
+        return;
+      }
 
       const response = await request.get(PROTECTED_ROUTE, {
         headers: {
@@ -106,7 +111,10 @@ test.describe('UnifiedAuthGuard Behavior', () => {
     });
 
     test('should accept API key via api-key header', async ({ request }) => {
-      if (!apiKeyWorks) { test.skip(); return; }
+      if (!apiKeyWorks) {
+        test.skip();
+        return;
+      }
 
       const response = await request.get(PROTECTED_ROUTE, {
         headers: {
@@ -119,7 +127,10 @@ test.describe('UnifiedAuthGuard Behavior', () => {
     });
 
     test('should accept API key via apikey header', async ({ request }) => {
-      if (!apiKeyWorks) { test.skip(); return; }
+      if (!apiKeyWorks) {
+        test.skip();
+        return;
+      }
 
       const response = await request.get(PROTECTED_ROUTE, {
         headers: {
@@ -277,7 +288,10 @@ test.describe('UnifiedAuthGuard Behavior', () => {
     });
 
     test('should still allow authenticated requests to public routes', async ({ request }) => {
-      if (!superAdminToken) { test.skip(); return; }
+      if (!superAdminToken) {
+        test.skip();
+        return;
+      }
 
       const response = await request.get(HEALTH_ROUTE, {
         headers: {
@@ -334,10 +348,7 @@ test.describe('UnifiedAuthGuard Behavior', () => {
       // Payload: {"sub":"expired","exp":0}
       // Signature: invalid (but the guard should reject on expiry before
       // even reaching signature verification in most implementations).
-      const expiredToken =
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' +
-        'eyJzdWIiOiJleHBpcmVkIiwiZXhwIjowfQ.' +
-        'invalid_signature_placeholder';
+      const expiredToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' + 'eyJzdWIiOiJleHBpcmVkIiwiZXhwIjowfQ.' + 'invalid_signature_placeholder';
 
       const response = await request.get(PROTECTED_ROUTE, {
         headers: {

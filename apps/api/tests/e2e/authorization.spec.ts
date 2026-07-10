@@ -132,9 +132,7 @@ test.describe('Authorization Flow', () => {
       if (permResponse.status() === 200) {
         const body = await permResponse.json();
         // Super admin should have manage:all
-        const hasManageAll = body.permissions.some(
-          (p: any) => p.action === 'manage' && p.subject === 'all'
-        );
+        const hasManageAll = body.permissions.some((p: any) => p.action === 'manage' && p.subject === 'all');
         expect(hasManageAll).toBe(true);
       }
     });
@@ -160,15 +158,11 @@ test.describe('Authorization Flow', () => {
       if (permResponse.status() === 200) {
         const body = await permResponse.json();
         // Nurse should NOT have manage:all
-        const hasManageAll = body.permissions.some(
-          (p: any) => p.action === 'manage' && p.subject === 'all'
-        );
+        const hasManageAll = body.permissions.some((p: any) => p.action === 'manage' && p.subject === 'all');
         expect(hasManageAll).toBe(false);
 
         // Nurse should have read access to consultations
-        const hasConsultationRead = body.permissions.some(
-          (p: any) => p.action === 'read' && p.subject === 'Consultation'
-        );
+        const hasConsultationRead = body.permissions.some((p: any) => p.action === 'read' && p.subject === 'Consultation');
         expect(hasConsultationRead).toBe(true);
       }
     });
@@ -181,15 +175,11 @@ test.describe('Authorization Flow', () => {
       if (permResponse.status() === 200) {
         const body = await permResponse.json();
         // Service account should NOT have manage:all
-        const hasManageAll = body.permissions.some(
-          (p: any) => p.action === 'manage' && p.subject === 'all'
-        );
+        const hasManageAll = body.permissions.some((p: any) => p.action === 'manage' && p.subject === 'all');
         expect(hasManageAll).toBe(false);
 
         // Service account should have create access to consultations
-        const hasConsultationCreate = body.permissions.some(
-          (p: any) => p.action === 'create' && p.subject === 'Consultation'
-        );
+        const hasConsultationCreate = body.permissions.some((p: any) => p.action === 'create' && p.subject === 'Consultation');
         expect(hasConsultationCreate).toBe(true);
       }
     });
@@ -327,9 +317,7 @@ test.describe('Authorization Flow', () => {
         const body = await permResponse.json();
 
         // Check that permissions have tenant conditions
-        const tenantScopedPerms = body.permissions.filter(
-          (p: any) => p.conditions && p.conditions.tenantId
-        );
+        const tenantScopedPerms = body.permissions.filter((p: any) => p.conditions && p.conditions.tenantId);
 
         // Tenant admin should have tenant-scoped permissions
         expect(tenantScopedPerms.length).toBeGreaterThanOrEqual(0);
@@ -345,9 +333,7 @@ test.describe('Authorization Flow', () => {
         const body = await permResponse.json();
 
         // Super admin should have manage:all without tenant restrictions
-        const hasUnrestrictedAccess = body.permissions.some(
-          (p: any) => p.action === 'manage' && p.subject === 'all' && !p.conditions
-        );
+        const hasUnrestrictedAccess = body.permissions.some((p: any) => p.action === 'manage' && p.subject === 'all' && !p.conditions);
 
         expect(hasUnrestrictedAccess).toBe(true);
       }
@@ -419,7 +405,7 @@ test.describe('Authorization Flow', () => {
       }
 
       // Results should be consistent
-      const bodies = await Promise.all(responses.map(r => r.json()));
+      const bodies = await Promise.all(responses.map((r) => r.json()));
       expect(bodies[0].userId).toBe(bodies[1].userId);
       expect(bodies[1].userId).toBe(bodies[2].userId);
     });
@@ -458,15 +444,11 @@ test.describe('Authorization Flow', () => {
       if (permResponse.status() === 200) {
         const body = await permResponse.json();
         // Doctor should have consultation permissions
-        const hasConsultationCreate = body.permissions.some(
-          (p: any) => p.action === 'create' && p.subject === 'Consultation'
-        );
+        const hasConsultationCreate = body.permissions.some((p: any) => p.action === 'create' && p.subject === 'Consultation');
         expect(hasConsultationCreate).toBe(true);
 
         // Doctor should NOT have manage:all
-        const hasManageAll = body.permissions.some(
-          (p: any) => p.action === 'manage' && p.subject === 'all'
-        );
+        const hasManageAll = body.permissions.some((p: any) => p.action === 'manage' && p.subject === 'all');
         expect(hasManageAll).toBe(false);
       }
     });
@@ -479,15 +461,11 @@ test.describe('Authorization Flow', () => {
       if (permResponse.status() === 200) {
         const body = await permResponse.json();
         // Nurse should have read permissions
-        const hasConsultationRead = body.permissions.some(
-          (p: any) => p.action === 'read' && p.subject === 'Consultation'
-        );
+        const hasConsultationRead = body.permissions.some((p: any) => p.action === 'read' && p.subject === 'Consultation');
         expect(hasConsultationRead).toBe(true);
 
         // Nurse should NOT have create permissions
-        const hasConsultationCreate = body.permissions.some(
-          (p: any) => p.action === 'create' && p.subject === 'Consultation'
-        );
+        const hasConsultationCreate = body.permissions.some((p: any) => p.action === 'create' && p.subject === 'Consultation');
         expect(hasConsultationCreate).toBe(false);
       }
     });

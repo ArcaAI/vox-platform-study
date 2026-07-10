@@ -71,7 +71,7 @@ test.describe('TASK-330 Phase 3 — institutional-knowledge provenance is auth-g
 // ===========================================================================
 const RUN_FULL = !!process.env.HARNESS_E2E_FULL;
 const CONSULT_ID = process.env.HARNESS_E2E_CONSULTATION_ID ?? '';
-const CONTEXT_ITEM_ID = process.env.HARNESS_E2E_CONTEXT_ITEM_ID ?? '';
+const _CONTEXT_ITEM_ID = process.env.HARNESS_E2E_CONTEXT_ITEM_ID ?? '';
 const TENANT_B_CONSULT_ID = process.env.HARNESS_E2E_TENANT_B_CONSULTATION_ID ?? '';
 
 test.describe('TASK-330 Phase 3 — ingest → retrieve → cite → verify (full loop)', () => {

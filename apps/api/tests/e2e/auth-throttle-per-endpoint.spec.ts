@@ -36,26 +36,19 @@
  * handler validation does not matter for the rate-limit assertion.
  */
 import { test, expect, type APIResponse } from '@playwright/test';
-import {
-    DEFAULT_TENANT_KEY,
-    SEEDED_USERS,
-    loginUser,
-} from '../../../../tests/helpers';
+import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
 const BOGUS_USERNAME_PREFIX = 'task-308-throttle-bogus';
 const BOGUS_REFRESH_TOKEN = 'task-308-throttle-not-a-real-refresh-token';
 
 /** Collect statuses from N sequential calls to a Playwright request. */
-async function probeStatuses(
-    n: number,
-    invoke: (i: number) => Promise<APIResponse>,
-): Promise<number[]> {
-    const statuses: number[] = [];
-    for (let i = 0; i < n; i += 1) {
-        const response = await invoke(i);
-        statuses.push(response.status());
-    }
-    return statuses;
+async function probeStatuses(n: number, invoke: (i: number) => Promise<APIResponse>): Promise<number[]> {
+  const statuses: number[] = [];
+  for (let i = 0; i < n; i += 1) {
+    const response = await invoke(i);
+    statuses.push(response.status());
+  }
+  return statuses;
 }
 
 // Serial within the file so we don't race two throttle tests against the
@@ -63,96 +56,76 @@ async function probeStatuses(
 test.describe.configure({ mode: 'serial' });
 
 test.describe('TASK-308 AC-6 — Auth throttle granularity', () => {
-    // This spec is the ONLY one that requires throttling ENABLED: it asserts
-    // `/auth/login` 429s after its 5/min budget. The full E2E suite runs with
-    // `RATE_LIMIT_ENABLED=false` (.env.test) because the shared per-IP login
-    // budget cannot survive dozens of parallel specs logging in. So skip here
-    // and run this spec in isolation with throttling ON (see the file header):
-    //   RATE_LIMIT_ENABLED=true pnpm dev:api:test
-    //   RATE_LIMIT_ENABLED=true pnpm test:e2e --grep auth-throttle-per-endpoint
-    test.skip(
-        process.env.RATE_LIMIT_ENABLED === 'false',
-        'Throttling disabled for the full suite (RATE_LIMIT_ENABLED=false); run this spec in isolation with RATE_LIMIT_ENABLED=true.',
+  // This spec is the ONLY one that requires throttling ENABLED: it asserts
+  // `/auth/login` 429s after its 5/min budget. The full E2E suite runs with
+  // `RATE_LIMIT_ENABLED=false` (.env.test) because the shared per-IP login
+  // budget cannot survive dozens of parallel specs logging in. So skip here
+  // and run this spec in isolation with throttling ON (see the file header):
+  //   RATE_LIMIT_ENABLED=true pnpm dev:api:test
+  //   RATE_LIMIT_ENABLED=true pnpm test:e2e --grep auth-throttle-per-endpoint
+  test.skip(
+    process.env.RATE_LIMIT_ENABLED === 'false',
+    'Throttling disabled for the full suite (RATE_LIMIT_ENABLED=false); run this spec in isolation with RATE_LIMIT_ENABLED=true.',
+  );
+
+  // The doctor login is the FIRST `/auth/login` call this spec makes —
+  // it must succeed (and get its token) BEFORE the rapid-login probe
+  // consumes the 5/min budget. Running it in `beforeAll` keeps the
+  // /me test independent of the order/state of the login throttle test.
+  let doctorToken: string;
+
+  test.beforeAll(async ({ request }) => {
+    const login = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
+    expect(login, 'doctor login failed (precondition for /me probe)').toBeTruthy();
+    doctorToken = login!.token;
+  });
+
+  // Tests run in declaration order under `mode: 'serial'`. /me first
+  // because it doesn't perturb the login counter; refresh next because
+  // it lives on its own counter; login last because it deliberately
+  // burns through the 5/min budget.
+
+  test('GET /auth/me rides the default throttler — 8 rapid authenticated reads produce ZERO 429s', async ({ request }) => {
+    const statuses = await probeStatuses(8, () =>
+      request.get('/api/v1/auth/me', {
+        headers: { Authorization: `Bearer ${doctorToken}` },
+      }),
     );
 
-    // The doctor login is the FIRST `/auth/login` call this spec makes —
-    // it must succeed (and get its token) BEFORE the rapid-login probe
-    // consumes the 5/min budget. Running it in `beforeAll` keeps the
-    // /me test independent of the order/state of the login throttle test.
-    let doctorToken: string;
+    const throttled = statuses.filter((s) => s === 429).length;
+    expect(throttled, `/auth/me should not 429 at 8/min under default throttler, got ${JSON.stringify(statuses)}`).toBe(0);
+    // Sanity: every /me read should succeed for a valid token.
+    const successes = statuses.filter((s) => s === 200).length;
+    expect(successes).toBe(8);
+  });
 
-    test.beforeAll(async ({ request }) => {
-        const login = await loginUser(
-            request,
-            SEEDED_USERS.doctor.username,
-            SEEDED_USERS.doctor.password,
-            DEFAULT_TENANT_KEY,
-        );
-        expect(login, 'doctor login failed (precondition for /me probe)').toBeTruthy();
-        doctorToken = login!.token;
-    });
+  test('POST /auth/refresh allows >10/min — 11 rapid attempts produce ZERO 429s', async ({ request }) => {
+    const statuses = await probeStatuses(11, () =>
+      request.post('/api/v1/auth/refresh', {
+        data: { refreshToken: BOGUS_REFRESH_TOKEN },
+      }),
+    );
 
-    // Tests run in declaration order under `mode: 'serial'`. /me first
-    // because it doesn't perturb the login counter; refresh next because
-    // it lives on its own counter; login last because it deliberately
-    // burns through the 5/min budget.
+    const throttled = statuses.filter((s) => s === 429).length;
+    expect(throttled, `expected 0 of the 11 rapid refresh attempts to 429, got statuses ${JSON.stringify(statuses)}`).toBe(0);
+    // Every attempt SHOULD fail at handler validation (bogus token) —
+    // catching a stray 200 here would mean refresh isn't validating.
+    const successes = statuses.filter((s) => s === 200).length;
+    expect(successes, 'no bogus refresh attempt should produce 200').toBe(0);
+  });
 
-    test('GET /auth/me rides the default throttler — 8 rapid authenticated reads produce ZERO 429s', async ({
-        request,
-    }) => {
-        const statuses = await probeStatuses(8, () =>
-            request.get('/api/v1/auth/me', {
-                headers: { Authorization: `Bearer ${doctorToken}` },
-            }),
-        );
+  test('POST /auth/login enforces 5/min — at least one 429 within the first 6 rapid attempts', async ({ request }) => {
+    const statuses = await probeStatuses(6, (i) =>
+      request.post('/api/v1/auth/login', {
+        data: {
+          username: `${BOGUS_USERNAME_PREFIX}-${i}`,
+          password: 'irrelevant',
+          tenantKey: DEFAULT_TENANT_KEY,
+        },
+      }),
+    );
 
-        const throttled = statuses.filter((s) => s === 429).length;
-        expect(
-            throttled,
-            `/auth/me should not 429 at 8/min under default throttler, got ${JSON.stringify(statuses)}`,
-        ).toBe(0);
-        // Sanity: every /me read should succeed for a valid token.
-        const successes = statuses.filter((s) => s === 200).length;
-        expect(successes).toBe(8);
-    });
-
-    test('POST /auth/refresh allows >10/min — 11 rapid attempts produce ZERO 429s', async ({
-        request,
-    }) => {
-        const statuses = await probeStatuses(11, () =>
-            request.post('/api/v1/auth/refresh', {
-                data: { refreshToken: BOGUS_REFRESH_TOKEN },
-            }),
-        );
-
-        const throttled = statuses.filter((s) => s === 429).length;
-        expect(
-            throttled,
-            `expected 0 of the 11 rapid refresh attempts to 429, got statuses ${JSON.stringify(statuses)}`,
-        ).toBe(0);
-        // Every attempt SHOULD fail at handler validation (bogus token) —
-        // catching a stray 200 here would mean refresh isn't validating.
-        const successes = statuses.filter((s) => s === 200).length;
-        expect(successes, 'no bogus refresh attempt should produce 200').toBe(0);
-    });
-
-    test('POST /auth/login enforces 5/min — at least one 429 within the first 6 rapid attempts', async ({
-        request,
-    }) => {
-        const statuses = await probeStatuses(6, (i) =>
-            request.post('/api/v1/auth/login', {
-                data: {
-                    username: `${BOGUS_USERNAME_PREFIX}-${i}`,
-                    password: 'irrelevant',
-                    tenantKey: DEFAULT_TENANT_KEY,
-                },
-            }),
-        );
-
-        const throttled = statuses.filter((s) => s === 429).length;
-        expect(
-            throttled,
-            `expected ≥1 of the 6 rapid login attempts to 429, got statuses ${JSON.stringify(statuses)}`,
-        ).toBeGreaterThanOrEqual(1);
-    });
+    const throttled = statuses.filter((s) => s === 429).length;
+    expect(throttled, `expected ≥1 of the 6 rapid login attempts to 429, got statuses ${JSON.stringify(statuses)}`).toBeGreaterThanOrEqual(1);
+  });
 });

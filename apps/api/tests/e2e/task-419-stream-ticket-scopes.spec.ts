@@ -51,9 +51,7 @@ test.describe('TASK-419 — stream-ticket scopes', () => {
       const token = await login(request);
       const ticket = await mintTicket(request, token, 'dna_job:e2e-dna-job-419');
 
-      const sseResponse = await request.get(
-        `/api/v1/admin/dna-writing-styles/jobs/e2e-dna-job-419/stream?ticket=${encodeURIComponent(ticket)}`,
-      );
+      const sseResponse = await request.get(`/api/v1/admin/dna-writing-styles/jobs/e2e-dna-job-419/stream?ticket=${encodeURIComponent(ticket)}`);
       // The unknown job may terminate the stream immediately (404/stream
       // error), but the ticket must not be rejected by the auth guard.
       expect(sseResponse.status()).not.toBe(401);
@@ -63,9 +61,7 @@ test.describe('TASK-419 — stream-ticket scopes', () => {
       const token = await login(request);
       const ticket = await mintTicket(request, token, 'dna_job:other-job');
 
-      const sseResponse = await request.get(
-        `/api/v1/admin/dna-writing-styles/jobs/e2e-dna-job-419/stream?ticket=${encodeURIComponent(ticket)}`,
-      );
+      const sseResponse = await request.get(`/api/v1/admin/dna-writing-styles/jobs/e2e-dna-job-419/stream?ticket=${encodeURIComponent(ticket)}`);
       expect(sseResponse.status()).toBe(401);
     });
   });
@@ -80,9 +76,7 @@ test.describe('TASK-419 — stream-ticket scopes', () => {
       const token = await login(request);
       const ticket = await mintTicket(request, token, 'transcription_job:e2e-stt-job-419');
 
-      const sseResponse = await request.get(
-        `/api/v1/audio/transcription-jobs/e2e-stt-job-419/stream?ticket=${encodeURIComponent(ticket)}`,
-      );
+      const sseResponse = await request.get(`/api/v1/audio/transcription-jobs/e2e-stt-job-419/stream?ticket=${encodeURIComponent(ticket)}`);
       // Ticket auth must pass; the unknown id then 404s in the pre-stream
       // @TenantOwnedResource ownership guard — that is the accepted contract.
       expect(sseResponse.status()).not.toBe(401);
@@ -92,9 +86,7 @@ test.describe('TASK-419 — stream-ticket scopes', () => {
       const token = await login(request);
       const ticket = await mintTicket(request, token, 'transcription_job:other-job');
 
-      const sseResponse = await request.get(
-        `/api/v1/audio/transcription-jobs/e2e-stt-job-419/stream?ticket=${encodeURIComponent(ticket)}`,
-      );
+      const sseResponse = await request.get(`/api/v1/audio/transcription-jobs/e2e-stt-job-419/stream?ticket=${encodeURIComponent(ticket)}`);
       expect(sseResponse.status()).toBe(401);
     });
   });

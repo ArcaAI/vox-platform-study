@@ -10,12 +10,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import {
-  createTestDataRegistry,
-  loginSeededUsers,
-  cleanupTestData,
-  type TestDataRegistry,
-} from '../../../../tests/helpers';
+import { createTestDataRegistry, loginSeededUsers, cleanupTestData, type TestDataRegistry } from '../../../../tests/helpers';
 
 test.describe('Tenant Controller', () => {
   let adminToken: string;

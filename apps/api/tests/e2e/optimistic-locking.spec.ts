@@ -27,12 +27,7 @@
  * @see docs/implementation/TASK-302-System-Config-Implementation-Roadmap/04-optimistic-locking.md
  */
 import { test, expect, request as playwrightRequest } from '@playwright/test';
-import {
-  createTestDataRegistry,
-  loginSeededUsers,
-  cleanupTestData,
-  type TestDataRegistry,
-} from '../../../../tests/helpers';
+import { createTestDataRegistry, loginSeededUsers, cleanupTestData, type TestDataRegistry } from '../../../../tests/helpers';
 
 // Hit the admin-tenants/configs route with super-admin credentials so we
 // can target a specific non-GLOBAL tenant. Picking `/tenant/me/config`
@@ -85,9 +80,9 @@ test.describe(`Optimistic locking — PATCH /admin/tenants/configs/${TENANT_KEY}
     // exposing a numeric `version`. The whole point of OCC is that
     // every row carries `version`, but we add the guard to avoid a
     // spurious test failure if the seed evolves.
-    const editable = body.data.find(
-      (c) => typeof c.version === 'number' && (c.key === 'default-language' || c.key === 'enable-real-time-transcription'),
-    ) ?? body.data.find((c) => typeof c.version === 'number');
+    const editable =
+      body.data.find((c) => typeof c.version === 'number' && (c.key === 'default-language' || c.key === 'enable-real-time-transcription')) ??
+      body.data.find((c) => typeof c.version === 'number');
 
     expect(
       editable,

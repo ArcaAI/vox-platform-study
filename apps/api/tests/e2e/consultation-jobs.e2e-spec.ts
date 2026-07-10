@@ -79,9 +79,7 @@ test.describe('ConsultationJobController', () => {
       // Using the ticket should NOT return 401 (it may still return a real SSE
       // stream that immediately completes if the job doesn't exist, but
       // crucially it must not be rejected by the auth guard).
-      const sseResponse = await request.get(
-        `/api/v1/consultations/jobs/some-job-id/stream?ticket=${encodeURIComponent(ticket)}`,
-      );
+      const sseResponse = await request.get(`/api/v1/consultations/jobs/some-job-id/stream?ticket=${encodeURIComponent(ticket)}`);
       expect(sseResponse.status()).not.toBe(401);
     });
 
@@ -94,9 +92,7 @@ test.describe('ConsultationJobController', () => {
       });
       const { ticket } = await ticketResponse.json();
 
-      const sseResponse = await request.get(
-        `/api/v1/consultations/jobs/some-other-id/stream?ticket=${encodeURIComponent(ticket)}`,
-      );
+      const sseResponse = await request.get(`/api/v1/consultations/jobs/some-other-id/stream?ticket=${encodeURIComponent(ticket)}`);
       expect(sseResponse.status()).toBe(401);
     });
   });

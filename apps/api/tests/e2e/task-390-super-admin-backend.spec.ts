@@ -23,7 +23,7 @@
  *        carries the `tenantId` column.
  *   Every item: a plain `doctor` is 403 on the admin surface.
  */
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -111,7 +111,12 @@ test.describe.serial('TASK-390 #22 — policy CRUD + system-lockout guard', () =
 
     const patch = await request.patch(`/api/v1/admin/rbac/policies/${throwawayId}`, {
       headers: bearer(saGlobalToken),
-      data: { rules: [{ action: 'read', subject: 'Consultation' }, { action: 'create', subject: 'Consultation' }] },
+      data: {
+        rules: [
+          { action: 'read', subject: 'Consultation' },
+          { action: 'create', subject: 'Consultation' },
+        ],
+      },
     });
     expect(patch.status(), 'patch policy rules').toBe(200);
     expect(((await patch.json()) as PolicyDto).rules.length).toBe(2);
@@ -162,7 +167,12 @@ test.describe.serial('TASK-390 #22 — policy CRUD + system-lockout guard', () =
     const res = await request.patch(`/api/v1/admin/rbac/policies/${RBAC_SYSTEM_MANAGE_ID}`, {
       headers: bearer(saGlobalToken),
       // keeps Role + RolePolicy but drops the required manage:Policy → refused
-      data: { rules: [{ action: 'manage', subject: 'Role' }, { action: 'manage', subject: 'RolePolicy' }] },
+      data: {
+        rules: [
+          { action: 'manage', subject: 'Role' },
+          { action: 'manage', subject: 'RolePolicy' },
+        ],
+      },
     });
     expect(res.status()).toBe(403);
   });

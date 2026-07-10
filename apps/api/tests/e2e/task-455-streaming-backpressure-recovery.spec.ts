@@ -79,11 +79,13 @@ test.describe('TASK-455 AC-3 — backpressure / overload recovery', () => {
 
       // The loop must drain and keep producing captions (recovery).
       const gotTranscripts = await socket.waitForTranscripts(1, 30_000);
-      // NOTE: `{type:'stop'}` is a JSON TEXT control frame — which this gateway
-      // does not process (ws@8 delivers text as Buffer; `handleMessage` treats
-      // it as binary audio), so it does NOT finalize. Sessions finalize only via
-      // VAD silence / the STT-v2 inactivity reaper. We still send it (documented
-      // protocol) and record that `closed` does not arrive.
+      // TASK-467: `{type:'stop'}` is a JSON TEXT control frame. It USED to be a
+      // no-op (ws@8 delivers text as Buffer; the gateway misclassified it as
+      // binary audio), so finalize happened only via VAD silence / the STT-v2
+      // reaper. The gateway now branches on the `message` event's `isBinary`
+      // arg, so stop reaches `writeControlCommand(finalize)`. Whether a `closed`
+      // status then arrives within the window depends on the upstream finalize
+      // completing — recorded (not asserted) as `reachedClosedStatusAfterStop`.
       socket.sendStop();
       const closed = await socket.waitForClosedStatus(10_000);
 
@@ -103,9 +105,10 @@ test.describe('TASK-455 AC-3 — backpressure / overload recovery', () => {
         'Gateway EGRESS-watermark drops (partials dropped / finals queued at 512 KiB) are NOT ' +
           'client-observable and not naturally reproducible on the shared stack — see the ' +
           'test.fixme + stt-ws.gateway.test.ts.',
-        'Discovered defect (reported to TASK-457): `{type:stop}` finalize is a JSON text frame ' +
-          'the gateway misclassifies as binary audio (ws@8 text-as-Buffer), so client-driven ' +
-          'finalize is a no-op — hence reachedClosedStatusAfterStop is false.',
+        'TASK-467 (FIXED): `{type:stop}` finalize is a JSON text frame the gateway USED to ' +
+          'misclassify as binary audio (ws@8 text-as-Buffer); it now branches on the message ' +
+          "event's isBinary arg and reaches writeControlCommand(finalize). reachedClosedStatusAfterStop " +
+          'now hinges on the upstream finalize emitting a closed status, not on frame classification.',
       ];
 
       await testInfo.attach('backpressure-overload-baseline', {
@@ -132,14 +135,11 @@ test.describe('TASK-455 AC-3 — backpressure / overload recovery', () => {
   // stt-ws.gateway.test.ts; `test.fixme` here documents the wire-level bar and
   // ties dropped-partial / dropped-final visibility to TASK-454's counters.
   // ---------------------------------------------------------------------------
-  test.fixme(
-    'TARGET (TASK-454/457): under egress backpressure, partials are dropped and finals are preserved & observable',
-    async () => {
-      // Requires lowering the 512 KiB egress high-watermark (env
-      // STT_WS_EGRESS_HIGH_WATERMARK_BYTES) so a stalled reader crosses it, and
-      // a client-observable dropped-frame signal (TASK-454). Neither is present
-      // on the shared live stack; encoded here so the bar is explicit.
-      expect(true).toBe(true);
-    },
-  );
+  test.fixme('TARGET (TASK-454/457): under egress backpressure, partials are dropped and finals are preserved & observable', async () => {
+    // Requires lowering the 512 KiB egress high-watermark (env
+    // STT_WS_EGRESS_HIGH_WATERMARK_BYTES) so a stalled reader crosses it, and
+    // a client-observable dropped-frame signal (TASK-454). Neither is present
+    // on the shared live stack; encoded here so the bar is explicit.
+    expect(true).toBe(true);
+  });
 });

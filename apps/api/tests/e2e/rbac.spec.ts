@@ -15,13 +15,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import {
-  createTestDataRegistry,
-  loginSeededUsers,
-  cleanupTestData,
-  SEEDED_USERS,
-  type TestDataRegistry,
-} from '../../../../tests/helpers';
+import { createTestDataRegistry, loginSeededUsers, cleanupTestData, SEEDED_USERS, type TestDataRegistry } from '../../../../tests/helpers';
 
 test.describe('RBAC Controllers', () => {
   let superAdminToken: string;
@@ -871,13 +865,10 @@ test.describe('RBAC Controllers', () => {
       testPolicyIds.push(policy.id);
 
       // Assign policy to role
-      const assignResponse = await request.post(
-        `/api/v1/admin/rbac/roles/${role.id}/policies/${policy.id}`,
-        {
-          headers: { Authorization: `Bearer ${superAdminToken}` },
-          data: { priority: 0 },
-        }
-      );
+      const assignResponse = await request.post(`/api/v1/admin/rbac/roles/${role.id}/policies/${policy.id}`, {
+        headers: { Authorization: `Bearer ${superAdminToken}` },
+        data: { priority: 0 },
+      });
 
       expect([200, 201]).toContain(assignResponse.status());
 

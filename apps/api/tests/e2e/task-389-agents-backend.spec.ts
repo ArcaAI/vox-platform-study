@@ -20,7 +20,7 @@
  * All mutations target a throwaway template (created + soft-deleted in the block)
  * — no seed rows are mutated.
  */
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -132,8 +132,14 @@ test.describe.serial('TASK-389 #14 — server-side prompt version diff', () => {
 
     // Combined diff (what the SDK maps into DiffResult).
     expect(Array.isArray(body.changes)).toBe(true);
-    expect(body.changes.some((c) => c.added), 'a content change appears as an addition').toBe(true);
-    expect(body.changes.some((c) => c.removed), 'a content change appears as a removal').toBe(true);
+    expect(
+      body.changes.some((c) => c.added),
+      'a content change appears as an addition',
+    ).toBe(true);
+    expect(
+      body.changes.some((c) => c.removed),
+      'a content change appears as a removal',
+    ).toBe(true);
     expect(typeof body.patch).toBe('string');
     expect(body.stats.additions + body.stats.deletions, 'the diff registered real edits').toBeGreaterThan(0);
 

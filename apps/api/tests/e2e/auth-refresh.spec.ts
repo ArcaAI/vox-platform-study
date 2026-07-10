@@ -61,15 +61,8 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
   // ---------------------------------------------------------------------------
   // 1. Single-use rotation — AC-1 / C-1
   // ---------------------------------------------------------------------------
-  test('TASK-307 W1.7 — rotation issues a fresh pair and invalidates the prior refresh token (single-use)', async ({
-    request,
-  }) => {
-    const login = await loginUser(
-      request,
-      SEEDED_USERS.admin.username,
-      SEEDED_USERS.admin.password,
-      DEFAULT_TENANT_KEY,
-    );
+  test('TASK-307 W1.7 — rotation issues a fresh pair and invalidates the prior refresh token (single-use)', async ({ request }) => {
+    const login = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(login, 'admin login failed').toBeTruthy();
 
     const firstRefreshToken = login!.refreshToken;
@@ -104,15 +97,8 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
   // ---------------------------------------------------------------------------
   // 2. Reuse-detection + family-revoke — AC-1 / RFC 6749 §10.4
   // ---------------------------------------------------------------------------
-  test('TASK-307 W1.7 — replaying a consumed refresh token revokes the rotated successor too (family-revoke)', async ({
-    request,
-  }) => {
-    const login = await loginUser(
-      request,
-      SEEDED_USERS.admin.username,
-      SEEDED_USERS.admin.password,
-      DEFAULT_TENANT_KEY,
-    );
+  test('TASK-307 W1.7 — replaying a consumed refresh token revokes the rotated successor too (family-revoke)', async ({ request }) => {
+    const login = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(login, 'admin login failed').toBeTruthy();
 
     const original = login!.refreshToken;
@@ -137,10 +123,7 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
     const collateral = await request.post('/api/v1/auth/refresh', {
       data: { refreshToken: rotated },
     });
-    expect(
-      collateral.status(),
-      'rotated successor must be revoked by family-revoke after reuse detection',
-    ).toBe(401);
+    expect(collateral.status(), 'rotated successor must be revoked by family-revoke after reuse detection').toBe(401);
   });
 
   // ---------------------------------------------------------------------------
@@ -177,24 +160,12 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
   //   5. Independently rotates `refreshB` — the ARCAAI family must
   //      remain untouched by the `__GLOBAL__` family revocation
   //      (cross-family isolation).
-  test('TASK-309 AC-1 — refresh-token rotation is bound to the issuing tenant even when a foreign-tenant bearer is sent', async ({
-    request,
-  }) => {
+  test('TASK-309 AC-1 — refresh-token rotation is bound to the issuing tenant even when a foreign-tenant bearer is sent', async ({ request }) => {
     // ---- Step 1: dual-tenant bootstrap ----
-    const globalLogin = await loginUser(
-      request,
-      SEEDED_USERS.superAdmin.username,
-      SEEDED_USERS.superAdmin.password,
-      DEFAULT_TENANT_KEY,
-    );
+    const globalLogin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
     expect(globalLogin, 'super_admin login (__GLOBAL__) failed').toBeTruthy();
 
-    const arcaaiLogin = await loginUser(
-      request,
-      SEEDED_USERS.superAdmin.username,
-      SEEDED_USERS.superAdmin.password,
-      'ARCAAI',
-    );
+    const arcaaiLogin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
     expect(arcaaiLogin, 'super_admin login (ARCAAI) failed').toBeTruthy();
 
     const tokenA = globalLogin!.token;
@@ -207,10 +178,9 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
     const tenantIdB = decodeJwtPayload(tokenB).tenantId;
     expect(tenantIdA, '__GLOBAL__ access token must carry a tenantId').toBeTruthy();
     expect(tenantIdB, 'ARCAAI access token must carry a tenantId').toBeTruthy();
-    expect(
-      tenantIdA,
-      'sanity: the two logins should produce different tenantIds — otherwise this test is not actually cross-tenant',
-    ).not.toBe(tenantIdB);
+    expect(tenantIdA, 'sanity: the two logins should produce different tenantIds — otherwise this test is not actually cross-tenant').not.toBe(
+      tenantIdB,
+    );
 
     // ---- Step 3: cross-tenant rotation attempt ----
     // Attacker carries refreshA (stolen from tenant __GLOBAL__) and
@@ -222,17 +192,14 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
       headers: { Authorization: `Bearer ${tokenB}` },
       data: { refreshToken: refreshA },
     });
-    expect(
-      crossTenantRotation.status(),
-      'a refresh token is its own authority — the endpoint must rotate it regardless of the bearer',
-    ).toBe(200);
+    expect(crossTenantRotation.status(), 'a refresh token is its own authority — the endpoint must rotate it regardless of the bearer').toBe(200);
     const rotatedA = await crossTenantRotation.json();
     const rotatedTenantA = decodeJwtPayload(rotatedA.token).tenantId;
     expect(
       rotatedTenantA,
       'cross-tenant carry-through: the rotated access token must stay scoped to the ORIGINAL tenant even when the bearer claims a different tenant',
     ).toBe(tenantIdA);
-    expect(rotatedTenantA, 'rotated token must NOT drift to the bearer\'s tenant (ARCAAI)').not.toBe(tenantIdB);
+    expect(rotatedTenantA, "rotated token must NOT drift to the bearer's tenant (ARCAAI)").not.toBe(tenantIdB);
 
     // ---- Step 4: replay refreshA → 401 + family revoke ----
     // refreshA was consumed in Step 3. Replaying it must trigger the
@@ -248,10 +215,7 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
     const followUpA = await request.post('/api/v1/auth/refresh', {
       data: { refreshToken: rotatedA.refreshToken },
     });
-    expect(
-      followUpA.status(),
-      'family-revoke: rotated successor of the reused token must also be rejected',
-    ).toBe(401);
+    expect(followUpA.status(), 'family-revoke: rotated successor of the reused token must also be rejected').toBe(401);
 
     // ---- Step 5: cross-family isolation — refreshB still works ----
     // Revoking family A must not collaterally damage family B (the
@@ -260,29 +224,16 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
     const rotateB = await request.post('/api/v1/auth/refresh', {
       data: { refreshToken: refreshB },
     });
-    expect(
-      rotateB.status(),
-      'cross-family isolation: revoking family A must not affect family B',
-    ).toBe(200);
+    expect(rotateB.status(), 'cross-family isolation: revoking family A must not affect family B').toBe(200);
     const rotatedB = await rotateB.json();
-    expect(
-      decodeJwtPayload(rotatedB.token).tenantId,
-      'rotated ARCAAI token must stay scoped to ARCAAI',
-    ).toBe(tenantIdB);
+    expect(decodeJwtPayload(rotatedB.token).tenantId, 'rotated ARCAAI token must stay scoped to ARCAAI').toBe(tenantIdB);
   });
 
   // ---------------------------------------------------------------------------
   // 4. Logout revokes both jti and refresh family — AC-2 / C-11
   // ---------------------------------------------------------------------------
-  test('TASK-307 W1.7 — logout revokes the access-token jti (subsequent /auth/me is 401)', async ({
-    request,
-  }) => {
-    const login = await loginUser(
-      request,
-      SEEDED_USERS.doctor.username,
-      SEEDED_USERS.doctor.password,
-      DEFAULT_TENANT_KEY,
-    );
+  test('TASK-307 W1.7 — logout revokes the access-token jti (subsequent /auth/me is 401)', async ({ request }) => {
+    const login = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
     expect(login, 'doctor login failed').toBeTruthy();
 
     // Sanity: the token works pre-logout.
@@ -304,15 +255,8 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
     expect(postLogoutMe.status(), '/auth/me with a revoked token must be 401').toBe(401);
   });
 
-  test('TASK-307 W1.7 — logout revokes the refresh-token family (subsequent /auth/refresh is 401)', async ({
-    request,
-  }) => {
-    const login = await loginUser(
-      request,
-      SEEDED_USERS.doctor.username,
-      SEEDED_USERS.doctor.password,
-      DEFAULT_TENANT_KEY,
-    );
+  test('TASK-307 W1.7 — logout revokes the refresh-token family (subsequent /auth/refresh is 401)', async ({ request }) => {
+    const login = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
     expect(login, 'doctor login failed').toBeTruthy();
 
     // Logout — the controller reads `refreshFamily` from the JWT and calls
@@ -326,9 +270,6 @@ test.describe('TASK-307 W1 — Refresh-token defense (E2E)', () => {
     const refreshAttempt = await request.post('/api/v1/auth/refresh', {
       data: { refreshToken: login!.refreshToken },
     });
-    expect(
-      refreshAttempt.status(),
-      'refresh after logout must be 401 (family revoked)',
-    ).toBe(401);
+    expect(refreshAttempt.status(), 'refresh after logout must be 401 (family revoked)').toBe(401);
   });
 });

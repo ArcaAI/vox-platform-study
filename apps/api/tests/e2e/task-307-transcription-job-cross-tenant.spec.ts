@@ -43,11 +43,7 @@
  * dispatch the job until `transcribeFile` is invoked separately.
  */
 import { test, expect } from '@playwright/test';
-import {
-    DEFAULT_TENANT_KEY,
-    SEEDED_USERS,
-    loginUser,
-} from '../../../../tests/helpers';
+import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
 /**
  * Seeded production ASR pipeline id from
@@ -65,111 +61,84 @@ const PRODUCTION_PIPELINE_ID = '81000000-0000-0000-0001-000000000001';
 const SYNTHETIC_JOB_ID = '018f0000-0000-7300-8000-000000000000';
 
 test.describe('TASK-309 AC-2/AC-3 — TranscriptionJob ownership genuine probe (AC-12)', () => {
-    let doctorToken: string;
-    let arcaaiSuperAdminToken: string;
-    let jobId: string;
+  let doctorToken: string;
+  let arcaaiSuperAdminToken: string;
+  let jobId: string;
 
-    test.beforeAll(async ({ request }) => {
-        const doctorLogin = await loginUser(
-            request,
-            SEEDED_USERS.doctor.username,
-            SEEDED_USERS.doctor.password,
-            DEFAULT_TENANT_KEY,
-        );
-        expect(doctorLogin, 'doctor login (__GLOBAL__) failed').toBeTruthy();
-        doctorToken = doctorLogin!.token;
+  test.beforeAll(async ({ request }) => {
+    const doctorLogin = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
+    expect(doctorLogin, 'doctor login (__GLOBAL__) failed').toBeTruthy();
+    doctorToken = doctorLogin!.token;
 
-        const arcaaiLogin = await loginUser(
-            request,
-            SEEDED_USERS.superAdmin.username,
-            SEEDED_USERS.superAdmin.password,
-            'ARCAAI',
-        );
-        expect(arcaaiLogin, 'super_admin login (ARCAAI) failed').toBeTruthy();
-        arcaaiSuperAdminToken = arcaaiLogin!.token;
+    const arcaaiLogin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
+    expect(arcaaiLogin, 'super_admin login (ARCAAI) failed').toBeTruthy();
+    arcaaiSuperAdminToken = arcaaiLogin!.token;
 
-        // Bootstrap a real TranscriptionJob row in tenant __GLOBAL__.
-        // The create endpoint persists the row but does not dispatch
-        // to STT-V2; status will stay QUEUED, which is enough for the
-        // interceptor (it reads tenantId off the row regardless).
-        const createResp = await request.post(
-            '/api/v1/audio/transcription-jobs',
-            {
-                headers: { Authorization: `Bearer ${doctorToken}` },
-                data: {
-                    pipelineId: PRODUCTION_PIPELINE_ID,
-                    jobType: 'STREAMING',
-                },
-            },
-        );
-        expect(
-            createResp.status(),
-            `create transcription job — body: ${await createResp.text()}`,
-        ).toBeGreaterThanOrEqual(200);
-        expect(createResp.status()).toBeLessThan(300);
-
-        const created = (await createResp.json()) as { id: string };
-        expect(created.id, 'create transcription job returned id').toBeTruthy();
-        jobId = created.id;
+    // Bootstrap a real TranscriptionJob row in tenant __GLOBAL__.
+    // The create endpoint persists the row but does not dispatch
+    // to STT-V2; status will stay QUEUED, which is enough for the
+    // interceptor (it reads tenantId off the row regardless).
+    const createResp = await request.post('/api/v1/audio/transcription-jobs', {
+      headers: { Authorization: `Bearer ${doctorToken}` },
+      data: {
+        pipelineId: PRODUCTION_PIPELINE_ID,
+        jobType: 'STREAMING',
+      },
     });
+    expect(createResp.status(), `create transcription job — body: ${await createResp.text()}`).toBeGreaterThanOrEqual(200);
+    expect(createResp.status()).toBeLessThan(300);
 
-    test('creator (doctor in __GLOBAL__) can resolve the job — sanity for the cross-tenant assertion', async ({ request }) => {
-        const response = await request.get(
-            `/api/v1/audio/transcription-jobs/${jobId}`,
-            { headers: { Authorization: `Bearer ${doctorToken}` } },
-        );
-        expect(response.status()).toBe(200);
-    });
+    const created = (await createResp.json()) as { id: string };
+    expect(created.id, 'create transcription job returned id').toBeTruthy();
+    jobId = created.id;
+  });
 
-    test('GET /audio/transcription-jobs/:id from tenant ARCAAI → 404', async ({ request }) => {
-        const response = await request.get(
-            `/api/v1/audio/transcription-jobs/${jobId}`,
-            { headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` } },
-        );
-        expect(response.status()).toBe(404);
-        const body = await response.json();
-        expect(String(body.message ?? '')).not.toMatch(/tenant/i);
-    });
+  test('creator (doctor in __GLOBAL__) can resolve the job — sanity for the cross-tenant assertion', async ({ request }) => {
+    const response = await request.get(`/api/v1/audio/transcription-jobs/${jobId}`, { headers: { Authorization: `Bearer ${doctorToken}` } });
+    expect(response.status()).toBe(200);
+  });
 
-    test('POST /audio/transcription-jobs/:id/cancel from tenant ARCAAI → 404', async ({ request }) => {
-        const response = await request.post(
-            `/api/v1/audio/transcription-jobs/${jobId}/cancel`,
-            { headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` } },
-        );
-        expect(response.status()).toBe(404);
+  test('GET /audio/transcription-jobs/:id from tenant ARCAAI → 404', async ({ request }) => {
+    const response = await request.get(`/api/v1/audio/transcription-jobs/${jobId}`, {
+      headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` },
     });
+    expect(response.status()).toBe(404);
+    const body = await response.json();
+    expect(String(body.message ?? '')).not.toMatch(/tenant/i);
+  });
 
-    test('POST /audio/transcription-jobs/:id/retry from tenant ARCAAI → 404', async ({ request }) => {
-        const response = await request.post(
-            `/api/v1/audio/transcription-jobs/${jobId}/retry`,
-            { headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` } },
-        );
-        expect(response.status()).toBe(404);
+  test('POST /audio/transcription-jobs/:id/cancel from tenant ARCAAI → 404', async ({ request }) => {
+    const response = await request.post(`/api/v1/audio/transcription-jobs/${jobId}/cancel`, {
+      headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` },
     });
+    expect(response.status()).toBe(404);
+  });
 
-    test('GET /audio/transcription-jobs/:id/stream from tenant ARCAAI → not 200 (no SSE channel leak)', async ({ request }) => {
-        const response = await request.get(
-            `/api/v1/audio/transcription-jobs/${jobId}/stream`,
-            { headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` } },
-        );
-        expect([401, 404]).toContain(response.status());
+  test('POST /audio/transcription-jobs/:id/retry from tenant ARCAAI → 404', async ({ request }) => {
+    const response = await request.post(`/api/v1/audio/transcription-jobs/${jobId}/retry`, {
+      headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` },
     });
+    expect(response.status()).toBe(404);
+  });
 
-    test('after cross-tenant probes, the doctor in __GLOBAL__ still sees the job (no collateral damage)', async ({ request }) => {
-        const response = await request.get(
-            `/api/v1/audio/transcription-jobs/${jobId}`,
-            { headers: { Authorization: `Bearer ${doctorToken}` } },
-        );
-        expect(response.status()).toBe(200);
+  test('GET /audio/transcription-jobs/:id/stream from tenant ARCAAI → not 200 (no SSE channel leak)', async ({ request }) => {
+    const response = await request.get(`/api/v1/audio/transcription-jobs/${jobId}/stream`, {
+      headers: { Authorization: `Bearer ${arcaaiSuperAdminToken}` },
     });
+    expect([401, 404]).toContain(response.status());
+  });
 
-    test('synthetic uuidv7 jobId → 404 (DEF-C3: same shape as cross-tenant 404)', async ({ request }) => {
-        const response = await request.get(
-            `/api/v1/audio/transcription-jobs/${SYNTHETIC_JOB_ID}`,
-            { headers: { Authorization: `Bearer ${doctorToken}` } },
-        );
-        expect(response.status()).toBe(404);
-        const body = await response.json();
-        expect(String(body.message ?? '')).not.toMatch(/tenant/i);
+  test('after cross-tenant probes, the doctor in __GLOBAL__ still sees the job (no collateral damage)', async ({ request }) => {
+    const response = await request.get(`/api/v1/audio/transcription-jobs/${jobId}`, { headers: { Authorization: `Bearer ${doctorToken}` } });
+    expect(response.status()).toBe(200);
+  });
+
+  test('synthetic uuidv7 jobId → 404 (DEF-C3: same shape as cross-tenant 404)', async ({ request }) => {
+    const response = await request.get(`/api/v1/audio/transcription-jobs/${SYNTHETIC_JOB_ID}`, {
+      headers: { Authorization: `Bearer ${doctorToken}` },
     });
+    expect(response.status()).toBe(404);
+    const body = await response.json();
+    expect(String(body.message ?? '')).not.toMatch(/tenant/i);
+  });
 });
