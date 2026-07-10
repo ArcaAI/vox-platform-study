@@ -7,6 +7,7 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
+import redis.asyncio as aioredis
 import structlog.contextvars
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
@@ -20,6 +21,7 @@ from smr_v2.core.dependencies import (
     get_provider_registry,
     get_provider_semaphores,
     get_rate_limiters,
+    get_redis,
     get_shutdown_manager,
     get_task_manager,
 )
@@ -81,6 +83,11 @@ logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT_S = 120.0
 
+# C1-04 (TASK-469): how long a completed generation stays replay-cached under
+# ``smr:idem:{key}``. Bounded so Redis never grows unboundedly, and comfortably longer
+# than any worker-crash → Temporal activity re-delivery window (the replay this dedups).
+_IDEMPOTENCY_TTL_S = 86_400  # 24h
+
 
 def _get_provider_timeout(settings: Settings, provider_name: str) -> float:
     """Get timeout in seconds for the given provider."""
@@ -124,10 +131,35 @@ async def generate(
     provider_semaphores: dict[str, asyncio.Semaphore] = Depends(get_provider_semaphores),
     settings: Settings = Depends(get_dep_settings),
     guardrail_client: ExternalGuardrailClient | None = Depends(get_guardrail_client),
+    redis_client: aioredis.Redis | None = Depends(get_redis),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> Any:
     if shutdown_manager and shutdown_manager.is_shutting_down:
         raise ShutdownError("Service is shutting down — not accepting new requests.")
+
+    # C1-04 (TASK-469): idempotent replay. A deterministic Idempotency-Key (set by the harness
+    # from workflow_run:activity_id — globally unique per logical generate; the apps/api SMR
+    # proxy strips any client-supplied header, so no tenant scoping is required here, though a
+    # tenant prefix would be a cheap defense-in-depth if that ever changes) makes a worker-crash
+    # re-delivery return the FIRST generation instead of re-invoking — and re-billing — the
+    # model. On a HIT we return the cached GenerateResponse without touching the provider (or any
+    # rate-limit / circuit-breaker / task machinery below); a successful MISS caches it before
+    # returning. The lookup is strictly BEST-EFFORT: no key, no Redis wired, OR a Redis read
+    # error all fall through to normal generation — a dedup-store outage must degrade to
+    # "generate" (the documented residual), never fail an otherwise-serviceable request.
+    cache_key = f"smr:idem:{idempotency_key}" if idempotency_key else None
+    if cache_key is not None and redis_client is not None:
+        try:
+            cached = await redis_client.get(cache_key)
+        except Exception as exc:
+            logger.warning(
+                "generation.idempotency_cache_read_failed", cache_key=cache_key, error=str(exc)
+            )
+            cached = None
+        if cached is not None:
+            logger.debug("generation.idempotency_cache_hit", cache_key=cache_key)
+            return GenerateResponse.model_validate_json(cached)
 
     # Guardrail medical-content validation (TASK-338 Phase 4b). The consultation
     # tenant is forwarded so guardrail resolves per-tenant provider/model from DB.
@@ -342,7 +374,7 @@ async def generate(
             )
         )
 
-        return GenerateResponse(
+        response = GenerateResponse(
             task_id=task.task_id,
             status="completed",
             content=content,
@@ -356,6 +388,22 @@ async def generate(
             latency_ms=latency_ms,
             finish_reason="stop",
         )
+        # C1-04 (TASK-469): cache the completed generation so a replayed request carrying the
+        # same key returns THIS response instead of re-billing the model (bounded TTL). STRICTLY
+        # best-effort and locally guarded: the model already ran and the task is COMPLETED, so a
+        # cache-write failure (Redis OOM on a large SOAP note, a dropped connection) must NEVER
+        # bubble into the outer ``except`` — that would discard a billed generation, record a
+        # FALSE circuit-breaker failure, flip the task to FAILED, and return a 5xx the harness
+        # retries (re-invoking the model = the very C1-04 double-bill this ticket closes). Swallow
+        # it and return the response; the worst case degrades to "not cached" (documented residual).
+        if cache_key is not None and redis_client is not None:
+            try:
+                await redis_client.set(cache_key, response.model_dump_json(), ex=_IDEMPOTENCY_TTL_S)
+            except Exception as exc:
+                logger.warning(
+                    "generation.idempotency_cache_write_failed", task_id=task.task_id, error=str(exc)
+                )
+        return response
     except TimeoutError:
         latency_ms = int((time.monotonic() - start) * 1000)
         logger.error("generation.timeout_final", task_id=task.task_id, provider=request_body.provider, timeout_s=timeout_s)

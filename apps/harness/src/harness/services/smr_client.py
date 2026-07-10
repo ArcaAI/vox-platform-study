@@ -27,8 +27,10 @@ class SmrServiceError(RuntimeError):
 
     NOT covered by ``after_send`` (still retried, pre-existing / lower risk): an SMR 5xx or
     the LM-Studio ``terminated`` 400 that arrives AFTER the model ran — the governor retries
-    those. Fully closing every post-response re-POST needs an idempotency key SMR honours
-    (apps/smr; TASK-466). A pre-send failure sets ``after_send=False`` (safe to retry).
+    those. TASK-469 adds a deterministic ``Idempotency-Key`` (see ``generate``) that lets SMR
+    dedup a replayed generate — closing the worker-crash re-delivery path; the residual is a
+    5xx after the model ran but before SMR cached the response. A pre-send failure sets
+    ``after_send=False`` (safe to retry).
     """
 
     def __init__(self, message: str, *, after_send: bool = False) -> None:
@@ -95,6 +97,7 @@ class SmrClient:
         top_p: float | None = None,
         response_format: dict[str, Any] | None = None,
         context: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
     ) -> SmrGenerationResult:
         """Generate a completion synchronously and parse the response."""
         url = f"{self._base_url}/api/v1/generate"
@@ -116,11 +119,16 @@ class SmrClient:
         if context is not None:
             body["context"] = context
 
+        # C1-04 (TASK-469): a deterministic key lets SMR dedup a replayed generate (a
+        # worker-crash re-delivery) without re-invoking — and re-billing — the model. Sent
+        # as a header (the api_client Idempotency-Key contract), never in the LLM body.
+        headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
+
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
 
             async def _send() -> httpx.Response:
                 try:
-                    resp = await client.post(url, json=body)
+                    resp = await client.post(url, json=body, headers=headers)
                 except _POST_SEND_ERRORS as exc:
                     # C1-04: the prompt reached SMR (bytes sent) but the response was
                     # lost. The model MAY have run — do NOT let the governor re-POST it.
