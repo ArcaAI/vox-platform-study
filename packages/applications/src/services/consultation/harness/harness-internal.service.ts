@@ -159,6 +159,12 @@ export class HarnessInternalService {
         this.cls.set('tenantId', tenantId);
         this.cls.set('user', createWorkerSession({ userId: dto.userId, tenantId, kind: 'harness-internal' }));
 
+        // 404-over-403: assert consultation ownership before persisting WORM/PHI
+        // NamedEntity rows (a cross-tenant id must not write audit rows) — mirrors
+        // assemble/persistDraft/finalizeAssurance/recordEscalation.
+        const consultation = await this.consultationRepository.findById(consultationId);
+        assertEqualTenants(consultation, { tenantId });
+
         const entityIds: string[] = [];
         for (const entity of dto.entities ?? []) {
           const namedEntity = NamedEntityFactory.CreateNamedEntity({
@@ -656,6 +662,11 @@ export class HarnessInternalService {
       this.cls.run(async () => {
         this.cls.set('tenantId', tenantId);
         this.cls.set('user', createWorkerSession({ userId: dto.userId, tenantId, kind: 'harness-internal' }));
+
+        // 404-over-403: assert consultation ownership before appending the WORM row
+        // (mirrors recordEscalation / persistDraft) — a cross-tenant id must not write.
+        const consultation = await this.consultationRepository.findById(consultationId);
+        assertEqualTenants(consultation, { tenantId });
 
         await this.harnessAuditService.append({
           tenantId,

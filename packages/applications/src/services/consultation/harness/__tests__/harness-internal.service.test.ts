@@ -338,6 +338,21 @@ describe('HarnessInternalService', () => {
             ).rejects.toThrow(BadRequestException);
             expect(namedEntityRepository.create).not.toHaveBeenCalled();
         });
+
+        it('cross-tenant tenantId mismatch → NotFoundException (404-over-403), persists nothing', async () => {
+            // The consultation belongs to tenant-1 (default fixture); the request claims
+            // tenant-OTHER. assertEqualTenants throws NotFoundException (never leaks the
+            // resource's real tenant) and no NamedEntity WORM/PHI row is written.
+            await expect(
+                service.persistEntities('consultation-1', {
+                    tenantId: 'tenant-OTHER',
+                    userId: 'doctor-1',
+                    contextItemId: 'tx-1',
+                    entities: [{ text: 'Metformin', type: 'MEDICATION', startOffset: 5, endOffset: 14, confidence: 0.9 }],
+                } as any),
+            ).rejects.toThrow(NotFoundException);
+            expect(namedEntityRepository.create).not.toHaveBeenCalled();
+        });
     });
 
     // =========================================================================
@@ -1176,6 +1191,15 @@ describe('HarnessInternalService', () => {
             await expect(
                 service.recordGateDecision('consultation-1', { tenantId: '' } as any),
             ).rejects.toThrow(BadRequestException);
+            expect(harnessAuditService.append).not.toHaveBeenCalled();
+        });
+
+        it('cross-tenant tenantId mismatch → NotFoundException (404-over-403), records nothing', async () => {
+            // The consultation belongs to tenant-1 (default fixture); the request claims
+            // tenant-OTHER. assertEqualTenants throws NotFoundException and no WORM row is written.
+            await expect(
+                service.recordGateDecision('consultation-1', { ...gateBody(), tenantId: 'tenant-OTHER' }),
+            ).rejects.toThrow(NotFoundException);
             expect(harnessAuditService.append).not.toHaveBeenCalled();
         });
     });
