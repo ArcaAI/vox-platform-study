@@ -17,6 +17,8 @@ const mockService = {
     recordGateDecision: vi.fn(),
     // TASK-355 Phase D Slice 5d — second phase of optimistic delivery.
     finalizeAssurance: vi.fn(),
+    // TASK-466 (C1-05) — gate SLA-breach escalation record.
+    recordEscalation: vi.fn(),
 };
 
 describe('HarnessInternalController', () => {
@@ -48,17 +50,19 @@ describe('HarnessInternalController', () => {
         expect(skipAuth).toBe(true);
     });
 
-    it('POST entities -> persistEntities(consultationId, dto)', async () => {
+    // TASK-466 (C1-03) — the 4 WORM/draft callbacks forward the Idempotency-Key
+    // header into the service so a retried harness callback dedups.
+    it('POST entities -> persistEntities(consultationId, dto, idempotencyKey)', async () => {
         mockService.persistEntities.mockResolvedValue({ savedCount: 1, entityIds: ['ne-1'] });
         const dto = { tenantId: 't-1', contextItemId: 'tx-1', entities: [{ text: 'X', type: 'CONDITION' }] };
 
-        const result = await controller.persistEntities('consultation-1', dto as any);
+        const result = await controller.persistEntities('consultation-1', dto as any, 'run-1:persist_entities');
 
-        expect(mockService.persistEntities).toHaveBeenCalledWith('consultation-1', dto);
+        expect(mockService.persistEntities).toHaveBeenCalledWith('consultation-1', dto, 'run-1:persist_entities');
         expect(result).toEqual({ savedCount: 1, entityIds: ['ne-1'] });
     });
 
-    it('POST assemble -> assemble(consultationId, dto)', async () => {
+    it('POST assemble -> assemble(consultationId, dto) (no dedup — not a WORM write)', async () => {
         mockService.assemble.mockResolvedValue({ userPrompt: 'p', systemPrompt: 's' });
         const dto = { tenantId: 't-1' };
 
@@ -68,23 +72,43 @@ describe('HarnessInternalController', () => {
         expect(result).toEqual({ userPrompt: 'p', systemPrompt: 's' });
     });
 
-    it('POST draft -> persistDraft(consultationId, dto)', async () => {
+    it('POST draft -> persistDraft(consultationId, dto, idempotencyKey)', async () => {
         mockService.persistDraft.mockResolvedValue({ contextItemId: 'ctx-1' });
         const dto = { tenantId: 't-1', content: 'S: ...' };
 
-        const result = await controller.persistDraft('consultation-1', dto as any);
+        const result = await controller.persistDraft('consultation-1', dto as any, 'run-1:persist_draft');
 
-        expect(mockService.persistDraft).toHaveBeenCalledWith('consultation-1', dto);
+        expect(mockService.persistDraft).toHaveBeenCalledWith('consultation-1', dto, 'run-1:persist_draft');
         expect(result).toEqual({ contextItemId: 'ctx-1' });
     });
 
-    it('POST gate-decision -> recordGateDecision(consultationId, dto)', async () => {
+    it('POST gate-decision -> recordGateDecision(consultationId, dto, idempotencyKey)', async () => {
         mockService.recordGateDecision.mockResolvedValue({ recorded: true });
         const dto = { tenantId: 't-1', decision: 'SIGNED', gateDecision: 'PASS', attestationHash: 'h-1', clinicianId: 'doc-1' };
 
-        const result = await controller.recordGateDecision('consultation-1', dto as any);
+        const result = await controller.recordGateDecision('consultation-1', dto as any, 'run-1:record_gate_decision');
 
-        expect(mockService.recordGateDecision).toHaveBeenCalledWith('consultation-1', dto);
+        expect(mockService.recordGateDecision).toHaveBeenCalledWith('consultation-1', dto, 'run-1:record_gate_decision');
+        expect(result).toEqual({ recorded: true });
+    });
+
+    it('POST entities without the header forwards undefined (dedup no-op)', async () => {
+        mockService.persistEntities.mockResolvedValue({ savedCount: 0, entityIds: [] });
+        const dto = { tenantId: 't-1', contextItemId: 'tx-1', entities: [] };
+
+        await controller.persistEntities('consultation-1', dto as any);
+
+        expect(mockService.persistEntities).toHaveBeenCalledWith('consultation-1', dto, undefined);
+    });
+
+    // TASK-466 (C1-05) — the new escalation route delegates to recordEscalation.
+    it('POST escalation -> recordEscalation(consultationId, dto)', async () => {
+        mockService.recordEscalation.mockResolvedValue({ recorded: true });
+        const dto = { tenantId: 't-1', reason: 'gate_sla_abandoned', jobId: 'harness-doc-1' };
+
+        const result = await controller.recordEscalation('consultation-1', dto as any);
+
+        expect(mockService.recordEscalation).toHaveBeenCalledWith('consultation-1', dto);
         expect(result).toEqual({ recorded: true });
     });
 
@@ -141,13 +165,13 @@ describe('HarnessInternalController', () => {
                 mockAssuranceService as any,
             );
 
-        it('POST assurance -> harnessInternalService.finalizeAssurance(consultationId, dto)', async () => {
+        it('POST assurance -> harnessInternalService.finalizeAssurance(consultationId, dto, idempotencyKey)', async () => {
             mockService.finalizeAssurance.mockResolvedValue({ recorded: true, contextItemId: 'ctx-draft-1' });
             const dto = { tenantId: 't-1', contextItemId: 'ctx-draft-1', gateDecision: 'PASS' };
 
-            const result = await buildController().finalizeAssurance('consultation-1', dto as any);
+            const result = await buildController().finalizeAssurance('consultation-1', dto as any, 'run-1:finalize_assurance');
 
-            expect(mockService.finalizeAssurance).toHaveBeenCalledWith('consultation-1', dto);
+            expect(mockService.finalizeAssurance).toHaveBeenCalledWith('consultation-1', dto, 'run-1:finalize_assurance');
             expect(result).toEqual({ recorded: true, contextItemId: 'ctx-draft-1' });
         });
 

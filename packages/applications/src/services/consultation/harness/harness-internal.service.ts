@@ -19,6 +19,7 @@ import {
 } from '@arcaai/domains';
 import { HarnessAuditService } from '../../harness-audit';
 import { SecretsService } from '../../baseServices/_meta/secrets';
+import { IRedisCacheService } from '../../baseServices/redis';
 import { HarnessAssuranceService } from './harness-assurance.service';
 import { ConfigResolver } from '../../config-resolver';
 import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt-assembly.service';
@@ -31,6 +32,8 @@ import type {
   HarnessAssembleResponse,
   HarnessDraftRequest,
   HarnessDraftResponse,
+  HarnessEscalationRequest,
+  HarnessEscalationResponse,
   HarnessFinalizeAssuranceRequest,
   HarnessFinalizeAssuranceResponse,
   HarnessGateDecisionRequest,
@@ -59,6 +62,12 @@ export class HarnessInternalService {
   // preSummaryIds provenance (exact pre-Phase-C behavior); enable for the doc-07
   // §3 cold-vs-warm A/B. Cached at construction, matching live-documentation/ocr.
   private readonly warmStartEnabled: boolean;
+
+  // TASK-466 (C1-03) — Idempotency-Key dedup namespace + TTL for the WORM/draft
+  // callbacks. The key value is the harness `{run_id}:{activity_id}` (globally
+  // unique); the Redis key additionally namespaces by operation + tenantId.
+  private readonly IDEMPOTENCY_KEY_PREFIX = 'idempotency:harness:';
+  private readonly IDEMPOTENCY_TTL = 86400; // 24 hours
 
   constructor(
     private readonly contextItemRepository: ContextItemRepository,
@@ -106,6 +115,14 @@ export class HarnessInternalService {
     // it via CoreDatabaseModule. Absent ⇒ these PHI fields are left unpersisted
     // (Phase 6 dropped the plaintext columns); SECRETS_PROVIDER=vault is fail-closed.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-466 (C1-03) — Idempotency-Key dedup for the WORM/draft callbacks. The
+    // durable harness workflow re-invokes these on each Temporal activity retry;
+    // dedup keyed on the harness `Idempotency-Key` (`{run_id}:{activity_id}`) makes
+    // the re-append a no-op that replays the prior response. Optional + trailing so
+    // existing positional unit fixtures keep their arity; production DI supplies it
+    // via RedisCacheModule. Absent (or a Redis hiccup) ⇒ best-effort fall-through to
+    // normal processing (mirrors TASK-299 D-10).
+    @Optional() @Inject(IRedisCacheService) private readonly redisCache?: IRedisCacheService,
   ) {
     const raw = String(this.configService?.get('HARNESS_WARM_START_ENABLED') ?? '')
       .trim()
@@ -127,41 +144,45 @@ export class HarnessInternalService {
   /**
    * Persist NamedEntity rows (text/type/char-offsets from NLP) for a consultation.
    */
-  async persistEntities(consultationId: string, dto: HarnessPersistEntitiesRequest): Promise<HarnessPersistEntitiesResponse> {
+  async persistEntities(
+    consultationId: string,
+    dto: HarnessPersistEntitiesRequest,
+    idempotencyKey?: string,
+  ): Promise<HarnessPersistEntitiesResponse> {
     const tenantId = dto.tenantId;
     if (!tenantId) {
       throw new BadRequestException('tenantId is required');
     }
 
-    return this.cls.run(async () => {
-      this.cls.set('tenantId', tenantId);
-      this.cls.set('user', createWorkerSession({ userId: dto.userId, tenantId, kind: 'harness-internal' }));
+    return this.withHarnessIdempotency('persistEntities', tenantId, idempotencyKey, () =>
+      this.cls.run(async () => {
+        this.cls.set('tenantId', tenantId);
+        this.cls.set('user', createWorkerSession({ userId: dto.userId, tenantId, kind: 'harness-internal' }));
 
-      const entityIds: string[] = [];
-      for (const entity of dto.entities ?? []) {
-        const namedEntity = NamedEntityFactory.CreateNamedEntity({
-          tenantId,
-          contextItemId: dto.contextItemId,
-          text: entity.text,
-          className: entity.type,
-          normalizedText: entity.normalizedText,
-          startOffset: entity.startOffset,
-          endOffset: entity.endOffset,
-          confidence: entity.confidence,
-          transcriptContextItemId: entity.transcriptContextItemId,
-          transcriptStartOffset: entity.transcriptStartOffset,
-          transcriptEndOffset: entity.transcriptEndOffset,
-        });
-        await this.encryptBestEffort('NamedEntity', () =>
-          this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!),
-        );
-        const saved = await this.namedEntityRepository.create(namedEntity);
-        entityIds.push(saved?.id ?? namedEntity.id);
-      }
+        const entityIds: string[] = [];
+        for (const entity of dto.entities ?? []) {
+          const namedEntity = NamedEntityFactory.CreateNamedEntity({
+            tenantId,
+            contextItemId: dto.contextItemId,
+            text: entity.text,
+            className: entity.type,
+            normalizedText: entity.normalizedText,
+            startOffset: entity.startOffset,
+            endOffset: entity.endOffset,
+            confidence: entity.confidence,
+            transcriptContextItemId: entity.transcriptContextItemId,
+            transcriptStartOffset: entity.transcriptStartOffset,
+            transcriptEndOffset: entity.transcriptEndOffset,
+          });
+          await this.encryptBestEffort('NamedEntity', () => this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!));
+          const saved = await this.namedEntityRepository.create(namedEntity);
+          entityIds.push(saved?.id ?? namedEntity.id);
+        }
 
-      this.logger.log({ message: 'Harness entities persisted', consultationId, savedCount: entityIds.length });
-      return { savedCount: entityIds.length, entityIds };
-    });
+        this.logger.log({ message: 'Harness entities persisted', consultationId, savedCount: entityIds.length });
+        return { savedCount: entityIds.length, entityIds };
+      }),
+    );
   }
 
   /**
@@ -199,12 +220,8 @@ export class HarnessInternalService {
       ]);
 
       const clinicianNotes = [
-        ...caseNotes
-          .filter((n) => n.content?.trim())
-          .map((n) => `[case note] ${n.content!.trim()}`),
-        ...workNotes
-          .filter((n) => n.content?.trim())
-          .map((n) => `[work note] ${n.content!.trim()}`),
+        ...caseNotes.filter((n) => n.content?.trim()).map((n) => `[case note] ${n.content!.trim()}`),
+        ...workNotes.filter((n) => n.content?.trim()).map((n) => `[work note] ${n.content!.trim()}`),
       ];
       const attachments = attachmentItems
         .map((a) => {
@@ -223,9 +240,7 @@ export class HarnessInternalService {
       // excluded by the repository's resourceStatus filter. A SEPARATE aggregate
       // from NamedEntity, so manual marks never pollute the NER aggregation.
       const highlightEntities = this.highlightRepository ? await this.highlightRepository.findByConsultation(consultationId) : [];
-      const highlights = highlightEntities
-        .filter((h) => h.exact?.trim())
-        .map((h) => `[highlight] ${h.exact.trim()}`);
+      const highlights = highlightEntities.filter((h) => h.exact?.trim()).map((h) => `[highlight] ${h.exact.trim()}`);
 
       // TASK-355 Phase C (R-6) — warm-start `generate` from the live SOAP
       // snapshot instead of cold-generating: inject the running SOAP note as
@@ -300,112 +315,237 @@ export class HarnessInternalService {
    *     guard treats legacy drafts as assured), status flips straight to
    *     PENDING_REVIEW, and GENERATE + SENSOR_RUN (+ REDUCED_ASSURANCE) are written.
    */
-  async persistDraft(consultationId: string, dto: HarnessDraftRequest): Promise<HarnessDraftResponse> {
+  async persistDraft(consultationId: string, dto: HarnessDraftRequest, idempotencyKey?: string): Promise<HarnessDraftResponse> {
     const tenantId = dto.tenantId;
     if (!tenantId) {
       throw new BadRequestException('tenantId is required');
     }
 
-    return this.cls.run(async () => {
-      this.cls.set('tenantId', tenantId);
-      this.cls.set('user', createWorkerSession({ userId: dto.userId, tenantId, kind: 'harness-internal' }));
+    return this.withHarnessIdempotency('persistDraft', tenantId, idempotencyKey, () =>
+      this.cls.run(async () => {
+        this.cls.set('tenantId', tenantId);
+        this.cls.set('user', createWorkerSession({ userId: dto.userId, tenantId, kind: 'harness-internal' }));
 
-      const userId = dto.userId ?? 'system';
-      // Phase D delivery discriminator. Default (absent) == legacy single-shot.
-      const isEarly = dto.phase === HARNESS_DRAFT_PHASE.EARLY;
-      const consultation = await this.consultationRepository.findById(consultationId);
-      assertEqualTenants(consultation, { tenantId });
+        const userId = dto.userId ?? 'system';
+        // Phase D delivery discriminator. Default (absent) == legacy single-shot.
+        const isEarly = dto.phase === HARNESS_DRAFT_PHASE.EARLY;
+        const consultation = await this.consultationRepository.findById(consultationId);
+        assertEqualTenants(consultation, { tenantId });
 
-      // 1. RAW_SUMMARY context item for the generated note.
-      const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, dto.content, dto.dnaStyleId, userId);
-      // TASK-356 Phase 6 (S4) — pin the AI draft to v1 so the `ai_draft_v1`
-      // snapshot below IS version 1 and the doctor's first edit becomes v2.
-      contextItem.currentVersionNumber = 1;
-      const savedContext = await this.contextItemRepository.create(contextItem);
-      const contextItemId = savedContext?.id ?? contextItem.id;
+        // 1. RAW_SUMMARY context item for the generated note.
+        const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, dto.content, dto.dnaStyleId, userId);
+        // TASK-356 Phase 6 (S4) — pin the AI draft to v1 so the `ai_draft_v1`
+        // snapshot below IS version 1 and the doctor's first edit becomes v2.
+        contextItem.currentVersionNumber = 1;
+        const savedContext = await this.contextItemRepository.create(contextItem);
+        const contextItemId = savedContext?.id ?? contextItem.id;
 
-      // TASK-356 Phase 6 (S4) — capture the immutable AI-draft `v1` snapshot at
-      // this (harness/optimistic) generation boundary too, so the DNA
-      // edit-capture corpus is populated regardless of which path generated the
-      // draft. Best-effort: a snapshot failure must never roll back the draft.
-      await this.captureAiDraftSnapshot(savedContext ?? contextItem);
+        // TASK-356 Phase 6 (S4) — capture the immutable AI-draft `v1` snapshot at
+        // this (harness/optimistic) generation boundary too, so the DNA
+        // edit-capture corpus is populated regardless of which path generated the
+        // draft. Best-effort: a snapshot failure must never roll back the draft.
+        await this.captureAiDraftSnapshot(savedContext ?? contextItem);
 
-      // 2. SummaryMeta — sensor score columns + full sensor detail + citation map.
-      // TASK-355 Phase C (R-6) — record warm-start provenance. The consumed
-      // snapshot id can't be threaded assemble->generate->persist_draft (no
-      // Temporal workflow change), so re-resolve the same frozen LIVE_SOAP_SNAPSHOT
-      // row via the shared helper (deterministic post-stop) and write its id.
-      // Gated behind the kill-switch (default OFF): when disabled we skip the
-      // lookup and record empty provenance (exact pre-Phase-C behavior).
-      const liveSnapshot = this.warmStartEnabled ? await this.loadLiveSoapSnapshot(consultationId) : null;
-      // EARLY: withhold the inferential scores + verdict + assurance marker (they
-      // don't exist yet — finalizeAssurance backfills them). LEGACY: full meta +
-      // `assuranceCompletedAt` stamped now so the sign-off guard treats the
-      // single-shot draft as already assured.
-      const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({
-        tenantId,
-        contextItemId,
-        modelName: dto.modelName ?? null,
-        promptVersion: dto.promptVersion ?? null,
-        entityFaithfulnessScore: dto.entityFaithfulnessScore ?? null,
-        coverageScore: dto.coverageScore ?? null,
-        ragTriadScore: isEarly ? null : (dto.ragTriadScore ?? null),
-        citationsMap: (isEarly ? null : (dto.citationsMap ?? null)) as never,
-        guardrailDecisions: (isEarly ? null : (dto.guardrailDecisions ?? null)) as never,
-        gateDecision: isEarly ? null : (dto.gateDecision ?? null),
-        assuranceCompletedAt: isEarly ? null : new Date(),
-        preSummaryIds: liveSnapshot ? [liveSnapshot.id] : [],
-        generatedAt: new Date(),
-      });
-      await this.encryptBestEffort('SummaryMeta', () =>
-        this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!),
-      );
-      await this.summaryMetaRepository.create(summaryMeta);
+        // 2. SummaryMeta — sensor score columns + full sensor detail + citation map.
+        // TASK-355 Phase C (R-6) — record warm-start provenance. The consumed
+        // snapshot id can't be threaded assemble->generate->persist_draft (no
+        // Temporal workflow change), so re-resolve the same frozen LIVE_SOAP_SNAPSHOT
+        // row via the shared helper (deterministic post-stop) and write its id.
+        // Gated behind the kill-switch (default OFF): when disabled we skip the
+        // lookup and record empty provenance (exact pre-Phase-C behavior).
+        const liveSnapshot = this.warmStartEnabled ? await this.loadLiveSoapSnapshot(consultationId) : null;
+        // EARLY: withhold the inferential scores + verdict + assurance marker (they
+        // don't exist yet — finalizeAssurance backfills them). LEGACY: full meta +
+        // `assuranceCompletedAt` stamped now so the sign-off guard treats the
+        // single-shot draft as already assured.
+        const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({
+          tenantId,
+          contextItemId,
+          modelName: dto.modelName ?? null,
+          promptVersion: dto.promptVersion ?? null,
+          entityFaithfulnessScore: dto.entityFaithfulnessScore ?? null,
+          coverageScore: dto.coverageScore ?? null,
+          ragTriadScore: isEarly ? null : (dto.ragTriadScore ?? null),
+          citationsMap: (isEarly ? null : (dto.citationsMap ?? null)) as never,
+          guardrailDecisions: (isEarly ? null : (dto.guardrailDecisions ?? null)) as never,
+          gateDecision: isEarly ? null : (dto.gateDecision ?? null),
+          assuranceCompletedAt: isEarly ? null : new Date(),
+          preSummaryIds: liveSnapshot ? [liveSnapshot.id] : [],
+          generatedAt: new Date(),
+        });
+        await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
+        await this.summaryMetaRepository.create(summaryMeta);
 
-      // 3. Lifecycle. EARLY -> DRAFT_PENDING_SENSORS (readable, assurance pending,
-      // NOT signable). LEGACY -> PENDING_REVIEW (clinician confirm-before-commit).
-      if (consultation) {
-        consultation.status = isEarly ? ConsultationStatus.DRAFT_PENDING_SENSORS : ConsultationStatus.PENDING_REVIEW;
-        consultation.updatedBy = userId;
-        await this.consultationRepository.update(consultation.id, consultation);
-      }
-
-      // 4. SSE progress (best-effort — a Redis hiccup must not lose the draft).
-      if (dto.jobId) {
-        try {
-          await this.jobService?.notifyProgress(
-            dto.jobId,
-            isEarly ? 90 : 100,
-            isEarly ? 'Draft ready — verifying safety' : 'Draft ready for review',
-          );
-        } catch (error) {
-          this.logger.warn({
-            message: 'Harness draft SSE progress notify failed (best-effort)',
-            jobId: dto.jobId,
-            error: error instanceof Error ? error.message : String(error),
-          });
+        // 3. Lifecycle. EARLY -> DRAFT_PENDING_SENSORS (readable, assurance pending,
+        // NOT signable). LEGACY -> PENDING_REVIEW (clinician confirm-before-commit).
+        if (consultation) {
+          consultation.status = isEarly ? ConsultationStatus.DRAFT_PENDING_SENSORS : ConsultationStatus.PENDING_REVIEW;
+          consultation.updatedBy = userId;
+          await this.consultationRepository.update(consultation.id, consultation);
         }
-      }
 
-      // 5. WORM audit trail. GENERATE (provenance) is written in BOTH phases.
-      // SENSOR_RUN (the verdict, carrying sensorScores + guardrailDecisions) and
-      // REDUCED_ASSURANCE are written only when a verdict EXISTS — the legacy
-      // single-shot path here, or `finalizeAssurance()` in Phase D. Early delivery
-      // emits NO SENSOR_RUN (WORM truthfulness: a gate decision is recorded only
-      // once it has been computed).
-      await this.harnessAuditService.append({
-        tenantId,
-        consultationId,
-        action: HarnessAuditAction.GENERATE,
-        modelName: dto.modelName ?? 'unknown',
-        modelVersion: dto.modelVersion ?? 'unknown',
-        promptTemplateId: dto.promptTemplateId ?? null,
-        promptVersion: dto.promptVersion ?? null,
-        sensorScores: {},
-        citations: [],
-        createdBy: userId,
-      });
-      if (!isEarly) {
+        // 4. SSE progress (best-effort — a Redis hiccup must not lose the draft).
+        if (dto.jobId) {
+          try {
+            await this.jobService?.notifyProgress(
+              dto.jobId,
+              isEarly ? 90 : 100,
+              isEarly ? 'Draft ready — verifying safety' : 'Draft ready for review',
+            );
+          } catch (error) {
+            this.logger.warn({
+              message: 'Harness draft SSE progress notify failed (best-effort)',
+              jobId: dto.jobId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
+        // 5. WORM audit trail. GENERATE (provenance) is written in BOTH phases.
+        // SENSOR_RUN (the verdict, carrying sensorScores + guardrailDecisions) and
+        // REDUCED_ASSURANCE are written only when a verdict EXISTS — the legacy
+        // single-shot path here, or `finalizeAssurance()` in Phase D. Early delivery
+        // emits NO SENSOR_RUN (WORM truthfulness: a gate decision is recorded only
+        // once it has been computed).
+        await this.harnessAuditService.append({
+          tenantId,
+          consultationId,
+          action: HarnessAuditAction.GENERATE,
+          modelName: dto.modelName ?? 'unknown',
+          modelVersion: dto.modelVersion ?? 'unknown',
+          promptTemplateId: dto.promptTemplateId ?? null,
+          promptVersion: dto.promptVersion ?? null,
+          sensorScores: {},
+          citations: [],
+          createdBy: userId,
+        });
+        if (!isEarly) {
+          const sensorScoresAudit = {
+            ...((dto.sensorScores ?? {}) as Record<string, unknown>),
+            guardrailDecisions: dto.guardrailDecisions ?? null,
+          };
+          await this.harnessAuditService.append({
+            tenantId,
+            consultationId,
+            action: HarnessAuditAction.SENSOR_RUN,
+            modelName: dto.modelName ?? 'unknown',
+            modelVersion: dto.modelVersion ?? 'unknown',
+            promptTemplateId: dto.promptTemplateId ?? null,
+            promptVersion: dto.promptVersion ?? null,
+            sensorScores: sensorScoresAudit as never,
+            citations: (this.extractClaims(dto.citationsMap) ?? []) as never,
+            gateDecision: dto.gateDecision ?? null,
+            createdBy: userId,
+          });
+          if (dto.reducedAssurance) {
+            await this.harnessAuditService.append({
+              tenantId,
+              consultationId,
+              action: HarnessAuditAction.REDUCED_ASSURANCE,
+              modelName: dto.modelName ?? 'unknown',
+              modelVersion: dto.modelVersion ?? 'unknown',
+              promptTemplateId: dto.promptTemplateId ?? null,
+              promptVersion: dto.promptVersion ?? null,
+              sensorScores: sensorScoresAudit as never,
+              citations: [],
+              gateDecision: dto.gateDecision ?? null,
+              createdBy: userId,
+            });
+          }
+        }
+
+        this.logger.log({
+          message: isEarly ? 'Harness early draft persisted (assurance pending)' : 'Harness draft persisted',
+          consultationId,
+          contextItemId,
+          gateDecision: isEarly ? null : (dto.gateDecision ?? null),
+        });
+        return { contextItemId };
+      }),
+    );
+  }
+
+  /**
+   * TASK-355 Phase D — second phase of optimistic delivery. The inferential
+   * assurance pass has finished, so backfill the early-persisted SummaryMeta with
+   * the inferential scores + gate verdict, stamp `assuranceCompletedAt`, flip the
+   * consultation `DRAFT_PENDING_SENSORS → PENDING_REVIEW`, and record the
+   * SENSOR_RUN (+ REDUCED_ASSURANCE) WORM audit — the verdict that early
+   * `persistDraft()` deliberately withheld. Fail-closed: a missing early-persisted
+   * SummaryMeta is a contract violation (no draft to finalize) and aborts.
+   *
+   * Idempotent on the lifecycle flip (only DRAFT_PENDING_SENSORS advances), so a
+   * Temporal activity retry re-stamps the same verdict without regressing state.
+   */
+  async finalizeAssurance(
+    consultationId: string,
+    dto: HarnessFinalizeAssuranceRequest,
+    idempotencyKey?: string,
+  ): Promise<HarnessFinalizeAssuranceResponse> {
+    const tenantId = dto.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('tenantId is required');
+    }
+    if (!dto.contextItemId) {
+      throw new BadRequestException('contextItemId is required');
+    }
+
+    return this.withHarnessIdempotency('finalizeAssurance', tenantId, idempotencyKey, () =>
+      this.cls.run(async () => {
+        this.cls.set('tenantId', tenantId);
+        this.cls.set('user', createWorkerSession({ userId: dto.userId, tenantId, kind: 'harness-internal' }));
+
+        const userId = dto.userId ?? 'system';
+        const consultation = await this.consultationRepository.findById(consultationId);
+        assertEqualTenants(consultation, { tenantId });
+
+        // TASK-355 Phase D (Q2b) — did the clinician early-sign (Q2a) before this
+        // verdict landed? If so the note is already immutable and STANDS; a late
+        // adverse verdict is recorded as POST_SIGN_FLAG (below), never regressing it.
+        const alreadySigned = consultation?.status === ConsultationStatus.SIGNED;
+
+        // 1. Backfill the early-persisted SummaryMeta with the inferential verdict.
+        // Fail-closed: no meta ⇒ no early draft to finalize (contract violation).
+        const meta = await this.summaryMetaRepository.findByContextItem(dto.contextItemId);
+        if (!meta) {
+          throw new BadRequestException(
+            `No draft SummaryMeta for contextItem ${dto.contextItemId} — finalizeAssurance requires a prior early persist`,
+          );
+        }
+        meta.ragTriadScore = dto.ragTriadScore ?? null;
+        meta.citationsMap = (dto.citationsMap ?? null) as never;
+        meta.guardrailDecisions = (dto.guardrailDecisions ?? null) as never;
+        meta.gateDecision = dto.gateDecision ?? null;
+        meta.assuranceCompletedAt = new Date();
+        // TASK-369 Phase 3C — the EARLY persist wrote these JSONB blobs as NULL
+        // (verdict withheld); this finalize is where citationsMap/guardrailDecisions
+        // actually get their values, so re-encrypt here (after the backfill, before
+        // the update) to keep the ciphertext columns in sync with the plaintext.
+        await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(meta, this.secretsService!));
+        await this.summaryMetaRepository.update(meta.id, meta);
+
+        // 2. Lifecycle DRAFT_PENDING_SENSORS -> PENDING_REVIEW (idempotent — a retry
+        // after the flip is a no-op, never regressing a signed/closed consultation).
+        if (consultation && consultation.status === ConsultationStatus.DRAFT_PENDING_SENSORS) {
+          consultation.status = ConsultationStatus.PENDING_REVIEW;
+          consultation.updatedBy = userId;
+          await this.consultationRepository.update(consultation.id, consultation);
+        }
+
+        // 3. SSE progress (best-effort — a Redis hiccup must not lose the verdict).
+        if (dto.jobId) {
+          try {
+            await this.jobService?.notifyProgress(dto.jobId, 100, 'Assurance complete');
+          } catch (error) {
+            this.logger.warn({
+              message: 'Harness finalizeAssurance SSE progress notify failed (best-effort)',
+              jobId: dto.jobId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
+        // 4. WORM — SENSOR_RUN (the deferred verdict) + REDUCED_ASSURANCE.
         const sensorScoresAudit = {
           ...((dto.sensorScores ?? {}) as Record<string, unknown>),
           guardrailDecisions: dto.guardrailDecisions ?? null,
@@ -438,191 +578,66 @@ export class HarnessInternalService {
             createdBy: userId,
           });
         }
-      }
 
-      this.logger.log({
-        message: isEarly ? 'Harness early draft persisted (assurance pending)' : 'Harness draft persisted',
-        consultationId,
-        contextItemId,
-        gateDecision: isEarly ? null : (dto.gateDecision ?? null),
-      });
-      return { contextItemId };
-    });
-  }
+        // 4b. TASK-355 Phase D (Q2b) — a late ADVERSE verdict (FLAG/REGEN) for a
+        // note the clinician already early-signed. The signed note is immutable and
+        // STANDS — never regressed (step 2's flip is skipped for SIGNED) — but we
+        // append a POST_SIGN_FLAG WORM annotation so the amendment/follow-up path
+        // (and the assurance SSE terminal event, Slice 5d) can surface an alert.
+        const lateAdverseVerdict = dto.gateDecision === 'FLAG' || dto.gateDecision === 'REGEN';
+        if (alreadySigned && lateAdverseVerdict) {
+          await this.harnessAuditService.append({
+            tenantId,
+            consultationId,
+            action: HarnessAuditAction.POST_SIGN_FLAG,
+            modelName: dto.modelName ?? 'unknown',
+            modelVersion: dto.modelVersion ?? 'unknown',
+            promptTemplateId: dto.promptTemplateId ?? null,
+            promptVersion: dto.promptVersion ?? null,
+            sensorScores: sensorScoresAudit as never,
+            citations: (this.extractClaims(dto.citationsMap) ?? []) as never,
+            gateDecision: dto.gateDecision ?? null,
+            createdBy: userId,
+          });
+          this.logger.warn({
+            message: 'Harness assurance returned an adverse verdict AFTER an early sign — POST_SIGN_FLAG recorded for amendment/follow-up',
+            consultationId,
+            contextItemId: dto.contextItemId,
+            gateDecision: dto.gateDecision ?? null,
+          });
+        }
 
-  /**
-   * TASK-355 Phase D — second phase of optimistic delivery. The inferential
-   * assurance pass has finished, so backfill the early-persisted SummaryMeta with
-   * the inferential scores + gate verdict, stamp `assuranceCompletedAt`, flip the
-   * consultation `DRAFT_PENDING_SENSORS → PENDING_REVIEW`, and record the
-   * SENSOR_RUN (+ REDUCED_ASSURANCE) WORM audit — the verdict that early
-   * `persistDraft()` deliberately withheld. Fail-closed: a missing early-persisted
-   * SummaryMeta is a contract violation (no draft to finalize) and aborts.
-   *
-   * Idempotent on the lifecycle flip (only DRAFT_PENDING_SENSORS advances), so a
-   * Temporal activity retry re-stamps the same verdict without regressing state.
-   */
-  async finalizeAssurance(
-    consultationId: string,
-    dto: HarnessFinalizeAssuranceRequest,
-  ): Promise<HarnessFinalizeAssuranceResponse> {
-    const tenantId = dto.tenantId;
-    if (!tenantId) {
-      throw new BadRequestException('tenantId is required');
-    }
-    if (!dto.contextItemId) {
-      throw new BadRequestException('contextItemId is required');
-    }
-
-    return this.cls.run(async () => {
-      this.cls.set('tenantId', tenantId);
-      this.cls.set('user', createWorkerSession({ userId: dto.userId, tenantId, kind: 'harness-internal' }));
-
-      const userId = dto.userId ?? 'system';
-      const consultation = await this.consultationRepository.findById(consultationId);
-      assertEqualTenants(consultation, { tenantId });
-
-      // TASK-355 Phase D (Q2b) — did the clinician early-sign (Q2a) before this
-      // verdict landed? If so the note is already immutable and STANDS; a late
-      // adverse verdict is recorded as POST_SIGN_FLAG (below), never regressing it.
-      const alreadySigned = consultation?.status === ConsultationStatus.SIGNED;
-
-      // 1. Backfill the early-persisted SummaryMeta with the inferential verdict.
-      // Fail-closed: no meta ⇒ no early draft to finalize (contract violation).
-      const meta = await this.summaryMetaRepository.findByContextItem(dto.contextItemId);
-      if (!meta) {
-        throw new BadRequestException(
-          `No draft SummaryMeta for contextItem ${dto.contextItemId} — finalizeAssurance requires a prior early persist`,
-        );
-      }
-      meta.ragTriadScore = dto.ragTriadScore ?? null;
-      meta.citationsMap = (dto.citationsMap ?? null) as never;
-      meta.guardrailDecisions = (dto.guardrailDecisions ?? null) as never;
-      meta.gateDecision = dto.gateDecision ?? null;
-      meta.assuranceCompletedAt = new Date();
-      // TASK-369 Phase 3C — the EARLY persist wrote these JSONB blobs as NULL
-      // (verdict withheld); this finalize is where citationsMap/guardrailDecisions
-      // actually get their values, so re-encrypt here (after the backfill, before
-      // the update) to keep the ciphertext columns in sync with the plaintext.
-      await this.encryptBestEffort('SummaryMeta', () =>
-        this.summaryMetaRepository.encryptFieldsIntoEntity(meta, this.secretsService!),
-      );
-      await this.summaryMetaRepository.update(meta.id, meta);
-
-      // 2. Lifecycle DRAFT_PENDING_SENSORS -> PENDING_REVIEW (idempotent — a retry
-      // after the flip is a no-op, never regressing a signed/closed consultation).
-      if (consultation && consultation.status === ConsultationStatus.DRAFT_PENDING_SENSORS) {
-        consultation.status = ConsultationStatus.PENDING_REVIEW;
-        consultation.updatedBy = userId;
-        await this.consultationRepository.update(consultation.id, consultation);
-      }
-
-      // 3. SSE progress (best-effort — a Redis hiccup must not lose the verdict).
-      if (dto.jobId) {
+        // 5. TASK-355 Phase D Slice 5d — close the live assurance SSE feed with the
+        // terminal `assurance_complete` (aggregate verdict + safetyFlag + postSignAlert)
+        // so the browser can stop the spinner, enable sign-off, or raise the Q2b
+        // amendment alert. Best-effort: the service swallows Redis errors, but guard
+        // anyway so an unexpected throw can never undo the durable finalize above.
         try {
-          await this.jobService?.notifyProgress(dto.jobId, 100, 'Assurance complete');
+          await this.assuranceService?.publishComplete(consultationId, {
+            tenantId,
+            jobId: dto.jobId,
+            gateDecision: dto.gateDecision ?? null,
+            safetyFlag: HarnessInternalService.hasSafetyFlag(dto.guardrailDecisions),
+            reducedAssurance: !!dto.reducedAssurance,
+            postSignAlert: alreadySigned && lateAdverseVerdict,
+          });
         } catch (error) {
           this.logger.warn({
-            message: 'Harness finalizeAssurance SSE progress notify failed (best-effort)',
-            jobId: dto.jobId,
+            message: 'Harness finalizeAssurance terminal SSE publish failed (best-effort)',
+            consultationId,
             error: error instanceof Error ? error.message : String(error),
           });
         }
-      }
 
-      // 4. WORM — SENSOR_RUN (the deferred verdict) + REDUCED_ASSURANCE.
-      const sensorScoresAudit = {
-        ...((dto.sensorScores ?? {}) as Record<string, unknown>),
-        guardrailDecisions: dto.guardrailDecisions ?? null,
-      };
-      await this.harnessAuditService.append({
-        tenantId,
-        consultationId,
-        action: HarnessAuditAction.SENSOR_RUN,
-        modelName: dto.modelName ?? 'unknown',
-        modelVersion: dto.modelVersion ?? 'unknown',
-        promptTemplateId: dto.promptTemplateId ?? null,
-        promptVersion: dto.promptVersion ?? null,
-        sensorScores: sensorScoresAudit as never,
-        citations: (this.extractClaims(dto.citationsMap) ?? []) as never,
-        gateDecision: dto.gateDecision ?? null,
-        createdBy: userId,
-      });
-      if (dto.reducedAssurance) {
-        await this.harnessAuditService.append({
-          tenantId,
-          consultationId,
-          action: HarnessAuditAction.REDUCED_ASSURANCE,
-          modelName: dto.modelName ?? 'unknown',
-          modelVersion: dto.modelVersion ?? 'unknown',
-          promptTemplateId: dto.promptTemplateId ?? null,
-          promptVersion: dto.promptVersion ?? null,
-          sensorScores: sensorScoresAudit as never,
-          citations: [],
-          gateDecision: dto.gateDecision ?? null,
-          createdBy: userId,
-        });
-      }
-
-      // 4b. TASK-355 Phase D (Q2b) — a late ADVERSE verdict (FLAG/REGEN) for a
-      // note the clinician already early-signed. The signed note is immutable and
-      // STANDS — never regressed (step 2's flip is skipped for SIGNED) — but we
-      // append a POST_SIGN_FLAG WORM annotation so the amendment/follow-up path
-      // (and the assurance SSE terminal event, Slice 5d) can surface an alert.
-      const lateAdverseVerdict = dto.gateDecision === 'FLAG' || dto.gateDecision === 'REGEN';
-      if (alreadySigned && lateAdverseVerdict) {
-        await this.harnessAuditService.append({
-          tenantId,
-          consultationId,
-          action: HarnessAuditAction.POST_SIGN_FLAG,
-          modelName: dto.modelName ?? 'unknown',
-          modelVersion: dto.modelVersion ?? 'unknown',
-          promptTemplateId: dto.promptTemplateId ?? null,
-          promptVersion: dto.promptVersion ?? null,
-          sensorScores: sensorScoresAudit as never,
-          citations: (this.extractClaims(dto.citationsMap) ?? []) as never,
-          gateDecision: dto.gateDecision ?? null,
-          createdBy: userId,
-        });
-        this.logger.warn({
-          message:
-            'Harness assurance returned an adverse verdict AFTER an early sign — POST_SIGN_FLAG recorded for amendment/follow-up',
+        this.logger.log({
+          message: 'Harness assurance finalized',
           consultationId,
           contextItemId: dto.contextItemId,
           gateDecision: dto.gateDecision ?? null,
         });
-      }
-
-      // 5. TASK-355 Phase D Slice 5d — close the live assurance SSE feed with the
-      // terminal `assurance_complete` (aggregate verdict + safetyFlag + postSignAlert)
-      // so the browser can stop the spinner, enable sign-off, or raise the Q2b
-      // amendment alert. Best-effort: the service swallows Redis errors, but guard
-      // anyway so an unexpected throw can never undo the durable finalize above.
-      try {
-        await this.assuranceService?.publishComplete(consultationId, {
-          tenantId,
-          jobId: dto.jobId,
-          gateDecision: dto.gateDecision ?? null,
-          safetyFlag: HarnessInternalService.hasSafetyFlag(dto.guardrailDecisions),
-          reducedAssurance: !!dto.reducedAssurance,
-          postSignAlert: alreadySigned && lateAdverseVerdict,
-        });
-      } catch (error) {
-        this.logger.warn({
-          message: 'Harness finalizeAssurance terminal SSE publish failed (best-effort)',
-          consultationId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-
-      this.logger.log({
-        message: 'Harness assurance finalized',
-        consultationId,
-        contextItemId: dto.contextItemId,
-        gateDecision: dto.gateDecision ?? null,
-      });
-      return { recorded: true, contextItemId: dto.contextItemId };
-    });
+        return { recorded: true, contextItemId: dto.contextItemId };
+      }),
+    );
   }
 
   /**
@@ -631,7 +646,49 @@ export class HarnessInternalService {
    * (the system-of-record); this closes the loop's audit trail with the gate
    * outcome. Re-establishes CLS from the body `tenantId` like the other handlers.
    */
-  async recordGateDecision(consultationId: string, dto: HarnessGateDecisionRequest): Promise<HarnessGateDecisionResponse> {
+  async recordGateDecision(consultationId: string, dto: HarnessGateDecisionRequest, idempotencyKey?: string): Promise<HarnessGateDecisionResponse> {
+    const tenantId = dto.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('tenantId is required');
+    }
+
+    return this.withHarnessIdempotency('recordGateDecision', tenantId, idempotencyKey, () =>
+      this.cls.run(async () => {
+        this.cls.set('tenantId', tenantId);
+        this.cls.set('user', createWorkerSession({ userId: dto.userId, tenantId, kind: 'harness-internal' }));
+
+        await this.harnessAuditService.append({
+          tenantId,
+          consultationId,
+          action: HarnessAuditAction.GATE_DECISION,
+          modelName: 'harness-gate',
+          modelVersion: 'v1',
+          sensorScores: {},
+          citations: [],
+          gateDecision: dto.gateDecision ?? null,
+          contextItemVersionId: dto.contextItemVersionId ?? null,
+          attestationHash: dto.attestationHash ?? null,
+          clinicianId: dto.clinicianId ?? null,
+          createdBy: dto.userId ?? dto.clinicianId ?? null,
+        });
+
+        this.logger.log({ message: 'Harness gate decision recorded', consultationId, decision: dto.decision, gateDecision: dto.gateDecision });
+        return { recorded: true };
+      }),
+    );
+  }
+
+  /**
+   * TASK-466 (C1-05) — record a harness gate SLA-breach escalation as an
+   * append-only WORM audit event. The durable workflow's `escalate_gate` activity
+   * POSTs this when an un-signed gate passes its SLA; the `reason` encodes
+   * terminal-ness (`gate_sla_abandoned` = the terminal escalation before the gate
+   * abandons, C1-02) and maps to GATE_ABANDONED, else GATE_ESCALATED. Re-establishes
+   * CLS from the body `tenantId` (like the other handlers) and enforces the
+   * 404-over-403 tenancy posture: a cross-tenant consultation surfaces as
+   * NotFoundException, never leaking that it exists under another tenant.
+   */
+  async recordEscalation(consultationId: string, dto: HarnessEscalationRequest): Promise<HarnessEscalationResponse> {
     const tenantId = dto.tenantId;
     if (!tenantId) {
       throw new BadRequestException('tenantId is required');
@@ -639,26 +696,99 @@ export class HarnessInternalService {
 
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
-      this.cls.set('user', createWorkerSession({ userId: dto.userId, tenantId, kind: 'harness-internal' }));
+      // No clinician — an SLA timeout is a workflow-initiated event; the worker
+      // session falls back to the `system-harness-internal` sentinel.
+      this.cls.set('user', createWorkerSession({ tenantId, kind: 'harness-internal' }));
+
+      // 404-over-403: the escalation targets a specific consultation, so assert
+      // ownership before recording (a cross-tenant id must not write a WORM row).
+      const consultation = await this.consultationRepository.findById(consultationId);
+      assertEqualTenants(consultation, { tenantId });
+
+      const action = dto.reason === 'gate_sla_abandoned' ? HarnessAuditAction.GATE_ABANDONED : HarnessAuditAction.GATE_ESCALATED;
 
       await this.harnessAuditService.append({
         tenantId,
         consultationId,
-        action: HarnessAuditAction.GATE_DECISION,
+        action,
         modelName: 'harness-gate',
         modelVersion: 'v1',
-        sensorScores: {},
+        // WORM payload carries the escalation provenance only (no PHI): the raw
+        // reason string + the correlating harness job id.
+        sensorScores: { reason: dto.reason, jobId: dto.jobId ?? null },
         citations: [],
-        gateDecision: dto.gateDecision ?? null,
-        contextItemVersionId: dto.contextItemVersionId ?? null,
-        attestationHash: dto.attestationHash ?? null,
-        clinicianId: dto.clinicianId ?? null,
-        createdBy: dto.userId ?? dto.clinicianId ?? null,
+        createdBy: null,
       });
 
-      this.logger.log({ message: 'Harness gate decision recorded', consultationId, decision: dto.decision, gateDecision: dto.gateDecision });
+      this.logger.log({ message: 'Harness gate escalation recorded', consultationId, reason: dto.reason, action });
       return { recorded: true };
     });
+  }
+
+  /**
+   * TASK-466 (C1-03) — build the Redis dedup key for a WORM/draft callback. The
+   * `idempotencyKey` value is the harness `{run_id}:{activity_id}` (already
+   * globally unique); we additionally namespace by operation + tenantId so two
+   * tenants can never collide and each callback dedups independently.
+   */
+  private buildIdempotencyKey(operation: string, tenantId: string, idempotencyKey: string): string {
+    return `${this.IDEMPOTENCY_KEY_PREFIX}${operation}:${tenantId}:${idempotencyKey}`;
+  }
+
+  /**
+   * TASK-466 (C1-03) — dedup a WORM/draft callback on the harness `Idempotency-Key`.
+   * The durable workflow re-invokes these callbacks on each Temporal activity
+   * retry; without dedup every retry re-appends the WORM/draft rows. This
+   * caches-and-replays the prior RESPONSE BODY (not a bare seen-marker — e.g.
+   * persistDraft's response carries the contextItemId) so a retried callback is
+   * exactly one effect. The key is recorded AFTER a successful write; Temporal
+   * activity retries are sequential, so a get-then-setex is adequate (no lock).
+   * Best-effort: no key, no Redis, or a Redis throw ⇒ fall through to normal
+   * processing (mirrors the consultation-job dedup, TASK-299 D-10).
+   */
+  private async withHarnessIdempotency<T>(
+    operation: string,
+    tenantId: string,
+    idempotencyKey: string | undefined,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    if (!idempotencyKey || !this.redisCache) {
+      return work();
+    }
+
+    const redisKey = this.buildIdempotencyKey(operation, tenantId, idempotencyKey);
+
+    // 1. Replay a prior response if this key has already been processed.
+    try {
+      const cached = await this.redisCache.get(redisKey);
+      if (cached) {
+        this.logger.log({ message: 'Harness callback idempotency hit — replaying prior response', operation, idempotencyKey });
+        return JSON.parse(cached) as T;
+      }
+    } catch (error) {
+      this.logger.warn({
+        message: 'Harness callback idempotency lookup failed — processing normally',
+        operation,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // 2. Process (the durable write happens here, exactly once per key).
+    const result = await work();
+
+    // 3. Record the key AFTER the successful write so a retry replays this result.
+    try {
+      await this.redisCache.setex(redisKey, this.IDEMPOTENCY_TTL, JSON.stringify(result));
+    } catch (error) {
+      this.logger.warn({
+        message: 'Harness callback idempotency record failed — a retry may double-write',
+        operation,
+        idempotencyKey,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return result;
   }
 
   /**
@@ -764,9 +894,7 @@ export class HarnessInternalService {
     const safety = guardrailDecisions.safety ?? guardrailDecisions.SAFETY;
     if (safety == null) return false;
     const verdict =
-      typeof safety === 'string'
-        ? safety
-        : ((safety as Record<string, unknown>).decision ?? (safety as Record<string, unknown>).verdict);
+      typeof safety === 'string' ? safety : ((safety as Record<string, unknown>).decision ?? (safety as Record<string, unknown>).verdict);
     return String(verdict).toUpperCase() === 'FLAG';
   }
 }

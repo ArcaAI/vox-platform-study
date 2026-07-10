@@ -29,6 +29,9 @@ enum HarnessAuditAction {
   SAFETY_OVERRIDE // Q4 — clinician one-click override of a COMPLETED safety FLAG at sign-off (no free-text).
   SIGNED_BEFORE_ASSURANCE // Q2a — note signed while assurance still running (DRAFT_PENDING_SENSORS); correlation annotation.
   POST_SIGN_FLAG // Q2b — assurance returned a FLAG/REGEN AFTER an early sign (note immutable); amendment/follow-up.
+  // TASK-466 (C1-05) — harness gate SLA-breach escalation records (from apps/harness escalate_gate).
+  GATE_ESCALATED // reason=gate_sla_breached — an un-signed gate passed its SLA and was escalated (non-terminal).
+  GATE_ABANDONED // reason=gate_sla_abandoned — the terminal escalation before the gate abandons (C1-02).
 
   @@schema("core")
 }
