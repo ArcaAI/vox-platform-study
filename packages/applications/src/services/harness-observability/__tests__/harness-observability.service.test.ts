@@ -14,11 +14,17 @@ import { HarnessObservabilityService } from '../harness-observability.service';
 
 const TENANT = 'tenant-1';
 
-const auditRepository = { getChainForTenant: vi.fn() };
+const auditRepository = { getChainForTenant: vi.fn(), getByConsultation: vi.fn() };
 const evalRunRepository = { count: vi.fn(), findAll: vi.fn() };
 const evalScoreRepository = { getByEvalRun: vi.fn() };
 const consultationRepository = { findPendingReviewForTenant: vi.fn() };
 const policyRepository = { findActiveForTenant: vi.fn() };
+const contextItemRepository = {
+  findLatestRawSummary: vi.fn(),
+  findLatestModifiedSummary: vi.fn(),
+  decryptContentFromEntity: vi.fn(),
+};
+const secretsService = {};
 
 function makeService(): HarnessObservabilityService {
   return new HarnessObservabilityService(
@@ -27,6 +33,19 @@ function makeService(): HarnessObservabilityService {
     evalScoreRepository as never,
     consultationRepository as never,
     policyRepository as never,
+  );
+}
+
+/** Service wired with the optional edit-burden dependencies (content repo + secrets). */
+function makeServiceWithEditBurden(): HarnessObservabilityService {
+  return new HarnessObservabilityService(
+    auditRepository as never,
+    evalRunRepository as never,
+    evalScoreRepository as never,
+    consultationRepository as never,
+    policyRepository as never,
+    secretsService as never,
+    contextItemRepository as never,
   );
 }
 
@@ -239,6 +258,73 @@ describe('HarnessObservabilityService', () => {
       expect(result.policySource).toBe('code-default');
       expect(result.gateSlaSeconds).toBe(86400);
       expect(result.gateEscalationSeconds).toBe(43200);
+    });
+  });
+
+  describe('getEditBurden (TASK-482 E3 — S3-F7)', () => {
+    const CONSULTATION = 'consult-1';
+    const delivered = new Date('2026-07-10T10:00:00.000Z');
+    const signed = new Date('2026-07-10T10:30:00.000Z');
+
+    it('derives edit distance, deferral rate, and time-to-sign from persisted rows', async () => {
+      auditRepository.getByConsultation.mockResolvedValue([
+        { action: HarnessAuditAction.GENERATE, gateDecision: null, createdAt: delivered },
+        { action: HarnessAuditAction.GATE_DECISION, gateDecision: 'PASS', createdAt: delivered },
+        { action: HarnessAuditAction.GATE_DECISION, gateDecision: 'REGEN', createdAt: delivered },
+        { action: HarnessAuditAction.ATTEST, gateDecision: null, createdAt: signed },
+      ]);
+      contextItemRepository.findLatestRawSummary.mockResolvedValue({ encryptedContent: Buffer.from('ct'), content: null });
+      contextItemRepository.findLatestModifiedSummary.mockResolvedValue({ encryptedContent: Buffer.from('ct'), content: null });
+      contextItemRepository.decryptContentFromEntity
+        .mockResolvedValueOnce('continue lisinopril 10 mg daily')
+        .mockResolvedValueOnce('continue lisinopril 20 mg daily');
+
+      const service = makeServiceWithEditBurden();
+      const result = await service.getEditBurden(TENANT, CONSULTATION);
+
+      expect(result.consultationId).toBe(CONSULTATION);
+      expect(result.editDistance).toBe(1); // one word changed (10 → 20)
+      expect(result.gateDecisionTotal).toBe(2);
+      expect(result.deferralCount).toBe(1); // the REGEN
+      expect(result.deferralRate).toBeCloseTo(1 / 2);
+      expect(result.timeToSignSeconds).toBe(1800); // 30 min
+      expect(result.deliveredAt).toBe(delivered.toISOString());
+      expect(result.signedAt).toBe(signed.toISOString());
+    });
+
+    it('skips edit distance when the content repo is not wired (deferral/time-to-sign still derived)', async () => {
+      auditRepository.getByConsultation.mockResolvedValue([
+        { action: HarnessAuditAction.GENERATE, gateDecision: null, createdAt: delivered },
+        { action: HarnessAuditAction.GATE_DECISION, gateDecision: 'FLAG', createdAt: delivered },
+        { action: HarnessAuditAction.ATTEST, gateDecision: null, createdAt: signed },
+      ]);
+
+      const service = makeService(); // 5-arg construction: no content repo / secrets
+      const result = await service.getEditBurden(TENANT, CONSULTATION);
+
+      expect(result.editDistance).toBeNull();
+      expect(result.editDistanceRatio).toBeNull();
+      expect(result.deferralRate).toBe(1); // FLAG only
+      expect(result.timeToSignSeconds).toBe(1800);
+    });
+
+    it('exposes no note content in the response — PHI stays out (AC-6)', async () => {
+      auditRepository.getByConsultation.mockResolvedValue([
+        { action: HarnessAuditAction.GENERATE, gateDecision: null, createdAt: delivered },
+      ]);
+      contextItemRepository.findLatestRawSummary.mockResolvedValue({ encryptedContent: Buffer.from('ct'), content: null });
+      contextItemRepository.findLatestModifiedSummary.mockResolvedValue({ encryptedContent: Buffer.from('ct'), content: null });
+      contextItemRepository.decryptContentFromEntity
+        .mockResolvedValueOnce('PATIENT SECRET chest pain and dyspnea')
+        .mockResolvedValueOnce('PATIENT SECRET chest pain, dyspnea, edited');
+
+      const service = makeServiceWithEditBurden();
+      const result = await service.getEditBurden(TENANT, CONSULTATION);
+
+      const serialized = JSON.stringify(result);
+      expect(serialized).not.toContain('SECRET');
+      expect(serialized).not.toContain('chest');
+      expect(result.editDistance).toBeGreaterThan(0);
     });
   });
 });

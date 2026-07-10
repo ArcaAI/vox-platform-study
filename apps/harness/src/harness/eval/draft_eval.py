@@ -32,7 +32,17 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from harness.eval.golden.sources import GoldenSetSource, default_golden_set_source
-from harness.eval.models import GoldenCase, GoldenSet
+from harness.eval.metrics.concept_f1 import score_concept_f1
+from harness.eval.metrics.harm_weighted import score_harm_weighted
+from harness.eval.models import (
+    ConceptCode,
+    ConceptF1Result,
+    EvalCaseResult,
+    EvalRunResult,
+    GoldenCase,
+    GoldenSet,
+    HarmWeightedResult,
+)
 from harness.sensors.aggregator import GateDecision, aggregate
 from harness.sensors.base import NEREntity
 from harness.sensors.config import SensorThresholds
@@ -135,6 +145,89 @@ def score_golden_set_with_sensors(
 ) -> list[SensorEvalCaseResult]:
     """Score every case of a golden set with the computational sensors."""
     return [score_golden_case_with_sensors(c, thresholds=thresholds) for c in golden_set.cases]
+
+
+# --- TASK-482 E3 — concept-F1 + harm-weighted rate wiring --------------------
+# These deepen the per-case eval run alongside the PDSQI + faithfulness passes.
+# Both are skip-clean: a case with no golden reference (or, for concept-F1, no
+# candidate codes) contributes ``None`` — never a fabricated value.
+
+
+def candidate_concepts_for_case(case: GoldenCase) -> list[ConceptCode]:
+    """The note's candidate concept codes for concept-F1.
+
+    Sourced from ``metadata["candidate_concepts"]`` — a list of
+    ``{cui, snomed, rxnorm, icd, loinc}`` dicts an adapter fills from the generated
+    note's persisted ``NamedEntity`` codes (TASK-476). Absent/empty on the pre-476
+    tree, so concept-F1 skips clean.
+    """
+    raw = case.metadata.get("candidate_concepts") or []
+    return [ConceptCode.model_validate(item) for item in raw]
+
+
+def concept_f1_for_case(case: GoldenCase) -> ConceptF1Result | None:
+    """Concept-F1 for one golden case (``None`` when it cannot be measured)."""
+    if not case.reference_concepts:
+        return None
+    return score_concept_f1(candidate_concepts_for_case(case), case.reference_concepts)
+
+
+def harm_weighted_for_case(case: GoldenCase) -> HarmWeightedResult | None:
+    """Harm-weighted error rate for one golden case (``None`` when no errors declared)."""
+    if not case.reference_errors:
+        return None
+    return score_harm_weighted(case.reference_errors, case.harm_weightable_units)
+
+
+def eval_case_e3_metrics(case: GoldenCase, *, base: EvalCaseResult | None = None) -> EvalCaseResult:
+    """Fold the E3 metrics onto an :class:`EvalCaseResult`.
+
+    When ``base`` is given (e.g. a case result already carrying PDSQI +
+    faithfulness), its other metrics are preserved and only the E3 fields are set.
+    """
+    harm = harm_weighted_for_case(case)
+    concept = concept_f1_for_case(case)
+    harm_rate = harm.harm_weighted_error_rate if harm else None
+    if base is not None:
+        return base.model_copy(
+            update={"concept_f1": concept, "harm_weighted_error_rate": harm_rate}
+        )
+    return EvalCaseResult(
+        case_id=case.case_id, concept_f1=concept, harm_weighted_error_rate=harm_rate
+    )
+
+
+def aggregate_e3_metrics(case_results: Sequence[EvalCaseResult]) -> dict[str, float]:
+    """Mean concept-F1 / recall / harm-weighted rate over the cases that have them."""
+    aggregates: dict[str, float] = {}
+    f1s = [cr.concept_f1.f1 for cr in case_results if cr.concept_f1 is not None]
+    recalls = [cr.concept_f1.recall for cr in case_results if cr.concept_f1 is not None]
+    harms = [
+        cr.harm_weighted_error_rate
+        for cr in case_results
+        if cr.harm_weighted_error_rate is not None
+    ]
+    if f1s:
+        aggregates["concept_f1_mean"] = sum(f1s) / len(f1s)
+    if recalls:
+        aggregates["concept_recall_mean"] = sum(recalls) / len(recalls)
+    if harms:
+        aggregates["harm_weighted_error_rate_mean"] = sum(harms) / len(harms)
+    return aggregates
+
+
+def score_golden_set_e3(golden_set: GoldenSet) -> EvalRunResult:
+    """Score the E3 metrics (concept-F1 + harm-weight) over a golden set.
+
+    Offline + skip-clean, mirroring :func:`score_golden_set_with_sensors`.
+    """
+    case_results = [eval_case_e3_metrics(c) for c in golden_set.cases]
+    return EvalRunResult(
+        golden_set_version=golden_set.version,
+        judge_model="n/a",
+        case_results=case_results,
+        aggregates=aggregate_e3_metrics(case_results),
+    )
 
 
 def _run(source: GoldenSetSource | None = None) -> int:
