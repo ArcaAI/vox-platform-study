@@ -1,6 +1,6 @@
 # TASK-457 — Redis Consumer-Groups Migration for the Realtime Dataplane (C3-01/02/03/05/06)
 
-- **Status**: Pending (Wave 2 scaffold — no implementation) · **GATED on [TASK-455](../TASK-455-Streaming-E2E-Eval-Harness/README.md)**
+- **Status**: Review (implemented on `fix/task-457-redis-consumer-groups`; unit + Redis-level gates green — live e2e/latency validation owned by the orchestrator) · **GATED on [TASK-455](../TASK-455-Streaming-E2E-Eval-Harness/README.md)**
 - **Type**: infrastructure / bugfix (realtime durability — the seam cluster)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 2 (P1) · **critical path**
 - **Findings**: C3-01 (High) · C3-02 (High) · C3-03 (Med) · C3-05 (Med) · C3-06 (Low) — all CONFIRMED — see [TASK-448 register](../TASK-448-Harness-Loop-Quality-Review/README.md). This one change closes the whole seam cluster (S1-DELIVERY).
@@ -91,10 +91,47 @@ Adversarial review focus: (a) is delivery now at-least-once end-to-end, with ded
 
 ## Implementation Summary
 
-_Pending — not yet implemented (Wave 2). Gated on TASK-455._
+Implemented on `fix/task-457-redis-consumer-groups` (from `fix/2605-review` @ `90bb993d`). Unit + Redis-level gates green; the live-stack e2e/latency validation is owned by the orchestrator.
+
+### Consumer-groups migration (C3-01/02/03/05/06)
+
+- **Audio reader → consumer group** (`apps/stt-v2/src/stt_v2/streaming/redis_streams.py`). `IngestionConsumer` now `XGROUP CREATE`s a per-session group (`AUDIO_CONSUMER_GROUP = "stt-ingest"`, MKSTREAM, swallow BUSYGROUP), reads via `XREADGROUP ">"`, `XACK`s each processed entry (at-least-once), and reclaims a dead consumer's in-flight via `XAUTOCLAIM` (first pass `min-idle=0` recovers own PEL; then throttled at `min-idle=30s`). `session_manager.py` passes `consumer_name=self._worker_id` at both the create and recovery wirings ONLY (TASK-456's finalize/reaper regions untouched).
+- **Result reader → consumer group** (`packages/applications/src/services/stt/streaming/streamingAudioBridge.service.ts`). `subscribeToResults(sessionId, {consumerGroup?})` reads via `XREADGROUP` (+ own-PEL drain `0` → live `>`), `XACK`s, and `XAUTOCLAIM`s a dead reader's pending. The **persisted cursor** is the group's Redis-owned last-delivered-id — a re-subscription with the same group resumes there, never `0-0` (C3-01). Fan-out preserved: the captions gateway passes a stable group (`captions`); LiveDocumentationService keeps a per-subscription unique group, so both still receive every result. Added a macrotask yield on empty reads so an idle loop never starves the event loop.
+- **At-least-once audio write** (C3-02): the bridge writer moved from `maxRetriesPerRequest: 3` (drop-after-3) to `null` — a transient Redis blip queues the `XADD` on ioredis's FIFO offline queue and flushes in order on reconnect (order-preserving), instead of dropping clinical speech. Primary at-least-once is the STT-v2 audio group's PEL/`XAUTOCLAIM`.
+- **`stt:result` MAXLEN during the session** (C3-05): `ResultPublisher.publish/publish_error/publish_status` now `XADD ... MAXLEN ~ streaming_result_stream_maxlen` (new setting, default 10000).
+- **Single audio bound** (C3-06): the bridge exports `AUDIO_STREAM_MAXLEN = 10000` (sole prod writer of `stt:audio`); `streaming_audio_stream_maxlen` reconciled `2000 → 10000` to match; the dead `xadd_audio_frame` default documented as test-only.
+- **Grace-window resume keyed by sessionId** (`stt-ws.gateway.ts`): resume state moved to a `sessionsById` map; a transient disconnect no longer `removeSession`/unsubscribes — it arms a grace timer (`WS_RESUME_GRACE_MS`, default 15s) and keeps the session + subscription + upstream alive. A reconnect (same sessionId) rebinds to the new socket (`session.client`), cancels the timer, and continues; only grace expiry (or explicit `close`) finalizes. `handleResume` now always acks continuation from `fromSeq = lastSeq + 1` and replays only `seq > lastSeq` (no duplicate flood).
+- **C3-03 overflowed finals**: fixed the false "resume buffer still holds it" comment (it evicts in lockstep) and emit an explicit **gap marker** (`{type:'gap', reason:'egress_overflow', droppedSeq}`) so a dropped final is never silent — recoverable from the durable transcript.
+
+### Folded-in prerequisite — dead WS control channel (found by TASK-455's live e2e)
+
+`stt-ws.gateway.ts` registered `on('message', (data) => …)` ignoring ws's `isBinary` arg and split audio-vs-JSON on `Buffer.isBuffer`. ws@8 delivers TEXT frames as a Buffer with `isBinary=false`, so `{type:'resume'|'stop'|'close'}` control frames were misclassified as audio and resume was unanswerable. **Fixed**: `on('message', (data, isBinary) => handleMessage(client, data, isBinary))`; `handleMessage` routes `isBinary===true → audio`, else decode Buffer→string → JSON. Consumer-groups resume depends on this.
+
+### Test-breaking pins rewritten (RED→GREEN)
+
+- `test_streaming.py`: `TestIngestionConsumer` (plain-XREAD → XREADGROUP/XACK/XAUTOCLAIM + group-create + dead-consumer reclaim), `TestResultPublisher` (assert MAXLEN), `TestXaddAudioFrame` (2000 → reconciled 10000 default), settings pin (`== 2000` → `== 10000` + new `streaming_result_stream_maxlen`), `TestSessionManager` fixture (group mocks). Lockstep migrations of the same component: `test_stream_hygiene.py` (`TestIngestionConsumerOnBatch`) and `test_streaming_integration.py` fixture.
+- `streamingAudioBridge.service.test.ts`: the `0-0` pin ([:785-789]) rewritten to assert group-create + XREADGROUP-from-`0` and NO `0-0` re-read; the lastId pin rewritten to assert the group cursor advances via `>` + `XACK`; added dead-consumer `XAUTOCLAIM` + stable-group-resume tests.
+- `stt-ws.gateway.test.ts`: `handleDisconnect` rewritten for the grace window (fake timers: no finalize on transient disconnect; finalize + removal-retry only at grace expiry; reconnect cancels finalize); binary `handleMessage` calls pass `isBinary=true`; added the WS-control-over-Buffer-text-frame tests and the reconnect-after-drop resume target (`fromSeq === lastSeq+1`, no duplicates, no freeze); egress-overflow test asserts the gap marker.
+
+### Verification (unit + Redis-level; live e2e owned by orchestrator)
+
+| Gate | Result |
+|---|---|
+| `pnpm py:stt-v2:test` (full unit) | **2104 passed** |
+| `py:stt-v2:lint` (ruff) / `py:stt-v2:typecheck` (mypy) | ruff **All checks passed**; mypy **no issues in 103 files** |
+| `@arcaai/applications` bridge + streaming + live-doc | **119 passed** (bridge 58) |
+| `apps/api` gateway + streaming module | gateway **57 passed**, streaming module **198 passed** |
+| `apps/api` build (nest build = tsc) | **pass** |
+| `apps/api` lint (hard errors) / `applications` lint | apps/api **0 errors**; my applications files **0 warnings** (rest pre-existing only-warn) |
+| Latency + loss harness consumption | plain-XREAD on `stt:result` kept backward-compatible (publisher MAXLEN + a SEPARATE bridge group read); audio `_AUDIO_STREAM_MAXLEN=10000` matches the reconciled bound → **no migration needed**; both collect cleanly (4 tests) |
+
+New env var `STT_WS_RESUME_GRACE_MS` added to `turbo.json#globalEnv` (matches the `STT_WS_EGRESS_HIGH_WATERMARK_BYTES` turbo.json-only precedent).
+
+**Left to the orchestrator**: restart STT-v2/API from this branch + re-run the TASK-455 harness against the baseline — flip `task-455-streaming-resume-after-drop.spec.ts` `test.fixme` GREEN, confirm final-lag p95 ≤ 800 ms (no transport regression) and zero loss under the kill/reconnect scenarios.
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-09 | Ticket scaffolded from TASK-448 findings C3-01/02/03/05/06; all re-verified against the post-Wave-1 tree by read-only scout (gateway refs shifted +26 from TASK-450). Register refined: audio resume is bridge-scoped (STT-v2 consumer already resumes); the "resume buffer holds it" comment is provably false; the 2000 audio bound is dead config. Confirmed zero consumer-group primitives exist. No implementation. |
+| 2026-07-10 | Implemented C3-01/02/03/05/06 + the folded-in WS-control (isBinary) fix on `fix/task-457-redis-consumer-groups`. Audio + result readers → consumer groups (XREADGROUP/XACK/XAUTOCLAIM); bridge result reader seeds from the group cursor (not 0-0); at-least-once audio write; `stt:result` MAXLEN; single audio bound (10000); gateway grace-window resume keyed by sessionId with rebind + `fromSeq=lastSeq+1`; C3-03 gap marker + fixed comment. Rewrote the test-breaking pins RED→GREEN (+ lockstep `test_stream_hygiene`/`test_streaming_integration`). Gates: py 2104 unit / ruff / mypy green; applications bridge+streaming+live-doc 119; apps/api gateway 57 + streaming 198 + build + lint green; harnesses kept backward-compatible (no migration). Live e2e/latency validation left to the orchestrator. |

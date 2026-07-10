@@ -464,10 +464,23 @@ class Settings(BaseSettings):
         description="TTL (seconds) for the worker heartbeat key in Redis.",
     )
     streaming_audio_stream_maxlen: int = Field(
-        default=2000,
+        default=10000,
         description=(
             "Approximate MAXLEN for Redis audio streams (per-session). "
-            "At 30ms/frame this retains ~60 seconds of audio."
+            "TASK-457 C3-06 — the SINGLE source of truth for the audio-stream "
+            "bound: kept equal to the TS gateway bridge's XADD MAXLEN (the sole "
+            "production writer of stt:audio). At ~30-80ms/frame this retains "
+            "minutes of audio, comfortably ahead of the consumer group."
+        ),
+    )
+    streaming_result_stream_maxlen: int = Field(
+        default=10000,
+        description=(
+            "Approximate MAXLEN for the per-session Redis result stream "
+            "(stt:result). TASK-457 C3-05 — bounds the stream DURING an active "
+            "session (previously unbounded until the post-close EXPIRE). High "
+            "enough that a keeping-up bridge/consumer never misses a result; "
+            "overflowed finals remain in the durable transcript."
         ),
     )
     streaming_audio_trim_interval_s: float = Field(
