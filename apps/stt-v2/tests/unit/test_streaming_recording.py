@@ -1065,6 +1065,40 @@ class TestTranscriptOutbox:
 
     OUTBOX_KEY = "stt:transcript_outbox"
 
+    @pytest.fixture(autouse=True)
+    def _isolate_structlog_capture(self):
+        """Make the outbox drop-ALERT assertions order-independent.
+
+        The ``*_drops_and_alerts`` tests read structlog events via
+        ``capture_logs()``. Under the full suite an earlier test boots the app
+        (``setup_logging`` configures structlog with
+        ``cache_logger_on_first_use=True``) and emits through the module-level
+        ``session_manager.logger``, permanently freezing that lazy proxy to the
+        stdlib JSON chain (``BoundLoggerLazyProxy.bind`` is reassigned on first
+        use). A later ``structlog.reset_defaults()`` (test_observability) then
+        swaps the active processor list for a new one, so ``capture_logs()`` —
+        which mutates the *current* list in place — can no longer intercept the
+        frozen logger: the ALERT lines render to stdout and the capture stays
+        empty, silently failing ``any(... for entry in logs)``.
+
+        Reset structlog to a clean, non-caching state and hand the module a
+        fresh (unfrozen) logger for each test, then restore both. Capture is
+        then deterministic regardless of suite order.
+        """
+        import structlog
+
+        from stt_v2.streaming import session_manager
+
+        saved_config = structlog.get_config()
+        saved_logger = session_manager.logger
+        structlog.reset_defaults()  # cache_logger_on_first_use=False
+        session_manager.logger = structlog.get_logger("stt_v2.streaming.session_manager")
+        try:
+            yield
+        finally:
+            session_manager.logger = saved_logger
+            structlog.configure(**saved_config)
+
     @staticmethod
     def _entry(attempts: int = 0, lease_expiry: float = 0):
         return {
