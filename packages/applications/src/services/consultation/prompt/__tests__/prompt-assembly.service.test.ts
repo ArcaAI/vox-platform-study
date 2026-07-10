@@ -419,6 +419,60 @@ describe('PromptAssemblyService', () => {
 
             expect(result.userPrompt).not.toContain('RECOGNIZED CLINICAL ENTITIES');
         });
+
+        // TASK-462 C5-03 — the ontology code columns (umls/snomed/rxnorm/icd/loinc)
+        // are READ here but WRITTEN nowhere until the SOTA Theme C clinical NER
+        // linker lands (TASK-476), so today the code set is ALWAYS empty. The
+        // groundedness guard makes that absence EXPLICIT instead of silently
+        // emitting un-coded entity lines that read as if coding was attempted.
+        it('flags the absence of ontology codes when NER entities carry none (C5-03 groundedness guard)', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient reports headache and fever.',
+                conversationLanguage: 'English',
+                nerEntities: [
+                    { text: 'headache', type: 'SYMPTOM', startOffset: 16, endOffset: 24 },
+                    { text: 'fever', type: 'SYMPTOM' },
+                ],
+            });
+
+            // Entities still reach the LLM (text + type), but the absence of codes is EXPLICIT
+            // — in CLINICALLY NEUTRAL wording (TASK-462 M-3), never internal jargon/ticket ids.
+            expect(result.userPrompt).toContain('RECOGNIZED CLINICAL ENTITIES');
+            expect(result.userPrompt).toContain('headache');
+            expect(result.userPrompt).toContain('no standardized codes assigned');
+            // No misleading empty coded output: no bare bracket, no dangling code tokens.
+            expect(result.userPrompt).not.toContain('[]');
+            expect(result.userPrompt).not.toContain('umls:');
+            // M-3 — internal implementation references must NOT leak into a clinical prompt.
+            expect(result.userPrompt).not.toContain('TASK-476');
+            expect(result.userPrompt).not.toContain('SOTA');
+        });
+
+        it('does NOT flag the absence when at least one ontology code is present (guard disengaged)', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient has pneumonia.',
+                conversationLanguage: 'English',
+                nerEntities: [
+                    { text: 'headache', type: 'SYMPTOM' },
+                    { text: 'pneumonia', type: 'CONDITION', icdCode: 'J18.9' },
+                ],
+            });
+
+            expect(result.userPrompt).toContain('icd:J18.9');
+            expect(result.userPrompt).not.toContain('no standardized codes assigned');
+        });
     });
 
     // ── Clinician notes + attachments injection (TASK-342 GAP #2) ──

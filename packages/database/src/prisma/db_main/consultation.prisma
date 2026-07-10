@@ -311,6 +311,15 @@ model NamedEntity {
   // TASK-330 Phase 1 — clinical ontology normalization codes (nullable; set by
   // the NER/normalization pipeline). Enables entity-faithfulness scoring and
   // coded problem / medication / observation lists.
+  //
+  // TASK-462 C5-03 (interim) — these five columns are currently READ by the
+  // durable summarization path (prompt-assembly / harness-internal / summary
+  // processor) but WRITTEN by no code: the NLP token classifier emits no codes
+  // and there is no ontology linker yet. They are populated by SOTA Theme C —
+  // the server-side clinical NER + ontology linker (candidate TASK-476, see
+  // docs/implementation/SOTA-Track). Until then a groundedness guard in
+  // prompt-assembly.service.ts makes the empty-code case explicit. Do NOT treat
+  // these as orphaned or drop them — they are the linker's write target.
   umlsCui    String? // UMLS Concept Unique Identifier
   snomedCode String? // SNOMED CT code
   rxnormCode String? // RxNorm code (medications)
