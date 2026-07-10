@@ -688,41 +688,46 @@ export class HarnessInternalService {
    * 404-over-403 tenancy posture: a cross-tenant consultation surfaces as
    * NotFoundException, never leaking that it exists under another tenant.
    */
-  async recordEscalation(consultationId: string, dto: HarnessEscalationRequest): Promise<HarnessEscalationResponse> {
+  async recordEscalation(consultationId: string, dto: HarnessEscalationRequest, idempotencyKey?: string): Promise<HarnessEscalationResponse> {
     const tenantId = dto.tenantId;
     if (!tenantId) {
       throw new BadRequestException('tenantId is required');
     }
 
-    return this.cls.run(async () => {
-      this.cls.set('tenantId', tenantId);
-      // No clinician — an SLA timeout is a workflow-initiated event; the worker
-      // session falls back to the `system-harness-internal` sentinel.
-      this.cls.set('user', createWorkerSession({ tenantId, kind: 'harness-internal' }));
+    // TASK-466 (C1-03) — the harness ships an Idempotency-Key on this POST too, so
+    // a re-delivered escalate_gate (worker restart / SLA-timeout racing a
+    // slow-but-successful POST) must not double-append the hash-chained WORM row.
+    return this.withHarnessIdempotency('recordEscalation', tenantId, idempotencyKey, () =>
+      this.cls.run(async () => {
+        this.cls.set('tenantId', tenantId);
+        // No clinician — an SLA timeout is a workflow-initiated event; the worker
+        // session falls back to the `system-harness-internal` sentinel.
+        this.cls.set('user', createWorkerSession({ tenantId, kind: 'harness-internal' }));
 
-      // 404-over-403: the escalation targets a specific consultation, so assert
-      // ownership before recording (a cross-tenant id must not write a WORM row).
-      const consultation = await this.consultationRepository.findById(consultationId);
-      assertEqualTenants(consultation, { tenantId });
+        // 404-over-403: the escalation targets a specific consultation, so assert
+        // ownership before recording (a cross-tenant id must not write a WORM row).
+        const consultation = await this.consultationRepository.findById(consultationId);
+        assertEqualTenants(consultation, { tenantId });
 
-      const action = dto.reason === 'gate_sla_abandoned' ? HarnessAuditAction.GATE_ABANDONED : HarnessAuditAction.GATE_ESCALATED;
+        const action = dto.reason === 'gate_sla_abandoned' ? HarnessAuditAction.GATE_ABANDONED : HarnessAuditAction.GATE_ESCALATED;
 
-      await this.harnessAuditService.append({
-        tenantId,
-        consultationId,
-        action,
-        modelName: 'harness-gate',
-        modelVersion: 'v1',
-        // WORM payload carries the escalation provenance only (no PHI): the raw
-        // reason string + the correlating harness job id.
-        sensorScores: { reason: dto.reason, jobId: dto.jobId ?? null },
-        citations: [],
-        createdBy: null,
-      });
+        await this.harnessAuditService.append({
+          tenantId,
+          consultationId,
+          action,
+          modelName: 'harness-gate',
+          modelVersion: 'v1',
+          // WORM payload carries the escalation provenance only (no PHI): the raw
+          // reason string + the correlating harness job id.
+          sensorScores: { reason: dto.reason, jobId: dto.jobId ?? null },
+          citations: [],
+          createdBy: null,
+        });
 
-      this.logger.log({ message: 'Harness gate escalation recorded', consultationId, reason: dto.reason, action });
-      return { recorded: true };
-    });
+        this.logger.log({ message: 'Harness gate escalation recorded', consultationId, reason: dto.reason, action });
+        return { recorded: true };
+      }),
+    );
   }
 
   /**

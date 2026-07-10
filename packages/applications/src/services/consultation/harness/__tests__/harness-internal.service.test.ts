@@ -1337,6 +1337,43 @@ describe('HarnessInternalService', () => {
             expect(second).toEqual(first);
             expect(second).toEqual({ recorded: true, contextItemId: 'ctx-draft-1' });
         });
+
+        // TASK-466 (C1-05 dedup) — the harness ships + tests an Idempotency-Key on the
+        // escalation POST too, so a re-delivered escalate_gate (worker restart / SLA
+        // timeout racing a slow-but-successful POST) must not double-append the
+        // hash-chained GATE_ESCALATED / terminal GATE_ABANDONED WORM row. The key
+        // ({run_id}:{activity_id}) is stable across retries but unique per distinct
+        // escalation tick, so dedup suppresses retries WITHOUT collapsing distinct ticks.
+        const escBody = (reason = 'gate_sla_breached') => ({ tenantId: 'tenant-1', reason, jobId: 'harness-doc-1' });
+
+        it('recordEscalation: SAME key twice → ONE WORM append + identical replay', async () => {
+            const first = await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned') as any, 'run-1:escalate_gate');
+            const second = await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned') as any, 'run-1:escalate_gate');
+
+            expect(harnessAuditService.append).toHaveBeenCalledTimes(1);
+            expect(harnessAuditService.append.mock.calls[0][0].action).toBe(HarnessAuditAction.GATE_ABANDONED);
+            expect(second).toEqual(first);
+            expect(second).toEqual({ recorded: true });
+        });
+
+        it('recordEscalation: DIFFERENT key → NOT suppressed (distinct escalation ticks each append)', async () => {
+            await service.recordEscalation('consultation-1', escBody() as any, 'run-1:escalate_gate:1');
+            await service.recordEscalation('consultation-1', escBody() as any, 'run-1:escalate_gate:2');
+            expect(harnessAuditService.append).toHaveBeenCalledTimes(2);
+        });
+
+        it('recordEscalation: ABSENT key → NOT suppressed (each append)', async () => {
+            await service.recordEscalation('consultation-1', escBody() as any);
+            await service.recordEscalation('consultation-1', escBody() as any);
+            expect(harnessAuditService.append).toHaveBeenCalledTimes(2);
+        });
+
+        it('recordEscalation: Redis get throws → falls through and still appends (best-effort)', async () => {
+            redisCache.get.mockRejectedValueOnce(new Error('redis down'));
+            const result = await service.recordEscalation('consultation-1', escBody() as any, 'run-1:escalate_gate');
+            expect(harnessAuditService.append).toHaveBeenCalledTimes(1);
+            expect(result).toEqual({ recorded: true });
+        });
     });
 
     // =========================================================================

@@ -113,8 +113,8 @@ export class HarnessInternalController {
   @Post('consultations/:id/escalation')
   @ApiOperation({ summary: 'Record a harness gate SLA-breach escalation (WORM audit; terminal = gate abandon)' })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
-  async recordEscalation(@Param('id') id: string, @Body() dto: HarnessEscalationRequest) {
-    return this.harnessInternalService.recordEscalation(id, dto);
+  async recordEscalation(@Param('id') id: string, @Body() dto: HarnessEscalationRequest, @Headers('Idempotency-Key') idempotencyKey?: string) {
+    return this.harnessInternalService.recordEscalation(id, dto, idempotencyKey);
   }
 
   // TASK-355 Phase D (optimistic delivery, second phase) — the harness calls this
