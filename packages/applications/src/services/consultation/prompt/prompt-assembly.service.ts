@@ -39,7 +39,12 @@ function substituteVariables(template: string, variables: Record<string, string>
  * entity set is un-coded, so the block never reads as if coding was attempted.
  * The guard disengages automatically once the linker starts populating codes.
  */
-const NER_NO_ONTOLOGY_CODES_NOTE = '(note: no clinical ontology codes present — entity coding pending, populated by SOTA Theme C / TASK-476)';
+// TASK-462 M-3 — this note is injected into the clinical LLM prompt on EVERY
+// NER-bearing summary today (the code set is permanently empty), so it must be
+// clinically NEUTRAL: no internal jargon or ticket ids (which the model could
+// echo into a patient's summary). The SOTA Theme C / TASK-476 pointer lives in
+// the doc comment above (code only), never in the prompt string.
+const NER_NO_ONTOLOGY_CODES_NOTE = '(no standardized codes assigned)';
 
 function serializeNerEntities(entities: NerEntityForPrompt[]): string {
   if (!entities?.length) {

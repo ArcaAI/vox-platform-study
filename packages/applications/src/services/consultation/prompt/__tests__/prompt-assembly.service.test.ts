@@ -441,13 +441,17 @@ describe('PromptAssemblyService', () => {
                 ],
             });
 
-            // Entities still reach the LLM (text + type), but the absence of codes is EXPLICIT.
+            // Entities still reach the LLM (text + type), but the absence of codes is EXPLICIT
+            // — in CLINICALLY NEUTRAL wording (TASK-462 M-3), never internal jargon/ticket ids.
             expect(result.userPrompt).toContain('RECOGNIZED CLINICAL ENTITIES');
             expect(result.userPrompt).toContain('headache');
-            expect(result.userPrompt).toContain('no clinical ontology codes present');
+            expect(result.userPrompt).toContain('no standardized codes assigned');
             // No misleading empty coded output: no bare bracket, no dangling code tokens.
             expect(result.userPrompt).not.toContain('[]');
             expect(result.userPrompt).not.toContain('umls:');
+            // M-3 — internal implementation references must NOT leak into a clinical prompt.
+            expect(result.userPrompt).not.toContain('TASK-476');
+            expect(result.userPrompt).not.toContain('SOTA');
         });
 
         it('does NOT flag the absence when at least one ontology code is present (guard disengaged)', async () => {
@@ -467,7 +471,7 @@ describe('PromptAssemblyService', () => {
             });
 
             expect(result.userPrompt).toContain('icd:J18.9');
-            expect(result.userPrompt).not.toContain('no clinical ontology codes present');
+            expect(result.userPrompt).not.toContain('no standardized codes assigned');
         });
     });
 
