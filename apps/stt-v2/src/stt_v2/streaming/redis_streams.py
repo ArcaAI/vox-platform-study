@@ -21,6 +21,7 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 import structlog
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from stt_v2.core.config.settings import get_settings
 from stt_v2.streaming.schemas import (
@@ -324,6 +325,19 @@ class IngestionConsumer:
                         count=100,
                         block=self._block_ms,
                     )
+                except RedisTimeoutError:
+                    # A redis-py socket_timeout shorter than BLOCK surfaces here
+                    # every time the block elapses on a SILENT stream (a speech
+                    # pause, or the quiet tail while the session finalizes). No
+                    # entry was delivered, so it is BENIGN — treat it exactly like
+                    # an empty read and re-issue immediately. The consumer-group
+                    # ">" cursor is server-side and intact, so a later frame
+                    # (including the terminal one) is still delivered; nothing is
+                    # lost. Deliberately NOT the fatal-error path below: no error
+                    # spam, no 1s backoff. (The committed client sets no
+                    # socket_timeout; this keeps the reader correct under any that
+                    # an operator/env injects — see _runtime.initialize_streaming.)
+                    continue
                 except Exception as exc:
                     if _err_has(exc, "NOGROUP"):
                         # Stream/group was trimmed away — recreate and retry.
@@ -532,6 +546,15 @@ class ControlListener:
                         count=10,
                         block=self._block_ms,
                     )
+                except RedisTimeoutError:
+                    # Benign: a socket_timeout shorter than BLOCK elapsed on a
+                    # quiet control stream. Re-issue with the same last_id — a
+                    # finalize/cancel that arrives later is still read (XREAD
+                    # returns everything after last_id). Not an error, no backoff;
+                    # otherwise the 1s backoff + error spam would delay the very
+                    # finalize command that ends the session. See the twin catch
+                    # in IngestionConsumer._run.
+                    continue
                 except Exception as exc:
                     logger.error(
                         "Control XREAD failed, retrying",

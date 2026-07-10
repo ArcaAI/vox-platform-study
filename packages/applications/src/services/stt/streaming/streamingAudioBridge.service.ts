@@ -483,7 +483,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
               delivered++;
               const terminal = this.parseAndEmitResult(subject, fields);
               if (terminal) {
-                // Ack what we saw, then complete on closed/finalizing.
+                // Ack what we saw, then complete on the terminal status (closed/cancelled).
                 if (ackIds.length > 0) {
                   await reader.xack(streamKey, group, ...ackIds).catch(() => {});
                 }
@@ -608,8 +608,16 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
   /**
    * Parse one result-stream entry's flat field array and emit it on `subject`.
-   * Returns `true` when the entry is a terminal status (closed/finalizing) so
-   * the caller completes the stream. (Parsing unchanged from the XREAD path.)
+   * Returns `true` when the entry is a TERMINAL status (`closed`/`cancelled`)
+   * so the caller completes the stream. (Parsing unchanged from the XREAD path.)
+   *
+   * `finalizing` is NOT terminal: stt-v2 publishes it as a progress marker
+   * BEFORE it flushes the tail utterance, so the result-stream order is
+   * `finalizing → FINAL → closed` (session_manager `publish_status("finalizing")`
+   * precedes `_flush_final_utterance`). Completing on `finalizing` would tear the
+   * reader down one entry too early and orphan the closing final in Redis — the
+   * session's last spoken utterance would never reach the client. Non-terminal
+   * status entries are skipped (never emitted) and the reader keeps reading.
    */
   private parseAndEmitResult(subject: Subject<StreamingTranscriptMessage>, fields: string[]): boolean {
     // Parse fields array into key-value pairs
@@ -618,9 +626,10 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       data[fields[i]] = fields[i + 1];
     }
 
-    // Check if this is a status entry (session closed)
+    // Terminal only on a true end-of-session status. `finalizing` is a progress
+    // marker that PRECEDES the tail final — treating it as terminal drops it.
     if (data.type === 'status') {
-      return data.status === 'closed' || data.status === 'finalizing';
+      return data.status === 'closed' || data.status === 'cancelled';
     }
 
     // Emit transcript segment

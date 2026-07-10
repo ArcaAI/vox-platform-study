@@ -90,9 +90,19 @@ async def initialize_streaming() -> None:
     try:
         import redis.asyncio as aioredis
 
+        # NOTE on timeouts: the blocking XREADGROUP/XREAD readers in
+        # redis_streams.py use BLOCK windows (default 5s). We deliberately do
+        # NOT force a socket_timeout here — a socket_timeout shorter than BLOCK
+        # would raise on every silence gap. Any socket_timeout supplied via
+        # REDIS_URL is now tolerated gracefully by those readers (they treat a
+        # read TimeoutError as an empty read and re-issue), so operator/env
+        # config is respected without breaking the blocking reads.
+        # health_check_interval lets redis-py detect a silently-dropped
+        # connection on the next idle command rather than hanging indefinitely.
         _redis_client = aioredis.from_url(
             settings.redis_url,
             decode_responses=False,  # Streams use binary data
+            health_check_interval=30,
         )
         # Verify connectivity
         await _redis_client.ping()

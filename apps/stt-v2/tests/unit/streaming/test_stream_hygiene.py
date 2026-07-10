@@ -225,6 +225,107 @@ class TestIngestionConsumerOnBatch:
 
 
 # ---------------------------------------------------------------------------
+# Blocking-read socket-timeout tolerance (silence-gap robustness)
+# ---------------------------------------------------------------------------
+
+
+class TestBlockingReadTimeoutTolerance:
+    """A redis-py ``socket_timeout`` shorter than the ``BLOCK`` window raises
+    ``redis.exceptions.TimeoutError`` every time the block elapses on a SILENT
+    stream (a speech pause, or the quiet tail while a session finalizes). That
+    is BENIGN — no entry was delivered — so the reader must just re-issue the
+    blocking read: keep delivering, with no error log and no fatal-error
+    backoff. The committed client sets no socket_timeout, but this keeps the
+    reader correct under ANY socket_timeout an operator/env injects.
+    """
+
+    @pytest.mark.asyncio
+    async def test_ingestion_tolerates_blocking_read_timeout(self):
+        import redis.exceptions as redis_exc
+
+        from stt_v2.streaming import redis_streams
+        from stt_v2.streaming.redis_streams import IngestionConsumer
+
+        redis_mock = AsyncMock()
+        redis_mock.xautoclaim.return_value = (b"0-0", [], [])
+        redis_mock.xgroup_create.return_value = True
+        redis_mock.xack.return_value = 1
+        call_count = 0
+
+        async def fake_xreadgroup(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # socket_timeout < BLOCK surfaces here on a silent stream.
+                raise redis_exc.TimeoutError("Timeout reading from localhost:6380")
+            if call_count == 2:
+                return [[b"stt:audio:s1", [(b"5-0", _frame_fields())]]]
+            await asyncio.sleep(0.05)
+            return []
+
+        redis_mock.xreadgroup.side_effect = fake_xreadgroup
+
+        frames = []
+
+        async def on_frame(frame):
+            frames.append(frame)
+
+        with patch.object(redis_streams, "logger") as mock_logger:
+            consumer = IngestionConsumer(
+                redis=redis_mock, session_id="s1", on_frame=on_frame, block_ms=50
+            )
+            await consumer.start()
+            await asyncio.sleep(0.2)
+            await consumer.stop()
+
+        # Recovery: the frame arriving AFTER the benign timeout is delivered
+        # promptly — a 1s fatal-error backoff would miss it inside this window.
+        assert len(frames) == 1
+        # Graceful: a benign read-timeout is NOT logged as an error.
+        assert mock_logger.error.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_control_listener_tolerates_blocking_read_timeout(self):
+        import redis.exceptions as redis_exc
+
+        from stt_v2.streaming import redis_streams
+        from stt_v2.streaming.redis_streams import ControlListener
+
+        redis_mock = AsyncMock()
+        call_count = 0
+
+        async def fake_xread(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise redis_exc.TimeoutError("Timeout reading from localhost:6380")
+            if call_count == 2:
+                return [[b"stt:control:s1", [(b"7-0", {b"action": b"finalize"})]]]
+            await asyncio.sleep(0.05)
+            return []
+
+        redis_mock.xread.side_effect = fake_xread
+
+        controls = []
+
+        async def on_control(control):
+            controls.append(control)
+
+        with patch.object(redis_streams, "logger") as mock_logger:
+            listener = ControlListener(
+                redis=redis_mock, session_id="s1", on_control=on_control, block_ms=50
+            )
+            await listener.start()
+            await asyncio.sleep(0.2)
+            await listener.stop()
+
+        # Recovery: the finalize control after the benign timeout is delivered.
+        assert len(controls) == 1
+        # Graceful: a benign read-timeout is NOT logged as an error.
+        assert mock_logger.error.call_count == 0
+
+
+# ---------------------------------------------------------------------------
 # SessionManager._make_batch_handler — persist + trim
 # ---------------------------------------------------------------------------
 

@@ -749,13 +749,41 @@ describe('StreamingAudioBridgeService', () => {
             expect(results).toHaveLength(0);
         });
 
-        it('should complete when status=finalizing is received', async () => {
+        // stt-v2 publishes the tail FINAL *after* `finalizing` (result order:
+        // finalizing → FINAL → closed). `finalizing` is a PROGRESS marker, NOT a
+        // terminal status — completing on it orphans that tail final (partials
+        // relay, but the closing utterance is silently dropped). Only closed /
+        // cancelled end the stream.
+        it('does NOT complete on status=finalizing — relays the tail final published after it', async () => {
             mockXreadgroup
                 .mockResolvedValueOnce([
                     ['stt:result:s-1', [
                         ['1-0', ['type', 'status', 'status', 'finalizing']],
+                        ['2-0', ['text', 'the closing utterance', 'start_time', '5', 'end_time', '7', 'is_final', '1']],
+                    ]],
+                ])
+                .mockResolvedValueOnce([
+                    ['stt:result:s-1', [
+                        ['3-0', ['type', 'status', 'status', 'closed']],
                     ]],
                 ]);
+
+            const obs = service.subscribeToResults('s-1');
+            const results = await lastValueFrom(obs.pipe(toArray()));
+
+            // finalizing was skipped (non-terminal); the tail final still relayed,
+            // and the stream completed on the following `closed`.
+            expect(results).toHaveLength(1);
+            expect(results[0].text).toBe('the closing utterance');
+            expect(results[0].isFinal).toBe(true);
+        });
+
+        it('should complete when status=cancelled is received', async () => {
+            mockXreadgroup.mockResolvedValueOnce([
+                ['stt:result:s-1', [
+                    ['1-0', ['type', 'status', 'status', 'cancelled']],
+                ]],
+            ]);
 
             const obs = service.subscribeToResults('s-1');
             const results = await lastValueFrom(obs.pipe(toArray()));
