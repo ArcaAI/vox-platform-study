@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
+from nlp.api.middleware.auth import enforce_service_token_ws
 from nlp.core.logging import get_logger
 from nlp.core.websocket_manager import WebSocketManager
 from nlp.dependencies import get_text_classifier, get_token_classifier, get_websocket_manager
@@ -18,6 +19,8 @@ async def websocket_classify_token(
     service: TokenClassifier = Depends(get_token_classifier),
     ws_manager: WebSocketManager = Depends(get_websocket_manager),
 ) -> None:
+    if not await enforce_service_token_ws(websocket):
+        return
     try:
         await ws_manager.handle_connection(websocket=websocket, session_id=session_id, process=service.process)
 
@@ -34,6 +37,8 @@ async def websocket_classify_text(
     service: TextClassifier = Depends(get_text_classifier),
     ws_manager: WebSocketManager = Depends(get_websocket_manager),
 ) -> None:
+    if not await enforce_service_token_ws(websocket):
+        return
     try:
         await ws_manager.handle_connection(websocket=websocket, session_id=session_id, process=service.process)
     except WebSocketDisconnect:

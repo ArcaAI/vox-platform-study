@@ -3,7 +3,7 @@ from enum import IntEnum, StrEnum
 from typing import Any
 
 import dotenv
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings
 
 from nlp.utils import get_project_root
@@ -64,6 +64,11 @@ class NLPServiceConfig(BaseSettings):
     otel_enabled: bool = Field(default=os.getenv("NLP_OTEL_ENABLED", "false").lower() == "true")
     traces_enabled: bool = Field(default=os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true")
     metrics_enabled: bool = Field(default=os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true")
+
+    # Inter-service authentication (TASK-465). Reads NLP_SERVICE_TOKEN via the
+    # env_prefix below — the exact key the gateway provisions. Empty by default
+    # so local dev / hermetic CI bypass auth; a set value enforces the header.
+    service_token: SecretStr = SecretStr("")
 
     class Config:
         env_prefix = "NLP_"
