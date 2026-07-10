@@ -138,16 +138,27 @@ async def generate(
     if shutdown_manager and shutdown_manager.is_shutting_down:
         raise ShutdownError("Service is shutting down — not accepting new requests.")
 
-    # C1-04 (TASK-469): idempotent replay. A deterministic Idempotency-Key (set by the
-    # harness from workflow_run + activity_id) makes a worker-crash re-delivery return the
-    # FIRST generation instead of re-invoking — and re-billing — the model. On a HIT we
-    # return the cached GenerateResponse without touching the provider (or any rate-limit /
-    # circuit-breaker / task machinery below); a successful MISS caches it before returning.
-    # No key (or no Redis wired) → fall through to normal generation (behavior preserved).
+    # C1-04 (TASK-469): idempotent replay. A deterministic Idempotency-Key (set by the harness
+    # from workflow_run:activity_id — globally unique per logical generate; the apps/api SMR
+    # proxy strips any client-supplied header, so no tenant scoping is required here, though a
+    # tenant prefix would be a cheap defense-in-depth if that ever changes) makes a worker-crash
+    # re-delivery return the FIRST generation instead of re-invoking — and re-billing — the
+    # model. On a HIT we return the cached GenerateResponse without touching the provider (or any
+    # rate-limit / circuit-breaker / task machinery below); a successful MISS caches it before
+    # returning. The lookup is strictly BEST-EFFORT: no key, no Redis wired, OR a Redis read
+    # error all fall through to normal generation — a dedup-store outage must degrade to
+    # "generate" (the documented residual), never fail an otherwise-serviceable request.
     cache_key = f"smr:idem:{idempotency_key}" if idempotency_key else None
     if cache_key is not None and redis_client is not None:
-        cached = await redis_client.get(cache_key)
+        try:
+            cached = await redis_client.get(cache_key)
+        except Exception as exc:
+            logger.warning(
+                "generation.idempotency_cache_read_failed", cache_key=cache_key, error=str(exc)
+            )
+            cached = None
         if cached is not None:
+            logger.debug("generation.idempotency_cache_hit", cache_key=cache_key)
             return GenerateResponse.model_validate_json(cached)
 
     # Guardrail medical-content validation (TASK-338 Phase 4b). The consultation
@@ -377,10 +388,21 @@ async def generate(
             latency_ms=latency_ms,
             finish_reason="stop",
         )
-        # C1-04 (TASK-469): cache the completed generation so a replayed request carrying
-        # the same key returns THIS response instead of re-billing the model (bounded TTL).
+        # C1-04 (TASK-469): cache the completed generation so a replayed request carrying the
+        # same key returns THIS response instead of re-billing the model (bounded TTL). STRICTLY
+        # best-effort and locally guarded: the model already ran and the task is COMPLETED, so a
+        # cache-write failure (Redis OOM on a large SOAP note, a dropped connection) must NEVER
+        # bubble into the outer ``except`` — that would discard a billed generation, record a
+        # FALSE circuit-breaker failure, flip the task to FAILED, and return a 5xx the harness
+        # retries (re-invoking the model = the very C1-04 double-bill this ticket closes). Swallow
+        # it and return the response; the worst case degrades to "not cached" (documented residual).
         if cache_key is not None and redis_client is not None:
-            await redis_client.set(cache_key, response.model_dump_json(), ex=_IDEMPOTENCY_TTL_S)
+            try:
+                await redis_client.set(cache_key, response.model_dump_json(), ex=_IDEMPOTENCY_TTL_S)
+            except Exception as exc:
+                logger.warning(
+                    "generation.idempotency_cache_write_failed", task_id=task.task_id, error=str(exc)
+                )
         return response
     except TimeoutError:
         latency_ms = int((time.monotonic() - start) * 1000)
