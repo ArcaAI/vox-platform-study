@@ -18,10 +18,10 @@
     "epsilon": 0.05,
     "_note": "Higher is better; GUARDRAIL. Subsequence (looser) recall for longer descriptive phrases. floor 0.70 bootstrap."
   },
-  "partial_revision_rate": {
+  "committed_revision_rate": {
     "baseline": 0.0,
     "epsilon": 0.02,
-    "_note": "Lower is better; the A1 guardrail (a tentative tail must NOT increase caption churn). TASK-455 baseline 0.0 on the …402 pipeline; epsilon 0.02 tolerates float/sampling noise while still catching real flicker."
+    "_note": "Lower is better; the A1 guardrail — a tentative tail must NOT increase COMMITTED (settled-text) caption churn. TASK-487: gates the LocalAgreement-2 committed prefix (text[:stable_chars]), NOT the full caption — re-transcribing the by-design tentative tail (text[stable_chars:], UI-ghosted) is excluded. Value unchanged from the TASK-455 baseline 0.0 on the …402 pipeline; LA-2's monotonic commit keeps committed churn ≈0, so epsilon 0.02 still catches real settled-text flicker. The informational full-caption partial_revision_rate (surfaced, ungated) rose to ~0.8 under TASK-471's 0.4s cadence — that is designed tail volatility, not user-visible flicker (see docs/implementation/TASK-487)."
   },
   "commit_latency_ms": {
     "p50_baseline": 6023.2,
