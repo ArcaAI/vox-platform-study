@@ -71,7 +71,10 @@ from smr_v2.models.stream import StreamChunk
 from smr_v2.models.task import TaskStatus
 from smr_v2.providers.base import LLMProvider, ProviderNotFoundError, ProviderRegistry
 from smr_v2.services.circuit_breaker import CircuitBreaker, CircuitState
-from smr_v2.services.external_guardrail import ExternalGuardrailClient
+from smr_v2.services.external_guardrail import (
+    GUARDRAIL_UNAVAILABLE_REASON,
+    ExternalGuardrailClient,
+)
 from smr_v2.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
 from smr_v2.services.provider_queue import ProviderQueue, QueueFullError
 from smr_v2.services.rate_limiter import RateLimitTracker, estimate_tokens
@@ -161,20 +164,38 @@ async def generate(
             logger.debug("generation.idempotency_cache_hit", cache_key=cache_key)
             return GenerateResponse.model_validate_json(cached)
 
-    # Guardrail medical-content validation (TASK-338 Phase 4b). The consultation
-    # tenant is forwarded so guardrail resolves per-tenant provider/model from DB.
-    # fail-open vs fail-closed is enforced inside the client.
+    # Guardrail medical-content validation (TASK-338 Phase 4b; TASK-478 fail-closed).
+    # The consultation tenant is forwarded so guardrail resolves per-tenant
+    # provider/model from DB. Degrade-safe → fail-CLOSED posture (TASK-478): a
+    # guardrail failure never ships an unmoderated PHI prompt — the verdict defaults
+    # to NOT-allowed on a missing/malformed key, a sustained outage rejects with a
+    # retryable 503 (vs a 422 content rejection), and if the enforce posture is on
+    # (external_guardrail.enabled) but the client is unwired the gate fails closed
+    # rather than silently skipping. The intentional dev/CI bypass (enabled=False —
+    # the client short-circuits, or is simply absent) is preserved.
     if guardrail_client is not None:
         verdict = await guardrail_client.validate(
             prompt=request_body.prompt,
             system_prompt=request_body.system_prompt,
             tenant_id=x_tenant_id,
         )
-        if not verdict.get("allowed", True):
+        if not verdict.get("allowed", False):  # fail-closed default (missing key → reject)
+            reason = verdict.get("reason", "not_allowed")
+            # A sustained guardrail outage is retryable (503); a genuine content
+            # rejection is a 422. Both fail CLOSED — generation never runs.
+            status_code = 503 if reason == GUARDRAIL_UNAVAILABLE_REASON else 422
             raise HTTPException(
-                status_code=422,
-                detail=f"Content rejected by guardrail: {verdict.get('reason', 'not_allowed')}",
+                status_code=status_code,
+                detail=f"Content rejected by guardrail: {reason}",
             )
+    elif settings.external_guardrail.enabled:
+        # Enforce posture on but the guardrail client is unwired — fail CLOSED rather
+        # than silently skip moderation (a misconfiguration must not ship unmoderated
+        # PHI). Retryable (503) once the client is provisioned.
+        raise HTTPException(
+            status_code=503,
+            detail="Content rejected by guardrail: external_guardrail_unavailable",
+        )
 
     ctx = structlog.contextvars.get_contextvars()
 

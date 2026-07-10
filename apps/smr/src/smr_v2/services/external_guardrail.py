@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -11,9 +12,22 @@ from smr_v2.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Deterministic verdict reason emitted when the guardrail is unreachable after the
+# bounded retry budget is exhausted. The /generate gate maps this to a retryable 503
+# (distinct from a 422 content rejection). This path NEVER yields ``allowed: True``.
+GUARDRAIL_UNAVAILABLE_REASON = "external_guardrail_unavailable"
+
 
 class ExternalGuardrailClient:
-    """Calls the Guardrail service for medical-content validation."""
+    """Calls the Guardrail service for medical-content validation.
+
+    Fail posture (TASK-478, degrade-safe → fail-CLOSED): a transient error is
+    absorbed by a bounded retry (``max_retries`` / ``retry_backoff_ms``); once the
+    budget is exhausted the client returns a deterministic NOT-allowed verdict — an
+    errored guardrail can NEVER return ``allowed: True`` (there is no fail-open
+    branch). The only allow-without-check path is the intentional ``enabled=False``
+    dev/CI bypass, preserved exactly (mirrors TASK-465's empty-token bypass).
+    """
 
     def __init__(
         self,
@@ -49,39 +63,63 @@ class ExternalGuardrailClient:
         if tenant_id:
             headers["X-Tenant-Id"] = tenant_id
 
-        try:
-            response = await self.http_client.post(
-                f"{self.base_url}/api/medical/validate",
-                json={
-                    "text": text,
-                    "include_reasoning": self.settings.include_reasoning,
-                },
-                headers=headers,
-                timeout=self.settings.timeout_s,
-            )
-            response.raise_for_status()
-            payload = response.json()
-            is_medical = bool(payload.get("is_medical", False))
-            return {
-                "allowed": is_medical if self.settings.require_medical else True,
-                "is_medical": is_medical,
-                "confidence": float(payload.get("confidence", 0.0)),
-                "reason": payload.get("reasoning") or payload.get("error") or "medical_validation_completed",
-                "raw": payload,
-            }
-        except Exception as exc:
-            logger.error("external_guardrail.request_failed", error=str(exc), base_url=self.base_url)
-            if self.settings.fail_open:
+        # Bounded retry (TASK-478): total tries = max_retries + 1. A transient blip is
+        # absorbed (a clean re-check proceeds); only a sustained outage exhausts the
+        # budget and fails CLOSED below.
+        attempts = self.settings.max_retries + 1
+        last_error = ""
+        for attempt in range(attempts):
+            try:
+                response = await self.http_client.post(
+                    f"{self.base_url}/api/medical/validate",
+                    json={
+                        "text": text,
+                        "include_reasoning": self.settings.include_reasoning,
+                    },
+                    headers=headers,
+                    timeout=self.settings.timeout_s,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                is_medical = bool(payload.get("is_medical", False))
                 return {
-                    "allowed": True,
-                    "is_medical": True,
-                    "confidence": 0.0,
-                    "reason": "external_guardrail_failed_open",
+                    "allowed": is_medical if self.settings.require_medical else True,
+                    "is_medical": is_medical,
+                    "confidence": float(payload.get("confidence", 0.0)),
+                    "reason": payload.get("reasoning") or payload.get("error") or "medical_validation_completed",
+                    "raw": payload,
                 }
-            return {
-                "allowed": False,
-                "is_medical": False,
-                "confidence": 0.0,
-                "reason": "external_guardrail_unavailable",
-                "error": str(exc),
-            }
+            except Exception as exc:
+                last_error = str(exc)
+                is_last = attempt + 1 >= attempts
+                logger.warning(
+                    "external_guardrail.attempt_failed",
+                    attempt=attempt + 1,
+                    attempts=attempts,
+                    error=last_error,
+                    base_url=self.base_url,
+                    will_retry=not is_last,
+                )
+                if is_last:
+                    break
+                backoff_s = (self.settings.retry_backoff_ms / 1000.0) * (attempt + 1)
+                if backoff_s > 0:
+                    await asyncio.sleep(backoff_s)
+
+        # Bounded retry exhausted → fail CLOSED with a deterministic not-allowed
+        # verdict. There is deliberately no fail-open branch: an errored guardrail can
+        # never ship an unmoderated PHI prompt. The gate maps this reason to a
+        # retryable 503.
+        logger.error(
+            "external_guardrail.exhausted_fail_closed",
+            attempts=attempts,
+            error=last_error,
+            base_url=self.base_url,
+        )
+        return {
+            "allowed": False,
+            "is_medical": False,
+            "confidence": 0.0,
+            "reason": GUARDRAIL_UNAVAILABLE_REASON,
+            "error": last_error,
+        }
