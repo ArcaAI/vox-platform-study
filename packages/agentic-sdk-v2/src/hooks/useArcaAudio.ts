@@ -65,6 +65,11 @@ export function useArcaAudio() {
       const logger = getLogger();
       if (!pluginManager) throw new Error('SDK not initialized');
 
+      // TASK-464 — a new capture session starts with a clean audio-drop signal.
+      // Reset BEFORE audio flows (the session-sticky latch clears on start/stop
+      // only, so it survives reconnect but never leaks across capture sessions).
+      store.resetAudioDropped();
+
       if (options?.language) {
         store.setAudioLanguage(options.language);
       }
@@ -221,6 +226,14 @@ export function useArcaAudio() {
             });
             store.setAudioError(error);
           },
+          // TASK-464 — an outbound audio frame was dropped at the streaming STT
+          // client's backpressure watermark. The dropped PCM never reached the
+          // durable transcript, so latch the session loss (survives reconnect)
+          // and bump the per-session count for the degraded-connection signal.
+          onAudioDrop: () => {
+            store.markAudioLost();
+            store.incrementDroppedFrames();
+          },
         });
 
         // Initialize plugins
@@ -365,6 +378,9 @@ export function useArcaAudio() {
     store.setIsSpeaking(false);
     store.setAudioLevel(0);
     store.setCurrentTranscript('');
+    // TASK-464 — session ended; clear the audio-drop signal (start/stop are the
+    // ONLY reset points — the latch deliberately survives reconnect).
+    store.resetAudioDropped();
 
     logger?.info('Audio capture stopped', {
       operation: 'stopAudio',
@@ -482,6 +498,11 @@ export function useArcaAudio() {
       language: store.audioLanguage ?? 'en',
       plugins: store.audioPlugins,
       error: store.audioError,
+      // TASK-464 — surface the audio-drop signal so the vox consultation UI can
+      // render a degraded-connection banner/badge. `droppedFrameCount` is the
+      // per-session count; `audioLostThisSession` is the session-sticky latch.
+      droppedFrameCount: store.audioDroppedFrameCount,
+      audioLostThisSession: store.audioLostThisSession,
       start: startAudio,
       startFromPreferences,
       stop: stopAudio,
@@ -501,6 +522,8 @@ export function useArcaAudio() {
       store.audioLanguage,
       store.audioPlugins,
       store.audioError,
+      store.audioDroppedFrameCount,
+      store.audioLostThisSession,
       startAudio,
       startFromPreferences,
       stopAudio,

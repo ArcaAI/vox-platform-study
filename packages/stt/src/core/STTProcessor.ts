@@ -120,6 +120,14 @@ export class STTProcessor extends BaseProcessor {
    */
   private streamingTransport: STTStreamingTransport | null = null;
 
+  /**
+   * TASK-464 — PUSH channel for backpressure drops, re-emitted from the
+   * streaming provider's `onDrop`. Consumers (the vox `TranscriptionPipeline`)
+   * register this to forward drops up to the store/hook/UI. Only the streaming
+   * remote provider produces drops; other providers never invoke it.
+   */
+  private backpressureDropCallback: ((droppedFrameCount: number) => void) | null = null;
+
   constructor(options: STTOptions = {}) {
     super('stt-processor', options.debugMode);
 
@@ -336,6 +344,19 @@ export class STTProcessor extends BaseProcessor {
    */
   getStreamingTransport(): STTStreamingTransport | null {
     return this.streamingTransport;
+  }
+
+  /**
+   * TASK-464 — register a callback fired once per outbound frame dropped at the
+   * streaming client's backpressure watermark (with the running total). Only the
+   * streaming remote provider produces drops. This is the PUSH complement to the
+   * `droppedFrames` field in {@link getStats}; the vox `TranscriptionPipeline`
+   * registers it to emit an `audioDrop` event up to the store/hook/UI. Single-
+   * slot; re-registering replaces the callback. Set before `onInit` to catch
+   * every drop.
+   */
+  onBackpressureDrop(cb: (droppedFrameCount: number) => void): void {
+    this.backpressureDropCallback = cb;
   }
 
   /**
@@ -707,6 +728,13 @@ export class STTProcessor extends BaseProcessor {
     });
     provider.onError((error) => {
       this.handleError(error);
+    });
+    // TASK-464 — consume the provider's backpressure-drop PUSH channel and
+    // re-emit it so the vox pipeline/store can surface a degraded signal. The
+    // provider is the single source of truth for the count (avoids double-
+    // counting the ws client's own watermark drops).
+    provider.onDrop((droppedFrameCount) => {
+      this.backpressureDropCallback?.(droppedFrameCount);
     });
 
     await provider.init({
