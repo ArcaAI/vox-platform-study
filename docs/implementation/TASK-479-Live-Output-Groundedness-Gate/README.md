@@ -1,6 +1,6 @@
 # TASK-479 — Live Output + Groundedness Moderation Gate (Theme D2 · SOTA S2-06/07)
 
-- **Status**: Pending
+- **Status**: Review (fail-closed gate wiring + hermetic tests implemented 2026-07-11; the live MiniCheck-class NLI scorer is BLOCKED on model staging — see §Implementation Summary → Model-staging ask)
 - **Type**: feature (live-surface clinical-safety — output moderation + NLI groundedness before the clinician reads the draft)
 - **Track**: [SOTA Enhancement Track](../SOTA-Track/README.md) · Theme **D2** (Live-surface guardrails — the output side)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · strategic SOTA track (post-Wave-3)
@@ -107,8 +107,98 @@ pnpm build:api          # if a proxy/DTO change lands
 
 Adversarial review focus (reviewer agent): (a) can ANY error path mark a segment `grounded` (grep the degrade branch — it must only ever mark `unverified`)? (b) does a transient blip get absorbed while a sustained outage degrades to `unverified` **without freezing/dropping the live feed** — proven by a test, not asserted? (c) is the NLI verifier deterministic + self-hosted (no hidden network, no cloud vendor)? (d) is the >500 docs/min target a real batching property, not a flaky wall-clock assertion? (e) is the DTO change additive/back-compatible (optional field, no break to existing SSE consumers)? (f) is the guardrail route behind `X-Service-Token` and the live-doc call resolving `GUARDRAIL_URL` via `IConfigService` (no `process.env`)? (g) zero diff outside the manifest — no input gate (D1), no harness sensor, no live NER (C2).
 
+## Implementation Summary (2026-07-11)
+
+Implemented via strict TDD (RED → GREEN) on the `fix/2605-review` base. Everything that does **not** require the live NLI model is built and green: the guardrail groundedness endpoint + verifier (fail-closed, behind `X-Service-Token`), the live-documentation wiring (verdict attached **between** note build and `safePublish`), the additive SSE DTO, the config knobs, and hermetic tests with the model **stubbed**. The one blocked piece is the production NLI scorer itself — the MiniCheck-class model is not staged in the offline HF cache (track guardrail: self-hosted only, no cloud PHI), so `load_default_scorer` deliberately raises `NliModelUnavailableError` and the whole chain degrades honestly to `unverified` (never `grounded`).
+
+### What was built vs what is blocked
+
+| Piece | State |
+|---|---|
+| `GroundednessNliVerifier` — deterministic segmentation (exact offsets), batched scoring, threshold verdicts, flagged spans, fail-closed degrade (`disabled` / `model unavailable` / `scorer error` / malformed scorer output → all `unverified`) | **Built + tested** (injectable `NliScorer` protocol; tests use a tiny deterministic keyword-overlap stub — no network, no model) |
+| `POST /guardrail/ground` — `{summary, transcript}` → per-segment `{text, verdict, grounded, score, start, end}` + `flagged_spans` + `checked/reason/model_id/throughput_docs_per_min`; behind the TASK-465 `X-Service-Token` middleware; endpoint-level fail-closed backstop (verifier crash → 200 all-`unverified`, the deliberate inverse of the legacy fail-open `analyze`/`validate` error branches) | **Built + tested** |
+| `GroundednessConfig` (`GUARDRAIL_V2_GROUNDEDNESS_*`): `enabled` dev/CI bypass vs clinical enforce (mirrors TASK-478), `model_id`, `entailment_threshold`, `batch_size`, `max_segments` | **Built** |
+| Live-doc wiring — `checkGroundedness` runs **between** `runningSummary` build and `safePublish`; source = transcript ∪ clinician notes (mirrors the durable sensor); bounded retry absorbs a blip; sustained outage → `unverified`, feed still publishes; strict wire→DTO mapper (only the literal `grounded` verdict from an honest `checked: true` response can mark grounded); `GUARDRAIL_URL` via ConfigService (same pattern as the file's `SMR_URL`/`NLP_URL`, no `process.env`); `X-Service-Token` via the @Global `SecretsService` (`GUARDRAIL_SERVICE_TOKEN`), the harness-gateway pattern | **Built + tested** |
+| `LiveSummaryEventDto.groundedness?` — additive/optional: worst-state rollup verdict + per-segment verdicts + `flaggedSpans` (offsets index `runningSummary`, same contract as entity highlights) | **Built + tested** |
+| Env knobs in `turbo.json#globalEnv` + root `.env.example` + `apps/guardrail/.env.example` | **Built** |
+| **Production NLI scorer** (real MiniCheck inference) + real-model AC-2 throughput measurement + real-model AC-6 precision/recall numbers | **BLOCKED on model staging** (ask below) |
+
+### Model-staging ask (for the orchestrator)
+
+- **Model**: `lytang/MiniCheck-Flan-T5-Large` (HF repo id) — the MiniCheck fact-checking NLI from Tang et al., Flan-T5-Large backbone, ~783M params ≈ **3.1 GB** fp32 safetensors (~1.6 GB if fp16 is staged instead). Stage into `HF_HOME=/Volumes/aillusion/huggingface`.
+- **Why this one**: the S2 finding names MiniCheck Flan-T5-Large explicitly for the >500 docs/min live target; it is self-hosted (no PHI egress) and CPU/GPU-servable at live-loop cadence, unlike the durable JudgeClient sensor.
+- **Follow-up once staged**: implement the scorer inside `load_default_scorer` (`apps/guardrail/src/guardrail/services/groundedness_nli.py`) against the verified model-card input format, then record AC-2 throughput + AC-6 precision/recall. The `NliScorer` seam, endpoint, wiring, DTO, and tests all stay as-is. (Alternative if a smaller footprint is wanted: `lytang/MiniCheck-RoBERTa-Large`, ~1.4 GB, lower quality.)
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `apps/guardrail/src/guardrail/services/groundedness_nli.py` (new) | Verifier core: `split_segments` (offset-exact), `NliScorer` protocol, `GroundednessNliVerifier.verify` (batched, deterministic, fail-closed), `load_default_scorer` (raises `NliModelUnavailableError` until the model is staged). PHI-safe logs (counts/reasons only). |
+| `apps/guardrail/src/guardrail/api/endpoints/groundedness.py` (new) | `POST /guardrail/ground` route + request/response models; app-state-cached verifier (tests pre-seed a stub); `asyncio.to_thread` for the CPU-bound scorer; fail-closed crash backstop. |
+| `apps/guardrail/src/guardrail/core/config.py` | `GroundednessConfig` (`env_prefix="GUARDRAIL_V2_GROUNDEDNESS_"`), registered on `Settings.groundedness`. |
+| `apps/guardrail/src/guardrail/main.py` | **Forced 2-line change** (router import + `include_router`) — the manifest's new-endpoint-file option requires registration; mirrors TASK-478's forced `main.py` precedent. `/guardrail/analyze` and all other routes byte-identical. |
+| `apps/guardrail/src/guardrail/tests/test_groundedness_nli.py` (new) | 15 RED→GREEN verifier tests (AC-1 grounded-vs-hallucinated, determinism, offsets, flagged spans, AC-2 batching property, cap, all four fail-closed degrade paths, staging-boundary lock, segmentation, AC-6 metric harness). |
+| `apps/guardrail/src/guardrail/tests/test_groundedness_endpoint.py` (new) | 6 RED→GREEN endpoint tests (contract + offsets + flagged spans, empty summary, `X-Service-Token` 401/200, model-unavailable degrade, disabled degrade, verifier-crash fail-closed). |
+| `packages/applications/src/services/consultation/live-documentation/live-documentation.service.ts` | Gate wiring in `flush()` between build and publish; `checkGroundedness` (bounded retry → `unverified`) + strict `mapGroundednessResponse`; config knobs; optional `SecretsService` injection (appended param — all existing construction sites unchanged); PHI-safe flush-log fields (`groundednessVerdict`, `groundednessLatencyMs`). |
+| `packages/applications/src/services/consultation/live-documentation/dto/live-summary.dto.ts` | Additive `LiveSummaryGroundednessDto` / `...SegmentDto` / `LiveSummaryFlaggedSpanDto` + optional `LiveSummaryEventDto.groundedness`. |
+| `packages/applications/src/services/consultation/live-documentation/__tests__/live-documentation.groundedness.test.ts` (new) | 9 tests: disabled-default back-compat (no verdict, no call), marks-before-publish, URL/token/`{summary, transcript}` contract, payload-shape invariance, transient-blip retry, sustained-outage degrade (+ bounded attempts + PHI-safe logs), malformed/unknown-verdict fail-closed, `checked:false` distrust, stale-generation drop during the gate call. |
+| `turbo.json` · `.env.example` · `apps/guardrail/.env.example` | Registered `GUARDRAIL_V2_GROUNDEDNESS_{ENABLED,MODEL_ID,ENTAILMENT_THRESHOLD,BATCH_SIZE,MAX_SEGMENTS}` + `LIVE_DOC_GROUNDEDNESS_{ENABLED,TIMEOUT_MS,MAX_RETRIES,RETRY_BACKOFF_MS}` with the fail-closed posture documented. |
+
+No `apps/api` change was needed: the live-doc service calls the guardrail directly (the same posture as its SMR/NLP calls) and the SSE relay forwards the enriched payload verbatim; `pnpm build:api` re-verified.
+
+### Acceptance criteria
+
+- **AC-1 (NLI verifier — hermetic RED→GREEN)** — grounded vs hallucinated claim verdicts, deterministic, offline stub NLI; RED was `ImportError` (verifier absent), then 21 Python tests GREEN. ✓
+- **AC-2 (throughput)** — asserted as a **batching property** (`ceil(N/batch_size)` scorer calls, each ≤ batch) + a reported `throughput_docs_per_min` field; the >500 docs/min **reference-host measurement is blocked on the un-staged model** (recorded in the staging ask). ◐
+- **AC-3 (live-doc wiring — RED→GREEN)** — disabled default publishes **no** verdict (locked by test); enabled, the call runs between build and `safePublish` and the published SSE payload carries the flags; SMR/NLP timing + payload shape asserted unchanged. ✓
+- **AC-4 (degrade-safe / fail-closed)** — transient blip absorbed (exactly 2 attempts, verdict from the clean re-check); sustained outage → `unverified` with the feed still publishing; asserted that **no** error/malformed/`checked:false` path yields `grounded` on either side of the wire. ✓
+- **AC-5 (SSE contract — additive)** — optional `groundedness` field; per-segment verdicts + `flaggedSpans` with offsets indexing `runningSummary` (the entity-offset contract); full existing suite green (back-compatible). ✓
+- **AC-6 (D2-owned metric)** — the precision/recall harness over a small synthetic (de-identified) labelled sample is locked by test (stub scorer: precision 1.0 / recall 1.0 — machinery proof, not a model claim); **real-model numbers blocked on staging**. TASK-470 is orthogonal and untouched: the gate is default-off and, when on, adds one bounded call downstream of the transcript — no ASR-path perturbation. ◐
+- **AC-7 (combined posture)** — D1 (TASK-478): SMR **input** degrade-safe→fail-closed (a guardrail outage can never ship an unmoderated PHI prompt to the LLM). D2 (this ticket): live **output** NLI groundedness gate, degrade-safe→`unverified` (an ungrounded summary segment can never reach the clinician *marked as verified*, and an unavailable gate can never silently bless text). Together the live loop is closed at both ends. ✓
+- **AC-gate** — see verification output below. ✓ (for everything built)
+
+### RED → GREEN evidence
+
+RED (before implementation):
+
+```
+# Python — both new test modules fail collection on the absent verifier:
+E   ImportError: cannot import name 'GroundednessConfig' from 'guardrail.core.config' (…worktree…/apps/guardrail/src/guardrail/core/config.py)
+ERROR apps/guardrail/src/guardrail/tests/test_groundedness_nli.py
+ERROR apps/guardrail/src/guardrail/tests/test_groundedness_endpoint.py
+
+# TS — 7 gate-behavior tests fail (no wiring), 2 back-compat locks pass:
+Test Files  1 failed (1) · Tests  7 failed | 2 passed (9)
+  e.g. AssertionError: expected undefined to be defined   (payload.groundedness)
+       AssertionError: expected [ 'STALE first', 'FRESH second' ] to not include 'STALE first'
+```
+
+GREEN — verification gate (actual output):
+
+```
+PYTHONPATH=<worktree>/apps/guardrail/src pnpm py:guardrail:test
+  → 75 passed in 3.44s            (54 existing + 21 new; cov via addopts)
+pnpm py:guardrail:lint            → All checks passed!
+pnpm py:guardrail:typecheck       → Success: no issues found in 26 source files
+
+pnpm --filter @arcaai/applications test   → Test Files 274 passed | 1 skipped · Tests 5948 passed | 4 skipped
+pnpm --filter @arcaai/applications build  → exit 0 (tsc)
+pnpm --filter @arcaai/applications lint   → 0 errors; live-documentation folder warnings identical to baseline (6 = 6, all pre-existing prettier)
+pnpm build:api                            → Tasks: 8 successful, 8 total
+```
+
+(Runner note, same as TASK-478: the shared `arcaenv` imports `guardrail` from the main checkout, so the guardrail gate must pin `PYTHONPATH=<worktree>/apps/guardrail/src` to run against the worktree source.)
+
+### Deviations / notes
+
+- **`main.py` touched (2 lines, forced)** — the manifest offered "new `groundedness.py`" but a new endpoints file must be registered; chose this over extending `guardrails.py` because that file is ALSO on the read-only list. Mirrors TASK-478's forced-`main.py` precedent; every other route is byte-identical.
+- **Content-safety fold-in deferred** — the manifest marked folding `/guardrail/analyze` into the output pass as *optional*; it needs the live GLiNER/LLM providers (also model-dependent) and is additive later. The endpoint/DTO shapes accommodate it without breakage.
+- **No speculative model code** — `load_default_scorer` raises with a precise staging message instead of shipping untested transformers inference in a clinical safety gate; the injectable-scorer seam is where the staged-model follow-up plugs in.
+
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-10 | Detail-scaffolded from [SOTA-Track](../SOTA-Track/README.md) Theme **D2** into an execution-ready ticket. Current state code-verified against `fix/2605-review` @ `87199e33`: the live summary is built (`live-documentation.service.ts:558-561`) and published over SSE (`:596-597`) with **nothing** between — no output moderation, no groundedness check (the SMR `system_prompt` "never fabricate findings" `:1010` is prompt-time, not verification); SMR moderates **input** only (TASK-478, `generate.py:170/193`); the at-par harness groundedness sensor (`sensors/inferential/groundedness.py:161-185`) is **LLM-JudgeClient** based and **durable-only** (too slow for the live cadence); the guardrail service (port 8863) already hosts `/guardrail/analyze` + `/medical/validate` behind `X-Service-Token` (the natural home for a self-hosted output-moderation + NLI-groundedness route); `LiveSummaryEventDto` (`live-summary.dto.ts:52`) has no grounded flag. D2 adds a **self-hosted MiniCheck-class NLI** groundedness gate + output moderation, wired inline before publish, **degrade-safe→`unverified`** (never silently grounded), completing TASK-478's fail-closed guardrail story on the output side; complementary to TASK-477 (which grounds entities). TASK-470's ASR scorecard is orthogonal (D2 is downstream of the transcript) so D2 carries its own groundedness-gate metric. No implementation; documentation only. |
+| 2026-07-11 | **Implemented (status → Review).** Guardrail: `GroundednessConfig`, `groundedness_nli.py` verifier (deterministic, batched, fail-closed), `POST /guardrail/ground` behind `X-Service-Token`, forced 2-line `main.py` registration; 21 hermetic tests (stub NLI). Applications: `checkGroundedness` wired between `runningSummary` build and `safePublish` (bounded retry → `unverified`, strict mapper, stale-drop safe), additive `LiveSummaryEventDto.groundedness`, `SecretsService` token injection; 9 tests. Env knobs registered (`turbo.json`, root + app `.env.example`). Gates: guardrail 75 passed / ruff clean / mypy clean; applications 5948 passed / build green / no new lint warnings; `build:api` green. **BLOCKED remainder**: the live MiniCheck scorer + real-model AC-2/AC-6 numbers await staging of `lytang/MiniCheck-Flan-T5-Large` (~3.1 GB) into the offline HF cache — see §Implementation Summary. Not merged — orchestrator reviews. |
+| 2026-07-11 | **Adversarially reviewed (APPROVE-WITH-FIXES) + merged.** Review CONFIRMED the two merge-gating properties: fail-closed is inviolable at the rollup level (three independent degrade layers — verifier `degrade`, endpoint 200-all-`unverified` backstop, TS catch→bounded-retry→`unverified`; `grounded` requires all-segments-literal-`grounded` AND `checked===true` AND ≥1 segment; NaN score → `UNGROUNDED`), and the live-doc publish path is NOT regressed (feed always publishes with `unverified` on outage/timeout/malformed; stale-drop + supersession-abort preserved; 65-test live-doc folder re-run green). **Applied IMPORTANT-1** (the one should-fix): the per-segment map now coerces ALL segment verdicts to `unverified` when `checked !== true` (previously only the rollup distrusted, so a compromised/buggy guardrail sending `checked:false` + `grounded` segments could show verified per-segment marks) + extended the `checked:false` test to assert `segments.every(v==='unverified')`. **Applied MINOR-2**: bounded `entailment_threshold` to `Field(0.5, ge=0, le=1)` so a fat-fingered value fails fast at startup rather than fail-open. Re-verified in the main tree: guardrail **75 passed** + ruff clean; applications **5968 passed**. **Deferred to the model-staging follow-up** (all Minor, none fail-open today — the model is unstaged so `verify()` never reaches them): MINOR-1 (widen `verify()` factory `except`→`Exception` + move verdict-mapping inside the scoring `try` — WILL be hit once the real MiniCheck loader lands), MINOR-3 (clamp wire offsets / drop NaN / render span text from `runningSummary` not `segment.text`), MINOR-4 (endpoint tests restore the `get_settings()` singleton in a fixture), MINOR-5 (consider a shorter timeout / `MAX_RETRIES=0` / breaker for the ≤~10.2s hanging-guardrail worst case before clinical enablement). Landing default-OFF + model-unstaged is safe — no configuration of this diff can produce `grounded` until a real scorer exists. Follow-up: stage `lytang/MiniCheck-Flan-T5-Large` (~3.1 GB), implement `load_default_scorer`, fold in MINOR-1/2-bounds before flipping `ENABLED`, capture AC-2 throughput + AC-6 precision/recall. Status → Review. |

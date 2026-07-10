@@ -208,6 +208,7 @@ def create_app() -> FastAPI:
     app.add_middleware(ServiceAuthMiddleware)
 
     # Include routers
+    from guardrail.api.endpoints.groundedness import router as groundedness_router
     from guardrail.api.endpoints.guardrails import router as guardrails_router
     from guardrail.api.endpoints.health import router as health_router
     from guardrail.api.endpoints.jobs import router as jobs_router
@@ -216,6 +217,8 @@ def create_app() -> FastAPI:
     app.include_router(health_router, prefix="/api", tags=["health"])
     app.include_router(medical_router, prefix="/api", tags=["medical"])  # Primary endpoint
     app.include_router(guardrails_router, prefix="/api", tags=["guardrails"])
+    # TASK-479 (SOTA D2): live output-side groundedness gate — behind X-Service-Token.
+    app.include_router(groundedness_router, prefix="/api", tags=["groundedness"])
     app.include_router(jobs_router, prefix="/api", tags=["jobs"])
 
     # Metrics endpoint

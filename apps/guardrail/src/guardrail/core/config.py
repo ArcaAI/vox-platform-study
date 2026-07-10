@@ -132,6 +132,41 @@ class GlinerConfig(BaseSettings):
     max_workers: int = 2  # Thread-pool size for CPU-bound inference
 
 
+class GroundednessConfig(BaseSettings):
+    """Live output-side NLI groundedness gate (TASK-479 · SOTA D2).
+
+    ``enabled`` mirrors TASK-478's posture: ``False`` (default) is the dev / hermetic-CI
+    bypass — the gate answers honestly with ``unverified`` verdicts and never loads a
+    model; ``True`` is the clinical enforce posture and requires the SELF-HOSTED
+    MiniCheck-class NLI model staged on the host (track guardrail: no cloud PHI).
+    Fail posture is FAIL-CLOSED throughout: a disabled gate, an un-staged model, or a
+    scoring error all degrade to ``unverified`` — no path ever yields ``grounded``
+    without the model actually entailing the segment.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="GUARDRAIL_V2_GROUNDEDNESS_")
+
+    enabled: bool = False
+
+    # Self-hosted NLI entailment model (MiniCheck / Flan-T5-Large class — chosen for the
+    # >500 docs/min live-loop target). Referenced by the loader + surfaced in responses.
+    model_id: str = "lytang/MiniCheck-Flan-T5-Large"
+
+    # A segment is `grounded` only when its entailment score >= this threshold.
+    # TASK-479 review MINOR-2 — bounded to [0,1] so a fat-fingered threshold (e.g. a
+    # negative or >1 value) is rejected at startup ("fail fast") rather than silently
+    # marking everything grounded on an honest checked:true response (a config fail-open
+    # on a clinical gate).
+    entailment_threshold: float = Field(0.5, ge=0.0, le=1.0)
+
+    # Segments per scorer batch — the throughput lever for the >500 docs/min target.
+    batch_size: int = 16
+
+    # Hard per-request bound on scored segments; excess segments degrade to `unverified`
+    # (never silently skipped as if verified).
+    max_segments: int = 200
+
+
 class RedisConfig(BaseSettings):
     """Redis configuration for job queue and caching."""
 
@@ -251,6 +286,7 @@ class Settings(BaseSettings):
     azure: AzureOpenAIConfig = Field(default_factory=AzureOpenAIConfig)
     bedrock: BedrockConfig = Field(default_factory=BedrockConfig)
     gliner: GlinerConfig = Field(default_factory=GlinerConfig)
+    groundedness: GroundednessConfig = Field(default_factory=GroundednessConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
     queue: QueueConfig = Field(default_factory=QueueConfig)
     db: DatabaseConfig = Field(default_factory=DatabaseConfig)
