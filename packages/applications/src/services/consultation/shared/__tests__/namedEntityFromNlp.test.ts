@@ -107,4 +107,42 @@ describe('namedEntityPropsFromNlp', () => {
       endOffset: 2,
     });
   });
+
+  // TASK-476 C1 — the NLP producer now emits ontology codes; the shared mapper
+  // carries them onto the NamedEntity props so BOTH durable write paths
+  // (ner.processor + summary.extractEntities) persist coded rows. RED before the
+  // mapper maps them (they were dropped → columns written null).
+  it('maps the five ontology codes (umls/snomed/rxnorm/icd/loinc → camelCase columns)', () => {
+    const props = namedEntityPropsFromNlp(
+      {
+        text: 'metformin',
+        entity_type: 'MEDICATION',
+        confidence: 0.97,
+        position: { start: 14, end: 23 },
+        umls_cui: 'C0025598',
+        snomed_code: null,
+        rxnorm_code: '6809',
+        icd_code: null,
+        loinc_code: null,
+      },
+      CTX,
+    );
+
+    expect(props).toMatchObject({
+      text: 'metformin',
+      className: 'MEDICATION',
+      umlsCui: 'C0025598',
+      rxnormCode: '6809',
+    });
+  });
+
+  it('leaves ontology codes undefined when the NLP entity carries none', () => {
+    const props = namedEntityPropsFromNlp({ text: 'headache', entity_type: 'SYMPTOM' }, CTX);
+
+    expect(props.umlsCui).toBeUndefined();
+    expect(props.snomedCode).toBeUndefined();
+    expect(props.rxnormCode).toBeUndefined();
+    expect(props.icdCode).toBeUndefined();
+    expect(props.loincCode).toBeUndefined();
+  });
 });

@@ -473,6 +473,36 @@ describe('PromptAssemblyService', () => {
             expect(result.userPrompt).toContain('icd:J18.9');
             expect(result.userPrompt).not.toContain('no standardized codes assigned');
         });
+
+        // TASK-476 C1 (AC-4) — the concrete "C5-03 closed" proof: with the NLP
+        // linker populating codes (the shape it emits for a coded medication),
+        // serializeNerEntities emits a REAL `[umls:…; rxnorm:…]` block and the
+        // TASK-462 groundedness note is ABSENT (the guard's hasAnyOntologyCode
+        // goes true in production). The guard code stays for genuinely un-codable
+        // spans — proven by the un-coded test above.
+        it('emits the real coded block and disengages the guard on linker-coded entities (C5-03 closed)', async () => {
+            mockPromptTemplateRepository.findById.mockResolvedValue(
+                createMockPromptTemplate({ content: 'Summarize for {conversation_language}.' }),
+            );
+            service = await getService();
+            const result = await service.assemble({
+                departmentId: 'dept-001',
+                promptType: 'new-patient',
+                transcript: 'Patient takes metformin.',
+                conversationLanguage: 'English',
+                nerEntities: [
+                    // Exactly the shape the OntologyLinker resolves for `metformin`.
+                    { text: 'metformin', type: 'MEDICATION', umlsCui: 'C0025598', rxnormCode: '6809', startOffset: 14, endOffset: 23 },
+                ],
+            });
+
+            expect(result.userPrompt).toContain('umls:C0025598');
+            expect(result.userPrompt).toContain('rxnorm:6809');
+            // Both codes render inside ONE bracketed block, separated by "; ".
+            expect(result.userPrompt).toContain('[umls:C0025598; rxnorm:6809]');
+            // The interim TASK-462 note is gone — the guard disengaged.
+            expect(result.userPrompt).not.toContain('no standardized codes assigned');
+        });
     });
 
     // ── Clinician notes + attachments injection (TASK-342 GAP #2) ──

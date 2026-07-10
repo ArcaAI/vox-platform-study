@@ -67,6 +67,41 @@ class TestPersistEntities:
         assert result.saved_count == 2
         assert result.entity_ids == ["a", "b"]
 
+    @pytest.mark.asyncio
+    async def test_persist_entities_forwards_ontology_codes(self):
+        """TASK-476 C1 — a coded NEREntity forwards its ontology codes into the
+        HarnessEntityItem body so persistEntities writes the NamedEntity columns.
+        Codes with no value are omitted (mirrors the existing offset pruning)."""
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["request"] = request
+            return httpx.Response(200, json={"savedCount": 1, "entityIds": ["a"]})
+
+        client = _client(handler)
+        entities = [
+            NEREntity(
+                text="metformin",
+                type="MEDICATION",
+                start=14,
+                end=23,
+                rxnorm_code="6809",
+                umls_cui="C0025598",
+            ),
+        ]
+
+        await client.persist_entities(
+            "c-1", tenant_id="t-1", context_item_id="ctx-1", entities=entities
+        )
+
+        item = json.loads(seen["request"].content)["entities"][0]
+        assert item["rxnormCode"] == "6809"
+        assert item["umlsCui"] == "C0025598"
+        # Unset codes are omitted (not sent as null) — consistent with offsets.
+        assert "snomedCode" not in item
+        assert "icdCode" not in item
+        assert "loincCode" not in item
+
 
 class TestAssemble:
     @pytest.mark.asyncio

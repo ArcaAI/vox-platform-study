@@ -20,6 +20,7 @@ import {
   HARNESS_PROGRESS_FAILED_STAGE,
   HARNESS_PROGRESS_STAGE_KEYS,
   HARNESS_PROGRESS_TERMINAL_STAGE,
+  HarnessEntityItem,
   HarnessEscalationRequest,
   HarnessProgressRequest,
 } from '../dto';
@@ -127,5 +128,43 @@ describe('HarnessEscalationRequest (C1-05)', () => {
 
   it('rejects an unknown reason (pinned to the two harness reasons)', async () => {
     expect((await validateEscalation({ tenantId: 'tenant-1', reason: 'something_else' })).isValid).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-476 (C1) — HarnessEntityItem carries the five ontology codes. They are
+// declared class-validator fields (@IsOptional @IsString), so a coded entity
+// validates and a non-string code is rejected.
+// ---------------------------------------------------------------------------
+
+async function validateEntityItem(data: Record<string, unknown>): Promise<{ isValid: boolean; errors: string[] }> {
+  const instance = plainToInstance(HarnessEntityItem, data);
+  const validationErrors = await validate(instance);
+  return {
+    isValid: validationErrors.length === 0,
+    errors: validationErrors.flatMap((e) => Object.values(e.constraints ?? {})),
+  };
+}
+
+describe('HarnessEntityItem ontology codes (TASK-476 C1)', () => {
+  it('accepts a coded entity with all five ontology codes', async () => {
+    const result = await validateEntityItem({
+      text: 'metformin',
+      type: 'MEDICATION',
+      umlsCui: 'C0025598',
+      snomedCode: '372567009',
+      rxnormCode: '6809',
+      icdCode: 'E11.9',
+      loincCode: '4548-4',
+    });
+    expect(result.isValid).toBe(true);
+  });
+
+  it('accepts an un-coded entity (all codes optional)', async () => {
+    expect((await validateEntityItem({ text: 'headache', type: 'SYMPTOM' })).isValid).toBe(true);
+  });
+
+  it('rejects a non-string ontology code', async () => {
+    expect((await validateEntityItem({ text: 'metformin', type: 'MEDICATION', rxnormCode: 6809 })).isValid).toBe(false);
   });
 });

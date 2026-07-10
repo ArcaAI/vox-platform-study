@@ -56,6 +56,34 @@ export class HarnessEntityItem {
   @IsOptional()
   @IsNumber()
   transcriptEndOffset?: number;
+
+  // TASK-476 C1 — clinical ontology codes resolved by the NLP entity linker.
+  // Declared with validators + @ApiPropertyOptional so they are first-class DTO
+  // fields (the global pipe is whitelist + forbidNonWhitelisted).
+  @ApiPropertyOptional({ description: 'UMLS Concept Unique Identifier' })
+  @IsOptional()
+  @IsString()
+  umlsCui?: string;
+
+  @ApiPropertyOptional({ description: 'SNOMED CT concept id' })
+  @IsOptional()
+  @IsString()
+  snomedCode?: string;
+
+  @ApiPropertyOptional({ description: 'RxNorm RxCUI' })
+  @IsOptional()
+  @IsString()
+  rxnormCode?: string;
+
+  @ApiPropertyOptional({ description: 'ICD-10-CM code' })
+  @IsOptional()
+  @IsString()
+  icdCode?: string;
+
+  @ApiPropertyOptional({ description: 'LOINC code' })
+  @IsOptional()
+  @IsString()
+  loincCode?: string;
 }
 
 export class HarnessPersistEntitiesRequest {

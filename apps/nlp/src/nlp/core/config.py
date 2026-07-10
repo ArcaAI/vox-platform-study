@@ -167,6 +167,22 @@ class TokenClassificationConfig(BaseSettings):
         env_prefix = "TOKEN_CLASSIFIER_"
 
 
+class OntologyLinkerConfig(BaseSettings):
+    """Clinical ontology linker configuration (TASK-476 C1).
+
+    Gates the deterministic ``OntologyLinker`` wired into token classification:
+    a master toggle plus a confidence floor below which a recognized span is
+    left un-coded (avoids coding low-confidence NER noise). Reads ``NLP_LINKER_*``
+    via the env_prefix. The bundled vocabulary is self-hosted — no cloud PHI.
+    """
+
+    linker_enabled: bool = Field(default=True)
+    linker_confidence_floor: float = Field(default=0.0, ge=0.0, le=1.0)
+
+    class Config:
+        env_prefix = "NLP_"
+
+
 class MedicalSuggesterConfig(BaseSettings):
     """Medical Suggester configuration"""
 
@@ -242,6 +258,7 @@ class Settings:
         self.service = NLPServiceConfig()
         self.text_classification = TextClassificationConfig()
         self.token_classification = TokenClassificationConfig()
+        self.ontology_linker = OntologyLinkerConfig()
         self.medical_suggester = MedicalSuggesterConfig()
         self.security = SecurityConfig()
         self.text_corrector = TextCorrectorConfig()

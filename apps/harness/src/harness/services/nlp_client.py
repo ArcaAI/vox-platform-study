@@ -63,4 +63,11 @@ class NlpClient:
             type=raw.get("entity_type", ""),
             start=int(position.get("start", -1)),
             end=int(position.get("end", -1)),
+            # TASK-476 C1 — carry the NLP-resolved ontology codes through so the
+            # persisted NamedEntity rows are coded (nullable when un-resolved).
+            umls_cui=raw.get("umls_cui"),
+            snomed_code=raw.get("snomed_code"),
+            rxnorm_code=raw.get("rxnorm_code"),
+            icd_code=raw.get("icd_code"),
+            loinc_code=raw.get("loinc_code"),
         )
