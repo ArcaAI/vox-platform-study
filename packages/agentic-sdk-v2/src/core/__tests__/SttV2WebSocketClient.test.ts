@@ -850,6 +850,76 @@ describe('SttV2WebSocketClient', () => {
       vi.useRealTimers();
     });
 
+    // TASK-2605 — a genuine reconnect (one that goes on to deliver a message)
+    // must reset the attempt budget so EACH disconnect episode gets the full
+    // maxAttempts, instead of the counter depleting cumulatively across the
+    // session. The reset is triggered by the first server message after a
+    // reconnect (the "session is alive" signal); a flap that opens then closes
+    // WITHOUT a message never resets — that is what keeps BUG-04 exhausting.
+    it('should give each disconnect episode a fresh retry budget after a reconnect delivers a message (TASK-2605)', async () => {
+      vi.useFakeTimers();
+      const mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+
+      const onReconnect = vi.fn();
+      const onReconnectFailed = vi.fn();
+      reconnectClient.onReconnect(onReconnect);
+      reconnectClient.onReconnectFailed(onReconnectFailed);
+
+      const p = reconnectClient.connect('wss://example.com/ws?sessionId=s1&tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      // --- Episode 1: burn two attempts (flap with no message), then a third
+      //     attempt that DELIVERS a message → the session is genuinely alive. ---
+
+      // Drop → attempt 1 (delay 100 * 2^0 = 100ms).
+      lastMockWs!.close(1006, 'Lost');
+      await vi.advanceTimersByTimeAsync(101);
+      expect(onReconnect).toHaveBeenLastCalledWith(1);
+
+      // Attempt 1 socket opens then flaps shut (no message → no acknowledgement).
+      lastMockWs!.simulateOpen();
+      lastMockWs!.close(1006, 'Lost'); // → attempt 2 (delay 100 * 2^1 = 200ms)
+      await vi.advanceTimersByTimeAsync(201);
+      expect(onReconnect).toHaveBeenLastCalledWith(2);
+      expect(reconnectClient.getReconnectAttempts()).toBe(2);
+
+      // Attempt 2 socket opens AND the server sends a message — genuine recovery.
+      lastMockWs!.simulateOpen();
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'transcript', text: 'post-reconnect caption', isFinal: false }));
+
+      // reconnect success → the budget is reset (not stuck at 2).
+      expect(reconnectClient.getReconnectAttempts()).toBe(0);
+      expect(onReconnectFailed).not.toHaveBeenCalled();
+
+      // --- Episode 2 (a later drop): must get the FULL budget again, not the
+      //     single leftover attempt a cumulative counter (the bug) would give. ---
+      onReconnect.mockClear();
+
+      lastMockWs!.close(1006, 'Lost again');
+      await vi.advanceTimersByTimeAsync(101);
+      // Fresh episode restarts at attempt 1 (under the bug it would be 3).
+      expect(onReconnect).toHaveBeenLastCalledWith(1);
+      expect(reconnectClient.getReconnectAttempts()).toBe(1);
+
+      // Spend the remaining budget by flapping: attempts 2 and 3, then give up.
+      lastMockWs!.simulateOpen();
+      lastMockWs!.close(1006, 'Lost again'); // → attempt 2 (200ms)
+      await vi.advanceTimersByTimeAsync(201);
+      lastMockWs!.simulateOpen();
+      lastMockWs!.close(1006, 'Lost again'); // → attempt 3 (400ms)
+      await vi.advanceTimersByTimeAsync(401);
+      lastMockWs!.simulateOpen();
+      lastMockWs!.close(1006, 'Lost again'); // 3 >= maxAttempts(3) → exhausted
+
+      expect(onReconnect).toHaveBeenLastCalledWith(3);
+      // A full budget of 3 fresh attempts was spent before giving up.
+      expect(onReconnectFailed).toHaveBeenCalledTimes(1);
+
+      mathRandomSpy.mockRestore();
+      vi.useRealTimers();
+    });
+
     it('should compute delay capped by maxDelayMs using exponential backoff formula', () => {
       // Verify the backoff formula: delay = min(baseDelayMs * 2^(attempt-1), maxDelayMs) + jitter
       // This tests the configuration is stored correctly and the computed delays
