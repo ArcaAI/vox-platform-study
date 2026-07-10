@@ -16,9 +16,11 @@ import { describe, it, expect } from 'vitest';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import {
+  HARNESS_ESCALATION_REASONS,
   HARNESS_PROGRESS_FAILED_STAGE,
   HARNESS_PROGRESS_STAGE_KEYS,
   HARNESS_PROGRESS_TERMINAL_STAGE,
+  HarnessEscalationRequest,
   HarnessProgressRequest,
 } from '../dto';
 
@@ -83,5 +85,47 @@ describe('HarnessProgressRequest payload bounds (MAJ-6 / TG-3)', () => {
   it('accepts boundary ordinals (1 and 50)', async () => {
     expect((await validateDto({ ...VALID_EVENT, ordinal: 1, total: 50 })).isValid).toBe(true);
     expect((await validateDto({ ...VALID_EVENT, ordinal: 50, total: 50 })).isValid).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK-466 (C1-05) — HarnessEscalationRequest (gate SLA-breach escalation).
+//
+// The harness `escalate_gate` activity POSTs {tenantId, reason, jobId?}; the
+// global pipe is whitelist + forbidNonWhitelisted, so `reason` is pinned to the
+// two harness reason strings and tenantId is required.
+// ---------------------------------------------------------------------------
+
+async function validateEscalation(data: Record<string, unknown>): Promise<{ isValid: boolean; errors: string[] }> {
+  const instance = plainToInstance(HarnessEscalationRequest, data);
+  const validationErrors = await validate(instance);
+  return {
+    isValid: validationErrors.length === 0,
+    errors: validationErrors.flatMap((e) => Object.values(e.constraints ?? {})),
+  };
+}
+
+describe('HarnessEscalationRequest (C1-05)', () => {
+  it('accepts a well-formed escalation with all fields ({tenantId, reason, jobId})', async () => {
+    expect((await validateEscalation({ tenantId: 'tenant-1', reason: 'gate_sla_breached', jobId: 'harness-doc-1' })).isValid).toBe(true);
+  });
+
+  it('accepts both harness reason values with jobId omitted (optional)', async () => {
+    for (const reason of HARNESS_ESCALATION_REASONS) {
+      const result = await validateEscalation({ tenantId: 'tenant-1', reason });
+      expect(result.isValid, `reason ${reason} should validate`).toBe(true);
+    }
+  });
+
+  it('rejects a missing tenantId', async () => {
+    expect((await validateEscalation({ reason: 'gate_sla_breached' })).isValid).toBe(false);
+  });
+
+  it('rejects a missing reason', async () => {
+    expect((await validateEscalation({ tenantId: 'tenant-1' })).isValid).toBe(false);
+  });
+
+  it('rejects an unknown reason (pinned to the two harness reasons)', async () => {
+    expect((await validateEscalation({ tenantId: 'tenant-1', reason: 'something_else' })).isValid).toBe(false);
   });
 });

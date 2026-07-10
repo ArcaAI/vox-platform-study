@@ -121,6 +121,17 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     marker: /TASK-305 D\.4|cross-aggregate tenant/i,
   },
   {
+    // TASK-466 (C1-05) — the harness callback receiver's recordEscalation
+    // asserts the 404-over-403 posture (a cross-tenant consultation surfaces as
+    // NotFoundException, via assertEqualTenants) alongside the missing-tenant
+    // guard, so the file now carries cross-tenant coverage. Floor is the two
+    // tenancy-guard tests in that describe (the marker captures the whole block).
+    name: 'consultation/harness/harness-internal',
+    file: 'services/consultation/harness/__tests__/harness-internal.service.test.ts',
+    minTests: 2,
+    marker: /recordEscalation \(C1-05\)/,
+  },
+  {
     name: 'department',
     file: 'services/department/__tests__/department.service.test.ts',
     minTests: 4,
