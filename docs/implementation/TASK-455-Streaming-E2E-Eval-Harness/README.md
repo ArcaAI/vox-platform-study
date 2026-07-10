@@ -1,6 +1,6 @@
 # TASK-455 — Streaming E2E Suite + Latency/Loss Eval Harness (S-10 · S1-EVAL)
 
-- **Status**: Pending
+- **Status**: Review (baseline captured — AC-1…AC-8 met; NEW test code only, zero product diff)
 - **Type**: infrastructure (test coverage + measurement) — **gating dependency for Wave 2**
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 1 (P0)
 - **Findings**: S-10 (no streaming e2e coverage) · S1-EVAL (no streaming latency/loss eval harness) — see [TASK-448](../TASK-448-Harness-Loop-Quality-Review/README.md) §SOTA S1
@@ -84,10 +84,148 @@ Adversarial review focus (reviewer agent): (a) does the resume-after-drop spec t
 
 ## Implementation Summary
 
-_Pending — must include the captured baseline latency/loss numbers (AC-6) and the documented "no regression" contract handed to TASK-457._
+Delivered NEW test code only (zero product diff — `git status` shows exactly the five
+manifest files, all untracked additions). Validated against the live isolated stack
+(API :8868, STT-v2 :8861 running OFFLINE from the model volume, PG :5433 / Redis :6380).
+
+### Files added (manifest honored)
+
+| Path | Purpose |
+|---|---|
+| `tests/helpers/streaming.helper.ts` | AC-1 shared helper: login → mint session + one-shot ticket → open authenticated WS to `/ws/stt-v2/stream` → realtime PCM frame feeder + capture wrapper; `refreshStreamTicket`, `probeStreamHandshake`, WAV loader. Takes an INJECTED `ws` ctor (the `ws` package resolves from `apps/api/**` spec files but NOT from root `tests/helpers/`, so the helper imports no `ws` at runtime — no root-manifest change). |
+| `apps/api/tests/e2e/task-455-streaming-resume-after-drop.spec.ts` | AC-2 |
+| `apps/api/tests/e2e/task-455-streaming-backpressure-recovery.spec.ts` | AC-3 |
+| `apps/api/tests/e2e/task-455-streaming-ticket-refresh.spec.ts` | AC-4 |
+| `apps/stt-v2/tests/integration/test_streaming_loss_harness.py` | AC-5/6 wire-level loss/latency harness through the WS gateway |
+
+### Environment note (load-bearing) — pipeline selection
+
+`assertPipelineOwnership` (`transcription-job.controller.ts#createStreamSession`) is a
+tenant-scoped `pipelineService.getById` (404-over-403). The seeded `__GLOBAL__` callers
+(tenant `50000000-…0000`) do **not** own the SYSTEM-tenant `best-practice-*` pipelines, so
+`POST /stream/session` with `best-practice-realtime` (or any SYSTEM pipeline id) **404s**.
+The suite therefore defaults to the `__GLOBAL__`-owned **`turbo-whisper-large-v3`**
+(`81000000-0000-0000-0001-000000000402`), whose ASR model is `openai/whisper-large-v3-turbo`
+— the same Whisper-Turbo model family as `best-practice-realtime` and one cached on the
+offline volume. Override with `STREAM_E2E_PIPELINE_ID` / `STREAM_PIPELINE_ID`. No model
+download was attempted (OFFLINE).
+
+### CAPTURED BASELINE (AC-6) — the numbers TASK-457 is measured against
+
+**(1) Loss / latency harness** — `test_streaming_loss_harness.py`, through the WS gateway,
+30 s of the committed Malayalam WAV, 80 ms frames, warmed model, client monotonic clock
+(send = `ws.send()` return; receive = onmessage). Full JSON at `./stt-loss-report.json`.
+
+```json
+{
+  "first_partial_ms": 4920.4,
+  "ttfw_ms": 4920.4,
+  "commit_latency_ms": { "count": 11, "mean": 5679.6, "p50": 6023.2, "p99": 7624.2, "min": 1559.2, "max": 7677.2 },
+  "partial_revision": { "partials": 1, "revisions": 0, "rate": 0.0 },
+  "loss": {
+    "frames_sent": 375, "audio_seconds_sent": 30.0,
+    "final_coverage_seconds_max": 29.89, "audio_coverage_ratio": 0.996,
+    "seq": { "max_seq": 12, "distinct": 12, "missing": [], "gap_count": 0 }
+  },
+  "counts": { "partials": 1, "finals": 11, "errors": 0 }
+}
+```
+
+Reading: commit latency is **P50 ≈ 6.0 s / P99 ≈ 7.6 s** — INFERENCE-dominated on this offline
+whisper-turbo host (VAD-confirmation + model inference, not transport). On the connected
+happy path the plain-XREAD transport shows **no caption loss** (`seq.gap_count = 0`) and
+**~99.6 % audio coverage**. `partial_revision.rate = 0.0` is near-trivial here because this
+pipeline emits mostly finals (only 1 partial in 30 s); the metric function itself is pinned
+by the pure-CPU self-check `test_metric_functions_are_correct`.
+
+**(2) Resume-after-drop (AC-2)** — documented-baseline (PASS), attached JSON:
+
+```json
+{
+  "preDropSeqs": [1, 2], "lastSeqBeforeDrop": 2,
+  "handshakeAcceptedAfterDrop": true, "refreshTicketStatus": 200,
+  "resumeReplyType": null, "noSessionErrorOnResume": false,
+  "preDropTranscriptsReplayedOnReconnect": 2, "transcriptsAfterResume": 4,
+  "reconnectMessageTypesFromGateway": ["transcript", "status"],
+  "c3_01_duplicate_flood": true, "c3_01_silent_freeze": false,
+  "finding_control_frames_ignored": true
+}
+```
+
+Reading: after a real socket cut + reconnect (fresh ticket) the transport re-reads the
+result stream from offset 0, **re-delivering already-seen captions with seq reset to 1**
+(`c3_01_duplicate_flood = true`, `preDropTranscriptsReplayedOnReconnect = 2`) — the C3-01
+DUPLICATE-FLOOD baseline TASK-457's consumer-groups migration must eliminate.
+
+**(3) Backpressure / overload recovery (AC-3)** — documented-baseline (PASS), attached JSON:
+
+```json
+{
+  "framesSent": 300, "floodDurationMs": 4, "floodRealtimeRatio": 0,
+  "socketOpenAfterFlood": true, "transcriptsReceived": 5, "finalsReceived": 5,
+  "reachedClosedStatusAfterStop": false, "bridgeErrorFrames": 0
+}
+```
+
+Reading: a ~300× -realtime ingest burst (300 frames in 4 ms) does not tear down the loop —
+socket stays open, captions keep flowing (**recovery**), no `BRIDGE_ERROR`. The gateway
+egress 512 KiB watermark is not client-observable / not reproducible on the shared stack and
+stays pinned by the in-process `stt-ws.gateway.test.ts` (captured here as a `test.fixme`).
+
+### Two defects surfaced by this gate (product code — NOT fixed here; out of the NEW-tests-only manifest)
+
+1. **WS JSON control channel is non-functional over a real socket.** `SttWsGateway.handleMessage`
+   splits audio vs JSON with `Buffer.isBuffer(rawData)`, but `ws@8.21.0` delivers **TEXT frames
+   as `Buffer`** (breaking change from ws v7). So `{type:'stop'|'resume'|'close'}` text frames are
+   misclassified as binary audio and the JSON path never runs. Proven directly: `{type:'close'}`
+   did not close the socket and an unknown-type frame drew no `UNKNOWN_TYPE` error. Consequences
+   captured in the baselines: the D-17 resume handshake is unanswered (`resumeReplyType: null`,
+   only `transcript`+`status` come back), and client-driven finalize is a no-op
+   (`reachedClosedStatusAfterStop: false`; sessions finalize only via VAD / the STT-v2 reaper).
+   The fix is one line in the gateway (honor the `isBinary` arg of the `ws` `message` event) —
+   filed for TASK-457/TASK-454 owners.
+2. **C3-01 duplicate flood** (as above): reconnect re-reads the result stream from 0.
+
+### "No regression" contract handed to TASK-457
+
+TASK-457 (Redis consumer-groups transport) must, re-running the harness on the **same fixture +
+pipeline (`…402`) + 80 ms frames, warmed**, show NONE of the following worse than this baseline:
+
+- `commit_latency_ms.p50` / `.p99` not materially higher than **6023 / 7624 ms** (transport must
+  not add latency; inference dominates, so treat the transport delta, not the absolute, as the gate);
+- `partial_revision.rate` not higher than **0.0** on this pipeline;
+- `loss.seq.gap_count` stays **0** and `loss.audio_coverage_ratio` stays **≥ 0.996** on the connected path;
+- **resume-after-drop**: `c3_01_duplicate_flood` must flip to **false** and the D-17 resume must be
+  answered — i.e. the `test.fixme` "TARGET (TASK-457)" in the resume spec must go green (drop its
+  `.fixme`) with `preDropTranscriptsReplayedOnReconnect = 0` and no seq reset. (This also requires
+  fixing defect #1 so the resume frame is actually processed.)
+
+### Verification evidence (AC-7/AC-8)
+
+Both deliverables run under EXISTING pnpm aliases (no new alias needed → no `package.json` change):
+
+- **e2e** via `pnpm test:e2e` (specs match `**/*.spec.ts` in `apps/api/tests/e2e`). Baseline run:
+  `RESET_DB=false E2E_WAIT_SERVICES=true npx dotenv -e .env.test -- npx playwright test task-455 --workers=1`
+  → **5 passed, 2 skipped** (the two `test.fixme` targets) in ~1.3 m. Self-skips cleanly when STT-V2 is down.
+- **loss harness** via `pnpm py:stt-v2:test:integration` (module in `tests/integration/`, `pytest.mark.integration`).
+  Scoped baseline run:
+  `STREAM_LOSS_REPORT_PATH=./stt-loss-report.json pytest apps/stt-v2/tests/integration/test_streaming_loss_harness.py -v -s`
+  → `test_metric_functions_are_correct` PASSED, `test_streaming_loss_latency_harness` PASSED (105 s),
+  report written. Skips cleanly when API/STT-v2/login/session/model are unavailable.
+
+Reproduce from a clean checkout (stack already up per orchestrator):
+
+```bash
+pnpm install
+# e2e (DB already seeded — RESET_DB=false is REQUIRED; a reset is blocked by Prisma's AI guard)
+RESET_DB=false E2E_WAIT_SERVICES=true npx dotenv -e .env.test -- npx playwright test task-455 --workers=1
+# loss/latency harness (baseline JSON → ./stt-loss-report.json)
+pnpm py:stt-v2:test:integration   # or scope to the one file as above
+```
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-09 | Ticket scaffolded from TASK-448 findings S-10/S1-EVAL; full test-infra map (Playwright config, isolated stack ports, existing latency harness, session/ticket mint path, available metrics, fixtures, inference stubs) captured by read-only scout. Confirmed no real-socket streaming e2e and no loss harness exist. No implementation started. |
+| 2026-07-10 | Implemented all five NEW files (shared helper + 3 real-socket e2e specs + Python loss/latency harness); zero product diff. Ran against the live stack: e2e **5 passed / 2 `test.fixme`**, loss harness PASSED. **Baseline captured (AC-6):** commit-latency P50 6023 ms / P99 7624 ms, seq loss gap_count 0, coverage 0.996; resume-after-drop = duplicate-flood (seq reset to 1); backpressure = ingest-overload recovery holds. **Surfaced two defects** for TASK-457/454: (1) WS JSON control channel dead over a real socket — `handleMessage`'s `Buffer.isBuffer` check misclassifies ws@8 TEXT frames (stop/resume/close) as audio; (2) C3-01 duplicate flood (reconnect re-reads result stream from 0). Documented the "no regression" contract for TASK-457. Status → Review. |
