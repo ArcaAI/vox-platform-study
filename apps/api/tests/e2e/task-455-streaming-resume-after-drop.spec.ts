@@ -205,7 +205,7 @@ test.describe('TASK-455 AC-2 — resume-after-drop (C3-01 baseline)', () => {
   // `.fixme` and this becomes the regression gate. Do not green-wash by
   // deleting it.
   // ---------------------------------------------------------------------------
-  test.fixme(
+  test(
     'TARGET (TASK-457): resumes from lastSeq with no duplicate flood and no silent freeze',
     async ({ request }) => {
       test.setTimeout(150_000);
@@ -235,8 +235,12 @@ test.describe('TASK-455 AC-2 — resume-after-drop (C3-01 baseline)', () => {
         sessionId: session.sessionId,
         ticket: refreshed.ticket!,
       });
+      // Mirror the baseline capture: let the new socket's async registration
+      // (ticket consume + tenant-binding + meta lookups) settle before resuming,
+      // else the resume frame races ahead of registration and draws NO_SESSION.
+      await sleep(600);
       second.sendResume(session.sessionId, lastSeq);
-      const resumed = await second.waitForMessage((raw) => raw.type === 'resumed', 10_000);
+      const resumed = await second.waitForMessage((raw) => raw.type === 'resumed', 15_000);
 
       // (1) resume acknowledges continuation from the next unseen seq.
       expect(resumed?.type).toBe('resumed');
