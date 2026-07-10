@@ -1,6 +1,8 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   ConsultationRepository,
+  ContextItemEntity,
+  ContextItemRepository,
   EvalRunEntity,
   EvalRunRepository,
   EvalScoreEntity,
@@ -16,7 +18,9 @@ import {
 } from '@arcaai/domains';
 import { DataNotFoundException } from '@arcaai/exceptions';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { computeEditBurden } from './edit-burden';
 import {
+  EditBurdenResponse,
   EvalRunDetailResponse,
   EvalRunListResponse,
   EvalRunResponse,
@@ -80,6 +84,12 @@ export class HarnessObservabilityService {
     // decrypt-on-read the WORM audit payloads (sensorScores/citations) that the
     // encrypt-before-hash writer stored as ciphertext.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-482 E3 — optional (existing fixtures construct without it). Loads the
+    // delivered RAW_SUMMARY / signed MODIFIED_SUMMARY content for the edit-burden
+    // edit-distance signal; when absent the edit distance skips clean (null).
+    @Optional()
+    @Inject(ContextItemRepository)
+    private readonly contextItemRepository?: ContextItemRepository,
   ) {}
 
   /**
@@ -208,6 +218,75 @@ export class HarnessObservabilityService {
       gateEscalationSeconds,
       policySource,
     };
+  }
+
+  /**
+   * TASK-482 E3 (S3-F7) — derived clinician edit-burden telemetry for one
+   * consultation. Composes over already-persisted WORM rows + summary versions:
+   *  - **edit distance**: delivered `RAW_SUMMARY` vs signed `MODIFIED_SUMMARY`,
+   *  - **deferral rate**: gate decisions that were not a clean pass,
+   *  - **time-to-sign**: latest ATTEST timestamp − latest GENERATE timestamp.
+   *
+   * Read-only: no new capture, no sys-event, no workflow change. PHI hygiene — the
+   * summary text is consumed to compute the distance and NEVER returned; only
+   * derived scalars leave. Any signal whose input is absent is `null`.
+   */
+  async getEditBurden(tenantId: string, consultationId: string): Promise<EditBurdenResponse> {
+    const events = await this.auditRepository.getByConsultation(tenantId, consultationId);
+
+    const decisions: string[] = [];
+    let deliveredAt: Date | null = null; // latest GENERATE — draft delivered for review
+    let signedAt: Date | null = null; // latest ATTEST — clinician sign-off
+    for (const e of events) {
+      const createdAt = toDate(e.createdAt);
+      if (e.action === HarnessAuditAction.GENERATE) {
+        if (!deliveredAt || createdAt.getTime() > deliveredAt.getTime()) deliveredAt = createdAt;
+      } else if (e.action === HarnessAuditAction.ATTEST) {
+        if (!signedAt || createdAt.getTime() > signedAt.getTime()) signedAt = createdAt;
+      } else if (e.action === HarnessAuditAction.GATE_DECISION) {
+        if (e.gateDecision) decisions.push(e.gateDecision);
+      } else if (e.action === HarnessAuditAction.GATE_ESCALATED) {
+        decisions.push('ESCALATED');
+      }
+    }
+
+    let deliveredContent: string | null = null;
+    let signedContent: string | null = null;
+    if (this.contextItemRepository) {
+      const [raw, modified] = await Promise.all([
+        this.contextItemRepository.findLatestRawSummary(consultationId),
+        this.contextItemRepository.findLatestModifiedSummary(consultationId),
+      ]);
+      deliveredContent = await this.decryptSummaryText(raw);
+      signedContent = await this.decryptSummaryText(modified);
+    }
+
+    const burden = computeEditBurden({ deliveredContent, signedContent, decisions, deliveredAt, signedAt });
+    return { consultationId, ...burden };
+  }
+
+  /**
+   * Best-effort plaintext of a summary `ContextItem` for the edit-distance signal.
+   * Prefers decrypt-on-read (Vault Transit) and falls back to any legacy plaintext;
+   * a missing repo/secrets or a decrypt failure yields `null` (edit distance skips
+   * clean). The plaintext is transient — the caller returns only the derived
+   * distance, and this method never logs the content.
+   */
+  private async decryptSummaryText(entity: ContextItemEntity | null): Promise<string | null> {
+    if (!entity) return null;
+    if (this.secretsService && this.contextItemRepository && entity.encryptedContent) {
+      try {
+        const plaintext = await this.contextItemRepository.decryptContentFromEntity(entity, this.secretsService);
+        if (plaintext != null) return plaintext;
+      } catch (error) {
+        this.logger.warn({
+          message: 'edit-burden: summary decryption failed — edit distance omitted',
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      }
+    }
+    return entity.content ?? null;
   }
 
   /** Re-derive the hash chain over the audit entities (oldest→newest). */

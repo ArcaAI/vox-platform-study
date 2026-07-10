@@ -1,0 +1,29 @@
+{
+  "version": "concept-harm-v0.1.0",
+  "name": "synthetic-concept-harm-golden-set",
+  "description": "SYNTHETIC, NON-CLINICAL golden case for TASK-482 E3 (concept-F1 + harm-weight) wiring + CI only. No PHI. The generated note deliberately OMITS a reference medication (metformin, CUI C0025598) so concept-F1 recall < 1.0. MUST be replaced by real clinician-authored references before gating any clinical claim.",
+  "cases": [
+    {
+      "case_id": "synthetic-e3-001-omitted-med",
+      "target_specialty": "Internal Medicine",
+      "source_documents": [
+        "Follow-up for hypertension and type 2 diabetes. Continue lisinopril 10 mg once daily and metformin 1000 mg twice daily. Blood pressure 128/78, within goal."
+      ],
+      "generated_note": "Assessment: hypertension and type 2 diabetes, stable. Plan: continue lisinopril 10 mg daily.",
+      "reference_concepts": ["C0020538", "C0011860", "C0065374", "C0025598"],
+      "reference_errors": [
+        { "category": "medication", "label": "metformin omitted", "source": "concept_f1" },
+        { "category": "narrative", "label": "bp value phrasing", "source": "faithfulness" }
+      ],
+      "harm_weightable_units": 8,
+      "metadata": {
+        "label_provenance": "SYNTHETIC",
+        "candidate_concepts": [
+          { "cui": "C0020538" },
+          { "cui": "C0011860" },
+          { "cui": "C0065374" }
+        ]
+      }
+    }
+  ]
+}

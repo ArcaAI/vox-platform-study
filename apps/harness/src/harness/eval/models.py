@@ -97,6 +97,40 @@ class PDSQIResult(BaseModel):
     raw_response: str = ""
 
 
+class ConceptCode(BaseModel):
+    """One coded clinical concept — the ontology codes a NER span resolves to.
+
+    Mirrors the five ``NamedEntity`` ontology columns populated by TASK-476
+    (``umlsCui``/``snomedCode``/``rxnormCode``/``icdCode``/``loinc``). The
+    *canonical key* used for concept matching is the UMLS CUI when present, with a
+    documented fallback order (snomed → rxnorm → icd → loinc) when it is absent.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    cui: str | None = None
+    snomed: str | None = None
+    rxnorm: str | None = None
+    icd: str | None = None
+    loinc: str | None = None
+
+
+class NoteError(BaseModel):
+    """A single note error tagged with a clinical-significance ``category``.
+
+    The category maps to a severity weight (major clinical vs minor narrative) via
+    the documented v1 table in :mod:`harness.eval.metrics.harm_weighted`. ``label``
+    is a short NON-PHI tag for provenance (a code or section name) — never note
+    text; ``source`` records which sensor surfaced the error.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    category: str
+    label: str = ""
+    source: str = ""
+
+
 class GoldenCase(BaseModel):
     """A transcript→note evaluation case.
 
@@ -126,6 +160,16 @@ class GoldenCase(BaseModel):
     reference_note: str | None = None
     contexts: list[str] | None = None
     clinician_pdsqi: PDSQIScore | None = None
+    # TASK-482 E3 — optional golden references for the concept-F1 + harm-weight
+    # passes. ``reference_concepts`` are canonical CUI keys (bare = CUI, or
+    # ``"system:code"`` for a non-CUI code) scored against the note's candidate
+    # codes; ``reference_errors`` are the note's known errors tagged by clinical
+    # significance; ``harm_weightable_units`` is the evaluable-unit denominator for
+    # the harm-weighted rate (defaults to the error count when absent). Absent →
+    # the corresponding pass skips clean.
+    reference_concepts: list[str] | None = None
+    reference_errors: list[NoteError] | None = None
+    harm_weightable_units: int | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -175,12 +219,71 @@ class FaithfulnessResult(BaseModel):
     unsupported: list[str] = Field(default_factory=list)
 
 
+class ConceptF1Result(BaseModel):
+    """MEDCON/UMLS concept-F1 for one summary (the omission catcher).
+
+    ``recall`` is the headline signal: fewer dropped reference concepts → higher
+    recall. Matching is keyed on the canonical UMLS CUI (fallback snomed → rxnorm
+    → icd → loinc). ``missed_cuis`` are reference concepts absent from the
+    candidate set (the omissions); ``spurious_cuis`` are candidate concepts with no
+    reference. Keys are namespaced (``"cui:C…"``/``"snomed:…"``) so codes from
+    different systems never collide.
+    """
+
+    precision: float
+    recall: float
+    f1: float
+    matched: int
+    candidate_total: int
+    reference_total: int
+    missed_cuis: list[str] = Field(default_factory=list)
+    spurious_cuis: list[str] = Field(default_factory=list)
+
+
+class HarmWeightedResult(BaseModel):
+    """Clinical-significance-weighted error rate for one summary.
+
+    ``harm_weighted_error_rate`` = Σ(error × severity_weight) / Σ(weightable). It
+    separates the major-error tail that a ``raw_error_rate`` averages away (the npj
+    framing: a low raw hallucination rate can hide a majority of *major* errors).
+    """
+
+    harm_weighted_error_rate: float
+    raw_error_rate: float
+    weighted_error_mass: float
+    total_errors: int
+    total_weightable: int
+    major_errors: int
+    minor_errors: int
+
+
+class EditBurdenSummary(BaseModel):
+    """Aggregate clinician edit-burden signals (schema mirror of the applications
+    ``edit-burden`` telemetry — see ``packages/applications/.../edit-burden.ts``).
+
+    Populated by a later apps/api adapter over the WORM audit; ``None`` in the
+    offline harness run (which has no audit access). Carried here so the persisted
+    ``EvalRun`` schema can hold the derived signals without a later shape change.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mean_edit_distance: float | None = None
+    deferral_rate: float | None = None
+    mean_time_to_sign_seconds: float | None = None
+    sample_size: int = 0
+
+
 class EvalCaseResult(BaseModel):
     """All metrics for one case."""
 
     case_id: str
     pdsqi: PDSQIResult | None = None
     faithfulness: FaithfulnessResult | None = None
+    # TASK-482 E3 — omission + harm-severity signals. ``None`` = the pass was
+    # skipped (no golden reference / no candidate codes), never a fabricated value.
+    concept_f1: ConceptF1Result | None = None
+    harm_weighted_error_rate: float | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -194,3 +297,6 @@ class EvalRunResult(BaseModel):
     thresholds: dict[str, float] = Field(default_factory=dict)
     passed: bool = True
     failures: list[str] = Field(default_factory=list)
+    # TASK-482 E3 — aggregate clinician edit-burden block (schema mirror of the TS
+    # telemetry). ``None`` in the offline harness run.
+    edit_burden: EditBurdenSummary | None = None

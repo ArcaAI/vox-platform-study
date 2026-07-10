@@ -89,3 +89,54 @@ export class HarnessAuditListResponse {
   @ApiProperty({ type: HarnessAuditVerificationResponse, description: 'Integrity verdict over the full tenant chain.' })
   verification: HarnessAuditVerificationResponse;
 }
+
+/**
+ * Clinician edit-burden telemetry for one consultation (TASK-482 E3 · S3-F7).
+ *
+ * Derived, read-only scalars over the WORM audit + delivered/signed note versions
+ * the gate already persists — the "how much did the human have to fix this"
+ * proxy. PHI hygiene: only derived numbers/timestamps are exposed here; the note
+ * text is consumed to compute the edit distance and NEVER returned. Any signal
+ * whose input is absent is `null` — never a fabricated value.
+ */
+export class EditBurdenResponse {
+  @ApiProperty({ description: 'Consultation the telemetry belongs to.' })
+  consultationId: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Word-level edit distance between the delivered (RAW_SUMMARY) and signed (MODIFIED_SUMMARY) note. Null when a version is unavailable.',
+    nullable: true,
+  })
+  editDistance: number | null;
+
+  @ApiPropertyOptional({
+    description: 'Edit distance normalised by delivered word count. Null when unavailable.',
+    nullable: true,
+  })
+  editDistanceRatio: number | null;
+
+  @ApiPropertyOptional({
+    description: 'Fraction of gate decisions that were NOT a clean pass (FLAG/REGEN/escalated). Null when there were no gate decisions.',
+    nullable: true,
+  })
+  deferralRate: number | null;
+
+  @ApiProperty({ description: 'Total gate decisions observed for the consultation.' })
+  gateDecisionTotal: number;
+
+  @ApiProperty({ description: 'Number of gate decisions that were deferrals (non-clean).' })
+  deferralCount: number;
+
+  @ApiPropertyOptional({
+    description: 'Seconds between note delivery and clinician sign-off. Null when a timestamp is missing.',
+    nullable: true,
+  })
+  timeToSignSeconds: number | null;
+
+  @ApiPropertyOptional({ description: 'Delivery timestamp (ISO-8601), or null.', nullable: true })
+  deliveredAt: string | null;
+
+  @ApiPropertyOptional({ description: 'Sign-off timestamp (ISO-8601), or null.', nullable: true })
+  signedAt: string | null;
+}
