@@ -10,8 +10,10 @@ WHAT'S HERE
 * ``medical_wer(ref, hyp)`` — word error rate via a self-contained word-level
   Levenshtein with backtrace, algorithm mirrored from the TS gate
   ``apps/ui-playground/e2e/helpers/wer.ts`` (same normalization + tie-break order)
-  so the Python and TS gates agree. Medical-term-aware: an optional synonym map
-  folds benign clinical spelling/abbreviation variation before scoring.
+  so the Python and TS gates agree on the base algorithm. Medical-term-aware: an
+  optional synonym map folds benign clinical spelling/abbreviation variation
+  (with the map, the Python gate intentionally diverges from wer.ts — see
+  ``medical_wer``).
 * ``keyterm_recall(keyterms, hyp)`` — fraction of curated clinical keyterms
   present as a CONTIGUOUS span (verbatim phrase) in the hypothesis. The strict
   "did we drop the drug / dose / finding" catcher.
@@ -145,6 +147,10 @@ def medical_wer(
 
     Pass ``synonyms=MEDICAL_SYNONYMS`` to fold benign clinical spelling variation.
     Returns wer plus the S/D/I breakdown (for scorecard drill-down).
+
+    NOTE: agreement with the TS gate (``wer.ts``) holds ONLY for ``synonyms=None``;
+    with ``MEDICAL_SYNONYMS`` (as the live scorecard uses) the two intentionally
+    diverge on synonym variation (the Python gate is deliberately more lenient).
     """
     ref = _normalize_words(reference, synonyms)
     hyp = _normalize_words(hypothesis, synonyms)
@@ -377,6 +383,14 @@ def regression_report(
         lim = cov_cfg["baseline"] - cov_cfg.get("epsilon", 0.0)
         checks.append(_check("audio_coverage_ratio", cov, lim, cov >= lim, ">= baseline-eps"))
 
+    # A metric-less scorecard must NEVER pass vacuously (``all([])`` is True): a
+    # direct caller with an empty/all-None card would otherwise get a false green.
+    if not checks:
+        return {
+            "passed": False,
+            "checks": [],
+            "error": "scorecard exposed no observable metrics to gate (empty/all-None card)",
+        }
     return {"passed": all(c["passed"] for c in checks), "checks": checks}
 
 
@@ -392,9 +406,8 @@ def assert_no_regression(
     """
     report = regression_report(scorecard, thresholds)
     if not report["passed"]:
-        failed = [c for c in report["checks"] if not c["passed"]]
-        raise AssertionError(
-            "streaming quality regression vs committed thresholds: "
-            + json.dumps(failed, ensure_ascii=False)
+        detail = report.get("error") or json.dumps(
+            [c for c in report["checks"] if not c["passed"]], ensure_ascii=False
         )
+        raise AssertionError("streaming quality regression vs committed thresholds: " + detail)
     return report

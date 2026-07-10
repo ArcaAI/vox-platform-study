@@ -42,7 +42,7 @@ Run::
 from __future__ import annotations
 
 import json
-import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -238,14 +238,69 @@ def test_quality_metric_functions_are_correct() -> None:
     dropped_term["quality"]["keyterm_recall"] = 0.0
     assert regression_report(dropped_term, thresholds)["passed"] is False
 
+    # (e) a metric-less scorecard must NOT pass vacuously (`all([])` is True)
+    empty = regression_report({}, thresholds)
+    assert empty["passed"] is False and empty["checks"] == []
+    assert regression_report({"quality": {}, "transport": {}}, thresholds)["passed"] is False
+    with pytest.raises(AssertionError):
+        assert_no_regression({}, thresholds)
+
 
 # ===========================================================================
 # 2. PURE fixture-integrity check (no services) — AC-3, PHI-free guarantee
 # ===========================================================================
 
-# Obvious real-PHI red flags: an SSN-shaped token or an MRN label. The synthetic
-# fixtures must contain none of these (they use placeholders / no identifiers).
-_PHI_RED_FLAGS = ("ssn", "social security", "mrn:", "medical record number")
+# PHI tripwire for EVERY current AND future SOTA clinical fixture. It matches the
+# structured SHAPES that leak PHI (regex), not merely label substrings — it will
+# NOT catch an arbitrary unlabeled free-text name (that is out of regex reach and
+# is guarded procedurally: fixtures are synthetic scripted reads), but it DOES
+# catch SSNs, phone numbers, dates/DOBs, emails, long digit runs (unlabeled
+# MRNs/account numbers), and the common identifier LABELS. Any hit fails the gate.
+_PHI_LABEL_FLAGS: tuple[str, ...] = (
+    "ssn",
+    "social security",
+    "mrn",
+    "medical record number",
+    "date of birth",
+    "dob",
+    "patient name",
+    "name:",
+    "address:",
+)
+_PHI_SHAPE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("ssn", re.compile(r"\b\d{3}-\d{2}-\d{4}\b")),
+    ("phone", re.compile(r"\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b|\(\d{3}\)\s?\d{3}[-.\s]?\d{4}")),
+    ("date", re.compile(r"\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b")),
+    ("email", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")),
+    ("long_digit_run", re.compile(r"\b\d{7,}\b")),
+)
+
+
+def _scan_phi(text: str) -> list[str]:
+    """Return PHI red-flag hits for ``text`` (empty list = clean).
+
+    Catches identifier SHAPES (SSN/phone/date/email/long-digit-run) and common
+    labels — the structured PHI that must never reach a committed fixture.
+    """
+    low = text.lower()
+    hits = [f"label:{flag}" for flag in _PHI_LABEL_FLAGS if flag in low]
+    hits += [f"shape:{name}" for name, pattern in _PHI_SHAPE_PATTERNS if pattern.search(text)]
+    return hits
+
+
+def test_phi_scanner_catches_synthetic_identifiers() -> None:
+    """Prove the PHI guard itself fires (the gate is tested, not just asserted)."""
+    # Structured identifiers MUST be caught:
+    assert _scan_phi("SSN 123-45-6789"), "labeled SSN not caught"
+    assert _scan_phi("123-45-6789"), "bare SSN shape not caught"
+    assert _scan_phi("Patient name: John Q. Public, DOB 03/04/1985"), "name/DOB not caught"
+    assert _scan_phi("born 1985-03-04"), "ISO date not caught"
+    assert _scan_phi("call 555-123-4567"), "phone not caught"
+    assert _scan_phi("reach me at jane.doe@example.com"), "email not caught"
+    assert _scan_phi("record number 1234567"), "long digit run (unlabeled MRN) not caught"
+    # Clean clinical prose (the shape of the real fixtures) must NOT false-positive:
+    assert _scan_phi("The patient is a 62 year old with type 2 diabetes on metformin 500 mg.") == []
+    assert _scan_phi("Blood pressure today is 128 over 82; oxygen saturation 96 percent.") == []
 
 
 def test_clinical_fixtures_are_wellformed() -> None:
@@ -261,11 +316,6 @@ def test_clinical_fixtures_are_wellformed() -> None:
         reference = gt.read_text(encoding="utf-8").strip()
         assert reference, f"{gt.name} is empty"
 
-        # No obvious real-PHI markers (synthetic, de-identified guarantee).
-        low = reference.lower()
-        for flag in _PHI_RED_FLAGS:
-            assert flag not in low, f"{gt.name} contains a PHI red flag: {flag!r}"
-
         # A matching, schema-valid keyterms file.
         kt_path = _CLINICAL_DIR / f"{stem}.keyterms.json"
         assert kt_path.is_file(), f"missing keyterms file for {stem}"
@@ -274,9 +324,16 @@ def test_clinical_fixtures_are_wellformed() -> None:
             f"{kt_path.name} must have a non-empty 'keyterms' list"
         )
         assert isinstance(data.get("keyphrases", []), list)
+        curated = [*data["keyterms"], *data.get("keyphrases", [])]
+
+        # No PHI SHAPES anywhere in the reference OR the curated terms.
+        for label, blob in ((gt.name, reference), (kt_path.name, " ".join(curated))):
+            phi = _scan_phi(blob)
+            assert not phi, f"{label} contains PHI red flags: {phi}"
+
         # Every curated keyterm/keyphrase must actually appear in its reference —
         # a mislabeled fixture would silently deflate recall.
-        for term in [*data["keyterms"], *data.get("keyphrases", [])]:
+        for term in curated:
             assert keyphrase_recall([term], reference)["recall"] == 1.0, (
                 f"keyterm {term!r} is not present in {gt.name} — fixture mismatch"
             )
@@ -293,7 +350,7 @@ def _concat_finals(events: list[Any]) -> str:
     return " ".join(e.text for e in finals if e.text.strip()).strip()
 
 
-async def test_streaming_quality_scorecard() -> None:
+async def test_streaming_quality_scorecard(monkeypatch: pytest.MonkeyPatch) -> None:
     """Run each clinical clip through the WS gateway → emit + gate the scorecard."""
     import httpx
 
@@ -337,9 +394,10 @@ async def test_streaming_quality_scorecard() -> None:
             kt = json.loads(kt_path.read_text(encoding="utf-8")) if kt_path.is_file() else {}
 
             # Reuse the harness's exact WAV loader (16-bit check + resample/downmix)
-            # by pointing it at this clip.
-            os.environ["STREAM_WAV_PATH"] = str(wav)
-            os.environ["STREAM_MAX_SECONDS"] = "0"
+            # by pointing it at this clip. monkeypatch auto-restores at teardown, so
+            # the last clip's WAV path can't bleed into the loss harness's loader.
+            monkeypatch.setenv("STREAM_WAV_PATH", str(wav))
+            monkeypatch.setenv("STREAM_MAX_SECONDS", "0")
             audio: ReplayAudio = load_replay_audio()
 
             frames, events, closed, session_id = await run_one_session(
