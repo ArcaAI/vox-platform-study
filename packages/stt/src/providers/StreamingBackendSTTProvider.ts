@@ -143,6 +143,13 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
    * surfacing the count makes the otherwise-silent loss observable to callers.
    */
   private droppedFrameCount = 0;
+  /**
+   * TASK-464 — PUSH channel for backpressure drops. `getDroppedFrameCount()` is
+   * a passive getter that nothing polls on the SDK path, so the loss dead-ends.
+   * This callback fires once per dropped frame (with the running total) so the
+   * STT processor / vox pipeline can propagate a degraded signal to the store.
+   */
+  private onDropCallback: ((droppedFrameCount: number) => void) | null = null;
 
   constructor(deps: { sessionManager: StreamingSessionLike; wsClient: StreamingWsClientLike }) {
     super();
@@ -229,6 +236,9 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     const sent = this.wsClient.sendAudioFrame(int16);
     if (sent === false) {
       this.droppedFrameCount++;
+      // TASK-464 — push the drop so it reaches the store/hook/UI instead of
+      // dead-ending in the unpolled `droppedFrameCount` getter.
+      this.onDropCallback?.(this.droppedFrameCount);
     }
   }
 
@@ -257,6 +267,9 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     return {
       ...super.getStats(),
       bufferSizeS: 0,
+      // TASK-464 — surface the drop count so a poller (STTProcessor.getStats)
+      // can read it alongside the push channel below.
+      droppedFrames: this.droppedFrameCount,
     };
   }
 
@@ -272,6 +285,17 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
    */
   getDroppedFrameCount(): number {
     return this.droppedFrameCount;
+  }
+
+  /**
+   * TASK-464 — register a callback fired once per dropped frame (with the
+   * running total). This is the PUSH complement to {@link getDroppedFrameCount}:
+   * nothing polls the getter on the SDK path, so the count must be pushed up to
+   * the store/hook/UI. Single-slot (like `onTranscription`); re-registering
+   * replaces the callback.
+   */
+  onDrop(cb: (droppedFrameCount: number) => void): void {
+    this.onDropCallback = cb;
   }
 
   private normalizeTranscript(payload: StreamingTranscriptPayload): TranscriptionResult {

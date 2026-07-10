@@ -123,6 +123,10 @@ interface MockStore {
   addTranscriptSegment: ReturnType<typeof vi.fn>;
   addContextItem: ReturnType<typeof vi.fn>;
   addEntities: ReturnType<typeof vi.fn>;
+  // TASK-464 — audio-drop actions the hook calls on start/stop and per drop.
+  resetAudioDropped: ReturnType<typeof vi.fn>;
+  markAudioLost: ReturnType<typeof vi.fn>;
+  incrementDroppedFrames: ReturnType<typeof vi.fn>;
 }
 
 let mockStore: MockStore;
@@ -206,6 +210,10 @@ function buildMockStore(): MockStore {
     addTranscriptSegment: vi.fn(),
     addContextItem: vi.fn(),
     addEntities: vi.fn(),
+    // TASK-464 — audio-drop actions the hook calls on start/stop and per drop.
+    resetAudioDropped: vi.fn(),
+    markAudioLost: vi.fn(),
+    incrementDroppedFrames: vi.fn(),
   };
   return store;
 }

@@ -110,6 +110,18 @@ export interface UseArcaAudio {
   language: string;
   plugins: AudioPluginStates;
   error: Error | null;
+  /**
+   * TASK-464 — running count of outbound audio frames dropped at the streaming
+   * STT client's backpressure watermark this capture session. Non-zero means PCM
+   * was lost from the durable transcript. Resets on start/stop.
+   */
+  droppedFrameCount: number;
+  /**
+   * TASK-464 — session-sticky "audio was lost this session" latch. Survives
+   * reconnect (so a transient drop-then-reconnect never hides the loss); clears
+   * only on capture start/stop. Drive a degraded-connection banner off this.
+   */
+  audioLostThisSession: boolean;
   start: (options?: AudioStartOptions) => Promise<void>;
   /**
    * TASK-331 doc-06 F3/Q5 — start capture from the user's persisted preferences

@@ -221,6 +221,40 @@ describe('StreamingBackendSTTProvider — TASK-298 D-4', () => {
 
       expect(provider.getDroppedFrameCount()).toBe(0);
     });
+
+    // TASK-464 — a passive getter is inert (nothing polls it). The provider must
+    // PUSH the drop so it can propagate up to the store/hook/UI. `onDrop` fires
+    // once per dropped frame with the current cumulative count; `getStats()`
+    // surfaces the same count so a poller (STTProcessor.getStats) can read it.
+    it('fires the onDrop callback for each dropped frame with the cumulative count', async () => {
+      const onDrop = vi.fn();
+      provider.onDrop(onDrop);
+      wsClient.sendAudioFrame.mockReturnValue(false);
+
+      await provider.processAudio(new Float32Array([0.1, 0.2]), 16000);
+      await provider.processAudio(new Float32Array([0.3, 0.4]), 16000);
+
+      expect(onDrop).toHaveBeenCalledTimes(2);
+      expect(onDrop).toHaveBeenNthCalledWith(1, 1);
+      expect(onDrop).toHaveBeenNthCalledWith(2, 2);
+    });
+
+    it('does NOT fire onDrop while the client accepts frames (returns true)', async () => {
+      const onDrop = vi.fn();
+      provider.onDrop(onDrop);
+      wsClient.sendAudioFrame.mockReturnValue(true);
+
+      await provider.processAudio(new Float32Array([0.1, 0.2]), 16000);
+
+      expect(onDrop).not.toHaveBeenCalled();
+    });
+
+    it('surfaces droppedFrames in getStats()', async () => {
+      wsClient.sendAudioFrame.mockReturnValue(false);
+      await provider.processAudio(new Float32Array([0.1, 0.2]), 16000);
+
+      expect(provider.getStats().droppedFrames).toBe(1);
+    });
   });
 
   describe('transcript forwarding', () => {
