@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { SummaryService } from '../summary.service';
-import { SysEventType, ContextItemVersionFactory, HarnessAuditAction, ConsultationStatus } from '@arcaai/domains';
+import { SysEventType, ContextItemVersionFactory, HarnessAuditAction, ConsultationStatus, NamedEntityFactory } from '@arcaai/domains';
 
 // Mock domain factories — same approach as ner.processor.test.ts
 vi.mock('@arcaai/domains', async () => {
@@ -305,6 +305,41 @@ describe('SummaryService', () => {
                     confidence: 0.95,
                     startOffset: 13,
                     endOffset: 21,
+                }),
+            );
+        });
+
+        // TASK-476 C1 (AC-3b) — the sync durable path persists the ontology codes
+        // the NLP producer now emits (same shared mapper as the async path). RED
+        // before the mapper maps them (they were dropped → columns null).
+        it('passes the NLP ontology codes into the NamedEntity factory', async () => {
+            mockContextItemRepository.findById.mockResolvedValue(
+                createMockContextItem({ content: 'Patient takes metformin' }),
+            );
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: {
+                    entities: [
+                        {
+                            text: 'metformin',
+                            entity_type: 'MEDICATION',
+                            confidence: 0.97,
+                            position: { start: 14, end: 23 },
+                            umls_cui: 'C0025598',
+                            rxnorm_code: '6809',
+                        },
+                    ],
+                },
+            });
+            mockNamedEntityRepository.create.mockResolvedValue({ id: 'entity-476' });
+
+            await service.extractEntities('ctx-item-123');
+
+            expect(NamedEntityFactory.CreateNamedEntity).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    text: 'metformin',
+                    className: 'MEDICATION',
+                    umlsCui: 'C0025598',
+                    rxnormCode: '6809',
                 }),
             );
         });

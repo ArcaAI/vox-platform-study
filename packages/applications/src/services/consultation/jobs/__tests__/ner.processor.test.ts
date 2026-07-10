@@ -7,6 +7,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Job } from 'bullmq';
+import { NamedEntityFactory } from '@arcaai/domains';
 import { NerProcessor } from '../processors/ner.processor';
 import { ExtractNerJobPayload, NerJobResult } from '../dto';
 
@@ -1421,6 +1422,55 @@ Chinese: 發燒 (fever)
                 startOffset: 8,
                 endOffset: 15,
             });
+        });
+    });
+
+    // ===========================================================================
+    // TASK-476 C1 (AC-3a) — the async durable path persists the ontology codes
+    // the NLP producer now emits. The codes flow through the shared mapper
+    // (namedEntityPropsFromNlp) into the factory; RED before the mapper maps them.
+    // ===========================================================================
+
+    describe('TASK-476 — ontology code persistence (async path)', () => {
+        it('passes the NLP ontology codes into the NamedEntity factory', async () => {
+            mockContextItemRepository.findById.mockResolvedValue(
+                createMockContextItem({ content: 'Take metformin daily' }),
+            );
+            mockHttpService.axiosRef.post.mockResolvedValue({
+                data: {
+                    entities: [
+                        {
+                            text: 'metformin',
+                            entity_type: 'MEDICATION',
+                            confidence: 0.97,
+                            position: { start: 5, end: 14 },
+                            umls_cui: 'C0025598',
+                            rxnorm_code: '6809',
+                            snomed_code: null,
+                            icd_code: null,
+                            loinc_code: null,
+                        },
+                    ],
+                },
+            });
+            mockNamedEntityRepository.create.mockImplementation((entity: any) => ({ ...entity, id: 'ne-476' }));
+
+            await processor.process(createMockJob({
+                jobId: 'job-476',
+                contextItemId: 'ctx-item-123',
+                consultationId: 'consultation-123',
+                tenantId: 'tenant-1',
+                userId: 'user-1',
+            }));
+
+            expect(NamedEntityFactory.CreateNamedEntity).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    text: 'metformin',
+                    className: 'MEDICATION',
+                    umlsCui: 'C0025598',
+                    rxnormCode: '6809',
+                }),
+            );
         });
     });
 });

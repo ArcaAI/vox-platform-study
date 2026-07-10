@@ -176,6 +176,12 @@ export class HarnessInternalService {
             startOffset: entity.startOffset,
             endOffset: entity.endOffset,
             confidence: entity.confidence,
+            // TASK-476 C1 — persist the ontology codes the harness NER carries.
+            umlsCui: entity.umlsCui,
+            snomedCode: entity.snomedCode,
+            rxnormCode: entity.rxnormCode,
+            icdCode: entity.icdCode,
+            loincCode: entity.loincCode,
             transcriptContextItemId: entity.transcriptContextItemId,
             transcriptStartOffset: entity.transcriptStartOffset,
             transcriptEndOffset: entity.transcriptEndOffset,

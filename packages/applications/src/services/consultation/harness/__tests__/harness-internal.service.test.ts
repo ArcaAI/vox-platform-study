@@ -332,6 +332,38 @@ describe('HarnessInternalService', () => {
             expect(result.entityIds).toEqual(['ne-Metformin', 'ne-Diabetes']);
         });
 
+        // TASK-476 C1 (AC-3c) — the harness NER round-trips ontology codes; the
+        // DTO → factory mapping now sets the five NamedEntity code columns. RED
+        // before the mapping forwards them (they were dropped → columns null).
+        it('persists the five ontology codes from the coded HarnessEntityItem', async () => {
+            await service.persistEntities('consultation-1', {
+                tenantId: 'tenant-1',
+                userId: 'doctor-1',
+                contextItemId: 'tx-1',
+                entities: [
+                    {
+                        text: 'metformin',
+                        type: 'MEDICATION',
+                        startOffset: 14,
+                        endOffset: 23,
+                        confidence: 0.97,
+                        umlsCui: 'C0025598',
+                        rxnormCode: '6809',
+                    },
+                ],
+            } as any);
+
+            const firstArg = namedEntityRepository.create.mock.calls[0][0];
+            expect(firstArg).toEqual(
+                expect.objectContaining({
+                    text: 'metformin',
+                    className: 'MEDICATION',
+                    umlsCui: 'C0025598',
+                    rxnormCode: '6809',
+                }),
+            );
+        });
+
         it('throws BadRequestException and persists nothing when tenantId is missing', async () => {
             await expect(
                 service.persistEntities('consultation-1', { tenantId: '', contextItemId: 'tx-1', entities: [] } as any),

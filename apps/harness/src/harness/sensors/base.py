@@ -61,6 +61,14 @@ class NEREntity(BaseModel):
     type: str = ""
     start: int = -1
     end: int = -1
+    # TASK-476 C1 — clinical ontology codes (nullable) carried end to end so the
+    # persisted NamedEntity rows are coded. Mirror the NLP `/classify/tokens`
+    # `Entity` code fields; the api_client forwards them to persistEntities.
+    umls_cui: str | None = None
+    snomed_code: str | None = None
+    rxnorm_code: str | None = None
+    icd_code: str | None = None
+    loinc_code: str | None = None
 
     @property
     def normalized(self) -> str:

@@ -109,6 +109,17 @@ def _entity_payload(entity: NEREntity, context_item_id: str | None) -> dict[str,
             payload["transcriptStartOffset"] = entity.start
         if entity.end >= 0:
             payload["transcriptEndOffset"] = entity.end
+    # TASK-476 C1 — forward the ontology codes (omit None, mirroring offsets) so
+    # persistEntities writes the NamedEntity code columns.
+    for wire_key, value in (
+        ("umlsCui", entity.umls_cui),
+        ("snomedCode", entity.snomed_code),
+        ("rxnormCode", entity.rxnorm_code),
+        ("icdCode", entity.icd_code),
+        ("loincCode", entity.loinc_code),
+    ):
+        if value is not None:
+            payload[wire_key] = value
     return payload
 
 

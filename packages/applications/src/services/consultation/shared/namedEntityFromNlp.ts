@@ -16,6 +16,13 @@ export interface NlpNamedEntity {
   entity_type?: string | null;
   confidence?: number | null;
   position?: { start?: number | null; end?: number | null } | null;
+  // TASK-476 C1 — ontology codes resolved by the NLP entity linker (snake_case
+  // on the wire; apps/nlp Entity). Nullable; mapped onto the NamedEntity columns.
+  umls_cui?: string | null;
+  snomed_code?: string | null;
+  rxnorm_code?: string | null;
+  icd_code?: string | null;
+  loinc_code?: string | null;
   // Legacy / alternate fallbacks (defence-in-depth against contract drift)
   value?: string | null;
   type?: string | null;
@@ -45,5 +52,12 @@ export function namedEntityPropsFromNlp(entity: NlpNamedEntity, ctx: { tenantId:
     confidence: entity.confidence ?? undefined,
     startOffset: entity.position?.start ?? entity.start ?? entity.startOffset ?? undefined,
     endOffset: entity.position?.end ?? entity.end ?? entity.endOffset ?? undefined,
+    // TASK-476 C1 — carry the ontology codes onto the columns (undefined when
+    // absent so the factory nulls them; the C5-03 guard covers un-codable spans).
+    umlsCui: entity.umls_cui ?? undefined,
+    snomedCode: entity.snomed_code ?? undefined,
+    rxnormCode: entity.rxnorm_code ?? undefined,
+    icdCode: entity.icd_code ?? undefined,
+    loincCode: entity.loinc_code ?? undefined,
   };
 }

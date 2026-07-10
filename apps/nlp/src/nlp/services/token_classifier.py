@@ -5,11 +5,12 @@ from typing import Any
 import torch
 from transformers import AutoModelForTokenClassification, AutoTokenizer, pipeline
 
-from nlp.core.config import TokenClassificationConfig
+from nlp.core.config import OntologyLinkerConfig, TokenClassificationConfig
 from nlp.core.logging import get_logger
 from nlp.core.metrics import MODEL_MEDICAL_NER, track_model_inference
 from nlp.schemas.classification import TokenClassificationRequest, TokenClassificationResponse
 from nlp.schemas.common import Entity, TextPosition
+from nlp.services.ontology_linker import OntologyLinker
 
 logger = get_logger(__name__)
 
@@ -41,7 +42,12 @@ class TokenClassifier(ABC):
 class TransformerTokenClassifier(TokenClassifier):
     """Transformer-based token classification for medical entity extraction"""
 
-    def __init__(self, configs: TokenClassificationConfig | None = None):
+    def __init__(
+        self,
+        configs: TokenClassificationConfig | None = None,
+        linker: OntologyLinker | None = None,
+        linker_config: OntologyLinkerConfig | None = None,
+    ):
         if configs is None:
             configs = TokenClassificationConfig()
 
@@ -51,6 +57,10 @@ class TransformerTokenClassifier(TokenClassifier):
         self.tokenizer: Any = None
         self.model: Any = None
         self.pipeline: Any = None
+        # TASK-476 C1 — deterministic, offline clinical ontology linker. Runs
+        # post-`_to_entities` in `process()` to populate the entity code fields.
+        self.linker = linker if linker is not None else OntologyLinker()
+        self.linker_config = linker_config if linker_config is not None else OntologyLinkerConfig()
 
     async def initialize(self) -> None:
         """Load transformer token classification model"""
@@ -108,6 +118,9 @@ class TransformerTokenClassifier(TokenClassifier):
             #     confidences.append(confidence)
 
             entities = self._to_entities(pipeline_results)
+            # TASK-476 C1 — resolve ontology codes for each recognized span so the
+            # NLP service is the authoritative producer of CODED entities.
+            entities = self._link_entities(entities)
 
             return TokenClassificationResponse(
                 # tokens=tokens,
@@ -161,6 +174,31 @@ class TransformerTokenClassifier(TokenClassifier):
             )
 
             entities.append(entity)
+
+        return entities
+
+    def _link_entities(self, entities: list[Entity]) -> list[Entity]:
+        """Resolve ontology codes for each recognized span (TASK-476 C1).
+
+        Config-gated: skipped entirely when the linker is disabled, and only
+        entities at/above the confidence floor are linked (low-confidence NER
+        noise stays un-coded). Un-resolvable spans keep None codes — the mapping
+        stays null-safe end to end. Deterministic + offline (no network).
+        """
+        if not self.linker_config.linker_enabled:
+            return entities
+
+        floor = self.linker_config.linker_confidence_floor
+        for entity in entities:
+            if entity.confidence < floor:
+                continue
+            codes = self.linker.link(entity.normalized_text or entity.text)
+            if codes.has_any:
+                entity.umls_cui = codes.umls_cui
+                entity.snomed_code = codes.snomed_code
+                entity.rxnorm_code = codes.rxnorm_code
+                entity.icd_code = codes.icd_code
+                entity.loinc_code = codes.loinc_code
 
         return entities
 

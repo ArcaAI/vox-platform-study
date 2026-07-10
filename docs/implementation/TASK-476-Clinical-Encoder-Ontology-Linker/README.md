@@ -1,6 +1,6 @@
 # TASK-476 — Server-side Clinical Encoder + Ontology Linker (Theme C1 · SOTA S2 · **the real close of C5-03**)
 
-- **Status**: Pending
+- **Status**: Review
 - **Type**: feature (server-side clinical NER + entity linking) — makes the NLP service the **authoritative producer of coded `NamedEntity` rows**
 - **Track**: [SOTA Enhancement Track](../SOTA-Track/README.md) · Theme **C1** (server-side clinical encoder + linker)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · strategic SOTA track (post-Wave-3)
@@ -115,8 +115,39 @@ pnpm py:stt-v2:test:integration   # test_streaming_quality_scorecard
 
 Adversarial review focus: (a) do **all three** durable write paths (async ner.processor, sync extractEntities, harness persistEntities) actually persist codes — proven by tests, not asserted? (b) is the linker deterministic + offline (no hidden network, no cloud vendor)? (c) does the DTO change respect `forbidNonWhitelisted` (codes declared with validators)? (d) does the TASK-462 guard genuinely disengage on coded input **without** suppressing the un-coded case? (e) keyterm/keyphrase recall held vs TASK-470 baseline; no ASR-guardrail regression? (f) no Prisma migration; self-hosted only; zero diff outside the manifest.
 
+## Implementation Summary
+
+Implemented the full contract chain that makes the NLP service the authoritative producer of coded `NamedEntity` rows. TDD, RED-first at each hop.
+
+**NLP producer (`apps/nlp`)** — new deterministic, offline `services/ontology_linker.py` (`OntologyLinker` + frozen `OntologyCodes`) resolves a normalized clinical span against a bundled self-hosted vocabulary subset (curated medications/conditions/symptoms/labs/procedures → UMLS + SNOMED/RxNorm/ICD-10/LOINC). `schemas/common.py` `Entity` gains the five nullable code fields; `core/config.py` gains `OntologyLinkerConfig` (`env_prefix="NLP_"`: `linker_enabled` toggle + `linker_confidence_floor`); `services/token_classifier.py` wires the linker into `process()` post-`_to_entities` (config-gated). **Encoder swap deliberately NOT done** — optional/config-gated per the plan, and no Clinical/BioClinical ModernBERT / GatorTron weights are staged in the offline HF cache; `blaze999/Medical-NER` stays the backbone (no download attempted).
+
+**Harness chain (`apps/harness`)** — `sensors/base.py` `NEREntity`, `services/nlp_client.py` `_to_entity`, and `services/api_client.py` `_entity_payload` now carry/forward the five codes (omit-None, mirroring offsets) so harness NER round-trips codes into the `HarnessEntityItem` body.
+
+**TS write paths (`packages/applications`)** — the shared `namedEntityFromNlp` mapper maps the five snake_case codes → `umlsCui`/`snomedCode`/`rxnormCode`/`icdCode`/`loincCode` (single edit lights up **both** async `ner.processor` and sync `summary.extractEntities`); `HarnessEntityItem` DTO gains the five validated `@ApiPropertyOptional` fields; `harness-internal.persistEntities` sets the columns. The TASK-462 C5-03 guard now disengages on coded input (real `[umls:…; rxnorm:…]` block emitted, "no standardized codes assigned" note absent) — proven by a prompt-assembly test.
+
+**No Prisma migration** (columns pre-existed). **No dependency added** (`uv.lock` untouched) — the linker is dependency-light. **New env vars** `NLP_LINKER_ENABLED` / `NLP_LINKER_CONFIDENCE_FLOOR` registered in `turbo.json#globalEnv` + root `.env.example` + `apps/nlp/.env.example`.
+
+### Evidence (gates, actual output)
+
+| Gate | Result |
+|---|---|
+| `py:nlp:test` | **83 passed** (13 new: linker + contract) |
+| `py:nlp:lint` (ruff) / `py:nlp:typecheck` (mypy) | ruff clean · mypy `Success: no issues found in 39 source files` |
+| `py:harness:test` (hermetic) | **667 passed** (2 new: code round-trip) |
+| `py:harness:lint` / `py:harness:typecheck` | ruff clean · mypy `Success: no issues found in 79 source files` |
+| `@arcaai/applications` build (tsc) | clean |
+| `@arcaai/applications` test | **5939 passed, 4 skipped** (RED→GREEN demonstrated for mapper + both durable paths + persistEntities) |
+| `@arcaai/applications` lint | 0 errors, 94 pre-existing warnings (0 in any TASK-476-edited file) |
+| `build:api` (turbo) | clean (8 tasks) — DTO change compiles into apps/api |
+| TASK-470 scorecard (`test_streaming_quality_scorecard`) | pure metric gates **3 passed**; live run **self-skips** off-stack (orchestrator's on-stack step, by TASK-470 design). TASK-476 touches **zero** STT/ASR code → keyterm/keyphrase recall + ASR guardrails unaffected by construction. |
+| AC-5 link metric (this ticket's code-population number) | labelled sample n=28 (23 in-vocab): **coverage 82% over sample / 100% over eligible**, **link precision 100%** (deterministic vocab — un-codable tail correctly left un-coded for the C5-03 guard). |
+
+Concept-F1 over these codes is deferred to TASK-482 (E3), per the plan.
+
 ## Change History
 
 | Date | Change |
 |---|---|
+| 2026-07-11 | **Adversarially reviewed (APPROVE-WITH-FIXES) + merged to `fix/2605-review`.** Review confirmed: the `persistEntities` tenant-ownership guard is preserved byte-identical (`harness-internal.service.ts:165-166`, before the entity loop; `recordGateDecision` untouched), PHI hygiene clean (linker is a pure in-process dict lookup — no network/model/logging of clinical text; the 5 codes are intentionally plaintext-queryable, excluded from the Vault-encrypted field set), end-to-end code threading field-consistent (rxnorm traced snake→camel→column, unset codes omitted not empty-string), and scope clean (manifest-exact, no `uv.lock`/eval-harness/med-ner edits, encoder swap correctly not done). **Important fix I1 applied by the orchestrator:** the vocab aliased bare `"diabetes"`/`"diabetes mellitus"` to Type-2-specific codes (E11.9/44054006/C0011860) — removed those two aliases (kept `type 2 diabetes`/`type ii diabetes`/`t2dm`); an unqualified "diabetes" now resolves un-coded so the TASK-462 groundedness guard covers it (no Type-1/unspecified mislabeling into durable rows + the SOAP prompt). Deferred Minor follow-ups: **M1** the internal `HarnessPersistEntitiesRequest.entities` lacks `@ValidateNested`/`@Type` so nested `HarnessEntityItem` fields aren't deep-validated at the boundary (pre-existing; benign — internal service-token endpoint, Prisma-parameterized; the added DTO comment/test over-imply runtime rejection); **M2** the WordPiece `##` normalization comment is inaccurate but the branch is inert (HF aggregation merges subwords before the linker); **M3** a few curated LOINC codes are context-narrow. Gates re-verified in the main tree post-I1: `py:nlp:test` **83 passed**, `@arcaai/applications` **5939 passed**; harness (667, hermetic) + build:api unchanged from the verified worktree state. The "link precision 100%" number is honest post-I1 (bare "diabetes" is now correctly un-coded, not falsely T2-coded). Status stays Review pending the on-stack AC-5 keyterm-recall capture (TASK-470's orchestrator step). |
 | 2026-07-10 | Detail-scaffolded from [SOTA-Track](../SOTA-Track/README.md) Theme **C1** into an execution-ready ticket. Current state code-verified against `fix/2605-review` @ `59827bb5`: the NLP producer (`blaze999/Medical-NER`, `token_classifier.py`/`common.py`) emits entity **types but no ontology codes and has no linker**; all three durable `NamedEntity` writers persist `null` codes (async `ner.processor.ts:101` + sync `summary.service.ts:735` via the shared mapper `namedEntityFromNlp.ts:39-49`; harness `sensors/base.py:55`→`nlp_client.py:59`→`api_client.py:91`→`harness-internal.service.ts:170-182`); the three read sites are live on empty codes (`prompt-assembly.service.ts:56-67`, `harness-internal.service.ts:885-889`, `summary.processor.ts:320-324`); the five columns already exist plaintext (`consultation.prisma:323-327`) with the TASK-462 annotation naming this ticket. **This ticket supersedes TASK-462's C5-03 interim guard/annotation** with the real self-hosted clinical encoder + MedCAT/Spark-NLP linker that populates the columns end-to-end, gated on TASK-470. No implementation; documentation only. |
+| 2026-07-10 | **Implemented (status → Review).** TDD RED-first across the contract chain. NLP: new `ontology_linker.py` (deterministic, offline, bundled self-hosted vocab subset — dependency-light, no MedCAT/Spark-NLP added, no `uv.lock` change), `Entity` +5 code fields, `OntologyLinkerConfig`, linker wired into `token_classifier.process()`. Encoder swap NOT done (optional; no ModernBERT/GatorTron weights staged offline). Harness: codes threaded through `NEREntity`→`_to_entity`→`_entity_payload`. TS: shared `namedEntityFromNlp` maps codes (lights up async ner.processor + sync extractEntities), `HarnessEntityItem` +5 validated fields, `persistEntities` writes columns; TASK-462 guard disengages on coded input (proven). No migration. New env vars `NLP_LINKER_ENABLED`/`NLP_LINKER_CONFIDENCE_FLOOR` added to `turbo.json#globalEnv` + both `.env.example`. Gates: `py:nlp:test` 83 · `py:harness:test` 667 · `@arcaai/applications` build+test 5939 +lint(0 err) · `build:api` clean · TASK-470 scorecard pure gates 3 passed (live run self-skips off-stack). See §Implementation Summary. |

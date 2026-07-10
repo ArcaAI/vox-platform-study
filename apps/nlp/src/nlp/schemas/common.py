@@ -23,6 +23,15 @@ class Entity(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score")
     position: TextPosition = Field(..., description="Position in source text")
 
+    # TASK-476 C1 — clinical ontology codes resolved by the entity linker
+    # (OntologyLinker). Nullable: un-codable spans stay None so every downstream
+    # NamedEntity write is null-safe. Field names mirror the NamedEntity columns.
+    umls_cui: str | None = Field(default=None, description="UMLS Concept Unique Identifier")
+    snomed_code: str | None = Field(default=None, description="SNOMED CT concept id")
+    rxnorm_code: str | None = Field(default=None, description="RxNorm RxCUI")
+    icd_code: str | None = Field(default=None, description="ICD-10-CM code")
+    loinc_code: str | None = Field(default=None, description="LOINC code")
+
     # Metadata
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     model_version: str | None = Field(None, description="Model version used")
