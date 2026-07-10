@@ -53,7 +53,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
 
     # External Guardrail client (TASK-338 Phase 4b) — invoked per generate to
-    # validate medical content. fail-open vs fail-closed is honored by the client.
+    # validate medical content. Degrade-safe → fail-CLOSED posture (TASK-478) is
+    # enforced inside the client (bounded retry, then a not-allowed verdict).
     if not hasattr(app.state, "guardrail_client") or app.state.guardrail_client is None:
         from smr_v2.services.external_guardrail import ExternalGuardrailClient
         app.state.guardrail_client = ExternalGuardrailClient(
@@ -64,7 +65,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "smr_v2.guardrail_client_initialized",
             enabled=settings.external_guardrail.enabled,
             base_url=settings.external_guardrail.base_url,
-            fail_open=settings.external_guardrail.fail_open,
+            max_retries=settings.external_guardrail.max_retries,
         )
 
     if not hasattr(app.state, "provider_registry") or app.state.provider_registry is None:
