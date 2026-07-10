@@ -66,6 +66,13 @@ class ExternalGuardrailClient:
         # Bounded retry (TASK-478): total tries = max_retries + 1. A transient blip is
         # absorbed (a clean re-check proceeds); only a sustained outage exhausts the
         # budget and fails CLOSED below.
+        #
+        # Latency ceiling: under a HANG-style outage (each attempt burns the full
+        # timeout_s) worst-case added latency is bounded but non-trivial —
+        # ~= (max_retries + 1) * timeout_s + sum(backoff) ~= 30s at the defaults
+        # (3 * 10s + 0.3s) before the 503. The degrade-safe path therefore relies on
+        # the CALLER's own request timeout as the outer bound; do not raise the
+        # defaults without accounting for this ceiling.
         attempts = self.settings.max_retries + 1
         last_error = ""
         for attempt in range(attempts):
