@@ -150,6 +150,10 @@ function setupStore(overrides: Record<string, any> = {}) {
     setActiveAudioContext: vi.fn(),
     addTranscriptSegment: vi.fn(),
     setAudioLanguage: vi.fn(),
+    // TASK-464 — audio-drop actions the hook calls on start/stop and per drop.
+    resetAudioDropped: vi.fn(),
+    markAudioLost: vi.fn(),
+    incrementDroppedFrames: vi.fn(),
     reset: vi.fn(),
     ...overrides,
   };

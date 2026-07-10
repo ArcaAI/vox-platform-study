@@ -664,6 +664,20 @@ export class TranscriptionPipeline {
     stage.processor.on(ProcessorEvent.Error, (errorPayload) => {
       this.emit('error', { error: errorPayload.error, stage: stage.name });
     });
+
+    // TASK-464 — the STT processor exposes a PUSH channel for backpressure drops
+    // (its `getStats().droppedFrames` getter is unpolled on the SDK path). Wire it
+    // through to an `audioDrop` event so the loss reaches the store/hook/UI. The
+    // method is single-slot (re-registration is idempotent), and guarded so
+    // processors/mocks without it are a no-op.
+    if (stage.name === 'stt') {
+      const sttProcessor = stage.processor as unknown as {
+        onBackpressureDrop?: (cb: (droppedFrameCount: number) => void) => void;
+      };
+      sttProcessor.onBackpressureDrop?.((droppedFrameCount) => {
+        this.emit('audioDrop', droppedFrameCount);
+      });
+    }
   }
 
   /**

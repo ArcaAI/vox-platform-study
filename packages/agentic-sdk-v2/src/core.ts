@@ -701,6 +701,13 @@ export type { AgenticActions, AgenticState } from './store/agenticStore';
 export { useAgenticStore as useArcaStore, useStoreApi } from './store/agenticStore';
 export type { AgenticStoreApi } from './store/agenticStore';
 
+// TASK-464 — EXPORTED audio-drop selectors. The external vox consultation UI
+// reads the drop signal via `useArcaStore(selectAudioDropped)` /
+// `useArcaStore(selectAudioDegraded)` (never a direct store import; select
+// atomically). `selectAudioDropped` → per-session dropped-frame count;
+// `selectAudioDegraded` → session-sticky "audio was lost" latch.
+export { selectAudioDropped, selectAudioDegraded } from './store/agenticStore';
+
 // Constants — defaults and plugin configs (endpoints exported above)
 export {
   DEFAULT_NER_CONFIG,

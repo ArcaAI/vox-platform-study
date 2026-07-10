@@ -987,4 +987,37 @@ describe('PluginManager', () => {
             expect(states.stt.isProcessing).toBe(false);
         });
     });
+
+    // =========================================================================
+    // TASK-464: forward the transcription pipeline's `audioDrop` event to the
+    // consumer callback so the vox hook/store can surface a degraded signal.
+    // =========================================================================
+
+    describe('TASK-464: audioDrop forwarding', () => {
+        it('forwards the pipeline audioDrop event to the onAudioDrop callback', async () => {
+            const manager = new PluginManager({ noiseFilter: true }, mockLogger);
+            const onAudioDrop = vi.fn();
+            manager.setCallbacks({ onAudioDrop });
+
+            await manager.initialize({} as MediaStreamTrack, {} as AudioContext);
+
+            const pipeline = manager.getTranscriptionPipeline();
+            expect(pipeline).not.toBeNull();
+            // `emit` is private on the typed pipeline emitter — reach past the type
+            // to simulate the STT stage pushing a drop up the chain.
+            (pipeline as unknown as { emit(event: string, payload: number): void }).emit('audioDrop', 3);
+
+            expect(onAudioDrop).toHaveBeenCalledWith(3);
+        });
+
+        it('does not throw when audioDrop fires without an onAudioDrop callback', async () => {
+            const manager = new PluginManager({ noiseFilter: true }, mockLogger);
+            await manager.initialize({} as MediaStreamTrack, {} as AudioContext);
+
+            const pipeline = manager.getTranscriptionPipeline();
+            expect(() =>
+                (pipeline as unknown as { emit(event: string, payload: number): void }).emit('audioDrop', 1),
+            ).not.toThrow();
+        });
+    });
 });

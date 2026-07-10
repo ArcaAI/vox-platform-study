@@ -293,6 +293,13 @@ export interface TranscriptionPipelineEvents {
   vadEvent: VADEvent;
   /** Audio level update */
   audioLevel: number;
+  /**
+   * TASK-464 — an outbound audio frame was dropped at the streaming STT client's
+   * backpressure watermark (payload: the running per-session dropped-frame
+   * count). Sourced from the STT processor's push channel; consumers surface it
+   * as a degraded-connection signal (the dropped PCM never reached the transcript).
+   */
+  audioDrop: number;
   /** Error occurred */
   error: { error: Error; stage: string };
   /** Pipeline state changed */
