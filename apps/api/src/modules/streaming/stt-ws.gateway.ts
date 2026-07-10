@@ -79,6 +79,29 @@ export const WS_EGRESS_FINAL_QUEUE_LIMIT = 200;
  */
 export const WS_EGRESS_FLUSH_POLL_MS = 50;
 
+/**
+ * TASK-457 C3-01 — resume grace window. On a TRANSIENT socket drop the gateway
+ * keeps the session (its resume buffer, seq counter, and upstream STT-v2
+ * session) alive for this long so the SAME session can reconnect and continue
+ * without a duplicate flood or a silent freeze. Only when the window expires
+ * with no reconnect is the upstream finalized. Overridable via
+ * `STT_WS_RESUME_GRACE_MS`; default 15s.
+ */
+export const WS_RESUME_GRACE_MS = (() => {
+  const raw = Number(process.env.STT_WS_RESUME_GRACE_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 15_000;
+})();
+
+/**
+ * TASK-457 C3-01 — stable consumer-group name the gateway uses when subscribing
+ * to `stt:result:{sessionId}`. Being stable per session (the stream is already
+ * per-session) means the bridge resumes from the group's Redis-owned cursor on
+ * a re-subscription rather than re-reading from `0-0`. Distinct from the
+ * LiveDocumentationService reader's (default, unique) group, so both still
+ * receive every result (fan-out preserved).
+ */
+export const WS_RESULT_CONSUMER_GROUP = 'captions';
+
 /** Buffered transcript ready for replay. */
 interface BufferedTranscript {
   seq: number;
@@ -87,6 +110,12 @@ interface BufferedTranscript {
 
 interface SessionInfo {
   sessionId: string;
+  /**
+   * The CURRENT client socket. Mutable: on a reconnect within the grace window
+   * the session is rebound to the new socket (TASK-457 C3-01), so every send
+   * path reads `session.client` rather than a captured socket.
+   */
+  client: WebSocket;
   connectedAt: Date;
   binarySeq: number;
   /** Server-assigned monotonic transcript seq (TASK-298 D-17). */
@@ -113,6 +142,19 @@ interface SessionInfo {
   /** Poll timer that flushes `pendingFinalResults` once the socket drains. */
   egressFlushTimer?: ReturnType<typeof setInterval>;
   resultSubscription?: Subscription;
+  /**
+   * TASK-457 C3-01 — grace-window timer armed on a transient disconnect. If the
+   * same session reconnects before it fires the timer is cleared and the
+   * session continues; otherwise the upstream is finalized. Undefined while the
+   * socket is connected.
+   */
+  graceTimer?: ReturnType<typeof setTimeout>;
+  /**
+   * True once the session is being torn down for real (explicit `close`, or a
+   * grace window that expired). Guards against a late disconnect re-arming the
+   * grace window after finalize.
+   */
+  finalizing?: boolean;
 }
 
 @WebSocketGateway({ path: '/ws/stt-v2/stream' })
@@ -122,6 +164,13 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
 
   private readonly logger = new Logger(SttWsGateway.name);
   private readonly sessions = new Map<WebSocket, SessionInfo>();
+  /**
+   * TASK-457 C3-01 — resume state keyed by `sessionId` (not per-socket), so a
+   * reconnect within the grace window finds the SAME `SessionInfo` (its resume
+   * buffer + seq + live result subscription) and rebinds to the new socket
+   * instead of building a fresh, empty one that re-reads from `0-0`.
+   */
+  private readonly sessionsById = new Map<string, SessionInfo>();
   /**
    * TASK-386 (#5/#17) — republishes this instance's live-socket count so the
    * per-instance Redis key never expires between connect/disconnect bursts (key
@@ -160,6 +209,18 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     if (this.socketHeartbeat) {
       clearInterval(this.socketHeartbeat);
       this.socketHeartbeat = undefined;
+    }
+    // TASK-457 C3-01 — clear any in-flight grace-window + egress timers so they
+    // don't outlive the module (they are unref'd, but tidy shutdown regardless).
+    for (const session of this.sessionsById.values()) {
+      if (session.graceTimer) {
+        clearTimeout(session.graceTimer);
+        session.graceTimer = undefined;
+      }
+      if (session.egressFlushTimer) {
+        clearInterval(session.egressFlushTimer);
+        session.egressFlushTimer = undefined;
+      }
     }
   }
 
@@ -295,8 +356,20 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       });
     }
 
+    // TASK-457 C3-01 — RECONNECT within the grace window: a prior transient
+    // drop kept this session (its resume buffer, seq, and live result
+    // subscription) alive. Rebind it to the NEW socket instead of building a
+    // fresh, empty one that re-reads from 0-0. The client then sends the D-17
+    // resume handshake to replay anything it missed.
+    const existing = this.sessionsById.get(sessionId);
+    if (existing) {
+      this.rebindSession(existing, client, stored);
+      return;
+    }
+
     const session: SessionInfo = {
       sessionId,
+      client,
       connectedAt: new Date(),
       binarySeq: 0,
       resultSeq: 0,
@@ -311,6 +384,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     };
 
     this.sessions.set(client, session);
+    this.sessionsById.set(sessionId, session);
     // TASK-386 (#5/#17) — refresh the multi-instance open-socket aggregate.
     this.publishSocketCount();
 
@@ -322,20 +396,15 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       activeSessions: this.sessions.size,
     });
 
-    client.on('message', (data: Buffer | string) => {
-      this.handleMessage(client, data).catch((err) => {
-        this.logger.error({
-          message: 'Unhandled error in message handler',
-          sessionId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
-    });
+    this.attachMessageHandler(client, sessionId);
 
     // TASK-298 D-1 — subscribe to results ONLY after the ticket gate passes.
-    const resultSub = this.bridgeService.subscribeToResults(sessionId).subscribe({
+    // TASK-457 C3-01 — a STABLE consumer group so the bridge resumes from the
+    // group's persisted cursor on any re-subscription (never a 0-0 re-read).
+    // Every send path reads `session.client`, so a rebind redirects output.
+    const resultSub = this.bridgeService.subscribeToResults(sessionId, { consumerGroup: WS_RESULT_CONSUMER_GROUP }).subscribe({
       next: (msg) => {
-        this.relayResult(client, session, msg as unknown as { type: string; isFinal?: boolean; [key: string]: unknown });
+        this.relayResult(session.client, session, msg as unknown as { type: string; isFinal?: boolean; [key: string]: unknown });
       },
       error: (err) => {
         this.logger.warn({
@@ -343,11 +412,11 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
           sessionId,
           error: err instanceof Error ? err.message : String(err),
         });
-        this.sendError(client, 'STREAM_ERROR', 'Result stream encountered an error');
+        this.sendError(session.client, 'STREAM_ERROR', 'Result stream encountered an error');
       },
       complete: () => {
-        if (client.readyState === client.OPEN) {
-          client.send(
+        if (session.client.readyState === session.client.OPEN) {
+          session.client.send(
             JSON.stringify({
               type: 'status',
               status: 'closed',
@@ -359,6 +428,62 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     });
 
     session.resultSubscription = resultSub;
+  }
+
+  /**
+   * TASK-457 C3-01 — register the per-socket message handler. Honors the ws
+   * `isBinary` frame flag: binary frames are audio, text frames (delivered by
+   * ws@8 as a Buffer with `isBinary === false`) are JSON control. Without this
+   * the `{type:'resume'|'stop'|'close'}` control channel was misclassified as
+   * audio and the resume handshake was unanswerable.
+   */
+  private attachMessageHandler(client: WebSocket, sessionId: string): void {
+    client.on('message', (data: Buffer, isBinary: boolean) => {
+      this.handleMessage(client, data, isBinary).catch((err) => {
+        this.logger.error({
+          message: 'Unhandled error in message handler',
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    });
+  }
+
+  /**
+   * TASK-457 C3-01 — rebind a grace-window session to a reconnecting socket.
+   * The upstream STT-v2 session and the result subscription stayed alive, so
+   * the resume buffer + seq are intact; we only swap the socket and cancel the
+   * grace timer. The client drives replay via the D-17 resume handshake.
+   */
+  private rebindSession(session: SessionInfo, client: WebSocket, stored: { userId: string; tenantId: string | null }): void {
+    if (session.graceTimer) {
+      clearTimeout(session.graceTimer);
+      session.graceTimer = undefined;
+    }
+    session.finalizing = false;
+
+    // Drop the stale socket mapping (defensive — normally already removed on
+    // disconnect) and bind the new one.
+    const previous = session.client;
+    if (previous && previous !== client) {
+      this.sessions.delete(previous);
+    }
+    session.client = client;
+    session.userId = stored.userId;
+    session.tenantId = stored.tenantId;
+    session.connectedAt = new Date();
+    this.sessions.set(client, session);
+    this.publishSocketCount();
+
+    this.attachMessageHandler(client, session.sessionId);
+
+    this.logger.log({
+      message: 'WebSocket client reconnected within grace window (TASK-457 C3-01)',
+      sessionId: session.sessionId,
+      resultSeq: session.resultSeq,
+      bufferedForReplay: session.resumeBuffer.length,
+      activeSessions: this.sessions.size,
+    });
   }
 
   /**
@@ -393,7 +518,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     const tagged = this.tagAndBuffer(session, msg);
 
     if (isTranscript && backpressured && msg.isFinal === true) {
-      this.enqueueFinalResult(client, session, tagged);
+      this.enqueueFinalResult(session, tagged);
       return;
     }
 
@@ -413,38 +538,74 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
 
   /**
    * TASK-351 P1-4 — queue a final for delivery after the socket drains. The
-   * queue is bounded: on overflow the oldest entry is dropped with an error
-   * log (the newest, most relevant finals survive; the resume buffer still
-   * holds the dropped one for the reconnect-replay path).
+   * queue is bounded: on overflow the oldest entry is dropped with an error log.
+   *
+   * TASK-457 C3-03 — the previous claim that "the resume buffer still holds the
+   * dropped one" was FALSE: `tagAndBuffer` (bound `RESUME_BUFFER_SIZE`) runs
+   * microseconds before this enqueue and the resume buffer evicts the same final
+   * in lockstep, so an overflowed final is in NEITHER the live queue NOR the
+   * resume buffer. It survives only in the durable STT-v2 transcript (the
+   * clinical system of record). We therefore emit an EXPLICIT gap marker so the
+   * loss is never silent — the client sees the seq discontinuity and reconciles
+   * against the persisted transcript rather than freezing.
    */
-  private enqueueFinalResult(client: WebSocket, session: SessionInfo, tagged: { type: string; [key: string]: unknown }): void {
+  private enqueueFinalResult(session: SessionInfo, tagged: { type: string; [key: string]: unknown }): void {
     session.pendingFinalResults.push(tagged);
     if (session.pendingFinalResults.length > WS_EGRESS_FINAL_QUEUE_LIMIT) {
       const dropped = session.pendingFinalResults.shift();
       session.droppedFinalResults++;
+      const droppedSeq = (dropped as { seq?: number } | undefined)?.seq;
       this.logger.error({
-        message: 'Final transcript dropped — bounded WS egress queue overflow (TASK-351 P1-4)',
+        message: 'Final transcript dropped — bounded WS egress queue overflow (TASK-457 C3-03 / TASK-351 P1-4)',
         sessionId: session.sessionId,
         droppedFinalResults: session.droppedFinalResults,
         queueLimit: WS_EGRESS_FINAL_QUEUE_LIMIT,
-        droppedSeq: (dropped as { seq?: number } | undefined)?.seq,
+        droppedSeq,
       });
+      this.emitGapMarker(session, droppedSeq);
     }
     if (!session.egressFlushTimer) {
-      const timer = setInterval(() => this.flushPendingFinals(client, session), WS_EGRESS_FLUSH_POLL_MS);
+      const timer = setInterval(() => this.flushPendingFinals(session), WS_EGRESS_FLUSH_POLL_MS);
       (timer as unknown as { unref?: () => void }).unref?.();
       session.egressFlushTimer = timer;
     }
   }
 
   /**
+   * TASK-457 C3-03 — explicit gap marker so a dropped final is never a SILENT
+   * loss. Tiny control frame; sent even while the transcript stream is
+   * backpressured (its congestion is what forced the drop). Recoverable from
+   * the durable transcript on the client side.
+   */
+  private emitGapMarker(session: SessionInfo, droppedSeq?: number): void {
+    const client = session.client;
+    if (client.readyState === client.OPEN) {
+      client.send(
+        JSON.stringify({
+          type: 'gap',
+          reason: 'egress_overflow',
+          sessionId: session.sessionId,
+          ...(droppedSeq != null ? { droppedSeq } : {}),
+        }),
+      );
+    }
+  }
+
+  /**
    * TASK-351 P1-4 — drain poll: deliver queued finals in order while the
    * socket stays below the threshold; self-clears once the queue empties
-   * (normal delivery resumes) or the socket is gone.
+   * (normal delivery resumes) or the socket is gone. Targets `session.client`
+   * so a grace-window rebind flushes to the reconnected socket (TASK-457).
    */
-  private flushPendingFinals(client: WebSocket, session: SessionInfo): void {
+  private flushPendingFinals(session: SessionInfo): void {
+    const client = session.client;
     if (client.readyState !== client.OPEN) {
-      this.clearEgressState(session, 'socket closed');
+      // Socket gone mid-drain. If the session is being finalized, drop the
+      // queue; otherwise (a transient drop pending its grace window) keep the
+      // queued finals so a reconnect can still receive them.
+      if (session.finalizing) {
+        this.clearEgressState(session, 'socket closed');
+      }
       return;
     }
     while (session.pendingFinalResults.length > 0 && !this.isEgressOverThreshold(client)) {
@@ -494,55 +655,110 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
 
   handleDisconnect(client: WebSocket): void {
     const session = this.sessions.get(client);
+    // A grace-window rebind may already have moved this session to a NEW socket;
+    // a late close of the OLD socket must not tear the live session down.
+    if (!session || session.client !== client) {
+      this.sessions.delete(client);
+      return;
+    }
+
     this.sessions.delete(client);
     // TASK-386 (#5/#17) — refresh the multi-instance open-socket aggregate.
     this.publishSocketCount();
 
-    if (session) {
-      session.resultSubscription?.unsubscribe();
-      this.bridgeService.unsubscribeFromResults(session.sessionId);
-      this.clearEgressState(session, 'client disconnected');
+    this.logger.log({
+      message: 'WebSocket client disconnected',
+      sessionId: session.sessionId,
+      droppedAudioFrames: session.droppedAudioFrames,
+      // TASK-351 P1-4 (H6) — egress backpressure accounting, mirroring
+      // the droppedAudioFrames pattern above.
+      droppedPartialResults: session.droppedPartialResults,
+      droppedFinalResults: session.droppedFinalResults,
+      activeSessions: this.sessions.size,
+    });
 
-      this.logger.log({
-        message: 'WebSocket client disconnected',
-        sessionId: session.sessionId,
-        droppedAudioFrames: session.droppedAudioFrames,
-        // TASK-351 P1-4 (H6) — egress backpressure accounting, mirroring
-        // the droppedAudioFrames pattern above.
-        droppedPartialResults: session.droppedPartialResults,
-        droppedFinalResults: session.droppedFinalResults,
-        activeSessions: this.sessions.size,
-      });
-
-      this.sessionService.removeSession(session.sessionId).catch((err) => {
-        this.logger.warn({
-          message: 'Session cleanup failed on disconnect',
-          sessionId: session.sessionId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        // TASK-351 P1-3 (M6 part 2) — park the session for bounded retries
-        // instead of leaking it until the STT-v2 inactivity reaper.
-        this.removalRetry.enqueue(session.sessionId);
-      });
+    // Already being torn down for real (explicit close / prior grace expiry).
+    if (session.finalizing) {
+      return;
     }
+
+    // TASK-457 C3-01 — a TRANSIENT disconnect must NOT unsubscribe or finalize
+    // the upstream. Keep the session (resume buffer + seq + live result
+    // subscription) alive for the grace window so the SAME session can
+    // reconnect and continue — no duplicate flood, no silent freeze. Only when
+    // the window expires with no reconnect do we finalize.
+    if (session.graceTimer) {
+      clearTimeout(session.graceTimer);
+    }
+    const timer = setTimeout(() => this.finalizeSession(session, 'grace window expired'), WS_RESUME_GRACE_MS);
+    (timer as unknown as { unref?: () => void }).unref?.();
+    session.graceTimer = timer;
   }
 
-  async handleMessage(client: WebSocket, rawData: string | Buffer): Promise<void> {
+  /**
+   * TASK-457 C3-01 — finalize a session for real: unsubscribe from results,
+   * tell STT-v2 to finalize (with the M6 removal-retry fallback), drop all
+   * state. Idempotent. Called on an explicit `close` or when the resume grace
+   * window expires with no reconnect.
+   */
+  private finalizeSession(session: SessionInfo, reason: string): void {
+    if (session.finalizing && reason === 'grace window expired') {
+      // A concurrent close already finalized it.
+      return;
+    }
+    session.finalizing = true;
+    if (session.graceTimer) {
+      clearTimeout(session.graceTimer);
+      session.graceTimer = undefined;
+    }
+    session.resultSubscription?.unsubscribe();
+    this.bridgeService.unsubscribeFromResults(session.sessionId);
+    this.clearEgressState(session, reason);
+    this.sessions.delete(session.client);
+    this.sessionsById.delete(session.sessionId);
+    this.publishSocketCount();
+
+    this.logger.log({
+      message: 'Streaming session finalized',
+      sessionId: session.sessionId,
+      reason,
+    });
+
+    this.sessionService.removeSession(session.sessionId).catch((err) => {
+      this.logger.warn({
+        message: 'Session cleanup failed on finalize',
+        sessionId: session.sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      // TASK-351 P1-3 (M6 part 2) — park the session for bounded retries
+      // instead of leaking it until the STT-v2 inactivity reaper.
+      this.removalRetry.enqueue(session.sessionId);
+    });
+  }
+
+  async handleMessage(client: WebSocket, rawData: string | Buffer, isBinary?: boolean): Promise<void> {
     const session = this.sessions.get(client);
     if (!session) {
       this.sendError(client, 'NO_SESSION', 'No active session for this connection');
       return;
     }
 
-    if (Buffer.isBuffer(rawData)) {
+    // TASK-457 — route on the ws `isBinary` frame flag, NOT `Buffer.isBuffer`:
+    // ws@8 delivers TEXT frames as a Buffer too, so a Buffer with
+    // `isBinary === false` is a JSON control frame ({resume|stop|close}), not
+    // audio. Misrouting it as audio was why the resume handshake was dead.
+    // (`isBinary` is undefined only on direct unit-test calls; a bare string is
+    // then treated as JSON, a Buffer must set the flag explicitly.)
+    if (isBinary === true) {
       session.binarySeq++;
-      this.forwardAudioFrame(client, session, session.binarySeq, rawData);
+      const audio = Buffer.isBuffer(rawData) ? rawData : Buffer.from(String(rawData));
+      this.forwardAudioFrame(session, session.binarySeq, audio);
       return;
     }
 
     let msg: { type: string; [key: string]: unknown };
     try {
-      const str = rawData as string;
+      const str = Buffer.isBuffer(rawData) ? rawData.toString('utf8') : String(rawData);
       msg = JSON.parse(str);
     } catch {
       this.sendError(client, 'INVALID_JSON', 'Message must be valid JSON');
@@ -556,7 +772,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
         case 'audio': {
           const seq = typeof msg.seq === 'number' ? msg.seq : ++session.binarySeq;
           const data = Buffer.from(String(msg.data), 'base64');
-          this.forwardAudioFrame(client, session, seq, data);
+          this.forwardAudioFrame(session, seq, data);
           break;
         }
 
@@ -566,17 +782,15 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
         }
 
         case 'resume': {
-          // TASK-298 D-17 — resumability handshake.
-          this.handleResume(client, session, msg);
+          // TASK-298 D-17 / TASK-457 C3-01 — resumability handshake.
+          this.handleResume(session, msg);
           break;
         }
 
         case 'close': {
-          session.resultSubscription?.unsubscribe();
-          this.bridgeService.unsubscribeFromResults(session.sessionId);
-          this.clearEgressState(session, 'session closed by client');
-          await this.sessionService.removeSession(session.sessionId);
-          this.sessions.delete(client);
+          // TASK-457 C3-01 — an explicit close is a REAL end (no grace window):
+          // finalize the upstream immediately.
+          this.finalizeSession(session, 'session closed by client');
           client.close(1000, 'Session closed by client');
           break;
         }
@@ -604,7 +818,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * session and surfaced to the client as BRIDGE_ERROR — the SDK's
    * `lastSeq` resume protocol handles recovery.
    */
-  private forwardAudioFrame(client: WebSocket, session: SessionInfo, seq: number, data: Buffer): void {
+  private forwardAudioFrame(session: SessionInfo, seq: number, data: Buffer): void {
     this.bridgeService.writeAudioFrame(session.sessionId, seq, data, session.sampleRate, 'pcm_s16le', false).catch((err) => {
       session.droppedAudioFrames++;
       this.logger.error({
@@ -614,7 +828,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
         droppedAudioFrames: session.droppedAudioFrames,
         error: err instanceof Error ? err.message : String(err),
       });
-      this.sendError(client, 'BRIDGE_ERROR', 'Failed to forward audio frame');
+      this.sendError(session.client, 'BRIDGE_ERROR', 'Failed to forward audio frame');
     });
   }
 
@@ -624,75 +838,46 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
 
   /**
    * Handle the `{type:'resume', sessionId, lastSeq}` handshake from the SDK
-   * (TASK-298 D-17). When the requested `lastSeq` is still inside the bounded
-   * buffer, replay every buffered transcript with `seq > lastSeq` so the
-   * client recovers without dropping any final transcript. When the gap
-   * exceeds the buffer window, respond with `resume_failed` and the lowest
-   * still-available seq so the client knows the loss size.
+   * (TASK-298 D-17 / TASK-457 C3-01). A successful resume ALWAYS acknowledges
+   * continuation from the next unseen seq (`fromSeq = lastSeq + 1`) and replays
+   * every buffered transcript with `seq > lastSeq` — never re-sending anything
+   * with `seq <= lastSeq` (no duplicate flood). When the requested `lastSeq` is
+   * behind the oldest still-buffered seq the gap exceeds the window: respond
+   * with `resume_failed` + the lowest still-available seq (the loss is in the
+   * durable transcript).
    */
-  private handleResume(client: WebSocket, session: SessionInfo, msg: { type: string; [key: string]: unknown }): void {
+  private handleResume(session: SessionInfo, msg: { type: string; [key: string]: unknown }): void {
+    const client = session.client;
     const reqSessionId = typeof msg.sessionId === 'string' ? msg.sessionId : null;
     const lastSeq = typeof msg.lastSeq === 'number' && Number.isFinite(msg.lastSeq) ? msg.lastSeq : null;
 
     if (!reqSessionId || reqSessionId !== session.sessionId || lastSeq === null) {
-      if (client.readyState === client.OPEN) {
-        client.send(
-          JSON.stringify({
-            type: 'resume_failed',
-            sessionId: session.sessionId,
-            reason: 'unknown_session',
-          }),
-        );
-      }
+      this.sendJson(client, { type: 'resume_failed', sessionId: session.sessionId, reason: 'unknown_session' });
       return;
     }
 
     const buffer = session.resumeBuffer;
-    if (buffer.length === 0) {
-      // Nothing buffered yet (e.g. first connect after server restart).
-      // Acknowledge the resume without replay; the client will receive new
-      // transcripts starting from `resultSeq + 1` as they come in.
-      if (client.readyState === client.OPEN) {
-        client.send(
-          JSON.stringify({
-            type: 'resumed',
-            sessionId: session.sessionId,
-            fromSeq: session.resultSeq,
-          }),
-        );
+    if (buffer.length > 0) {
+      const minAvailableSeq = buffer[0]!.seq;
+      if (lastSeq < minAvailableSeq - 1) {
+        this.sendJson(client, { type: 'resume_failed', sessionId: session.sessionId, reason: 'buffer_overflow', minAvailableSeq });
+        return;
       }
-      return;
     }
 
-    const minAvailableSeq = buffer[0]!.seq;
-    if (lastSeq < minAvailableSeq - 1) {
-      if (client.readyState === client.OPEN) {
-        client.send(
-          JSON.stringify({
-            type: 'resume_failed',
-            sessionId: session.sessionId,
-            reason: 'buffer_overflow',
-            minAvailableSeq,
-          }),
-        );
-      }
-      return;
-    }
-
+    // Success — continuation from the NEXT unseen seq, then replay the unseen
+    // buffered transcripts in order. An empty buffer (or a caught-up client)
+    // still gets `resumed fromSeq: lastSeq + 1` and continues with live results.
     const toReplay = buffer.filter((b) => b.seq > lastSeq);
+    this.sendJson(client, { type: 'resumed', sessionId: session.sessionId, fromSeq: lastSeq + 1 });
+    for (const entry of toReplay) {
+      this.sendJson(client, entry.msg);
+    }
+  }
+
+  private sendJson(client: WebSocket, payload: unknown): void {
     if (client.readyState === client.OPEN) {
-      client.send(
-        JSON.stringify({
-          type: 'resumed',
-          sessionId: session.sessionId,
-          fromSeq: toReplay.length > 0 ? toReplay[0]!.seq : session.resultSeq,
-        }),
-      );
-      for (const entry of toReplay) {
-        if (client.readyState === client.OPEN) {
-          client.send(JSON.stringify(entry.msg));
-        }
-      }
+      client.send(JSON.stringify(payload));
     }
   }
 

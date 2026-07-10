@@ -855,19 +855,33 @@ class TestRedisStreamKeys:
         assert worker_key("w1") == "stt:worker:w1"
 
 
+def _group_redis_mock() -> AsyncMock:
+    """AsyncMock wired for the consumer-group audio reader (TASK-457).
+
+    Defaults: XGROUP CREATE ok, XAUTOCLAIM returns nothing, XACK ok, and a
+    slow empty XREADGROUP so the loop yields instead of spin-looping. Tests
+    override ``xreadgroup.side_effect`` to inject a batch.
+    """
+    redis_mock = AsyncMock()
+
+    async def _slow_xreadgroup(*args, **kwargs):
+        await asyncio.sleep(0.05)
+        return []
+
+    redis_mock.xreadgroup.side_effect = _slow_xreadgroup
+    redis_mock.xautoclaim.return_value = (b"0-0", [], [])
+    redis_mock.xgroup_create.return_value = True
+    redis_mock.xack.return_value = 1
+    return redis_mock
+
+
 class TestIngestionConsumer:
-    """Tests for IngestionConsumer."""
+    """Tests for IngestionConsumer (TASK-457 — Redis consumer groups)."""
 
     async def test_start_stop(self):
         from stt_v2.streaming.redis_streams import IngestionConsumer
 
-        redis_mock = AsyncMock()
-
-        async def slow_xread(*args, **kwargs):
-            await asyncio.sleep(0.05)  # simulate blocking XREAD
-            return []
-
-        redis_mock.xread.side_effect = slow_xread
+        redis_mock = _group_redis_mock()
 
         on_frame = AsyncMock()
         consumer = IngestionConsumer(
@@ -881,7 +895,28 @@ class TestIngestionConsumer:
         await consumer.stop()
         assert not consumer.is_running
 
-    async def test_processes_frames(self):
+    async def test_creates_consumer_group_with_mkstream(self):
+        """The group is created (MKSTREAM) before the first XREADGROUP."""
+        from stt_v2.streaming.redis_streams import (
+            AUDIO_CONSUMER_GROUP,
+            IngestionConsumer,
+        )
+
+        redis_mock = _group_redis_mock()
+        consumer = IngestionConsumer(
+            redis=redis_mock, session_id="s1", on_frame=AsyncMock(), block_ms=50
+        )
+        await consumer.start()
+        await asyncio.sleep(0.1)
+        await consumer.stop()
+
+        redis_mock.xgroup_create.assert_awaited()
+        call = redis_mock.xgroup_create.await_args
+        assert call.args[0] == "stt:audio:s1"
+        assert call.args[1] == AUDIO_CONSUMER_GROUP
+        assert call.kwargs.get("mkstream") is True
+
+    async def test_processes_frames_via_xreadgroup_and_acks(self):
         from stt_v2.streaming.redis_streams import IngestionConsumer
 
         frame_data = {
@@ -894,10 +929,10 @@ class TestIngestionConsumer:
             b"ts": b"1000.0",
         }
 
-        redis_mock = AsyncMock()
+        redis_mock = _group_redis_mock()
         call_count = 0
 
-        async def fake_xread(*args, **kwargs):
+        async def fake_xreadgroup(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -905,7 +940,7 @@ class TestIngestionConsumer:
             await asyncio.sleep(0.05)  # yield control for subsequent calls
             return []
 
-        redis_mock.xread.side_effect = fake_xread
+        redis_mock.xreadgroup.side_effect = fake_xreadgroup
 
         frames_received = []
 
@@ -921,6 +956,55 @@ class TestIngestionConsumer:
 
         assert len(frames_received) == 1
         assert frames_received[0].seq == 1
+        # At-least-once: the processed entry is XACK'd to the group.
+        redis_mock.xack.assert_awaited()
+        ack_call = redis_mock.xack.await_args
+        assert ack_call.args[0] == "stt:audio:s1"
+        assert "1-0" in ack_call.args[2:]
+
+    async def test_reclaims_dead_consumer_pending_via_xautoclaim(self):
+        """A crashed consumer's unacked in-flight is reclaimed + processed."""
+        from stt_v2.streaming.redis_streams import IngestionConsumer
+
+        frame_data = {
+            b"seq": b"7",
+            b"sr": b"16000",
+            b"enc": b"pcm_s16le",
+            b"ch": b"1",
+            b"data": b"\x00\x02",
+            b"final": b"0",
+            b"ts": b"2000.0",
+        }
+
+        redis_mock = _group_redis_mock()
+        claim_count = 0
+
+        async def fake_xautoclaim(*args, **kwargs):
+            nonlocal claim_count
+            claim_count += 1
+            if claim_count == 1:
+                # [cursor, [(id, fields), ...], [deleted]]
+                return (b"0-0", [(b"5-0", frame_data)], [])
+            return (b"0-0", [], [])
+
+        redis_mock.xautoclaim.side_effect = fake_xautoclaim
+
+        frames_received = []
+
+        async def on_frame(frame):
+            frames_received.append(frame)
+
+        consumer = IngestionConsumer(
+            redis=redis_mock, session_id="s1", on_frame=on_frame, block_ms=50
+        )
+        await consumer.start()
+        await asyncio.sleep(0.15)
+        await consumer.stop()
+
+        # The reclaimed frame was dispatched and acked (dead-consumer handoff).
+        assert any(f.seq == 7 for f in frames_received)
+        redis_mock.xautoclaim.assert_awaited()
+        redis_mock.xack.assert_awaited()
 
 
 class TestResultPublisher:
@@ -938,6 +1022,21 @@ class TestResultPublisher:
         entry_id = await publisher.publish(result)
         assert entry_id == "1-0"
         redis_mock.xadd.assert_called_once()
+        # TASK-457 C3-05 — result stream is MAXLEN-bounded during the session.
+        call_kwargs = redis_mock.xadd.call_args.kwargs
+        assert call_kwargs["maxlen"] is not None and call_kwargs["maxlen"] > 0
+        assert call_kwargs["approximate"] is True
+
+    async def test_publish_uses_explicit_maxlen_when_given(self):
+        from stt_v2.streaming.redis_streams import ResultPublisher
+        from stt_v2.streaming.schemas import SegmentResult
+
+        redis_mock = AsyncMock()
+        redis_mock.xadd.return_value = b"1-0"
+
+        publisher = ResultPublisher(redis=redis_mock, session_id="s1", maxlen=1234)
+        await publisher.publish(SegmentResult(text="Hi", is_final=True))
+        assert redis_mock.xadd.call_args.kwargs["maxlen"] == 1234
 
     async def test_publish_error(self):
         from stt_v2.streaming.redis_streams import ResultPublisher
@@ -948,6 +1047,9 @@ class TestResultPublisher:
         publisher = ResultPublisher(redis=redis_mock, session_id="s1")
         entry_id = await publisher.publish_error("Something went wrong")
         assert entry_id == "2-0"
+        # C3-05 — error entries are bounded too.
+        assert redis_mock.xadd.call_args.kwargs["maxlen"] is not None
+        assert redis_mock.xadd.call_args.kwargs["approximate"] is True
 
     async def test_publish_status(self):
         from stt_v2.streaming.redis_streams import ResultPublisher
@@ -958,6 +1060,9 @@ class TestResultPublisher:
         publisher = ResultPublisher(redis=redis_mock, session_id="s1")
         entry_id = await publisher.publish_status("finalizing")
         assert entry_id == "3-0"
+        # C3-05 — status entries are bounded too.
+        assert redis_mock.xadd.call_args.kwargs["maxlen"] is not None
+        assert redis_mock.xadd.call_args.kwargs["approximate"] is True
 
 
 class TestControlListener:
@@ -1019,14 +1124,10 @@ class TestControlListener:
 class TestXaddAudioFrame:
     """Tests for the xadd_audio_frame helper."""
 
-    async def test_xadd_with_maxlen(self):
-        from stt_v2.streaming.redis_streams import xadd_audio_frame
+    def _frame(self):
         from stt_v2.streaming.schemas import AudioEncoding, AudioFrame
 
-        redis_mock = AsyncMock()
-        redis_mock.xadd.return_value = b"1-0"
-
-        frame = AudioFrame(
+        return AudioFrame(
             seq=1,
             sr=16000,
             enc=AudioEncoding.PCM_S16LE,
@@ -1036,12 +1137,34 @@ class TestXaddAudioFrame:
             ts=1000.0,
         )
 
-        entry_id = await xadd_audio_frame(redis_mock, "s1", frame, maxlen=2000)
+    async def test_xadd_with_explicit_maxlen(self):
+        from stt_v2.streaming.redis_streams import xadd_audio_frame
+
+        redis_mock = AsyncMock()
+        redis_mock.xadd.return_value = b"1-0"
+
+        entry_id = await xadd_audio_frame(redis_mock, "s1", self._frame(), maxlen=5000)
         assert entry_id == "1-0"
         redis_mock.xadd.assert_called_once()
         call_kwargs = redis_mock.xadd.call_args.kwargs
-        assert call_kwargs["maxlen"] == 2000
+        assert call_kwargs["maxlen"] == 5000
         assert call_kwargs["approximate"] is True
+
+    async def test_xadd_default_maxlen_uses_reconciled_setting(self):
+        """TASK-457 C3-06 — the default bound is the single source of truth
+        (settings.streaming_audio_stream_maxlen), reconciled to 10000 to match
+        the TS bridge's XADD MAXLEN."""
+        from stt_v2.core.config.settings import get_settings
+        from stt_v2.streaming.redis_streams import xadd_audio_frame
+
+        redis_mock = AsyncMock()
+        redis_mock.xadd.return_value = b"1-0"
+
+        await xadd_audio_frame(redis_mock, "s1", self._frame())
+        assert redis_mock.xadd.call_args.kwargs["maxlen"] == (
+            get_settings().streaming_audio_stream_maxlen
+        )
+        assert get_settings().streaming_audio_stream_maxlen == 10000
 
 
 # ---------------------------------------------------------------------------
@@ -1132,12 +1255,17 @@ class TestSessionManager:
         redis_mock.xadd.return_value = b"1-0"
         redis_mock.exists.return_value = False
 
-        # Make xread yield control so consumer tasks don't spin-loop
-        async def _slow_xread(*args, **kwargs):
+        # Make the read loops yield control so consumer tasks don't spin-loop.
+        # Audio uses XREADGROUP (TASK-457); control still uses XREAD.
+        async def _slow_read(*args, **kwargs):
             await asyncio.sleep(0.05)
             return []
 
-        redis_mock.xread.side_effect = _slow_xread
+        redis_mock.xread.side_effect = _slow_read
+        redis_mock.xreadgroup.side_effect = _slow_read
+        redis_mock.xautoclaim.return_value = (b"0-0", [], [])
+        redis_mock.xgroup_create.return_value = True
+        redis_mock.xack.return_value = 1
 
         mgr = SessionManager(redis=redis_mock, profile=profile, worker_id="test-worker-1")
 
@@ -1288,7 +1416,11 @@ class TestStreamingSettings:
         assert s.streaming_inference_drain_timeout_s == 60.0
         assert s.streaming_worker_heartbeat_s == 10
         assert s.streaming_worker_heartbeat_ttl_s == 30
-        assert s.streaming_audio_stream_maxlen == 2000
+        # TASK-457 C3-06 — audio bound reconciled to the single source of
+        # truth (was 2000; now equals the TS bridge's XADD MAXLEN of 10000).
+        assert s.streaming_audio_stream_maxlen == 10000
+        # TASK-457 C3-05 — result stream bounded during the session.
+        assert s.streaming_result_stream_maxlen == 10000
         assert s.streaming_result_stream_expire_s == 3600
         assert s.streaming_session_metadata_expire_s == 86400
 
