@@ -83,6 +83,7 @@ import asyncio
 import json
 import os
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -238,6 +239,9 @@ class MessageRecord:
     start_time: float = 0.0
     end_time: float = 0.0
     status: str = ""
+    # LocalAgreement-2 committed-prefix length: text[:stable_chars] is settled,
+    # text[stable_chars:] is the provisional tentative tail (None ⇒ not emitted).
+    stable_chars: int | None = None
 
 
 @dataclass
@@ -257,6 +261,7 @@ def _classify(raw: dict[str, Any], recv_ms: float) -> MessageRecord:
             text=str(raw.get("text") or ""),
             start_time=_num(raw.get("startTime", raw.get("start_time"))),
             end_time=_num(raw.get("endTime", raw.get("end_time"))),
+            stable_chars=_stable_chars(raw),
         )
     if kind == "status":
         return MessageRecord(recv_ms=recv_ms, kind="status", status=str(raw.get("status") or ""))
@@ -272,6 +277,18 @@ def _num(v: Any) -> float:
         return float(v)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _stable_chars(raw: dict[str, Any]) -> int | None:
+    """LA-2 committed-prefix length from a transcript frame, or None if absent.
+
+    Mirrors the SDK/gateway convention: ``stableChars`` (camelCase, forwarded by
+    the gateway) preferred, ``stable_chars`` (snake, direct from stt-v2) fallback.
+    """
+    sc = raw.get("stableChars")
+    if not isinstance(sc, int):
+        sc = raw.get("stable_chars")
+    return sc if isinstance(sc, int) and sc >= 0 else None
 
 
 async def _receive(ws: Any, cap: Capture, t0: float) -> None:
@@ -357,6 +374,39 @@ def partial_revision_rate(partial_texts: list[str]) -> dict[str, Any]:
     }
 
 
+def committed_revision_rate(entries: Sequence[tuple[str, int | None]]) -> dict[str, Any]:
+    """Fraction of partials that REWRITE the already-COMMITTED prefix (TASK-487 A1).
+
+    Unlike :func:`partial_revision_rate` (which compares the FULL caption), this
+    compares only the LocalAgreement-2 committed region ``text[:stable_chars]`` —
+    the settled text the UI renders as final. Re-transcribing the not-yet-committed
+    tentative tail (``text[stable_chars:]``, which the UI ghosts) is by design and
+    is NOT churn, so it does not count here. ``stable_chars`` None/≤0 ⇒ nothing
+    committed yet ⇒ empty prefix ⇒ never a rewrite. This is the real caption-churn
+    guardrail; LA-2's monotonic commit-with-rollback keeps it ≈ 0, so a non-trivial
+    value means genuine settled-text flicker (a real regression), not tail volatility.
+    """
+
+    def _committed(text: str, sc: int | None) -> str:
+        if not isinstance(sc, int) or sc <= 0:
+            return ""
+        return text[:sc].strip()
+
+    prefixes = [_committed(t, sc) for t, sc in entries]
+    revisions = 0
+    for prev, cur in zip(prefixes, prefixes[1:], strict=False):
+        # An empty prior prefix (nothing committed yet) can never be "rewritten".
+        if prev and not cur.startswith(prev):
+            revisions += 1
+    total = len(prefixes)
+    denom = max(1, total)
+    return {
+        "partials": total,
+        "revisions": revisions,
+        "rate": round(revisions / denom, 4),
+    }
+
+
 def seq_loss(seqs: list[int]) -> dict[str, Any]:
     """Gaps in the gateway's monotonic transcript seq = dropped captions."""
     present = sorted({s for s in seqs if isinstance(s, int) and s > 0})
@@ -425,7 +475,10 @@ def compute_metrics(
         "first_partial_ms": first_partial_ms,
         "ttfw_ms": ttfw_ms,
         "commit_latency_ms": _stats(commit_latencies),
+        # Full-caption revision (informational) + committed-region revision (the
+        # TASK-487 A1 guardrail — measures settled-text churn, excludes the tail).
         "partial_revision": partial_revision_rate([p.text for p in partials]),
+        "committed_revision": committed_revision_rate([(p.text, p.stable_chars) for p in partials]),
         "loss": {
             "frames_sent": len(frames),
             "audio_seconds_sent": audio_seconds_sent,

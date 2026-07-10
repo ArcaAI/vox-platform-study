@@ -270,6 +270,7 @@ def build_scorecard(
 
     tm = transport_metrics or {}
     partial = tm.get("partial_revision") or {}
+    committed = tm.get("committed_revision") or {}
     loss = tm.get("loss") or {}
     seq = loss.get("seq") or {}
 
@@ -284,6 +285,10 @@ def build_scorecard(
             "first_partial_ms": tm.get("first_partial_ms"),
             "ttfw_ms": tm.get("ttfw_ms"),
             "commit_latency_ms": tm.get("commit_latency_ms"),
+            # committed_revision_rate is the GATED A1 churn guardrail (settled-text
+            # rewrite); partial_revision_rate is retained INFORMATIONAL (full-caption
+            # churn incl. the by-design tentative tail — useful for cadence tuning).
+            "committed_revision_rate": committed.get("rate"),
             "partial_revision_rate": partial.get("rate"),
             "seq_gap_count": seq.get("gap_count"),
             "audio_coverage_ratio": loss.get("audio_coverage_ratio"),
@@ -349,12 +354,15 @@ def regression_report(
             lim = base - cfg.get("epsilon", 0.0)
             checks.append(_check(f"{name}_vs_baseline", val, lim, val >= lim, ">= baseline-eps"))
 
-    # --- partial-revision rate: <= baseline+ε ---------------------------------
-    pr_cfg = thresholds.get("partial_revision_rate", {})
-    pr = transport.get("partial_revision_rate")
-    if pr is not None and pr_cfg.get("baseline") is not None:
-        lim = pr_cfg["baseline"] + pr_cfg.get("epsilon", 0.0)
-        checks.append(_check("partial_revision_rate", pr, lim, pr <= lim, "<= baseline+eps"))
+    # --- committed-region revision rate: <= baseline+ε (TASK-487 A1 guardrail) --
+    # Gates the LA-2 committed-prefix churn (settled-text the user sees rewrite),
+    # NOT the full-caption rate — re-transcribing the by-design tentative tail is
+    # excluded. The full-caption partial_revision_rate is surfaced but ungated.
+    cr_cfg = thresholds.get("committed_revision_rate", {})
+    cr = transport.get("committed_revision_rate")
+    if cr is not None and cr_cfg.get("baseline") is not None:
+        lim = cr_cfg["baseline"] + cr_cfg.get("epsilon", 0.0)
+        checks.append(_check("committed_revision_rate", cr, lim, cr <= lim, "<= baseline+eps"))
 
     # --- commit latency P50/P99: <= baseline × (1 + ε_ratio) ------------------
     cl_cfg = thresholds.get("commit_latency_ms", {})

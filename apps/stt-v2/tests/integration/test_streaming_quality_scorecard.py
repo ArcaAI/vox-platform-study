@@ -63,8 +63,10 @@ from tests.integration.streaming_quality import (
 # Reuse TASK-455's harness (import — do NOT fork). All module-level & importable.
 from tests.integration.test_streaming_loss_harness import (
     ReplayAudio,
+    committed_revision_rate,
     compute_metrics,
     load_replay_audio,
+    partial_revision_rate,
 )
 from tests.integration.test_streaming_loss_harness import (
     _api_unreachable_reason as api_unreachable_reason,
@@ -113,6 +115,31 @@ def _load_thresholds() -> dict[str, Any]:
 # ===========================================================================
 # 1. PURE metric self-check (no services) — the unit gate this ticket owns
 # ===========================================================================
+
+
+def test_committed_revision_rate_excludes_tentative_tail() -> None:
+    """TASK-487 A1: the churn guardrail must measure the LA-2 COMMITTED region
+    (``text[:stable_chars]``), not the full caption — revising the deliberately
+    provisional tentative tail is by design and must NOT count as caption churn.
+    """
+    # Tentative-tail revision only: committed prefix "the patient" is stable across
+    # both partials (stable_chars=11); only the ghosted tail is re-transcribed.
+    tail_only = [("the patient has", 11), ("the patient presents now", 11)]
+    assert committed_revision_rate(tail_only)["rate"] == 0.0
+    # The full-caption metric DOES flag the same pair (the tail rewrite) — proving
+    # the two metrics measure different surfaces and the committed one excludes the tail.
+    assert partial_revision_rate([t for t, _ in tail_only])["rate"] > 0.0
+
+    # Genuine committed churn: the settled prefix itself shrinks/rewrites (an LA-2
+    # rollback of already-committed text) → still counted (the real guardrail bites).
+    rollback = [("the patient has", 15), ("the patient", 11)]
+    assert committed_revision_rate(rollback)["rate"] > 0.0
+
+    # No stable_chars (LA-2 off / nothing committed yet) → empty committed prefix →
+    # never a rewrite (null-safe; the metric reads all-None as "no committed churn").
+    assert committed_revision_rate([("abc", None), ("xyz", None)])["rate"] == 0.0
+    # A stable, forward-extending committed prefix is not a revision.
+    assert committed_revision_rate([("the", 3), ("the patient", 11)])["rate"] == 0.0
 
 
 def test_quality_metric_functions_are_correct() -> None:
@@ -184,6 +211,7 @@ def test_quality_metric_functions_are_correct() -> None:
         "ttfw_ms": 4920.4,
         "commit_latency_ms": {"count": 11, "p50": 6023.2, "p99": 7624.2},
         "partial_revision": {"partials": 1, "revisions": 0, "rate": 0.0},
+        "committed_revision": {"partials": 1, "revisions": 0, "rate": 0.0},
         "loss": {"seq": {"gap_count": 0}, "audio_coverage_ratio": 0.996},
     }
     card = build_scorecard(
@@ -197,7 +225,8 @@ def test_quality_metric_functions_are_correct() -> None:
     assert card["quality"]["keyterm_recall"] == 1.0
     assert card["quality"]["keyphrase_recall"] == 1.0
     assert card["transport"]["commit_latency_ms"]["p50"] == 6023.2
-    assert card["transport"]["partial_revision_rate"] == 0.0
+    assert card["transport"]["committed_revision_rate"] == 0.0  # the GATED A1 guardrail
+    assert card["transport"]["partial_revision_rate"] == 0.0  # informational (ungated)
     assert card["transport"]["seq_gap_count"] == 0
     assert card["transport"]["audio_coverage_ratio"] == 0.996
 
@@ -237,6 +266,17 @@ def test_quality_metric_functions_are_correct() -> None:
     dropped_term = json.loads(json.dumps(card))
     dropped_term["quality"]["keyterm_recall"] = 0.0
     assert regression_report(dropped_term, thresholds)["passed"] is False
+
+    # (f) committed-region revision above baseline+ε — the TASK-487 A1 guardrail
+    # bites on genuine settled-text churn (a high full-caption tail rate would NOT,
+    # since partial_revision_rate is now informational/ungated).
+    churned = json.loads(json.dumps(card))
+    churned["transport"]["committed_revision_rate"] = 0.5
+    churned_report = regression_report(churned, thresholds)
+    assert churned_report["passed"] is False
+    assert any(
+        c["metric"] == "committed_revision_rate" and not c["passed"] for c in churned_report["checks"]
+    )
 
     # (e) a metric-less scorecard must NOT pass vacuously (`all([])` is True)
     empty = regression_report({}, thresholds)
