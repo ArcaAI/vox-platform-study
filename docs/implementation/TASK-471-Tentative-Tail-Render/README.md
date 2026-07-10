@@ -1,0 +1,106 @@
+# TASK-471 — Tentative-Tail Render + Partial-Cadence Drop (Theme A1 · SOTA S1 · quick win)
+
+- **Status**: Pending (detail-scaffolded from SOTA-Track — not yet scheduled; open per CLAUDE.md ticket workflow before implementing)
+- **Type**: refactor (render/emit policy) — no model change, no new UI code
+- **Track**: [SOTA Enhancement Track](../SOTA-Track/README.md) · Theme **A1** (Streaming ASR modernization — the free latency win)
+- **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · strategic SOTA track
+- **Source finding**: [TASK-448](../TASK-448-Harness-Loop-Quality-Review/README.md) §SOTA S1 (LocalAgreement-2 is a correct 2023 baseline but commits ~1–2 s behind and renders partials only every 1.0 s over an 8 s tail)
+- **Theme**: A1 · **Size**: S · **Value**: High (free latency win) · **Risk**: Low
+- **Depends on / gated by**: **[TASK-470](../TASK-470-Streaming-Quality-Eval-Harness/README.md)** — the scorecard MUST show a tentative-visible-latency improvement with NO partial-revision-rate and NO commit-latency regression before this ships (measure-first).
+- **Suggested agent**: general-purpose (Python STT-v2 emit path + one seed YAML) — no ML, no React
+
+## File-ownership manifest (best-effort exclusive — binding)
+
+| Path | Change |
+|---|---|
+| `apps/stt-v2/src/stt_v2/streaming/preprocessor.py` | Make the hardcoded `_PARTIAL_INTERVAL_S = 1.0` (:49) a constructor arg with a **lower default**; keep `_PARTIAL_MIN_AUDIO_S = 0.5` (:50) as the min-audio floor. Enforcement stays at `_maybe_emit_partial` (:523-530). |
+| `apps/stt-v2/src/stt_v2/core/config/settings.py` | New `streaming_partial_interval_s: float` field next to `streaming_partial_window_s` (:511-519). **NOTE the `Settings` class has NO `env_prefix`** (:18-23) — the env var is the bare `STREAMING_PARTIAL_INTERVAL_S`, not `STT_V2_…`. |
+| `apps/stt-v2/src/stt_v2/streaming/session_manager.py` | Read the new setting (mirror the `partial_window_s` read at :163-164 / fallback :182) and pass it into the preprocessor via `_build_preprocessor_vad_kwargs` (:223, where `partial_window_s` is already threaded). |
+| `packages/database/src/prisma/db_main/seed/06-stt.ts` | Add a `streaming:\n  commit_policy: local_agreement_2` block to the **realtime** pipeline YAML(s) (`best_practice_realtime` :1374-1428 and the turbo/global streaming variants) so `stable_chars` is emitted — this **activates the already-built tentative render**. |
+| `apps/stt-v2/tests/unit/test_streaming_preprocessor*.py` (extend or new) | Unit tests: configurable cadence honored (lower interval → more partials); min-audio floor still respected; LA-2 on → `stable_chars` populated on partials. |
+| `turbo.json` · `.env.example` | Register `STREAMING_PARTIAL_INTERVAL_S` in `globalEnv` + example (per `.claude/rules/00`/`13` — new runtime env vars). |
+
+**Read-only reference (do NOT modify)**: `apps/stt-v2/src/stt_v2/streaming/commit_policy.py` (LA-2 — commit logic stays conservative, unchanged), `apps/stt-v2/src/stt_v2/streaming/schemas.py` (`stable_chars` wire field :166, :192-193 — already present), `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts` (:649-652 — already parses `stableChars`), `packages/ui/src/components/live-transcript/transcript-segment.tsx` (:177-185 — already renders the tentative tail).
+
+**Manifest-growth guard (STOP-and-report)**: the tentative-tail **render already exists** (SDK + UI, see Current State), so this ticket needs **zero** React/SDK code. If review concludes an explicit `tentative_text` wire field is wanted (instead of the client deriving `text[stableChars:]`), that touches `schemas.py` + `session_manager.py:1595` (which currently discards `_tentative`) + the SDK/UI — STOP and report; it is a scope expansion beyond this S-sized quick win.
+
+## Requirement Analysis
+
+The single biggest realtime lever is the ASR commit/emit policy. LocalAgreement-2 is a correct, conservative commit policy — a word is "committed" only once it survives across the last two hypotheses (`commit_policy.py:77-116`) — but two things make the clinician wait: (1) partials are emitted on a **fixed 1.0 s cadence** (`_PARTIAL_INTERVAL_S`, `preprocessor.py:49`), so newly-spoken words don't appear until the next tick; (2) on the shipped realtime pipeline the commit policy is **off** (`commit_policy: "none"`), so there is no stable/tentative distinction to render at all.
+
+The quick win (no model change, pure render/emit policy): **drop the 1 s partial cadence** so words appear in near-real-time, and **turn on LA-2 for the realtime pipeline** so the already-built "settled prefix + tentative tail" render activates — the clinician sees words *forming* (tentative, visually-distinct) while the **commit policy stays conservative** (LA-2's commit logic is untouched; only the not-yet-committed tail's *visibility* changes).
+
+**Load-bearing discovery (narrows scope to genuinely-S):** the tentative-tail render already exists **end-to-end** and is merely **dormant**:
+- STT-v2 already emits `stable_chars` (committed-prefix length) on partials — `session_manager.py:1596`, wire field `schemas.py:192-193`.
+- The SDK already parses it — `SttV2WebSocketClient.ts:649-652` (`stableChars`), typed with the comment "the remainder is a tentative tail" (`types/stt-v2.ts:206-209`).
+- The UI already renders it distinctly — `transcript-segment.tsx:178-184`: committed prefix `text.slice(0, stableChars)` as `not-italic text-foreground` (settled), the tail `text.slice(stableChars)` inheriting the partial's italic base (tentative).
+
+So this ticket is **emit/config only**: (a) configurable, lowered partial cadence; (b) enable LA-2 on the realtime pipeline so `stable_chars` populates and the dormant render lights up. No SDK/UI change.
+
+### Acceptance criteria
+
+- [ ] **AC-1 (cadence configurable + lowered)** — `_PARTIAL_INTERVAL_S` becomes a preprocessor constructor arg fed by `settings.streaming_partial_interval_s`, with a default below 1.0 s (target ~0.3–0.5 s — the exact value chosen from the TASK-470 sweep). The `_PARTIAL_MIN_AUDIO_S = 0.5` floor is preserved so a partial still needs ≥ 0.5 s of buffered speech. Unit-tested: a lower interval yields more partials over the same audio; the floor still gates.
+- [ ] **AC-2 (LA-2 active on realtime)** — the realtime pipeline seed YAML(s) set `commit_policy: local_agreement_2`; a test asserts a partial on that pipeline carries a `stable_chars` in `[0, len(text)]`. (This is what makes `transcript-segment.tsx:178`'s render branch fire — verified by the existing UI test, no new UI code.)
+- [ ] **AC-3 (render is a no-op change — proven, not rebuilt)** — confirm the existing SDK parse + UI render already handle `stableChars` (cite the existing tests); this ticket adds NO React/SDK code. If any gap is found, it is reported, not silently patched here.
+- [ ] **AC-4 (measured on TASK-470 — the gate)** — re-running [TASK-470](../TASK-470-Streaming-Quality-Eval-Harness/README.md)'s scorecard on the same fixture + realtime pipeline + frame_ms shows:
+  - **target**: tentative-visible latency (`first_partial_ms` / `ttfw_ms`) materially **lower** than the pre-change baseline (the free win);
+  - **guardrail (must NOT regress)**: `partial_revision.rate` not higher (faster/looser partials must not increase flicker beyond the TASK-470 ε), and `commit_latency_ms.p50|.p99` not higher (the conservative commit policy is unchanged);
+  - **guardrail**: `seq.gap_count` stays 0 and `audio_coverage_ratio` not worse.
+  The scorecard's `assert_no_regression` gate passes. Numbers pasted into §Implementation Summary.
+- [ ] **AC-5 (gates)** — `pnpm py:stt-v2:test` (+ `:test:unit`), `pnpm py:stt-v2:lint`, `pnpm py:stt-v2:typecheck` green; `STREAMING_PARTIAL_INTERVAL_S` in `turbo.json#globalEnv` + `.env.example`; output pasted.
+
+### Non-goals
+
+- Any ASR **model** change or streaming-native transducer — that is A2 ([TASK-472](../SOTA-Track/README.md)); this is pure emit/render policy on the existing faster-whisper backend.
+- Changing LA-2's **commit** logic / making it less conservative (`commit_policy.py` is read-only here) — only the cadence and the tentative-tail *visibility* change.
+- Semantic endpointing / VAD offset changes — A3 ([TASK-473](../SOTA-Track/README.md)).
+- Adding an explicit `tentative_text` wire field or any new SDK/UI render code (the client already derives the tail from `stable_chars`).
+- Tuning `streaming_punctuation_timeout_s` (:502-509, finals-only Cadence-Fast budget) — adjacent knob, out of scope.
+
+## Current State Evaluation (code-verified 2026-07-10 against `fix/2605-review` @ 87b33f57)
+
+**Partial-emit cadence — the throttle** (`apps/stt-v2/src/stt_v2/streaming/preprocessor.py`):
+- `_PARTIAL_INTERVAL_S = 1.0` (:49) and `_PARTIAL_MIN_AUDIO_S = 0.5` (:50) are **hardcoded module constants** — no settings field, no `__init__` arg (constructor at :109-125 takes no cadence param). Enforced in `_maybe_emit_partial` (:523-530): `if now - state.last_partial_emitted_at < _PARTIAL_INTERVAL_S: return None`. → to change it today you must edit the constant.
+- The tail window IS already configurable for contrast: `_DEFAULT_PARTIAL_WINDOW_S = 8.0` (:53) ↔ `streaming_partial_window_s` (`core/config/settings.py:511-519`) ↔ threaded via `session_manager.py:223`. This ticket mirrors that wiring for the cadence.
+
+**Commit policy — LA-2** (`apps/stt-v2/src/stt_v2/streaming/commit_policy.py`):
+- `LocalAgreementPolicy.update()` (:61) computes the committed prefix as the longest-common-prefix of the **last two** hypotheses (:77-85) — structurally "LA-2"; there is no `n_agree` knob. It also computes a `tentative_text` string.
+- Applied in `session_manager.py:1593-1596`: `committed, _tentative = policy.update(result.text); result.stable_chars = len(committed)` — **the tentative string is discarded**; only the integer `stable_chars` prefix length is emitted (the client re-derives the tail as `text[stable_chars:]`).
+- **The policy is OFF by default and OFF on the shipped realtime pipeline.** `StreamingConfig.commit_policy` defaults to `"none"` (`pipeline/dto.py:589`; parser default `yaml_parser.py:607`); `session_manager.py:252-253` only builds a policy when `commit_policy == "local_agreement_2"`. The seed's `best_practice_realtime` YAML (`06-stt.ts:1374-1428`) has **no `streaming:` block** → `"none"` → **`stable_chars` is never emitted** → the UI's tentative render branch never fires. This is why the feature is dormant.
+
+**Emit path + wire shape** (`apps/stt-v2/src/stt_v2/streaming/`):
+- Single writer `ResultPublisher.publish` → `XADD stt:result:{sid}` (`redis_streams.py:413-424`). Message = `SegmentResult.to_redis_dict` (`schemas.py:170-194`): `type`, `text`, `start_time`, `end_time`, `is_final` (`"1"`/`"0"` — the only partial/final discriminator, :177), and `stable_chars` **only when set** (:192-193). No tentative/unstable field on the wire — by design the client derives it.
+
+**Client render — already built (dormant only because `stable_chars` is absent):**
+- SDK: `SttV2WebSocketClient.ts:649-652` normalizes `stableChars`/`stable_chars`; type comment `types/stt-v2.ts:206` "the remainder is a tentative tail".
+- UI: `packages/ui/src/components/live-transcript/transcript-segment.tsx:178-184` renders committed prefix settled (`not-italic text-foreground`) + tail tentative when `!isFinal && stableChars ∈ (0, len)`; `types.ts:23-24` documents it.
+
+**Net**: the render exists; the two dormant switches are the **1.0 s cadence** (hardcoded) and **LA-2 off on the realtime pipeline** (seed default `"none"`). Flip both → near-real-time forming words with a visually-distinct tentative tail, commit policy unchanged.
+
+## Implementation Plan (TDD sketch — strict order; run AFTER TASK-470 lands)
+
+> Context pack for the implementing agent: this README · TASK-470 README (the scorecard this is gated on) · SOTA-Track §Theme A + §Governing principle · `.claude/rules/06-python-services.md` (pydantic-settings, ruff/mypy, pytest) · `.claude/rules/02-database-prisma.md` (seed conventions for the pipeline YAML) · `.claude/rules/08-vox-sdk.md` (confirm the SDK/UI render is already wired — do not add to it).
+
+1. **RED (cadence)** — a preprocessor unit test asserting that a `streaming_partial_interval_s` below 1.0 s produces more partials over a fixed synthetic utterance than the 1.0 s default, and that the 0.5 s min-audio floor still gates the first partial. Watch it fail (constant not configurable).
+2. **GREEN (cadence)** — add `streaming_partial_interval_s` to `Settings` (bare env name), make `_PARTIAL_INTERVAL_S` a constructor default arg, thread it through `session_manager.py` `_build_preprocessor_vad_kwargs`. Lower the default to the TASK-470-chosen value.
+3. **RED→GREEN (LA-2 activation)** — a test asserting a partial from the realtime pipeline carries a valid `stable_chars`; then add `streaming:\n  commit_policy: local_agreement_2` to the realtime seed YAML(s). Confirm the existing UI/SDK tests still pass unchanged (render is a no-op change).
+4. **Measure on TASK-470 (AC-4)** — run the TASK-470 scorecard before/after; capture the tentative-latency improvement and the no-regression on revision-rate + commit-latency; paste. If revision-rate regresses past ε, raise the cadence toward the knee (the setting exists precisely to tune this) and re-measure.
+5. **Env registration + gates** — `turbo.json#globalEnv` + `.env.example`; run the STT-v2 gates.
+
+### Verification gate (paste output into §Implementation Summary)
+
+```bash
+pnpm py:stt-v2:test:unit           # cadence + LA-2 activation units
+pnpm py:stt-v2:lint && pnpm py:stt-v2:typecheck
+# then the measured gate (needs the TASK-470 scorecard + a running stack):
+pnpm py:stt-v2:test:integration    # TASK-470 scorecard, before/after
+```
+
+Adversarial review focus: (a) is LA-2's commit logic genuinely untouched (only cadence + activation changed)? (b) does the lower cadence increase `partial_revision.rate` past the TASK-470 ε — i.e. is the chosen interval defensible against the scorecard, not just "faster"? (c) is the render truly unchanged (no new SDK/UI code — the dormant path just lit up)? (d) env var registered; (e) zero diff outside the manifest.
+
+## Change History
+
+| Date | Change |
+|---|---|
+| 2026-07-10 | Ticket scaffolded from the [SOTA-Track](../SOTA-Track/README.md) plan (Theme A1 — the quick-win latency lever). Code-verified against `fix/2605-review` @ 87b33f57: the 1.0 s partial cadence is a hardcoded constant (`preprocessor.py:49`), LA-2 is off on the shipped realtime pipeline (`06-stt.ts:1374-1428` has no `commit_policy` → default `"none"` → `stable_chars` never emitted), and — the scope-narrowing discovery — the tentative-tail render **already exists end-to-end** (STT-v2 `stable_chars` → SDK `SttV2WebSocketClient.ts:649-652` → UI `transcript-segment.tsx:178-184`) but is dormant. So A1 is pure emit/config: configurable+lowered cadence and LA-2-on for the realtime pipeline, gated on TASK-470's scorecard (tentative-visible latency must improve with no partial-revision / commit-latency regression). No implementation. |
+</content>

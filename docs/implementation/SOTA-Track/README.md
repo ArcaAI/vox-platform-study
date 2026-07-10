@@ -33,22 +33,24 @@ The remediation waves (TASK-450…469) fix the **seams and edges** — the defec
 
 TASK-469 (SMR idempotency) is the last allocated number; the highest existing ticket doc is TASK-468. These are **suggested** 470+ allocations:
 
-| # | Theme | Candidate ticket | Size | Value | Risk | Depends on |
-|---|---|---|---|---|---|---|
-| **TASK-470** | F | Streaming quality eval-harness extension | M | High (unblocks all of A/C) | Low | TASK-455 (extends it) |
-| **TASK-471** | A1 | Tentative-tail render (drop 1 s partial cadence) | S | High (free latency win) | Low | TASK-470 |
-| **TASK-472** | A2 | Streaming-native transducer pilot (Kyutai / Parakeet-TDT) | XL | Very high (5–8× stable latency) | High | TASK-470, TASK-471 |
-| **TASK-473** | A3 | Semantic endpointing (replace fixed Silero offset) | M | Med–High | Med | TASK-470 |
-| **TASK-474** | B1 | Diarization internals review (`stt_v2/diarization/*`) | S | Med (unassessed-risk closure) | Low | — |
-| **TASK-475** | B2 | 2-speaker clinician/patient (Streaming Sortformer) | L | High (capability absent today) | Med–High | TASK-470, TASK-474 |
-| **TASK-476** | C1 | Server-side clinical encoder + ontology linker (**writes `NamedEntity` codes**) | L | Very high (real close of C5-03) | Med | TASK-470 |
-| **TASK-477** | C2 | Re-point live NER at the transcript + source-grounding | M | High (stops hallucination-laundering) | Med | TASK-476 (shared NER path) |
-| **TASK-478** | D1 | SMR input fail-open → fail-closed | S | High (PHI safety) | Med (outage behavior) | — |
-| **TASK-479** | D2 | Live output + groundedness moderation gate (MiniCheck-class) | L | High | Med | TASK-478 |
-| **TASK-480** | E1 | Harness warm-start from live note + reuse `NamedEntity` priors | L | High (kills cold-regen redundancy) | Med | **TASK-476** (codes must be populated) |
-| **TASK-481** | E2 | Reference-free atomic-fact verifier + optimistic-delivery retraction contract | M | High (safety gate) | Med | — |
-| **TASK-482** | E3 | MEDCON concept-F1 + harm-weighted error rate + clinician edit-burden telemetry | M | High (the real quality proxy) | Low | TASK-476 (concept-F1 needs codes) |
-| **TASK-483** | E4 | Claim-check payloads for the Temporal history budget | M | Med (scale hardening) | Low | — |
+**Scaffold status**: the near-term actionable tranche (F gate + A1 quick win + D1 safety win) is **detail-scaffolded** into execution-ready ticket READMEs; the XL/gated/months-out research tickets stay at plan level here until scheduled (over-scaffolding speculative research is premature).
+
+| # | Theme | Candidate ticket | Size | Value | Risk | Depends on | Scaffold |
+|---|---|---|---|---|---|---|---|
+| **TASK-470** | F | Streaming quality eval-harness extension | M | High (unblocks all of A/C) | Low | TASK-455 (extends it) | [detail-scaffolded](../TASK-470-Streaming-Quality-Eval-Harness/README.md) |
+| **TASK-471** | A1 | Tentative-tail render (drop 1 s partial cadence) | S | High (free latency win) | Low | TASK-470 | [detail-scaffolded](../TASK-471-Tentative-Tail-Render/README.md) |
+| **TASK-472** | A2 | Streaming-native transducer pilot (Kyutai / Parakeet-TDT) | XL | Very high (5–8× stable latency) | High | TASK-470, TASK-471 | plan-level |
+| **TASK-473** | A3 | Semantic endpointing (replace fixed Silero offset) | M | Med–High | Med | TASK-470 | plan-level |
+| **TASK-474** | B1 | Diarization internals review (`stt_v2/diarization/*`) | S | Med (unassessed-risk closure) | Low | — | plan-level |
+| **TASK-475** | B2 | 2-speaker clinician/patient (Streaming Sortformer) | L | High (capability absent today) | Med–High | TASK-470, TASK-474 | plan-level |
+| **TASK-476** | C1 | Server-side clinical encoder + ontology linker (**writes `NamedEntity` codes**) | L | Very high (real close of C5-03) | Med | TASK-470 | plan-level |
+| **TASK-477** | C2 | Re-point live NER at the transcript + source-grounding | M | High (stops hallucination-laundering) | Med | TASK-476 (shared NER path) | plan-level |
+| **TASK-478** | D1 | SMR input fail-open → fail-closed | S | High (PHI safety) | Med (outage behavior) | — | [detail-scaffolded](../TASK-478-SMR-Input-Fail-Closed/README.md) |
+| **TASK-479** | D2 | Live output + groundedness moderation gate (MiniCheck-class) | L | High | Med | TASK-478 | plan-level |
+| **TASK-480** | E1 | Harness warm-start from live note + reuse `NamedEntity` priors | L | High (kills cold-regen redundancy) | Med | **TASK-476** (codes must be populated) | plan-level |
+| **TASK-481** | E2 | Reference-free atomic-fact verifier + optimistic-delivery retraction contract | M | High (safety gate) | Med | — | plan-level |
+| **TASK-482** | E3 | MEDCON concept-F1 + harm-weighted error rate + clinician edit-burden telemetry | M | High (the real quality proxy) | Low | TASK-476 (concept-F1 needs codes) | plan-level |
+| **TASK-483** | E4 | Claim-check payloads for the Temporal history budget | M | Med (scale hardening) | Low | — | plan-level |
 
 ## Theme F — Streaming quality eval harness (the measurement gate — FIRST)
 
@@ -130,3 +132,4 @@ Plain-English order: **close Wave 3 → Theme F (measurement gate) → parallel 
 | Date | Change |
 |---|---|
 | 2026-07-10 | Track scaffolded from TASK-448 §SOTA Research & Gap Analysis (S1/S2/S3). Six themes (F/A/B/C/D/E) mapped to 14 candidate tickets with suggested numbers TASK-470…483, per-theme scope/size/value/risk/deps, and a measurement-first sequencing (F gates A/C; E1 after C). No implementation; numbers are suggestions to confirm at open time. |
+| 2026-07-10 | Detail-scaffolded the near-term actionable tranche into execution-ready ticket READMEs — **[TASK-470](../TASK-470-Streaming-Quality-Eval-Harness/README.md)** (F, the measurement gate — full scaffold: medical-WER + keyterm/keyphrase recall + partial-revision + commit-latency P50/P99 scorecard, extending TASK-455's loss harness with pass/fail thresholds), **[TASK-471](../TASK-471-Tentative-Tail-Render/README.md)** (A1 quick win — configurable/lowered partial cadence + LA-2-on to activate the already-built tentative render; gated on TASK-470), **[TASK-478](../TASK-478-SMR-Input-Fail-Closed/README.md)** (D1 — remove the SMR guardrail fail-open branch, degrade-safe→fail-closed, close the default-allow bypasses; pairs with TASK-465). Candidate table marks these three `detail-scaffolded`; the XL/gated/months-out research tickets (A2/A3, B, C, D2, E*) stay `plan-level` deliberately. Current state for each was code-verified against `fix/2605-review` @ 87b33f57. Documentation only — no code changed. |
