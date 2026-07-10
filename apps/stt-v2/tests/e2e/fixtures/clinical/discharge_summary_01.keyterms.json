@@ -1,0 +1,18 @@
+{
+  "clip": "discharge_summary_01",
+  "description": "Synthetic hospital discharge summary read (CAP treatment). De-identified, no PHI.",
+  "keyterms": [
+    "community acquired pneumonia",
+    "ceftriaxone",
+    "amoxicillin",
+    "oxygen saturation",
+    "afebrile",
+    "discharge summary"
+  ],
+  "keyphrases": [
+    "intravenous ceftriaxone",
+    "return precautions",
+    "worsening shortness of breath",
+    "follow up with primary care"
+  ]
+}
