@@ -8,6 +8,7 @@ import { PromptResolutionServiceModule } from '../prompt/prompt-resolution.servi
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { ConsultationJobServiceModule } from '../jobs/consultation-job.service.module';
 import { ConfigResolverModule } from '../../config-resolver';
+import { RedisCacheModule } from '../../baseServices/redis';
 
 /**
  * HarnessInternalService DI module (TASK-330 Phase 1 — Lane G). Wires the
@@ -30,6 +31,9 @@ import { ConfigResolverModule } from '../../config-resolver';
     // TASK-356 Phase 5 — supplies ConfigResolver so assemble can thread the
     // doctor's preferred prompt id (Tier-0) through the async/harness path.
     ConfigResolverModule,
+    // TASK-466 (C1-03) — supplies IRedisCacheService so the WORM/draft callbacks
+    // dedup on the harness Idempotency-Key (best-effort; @Optional in the service).
+    RedisCacheModule.register(),
   ],
   providers: [HarnessInternalService, PromptAssemblyService],
   exports: [HarnessInternalService],

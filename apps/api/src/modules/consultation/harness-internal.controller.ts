@@ -4,6 +4,7 @@ import {
   HarnessAssuranceEventRequest,
   HarnessAssuranceService,
   HarnessDraftRequest,
+  HarnessEscalationRequest,
   HarnessFinalizeAssuranceRequest,
   HarnessGateDecisionRequest,
   HarnessInternalService,
@@ -15,7 +16,7 @@ import {
   HarnessProgressService,
   IActiveUserContext,
 } from '@arcaai/applications';
-import { BadRequestException, Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiExcludeController, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Public } from '../../decorators';
@@ -74,11 +75,15 @@ export class HarnessInternalController {
     });
   }
 
+  // TASK-466 (C1-03) — the harness sends a deterministic `Idempotency-Key`
+  // (`{run_id}:{activity_id}`) on the WORM/draft callbacks so apps/api can dedup a
+  // Temporal activity retry (which would otherwise re-append). The header is
+  // forwarded into the service, which caches-and-replays the prior response.
   @Post('consultations/:id/entities')
   @ApiOperation({ summary: 'Persist NamedEntity rows extracted by the harness NLP step' })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
-  async persistEntities(@Param('id') id: string, @Body() dto: HarnessPersistEntitiesRequest) {
-    return this.harnessInternalService.persistEntities(id, dto);
+  async persistEntities(@Param('id') id: string, @Body() dto: HarnessPersistEntitiesRequest, @Headers('Idempotency-Key') idempotencyKey?: string) {
+    return this.harnessInternalService.persistEntities(id, dto, idempotencyKey);
   }
 
   @Post('consultations/:id/assemble')
@@ -91,15 +96,25 @@ export class HarnessInternalController {
   @Post('consultations/:id/draft')
   @ApiOperation({ summary: 'Persist the generated draft (ContextItem + SummaryMeta + PENDING_REVIEW + WORM audit)' })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
-  async persistDraft(@Param('id') id: string, @Body() dto: HarnessDraftRequest) {
-    return this.harnessInternalService.persistDraft(id, dto);
+  async persistDraft(@Param('id') id: string, @Body() dto: HarnessDraftRequest, @Headers('Idempotency-Key') idempotencyKey?: string) {
+    return this.harnessInternalService.persistDraft(id, dto, idempotencyKey);
   }
 
   @Post('consultations/:id/gate-decision')
   @ApiOperation({ summary: 'Record the clinician GATE_DECISION (append-only WORM audit) after sign-off' })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
-  async recordGateDecision(@Param('id') id: string, @Body() dto: HarnessGateDecisionRequest) {
-    return this.harnessInternalService.recordGateDecision(id, dto);
+  async recordGateDecision(@Param('id') id: string, @Body() dto: HarnessGateDecisionRequest, @Headers('Idempotency-Key') idempotencyKey?: string) {
+    return this.harnessInternalService.recordGateDecision(id, dto, idempotencyKey);
+  }
+
+  // TASK-466 (C1-05) — the harness `escalate_gate` activity POSTs here when an
+  // un-signed gate passes its SLA; the service records a WORM audit event
+  // (GATE_ESCALATED, or GATE_ABANDONED for the terminal `gate_sla_abandoned`).
+  @Post('consultations/:id/escalation')
+  @ApiOperation({ summary: 'Record a harness gate SLA-breach escalation (WORM audit; terminal = gate abandon)' })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async recordEscalation(@Param('id') id: string, @Body() dto: HarnessEscalationRequest, @Headers('Idempotency-Key') idempotencyKey?: string) {
+    return this.harnessInternalService.recordEscalation(id, dto, idempotencyKey);
   }
 
   // TASK-355 Phase D (optimistic delivery, second phase) — the harness calls this
@@ -110,8 +125,12 @@ export class HarnessInternalController {
   @Post('consultations/:id/assurance')
   @ApiOperation({ summary: 'Finalize optimistic delivery: backfill the draft verdict + close the assurance feed' })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
-  async finalizeAssurance(@Param('id') id: string, @Body() dto: HarnessFinalizeAssuranceRequest) {
-    return this.harnessInternalService.finalizeAssurance(id, dto);
+  async finalizeAssurance(
+    @Param('id') id: string,
+    @Body() dto: HarnessFinalizeAssuranceRequest,
+    @Headers('Idempotency-Key') idempotencyKey?: string,
+  ) {
+    return this.harnessInternalService.finalizeAssurance(id, dto, idempotencyKey);
   }
 
   // TASK-355 Phase D Slice 5d (Q5 true mid-pass live feed) — the workflow's

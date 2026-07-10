@@ -494,6 +494,51 @@ export interface HarnessGateDecisionResponse {
 }
 
 // ---------------------------------------------------------------------------
+// escalation (TASK-466 C1-05 — gate SLA-breach record)
+// ---------------------------------------------------------------------------
+
+/**
+ * The two harness `escalate_gate` reason strings (mirrors the reason set in
+ * apps/harness `workflows.py`). Terminal-ness is encoded IN the reason:
+ *   - `gate_sla_breached`  — a non-terminal escalation (the gate keeps waiting).
+ *   - `gate_sla_abandoned` — the terminal escalation before the gate abandons (C1-02).
+ * apps/api maps them to the GATE_ESCALATED / GATE_ABANDONED WORM audit actions.
+ */
+export const HARNESS_ESCALATION_REASONS = ['gate_sla_breached', 'gate_sla_abandoned'] as const;
+export type HarnessEscalationReason = (typeof HARNESS_ESCALATION_REASONS)[number];
+
+/**
+ * TASK-466 (C1-05) — the harness `escalate_gate` activity POSTs this when an
+ * un-signed gate passes its SLA. The wire body is exactly `{tenantId, reason,
+ * jobId?}` (its only caller sends no escalationCount/terminal, so the harness
+ * `_prune` drops them); the global pipe is whitelist + forbidNonWhitelisted, so
+ * only these three fields may appear.
+ */
+export class HarnessEscalationRequest {
+  @ApiProperty({ description: 'Tenant the harness is acting on behalf of' })
+  @IsString()
+  tenantId: string;
+
+  @ApiProperty({
+    description:
+      'Escalation reason — gate_sla_breached (non-terminal) or gate_sla_abandoned (terminal abandon, C1-02). Terminal-ness is encoded in the reason.',
+    enum: HARNESS_ESCALATION_REASONS,
+  })
+  @IsString()
+  @IsIn([...HARNESS_ESCALATION_REASONS])
+  reason: string;
+
+  @ApiPropertyOptional({ description: 'Harness job id minted at start (ops/log correlation)' })
+  @IsOptional()
+  @IsString()
+  jobId?: string;
+}
+
+export interface HarnessEscalationResponse {
+  recorded: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // assurance live feed (TASK-355 Phase D Slice 5d — Q5 true mid-pass streaming)
 // ---------------------------------------------------------------------------
 

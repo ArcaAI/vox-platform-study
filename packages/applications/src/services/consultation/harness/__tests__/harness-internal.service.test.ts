@@ -11,7 +11,7 @@
  * the harness calls these out-of-band of the API edge ClsModule middleware.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConsultationStatus, HarnessAuditAction, SummaryMetaFactory } from '@arcaai/domains';
 import { HarnessInternalService } from '../harness-internal.service';
 import { HARNESS_DRAFT_PHASE } from '../dto';
@@ -203,6 +203,21 @@ const createMockConfigResolver = () => ({
     resolveEffectiveDnaStyleEnabled: vi.fn().mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null }),
 });
 
+// TASK-466 (C1-03) — a real cache-behaving IRedisCacheService stub: an internal
+// Map so get returns what a prior setex wrote (so the idempotency guard can
+// replay). Optional + trailing in the ctor; unwired in the pre-existing fixtures.
+const createMockRedisCache = () => {
+    const store = new Map<string, string>();
+    return {
+        get: vi.fn(async (key: string) => store.get(key) ?? null),
+        setex: vi.fn(async (key: string, _ttl: number, value: string) => {
+            store.set(key, value);
+        }),
+        isConnected: vi.fn(() => true),
+        __store: store,
+    };
+};
+
 describe('HarnessInternalService', () => {
     let service: HarnessInternalService;
     let cls: ReturnType<typeof createMockClsService>;
@@ -229,10 +244,14 @@ describe('HarnessInternalService', () => {
     // TASK-369 Phase 3C — optional `withSecrets` (default ON) appends the mocked
     // SecretsService as the 15th arg. Pass `false` to exercise the unwired path
     // (encrypt-on-write must no-op and never call the repo helper).
+    // TASK-466 (C1-03) — optional `redisCache` (16th arg) so the idempotency-dedup
+    // tests wire a real cache-behaving stub; existing fixtures pass 15 args and the
+    // trailing @Optional() ctor param stays undefined (dedup no-ops, exact prior path).
     const buildService = (
         warmStartEnabled = false,
         configResolver?: ReturnType<typeof createMockConfigResolver>,
         withSecrets = true,
+        redisCache?: ReturnType<typeof createMockRedisCache>,
     ) => {
         configService = createMockConfigService(warmStartEnabled);
         return new HarnessInternalService(
@@ -251,6 +270,7 @@ describe('HarnessInternalService', () => {
             configResolver as any,
             contextItemVersionRepository as any,
             withSecrets ? (secretsService as any) : undefined,
+            redisCache as any,
         );
     };
 
@@ -1157,6 +1177,202 @@ describe('HarnessInternalService', () => {
                 service.recordGateDecision('consultation-1', { tenantId: '' } as any),
             ).rejects.toThrow(BadRequestException);
             expect(harnessAuditService.append).not.toHaveBeenCalled();
+        });
+    });
+
+    // =========================================================================
+    // recordEscalation (TASK-466 C1-05) — gate SLA-breach escalation record.
+    //
+    // The harness `escalate_gate` activity POSTs {tenantId, reason, jobId?}; the
+    // reason encodes terminal-ness (gate_sla_abandoned = terminal abandon, C1-02).
+    // apps/api persists it as a WORM audit event, mapping the reason to the
+    // GATE_ESCALATED / GATE_ABANDONED action, and honours 404-over-403 on a
+    // cross-tenant consultation.
+    // =========================================================================
+
+    describe('recordEscalation (C1-05)', () => {
+        // The harness escalate_gate SLA timeout carries no clinician — {tenantId, reason, jobId?}.
+        const escBody = (reason = 'gate_sla_breached', tenantId = 'tenant-1') => ({
+            tenantId,
+            reason,
+            jobId: 'harness-doc-1',
+        });
+
+        it('gate_sla_breached → GATE_ESCALATED WORM append, re-establishes CLS, returns { recorded: true }', async () => {
+            const result = await service.recordEscalation('consultation-1', escBody('gate_sla_breached'));
+
+            expect(cls.run).toHaveBeenCalledTimes(1);
+            expect(cls.set).toHaveBeenCalledWith('tenantId', 'tenant-1');
+
+            expect(harnessAuditService.append).toHaveBeenCalledTimes(1);
+            const event = harnessAuditService.append.mock.calls[0][0];
+            expect(event).toEqual(
+                expect.objectContaining({
+                    tenantId: 'tenant-1',
+                    consultationId: 'consultation-1',
+                    action: HarnessAuditAction.GATE_ESCALATED,
+                }),
+            );
+
+            expect(result).toEqual({ recorded: true });
+        });
+
+        it('gate_sla_abandoned → GATE_ABANDONED (terminal) WORM append, returns { recorded: true }', async () => {
+            const result = await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned'));
+
+            expect(harnessAuditService.append).toHaveBeenCalledTimes(1);
+            expect(harnessAuditService.append.mock.calls[0][0].action).toBe(HarnessAuditAction.GATE_ABANDONED);
+            expect(result).toEqual({ recorded: true });
+        });
+
+        it('throws BadRequestException and records nothing when tenantId is missing', async () => {
+            await expect(
+                service.recordEscalation('consultation-1', { reason: 'gate_sla_breached' } as any),
+            ).rejects.toThrow(BadRequestException);
+            expect(harnessAuditService.append).not.toHaveBeenCalled();
+        });
+
+        it('cross-tenant tenantId mismatch → NotFoundException (404-over-403), records nothing', async () => {
+            // The consultation belongs to tenant-1 (default fixture); the request claims
+            // tenant-OTHER. assertEqualTenants throws NotFoundException (never leaks the
+            // resource's real tenant) and no WORM record is written.
+            await expect(
+                service.recordEscalation('consultation-1', escBody('gate_sla_breached', 'tenant-OTHER')),
+            ).rejects.toThrow(NotFoundException);
+            expect(harnessAuditService.append).not.toHaveBeenCalled();
+        });
+    });
+
+    // =========================================================================
+    // Idempotency-Key dedup (TASK-466 C1-03)
+    //
+    // The 4 WORM/state-mutating callbacks re-append on each Temporal retry today.
+    // The harness now sends a deterministic Idempotency-Key ({run_id}:{activity_id});
+    // apps/api caches-and-replays the prior RESPONSE BODY so a retried callback with
+    // the SAME key is exactly one effect. A DIFFERENT/ABSENT key is not suppressed;
+    // a Redis throw falls through to normal processing (best-effort, mirrors TASK-299).
+    // =========================================================================
+
+    describe('Idempotency-Key dedup (C1-03)', () => {
+        let redisCache: ReturnType<typeof createMockRedisCache>;
+
+        beforeEach(() => {
+            redisCache = createMockRedisCache();
+            service = buildService(false, undefined, true, redisCache);
+        });
+
+        const draftBody = () => ({
+            tenantId: 'tenant-1',
+            userId: 'doctor-1',
+            content: 'S: chest pain O: BP 120/80 A: stable P: review',
+            modelName: 'gpt-x',
+            modelVersion: 'v9',
+        });
+        const entitiesBody = () => ({
+            tenantId: 'tenant-1',
+            userId: 'doctor-1',
+            contextItemId: 'tx-1',
+            entities: [{ text: 'Metformin', type: 'MEDICATION' }],
+        });
+        const gateBody = () => ({ tenantId: 'tenant-1', userId: 'doctor-1', gateDecision: 'PASS' });
+        const finalizeBody = () => ({ tenantId: 'tenant-1', userId: 'doctor-1', contextItemId: 'ctx-draft-1', gateDecision: 'PASS' });
+
+        it('persistDraft: SAME key twice → ONE ContextItem create + identical cached replay', async () => {
+            const first = await service.persistDraft('consultation-1', draftBody() as any, 'run-1:persist_draft');
+            const second = await service.persistDraft('consultation-1', draftBody() as any, 'run-1:persist_draft');
+
+            expect(contextItemRepository.create).toHaveBeenCalledTimes(1);
+            expect(second).toEqual(first);
+            expect(second).toEqual({ contextItemId: 'ctx-draft-1' });
+        });
+
+        it('persistDraft: DIFFERENT key → NOT suppressed (create twice)', async () => {
+            await service.persistDraft('consultation-1', draftBody() as any, 'run-1:persist_draft');
+            await service.persistDraft('consultation-1', draftBody() as any, 'run-2:persist_draft');
+            expect(contextItemRepository.create).toHaveBeenCalledTimes(2);
+        });
+
+        it('persistDraft: ABSENT key → NOT suppressed (create twice)', async () => {
+            await service.persistDraft('consultation-1', draftBody() as any);
+            await service.persistDraft('consultation-1', draftBody() as any);
+            expect(contextItemRepository.create).toHaveBeenCalledTimes(2);
+        });
+
+        it('persistDraft: Redis get throws → falls through and still processes (best-effort)', async () => {
+            redisCache.get.mockRejectedValueOnce(new Error('redis down'));
+            const result = await service.persistDraft('consultation-1', draftBody() as any, 'run-1:persist_draft');
+            expect(contextItemRepository.create).toHaveBeenCalledTimes(1);
+            expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
+        });
+
+        it('persistDraft: records the key only AFTER a successful write (get-then-setex)', async () => {
+            await service.persistDraft('consultation-1', draftBody() as any, 'run-1:persist_draft');
+            expect(redisCache.setex).toHaveBeenCalledTimes(1);
+            const [key, ttl, value] = redisCache.setex.mock.calls[0];
+            expect(key).toContain('idempotency:');
+            expect(ttl).toBe(86400);
+            expect(JSON.parse(value)).toEqual({ contextItemId: 'ctx-draft-1' });
+        });
+
+        it('recordGateDecision: SAME key twice → ONE WORM append + identical replay', async () => {
+            const first = await service.recordGateDecision('consultation-1', gateBody() as any, 'run-1:record_gate_decision');
+            const second = await service.recordGateDecision('consultation-1', gateBody() as any, 'run-1:record_gate_decision');
+
+            expect(harnessAuditService.append).toHaveBeenCalledTimes(1);
+            expect(second).toEqual(first);
+            expect(second).toEqual({ recorded: true });
+        });
+
+        it('persistEntities: SAME key twice → ONE NamedEntity create batch', async () => {
+            await service.persistEntities('consultation-1', entitiesBody() as any, 'run-1:persist_entities');
+            await service.persistEntities('consultation-1', entitiesBody() as any, 'run-1:persist_entities');
+            expect(namedEntityRepository.create).toHaveBeenCalledTimes(1);
+        });
+
+        it('finalizeAssurance: SAME key twice → ONE SummaryMeta update + identical replay', async () => {
+            const first = await service.finalizeAssurance('consultation-1', finalizeBody() as any, 'run-1:finalize_assurance');
+            const second = await service.finalizeAssurance('consultation-1', finalizeBody() as any, 'run-1:finalize_assurance');
+
+            expect(summaryMetaRepository.update).toHaveBeenCalledTimes(1);
+            expect(second).toEqual(first);
+            expect(second).toEqual({ recorded: true, contextItemId: 'ctx-draft-1' });
+        });
+
+        // TASK-466 (C1-05 dedup) — the harness ships + tests an Idempotency-Key on the
+        // escalation POST too, so a re-delivered escalate_gate (worker restart / SLA
+        // timeout racing a slow-but-successful POST) must not double-append the
+        // hash-chained GATE_ESCALATED / terminal GATE_ABANDONED WORM row. The key
+        // ({run_id}:{activity_id}) is stable across retries but unique per distinct
+        // escalation tick, so dedup suppresses retries WITHOUT collapsing distinct ticks.
+        const escBody = (reason = 'gate_sla_breached') => ({ tenantId: 'tenant-1', reason, jobId: 'harness-doc-1' });
+
+        it('recordEscalation: SAME key twice → ONE WORM append + identical replay', async () => {
+            const first = await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned') as any, 'run-1:escalate_gate');
+            const second = await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned') as any, 'run-1:escalate_gate');
+
+            expect(harnessAuditService.append).toHaveBeenCalledTimes(1);
+            expect(harnessAuditService.append.mock.calls[0][0].action).toBe(HarnessAuditAction.GATE_ABANDONED);
+            expect(second).toEqual(first);
+            expect(second).toEqual({ recorded: true });
+        });
+
+        it('recordEscalation: DIFFERENT key → NOT suppressed (distinct escalation ticks each append)', async () => {
+            await service.recordEscalation('consultation-1', escBody() as any, 'run-1:escalate_gate:1');
+            await service.recordEscalation('consultation-1', escBody() as any, 'run-1:escalate_gate:2');
+            expect(harnessAuditService.append).toHaveBeenCalledTimes(2);
+        });
+
+        it('recordEscalation: ABSENT key → NOT suppressed (each append)', async () => {
+            await service.recordEscalation('consultation-1', escBody() as any);
+            await service.recordEscalation('consultation-1', escBody() as any);
+            expect(harnessAuditService.append).toHaveBeenCalledTimes(2);
+        });
+
+        it('recordEscalation: Redis get throws → falls through and still appends (best-effort)', async () => {
+            redisCache.get.mockRejectedValueOnce(new Error('redis down'));
+            const result = await service.recordEscalation('consultation-1', escBody() as any, 'run-1:escalate_gate');
+            expect(harnessAuditService.append).toHaveBeenCalledTimes(1);
+            expect(result).toEqual({ recorded: true });
         });
     });
 
