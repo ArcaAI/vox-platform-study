@@ -310,6 +310,10 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
             max_tokens=hp.get("max_tokens"),
             top_p=hp.get("top_p"),
             response_format=payload.response_format,
+            # C1-04 (TASK-469): a deterministic key (workflow_run:activity_id, stable across
+            # worker-crash re-delivery) so SMR dedups a replayed generate — the durable half
+            # of the fix on top of TASK-458's in-process retry narrowing.
+            idempotency_key=_idempotency_key(),
         )
     except SmrServiceError as exc:
         # C1-04 / I-1: ``after_send`` means the request reached SMR and the model MAY have
@@ -320,11 +324,12 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
         # workflow without a draft. A PRE-send failure propagates unchanged (retryable: the
         # model never ran).
         #
-        # NOT closed here (still a re-invoke path on Temporal retry): a genuine worker CRASH
-        # mid-activity (no exception to catch), and an SMR 5xx / LM-Studio ``terminated`` 400
-        # that arrives AFTER the model ran (the governor still retries those). The durable
-        # fix for both is a downstream idempotency key SMR honours — apps/smr, tracked as
-        # TASK-466 coordination.
+        # Belt-and-braces with the TASK-469 key above: a genuine worker CRASH mid-activity
+        # (no exception to catch) that makes Temporal re-deliver the activity now re-POSTs the
+        # SAME ``Idempotency-Key``, so SMR returns the first generation instead of re-billing.
+        # The one residual (documented, accepted for C1-04): an SMR 5xx / LM-Studio
+        # ``terminated`` 400 arriving AFTER the model ran but BEFORE the response was cached —
+        # the governor retries it and there is no cached result to replay.
         if exc.after_send:
             raise ApplicationError(str(exc), type="SmrResponseLost", non_retryable=True) from exc
         raise
