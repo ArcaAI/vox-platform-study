@@ -18,6 +18,8 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+from smr_v2.models.task import TaskStatus
+
 
 @pytest.fixture
 def mock_provider():
@@ -148,3 +150,67 @@ class TestGenerateIdempotency:
         assert data["finish_reason"] == "stop"
         assert data["task_id"] == r1.json()["task_id"]
         assert mock_provider.generate.await_count == 1
+
+
+class TestGenerateIdempotencyFailurePosture:
+    """The dedup cache is STRICTLY best-effort — a Redis outage must degrade to normal
+    generation, NEVER fail an otherwise-serviceable request. A cache-write failure on an
+    already-billed generation that flipped to 502 + task-FAILED + a false circuit-breaker
+    failure would make the harness retry and re-invoke the model = the very C1-04 double-bill
+    this ticket closes (review CRITICAL)."""
+
+    @pytest.mark.asyncio
+    async def test_cache_write_failure_does_not_fail_billed_generation(
+        self, app, client, mock_provider, mock_task_manager
+    ):
+        # MISS on read (so we generate) but the idempotency WRITE fails — e.g. Redis OOM under
+        # maxmemory+noeviction on a large SOAP note, or a dropped connection.
+        erroring_redis = AsyncMock()
+        erroring_redis.get = AsyncMock(return_value=None)
+        erroring_redis.set = AsyncMock(side_effect=ConnectionError("redis OOM"))
+        app.state.redis = erroring_redis
+        # A circuit breaker that must NOT see a failure from a swallowed cache-write error
+        # (a false failure could trip it OPEN → 503s for healthy traffic).
+        cb = MagicMock()
+        cb.allow_request.return_value = True
+        app.state.circuit_breakers = {"lm-studio": cb}
+
+        resp = await client.post(
+            "/api/v1/generate", json=_BODY, headers={"Idempotency-Key": "wf-run:act-1"}
+        )
+
+        # The already-billed generation is returned intact — NOT discarded into a 502.
+        assert resp.status_code == 200
+        assert resp.json()["content"] == "Generated summary"
+        assert resp.json()["status"] == "completed"
+        # The model was invoked exactly once (no re-bill).
+        assert mock_provider.generate.await_count == 1
+        # The write was attempted (and swallowed).
+        erroring_redis.set.assert_awaited_once()
+        # The task is COMPLETED, never flipped to FAILED by the swallowed cache error.
+        statuses = [c.kwargs.get("status") for c in mock_task_manager.update_task.call_args_list]
+        assert TaskStatus.COMPLETED in statuses
+        assert TaskStatus.FAILED not in statuses
+        # No FALSE circuit-breaker failure; the successful generation recorded a success.
+        cb.record_failure.assert_not_called()
+        cb.record_success.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cache_read_failure_falls_through_to_generation(self, app, client, mock_provider):
+        # A live-but-erroring Redis on the READ must NOT 500 — it degrades to normal generation.
+        erroring_redis = AsyncMock()
+        erroring_redis.get = AsyncMock(side_effect=ConnectionError("redis unreachable"))
+        erroring_redis.set = AsyncMock(return_value=True)
+        app.state.redis = erroring_redis
+
+        resp = await client.post(
+            "/api/v1/generate", json=_BODY, headers={"Idempotency-Key": "wf-run:act-1"}
+        )
+
+        # Falls through to a normal 200 generation (not a 500 from the unguarded read).
+        assert resp.status_code == 200
+        assert resp.json()["content"] == "Generated summary"
+        assert mock_provider.generate.await_count == 1
+        # The read was attempted; after it failed we still cached the fresh generation.
+        erroring_redis.get.assert_awaited_once()
+        erroring_redis.set.assert_awaited_once()
