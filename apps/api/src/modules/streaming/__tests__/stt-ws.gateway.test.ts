@@ -574,7 +574,7 @@ describe('SttWsGateway', () => {
             await gateway.handleConnection(client as any, buildReq('sess-bin') as any);
 
             const binaryData = Buffer.from([0x01, 0x02, 0x03, 0x04]);
-            await gateway.handleMessage(client as any, binaryData as any);
+            await gateway.handleMessage(client as any, binaryData as any, true);
 
             expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith(
                 'sess-bin',
@@ -584,6 +584,91 @@ describe('SttWsGateway', () => {
                 'pcm_s16le',
                 false,
             );
+        });
+    });
+
+    // =========================================================================
+    // TASK-467 — ws@8 control-channel frame classification.
+    //
+    // REGRESSION GUARD. ws@8 (breaking change from v7) hands the `message`
+    // event BOTH text and binary frames as a Buffer, distinguished ONLY by its
+    // second `isBinary` arg. The gateway previously split frames with
+    // `Buffer.isBuffer(rawData)`, so every `{type:'stop'|'resume'|'close'}` TEXT
+    // control frame was misclassified as binary audio and the JSON switch never
+    // ran — client-driven finalize + the D-17 resume handshake were silent
+    // no-ops over a real socket. These feed a control frame in its REAL wire
+    // representation (a Buffer with isBinary=false) and assert the JSON control
+    // path runs; the binary case (isBinary=true) still forwards audio.
+    // =========================================================================
+    describe('TASK-467 — ws@8 text control frames arrive as Buffer + isBinary=false', () => {
+        /** ws@8 delivers a TEXT frame as a Buffer of its UTF-8 bytes. */
+        const textFrame = (obj: unknown) => Buffer.from(JSON.stringify(obj));
+
+        it('routes a stop TEXT frame (Buffer, isBinary=false) to finalize — not the audio path', async () => {
+            const client = createMockSocket();
+            setValidTicketFor('sess-txt-stop');
+            await gateway.handleConnection(client as any, buildReq('sess-txt-stop') as any);
+
+            await gateway.handleMessage(client as any, textFrame({ type: 'stop' }), false);
+
+            expect(mockBridgeService.writeControlCommand).toHaveBeenCalledWith('sess-txt-stop', 'finalize');
+            expect(mockBridgeService.writeAudioFrame).not.toHaveBeenCalled();
+        });
+
+        it('answers a resume TEXT frame (Buffer, isBinary=false) with resumed/resume_failed', async () => {
+            const client = createMockSocket();
+            setValidTicketFor('sess-txt-resume');
+            await gateway.handleConnection(client as any, buildReq('sess-txt-resume') as any);
+
+            await gateway.handleMessage(
+                client as any,
+                textFrame({ type: 'resume', sessionId: 'sess-txt-resume', lastSeq: 0 }),
+                false,
+            );
+
+            const replies = (client.send as any).mock.calls.map((c: any[]) => JSON.parse(c[0]));
+            expect(replies.some((r: any) => r.type === 'resumed' || r.type === 'resume_failed')).toBe(true);
+            expect(mockBridgeService.writeAudioFrame).not.toHaveBeenCalled();
+        });
+
+        it('routes a close TEXT frame (Buffer, isBinary=false) to session removal + socket close', async () => {
+            const client = createMockSocket();
+            setValidTicketFor('sess-txt-close');
+            await gateway.handleConnection(client as any, buildReq('sess-txt-close') as any);
+
+            await gateway.handleMessage(client as any, textFrame({ type: 'close' }), false);
+
+            expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-txt-close');
+            expect(client.close).toHaveBeenCalledWith(1000, 'Session closed by client');
+        });
+
+        it('reaches the JSON switch for an unknown TEXT frame → UNKNOWN_TYPE error', async () => {
+            const client = createMockSocket();
+            setValidTicketFor('sess-txt-unknown');
+            await gateway.handleConnection(client as any, buildReq('sess-txt-unknown') as any);
+
+            await gateway.handleMessage(client as any, textFrame({ type: '__probe__' }), false);
+
+            expect(client.send).toHaveBeenCalledWith(expect.stringContaining('UNKNOWN_TYPE'));
+        });
+
+        it('still forwards a binary audio frame (Buffer, isBinary=true) as audio, not JSON', async () => {
+            const client = createMockSocket();
+            setValidTicketFor('sess-txt-bin');
+            await gateway.handleConnection(client as any, buildReq('sess-txt-bin') as any);
+
+            const pcm = Buffer.from([0x01, 0x02, 0x03, 0x04]);
+            await gateway.handleMessage(client as any, pcm, true);
+
+            expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith(
+                'sess-txt-bin',
+                expect.any(Number),
+                pcm,
+                16000,
+                'pcm_s16le',
+                false,
+            );
+            expect(client.send).not.toHaveBeenCalledWith(expect.stringContaining('INVALID_JSON'));
         });
     });
 
@@ -599,7 +684,7 @@ describe('SttWsGateway', () => {
             await gateway.handleConnection(client as any, buildReq('sess-sr-bin') as any);
 
             const binaryData = Buffer.from([0x01, 0x02]);
-            await gateway.handleMessage(client as any, binaryData as any);
+            await gateway.handleMessage(client as any, binaryData as any, true);
 
             expect(mockSessionBinding.lookupSessionMeta).toHaveBeenCalledWith('sess-sr-bin');
             expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith(
@@ -639,7 +724,7 @@ describe('SttWsGateway', () => {
             setValidTicketFor('sess-sr-default');
             await gateway.handleConnection(client as any, buildReq('sess-sr-default') as any);
 
-            await gateway.handleMessage(client as any, Buffer.from([0x01]) as any);
+            await gateway.handleMessage(client as any, Buffer.from([0x01]) as any, true);
 
             expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith(
                 'sess-sr-default',
@@ -659,7 +744,7 @@ describe('SttWsGateway', () => {
 
             expect(client.close).not.toHaveBeenCalled();
 
-            await gateway.handleMessage(client as any, Buffer.from([0x01]) as any);
+            await gateway.handleMessage(client as any, Buffer.from([0x01]) as any, true);
 
             expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith(
                 'sess-sr-err',
@@ -679,7 +764,7 @@ describe('SttWsGateway', () => {
             await gateway.handleConnection(client as any, buildReq('sess-noblock') as any);
 
             const outcome = await Promise.race([
-                gateway.handleMessage(client as any, Buffer.from([0x01]) as any).then(() => 'resolved'),
+                gateway.handleMessage(client as any, Buffer.from([0x01]) as any, true).then(() => 'resolved'),
                 new Promise((resolve) => setTimeout(() => resolve('pending'), 25)),
             ]);
 
@@ -693,7 +778,7 @@ describe('SttWsGateway', () => {
             setValidTicketFor('sess-drop');
             await gateway.handleConnection(client as any, buildReq('sess-drop') as any);
 
-            await gateway.handleMessage(client as any, Buffer.from([0x01]) as any);
+            await gateway.handleMessage(client as any, Buffer.from([0x01]) as any, true);
             // Let the fire-and-forget rejection handler run.
             await new Promise((resolve) => setImmediate(resolve));
 
