@@ -98,6 +98,31 @@ class TestSmrClient:
         assert body["model"] == "gpt-4o"
         assert body["top_p"] == 0.9
 
+    @pytest.mark.asyncio
+    async def test_generate_attaches_idempotency_key_header(self):
+        # C1-04 (TASK-469): the durable generate carries a deterministic Idempotency-Key so
+        # SMR can dedup a worker-crash replay instead of re-billing the model. Mirrors the
+        # api_client header contract (``Idempotency-Key``), not a body field.
+        seen, handler = _capture()
+        client = SmrClient("http://smr:8862", transport=httpx.MockTransport(handler))
+
+        await client.generate(prompt="hi", idempotency_key="wf-run-1:generate")
+
+        req = seen["request"]
+        assert req.headers["Idempotency-Key"] == "wf-run-1:generate"
+        # It is transport metadata — never leaked into the LLM request body.
+        assert "idempotency_key" not in json.loads(req.content)
+
+    @pytest.mark.asyncio
+    async def test_generate_omits_idempotency_header_when_unset(self):
+        # No key supplied → no header (preserve the pre-TASK-469 wire for non-durable calls).
+        seen, handler = _capture()
+        client = SmrClient("http://smr:8862", transport=httpx.MockTransport(handler))
+
+        await client.generate(prompt="hi")
+
+        assert "idempotency-key" not in seen["request"].headers
+
 
 class TestGenerateLostResponseNoReinvoke:
     """C1-04 (TASK-458): a lost response AFTER the request was delivered (the model
