@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import hmac
 
-from fastapi import Request, Response
+from fastapi import Request, Response, WebSocket
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
@@ -63,3 +63,32 @@ class ServiceAuthMiddleware(BaseHTTPMiddleware):
             )
 
         return await call_next(request)
+
+
+async def enforce_service_token_ws(websocket: WebSocket) -> bool:
+    """WebSocket counterpart to ``ServiceAuthMiddleware``.
+
+    ``BaseHTTPMiddleware`` never sees WebSocket scopes (Starlette short-circuits
+    ``dispatch`` for ``scope["type"] == "websocket"``), so WS handlers must call
+    this BEFORE ``websocket.accept()``. Mirrors the HTTP check exactly: an empty
+    configured token is a dev bypass; otherwise a matching ``X-Service-Token``
+    header is required, else the handshake is refused with policy-violation 1008.
+
+    Returns ``True`` when the handler may accept the connection; ``False`` when the
+    socket has been closed and the handler must return without accepting.
+    """
+    service_token: str = settings.service.service_token.get_secret_value()
+
+    if not service_token:
+        return True
+
+    provided = websocket.headers.get("x-service-token", "")
+    if not provided or not hmac.compare_digest(provided, service_token):
+        logger.warning(
+            "nlp.auth.ws_rejected path=%s reason=invalid_or_missing_token",
+            websocket.url.path,
+        )
+        await websocket.close(code=1008)
+        return False
+
+    return True

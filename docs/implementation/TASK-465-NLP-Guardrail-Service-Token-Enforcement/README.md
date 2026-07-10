@@ -10,13 +10,13 @@
 
 ## ⚠️ Ops rollout ordering (secret provisioning) — REQUIRED
 
-Enforcement is **fail-open only while the token is empty**. Once a receiver resolves a non-empty `service_token`, it 401s every non-exempt request that lacks a matching `X-Service-Token`. The gateway (TASK-460) already sends the header on every hop (empty string when unresolved). Therefore the same token **value** must be provisioned for the gateway and each receiver together:
+Enforcement is **bypassed only while the token is empty**. Once a receiver resolves a non-empty `service_token`, it enforces on every non-exempt surface that lacks a matching `X-Service-Token`: HTTP requests get a **401**, and NLP WebSocket handshakes (`/ws/classify/*`) are **refused at connect with close code 1008** — the WS surface is NOT covered by the HTTP middleware (`BaseHTTPMiddleware` never sees WS scopes), so the handlers call an explicit guard; that gap was caught and closed in review (see Change History 2026-07-10). The gateway (TASK-460) already sends the header on every hop (empty string when unresolved). Therefore the same token **value** must be provisioned for the gateway and each receiver together:
 
 1. **Provision the shared secret** under BOTH keys with the **same value**: `NLP_SERVICE_TOKEN` (NLP receiver + gateway) and `GUARDRAIL_SERVICE_TOKEN` (Guardrail receiver + gateway) — Vault / host env. The gateway resolves them via `SecretsService`; the receivers read them via pydantic-settings.
 2. Gateway sending the token — **done** (TASK-460, `ai-inference.client.ts`).
 3. Deploy receivers **enforcing** — this ticket.
 
-Provisioning (1) must precede or ship atomically with (3). If a receiver gets a non-empty token before the gateway is provisioned with the **same** value, the hop 401s. Leaving all three empty keeps the dev/hermetic-CI bypass (current default) intact.
+Provisioning (1) must precede or ship atomically with (3). If a receiver gets a non-empty token before the gateway is provisioned with the **same** value, the hop is rejected (HTTP 401 / WS close 1008). Leaving all three empty keeps the dev/hermetic-CI bypass (current default) intact.
 
 ## Requirement Analysis
 
@@ -50,10 +50,11 @@ Standard TDD Python stream, mirroring the SMR auth middleware:
 **Files changed** (branch `fix/task-465-nlp-guardrail-auth`):
 
 _NLP (`apps/nlp`)_
-- **NEW** `src/nlp/api/middleware/__init__.py`, `src/nlp/api/middleware/auth.py` — `ServiceAuthMiddleware` (BaseHTTPMiddleware): constant-time `hmac.compare_digest`, empty-token bypass, 401 JSON `{"detail":"Invalid or missing service token"}`. Reads the token at **dispatch time** from the `nlp.core.config` module singleton (NLP has no per-app settings container). `EXEMPT_PATHS = /`, `/api/v1/health[/live|/ready]`, `/metrics`, `/docs`, `/redoc`, `/openapi.json`.
+- **NEW** `src/nlp/api/middleware/__init__.py`, `src/nlp/api/middleware/auth.py` — `ServiceAuthMiddleware` (BaseHTTPMiddleware): constant-time `hmac.compare_digest`, empty-token bypass, 401 JSON `{"detail":"Invalid or missing service token"}`. Reads the token at **dispatch time** from the `nlp.core.config` module singleton (NLP has no per-app settings container). `EXEMPT_PATHS = /`, `/api/v1/health[/live|/ready]`, `/metrics`, `/docs`, `/redoc`, `/openapi.json`. The module also exports `enforce_service_token_ws(websocket)` — the **WebSocket counterpart** (a `BaseHTTPMiddleware` never sees WS scopes), same empty-token bypass + constant-time compare, refusing a bad handshake with `await websocket.close(code=1008)`.
 - `src/nlp/core/config.py` — import `SecretStr`; add `service_token: SecretStr = SecretStr("")` to `NLPServiceConfig` (`env_prefix="NLP_"` → reads `NLP_SERVICE_TOKEN`, the gateway key).
 - `src/nlp/app.py` — set `app.state.settings = settings` (parity) and `app.add_middleware(ServiceAuthMiddleware)` (added before CORS so CORS stays outermost).
-- **NEW** `tests/test_auth_middleware.py` — reuses the conftest `client` fixture; monkeypatches `nlp.core.config.settings.service.service_token`; uses a `GET /api/v1/__auth_probe__` 404-probe to isolate the middleware from handler deps.
+- `src/nlp/api/v1/ws/classify.py` — both WS handlers (`/ws/classify/token/{id}`, `/ws/classify/text/{id}`) call `enforce_service_token_ws(websocket)` at the top and `return` if denied, **before `accept()`** (review fix — the WS surface was previously bypassing auth).
+- **NEW** `tests/test_auth_middleware.py` — reuses the conftest `client` fixture; monkeypatches `nlp.core.config.settings.service.service_token`. HTTP tests use a `GET /api/v1/__auth_probe__` 404-probe; WS tests call `enforce_service_token_ws` directly against a fake WebSocket (bypass / missing / wrong / correct → close 1008) plus a real `/ws/classify/*` handshake-rejection test; an env-binding test proves `NLP_SERVICE_TOKEN` binds (not just a monkeypatched attribute).
 
 _Guardrail (`apps/guardrail`)_
 - **NEW** `src/guardrail/api/middleware/__init__.py`, `src/guardrail/api/middleware/auth.py` — same middleware, structlog logger, reading the token from `request.app.state.settings.service_token` at dispatch. `EXEMPT_PATHS = /api/health[/ready|/live]`, `/metrics`, `/docs`, `/redoc`, `/openapi.json` (tailored — NOT SMR's `/api/v1/...` set).
@@ -68,7 +69,7 @@ _Guardrail (`apps/guardrail`)_
 Run from the isolated worktree; because `nlp`/`guardrail` are editable-installed against the shared checkout, the worktree source was forced onto the import path with `PYTHONPATH=<worktree>/apps/<svc>/src` for the **test** gates (lint/typecheck are path-based and needed no override). On the merged shared checkout the gates run unmodified.
 
 ```
-pnpm py:nlp:test        → 64 passed  (12 new auth tests + 52 existing)
+pnpm py:nlp:test        → 70 passed  (18 new auth tests incl. WS + env-binding + 52 existing)
 pnpm py:guardrail:test  → 54 passed  (10 new auth tests + 44 existing); auth.py coverage 100%
 pnpm py:nlp:lint        → All checks passed!
 pnpm py:guardrail:lint  → All checks passed!
@@ -84,3 +85,4 @@ RED→GREEN: pre-implementation the new Guardrail suite failed 7/10 — includin
 |---|---|
 | 2026-07-09 | Ticket scaffolded from TASK-460's C4-02 coordination finding (gateway sends the token; NLP/Guardrail don't enforce it). Reference middleware (`apps/smr`) and the secret-provisioning rollout-order risk recorded. Awaiting prioritization. |
 | 2026-07-10 | Implemented via strict TDD on `fix/task-465-nlp-guardrail-auth`. Added `ServiceAuthMiddleware` + `service_token` config to NLP; added the same middleware to Guardrail and **fixed the High-severity env-key mismatch** (Guardrail read `GUARDRAIL_V2_SERVICE_TOKEN`; now reads canonical `GUARDRAIL_SERVICE_TOKEN` via `validation_alias`). Empty-token dev/CI bypass preserved. All 6 gates green (NLP 64 / Guardrail 54 tests; lint + mypy clean). Rollout ordering (provision same value both sides → enforce) documented. Status → Review. |
+| 2026-07-10 (review) | Adversarial review caught an **Important** gap: `ServiceAuthMiddleware` is a `BaseHTTPMiddleware`, whose `dispatch()` never runs for WebSocket scopes, so NLP `/ws/classify/token/{id}` and `/ws/classify/text/{id}` accepted unauthenticated connections when a token was configured. Fix: added `enforce_service_token_ws()` (mirrors the HTTP guard exactly — empty-token bypass, constant-time compare, refuse with close 1008) and called it at the top of both WS handlers before `accept()`. Added 4 WS-guard unit tests + a real-endpoint handshake-rejection test + an `NLP_SERVICE_TOKEN` env-binding test; corrected the README's HTTP-only enforcement wording. Guardrail exposes no WS endpoints, so its HTTP-only surface is unaffected. Gates re-run green: **NLP 70 passed, Guardrail 54 passed, NLP lint + mypy clean**. |

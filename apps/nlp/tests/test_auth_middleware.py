@@ -1,19 +1,23 @@
-"""TDD tests for the NLP ServiceAuthMiddleware (TASK-465).
+"""Tests for the NLP inter-service authentication (TASK-465).
 
-Verifies inter-service authentication via the ``X-Service-Token`` header:
-an empty ``service_token`` bypasses auth entirely (dev mode / hermetic CI),
-and a configured token is enforced on every non-exempt path.
+Covers three surfaces:
+- HTTP: ``ServiceAuthMiddleware`` — empty token bypass (dev / hermetic CI),
+  missing/wrong token => 401, exempt paths reachable.
+- WebSocket: ``enforce_service_token_ws`` — ``BaseHTTPMiddleware`` never sees WS
+  scopes, so the ``/ws/classify`` handlers gate themselves before ``accept()``.
+- Env binding: ``NLP_SERVICE_TOKEN`` actually binds to the config (not just a
+  monkeypatched attribute) and drives enforcement.
 
-The middleware reads the token from the module-singleton config at dispatch
-time, so tests monkeypatch ``nlp.core.config.settings.service`` before issuing
-the request.
-
-RED: written before the middleware and the ``service_token`` config field exist.
+The auth code reads the token from the ``nlp.core.config`` module singleton at
+dispatch time, so tests point ``settings.service`` at the desired token first.
 """
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
+from fastapi import WebSocketDisconnect
 from pydantic import SecretStr
 
 from nlp.core.config import settings as nlp_settings
@@ -36,11 +40,11 @@ EXEMPT_LIVE_PATHS = [
 
 
 def _set_token(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
-    """Point the module-singleton config at ``value``; middleware reads it at dispatch."""
+    """Point the module-singleton config at ``value``; the auth code reads it at dispatch."""
     monkeypatch.setattr(nlp_settings.service, "service_token", SecretStr(value), raising=False)
 
 
-# ── Auth disabled (dev mode) ──
+# ── HTTP auth disabled (dev mode) ──
 
 
 def test_empty_token_bypasses_auth(client, monkeypatch):
@@ -51,7 +55,7 @@ def test_empty_token_bypasses_auth(client, monkeypatch):
     assert resp.status_code == 404
 
 
-# ── Auth enabled ──
+# ── HTTP auth enabled ──
 
 
 def test_missing_token_rejected(client, monkeypatch):
@@ -84,7 +88,7 @@ def test_rejection_body(client, monkeypatch):
     assert resp.json() == {"detail": "Invalid or missing service token"}
 
 
-# ── Exempt paths (reachable without a token even when auth is on) ──
+# ── HTTP exempt paths (reachable without a token even when auth is on) ──
 
 
 @pytest.mark.parametrize("path", EXEMPT_LIVE_PATHS)
@@ -110,3 +114,93 @@ def test_exempt_paths_membership():
         "/openapi.json",
     ):
         assert path in EXEMPT_PATHS
+
+
+# ── WebSocket enforcement ──
+#
+# ServiceAuthMiddleware is a BaseHTTPMiddleware whose dispatch() NEVER runs for
+# websocket scopes, so the /ws/classify handlers call enforce_service_token_ws()
+# before accepting. The guard is unit-tested directly against a fake WebSocket
+# (empty bypass / missing / wrong / correct), and the real endpoints are
+# additionally proven to reject an unauthenticated handshake.
+
+
+class _FakeWS:
+    """Minimal WebSocket stand-in for ``enforce_service_token_ws``."""
+
+    def __init__(self, token_header: str | None = None) -> None:
+        self.headers = {} if token_header is None else {"x-service-token": token_header}
+        self.url = SimpleNamespace(path="/ws/classify/token/session-1")
+        self.closed_code: int | None = None
+
+    async def close(self, code: int = 1000) -> None:
+        self.closed_code = code
+
+
+async def test_ws_guard_empty_token_allows(monkeypatch):
+    """Empty token => the guard allows (dev bypass) and never closes."""
+    _set_token(monkeypatch, "")
+    from nlp.api.middleware.auth import enforce_service_token_ws
+
+    ws = _FakeWS()
+    assert await enforce_service_token_ws(ws) is True
+    assert ws.closed_code is None
+
+
+async def test_ws_guard_missing_token_closes_1008(monkeypatch):
+    """Token set + no header => the guard closes with policy-violation 1008 and denies."""
+    _set_token(monkeypatch, PROTECTED_TOKEN)
+    from nlp.api.middleware.auth import enforce_service_token_ws
+
+    ws = _FakeWS()
+    assert await enforce_service_token_ws(ws) is False
+    assert ws.closed_code == 1008
+
+
+async def test_ws_guard_wrong_token_closes_1008(monkeypatch):
+    """Token set + wrong header => the guard closes 1008 and denies."""
+    _set_token(monkeypatch, PROTECTED_TOKEN)
+    from nlp.api.middleware.auth import enforce_service_token_ws
+
+    ws = _FakeWS("wrong-token")
+    assert await enforce_service_token_ws(ws) is False
+    assert ws.closed_code == 1008
+
+
+async def test_ws_guard_correct_token_allows(monkeypatch):
+    """Token set + correct header => the guard allows and never closes."""
+    _set_token(monkeypatch, PROTECTED_TOKEN)
+    from nlp.api.middleware.auth import enforce_service_token_ws
+
+    ws = _FakeWS(PROTECTED_TOKEN)
+    assert await enforce_service_token_ws(ws) is True
+    assert ws.closed_code is None
+
+
+def test_real_ws_classify_endpoints_enforced(client, monkeypatch):
+    """The real /ws/classify token+text endpoints reject an unauthenticated handshake.
+
+    The guard runs before ``service.process`` is dereferenced, so rejection works
+    with the fixture's stub dependencies.
+    """
+    _set_token(monkeypatch, PROTECTED_TOKEN)
+    for path in ("/ws/classify/token/session-1", "/ws/classify/text/session-1"):
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(path):
+                pass
+
+
+# ── Env binding (proves NLP_SERVICE_TOKEN actually binds, not just monkeypatch) ──
+
+
+def test_service_token_binds_from_env(client, monkeypatch):
+    """NLP_SERVICE_TOKEN in the env binds to the config and drives HTTP enforcement."""
+    from nlp.core.config import NLPServiceConfig
+
+    monkeypatch.setenv("NLP_SERVICE_TOKEN", "env-nlp-token-xyz")
+    rebuilt = NLPServiceConfig()
+    assert rebuilt.service_token.get_secret_value() == "env-nlp-token-xyz"
+    # The auth code reads the module singleton; point it at the env-bound config.
+    monkeypatch.setattr(nlp_settings, "service", rebuilt)
+    resp = client.get(PROBE_PATH)
+    assert resp.status_code == 401
