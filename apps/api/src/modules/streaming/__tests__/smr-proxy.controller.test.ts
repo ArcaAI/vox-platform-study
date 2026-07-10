@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, HttpException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SmrProxyController } from '../smr-proxy.controller';
 
@@ -179,7 +179,11 @@ describe('SmrProxyController', () => {
       ).rejects.toThrow();
     });
 
-    it('should propagate upstream 404 details from SMR', async () => {
+    // TASK-462 C4-05 — the proxy MUST preserve the upstream status code but must
+    // NOT forward the raw upstream error body verbatim: that body can echo the
+    // assembled clinical prompt / PHI / internal SMR detail. The client receives
+    // a generic message; the upstream detail is kept server-side only.
+    it('preserves the upstream status but does NOT forward the raw upstream body (C4-05)', async () => {
       mockHttpService.axiosRef.post.mockRejectedValue({
         response: {
           status: 404,
@@ -199,10 +203,74 @@ describe('SmrProxyController', () => {
 
       expect(thrown).toBeInstanceOf(HttpException);
       expect((thrown as HttpException).getStatus()).toBe(404);
-      expect((thrown as HttpException).getResponse()).toEqual({
-        detail: "Provider 'lm-studio' not found",
-        error_code: 'PROVIDER_NOT_FOUND',
+      // Generic body only — no upstream detail or error_code echoed to the client.
+      expect((thrown as HttpException).getResponse()).toEqual({ detail: 'SMR service unavailable' });
+      const serialized = JSON.stringify((thrown as HttpException).getResponse());
+      expect(serialized).not.toContain('lm-studio');
+      expect(serialized).not.toContain('PROVIDER_NOT_FOUND');
+    });
+  });
+
+  // TASK-462 C4-05 — `buildUpstreamException` used to forward the raw upstream
+  // error body verbatim (`{ detail: payload }` for string bodies, `payload` for
+  // object bodies). SMR/LM-Studio error bodies can echo the assembled clinical
+  // prompt / PHI / internal stack detail, so an upstream 4xx/5xx leaked that into
+  // the caller's telemetry. The proxy must return a GENERIC sanitized message to
+  // the client (status code preserved) and log the upstream detail SERVER-SIDE only.
+  describe('TASK-462 C4-05 — upstream error body sanitization (no PHI/prompt echo)', () => {
+    const PHI_STRING = 'prompt fragment: Patient Jane Doe DOB 1980-01-01 SSN 123-45-6789';
+
+    it('does NOT echo a STRING upstream error body to the client (generic message, status preserved)', async () => {
+      mockHttpService.axiosRef.post.mockRejectedValue({
+        response: { status: 400, data: PHI_STRING },
       });
+
+      const thrown = await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+
+      expect(thrown).toBeInstanceOf(HttpException);
+      expect((thrown as HttpException).getStatus()).toBe(400);
+      expect((thrown as HttpException).getResponse()).toEqual({ detail: 'SMR service unavailable' });
+      expect(JSON.stringify((thrown as HttpException).getResponse())).not.toContain('123-45-6789');
+    });
+
+    it('does NOT echo an OBJECT upstream error body to the client (generic message, status preserved)', async () => {
+      mockHttpService.axiosRef.post.mockRejectedValue({
+        response: { status: 422, data: { detail: PHI_STRING, error_code: 'LEAK' } },
+      });
+
+      const thrown = await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+
+      expect((thrown as HttpException).getStatus()).toBe(422);
+      expect((thrown as HttpException).getResponse()).toEqual({ detail: 'SMR service unavailable' });
+      const serialized = JSON.stringify((thrown as HttpException).getResponse());
+      expect(serialized).not.toContain('123-45-6789');
+      expect(serialized).not.toContain('LEAK');
+    });
+
+    it('logs the raw upstream detail SERVER-SIDE (available for debugging, never in the HTTP response)', async () => {
+      const errorSpy = vi.spyOn(Logger.prototype, 'error');
+      const payload = { detail: PHI_STRING, error_code: 'LEAK' };
+      mockHttpService.axiosRef.post.mockRejectedValue({ response: { status: 500, data: payload } });
+
+      await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch(() => undefined);
+
+      // Some server-side error log must carry the raw upstream detail so operators
+      // can still debug the failure — it just must never reach the client.
+      const loggedDetail = errorSpy.mock.calls.some((call) => {
+        const arg = call[0] as { upstreamDetail?: unknown } | undefined;
+        return arg != null && typeof arg === 'object' && 'upstreamDetail' in arg && JSON.stringify(arg.upstreamDetail) === JSON.stringify(payload);
+      });
+      expect(loggedDetail).toBe(true);
+      errorSpy.mockRestore();
+    });
+
+    it('falls back to 502 with a generic message when the upstream produced no HTTP response', async () => {
+      mockHttpService.axiosRef.post.mockRejectedValue(new Error('socket hang up'));
+
+      const thrown = await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch((e: unknown) => e);
+
+      expect((thrown as HttpException).getStatus()).toBe(HttpStatus.BAD_GATEWAY);
+      expect((thrown as HttpException).getResponse()).toEqual({ detail: 'SMR service unavailable' });
     });
   });
 

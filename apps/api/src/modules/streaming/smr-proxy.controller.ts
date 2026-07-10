@@ -225,13 +225,22 @@ export class SmrProxyController {
     const status = axiosError.response?.status;
     const payload = axiosError.response?.data;
 
+    // TASK-462 C4-05 — the raw upstream error body can echo the assembled
+    // clinical prompt / PHI or internal SMR/LM-Studio stack detail. It MUST NOT
+    // reach the client: log it SERVER-SIDE only, then return a GENERIC message.
+    // The status code mapping is preserved so the caller still sees the correct
+    // 4xx/5xx (the semantic lives in the status, not the body). This replaces the
+    // former verbatim-forward branches (`{ detail: payload }` for string bodies,
+    // `payload` for object bodies) that leaked the upstream body into caller telemetry.
+    if (payload !== undefined && payload !== null && payload !== '') {
+      this.logger.error({
+        message: 'SMR upstream error detail (server-side only; not forwarded to client)',
+        upstreamStatus: status,
+        upstreamDetail: payload,
+      });
+    }
+
     if (typeof status === 'number') {
-      if (typeof payload === 'string' && payload.trim().length > 0) {
-        return new HttpException({ detail: payload }, status);
-      }
-      if (payload && typeof payload === 'object') {
-        return new HttpException(payload, status);
-      }
       return new HttpException({ detail: fallbackMessage }, status);
     }
 
