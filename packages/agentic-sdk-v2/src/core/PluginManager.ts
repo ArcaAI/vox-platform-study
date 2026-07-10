@@ -72,6 +72,13 @@ export interface PluginEventCallbacks {
   onAudioLevel?: (level: number) => void;
   onNERExtraction?: (result: NERExtractionResult) => void;
   onError?: (error: Error, plugin: string) => void;
+  /**
+   * TASK-464 — fired once per outbound audio frame dropped at the streaming STT
+   * client's backpressure watermark (payload: the running per-session count).
+   * The vox hook latches the loss + increments the store count so the UI can
+   * render a degraded-connection signal.
+   */
+  onAudioDrop?: (droppedFrameCount: number) => void;
 }
 
 /**
@@ -810,6 +817,12 @@ export class PluginManager {
 
     this.transcriptionPipeline.on('vadEvent', (event) => {
       this.callbacks.onVADEvent?.(event);
+    });
+
+    // TASK-464 — forward outbound-audio backpressure drops so the hook/store can
+    // surface a degraded-connection signal to the clinician.
+    this.transcriptionPipeline.on('audioDrop', (droppedFrameCount) => {
+      this.callbacks.onAudioDrop?.(droppedFrameCount);
     });
 
     this.transcriptionPipeline.on('error', ({ error, stage }) => {

@@ -28,6 +28,8 @@ import {
     selectConfigManager,
     selectResolvedConfig,
     selectConfigReady,
+    selectAudioDropped,
+    selectAudioDegraded,
 } from '../agenticStore';
 import type { ContextItem, SummaryResponse, PipelineStateInfo } from '../../types';
 
@@ -1194,6 +1196,97 @@ describe('agenticStore', () => {
             expect(state.configManager).toBeNull();
             expect(state.resolvedConfig).toBeNull();
             expect(state.configReady).toBe(false);
+        });
+    });
+
+    // =========================================================================
+    // TASK-464: SDK audio-drop surfacing (C6-01 sibling)
+    //
+    // The streaming provider counts backpressure drops; the SDK path pushes them
+    // up to the store so the vox UI can render a degraded-connection signal. The
+    // `audioLostThisSession` latch is session-sticky: it survives reconnect and
+    // clears ONLY on start/stop (mirrors TASK-454), so a transient reset never
+    // erases the "audio was lost" signal exactly when loss happened.
+    // =========================================================================
+
+    describe('TASK-464: audio-drop state', () => {
+        it('starts with a zero drop count and an un-set loss latch', () => {
+            const state = useAgenticStore.getState();
+            expect(state.audioDroppedFrameCount).toBe(0);
+            expect(state.audioLostThisSession).toBe(false);
+        });
+
+        it('incrementDroppedFrames bumps the count by one each call', () => {
+            useAgenticStore.getState().incrementDroppedFrames();
+            useAgenticStore.getState().incrementDroppedFrames();
+
+            expect(useAgenticStore.getState().audioDroppedFrameCount).toBe(2);
+        });
+
+        it('markAudioLost latches audioLostThisSession true', () => {
+            useAgenticStore.getState().markAudioLost();
+
+            expect(useAgenticStore.getState().audioLostThisSession).toBe(true);
+        });
+
+        it('resetAudioDropped clears both the count and the latch (start/stop)', () => {
+            useAgenticStore.getState().incrementDroppedFrames();
+            useAgenticStore.getState().markAudioLost();
+
+            useAgenticStore.getState().resetAudioDropped();
+
+            const state = useAgenticStore.getState();
+            expect(state.audioDroppedFrameCount).toBe(0);
+            expect(state.audioLostThisSession).toBe(false);
+        });
+
+        it('selectAudioDropped returns the running drop count', () => {
+            useAgenticStore.getState().incrementDroppedFrames();
+            useAgenticStore.getState().incrementDroppedFrames();
+            useAgenticStore.getState().incrementDroppedFrames();
+
+            expect(selectAudioDropped(useAgenticStore.getState())).toBe(3);
+        });
+
+        it('selectAudioDegraded reflects the session-sticky loss latch', () => {
+            expect(selectAudioDegraded(useAgenticStore.getState())).toBe(false);
+
+            useAgenticStore.getState().markAudioLost();
+
+            expect(selectAudioDegraded(useAgenticStore.getState())).toBe(true);
+        });
+
+        it('clearTenantSessionData resets the audio-drop signal (tenant switch)', () => {
+            useAgenticStore.getState().incrementDroppedFrames();
+            useAgenticStore.getState().markAudioLost();
+
+            useAgenticStore.getState().clearTenantSessionData();
+
+            const state = useAgenticStore.getState();
+            expect(state.audioDroppedFrameCount).toBe(0);
+            expect(state.audioLostThisSession).toBe(false);
+        });
+
+        it('clearSensitiveData resets the audio-drop signal (security wipe)', () => {
+            useAgenticStore.getState().incrementDroppedFrames();
+            useAgenticStore.getState().markAudioLost();
+
+            useAgenticStore.getState().clearSensitiveData();
+
+            const state = useAgenticStore.getState();
+            expect(state.audioDroppedFrameCount).toBe(0);
+            expect(state.audioLostThisSession).toBe(false);
+        });
+
+        it('reset() clears the audio-drop signal', () => {
+            useAgenticStore.getState().incrementDroppedFrames();
+            useAgenticStore.getState().markAudioLost();
+
+            useAgenticStore.getState().reset();
+
+            const state = useAgenticStore.getState();
+            expect(state.audioDroppedFrameCount).toBe(0);
+            expect(state.audioLostThisSession).toBe(false);
         });
     });
 });

@@ -72,6 +72,19 @@ export interface AgenticState {
   audioError: Error | null;
   activeStream: MediaStream | null;
   activeAudioContext: AudioContext | null;
+  /**
+   * TASK-464 — outbound audio frames dropped at the streaming STT client's
+   * backpressure watermark during the current capture session. The dropped PCM
+   * never reached the durable transcript.
+   */
+  audioDroppedFrameCount: number;
+  /**
+   * TASK-464 — session-sticky latch: true once ANY audio was lost this session.
+   * SURVIVES reconnect (backpressure precedes the disconnect, so a reconnect
+   * reset would erase the signal exactly when loss happened — the bug TASK-454
+   * fixed on review); clears ONLY on capture start/stop.
+   */
+  audioLostThisSession: boolean;
 
   // Summary state
   summaries: SummaryResponse[];
@@ -167,6 +180,13 @@ export interface AgenticActions {
   setAudioError: (error: Error | null) => void;
   setActiveStream: (stream: MediaStream | null) => void;
   setActiveAudioContext: (ctx: AudioContext | null) => void;
+  // TASK-464 — audio-drop surfacing (push channel from the streaming STT provider)
+  /** Increment the per-session dropped-frame count by one (one call per dropped frame). */
+  incrementDroppedFrames: () => void;
+  /** Latch `audioLostThisSession` true (session-sticky; survives reconnect). */
+  markAudioLost: () => void;
+  /** Clear both the count and the latch — called on capture start/stop only. */
+  resetAudioDropped: () => void;
 
   // Summary actions
   setSummaries: (summaries: SummaryResponse[]) => void;
@@ -279,6 +299,9 @@ const initialState: AgenticState = {
   audioError: null,
   activeStream: null,
   activeAudioContext: null,
+  // TASK-464 — audio-drop signal starts clean each session.
+  audioDroppedFrameCount: 0,
+  audioLostThisSession: false,
 
   // Summary state
   summaries: [],
@@ -426,6 +449,13 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
   setActiveStream: (stream) => set({ activeStream: stream }),
   setActiveAudioContext: (ctx) => set({ activeAudioContext: ctx }),
 
+  // TASK-464 — audio-drop surfacing. `incrementDroppedFrames` is called once per
+  // dropped frame; `markAudioLost` latches the session signal; `resetAudioDropped`
+  // clears both on start/stop (the latch deliberately survives reconnect).
+  incrementDroppedFrames: () => set((state) => ({ audioDroppedFrameCount: state.audioDroppedFrameCount + 1 })),
+  markAudioLost: () => set({ audioLostThisSession: true }),
+  resetAudioDropped: () => set({ audioDroppedFrameCount: 0, audioLostThisSession: false }),
+
   // Summary actions
   setSummaries: (summaries) => set({ summaries }),
   addSummary: (summary) =>
@@ -480,6 +510,11 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       transcriptSegments: [],
       dnaStyle: null,
       tenantConfig: null,
+      // TASK-464 — a tenant switch ends the capture context; the outgoing tenant's
+      // audio-drop signal must not bleed into the next. (`clearSensitiveData`
+      // delegates here, so the security wipe is covered too.)
+      audioDroppedFrameCount: 0,
+      audioLostThisSession: false,
     }),
 
   clearSensitiveData: () => {
@@ -552,6 +587,9 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       currentTranscript: '',
       transcriptSegments: [],
       dnaStyle: null,
+      // TASK-464 — logout ends the capture context; clear the audio-drop signal.
+      audioDroppedFrameCount: 0,
+      audioLostThisSession: false,
       authUser: null,
       authIsAuthenticated: false,
       authImpersonatedUser: null,
@@ -730,6 +768,18 @@ export const selectSummaries = (state: AgenticState) => state.summaries;
 export const selectIsMuted = (state: AgenticState) => state.isMuted;
 export const selectIsSpeaking = (state: AgenticState) => state.isSpeaking;
 export const selectCurrentTranscript = (state: AgenticState) => state.currentTranscript;
+/**
+ * TASK-464 — running count of outbound audio frames dropped this session. Read
+ * from the EXTERNAL vox UI with `useArcaStore(selectAudioDropped)` (never a
+ * direct store import; select atomically to avoid full-store re-renders).
+ */
+export const selectAudioDropped = (state: AgenticState) => state.audioDroppedFrameCount;
+/**
+ * TASK-464 — session-sticky "audio was lost this session" latch (survives
+ * reconnect, clears only on start/stop). Read via `useArcaStore(selectAudioDegraded)`
+ * to render a degraded-connection banner/badge.
+ */
+export const selectAudioDegraded = (state: AgenticState) => state.audioLostThisSession;
 export const selectSessionLoading = (state: AgenticState) => state.sessionLoading;
 export const selectSessionError = (state: AgenticState) => state.sessionError;
 export const selectContextItems = (state: AgenticState) => state.contextItems;

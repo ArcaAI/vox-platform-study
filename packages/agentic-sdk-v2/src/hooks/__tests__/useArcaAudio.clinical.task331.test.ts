@@ -154,6 +154,10 @@ function setupStore(overrides: Record<string, any> = {}) {
     addTranscriptSegment: vi.fn(),
     addContextItem: vi.fn(),
     addEntities: vi.fn(),
+    // TASK-464 — audio-drop actions the hook calls on start/stop and per drop.
+    resetAudioDropped: vi.fn(),
+    markAudioLost: vi.fn(),
+    incrementDroppedFrames: vi.fn(),
     ...overrides,
   };
   (useAgenticStore as any).mockReturnValue(mockStoreData);

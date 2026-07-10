@@ -136,4 +136,54 @@ describe('STTProcessor — streaming-transport wiring (TASK-298 D-4)', () => {
       );
     });
   });
+
+  // TASK-464 — the streaming provider counts backpressure drops, but on the SDK
+  // path nothing polls the getter. STTProcessor must (a) re-emit the provider's
+  // PUSH channel via `onBackpressureDrop`, and (b) surface the count in getStats()
+  // so a consumer (the vox pipeline/store) can render a degraded-connection signal.
+  describe('backpressure drop propagation (TASK-464)', () => {
+    let processor: STTProcessor;
+    let wsClient: ReturnType<typeof makeWsClient>;
+    let session: StreamingSessionLike;
+
+    beforeEach(async () => {
+      processor = new STTProcessor({
+        sessionId: 'drop-session',
+        audio: { language: 'en-US', sampleRate: 16000, channels: 1, chunkLengthS: 30, overlapLengthS: 5 },
+        features: { provider: 'remote' },
+      });
+      wsClient = makeWsClient();
+      session = makeSession();
+      processor.setStreamingTransport({ sessionManager: session, wsClient, pipelineId: 'pipeline-drop' });
+
+      await (processor as unknown as { initializeRemoteProvider(): Promise<void> }).initializeRemoteProvider();
+      const provider = processor.getProvider() as unknown as { start(): Promise<void> };
+      await provider.start();
+    });
+
+    it('re-emits provider drops through STTProcessor.onBackpressureDrop', async () => {
+      const onDrop = vi.fn();
+      processor.onBackpressureDrop(onDrop);
+
+      wsClient.sendAudioFrame.mockReturnValue(false);
+      const provider = processor.getProvider() as unknown as {
+        processAudio(a: Float32Array, sr: number): Promise<void>;
+      };
+      await provider.processAudio(new Float32Array([0.1, 0.2]), 16000);
+      await provider.processAudio(new Float32Array([0.3, 0.4]), 16000);
+
+      expect(onDrop).toHaveBeenCalledTimes(2);
+      expect(onDrop).toHaveBeenLastCalledWith(2);
+    });
+
+    it('surfaces the dropped-frame count through getStats().droppedFrames', async () => {
+      wsClient.sendAudioFrame.mockReturnValue(false);
+      const provider = processor.getProvider() as unknown as {
+        processAudio(a: Float32Array, sr: number): Promise<void>;
+      };
+      await provider.processAudio(new Float32Array([0.1, 0.2]), 16000);
+
+      expect(processor.getStats()?.droppedFrames).toBe(1);
+    });
+  });
 });

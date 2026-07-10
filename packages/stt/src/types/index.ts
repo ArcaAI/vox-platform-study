@@ -562,6 +562,14 @@ export interface STTStats {
   connectionStatus?: 'connected' | 'disconnected' | 'connecting' | 'error';
 
   /**
+   * TASK-464 — outbound audio frames dropped at the streaming client's
+   * bufferedAmount watermark since the session started (remote streaming only).
+   * Non-zero means PCM was lost from the durable transcript; consumers surface
+   * it as a degraded-connection signal. Undefined for providers that cannot drop.
+   */
+  droppedFrames?: number;
+
+  /**
    * Session ID.
    */
   sessionId?: string;
