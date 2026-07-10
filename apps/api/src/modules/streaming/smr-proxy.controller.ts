@@ -225,13 +225,25 @@ export class SmrProxyController {
     const status = axiosError.response?.status;
     const payload = axiosError.response?.data;
 
+    // TASK-462 C4-05 / I-1 — the raw upstream error body can echo the assembled
+    // clinical prompt / PHI or internal SMR/LM-Studio stack detail. It MUST NOT
+    // reach the client AND MUST NOT be written to logs (stdout → k8s/Loki, outside
+    // PHI controls). Record only NON-CONTENT metadata — the upstream status, the
+    // request correlation id, and an explicit redaction sentinel — so operators can
+    // correlate the failure without the body ever landing in telemetry. Return a
+    // GENERIC message; the status-code mapping is preserved (the semantic lives in
+    // the status, not the body). This replaces both former verbatim-forward
+    // branches AND the earlier interim fix that logged the raw body.
+    if (payload !== undefined && payload !== null && payload !== '') {
+      this.logger.error({
+        message: 'SMR upstream error (body redacted — may contain PHI/prompt content)',
+        upstreamStatus: status,
+        correlationId: this.clsService.getId(),
+        upstreamBodyRedacted: true,
+      });
+    }
+
     if (typeof status === 'number') {
-      if (typeof payload === 'string' && payload.trim().length > 0) {
-        return new HttpException({ detail: payload }, status);
-      }
-      if (payload && typeof payload === 'object') {
-        return new HttpException(payload, status);
-      }
       return new HttpException({ detail: fallbackMessage }, status);
     }
 
@@ -547,25 +559,23 @@ export class SmrProxyController {
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       const axiosError = err as AxiosError<UpstreamErrorPayload | string>;
       const upstreamStatus = axiosError.response?.status;
-      const upstreamPayload = axiosError.response?.data;
       this.logger.error({
         message: 'Failed to connect to SMR SSE stream',
         taskId,
         error: err instanceof Error ? err.message : String(err),
         upstreamStatus,
       });
+      // TASK-462 C4-05 / M-1 — this branch is currently DEAD (flushHeaders() above
+      // already sent the SSE headers, so res.headersSent is always true here and
+      // only res.end() runs). Even so, NEVER forward the raw upstream body: if the
+      // headers were somehow not yet sent, respond with a GENERIC message + the
+      // preserved status (mirroring buildUpstreamException). This neutralizes the
+      // latent PHI/prompt-echo footgun the former verbatim `res.json(payload)`
+      // branches represented (they would go live if flushHeaders ever moved into
+      // the try). The `res.end()` behavior on the live path is unchanged.
       if (!res.headersSent) {
-        if (typeof upstreamStatus === 'number') {
-          if (typeof upstreamPayload === 'string' && upstreamPayload.trim().length > 0) {
-            res.status(upstreamStatus).json({ detail: upstreamPayload });
-          } else if (upstreamPayload && typeof upstreamPayload === 'object') {
-            res.status(upstreamStatus).json(upstreamPayload);
-          } else {
-            res.status(upstreamStatus).json({ detail: 'SMR service unavailable' });
-          }
-        } else {
-          res.status(HttpStatus.BAD_GATEWAY).json({ detail: 'SMR service unavailable' });
-        }
+        const status = typeof upstreamStatus === 'number' ? upstreamStatus : HttpStatus.BAD_GATEWAY;
+        res.status(status).json({ detail: 'SMR service unavailable' });
       } else {
         res.end();
       }

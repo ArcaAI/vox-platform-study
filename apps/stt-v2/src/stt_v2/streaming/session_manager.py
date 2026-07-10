@@ -1773,11 +1773,24 @@ class SessionManager:
             elif control.action == ControlAction.CANCEL:
                 await self._cancel_session(session)
             elif control.action in (ControlAction.PAUSE, ControlAction.RESUME):
-                logger.info(
-                    "Control action received (not yet implemented)",
+                # TASK-462 C2-04 — PAUSE/RESUME have no backend implementation
+                # (the SDK halts audio at the source; only finalize/cancel reach
+                # here). Reject the frame LOUDLY rather than silently swallowing it
+                # as a no-op log: publish a client-visible error to the result
+                # stream so a future client that sends a backend PAUSE/RESUME fails
+                # visibly instead of assuming the session paused. Real pause/resume
+                # semantics are deferred to a follow-up control-frame ticket
+                # (see TASK-467); this only makes the current unsupported case honest.
+                logger.warning(
+                    "Unsupported control action rejected",
                     session_id=session.session_id,
                     action=control.action.value,
                 )
+                publisher = self._publishers.get(session.session_id)
+                if publisher:
+                    await publisher.publish_error(
+                        f"Control action '{control.action.value}' is not supported by the streaming backend"
+                    )
             else:
                 logger.warning(
                     "Unknown control action",

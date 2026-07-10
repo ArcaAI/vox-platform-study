@@ -31,29 +31,54 @@ function substituteVariables(template: string, variables: Record<string, string>
  *
  * The label prefers the normalized form when available. Codes and offsets are
  * only emitted when present, keeping the block dense and deterministic.
+ *
+ * TASK-462 C5-03 — the ontology codes (umls/snomed/rxnorm/icd/loinc) are READ
+ * here but WRITTEN nowhere until the SOTA Theme C clinical NER + ontology linker
+ * lands (TASK-476); today the code set is permanently empty. The groundedness
+ * guard below therefore emits an explicit "no codes present" note when the whole
+ * entity set is un-coded, so the block never reads as if coding was attempted.
+ * The guard disengages automatically once the linker starts populating codes.
  */
+// TASK-462 M-3 — this note is injected into the clinical LLM prompt on EVERY
+// NER-bearing summary today (the code set is permanently empty), so it must be
+// clinically NEUTRAL: no internal jargon or ticket ids (which the model could
+// echo into a patient's summary). The SOTA Theme C / TASK-476 pointer lives in
+// the doc comment above (code only), never in the prompt string.
+const NER_NO_ONTOLOGY_CODES_NOTE = '(no standardized codes assigned)';
+
 function serializeNerEntities(entities: NerEntityForPrompt[]): string {
   if (!entities?.length) {
     return '';
   }
 
-  return entities
-    .map((entity) => {
-      const label = entity.normalizedText && entity.normalizedText.trim().length > 0 ? entity.normalizedText : entity.text;
+  // TASK-462 C5-03 groundedness guard — does ANY entity carry an ontology code?
+  const hasAnyOntologyCode = entities.some(
+    (entity) => entity.umlsCui || entity.snomedCode || entity.rxnormCode || entity.icdCode || entity.loincCode,
+  );
 
-      const codeParts: string[] = [];
-      if (entity.umlsCui) codeParts.push(`umls:${entity.umlsCui}`);
-      if (entity.snomedCode) codeParts.push(`snomed:${entity.snomedCode}`);
-      if (entity.rxnormCode) codeParts.push(`rxnorm:${entity.rxnormCode}`);
-      if (entity.icdCode) codeParts.push(`icd:${entity.icdCode}`);
-      if (entity.loincCode) codeParts.push(`loinc:${entity.loincCode}`);
-      const codes = codeParts.length > 0 ? ` [${codeParts.join('; ')}]` : '';
+  const lines = entities.map((entity) => {
+    const label = entity.normalizedText && entity.normalizedText.trim().length > 0 ? entity.normalizedText : entity.text;
 
-      const span = entity.startOffset != null && entity.endOffset != null ? ` @${entity.startOffset}-${entity.endOffset}` : '';
+    const codeParts: string[] = [];
+    if (entity.umlsCui) codeParts.push(`umls:${entity.umlsCui}`);
+    if (entity.snomedCode) codeParts.push(`snomed:${entity.snomedCode}`);
+    if (entity.rxnormCode) codeParts.push(`rxnorm:${entity.rxnormCode}`);
+    if (entity.icdCode) codeParts.push(`icd:${entity.icdCode}`);
+    if (entity.loincCode) codeParts.push(`loinc:${entity.loincCode}`);
+    const codes = codeParts.length > 0 ? ` [${codeParts.join('; ')}]` : '';
 
-      return `- ${label} (${entity.type})${codes}${span}`;
-    })
-    .join('\n');
+    const span = entity.startOffset != null && entity.endOffset != null ? ` @${entity.startOffset}-${entity.endOffset}` : '';
+
+    return `- ${label} (${entity.type})${codes}${span}`;
+  });
+
+  // Make "no codes present" EXPLICIT rather than silently emitting un-coded lines
+  // that could read as if ontology coding had been performed.
+  if (!hasAnyOntologyCode) {
+    lines.push(NER_NO_ONTOLOGY_CODES_NOTE);
+  }
+
+  return lines.join('\n');
 }
 
 /**
