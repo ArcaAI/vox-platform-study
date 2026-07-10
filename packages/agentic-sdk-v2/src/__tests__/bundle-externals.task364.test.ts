@@ -26,10 +26,13 @@
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
-const here = dirname(fileURLToPath(import.meta.url));
+// `tsc` classifies this package (no `"type": "module"`, `module: NodeNext`) as
+// CommonJS output, which forbids `import.meta` (TS1470). `__dirname` is the
+// CommonJS-valid equivalent and is provided at runtime by the Vitest node
+// environment (same pattern as the sibling `core/__tests__` suites).
+const here = __dirname;
 const distDir = resolve(here, '../../dist');
 
 // Both ESM entries bundle the plugin packages with the same tsup config, so both
