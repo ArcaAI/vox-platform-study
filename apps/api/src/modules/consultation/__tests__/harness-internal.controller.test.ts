@@ -101,15 +101,25 @@ describe('HarnessInternalController', () => {
         expect(mockService.persistEntities).toHaveBeenCalledWith('consultation-1', dto, undefined);
     });
 
-    // TASK-466 (C1-05) — the new escalation route delegates to recordEscalation.
-    it('POST escalation -> recordEscalation(consultationId, dto)', async () => {
+    // TASK-466 (C1-05 + C1-03) — the escalation route delegates to recordEscalation
+    // and forwards the Idempotency-Key header so a re-delivered escalate_gate dedups.
+    it('POST escalation -> recordEscalation(consultationId, dto, idempotencyKey)', async () => {
         mockService.recordEscalation.mockResolvedValue({ recorded: true });
         const dto = { tenantId: 't-1', reason: 'gate_sla_abandoned', jobId: 'harness-doc-1' };
 
-        const result = await controller.recordEscalation('consultation-1', dto as any);
+        const result = await controller.recordEscalation('consultation-1', dto as any, 'run-1:escalate_gate');
 
-        expect(mockService.recordEscalation).toHaveBeenCalledWith('consultation-1', dto);
+        expect(mockService.recordEscalation).toHaveBeenCalledWith('consultation-1', dto, 'run-1:escalate_gate');
         expect(result).toEqual({ recorded: true });
+    });
+
+    it('POST escalation without the header forwards undefined (dedup no-op)', async () => {
+        mockService.recordEscalation.mockResolvedValue({ recorded: true });
+        const dto = { tenantId: 't-1', reason: 'gate_sla_breached' };
+
+        await controller.recordEscalation('consultation-1', dto as any);
+
+        expect(mockService.recordEscalation).toHaveBeenCalledWith('consultation-1', dto, undefined);
     });
 
     // TASK-345 — live harness activity/progress feed.
