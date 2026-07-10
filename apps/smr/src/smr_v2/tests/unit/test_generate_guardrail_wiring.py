@@ -1,8 +1,11 @@
-"""TASK-338 Phase 4b — the /generate endpoint invokes the external guardrail.
+"""TASK-338 Phase 4b / TASK-478 — the /generate gate invokes the external guardrail.
 
 Verifies the guardrail is called per generate, the consultation X-Tenant-Id is
-forwarded, blocked content is rejected (fail-closed verdict), and allowed content
-(incl. fail-open verdict) proceeds. The guardrail client is mocked — no network.
+forwarded, and the degrade-safe → fail-CLOSED posture (TASK-478): a content
+rejection is a 422, a sustained outage is a retryable 503, a missing ``allowed``
+key fails closed, and an unwired client under the enforce posture fails closed —
+while allowed content proceeds and the dev bypass (disabled/unwired) is preserved.
+The guardrail client is mocked — no network.
 """
 
 from __future__ import annotations
@@ -69,9 +72,10 @@ async def _client_factory(mock_registry, mock_task_manager):
 
 @pytest.mark.asyncio
 async def test_blocked_content_rejected_with_422(_client_factory, mock_provider):
+    # A genuine content rejection (guardrail reachable, verdict not-allowed) is a 422.
     guardrail = AsyncMock()
     guardrail.validate = AsyncMock(
-        return_value={"allowed": False, "reason": "external_guardrail_unavailable"}
+        return_value={"allowed": False, "reason": "not_medical"}
     )
     client = await _client_factory(guardrail)
 
@@ -86,21 +90,6 @@ async def test_blocked_content_rejected_with_422(_client_factory, mock_provider)
 async def test_allowed_content_proceeds(_client_factory, mock_provider):
     guardrail = AsyncMock()
     guardrail.validate = AsyncMock(return_value={"allowed": True})
-    client = await _client_factory(guardrail)
-
-    resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "test-model"})
-
-    assert resp.status_code == 200
-    mock_provider.generate.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_fail_open_verdict_proceeds(_client_factory, mock_provider):
-    # When guardrail is unreachable + fail_open, the client returns allowed=True.
-    guardrail = AsyncMock()
-    guardrail.validate = AsyncMock(
-        return_value={"allowed": True, "reason": "external_guardrail_failed_open"}
-    )
     client = await _client_factory(guardrail)
 
     resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "test-model"})
@@ -136,3 +125,54 @@ async def test_no_guardrail_client_skips_validation(_client_factory, mock_provid
 
     assert resp.status_code == 200
     mock_provider.generate.assert_called_once()
+
+
+# --- TASK-478: degrade-safe → fail-CLOSED gate -----------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sustained_outage_returns_503_and_never_generates(_client_factory, mock_provider):
+    # AC-3: a sustained guardrail outage (unavailable verdict) is a RETRYABLE 503
+    # (distinct from a 422 content rejection) and generation never runs.
+    guardrail = AsyncMock()
+    guardrail.validate = AsyncMock(
+        return_value={"allowed": False, "reason": "external_guardrail_unavailable"}
+    )
+    client = await _client_factory(guardrail)
+
+    resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "m"})
+
+    assert resp.status_code == 503
+    mock_provider.generate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_missing_allowed_key_fails_closed(_client_factory, mock_provider):
+    # AC-4: a malformed verdict with no ``allowed`` key must default to fail-CLOSED
+    # (reject), never proceed.
+    guardrail = AsyncMock()
+    guardrail.validate = AsyncMock(return_value={"reason": "malformed"})
+    client = await _client_factory(guardrail)
+
+    resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "m"})
+
+    assert resp.status_code == 422
+    mock_provider.generate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_none_client_with_enforce_posture_fails_closed(
+    mock_registry, mock_task_manager, mock_provider
+):
+    # AC-4: enforce posture on (external_guardrail.enabled) but the client is unwired
+    # → fail CLOSED (503), not a silent skip that ships unmoderated PHI.
+    from smr_v2.core.config import ExternalGuardrailConfig, Settings
+
+    app = _make_app(mock_registry, mock_task_manager, None)
+    app.state.settings = Settings(external_guardrail=ExternalGuardrailConfig(enabled=True))
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "m"})
+
+    assert resp.status_code == 503
+    mock_provider.generate.assert_not_called()
