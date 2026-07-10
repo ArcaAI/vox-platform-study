@@ -1,0 +1,121 @@
+# TASK-482 — MEDCON Concept-F1 + Harm-Weighted Error Rate + Clinician Edit-Burden Telemetry (Theme E3 · SOTA S3-F3/F6/F7 · **the real quality proxy**)
+
+- **Status**: Pending
+- **Type**: feature (harness eval depth + derived telemetry) — deepens the already-strong harness eval with the **omission**, **harm-severity**, and **real-world edit-burden** signals it lacks
+- **Track**: [SOTA Enhancement Track](../SOTA-Track/README.md) · Theme **E3** (harness lineage unification + eval depth)
+- **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · strategic SOTA track (post-Wave-3)
+- **Source finding**: [TASK-448](../TASK-448-Harness-Loop-Quality-Review/README.md) §SOTA **S3** — three "missing" eval rows: **S3-F3** (MEDCON/UMLS concept-F1), **S3-F6** (clinical-significance-weighted error rate — "1.47% hallucination rate hides 44% *major*"), **S3-F7** (clinician edit-distance / deferral rate / time-to-sign — "signal exists in the gate, unused").
+- **Extends (do NOT fork)**: [TASK-470](../TASK-470-Streaming-Quality-Eval-Harness/README.md) — TASK-470 seeded the eval/telemetry *pattern* (scorecard + committed thresholds + a pass/fail regression gate) and **explicitly deferred concept-F1 to this ticket** (its Non-goals: "Full MEDCON/UMLS concept-F1 over persisted `NamedEntity` codes — that is TASK-482 (E3) … this ticket's keyterm recall is the lightweight surface-form proxy, not concept-linking"). This ticket adds the **semantic** metric over the durable doc, in the harness eval where PDSQI-9 / faithfulness / calibration already live.
+- **Theme**: E3 · **Size**: M · **Value**: High (the real quality proxy for the generated documentation) · **Risk**: Low
+- **Depends on**: **[TASK-476](../TASK-476-Clinical-Encoder-Ontology-Linker/README.md)** — concept-F1 is computed over the **persisted `NamedEntity` ontology codes** (umls/snomed/rxnorm/icd/loinc); those are written-nowhere until TASK-476 populates them, so **concept-F1 lands after C**. **[TASK-470](../TASK-470-Streaming-Quality-Eval-Harness/README.md)** — the eval/gate pattern this extends. **Independent within this ticket**: the **harm-weighted error rate** and **edit-burden telemetry** parts need neither codes nor the scorecard and can build first.
+- **Suggested agent**: general-purpose (spans `apps/harness` Python eval + `packages/applications` TS observability + an apps/api DTO — run the Python and TS gates separately, exactly like TASK-476)
+- **Hard guardrail (track-level)**: **self-hosted / deterministic only — no cloud PHI.** Concept-F1 and the harm-weight table are **deterministic** computations over already-persisted codes + a local golden set; they call **no** external judge and egress **no** PHI. Edit-burden telemetry reads only the **existing** on-prem WORM audit. Do NOT introduce a cloud eval/judge vendor for these three metrics.
+
+## File-ownership manifest (exclusive — binding)
+
+Two gates: **Python harness eval** (concept-F1 + harm-weight — deepen the offline eval) and **TS applications observability** (edit-burden — *wire* the WORM signals the gate already emits). No Prisma migration.
+
+| File | Change | Layer |
+|---|---|---|
+| `apps/harness/src/harness/eval/metrics/concept_f1.py` (new) | Deterministic **MEDCON/UMLS concept-F1**: candidate concept-code set (from the generated note's persisted `NamedEntity` codes) vs the golden reference concept set → precision / **recall (the omission catcher)** / F1, keyed on the canonical **UMLS CUI** (with a documented code-system fallback order snomed→rxnorm→icd→loinc when a CUI is absent). Pure, offline, unit-testable with no services. | harness eval |
+| `apps/harness/src/harness/eval/metrics/harm_weighted.py` (new) | **Clinical-significance-weighted error rate**: each note error (faithfulness/entity/sensor finding) carries a deterministic **severity weight** from a documented v1 table (major = medication/dose/route/diagnosis/procedure/allergy; minor = narrative/social/formatting) → `Σ(errors × weight) / Σ(weightable)`. Encodes the npj framing (raw rate ≠ safety). Pure, offline. | harness eval |
+| `apps/harness/src/harness/eval/metrics/__init__.py` | Export the two new evaluators alongside `faithfulness`. | harness eval |
+| `apps/harness/src/harness/eval/models.py` | Extend `EvalCaseResult` (`:178`) + `EvalRunResult` (`:187`) with `concept_f1: ConceptF1Result \| None`, `harm_weighted_error_rate: float \| None`, and an aggregate edit-burden summary block. Add the `ConceptF1Result` model (precision/recall/f1 + missed/spurious CUIs) next to `FaithfulnessResult` (`:167`). | harness eval |
+| `apps/harness/src/harness/eval/draft_eval.py` | Wire concept-F1 + harm-weight into the per-case eval run (alongside the existing PDSQI + faithfulness passes); both **flag-gated / skip-clean** when a golden concept reference or persisted codes are absent. | harness eval |
+| `apps/harness/src/harness/eval/golden/sources.py` · `golden/*.json` fixtures | `GoldenCase` (`models.py:100`) gains an optional `reference_concepts: list[str]` (CUIs) + per-error `severity` labels so a golden case can score concept-F1 + harm-weight. Add a **synthetic, de-identified** golden case carrying reference concepts (no PHI). | harness eval |
+| `apps/harness/src/harness/tests/unit/eval/**` | RED-first: concept-F1 on a known candidate/reference code split (recall catches a dropped medication CUI); harm-weight scores a major med-omission above a minor narrative drop; the eval run serializes the new fields; skip-clean when references absent. | harness eval |
+| `packages/applications/src/services/harness-observability/edit-burden.ts` (new) | Derived **edit-burden telemetry** over the existing gate WORM audit + summary versions: **edit-distance** (delivered `RAW_SUMMARY` content vs signed `MODIFIED_SUMMARY` content, word-level), **deferral rate** (fraction of gate decisions that are `FLAG`/`REGEN`/escalated vs `APPROVE`), **time-to-sign** (signed-off ts − delivered ts). Pure functions over already-persisted rows. | applications |
+| `packages/applications/src/services/harness-observability/harness-observability.service.ts` | Add an `getEditBurden(consultationId)` / roll-up read that composes the derived telemetry from the audit rows it already loads (`gateDecision` at `:282`); broadcast no new sys-event (read-only). | applications |
+| `packages/applications/src/services/harness-observability/dto/harness-audit.response.ts` | Add the edit-burden fields to the observability response DTO (`@ApiPropertyOptional`; ISO-string timestamps). | applications |
+| `packages/applications/src/services/harness-observability/__tests__/**` | RED-first: edit-distance on a known delivered/signed pair; deferral rate on a decision sequence; time-to-sign from two timestamps; PHI stays out of the response (only derived scalars). | applications |
+
+**No Prisma migration.** Concept-F1 reads the five `NamedEntity` code columns that already exist (`consultation.prisma:323-327`, populated by TASK-476). Edit-burden reads the `RAW_SUMMARY`/`MODIFIED_SUMMARY` `ContextItem` versions + gate `SummaryMeta` rows that already exist. This ticket **computes over** them; it adds no column.
+
+**STOP-and-report before touching**: TASK-476's producer/linker + the five column definitions (this ticket **reads** the codes, never writes them), TASK-470's `streaming_quality.py` scorecard (`apps/stt-v2/tests/integration/` — re-run it, don't edit it; keyterm recall stays the surface proxy), the harness **workflow command sequence** (`workflows.py` — E3 adds no activity and no `workflow.patched()`; the WORM signals it reads are already emitted), the harness `record_gate_decision`/`finalize_assurance` activities (they already persist approve/edit — this ticket only *reads* the result). Anything outside the manifest → STOP.
+
+## Requirement Analysis
+
+The harness eval is HOPE's **uncommon strength** — TASK-448 rates it "ahead of most" (PDSQI-9 LLM-judge + calibration + judge-parity + RAGAS-style faithfulness all present). But three quality signals that a clinical scribe is ultimately judged on are **missing**, and they are exactly the ones that separate a plausible-looking note from a *safe* one:
+
+1. **Omission is invisible.** PDSQI + faithfulness catch *what the note says wrong*; nothing catches *what the note left out*. A **concept-F1** over coded entities makes **recall** a first-class metric — the "did we drop the drug / dose / finding" catcher at the concept (not surface-string) level.
+2. **A raw error rate is not a safety metric.** The npj framework finding TASK-448 cites: a **1.47%** hallucination rate hid **44% *major*** errors. Averaging major and minor into one rate is actively misleading for a safety gate. A **clinical-significance-weighted error rate** separates the two.
+3. **The best quality proxy is already being thrown away.** The clinician gate **already emits** approve/edit decisions and the delivered-vs-signed note versions into the WORM audit — the real-world "how much did the human have to fix this" signal — and **nothing reads it**. TASK-448 S3-F7: "signal exists in the gate, unused." Wiring **edit-distance / deferral rate / time-to-sign** turns the existing audit into the top real-world quality proxy at zero new capture cost.
+
+This ticket adds all three, deterministically and self-hosted. Concept-F1 + harm-weight deepen the offline harness eval (where PDSQI/faithfulness/calibration live); edit-burden is a derived read over the WORM audit the observability service already loads. Per the measure-first governing principle, concept-F1 lands **after** TASK-476 populates the codes it scores; the harm-weight and edit-burden parts are independent and can build first.
+
+### Metric definitions (the E3 contract)
+
+| Metric | Definition | Source | Direction |
+|---|---|---|---|
+| **Concept-F1 (recall / precision / F1)** | candidate concept-code set (generated note's persisted `NamedEntity` CUIs) vs golden reference concept set; matched on canonical **UMLS CUI**, fallback snomed→rxnorm→icd→loinc. | NEW (`concept_f1.py`) — codes from **TASK-476** | **recall** = omission catcher (higher = fewer dropped concepts); F1 = balanced |
+| **Harm-weighted error rate** | `Σ(error × severity_weight) / Σ(weightable)` over the note's factual/entity/sensor errors; severity from a documented v1 table (major clinical vs minor narrative). | NEW (`harm_weighted.py`) | lower = safer; **separates the 44%-major tail from the raw rate** |
+| **Edit-distance (clinician edit-burden)** | word-level distance between the delivered `RAW_SUMMARY` and the signed `MODIFIED_SUMMARY` per consultation. | NEW (`edit-burden.ts`) over existing WORM versions | lower = less clinician rework |
+| **Deferral rate** | fraction of gate decisions that are `FLAG`/`REGEN`/escalated (not clean `APPROVE`). | NEW over existing `gateDecision` audit | lower = more first-pass acceptances |
+| **Time-to-sign** | signed-off timestamp − delivered timestamp. | NEW over existing audit timestamps | context metric (workflow friction) |
+
+### Acceptance criteria
+
+- [ ] **AC-1 (concept-F1, hermetic RED→GREEN)** — `concept_f1.py` computes precision/recall/F1 deterministically over a known candidate/reference CUI split with **no services up**; a test proves **recall drops when a reference medication CUI is missing from the candidate set** (the omission catcher) and that the snomed→rxnorm→icd→loinc fallback matches when a CUI is absent. RED: evaluator absent.
+- [ ] **AC-2 (harm-weighted error rate, hermetic RED→GREEN)** — `harm_weighted.py` scores a **major** clinical error (e.g. dropped medication/dose) strictly above a **minor** narrative error using the documented v1 severity table; a test asserts two error sets with the *same raw count* but different severity mixes produce *different* harm-weighted rates (the npj point). RED: evaluator absent.
+- [ ] **AC-3 (edit-burden telemetry, RED→GREEN)** — `edit-burden.ts` computes edit-distance on a known delivered/signed pair, deferral rate on a decision sequence, and time-to-sign from two timestamps — all as **pure functions over already-persisted WORM rows**; `getEditBurden` composes them from the audit the observability service already loads. RED: functions absent.
+- [ ] **AC-4 (wired into the eval run + the observability read)** — `draft_eval.py` emits `concept_f1` + `harm_weighted_error_rate` on `EvalCaseResult`/`EvalRunResult` (skip-clean when a golden concept reference or persisted codes are absent); the harness-observability response DTO carries the edit-burden block. No metric fabricates a value when its input is missing — it reports `null`/skips.
+- [ ] **AC-5 (concept-F1 scored on TASK-476's codes)** — with TASK-476 merged (codes populated), a golden case whose generated note carries coded entities yields a non-degenerate concept-F1 (recall < 1.0 when the note omits a reference concept). Recorded in §Implementation Summary. On the pre-476 tree the concept-F1 pass **skips clean** (codes all `null`) — proven by a test, so this ticket's harm-weight + edit-burden parts ship independently of C.
+- [ ] **AC-6 (no PHI in telemetry)** — the edit-burden response exposes only **derived scalars** (distance/rate/seconds) — never the note text or clinician identity beyond what the observability DTO already returns; a test asserts no note content leaks into the edit-burden fields. Concept-F1/harm-weight run offline on golden fixtures (synthetic, de-identified).
+- [ ] **AC-7 (gates, per language)** — `pnpm py:harness:test` (hermetic — Temporal/LLM/NLP stubbed) + `py:harness:lint` + `py:harness:typecheck` green; `pnpm --filter @arcaai/applications build test lint` green; `pnpm build:api` green (DTO change). Output pasted into §Implementation Summary.
+- [ ] **AC-8 (no migration; deterministic/self-hosted)** — `git status` shows no `packages/database/**/migrations/**` diff; concept-F1 + harm-weight + edit-burden call no external judge/vendor and egress no PHI.
+
+### Non-goals
+
+- **Populating the `NamedEntity` codes** — that is [TASK-476](../TASK-476-Clinical-Encoder-Ontology-Linker/README.md) (C1). This ticket **reads** the codes to score concept-F1; it never writes them. On the pre-476 tree concept-F1 skips clean.
+- **The streaming keyterm/keyphrase recall scorecard** — [TASK-470](../TASK-470-Streaming-Quality-Eval-Harness/README.md) (F). That surface-form proxy stays; concept-F1 is the **semantic** metric it deferred here. Re-run TASK-470's scorecard, don't edit it.
+- **A cloud/LLM-judge scorer for these three metrics** — concept-F1 + harm-weight are deterministic; edit-burden is arithmetic over the audit. No external judge, no PHI egress (track guardrail).
+- **Changing the clinician gate / harness workflow command sequence** — E3 only *reads* the approve/edit signals the gate already emits; it adds no activity and no `workflow.patched()` marker.
+- **A new admin-console screen for the telemetry** — this ticket delivers the metric + the observability read; surfacing it in the console (a chart on the harness-observability screen) is downstream UI work, not in scope here.
+- **Harness warm-start / reuse of `NamedEntity` as NER priors** — [TASK-480](../SOTA-Track/README.md) (E1).
+
+## Current State Evaluation (code-verified 2026-07-10 against `fix/2605-review` @ `87199e33`)
+
+**The harness eval is real and deep — but the three E3 signals are absent.** `apps/harness/src/harness/eval/` ships: `judge/pdsqi.py` (PDSQI-9 LLM judge), `calibration/{reliability,pairing}.py` (calibration), `inferential_judge_parity.py` (judge-parity), and `metrics/faithfulness.py` (RAGAS-style `FaithfulnessEvaluator` — claim extract + verify). The scorecard shape is `eval/models.py`: `PDSQIScore` (`:34`), `PDSQIResult` (`:91`), `FaithfulnessResult` (`:167`), `EvalCaseResult` (`:178`), `EvalRunResult` (`:187`), `GoldenCase` (`:100`), `GoldenSet` (`:144`). **`FaithfulnessResult` is the natural sibling of the new `ConceptF1Result`** — both are recall-style metrics over the generated note.
+
+**Confirmed absent (repo-wide grep across `apps/**` + `packages/**`, product code):** no `medcon` / `concept_f1` / `harm_weight` / `significance_weight` / `severity_weight` / `time_to_sign` / `deferral_rate`. The only `edit_distance` hits are unrelated — the NLP SymSpell spell-corrector (`apps/nlp/.../text_corrector.py`) and the ui-playground WER helper (`apps/ui-playground/e2e/helpers/wer.ts`). So **none of the three E3 metrics exists today.**
+
+**Concept-F1's inputs are written-nowhere until TASK-476.** The five `NamedEntity` ontology columns (`umlsCui`/`snomedCode`/`rxnormCode`/`icdCode`/`loinc`, `consultation.prisma:323-327`, plaintext) are **read** by three durable consumers but **written by zero** — TASK-476's whole thesis (verified there: NLP producer emits types, no linker, all writers persist `null`). So concept-F1 has nothing to score until TASK-476 lands: this ticket's concept-F1 pass must **skip clean on empty codes** and only light up post-476. The harm-weight + edit-burden parts have no such dependency.
+
+**The edit-burden signal is captured but unread.** The clinician gate emits its decision + versions into the WORM audit today: the harness `record_gate_decision` activity (`temporal/activities.py:730`) and `finalize_assurance` (`:698`) POST the `GATE_DECISION` / verdict to apps/api; `harness-internal.service.ts` persists `gateDecision` on the `SummaryMeta`/`RAW_SUMMARY`/`MODIFIED_SUMMARY` rows (e.g. `:377`, `:443`, `:524`, `:593`); the approve/edit signals arrive as `ApprovalSignal` (`temporal/models.py:85`, `decision`) and `EditSignal` (`:97`, `content` + `edited_by`). `harness-observability.service.ts` (`:282`) + `dto/harness-audit.response.ts` (`:44`) already **read** `gateDecision` for the audit view — but **no code derives edit-distance, deferral rate, or time-to-sign** from it. The delivered `RAW_SUMMARY` and signed `MODIFIED_SUMMARY` `ContextItem` versions both exist; nothing diffs them. This is the "wire them" of S3-F7 — the data is on-prem and persisted; only the derivation is missing.
+
+**Where the generated doc + edits could be measured (the three seams this ticket taps):**
+1. **Concept-F1** — the generated note's persisted `NamedEntity` codes (post-476) vs a golden `reference_concepts` set → recall/precision/F1 in the harness eval.
+2. **Harm-weight** — the note's faithfulness/entity/sensor errors (`metrics/faithfulness.py` + the computational/inferential sensor results) → severity-weighted rate.
+3. **Edit-burden** — the WORM audit `RAW_SUMMARY`→`MODIFIED_SUMMARY` version pair + `gateDecision` sequence + timestamps (`harness-observability.service.ts`) → distance/deferral/time-to-sign.
+
+## Implementation Plan (TDD — strict order)
+
+> Context pack for the implementing agent: this README · TASK-470 README (the eval/gate pattern this extends; §Non-goals defers concept-F1 here) · TASK-476 README (the codes concept-F1 scores — read them, don't write them) · TASK-448 §S3 (the three missing rows + the npj harm-severity framing) · `.claude/rules/06-python-services.md` (harness eval — pytest, ruff/mypy, hermetic CI) · `.claude/rules/04-application-services.md` (the TS observability read — BaseService, DTO mapper, ISO-string timestamps).
+
+**Build the independent parts first (no TASK-476 dependency), concept-F1 last:**
+
+1. **Harm-weight (RED→GREEN, hermetic)** — write the severity-table test first (major med-omission > minor narrative drop; two same-count/different-mix error sets → different rates). Implement `harm_weighted.py` with a documented v1 severity table. Independent of codes.
+2. **Edit-burden (RED→GREEN)** — write pure-function tests first (edit-distance on a known delivered/signed pair; deferral rate on a decision sequence; time-to-sign from two timestamps). Implement `edit-burden.ts` + `getEditBurden` composing from the rows `harness-observability.service.ts` already loads. Extend the response DTO. Independent of codes.
+3. **Concept-F1 (RED→GREEN, hermetic)** — write the candidate/reference CUI-split test first (recall drops on a dropped medication CUI; fallback code-system match). Implement `concept_f1.py` + `ConceptF1Result` in `eval/models.py`. Add a golden case with `reference_concepts`. Prove it **skips clean when candidate codes are all `null`** (the pre-476 reality).
+4. **Wire the eval run** — surface `concept_f1` + `harm_weighted_error_rate` on `EvalCaseResult`/`EvalRunResult` via `draft_eval.py`, skip-clean on missing references.
+5. **Score (after TASK-476)** — once codes are populated, run a golden case end-to-end and record a non-degenerate concept-F1 in §Implementation Summary (AC-5). Re-run TASK-470's scorecard to confirm no surface-recall regression.
+
+### Verification gate (paste output into §Implementation Summary)
+
+```bash
+# Harness eval (concept-F1 + harm-weight — hermetic)
+pnpm py:harness:test && pnpm py:harness:lint && pnpm py:harness:typecheck
+# TS observability (edit-burden)
+pnpm --filter @arcaai/applications build test lint
+pnpm build:api                       # DTO change
+# score (measure-first) — after TASK-476, same fixtures/pipeline as TASK-470
+pnpm py:stt-v2:test:integration      # test_streaming_quality_scorecard (no surface-recall regression)
+```
+
+Adversarial review focus (reviewer agent): (a) is concept-F1 **recall-correct** — a dropped reference CUI provably lowers recall, and does it truly **skip clean** on the all-`null` pre-476 codes rather than scoring a false 1.0? (b) does the harm-weight table make a **major** error outweigh a **minor** one, and do same-count/different-severity sets diverge (the npj point proven by a test, not asserted)? (c) is edit-burden **pure arithmetic over already-persisted rows** — no note text or PHI in the response, no new capture, no workflow change? (d) all three deterministic + self-hosted (no cloud judge)? (e) no Prisma migration; concept-F1 **reads** TASK-476's columns, never writes them; zero diff outside the manifest and zero edit to TASK-470's scorecard or the harness workflow command sequence.
+
+## Change History
+
+| Date | Change |
+|---|---|
+| 2026-07-10 | Detail-scaffolded from [SOTA-Track](../SOTA-Track/README.md) Theme **E3** into an execution-ready ticket. Current state code-verified against `fix/2605-review` @ `87199e33`: the harness eval is deep (`eval/judge/pdsqi.py`, `eval/calibration/*`, `eval/inferential_judge_parity.py`, `eval/metrics/faithfulness.py`, scorecard `eval/models.py:178/187`) but **all three E3 signals are absent** (repo-wide grep: no `medcon`/`concept_f1`/`harm_weight`/`severity_weight`/`time_to_sign`/`deferral_rate` in product code; the only `edit_distance` hits are the unrelated NLP SymSpell corrector + the ui-playground WER helper). **Concept-F1's inputs (the five `NamedEntity` code columns, `consultation.prisma:323-327`) are written-nowhere until TASK-476** — so the concept-F1 pass skips clean pre-476 and this ticket's harm-weight + edit-burden parts ship independently. **The edit-burden signal is captured but unread**: the gate emits approve/edit + `gateDecision` + `RAW_SUMMARY`/`MODIFIED_SUMMARY` versions into the WORM audit (`temporal/activities.py:730/698`, `harness-internal.service.ts:377/443/524/593`, read by `harness-observability.service.ts:282`), and nothing derives edit-distance/deferral/time-to-sign from it (S3-F7 "signal exists in the gate, unused"). Manifest splits two gates — harness Python eval (concept-F1 + harm-weight) + applications TS observability (edit-burden telemetry). Depends on TASK-476 (codes, concept-F1 only) + TASK-470 (eval/gate pattern; re-run its scorecard). No migration. No implementation; documentation only. |
