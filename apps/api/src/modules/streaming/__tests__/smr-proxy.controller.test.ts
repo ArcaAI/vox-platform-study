@@ -16,6 +16,9 @@ const createMockTenantService = () => ({
 
 const createMockClsService = () => ({
   get: vi.fn(),
+  // TASK-462 I-1 — the correlation/request id logged alongside redacted upstream
+  // errors (matches the api-wide `clsService.getId()` pattern).
+  getId: vi.fn(() => 'req-test-id'),
 });
 
 const createMockContextItemRepository = () => ({
@@ -247,20 +250,35 @@ describe('SmrProxyController', () => {
       expect(serialized).not.toContain('LEAK');
     });
 
-    it('logs the raw upstream detail SERVER-SIDE (available for debugging, never in the HTTP response)', async () => {
+    // TASK-462 I-1 — the raw upstream body is PHI-shaped and must ALSO stay out of
+    // the server logs (stdout → k8s/Loki, outside PHI controls). The server-side
+    // record is REDACTED: it carries the status + correlation id + a redaction
+    // sentinel so operators can correlate the failure, but never the body content.
+    it('logs a REDACTED marker server-side (status + correlation id + sentinel; NEVER the raw body/PHI)', async () => {
       const errorSpy = vi.spyOn(Logger.prototype, 'error');
       const payload = { detail: PHI_STRING, error_code: 'LEAK' };
       mockHttpService.axiosRef.post.mockRejectedValue({ response: { status: 500, data: payload } });
 
       await controller.generate({ prompt: 'p', provider: 'ollama', model: 'm', stream: false }).catch(() => undefined);
 
-      // Some server-side error log must carry the raw upstream detail so operators
-      // can still debug the failure — it just must never reach the client.
-      const loggedDetail = errorSpy.mock.calls.some((call) => {
-        const arg = call[0] as { upstreamDetail?: unknown } | undefined;
-        return arg != null && typeof arg === 'object' && 'upstreamDetail' in arg && JSON.stringify(arg.upstreamDetail) === JSON.stringify(payload);
+      // A redacted server-side marker carries the status + correlation id (for
+      // debugging) and an explicit redaction sentinel — but never the raw body.
+      const redactedLog = errorSpy.mock.calls.some((call) => {
+        const arg = call[0] as { upstreamStatus?: unknown; correlationId?: unknown; upstreamBodyRedacted?: unknown } | undefined;
+        return (
+          arg != null &&
+          typeof arg === 'object' &&
+          arg.upstreamStatus === 500 &&
+          arg.correlationId === 'req-test-id' &&
+          arg.upstreamBodyRedacted === true
+        );
       });
-      expect(loggedDetail).toBe(true);
+      expect(redactedLog).toBe(true);
+
+      // CRITICAL: the raw upstream body / PHI must NEVER appear in ANY server log.
+      const phiInAnyLog = errorSpy.mock.calls.some((call) => JSON.stringify(call[0] ?? '').includes('123-45-6789'));
+      expect(phiInAnyLog).toBe(false);
+
       errorSpy.mockRestore();
     });
 
@@ -500,6 +518,36 @@ describe('SmrProxyController', () => {
       expect(mockStream.on).toHaveBeenCalledWith('data', expect.any(Function));
       expect(mockStream.on).toHaveBeenCalledWith('end', expect.any(Function));
       expect(mockStream.on).toHaveBeenCalledWith('error', expect.any(Function));
+    });
+
+    // TASK-462 M-1 — the SSE connect-error branch must never forward the raw
+    // upstream body. In production this branch is dead (flushHeaders() runs before
+    // the try, so res.headersSent is always true → only res.end()), but if headers
+    // were not yet sent the response must be GENERIC (status preserved). This test
+    // forces the not-yet-flushed path with a PHI-shaped upstream body.
+    it('never forwards the raw upstream body on an SSE connect error (M-1 — generic only)', async () => {
+      mockHttpService.axiosRef.get.mockRejectedValue({
+        response: { status: 502, data: { detail: 'prompt: Patient John Q SSN 999-88-7777', error_code: 'X' } },
+      });
+
+      const mockRes = {
+        setHeader: vi.fn(),
+        flushHeaders: vi.fn(),
+        write: vi.fn(),
+        end: vi.fn(),
+        on: vi.fn(),
+        headersSent: false,
+        status: vi.fn().mockReturnThis(),
+        json: vi.fn(),
+      };
+
+      await controller.streamTaskEvents('task-err', mockRes as any);
+
+      expect(mockRes.status).toHaveBeenCalledWith(502);
+      expect(mockRes.json).toHaveBeenCalledWith({ detail: 'SMR service unavailable' });
+      const jsonArg = JSON.stringify(mockRes.json.mock.calls[0]?.[0]);
+      expect(jsonArg).not.toContain('999-88-7777');
+      expect(jsonArg).not.toContain('error_code');
     });
   });
 
