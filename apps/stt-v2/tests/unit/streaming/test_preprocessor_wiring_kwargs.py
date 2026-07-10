@@ -11,14 +11,22 @@ Pins the contract of ``SessionManager._build_preprocessor_vad_kwargs``:
 
 from unittest.mock import MagicMock
 
+import pytest
+
+from stt_v2.core.config.settings import Settings
 from stt_v2.streaming.session_manager import SessionManager
 
 
-def _make_mgr(vad_silence_threshold_ms: int = 500, partial_window_s: float = 8.0) -> MagicMock:
+def _make_mgr(
+    vad_silence_threshold_ms: int = 500,
+    partial_window_s: float = 8.0,
+    partial_interval_s: float = 0.4,
+) -> MagicMock:
     mgr = MagicMock(spec=SessionManager)
     mgr._profile = MagicMock()
     mgr._profile.vad_silence_threshold_ms = vad_silence_threshold_ms
     mgr._partial_window_s = partial_window_s
+    mgr._partial_interval_s = partial_interval_s
     return mgr
 
 
@@ -98,3 +106,27 @@ class TestBuildPreprocessorVadKwargs:
 
         assert without_config["partial_window_s"] == 6.5
         assert with_config["partial_window_s"] == 6.5
+
+    def test_partial_interval_always_present_from_settings(self):
+        """TASK-471 A1: the lowered partial cadence is settings-driven and
+        always wired into the preprocessor, regardless of VAD config."""
+        mgr = _make_mgr(partial_interval_s=0.3)
+
+        without_config = SessionManager._build_preprocessor_vad_kwargs(mgr, None)
+        with_config = SessionManager._build_preprocessor_vad_kwargs(
+            mgr, _make_pipeline_config(vad_enabled=True)
+        )
+
+        assert without_config["partial_interval_s"] == 0.3
+        assert with_config["partial_interval_s"] == 0.3
+
+
+class TestStreamingPartialIntervalSetting:
+    """TASK-471 A1 — the cadence is a bare-env Settings field (the Settings
+    class has NO env_prefix, so the env var is STREAMING_PARTIAL_INTERVAL_S)
+    defaulting below the legacy 1.0 s."""
+
+    def test_setting_default_is_lowered_below_one_second(self):
+        field = Settings.model_fields["streaming_partial_interval_s"]
+        assert field.default == pytest.approx(0.4)
+        assert field.default < 1.0

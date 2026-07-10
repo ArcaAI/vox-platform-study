@@ -1206,6 +1206,33 @@ describe('STT Seed Data', () => {
                     }
                 });
             });
+
+            // TASK-471 A1 — the realtime/streaming pipelines activate the
+            // LocalAgreement-2 commit policy so partials carry `stable_chars`
+            // and the already-built (but previously dormant) tentative-tail
+            // render lights up. Asserted across every tenant variant that shares
+            // the realtime/turbo configYaml (system + ArcaAI customer + Global).
+            it('should activate LocalAgreement-2 commit policy on the realtime + turbo streaming pipelines (TASK-471)', () => {
+                const streamingSlugs = ['best-practice-realtime', 'turbo-whisper-large-v3'];
+                const allPipelines = [
+                    ...DEFAULT_ASR_PIPELINES,
+                    ...CUSTOMER_TENANT_ASR_PIPELINES,
+                    ...GLOBAL_TENANT_ASR_PIPELINES,
+                ];
+                const realtimeRows = allPipelines.filter((p) => streamingSlugs.includes(p.slug));
+
+                // system best-practice-realtime + system/ArcaAI/Global turbo => >= 4 rows.
+                expect(realtimeRows.length).toBeGreaterThanOrEqual(4);
+                realtimeRows.forEach((pipeline) => {
+                    // A top-level `streaming:` mapping whose commit_policy activates
+                    // LocalAgreement-2 (YAML comments between the keys are ignored
+                    // by the parser, so match the block non-adjacently).
+                    expect(pipeline.configYaml).toContain('streaming:');
+                    expect(pipeline.configYaml).toMatch(
+                        /streaming:[\s\S]*?commit_policy:\s*local_agreement_2/,
+                    );
+                });
+            });
         });
 
         describe('Default Pipelines', () => {
