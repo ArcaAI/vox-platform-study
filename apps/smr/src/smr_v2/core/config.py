@@ -75,12 +75,33 @@ class OpenAICompatConfig(BaseSettings):
 
 
 class ExternalGuardrailConfig(BaseSettings):
+    """Input moderation posture for /generate (TASK-338, TASK-478).
+
+    Fail posture is degrade-safe → fail-CLOSED: a transient guardrail error is
+    absorbed by a bounded retry, a sustained outage rejects, and an errored
+    guardrail NEVER allows (there is deliberately no ``fail_open`` option — that
+    foot-gun was retired in TASK-478).
+    """
+
     model_config = SettingsConfigDict(env_prefix="SMR_V2_EXTERNAL_GUARDRAIL_")
 
+    # Dev/CI bypass switch. When False (default) input moderation is intentionally
+    # OFF so local dev + hermetic CI run without a guardrail service (mirrors the
+    # empty-service-token bypass in TASK-465). Clinical/production deployments MUST
+    # enable it — an ops rollout step (guardrail reachable), not a code default that
+    # would break dev.
     enabled: bool = False
     base_url: str = "http://localhost:8863"
     timeout_s: int = 10
-    fail_open: bool = False
+    # Bounded retry for a transient guardrail blip (TASK-478): the moderation call is
+    # retried up to ``max_retries`` extra times (total tries = max_retries + 1) with a
+    # linear ``retry_backoff_ms`` backoff before the client fails CLOSED. A momentary
+    # error is absorbed (degrade-safe); a sustained outage rejects (never allows).
+    max_retries: int = 2
+    retry_backoff_ms: int = 100
+    # Clinical enforce switch (default True): a reachable guardrail must classify the
+    # prompt as medical to allow it. Setting it False is an EXPLICIT, documented
+    # non-clinical mode (allow any reachable verdict) — never a silent default.
     require_medical: bool = True
     include_reasoning: bool = False
     service_token: SecretStr = SecretStr("")
